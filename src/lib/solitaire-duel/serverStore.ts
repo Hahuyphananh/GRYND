@@ -463,9 +463,10 @@ async function createWaitingMatch(tx: any, userId: string, nowMs: number) {
   const serverSeed = randomHex(32);
   const serverSeedHash = getServerSeedHash(serverSeed);
   const dealSeed = deriveDealSeed({ serverSeed, variantVersion: VARIANT_VERSION });
-  // VARIANT_VERSION 2: the deal is CONSTRUCTED to be solvable, not shuffled and
-  // hoped for. It is still a pure function of the derived seed, and still the
-  // one deal both seats receive.
+  // VARIANT_VERSION 3: a random deal served only once a search has proven a
+  // winning line, the engine has replayed it, and the naive foundation-only
+  // strategy has been shown to fail. Still a pure function of the derived seed,
+  // and still the one deal both seats receive.
   const deal: SolitaireDeal = solvableDealFromSeed(dealSeed);
 
   // The SAME deal initialises both seats — two independent copies of one

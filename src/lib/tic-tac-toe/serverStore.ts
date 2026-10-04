@@ -4,12 +4,14 @@
 // in the game happens inside a row-locked `db.transaction` here, and the API
 // routes are thin wrappers around these functions.
 //
-// TRUST BOUNDARY: the ONLY player-authored value that reaches this module is
-// `cellIndex`. The mark, the board, whose turn it is, the winner, the draw, the
-// match result, the rating change and the trophies are all computed from the
-// server's own authoritative state by the pure rules engine (`applyMove`). A
-// client cannot submit a winner, a result, a score, a turn, a board, an Elo
-// value, a trophy or a completion flag — no such field is ever read.
+// TRUST BOUNDARY: the ONLY player-authored values that reach this module are
+// `boardIndex` and `cellIndex` — which board, and which cell on it. The mark,
+// the boards, whose turn it is, every board's control, the stage, the Mega
+// winner, the tiebreaker, the match result, the rating change and the trophies
+// are all computed from the server's own authoritative state by the pure rules
+// engine (`applyMove`). A client cannot submit a winner, a result, a score, a
+// turn, a board, a round/stage, an Elo value, a trophy or a completion flag —
+// no such field is ever read.
 //
 // Settlement reuses the platform's existing rating/trophy infrastructure
 // (`applyRatingResult` / `applyTrophyResult`) inside the SAME transaction that
@@ -28,11 +30,12 @@ import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLife
 import {
   CELL_COUNT,
   MATCH_STATUS,
+  MAX_BOARDS,
   RESULT,
   TIC_TAC_TOE_AI_PLAYER_ID,
   TIC_TAC_TOE_LOCK_NAMESPACE,
 } from "./constants";
-import { chooseAiCell } from "./ai";
+import { chooseAiMove } from "./ai";
 import { coerceAiDifficulty } from "../aiDifficulty";
 import {
   applyMove,
@@ -356,6 +359,9 @@ export async function fetchMatchMoves(matchId: string) {
     .select({
       ply: ticTacToeMoves.ply,
       playerId: ticTacToeMoves.playerId,
+      // The lattice slot the move targeted. Together with `cellIndex` this is
+      // the full move address a replay needs.
+      boardIndex: ticTacToeMoves.boardIndex,
       cellIndex: ticTacToeMoves.cellIndex,
       createdAt: ticTacToeMoves.createdAt,
     })
@@ -372,8 +378,15 @@ export type MoveResult =
       state: TicTacToeState;
       mark: string;
       ply: number;
+      /** The lattice slot the move landed on (-1 for sudden death). */
+      boardIndex: number;
+      /** The expansion stage the match is on AFTER the move. */
+      stage: number;
       matchCompleted: boolean;
+      /** The small board's winning line, when the move resolved that board. */
       winningLine: number[] | null;
+      /** The three Mega slots that won the match, when it was a Mega line. */
+      winningBoards: number[] | null;
       winnerSeat: Seat | null;
     }
   | StoreError;
@@ -381,9 +394,9 @@ export type MoveResult =
 /**
  * Take one move.
  *
- * The request carries ONLY { cellIndex, expectedVersion }. Anything else a
- * client might send (a mark, a board, a winner, a result, a completion flag) is
- * ignored: the sequence
+ * The request carries ONLY { boardIndex, cellIndex, expectedVersion }. Anything
+ * else a client might send (a mark, a board, a winner, a result, a stage, a
+ * completion flag) is ignored: the sequence
  *   validateMove → applyMove
  * runs entirely inside the row-locked transaction below.
  *
@@ -394,22 +407,27 @@ export type MoveResult =
  *   409 match is no longer active
  *   409 match already finished
  *   409 not your turn
+ *   400 board index out of range / not an integer
+ *   409 board not in play yet / already locked
  *   400 cell index out of range / not an integer
  *   409 cell already occupied
  *   409 stale `expectedVersion`
  *
  * The row lock (`FOR UPDATE`) serialises concurrent move calls on the same
  * match, so two requests cannot both read version N and each apply a move; the
- * two unique indexes on `tic_tac_toe_moves` are the structural backstop.
+ * unique indexes on `tic_tac_toe_moves` (one per ply, one per (board, cell)) are
+ * the structural backstop.
  */
 export async function move({
   userId,
   matchId,
+  boardIndex,
   cellIndex,
   expectedVersion,
 }: {
   userId: string;
   matchId: string;
+  boardIndex: unknown;
   cellIndex: unknown;
   expectedVersion?: unknown;
 }): Promise<MoveResult> {
@@ -442,6 +460,7 @@ export async function move({
       const validation = validateMove({
         state,
         seat,
+        boardIndex,
         cellIndex,
         expectedVersion,
       });
@@ -453,13 +472,16 @@ export async function move({
       }
 
       const index = cellIndex as number;
-      const applied = applyMove({ state, seat, cellIndex: index });
+      const slot = boardIndex as number;
+      const applied = applyMove({ state, seat, boardIndex: slot, cellIndex: index });
 
-      // Append-only log. `ply` is the turn number the moved seat just played.
+      // Append-only log. `ply` is the turn number the moved seat just played;
+      // `boardIndex` + `cellIndex` are the full address of the mark.
       await tx.insert(ticTacToeMoves).values({
         matchId: match.id,
         ply: state.ply,
         playerId: userId,
+        boardIndex: slot,
         cellIndex: index,
       });
 
@@ -473,29 +495,34 @@ export async function move({
       let finalApplied = applied;
       if (match.isAi && !applied.matchCompleted) {
         let guard = 0;
+        // A Mega match alternates one move per turn exactly like stage 1, so
+        // the loop runs once; the generous guard (every cell of every board)
+        // only exists so a future non-alternating bot cannot spin forever.
         while (
           finalState.phase !== "finished" &&
           finalState.currentTurn !== seat &&
-          guard < CELL_COUNT
+          guard < MAX_BOARDS * CELL_COUNT
         ) {
           guard += 1;
           const aiSeat = finalState.currentTurn;
-          const aiCell = chooseAiCell({
-            board: finalState.board,
+          const aiMove = chooseAiMove({
+            state: finalState,
             seat: aiSeat,
             difficulty: match.aiDifficulty,
           });
-          if (aiCell === null) break;
+          if (!aiMove) break;
           const aiApplied = applyMove({
             state: finalState,
             seat: aiSeat,
-            cellIndex: aiCell,
+            boardIndex: aiMove.boardIndex,
+            cellIndex: aiMove.cellIndex,
           });
           await tx.insert(ticTacToeMoves).values({
             matchId: match.id,
             ply: finalState.ply,
             playerId: TIC_TAC_TOE_AI_PLAYER_ID,
-            cellIndex: aiCell,
+            boardIndex: aiMove.boardIndex,
+            cellIndex: aiMove.cellIndex,
           });
           finalState = aiApplied.state;
           finalApplied = aiApplied;
@@ -554,8 +581,11 @@ export async function move({
         // back is a convenience for the client's history panel, never an input.
         mark: finalApplied.state.lastMove?.mark ?? "",
         ply: state.ply,
+        boardIndex: slot,
+        stage: finalState.stage,
         matchCompleted: finalApplied.matchCompleted,
         winningLine: finalApplied.winningLine,
+        winningBoards: finalApplied.winningBoards,
         winnerSeat: finalApplied.winnerSeat,
       } as const;
     });

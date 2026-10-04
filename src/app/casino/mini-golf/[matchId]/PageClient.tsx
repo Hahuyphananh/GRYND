@@ -89,6 +89,14 @@ type Rollout = {
   frames: number;
   duration: number;
   startedAt: number;
+  /**
+   * Pause before this stroke's motion begins.
+   *
+   * The bot resolves its whole turn in one poll, so its run is replayed stroke
+   * by stroke from the shot log. Without a lead-in the strokes run together into
+   * what reads as one long shot; see `AI_SHOT_GAP_MS`.
+   */
+  leadInMs?: number;
 };
 
 const ACTIVE_POLL_MS = 1800;
@@ -112,6 +120,14 @@ const TURN_CALL_MS = 1500;
  * board on screen, popup-free, for one readable beat first.
  */
 const AI_TURN_BEAT_MS = 1100;
+/**
+ * The pause between the practice bot's individual strokes during its replay.
+ *
+ * The bot resolves its whole turn inside ONE poll, so the client replays every
+ * stroke from the authoritative shot log. Rolling them back-to-back read as a
+ * single long shot; this beat makes each stroke a visibly separate shot.
+ */
+const AI_SHOT_GAP_MS = 500;
 /**
  * A short beat after ANY finishing shot before the final result screen takes
  * over, so the last rollout is always seen rather than covered mid-flight.
@@ -194,14 +210,15 @@ export default function MiniGolfMatchPage() {
   /** Delays a hole-result popup behind its settle beat (see `showHoleResult`). */
   const holeDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // What owns the board right now. `animRef`/`overlayRef` are read inside the
-  // RAF loop and the timers so they never see a stale closure; `queuedAnimRef`
-  // holds the NEXT authoritative shot so a newer snapshot can never abort a
-  // rollout mid-flight — dropping that in-flight shot is exactly what used to
-  // swallow the hole-result popup. `shownHolesRef` makes the interstitial
-  // idempotent per hole.
+  // RAF loop and the timers so they never see a stale closure; `queuedAnimsRef`
+  // holds the NEXT authoritative shots as a FIFO (the bot's batched turn is
+  // replayed as several strokes) so a newer snapshot can never abort a rollout
+  // mid-flight — dropping that in-flight shot is exactly what used to swallow
+  // the hole-result popup. `shownHolesRef` makes the interstitial idempotent
+  // per hole.
   const animRef = useRef<Rollout | null>(null);
   const overlayRef = useRef<{ hole: number } | null>(null);
-  const queuedAnimRef = useRef<Rollout | null>(null);
+  const queuedAnimsRef = useRef<Rollout[]>([]);
   const shownHolesRef = useRef<Set<number>>(new Set());
   /** The shot sequence the bot recap was last built for (dedupes the effect). */
   const botRecapSeqRef = useRef(-1);
@@ -228,7 +245,7 @@ export default function MiniGolfMatchPage() {
     animRef.current = null;
     overlayRef.current = null;
     pendingRefreshRef.current = false;
-    queuedAnimRef.current = null;
+    queuedAnimsRef.current = [];
     shownHolesRef.current = new Set();
     botRecapSeqRef.current = -1;
     turnCallKeyRef.current = "";
@@ -358,22 +375,34 @@ export default function MiniGolfMatchPage() {
   // hole-result popup — the interrupted shot was usually the one that had just
   // completed a hole, so its result interstitial never got shown.
   const startRollout = useCallback((rollout: Rollout) => {
-    animRef.current = rollout;
+    // A lead-in holds the ball at the stroke's start for `leadInMs` before it
+    // rolls, which is what separates the bot's consecutive strokes. The RAF
+    // loop reads `startedAt`, so the pause lives inside the rollout itself.
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const started = {
+      ...rollout,
+      startedAt: now + Math.max(0, Number(rollout.leadInMs) || 0),
+    };
+    animRef.current = started;
     setAimLocked(false);
     setProgress(0);
-    setAnim(rollout);
+    setAnim(started);
   }, []);
 
   const playQueuedRollout = useCallback(() => {
     if (animRef.current || overlayRef.current) return;
-    const next = queuedAnimRef.current;
-    if (!next) return;
-    queuedAnimRef.current = null;
+    const queue = queuedAnimsRef.current;
     const currentHole = Number(matchRef.current?.currentHole) || 0;
     // A rollout for a hole whose result has already been shown, and which the
-    // board has already left, has nothing left to tell the player.
-    if (shownHolesRef.current.has(next.hole) && next.hole < currentHole) return;
-    startRollout(next);
+    // board has already left, has nothing left to tell the player. Skipping it
+    // moves on to the next queued stroke rather than stalling the queue.
+    while (queue.length > 0) {
+      const next = queue.shift();
+      if (!next) break;
+      if (shownHolesRef.current.has(next.hole) && next.hole < currentHole) continue;
+      startRollout(next);
+      return;
+    }
   }, [startRollout]);
 
   const showHoleResult = useCallback(
@@ -439,6 +468,24 @@ export default function MiniGolfMatchPage() {
       const latest = matchRef.current;
       const path = finished.path;
       const end = path.length ? path[path.length - 1] : { x: 0, y: 0 };
+
+      // More strokes from the SAME run (same seat, same hole) are queued: park
+      // THIS stroke's ball where it rested and roll into the next one. The next
+      // rollout carries its own lead-in pause, so the strokes read as separate
+      // shots instead of one continuous roll. A queued stroke on ANOTHER hole
+      // is a separate run, so this stroke is treated as final and runs the
+      // hole/match logic below (its hole-result interstitial included) first.
+      const nextQueued = queuedAnimsRef.current[0];
+      if (nextQueued && nextQueued.seat === finished.seat && nextQueued.hole === finished.hole) {
+        setRenderBalls((prev) =>
+          prev
+            ? { ...prev, [finished.seat]: { x: end.x, y: end.y, holedOut: finished.pocketed } }
+            : prev,
+        );
+        playQueuedRollout();
+        return;
+      }
+
       const currentHole = Number(latest?.currentHole) || finished.hole;
       const holeCompleted = Boolean(latest) && finished.hole < currentHole;
 
@@ -532,59 +579,73 @@ export default function MiniGolfMatchPage() {
       logged.sort((a, b) => a.seq - b.seq);
     }
 
-    let rollout: Rollout | null = null;
+    // Each unplayed stroke becomes its OWN rollout, played in order with a
+    // lead-in pause between them. Concatenating them into one path made the
+    // bot's whole turn read as a single long shot.
+    let rollouts: Rollout[] = [];
     if (logged.length > 0) {
-      // Only ONE seat's strokes on ONE hole form a single continuous path;
-      // anything else (which the whole-turn model does not produce) falls back
-      // to the last shot alone rather than drawing two balls' paths as one.
+      // Only ONE seat's strokes on ONE hole form a replayable run; anything
+      // else (which the whole-turn model does not produce) falls back to the
+      // last shot alone rather than replaying two balls' paths as one run.
       const runSeat = logged[logged.length - 1].seat;
       const runHole = logged[logged.length - 1].hole;
       if (logged.every((s) => s.seat === runSeat && s.hole === runHole)) {
-        const path: Vec2[] = [];
-        for (const s of logged) for (const point of s.path) path.push(point);
-        const frames = logged.reduce((total, s) => total + s.frames, 0);
-        rollout = {
-          seq: logged[logged.length - 1].seq,
-          seat: runSeat,
-          hole: runHole,
-          path,
-          pocketed: logged[logged.length - 1].pocketed,
-          frames,
-          duration: animationDurationMs(path, { frames }),
-          startedAt:
-            typeof performance !== "undefined" ? performance.now() : Date.now(),
-        };
+        rollouts = logged.map((s, index) => ({
+          seq: s.seq,
+          seat: s.seat,
+          hole: s.hole,
+          path: s.path,
+          pocketed: s.pocketed,
+          frames: s.frames,
+          duration: animationDurationMs(s.path, { frames: s.frames }),
+          // The first stroke starts at once; every later stroke waits a beat,
+          // so each one reads as a distinct shot.
+          leadInMs: index === 0 ? 0 : AI_SHOT_GAP_MS,
+          startedAt: 0,
+        }));
       }
     }
 
-    if (rollout) {
-      if (lastAnimatedSeqRef.current >= rollout.seq) return;
-    } else {
-      if (!last || !Array.isArray(last.result?.path) || last.result.path.length === 0) return;
-      if (lastAnimatedSeqRef.current >= seq) return;
-      const path: Vec2[] = last.result.path;
-      const frames = Number(last.result?.frames) || 0;
-      rollout = {
-        seq,
-        seat: last.seat,
-        hole: Number(last.hole) || Number(match.currentHole) || 1,
-        path,
-        pocketed: Boolean(last.result?.pocketed),
-        frames,
-        duration: animationDurationMs(path, { frames }),
-        startedAt:
-          typeof performance !== "undefined" ? performance.now() : Date.now(),
-      };
+    if (rollouts.length > 0) {
+      const lastSeq = rollouts[rollouts.length - 1].seq;
+      if (lastAnimatedSeqRef.current >= lastSeq) return;
+      lastAnimatedSeqRef.current = lastSeq;
+      // Something is already on screen (a rollout, or a hole-result
+      // interstitial): hold the whole run back rather than aborting the one
+      // playing. The run is appended to the FIFO so its strokes keep their
+      // order.
+      if (animRef.current || overlayRef.current) {
+        queuedAnimsRef.current.push(...rollouts);
+        return;
+      }
+      startRollout(rollouts[0]);
+      if (rollouts.length > 1) queuedAnimsRef.current.push(...rollouts.slice(1));
+      return;
     }
-    if (!rollout) return;
 
+    // Fallback: no usable shot log (e.g. the `/shoot` response carries no
+    // `shots`), so play the single authoritative `lastShot`.
+    if (!last || !Array.isArray(last.result?.path) || last.result.path.length === 0) return;
+    if (lastAnimatedSeqRef.current >= seq) return;
+    const path: Vec2[] = last.result.path;
+    const frames = Number(last.result?.frames) || 0;
+    const rollout: Rollout = {
+      seq,
+      seat: last.seat,
+      hole: Number(last.hole) || Number(match.currentHole) || 1,
+      path,
+      pocketed: Boolean(last.result?.pocketed),
+      frames,
+      duration: animationDurationMs(path, { frames }),
+      leadInMs: 0,
+      startedAt: 0,
+    };
     lastAnimatedSeqRef.current = rollout.seq;
 
-    // Something is already on screen (a rollout, or a hole-result interstitial):
-    // hold this shot back rather than aborting the one playing. Only the newest
-    // held shot matters, so a plain single-slot queue is enough.
+    // Something is already on screen: hold this shot back rather than aborting
+    // the one playing.
     if (animRef.current || overlayRef.current) {
-      queuedAnimRef.current = rollout;
+      queuedAnimsRef.current.push(rollout);
       return;
     }
     startRollout(rollout);

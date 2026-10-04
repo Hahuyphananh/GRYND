@@ -30,6 +30,10 @@ import {
   IconHeartHandshake,
   IconClock,
   IconAlarm,
+  IconRobot,
+  IconAlertTriangle,
+  IconTrophy,
+  IconRefresh,
 } from "@tabler/icons-react";
 import {
   type AiDifficulty,
@@ -60,6 +64,37 @@ type GameState = {
 
 type PvPInteractiveState = PvPInteractiveOddsState;
 
+// Lobby palette — mirrors the shared PvpLobby tokens (amber + cyan on the dark
+// purple-to-navy gradient) so a player arriving from any other casino lobby
+// recognises the same room. Only the LOBBY uses these; the in-game board keeps
+// its own HUD look.
+const LOBBY_CARD =
+  "rounded-2xl border border-amber-700/60 bg-black/40 shadow-[0_0_30px_rgba(251,191,36,0.12)] backdrop-blur-xl";
+const LOBBY_TITLE =
+  "text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-500 drop-shadow-[0_0_18px_rgba(251,191,36,0.5)]";
+const LOBBY_CHIP_ACTIVE =
+  "border-amber-400 bg-amber-500/20 text-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.3)]";
+const LOBBY_CHIP_IDLE =
+  "border-gray-600 bg-gray-800/50 text-gray-400 hover:border-amber-600/50 hover:text-amber-200";
+const LOBBY_PLAY =
+  "border-amber-700 bg-amber-500 text-black hover:brightness-110 shadow-[0_0_25px_rgba(251,191,36,0.4)]";
+const LOBBY_ROW =
+  "border-cyan-700/30 bg-slate-900/80 hover:border-cyan-500/50";
+
+/**
+ * Shared "free play / no stake" pill shown at the top of every lobby card,
+ * matching the one the shared PvpLobby renders.
+ */
+function LobbyFreePlayPill() {
+  return (
+    <div className="mb-5 text-center text-sm">
+      <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-emerald-300">
+        Free play · no tokens at stake
+      </span>
+    </div>
+  );
+}
+
 export default function OddsPage() {
   const [mode, setMode] = useState<"ai" | "pvp">("pvp");
   const [showRules, setShowRules] = useState(false);
@@ -70,58 +105,50 @@ export default function OddsPage() {
   const audio = useOddsAudio();
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-start overflow-x-clip bg-[#03060f] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
-      {/* The HUD ground: a machined grid under a cold top-down glow. */}
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(0,229,255,0.055)_1px,transparent_1px),linear-gradient(90deg,rgba(0,229,255,0.04)_1px,transparent_1px)] bg-[size:40px_40px]" />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(0,229,255,0.16),transparent_62%)]" />
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+    <div className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#0a0118] to-[#061b3d] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
-      <div className="relative mt-5 w-full max-w-5xl sm:mt-7">
-        {/* Command bar: identity on the left, the two controls on the right. */}
-        <div className="odds-hud odds-chamfer odds-hud--amber flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-5">
-          <div className="min-w-0">
-            <p className="odds-label flex items-center gap-2 text-cyan-300/85">
-              <IconDice size={13} /> odds // number duel
-            </p>
-            <h1 className="mt-1.5 text-2xl font-extrabold tracking-wide text-white sm:text-3xl">
-              Odds&nbsp;Game
-            </h1>
-            <p className="mt-1 max-w-md text-xs leading-relaxed text-white/55">
-              Lock a hidden number, then read your opponent&apos;s. The range halves every round.
-            </p>
-          </div>
+      <div className="mx-auto mt-4 max-w-5xl sm:mt-8">
+        {/* Page identity — the same centred amber-gradient title every other
+            casino lobby uses. */}
+        <motion.h1
+          initial={{ opacity: 0, y: -12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="flex items-center justify-center gap-3 text-center text-3xl font-extrabold tracking-wide sm:text-4xl"
+        >
+          <IconDice size={30} className="text-amber-300" />
+          <span className={LOBBY_TITLE}>Odds Game</span>
+        </motion.h1>
+        <p className="mx-auto mb-5 mt-2 max-w-2xl text-center text-sm text-white/60">
+          Lock a hidden number, then read your opponent&apos;s. The range halves every round.
+        </p>
 
-          <div className="flex shrink-0 items-center gap-2">
-            {/* Mode switch — a segmented HUD toggle rather than two loose buttons. */}
-            <div className="odds-chamfer flex border border-cyan-400/25 bg-black/50 p-0.5">
-              <button
-                className={`odds-label px-4 py-3 transition-colors ${
-                  mode === "pvp"
-                    ? "bg-[#f5ff3b] text-black"
-                    : "text-white/50 hover:text-cyan-200"
-                }`}
-                onClick={() => setMode("pvp")}
-              >
-                PvP
-              </button>
-              <button
-                className={`odds-label px-4 py-3 transition-colors ${
-                  mode === "ai"
-                    ? "bg-[#f5ff3b] text-black"
-                    : "text-white/50 hover:text-cyan-200"
-                }`}
-                onClick={() => setMode("ai")}
-              >
-                vs AI
-              </button>
-            </div>
+        {/* Lobby controls — mode switch + rules, in the shared lobby palette. */}
+        <div className="mb-6 flex flex-wrap items-center justify-center gap-3">
+          <div className="flex gap-1 rounded-xl border border-amber-700/40 bg-black/40 p-1">
             <button
-              onClick={() => setShowRules(true)}
-              className="odds-label odds-chamfer inline-flex items-center gap-1.5 border border-cyan-400/30 bg-cyan-400/5 px-4 py-3 text-cyan-200 transition-colors hover:border-cyan-300/60 hover:bg-cyan-400/10"
+              className={`rounded-lg border px-4 py-2 text-sm font-bold transition-all ${
+                mode === "pvp" ? LOBBY_CHIP_ACTIVE : LOBBY_CHIP_IDLE
+              }`}
+              onClick={() => setMode("pvp")}
             >
-              <IconCrystalBall size={13} /> How to Play
+              PvP
+            </button>
+            <button
+              className={`rounded-lg border px-4 py-2 text-sm font-bold transition-all ${
+                mode === "ai" ? LOBBY_CHIP_ACTIVE : LOBBY_CHIP_IDLE
+              }`}
+              onClick={() => setMode("ai")}
+            >
+              vs AI
             </button>
           </div>
+          <button
+            onClick={() => setShowRules(true)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-bold text-amber-300 shadow-[0_0_14px_rgba(251,191,36,0.15)] transition-all duration-300 hover:scale-105 hover:bg-amber-500/20"
+          >
+            <IconCrystalBall size={15} /> How to Play
+          </button>
         </div>
         {showRules && (
           <RulesModal
@@ -513,39 +540,41 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
 
       {!resuming && !gameId && (
         <>
-          <div className="odds-hud odds-chamfer odds-hud--amber overflow-hidden">
-            <div className="flex items-center justify-between gap-2 border-b border-[#f5ff3b]/20 bg-black/35 px-3 py-2">
-              <span className="odds-label flex items-center gap-2 text-[#f5ff3b]">
-                <IconDeviceGamepad2 size={12} /> practice // vs ai
-              </span>
-              <span className="odds-label text-white/30">no stake · untimed</span>
-            </div>
-            <div className="odds-board-bg p-3 sm:p-4">
-              <p className="odds-label text-white/45">
-                pick a hidden number, then read the bot&apos;s · 6 rounds · window halves each round
-              </p>
-              <div className="mt-3">
-                <AiDifficultyPicker
-                  gameKey="odds"
-                  value={aiDifficulty}
-                  onChange={setAiDifficulty}
-                  disabled={loading}
-                  hint={{
-                    easy: "The bot guesses at random and almost never reads your habit.",
-                    normal: "The bot mixes guesses with the occasional read on your pattern.",
-                    hard: "The bot studies your picks and predicts your number most rounds.",
-                  }}
-                />
+          <div className={`${LOBBY_CARD} p-6`}>
+            <LobbyFreePlayPill />
+            <p className="mb-4 text-center text-xs leading-relaxed text-white/55">
+              Pick a hidden number, then read the bot&apos;s · 6 rounds · the window halves each round.
+            </p>
+            <AiDifficultyPicker
+              gameKey="odds"
+              value={aiDifficulty}
+              onChange={setAiDifficulty}
+              disabled={loading}
+              hint={{
+                easy: "The bot guesses at random and almost never reads your habit.",
+                normal: "The bot mixes guesses with the occasional read on your pattern.",
+                hard: "The bot studies your picks and predicts your number most rounds.",
+              }}
+            />
+            <button
+              onClick={startGame}
+              disabled={loading}
+              className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border-b-4 p-3 text-base font-extrabold transition hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100 ${LOBBY_PLAY}`}
+            >
+              {loading ? (
+                "Starting…"
+              ) : (
+                <>
+                  <IconRobot size={18} className="text-black/70" /> Play vs AI
+                </>
+              )}
+            </button>
+            {error && (
+              <div className="mt-4 flex items-center gap-2 rounded-lg border border-red-400/40 bg-red-900/30 px-3 py-2 text-sm text-red-200">
+                <IconAlertTriangle size={16} className="flex-shrink-0 text-red-300" />
+                <span>{error}</span>
               </div>
-              <button
-                onClick={startGame}
-                disabled={loading}
-                className="odds-chamfer mt-3 w-full bg-[#f5ff3b] px-6 py-3.5 text-xs font-black uppercase tracking-[0.2em] text-black transition hover:brightness-110 active:translate-y-[1px] disabled:opacity-50"
-              >
-                {loading ? "starting…" : <span className="inline-flex items-center gap-2"><IconDice size={16} /> play vs ai</span>}
-              </button>
-              {error && <p className="odds-label mt-3 text-center text-red-400">{error}</p>}
-            </div>
+            )}
           </div>
         </>
       )}
@@ -1495,62 +1524,76 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
       {/* LOBBY: no game yet */}
       {!resuming && !gameId && !interactiveState && (
         <>
-          <div className="odds-hud odds-chamfer odds-hud--amber overflow-hidden">
-            <div className="flex items-center justify-between gap-2 border-b border-[#f5ff3b]/20 bg-black/35 px-3 py-2">
-              <span className="odds-label flex items-center gap-2 text-emerald-300">
-                <IconSwords size={12} /> head to head
-              </span>
-              <span className="odds-label text-white/30">free play · no stake</span>
-            </div>
-            <div className="odds-board-bg p-3 sm:p-4">
-              <p className="odds-label text-white/45">
-                open a lobby, or join one below · 6 rounds · window halves each round
+          <div className={`${LOBBY_CARD} p-6`}>
+            <LobbyFreePlayPill />
+            <div className="flex flex-col items-center gap-3 text-center">
+              <p className="text-xs leading-relaxed text-white/55">
+                Open a lobby and wait for a challenger, or join one below · 6 rounds · the window halves each round.
               </p>
               <button
                 onClick={createGame}
                 disabled={loading}
-                className="odds-chamfer mt-3 w-full bg-[#f5ff3b] px-6 py-3.5 text-xs font-black uppercase tracking-[0.2em] text-black transition hover:brightness-110 active:translate-y-[1px] disabled:opacity-50"
+                className={`inline-flex items-center justify-center gap-2 rounded-xl border-b-4 px-8 py-3 text-base font-extrabold transition hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100 ${LOBBY_PLAY}`}
               >
-                {loading ? "creating…" : <span className="inline-flex items-center gap-2"><IconDice size={16} /> create pvp game</span>}
+                {loading ? (
+                  "Creating…"
+                ) : (
+                  <>
+                    <IconSwords size={18} className="text-black/70" /> Create Lobby
+                  </>
+                )}
               </button>
             </div>
+            {message && (
+              <p className="mt-4 text-center text-sm text-amber-300">{message}</p>
+            )}
           </div>
 
-          <h2 className="odds-label mt-5 mb-2 text-cyan-300/80">available games</h2>
-          {games.filter((g) => g.player1Id !== userId).length === 0 && (
-            <p className="odds-label text-white/30">
-              no open lobbies · create one
-            </p>
-          )}
-          <div className="space-y-2">
-            {games
-              .filter((g) => g.player1Id !== userId)
-              .map((game) => (
-                <div
-                  key={game.id}
-                  className="odds-hud odds-chamfer flex items-center justify-between px-3 py-3 transition hover:border-cyan-300/50"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-bold text-white">
-                      {game.player1Name}
-                    </p>
-                    <p className="odds-label mt-1 text-emerald-300/80">
-                      free play
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => joinGame(game.id)}
-                    disabled={loading}
-                    className="odds-chamfer odds-label shrink-0 bg-cyan-400 px-4 py-2.5 text-black transition hover:brightness-110 disabled:opacity-50"
-                  >
-                    join
-                  </button>
-                </div>
-              ))}
+          <div className={`${LOBBY_CARD} mt-6 p-5`}>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="flex items-center gap-2 text-lg font-bold uppercase tracking-wider text-cyan-300">
+                <IconTrophy size={18} /> Open Lobbies
+              </h2>
+              <button
+                type="button"
+                onClick={fetchGames}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-500 px-3 py-1.5 text-xs font-semibold text-black transition hover:bg-cyan-400"
+              >
+                <IconRefresh size={14} /> Refresh
+              </button>
+            </div>
+            {games.filter((g) => g.player1Id !== userId).length === 0 ? (
+              <p className="flex items-center gap-2 text-sm text-white/60">
+                <IconDeviceGamepad2 size={16} className="text-white/40" />
+                No open lobbies yet. Be the first to make one.
+              </p>
+            ) : (
+              <div className="space-y-2.5">
+                {games
+                  .filter((g) => g.player1Id !== userId)
+                  .map((game) => (
+                    <div
+                      key={game.id}
+                      className={`flex items-center justify-between rounded-xl border p-3 transition ${LOBBY_ROW}`}
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-white">
+                          {game.player1Name}
+                        </p>
+                        <p className="mt-0.5 text-xs text-white/60">Free play</p>
+                      </div>
+                      <button
+                        onClick={() => joinGame(game.id)}
+                        disabled={loading}
+                        className="shrink-0 rounded-lg bg-cyan-500 px-4 py-1.5 text-sm font-bold text-black transition hover:bg-cyan-400 disabled:opacity-50"
+                      >
+                        Join
+                      </button>
+                    </div>
+                  ))}
+              </div>
+            )}
           </div>
-          {message && (
-            <p className="odds-label mt-3 text-center text-[#f5ff3b]">{message}</p>
-          )}
         </>
       )}
 
@@ -1558,23 +1601,23 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
       <>
       {/* WAITING for opponent */}
       {gameId && !interactiveState && (
-        <div className="odds-hud odds-chamfer odds-board-bg px-4 py-8 text-center">
+        <div className={`${LOBBY_CARD} px-4 py-8 text-center`}>
           <motion.div
             animate={{ scale: [1, 1.06, 1] }}
             transition={{ repeat: Infinity, duration: 2 }}
             className="mb-4 flex justify-center"
           >
-            <IconDice size={34} className="text-[#f5ff3b] drop-shadow-[0_0_16px_rgba(245,255,59,0.5)]" />
+            <IconDice size={34} className="text-amber-300 drop-shadow-[0_0_16px_rgba(251,191,36,0.5)]" />
           </motion.div>
-          <p className="odds-label text-[#f5ff3b]">
-            {message || "waiting for opponent"}
+          <p className="text-lg font-bold text-amber-300">
+            {message || "Waiting for opponent…"}
           </p>
-          <p className="odds-label mt-2 text-white/35">free play · no stake</p>
+          <p className="mt-2 text-xs text-white/50">Free play · no stake</p>
           <button
             onClick={cancelGame}
-            className="odds-chamfer odds-label mt-5 border border-red-500/40 bg-red-500/10 px-5 py-2.5 text-red-300 transition hover:bg-red-500/20"
+            className="mt-5 rounded-xl border border-red-500/40 bg-red-500/10 px-5 py-2.5 text-sm font-bold text-red-300 transition hover:bg-red-500/20"
           >
-            cancel
+            Cancel
           </button>
         </div>
       )}

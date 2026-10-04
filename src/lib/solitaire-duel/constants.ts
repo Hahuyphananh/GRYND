@@ -69,14 +69,18 @@ export const VARIANT = "klondike-1" as const;
  * v1 — a plain Fisher–Yates shuffle of the seed (`dealFromSeed`). About a fifth
  *      of those boards are unsolvable, so a v1 match could only ever end on the
  *      inactivity forfeit.
- * v2 — a GUARANTEED-SOLVABLE construction (`solvableDealFromSeed`), still a
- *      pure function of the same derived deal seed. The opening SHAPE is
- *      unchanged (column `i` gets `i + 1` cards, only the last face-up, 24 in
- *      the stock), so every shape rule and every client projection still holds.
+ * v2 — a GUARANTEED-SOLVABLE reverse construction (`constructedDealFromSeed`).
+ *      It kept the standard opening shape but laid the puzzle out: the stock
+ *      held every Ace–6 in foundation order and every column was already a
+ *      finished run, so it solved itself with no decisions.
+ * v3 — a random Klondike deal, served only when a deterministic search proves a
+ *      winning line, the authoritative engine replays it, AND the naive
+ *      foundation-only strategy FAILS. Solvable every time, never laid out.
  *
- * `dealFromSeed` is retained for v1 rows and for tests that pin the shuffle.
+ * `dealFromSeed` is retained for v1 rows and `constructedDealFromSeed` for v2
+ * rows, so both older deals stay reproducible from their seed.
  */
-export const VARIANT_VERSION = 2;
+export const VARIANT_VERSION = 3;
 
 /** Seven tableau columns; column `i` is dealt `i + 1` cards. */
 export const TABLEAU_COLUMNS = 7;

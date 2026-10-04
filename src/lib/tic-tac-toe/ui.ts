@@ -12,8 +12,17 @@
 // winner and the draw always come from the server snapshot — this file never
 // computes a move, a winner or a result of its own.
 
-import { CELL_COUNT, BOARD_SIZE, MATCH_STATUS, RESULT } from "./constants";
-import type { Cell, Mark, Seat } from "./types";
+import {
+  CELL_COUNT,
+  BOARD_SIZE,
+  MATCH_STATUS,
+  MAX_BOARDS,
+  MEGA_SIZE,
+  RESULT,
+  STAGE_BOARD_SLOTS,
+  SUDDEN_DEATH_BOARD_INDEX,
+} from "./constants";
+import type { BoardControl, Cell, Mark, Seat, TiebreakSummary } from "./types";
 
 // ── Seat colours (the duotone every GRYND 1v1 match view uses) ────────────
 
@@ -124,6 +133,290 @@ export function progressLabel(board: unknown): string {
 
 /** Board geometry, re-exported so the component and tests agree. */
 export const GRID_SIZE = BOARD_SIZE;
+
+// ── The Mega lattice ──────────────────────────────────────────────────────
+//
+// Mega Tic-Tac-Toe is a lattice of up to nine 3x3 boards. EVERYTHING below is
+// a pure projection of the server snapshot: the lattice, each board's control,
+// the round (stage), which slots are in play and which boards the Mega line
+// highlights all arrive in the DTO. Nothing here recomputes a line, a winner
+// or a turn — it only normalises the server's values into render-friendly
+// shapes and gives the view geometry for the fixed 3x3 lattice.
+
+/** A server board, normalised for rendering. */
+export type NormalisedBoard = {
+  /** Nine cells of "X" | "O" | null. */
+  cells: Cell[];
+  /** The SERVER's control for this board ("active" | "draw" | "X" | "O"). */
+  control: BoardControl;
+  /** The SERVER's winning cell line for this board, or null. */
+  winningLine: number[] | null;
+};
+
+const BOARD_CONTROLS = new Set<string>(["X", "O", "draw", "active"]);
+
+/** Normalise the server's one small board into a render shape. */
+function normaliseServerBoard(raw: unknown): NormalisedBoard | null {
+  if (!raw || typeof raw !== "object") return null;
+  const source = raw as { cells?: unknown; control?: unknown; winningLine?: unknown };
+  const control = BOARD_CONTROLS.has(String(source.control))
+    ? (source.control as BoardControl)
+    : "active";
+  return {
+    cells: normaliseBoard(source.cells),
+    control,
+    winningLine: Array.isArray(source.winningLine)
+      ? source.winningLine.map(Number).filter(isBoardIndex)
+      : null,
+  };
+}
+
+/**
+ * The whole lattice, always length nine. A `null` slot is one the server has
+ * not materialised yet (a later round owns it), exactly as the DTO reports it.
+ */
+export function normaliseLattice(lattice: unknown): (NormalisedBoard | null)[] {
+  const source = Array.isArray(lattice) ? lattice : [];
+  return Array.from({ length: MAX_BOARDS }, (_, slot) => normaliseServerBoard(source[slot]));
+}
+
+/** A list of slot indices, filtered to real slots, de-duplicated and sorted. */
+export function normaliseSlotList(list: unknown): number[] {
+  if (!Array.isArray(list)) return [];
+  const out: number[] = [];
+  for (const value of list) {
+    const slot = Number(value);
+    if (Number.isInteger(slot) && slot >= 0 && slot < MAX_BOARDS && !out.includes(slot)) {
+      out.push(slot);
+    }
+  }
+  return out.sort((a, b) => a - b);
+}
+
+/** The round (stage), clamped to 1..3. */
+export function normaliseStage(stage: unknown): 1 | 2 | 3 {
+  const raw = Math.trunc(Number(stage));
+  if (!Number.isFinite(raw) || raw < 1) return 1;
+  if (raw > 3) return 3;
+  return raw as 1 | 2 | 3;
+}
+
+/** The slots in play at `stage`, from the shared constant (never guessed). */
+export function stageSlots(stage: unknown): number[] {
+  return [...STAGE_BOARD_SLOTS[normaliseStage(stage)]];
+}
+
+/** How many columns the lattice lays out at `stage`: 1, 2 then 3. */
+export function stageColumns(stage: unknown): number {
+  return normaliseStage(stage);
+}
+
+/** How many boards are in play at `stage`: 1, 4 then 9. */
+export function stageBoardCount(stage: unknown): number {
+  return stageSlots(stage).length;
+}
+
+/** The total cell budget of every board in play at `stage`. */
+export function roundCellBudget(stage: unknown): number {
+  return stageBoardCount(stage) * CELL_COUNT;
+}
+
+/** "Round 1" / "Round 2" / "Round 3". */
+export function roundLabel(stage: unknown): string {
+  return `Round ${normaliseStage(stage)}`;
+}
+
+/** A short name for the round's shape. */
+export function roundName(stage: unknown): string {
+  const n = normaliseStage(stage);
+  if (n === 1) return "Single board";
+  if (n === 2) return "2×2 expansion";
+  return "3×3 Mega";
+}
+
+/** One sentence describing what the round adds. */
+export function roundBlurb(stage: unknown): string {
+  const n = normaliseStage(stage);
+  if (n === 1) return "Win the board, or draw it to expand the match.";
+  if (n === 2) return "Four boards. A draw on all four expands to the full lattice.";
+  return "Nine boards. Control three in a line to win the match.";
+}
+
+/** A per-board label for the status chip under a board's name. */
+export function boardControlLabel(control: unknown): string {
+  if (control === "X" || control === "O") return `${control} controls`;
+  if (control === "draw") return "Draw — locked";
+  if (control === "active") return "Open";
+  return "—";
+}
+
+/** A concise control tag for a badge: "X" | "O" | "Draw" | "Open". */
+export function boardControlShort(control: unknown): string {
+  if (control === "X" || control === "O") return String(control);
+  if (control === "draw") return "Draw";
+  if (control === "active") return "Open";
+  return "—";
+}
+
+/** True when a board can no longer accept moves (won or drawn). */
+export function boardIsResolved(control: unknown): boolean {
+  return control === "X" || control === "O" || control === "draw";
+}
+
+/** The seat that owns a controlled board, or null for an open / drawn board. */
+export function boardOwnerSeat(control: unknown): Seat | null {
+  return seatForMark(control as Mark | null | undefined);
+}
+
+/**
+ * Where a lattice slot sits in the RENDERED grid at `stage`.
+ *
+ * The lattice is fixed 3x3, but Round 2 only shows the top-left 2x2, so the
+ * display grid re-flows: the slots in play are laid out row-major against the
+ * stage's column count. Purely presentational geometry — it never changes a
+ * slot's index.
+ */
+export function slotGridPosition(
+  slot: number,
+  stage: unknown,
+): { row: number; col: number; rows: number; cols: number } {
+  const slots = stageSlots(stage);
+  const cols = stageColumns(stage);
+  const index = Math.max(0, slots.indexOf(slot));
+  const rows = Math.max(1, Math.ceil(slots.length / cols));
+  return { row: Math.floor(index / cols), col: index % cols, rows, cols };
+}
+
+/** The three Mega slots the win highlighted, as a lookup. */
+export function megaWinningSlotSet(winningBoards: unknown): Set<number> {
+  return new Set(normaliseSlotList(winningBoards).slice(0, 3));
+}
+
+/** Control counts across the boards in play — a legend, never a decision. */
+export function megaControlCounts(
+  lattice: (NormalisedBoard | null)[],
+  slots: number[],
+): { x: number; o: number; draw: number; active: number; resolved: number } {
+  let x = 0;
+  let o = 0;
+  let draw = 0;
+  let active = 0;
+  for (const slot of slots) {
+    const board = lattice[slot];
+    if (!board) continue;
+    if (board.control === "X") x += 1;
+    else if (board.control === "O") o += 1;
+    else if (board.control === "draw") draw += 1;
+    else active += 1;
+  }
+  return { x, o, draw, active, resolved: x + o + draw };
+}
+
+/** Every sudden-death board, in play order, normalised for rendering. */
+export function normaliseSuddenDeath(value: unknown): NormalisedBoard[] {
+  const boards = (value as { boards?: unknown } | null)?.boards;
+  if (!Array.isArray(boards)) return [];
+  return boards
+    .map((raw) => normaliseServerBoard(raw))
+    .filter((board): board is NormalisedBoard => board !== null);
+}
+
+/**
+ * The server board a move targets, or null when the address is not in play.
+ *
+ * Sudden death is its own addressing mode: `SUDDEN_DEATH_BOARD_INDEX` (-1)
+ * resolves to the LAST sudden-death board, exactly as the store's engine does.
+ */
+export function serverBoardAt(match: any, boardIndex: number): NormalisedBoard | null {
+  if (!match) return null;
+  if (boardIndex === SUDDEN_DEATH_BOARD_INDEX) {
+    const boards = normaliseSuddenDeath(match.suddenDeath);
+    return boards.length ? boards[boards.length - 1] : null;
+  }
+  return normaliseLattice(match.boards)[boardIndex] ?? null;
+}
+
+/** Mega lattice geometry, re-exported so the component and tests agree. */
+export const MEGA_GRID_SIZE = MEGA_SIZE;
+
+// ── Tiebreak / result presentation ────────────────────────────────────────
+//
+// The tiebreak summary is DERIVED server-side and arrives in the DTO. These
+// helpers only turn it into the copy the view shows — they never recompute the
+// outcome. The wording mirrors the shared vocabulary of the engine: board
+// control, then cell control, then sudden death.
+
+/** One display row of the tiebreak summary. */
+export type ResultRow = { label: string; value: string };
+
+/** The headline for a tiebreak: BOARD CONTROL · CELL CONTROL · SUDDEN DEATH. */
+export function tiebreakHeading(tiebreak: unknown): string {
+  const decidedBy = (tiebreak as { decidedBy?: unknown } | null)?.decidedBy;
+  if (decidedBy === "cells") return "CELL CONTROL";
+  if (decidedBy === "sudden-death") return "SUDDEN DEATH";
+  return "BOARD CONTROL";
+}
+
+/** The mark that won the tiebreak, or null (a complete tie → sudden death). */
+export function tiebreakWinnerMark(tiebreak: unknown): Mark | null {
+  const winner = (tiebreak as { winner?: unknown } | null)?.winner;
+  if (winner === "player1") return "X";
+  if (winner === "player2") return "O";
+  return null;
+}
+
+/**
+ * The tiebreak's body rows, in the exact vocabulary of the result summary:
+ *
+ *   BOARD CONTROL   Player X: 5 boards · Player O: 4 boards · Winner: X
+ *   CELL CONTROL    Player X: 31 cells · Player O: 29 cells · Winner: X
+ *   SUDDEN DEATH    a complete tie — the match goes to sudden death
+ */
+export function tiebreakRows(tiebreak: unknown): ResultRow[] {
+  const summary = tiebreak as TiebreakSummary | null | undefined;
+  if (!summary) return [];
+  if (summary.decidedBy === "sudden-death") {
+    return [
+      { label: "Result", value: "Board control and cell control are level" },
+      { label: "Next", value: "Sudden death" },
+    ];
+  }
+  const byCells = summary.decidedBy === "cells";
+  const unit = byCells ? "cells" : "boards";
+  const x = byCells ? summary.xCells : summary.xBoards;
+  const o = byCells ? summary.oCells : summary.oBoards;
+  const mark = tiebreakWinnerMark(summary);
+  return [
+    { label: "Player X", value: `${x} ${unit}` },
+    { label: "Player O", value: `${o} ${unit}` },
+    { label: "Winner", value: mark ?? "—" },
+  ];
+}
+
+/** A one-line description of how a finished match was decided. */
+export function resultReason({
+  winningBoards,
+  tiebreak,
+  ply,
+}: {
+  winningBoards?: unknown;
+  tiebreak?: unknown;
+  ply?: unknown;
+}): string {
+  if (Array.isArray(winningBoards) && winningBoards.length === 3) {
+    return `Mega line — Boards ${winningBoards.map((slot) => Number(slot) + 1).join(" · ")}`;
+  }
+  const summary = tiebreak as TiebreakSummary | null | undefined;
+  if (summary && summary.decidedBy !== "sudden-death") {
+    return `${tiebreakHeading(summary)} — decided on ${
+      summary.decidedBy === "cells" ? "cells" : "boards"
+    } in ${Number(ply) || 0} moves`;
+  }
+  if (summary?.decidedBy === "sudden-death") {
+    return `Sudden death — decided in ${Number(ply) || 0} moves`;
+  }
+  return "Conceded before the lattice was decided";
+}
 
 // ── Copy ──────────────────────────────────────────────────────────────────
 

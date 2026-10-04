@@ -3484,8 +3484,13 @@ export const ticTacToeMatches = pgTable(
 // (`ply % 2 === 0` is X), so a `mark` column would be redundant state that
 // could drift out of agreement with the ply counter.
 //
-// `cell_idx_unique` does more than prevent replays: it makes "a player may only
-// place their mark in an empty cell" a STORAGE invariant, so a cell can never
+// MEGA: a move addresses a (board, cell) pair. `board_index` is a lattice slot
+// (0..8) — or -1 for the sudden-death board. Together with `cell_index` it is
+// the full address a replay walks (see `replayMoves` in the rules engine).
+//
+// `cell_idx_unique` does more than prevent replays: keyed on
+// (match_id, board_index, cell_index) it makes "a player may only place their
+// mark in an empty cell" a STORAGE invariant, so a (board, cell) pair can never
 // be occupied twice even if a future code path forgets the application check.
 export const ticTacToeMoves = pgTable(
   "tic_tac_toe_moves",
@@ -3496,6 +3501,8 @@ export const ticTacToeMoves = pgTable(
       .references(() => ticTacToeMatches.id, { onDelete: "cascade" }),
     ply: integer("ply").notNull(),
     playerId: varchar("player_id", { length: 255 }).notNull(),
+    // Lattice slot 0..8, or -1 for the sudden-death board.
+    boardIndex: integer("board_index").notNull().default(0),
     // 0..8, row-major (0-2 top row, 3-5 middle, 6-8 bottom).
     cellIndex: integer("cell_index").notNull(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -3504,8 +3511,14 @@ export const ticTacToeMoves = pgTable(
     matchIdx: index("tic_tac_toe_moves_match_idx").on(table.matchId, table.ply),
     // Anti-replay: one persisted row per turn number per match.
     plyIdx: unique("tic_tac_toe_moves_ply_unique").on(table.matchId, table.ply),
-    // The game rule as a structural guarantee: a cell is occupied at most once.
-    cellIdx: unique("tic_tac_toe_moves_cell_unique").on(table.matchId, table.cellIndex),
+    // The game rule as a structural guarantee: a (board, cell) pair is occupied
+    // at most once. Kept under its original index name (see migration 0203,
+    // which widens it in place) so no consumer has to learn a new name.
+    cellIdx: unique("tic_tac_toe_moves_cell_unique").on(
+      table.matchId,
+      table.boardIndex,
+      table.cellIndex,
+    ),
   })
 );
 

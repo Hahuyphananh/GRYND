@@ -364,7 +364,7 @@ async function playRoute(fake, cells) {
   for (let ply = 0; ply < cells.length; ply += 1) {
     const who = ply % 2 === 0 ? ALICE : BOB;
     const res = await move(
-      { cellIndex: cells[ply], expectedVersion: liveVersion(fake) },
+      { boardIndex: 0, cellIndex: cells[ply], expectedVersion: liveVersion(fake) },
       { as: who },
     );
     results.push(res);
@@ -422,7 +422,7 @@ test("unauthorized: a signed-out or age-blocked caller is refused before any wor
     const expected = gate === "signed-out" ? 401 : 403;
     assert.equal((await getMatch({ as: ALICE })).status, expected, `GET ${gate}`);
     assert.equal(
-      (await move({ cellIndex: 0, expectedVersion: 1 }, { as: ALICE })).status,
+      (await move({ boardIndex: 0, cellIndex: 0, expectedVersion: 1 }, { as: ALICE })).status,
       expected,
       `move ${gate}`,
     );
@@ -443,7 +443,7 @@ test("non-participant: a stranger cannot read, move, forfeit or cancel", { skip:
 
   session.userId = MALLORY;
   assert.equal((await getMatch()).status, 403, "the snapshot is participant-only");
-  assert.equal((await move({ cellIndex: 0, expectedVersion: 1 })).status, 403);
+  assert.equal((await move({ boardIndex: 0, cellIndex: 0, expectedVersion: 1 })).status, 403);
   assert.equal((await forfeit()).status, 403);
   assert.equal((await cancel()).status, 403, "only the creator may cancel");
   // An unjoined lobby cannot be forfeited either (no opponent to award).
@@ -459,12 +459,12 @@ test("non-participant: a well-formed but unknown match id is a 404, and a bad id
   const ghost = "2b3c4d5e-1111-4111-8111-111111111111";
   session.userId = ALICE;
   assert.equal((await getMatch({ matchId: ghost })).status, 404);
-  assert.equal((await move({ cellIndex: 0 }, { matchId: ghost })).status, 404);
+  assert.equal((await move({ boardIndex: 0, cellIndex: 0 }, { matchId: ghost })).status, 404);
 
   // A malformed id is rejected at the route — it never reaches a uuid cast.
   seedMatch(fake);
   for (const bad of ["", "not-a-uuid", "1 OR 1=1", "../../etc/passwd", "a".repeat(200)]) {
-    assert.equal((await move({ cellIndex: 0 }, { matchId: bad })).status, 400, `move ${bad}`);
+    assert.equal((await move({ boardIndex: 0, cellIndex: 0 }, { matchId: bad })).status, 400, `move ${bad}`);
     assert.equal((await forfeit({ matchId: bad })).status, 400, `forfeit ${bad}`);
   }
   assert.equal(fake.state.writes.length, 0);
@@ -480,6 +480,7 @@ test("authority: a client cannot declare a winner, a draw, a result or a complet
 
   const res = await move(
     {
+      boardIndex: 0,
       cellIndex: 3,
       expectedVersion: liveVersion(fake),
       // Every field a hostile client might attach. None of them is read.
@@ -516,9 +517,9 @@ test("authority: a client cannot declare a winner, a draw, a result or a complet
   const row = rowOf(fake);
   // The server derived everything: the mark from ALICE's seat, the board from
   // its own state, the turn from the ply.
-  assert.equal(row.gameState.board[3], "X", "the mark is the mover's, not the body's");
-  assert.equal(row.gameState.board.filter(Boolean).length, 1, "the client's board is gone");
-  assert.deepEqual(row.gameState.board.slice(0, 3), [null, null, null]);
+  assert.equal(row.gameState.boards[0].cells[3], "X", "the mark is the mover's, not the body's");
+  assert.equal(row.gameState.boards[0].cells.filter(Boolean).length, 1, "the client's board is gone");
+  assert.deepEqual(row.gameState.boards[0].cells.slice(0, 3), [null, null, null]);
   assert.equal(row.gameState.ply, 1, "not 9");
   assert.equal(row.gameState.currentTurn, "player2", "derived, not accepted");
   assert.equal(row.status, MATCH_STATUS.PLAYING, "not finished");
@@ -543,19 +544,20 @@ test("authority: the game logic enforces turn, occupancy and a valid index throu
   seedMatch(fake);
 
   // Out of turn: O cannot open the match.
-  const wrongTurn = await move({ cellIndex: 0, expectedVersion: 1 }, { as: BOB });
+  const wrongTurn = await move({ boardIndex: 0, cellIndex: 0, expectedVersion: 1 }, { as: BOB });
   assert.equal(wrongTurn.status, 409);
   assert.match(wrongTurn.json.error, /not your turn/i);
   assert.equal(rowOf(fake).gameState.ply, 0);
 
   // A valid move by X.
-  const opened = await move({ cellIndex: 0, expectedVersion: 1 }, { as: ALICE });
+  const opened = await move({ boardIndex: 0, cellIndex: 0, expectedVersion: 1 }, { as: ALICE });
   assert.equal(opened.status, 200);
   assert.equal(opened.json.data.move.mark, "X");
+  assert.equal(opened.json.data.move.boardIndex, 0);
   assert.equal(opened.json.data.move.cellIndex, 0);
 
   // Occupied cell: O cannot take the cell X just claimed.
-  const taken = await move({ cellIndex: 0, expectedVersion: liveVersion(fake) }, { as: BOB });
+  const taken = await move({ boardIndex: 0, cellIndex: 0, expectedVersion: liveVersion(fake) }, { as: BOB });
   assert.equal(taken.status, 409);
   assert.match(taken.json.error, /occupied/i);
   assert.equal(rowOf(fake).gameState.ply, 1);
@@ -565,10 +567,28 @@ test("authority: the game logic enforces turn, occupancy and a valid index throu
   for (const bad of [-1, 9, 1.5, "0", "", true, [], {}, null, undefined, NaN, Infinity]) {
     fake.reset();
     seedMatch(fake);
-    const res = await move({ cellIndex: bad, expectedVersion: 1 }, { as: ALICE });
+    const res = await move({ boardIndex: 0, cellIndex: bad, expectedVersion: 1 }, { as: ALICE });
     assert.equal(res.status, 400, JSON.stringify(bad));
     assert.match(res.json.error, /cell index/i);
     assert.equal(rowOf(fake).gameState.ply, 0, JSON.stringify(bad));
+  }
+
+  // Invalid / malformed BOARD indexes are a 400 too, and a valid-but-not-yet
+  // materialised slot is a clean 409 — never a silent play on another board.
+  for (const badBoard of [undefined, null, "0", true, [], -1, 9, 1.5, NaN]) {
+    fake.reset();
+    seedMatch(fake);
+    const res = await move({ boardIndex: badBoard, cellIndex: 0, expectedVersion: 1 }, { as: ALICE });
+    assert.equal(res.status, 400, JSON.stringify(badBoard));
+    assert.match(res.json.error, /board index/i);
+    assert.equal(rowOf(fake).gameState.ply, 0, JSON.stringify(badBoard));
+  }
+  for (const notYet of [1, 4, 8]) {
+    fake.reset();
+    seedMatch(fake);
+    const res = await move({ boardIndex: notYet, cellIndex: 0, expectedVersion: 1 }, { as: ALICE });
+    assert.equal(res.status, 409, `board ${notYet}`);
+    assert.match(res.json.error, /not in play/i, `board ${notYet}`);
   }
 
   // A body that is not JSON at all is a 400, not a 500.
@@ -582,15 +602,15 @@ test("authority: a stale expectedVersion is refused, and a double-submit cannot 
   const fake = installMocks(t);
   seedMatch(fake);
 
-  assert.equal((await move({ cellIndex: 0, expectedVersion: 1 }, { as: ALICE })).status, 200);
-  const stale = await move({ cellIndex: 1, expectedVersion: 1 }, { as: BOB });
+  assert.equal((await move({ boardIndex: 0, cellIndex: 0, expectedVersion: 1 }, { as: ALICE })).status, 200);
+  const stale = await move({ boardIndex: 0, cellIndex: 1, expectedVersion: 1 }, { as: BOB });
   assert.equal(stale.status, 409);
   assert.match(stale.json.error, /stale/i);
   assert.equal(rowOf(fake).gameState.ply, 1, "only one move landed");
   // Malformed tokens are refused rather than coerced.
   for (const bad of [true, "2", [2], 2.5]) {
     assert.equal(
-      (await move({ cellIndex: 1, expectedVersion: bad }, { as: BOB })).status,
+      (await move({ boardIndex: 0, cellIndex: 1, expectedVersion: bad }, { as: BOB })).status,
       409,
       JSON.stringify(bad),
     );
@@ -605,7 +625,7 @@ test("authority: a move after the match is decided is refused", { skip: SKIP_REA
 
   const movesAfter = fake.rowsOf(ticTacToeMoves).length;
   for (const who of [ALICE, BOB]) {
-    const res = await move({ cellIndex: 6, expectedVersion: liveVersion(fake) }, { as: who });
+    const res = await move({ boardIndex: 0, cellIndex: 6, expectedVersion: liveVersion(fake) }, { as: who });
     assert.equal(res.status, 409);
     assert.match(res.json.error, /no longer active/i);
   }
@@ -650,29 +670,52 @@ test("logic: O completes a vertical line and loses nothing to the turn order", {
   assert.equal(row.status, MATCH_STATUS.FINISHED);
   assert.equal(row.result, RESULT.PLAYER2);
   assert.equal(row.winnerId, BOB);
-  assert.deepEqual(row.gameState.winningLine, [0, 3, 6]);
+  assert.deepEqual(row.gameState.boards[0].winningLine, [0, 3, 6]);
+  assert.deepEqual(row.gameState.winningBoards, [0]);
   assert.equal(writers.rating[0].winnerClerkId, BOB);
   assert.equal(writers.rating[0].loserClerkId, ALICE);
 });
 
-test("logic: a full board with no line is a draw, and neither seat wins", { skip: SKIP_REASON }, async (t) => {
+test("logic: a full opening board with no line EXPANDS — it never settles", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   seedMatch(fake);
 
   const results = await playRoute(fake, A_DRAW);
-  assert.equal(results.at(-1).json.data.matchCompleted, true);
-  assert.equal(results.at(-1).json.data.result, RESULT.TIE);
-  assert.equal(results.at(-1).json.data.winnerId, null);
+  // The last move resolved the board but did NOT finish the match.
+  assert.equal(results.at(-1).json.data.matchCompleted, false);
+  assert.equal(results.at(-1).json.data.stage, 2);
 
   const row = rowOf(fake);
-  assert.equal(row.status, MATCH_STATUS.FINISHED);
-  assert.equal(row.result, RESULT.TIE);
+  assert.equal(row.status, MATCH_STATUS.PLAYING);
+  assert.equal(row.result, null);
   assert.equal(row.winnerId, null);
+  assert.equal(row.gameState.stage, 2);
   assert.equal(row.gameState.ply, 9);
-  assert.equal(writers.rating.length, 1);
-  assert.equal(writers.rating[0].result, "draw");
-  assert.equal(writers.trophy.length, 1);
-  assert.equal(writers.trophy[0].result, "draw");
+  assert.equal(row.gameState.boards[0].control, "draw");
+  // An expansion is not a result: no rating, trophy or queue completion.
+  assert.equal(writers.rating.length, 0);
+  assert.equal(writers.trophy.length, 0);
+  assert.equal(writers.queue.filter((q) => q.status === "completed").length, 0);
+});
+
+test("logic: after an expansion, play continues on the new empty boards", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  seedMatch(fake);
+  await playRoute(fake, A_DRAW); // nine plies: O (BOB) is to move at stage 2
+
+  // Board 0 is locked; a move on it is refused. The three new boards accept.
+  const locked = await move({ boardIndex: 0, cellIndex: 0, expectedVersion: liveVersion(fake) }, { as: BOB });
+  assert.equal(locked.status, 409);
+  assert.match(locked.json.error, /locked/i);
+
+  const opened = await move({ boardIndex: 1, cellIndex: 4, expectedVersion: liveVersion(fake) }, { as: BOB });
+  assert.equal(opened.status, 200);
+  assert.equal(opened.json.data.move.boardIndex, 1);
+  const row = rowOf(fake);
+  assert.equal(row.gameState.boards[1].cells[4], "O");
+  assert.equal(row.gameState.boards[0].control, "draw", "the original board is untouched");
+  assert.equal(row.gameState.stage, 2);
+  assert.equal(row.gameState.ply, 10);
 });
 
 // ════════════════════════════════════════════════════════════════════════
@@ -687,8 +730,8 @@ test("concurrency: two simultaneous moves — the row lock commits exactly one",
   // hands each one a distinct identity so the two seats really are different.
   session.queue = [ALICE, BOB];
   const [a, b] = await Promise.all([
-    move({ cellIndex: 0, expectedVersion: 1 }),
-    move({ cellIndex: 4, expectedVersion: 1 }),
+    move({ boardIndex: 0, cellIndex: 0, expectedVersion: 1 }),
+    move({ boardIndex: 0, cellIndex: 4, expectedVersion: 1 }),
   ]);
 
   assert.equal(fake.state.maxConcurrent, 1, "the row lock serialised the two writes");
@@ -698,7 +741,7 @@ test("concurrency: two simultaneous moves — the row lock commits exactly one",
   assert.equal(rejected.length, 1);
   assert.equal(rejected[0].status, 409, "the loser is a clean conflict");
   assert.equal(fake.rowsOf(ticTacToeMoves).length, 1, "one mark was persisted");
-  assert.equal(rowOf(fake).gameState.board.filter(Boolean).length, 1);
+  assert.equal(rowOf(fake).gameState.boards[0].cells.filter(Boolean).length, 1);
   assert.equal(writers.rating.length, 0, "an unfinished match settled nothing");
 });
 
@@ -708,8 +751,8 @@ test("concurrency: a duplicated move request cannot apply twice", { skip: SKIP_R
 
   // The same click, retried while the first request is still in flight.
   const [first, second] = await Promise.all([
-    move({ cellIndex: 2, expectedVersion: 1 }, { as: ALICE }),
-    move({ cellIndex: 2, expectedVersion: 1 }, { as: ALICE }),
+    move({ boardIndex: 0, cellIndex: 2, expectedVersion: 1 }, { as: ALICE }),
+    move({ boardIndex: 0, cellIndex: 2, expectedVersion: 1 }, { as: ALICE }),
   ]);
 
   assert.equal(fake.state.maxConcurrent, 1);
@@ -717,7 +760,7 @@ test("concurrency: a duplicated move request cannot apply twice", { skip: SKIP_R
   assert.equal([first, second].filter((r) => r.status === 409).length, 1);
   assert.equal(fake.rowsOf(ticTacToeMoves).length, 1);
   const row = rowOf(fake);
-  assert.equal(row.gameState.board.filter(Boolean).length, 1);
+  assert.equal(row.gameState.boards[0].cells.filter(Boolean).length, 1);
   assert.equal(row.gameState.ply, 1, "the ply advanced once, never twice");
 });
 
@@ -738,13 +781,13 @@ test("concurrency: a storage-level duplicate (unique violation) is a clean 409",
     return realPush(row);
   };
 
-  const res = await move({ cellIndex: 0, expectedVersion: 1 }, { as: ALICE });
+  const res = await move({ boardIndex: 0, cellIndex: 0, expectedVersion: 1 }, { as: ALICE });
   assert.equal(res.status, 409);
   assert.match(res.json.error, /already recorded/i);
   assert.equal(writers.rating.length, 0);
 
   // The next (honest) attempt succeeds once the constraint is satisfied.
-  const ok = await move({ cellIndex: 0, expectedVersion: 1 }, { as: ALICE });
+  const ok = await move({ boardIndex: 0, cellIndex: 0, expectedVersion: 1 }, { as: ALICE });
   assert.equal(ok.status, 200);
 });
 
@@ -761,7 +804,7 @@ test("concurrency: repeated completion and repeated settlement happen exactly on
   // Hammer the board from both seats…
   for (let i = 0; i < 20; i += 1) {
     const who = i % 2 === 0 ? BOB : ALICE;
-    const res = await move({ cellIndex: 6, expectedVersion: liveVersion(fake) }, { as: who });
+    const res = await move({ boardIndex: 0, cellIndex: 6, expectedVersion: liveVersion(fake) }, { as: who });
     assert.equal(res.status, 409, `retry ${i}`);
   }
   // …and the forfeit path too.
@@ -898,7 +941,7 @@ test("multiplayer: a decided match is terminal for both viewers and accepts no f
   }
 
   assert.equal(
-    (await move({ cellIndex: 6, expectedVersion: liveVersion(fake) }, { as: BOB })).status,
+    (await move({ boardIndex: 0, cellIndex: 6, expectedVersion: liveVersion(fake) }, { as: BOB })).status,
     409,
   );
 });

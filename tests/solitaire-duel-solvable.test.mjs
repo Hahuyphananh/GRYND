@@ -1,24 +1,32 @@
 /**
  * solitaire-duel-solvable.test.mjs
  *
- * THE SOLVABILITY CLAIM, checked rather than asserted.
+ * THE SOLVABILITY *AND DIFFICULTY* CLAIM, checked rather than asserted.
  *
  * A pure Fisher–Yates shuffle is unsolvable about a fifth of the time, and an
  * unsolvable board in a 1v1 race is a match that can only end on the inactivity
- * forfeit. `VARIANT_VERSION` 2 constructs every deal BACKWARDS from the won
- * position instead (`solvableDealFromSeed`), which is meant to make
- * "this deal can be finished" a property of the generator.
+ * forfeit. The version-2 answer constructed every board backwards from the won
+ * position — provably solvable, but trivially solved, because the construction
+ * put the cards exactly where the foundations wanted them.
+ *
+ * `VARIANT_VERSION` 3 replaces that with a random deal that is only served when
+ * BOTH hold:
+ *
+ *   1. a deterministic search proves a winning line, and the authoritative
+ *      engine (`./rules.ts`) replays every move of it
+ *   2. the naive "take any foundation card, otherwise draw" strategy FAILS, so
+ *      the cards are never simply laid out for the player
  *
  * This suite is the check on that claim:
  *
- *   1. the construction keeps the standard Klondike opening SHAPE, so nothing
- *      downstream (the projection, the UI, the shape rules) has to change
- *   2. every sampled deal really is solvable, verified by a forward solve
- *      rather than trusted
- *   3. the deal is still a PURE FUNCTION of the seed — no entropy, no state
- *   4. the walk, not its fallback, is what produced the sampled deals
+ *   * the opening SHAPE is still standard Klondike, so nothing downstream
+ *     (the projection, the UI, the shape rules) has to change
+ *   * every sampled deal really is solvable, re-verified by the engine
+ *   * NO sampled deal is solvable by the naive strategy (the difficulty gate)
+ *   * the retained v2 construction IS solvable by it — proving the gate bites
+ *   * the generator is still a PURE FUNCTION of the seed
  *
- * Run:  node --import tsx --test tests/solitaire-duel-solvable.test.mjs
+ * Run:  npm run test:solitaire-duel-solvable
  */
 
 import test from "node:test";
@@ -32,9 +40,11 @@ import {
   VARIANT,
   VARIANT_VERSION,
 } from "../src/lib/solitaire-duel/constants.ts";
-import { dealFingerprint, dealFromSeed } from "../src/lib/solitaire-duel/deck.ts";
+import { dealFingerprint } from "../src/lib/solitaire-duel/deck.ts";
 import {
   SOLVABLE_SHAPE,
+  constructedDealFromSeed,
+  greedySolveDeal,
   isDealSolvable,
   solvableDealFromSeed,
   solveDeal,
@@ -42,31 +52,43 @@ import {
 
 /**
  * The sampled deal seeds, spread across the 32-bit space rather than counting
- * up, so the walk is exercised on unrelated streams.
+ * up, so the search and the shuffle run on unrelated streams.
  */
-const SEEDS = Array.from({ length: 400 }, (_, index) => (index * 2654435761) % 0xffffffff);
+const SEEDS = Array.from({ length: 48 }, (_, index) => (index * 2654435761) % 0xffffffff);
 
-const indexOfSeed = (index) => SEEDS[index % SEEDS.length];
+/**
+ * The served deals, computed ONCE for the whole file.
+ *
+ * Each `solvableDealFromSeed` call runs a bounded search, so sampling it per
+ * test would multiply that cost several times over. Building the sample at
+ * module load keeps the suite fast while still exercising the real generator.
+ */
+const DEALS = SEEDS.map((seed) => solvableDealFromSeed(seed));
 
-test("the construction keeps the standard Klondike opening shape", () => {
-  for (const seed of SEEDS.slice(0, 50)) {
-    const deal = solvableDealFromSeed(seed);
+test("v3 is the served variant version", () => {
+  assert.equal(VARIANT_VERSION, 3, "the verified, hard generator is version 3");
+});
+
+test("the served deal keeps the standard Klondike opening shape", () => {
+  DEALS.forEach((deal, index) => {
+    const seed = SEEDS[index];
 
     assert.equal(deal.variant, VARIANT);
     assert.equal(deal.variantVersion, VARIANT_VERSION);
-    assert.equal(VARIANT_VERSION, 2, "the solvable construction is version 2");
 
     // Column `i` gets `i + 1` cards — the shape every shape rule expects.
     assert.equal(deal.tableau.length, TABLEAU_COLUMNS);
     assert.deepEqual(
       deal.tableau.map((column) => column.length),
       [1, 2, 3, 4, 5, 6, 7],
+      `seed ${seed} produced a non-standard shape`,
     );
+
     // Exactly one face-up card per column: the last one.
     for (const column of deal.tableau) {
       assert.deepEqual(
         column.map((pile) => pile.faceUp),
-        column.map((_, index) => index === column.length - 1),
+        column.map((_, row) => row === column.length - 1),
       );
       for (const pile of column) assert.ok(pile.card, "every tableau position has a card");
     }
@@ -79,29 +101,60 @@ test("the construction keeps the standard Klondike opening shape", () => {
       ...deal.stock.map((card) => `${card.suit}-${card.rank}`),
     ];
     assert.equal(keys.length, DECK_SIZE);
-    assert.equal(new Set(keys).size, DECK_SIZE, "no card is dealt twice");
+    assert.equal(new Set(keys).size, DECK_SIZE, `seed ${seed} dealt a duplicate card`);
     assert.equal(deal.tableau.flat().length, TABLEAU_CARDS);
+  });
+});
+
+test("every served deal is solvable, re-verified through the engine", () => {
+  DEALS.forEach((deal, index) => {
+    const seed = SEEDS[index];
+    const moves = solveDeal(deal);
+    assert.notEqual(moves, null, `seed ${seed} served an unsolvable deal`);
+    assert.ok(moves > 0, `seed ${seed} reported a non-positive move count`);
+    assert.equal(isDealSolvable(deal), true);
+  });
+});
+
+test("no served deal is laid out — the naive strategy cannot solve it", () => {
+  DEALS.forEach((deal, index) => {
+    const seed = SEEDS[index];
+    assert.equal(
+      greedySolveDeal(deal),
+      null,
+      `seed ${seed} is solvable by drawing and placing alone — the cards are laid out`,
+    );
+  });
+});
+
+test("the retained v2 construction IS laid out, proving the gate bites", () => {
+  // The exact board the gate exists to reject: solvable, but with no decision
+  // to make. If this ever stops being greedy-solvable, the difficulty gate has
+  // lost its teeth and should be revisited.
+  for (const seed of SEEDS.slice(0, 12)) {
+    const constructed = constructedDealFromSeed(seed);
+    assert.notEqual(
+      greedySolveDeal(constructed),
+      null,
+      `the v2 construction for seed ${seed} should be solvable without tableau moves`,
+    );
+    // ...and it is still genuinely solvable, just not hard.
+    assert.equal(isDealSolvable(constructed), true);
   }
 });
 
-test("every constructed deal is solvable by straightforward forward play", () => {
-  for (const seed of SEEDS) {
-    const deal = solvableDealFromSeed(seed);
-    const moves = solveDeal(deal);
-    assert.notEqual(moves, null, `seed ${seed} produced an unsolvable deal`);
-    // Honest play on a constructed deal is a short, bounded sequence — well
-    // under the solver's 4 000-move cap. A wildly larger number would mean the
-    // deal is solvable only in name.
-    assert.ok(
-      moves < 200,
-      `seed ${seed} needed ${moves} moves, which is not straightforward play`,
-    );
-    assert.equal(isDealSolvable(deal), true);
+test("a served deal never regresses to the v2 construction", () => {
+  for (let index = 0; index < 12; index += 1) {
+    const seed = SEEDS[index];
+    const served = DEALS[index];
+    if (dealFingerprint(served) === dealFingerprint(constructedDealFromSeed(seed))) {
+      assert.fail(`seed ${seed} was served the laid-out v2 construction`);
+    }
   }
 });
 
 test("the deal is still a pure function of the seed", () => {
-  for (const seed of SEEDS.slice(0, 50)) {
+  for (const seed of SEEDS.slice(0, 6)) {
     assert.equal(
       dealFingerprint(solvableDealFromSeed(seed)),
       dealFingerprint(solvableDealFromSeed(seed)),
@@ -110,35 +163,14 @@ test("the deal is still a pure function of the seed", () => {
   }
 
   // Distinct seeds, distinct puzzles.
-  const fingerprints = new Set(SEEDS.slice(0, 200).map((seed) => dealFingerprint(solvableDealFromSeed(seed))));
-  assert.equal(fingerprints.size, 200, "no two sampled seeds share a deal");
+  const fingerprints = new Set(DEALS.map(dealFingerprint));
+  assert.equal(fingerprints.size, DEALS.length, "two sampled seeds share a deal");
 
-  // The generator is deterministic in a second sense too: it is a pure
-  // function, so it never consumes ambient entropy. A deal built once is
+  // The generator never consumes ambient entropy: a deal built once is
   // byte-identical to a deal built after an unrelated call.
-  const before = dealFingerprint(solvableDealFromSeed(indexOfSeed(7)));
-  solvableDealFromSeed(indexOfSeed(11));
-  assert.equal(dealFingerprint(solvableDealFromSeed(indexOfSeed(7))), before);
-});
-
-test("the walked deal is a genuinely different construction from the v1 shuffle", () => {
-  // A sanity check that the samples came from the WALK and not from the
-  // fallback: the fallback returns exactly `dealFromSeed(seed)`, so an equal
-  // fingerprint would mean the walk failed for that seed.
-  let fallbacks = 0;
-  for (const seed of SEEDS) {
-    if (dealFingerprint(solvableDealFromSeed(seed)) === dealFingerprint(dealFromSeed(seed))) {
-      fallbacks += 1;
-    }
-  }
-  assert.equal(fallbacks, 0, "the reverse walk must not be falling back on these seeds");
-
-  // And the v1 shuffle is NOT the thing being served any more: the two agree
-  // only by the accident above, which never happens.
-  assert.notEqual(
-    dealFingerprint(solvableDealFromSeed(indexOfSeed(3))),
-    dealFingerprint(dealFromSeed(indexOfSeed(3))),
-  );
+  const before = dealFingerprint(solvableDealFromSeed(SEEDS[2]));
+  solvableDealFromSeed(SEEDS[5]);
+  assert.equal(dealFingerprint(solvableDealFromSeed(SEEDS[2])), before);
 });
 
 test("the exported shape constants match the game's own constants", () => {

@@ -361,8 +361,8 @@ test("create-or-join: opens a lobby with ONE seed, ONE deal and two identical bo
     match.dealSeed,
     deriveDealSeed({ serverSeed: match.serverSeed, variantVersion: VARIANT_VERSION }),
   );
-  // ...and it is the GUARANTEED-SOLVABLE construction of that seed
-  // (`VARIANT_VERSION` 2), not a plain shuffle.
+  // ...and it is the VERIFIED, hard deal of that seed (`VARIANT_VERSION` 3),
+  // not a plain shuffle.
   assert.deepEqual(match.deal, solvableDealFromSeed(match.dealSeed));
   assert.ok(isDealSolvable(match.deal), "a stored deal must be solvable");
 

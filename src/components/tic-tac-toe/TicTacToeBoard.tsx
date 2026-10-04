@@ -37,7 +37,8 @@ import {
   winningCellSet,
 } from "../../lib/tic-tac-toe/ui";
 import { BOARD_SIZE } from "../../lib/tic-tac-toe/constants";
-import type { Cell, Mark, Seat } from "../../lib/tic-tac-toe/types";
+import { boardIsResolved } from "../../lib/tic-tac-toe/ui";
+import type { BoardControl, Cell, Mark, Seat } from "../../lib/tic-tac-toe/types";
 
 /**
  * The mark glyph.
@@ -117,6 +118,19 @@ export type TicTacToeBoardProps = {
    * next snapshot carries.
    */
   pendingCell?: number | null;
+  /**
+   * The SERVER's control for this board. A locked board ("X" / "O" / "draw")
+   * still renders every mark it holds — it merely stops offering moves.
+   */
+  control?: BoardControl | null;
+  /** The lattice slot this board sits in (0..8), or null for a standalone one. */
+  boardIndex?: number | null;
+  /** True when this board is part of the winning Mega line. */
+  megaLine?: boolean;
+  /** Tighter gaps / rounding, for the lattice where boards sit side by side. */
+  compact?: boolean;
+  /** Accessible name for the grid, so each lattice board is distinguishable. */
+  label?: string;
   /** Called with a cell index that the server is expected to accept. */
   onPlay: (cellIndex: number) => void;
   className?: string;
@@ -130,6 +144,11 @@ function TicTacToeBoard({
   viewerCanMove = false,
   busy = false,
   pendingCell = null,
+  control = "active",
+  boardIndex = null,
+  megaLine = false,
+  compact = false,
+  label,
   onPlay,
   className = "",
 }: TicTacToeBoardProps) {
@@ -138,17 +157,27 @@ function TicTacToeBoard({
   const lastIndex = lastMoveCellIndex(lastMove);
   const viewerMark = markForSeat(viewerSeat);
   const pending = isBoardIndex(pendingCell) ? (pendingCell as number) : -1;
+  // A resolved board (won or drawn) is LOCKED: the server will refuse a move on
+  // it, so the board never offers one — while still drawing every mark it holds.
+  const locked = boardIsResolved(control);
+  const offers = viewerCanMove && !locked;
 
   return (
     <div
       role="grid"
-      aria-label="Tic-tac-toe board, 3 by 3"
+      aria-label={label ?? "Tic-tac-toe board, 3 by 3"}
       aria-rowcount={BOARD_SIZE}
       aria-colcount={BOARD_SIZE}
       data-testid="tic-tac-toe-board"
+      data-board-index={boardIndex ?? ""}
+      data-control={control ?? "active"}
+      data-locked={locked ? "true" : "false"}
+      data-mega-line={megaLine ? "true" : "false"}
       data-viewer-mark={viewerMark ?? ""}
-      data-viewer-can-move={viewerCanMove ? "true" : "false"}
-      className={`grid grid-cols-3 gap-2 sm:gap-3 ${className}`}
+      data-viewer-can-move={offers ? "true" : "false"}
+      className={`grid grid-cols-3 ${compact ? "gap-1 sm:gap-1.5" : "gap-2 sm:gap-3"} ${
+        megaLine ? "rounded-2xl ring-2 ring-emerald-300/70 ring-offset-2 ring-offset-[#070b16]" : ""
+      } ${className}`}
     >
       {Array.from({ length: BOARD_SIZE }, (_, row) => (
         <div key={row} role="row" className="contents">
@@ -167,7 +196,7 @@ function TicTacToeBoard({
             // `playable` is purely what the SNAPSHOT allows; `actionable` adds
             // the one local condition — an in-flight request — so a fast
             // double-click cannot send two moves for the same snapshot version.
-            const playable = isCellPlayable({ board: cells, cellIndex: index, viewerCanMove });
+            const playable = isCellPlayable({ board: cells, cellIndex: index, viewerCanMove: offers });
             const actionable = playable && !busy;
 
             const stateLabel = cell
@@ -176,8 +205,9 @@ function TicTacToeBoard({
                 ? `empty. Press to place ${viewerMark}`
                 : "empty";
 
-            const base =
-              "group relative flex aspect-square w-full items-center justify-center rounded-xl border-2 outline-none transition sm:rounded-2xl focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070b16]";
+            const base = `group relative flex aspect-square w-full items-center justify-center border-2 outline-none transition focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070b16] ${
+              compact ? "rounded-lg sm:rounded-xl" : "rounded-xl sm:rounded-2xl"
+            }`;
             const look = cell
               ? "border-white/15 bg-white/[0.06]"
               : playable

@@ -85,9 +85,11 @@ export function shuffledDeck(seed: number): Card[] {
  * THE v1 SHUFFLE, kept for two reasons: a match stored under
  * `VARIANT_VERSION` 1 must stay interpretable, and the tests that pin the
  * shuffle itself still need it. New matches are dealt by
- * `solvableDealFromSeed` (./solvable.ts), which CONSTRUCTS a guaranteed-solvable
- * board instead of hoping the shuffle produced one — about a fifth of these are
- * unsolvable, and an unsolvable duel can only end on the inactivity forfeit.
+ * `solvableDealFromSeed` (./solvable.ts), which shuffles and then only serves a
+ * deal whose winning line a search has proven AND the engine has replayed, and
+ * which the naive foundation-only strategy cannot solve — about a fifth of
+ * plain shuffles are unsolvable, and an unsolvable duel can only end on the
+ * inactivity forfeit.
  *
  * Standard Klondike opening: column `i` (0-based) receives `i + 1` cards, and
  * only the LAST card of each column is face-up. The remaining 24 cards become

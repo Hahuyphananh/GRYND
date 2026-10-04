@@ -194,22 +194,42 @@ test("rooms: broadcastMatchUpdate no-ops safely without a live io handle", async
 // 4. The trust boundary
 // ════════════════════════════════════════════════════════════════════════
 
-test("move route: forwards ONLY cellIndex and expectedVersion to the store", () => {
+test("move route: forwards ONLY boardIndex, cellIndex and expectedVersion to the store", () => {
   const src = strip(read(MOVE_ROUTE));
   const call = src.slice(src.indexOf("const result = await move({"), src.indexOf("if (\"error\" in result)"));
   assert.ok(call.length > 0);
   assert.match(call, /userId,/);
   assert.match(call, /matchId,/);
+  assert.match(call, /boardIndex: body\?\.boardIndex,/);
   assert.match(call, /cellIndex: body\?\.cellIndex,/);
   assert.match(call, /expectedVersion: body\?\.expectedVersion,/);
-  // Nothing else may be threaded through from the request body.
-  for (const forbidden of ["winner", "result", "board", "status", "ply", "mark", "elo", "troph", "completed"]) {
+  // Nothing else may be threaded through from the request body. `boardIndex` is
+  // deliberately NOT in the forbidden list: it is the move's board ADDRESS, not
+  // a decision — the server still owns the round, the boards, the winner and
+  // the result. Only a wrong board index is rejected; it is never trusted as
+  // state.
+  for (const forbidden of ["winner", "result", "board", "round", "stage", "status", "ply", "mark", "elo", "troph", "completed"]) {
     assert.equal(
-      new RegExp(`${forbidden}\\s*:\\s*body`).test(call),
+      new RegExp(`\\b${forbidden}\\s*:\\s*body`).test(call),
       false,
       `the move route must not forward body.${forbidden}`,
     );
   }
+});
+
+test("migration 0203: adds board_index and widens the occupancy invariant in place", () => {
+  const sql = strip(read("src/db/migrations/0203_tic_tac_toe_mega_boards.sql"));
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS "board_index" INT NOT NULL DEFAULT 0/);
+  assert.match(sql, /CHECK \(board_index BETWEEN -1 AND 8\)/);
+  // The old (match, cell) unique index is dropped and recreated composite,
+  // under the SAME name, so consumers need no change.
+  assert.match(sql, /DROP INDEX IF EXISTS tic_tac_toe_moves_cell_unique/);
+  assert.match(
+    sql,
+    /CREATE UNIQUE INDEX IF NOT EXISTS tic_tac_toe_moves_cell_unique\s*\n\s*ON tic_tac_toe_moves\(match_id, board_index, cell_index\)/,
+  );
+  // Additive: no column is dropped.
+  assert.equal(/DROP COLUMN/.test(sql), false);
 });
 
 test("store: the mutators accept no client-supplied decision", () => {

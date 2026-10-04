@@ -23,12 +23,15 @@ import {
 function normaliseMove(row: {
   ply: number;
   playerId: string;
+  boardIndex: number;
   cellIndex: number;
   createdAt: unknown;
 }) {
   return {
     ply: row.ply,
     playerId: row.playerId,
+    // Slot 0..8, or -1 for the sudden-death board.
+    boardIndex: Number(row.boardIndex),
     cellIndex: Number(row.cellIndex),
     createdAt: row.createdAt,
   };

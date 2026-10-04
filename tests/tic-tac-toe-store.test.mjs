@@ -40,7 +40,11 @@ import { mock } from "node:test";
 
 import { ticTacToeMatches, ticTacToeMoves, users } from "../src/db/schema.ts";
 import { MATCH_STATUS, RESULT } from "../src/lib/tic-tac-toe/constants.ts";
-import { createInitialState } from "../src/lib/tic-tac-toe/rules.ts";
+import {
+  createEmptyBoard,
+  createInitialState,
+  resolveBoardControl,
+} from "../src/lib/tic-tac-toe/rules.ts";
 
 const MODULE_MOCKING_AVAILABLE = typeof mock?.module === "function";
 const SKIP_REASON = MODULE_MOCKING_AVAILABLE
@@ -292,6 +296,8 @@ async function playCells(store, fake, cells, { player2Id = BOB } = {}) {
     const result = await store.move({
       userId: seatAt(ply) === "player1" ? ALICE : player2Id,
       matchId: MATCH_ID,
+      // Every played-out match in this file lives on the opening board.
+      boardIndex: 0,
       cellIndex: cells[ply],
       expectedVersion: liveMatch(fake).gameState.version,
     });
@@ -322,7 +328,8 @@ test("createOrJoin opens a waiting lobby holding the fresh server state", async 
   assert.equal(row.isAi, false);
   assert.equal(row.result, null);
   assert.equal(row.currentTurnUserId, ALICE);
-  assert.deepEqual(row.gameState.board, new Array(9).fill(null));
+  assert.ok(row.gameState.boards[0].cells.every((cell) => cell === null));
+  assert.equal(row.gameState.stage, 1);
   assert.equal(row.gameState.currentTurn, "player1");
   assert.equal(row.gameState.version, 1);
 
@@ -388,6 +395,7 @@ test("move places the server-derived mark and hands the turn over", async (t) =>
   const result = await store.move({
     userId: ALICE,
     matchId: MATCH_ID,
+    boardIndex: 0,
     cellIndex: 4,
     expectedVersion: 1,
   });
@@ -395,19 +403,23 @@ test("move places the server-derived mark and hands the turn over", async (t) =>
   assert.equal("error" in result, false);
   assert.equal(result.mark, "X");
   assert.equal(result.ply, 0);
+  assert.equal(result.boardIndex, 0);
+  assert.equal(result.stage, 1);
   const row = liveMatch(fake);
-  assert.equal(row.gameState.board[4], "X");
+  assert.equal(row.gameState.boards[0].cells[4], "X");
   assert.equal(row.gameState.ply, 1);
   assert.equal(row.gameState.currentTurn, "player2");
   assert.equal(row.currentTurnUserId, BOB);
   assert.equal(row.status, MATCH_STATUS.PLAYING);
   assert.equal(row.ply, 1);
 
-  // One append-only log row, keyed by the turn number the seat just played.
+  // One append-only log row, keyed by the turn number the seat just played,
+  // and carrying the full (board, cell) address.
   const moves = fake.rowsOf(ticTacToeMoves);
   assert.equal(moves.length, 1);
   assert.equal(moves[0].ply, 0);
   assert.equal(moves[0].playerId, ALICE);
+  assert.equal(moves[0].boardIndex, 0);
   assert.equal(moves[0].cellIndex, 4);
 });
 
@@ -421,6 +433,7 @@ test("move refuses a non-participant with 403 BEFORE reporting match status", as
   const result = await store.move({
     userId: MALLORY,
     matchId: MATCH_ID,
+    boardIndex: 0,
     cellIndex: 0,
   });
   assert.equal(result.status, 403);
@@ -440,7 +453,7 @@ test("move refuses a waiting lobby and a terminal match with 409", async (t) => 
   for (const [label, overrides, pattern] of cases) {
     resetAll(fake);
     seedMatch(fake, overrides);
-    const res = await store.move({ userId: ALICE, matchId: MATCH_ID, cellIndex: 0 });
+    const res = await store.move({ userId: ALICE, matchId: MATCH_ID, boardIndex: 0, cellIndex: 0 });
     assert.equal(res.status, 409, label);
     assert.match(res.error, pattern, label);
     // Nothing was written.
@@ -454,7 +467,7 @@ test("move refuses an out-of-turn move", async (t) => {
   const store = await loadStore();
   seedMatch(fake);
 
-  const result = await store.move({ userId: BOB, matchId: MATCH_ID, cellIndex: 0 });
+  const result = await store.move({ userId: BOB, matchId: MATCH_ID, boardIndex: 0, cellIndex: 0 });
   assert.equal(result.status, 409);
   assert.match(result.error, /not your turn/i);
   assert.equal(liveMatch(fake).gameState.ply, 0);
@@ -465,10 +478,11 @@ test("move refuses an occupied cell", async (t) => {
   const store = await loadStore();
   seedMatch(fake);
 
-  await store.move({ userId: ALICE, matchId: MATCH_ID, cellIndex: 4, expectedVersion: 1 });
+  await store.move({ userId: ALICE, matchId: MATCH_ID, boardIndex: 0, cellIndex: 4, expectedVersion: 1 });
   const taken = await store.move({
     userId: BOB,
     matchId: MATCH_ID,
+    boardIndex: 0,
     cellIndex: 4,
     expectedVersion: 2,
   });
@@ -485,10 +499,50 @@ test("move refuses malformed cell indexes as 400 — no Number() coercion", asyn
   for (const bad of [undefined, null, "0", "", true, [], {}, -1, 9, 1.5, NaN, Infinity]) {
     resetAll(fake);
     seedMatch(fake);
-    const result = await store.move({ userId: ALICE, matchId: MATCH_ID, cellIndex: bad });
+    const result = await store.move({
+      userId: ALICE,
+      matchId: MATCH_ID,
+      boardIndex: 0,
+      cellIndex: bad,
+    });
     assert.equal(result.status, 400, JSON.stringify(bad));
     assert.equal(result.error, "Cell index must be an integer in [0, 8]");
     assert.equal(liveMatch(fake).gameState.ply, 0, JSON.stringify(bad));
+  }
+});
+
+test("move refuses malformed or out-of-play board indexes", async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+
+  // Malformed indexes are a 400 — the same strict, uncoerced check as the cell.
+  for (const bad of [undefined, null, "0", "", true, [], {}, -1, 9, 1.5, NaN, Infinity]) {
+    resetAll(fake);
+    seedMatch(fake);
+    const result = await store.move({
+      userId: ALICE,
+      matchId: MATCH_ID,
+      boardIndex: bad,
+      cellIndex: 0,
+    });
+    assert.equal(result.status, 400, JSON.stringify(bad));
+    assert.equal(result.error, "Board index must be an integer in [0, 8]");
+    assert.equal(liveMatch(fake).gameState.ply, 0, JSON.stringify(bad));
+  }
+
+  // A well-formed but not-yet-materialised slot is a 409: stage 1 has only
+  // board 0, so boards 1..8 are not in play yet and cannot be targeted.
+  for (const notYet of [1, 4, 8]) {
+    resetAll(fake);
+    seedMatch(fake);
+    const result = await store.move({
+      userId: ALICE,
+      matchId: MATCH_ID,
+      boardIndex: notYet,
+      cellIndex: 0,
+    });
+    assert.equal(result.status, 409, `board ${notYet}`);
+    assert.match(result.error, /not in play/i, `board ${notYet}`);
   }
 });
 
@@ -497,10 +551,11 @@ test("move refuses a stale expectedVersion", async (t) => {
   const store = await loadStore();
   seedMatch(fake);
 
-  await store.move({ userId: ALICE, matchId: MATCH_ID, cellIndex: 0, expectedVersion: 1 });
+  await store.move({ userId: ALICE, matchId: MATCH_ID, boardIndex: 0, cellIndex: 0, expectedVersion: 1 });
   const stale = await store.move({
     userId: BOB,
     matchId: MATCH_ID,
+    boardIndex: 0,
     cellIndex: 1,
     expectedVersion: 1, // the version BEFORE the first move
   });
@@ -517,6 +572,7 @@ test("move IGNORES every client-supplied decision attached to the body", async (
   const result = await store.move({
     userId: ALICE,
     matchId: MATCH_ID,
+    boardIndex: 0,
     cellIndex: 3,
     expectedVersion: 1,
     // Hostile extras the store's signature does not even accept:
@@ -524,9 +580,12 @@ test("move IGNORES every client-supplied decision attached to the body", async (
     winnerId: BOB,
     result: "player2",
     status: "finished",
+    stage: 3,
+    round: 3,
     ply: 9,
     mark: "O",
     board: ["O", "O", "O", null, null, null, null, null, null],
+    boards: ["O", "O", "O", null, null, null, null, null, null],
     currentTurn: "player2",
     matchCompleted: true,
     elo: 9999,
@@ -535,13 +594,14 @@ test("move IGNORES every client-supplied decision attached to the body", async (
 
   assert.equal("error" in result, false);
   const row = liveMatch(fake);
-  assert.deepEqual(row.gameState.board, [
+  assert.deepEqual(row.gameState.boards[0].cells, [
     null, null, null,
     "X", null, null,
     null, null, null,
   ]);
-  assert.equal(row.gameState.board[3], "X"); // the mark derived from ALICE, not "O"
-  assert.equal(row.gameState.board[0], null); // the client's board is gone
+  assert.equal(row.gameState.boards[0].cells[3], "X"); // the mark derived from ALICE, not "O"
+  assert.equal(row.gameState.boards[0].cells[0], null); // the client's board is gone
+  assert.equal(row.gameState.stage, 1); // the client's stage/round ignored
   assert.equal(row.gameState.ply, 1); // not 9
   assert.equal(row.gameState.currentTurn, "player2"); // derived, not accepted
   assert.equal(row.status, MATCH_STATUS.PLAYING); // not "finished"
@@ -571,7 +631,8 @@ test("a winning move completes the match and settles exactly once, with the lite
   assert.equal(row.winnerId, ALICE);
   assert.ok(row.endedAt);
   assert.equal(row.gameState.winner, "player1");
-  assert.deepEqual(row.gameState.winningLine, [0, 1, 2]);
+  assert.deepEqual(row.gameState.boards[0].winningLine, [0, 1, 2]);
+  assert.deepEqual(row.gameState.winningBoards, [0]);
 
   // The shared writers, called ONCE each, with the canonical literal key.
   assert.equal(settlement.rating.length, 1);
@@ -610,6 +671,7 @@ test("a second completion attempt is refused and never settles twice", async (t)
     const retry = await store.move({
       userId,
       matchId: MATCH_ID,
+      boardIndex: 0,
       cellIndex: 6,
       expectedVersion: liveMatch(fake).gameState.version,
     });
@@ -634,6 +696,7 @@ test("a duplicate move that loses a storage race surfaces as a clean 409, not a 
   const result = await store.move({
     userId: ALICE,
     matchId: MATCH_ID,
+    boardIndex: 0,
     cellIndex: 0,
     expectedVersion: 1,
   });
@@ -646,7 +709,7 @@ test("a duplicate move that loses a storage race surfaces as a clean 409, not a 
   assert.equal(settlement.trophy.length, 0);
 });
 
-test("a draw settles with result \"draw\" and changes no win counter", async (t) => {
+test("a Round 1 draw does NOT settle — it EXPANDS the match to four boards", async (t) => {
   const fake = installMocks(t);
   const store = await loadStore();
   seedMatch(fake);
@@ -654,20 +717,27 @@ test("a draw settles with result \"draw\" and changes no win counter", async (t)
   seedUser(fake, BOB);
 
   const results = await playCells(store, fake, A_DRAW);
-  assert.equal(results.at(-1).matchCompleted, true);
+  assert.equal(results.filter((r) => "error" in r).length, 0);
+  // The last move was legal and RESOLVED the board, but it did not finish the
+  // match — a stage-1 draw grows the lattice instead.
+  assert.equal(results.at(-1).matchCompleted, false);
 
   const row = liveMatch(fake);
-  assert.equal(row.status, MATCH_STATUS.FINISHED);
-  assert.equal(row.result, RESULT.TIE);
+  assert.equal(row.status, MATCH_STATUS.PLAYING);
+  assert.equal(row.result, null);
   assert.equal(row.winnerId, null);
-  assert.equal(row.gameState.winner, null);
+  assert.equal(row.endedAt, null);
+  assert.equal(row.gameState.phase, "playing");
+  assert.equal(row.gameState.stage, 2);
   assert.equal(row.gameState.ply, 9);
+  assert.equal(row.gameState.boards[0].control, "draw");
+  assert.equal(row.gameState.boards[1].control, "active");
 
-  assert.equal(settlement.rating.length, 1);
-  assert.equal(settlement.rating[0].result, "draw");
-  assert.equal(settlement.trophy.length, 1);
-  assert.equal(settlement.trophy[0].result, "draw");
-
+  // NO settlement: an expansion is not a result and must never be recorded as
+  // a win, a loss, a draw or a queue completion.
+  assert.equal(settlement.rating.length, 0);
+  assert.equal(settlement.trophy.length, 0);
+  assert.equal(settlement.queue.filter((e) => e.kind === "transition").length, 0);
   const byId = new Map(fake.rowsOf(users).map((u) => [u.clerkId, u]));
   assert.equal(byId.get(ALICE).gamesWon, 0);
   assert.equal(byId.get(ALICE).gamesLost, 0);
@@ -689,10 +759,11 @@ test("a practice (isAi) match is never rated, trophied or queued", async (t) => 
     guard += 1;
     const live = liveMatch(fake);
     if (live.gameState.currentTurn !== "player1") break;
-    const cell = live.gameState.board.findIndex((c) => c === null);
+    const cell = live.gameState.boards[0].cells.findIndex((c) => c === null);
     const res = await store.move({
       userId: ALICE,
       matchId: MATCH_ID,
+      boardIndex: 0,
       cellIndex: cell,
       expectedVersion: live.gameState.version,
     });
@@ -751,15 +822,16 @@ test("move on a practice match plays the bot's reply in the same call", async (t
   const result = await store.move({
     userId: ALICE,
     matchId: MATCH_ID,
+    boardIndex: 0,
     cellIndex: 4,
     expectedVersion: 1,
   });
   assert.equal("error" in result, false);
   // Two plies were applied: the human's X and the bot's O.
   assert.equal(result.state.ply, 2);
-  assert.equal(result.state.board[4], "X");
-  assert.equal(result.state.board.filter((c) => c === "O").length, 1);
-  assert.equal(result.state.board.filter((c) => c === null).length, 7);
+  assert.equal(result.state.boards[0].cells[4], "X");
+  assert.equal(result.state.boards[0].cells.filter((c) => c === "O").length, 1);
+  assert.equal(result.state.boards[0].cells.filter((c) => c === null).length, 7);
   // It is the human's turn again — the bot never leaves itself on move.
   assert.equal(result.state.currentTurn, "player1");
   assert.equal(liveMatch(fake).currentTurnUserId, ALICE);
@@ -771,21 +843,24 @@ test("the bot can end the match on its own reply and never moves again after", a
   const fake = installMocks(t);
   const store = await loadStore();
   const BOT = "tic_tac_toe_ai_bot";
-  // O (the bot) already holds 0 and 3; the human must play 8, then the bot
-  // needs only cell 6 to complete 0,3,6 and win.
-  const board = ["O", null, null, "O", null, null, null, null, null];
-  seedMatch(fake, {
-    isAi: true,
-    player2Id: BOT,
-    aiDifficulty: "hard",
-    gameState: { ...createInitialState(), board, currentTurn: "player1", ply: 4, version: 5 },
-  });
+  // O (the bot) already holds 0 and 3. The board has exactly two empty cells:
+  // 8 (the human's move) and 6 (the bot's). After the human takes 8, the bot
+  // has exactly ONE legal move — cell 6, completing 0,3,6 — so the reply is
+  // deterministic regardless of the tier's slip roll.
+  const cells = ["O", "X", "X", "O", "X", "O", null, "O", null];
+  const base = createInitialState();
+  base.boards[0] = { cells, plies: 7, control: "active", winningLine: null };
+  base.currentTurn = "player1";
+  base.ply = 7;
+  base.version = 8;
+  seedMatch(fake, { isAi: true, player2Id: BOT, aiDifficulty: "hard", gameState: base });
 
   const result = await store.move({
     userId: ALICE,
     matchId: MATCH_ID,
+    boardIndex: 0,
     cellIndex: 8,
-    expectedVersion: 5,
+    expectedVersion: 8,
   });
   assert.equal("error" in result, false);
   assert.equal(result.matchCompleted, true);
@@ -810,6 +885,7 @@ test("a human move on a practice match is still validated as usual", async (t) =
   const outOfTurn = await store.move({
     userId: "tic_tac_toe_ai_bot",
     matchId: MATCH_ID,
+    boardIndex: 0,
     cellIndex: 0,
     expectedVersion: 1,
   });
@@ -969,7 +1045,7 @@ test("every mutator takes exactly one transaction", async (t) => {
   assert.equal(fake.state.locks.length, 1, "createOrJoin advisory lock");
 
   const cases = [
-    ["move", () => store.move({ userId: ALICE, matchId: MATCH_ID, cellIndex: 0, expectedVersion: 1 })],
+    ["move", () => store.move({ userId: ALICE, matchId: MATCH_ID, boardIndex: 0, cellIndex: 0, expectedVersion: 1 })],
     ["forfeitMatch", () => store.forfeitMatch({ userId: ALICE, matchId: MATCH_ID })],
     ["cancelMatch", () => store.cancelMatch({ userId: ALICE, matchId: MATCH_ID })],
     ["forfeitMatchOnDisconnect", () => store.forfeitMatchOnDisconnect({ userId: ALICE, matchId: MATCH_ID })],
@@ -996,4 +1072,416 @@ test("isMatchId accepts only a uuid, so a bad id never reaches a Postgres cast",
   for (const bad of ["", "abc", "1 OR 1=1", null, undefined, 42, {}, `${MATCH_ID}x`]) {
     assert.equal(store.isMatchId(bad), false, JSON.stringify(bad));
   }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// Mega lifecycle end-to-end — expansion, Mega win, tiebreak, sudden death
+// ════════════════════════════════════════════════════════════════════════
+
+// Board fixtures whose control/winningLine are derived exactly as the engine
+// derives them.
+function fixtureBoard(cells) {
+  const { control, winningLine } = resolveBoardControl(cells);
+  return { cells: [...cells], plies: cells.filter((c) => c !== null).length, control, winningLine };
+}
+
+const X_SWEEP = ["X", "X", "X", "O", "O", null, null, null, null]; // X controls
+const O_SWEEP = ["O", "O", "O", "X", "X", null, null, null, null]; // O controls
+const X_PENDING = ["X", "X", null, "O", "O", null, null, null, null]; // active; X's 3rd wins
+const DRAW_CELLS = (() => {
+  const order = [0, 4, 8, 2, 6, 3, 5, 7, 1];
+  const cells = new Array(9).fill(null);
+  order.forEach((cell, ply) => {
+    cells[cell] = ply % 2 === 0 ? "X" : "O";
+  });
+  return cells;
+})();
+const NEAR_DRAW = (() => {
+  const cells = new Array(9).fill(null);
+  [0, 4, 8, 2, 6, 3, 5, 7].forEach((cell, ply) => {
+    cells[cell] = ply % 2 === 0 ? "X" : "O";
+  });
+  return cells;
+})(); // one move (cell 1) from a full draw
+
+/** A craftable authoritative state, seeded directly into the one match row. */
+function craftGameState({ stage, currentTurn, ply, boards = {}, suddenDeath = null }) {
+  return {
+    version: 100,
+    phase: "playing",
+    stage,
+    boards: Array.from({ length: 9 }, (_, slot) => boards[slot] ?? null),
+    currentTurn,
+    ply,
+    winner: null,
+    winningBoards: null,
+    tiebreak: null,
+    suddenDeath,
+    lastMove: null,
+  };
+}
+
+test("mega: a stage-2 resolution with no Mega line EXPANDS to nine boards, unrated", async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  seedMatch(fake, {
+    ply: 36,
+    gameState: craftGameState({
+      stage: 2,
+      currentTurn: "player1",
+      ply: 36,
+      boards: {
+        0: fixtureBoard(DRAW_CELLS),
+        1: fixtureBoard(X_SWEEP),
+        3: fixtureBoard(O_SWEEP),
+        4: fixtureBoard(X_PENDING),
+      },
+    }),
+  });
+  seedUser(fake, ALICE);
+  seedUser(fake, BOB);
+
+  const res = await store.move({
+    userId: ALICE,
+    matchId: MATCH_ID,
+    boardIndex: 4,
+    cellIndex: 2,
+    expectedVersion: 100,
+  });
+  assert.equal("error" in res, false);
+  assert.equal(res.matchCompleted, false);
+  assert.equal(res.stage, 3);
+
+  const row = liveMatch(fake);
+  assert.equal(row.status, MATCH_STATUS.PLAYING);
+  assert.equal(row.gameState.stage, 3);
+  assert.equal(row.gameState.boards.filter(Boolean).length, 9);
+  // Every earlier board survives intact.
+  assert.deepEqual(row.gameState.boards[0].cells, DRAW_CELLS);
+  assert.deepEqual(row.gameState.boards[1].cells, X_SWEEP);
+  assert.deepEqual(row.gameState.boards[3].cells, O_SWEEP);
+  // An expansion is not a result — nothing settled.
+  assert.equal(settlement.rating.length, 0);
+  assert.equal(settlement.trophy.length, 0);
+  assert.equal(row.result, null);
+  assert.equal(row.endedAt, null);
+});
+
+test("mega: a Round 3 horizontal Mega line wins the match and settles exactly once", async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  seedMatch(fake, {
+    ply: 45,
+    gameState: craftGameState({
+      stage: 3,
+      currentTurn: "player1",
+      ply: 45,
+      boards: {
+        0: fixtureBoard(X_SWEEP),
+        1: fixtureBoard(X_SWEEP),
+        2: fixtureBoard(X_PENDING),
+        3: createEmptyBoard(),
+      },
+    }),
+  });
+  seedUser(fake, ALICE);
+  seedUser(fake, BOB);
+
+  const res = await store.move({
+    userId: ALICE,
+    matchId: MATCH_ID,
+    boardIndex: 2,
+    cellIndex: 2,
+    expectedVersion: 100,
+  });
+  assert.equal("error" in res, false);
+  assert.equal(res.matchCompleted, true);
+  assert.equal(res.winnerSeat, "player1");
+  assert.deepEqual(res.winningBoards, [0, 1, 2]);
+
+  const row = liveMatch(fake);
+  assert.equal(row.status, MATCH_STATUS.FINISHED);
+  assert.equal(row.result, RESULT.PLAYER1);
+  assert.equal(row.winnerId, ALICE);
+  assert.deepEqual(row.gameState.winningBoards, [0, 1, 2]);
+  assert.equal(settlement.rating.length, 1);
+  assert.equal(settlement.rating[0].winnerClerkId, ALICE);
+  assert.equal(settlement.trophy.length, 1);
+  // A decided marked match never journals a draw.
+  assert.equal(settlement.rating[0].result, undefined);
+});
+
+test("mega: a full Round 3 draw is decided by the TIEBREAK, never a tie", async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  const boards = {};
+  for (const slot of [0, 1, 2, 3, 4, 5, 6, 7, 8]) boards[slot] = fixtureBoard(DRAW_CELLS);
+  boards[8] = fixtureBoard(NEAR_DRAW);
+  seedMatch(fake, {
+    ply: 80,
+    gameState: craftGameState({ stage: 3, currentTurn: "player1", ply: 80, boards }),
+  });
+  seedUser(fake, ALICE);
+  seedUser(fake, BOB);
+
+  const res = await store.move({
+    userId: ALICE,
+    matchId: MATCH_ID,
+    boardIndex: 8,
+    cellIndex: 1,
+    expectedVersion: 100,
+  });
+  assert.equal("error" in res, false);
+  assert.equal(res.matchCompleted, true);
+
+  const row = liveMatch(fake);
+  assert.equal(row.status, MATCH_STATUS.FINISHED);
+  // A Mega draw is NOT a tie — the tiebreak always produces a winner.
+  assert.equal(row.result, RESULT.PLAYER1);
+  assert.equal(row.winnerId, ALICE);
+  assert.equal(row.gameState.tiebreak.decidedBy, "boards");
+  assert.equal(row.gameState.tiebreak.winner, "player1");
+  assert.equal(row.gameState.tiebreak.xBoards, 9);
+  assert.equal(settlement.rating.length, 1);
+  assert.equal(settlement.rating[0].winnerClerkId, ALICE);
+});
+
+test("mega: sudden death is played on boardIndex -1 and settles once", async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  seedMatch(fake, {
+    ply: 54,
+    gameState: craftGameState({
+      stage: 3,
+      currentTurn: "player1",
+      ply: 54,
+      suddenDeath: { boards: [createEmptyBoard()] },
+    }),
+  });
+  seedUser(fake, ALICE);
+  seedUser(fake, BOB);
+
+  // While sudden death is live ONLY boardIndex -1 is legal.
+  const wrong = await store.move({
+    userId: ALICE,
+    matchId: MATCH_ID,
+    boardIndex: 0,
+    cellIndex: 0,
+    expectedVersion: 100,
+  });
+  assert.equal(wrong.status, 409);
+
+  const seq = [
+    [ALICE, 0],
+    [BOB, 3],
+    [ALICE, 1],
+    [BOB, 4],
+    [ALICE, 2],
+  ];
+  let last;
+  for (const [userId, cellIndex] of seq) {
+    last = await store.move({
+      userId,
+      matchId: MATCH_ID,
+      boardIndex: -1,
+      cellIndex,
+      expectedVersion: liveMatch(fake).gameState.version,
+    });
+    assert.equal("error" in last, false, `${userId} / ${cellIndex}`);
+  }
+  assert.equal(last.matchCompleted, true);
+  assert.equal(last.winnerSeat, "player1");
+  const row = liveMatch(fake);
+  assert.equal(row.status, MATCH_STATUS.FINISHED);
+  assert.equal(row.winnerId, ALICE);
+  assert.equal(settlement.rating.length, 1);
+});
+
+test("reload: the persisted snapshot and move log reconstruct a Mega match", async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  seedMatch(fake);
+
+  // Play the opening board to a draw so the match expands, then move on the
+  // new board — exactly what a reconnect must recover from the row.
+  await playCells(store, fake, A_DRAW);
+  const afterDraw = await store.fetchMatch({ userId: ALICE, matchId: MATCH_ID });
+  assert.equal("error" in afterDraw, false);
+  assert.equal(afterDraw.dto.stage, 2);
+  assert.equal(afterDraw.dto.boards[0].control, "draw");
+  assert.ok(afterDraw.dto.boards[1], "the new board is persisted");
+
+  const moved = await store.move({
+    userId: BOB,
+    matchId: MATCH_ID,
+    boardIndex: 1,
+    cellIndex: 4,
+    expectedVersion: afterDraw.dto.version,
+  });
+  assert.equal("error" in moved, false);
+
+  // A brand-new read (a reconnect) sees the same authoritative state.
+  const reloaded = await store.fetchMatch({ userId: ALICE, matchId: MATCH_ID });
+  assert.equal(reloaded.dto.boards[1].cells[4], "O");
+  assert.equal(reloaded.dto.stage, 2);
+  assert.equal(reloaded.dto.ply, 10);
+  assert.equal(reloaded.dto.activeBoards.length, 3, "boards 1, 3, 4 remain active");
+  // After the expansion O played one move, so X is to move again.
+  assert.equal(reloaded.dto.viewerCanMove, true, "X is to move");
+
+  // The move log carries the full (board, cell) address for every move.
+  const moves = await store.fetchMatchMoves(MATCH_ID);
+  assert.equal(moves.length, 10);
+  assert.equal(moves[0].boardIndex, 0);
+  assert.equal(moves[9].boardIndex, 1);
+  assert.equal(moves[9].cellIndex, 4);
+});
+
+// ── The remaining tiebreak branches, end-to-end through the store ─────────
+//
+// The rules suite pins `evaluateTiebreak` exhaustively; these drive the two
+// branches the earlier store tests did not reach through a real move: the
+// TOTAL-CELL tiebreaker, and a complete tie that starts SUDDEN DEATH.
+
+// A line-winning board whose X/O cell counts are EQUAL counts as neutral to
+// the tiebreak (which counts cells, not line owners).
+const NEUTRAL_X = ["X", "X", "X", "O", "O", null, "O", null, null]; // X line, cells 3/3
+const NEUTRAL_O = ["X", null, "X", "O", "O", "O", "X", null, null]; // O line, cells 3/3
+const X_MAJORITY = ["X", "X", "X", "X", "X", "O", null, null, null]; // X 5 / O 1
+const O_MAJORITY = ["O", "O", "O", "X", "O", null, null, null, null]; // O 4 / X 1
+const O_PENDING = ["X", null, "X", "O", "O", null, "X", null, null]; // O's cell 5 -> NEUTRAL_O
+
+test("mega: a full Round 3 draw tied on boards is decided on TOTAL CELLS", async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  // Boards 0..7 resolved with a 1-1 record and equal neutral boards, and board
+  // 8 one O move from a neutral (equal-cell) line win. The layout has no Mega
+  // line before or after the final move.
+  const boards = {
+    0: fixtureBoard(X_MAJORITY),
+    1: fixtureBoard(O_MAJORITY),
+    2: fixtureBoard(NEUTRAL_X),
+    3: fixtureBoard(NEUTRAL_O),
+    4: fixtureBoard(NEUTRAL_X),
+    5: fixtureBoard(NEUTRAL_O),
+    6: fixtureBoard(NEUTRAL_O),
+    7: fixtureBoard(NEUTRAL_X),
+    8: fixtureBoard(O_PENDING),
+  };
+  seedMatch(fake, {
+    ply: 80,
+    gameState: craftGameState({ stage: 3, currentTurn: "player2", ply: 80, boards }),
+  });
+  seedUser(fake, ALICE);
+  seedUser(fake, BOB);
+
+  const res = await store.move({
+    userId: BOB,
+    matchId: MATCH_ID,
+    boardIndex: 8,
+    cellIndex: 5,
+    expectedVersion: 100,
+  });
+  assert.equal("error" in res, false);
+  assert.equal(res.matchCompleted, true);
+
+  const row = liveMatch(fake);
+  assert.equal(row.status, MATCH_STATUS.FINISHED);
+  assert.equal(row.result, RESULT.PLAYER1);
+  assert.equal(row.winnerId, ALICE);
+  // Board control is level (1-1) — the winner came from the cell count.
+  assert.equal(row.gameState.tiebreak.decidedBy, "cells");
+  assert.equal(row.gameState.tiebreak.xBoards, row.gameState.tiebreak.oBoards);
+  assert.ok(row.gameState.tiebreak.xCells > row.gameState.tiebreak.oCells);
+  assert.equal(row.gameState.tiebreak.winner, "player1");
+  assert.deepEqual(row.gameState.winningBoards, null);
+  assert.equal(settlement.rating.length, 1);
+  assert.equal(settlement.rating[0].winnerClerkId, ALICE);
+  assert.equal(settlement.rating[0].loserClerkId, BOB);
+  assert.equal(settlement.trophy.length, 1);
+});
+
+test("mega: a complete tie starts SUDDEN DEATH, plays on -1 and settles once", async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  // Board control AND cell control are exactly level once the last board
+  // resolves, with no Mega line → sudden death, not a result.
+  const X_SWEEP = ["X", "X", "X", "O", "O", null, null, null, null];
+  const O_SWEEP = ["O", "O", "O", "X", "X", null, null, null, null];
+  const boards = {
+    0: fixtureBoard(X_SWEEP),
+    1: fixtureBoard(X_SWEEP),
+    2: fixtureBoard(O_SWEEP),
+    3: fixtureBoard(O_SWEEP),
+    4: fixtureBoard(O_PENDING),
+    5: fixtureBoard(X_SWEEP),
+    6: fixtureBoard(X_SWEEP),
+    7: fixtureBoard(O_SWEEP),
+    8: fixtureBoard(O_SWEEP),
+  };
+  seedMatch(fake, {
+    ply: 45,
+    gameState: craftGameState({ stage: 3, currentTurn: "player2", ply: 45, boards }),
+  });
+  seedUser(fake, ALICE);
+  seedUser(fake, BOB);
+
+  const tie = await store.move({
+    userId: BOB,
+    matchId: MATCH_ID,
+    boardIndex: 4,
+    cellIndex: 5,
+    expectedVersion: 100,
+  });
+  assert.equal("error" in tie, false);
+  // Not a result: the tie starts sudden death and hands X the first move.
+  assert.equal(tie.matchCompleted, false);
+  assert.ok(tie.state.suddenDeath, "the tie starts sudden death");
+  const afterTie = liveMatch(fake);
+  assert.equal(afterTie.status, MATCH_STATUS.PLAYING);
+  assert.equal(afterTie.gameState.tiebreak.decidedBy, "sudden-death");
+  assert.equal(afterTie.gameState.tiebreak.winner, null);
+  assert.equal(afterTie.gameState.currentTurn, "player1");
+  assert.equal(afterTie.gameState.suddenDeath.boards.length, 1);
+  // The tie itself settled nothing.
+  assert.equal(settlement.rating.length, 0);
+  assert.equal(settlement.trophy.length, 0);
+
+  // While sudden death is live, only boardIndex -1 may be addressed.
+  const wrong = await store.move({
+    userId: ALICE,
+    matchId: MATCH_ID,
+    boardIndex: 0,
+    cellIndex: 0,
+    expectedVersion: afterTie.gameState.version,
+  });
+  assert.equal(wrong.status, 409);
+
+  // X wins the sudden-death board: 0,1,2 on the sentinel slot.
+  const seq = [
+    [ALICE, 0],
+    [BOB, 3],
+    [ALICE, 1],
+    [BOB, 4],
+    [ALICE, 2],
+  ];
+  let last;
+  for (const [userId, cellIndex] of seq) {
+    last = await store.move({
+      userId,
+      matchId: MATCH_ID,
+      boardIndex: -1,
+      cellIndex,
+      expectedVersion: liveMatch(fake).gameState.version,
+    });
+    assert.equal("error" in last, false, `${userId}/${cellIndex}`);
+  }
+  assert.equal(last.matchCompleted, true);
+  assert.equal(last.winnerSeat, "player1");
+  const row = liveMatch(fake);
+  assert.equal(row.status, MATCH_STATUS.FINISHED);
+  assert.equal(row.winnerId, ALICE);
+  assert.equal(settlement.rating.length, 1, "the sudden-death win settles exactly once");
+  assert.equal(settlement.rating[0].winnerClerkId, ALICE);
+  assert.equal(settlement.trophy.length, 1);
 });

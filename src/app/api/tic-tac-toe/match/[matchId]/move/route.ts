@@ -2,12 +2,18 @@
 //
 // POST — place one mark.
 //
-// The request body carries ONLY { cellIndex, expectedVersion }. Everything else
-// a client might send (a mark, a board, a winner, a result, a score, whose turn
-// it is, an Elo value, a trophy, a completion flag) is IGNORED: the sequence
+// The request body carries ONLY { boardIndex, cellIndex, expectedVersion }.
+// Everything else a client might send (a mark, a board, a winner, a result, a
+// score, a stage/round, whose turn it is, an Elo value, a trophy, a completion
+// flag) is IGNORED: the sequence
 //   validateMove → applyMove
 // runs entirely inside the server store's row-locked transaction, and this
-// route only ever forwards the two fields below.
+// route only ever forwards the three fields below.
+//
+// `boardIndex` is a lattice slot (0..8), or the sudden-death sentinel (-1)
+// while sudden death is live. The store's `validateMove` rejects a slot that is
+// not in play at the current stage, so the client can never address a board the
+// server has not materialised.
 //
 // `expectedVersion` is the optimistic-concurrency token: it must equal the
 // match's current `state.version`, so a double-submit or a stale tab cannot
@@ -61,6 +67,7 @@ export async function POST(
     const result = await move({
       userId,
       matchId,
+      boardIndex: body?.boardIndex,
       cellIndex: body?.cellIndex,
       expectedVersion: body?.expectedVersion,
     });
@@ -80,6 +87,10 @@ export async function POST(
       version: result.state.version,
       currentTurnUserId: result.match.currentTurnUserId,
       ply: result.state.ply,
+      // The stage is a hint that an expansion just happened, so the opponent's
+      // refetch knows to expect the wider lattice. The boards themselves are
+      // never pushed — the snapshot is always the source of truth.
+      stage: result.state.stage,
       matchCompleted: result.matchCompleted,
       result: result.match.result ?? null,
       winnerId: result.match.winnerId ?? null,
@@ -92,12 +103,15 @@ export async function POST(
         // Echo of the move the SERVER applied (derived from the acting seat),
         // for the client's move-history panel.
         move: {
+          boardIndex: result.state.lastMove?.boardIndex ?? null,
           cellIndex: result.state.lastMove?.cellIndex ?? null,
           mark: result.mark,
           ply: result.ply,
         },
         matchCompleted: result.matchCompleted,
         winningLine: result.winningLine,
+        winningBoards: result.winningBoards,
+        stage: result.stage,
         winnerId: result.match.winnerId ?? null,
         result: result.match.result ?? null,
       },

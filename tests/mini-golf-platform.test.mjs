@@ -260,8 +260,10 @@ test("rendering: a newer shot is queued behind an in-flight rollout, never cance
   // The bug fix: a snapshot that lands while a rollout or its hole-result
   // interstitial is on screen is QUEUED. Aborting the in-flight shot was what
   // swallowed the hole-result popup, because the interrupted shot was usually
-  // the one that had just completed the hole.
-  assert.match(src, /queuedAnimRef\.current = rollout;/);
+  // the one that had just completed the hole. The queue is a FIFO because the
+  // bot's batched turn is replayed as several strokes.
+  assert.match(src, /queuedAnimsRef\.current\.push\(\.\.\.rollouts\);/);
+  assert.match(src, /queuedAnimsRef\.current\.push\(rollout\);/);
   assert.match(src, /if \(animRef\.current \|\| overlayRef\.current\) \{/);
   assert.match(src, /playQueuedRollout/);
 });
@@ -281,25 +283,41 @@ test("physics: the simulator runs the pass-through guard every substep", () => {
   assert.match(strip(read(PHYSICS)), /preventSegmentTunneling\(ball, prevPoint/);
 });
 
-test("rendering: a multi-stroke turn replays as ONE continuous trajectory", () => {
+test("rendering: a multi-stroke turn replays EACH stroke as its own shot, with a gap", () => {
   // The bot resolves its whole turn in a single poll and the snapshot only
   // names its LAST shot; animating just that one teleported the ball across
   // whatever obstacle sat between its old position and the final stroke's
-  // start. The page must build the rollout from the shot LOG so every stroke
-  // is rolled through in order.
+  // start. The page must build the run from the shot LOG, but play each stroke
+  // as a SEPARATE rollout with a lead-in pause — concatenating them into one
+  // path made the whole turn read as a single shot.
   const src = strip(read(MATCH_PAGE));
   assert.match(src, /Array\.isArray\(match\.shots\)/, "the shot log is the source");
   assert.match(
     src,
+    /rollouts = logged\.map\(\(s, index\) => \(\{/,
+    "every unplayed stroke becomes its own rollout",
+  );
+  assert.match(
+    src,
+    /leadInMs: index === 0 \? 0 : AI_SHOT_GAP_MS/,
+    "every stroke after the first waits a beat",
+  );
+  assert.match(src, /const AI_SHOT_GAP_MS = 500;/, "the gap is a named constant");
+  assert.doesNotMatch(
+    src,
     /for \(const s of logged\) for \(const point of s\.path\) path\.push\(point\)/,
-    "every unplayed stroke's path is concatenated",
+    "strokes must NOT be concatenated into one continuous path",
   );
   assert.match(
     src,
     /logged\.every\(\(s\) => s\.seat === runSeat && s\.hole === runHole\)/,
-    "only one seat's strokes on one hole form one path",
+    "only one seat's strokes on one hole form one run",
   );
-  assert.match(src, /lastAnimatedSeqRef\.current = rollout\.seq/);
+  assert.match(
+    src,
+    /queuedAnimsRef\.current\.push\(\.\.\.rollouts\.slice\(1\)\)/,
+    "the remaining strokes are queued in order",
+  );
 });
 
 test("ui: an active match offers a Resign control that concedes via the forfeit route", () => {

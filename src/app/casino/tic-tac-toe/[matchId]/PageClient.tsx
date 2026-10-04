@@ -2,21 +2,23 @@
 
 // src/app/casino/tic-tac-toe/[matchId]/PageClient.tsx
 //
-// The Tic-Tac-Toe Duel match view.
+// The Mega Tic-Tac-Toe match view.
 //
 // ── AUTHORITY ─────────────────────────────────────────────────────────────
 //
-// The server owns the board. The ONLY thing this page ever sends is
-// `{ cellIndex, expectedVersion }` — never a mark, a board, a winner, a result
-// or a turn. The board it renders is the one in the snapshot, the winning line
-// it highlights is the snapshot's, and the result screen is driven by the
-// snapshot's `result` / `winnerId`, so a forfeited match (where the board holds
-// no winning line at all) still reports the correct winner.
+// The server owns the lattice. The ONLY thing this page ever sends is
+// `{ boardIndex, cellIndex, expectedVersion }` where `boardIndex` is a move
+// ADDRESS (a lattice slot 0..8, or -1 for the sudden-death board) — never a
+// mark, a board state, a round, a winner or a result. The lattice it renders is
+// the one in the snapshot, the per-board control and winning lines are the
+// snapshot's, the Mega winning line is the snapshot's `winningBoards`, and the
+// result screen is driven by the snapshot's `result` / `winnerId`, so a
+// forfeited match (where no line exists) still reports the correct winner.
 //
 // Optimism is limited to FEEDBACK: clicking an empty cell paints a translucent
 // "pending" mark until the next authoritative snapshot replaces it. A rejected
 // move drops the ghost and resyncs — the local view is never allowed to drift
-// from the server, and it never decides that a match is over.
+// from the server, and it never decides that a board or the match is over.
 //
 // ── FLOW ──────────────────────────────────────────────────────────────────
 //
@@ -27,7 +29,8 @@
 //   waiting/ready → MatchWaiting · finished → the shared PvpResultScreen
 //
 // There is no clock, no countdown and no animation timeline: a tic-tac-toe turn
-// is one discrete, instantly-resolved move.
+// is one discrete, instantly-resolved move. Expansion (Round 1 → 2 → 3) is a
+// consequence of the SERVER's stage, animated client-side only.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -43,7 +46,8 @@ import {
 import { useSocket } from "../../../../context/SocketProvider";
 import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
-import TicTacToeBoard from "../../../../components/tic-tac-toe/TicTacToeBoard";
+import MegaBoard from "../../../../components/tic-tac-toe/MegaBoard";
+import TiebreakSummary from "../../../../components/tic-tac-toe/TiebreakSummary";
 import SeatAvatar from "../../../../components/game/SeatAvatar";
 import MatchLoading from "../../../../components/game/MatchLoading";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
@@ -55,18 +59,33 @@ import {
   TIC_TAC_TOE_READY,
   ticTacToeMatchRoom,
 } from "../../../../lib/tic-tac-toe/rooms";
-import { CELL_COUNT } from "../../../../lib/tic-tac-toe/constants";
+import {
+  CELL_COUNT,
+  SUDDEN_DEATH_BOARD_INDEX,
+} from "../../../../lib/tic-tac-toe/constants";
 import {
   durationSeconds,
   isCellPlayable,
   isIncomingSnapshotStale,
   markForSeat,
+  megaControlCounts,
+  normaliseLattice,
+  normaliseSlotList,
+  normaliseStage,
   outcomeFor,
   progressLabel,
+  resultReason,
+  roundCellBudget,
+  roundLabel,
+  roundName,
   seatColor,
   seatLabel,
   seatForMark,
+  serverBoardAt,
+  stageSlots,
   statusLabel,
+  tiebreakHeading,
+  tiebreakRows,
   turnLabel,
   viewerMarkLabel,
 } from "../../../../lib/tic-tac-toe/ui";
@@ -75,6 +94,11 @@ import type { Seat } from "../../../../lib/tic-tac-toe/types";
 const ACTIVE_POLL_MS = 1800;
 const IDLE_POLL_MS = 5000;
 
+// Fast, non-blocking progression beats: long enough to read the announcement,
+// short enough that a turn is never waiting on an animation to finish.
+const EXPANSION_MS = 1200;
+const BOARD_EVENT_MS = 1800;
+
 /** "Row 2 · Col 3" — the board cell a logged move landed on. */
 function moveCellLabel(cellIndex: unknown): string {
   const index = Number(cellIndex);
@@ -82,7 +106,15 @@ function moveCellLabel(cellIndex: unknown): string {
   return `Row ${Math.floor(index / 3) + 1} · Col ${(index % 3) + 1}`;
 }
 
-type PendingMove = { cell: number; version: number };
+/** "Board 3" / "Sudden death" — the board a logged move targeted. */
+function moveBoardLabel(boardIndex: unknown): string {
+  const slot = Number(boardIndex);
+  if (slot === SUDDEN_DEATH_BOARD_INDEX) return "Sudden death";
+  if (!Number.isInteger(slot) || slot < 0) return "—";
+  return `Board ${slot + 1}`;
+}
+
+type PendingMove = { boardIndex: number; cellIndex: number; version: number };
 
 export default function TicTacToeMatchPage() {
   const params = useParams<{ matchId: string }>();
@@ -94,10 +126,16 @@ export default function TicTacToeMatchPage() {
 
   const [match, setMatch] = useState<any>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  // Optimistic FEEDBACK only (see the header note): the cell the viewer just
-  // clicked, kept until an authoritative snapshot moves past that version.
+  // Optimistic FEEDBACK only (see the header note): the board + cell the viewer
+  // just clicked, kept until an authoritative snapshot moves past that version.
   const [pending, setPending] = useState<PendingMove | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Which lattice board the viewer is interacting with (hover / focus / tap).
+  const [focusedBoard, setFocusedBoard] = useState<number | null>(null);
+  // The expansion transition: the SERVER's stage grew (Round 1 → 2 → 3).
+  const [transition, setTransition] = useState<number | null>(null);
+  // The board that just resolved on the latest snapshot, for a brief highlight.
+  const [boardEvent, setBoardEvent] = useState<{ slot: number; control: string } | null>(null);
   const [showForfeitConfirm, setShowForfeitConfirm] = useState(false);
   const [forfeiting, setForfeiting] = useState(false);
   const [cancellingLobby, setCancellingLobby] = useState(false);
@@ -105,6 +143,11 @@ export default function TicTacToeMatchPage() {
 
   const abortRef = useRef<AbortController | null>(null);
   const matchRef = useRef<any>(null);
+  // The last stage / lattice we observed, so a transition or a board event only
+  // fires when the SERVER actually moved — never on first load or a re-poll.
+  const prevStageRef = useRef<number | null>(null);
+  const prevBoardsRef = useRef<any>(null);
+  const boardEventTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     matchRef.current = match;
@@ -112,15 +155,21 @@ export default function TicTacToeMatchPage() {
 
   // The App Router reuses this page instance when only `[matchId]` differs, so
   // every piece of per-match state is reset, otherwise the previous match's
-  // board and pending ghost would flash into the new one.
+  // lattice and pending ghost would flash into the new one.
   useEffect(() => {
     setMatch(null);
     setLoadError(null);
     setPending(null);
     setSubmitting(false);
+    setFocusedBoard(null);
+    setTransition(null);
+    setBoardEvent(null);
     setShowForfeitConfirm(false);
     setForfeiting(false);
     setShowReportModal(false);
+    prevStageRef.current = null;
+    prevBoardsRef.current = null;
+    if (boardEventTimerRef.current) clearTimeout(boardEventTimerRef.current);
   }, [matchId]);
 
   // ── Fetching ──────────────────────────────────────────────────────────
@@ -205,7 +254,7 @@ export default function TicTacToeMatchPage() {
     };
   }, [socket, matchId, refresh]);
 
-  // ── Derived view model ────────────────────────────────────────────────
+  // ── Derived view model (all from the snapshot) ────────────────────────
   const viewerSeat: Seat | null = match?.viewerSeat ?? null;
   const opponentSeat: Seat | null = viewerSeat
     ? viewerSeat === "player1"
@@ -218,13 +267,78 @@ export default function TicTacToeMatchPage() {
   const cancelled = match?.status === "cancelled";
   const isViewerTurn = Boolean(match?.isViewerTurn);
 
+  const stage = normaliseStage(match?.stage);
+  const stageSlotList = normaliseSlotList(match?.stageBoardSlots);
+  const slots = stageSlotList.length ? stageSlotList : stageSlots(stage);
+  const lattice = useMemo(() => normaliseLattice(match?.boards), [match?.boards]);
+  const counts = useMemo(() => megaControlCounts(lattice, slots), [lattice, slots]);
+  const activeSlots = useMemo(() => {
+    const fromServer = normaliseSlotList(match?.activeBoards);
+    if (fromServer.length) return fromServer;
+    return slots.filter((slot) => lattice[slot]?.control === "active");
+  }, [match?.activeBoards, lattice, slots]);
+  const cellBudget = roundCellBudget(stage);
+  const effectiveFocus =
+    focusedBoard !== null && slots.includes(focusedBoard)
+      ? focusedBoard
+      : activeSlots[0] ?? slots[0] ?? null;
+
+  // The expansion transition, driven ONLY by the server's stage growing. The
+  // first observed stage is recorded silently, so reconnecting into a match
+  // that is already Round 2/3 does not replay an expansion.
+  // `hasMatch` (not `match` itself) is the dependency: the poll hands back a NEW
+  // object every tick, and keying the effect on its identity would clear the
+  // timer mid-beat and leave the overlay stuck.
+  const hasMatch = Boolean(match);
+  useEffect(() => {
+    if (!hasMatch) return undefined;
+    const previous = prevStageRef.current;
+    prevStageRef.current = stage;
+    if (previous === null || stage <= previous) return undefined;
+    setTransition(stage);
+    const timer = setTimeout(() => setTransition(null), EXPANSION_MS);
+    return () => clearTimeout(timer);
+  }, [stage, hasMatch]);
+
+  // A small-board win or draw, detected purely by a control flip in the
+  // SERVER's lattice. At most one board resolves per ply, so this is a single
+  // event; a single surviving timer drops it after a beat (a re-poll must not
+  // cancel it).
+  useEffect(() => {
+    const boards = match?.boards;
+    if (!Array.isArray(boards)) return undefined;
+    const previous = prevBoardsRef.current;
+    prevBoardsRef.current = boards;
+    if (!previous) return undefined;
+    for (let slot = 0; slot < boards.length; slot += 1) {
+      const after = boards[slot]?.control;
+      if (after !== "X" && after !== "O" && after !== "draw") continue;
+      if (previous[slot]?.control === "active") {
+        setBoardEvent({ slot, control: after });
+        if (boardEventTimerRef.current) clearTimeout(boardEventTimerRef.current);
+        boardEventTimerRef.current = setTimeout(() => setBoardEvent(null), BOARD_EVENT_MS);
+        break;
+      }
+    }
+    return undefined;
+  }, [match?.boards]);
+
+  useEffect(
+    () => () => {
+      if (boardEventTimerRef.current) clearTimeout(boardEventTimerRef.current);
+    },
+    [],
+  );
+
   // The server's own gate, narrowed only by "a request is in flight" and
   // "the match is over" — this page never invents a third condition.
+  const inTransition = transition !== null;
   const boardUnlocked =
     Boolean(match) &&
     !finished &&
     !cancelled &&
     !submitting &&
+    !inTransition &&
     Boolean(match?.viewerCanMove);
 
   const seats = useMemo(() => {
@@ -252,9 +366,8 @@ export default function TicTacToeMatchPage() {
   // Adopt the server's authoritative core state from a POST response WITHOUT
   // discarding the GET-only adornments (`players`, the move log, the
   // timestamps) that a move/forfeit response does not carry — then resync so
-  // those adornments are re-derived server-side. The board, the turn, the
-  // status and the outcome still come ONLY from the response; the merge never
-  // invents state, it just preserves what the response omitted.
+  // those adornments are re-derived server-side. The lattice, the turn, the
+  // status and the outcome still come ONLY from the response.
   const adoptAuthoritative = useCallback(
     (snapshot: any) => {
       setMatch((prev: any) => ({ ...(prev ?? {}), ...(snapshot ?? {}) }));
@@ -267,16 +380,19 @@ export default function TicTacToeMatchPage() {
     [refresh, socket, matchId],
   );
 
-  // The ONLY way a move is ever requested. It first re-checks the cell against
-  // the snapshot the viewer is looking at, so a click on an occupied cell, or a
-  // click outside the viewer's turn, is a no-op here as well as server-side.
+  // The ONLY way a move is ever requested. It first re-checks the target board
+  // and cell against the snapshot the viewer is looking at, so a click on an
+  // occupied cell, a locked board, or a click outside the viewer's turn is a
+  // no-op here as well as server-side.
   const submitMove = useCallback(
-    async (cellIndex: number) => {
+    async (boardIndex: number, cellIndex: number) => {
       const current = matchRef.current;
       if (!current || submitting) return;
+      const target = serverBoardAt(current, boardIndex);
+      if (!target || target.control !== "active") return;
       if (
         !isCellPlayable({
-          board: current.board,
+          board: target.cells,
           cellIndex,
           viewerCanMove: Boolean(current.viewerCanMove),
         })
@@ -285,20 +401,25 @@ export default function TicTacToeMatchPage() {
       }
       const expectedVersion = current.version;
 
+      setFocusedBoard(boardIndex);
       setSubmitting(true);
-      setPending({ cell: cellIndex, version: Number(expectedVersion) || 0 });
+      setPending({
+        boardIndex,
+        cellIndex,
+        version: Number(expectedVersion) || 0,
+      });
       setLoadError(null);
       try {
         const res = await fetch(`${apiMatch}/move`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          // The whole request. No mark, no board, no result.
-          body: JSON.stringify({ cellIndex, expectedVersion }),
+          // The whole request. No mark, no board state, no result.
+          body: JSON.stringify({ boardIndex, cellIndex, expectedVersion }),
         });
         const data = await res.json().catch(() => null);
         if (!res.ok || !data?.success) {
-          // Rejected (stale tab, wrong turn, occupied cell) — drop the ghost
-          // and resync rather than guessing what happened.
+          // Rejected (stale tab, wrong turn, occupied cell, locked board) —
+          // drop the ghost and resync rather than guessing what happened.
           setPending(null);
           setLoadError(data?.error || "Move rejected");
           refresh();
@@ -313,7 +434,7 @@ export default function TicTacToeMatchPage() {
         setSubmitting(false);
       }
     },
-    [adoptAuthoritative, apiMatch, matchId, refresh, submitting],
+    [adoptAuthoritative, apiMatch, refresh, submitting],
   );
 
   const forfeit = useCallback(async () => {
@@ -367,7 +488,7 @@ export default function TicTacToeMatchPage() {
   // ── Render ────────────────────────────────────────────────────────────
   if (!match && !loadError) {
     // Branded shell WITH the nav bar (this gate used to drop it entirely).
-    return <MatchLoading label="Loading Tic-Tac-Toe…" currentPath="/casino/tic-tac-toe" />;
+    return <MatchLoading label="Loading Mega Tic-Tac-Toe…" currentPath="/casino/tic-tac-toe" />;
   }
 
   if (!match && loadError) {
@@ -390,12 +511,12 @@ export default function TicTacToeMatchPage() {
       {(match.status === "waiting" || match.status === "ready") && (
         <MatchWaiting
           state={match.status === "ready" ? "ready" : "waiting"}
-          gameName="Tic-Tac-Toe"
+          gameName="Mega Tic-Tac-Toe"
           icon={<IconTicTac className="h-8 w-8 text-amber-400" />}
           subtitle={
             match.status === "ready"
-              ? "Opponent found — X opens…"
-              : "Waiting for an opponent to join your Tic-Tac-Toe table…"
+              ? "Opponent found — X opens Round 1…"
+              : "Waiting for an opponent to join your Mega Tic-Tac-Toe table…"
           }
           seats={[
             {
@@ -427,18 +548,19 @@ export default function TicTacToeMatchPage() {
         <div
           data-testid="tic-tac-toe-match"
           data-status={match.status}
+          data-stage={stage}
           className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#0d1226] via-[#080d1c] to-[#04060f] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8"
         >
-          <div className="mx-auto max-w-5xl">
+          <div className="mx-auto max-w-6xl">
             {/* ── Header ────────────────────────────────────────────── */}
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h1 className="flex items-center gap-2 text-2xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-300 to-yellow-200 sm:text-3xl">
                   <IconTicTac className="h-7 w-7 text-amber-400" />
-                  Tic-Tac-Toe
+                  Mega Tic-Tac-Toe
                 </h1>
                 <p className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-widest text-amber-200/70">
-                  <span>3×3 · three in a row</span>
+                  <span>1 → 4 → 9 boards · win the lattice</span>
                   <span className="rounded-full border border-emerald-400/40 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold tracking-wider text-emerald-200">
                     Free · rated 1v1
                   </span>
@@ -544,24 +666,101 @@ export default function TicTacToeMatchPage() {
                       }`}
                     />
                     {turnCopy}
+                    {boardUnlocked && effectiveFocus !== null && (
+                      <span className="text-[11px] font-normal text-white/55">
+                        · focused on Board {effectiveFocus + 1}
+                      </span>
+                    )}
                   </span>
                   <span className="text-[11px] uppercase tracking-wider text-white/45">
-                    {viewerMarkLabel(viewerSeat)} · {progressLabel(match.board)}
+                    {roundLabel(stage)} · {viewerMarkLabel(viewerSeat)} ·{" "}
+                    {progressLabel(match.boards?.[effectiveFocus]?.cells ?? [])}
                   </span>
                 </div>
 
-                {/* The board. Cells are offered only when the snapshot says so. */}
-                <div className="mx-auto w-full max-w-[min(78vw,420px)]">
-                  <TicTacToeBoard
-                    board={match.board}
-                    winningLine={match.winningLine}
+                {/* Small-board feedback — a win or a draw, briefly announced. */}
+                <AnimatePresence>
+                  {boardEvent !== null && transition === null && (
+                    <motion.div
+                      key={`${boardEvent.slot}-${boardEvent.control}`}
+                      data-testid="board-event"
+                      data-kind={boardEvent.control === "draw" ? "draw" : "win"}
+                      data-slot={boardEvent.slot}
+                      initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -6 }}
+                      transition={{ duration: 0.18 }}
+                      className={`mb-3 rounded-xl border px-3 py-2 text-center text-sm font-bold ${
+                        boardEvent.control === "draw"
+                          ? "border-white/20 bg-white/10 text-white/80"
+                          : "border-emerald-400/50 bg-emerald-500/15 text-emerald-100"
+                      }`}
+                    >
+                      {boardEvent.control === "draw"
+                        ? `Board ${boardEvent.slot + 1} drawn — locked`
+                        : `Board ${boardEvent.slot + 1} — ${boardEvent.control} controls it!`}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* The lattice, with the expansion transition over it. */}
+                <div className="relative">
+                  <MegaBoard
+                    boards={match.boards}
+                    stage={stage}
+                    slots={slots}
+                    winningBoards={match.winningBoards}
                     lastMove={match.lastMove}
+                    suddenDeath={match.suddenDeath}
                     viewerSeat={viewerSeat}
                     viewerCanMove={boardUnlocked}
                     busy={submitting}
-                    pendingCell={pending?.cell ?? null}
-                    onPlay={(cellIndex) => void submitMove(cellIndex)}
+                    pending={pending}
+                    focusedBoard={effectiveFocus}
+                    highlightSlot={boardEvent?.slot ?? null}
+                    onFocusBoard={setFocusedBoard}
+                    onPlay={(boardIndex, cellIndex) => void submitMove(boardIndex, cellIndex)}
                   />
+
+                  {/* Strong, fast expansion announcement. Input is locked for the
+                      beat (via `boardUnlocked`), then control returns. */}
+                  <AnimatePresence>
+                    {transition !== null && (
+                      <motion.div
+                        key={transition}
+                        data-testid="mega-transition"
+                        data-to={transition}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.16 }}
+                        className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-[#04060f]/70 backdrop-blur-[3px]"
+                      >
+                        <motion.div
+                          initial={{ scale: 0.82, opacity: 0, y: 8 }}
+                          animate={{ scale: 1, opacity: 1, y: 0 }}
+                          exit={{ scale: 1.06, opacity: 0 }}
+                          transition={{ type: "spring", stiffness: 340, damping: 24 }}
+                          className="mx-3 rounded-2xl border border-amber-400/60 bg-gradient-to-b from-amber-500/25 to-black/70 px-8 py-6 text-center shadow-[0_0_60px_rgba(251,191,36,0.4)]"
+                        >
+                          <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-amber-200/80">
+                            {transition === 2 ? "Board expanding" : "Final expansion"}
+                          </p>
+                          <p
+                            data-testid="mega-transition-title"
+                            className="mt-1 bg-clip-text text-4xl font-black tracking-wider text-transparent bg-gradient-to-r from-amber-200 via-yellow-100 to-amber-200 sm:text-5xl"
+                          >
+                            {transition === 2 ? "ROUND 2" : "MEGA BOARD"}
+                          </p>
+                          <p className="mt-1 text-xs font-semibold text-white/70">
+                            {transition === 2
+                              ? "Four boards · control three in a line"
+                              : "Nine boards · control three in a line"}
+                          </p>
+                        </motion.div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
                 {/* Controls */}
@@ -573,7 +772,7 @@ export default function TicTacToeMatchPage() {
                         : finished || cancelled
                           ? "Match over"
                           : boardUnlocked
-                            ? "Your turn — click any empty cell."
+                            ? "Your turn — click any empty cell on any open board."
                             : "Waiting for your opponent's move…"}
                     </span>
                     {!finished && !cancelled && match.status === "playing" && (
@@ -590,8 +789,8 @@ export default function TicTacToeMatchPage() {
                   </div>
                   <p className="mt-2 text-[11px] leading-relaxed text-white/45">
                     {boardUnlocked
-                      ? "Every click is verified by the server: it decides the mark, the turn and the winner. Empty cells are outlined — occupied cells and out-of-turn clicks do nothing."
-                      : "The board is the server's. A cell is only playable on your turn, and the winner is decided by the server once a line is complete."}
+                      ? "Every click is verified by the server: it decides the mark, whose turn it is, which board is locked and when the Mega line wins. Empty cells are outlined; occupied, locked and out-of-turn cells do nothing."
+                      : "The lattice is the server's. Open boards are outlined on your turn, a completed board locks while keeping every mark, and the winner is decided server-side."}
                   </p>
                   {loadError && (
                     <p className="mt-2 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-200">
@@ -609,10 +808,13 @@ export default function TicTacToeMatchPage() {
                   </h2>
                   <div className="space-y-1.5 text-xs">
                     <Row label="Status" value={statusLabel(match.status)} />
+                    <Row label="Round" value={`${roundLabel(stage)} · ${roundName(stage)}`} />
+                    <Row label="Boards in play" value={`${slots.length}`} />
+                    <Row label="Boards locked" value={`${counts.resolved} of ${slots.length}`} />
                     <Row label="Your mark" value={viewerMark ?? "—"} />
                     <Row label="Opponent" value={opponentName} />
                     <Row label="Opponent's mark" value={opponentMark ?? "—"} />
-                    <Row label="Moves played" value={`${Number(match.ply) || 0} of ${CELL_COUNT}`} />
+                    <Row label="Moves played" value={`${Number(match.ply) || 0} of ${cellBudget}`} />
                     <Row
                       label="Turn"
                       value={
@@ -631,11 +833,34 @@ export default function TicTacToeMatchPage() {
 
                 <section className="rounded-2xl border border-amber-500/20 bg-black/40 p-4">
                   <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-amber-300">
+                    Mega board
+                  </h2>
+                  <div className="space-y-1.5 text-xs">
+                    <Row label="X controls" value={`${counts.x}`} />
+                    <Row label="O controls" value={`${counts.o}`} />
+                    <Row label="Draws" value={`${counts.draw}`} />
+                    <Row label="Open boards" value={`${counts.active}`} />
+                    {Number.isInteger(match.winningBoards?.[0]) ? (
+                      <Row
+                        label="Mega line"
+                        value={(match.winningBoards as number[])
+                          .map((slot: number) => `B${slot + 1}`)
+                          .join(" · ")}
+                      />
+                    ) : (
+                      <Row label="Mega line" value="—" />
+                    )}
+                  </div>
+                  {match.tiebreak && <TiebreakSummary tiebreak={match.tiebreak} className="mt-2" />}
+                </section>
+
+                <section className="rounded-2xl border border-amber-500/20 bg-black/40 p-4">
+                  <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-amber-300">
                     Move history
                   </h2>
                   {moves.length === 0 ? (
                     <p className="text-xs text-white/50">
-                      No moves yet — X opens the match.
+                      No moves yet — X opens Round 1.
                     </p>
                   ) : (
                     <div className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
@@ -646,7 +871,7 @@ export default function TicTacToeMatchPage() {
                         const isLastMove = index === moves.length - 1;
                         return (
                           <div
-                            key={`${mv.ply}-${mv.cellIndex}`}
+                            key={`${mv.ply}-${mv.boardIndex}-${mv.cellIndex}`}
                             className={`flex items-center justify-between rounded-lg border px-2 py-1.5 text-xs ${
                               isLastMove
                                 ? "border-amber-400/40 bg-amber-500/10"
@@ -656,7 +881,7 @@ export default function TicTacToeMatchPage() {
                             <span className="font-semibold text-white/70">
                               Move {Number(mv.ply) + 1}
                               <span className="ml-1.5 text-[10px] uppercase tracking-wider text-white/35">
-                                {moveCellLabel(mv.cellIndex)}
+                                {moveBoardLabel(mv.boardIndex)} · {moveCellLabel(mv.cellIndex)}
                               </span>
                             </span>
                             <span
@@ -769,21 +994,17 @@ export default function TicTacToeMatchPage() {
             outcome={outcome}
             headline={
               outcome === "draw"
-                ? "Draw — the board filled with no line"
+                ? "Draw — the lattice resolved level"
                 : outcome === "win"
                   ? "You won the duel"
                   : "Your opponent won the duel"
             }
-            subline={
-              match.winningLine
-                ? `${match.winner === viewerSeat ? "Your" : "Their"} ${
-                    markForSeat(match.winner) ?? ""
-                  } completed a line in ${Number(match.ply) || 0} moves.`
-                : Number(match.ply) >= CELL_COUNT
-                  ? "All nine cells were played and nobody completed a line."
-                  : "The match was conceded before the board was decided."
-            }
-            gameName="Tic-Tac-Toe"
+            subline={resultReason({
+              winningBoards: match.winningBoards,
+              tiebreak: match.tiebreak,
+              ply: match.ply,
+            })}
+            gameName="Mega Tic-Tac-Toe"
             gameKey="tic-tac-toe"
             durationSeconds={durationSeconds(match.startedAt, match.endedAt)}
             opponent={{
@@ -797,21 +1018,33 @@ export default function TicTacToeMatchPage() {
                 value: outcome === "win" ? "Win" : outcome === "loss" ? "Loss" : "Draw",
               },
               { label: "Your mark", value: viewerMark ?? "—" },
-              { label: "Moves played", value: `${Number(match.ply) || 0} of ${CELL_COUNT}` },
+              { label: "Round", value: `${stage}` },
+              { label: "Moves played", value: `${Number(match.ply) || 0} of ${cellBudget}` },
             ]}
             details={[
               { label: "Match ID", value: String(matchId) },
               { label: "Your mark", value: `${viewerMark ?? "—"} (${viewerSeat ?? "—"})` },
               { label: "Opponent", value: opponentName },
               {
-                label: "Winning line",
-                value: match.winningLine
-                  ? (match.winningLine as number[]).join(" · ")
+                label: "Mega line",
+                value: match.winningBoards
+                  ? (match.winningBoards as number[]).map((slot: number) => `Board ${slot + 1}`).join(" · ")
                   : "—",
               },
+              ...(match.tiebreak
+                ? [
+                    { label: "Tiebreak", value: tiebreakHeading(match.tiebreak) },
+                    ...tiebreakRows(match.tiebreak).map((row) => ({
+                      label: row.label,
+                      value: row.value,
+                    })),
+                  ]
+                : []),
               ...moves.map((mv: any) => ({
                 label: `Move ${Number(mv.ply) + 1}`,
-                value: `${mv.playerId === match.player1Id ? "X" : "O"} → ${moveCellLabel(mv.cellIndex)}`,
+                value: `${mv.playerId === match.player1Id ? "X" : "O"} → ${moveBoardLabel(
+                  mv.boardIndex,
+                )}, ${moveCellLabel(mv.cellIndex)}`,
               })),
             ]}
             playAgain={{
