@@ -48,7 +48,9 @@ import {
   isDealSolvable,
   solvableDealFromSeed,
   solveDeal,
+  stateSolvableVerdict,
 } from "../src/lib/solitaire-duel/solvable.ts";
+import { initialStateFromDeal } from "../src/lib/solitaire-duel/rules.ts";
 
 /**
  * The sampled deal seeds, spread across the 32-bit space rather than counting
@@ -171,6 +173,76 @@ test("the deal is still a pure function of the seed", () => {
   const before = dealFingerprint(solvableDealFromSeed(SEEDS[2]));
   solvableDealFromSeed(SEEDS[5]);
   assert.equal(dealFingerprint(solvableDealFromSeed(SEEDS[2])), before);
+});
+
+/**
+ * A VALID board one move from won: 51 cards on the foundations with K♣ alone on
+ * tableau column 0. Every card appears exactly once, so it is a legal position.
+ */
+function oneMoveFromWon() {
+  const state = initialStateFromDeal(solvableDealFromSeed(SEEDS[0]));
+  state.tableau = Array.from({ length: TABLEAU_COLUMNS }, () => []);
+  state.tableau[0] = [{ card: { suit: "clubs", rank: 13 }, faceUp: true }];
+  state.stock = [];
+  state.waste = [];
+  state.foundations = {
+    spades: Array.from({ length: 13 }, (_, i) => ({ suit: "spades", rank: i + 1 })),
+    hearts: Array.from({ length: 13 }, (_, i) => ({ suit: "hearts", rank: i + 1 })),
+    diamonds: Array.from({ length: 13 }, (_, i) => ({ suit: "diamonds", rank: i + 1 })),
+    clubs: Array.from({ length: 12 }, (_, i) => ({ suit: "clubs", rank: i + 1 })),
+  };
+  state.ply = 40;
+  state.peakFoundation = 51;
+  return state;
+}
+
+/** A board with no legal move at all: seven columns topped by black fives. */
+function deadBoard() {
+  const state = initialStateFromDeal(solvableDealFromSeed(SEEDS[0]));
+  state.tableau = Array.from({ length: TABLEAU_COLUMNS }, () => [
+    { card: { suit: "spades", rank: 5 }, faceUp: true },
+  ]);
+  state.stock = [];
+  state.waste = [];
+  state.foundations = { spades: [], hearts: [], diamonds: [], clubs: [] };
+  return state;
+}
+
+// ── Live-position solvability (the re-deal trigger) ───────────────────────
+
+test("state check: a served deal's opening is never called impossible", () => {
+  for (const seed of SEEDS.slice(0, 6)) {
+    const state = initialStateFromDeal(solvableDealFromSeed(seed));
+    assert.notEqual(
+      stateSolvableVerdict(state),
+      "impossible",
+      `seed ${seed}: a served deal's opening must never be reported impossible`,
+    );
+  }
+});
+
+test("state check: a board with no legal move left is impossible", () => {
+  assert.equal(stateSolvableVerdict(deadBoard()), "impossible");
+});
+
+test("state check: one move from won is solvable", () => {
+  assert.equal(stateSolvableVerdict(oneMoveFromWon()), "solvable");
+});
+
+test("state check: a blown budget is UNKNOWN, never impossible", () => {
+  // A King on top of a buried deuce, with six empty columns: the King can move
+  // onto an empty column, so a one-node budget cannot exhaust the search — and
+  // an inconclusive search must never be reported as a loss.
+  const state = initialStateFromDeal(solvableDealFromSeed(SEEDS[0]));
+  state.tableau = Array.from({ length: TABLEAU_COLUMNS }, () => []);
+  state.tableau[0] = [
+    { card: { suit: "clubs", rank: 2 }, faceUp: true },
+    { card: { suit: "spades", rank: 13 }, faceUp: true },
+  ];
+  state.stock = [];
+  state.waste = [];
+  state.foundations = { spades: [], hearts: [], diamonds: [], clubs: [] };
+  assert.equal(stateSolvableVerdict(state, 1), "unknown");
 });
 
 test("the exported shape constants match the game's own constants", () => {

@@ -227,6 +227,51 @@ test("the bot always makes a move from a fresh deal", () => {
   }
 });
 
+test("the planner reports a board with no legal move at all as stuck", () => {
+  // Seven columns, each topped by a black five, with empty foundations and an
+  // empty stock/waste: no five can stack on another, no foundation fits, and
+  // there is no empty column to park on. Zero legal moves.
+  const dead = emptyState({
+    tableau: Array.from({ length: TABLEAU_COLUMNS }, () => [
+      { card: card("spades", 5), faceUp: true },
+    ]),
+  });
+  assert.deepEqual(legalMoves(dead), []);
+  const plan = planAiMoves({ state: dead, difficulty: "hard", maxMoves: 40 });
+  assert.equal(plan.moves.length, 0);
+  assert.equal(plan.completed, false);
+  assert.equal(plan.stuck, true, "a dead board must be reported as stuck");
+});
+
+test("the planner does NOT call a behind-schedule bot stuck", () => {
+  // Hitting the move cap is a PACE limit, never a dead board: the store must
+  // not re-deal a bot that is merely waiting on the clock.
+  const plan = planAiMoves({
+    state: dealState(31337),
+    difficulty: "hard",
+    maxMoves: 1,
+    random: () => 1,
+  });
+  assert.equal(plan.moves.length, 1);
+  assert.equal(plan.stuck, false);
+});
+
+test("a completed board is never reported stuck", () => {
+  const done = emptyState({
+    foundations: {
+      spades: Array.from({ length: 13 }, (_, i) => card("spades", i + 1)),
+      hearts: Array.from({ length: 13 }, (_, i) => card("hearts", i + 1)),
+      diamonds: Array.from({ length: 13 }, (_, i) => card("diamonds", i + 1)),
+      clubs: Array.from({ length: 13 }, (_, i) => card("clubs", i + 1)),
+    },
+    completed: true,
+    peakFoundation: 52,
+  });
+  const plan = planAiMoves({ state: done, difficulty: "hard" });
+  assert.equal(plan.completed, true);
+  assert.equal(plan.stuck, false);
+});
+
 test("a completed board yields no move", () => {
   const state = emptyState({
     foundations: {

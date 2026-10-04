@@ -62,6 +62,13 @@ export type SolitaireState = {
   foundations: FoundationPiles;
   /** Accepted moves by this seat — the per-seat idempotency cursor. */
   ply: number;
+  /**
+   * How many times this seat's board has been RE-DEALT mid-match. Starts at 0
+   * and only ever grows. It is the client's signal that the board under it was
+   * replaced (the move cursor `ply` is deliberately NOT rewound, so a re-deal
+   * cannot reuse a ply and collide with the append-only move log).
+   */
+  resetCount: number;
   /** High-water mark of cards on the foundations (0..52). Monotone. */
   peakFoundation: number;
   /** True once all four foundations reach King. Stamped by the store. */
@@ -175,6 +182,12 @@ export type SolitaireView = {
   waste: Card[];
   foundations: FoundationPiles;
   ply: number;
+  /**
+   * The number of mid-match re-deals this board has had (0 = the original
+   * deal). A client compares it to the previous snapshot to learn that the
+   * server replaced its board — which is why it must travel in the view.
+   */
+  resetCount: number;
   progress: SeatProgress;
   completed: boolean;
   /** True when a `draw` would recycle the waste (the stock is exhausted). */

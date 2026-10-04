@@ -426,7 +426,7 @@ function emptyColumnTotal(state: CompactState): number {
  * "is this deal winnable at all" it never helps to leave one sitting in a
  * column. Greedily clearing them shrinks the state space enormously.
  */
-function normalize(state: CompactState, actions: SolveAction[]): void {
+function normalize(state: CompactState, actions: SolveAction[] = []): void {
   let changed = true;
   while (changed) {
     changed = false;
@@ -691,6 +691,130 @@ function replayActions(deal: SolitaireDeal, actions: SolveAction[]): number | nu
 
 /** The search budget a single public `solveDeal` call may spend. */
 const SOLVE_NODE_BUDGET = 60_000;
+
+// ──────────────────────────────────────────────────────────────────────────
+// Live-position solvability — the re-deal trigger
+// ──────────────────────────────────────────────────────────────────────────
+
+/** The per-suit foundation counts, in the compact game's index order. */
+function compactFoundations(state: SolitaireState): number[] {
+  return SUITS.map((suit) => (state.foundations?.[suit] ?? []).length);
+}
+
+/**
+ * Build the compact search position from a LIVE seat board.
+ *
+ * The server's state knows every card's identity even when it is face-down, so
+ * the same pool reduction the deal generator uses applies unchanged: the stock
+ * and the waste are one unordered pool (single-card draw, unlimited redeals),
+ * and a hidden tableau card is simply a known card in a fixed position.
+ *
+ * Returns null when the board is not analysable (a position with no identity,
+ * or an unreadable shape). Callers must treat that as UNKNOWN, never as a loss.
+ */
+export function compactFromState(state: SolitaireState): CompactState | null {
+  if (!state || !Array.isArray(state.tableau)) return null;
+  const columns: CompactColumn[] = [];
+  for (const column of state.tableau) {
+    const cards: number[] = [];
+    const faceUp: boolean[] = [];
+    for (const pile of column) {
+      if (!pile?.card) return null;
+      cards.push(cardIndex(pile.card));
+      faceUp.push(Boolean(pile.faceUp));
+    }
+    columns.push({ cards, faceUp });
+  }
+  const pool = [...(state.stock ?? []), ...(state.waste ?? [])].map(cardIndex);
+  return { columns, pool, foundations: compactFoundations(state) };
+}
+
+/**
+ * A COMPLETE, memoised search over the compact game.
+ *
+ * `search` above expands only moves that make visible progress: it is a fast
+ * WITNESS finder, and its failure proves nothing. This explores EVERY legal
+ * move instead, so a fully-exhausted search (no witness found with the whole
+ * reachable set visited) is genuine evidence that no line exists. It is bounded
+ * by `limit` nodes; a search cut short by the budget reports
+ * `exhausted: false`, and the caller must treat the position as UNKNOWN rather
+ * than as impossible.
+ */
+function searchExhaustive(
+  start: CompactState,
+  counter: { nodes: number },
+  limit: number,
+): { solved: boolean; exhausted: boolean } {
+  const seen = new Set<string>();
+  let exhausted = true;
+  // A Klondike line is a few hundred moves at most, so a path this deep means
+  // the search is wandering rather than solving; bail to UNKNOWN (never to
+  // "impossible") rather than risk an unbounded recursion.
+  const DEPTH_LIMIT = 512;
+
+  const root = cloneCompact(start);
+  normalize(root);
+
+  function dfs(current: CompactState, depth: number): boolean {
+    if (foundationTotal(current) === DECK_SIZE) return true;
+    counter.nodes += 1;
+    if (counter.nodes > limit || depth > DEPTH_LIMIT) {
+      exhausted = false;
+      return false;
+    }
+    const key = compactKey(current);
+    if (seen.has(key)) return false;
+    seen.add(key);
+
+    for (const move of compactMoves(current)) {
+      const next = applyCompact(current, move);
+      normalize(next);
+      if (dfs(next, depth + 1)) return true;
+      if (!exhausted) return false;
+    }
+    return false;
+  }
+
+  const solved = dfs(root, 0);
+  return { solved, exhausted };
+}
+
+/**
+ * The budget one live-position verdict may spend.
+ *
+ * Deliberately smaller than a deal attempt: this runs while a player is waiting
+ * on a poll, and only near-dead positions (whose reachable set is small) are
+ * meant to exhaust it. A hard-but-winnable position simply reports UNKNOWN.
+ */
+const STATE_SOLVE_NODE_BUDGET = 25_000;
+
+/** The three-way answer a live-position check can give. */
+export type StateSolveVerdict = "solvable" | "impossible" | "unknown";
+
+/**
+ * Whether a LIVE seat position can still be won.
+ *
+ *   * "solvable"   — a winning line was found in the complete search
+ *   * "impossible" — the search explored every reachable position and none wins
+ *   * "unknown"    — the budget ran out before the search could conclude
+ *
+ * Only "impossible" may trigger a board re-deal. "unknown" must NEVER be
+ * treated as a loss: that is what stops a hard-but-winnable board from being
+ * yanked out from under a player who is still making progress.
+ */
+export function stateSolvableVerdict(
+  state: SolitaireState,
+  budget = STATE_SOLVE_NODE_BUDGET,
+): StateSolveVerdict {
+  if (!state) return "unknown";
+  if (isComplete(state)) return "solvable";
+  const compact = compactFromState(state);
+  if (!compact) return "unknown";
+  const counter = { nodes: 0 };
+  const result = searchExhaustive(compact, counter, Math.max(1, Math.floor(budget)));
+  if (result.solved) return "solvable";
+  return result.exhausted ? "impossible" : "unknown";
+}
 
 /**
  * Solve a deal with the strong search and verify the witness through the engine.

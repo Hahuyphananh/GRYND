@@ -112,6 +112,7 @@ export function boardForValidation(view: SolitaireView): SolitaireState {
     waste: view?.waste ?? [],
     foundations: view?.foundations ?? { spades: [], hearts: [], diamonds: [], clubs: [] },
     ply: Number(view?.ply) || 0,
+    resetCount: 0,
     peakFoundation: 0,
     completed: Boolean(view?.completed),
     completedAtMs: null,

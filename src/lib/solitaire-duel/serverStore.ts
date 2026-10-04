@@ -49,8 +49,8 @@ import {
   VARIANT,
   VARIANT_VERSION,
 } from "./constants";
-import { aiMoveDelayMs, planAiMoves } from "./ai";
-import { solvableDealFromSeed } from "./solvable";
+import { AI_STAGNATION_LIMIT, aiMoveDelayMs, planAiMoves } from "./ai";
+import { solvableDealFromSeed, stateSolvableVerdict } from "./solvable";
 import {
   cloneState,
   failureOf,
@@ -700,6 +700,119 @@ export async function restartAiMatch({
 }
 
 /**
+ * Re-deal ONE seat's board, in place, and touch nothing else.
+ *
+ * This is what backs both re-deal triggers: a bot whose own board is dead, and
+ * a seat whose live position has been PROVEN unwinnable. It deliberately
+ * rewrites only that seat's columns:
+ *
+ *   * the OTHER seat's board is never read or written, so an opponent's game is
+ *     untouched
+ *   * `go_at`, `started_at` and BOTH inactivity clocks (`p1/p2_last_action_at`)
+ *     are untouched, so a re-deal costs the player exactly the time they had
+ *     already spent — a careful opponent simply finishes first
+ *   * the move CURSOR (`ply`) is carried forward, never rewound: the move log is
+ *     keyed by `(match, seat, ply)`, so reusing a ply would collide with a move
+ *     already recorded. `resetCount` is the signal that the board was replaced.
+ *   * `peakFoundation` (a monotone settlement metric) is carried forward too;
+ *     only the live board — and the progress compared against it — resets.
+ */
+async function redealSeatInTx(
+  tx: any,
+  match: MatchRow,
+  seat: Seat,
+  nowMs: number,
+): Promise<MatchRow> {
+  const previous = stateForSeat(match, seat);
+  // A brand-new server seed → a brand-new verified-solvable deal. The new deal
+  // is NOT written back to the row's shared `deal` column: that column is the
+  // match's original committed deal, and a re-dealt seat's board is a deliberate
+  // divergence from it (see the audit note on the impossible-board path).
+  const serverSeed = randomHex(32);
+  const dealSeed = deriveDealSeed({ serverSeed, variantVersion: VARIANT_VERSION });
+  const deal = solvableDealFromSeed(dealSeed);
+  const opening = initialStateFromDeal(deal);
+  opening.ply = previous?.ply ?? 0;
+  opening.resetCount = (previous?.resetCount ?? 0) + 1;
+  opening.peakFoundation = previous?.peakFoundation ?? 0;
+
+  const progress = progressOf(opening);
+  const [updated] = await tx
+    .update(solitaireDuelMatches)
+    .set({
+      ...seatPatchFor(seat, opening, progress),
+      updatedAt: new Date(nowMs),
+    })
+    .where(eq(solitaireDuelMatches.id, match.id))
+    .returning();
+
+  return updated ?? match;
+}
+
+/**
+ * True when a live seat position can no longer be won.
+ *
+ * TWO gates, in order, so the expensive work is only ever done for a position
+ * that has genuinely run out of road:
+ *
+ *   1. the strong-greedy planner must report the board STUCK (no legal move, or
+ *      `AI_STAGNATION_LIMIT` moves that changed nothing). A position still being
+ *      worked keeps progressing and returns false immediately.
+ *   2. the complete search must EXHAUST the reachable position set with no
+ *      winning line. A budget-limited search is `unknown`, never impossible, so
+ *      a hard-but-winnable board is never taken from a player.
+ */
+function seatPositionIsDead(state: SolitaireState): boolean {
+  const probe = planAiMoves({
+    state,
+    difficulty: "hard",
+    maxMoves: AI_STAGNATION_LIMIT + 8,
+    // Deterministic and slip-free: the verdict must not flicker between polls.
+    random: () => 1,
+  });
+  if (probe.completed || !probe.stuck) return false;
+  return stateSolvableVerdict(state) === "impossible";
+}
+
+/**
+ * Re-deal the viewer's own board when it is provably unsolvable.
+ *
+ * Run on READ (and only for the seat that is reading), so a player is never
+ * left staring at a board they cannot finish without ever acting. The verdict
+ * is computed OUTSIDE the transaction and the row is re-checked under the lock
+ * at the same ply, so a move that landed in between simply makes this a no-op
+ * and the next read re-evaluates the new position.
+ */
+async function redealSeatIfDead({
+  matchId,
+  seat,
+  expectedPly,
+  nowMs,
+}: {
+  matchId: string;
+  seat: Seat;
+  expectedPly: number;
+  nowMs: number;
+}): Promise<MatchRow | null> {
+  return await db.transaction(async (tx) => {
+    const [match] = await tx
+      .select()
+      .from(solitaireDuelMatches)
+      .where(eq(solitaireDuelMatches.id, matchId))
+      .for("update");
+
+    if (!match || match.status !== MATCH_STATUS.PLAYING) return null;
+
+    const state = stateForSeat(match, seat);
+    if (!state || !isWellFormedState(state) || state.completed) return null;
+    // The board moved on since the verdict was computed: leave it alone.
+    if (state.ply !== expectedPly) return null;
+
+    return await redealSeatInTx(tx, match, seat, nowMs);
+  });
+}
+
+/**
  * Advance the practice bot's board to the server's current instant.
  *
  * THE BOT'S TURN. Solitaire Duel is simultaneous, so the bot is paced by the
@@ -760,7 +873,12 @@ export async function advanceAiMatch({
       difficulty: match.aiDifficulty,
       maxMoves,
     });
-    if (plan.moves.length === 0) return { match, advanced: false } as const;
+    // The bot has given up on this board: it either has no legal move at all or
+    // has spent a long run of moves that changed nothing. Its OWN seat is
+    // re-dealt below (after any moves it did earn are recorded) — the human's
+    // board, the GO instant and both inactivity clocks are left exactly alone.
+    const stuck = !plan.completed && plan.stuck;
+    if (plan.moves.length === 0 && !stuck) return { match, advanced: false } as const;
 
     state = plan.state;
     const completedNow = plan.completed && !state.completedAtMs;
@@ -799,7 +917,14 @@ export async function advanceAiMatch({
       .where(eq(solitaireDuelMatches.id, match.id))
       .returning();
 
-    const changed = updated ?? match;
+    let changed = updated ?? match;
+    // A dead bot board is replaced with a fresh solvable deal, carrying the
+    // bot's move cursor and reset count forward and leaving every other field
+    // (the human's board, the clock, the last-action stamps) untouched.
+    if (stuck) {
+      changed = await redealSeatInTx(tx, changed, seat, nowMs);
+    }
+
     let finalRow = changed;
     const outcome = resolveRace({
       player1: raceFor(changed, SEAT.PLAYER1),
@@ -845,7 +970,8 @@ export async function fetchMatch({
   if (!match) return err("Match not found", 404);
 
   const seats = seatsFromRow(match);
-  if (!seatForUser(seats, userId)) {
+  const viewerSeat = seatForUser(seats, userId);
+  if (!viewerSeat) {
     return err("Not a participant of this match", 403);
   }
 
@@ -853,6 +979,31 @@ export async function fetchMatch({
   // its live board progress (and finalizes the match the instant it solves the
   // deal). A human row is untouched by this step.
   match = await advanceAiIfPractice(match, nowMs);
+
+  // An UNWINNABLE position is resolved on READ too. A player is only ever shown
+  // their OWN board, so only the reader's own seat is inspected — and only when
+  // it is live, unsolved and has actually diverged from the opening (a fresh
+  // board is solvable by construction). The verdict is computed first and the
+  // re-deal re-checks the row at the same ply, so a move that lands in between
+  // just defers the decision to the next read.
+  if (match.status === MATCH_STATUS.PLAYING) {
+    const ownState = stateForSeat(match, viewerSeat);
+    if (
+      ownState &&
+      isWellFormedState(ownState) &&
+      !ownState.completed &&
+      ownState.ply > 0 &&
+      seatPositionIsDead(ownState)
+    ) {
+      const redealt = await redealSeatIfDead({
+        matchId,
+        seat: viewerSeat,
+        expectedPly: ownState.ply,
+        nowMs,
+      });
+      if (redealt) match = redealt;
+    }
+  }
 
   // An untimed match is resolved on READ when a seat has gone inactive, so a
   // match can never be left live just because the idle seat stopped polling.

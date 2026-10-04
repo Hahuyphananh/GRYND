@@ -325,17 +325,29 @@ export function planAiMoves({
   difficulty?: unknown;
   maxMoves?: number;
   random?: () => number;
-}): { moves: SolitaireMove[]; state: SolitaireState; completed: boolean } {
+}): { moves: SolitaireMove[]; state: SolitaireState; completed: boolean; stuck: boolean } {
   const moves: SolitaireMove[] = [];
   let current = state;
   let best = progressKey(current);
   let stagnant = 0;
+  // `stuck` means the planner stopped because the BOARD has nothing left to
+  // give — no legal move at all, or a long run of moves that changed nothing.
+  // It deliberately stays false when the loop merely hit `maxMoves`: a bot that
+  // is simply behind schedule on the clock is not stuck. The store re-deals a
+  // bot board only on `stuck && !completed`.
+  let stuck = false;
 
   while (moves.length < Math.max(1, Math.floor(maxMoves)) && !current.completed) {
     const move = chooseAiMove({ state: current, difficulty, random });
-    if (!move) break;
+    if (!move) {
+      stuck = true;
+      break;
+    }
     const applied = applyMove({ state: current, move });
-    if (!applied.ok) break;
+    if (!applied.ok) {
+      stuck = true;
+      break;
+    }
     current = applied.state as SolitaireState;
     moves.push(move);
 
@@ -345,11 +357,14 @@ export function planAiMoves({
       stagnant = 0;
     } else {
       stagnant += 1;
-      if (stagnant >= AI_STAGNATION_LIMIT) break;
+      if (stagnant >= AI_STAGNATION_LIMIT) {
+        stuck = true;
+        break;
+      }
     }
   }
 
-  return { moves, state: current, completed: Boolean(current.completed) };
+  return { moves, state: current, completed: Boolean(current.completed), stuck };
 }
 
 /** The suit of the top waste card, exposed for tests and diagnostics. */

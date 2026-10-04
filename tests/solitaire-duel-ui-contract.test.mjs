@@ -226,6 +226,21 @@ test("client: a rematch asks the server for a brand new match", () => {
   assert.match(src, /router\.push\("\/casino\/solitaire-duel"\)/);
 });
 
+test("client: an unwinnable board is announced and the server's re-deal adopted", () => {
+  const src = code(MATCH_PAGE);
+  // The replacement arrives as the SNAPSHOT's own reset counter, so the client
+  // tells a re-deal apart from an ordinary move without any local re-dealing.
+  assert.match(src, /match\.view\.resetCount/);
+  assert.match(src, /setBoardResetNotice\(true\)/);
+  assert.match(src, /data-testid="solitaire-board-reset"/);
+  assert.match(src, /data-testid="solitaire-board-reset-continue"/);
+  // The stale-guard must let a HIGHER reset counter through, or a re-dealt
+  // board would be discarded as an old read.
+  assert.match(src, /nextReset < prevReset/);
+  // The client never re-deals or shuffles for itself.
+  assert.doesNotMatch(src, /solvableDealFromSeed|dealFromSeed|initialStateFromDeal/);
+});
+
 test("client: practice offers a restart that asks the server for a new deal", () => {
   const src = code(MATCH_PAGE);
   // The restart is a server call, never a local re-deal: the client cannot

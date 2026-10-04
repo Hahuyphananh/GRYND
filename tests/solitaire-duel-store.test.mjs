@@ -1224,6 +1224,122 @@ test("practice: advanceAiMatch never touches a human match", { skip: SKIP_REASON
   assert.equal(fake.rowsOf(solitaireDuelMatches)[0].p2Ply, 0);
 });
 
+// ════════════════════════════════════════════════════════════════════════
+// Re-dealing a dead board — per seat, and never the clock
+// ════════════════════════════════════════════════════════════════════════
+
+/** A board with NO legal move at all: seven columns topped by black fives. */
+function deadBoard(ply = 0) {
+  const state = openBoard();
+  state.tableau = Array.from({ length: 7 }, () => [
+    { card: card("spades", 5), faceUp: true },
+  ]);
+  state.stock = [];
+  state.waste = [];
+  state.foundations = { spades: [], hearts: [], diamonds: [], clubs: [] };
+  state.ply = ply;
+  state.peakFoundation = 0;
+  return state;
+}
+
+/** A VALID board one move from won: 51 on the foundations, K♣ alone on column 0. */
+function boardWinnableInOne(ply = 40) {
+  const state = openBoard();
+  state.tableau = Array.from({ length: 7 }, () => []);
+  state.tableau[0] = [{ card: card("clubs", 13), faceUp: true }];
+  state.stock = [];
+  state.waste = [];
+  state.foundations = {
+    spades: Array.from({ length: 13 }, (_, i) => card("spades", i + 1)),
+    hearts: Array.from({ length: 13 }, (_, i) => card("hearts", i + 1)),
+    diamonds: Array.from({ length: 13 }, (_, i) => card("diamonds", i + 1)),
+    clubs: Array.from({ length: 12 }, (_, i) => card("clubs", i + 1)),
+  };
+  state.ply = ply;
+  state.peakFoundation = 51;
+  return state;
+}
+
+test("practice: a stuck bot is re-dealt on its OWN seat, clock and human untouched", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  const row = practiceRow(fake, {
+    p2State: deadBoard(5),
+    p2Ply: 5,
+    p2PeakFoundation: 0,
+    p1State: { ...openBoard(), ply: 3 },
+    p1Ply: 3,
+    p1LastActionAt: new Date(NOW - 1_000),
+    p2LastActionAt: new Date(NOW - 1_000),
+  });
+  const humanBefore = structuredClone(row.p1State);
+  const goAtBefore = row.goAt.getTime();
+  const humanClockBefore = row.p1LastActionAt.getTime();
+
+  const result = await store.advanceAiMatch({ matchId: MATCH_ID, nowMs: NOW });
+  assert.equal(result.advanced, true);
+
+  const after = fake.rowsOf(solitaireDuelMatches)[0];
+  // The bot's board is a BRAND NEW deal...
+  assert.equal(after.p2State.resetCount, 1);
+  assert.equal(after.p2State.stock.length, 24);
+  assert.equal(after.p2State.completed, false);
+  // ...with its move cursor carried forward, never rewound.
+  assert.equal(after.p2State.ply, 5);
+  assert.equal(after.p2Ply, 5);
+  // The human's board is byte-identical, and neither the GO instant nor the
+  // human's own inactivity clock moved.
+  assert.deepEqual(after.p1State, humanBefore);
+  assert.equal(after.p1Ply, 3);
+  assert.equal(after.goAt.getTime(), goAtBefore);
+  assert.equal(after.p1LastActionAt.getTime(), humanClockBefore);
+  assert.equal(settlement.rating.length, 0);
+  assert.equal(settlement.trophy.length, 0);
+});
+
+test("read: a provably unwinnable board is re-dealt for the reader alone", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  const row = seedMatch(fake, {
+    p1State: deadBoard(9),
+    p1Ply: 9,
+    p1LastActionAt: new Date(NOW - 1_000),
+    p2LastActionAt: new Date(NOW - 1_000),
+  });
+  const opponentBefore = structuredClone(row.p2State);
+  const goAtBefore = row.goAt.getTime();
+
+  const result = await store.fetchMatch({ userId: ALICE, matchId: MATCH_ID, nowMs: NOW });
+
+  const after = fake.rowsOf(solitaireDuelMatches)[0];
+  assert.equal(after.p1State.resetCount, 1);
+  assert.equal(after.p1State.stock.length, 24);
+  assert.equal(after.p1State.ply, 9, "the cursor is carried across the re-deal");
+  assert.deepEqual(after.p2State, opponentBefore, "the opponent's board is untouched");
+  assert.equal(after.goAt.getTime(), goAtBefore);
+  // The reader's OWN DTO carries the fresh board and its reset counter.
+  assert.equal(result.dto.view.resetCount, 1);
+  assert.equal(result.dto.view.ply, 9);
+  assert.equal(result.dto.status, MATCH_STATUS.PLAYING);
+});
+
+test("read: a winnable board is never re-dealt", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  const row = seedMatch(fake, {
+    p1State: boardWinnableInOne(40),
+    p1Ply: 40,
+    p1PeakFoundation: 51,
+  });
+  const before = structuredClone(row.p1State);
+
+  await store.fetchMatch({ userId: ALICE, matchId: MATCH_ID, nowMs: NOW });
+
+  const after = fake.rowsOf(solitaireDuelMatches)[0];
+  assert.deepEqual(after.p1State, before, "a winnable board must be left exactly alone");
+  assert.equal(after.p1State.resetCount ?? 0, 0);
+});
+
 test("practice: the bot can solve the deal, and the win settles nothing", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   const store = await loadStore();

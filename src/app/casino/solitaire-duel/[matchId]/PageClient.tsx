@@ -147,6 +147,14 @@ const TERMINAL = new Set(["finished", "cancelled"]);
 /** True when `next` must not replace `prev` — a stale poll losing to a move. */
 function isStaleSnapshot(prev: MatchDto | null, next: MatchDto | null): boolean {
   if (!prev || !next) return false;
+  // A RE-DEALT board is authoritative. The server replaces every card under the
+  // viewer when their position can no longer be won, and stamps the replacement
+  // on `resetCount` (the move cursor is carried, so it does NOT signal it). A
+  // higher counter must always be adopted; a lower one is an older read and must
+  // never revert a fresh board.
+  const prevReset = Number(prev.view?.resetCount ?? 0);
+  const nextReset = Number(next.view?.resetCount ?? 0);
+  if (prevReset !== nextReset) return nextReset < prevReset;
   // The viewer's OWN ply only ever grows, so a lower one is an older read that
   // raced a move response. (`peakFoundation` and the opponent's figures are not
   // used for this: the opponent's foundations can legitimately go DOWN when a
@@ -258,6 +266,10 @@ export default function SolitaireDuelMatchPage() {
   const [requeueing, setRequeueing] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  // True while the "your board was impossible to solve, it has been re-dealt"
+  // popup is up. Raised only when the server's reset counter ticks up under the
+  // viewer's own seat.
+  const [boardResetNotice, setBoardResetNotice] = useState(false);
 
   const loadedRef = useRef(false);
   const matchRef = useRef<MatchDto | null>(null);
@@ -269,9 +281,33 @@ export default function SolitaireDuelMatchPage() {
   const queuedDrawsRef = useRef(0);
   const sendMoveRef = useRef<(move: SolitaireMove) => void>(() => {});
   const loadRef = useRef<() => void>(() => {});
+  // The reset counter of the last snapshot this page has seen. `null` until the
+  // FIRST snapshot, so reconnecting into an already-re-dealt match never fires a
+  // false popup — only a counter that GROWS during this session does.
+  const resetSeenRef = useRef<number | null>(null);
 
   useEffect(() => {
     matchRef.current = match;
+  }, [match]);
+
+  // The server replaces a player's board the moment it can no longer be won.
+  // That is the ONLY reason the viewer's OWN board ever changes under them, so a
+  // grown `resetCount` is the popup trigger. The first snapshot only records the
+  // count, so joining or reconnecting never shows a stale popup.
+  useEffect(() => {
+    if (!match?.view) return;
+    const count = Number(match.view.resetCount ?? 0);
+    if (resetSeenRef.current === null) {
+      resetSeenRef.current = count;
+      return;
+    }
+    if (count <= resetSeenRef.current) return;
+    resetSeenRef.current = count;
+    // A re-deal only ever happens MID-RACE. If the match settled in the same
+    // snapshot, the result screen owns the page and the popup would only be in
+    // the way — the reset is still recorded above.
+    if (TERMINAL.has(String(match.status))) return;
+    setBoardResetNotice(true);
   }, [match]);
 
   // The App Router reuses this component when only `[matchId]` differs, so
@@ -290,6 +326,8 @@ export default function SolitaireDuelMatchPage() {
     setCancelling(false);
     setRestarting(false);
     setLeaving(false);
+    setBoardResetNotice(false);
+    resetSeenRef.current = null;
     loadedRef.current = false;
     skewRef.current = 0;
     inFlightRef.current = false;
@@ -1074,6 +1112,56 @@ export default function SolitaireDuelMatchPage() {
                     </button>
                   </div>
                 </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* ── Board re-dealt: the position can no longer be won ────── */}
+          {/* The server proved the viewer's OWN position unsolvable, replaced
+              its cards with a fresh deal, and left the race clock running — so
+              the popup is purely informational and never blocks play twice. */}
+          <AnimatePresence>
+            {boardResetNotice && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[95] flex items-center justify-center bg-black/80 px-4"
+                role="dialog"
+                aria-modal="true"
+                aria-label="This board became impossible to solve"
+                data-testid="solitaire-board-reset"
+                onClick={(event) => {
+                  if (event.target === event.currentTarget) setBoardResetNotice(false);
+                }}
+              >
+                <motion.div
+                  initial={{ scale: 0.94, y: 10, opacity: 0 }}
+                  animate={{ scale: 1, y: 0, opacity: 1 }}
+                  exit={{ scale: 0.96, opacity: 0 }}
+                  className="w-full max-w-sm rounded-2xl border border-amber-400/40 bg-[#141005] p-5 text-center"
+                >
+                  <IconAlertTriangle className="mx-auto h-7 w-7 text-amber-300" aria-hidden="true" />
+                  <p className="mt-2 text-sm font-black text-white" data-testid="solitaire-board-reset-title">
+                    Impossible to solve
+                  </p>
+                  <p className="mt-1.5 text-xs leading-relaxed text-white/60">
+                    Your board can no longer be finished — every legal line from here was
+                    exhausted. You have been dealt a fresh board to keep racing.
+                  </p>
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-amber-200/70">
+                    The clock was NOT reset: time already spent still counts, so a clean
+                    opponent can still finish first.
+                  </p>
+                  <button
+                    type="button"
+                    data-testid="solitaire-board-reset-continue"
+                    onClick={() => setBoardResetNotice(false)}
+                    className="mt-4 w-full rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-black text-black transition hover:brightness-110"
+                  >
+                    Continue with the new board
+                  </button>
+                </motion.div>
               </motion.div>
             )}
           </AnimatePresence>
