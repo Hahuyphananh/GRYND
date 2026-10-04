@@ -14,6 +14,11 @@ realtime-server/node_modules
 /.next/
 /out/
 
+# Cloudflare Workers (OpenNext build output + generated types)
+/.open-next/
+/.wrangler/
+cloudflare-env.d.ts
+
 # production
 /build
 
@@ -103,3 +108,9 @@ qa/reports/**/*.gif
 
 # Added by ggshield
 .cache_ggshield
+
+# Symlinks/lock created by `npx skills add`. These point at .agents/skills with
+# ABSOLUTE local paths, so they are machine-specific and must not be committed.
+# The real skill files are versioned under .agents/skills/.
+/.claude/skills/*
+!/.claude/skills/stripe-best-practices/
