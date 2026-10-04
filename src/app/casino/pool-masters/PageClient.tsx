@@ -38,12 +38,17 @@ export default function PoolLobbyPage() {
 
   useEffect(() => {
     load();
-    // Visibility-gated: a hidden lobby tab stops polling Postgres.
-    return startVisibleInterval(load, 3000);
+    // Visibility-gated: a hidden lobby tab stops polling Postgres. This page is
+    // the one lobby with no Socket.IO room to lean on, so it keeps a real poll;
+    // the cadence is relaxed to 5s (it was 3s) as a floor until a lobby room is
+    // added — see the runtime notes.
+    return startVisibleInterval(load, 5000);
   }, []);
   useEffect(() => {
     if (!createdLobbyId) return;
     // Visibility-gated: nobody is waiting on a match from a background tab.
+    // Relaxed from 1.2s to 3s: this is the match-found watch, and 3s is still
+    // well inside the lobby's ready window while cutting these reads ~2.5x.
     return startVisibleInterval(async () => {
       const res = await fetch(`/api/pool/get-match?matchId=${createdLobbyId}`, {
         cache: "no-store",
@@ -53,7 +58,7 @@ export default function PoolLobbyPage() {
       if (match?.status === "active" && match?.id && match.id !== createdLobbyId) {
         router.push(`/casino/pool-masters/game/${match.id}`);
       }
-    }, 1200);
+    }, 3000);
   }, [createdLobbyId, router]);
 
   const createLobby = async () => {

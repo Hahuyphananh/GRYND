@@ -27,13 +27,11 @@ import {
   readStoredAiDifficulty,
 } from "../../../lib/aiDifficulty";
 import { useSocket } from "../../../context/SocketProvider";
-import { startVisibleInterval } from "../../../hooks/useVisiblePoll";
+import { useSocketAwarePoll } from "../../../hooks/useVisiblePoll";
 import {
   TIC_TAC_TOE_LOBBY_ROOM,
   TIC_TAC_TOE_MATCH_UPDATED,
 } from "../../../lib/tic-tac-toe/rooms";
-
-const POLL_MS = 3000;
 
 type LobbyRow = {
   matchId: string;
@@ -72,12 +70,11 @@ export default function TicTacToeLobbyPage() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchLobbies();
-    // Visibility-gated: a hidden lobby tab stops polling Postgres, and coming
-    // back to it refreshes immediately instead of waiting out the interval.
-    return startVisibleInterval(fetchLobbies, POLL_MS);
-  }, [fetchLobbies, isSignedIn, user?.id]);
+  // The shared `lobby:tic-tac-toe` room already pushes an instant refresh, so
+  // the HTTP poll is only a backstop: one read on mount, then the socket-aware,
+  // visibility-gated cadence (30s healthy / 5s if the socket drops) instead of
+  // a flat 3s cadence hammering Postgres from an idle lobby tab.
+  useSocketAwarePoll(fetchLobbies, socket);
 
   // Near-instant lobby refresh: the shared `lobby:tic-tac-toe` room carries the
   // generic `lobby:updated` relay, exactly like the other PvP lobbies.

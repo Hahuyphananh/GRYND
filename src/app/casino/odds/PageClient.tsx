@@ -39,7 +39,7 @@ import {
   type AiDifficulty,
   readStoredAiDifficulty,
 } from "../../../lib/aiDifficulty";
-import { startVisibleInterval } from "../../../hooks/useVisiblePoll";
+import { startSocketAwareInterval } from "../../../hooks/useVisiblePoll";
 import {
   TOTAL_ROUNDS,
   type InteractiveOddsState as InteractiveOddsStateType,
@@ -1138,9 +1138,10 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
     socket.on("odds:game_update", handleGameUpdate);
     socket.on("odds:state_changed", handler);
     
-    // Polling fallback to handle missed socket events. Visibility-gated: a
-    // hidden tab cannot be watching a live hand.
-    const stopPoll = startVisibleInterval(handler, 3000);
+    // Polling fallback to handle missed socket events. Socket-aware and
+    // visibility-gated: 30s while the push path is healthy, 5s if it drops, and
+    // off entirely while the tab is hidden.
+    const stopPoll = startSocketAwareInterval(handler, socket);
 
     return () => {
       socket.off("odds:game_update", handleGameUpdate);
@@ -1211,8 +1212,10 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   // Poll for opponent joining (when player1 is waiting)
   useEffect(() => {
     if (!myGameId || interactiveState || !isPlayer1) return;
-    // Visibility-gated: nobody is waiting on an opponent from a hidden tab.
-    return startVisibleInterval(async () => {
+    // The join also arrives over the socket, so this is a backstop: socket-aware
+    // and visibility-gated (30s healthy / 5s if the socket drops) rather than a
+    // flat 1.5s hammer — nobody is waiting on an opponent from a hidden tab.
+    return startSocketAwareInterval(async () => {
       try {
         const res = await fetch(`/api/odds/status?gameId=${myGameId}`);
         const data = await res.json();
@@ -1221,7 +1224,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
           applyStateFromServer(data.data);
         }
       } catch {}
-    }, 1500);
+    }, socket);
   }, [myGameId, interactiveState, isPlayer1, applyStateFromServer]);
 
   // ── Forfeit ──

@@ -339,14 +339,20 @@ function NavigationBar({ currentPath = "" }) {
   }, [mobileMenuOpen]);
 
   useEffect(() => {
-    // Deploy check: one HEAD request per 5 minutes, skipped entirely while
+    // Deploy check: one HEAD request per 10 minutes, skipped entirely while
     // the tab is hidden (no need to poll for a new version in the
-    // background — the check resumes when the tab is visible again).
+    // background — the check resumes when the tab is visible again). The
+    // request is a full server round-trip, so the cadence is the cost knob
+    // here; ten minutes still surfaces a new deploy well before a player
+    // would notice anything stale.
     const interval = setInterval(
       async () => {
         if (document.visibilityState !== "visible") return;
         try {
-          const response = await fetch(window.location.href, {
+          // HEAD the tiny STATIC /api/version payload, never the current page:
+          // a HEAD to the page itself re-runs its full server render (the root
+          // layout is `force-dynamic`) just to read an ETag.
+          const response = await fetch("/api/version", {
             method: "HEAD",
             cache: "no-store",
           });
@@ -364,7 +370,7 @@ function NavigationBar({ currentPath = "" }) {
           window.__APP_ETAG = newVersion;
         } catch {}
       },
-      1000 * 60 * 5
+      1000 * 60 * 10
     );
 
     return () => clearInterval(interval);

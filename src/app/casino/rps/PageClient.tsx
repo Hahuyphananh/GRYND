@@ -17,7 +17,7 @@ import PvpLobbyPage from "../../../components/lobby/PvpLobby";
 import { CoinIcon } from "../../../components/lobby/PvpLobby";
 import { RockFistIcon } from "../../../components/icons/CustomIcons";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
-import { startVisibleInterval } from "../../../hooks/useVisiblePoll";
+import { useSocketAwarePoll } from "../../../hooks/useVisiblePoll";
 import {
   type AiDifficulty,
   readStoredAiDifficulty,
@@ -60,11 +60,10 @@ export default function RPSLobbyPage() {
     }
   };
 
-  useEffect(() => {
-    fetchGames();
-    // Visibility-gated: a hidden lobby tab stops polling Postgres.
-    return startVisibleInterval(fetchGames, 3000);
-  }, [isSignedIn, user]);
+  // The shared lobby room pushes an instant refresh, so the HTTP poll is only a
+  // backstop: one read on mount, then the socket-aware, visibility-gated cadence
+  // (30s healthy / 5s if the socket drops) instead of a flat 3s poll.
+  useSocketAwarePoll(fetchGames, socket);
 
   useEffect(() => {
     if (!socket) return;

@@ -34,7 +34,7 @@ import {
 } from "../../../lib/mines-pvp/rooms";
 import { MINES_PER_MATCH } from "../../../lib/mines-pvp/constants";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
-import { startVisibleInterval } from "../../../hooks/useVisiblePoll";
+import { useSocketAwarePoll } from "../../../hooks/useVisiblePoll";
 import {
   type AiDifficulty,
   readStoredAiDifficulty,
@@ -142,11 +142,10 @@ export default function MinesPvpLobbyPage() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchAvailable();
-    // Visibility-gated: a hidden lobby tab stops polling Postgres.
-    return startVisibleInterval(fetchAvailable, 3000);
-  }, [fetchAvailable]);
+  // The shared lobby room pushes an instant refresh, so the HTTP poll is only a
+  // backstop: one read on mount, then the socket-aware, visibility-gated cadence
+  // (30s healthy / 5s if the socket drops) instead of a flat 3s poll.
+  useSocketAwarePoll(fetchAvailable, socket);
 
   // Derive any lobby the current user owns FROM the availableMatches
   // payload (which carries the player's clerkId as player1Id). This

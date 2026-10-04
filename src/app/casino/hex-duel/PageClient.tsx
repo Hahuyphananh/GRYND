@@ -5,7 +5,7 @@ import { useUser } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useHexDuel, otherPlayer, type DuelPlayer } from "../../../lib/hexDuelEngine";
-import { startVisibleInterval } from "../../../hooks/useVisiblePoll";
+import { startSocketAwareInterval } from "../../../hooks/useVisiblePoll";
 import { useSocket } from "../../../context/SocketProvider";
 import EmotePicker, { EmoteBubble } from "../../../components/game/EmotePicker";
 import useGameEmotes from "../../../hooks/useGameEmotes";
@@ -1420,11 +1420,10 @@ export default function HexDuelPage() {
       }
     };
 
-    // Poll immediately, then every 3 seconds
+    // Poll immediately, then socket-aware: 30s while the hexDuel push path is
+    // healthy, 5s if it drops, and off entirely while the tab is hidden.
     pollStatus();
-    // Visibility-gated: a hidden tab cannot be waiting on a match, so the
-    // poll stops there instead of firing into Postgres from the background.
-    const stopPoll = startVisibleInterval(pollStatus, 3000);
+    const stopPoll = startSocketAwareInterval(pollStatus, socket);
 
     return () => {
       cancelled = true;
@@ -2002,9 +2001,10 @@ export default function HexDuelPage() {
     // tradeoff is slightly slower catch-up after a dropped socket event,
     // which the forced-sync request on turn start already covers.
     pollActions();
-    // Visibility-gated. Cadence left at 5s: this is the documented catch-up
-    // net for missed hexDuel:action socket events.
-    const stopPoll = startVisibleInterval(pollActions, 5000);
+    // Documented catch-up net for missed hexDuel:action socket events, now
+    // socket-aware: 30s while the push path is healthy, 5s if it drops, off
+    // while the tab is hidden.
+    const stopPoll = startSocketAwareInterval(pollActions, socket);
 
     return () => {
       cancelled = true;
@@ -2172,10 +2172,11 @@ export default function HexDuelPage() {
     };
 
     pollTurn();
-    // Visibility-gated. The cadence is deliberately left tight: the comment
-    // above documents the P2-never-updates bug this safety net exists to
-    // cover, so only the hidden-tab case is optimised here.
-    const stopPoll = startVisibleInterval(pollTurn, 2000);
+    // Safety net for the documented P2-never-updates bug. Socket-aware: while
+    // the hexDuel push path is healthy the turn advances over the socket, so
+    // the net relaxes to 30s; it tightens to 5s the moment the socket drops,
+    // and stops entirely while the tab is hidden.
+    const stopPoll = startSocketAwareInterval(pollTurn, socket);
 
     return () => {
       cancelled = true;
@@ -2258,8 +2259,9 @@ export default function HexDuelPage() {
     };
 
     pollSpectate();
-    // Visibility-gated: nobody spectates from a background tab.
-    const stopPoll = startVisibleInterval(pollSpectate, 2000);
+    // Socket-aware + visibility-gated: nobody spectates from a background tab,
+    // and the cadence relaxes while the push path is healthy.
+    const stopPoll = startSocketAwareInterval(pollSpectate, socket);
 
     return () => {
       cancelled = true;

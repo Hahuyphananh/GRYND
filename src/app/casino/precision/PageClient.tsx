@@ -32,7 +32,7 @@ import { useSocket } from "../../../context/SocketProvider";
 import { LOBBY_LIST_POLL_INTERVAL_MS } from "../../../lib/precision/constants";
 import type { PrecisionLobby } from "../../../lib/precision/types";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
-import { startVisibleInterval } from "../../../hooks/useVisiblePoll";
+import { useSocketAwarePoll } from "../../../hooks/useVisiblePoll";
 import {
   type AiDifficulty,
   readStoredAiDifficulty,
@@ -113,13 +113,11 @@ export default function PrecisionLobbyPage() {
     }
   };
 
-  // Poll the public lobby list as a fallback for clients that miss the
-  // realtime nudge.
-  useEffect(() => {
-    void reload();
-    // Visibility-gated: a hidden lobby tab stops polling Postgres.
-    return startVisibleInterval(() => void reload(), LOBBY_LIST_POLL_INTERVAL_MS);
-  }, []);
+  // The lobby list is refreshed by the realtime nudge; the HTTP poll is only a
+  // fallback for clients that miss it — one read on mount, then the socket-aware,
+  // visibility-gated cadence (30s healthy / 5s if the socket drops) instead of a
+  // flat 3s poll.
+  useSocketAwarePoll(() => void reload(), socket);
 
   const handleCreatePvP = async () => {
     setCreating(true);

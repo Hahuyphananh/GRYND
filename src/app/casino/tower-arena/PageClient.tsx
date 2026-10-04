@@ -7,7 +7,7 @@ import PvpLobbyPage from "../../../components/lobby/PvpLobby";
 import { CoinIcon } from "../../../components/lobby/PvpLobby";
 import { IconBuildingSkyscraper } from "@tabler/icons-react";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
-import { startVisibleInterval } from "../../../hooks/useVisiblePoll";
+import { useSocketAwarePoll } from "../../../hooks/useVisiblePoll";
 import {
   type AiDifficulty,
   readStoredAiDifficulty,
@@ -71,9 +71,12 @@ export default function TowerArenaLobbyPage() {
   useEffect(() => {
     load();
     loadPreview();
-    // Visibility-gated: a hidden lobby tab stops polling Postgres.
-    return startVisibleInterval(load, 3000);
   }, []);
+
+  // The shared lobby grid room pushes an instant refresh, so the HTTP poll is
+  // only a backstop: one read on mount, then the socket-aware, visibility-gated
+  // cadence (30s healthy / 5s if the socket drops) instead of a flat 3s poll.
+  useSocketAwarePoll(load, socket);
 
   // Listen on the shared lobby grid room so open-lobby rows refresh the
   // instant one is created / filled / cancelled (three-second poll as backstop).

@@ -89,22 +89,44 @@ export default function useActiveGamePresence(
       sendPresenceBeat(label, sessionId);
     };
 
+    let intervalId = null;
+
+    const start = () => {
+      if (stopped || intervalId !== null) return;
+      intervalId = setInterval(beat, PRESENCE_HEARTBEAT_MS);
+    };
+    const stop = () => {
+      if (intervalId === null) return;
+      clearInterval(intervalId);
+      intervalId = null;
+    };
+
     beat();
-    const intervalId = setInterval(beat, PRESENCE_HEARTBEAT_MS);
+    // Only beat on a cadence while the tab is VISIBLE: a hidden tab cannot be
+    // playing, so its writes are pure serverless cost. The server's
+    // ACTIVE_PLAYER_WINDOW_SECONDS window absorbs the gap, and the visibility
+    // handler below re-beats the instant the player comes back.
+    if (typeof document === "undefined" || !document.hidden) start();
 
     // Browsers throttle (or freeze) background timers, so a player returning to
     // a tab that was hidden for a while re-beats the moment it is visible again
     // instead of waiting out the interval. Same reasoning as the app-wide
     // presence heartbeat (src/components/PresenceHeartbeat.tsx).
     const onVisibilityChange = () => {
-      if (typeof document === "undefined" || !document.hidden) beat();
+      if (typeof document === "undefined") return;
+      if (document.hidden) {
+        stop();
+      } else {
+        beat();
+        start();
+      }
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("online", beat);
 
     return () => {
       stopped = true;
-      clearInterval(intervalId);
+      stop();
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("online", beat);
     };

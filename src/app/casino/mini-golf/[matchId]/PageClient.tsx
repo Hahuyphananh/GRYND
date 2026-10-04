@@ -337,16 +337,34 @@ export default function MiniGolfMatchPage() {
 
     const tick = () => {
       if (cancelled) return;
+      // A hidden tab cannot play: issue no snapshot reads while hidden, and
+      // resume with one immediate catch-up when the tab is visible again.
+      if (typeof document !== "undefined" && document.hidden) return;
       refresh();
       const idle =
-        matchRef.current?.status === "finished" || matchRef.current?.status === "cancelled";
+        matchRef.current?.status === "finished" ||
+        matchRef.current?.status === "cancelled";
       timer = setTimeout(tick, idle ? IDLE_POLL_MS : ACTIVE_POLL_MS);
     };
     tick();
 
+    const onVisibilityChange = () => {
+      if (cancelled) return;
+      if (document.hidden) {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+      } else if (timer === null) {
+        tick();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       abortRef.current?.abort();
     };
   }, [matchId, refresh]);

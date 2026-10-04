@@ -128,6 +128,47 @@ export function startVisibleInterval(
 }
 
 /**
+ * Housekeeping/lobby poll: ONE immediate read on mount, then a visibility-gated
+ * interval that relaxes to the socket-healthy cadence and only tightens while
+ * the push path is actually down.
+ *
+ * Why this exists: every lobby page runs a Socket.IO room that already pushes a
+ * `*_MATCH_UPDATED` event the instant a lobby is created/joined/cancelled, yet
+ * each one ALSO ran a flat 3s HTTP poll as a safety net. That made the poll a
+ * pure backstop that still cost a Postgres round-trip every 3s per open tab —
+ * the single largest source of avoidable function invocations once a player
+ * parked on a lobby. This keeps the same coverage (immediate read, catch-up on
+ * tab focus, fallback if the socket dies) at a fraction of the invocations.
+ *
+ *   useSocketAwarePoll(fetchLobbies, socket, Boolean(isSignedIn));
+ *
+ * Behaviour is unchanged in the common case: the socket push still drives
+ * instant updates, and the poll only matters when the socket is unavailable
+ * (then it runs at `SOCKET_DOWN_POLL_MS`) or as a slow reconciliation sweep.
+ */
+export function useSocketAwarePoll(
+  callback: () => void | Promise<void>,
+  socket: RealtimeSocket | null | undefined,
+  enabled = true,
+): void {
+  const callbackRef = useEffectEvent(callback);
+  const connected = useSocketConnected(socket);
+
+  // Immediate read on mount (and when the gate flips on), so the first paint
+  // never waits a whole interval for data the page already needs.
+  useEffect(() => {
+    if (!enabled) return;
+    void callbackRef.current();
+  }, [enabled, callbackRef]);
+
+  useVisiblePoll(
+    callback,
+    connected ? SOCKET_HEALTHY_POLL_MS : SOCKET_DOWN_POLL_MS,
+    enabled,
+  );
+}
+
+/**
  * Ref that always points at the latest callback. Kept in a small helper so the
  * assignment happens in an effect (not during render), which keeps this safe
  * under concurrent rendering.
@@ -138,6 +179,46 @@ function useEffectEvent<T extends (...args: never[]) => unknown>(value: T) {
     ref.current = value;
   });
   return ref;
+}
+
+/**
+ * Imperative, socket-aware twin of `startVisibleInterval`.
+ *
+ * For poll callbacks declared INSIDE an effect (where hooks are forbidden) that
+ * also live alongside a Socket.IO room. It picks the healthy cadence while the
+ * socket is up, tightens to `SOCKET_DOWN_POLL_MS` the moment it drops, and
+ * re-reads on the socket's own `connect`/`disconnect` events so the cadence
+ * tracks reality instead of being frozen at effect setup.
+ *
+ *   const stop = startSocketAwareInterval(poll, socket);
+ *   return () => { ...; stop(); };
+ */
+export function startSocketAwareInterval(
+  tick: () => void | Promise<void>,
+  socket: RealtimeSocket | null | undefined,
+): () => void {
+  let stop = () => {};
+
+  const restart = () => {
+    stop();
+    stop = startVisibleInterval(
+      tick,
+      socket?.connected ? SOCKET_HEALTHY_POLL_MS : SOCKET_DOWN_POLL_MS,
+    );
+  };
+
+  restart();
+
+  const onConnect = () => restart();
+  const onDisconnect = () => restart();
+  socket?.on("connect", onConnect);
+  socket?.on("disconnect", onDisconnect);
+
+  return () => {
+    stop();
+    socket?.off("connect", onConnect);
+    socket?.off("disconnect", onDisconnect);
+  };
 }
 
 /**

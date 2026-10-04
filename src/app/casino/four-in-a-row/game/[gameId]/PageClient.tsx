@@ -377,8 +377,11 @@ export default function ConnectFourGamePage() {
     game?.status === "waiting" || game?.status === "ready";
   useVisiblePoll(
     fetchState,
+    // The ready hand-off arrives over the socket; the poll is only a safety net,
+    // so even while matchmaking it runs at the 5s fallback cadence rather than
+    // the old 1.5s hammer, and relaxes further while the socket is healthy.
     matchmaking
-      ? 1500
+      ? SOCKET_DOWN_POLL_MS
       : socketConnected
         ? SOCKET_HEALTHY_POLL_MS
         : SOCKET_DOWN_POLL_MS,

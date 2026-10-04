@@ -46,10 +46,7 @@ import {
   SUDOKU_DUEL_LOBBY_ROOM,
 } from "../../../lib/sudoku-duel/rooms";
 import { difficultyLabel, givensLabel } from "../../../lib/sudoku-duel/ui";
-import { startVisibleInterval } from "../../../hooks/useVisiblePoll";
-
-/** How often the open-lobby list is refreshed. The socket relay is the fast path. */
-const POLL_MS = 3000;
+import { useSocketAwarePoll } from "../../../hooks/useVisiblePoll";
 
 /**
  * One row of the narrow `/api/sudoku-duel/available` payload.
@@ -93,13 +90,11 @@ export default function SudokuDuelLobbyPage() {
     }
   }, []);
 
-  useEffect(() => {
-    if (!isSignedIn) return undefined;
-    void fetchLobbies();
-    // Visibility-gated: a hidden lobby tab stops polling Postgres, and coming
-    // back to it refreshes immediately instead of waiting out the interval.
-    return startVisibleInterval(() => void fetchLobbies(), POLL_MS);
-  }, [fetchLobbies, isSignedIn]);
+  // The shared `lobby:sudoku-duel` room already pushes an instant refresh, so
+  // the HTTP poll is only a backstop: one read on mount, then the socket-aware,
+  // visibility-gated cadence (30s healthy / 5s if the socket drops) instead of
+  // a flat 3s cadence hammering Postgres from an idle lobby tab.
+  useSocketAwarePoll(() => void fetchLobbies(), socket, Boolean(isSignedIn));
 
   // Near-instant lobby refresh: the shared `lobby:sudoku-duel` room carries the
   // generic `lobby:updated` relay, exactly like the other PvP lobbies.
