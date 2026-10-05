@@ -127,7 +127,13 @@ test("it prefers a reveal move over a draw", () => {
   assert.equal(canPlaceOnTableau(card("hearts", 5), card("clubs", 6)), true);
   assert.ok(legalMoves(state).some((move) => move.kind === "draw"));
 
-  const chosen = chooseAiMove({ state, difficulty: "hard" });
+  // `random` is injected: every tier — `hard` included — slips a small
+  // percentage of the time (AI_SKILL.hard.mistakeRate = 0.08), so leaving it on
+  // Math.random made this assertion fail one run in ~12. `() => 1` never rolls
+  // under the mistake rate, which is the deterministic "no slip" case the
+  // assertion is about; it is NOT a weakened check (a slip is what the next test
+  // covers).
+  const chosen = chooseAiMove({ state, difficulty: "hard", random: () => 1 });
   assert.equal(chosen.kind, "tableau-to-tableau");
   assert.equal(chosen.fromColumn, 0);
   assert.equal(chosen.toColumn, 1);

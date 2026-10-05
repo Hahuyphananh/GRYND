@@ -48,6 +48,7 @@ const MATCH_PAGE_ROUTE = "src/app/casino/solitaire-duel/[matchId]/page.tsx";
 const BOARD = "src/components/solitaire-duel/SolitaireBoard.tsx";
 const CARD = "src/components/solitaire-duel/PlayingCard.tsx";
 const INTERACTIONS = "src/lib/solitaire-duel/interactions.ts";
+const STORE = "src/lib/solitaire-duel/serverStore.ts";
 const REALTIME_SERVER = "realtime-server/server.js";
 
 const ROUTE_FILES = {
@@ -239,6 +240,56 @@ test("client: an unwinnable board is announced and the server's re-deal adopted"
   assert.match(src, /nextReset < prevReset/);
   // The client never re-deals or shuffles for itself.
   assert.doesNotMatch(src, /solvableDealFromSeed|dealFromSeed|initialStateFromDeal/);
+});
+
+test("client: a live PRACTICE match polls, because the bot only moves when it is read", () => {
+  const src = code(MATCH_PAGE);
+
+  // THE HAZARD. A human duel is pushed — the opponent's move broadcasts
+  // MATCH_UPDATED — but a practice match pushes nothing while the bot plays:
+  // the store advances the bot inside the GET itself. So if the page stops
+  // reading, the bot stands still. That is exactly how it appeared "stuck after
+  // starting the game and does nothing" once the per-match timer was removed in
+  // favour of the socket push.
+  //
+  // Guard the dependency rather than the symptom: the store must keep advancing
+  // the bot on READ (fetchMatch), which is what makes a client-side heartbeat
+  // the only way a practice match can progress.
+  const store = code(STORE);
+  assert.match(store, /async function advanceAiIfPractice/, "the read-time advance must exist");
+  assert.match(
+    store,
+    /match = await advanceAiIfPractice\(match, nowMs\)/,
+    "fetchMatch is what advances the bot — a read IS the bot's clock",
+  );
+  assert.match(code(REALTIME_SERVER), /solitaire-duel:ready/);
+  // …and there is no server-side scheduler that could advance it instead: the
+  // realtime server only RELAYS events, it never drives a bot.
+  assert.doesNotMatch(
+    code(REALTIME_SERVER),
+    /advanceAi/,
+    "the standalone realtime server must not be growing a bot scheduler",
+  );
+
+  // THE FIX. The page owns that heartbeat, visibility-gated, and only while the
+  // opponent is a bot with a live race.
+  assert.match(src, /import \{ startVisibleInterval \} from "\.\.\/\.\.\/\.\.\/\.\.\/hooks\/useVisiblePoll"/);
+  assert.match(src, /const opponentIsBot = Boolean\(match\?\.isAi\)/);
+  assert.match(
+    src,
+    /if \(!matchId \|\| !opponentIsBot \|\| !racing\) return undefined;/,
+    "the heartbeat must be gated on a live practice match",
+  );
+  assert.match(
+    src,
+    /return startVisibleInterval\(\(\) => loadRef\.current\(\)\, PRACTICE_BOT_POLL_MS\);/,
+    "the practice heartbeat must re-read the authoritative snapshot",
+  );
+  // A HUMAN duel keeps the purely event-driven path — no timer for it.
+  assert.match(src, /useMatchSync\(load, socket, Boolean\(matchId\) && Boolean\(match\) && !terminal\)/);
+  // The cadence is a named constant, so the "read = bot heartbeat" reasoning
+  // has one place to change rather than a literal buried in an effect.
+  assert.match(src, /const PRACTICE_BOT_POLL_MS = 1_500;/);
 });
 
 test("client: practice offers a restart that asks the server for a new deal", () => {
