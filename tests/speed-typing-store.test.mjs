@@ -984,6 +984,44 @@ test("practice: the bot finishes, and a human who finishes later loses to it unr
   assert.equal(settlement.queue.length, 0);
 });
 
+test("practice: a human who finishes FIRST ends the race at once and wins", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const { submitFinish } = await loadStore();
+  seed(fake, practiceRow());
+
+  // The human beats the bot comfortably — well BEFORE the bot's own finish
+  // instant. Nothing advances the bot after this point (a migrated client only
+  // reads on a socket push or a tab focus), so the race has to resolve right
+  // here. Waiting for a bot finish that no read would ever simulate left the
+  // player on a "race complete" screen with no result and no way on.
+  const elapsed = Math.max(1_000, Math.floor(botFinishElapsedMs("normal") / 2));
+  assert.ok(elapsed < botFinishElapsedMs("normal"), "the human is genuinely quicker");
+
+  const result = await submitFinish({
+    userId: ALICE,
+    matchId: MATCH_ID,
+    typedText: TEXT,
+    nowMs: GO + elapsed,
+  });
+
+  assert.equal(result.accepted, true);
+  const row = result.match;
+
+  // Resolved in the SAME transaction as the finish, the earlier (human)
+  // instant deciding it.
+  assert.equal(result.outcome?.settled, true);
+  assert.equal(row.status, MATCH_STATUS.FINISHED);
+  assert.equal(row.result, RESULT.PLAYER1);
+  assert.equal(row.winnerId, ALICE);
+  assert.equal(row.raceState.seats.player1.finished, true);
+  assert.equal(row.raceState.seats.player2.finished, false, "the bot never had to finish");
+
+  // Still practice: nothing competitive is recorded.
+  assert.equal(settlement.rating.length, 0);
+  assert.equal(settlement.trophy.length, 0);
+  assert.equal(settlement.queue.length, 0);
+});
+
 test("practice: the deadline verdict sees the bot's real progress", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   const { resolveDueRace } = await loadStore();

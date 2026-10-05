@@ -286,6 +286,10 @@ export default function SpeedTypingMatchPage() {
   const [opponent, setOpponent] = useState<OpponentProgressPayload | null>(null);
   const [now, setNow] = useState(0);
   const [goAtOverride, setGoAtOverride] = useState<number | null>(null);
+  // The instant the LOCAL buffer first matched the whole passage. The player's
+  // own clock stops there, so the live WPM/accuracy estimate can never decay
+  // while a race is unresolved (see `localElapsedMs` below).
+  const [localFinishAt, setLocalFinishAt] = useState<number | null>(null);
   const [leaving, setLeaving] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [requeueing, setRequeueing] = useState(false);
@@ -332,6 +336,7 @@ export default function SpeedTypingMatchPage() {
     loadedRef.current = false;
     setLoading(true);
     setTyped("");
+    setLocalFinishAt(null);
     finishSentRef.current = false;
     lastSentRef.current = 0;
     void load();
@@ -389,13 +394,28 @@ export default function SpeedTypingMatchPage() {
     return "racing" as const;
   }, [match, loadError, finished, status, goAtMs, now, iFinished, resolved]);
 
-  const elapsedMs = goAtMs == null ? 0 : Math.max(0, (now || goAtMs) - goAtMs);
+  // The player's own clock stops the instant their buffer IS the passage: from
+  // then on their time is final, so the live estimate must never keep dividing
+  // the same character count by a growing elapsed time. Left running, a player
+  // who had finished watched their WPM fall for as long as the screen stayed
+  // open. The server's frozen value wins once it arrives (below); this keeps the
+  // interim — and any unresolved race — honest. A new race clears it with the
+  // buffer, in the GO effect further down.
+  const localElapsedMs =
+    goAtMs == null ? 0 : Math.max(0, (localFinishAt ?? (now || goAtMs)) - goAtMs);
   const local = useMemo(
-    () => localTypingStats(typedChars, passageChars, elapsedMs),
-    [typedChars, passageChars, elapsedMs],
+    () => localTypingStats(typedChars, passageChars, localElapsedMs),
+    [typedChars, passageChars, localElapsedMs],
   );
 
   const isComplete = passage.length > 0 && typed === passage;
+
+  useEffect(() => {
+    if (goAtMs == null) return;
+    // Freeze on the first completion, and release the moment the buffer stops
+    // being the passage (a correction), so a still-live race keeps counting.
+    setLocalFinishAt((prev) => (isComplete ? (prev ?? Date.now()) : null));
+  }, [goAtMs, isComplete]);
   const myPercent =
     iFinished
       ? 100
@@ -432,6 +452,7 @@ export default function SpeedTypingMatchPage() {
   useEffect(() => {
     if (goAtMs == null) return;
     setTyped("");
+    setLocalFinishAt(null);
     lastSentRef.current = 0;
     finishSentRef.current = false;
   }, [goAtMs]);

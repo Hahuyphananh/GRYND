@@ -967,15 +967,30 @@ export async function submitFinish({
     const bothFinished =
       seats[SEAT.PLAYER1]?.finished === true && seats[SEAT.PLAYER2]?.finished === true;
 
-    // Only the SECOND verified finish can end the race by "finish"; until then
-    // the match stays live and the opponent has the rest of the hard limit.
-    const outcome = bothFinished
-      ? resolveRace({
-          state: { ...state, seats },
-          reason: RESOLUTION.FINISH,
-          nowMs,
-        })
-      : null;
+    // Against a HUMAN opponent only the SECOND verified finish ends the race
+    // by "finish": the match stays live so the other seat can post its own
+    // time inside the hard limit, and the verdict (already fixed by the earlier
+    // instant) is written when it does or at the deadline.
+    //
+    // Against the PRACTICE BOT there is nobody left to wait for. The bot's
+    // finish instant is a pure function of the server clock, so the moment the
+    // human's own finish is verified the outcome is already determined — and
+    // nothing would ever advance the bot again, because a client only reads on
+    // a socket push or a tab focus (see useMatchSync). Waiting produced a race
+    // that could never resolve: no result screen, no way to move on, and a live
+    // clock that kept dividing the same character count by a growing elapsed
+    // time, so the player watched their own WPM fall. This is the same verdict
+    // `resolveRace` would reach later — the EARLIER finish instant wins, and the
+    // bot's seat was already advanced to `nowMs` at the top of this function.
+    const practiceDecided = match.isAi === true && seats[seat]?.finished === true;
+    const outcome =
+      bothFinished || practiceDecided
+        ? resolveRace({
+            state: { ...state, seats },
+            reason: RESOLUTION.FINISH,
+            nowMs,
+          })
+        : null;
 
     const nextState: RaceState = {
       ...state,

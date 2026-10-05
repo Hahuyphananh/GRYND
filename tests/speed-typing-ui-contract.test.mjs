@@ -57,6 +57,26 @@ test("ui: every required state is rendered", () => {
   assert.match(page, /data-testid="speed-typing-timer"/);
 });
 
+test("ui: a finished player's WPM freezes at their own finish instant, never decays", () => {
+  // The live estimate divides the buffer's correct-character count by elapsed
+  // time, so once the buffer IS the passage it has to stop: otherwise a player
+  // sitting on the completion screen watched their own WPM fall for as long as
+  // the page stayed open (the reported bug).
+  assert.match(page, /\[localFinishAt, setLocalFinishAt\] = useState/, "the finish instant is held in state");
+  assert.match(page, /const localElapsedMs =/);
+  assert.match(page, /localFinishAt \?\? \(now \|\| goAtMs\)/, "elapsed stops at the local finish instant");
+  assert.match(
+    page,
+    /setLocalFinishAt\(\(prev\) => \(isComplete \? \(prev \?\? Date\.now\(\)\) : null\)\)/,
+    "frozen on the first completion, released on a correction",
+  );
+  assert.match(
+    page,
+    /localTypingStats\(typedChars, passageChars, localElapsedMs\)/,
+    "the local estimate is fed the frozen elapsed, not the live clock",
+  );
+});
+
 test("ui: rematch and return-to-queue reuse the existing platform patterns", () => {
   // The shared result screen's own CTAs, exactly as every other game drives them.
   assert.match(page, /playAgain=\{\{ label: "RACE AGAIN", onClick: requeue \}\}/);

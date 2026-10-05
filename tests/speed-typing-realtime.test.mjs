@@ -392,7 +392,14 @@ test("reconnect: the transport carries no authority, so a replay is harmless", (
   const { emitted: again } = withFakeIo(() =>
     broadcastOpponentProgress({ matchId: "m1", ...input }),
   );
-  assert.deepEqual(emitted[0].payload, again[0].payload);
+  // `sentAt` is the broadcast INSTANT, not a projection of the state, so it is
+  // deliberately outside the equality: comparing it made this assertion fail
+  // whenever the two calls straddled a millisecond boundary. The stamp is still
+  // required to be present, and everything derived from the state must match.
+  const { sentAt: _firstStamp, ...firstPayload } = emitted[0].payload;
+  const { sentAt: _secondStamp, ...secondPayload } = again[0].payload;
+  assert.deepEqual(firstPayload, secondPayload);
+  assert.equal(typeof emitted[0].payload.sentAt, "string");
 });
 
 test("reconnect: the room re-join cancels the disconnect forfeit (server wiring)", () => {
