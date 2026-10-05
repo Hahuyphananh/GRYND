@@ -59,7 +59,11 @@ async function getText(url) {
 // Each pattern is something the client/edge bundle only contains if the value
 // was present at BUILD time. Presence proves the build saw the env var.
 const EXPECTED_INLINE = {
-  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: /pk_(test|live)_[A-Za-z0-9]{8,}/,
+  // A real Clerk key is `pk_test_<base64>` (60+ base64 chars). The Clerk SDK's
+  // own error string contains the literal text "pk_test_..." — so require
+  // enough base64 that that placeholder can never satisfy the check, or the
+  // verifier reports a false PASS while Clerk has no key at all.
+  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: /pk_(test|live)_[A-Za-z0-9+/]{20,}={0,2}/,
   NEXT_PUBLIC_SUPABASE_URL: /https:\/\/[a-z0-9-]+\.supabase\.co/,
   NEXT_PUBLIC_SOCKET_URL: /https:\/\/[a-z0-9-]+\.onrender\.com/,
 };
