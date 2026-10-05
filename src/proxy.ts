@@ -51,6 +51,15 @@ const GAME_ROUTE_PATTERNS = [
   "/casino/odds(.*)",
   "/casino/memory-grid(.*)",
   "/casino/precision(.*)",
+  // Games added to the hub catalogue after this list was first written
+  // (src/app/casino/PageClient.jsx `games[].href`). They are advertised on the
+  // public hub, so a signed-out visitor must be able to READ their lobby as
+  // well — keep this list in sync with that catalogue.
+  "/casino/mini-golf(.*)",
+  "/casino/speed-typing(.*)",
+  "/casino/tic-tac-toe(.*)",
+  "/casino/solitaire-duel(.*)",
+  "/casino/sudoku-duel(.*)",
   // /games/* mirrors of the /casino/* routes.
   "/games/uno(.*)",
   "/games/neon-flush(.*)",
@@ -69,6 +78,11 @@ const GAME_ROUTE_PATTERNS = [
   "/games/odds(.*)",
   "/games/memory-grid(.*)",
   "/games/precision(.*)",
+  "/games/mini-golf(.*)",
+  "/games/speed-typing(.*)",
+  "/games/tic-tac-toe(.*)",
+  "/games/solitaire-duel(.*)",
+  "/games/sudoku-duel(.*)",
 ] as const;
 
 const isPublicRoute = createRouteMatcher([

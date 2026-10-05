@@ -15,7 +15,7 @@
     "db:purge-testers": "node --env-file-if-exists=.env.local --import tsx scripts/purge-tester-users.mjs",
     "db:delete-users": "node --env-file-if-exists=.env.local --import tsx scripts/purge-tester-users.mjs",
     "backfill:field-encryption": "node --import tsx scripts/backfill-field-encryption.mjs",
-    "test": "npm run test:icons && node --import tsx --test tests/tower-arena-engine.test.mjs tests/tower-arena-turns.test.mjs tests/tower-arena-settlement.test.mjs tests/tower-arena-realtime.test.mjs tests/tower-arena-qa.test.mjs tests/iconAssets.test.mjs tests/emotes.test.mjs tests/security-authz.test.mjs tests/security-media.test.mjs tests/payment-webhook.test.mjs tests/field-encryption.test.mjs tests/dice-flush-route-contract.test.mjs tests/db-backup-restore.test.mjs tests/recently-played.test.mjs tests/daily-loss.test.mjs tests/chat-message-list.test.mjs tests/hex-troop-count.test.mjs tests/persistent-swr-cache.test.mjs tests/bot-opponents-turn.test.mjs",
+    "test": "npm run test:icons && node --import tsx --test tests/tower-arena-engine.test.mjs tests/tower-arena-turns.test.mjs tests/tower-arena-settlement.test.mjs tests/tower-arena-realtime.test.mjs tests/tower-arena-qa.test.mjs tests/iconAssets.test.mjs tests/emotes.test.mjs tests/security-authz.test.mjs tests/security-media.test.mjs tests/payment-webhook.test.mjs tests/field-encryption.test.mjs tests/dice-flush-route-contract.test.mjs tests/db-backup-restore.test.mjs tests/recently-played.test.mjs tests/daily-loss.test.mjs tests/chat-message-list.test.mjs tests/hex-troop-count.test.mjs tests/persistent-swr-cache.test.mjs tests/bot-opponents-turn.test.mjs tests/game-route-public.test.mjs",
     "test:icons": "node scripts/check-tabler-icons.mjs",
     "test:elo": "node --import tsx --test tests/elo-rating.test.mjs",
     "test:elo-leaderboard": "node --import tsx --test tests/leaderboard-rating.test.mjs tests/leaderboard-record-sanity.test.mjs",
@@ -119,6 +119,7 @@
     "verify:complete-profile": "node qa/complete-profile-check.mjs",
     "test:upgrade-pro": "node --import tsx --test tests/upgrade-pro-contract.test.mjs",
     "test:bot-turns": "node --import tsx --test tests/bot-opponents-turn.test.mjs",
+    "test:game-routes": "node --import tsx --test tests/game-route-public.test.mjs",
     "test:tower-arena": "node --import tsx --test tests/tower-arena-engine.test.mjs tests/tower-arena-turns.test.mjs tests/tower-arena-settlement.test.mjs tests/tower-arena-realtime.test.mjs tests/tower-arena-qa.test.mjs",
     "loadtest:read-mix": "npx --yes artillery@2.0.34 run load-test/scenarios/read-mix.yml"
   },
