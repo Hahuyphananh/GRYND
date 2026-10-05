@@ -30,6 +30,21 @@
     "binding": "ASSETS"
   },
 
+    "vars": {
+    // Non-secret RUNTIME vars only. Secrets live in `wrangler secret put`;
+    // NEXT_PUBLIC_* live in Workers BUILD variables (the Next build inlines
+    // them, so a runtime var has no effect). See
+    // docs/CLOUDFLARE_ENV_AND_DOMAIN.md for the full split.
+    "CLERK_JWT_KEY": "-----BEGIN PUBLIC KEY-----\\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwQ0H/zMxn5TCk9SILyZv\\n0fuCDPYxAF1VJrGYm+Jqn1Lb6YyZXVv6030/c6/V+oeYO2dFtY2J/Kbu6oBjKX9l\\nze0+hU3mMukgTcw+9JkxyiR/MyqnIP1EtzGkQXnu+FBZBfPz+/Skj2rmb/S0ei3X\\ny+xVOTRsE+Mt0sfxFMFaKSpt2D0UsqaYMSVPo0Ems7HCTmzO9kMC8SIqDgxbjS8f\\nDQru/tVyZVIZ4ovypgR+iBGWWb3TCesKwtVEG91nxvpn4SE75wJwFVdi81IOMecE\\nTcJp7k+At2SiDPJ/qgwAXRQxlMqzaSPDM5WVp90G+dPznwdGOKW2Y5IS2TWYjnbP\\nkQIDAQAB\\n-----END PUBLIC KEY-----",
+    "POSTHOG_PROJECT_ID": "448673",
+    "SMTP_HOST": "smtp.gmail.com",
+    "SMTP_PORT": "465",
+    "SMTP_SECURE": "true",
+    "SMTP_TLS_INSECURE": "true",
+    "SMTP_USER": "phananhalbert@gmail.com",
+    "YOUTUBE_CLIENT_ID": "238084489944-m3dj1ovik929jl4dvte0mqehafj89n0o.apps.googleusercontent.com"
+  },
+
   // ── Hyperdrive (database) ─────────────────────────────────────────────
   //
   // The app talks to Supabase Postgres through Cloudflare Hyperdrive, using

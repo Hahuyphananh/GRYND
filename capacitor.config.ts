@@ -4,7 +4,7 @@ const config: CapacitorConfig = {
   appId: 'com.grynd.app',
   appName: 'GRYND',
   server: {
-    url: 'https://www.grynd.dedyn.io/',
+    url: 'https://grynd.dedyn.io/',
     cleartext: false
   }
 };

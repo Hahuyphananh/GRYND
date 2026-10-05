@@ -121,6 +121,7 @@
     "verify:precision-mobile": "node qa/precision-mobile-check.mjs",
     "verify:precision-flow": "node qa/precision-flow-check.mjs",
     "verify:complete-profile": "node qa/complete-profile-check.mjs",
+    "verify:cloudflare": "node qa/cloudflare-verify.mjs",
     "test:upgrade-pro": "node --import tsx --test tests/upgrade-pro-contract.test.mjs",
     "test:bot-turns": "node --import tsx --test tests/bot-opponents-turn.test.mjs",
     "test:tower-arena": "node --import tsx --test tests/tower-arena-engine.test.mjs tests/tower-arena-turns.test.mjs tests/tower-arena-settlement.test.mjs tests/tower-arena-realtime.test.mjs tests/tower-arena-qa.test.mjs",

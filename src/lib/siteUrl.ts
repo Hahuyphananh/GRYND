@@ -12,7 +12,7 @@
 // meta tag looks perfectly correct, which is what makes it hard to spot.
 
 /** The production origin, used whenever nothing usable is configured. */
-export const CANONICAL_SITE_URL = "https://www.grynd.dedyn.io";
+export const CANONICAL_SITE_URL = "https://grynd.dedyn.io";
 
 // Hostnames that no longer serve this app. A configured base URL pointing at
 // one of these is ignored (a retired host 404s the assets it is asked for).

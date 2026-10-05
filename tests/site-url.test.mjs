@@ -51,7 +51,7 @@ function withEnv(values, fn) {
 }
 
 test("the canonical origin is the live domain", () => {
-  assert.equal(CANONICAL_SITE_URL, "https://www.grynd.dedyn.io");
+  assert.equal(CANONICAL_SITE_URL, "https://grynd.dedyn.io");
 });
 
 test("a valid configured base URL is used, trailing slash stripped", () => {

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const baseUrl =
-  process.env.GRYND_URL || "https://www.grynd.dedyn.io/";
+  process.env.GRYND_URL || "https://grynd.dedyn.io/";
 
 const errors = [];
 const visited = new Set();

@@ -1,6 +1,6 @@
 # ads.txt — IAB authorised digital sellers for this domain.
 #
-# Served verbatim from the site root (https://www.grynd.dedyn.io/ads.txt).
+# Served verbatim from the site root (https://grynd.dedyn.io/ads.txt).
 # Crawlers — Google's included — read it to check which sellers are allowed to
 # sell this site's ad inventory. Listing our own AdSense publisher as a DIRECT
 # seller is what lets the whole of our inventory be bid on; with no ads.txt, or
