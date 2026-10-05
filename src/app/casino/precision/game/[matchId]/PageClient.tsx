@@ -176,7 +176,7 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
     }
   }, []);
 
-  const { state, stateRef, serverClockOffsetMs, lookup, applySnapshot, refreshState } =
+  const { state, stateRef, serverClockOffsetMs, lookup, applySnapshot } =
     usePrecisionMatchState({
       matchId,
       socket,
@@ -185,8 +185,9 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
     });
 
   // `serverClockOffsetMs` MUST be forwarded: it is the device→server wall-clock
-  // offset the poll estimated from the response's own round trip. The display
-  // clock bridges to the server's GO instant THROUGH the device wall clock, so
+  // offset the authoritative read estimated from the response's own round trip.
+  // The display clock bridges to the server's GO instant THROUGH the device wall
+  // clock, so
   // dropping it anchors the round on the device's skew — the number on the
   // board then disagrees with the server-stamped times the round-result panel
   // prints (and with the times the server grades the stop at).
@@ -197,7 +198,7 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
     freezeTimer,
     releaseFreeze,
     resumeTimer,
-  } = usePrecisionRoundClock({ state, refreshState, serverClockOffsetMs });
+  } = usePrecisionRoundClock({ state, serverClockOffsetMs });
 
   const { reveal, dismissReveal } = usePrecisionRoundReveal({ state, localSeat });
 

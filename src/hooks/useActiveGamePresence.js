@@ -52,6 +52,7 @@ import {
   sendPresenceBeat,
   sendPresenceLeave,
 } from "../lib/gamePresenceClient";
+import { getPollStorage, leaseIsFree, renewLease } from "../lib/sharedPoll";
 
 export default function useActiveGamePresence(
   gameLabel,
@@ -83,8 +84,18 @@ export default function useActiveGamePresence(
     const sessionId = sessionIdRef.current;
     let stopped = false;
 
+    // One tab per BROWSER owns this game's row: the lease holder beats, every
+    // other tab skips. The row is a single UPSERT on (user_id, game_key) either
+    // way — this just stops N tabs sending N identical writes. A tab that never
+    // wins the lease never sets `didBeatRef`, so on unmount it sends no leave
+    // (its own session never wrote the row, and the leave is session-scoped).
+    const leaseKey = `grynd:presence:active-game:${label}`;
     const beat = () => {
       if (stopped) return;
+      const storage = getPollStorage();
+      const now = Date.now();
+      if (!leaseIsFree(storage, leaseKey, now)) return;
+      renewLease(storage, leaseKey, now, PRESENCE_HEARTBEAT_MS * 1.5);
       didBeatRef.current = true;
       sendPresenceBeat(label, sessionId);
     };

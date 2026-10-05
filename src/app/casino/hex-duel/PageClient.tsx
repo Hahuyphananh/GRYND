@@ -5,7 +5,7 @@ import { useUser } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useHexDuel, otherPlayer, type DuelPlayer } from "../../../lib/hexDuelEngine";
-import { startSocketAwareInterval } from "../../../hooks/useVisiblePoll";
+import { startMatchSync } from "../../../hooks/useMatchSync";
 import { useSocket } from "../../../context/SocketProvider";
 import EmotePicker, { EmoteBubble } from "../../../components/game/EmotePicker";
 import useGameEmotes from "../../../hooks/useGameEmotes";
@@ -1423,7 +1423,7 @@ export default function HexDuelPage() {
     // Poll immediately, then socket-aware: 30s while the hexDuel push path is
     // healthy, 5s if it drops, and off entirely while the tab is hidden.
     pollStatus();
-    const stopPoll = startSocketAwareInterval(pollStatus, socket);
+    const stopPoll = startMatchSync(pollStatus, socket);
 
     return () => {
       cancelled = true;
@@ -2004,7 +2004,7 @@ export default function HexDuelPage() {
     // Documented catch-up net for missed hexDuel:action socket events, now
     // socket-aware: 30s while the push path is healthy, 5s if it drops, off
     // while the tab is hidden.
-    const stopPoll = startSocketAwareInterval(pollActions, socket);
+    const stopPoll = startMatchSync(pollActions, socket);
 
     return () => {
       cancelled = true;
@@ -2176,7 +2176,7 @@ export default function HexDuelPage() {
     // the hexDuel push path is healthy the turn advances over the socket, so
     // the net relaxes to 30s; it tightens to 5s the moment the socket drops,
     // and stops entirely while the tab is hidden.
-    const stopPoll = startSocketAwareInterval(pollTurn, socket);
+    const stopPoll = startMatchSync(pollTurn, socket);
 
     return () => {
       cancelled = true;
@@ -2261,7 +2261,7 @@ export default function HexDuelPage() {
     pollSpectate();
     // Socket-aware + visibility-gated: nobody spectates from a background tab,
     // and the cadence relaxes while the push path is healthy.
-    const stopPoll = startSocketAwareInterval(pollSpectate, socket);
+    const stopPoll = startMatchSync(pollSpectate, socket);
 
     return () => {
       cancelled = true;

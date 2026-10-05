@@ -1,11 +1,12 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Chess } from "chess.js";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSocket } from "../../../../context/SocketProvider";
 import useGamePresence from "../../../../hooks/useGamePresence";
+import { useRealtimeSubscription } from "../../../../hooks/useRealtimeSubscription";
 import ReportModal from "../../../../components/ReportModal";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
@@ -115,6 +116,28 @@ export default function ChessGamePage() {
   const prevFenRef = useRef("");
   const firstFetchDoneRef = useRef(false);
   const gameFinishedRef = useRef(false);
+  // React state mirror of the finished flag, so the realtime subscription can
+  // be torn down once the final state has been processed (objective: stop
+  // listening after the game ends).
+  const [gameFinished, setGameFinished] = useState(false);
+  // ── Realtime sync state (replaces the old 2s /api/chess/game-state poll) ──
+  // Local, ticking clock seeded by the authoritative snapshot; advanced by the
+  // 1s UI ticker and corrected on each move event. Pure UI computation.
+  const [clocks, setClocks] = useState({ white: null, black: null, activeTurn: "white", at: 0 });
+  const [clockNow, setClockNow] = useState(() => Date.now());
+  // Highest move id already applied, so a duplicate Realtime event is a no-op.
+  const appliedMoveIdRef = useRef(0);
+  // Single-flight guard for the edge-triggered authoritative refresh.
+  const refreshInFlightRef = useRef(false);
+  const refreshQueuedRef = useRef(false);
+  // Set when the Realtime channel drops, so the next SUBSCRIBED reconciles once.
+  const realtimeRecoveryRef = useRef({ needsRecovery: false });
+  // Counts socket connections so only a RECONNECT (not the first connect) refreshes.
+  const socketConnectCountRef = useRef(0);
+  // Guards the one-shot timeout settlement so it can never fire in a loop.
+  const timeoutSettledRef = useRef(false);
+  // Stable handle to the latest fetchState (avoids re-binding effects).
+  const fetchStateRef = useRef(null);
   const [loading, setLoading] = useState(false);
   const posthog = usePostHog();
 
@@ -284,6 +307,23 @@ export default function ChessGamePage() {
     setMoves(game.moves || []);
     setLiveFen(game.fen || "start");
 
+    // Seed the LOCAL clock from this authoritative snapshot. The 1s UI ticker
+    // (and each move event) advances it from here; no further server reads are
+    // needed to keep the displayed clock accurate.
+    setClocks({
+      white: Number(game.whiteTimeRemaining ?? 0),
+      black: Number(game.blackTimeRemaining ?? 0),
+      activeTurn: game.activeTurn === "black" ? "black" : "white",
+      at: Date.now(),
+    });
+    if (Array.isArray(game.moves) && game.moves.length > 0) {
+      appliedMoveIdRef.current = Math.max(
+        appliedMoveIdRef.current,
+        ...game.moves.map((m) => Number(m.id) || 0),
+      );
+    }
+    timeoutSettledRef.current = false;
+
     // Auto-reset move index to latest
     if (moveIndex !== -1 && game.moves && moveIndex !== game.moves.length - 1) {
       // Keep user's history view until they click latest
@@ -332,6 +372,7 @@ export default function ChessGamePage() {
 
     if (game.status === "finished" || game.status === "expired") {
       gameFinishedRef.current = true;
+      setGameFinished(true);
       const myId = color === "white" ? game.whitePlayerId : game.blackPlayerId;
 
       // Result copy only — no stake/payout figure is produced or shown.
@@ -383,28 +424,182 @@ export default function ChessGamePage() {
     firstFetchDoneRef.current = true;
   }
 
-  useEffect(() => {
-    let cancelled = false;
+  // ── Realtime state sync (replaces the old 2s /api/chess/game-state poll) ───
+  //
+  // A move is still made through the authoritative POST /api/chess/move; the
+  // row it writes to `chess_moves` is published to Supabase Realtime, so BOTH
+  // players receive the move with no recurring HTTP read. Transitions a move
+  // row cannot express (opponent joined, resign, draw, opponent left, clock
+  // timeout) arrive as a Socket.IO room "poke" that triggers ONE authoritative
+  // fetch — never a permanent poll.
+  fetchStateRef.current = fetchState;
 
-    fetchState();
-    const id = setInterval(() => {
-      if (cancelled) return;
-      fetchState();
-    }, 2000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
+  // Coalesced, single-flight authoritative refresh. Only ever called on an
+  // explicit edge (initial load, reconnect, visibility regain, a poke, or a
+  // local clock hitting zero), so it can never become a polling loop.
+  const scheduleRefresh = useCallback(() => {
+    if (gameFinishedRef.current) return;
+    if (refreshInFlightRef.current) {
+      refreshQueuedRef.current = true;
+      return;
+    }
+    refreshInFlightRef.current = true;
+    Promise.resolve(fetchStateRef.current?.()).finally(() => {
+      refreshInFlightRef.current = false;
+      if (refreshQueuedRef.current) {
+        refreshQueuedRef.current = false;
+        scheduleRefresh();
+      }
+    });
+  }, []);
+
+  // Apply a pushed `chess_moves` INSERT to the same React state the old poll
+  // updated. Duplicate deliveries of the same move are ignored by id.
+  const applyRemoteMove = useCallback(
+    (row) => {
+      if (!row || gameFinishedRef.current) return;
+      const moveId = Number(row.id);
+      if (Number.isFinite(moveId) && moveId > 0) {
+        if (moveId <= appliedMoveIdRef.current) return; // duplicate event
+        appliedMoveIdRef.current = moveId;
+      }
+      const fen = row.fen_after ?? row.fenAfter;
+      if (!fen) {
+        // No usable payload — reconcile once with the authority.
+        scheduleRefresh();
+        return;
+      }
+
+      const move = {
+        id: row.id,
+        playedBy: row.played_by ?? row.playedBy,
+        moveUci: row.move_uci ?? row.moveUci,
+        moveSan: row.move_san ?? row.moveSan,
+        fenAfter: fen,
+        createdAt: row.created_at ?? row.createdAt,
+      };
+
+      setMoves((prev) =>
+        prev.some((m) => String(m.id) === String(move.id)) ? prev : [...prev, move],
+      );
+      setLiveFen(fen);
+      timeoutSettledRef.current = false;
+
+      // Flip the turn and charge the mover's clock locally, mirroring the
+      // server's computeClocks. The server remains the clock's authority.
+      setClocks((prev) => {
+        if (prev.white === null && prev.black === null) return prev;
+        const now = Date.now();
+        const mover = prev.activeTurn === "black" ? "black" : "white";
+        const elapsed = Math.max(0, Math.floor((now - (prev.at || now)) / 1000));
+        return {
+          ...prev,
+          [mover]: Math.max(0, Number(prev[mover] ?? 0) - elapsed),
+          activeTurn: mover === "white" ? "black" : "white",
+          at: now,
+        };
+      });
+      setGameData((prev) =>
+        prev
+          ? {
+              ...prev,
+              fen,
+              activeTurn: prev.activeTurn === "white" ? "black" : "white",
+            }
+          : prev,
+      );
+
+      // Read-only derivation from the authoritative FEN: when the move ended the
+      // game, reconcile ONE authoritative fetch so the result/trophy UI reflects
+      // the server's decision (the server already applied rewards on the move).
+      try {
+        const board = new Chess(fen);
+        if (board.isGameOver()) scheduleRefresh();
+      } catch {
+        // ignore — a later refresh reconciles
+      }
+    },
+    [scheduleRefresh],
+  );
+
+  // Low-latency signal for transitions the move stream cannot express. A poke
+  // is a "refetch the authoritative snapshot" hint, never a state payload.
+  const emitStatePoke = useCallback(() => {
+    if (!socket || !gameId) return;
+    socket.emit("room_event", {
+      roomId: `chess:game:${gameId}`,
+      event: "chess:state",
+    });
+  }, [socket, gameId]);
+
+  // ONE authoritative read on load — the only game-state request this page
+  // makes while Realtime is healthy.
+  useEffect(() => {
+    if (!gameId) return undefined;
+    void fetchStateRef.current?.();
+    return undefined;
   }, [gameId]);
 
-  // Socket: game events + draw offers
+  // Event-driven move stream. Realtime pushes the authoritative row; no poll.
+  useRealtimeSubscription({
+    table: "chess_moves",
+    event: "INSERT",
+    filter: `game_id=eq.${gameId}`,
+    enabled: Boolean(gameId) && !gameFinished,
+    onEvent: (payload) => applyRemoteMove(payload.new),
+    onStatus: (status) => {
+      if (status === "SUBSCRIBED") {
+        if (realtimeRecoveryRef.current.needsRecovery) {
+          realtimeRecoveryRef.current.needsRecovery = false;
+          scheduleRefresh();
+        }
+      } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+        // Remember the drop; the next SUBSCRIBED reconciles exactly once.
+        realtimeRecoveryRef.current.needsRecovery = true;
+      }
+    },
+  });
+
+  // Local clock ticker — pure UI computation, no network.
+  useEffect(() => {
+    const id = setInterval(() => setClockNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Returning to a hidden tab may have missed events — reconcile once.
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === "visible" && !gameFinishedRef.current) {
+        scheduleRefresh();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [scheduleRefresh]);
+
+  // When the displayed active clock reaches zero, ONE authoritative fetch lets
+  // the server settle the timeout. Guarded so it fires at most once per game.
+  useEffect(() => {
+    if (gameFinishedRef.current) return;
+    if (!gameData || gameData.status !== "in_progress") return;
+    const active = clocks.activeTurn === "black" ? "black" : "white";
+    const base = active === "white" ? clocks.white : clocks.black;
+    if (base === null || base === undefined) return;
+    const elapsed = Math.max(0, Math.floor((clockNow - clocks.at) / 1000));
+    if (base - elapsed > 0) return;
+    if (timeoutSettledRef.current) return;
+    timeoutSettledRef.current = true;
+    scheduleRefresh();
+  }, [clockNow, clocks, gameData, scheduleRefresh]);
+
+  // Socket: game events, draw offers, and the realtime "poke" room.
   useEffect(() => {
     if (!socket) return;
 
     socket.emit("join_game", { gameId });
 
     // Emote room — dedicated per-match room so emotes work even though chess
-    // is poll-based (the server's join_game is a no-op). Both players join
+    // is event-synced (the server's join_game is a no-op). Both players join
     // this room and the generic room_event handler broadcasts between them.
     const emoteRoomId = `chess:emote:${gameId}`;
     socket.emit("join_room", { roomId: emoteRoomId });
@@ -415,7 +610,27 @@ export default function ChessGamePage() {
     };
     socket.on("chess:emote", handleEmote);
 
-    socket.on("move", fetchState);
+    // State-poke room — signals the transitions the move stream cannot express
+    // (opponent joined, resign, draw accepted, opponent left, clock timeout).
+    // A poke triggers ONE authoritative fetch; it is not a poll.
+    const stateRoomId = `chess:game:${gameId}`;
+    socket.emit("join_room", { roomId: stateRoomId });
+    const handleStatePoke = () => scheduleRefresh();
+    socket.on("chess:state", handleStatePoke);
+
+    // Announce our arrival ONCE so a player already waiting on this game
+    // reconciles (e.g. the opponent joining turns the host's "Waiting for
+    // opponent..." into an active game). This is a bare hint, never state.
+    socket.emit("room_event", { roomId: stateRoomId, event: "chess:state" });
+
+    // A socket reconnect may have missed a poke — reconcile exactly once.
+    const handleConnect = () => {
+      socketConnectCountRef.current += 1;
+      if (socketConnectCountRef.current > 1) scheduleRefresh();
+    };
+    socket.on("connect", handleConnect);
+
+    socket.on("move", scheduleRefresh);
 
     // Draw offer handling
     socket.on("draw_offered", () => {
@@ -428,19 +643,22 @@ export default function ChessGamePage() {
     socket.on("draw_accepted", () => {
       setDrawOfferReceived(false);
       setDrawOffered(false);
-      fetchState();
+      scheduleRefresh();
     });
 
     return () => {
       socket.emit("leave_game", { gameId });
       socket.emit("leave_room", { roomId: emoteRoomId });
-      socket.off("move", fetchState);
+      socket.emit("leave_room", { roomId: stateRoomId });
+      socket.off("move", scheduleRefresh);
+      socket.off("chess:state", handleStatePoke);
+      socket.off("connect", handleConnect);
       socket.off("chess:emote", handleEmote);
       socket.off("draw_offered");
       socket.off("draw_declined");
       socket.off("draw_accepted");
     };
-  }, [socket, gameId]);
+  }, [socket, gameId, scheduleRefresh, color]);
 
   async function onDrop(sourceSquare, targetSquare) {
     // Always reset promotion guard and check if promotion already handled
@@ -644,6 +862,8 @@ export default function ChessGamePage() {
         return;
       }
 
+      // Tell the opponent to reconcile their authoritative state now.
+      emitStatePoke();
       await fetchState();
     } catch {
       setStatus("Failed to resign.");
@@ -674,6 +894,7 @@ export default function ChessGamePage() {
       }),
     }).then(() => {
       socket?.emit("draw_accepted", { gameId });
+      emitStatePoke();
       fetchState();
     }).catch(() => {});
   }
@@ -693,15 +914,27 @@ export default function ChessGamePage() {
       ? gameData?.blackPlayerName
       : gameData?.whitePlayerName;
 
-  const myClock =
-    activeColor === "white"
-      ? gameData?.whiteTimeRemaining
-      : gameData?.blackTimeRemaining;
+  // Local, ticking clocks seeded by the authoritative snapshot and advanced by
+  // the 1s ticker / each move event. Pure UI computation — the server remains
+  // the authority for timeouts (settled by the one-shot fetch above).
+  const remainingClock = (colorKey) => {
+    const base = colorKey === "white" ? clocks.white : clocks.black;
+    if (base === null || base === undefined) {
+      return colorKey === "white"
+        ? gameData?.whiteTimeRemaining
+        : gameData?.blackTimeRemaining;
+    }
+    const running =
+      clocks.activeTurn === colorKey &&
+      gameData?.status === "in_progress" &&
+      !gameFinishedRef.current;
+    if (!running) return base;
+    const elapsed = Math.max(0, Math.floor((clockNow - clocks.at) / 1000));
+    return Math.max(0, base - elapsed);
+  };
 
-  const oppClock =
-    activeColor === "white"
-      ? gameData?.blackTimeRemaining
-      : gameData?.whiteTimeRemaining;
+  const myClock = remainingClock(activeColor === "white" ? "white" : "black");
+  const oppClock = remainingClock(activeColor === "white" ? "black" : "white");
 
   const myCaptured = activeColor === "white" ? capturedPieces.white : capturedPieces.black;
   const oppCaptured = activeColor === "white" ? capturedPieces.black : capturedPieces.white;
@@ -1016,7 +1249,6 @@ export default function ChessGamePage() {
         compact
         outcome={outcome}
         headline={headline}
-        subline={subline}
         gameName="Chess Arena"
         opponent={{ name: oppName }}
         summary={[

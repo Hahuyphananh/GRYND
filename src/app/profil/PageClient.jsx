@@ -539,35 +539,12 @@ export default function ProfilePage({ adSlot = null }) {
     await loadFriendPresence(); // keep UI in sync
   };
 
-  useEffect(() => {
-    if (!isSignedIn) return;
-
-    let interval;
-
-    const sendHeartbeat = async () => {
-      try {
-        await fetch("/api/presence/heartbeat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({}),
-        });
-      } catch (err) {
-        console.error("[HEARTBEAT_ERROR]", err);
-      }
-    };
-
-    // send immediately
-    sendHeartbeat();
-
-    // The global PresenceHeartbeat already beats every 5 min; this
-    // page used to fire an extra heartbeat every 25s, doubling writes
-    // on the profile page. Align to the same 5-min cadence so the
-    // duplicate writer doesn't amplify Neon presence writes.
-    interval = setInterval(sendHeartbeat, 300000);
-
-    return () => clearInterval(interval);
-  }, [isSignedIn]);
+  // NOTE: this page used to run its OWN /api/presence/heartbeat writer on a
+  // 5-minute interval, on top of the app-wide <PresenceHeartbeat /> mounted in
+  // providers.tsx. That second writer kept the same `user_presence` row alive
+  // with no extra benefit. It is gone: the global heartbeat (now browser-wide
+  // and deduped across tabs) is the single owner of online/offline freshness,
+  // and the profile's friend feed reads the row it maintains.
 
   const getFriendStatus = (friendId) => {
     const presence = friendPresenceByFriend?.[friendId];

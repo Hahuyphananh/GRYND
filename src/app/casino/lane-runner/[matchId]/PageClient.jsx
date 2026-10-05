@@ -39,11 +39,8 @@ import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import Footer from "../../../../components/Footer";
 import { useSocket } from "../../../../context/SocketProvider";
 import {
-  SOCKET_DOWN_POLL_MS,
-  SOCKET_HEALTHY_POLL_MS,
-  useSocketConnected,
-  useVisiblePoll,
-} from "../../../../hooks/useVisiblePoll";
+  useMatchSync,
+} from "../../../../hooks/useMatchSync";
 import {
   LANE_RUSH_DUEL_MATCH_UPDATED,
   laneRushDuelMatchRoom,
@@ -857,8 +854,6 @@ export default function LaneRushDuelMatchPage({ params }) {
     }
   }, [matchId]);
 
-  const socketConnected = useSocketConnected(socket);
-
   useEffect(() => {
     fetchStatus();
   }, [fetchStatus]);
@@ -867,11 +862,7 @@ export default function LaneRushDuelMatchPage({ params }) {
   // reconcile/safety net. It relaxes while the socket is healthy, tightens if
   // it drops, and stops while the tab is hidden. Pacing comes from server state
   // + the local 250ms clock, never from the poll rate.
-  useVisiblePoll(
-    fetchStatus,
-    socketConnected ? SOCKET_HEALTHY_POLL_MS : SOCKET_DOWN_POLL_MS,
-    Boolean(matchId),
-  );
+  useMatchSync(fetchStatus, socket, Boolean(matchId));
 
   useEffect(() => {
     if (!socket || !matchId) return;

@@ -1,6 +1,7 @@
 "use client";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useSocket } from "../../../../context/SocketProvider";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 
 const TIMER_OPTIONS = [
@@ -33,6 +34,7 @@ export default function MatchmakingPage() {
   const { tableAmount } = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { socket } = useSocket();
 
   const precreatedGameId = (searchParams.get("gameId") || "").trim();
   const presetColor = searchParams.get("color") || "white";
@@ -46,78 +48,88 @@ export default function MatchmakingPage() {
   const [color, setColor] = useState(presetColor);
   const [isCanceling, setIsCanceling] = useState(false);
   const pollFailuresRef = useRef(0);
-  const pollIntervalRef = useRef(null);
   const isCreatingRef = useRef(false);
+  // The game this page is waiting on, kept in a ref so the socket listeners can
+  // stay bound once (the effect never re-runs on a state change).
+  const activeGameRef = useRef({ gameId: null, color: "white" });
+  // Single-flight + coalescing guards for the edge-triggered authoritative read.
+  const checkingRef = useRef(false);
+  const queuedRef = useRef(false);
+  // Stable handle to the latest checker so listeners never re-bind.
+  const checkForOpponentRef = useRef(null);
+
+  // ONE authoritative read of the waiting game. Called only on an explicit edge
+  // — mount, a `lobby:updated` push (the opponent joined via the lobby emits
+  // this), or a socket reconnect — so it can never become a polling loop.
+  const checkForOpponent = useCallback(async () => {
+    const { gameId: activeGameId, color: activeColor } = activeGameRef.current;
+    if (!activeGameId) return;
+    if (checkingRef.current) {
+      queuedRef.current = true;
+      return;
+    }
+    checkingRef.current = true;
+    try {
+      const pollRes = await fetch(
+        `/api/chess/game-state?gameId=${activeGameId}`,
+        { cache: "no-store", credentials: "include" },
+      );
+      const pollData = await pollRes.json();
+      if (!pollRes.ok) {
+        const nextFailures = pollFailuresRef.current + 1;
+        pollFailuresRef.current = nextFailures;
+
+        if (nextFailures >= 3) {
+          setStatusText(
+            pollData?.error ||
+              "Unable to refresh waiting room. Please retry.",
+          );
+        }
+        return;
+      }
+
+      pollFailuresRef.current = 0;
+
+      if (
+        pollData.data.status === "in_progress" &&
+        pollData.data.blackPlayerId
+      ) {
+        router.push(
+          `/casino/chess-game/${activeGameId}?color=${activeColor}&timer=${timerSeconds}`,
+        );
+      }
+    } catch {
+      const nextFailures = pollFailuresRef.current + 1;
+      pollFailuresRef.current = nextFailures;
+
+      if (nextFailures >= 3) {
+        setStatusText("Unable to refresh waiting room. Please retry.");
+      }
+    } finally {
+      checkingRef.current = false;
+      if (queuedRef.current) {
+        queuedRef.current = false;
+        checkForOpponentRef.current?.();
+      }
+    }
+  }, [router, timerSeconds]);
+
+  checkForOpponentRef.current = checkForOpponent;
 
   useEffect(() => {
     let cancelled = false;
 
-    const beginPolling = (activeGameId, activeColor) => {
-      // Clear any existing poll interval first
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = null;
-      }
-
+    const beginWaiting = (activeGameId, activeColor) => {
+      activeGameRef.current = { gameId: activeGameId, color: activeColor };
+      pollFailuresRef.current = 0;
       setStatusText("Waiting for opponent...");
-      pollIntervalRef.current = setInterval(async () => {
-        if (cancelled) return;
-        try {
-          const pollRes = await fetch(
-            `/api/chess/game-state?gameId=${activeGameId}`,
-            { cache: "no-store", credentials: "include" },
-          );
-          const pollData = await pollRes.json();
-          if (!pollRes.ok) {
-            const nextFailures = pollFailuresRef.current + 1;
-            pollFailuresRef.current = nextFailures;
-
-            if (nextFailures >= 3) {
-              setStatusText(
-                pollData?.error ||
-                  "Unable to refresh waiting room. Please retry.",
-              );
-              if (pollIntervalRef.current) {
-                clearInterval(pollIntervalRef.current);
-                pollIntervalRef.current = null;
-              }
-            }
-            return;
-          }
-
-          pollFailuresRef.current = 0;
-
-          if (
-            pollData.data.status === "in_progress" &&
-            pollData.data.blackPlayerId
-          ) {
-            if (pollIntervalRef.current) {
-              clearInterval(pollIntervalRef.current);
-              pollIntervalRef.current = null;
-            }
-            router.push(
-              `/casino/chess-game/${activeGameId}?color=${activeColor}&timer=${timerSeconds}`,
-            );
-          }
-        } catch {
-          const nextFailures = pollFailuresRef.current + 1;
-          pollFailuresRef.current = nextFailures;
-
-          if (nextFailures >= 3) {
-            setStatusText("Unable to refresh waiting room. Please retry.");
-            if (pollIntervalRef.current) {
-              clearInterval(pollIntervalRef.current);
-              pollIntervalRef.current = null;
-            }
-          }
-        }
-      }, 2000);
+      void checkForOpponentRef.current?.();
     };
 
     const createOrJoin = async () => {
-      // If we already have a gameId from the URL, just poll it
+      // If we already have a gameId from the URL, just wait on it
       if (gameId) {
-        beginPolling(gameId, color);
+        beginWaiting(gameId, color);
         return;
       }
 
@@ -156,8 +168,8 @@ export default function MatchmakingPage() {
           return;
         }
 
-        // Start polling with the new game directly — don't trigger state change
-        beginPolling(data.gameId, data.color || "white");
+        // Start waiting with the new game directly — don't trigger state change
+        beginWaiting(data.gameId, data.color || "white");
       } catch (error) {
         console.error("Failed to create or join chess game", error);
         setStatusText("Unable to create game");
@@ -168,12 +180,37 @@ export default function MatchmakingPage() {
 
     return () => {
       cancelled = true;
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = null;
-      }
     };
   }, []); // Only run once on mount — stable closure over gameId from URL params
+
+  // Matchmaking push path. The opponent joining from the lobby emits a bare
+  // `lobby:updated` hint on `lobby:chess`; that hint triggers ONE authoritative
+  // game-state read above. A reconnect re-joins the room and reconciles once.
+  useEffect(() => {
+    if (!socket) return undefined;
+    const roomId = "lobby:chess";
+
+    const joinRoom = () => socket.emit("join_room", { roomId });
+    joinRoom();
+
+    const handleLobbyUpdate = () => {
+      void checkForOpponentRef.current?.();
+    };
+
+    const handleConnect = () => {
+      joinRoom();
+      void checkForOpponentRef.current?.();
+    };
+
+    socket.on("connect", handleConnect);
+    socket.on("lobby:updated", handleLobbyUpdate);
+
+    return () => {
+      socket.emit("leave_room", { roomId });
+      socket.off("connect", handleConnect);
+      socket.off("lobby:updated", handleLobbyUpdate);
+    };
+  }, [socket]);
 
   async function cancelWaitingGame() {
     if (!gameId) return;

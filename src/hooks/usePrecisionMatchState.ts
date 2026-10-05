@@ -17,11 +17,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import {
-  AI_MATCH_POLL_INTERVAL_MS,
-  MATCH_POLL_INTERVAL_MS,
-  SOCKET_NAMESPACE,
-} from "../lib/precision/constants";
+import { SOCKET_NAMESPACE } from "../lib/precision/constants";
+import { useMatchSync } from "./useMatchSync";
 import { isStaleSnapshot } from "../lib/precision/matchView";
 import { joinMatchRoom, leaveMatchRoom } from "../lib/precision/multiplayer";
 import { estimateServerClockOffset } from "../lib/precision/roundClock";
@@ -102,27 +99,21 @@ export function usePrecisionMatchState({
     [matchId]
   );
 
-  // ── Polling ──────────────────────────────────────────────────────────
-  // The match page polls /api/precision/get-match every
-  // `MATCH_POLL_INTERVAL_MS`. This IS the canonical refresh path: a hard
-  // browser reload (`F5`) re-runs `refreshState` synchronously on mount and
-  // the server's match state is restored. The server NEVER resets the match
-  // on disconnect — `realtime-server/server.js`'s `disconnect` handler only
-  // drops the user from the participation map (`forgetPrecisionUser`),
-  // leaving the persisted match row intact so the next reconnect resumes
-  // mid-game.
+  // ── Refresh ──────────────────────────────────────────────────────────
+  // `refreshState` reads /api/precision/get-match. A hard browser reload (F5)
+  // re-runs it synchronously on mount and the server's match state is
+  // restored. The server NEVER resets the match on disconnect —
+  // `realtime-server/server.js`'s `disconnect` handler only drops the user
+  // from the participation map (`forgetPrecisionUser`), leaving the persisted
+  // match row intact so the next reconnect resumes mid-game.
   //
-  // We pull `socket?.id` into the deps so a socket RECONNECT (new socket id,
-  // same matchId) tears this effect down + re-runs it, firing
-  // `refreshState` synchronously instead of waiting up to one tick for the
-  // next poll. Without this, a reconnecting player could see a stale local
-  // state for ~2s while the broadcast lag resolves. The polling cadence is
-  // otherwise unaffected.
-  //
-  // `refreshState` is the ONE canonical refresh, shared by that cadence and
-  // the post-countdown fast poll (owned by `usePrecisionRoundClock`). Stable
-  // identity (`matchId` is the only dep) so the effects scheduling it never
-  // churn the interval.
+  // It is deliberately NOT scheduled on an interval any more. Every live
+  // transition is broadcast into the match room (ready-up, round arm start,
+  // round result, match finished), and the realtime server's per-match
+  // due-transition scheduler applies the arming reveal and the bot's stop at
+  // the stored instant and broadcasts them — so a client read is no longer
+  // what drives them. `useMatchSync` calls this once on socket reconnect and
+  // once on tab focus. Stable identity (`matchId` is the only dep).
   const refreshState = useCallback(async () => {
     try {
       // Audit fix: skip the HTTP refresh once the match is terminally
@@ -169,23 +160,16 @@ export function usePrecisionMatchState({
     }
   }, [matchId, applySnapshot]);
 
-  // Tighten the poll cadence ONLY while a free vs-AI round is in flight. The
-  // bot's stop is applied lazily on a server read, so at the normal 2s cadence
-  // its rocket could sit frozen on the wire for up to two seconds. PvP keeps
-  // the normal cadence — a human opponent's stop must not become observable
-  // faster than the round resolves.
-  const matchPollIntervalMs =
-    state?.isAiGame === true && state?.phase === "active"
-      ? AI_MATCH_POLL_INTERVAL_MS
-      : MATCH_POLL_INTERVAL_MS;
-
+  // ONE authoritative read on mount — then the socket is the live path.
   useEffect(() => {
     void refreshState();
-    const id = setInterval(() => {
-      void refreshState();
-    }, matchPollIntervalMs);
-    return () => clearInterval(id);
-  }, [refreshState, socket?.id, matchPollIntervalMs]);
+  }, [refreshState]);
+
+  // Event-driven reconcile: ONE read on socket reconnect and ONE on tab focus,
+  // never on a timer. A finished match stops syncing entirely (the canonical
+  // snapshot can no longer change, and the end-popup returns the player to the
+  // lobby). `refreshState` also self-guards on `phase === "finished"`.
+  useMatchSync(refreshState, socket, state?.phase !== "finished");
 
   // ── Realtime room ────────────────────────────────────────────────────
   useEffect(() => {

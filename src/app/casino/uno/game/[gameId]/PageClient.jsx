@@ -13,6 +13,7 @@ import { useFirstVisitRules, RulesModal } from "../../../../../components/lobby/
 import MatchWaiting from "../../../../../components/lobby/MatchWaiting";
 import { useSocket } from "../../../../../context/SocketProvider";
 import useGamePresence from "../../../../../hooks/useGamePresence";
+import { startMatchSync } from "../../../../../hooks/useMatchSync";
 import {
   celebrateWin,
   fireConfetti,
@@ -80,6 +81,25 @@ export default function UnoGamePage() {
   const [gameOver, setGameOver] = useState(false);
   const [waitingForOpponent, setWaitingForOpponent] = useState(false);
   const waitingPollRef = useRef(null);
+  /** Stop the online-match wait (socket listeners + recovery sync), if any. */
+  const stopWaitingForOpponent = () => {
+    const teardown = waitingPollRef.current;
+    waitingPollRef.current = null;
+    if (typeof teardown === "function") teardown();
+  };
+  // Relay this player's action to the opponent's client. The payload is a bare
+  // HINT — the receiver always refetches the authoritative server snapshot.
+  // No server change is needed: the realtime-server's generic `room_event`
+  // handler forwards it to everyone else in the room.
+  const pokeUnoMatch = () => {
+    if (socket && game?.id && gameMode === "online") {
+      socket.emit("room_event", {
+        roomId: `uno:match:${game.id}`,
+        event: "lobby:updated",
+        payload: { gameId: game.id },
+      });
+    }
+  };
   const prevIsPlayerTurnRef = useRef(null);
   const replayClientIdRef = useRef(Math.random().toString(36).slice(2));
   const openEndPopup = (result, reason = "finished") => {
@@ -327,6 +347,8 @@ export default function UnoGamePage() {
       setPendingCard(null);
       setShowColorPicker(false);
       playCardPlace();
+      // The opponent refetches on this hint instead of polling.
+      pokeUnoMatch();
       posthog?.capture("neon_flush_card_played", {
         color: card.color,
         value: card.value,
@@ -382,9 +404,16 @@ export default function UnoGamePage() {
     if (!isPlayerTurn || loading || historyIndex !== null) return;
     await sendPlayCard(card);
   };
+  // Wait for the opponent's join — EVENT-DRIVEN, no poll. The waiter joins the
+  // per-match room; whoever joins the game relays `lobby:updated` to it. A
+  // single recovery check also runs on socket reconnect and when the tab
+  // returns to the foreground, plus one immediate check on start.
   const waitForOnlineGameStart = (gameId) => {
-    if (waitingPollRef.current) clearInterval(waitingPollRef.current);
-    waitingPollRef.current = setInterval(async () => {
+    stopWaitingForOpponent();
+    let stopped = false;
+    const roomId = `uno:match:${gameId}`;
+    const check = async () => {
+      if (stopped) return;
       try {
         const res2 = await fetch("/api/uno/check-game", {
           method: "POST",
@@ -397,8 +426,7 @@ export default function UnoGamePage() {
         });
         const d2 = await res2.json();
         if (d2.success && d2.status === "active") {
-          clearInterval(waitingPollRef.current);
-          waitingPollRef.current = null;
+          stopWaitingForOpponent();
           setWaitingForOpponent(false);
           setGameMode("online");
           setGame(d2.data);
@@ -420,7 +448,21 @@ export default function UnoGamePage() {
       } catch (err) {
         console.error("Erreur check-game:", err);
       }
-    }, 3000);
+    };
+    if (socket) {
+      socket.emit("join_room", { roomId });
+      socket.on("lobby:updated", check);
+    }
+    const stopSync = startMatchSync(check, socket);
+    void check();
+    waitingPollRef.current = () => {
+      stopped = true;
+      stopSync();
+      if (socket) {
+        socket.off("lobby:updated", check);
+        socket.emit("leave_room", { roomId });
+      }
+    };
   };
   const joinOnlineGame = async () => {
     setLoading(true);
@@ -437,8 +479,15 @@ export default function UnoGamePage() {
       });
       const data = await res.json();
       if (data.success) {
-        if (waitingPollRef.current) clearInterval(waitingPollRef.current);
-        waitingPollRef.current = null;
+        stopWaitingForOpponent();
+        // Tell the waiter (already in `uno:match:<id>`) that the match is live.
+        if (socket) {
+          socket.emit("room_event", {
+            roomId: `uno:match:${data.data.id}`,
+            event: "lobby:updated",
+            payload: { gameId: data.data.id },
+          });
+        }
         setGameMode("online");
         setGame(data.data);
         setPlayerHand(data.data.playerHand);
@@ -465,43 +514,67 @@ export default function UnoGamePage() {
     }
     setLoading(false);
   };
-  useEffect(() => {
+  // ── Live online sync: EVENT-DRIVEN, no polling ──────────────────────────
+  //
+  // This used to be a 2-second GET loop over /api/uno/check-game. It is now a
+  // per-match room: whichever player acts relays a `lobby:updated` hint to
+  // `uno:match:<id>`, and the opponent refetches the authoritative snapshot
+  // exactly ONCE on that hint. A socket reconnect and a return-to-visible each
+  // refetch once too (recovery) — never on a timer. The last-read values live
+  // in refs so the listener never has to re-subscribe.
+  const onlineSyncRef = useRef(null);
+  const endPopupRef = useRef(null);
+  endPopupRef.current = endPopup;
+  onlineSyncRef.current = async () => {
     if (!game?.id || gameMode !== "online") return;
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch("/api/uno/check-game", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            gameId: game.id,
-          }),
-        });
-        const data = await res.json();
-        if (!data.success || !data.data) return;
-        setPlayerHand(data.data.playerHand || []);
-        setAiHandCount(data.data.opponentHandCount ?? aiHandCount);
-        setTopCard(data.data.topCard);
-        setIsPlayerTurn(data.data.turn === data.data.role);
-        if (data.status === "finished" && !endPopup) {
-          const youWon = data.data.winner === data.data.role;
-          setMessage(youWon ? t("neonFlush.youWon") : t("neonFlush.opponentWon"));
-          setIsPlayerTurn(false);
-          openEndPopup(youWon ? "win" : "loss");
-        }
-        setTurnHistory((prev) => {
-          const last = prev[prev.length - 1];
-          const sameCard =
-            last?.color === data.data.topCard?.color && last?.value === data.data.topCard?.value;
-          return sameCard ? prev : [...prev, data.data.topCard];
-        });
-      } catch (err) {
-        console.error("Erreur sync online:", err);
+    try {
+      const res = await fetch("/api/uno/check-game", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          gameId: game.id,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success || !data.data) return;
+      setPlayerHand(data.data.playerHand || []);
+      setAiHandCount(data.data.opponentHandCount ?? 0);
+      setTopCard(data.data.topCard);
+      setIsPlayerTurn(data.data.turn === data.data.role);
+      if (data.status === "finished" && !endPopupRef.current) {
+        const youWon = data.data.winner === data.data.role;
+        setMessage(youWon ? t("neonFlush.youWon") : t("neonFlush.opponentWon"));
+        setIsPlayerTurn(false);
+        openEndPopup(youWon ? "win" : "loss");
       }
-    }, 2000);
-    return () => clearInterval(interval);
-  }, [game?.id, gameMode, aiHandCount, endPopup]);
+      setTurnHistory((prev) => {
+        const last = prev[prev.length - 1];
+        const sameCard =
+          last?.color === data.data.topCard?.color && last?.value === data.data.topCard?.value;
+        return sameCard ? prev : [...prev, data.data.topCard];
+      });
+    } catch (err) {
+      console.error("Erreur sync online:", err);
+    }
+  };
+  useEffect(() => {
+    if (!socket || !game?.id || gameMode !== "online") return;
+    const roomId = `uno:match:${game.id}`;
+    const refresh = () => {
+      void onlineSyncRef.current?.();
+    };
+    socket.emit("join_room", { roomId });
+    socket.on("lobby:updated", refresh);
+    // Socket reconnect + tab-visible recovery: one fetch each, never a loop.
+    const stop = startMatchSync(refresh, socket);
+    return () => {
+      stop();
+      socket.off("lobby:updated", refresh);
+      socket.emit("leave_room", { roomId });
+    };
+  }, [socket, game?.id, gameMode]);
   useEffect(() => {
     if (!gameId) return;
     let cancelled = false;
@@ -576,10 +649,7 @@ export default function UnoGamePage() {
     hydrate();
     return () => {
       cancelled = true;
-      if (waitingPollRef.current) {
-        clearInterval(waitingPollRef.current);
-        waitingPollRef.current = null;
-      }
+      stopWaitingForOpponent();
     };
   }, [gameId]);
   const resignGame = async () => {
@@ -603,6 +673,7 @@ export default function UnoGamePage() {
       }
       setMessage(gameMode === "online" ? t("neonFlush.resignedYou") : t("neonFlush.resignedAi"));
       setIsPlayerTurn(false);
+      pokeUnoMatch();
       if (data.newBalance)
         setTokens({
           balance: data.newBalance,
@@ -642,6 +713,7 @@ export default function UnoGamePage() {
         hand_count: playerHand.length + 1,
       });
       await checkForWinner(game.id);
+      pokeUnoMatch();
       if (gameMode === "ai") {
         setTimeout(() => handleAITurn(game.id), 1000);
       }
@@ -651,8 +723,7 @@ export default function UnoGamePage() {
     setLoading(false);
   };
   const returnToLobby = () => {
-    if (waitingPollRef.current) clearInterval(waitingPollRef.current);
-    waitingPollRef.current = null;
+    stopWaitingForOpponent();
     setGame(null);
     setGameOver(false);
     setGameMode("ai");

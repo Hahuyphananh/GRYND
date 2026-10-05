@@ -68,11 +68,8 @@ import SudokuBoard from "../../../../components/sudoku-duel/SudokuBoard";
 import SudokuNumberPad from "../../../../components/sudoku-duel/SudokuNumberPad";
 import { useSocket } from "../../../../context/SocketProvider";
 import {
-  SOCKET_DOWN_POLL_MS,
-  SOCKET_HEALTHY_POLL_MS,
-  useSocketConnected,
-  useVisiblePoll,
-} from "../../../../hooks/useVisiblePoll";
+  useMatchSync,
+} from "../../../../hooks/useMatchSync";
 import {
   SUDOKU_DUEL_EVENTS,
   sudokuDuelMatchRoom,
@@ -405,18 +402,15 @@ export default function SudokuDuelMatchPage() {
     return () => window.clearTimeout(id);
   }, [invalidIndex]);
 
-  const socketConnected = useSocketConnected(socket);
-
   // ── Poll backstop ──────────────────────────────────────────────────────
   // The MATCH_UPDATED socket event is the fast path; this is a reconcile
   // safety net. It relaxes while the socket is healthy, tightens if it drops,
   // and stops while the tab is hidden (a watching player was worth a query
   // every 1.5s before).
-  useVisiblePoll(
-    load,
-    socketConnected ? SOCKET_HEALTHY_POLL_MS : SOCKET_DOWN_POLL_MS,
-    Boolean(matchId) && Boolean(match) && !terminal,
-  );
+  // Event-driven sync: MATCH_UPDATED is the fast path; this reconciles ONCE on
+  // socket reconnect and on tab focus — never on a timer. A finished match
+  // (`terminal`) stops syncing entirely.
+  useMatchSync(load, socket, Boolean(matchId) && Boolean(match) && !terminal);
 
   // When the local inactivity clock says the forfeit is due, the server still
   // owns the verdict — ask it, and let it resolve. Nothing is decided here.

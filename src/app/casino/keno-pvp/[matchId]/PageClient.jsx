@@ -67,11 +67,8 @@ import {
 import { tileWindowMs, windowRemainingMs } from "../../../../lib/keno-pvp/engine";
 import { withReducedMotion } from "../../../../lib/animations";
 import {
-  SOCKET_DOWN_POLL_MS,
-  SOCKET_HEALTHY_POLL_MS,
-  useSocketConnected,
-  useVisiblePoll,
-} from "../../../../hooks/useVisiblePoll";
+  useMatchSync,
+} from "../../../../hooks/useMatchSync";
 import {
   IconCoins,
   IconHeartHandshake,
@@ -483,8 +480,6 @@ export default function KenoPvpMatchPage({ params }) {
     }
   }, [matchId, router, showFeed, triggerSeatFlash]);
 
-  const socketConnected = useSocketConnected(socket);
-
   useEffect(() => {
     if (!matchId) return;
     fetchStatus();
@@ -495,11 +490,7 @@ export default function KenoPvpMatchPage({ params }) {
   // healthy and tightens if it drops, and it stops while the tab is hidden.
   // Tile pacing comes from the server deadline + the local 100ms clock, never
   // from the poll rate.
-  useVisiblePoll(
-    fetchStatus,
-    socketConnected ? SOCKET_HEALTHY_POLL_MS : SOCKET_DOWN_POLL_MS,
-    Boolean(matchId),
-  );
+  useMatchSync(fetchStatus, socket, Boolean(matchId));
 
   // Tile-deadline nudge: the server only resolves a both-miss when it is
   // read, so without this the board can sit on an expired tile for up to a

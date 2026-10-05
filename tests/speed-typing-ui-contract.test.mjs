@@ -190,16 +190,15 @@ test("realtime: the page joins the match room, re-joins on connect, and listens"
   ]) {
     assert.match(page, event);
   }
-  // The poll is a backstop, never the only path. It is also visibility-gated
-  // and socket-aware: it relaxes while the socket is healthy, tightens if it
-  // drops, and stops entirely while the tab is hidden (a hidden tab cannot be
-  // typing, so its timer must not keep reading from Postgres).
+  // There is NO recurring poll: the page reconciles ONCE on socket reconnect
+  // and on tab focus, and stops entirely once the race is finished.
   assert.match(
     page,
-    /useVisiblePoll\(\s*\(\) => load\(\{ silent: true \}\),\s*socketConnected \? SOCKET_HEALTHY_POLL_MS : SOCKET_DOWN_POLL_MS,\s*Boolean\(match\) && !finished,\s*\)/,
+    /useMatchSync\(\(\) => load\(\{ silent: true \}\), socket, Boolean\(match\) && !finished\)/,
   );
-  assert.match(page, /import \{[\s\S]{0,160}useVisiblePoll,[\s\S]{0,160}\} from "\.\.\/\.\.\/\.\.\/\.\.\/hooks\/useVisiblePoll"/);
-  // No unconditional fixed-interval poll may remain on this page.
+  assert.match(page, /import \{[\s\S]{0,120}useMatchSync,[\s\S]{0,120}\} from "\.\.\/\.\.\/\.\.\/\.\.\/hooks\/useMatchSync"/);
+  // No recurring poll may remain on this page (no interval at all).
+  assert.doesNotMatch(page, /useVisiblePoll\(/);
   assert.doesNotMatch(page, /window\.setInterval\(\s*\(\) => void load/);
 });
 

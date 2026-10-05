@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "../../../../../db/client";
+import { PUBLIC_LOBBY_CACHE_HEADERS } from "../../../../../lib/httpCache";
 import { rpsPvpGames, users } from "../../../../../db/schema";
 import { and, eq, isNull } from "drizzle-orm";
 
@@ -17,5 +18,8 @@ export async function GET() {
     .where(and(isNull(rpsPvpGames.player2Id), eq(rpsPvpGames.status, "active")))
     .limit(30);
 
-  return NextResponse.json({ success: true, data: { games } });
+  return NextResponse.json(
+    { success: true, data: { games } },
+    { headers: PUBLIC_LOBBY_CACHE_HEADERS },
+  );
 }

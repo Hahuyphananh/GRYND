@@ -39,7 +39,7 @@ import {
   type AiDifficulty,
   readStoredAiDifficulty,
 } from "../../../lib/aiDifficulty";
-import { startSocketAwareInterval } from "../../../hooks/useVisiblePoll";
+import { startMatchSync } from "../../../hooks/useMatchSync";
 import {
   TOTAL_ROUNDS,
   type InteractiveOddsState as InteractiveOddsStateType,
@@ -1141,7 +1141,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
     // Polling fallback to handle missed socket events. Socket-aware and
     // visibility-gated: 30s while the push path is healthy, 5s if it drops, and
     // off entirely while the tab is hidden.
-    const stopPoll = startSocketAwareInterval(handler, socket);
+    const stopPoll = startMatchSync(handler, socket);
 
     return () => {
       socket.off("odds:game_update", handleGameUpdate);
@@ -1215,7 +1215,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
     // The join also arrives over the socket, so this is a backstop: socket-aware
     // and visibility-gated (30s healthy / 5s if the socket drops) rather than a
     // flat 1.5s hammer — nobody is waiting on an opponent from a hidden tab.
-    return startSocketAwareInterval(async () => {
+    return startMatchSync(async () => {
       try {
         const res = await fetch(`/api/odds/status?gameId=${myGameId}`);
         const data = await res.json();

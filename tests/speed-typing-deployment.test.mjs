@@ -369,9 +369,11 @@ test("deploy: the browser reaches Render by one public variable, with a token, o
 
 test("deploy: the Vercel app serves the game without needing Render to be up", () => {
   // The authoritative read is a Vercel route, and the socket is an accelerator:
-  // the page polls the snapshot, so a dead or unconfigured socket degrades a
-  // live race instead of breaking it.
-  assert.match(MATCH_PAGE, /useVisiblePoll\(/, "the poll backstop");
+  // the page reads the snapshot over HTTPS (once on mount, and again on a socket
+  // reconnect / tab focus), so a dead or unconfigured socket degrades a live
+  // race instead of breaking it.
+  assert.match(MATCH_PAGE, /useMatchSync\(/, "the event-driven reconcile hook");
+  assert.doesNotMatch(MATCH_PAGE, /useVisiblePoll\(/, "no recurring poll on the match page");
   assert.match(MATCH_PAGE, /if \(!socket \|\| !matchId\) return undefined;/, "the page works with no socket");
   assert.match(MATCH_PAGE, /cache: "no-store"/, "the snapshot is never cached by the edge");
   // Progress travels over HTTPS to Vercel; the socket carries only projections.

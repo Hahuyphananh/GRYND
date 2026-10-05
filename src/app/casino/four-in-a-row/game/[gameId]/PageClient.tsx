@@ -35,11 +35,8 @@ import PvpResultScreen from "../../../../../components/result/PvpResultScreen";
 import FrameAvatar from "../../../../../components/FrameAvatar";
 import { turnBanner as turnBannerAnim } from "../../../../../lib/animations";
 import {
-  SOCKET_DOWN_POLL_MS,
-  SOCKET_HEALTHY_POLL_MS,
-  useSocketConnected,
-  useVisiblePoll,
-} from "../../../../../hooks/useVisiblePoll";
+  useMatchSync,
+} from "../../../../../hooks/useMatchSync";
 import {
   IconTarget,
   IconEye,
@@ -360,43 +357,31 @@ export default function ConnectFourGamePage() {
     return () => clearInterval(id);
   }, []);
 
-  const socketConnected = useSocketConnected(socket);
-
   useEffect(() => {
     fetchState();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId, game?.status]);
 
-  // Socket room ("match:updated") pushes opponent moves instantly; this poll is
-  // a reconnect/consistency safety net. Poll faster while matchmaking so the
-  // ready takeover (3s window) renders promptly on both sides, then settle
-  // while playing. It stops entirely while the tab is hidden.
-  // Turn pacing comes from server deadlines + the clock tick, never from the
-  // poll rate.
-  const matchmaking =
-    game?.status === "waiting" || game?.status === "ready";
-  useVisiblePoll(
-    fetchState,
-    // The ready hand-off arrives over the socket; the poll is only a safety net,
-    // so even while matchmaking it runs at the 5s fallback cadence rather than
-    // the old 1.5s hammer, and relaxes further while the socket is healthy.
-    matchmaking
-      ? SOCKET_DOWN_POLL_MS
-      : socketConnected
-        ? SOCKET_HEALTHY_POLL_MS
-        : SOCKET_DOWN_POLL_MS,
-    Boolean(gameId),
-  );
+  // Event-driven sync: the socket "match:updated" push re-fetches the moment
+  // anything changes; this reconciles ONCE on socket reconnect and on tab focus
+  // — never on a timer. Turn pacing comes from server deadlines + the clock
+  // tick, never from a poll rate.
+  useMatchSync(fetchState, socket, Boolean(gameId));
 
   useEffect(() => {
     if (!socket) return;
     const roomId = `four-in-a-row:${gameId}`;
 
     const refresh = () => fetchState();
-    socket.emit("join_room", { roomId });
+    const join = () => socket.emit("join_room", { roomId });
+    // Socket.IO does not restore room membership across a reconnect, so re-join
+    // on every connect — without the old poll this is the only recovery path.
+    join();
+    socket.on("connect", join);
     socket.on("match:updated", refresh);
 
     return () => {
+      socket.off("connect", join);
       socket.emit("leave_room", { roomId });
       socket.off("match:updated", refresh);
     };

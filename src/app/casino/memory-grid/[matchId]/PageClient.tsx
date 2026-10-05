@@ -84,11 +84,8 @@ import {
 } from "../../../../lib/memory-grid/rooms";
 import { MATCH_STATUS } from "../../../../lib/memory-grid/constants";
 import {
-  SOCKET_DOWN_POLL_MS,
-  SOCKET_HEALTHY_POLL_MS,
-  useSocketConnected,
-  useVisiblePoll,
-} from "../../../../hooks/useVisiblePoll";
+  useMatchSync,
+} from "../../../../hooks/useMatchSync";
 import {
   playVictory,
   playDefeat,
@@ -446,8 +443,6 @@ export default function MemoryGridMatchPage({
     }
   }, [matchId]);
 
-  const socketConnected = useSocketConnected(socket);
-
   useEffect(() => {
     if (!Number.isFinite(matchId)) {
       setError("Invalid match link.");
@@ -465,11 +460,9 @@ export default function MemoryGridMatchPage({
   // phase transition it discovers (see the /status route) and the client also
   // re-fetches at each phase deadline, so a slow safety net never leaves a
   // 2.5s memorize window undiscovered.
-  useVisiblePoll(
-    fetchStatus,
-    socketConnected ? SOCKET_HEALTHY_POLL_MS : SOCKET_DOWN_POLL_MS,
-    Number.isFinite(matchId),
-  );
+  // Event-driven sync: MEMORY_GRID_MATCH_UPDATED is the fast path; this
+  // reconciles ONCE on socket reconnect and on tab focus — never on a timer.
+  useMatchSync(fetchStatus, socket, Number.isFinite(matchId));
 
   // ── Socket: join the per-match room for instant updates ───────────
   useEffect(() => {

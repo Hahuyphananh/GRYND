@@ -5,6 +5,7 @@
 // blackjack-pvp `available` route.
 
 import { NextResponse } from "next/server";
+import { PUBLIC_LOBBY_CACHE_HEADERS } from "../../../../lib/httpCache";
 import {
   listOpenMatches,
   enrichMatchesWithUsers,
@@ -30,7 +31,7 @@ export async function GET() {
           hostProfileFrame: m.players?.p1?.profileFrame ?? null,
         })),
       },
-    });
+    }, { headers: PUBLIC_LOBBY_CACHE_HEADERS });
   } catch (error) {
     console.error("[memory-grid/available] error:", error);
     return NextResponse.json(

@@ -20,7 +20,7 @@
 // free account look like a subscriber. Until the server answers, `loaded` is
 // false and every upgrade surface renders a neutral placeholder.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { ProPlanDisplay } from "./membershipDisplay";
 
 export type MembershipStatusResponse = {
@@ -54,54 +54,148 @@ function isProPlanDisplay(value: unknown): value is ProPlanDisplay {
   );
 }
 
-/**
- * The caller's server-authoritative membership state.
- *
- * `active` is only ever set from the API response body — a network failure
- * leaves the user on `free`, which fails closed (a paying member briefly sees
- * the upgrade CTA; nobody sees PRO they don't have).
- */
-export function useMembershipStatus(): MembershipStatusResponse {
-  const [loaded, setLoaded] = useState(false);
-  const [signedIn, setSignedIn] = useState(false);
-  const [active, setActive] = useState(false);
-  const [plan, setPlan] = useState<ProPlanDisplay | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
-  const [currentPeriodEnd, setCurrentPeriodEnd] = useState<string | null>(null);
-  const mounted = useRef(true);
+// ── Shared, deduplicated membership store ────────────────────────────────
+//
+// Several surfaces on the SAME page ask for membership: the home page mounts
+// both <UpgradeProButton> and <GryndProWidget>, and the upgrade page mounts
+// the button again. Before this store each `useMembershipStatus()` instance
+// fired its OWN GET /api/membership/status on mount, so one page load cost two
+// or three identical function invocations. The store keeps ONE snapshot per
+// browser tab, shares a single in-flight request between every caller, and
+// notifies all subscribers when it changes. It is purely a client-side cache of
+// a server response — it never decides entitlement, and it fails closed.
 
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
+type MembershipSnapshot = {
+  loaded: boolean;
+  signedIn: boolean;
+  active: boolean;
+  plan: ProPlanDisplay | null;
+  status: string | null;
+  currentPeriodEnd: string | null;
+  fetchedAt: number;
+};
 
-  const refresh = useCallback(async () => {
+/** How long a fetched snapshot is reused before another mount refetches. */
+const MEMBERSHIP_TTL_MS = 30_000;
+
+let membershipSnapshot: MembershipSnapshot | null = null;
+let membershipInflight: Promise<void> | null = null;
+const membershipSubscribers = new Set<(s: MembershipSnapshot) => void>();
+
+function publishMembership(next: MembershipSnapshot): void {
+  membershipSnapshot = next;
+  for (const notify of membershipSubscribers) notify(next);
+}
+
+async function loadMembership(force: boolean): Promise<void> {
+  if (
+    !force &&
+    membershipSnapshot &&
+    Date.now() - membershipSnapshot.fetchedAt < MEMBERSHIP_TTL_MS
+  ) {
+    return;
+  }
+  // Every caller in the tab shares one request instead of racing their own.
+  if (membershipInflight) return membershipInflight;
+
+  membershipInflight = (async () => {
     try {
       const res = await fetch("/api/membership/status", {
         cache: "no-store",
         credentials: "same-origin",
       });
       const data: RawStatus = await res.json().catch(() => ({}));
-      if (!mounted.current) return;
-      if (isProPlanDisplay(data?.plan)) setPlan(data.plan);
-      setSignedIn(Boolean(data?.signedIn));
-      setActive(Boolean(data?.active) && data?.tier === "pro");
-      setStatus(typeof data?.status === "string" ? data.status : null);
-      setCurrentPeriodEnd(data?.currentPeriodEnd ?? null);
+      publishMembership({
+        loaded: true,
+        signedIn: Boolean(data?.signedIn),
+        // Only ever adopted from the response body, and only for a Pro tier —
+        // the client can never claim PRO it does not have.
+        active: Boolean(data?.active) && data?.tier === "pro",
+        plan: isProPlanDisplay(data?.plan)
+          ? data.plan
+          : membershipSnapshot?.plan ?? null,
+        status: typeof data?.status === "string" ? data.status : null,
+        currentPeriodEnd: data?.currentPeriodEnd ?? null,
+        fetchedAt: Date.now(),
+      });
     } catch {
-      // Fail closed: stay on the state we already have.
+      // Fail closed: keep the last known state (or a neutral signed-out one),
+      // and mark it loaded so the upgrade surfaces settle on their fallback.
+      publishMembership(
+        membershipSnapshot
+          ? { ...membershipSnapshot, loaded: true, fetchedAt: Date.now() }
+          : {
+              loaded: true,
+              signedIn: false,
+              active: false,
+              plan: null,
+              status: null,
+              currentPeriodEnd: null,
+              fetchedAt: Date.now(),
+            },
+      );
     } finally {
-      if (mounted.current) setLoaded(true);
+      membershipInflight = null;
     }
-  }, []);
+  })();
+
+  return membershipInflight;
+}
+
+const EMPTY_MEMBERSHIP: MembershipSnapshot = {
+  loaded: false,
+  signedIn: false,
+  active: false,
+  plan: null,
+  status: null,
+  currentPeriodEnd: null,
+  fetchedAt: 0,
+};
+
+/**
+ * The caller's server-authoritative membership state.
+ *
+ * `active` is only ever set from the API response body — a network failure
+ * leaves the user on `free`, which fails closed (a paying member briefly sees
+ * the upgrade CTA; nobody sees PRO they don't have).
+ *
+ * The snapshot is shared across every component in the tab, so the several
+ * upgrade surfaces on one page cost ONE request, not one each.
+ */
+export function useMembershipStatus(): MembershipStatusResponse {
+  const [state, setState] = useState<MembershipSnapshot>(
+    () => membershipSnapshot ?? EMPTY_MEMBERSHIP,
+  );
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    let active = true;
+    const notify = (next: MembershipSnapshot) => {
+      if (active) setState(next);
+    };
+    membershipSubscribers.add(notify);
+    // Adopt whatever the shared store already has, then fetch if it is stale.
+    if (membershipSnapshot) setState(membershipSnapshot);
+    void loadMembership(false);
+    return () => {
+      active = false;
+      membershipSubscribers.delete(notify);
+    };
+  }, []);
 
-  return { loaded, signedIn, active, tier: active ? "pro" : "free", plan, status, currentPeriodEnd, refresh };
+  const refresh = useCallback(async () => {
+    await loadMembership(true);
+  }, []);
+
+  return {
+    loaded: state.loaded,
+    signedIn: state.signedIn,
+    active: state.active,
+    tier: state.active ? "pro" : "free",
+    plan: state.plan,
+    status: state.status,
+    currentPeriodEnd: state.currentPeriodEnd,
+    refresh,
+  };
 }
 
 export type ProActionResult = {

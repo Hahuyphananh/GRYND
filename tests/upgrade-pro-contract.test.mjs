@@ -175,8 +175,9 @@ test("entitlement is server-authoritative — the client can never claim PRO", (
   assert.match(STATUS_ROUTE, /active: true/);
   assert.match(STATUS_ROUTE, /active: false/);
 
-  // The hook only ever adopts `active` from the response body.
-  assert.match(HOOK, /setActive\(Boolean\(data\?\.active\)/);
+  // The hook only ever adopts `active` from the response body — and only for a
+  // Pro tier. (The shared store that dedupes the call keeps the same rule.)
+  assert.match(HOOK, /active: Boolean\(data\?\.active\) && data\?\.tier === "pro"/);
   for (const [name, source] of Object.entries(UPGRADE_SURFACE)) {
     assert.ok(
       !/(localStorage|sessionStorage)\s*\./.test(source),

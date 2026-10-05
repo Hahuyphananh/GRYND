@@ -44,11 +44,8 @@ import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import SeatAvatar from "../../../../components/game/SeatAvatar";
 import { useSocket } from "../../../../context/SocketProvider";
 import {
-  SOCKET_DOWN_POLL_MS,
-  SOCKET_HEALTHY_POLL_MS,
-  useSocketConnected,
-  useVisiblePoll,
-} from "../../../../hooks/useVisiblePoll";
+  useMatchSync,
+} from "../../../../hooks/useMatchSync";
 import {
   SPEED_TYPING_EVENTS,
   speedTypingMatchRoom,
@@ -530,16 +527,13 @@ export default function SpeedTypingMatchPage() {
     };
   }, [socket, matchId, mySeatKey, scheduleLoad]);
 
-  const socketConnected = useSocketConnected(socket);
-
   // Poll backstop — the socket is an accelerator, never the only path. It
   // relaxes while the socket is healthy, tightens if it drops, and stops while
   // the tab is hidden (a racer cannot type into a hidden tab).
-  useVisiblePoll(
-    () => load({ silent: true }),
-    socketConnected ? SOCKET_HEALTHY_POLL_MS : SOCKET_DOWN_POLL_MS,
-    Boolean(match) && !finished,
-  );
+  // Event-driven sync: MATCH_UPDATED is the fast path; this reconciles ONCE on
+  // socket reconnect and on tab focus — never on a timer. A finished race stops
+  // syncing entirely.
+  useMatchSync(() => load({ silent: true }), socket, Boolean(match) && !finished);
 
   // ── Focus: the keyboard is the whole game ────────────────────────────────
   useEffect(() => {

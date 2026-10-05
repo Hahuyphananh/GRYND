@@ -1296,6 +1296,20 @@
       "when": 1800000047000,
       "tag": "0203_tic_tac_toe_mega_boards",
       "breakpoints": true
+    },
+    {
+      "idx": 185,
+      "version": "7",
+      "when": 1800000048000,
+      "tag": "0204_realtime_publication_game_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 186,
+      "version": "7",
+      "when": 1800000049000,
+      "tag": "0205_realtime_publish_chess_moves",
+      "breakpoints": true
     }
   ]
 }

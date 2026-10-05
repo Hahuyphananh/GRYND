@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { getPollStorage, leaseIsFree, renewLease } from "../lib/sharedPoll";
 
 export default function useGamePresence({ gameKey, gameId, enabled = true }) {
   useEffect(() => {
@@ -11,7 +12,22 @@ export default function useGamePresence({ gameKey, gameId, enabled = true }) {
       gameId: Number.isFinite(Number(gameId)) ? Number(gameId) : undefined,
     };
 
+    // One tab per BROWSER drives the in-game marker: the lease owner posts,
+    // every other tab skips. The server already UPSERTs on (user_id, game_key),
+    // so rows never multiplied — this removes the redundant round-trips, not a
+    // row. Without localStorage the lease is always free, so every tab keeps
+    // posting exactly as before.
+    const leaseKey = `grynd:presence:game:${gameKey}`;
+    const ownsLease = () => {
+      const storage = getPollStorage();
+      const now = Date.now();
+      if (!leaseIsFree(storage, leaseKey, now)) return false;
+      renewLease(storage, leaseKey, now, 120000 * 1.5);
+      return true;
+    };
+
     const setInGame = () => {
+      if (!ownsLease()) return;
       fetch("/api/presence/game", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

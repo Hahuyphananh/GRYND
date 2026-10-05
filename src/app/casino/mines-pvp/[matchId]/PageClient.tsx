@@ -55,11 +55,8 @@ import {
 import { playVictory, playDefeat, playTick, playGoodReveal, playBuzz } from "../../../../lib/gameAudio";
 import { withReducedMotion } from "../../../../lib/animations";
 import {
-  SOCKET_DOWN_POLL_MS,
-  SOCKET_HEALTHY_POLL_MS,
-  useSocketConnected,
-  useVisiblePoll,
-} from "../../../../hooks/useVisiblePoll";
+  useMatchSync,
+} from "../../../../hooks/useMatchSync";
 import {
   IconBomb,
   IconSparkles,
@@ -436,17 +433,13 @@ export default function MinesPvpMatchPage({
     }
   }, [isSignedIn, isValidMatchId, matchId]);
 
-  const socketConnected = useSocketConnected(socket);
-
   useEffect(() => {
     fetchStatus();
   }, [fetchStatus]);
 
-  useVisiblePoll(
-    fetchStatus,
-    socketConnected ? SOCKET_HEALTHY_POLL_MS : SOCKET_DOWN_POLL_MS,
-    Boolean(isValidMatchId),
-  );
+  // Event-driven sync: the MATCH_UPDATED socket push is the fast path; this
+  // reconciles ONCE on socket reconnect and on tab focus — never on a timer.
+  useMatchSync(fetchStatus, socket, Boolean(isValidMatchId));
 
   // ── Realtime: existing per-match room refetch hint ──────────────
   // `lobby:updated` is the bare "refetch the authoritative snapshot" hint

@@ -878,30 +878,40 @@ test("the badge's three states are pure rules, not JSX guesswork", async () => {
   assert.equal(formatPlayerCount(99, "not a locale"), "99");
 });
 
-test("the lobby polls one aggregate for every card, and cleans up", () => {
+test("the lobby polls one aggregate for every card, shared across tabs", () => {
   // One endpoint, fetched once — never a request per card.
   assert.equal(countOf(code(LOBBY), "/api/casino/active-players"), 1);
   assert.doesNotMatch(cardBlock, /fetch\(/);
   assert.doesNotMatch(badgeBlock, /fetch\(/);
 
-  const effect = lobby.slice(
-    lobby.indexOf("// Active players per game (the lobby's \"N playing\" line). One request"),
-    cardStart
+  // The read lives in a named fetcher so the browser-wide shared poller owns
+  // cadence, visibility and cross-tab dedup. It never returns `undefined`: the
+  // fail-closed error state is a value that is broadcast to every tab.
+  const fetchAt = lobby.indexOf("const fetchActivePlayers = async ()");
+  assert.ok(fetchAt > -1, "the lobby has a fetchActivePlayers fetcher");
+  const fetcher = lobby.slice(fetchAt, fetchAt + 700);
+  assert.match(
+    fetcher,
+    /fetch\("\/api\/casino\/active-players", \{ cache: "no-store" \}\)/,
   );
-  assert.match(effect, /useEffect\(\(\) => \{/);
-  assert.match(effect, /fetch\("\/api\/casino\/active-players", \{ cache: "no-store" \}\)/);
-  assert.match(effect, /setInterval\(load, ACTIVE_PLAYERS_POLL_MS\)/);
-  // In the requested 15–30s window, and never overlapping itself or the
-  // endpoint's own 10s cache.
+  assert.match(
+    fetcher,
+    /if \(!res\.ok \|\| data\?\.success !== true\) return \{ status: "error", counts: \{\} \};/,
+  );
+
+  // Wired through useSharedPoll: ONE leader tab fetches and broadcasts; every
+  // other tab updates with no request at all (see tests/shared-poll.test.mjs).
+  assert.match(lobby, /useSharedPoll\("active-players", fetchActivePlayers, \{/);
+  assert.match(lobby, /intervalMs: ACTIVE_PLAYERS_POLL_MS/);
+  // In the requested 15–30s window, and never overlapping the endpoint's own
+  // 10s cache.
   const pollMs = Number(lobby.match(/const ACTIVE_PLAYERS_POLL_MS = (\d+);/)?.[1]);
   assert.ok(pollMs >= 15000 && pollMs <= 30000, `poll cadence ${pollMs}ms`);
-  assert.match(effect, /if \(inFlight\) return;/);
-  // Nothing reloads the page, and polling stops on unmount + hidden tabs.
+  // Nothing reloads the page. Hidden tabs do no work and the shared poller is
+  // torn down on unmount — both asserted in tests/shared-poll.test.mjs.
   assert.doesNotMatch(lobby, /location\.reload/);
-  assert.match(effect, /document\.visibilityState === "visible" \? start\(\) : stop\(\)/);
-  assert.match(effect, /clearInterval\(id\)/);
-  assert.match(effect, /document\.removeEventListener\("visibilitychange", onVisibility\)/);
-  assert.match(effect, /cancelled = true;/);
+  // The badge still fails closed: an error hides the line entirely.
+  assert.match(badgeBlock, /if \(activePlayers\.status !== "ready"\) return null;/);
 });
 
 test("counts map by the lobby's own game id, and never print a lie", () => {
@@ -912,8 +922,13 @@ test("counts map by the lobby's own game id, and never print a lie", () => {
 
   // A failed read (the route answers 200 with success:false when its store is
   // down) becomes "error", and an error renders NOTHING — no "0 playing".
+  // The fail-closed state is a VALUE the shared poller broadcasts, so the
+  // fetcher returns it instead of calling setState itself.
   assert.match(lobby, /if \(!res\.ok \|\| data\?\.success !== true\)/);
-  assert.match(lobby, /setActivePlayers\(\{ status: "error", counts: \{\} \}\)/);
+  assert.match(
+    lobby,
+    /if \(!res\.ok \|\| data\?\.success !== true\) return \{ status: "error", counts: \{\} \};/,
+  );
   assert.match(badgeBlock, /if \(activePlayers\.status !== "ready"\) return null;/);
 
   // Loading is a subtle placeholder (aria-hidden, no text, fixed height), so

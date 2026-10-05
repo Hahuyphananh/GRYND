@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
+import { PUBLIC_LOBBY_CACHE_HEADERS } from "../../../../lib/httpCache";
 import { chessGames, users } from "../../../../db/schema";
 import { and, eq, isNull, desc } from "drizzle-orm";
 
@@ -26,7 +27,12 @@ export async function GET() {
       .orderBy(desc(chessGames.createdAt))
       .limit(30);
 
-    return NextResponse.json({ success: true, data: { games } });
+    // Public, identical for every caller: let the edge absorb the 30s polling
+    // fallback (the socket lobby poke still updates clients immediately).
+    return NextResponse.json(
+      { success: true, data: { games } },
+      { headers: PUBLIC_LOBBY_CACHE_HEADERS },
+    );
   } catch (error) {
     console.error("chess available-games error", error);
     return NextResponse.json(

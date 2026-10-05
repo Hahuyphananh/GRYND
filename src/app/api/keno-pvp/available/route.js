@@ -5,6 +5,7 @@
 // mines-pvp `available` route.
 
 import { NextResponse } from "next/server";
+import { PUBLIC_LOBBY_CACHE_HEADERS } from "../../../../lib/httpCache";
 import { listOpenMatches } from "../../../../lib/keno-pvp/serverStore";
 
 export async function GET() {
@@ -20,7 +21,7 @@ export async function GET() {
           createdAt: m.createdAt,
         })),
       },
-    });
+    }, { headers: PUBLIC_LOBBY_CACHE_HEADERS });
   } catch (error) {
     console.error("[keno-pvp/available] error:", error);
     return NextResponse.json(

@@ -49,6 +49,10 @@ import {
 // presence module (the single source of truth for this feature), so the badge
 // cannot invent a number and the "nobody / playing / hot" split is tested.
 import { activePlayerTier, formatPlayerCount } from "../../lib/gamePresence";
+// Browser-wide shared poller: live stats / friend presence / active-player
+// counts are the SAME reads on every GRYND page, so they are fetched once per
+// browser (leader lease + BroadcastChannel) instead of once per tab.
+import useSharedPoll from "../../hooks/useSharedPoll";
 
 // sessionStorage keys for the lobby's persisted state (UX plan P1-1): the
 // search box + active filter survive a refresh / back-navigation within the
@@ -62,8 +66,8 @@ const LOBBY_SORT_KEY = "grynd.lobby.sort.v1";
 // requested 15–30s window and is the shortest cadence that can never miss the
 // endpoint's own 10s Redis cache (CacheKeys.activePlayers), so a lobby visit
 // costs about three lightweight reads a minute instead of a query per card.
-// Polling pauses while the tab is hidden and refreshes immediately when it
-// comes back — the same policy the friend-presence poll below already uses.
+// This is the cadence of the browser-wide SHARED poller (useSharedPoll): hidden
+// tabs do no work, and every other tab is a follower that costs no request.
 const ACTIVE_PLAYERS_POLL_MS = 20000;
 
 function readStored(key, fallback) {
@@ -97,7 +101,6 @@ function MainComponent({ adSlot = null }) {
   const [search, setSearch] = useState(() => readStored(LOBBY_SEARCH_KEY, ""));
   const [activeFilter, setActiveFilter] = useState(() => {
     const stored = readStored(LOBBY_FILTER_KEY, "all");
-    console.log("[LOBBYDBG] filter init from storage:", stored);
     // Every game is 1v1 now, so the retired "multiplayer" filter is no longer
     // a choice — a stored value from an old session falls back to "all".
     return ["all", "duels", "popular"].includes(stored) ? stored : "all";
@@ -166,7 +169,6 @@ function MainComponent({ adSlot = null }) {
   }, [search]);
 
   useEffect(() => {
-    console.log("[LOBBYDBG] filter effect writing:", activeFilter);
     try {
       window.sessionStorage.setItem(LOBBY_FILTER_KEY, activeFilter);
     } catch {}
@@ -329,15 +331,34 @@ function MainComponent({ adSlot = null }) {
     }
   };
 
+  // Returns the payload for the shared poller; `undefined` = "no update".
   const fetchFriendPresence = async () => {
     try {
       const response = await fetch("/api/friends/game-presence", {
         credentials: "include",
       });
       const data = await response.json();
-      if (response.ok && data.success) setFriendPresenceByGame(data.byGame || {});
+      if (response.ok && data.success) return data.byGame || {};
     } catch (err) {
       console.error("[FRIEND_PRESENCE_ERROR]", err);
+    }
+    return undefined;
+  };
+
+  // Active-player counts — one aggregate read for the WHOLE lobby. The fetcher
+  // returns the `{ status, counts }` snapshot (including the fail-closed
+  // "error" state) so every tab receives the exact same answer; it never throws
+  // so a failure is a broadcast value, not a dropped poll.
+  const fetchActivePlayers = async () => {
+    try {
+      const res = await fetch("/api/casino/active-players", { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      // `success: false` is the route's fail-closed answer (it still returns
+      // 200), so it is treated as a failure rather than as "nobody playing".
+      if (!res.ok || data?.success !== true) return { status: "error", counts: {} };
+      return { status: "ready", counts: data.counts || {} };
+    } catch {
+      return { status: "error", counts: {} };
     }
   };
 
@@ -670,92 +691,35 @@ function MainComponent({ adSlot = null }) {
     };
   }, []);
 
+  // Friend presence is social chrome, not game state — and it is the SAME feed
+  // the home page shows, so both pages (and every tab) share ONE request via the
+  // browser-wide poller. Only the minimum public presence fields the route
+  // already returns (name / icon / game) are carried; no email, balance or
+  // private profile data is involved. Hidden tabs do no work.
+  const friendPresencePoll = useSharedPoll("friend-presence", fetchFriendPresence, {
+    intervalMs: 60000,
+    enabled: Boolean(user),
+  });
   useEffect(() => {
-    if (!user) return;
-    // Friend presence is social chrome, not game state. Throttled from 30s
-    // to 60s (and the endpoint now caches per user) to cut idle read load.
-    // Only poll while the tab is visible — background tabs don't need it.
-    let id = null;
-    const start = () => {
-      fetchFriendPresence();
-      id = setInterval(fetchFriendPresence, 60000);
-    };
-    const stop = () => {
-      if (id) {
-        clearInterval(id);
-        id = null;
-      }
-    };
-    const onVisibility = () =>
-      document.visibilityState === "visible" ? start() : stop();
-    start();
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      stop();
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [user]);
+    if (friendPresencePoll.data) setFriendPresenceByGame(friendPresencePoll.data);
+  }, [friendPresencePoll.data]);
 
-  // Active players per game (the lobby's "N playing" line). One request for the
-  // WHOLE lobby, then a light poll: the endpoint returns aggregate counts for
+  // Active players per game (the lobby's "N playing" line). One aggregate read
+  // for the WHOLE lobby, then a light poll: the endpoint returns counts for
   // every game at once (Redis-cached for 10s server-side), so twenty cards cost
-  // one read, never twenty.
+  // one read, never twenty. That read is SHARED across every tab of the browser
+  // — one leader tab fetches and broadcasts; the others update with no request
+  // at all. Public endpoint, so signed-out visitors see the same live lobby.
   //
-  // Public endpoint, so signed-out visitors see the same live lobby. It never
-  // blocks anything: a failure only hides the counts (below), and filters,
-  // sorting, search links and every Play button keep working exactly as before.
+  // It never blocks anything: a failure only hides the counts (below), and
+  // filters, sorting, search links and every Play button keep working exactly
+  // as before. Hidden tabs do no work.
+  const activePlayersPoll = useSharedPoll("active-players", fetchActivePlayers, {
+    intervalMs: ACTIVE_PLAYERS_POLL_MS,
+  });
   useEffect(() => {
-    let cancelled = false;
-    let inFlight = false;
-    let id = null;
-
-    const load = async () => {
-      // Never stack requests — a slow network or a visibility flip must not
-      // queue up a second read of the same aggregate.
-      if (inFlight) return;
-      inFlight = true;
-      try {
-        const res = await fetch("/api/casino/active-players", { cache: "no-store" });
-        const data = await res.json().catch(() => null);
-        if (cancelled) return;
-        // `success: false` is the route's fail-closed answer (it still returns
-        // 200), so it is treated as a failure rather than as "nobody playing".
-        if (!res.ok || data?.success !== true) {
-          setActivePlayers({ status: "error", counts: {} });
-          return;
-        }
-        setActivePlayers({ status: "ready", counts: data.counts || {} });
-      } catch {
-        if (!cancelled) setActivePlayers({ status: "error", counts: {} });
-      } finally {
-        inFlight = false;
-      }
-    };
-
-    const stop = () => {
-      if (id) {
-        clearInterval(id);
-        id = null;
-      }
-    };
-    const start = () => {
-      stop();
-      load();
-      id = setInterval(load, ACTIVE_PLAYERS_POLL_MS);
-    };
-    // Background tabs don't need live counts; returning to the lobby refreshes
-    // them at once instead of waiting out a stale interval.
-    const onVisibility = () =>
-      document.visibilityState === "visible" ? start() : stop();
-
-    start();
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      cancelled = true;
-      stop();
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, []);
+    if (activePlayersPoll.data) setActivePlayers(activePlayersPoll.data);
+  }, [activePlayersPoll.data]);
 
   // One card's live-activity line: the count of players inside that game right
   // now, in the three states activePlayerTier() defines. The number comes from

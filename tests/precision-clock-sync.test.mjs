@@ -178,7 +178,7 @@ test("the match page forwards the estimated offset into the round clock", () => 
   );
   assert.match(
     page,
-    /usePrecisionRoundClock\(\{\s*state,\s*refreshState,\s*serverClockOffsetMs\s*\}\)/,
+    /usePrecisionRoundClock\(\{\s*state,\s*serverClockOffsetMs\s*\}\)/,
     "and pass it to usePrecisionRoundClock — dropping it returns the display to the raw device clock",
   );
 });

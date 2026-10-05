@@ -29,11 +29,8 @@ import PvpResultScreen from "../../../../../components/result/PvpResultScreen";
 import FrameAvatar from "../../../../../components/FrameAvatar";
 import { playVictory, playDefeat, playCardPlace, playBuzz } from "../../../../../lib/gameAudio";
 import {
-  SOCKET_DOWN_POLL_MS,
-  SOCKET_HEALTHY_POLL_MS,
-  useSocketConnected,
-  useVisiblePoll,
-} from "../../../../../hooks/useVisiblePoll";
+  useMatchSync,
+} from "../../../../../hooks/useMatchSync";
 import {
   IconFlag,
   IconNotebook,
@@ -1408,8 +1405,6 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
     }
   };
 
-  const socketConnected = useSocketConnected(socket);
-
   useEffect(() => {
     if (aiMode) {
       if (syncVersionRef.current === 0) void syncMatch();
@@ -1424,11 +1419,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
   // reliable over TCP while connected. This poll is a reconcile/safety net: it
   // relaxes while the socket is healthy, tightens if it drops, and stops while
   // the tab is hidden. (It used to run every second unconditionally.)
-  useVisiblePoll(
-    syncMatch,
-    socketConnected ? SOCKET_HEALTHY_POLL_MS : SOCKET_DOWN_POLL_MS,
-    !aiMode && Boolean(activeMatchId),
-  );
+  useMatchSync(syncMatch, socket, !aiMode && Boolean(activeMatchId));
   const myRemaining = BALL_LAYOUT.filter((b) =>
     myTeam ? (myTeam === "solids" ? !b.s && b.n !== 8 : b.s) : b.n !== 8
   )

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "../../../../../db/client";
+import { PUBLIC_LOBBY_CACHE_HEADERS } from "../../../../../lib/httpCache";
 import { hexDuelGames, users } from "../../../../../db/schema";
 import { and, desc, eq, isNull, inArray } from "drizzle-orm";
 
@@ -47,11 +48,14 @@ export async function GET() {
       .orderBy(desc(hexDuelGames.createdAt))
       .limit(20);
 
-    return NextResponse.json({
-      success: true,
-      games: waitingGames,
-      liveGames: inProgressGames,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        games: waitingGames,
+        liveGames: inProgressGames,
+      },
+      { headers: PUBLIC_LOBBY_CACHE_HEADERS },
+    );
   } catch {
     // DB query failed — return empty lists gracefully
     return NextResponse.json({

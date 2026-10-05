@@ -142,6 +142,12 @@ export default function RPSLobbyPage() {
         roomId: "lobby:rps",
         event: "lobby:updated",
       });
+      // Poke the waiting creator's match room: this joiner is the one who turns
+      // their `active` game into `matched`, and RPS has no server push for it.
+      socket?.emit("room_event", {
+        roomId: `rps-pvp:match:${data.data.gameId}`,
+        event: "lobby:updated",
+      });
       router.push(`/casino/rps/game/${data.data.gameId}`);
       posthog?.capture("rps_game_started", {
         mode: gameId ? "join" : "quick_join",

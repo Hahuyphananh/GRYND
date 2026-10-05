@@ -17,17 +17,14 @@
 // timer and the local rocket park on the spot instead of running on until the
 // round resolves.
 //
-// This hook also owns the ARMED→ACTIVE fast re-poll: the server flips the
-// phase at the stamped `countdownEndsAt`, and without it the client would
-// otherwise sit on 0 until the next scheduled poll.
+// The ARMED→ACTIVE transition is NOT polled for here: the realtime server's
+// due-transition scheduler flips the phase at the stamped `countdownEndsAt`
+// AND broadcasts `precision:roundArmStart` with the live match, which the
+// match page applies. This hook stays purely visual.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import {
-  ARMING_FAST_POLL_INTERVAL_MS,
-  ARMING_FAST_POLL_MAX_ATTEMPTS,
-  ROUND_COUNTDOWN_MS,
-} from "../lib/precision/constants";
+import { ROUND_COUNTDOWN_MS } from "../lib/precision/constants";
 import {
   elapsedSince,
   pairScheduledGo,
@@ -39,8 +36,6 @@ import type { PrecisionState } from "../lib/precision/types";
 
 export interface UsePrecisionRoundClockOptions {
   state: PrecisionState | null;
-  /** The canonical match refresh (from `usePrecisionMatchState`). */
-  refreshState: () => Promise<void>;
   /** Device→server wall-clock offset from `usePrecisionMatchState`. Correcting
    *  for it is what keeps the displayed elapsed equal to the elapsed the
    *  server scores: an uncorrected device clock that is off by a second makes
@@ -68,7 +63,6 @@ export interface UsePrecisionRoundClockResult {
 
 export function usePrecisionRoundClock({
   state,
-  refreshState,
   serverClockOffsetMs = 0,
 }: UsePrecisionRoundClockOptions): UsePrecisionRoundClockResult {
   const [timerMs, setTimerMs] = useState(0);
@@ -193,7 +187,7 @@ export function usePrecisionRoundClock({
 
   // ── Pre-round countdown ticker ─────────────────────────────────  // During `arming`, the server stamps `countdownEndsAt` — the countdown PLUS
   // the round-result cooldown held in front of it (see
-  // `ROUND_RESULT_REVEAL_MS`). We tick every 100ms and
+  // `ROUND_RESULT_REVEAL_MS`). We tick every 100ms and
   // display ceil(remaining/1000) so both clients show the same
   // 5…4…3…2…1 from the same server timestamp. The server's own transition
   // fires at that exact instant and flips the phase to "active", so the
@@ -219,36 +213,9 @@ export function usePrecisionRoundClock({
     return () => clearInterval(id);
   }, [state?.phase, state?.countdownEndsAt, serverNow]);
 
-  // ── Fast re-poll the instant the countdown expires ─────────────
-  // The server flips `arming` → `active` at the server-stamped
-  // `countdownEndsAt`, but the client otherwise only learns about it on the
-  // next `MATCH_POLL_INTERVAL_MS` tick (the `roundArmStart` broadcast fires
-  // when the next round is ARMED, not when it opens). That left the
-  // countdown sitting on 0 before every round — the "timer stuck on 0"
-  // report — and opened the round (plus its target) late. Once the stamped
-  // countdown has elapsed we re-poll at `ARMING_FAST_POLL_INTERVAL_MS` until
-  // the phase flips; the burst is budgeted by
-  // `ARMING_FAST_POLL_MAX_ATTEMPTS`, after which the normal cadence takes over.
-  //
-  // This read is also what self-heals the transition server-side:
-  // `get-match` promotes a due armed round, so the round opens on the first
-  // request after the countdown ends even if the server's arming timer never
-  // fired (frozen instance, process restart).
-  useEffect(() => {
-    if (state?.phase !== "arming") return;
-    const endsAt = state?.countdownEndsAt;
-    if (typeof endsAt !== "number") return;
-    let attempts = 0;
-    const pollIfDue = () => {
-      if (serverNow() < endsAt) return;
-      attempts += 1;
-      void refreshState();
-      if (attempts >= ARMING_FAST_POLL_MAX_ATTEMPTS) clearInterval(id);
-    };
-    const id = setInterval(pollIfDue, ARMING_FAST_POLL_INTERVAL_MS);
-    pollIfDue();
-    return () => clearInterval(id);
-  }, [state?.phase, state?.countdownEndsAt, refreshState, serverNow]);
+  // The ARMED→ACTIVE reveal arrives as the `precision:roundArmStart` socket
+  // broadcast (the realtime server emits it when the scheduler applies the
+  // transition), so there is deliberately no client-side re-poll for it here.
 
   // Stop the rAF loop on unmount so a torn-down React tree never keeps
   // ticking a frame callback.

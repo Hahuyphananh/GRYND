@@ -27,11 +27,8 @@ import EmotePicker, { EmoteBubble } from "../../../../../components/game/EmotePi
 import useGameEmotes from "../../../../../hooks/useGameEmotes";
 import { useSocket } from "../../../../../context/SocketProvider";
 import {
-  SOCKET_DOWN_POLL_MS,
-  SOCKET_HEALTHY_POLL_MS,
-  useSocketConnected,
-  useVisiblePoll,
-} from "../../../../../hooks/useVisiblePoll";
+  useMatchSync,
+} from "../../../../../hooks/useMatchSync";
 import { RockFistIcon } from "../../../../../components/icons/CustomIcons";
 import {
   IconHandStop,
@@ -201,27 +198,40 @@ export default function RPSPvpGamePage() {
     void poll();
   }, [gameId, poll]);
 
-  const socketConnected = useSocketConnected(socket);
-
   // Socket push is the fast path; this poll is a reconcile/safety net. It
   // relaxes while the socket is healthy, tightens if it drops, and stops while
   // the tab is hidden.
-  useVisiblePoll(
-    poll,
-    socketConnected ? SOCKET_HEALTHY_POLL_MS : SOCKET_DOWN_POLL_MS,
-    Boolean(gameId) && Number.isFinite(gameId),
-  );
+  useMatchSync(poll, socket, Boolean(gameId) && Number.isFinite(gameId));
 
-  // Presence room — lets the realtime server track this participant so
-  // a disconnect past the grace window forfeits the match to the
-  // opponent (see /api/rps/pvp/disconnect-forfeit).
+  // Presence room — lets the realtime server track this participant so a
+  // disconnect past the grace window forfeits the match to the opponent (see
+  // /api/rps/pvp/disconnect-forfeit). It ALSO carries the `lobby:updated` push:
+  // unlike the other PvP games, RPS has no server match-update event, so the
+  // other player's socket pokes this room after every authoritative action and
+  // this listener re-reads the snapshot. That push is what replaces the old
+  // recurring status poll, and it is why RPS still syncs with no interval.
   useEffect(() => {
     if (!socket || !Number.isFinite(gameId)) return;
     const roomId = `rps-pvp:match:${gameId}`;
+    const refresh = () => {
+      void poll();
+    };
     socket.emit("join_room", { roomId });
+    socket.on("lobby:updated", refresh);
     return () => {
+      socket.off("lobby:updated", refresh);
       socket.emit("leave_room", { roomId });
     };
+  }, [socket, gameId, poll]);
+
+  // Tell the opponent to re-read the authoritative snapshot. A bare hint — it
+  // never carries state, so nothing here can be trusted as truth.
+  const pokeOpponent = useCallback(() => {
+    if (!socket || !Number.isFinite(gameId)) return;
+    socket.emit("room_event", {
+      roomId: `rps-pvp:match:${gameId}`,
+      event: "lobby:updated",
+    });
   }, [socket, gameId]);
 
   // 10-second pick countdown while it's our turn.
@@ -264,6 +274,10 @@ export default function RPSPvpGamePage() {
         return;
       }
       setMessage("You forfeited the match.");
+      // The forfeit settles the match server-side: re-read once so THIS client
+      // sees the result, and poke the opponent to re-read theirs.
+      void poll();
+      pokeOpponent();
     } catch {
       setMessage("Network error while forfeiting");
     } finally {
@@ -286,6 +300,10 @@ export default function RPSPvpGamePage() {
       } else {
         setMyChoice(choice);
         setMessage("Choice locked. Waiting for opponent…");
+        // Our choose may resolve the round (if the opponent already chose), so
+        // re-read once; and poke the opponent so theirs re-reads too.
+        void poll();
+        pokeOpponent();
       }
     } catch (err) {
       console.error("Failed to choose RPS PvP move:", err);

@@ -33,6 +33,7 @@ import GryndProWidget from "../components/GryndProWidget";
 import AsyncState from "../components/states/AsyncState";
 import { SkeletonRows } from "../components/skeletons/Skeleton";
 import { useApiResource } from "../hooks/useApiResource";
+import useSharedPoll from "../hooks/useSharedPoll";
 
 // `adSlot` is a server-rendered <AdSlot /> handed down by app/page.jsx. It is
 // rendered above the footer and carries its OWN server-side entitlement check —
@@ -64,17 +65,18 @@ function MainComponent({ adSlot = null }) {
   const fadeUpVariant = withReducedMotion(shouldReduceMotion, fadeUp);
   const fadeInVariant = withReducedMotion(shouldReduceMotion, fadeIn);
 
+  // Returns the payload for the shared poller; `undefined` = "no update".
   const fetchFriendPresence = async () => {
     try {
       const response = await fetch("/api/friends/game-presence", {
         credentials: "include",
       });
       const data = await response.json();
-      if (response.ok && data.success)
-        setFriendPresenceByGame(data.byGame || {});
+      if (response.ok && data.success) return data.byGame || {};
     } catch (err) {
       console.error("[FRIEND_PRESENCE_ERROR]", err);
     }
+    return undefined;
   };
 
   const renderFriendWidget = (gameKey) => {
@@ -152,37 +154,25 @@ function MainComponent({ adSlot = null }) {
       const res = await fetch("/api/stats/live");
       const data = await res.json();
       if (data.success) {
-        setLiveStats({ playersOnline: data.playersOnline, gamesPlayedToday: data.gamesPlayedToday });
+        return { playersOnline: data.playersOnline, gamesPlayedToday: data.gamesPlayedToday };
       }
     } catch {
       // Silently fail — ticker is non-critical
     }
+    return undefined;
   };
 
-  // Live-stats ticker: only poll while the tab is actually visible — a
-  // backgrounded tab (the norm on mobile) doesn't need fresh numbers and
-  // shouldn't burn the network/battery on them.
+  // Live stats are a browser-wide shared poll: ONE request per refresh is made
+  // by whichever tab holds the lease, and the result is pushed to every other
+  // tab. Hidden tabs do no work. (The players-online number is a live presence
+  // COUNT and today's games are a 5-minute cached aggregate — neither can be
+  // published row-by-row, so the aggregate is what gets shared.)
+  const liveStatsPoll = useSharedPoll("live-stats", fetchLiveStats, {
+    intervalMs: 30000,
+  });
   useEffect(() => {
-    let id = null;
-    const start = () => {
-      fetchLiveStats();
-      id = setInterval(fetchLiveStats, 30000);
-    };
-    const stop = () => {
-      if (id) {
-        clearInterval(id);
-        id = null;
-      }
-    };
-    const onVisibility = () =>
-      document.visibilityState === "visible" ? start() : stop();
-    start();
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      stop();
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, []);
+    if (liveStatsPoll.data) setLiveStats(liveStatsPoll.data);
+  }, [liveStatsPoll.data]);
 
   // First-time recovery: a brand-new account that bailed out of the
   // /welcome flow lands on the home page with no path back into their first
@@ -229,31 +219,19 @@ function MainComponent({ adSlot = null }) {
     }
   };
 
+  // Friend presence is social chrome, not game state — and it is the SAME feed
+  // the casino lobby shows, so both pages (and every tab) share one request via
+  // the browser-wide poller. Only the minimum public presence fields the route
+  // already returns (name / icon / game) are ever carried; no email, balance or
+  // private profile data is involved.
+  const friendPresencePoll = useSharedPoll("friend-presence", fetchFriendPresence, {
+    intervalMs: 60000,
+    enabled: Boolean(user),
+  });
   useEffect(() => {
-    if (!user) return;
-    // Friend presence is social chrome, not game state. Throttled from 30s
-    // to 60s (and the endpoint now caches per user) to cut idle read load.
-    // Only poll while the tab is visible — background tabs don't need it.
-    let id = null;
-    const start = () => {
-      fetchFriendPresence();
-      id = setInterval(fetchFriendPresence, 60000);
-    };
-    const stop = () => {
-      if (id) {
-        clearInterval(id);
-        id = null;
-      }
-    };
-    const onVisibility = () =>
-      document.visibilityState === "visible" ? start() : stop();
-    start();
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      stop();
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [user]);
+    if (friendPresencePoll.data)
+      setFriendPresenceByGame(friendPresencePoll.data);
+  }, [friendPresencePoll.data]);
 
   const useRevealOnScroll = (deps = []) => {
     useEffect(() => {

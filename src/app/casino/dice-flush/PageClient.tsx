@@ -20,11 +20,8 @@ import { type AiDifficulty, readStoredAiDifficulty } from "../../../lib/aiDiffic
 import { TURN_TIME_LIMIT_MS } from "../../../../game-engine/diceFlushEngine";
 import { playVictory, playDefeat, playTurnSwitch, playTick } from "../../../lib/gameAudio";
 import {
-  SOCKET_DOWN_POLL_MS,
-  SOCKET_HEALTHY_POLL_MS,
-  useSocketConnected,
-  useVisiblePoll,
-} from "../../../hooks/useVisiblePoll";
+  useMatchSync,
+} from "../../../hooks/useMatchSync";
 import {
   IconNotebook,
   IconDice,
@@ -444,8 +441,6 @@ export default function DiceFlushPage() {
     };
   }, [socket, roomId]);
 
-  const socketConnected = useSocketConnected(socket);
-
   // Backup polling — slower fallback if a socket event is missed. The socket
   // room above is the fast path; this relaxes while it is healthy, tightens if
   // it drops, and stops while the tab is hidden.
@@ -455,12 +450,12 @@ export default function DiceFlushPage() {
     void fetchHistory(roomId);
   }, [roomId]);
 
-  useVisiblePoll(
+  useMatchSync(
     () => {
       void fetchRoom(roomId);
       void fetchHistory(roomId);
     },
-    socketConnected ? SOCKET_HEALTHY_POLL_MS : SOCKET_DOWN_POLL_MS,
+    socket,
     Boolean(roomId),
   );
 

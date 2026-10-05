@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
+import { PUBLIC_LOBBY_CACHE_HEADERS } from "../../../../lib/httpCache";
 import { fourInARowGames, users } from "../../../../db/schema";
 import { and, desc, eq, isNull } from "drizzle-orm";
 
@@ -25,7 +26,10 @@ export async function GET() {
       .orderBy(desc(fourInARowGames.createdAt))
       .limit(40);
 
-    return NextResponse.json({ success: true, games });
+    return NextResponse.json(
+      { success: true, games },
+      { headers: PUBLIC_LOBBY_CACHE_HEADERS },
+    );
   } catch (error) {
     console.error("four-in-a-row available-games error", error);
     return NextResponse.json(
