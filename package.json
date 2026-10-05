@@ -6,10 +6,6 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "cf:build": "opennextjs-cloudflare build",
-    "cf:preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
-    "cf:typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "lint": "next lint",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx ./src/db/migrate.ts",
@@ -121,7 +117,6 @@
     "verify:precision-mobile": "node qa/precision-mobile-check.mjs",
     "verify:precision-flow": "node qa/precision-flow-check.mjs",
     "verify:complete-profile": "node qa/complete-profile-check.mjs",
-    "verify:cloudflare": "node qa/cloudflare-verify.mjs",
     "test:upgrade-pro": "node --import tsx --test tests/upgrade-pro-contract.test.mjs",
     "test:bot-turns": "node --import tsx --test tests/bot-opponents-turn.test.mjs",
     "test:tower-arena": "node --import tsx --test tests/tower-arena-engine.test.mjs tests/tower-arena-turns.test.mjs tests/tower-arena-settlement.test.mjs tests/tower-arena-realtime.test.mjs tests/tower-arena-qa.test.mjs",
@@ -177,7 +172,6 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.3.3",
-    "@opennextjs/cloudflare": "^1.20.8",
     "@types/canvas-confetti": "^1.9.0",
     "@types/node": "22.14.1",
     "@types/pg": "^8.11.14",
@@ -197,8 +191,7 @@
     "puppeteer-core": "^25.9.0",
     "tailwindcss": "^3.3.0",
     "tsx": "^4.19.3",
-    "typescript": "5.8.3",
-    "wrangler": "^4.147.0"
+    "typescript": "5.8.3"
   },
   "overrides": {
     "@types/react": "19.1.2",
@@ -213,9 +206,6 @@
     "dompurify": "^3.4.16",
     "sharp": "^0.35.4",
     "brace-expansion": "^5.0.12",
-    "minimatch@8": {
-      "brace-expansion": "^2.1.7"
-    },
     "undici": "^7.29.0",
     "socket.io-parser": "^4.2.7",
     "rollup@>=1.0.0 <3.30.0": "3.30.0"

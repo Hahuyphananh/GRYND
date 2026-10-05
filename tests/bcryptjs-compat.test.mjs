@@ -1,10 +1,10 @@
 /**
- * Guards the native `bcrypt` → `bcryptjs` swap (Phase 4 of the
- * Vercel → Cloudflare migration).
+ * Guards the app's reliance on the pure-JS `bcryptjs` for password hashing.
  *
- * Cloudflare Workers cannot load `bcrypt`'s native addon (it is a compiled
- * N-API binding), so every route that hashes or verifies passwords must use
- * the pure-JS `bcryptjs` instead. The risk this test defends against is not
+ * `bcryptjs` is pure JavaScript with no native build step, so it installs and
+ * runs identically on any Node host (Vercel, a plain `next start`, CI, tests).
+ * Every route that hashes or verifies passwords uses it instead of the native
+ * `bcrypt` addon. The risk this test defends against is not
  * that the swap breaks newly-written hashes — it is that it silently makes
  * the hashes ALREADY IN THE DATABASE unverifiable, which would lock every
  * existing user out.
@@ -57,7 +57,7 @@ test("no route imports the native bcrypt addon", () => {
     assert.doesNotMatch(
       src,
       /from\s+["']bcrypt["']|require\(\s*["']bcrypt["']\s*\)/,
-      `${route} must import "bcryptjs", not the native "bcrypt" addon (Cloudflare Workers cannot load it)`,
+      `${route} must import "bcryptjs", not the native "bcrypt" addon`,
     );
     assert.match(
       src,
@@ -74,7 +74,7 @@ test("package.json depends on bcryptjs and no longer on native bcrypt", () => {
   assert.equal(
     all.bcrypt,
     undefined,
-    "native bcrypt must be removed — it cannot be bundled for Cloudflare Workers",
+    "native bcrypt must not be reintroduced — the routes rely on the pure-JS bcryptjs",
   );
 });
 

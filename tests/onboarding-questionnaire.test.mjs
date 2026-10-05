@@ -414,7 +414,7 @@ test("questionnaire UI does not touch the tutorial completion endpoint", () => {
 });
 
 test("proxy keeps the questionnaire reachable before the age gate", () => {
-  const proxy = read("src/middleware.ts");
+  const proxy = read("src/proxy.ts");
   assert.match(proxy, /"\/welcome\/questionnaire\(\.\*\)"/);
   assert.match(proxy, /"\/welcome"/);
 });

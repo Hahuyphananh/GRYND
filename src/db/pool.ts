@@ -5,26 +5,11 @@ import { Pool } from "pg";
  *
  * Every DB access path (Drizzle ORM, the `sql` helpers, cron jobs) goes
  * through this one pool so connection counts stay predictable regardless
- * of which module does the query.
- *
- * ── Where the connection string comes from ─────────────────────────────
- *
- * 1. Cloudflare Workers: the Hyperdrive binding (`env.HYPERDRIVE`). Hyperdrive
- *    performs the connection pooling to the origin database, so the Worker
- *    never talks to Postgres directly. Cloudflare's documented driver for this
- *    is node-postgres (`pg`), which is what this file already uses — see
- *    https://developers.cloudflare.com/hyperdrive/examples/connect-to-postgres/postgres-database-providers/supabase/
- *    Note: when setting up Hyperdrive for Supabase, use Supabase's **Direct**
- *    connection string (not the pooled one) — Hyperdrive does the pooling.
- *
- * 2. Everywhere else (Vercel, local `next dev`, scripts, the realtime server
- *    is not a DB client): `DATABASE_URL` (preferred) with `POSTGRES_URL` as a
- *    fallback, exactly as before. SSL is enabled automatically for non-local
- *    hosts.
- *
- * The two paths share all pool/SSL handling below; only the *source* of the
- * connection string differs. That keeps the Vercel behavior byte-for-byte
- * identical.
+ * of which module does the query. The connection string is read from
+ * `DATABASE_URL` (preferred) with `POSTGRES_URL` as a fallback — point
+ * whichever one you use at your Postgres provider (Supabase pooler or
+ * direct connection both work; SSL is enabled automatically for non-local
+ * hosts).
  */
 let poolInstance: Pool | null = null;
 
@@ -38,57 +23,15 @@ function extractHost(connectionString: string): string {
   }
 }
 
-/**
- * Symbol under which `@opennextjs/cloudflare` places the Cloudflare context
- * (its worker entrypoint in production, `initOpenNextCloudflareForDev` in dev).
- * This is the same slot its exported `getCloudflareContext()` helper reads.
- *
- * Why not call `getCloudflareContext()` directly? That package is ESM-only
- * (`"type": "module"`) while this project compiles to CommonJS
- * (`tsconfig: module: node16`), so a static import raises TS1479 — and this
- * getter is synchronous, so `await import(...)` is not an option. Reading the
- * global slot avoids the interop problem entirely and means no OpenNext code
- * is pulled into the Vercel/Node bundle.
- */
-const CLOUDFLARE_CONTEXT_SYMBOL = Symbol.for("__cloudflare-context__");
-
-type CloudflareContextLike = {
-  env?: { HYPERDRIVE?: { connectionString?: string } };
-};
-
-/**
- * Returns the Hyperdrive connection string when this code is running on
- * Cloudflare Workers, or `null` on every other runtime (Vercel, Node scripts,
- * unit tests, `next dev`), where the global slot is simply absent.
- */
-function getHyperdriveConnectionString(): string | null {
-  try {
-    const context = (globalThis as Record<symbol, unknown>)[
-      CLOUDFLARE_CONTEXT_SYMBOL
-    ] as CloudflareContextLike | undefined;
-    const connectionString = context?.env?.HYPERDRIVE?.connectionString;
-    return typeof connectionString === "string" && connectionString.length > 0
-      ? connectionString
-      : null;
-  } catch {
-    // A malformed/partial context must never take down DB access — fall back
-    // to the environment variables below.
-    return null;
-  }
-}
-
 export function getPool(): Pool {
   if (poolInstance) return poolInstance;
 
   const connectionString =
-    getHyperdriveConnectionString() ||
-    process.env.DATABASE_URL ||
-    process.env.POSTGRES_URL ||
-    "";
+    process.env.DATABASE_URL || process.env.POSTGRES_URL || "";
 
   if (!connectionString) {
     throw new Error(
-      "No database connection string available. Set DATABASE_URL in your runtime environment (for example, Vercel Project Settings > Environment Variables), or bind Cloudflare Hyperdrive as HYPERDRIVE.",
+      "DATABASE_URL is not set. Set it in your runtime environment (for example, Vercel Project Settings > Environment Variables).",
     );
   }
 
@@ -128,9 +71,6 @@ export function getPool(): Pool {
     // TLS handshake on bursty traffic, but it also meant every instance that
     // went quiet held its share of the pool for a full minute — connections
     // that a scaled-down fleet no longer needs but Supabase still counts.
-    //
-    // On Workers this also bounds how long a socket that was closed while the
-    // isolate was suspended can linger in the pool.
     idleTimeoutMillis: 15_000,
     // TCP keepalive so the provider doesn't reap connections the pool still
     // thinks are alive (the "Connection terminated unexpectedly" errors).
@@ -141,10 +81,6 @@ export function getPool(): Pool {
     statement_timeout: 8_000,
     // Cloud Postgres (Supabase, Neon, RDS) requires SSL. Local dev
     // Postgres usually doesn't have SSL enabled, so skip it for localhost.
-    //
-    // Hyperdrive terminates TLS on the Worker's behalf, so this applies to
-    // that path too — the connection string it hands back is a normal
-    // Postgres DSN.
     ssl: isLocal ? undefined : { rejectUnauthorized: false },
   });
 

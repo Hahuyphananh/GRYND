@@ -204,7 +204,7 @@ test("the SMTP fallback forwards custom headers", () => {
 });
 
 test("middleware allows the cross-origin one-click POST", () => {
-  const proxy = read("src/middleware.ts");
+  const proxy = read("src/proxy.ts");
   assert.match(proxy, /pathname === "\/api\/emails\/unsubscribe"/);
   assert.match(proxy, /!skipsCsrfGuards\(pathname\)/);
 });

@@ -4,7 +4,7 @@
 //
 // The middleware sends a SIGNED-IN account here from any game route when its
 // recorded date of birth makes the player under 18 (see the `underage_redirect`
-// branch in src/middleware.ts). It is a dead end by design — nothing here can lift
+// branch in src/proxy.ts). It is a dead end by design — nothing here can lift
 // the restriction, because the restriction is the player's own date of birth.
 //
 // So the page owes the player three answers, in this order: WHY they are here,

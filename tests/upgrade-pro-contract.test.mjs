@@ -38,7 +38,7 @@ const STATUS_ROUTE = read("src/app/api/membership/status/route.ts");
 const SUBSCRIBE_ROUTE = read("src/app/api/stripe/subscribe/route.ts");
 const PORTAL_ROUTE = read("src/app/api/stripe/portal/route.ts");
 const NAVBAR = read("src/components/navigation-bar.jsx");
-const PROXY = read("src/middleware.ts");
+const PROXY = read("src/proxy.ts");
 
 const UPGRADE_SURFACE = { BUTTON, MODAL, CONTENT, HOOK, PAGE, PAGE_CLIENT };
 

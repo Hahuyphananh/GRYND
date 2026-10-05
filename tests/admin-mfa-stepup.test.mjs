@@ -26,7 +26,7 @@ function read(path) {
 // ── Middleware Flow Tests ──────────────────────────────────────────────────
 
 test("public route matcher includes the broad /api/(.*) pattern", () => {
-  const proxy = read("src/middleware.ts");
+  const proxy = read("src/proxy.ts");
   // The broad pattern is still present (needed for other public APIs)
   assert.match(
     proxy,
@@ -36,7 +36,7 @@ test("public route matcher includes the broad /api/(.*) pattern", () => {
 });
 
 test("admin API routes are explicitly excluded from public route treatment", () => {
-  const proxy = read("src/middleware.ts");
+  const proxy = read("src/proxy.ts");
   // The fix: admin API routes must never be treated as public
   assert.match(
     proxy,
@@ -46,7 +46,7 @@ test("admin API routes are explicitly excluded from public route treatment", () 
 });
 
 test("middleware comment documents the admin API exclusion rationale", () => {
-  const proxy = read("src/middleware.ts");
+  const proxy = read("src/proxy.ts");
   // Defense in depth: the comment explains WHY this check exists
   assert.match(
     proxy,
@@ -66,7 +66,7 @@ test("middleware comment documents the admin API exclusion rationale", () => {
 });
 
 test("admin API routes skip the age gate but not authentication", () => {
-  const proxy = read("src/middleware.ts");
+  const proxy = read("src/proxy.ts");
   // Admin routes skip age verification (admins can be any age) but still
   // require authentication and MFA
   assert.match(
@@ -77,7 +77,7 @@ test("admin API routes skip the age gate but not authentication", () => {
 });
 
 test("admin role check covers both /admin and /api/admin paths", () => {
-  const proxy = read("src/middleware.ts");
+  const proxy = read("src/proxy.ts");
   // Both UI and API routes require admin role
   assert.match(
     proxy,
@@ -87,7 +87,7 @@ test("admin role check covers both /admin and /api/admin paths", () => {
 });
 
 test("admin role check returns 403 JSON for API routes", () => {
-  const proxy = read("src/middleware.ts");
+  const proxy = read("src/proxy.ts");
   // API routes get JSON responses, not redirects
   assert.match(
     proxy,
@@ -102,7 +102,7 @@ test("admin role check returns 403 JSON for API routes", () => {
 });
 
 test("admin MFA gate covers both /admin and /api/admin paths", () => {
-  const proxy = read("src/middleware.ts");
+  const proxy = read("src/proxy.ts");
   // The MFA step-up check must cover API routes
   assert.match(
     proxy,
@@ -112,7 +112,7 @@ test("admin MFA gate covers both /admin and /api/admin paths", () => {
 });
 
 test("admin MFA gate returns 403 JSON for API routes without MFA", () => {
-  const proxy = read("src/middleware.ts");
+  const proxy = read("src/proxy.ts");
   // API routes without MFA get 403 JSON, not redirects
   assert.match(
     proxy,
@@ -122,7 +122,7 @@ test("admin MFA gate returns 403 JSON for API routes without MFA", () => {
 });
 
 test("admin MFA gate checks Clerk factor verification age", () => {
-  const proxy = read("src/middleware.ts");
+  const proxy = read("src/proxy.ts");
   // Recent Clerk MFA satisfies the gate
   assert.match(
     proxy,
@@ -132,7 +132,7 @@ test("admin MFA gate checks Clerk factor verification age", () => {
 });
 
 test("admin MFA gate checks admin MFA token cookie", () => {
-  const proxy = read("src/middleware.ts");
+  const proxy = read("src/proxy.ts");
   // The admin_mfa cookie (24h signed token) satisfies the gate
   assert.match(
     proxy,
@@ -142,7 +142,7 @@ test("admin MFA gate checks admin MFA token cookie", () => {
 });
 
 test("admin MFA gate checks user MFA token cookie", () => {
-  const proxy = read("src/middleware.ts");
+  const proxy = read("src/proxy.ts");
   // The user_mfa cookie (defense in depth for dual-MFA admins) satisfies the gate
   assert.match(
     proxy,
@@ -152,7 +152,7 @@ test("admin MFA gate checks user MFA token cookie", () => {
 });
 
 test("userMfaGate explicitly skips all /api/ paths", () => {
-  const proxy = read("src/middleware.ts");
+  const proxy = read("src/proxy.ts");
   // The user-level MFA gate skips API routes (they're not interactive pages)
   assert.match(
     proxy,
@@ -162,7 +162,7 @@ test("userMfaGate explicitly skips all /api/ paths", () => {
 });
 
 test("admin MFA gate runs AFTER the public route early return", () => {
-  const proxy = read("src/middleware.ts");
+  const proxy = read("src/proxy.ts");
   // The fix ensures the flow reaches the admin MFA gate
   const publicRouteMatch = proxy.match(
     /if\s*\(\s*isPublicRoute\(req\)\s*&&\s*!pathname\.startsWith\(["']\/api\/admin["']\)\s*\)/
@@ -408,7 +408,7 @@ test("MFA status endpoint requires admin role", () => {
 // ── Integration Tests ──────────────────────────────────────────────────────
 
 test("middleware enforces all three gates in order: auth, admin role, MFA", () => {
-  const proxy = read("src/middleware.ts");
+  const proxy = read("src/proxy.ts");
   
   // Find the positions of each gate
   const authGateMatch = proxy.match(/if\s*\(\s*!userId\s*\)[\s\S]{0,200}sign-in/);
@@ -435,7 +435,7 @@ test("middleware enforces all three gates in order: auth, admin role, MFA", () =
 });
 
 test("no admin API endpoint bypasses the middleware MFA gate", () => {
-  const proxy = read("src/middleware.ts");
+  const proxy = read("src/proxy.ts");
   
   // The fix ensures /api/admin/* never matches the public route early return
   const publicRoutePattern = /if\s*\(\s*isPublicRoute\(req\)\s*&&\s*!pathname\.startsWith\(["']\/api\/admin["']\)\s*\)/;
@@ -454,7 +454,7 @@ test("no admin API endpoint bypasses the middleware MFA gate", () => {
 });
 
 test("admin API routes are documented as requiring MFA step-up", () => {
-  const proxy = read("src/middleware.ts");
+  const proxy = read("src/proxy.ts");
   
   // The comment should reference the line numbers of the MFA gate
   assert.match(

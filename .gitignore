@@ -14,11 +14,6 @@ realtime-server/node_modules
 /.next/
 /out/
 
-# Cloudflare Workers (OpenNext build output + generated types)
-/.open-next/
-/.wrangler/
-cloudflare-env.d.ts
-
 # production
 /build
 

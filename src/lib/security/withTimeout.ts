@@ -2,7 +2,7 @@
 //
 // Resolve a promise, or return `fallback` if it doesn't settle within `ms`.
 //
-// Shared by the page middleware (src/middleware.ts) and the API age gate
+// Shared by the page middleware (src/proxy.ts) and the API age gate
 // (src/lib/auth/requireAgeVerified.ts). Extracted from proxy.ts so the two
 // don't drift apart.
 
