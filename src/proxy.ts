@@ -562,13 +562,16 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
     return applySecurityHeaders(NextResponse.next());
   }
 
-  // Playable game routes are still listed in isPublicRoute, but they must NOT
-  // take this early return. Letting them fall through sends them to the auth
-  // + age-gate block below, which already implements exactly the rules games
-  // need: signed out → /sign-in, no age record → /complete-profile,
-  // age < 18 → /access-denied, otherwise an 18+ user passes through via
-  // next(). Every other public route (hubs, onboarding, legal pages) still
-  // returns early here exactly as before.
+  // Playable game routes are browsable while SIGNED OUT but still fall through
+  // to the auth + age-gate block below, so a signed-in visitor is gated exactly
+  // as before (no age record → /complete-profile, under 18 → /access-denied).
+  // The only branch that changes for them is the "no session → /sign-in" one,
+  // which the fall-through below relaxes to "let them read the lobby".
+  //
+  // Enforcement is not weakened: the matchmaking APIs authenticate and
+  // age-gate independently (`requireAgeVerifiedUser`), so this relaxes the page
+  // read only — a signed-out visitor can look at a lobby but can start nothing.
+  // Opening AI practice to guests is a separate change on those API routes.
   if (isPublicRoute(req) && !isGameRoute(pathname)) {
     // User-level MFA runs even on public pages (casino pages are public
     // routes but wagering on them must stay protected). auth() here is the
@@ -615,7 +618,12 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
 
   const { userId, sessionClaims, factorVerificationAge } = await auth();
 
-  if (!userId) {
+  // A game route may be READ while signed out — that is the whole point of a
+  // public lobby. This relaxes the PAGE gate only: the matchmaking APIs
+  // authenticate and age-gate on their own, so nothing can be played from here.
+  const browsingGameSignedOut = !userId && isGameRoute(pathname);
+
+  if (!userId && !browsingGameSignedOut) {
     auditLog("auth_required_redirect", { ip, path: pathname });
     return applySecurityHeaders(NextResponse.redirect(new URL("/sign-in", req.url)));
   }
@@ -629,7 +637,11 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
     pathname.startsWith("/admin") ||
     pathname.startsWith("/api/admin");
 
-  if (!skipsAgeGate) {
+  // Signed-out visitors on a game route have no session to age-check, and the
+  // age gate is about what a session may DO; there is nothing to gate, since
+  // every play path below still requires one. So it applies to signed-in users
+  // only — exactly as before for them.
+  if (userId && !skipsAgeGate) {
     // Prefer the session claim when a JWT template provides one. When it
     // does, the age gate costs zero DB work per request.
     let age = sessionClaims?.age;

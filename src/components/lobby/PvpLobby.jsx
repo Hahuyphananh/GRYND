@@ -23,6 +23,8 @@
 // game lobby now looks like the same casino.
 
 import { useState, useEffect, useRef } from "react";
+import { useAuth } from "@clerk/nextjs";
+import { useRouter, usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import NavigationBar from "../navigation-bar";
@@ -305,6 +307,24 @@ export function PvpLobby({
     ? lobbies.filter((l) => l?.id !== myOpenId)
     : lobbies;
 
+  // ── Signed-out visitors ────────────────────────────────────────────────
+  // Game lobbies are public, so a visitor with no account can read the rules,
+  // the open-lobby list and every card. The account requirement lands on the
+  // PLAY action instead of the page: clicking Play sends them to sign-in with a
+  // return path, rather than a dead disabled button. Practice vs AI is handled
+  // separately (it stays open to guests), so only this online action routes.
+  const { isSignedIn, isLoaded } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+  const signedOut = isLoaded && !isSignedIn;
+  const handlePlay = () => {
+    if (!signedOut) {
+      onPlay?.();
+      return;
+    }
+    router.push(`/sign-in?redirect_url=${encodeURIComponent(pathname || "/")}`);
+  };
+
   return (
     <DailyLossGuard>
       <SessionGuard />
@@ -424,8 +444,8 @@ export function PvpLobby({
           <div className="flex flex-col gap-2">
             <button
               type="button"
-              onClick={() => onPlay?.()}
-              disabled={!canPlay || busy}
+              onClick={handlePlay}
+              disabled={busy || (!canPlay && !signedOut)}
               className={`inline-flex items-center justify-center gap-2 rounded-xl border-b-4 p-3 text-base font-extrabold transition hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100 ${PALETTE.play}`}
             >
               {busy ? (
@@ -434,7 +454,7 @@ export function PvpLobby({
                   <span>{playBusyLabel}</span>
                 </>
               ) : (
-                <span>{playLabel}</span>
+                <span>{signedOut ? "Sign in to play" : playLabel}</span>
               )}
             </button>
             {vsAi && (
