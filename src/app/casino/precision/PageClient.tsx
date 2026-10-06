@@ -280,10 +280,12 @@ export default function PrecisionLobbyPage() {
       }
       extraActions={
         <div className="flex flex-col gap-2">
+          {/* Free practice is open to signed-out guests (the match is
+              unrated); only the ONLINE actions route to sign-in. */}
           <button
             type="button"
             onClick={handlePlayAi}
-            disabled={!isSignedIn || creating}
+            disabled={creating}
             className="inline-flex items-center justify-center gap-2 rounded-xl border border-fuchsia-500/40 bg-fuchsia-500/10 py-2 text-sm font-bold text-fuchsia-200 transition hover:bg-fuchsia-500/20 disabled:opacity-50"
           >
             Play Free vs AI

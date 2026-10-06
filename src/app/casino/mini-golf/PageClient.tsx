@@ -228,11 +228,13 @@ export default function MiniGolfLobbyPage() {
       playBusyLabel="Searching…"
       canPlay={Boolean(isSignedIn)}
       children={
+        // Practice is open to signed-out guests, so the tier picker stays
+        // usable for them — only an in-flight start disables it.
         <AiDifficultyPicker
           gameKey="mini-golf"
           value={aiDifficulty}
           onChange={setAiDifficulty}
-          disabled={!isSignedIn}
+          disabled={aiBusy}
           hint={{
             easy: "Loose aim and weak pace — miss plenty, but still finish the hole.",
             normal: "A decent club player: fewer lines, the odd miss.",
@@ -250,10 +252,13 @@ export default function MiniGolfLobbyPage() {
           >
             {busy ? "Joining…" : "Quick Join"}
           </button>
+          {/* FREE PRACTICE is open to signed-out guests: the match is unrated,
+              so there is nothing to gate. Only the ONLINE actions route to
+              sign-in from the shared lobby. */}
           <button
             type="button"
             onClick={playAi}
-            disabled={aiBusy || !isSignedIn}
+            disabled={aiBusy}
             data-testid="mini-golf-practice"
             className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 py-2 text-sm font-bold text-emerald-200 transition hover:bg-emerald-500/20 disabled:opacity-50"
           >

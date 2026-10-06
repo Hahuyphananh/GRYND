@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { logError } from "../../../../lib/logError";
 import { toggleTowerArenaReady } from "../../../../lib/tower-arena/serverStore";
 
 export async function POST(req: Request) {
   try {
-    const gate = await requireAgeVerifiedUser();
+    const gate = await requirePracticePlayer();
     if (gate.response) return gate.response;
-    const userId = gate.userId;
+    const userId = gate.playerId;
     const { matchId } = await req.json().catch(() => ({}));
     if (!matchId) return NextResponse.json({ ok: false, message: "matchId is required" }, { status: 400 });
     const res: any = await toggleTowerArenaReady({ userId, matchId: String(matchId) });

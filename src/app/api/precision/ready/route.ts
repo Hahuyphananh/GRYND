@@ -14,7 +14,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { markPlayerReady } from "../../../../lib/precision/serverStore";
 import { logError } from "../../../../lib/logError";
 
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     // ── IDOR hardening: identity comes from the Clerk session, never
     // from the request body. A malicious client can no longer mark
     // the OPPONENT ready (body.userId was previously trusted).
-    const gate = await requireAgeVerifiedUser();
+    const gate = await requirePracticePlayer();
     if (gate.response) return gate.response;
 
     const { userId } = await auth();

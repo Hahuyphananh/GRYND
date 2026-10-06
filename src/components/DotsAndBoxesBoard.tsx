@@ -69,6 +69,12 @@ interface DotsAndBoxesBoardProps {
   /** Free practice vs the GRYND AI — the guest box mark becomes the logo
    *  (the AI seat resolves no icon key). */
   isAiGame?: boolean;
+  /**
+   * GUEST seat (a signed-out free-play player). A guest owns no account, so
+   * there is no icon to stamp: its claimed boxes carry the "G" letter mark.
+   */
+  hostIsGuest?: boolean;
+  guestIsGuest?: boolean;
   /** Called when a horizontal edge is clicked (row, col) */
   onEdgeHClick?: (row: number, col: number) => void;
   /** Called when a vertical edge is clicked (row, col) */
@@ -132,7 +138,9 @@ function propsAreEqual(
     prev.edgeTooltipV !== next.edgeTooltipV ||
     prev.hostIconKey !== next.hostIconKey ||
     prev.guestIconKey !== next.guestIconKey ||
-    prev.isAiGame !== next.isAiGame
+    prev.isAiGame !== next.isAiGame ||
+    prev.hostIsGuest !== next.hostIsGuest ||
+    prev.guestIsGuest !== next.guestIsGuest
   ) {
     return false;
   }
@@ -154,6 +162,8 @@ function DotsAndBoxesBoardImpl({
   hostIconKey = null,
   guestIconKey = null,
   isAiGame = false,
+  hostIsGuest = false,
+  guestIsGuest = false,
   onEdgeHClick,
   onEdgeVClick,
   interactive = false,
@@ -483,10 +493,15 @@ const ownerColor = (
         // back to the official default icon, so a legacy/unknown key still
         // renders a mark instead of an empty box.
         const isAiGuest = owner === "guest" && isAiGame;
+        // A guest seat stamps the "G" letter instead of a pfp it cannot have.
+        const isGuestOwner =
+          owner === "host" ? hostIsGuest : owner === "guest" ? guestIsGuest : false;
         const markHref =
           owner === "host" || owner === "guest"
-            ? isAiGuest
-              ? AI_BOX_ICON_SRC
+            ? isAiGuest || isGuestOwner
+              ? isAiGuest
+                ? AI_BOX_ICON_SRC
+                : null
               : iconAssetUrl(owner === "host" ? hostIconKey : guestIconKey)
             : null;
         const iconX = bx + (BOX_SIZE - BOX_ICON_SIZE) / 2;
@@ -562,7 +577,7 @@ const ownerColor = (
                 }}
                 className={isNew ? "dnb-mark-anim" : ""}
               >
-                ?
+                {isGuestOwner ? "G" : "?"}
               </text>
             )}
           </g>

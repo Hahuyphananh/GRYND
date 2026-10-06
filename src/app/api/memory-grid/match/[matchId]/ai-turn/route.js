@@ -1,12 +1,12 @@
 // POST — run the server-controlled Memory Grid AI reconstruction when due.
 import { NextResponse } from "next/server";
-import { requireAgeVerifiedUser } from "../../../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../../../lib/auth/guestSession";
 import { playAiTurn } from "../../../../../../lib/memory-grid/serverStore";
 
 export async function POST(req, { params }) {
-  const gate = await requireAgeVerifiedUser();
+  const gate = await requirePracticePlayer();
   if (gate.response) return gate.response;
-  const userId = gate.userId;
+  const userId = gate.playerId;
 
   const resolvedParams = (await params) || {};
   const matchId = Number(resolvedParams?.matchId);

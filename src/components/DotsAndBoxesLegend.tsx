@@ -28,6 +28,11 @@ interface SeatMarkProps {
   profileFrame?: unknown;
   /** AI seat: always the GRYND logo, whatever `iconKey` says. */
   isAiGame?: boolean;
+  /**
+   * GUEST seat (a signed-out free-play player). A guest owns no account, so it
+   * has no icon to resolve: its mark is the "G" letter badge.
+   */
+  isGuest?: boolean;
   /** Tailwind size classes (e.g. "h-5 w-5"). */
   size?: string;
   className?: string;
@@ -44,6 +49,7 @@ export function SeatMark({
   iconKey,
   profileFrame,
   isAiGame = false,
+  isGuest = false,
   size = "h-5 w-5",
   className = "",
 }: SeatMarkProps) {
@@ -63,6 +69,7 @@ export function SeatMark({
       frame={profileFrame}
       iconKey={iconKey || null}
       name={name || undefined}
+      isGuest={isGuest}
       size={size}
       className={className}
     />
@@ -79,6 +86,9 @@ interface DotsAndBoxesLegendProps {
   hostProfileFrame?: unknown;
   guestProfileFrame?: unknown;
   isAiGame?: boolean;
+  /** Guest seats: no account, so their mark is the "G" letter badge. */
+  hostIsGuest?: boolean;
+  guestIsGuest?: boolean;
   /** The viewer's own seat — its chip is outlined so "which one am I?" needs no
    *  extra label. */
   selfSeat?: DotsAndBoxesSeat | null;
@@ -96,6 +106,8 @@ export default function DotsAndBoxesLegend({
   hostProfileFrame,
   guestProfileFrame,
   isAiGame = false,
+  hostIsGuest = false,
+  guestIsGuest = false,
   selfSeat = null,
   hostColor,
   guestColor,
@@ -108,6 +120,7 @@ export default function DotsAndBoxesLegend({
       name: hostName,
       iconKey: hostIconKey,
       profileFrame: hostProfileFrame,
+      isGuest: hostIsGuest,
     },
     {
       seat: "guest" as const,
@@ -116,6 +129,7 @@ export default function DotsAndBoxesLegend({
       name: guestName,
       iconKey: guestIconKey,
       profileFrame: guestProfileFrame,
+      isGuest: guestIsGuest,
     },
   ];
 
@@ -164,6 +178,7 @@ export default function DotsAndBoxesLegend({
               iconKey={entry.iconKey}
               profileFrame={entry.profileFrame}
               isAiGame={isAiGame}
+              isGuest={entry.isGuest}
               size="h-4 w-4"
             />
             <span className={`max-w-[9rem] truncate ${entry.text}`}>{entry.name}</span>

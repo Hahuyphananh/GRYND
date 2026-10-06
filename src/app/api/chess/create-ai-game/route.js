@@ -1,15 +1,18 @@
-import { auth } from "@clerk/nextjs/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { db } from "../../../../db/client";
 import { chessGames } from "../../../../db/schema";
 import { NextResponse } from "next/server";
 
 export async function POST(req) {
   try {
-    const gate = await requireAgeVerifiedUser();
+    // Free practice vs the built-in engine: a signed-out visitor is issued a
+    // guest seat here (the only chess route that mints one). Chess vs AI is
+    // unrated — the game row is flagged `isAiGame`, so settlement skips ELO,
+    // trophies and counters. Online play (/api/chess/create-game, /join-game)
+    // keeps the age gate.
+    const gate = await requirePracticePlayer({ create: true });
     if (gate.response) return gate.response;
-
-    const { userId } = await auth();
+    const userId = gate.playerId;
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

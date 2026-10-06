@@ -348,8 +348,27 @@ test("routes: the expected HTTP surface exists, and only /move mutates the board
   for (const route of routes) {
     assert.ok(fs.existsSync(path.join(process.cwd(), route)), `${route} must exist`);
   }
-  // Every route that changes anything is behind the 18+ / auth gate.
+  // Every route that changes anything is behind the 18+ / auth gate, or —
+  // for the free practice routes — the equivalent practice gate, which runs
+  // the SAME age gate for a signed-in caller and hands a signed-out one a
+  // guest identity (see src/lib/auth/guestSession.ts).
   for (const route of routes) {
-    assert.match(strip(read(route)), /requireAgeVerifiedUser|verifyToken/, route);
+    assert.match(
+      strip(read(route)),
+      /requireAgeVerifiedUser|requirePracticePlayer|verifyToken/,
+      route,
+    );
+  }
+  // The ONLINE routes must never be relaxed to the practice gate: a guest may
+  // only ever enter a practice match.
+  for (const route of [
+    "src/app/api/tic-tac-toe/create-or-join/route.ts",
+    "src/app/api/tic-tac-toe/available/route.ts",
+  ]) {
+    assert.doesNotMatch(
+      strip(read(route)),
+      /requirePracticePlayer/,
+      `${route} must stay behind the account gate`,
+    );
   }
 });

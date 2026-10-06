@@ -5,14 +5,14 @@
 // `src/app/api/mines-pvp/match/[matchId]/cancel/route.js`.
 
 import { NextResponse } from "next/server";
-import { requireAgeVerifiedUser } from "../../../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../../../lib/auth/guestSession";
 import { cancelMatch } from "../../../../../../lib/memory-grid/serverStore";
 import { broadcastMatchUpdate } from "../../../../../../lib/memory-grid/rooms";
 
 export async function POST(req, { params }) {
-  const gate = await requireAgeVerifiedUser();
+  const gate = await requirePracticePlayer();
   if (gate.response) return gate.response;
-  const userId = gate.userId;
+  const userId = gate.playerId;
 
   // Next.js 15+/16: API route `params` is a Promise — must await
   // before reading properties (same fix as the mines-pvp routes).

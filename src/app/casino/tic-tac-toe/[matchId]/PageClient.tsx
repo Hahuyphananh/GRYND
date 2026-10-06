@@ -634,6 +634,7 @@ export default function TicTacToeMatchPage() {
                               profileFrame={identity?.profileFrame ?? null}
                               name={name}
                               isAi={Boolean(match.isAi) && !isViewer}
+                              isGuest={Boolean(identity?.isGuest)}
                               size="h-7 w-7"
                             />
                             {/* The seat's mark rides the avatar's corner: the

@@ -35,6 +35,7 @@ import {
 import { STAKES_RETIRED } from "../games/stakes";
 import { sendSystemNotificationEmail } from "../emails/system";
 import { DEFAULT_ICON_KEY } from "../iconAssets";
+import { GUEST_DISPLAY_NAME, isGuestId } from "../guestIdentity";
 import { getFrameDecorations } from "../cosmetics";
 import {
   buildResourcePool,
@@ -1565,18 +1566,32 @@ async function enrichMatchPlayers(tx: any, players: any[]) {
     players.filter((p) => !p.isAi).map((p) => p.userId),
   );
   return players.map((p) => {
-    const d = p.isAi ? null : display.get(p.userId);
+    // A guest (a signed-out free-play visitor) has no `users` row to enrich
+    // from: it always renders as the fixed guest seat — name "Guest", no icon
+    // key, so the client draws the "G" letter badge (see <SeatAvatar isGuest>).
+    const isGuest = !p.isAi && isGuestId(p.userId);
+    const d = p.isAi || isGuest ? null : display.get(p.userId);
     return {
       userId: p.userId,
       seat: p.seat,
       status: p.status,
       placement: p.placement,
       isAi: p.isAi,
+      isGuest,
       ready: Boolean(p.ready),
       joinedAt: p.joinedAt,
-      eliminatedAt: p.eliminatedAt,      name: p.isAi ? `Bot ${p.seat}` : (d?.name ?? "Player"),
-      iconKey: p.isAi ? DEFAULT_ICON_KEY : (d?.iconKey ?? DEFAULT_ICON_KEY),
-      profileFrame: p.isAi ? null : (d?.profileFrame ?? null),
+      eliminatedAt: p.eliminatedAt,
+      name: p.isAi
+        ? `Bot ${p.seat}`
+        : isGuest
+          ? GUEST_DISPLAY_NAME
+          : (d?.name ?? "Player"),
+      iconKey: p.isAi
+        ? DEFAULT_ICON_KEY
+        : isGuest
+          ? null
+          : (d?.iconKey ?? DEFAULT_ICON_KEY),
+      profileFrame: p.isAi || isGuest ? null : (d?.profileFrame ?? null),
     };
   });
 }

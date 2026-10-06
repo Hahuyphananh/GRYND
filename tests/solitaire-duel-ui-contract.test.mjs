@@ -66,10 +66,24 @@ test("routes: every path exists and is a thin wrapper over the game's store", ()
   for (const path of Object.values(ROUTE_FILES)) {
     assert.ok(fs.existsSync(path), `${path} must exist`);
   }
-  // Every participant-facing route is gated on a verified age-checked session.
+  // Every participant-facing route is gated: the ONLINE one on a verified
+  // account, the PRACTICE ones on the practice gate (the same age check for a
+  // signed-in caller, a guest identity for a signed-out visitor — a guest
+  // still only reaches a match it holds a seat in, because the store refuses
+  // every non-participant).
+  assert.match(
+    code(ROUTE_FILES.createOrJoin),
+    /requireAgeVerifiedUser/,
+    "matchmaking must gate on the account",
+  );
+  assert.doesNotMatch(
+    code(ROUTE_FILES.createOrJoin),
+    /requirePracticePlayer/,
+    "matchmaking must never accept a guest",
+  );
   for (const [name, path] of Object.entries(ROUTE_FILES)) {
-    if (name === "disconnect") continue;
-    assert.match(code(path), /requireAgeVerifiedUser/, `${name} must gate on the session`);
+    if (name === "disconnect" || name === "createOrJoin") continue;
+    assert.match(code(path), /requirePracticePlayer/, `${name} must be gated`);
   }
   // The internal disconnect endpoint is not session-gated: the realtime server
   // has no cookie, so it re-verifies the socket's own Clerk token instead.

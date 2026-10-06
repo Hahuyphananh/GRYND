@@ -13,16 +13,16 @@
 // of the match, so it genuinely plays and can never be skipped by a client.
 
 import { NextResponse } from "next/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { logError } from "../../../../lib/logError";
 import { createAiMatch } from "../../../../lib/solitaire-duel/serverStore";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  const gate = await requireAgeVerifiedUser();
+  const gate = await requirePracticePlayer({ create: true });
   if (gate.response) return gate.response;
-  const userId = gate.userId;
+  const userId = gate.playerId;
   if (!userId) {
     return NextResponse.json(
       { success: false, error: "Unauthenticated" },

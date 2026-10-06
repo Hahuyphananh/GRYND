@@ -185,9 +185,12 @@ type Match = {
   status: string;
   placement: number | null;
   isAi: boolean;
+  /** True for a signed-out free-play visitor (renders the "G" guest badge). */
+  isGuest?: boolean;
   ready: boolean;
   name: string;
-  iconKey: string;
+  /** null for a guest seat — a guest owns no catalog icon. */
+  iconKey: string | null;
   profileFrame?: unknown;
 };
 
@@ -1773,7 +1776,7 @@ export default function TowerArenaMatchPage() {
                   >
                     {seat.player ? (
                       <>
-                        <FrameAvatar frame={seat.player.profileFrame} iconKey={seat.player.iconKey} name={seat.player.name} size="h-12 w-12" />
+                        <FrameAvatar frame={seat.player.profileFrame} iconKey={seat.player.iconKey} name={seat.player.name} isGuest={seat.player.isGuest} size="h-12 w-12" />
                         <p className="max-w-full truncate text-sm font-bold">
                           {seat.player.name}
                           {seat.isMe ? " (you)" : ""}
@@ -2128,7 +2131,7 @@ export default function TowerArenaMatchPage() {
                   p.userId === match?.currentTurnPlayerId && isActive ? "border-cyan-500/60 bg-cyan-500/10" : "border-white/10 bg-white/[0.03]"
                 }`}
               >
-                <FrameAvatar frame={p.profileFrame} iconKey={p.iconKey} name={p.name} size="h-9 w-9" />                <div className="min-w-0 flex-1">
+                <FrameAvatar frame={p.profileFrame} iconKey={p.iconKey} name={p.name} isGuest={p.isGuest} size="h-9 w-9" />                <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold">
                     {p.name}
                     {p.userId === me?.userId ? " (you)" : ""}
@@ -2251,7 +2254,7 @@ export default function TowerArenaMatchPage() {
                       : "border-white/10 bg-white/[0.03]"
                 }`}
               >
-                <FrameAvatar frame={p.profileFrame} iconKey={p.iconKey} name={p.name} size="h-6 w-6" />
+                <FrameAvatar frame={p.profileFrame} iconKey={p.iconKey} name={p.name} isGuest={p.isGuest} size="h-6 w-6" />
                 <div className="min-w-0">
                   <p className="truncate text-[11px] font-bold">
                     {p.name}
@@ -2641,7 +2644,7 @@ function ResultsView({ match, players, meUserId, onBack }: any) {
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-black/40 text-sm font-black text-amber-300">
                     {ordinal(r.placement)}
                   </div>
-                  <FrameAvatar frame={p?.profileFrame} iconKey={p?.iconKey} name={p?.name} size="h-11 w-11" />
+                  <FrameAvatar frame={p?.profileFrame} iconKey={p?.iconKey} name={p?.name} isGuest={p?.isGuest} size="h-11 w-11" />
                   <div className="min-w-0 flex-1">                    <p className="truncate text-sm font-bold">
                       {p?.name}
                       {r.userId === meUserId ? " (you)" : ""}

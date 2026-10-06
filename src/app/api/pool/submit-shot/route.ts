@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 export async function POST(req: Request) {
-  const gate = await requireAgeVerifiedUser();
+  // Practice matches are playable by guests; PvP keeps the age gate.
+  const gate = await requirePracticePlayer();
   if (gate.response) return gate.response;
 
   const body = await req.json().catch(() => ({}));

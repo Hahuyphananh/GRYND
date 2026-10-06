@@ -384,6 +384,9 @@ export default function LaneRushDuelLobbyPage() {
       vsAi={{
         label: "Test vs Bot",
         badge: "Free",
+        // NOTE: the bot match is created by /api/lane-rush-duel/create-or-join,
+        // which still requires an account, so this stays disabled for a
+        // signed-out visitor until that route takes the practice gate.
         disabled: !isSignedIn,
         busy,
         onClick: () => {

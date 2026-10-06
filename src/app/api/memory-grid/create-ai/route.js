@@ -1,6 +1,6 @@
 // POST — create a free human-vs-AI Memory Grid match.
 import { NextResponse } from "next/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { createAiMatch } from "../../../../lib/memory-grid/serverStore";
 
 function normaliseMatch(match) {
@@ -23,9 +23,9 @@ function normaliseMatch(match) {
 }
 
 export async function POST(req) {
-  const gate = await requireAgeVerifiedUser();
+  const gate = await requirePracticePlayer({ create: true });
   if (gate.response) return gate.response;
-  const userId = gate.userId;
+  const userId = gate.playerId;
 
   // The lobby's AI-difficulty pick travels in the body. An absent/invalid
   // value coerces to `normal` in the store, so older clients keep working.

@@ -1,5 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
@@ -25,7 +25,7 @@ function getPlayerRole(game, clerkId) {
 
 export async function GET(req) {
   try {
-    const gate = await requireAgeVerifiedUser();
+    const gate = await requirePracticePlayer();
     if (gate.response) return gate.response;
 
     const { userId } = await auth();
@@ -89,6 +89,10 @@ export async function GET(req) {
         guestName: guestName || "Guest",
         hostIconKey: identity.player1?.iconKey ?? null,
         guestIconKey: identity.player2?.iconKey ?? null,
+        // Guest seats (signed-out free-play players) own no account and so no
+        // icon: the board stamps their claimed boxes with the "G" letter.
+        hostIsGuest: identity.player1?.isGuest === true,
+        guestIsGuest: identity.player2?.isGuest === true,
         hostNameColor: identity.player1?.nameColor ?? null,
         guestNameColor: identity.player2?.nameColor ?? null,
         hostProfileFrame: identity.player1?.profileFrame ?? null,

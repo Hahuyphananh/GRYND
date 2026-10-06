@@ -650,6 +650,8 @@ const prefersReducedMotion = useReducedMotion();
       hostProfileFrame={game?.hostProfileFrame || null}
       guestProfileFrame={game?.guestProfileFrame || null}
       isAiGame={isAiGame}
+      hostIsGuest={Boolean(game?.hostIsGuest)}
+      guestIsGuest={Boolean(game?.guestIsGuest)}
       selfSeat={
         game?.role === "host" || game?.role === "guest" ? game.role : null
       }
@@ -678,6 +680,8 @@ const prefersReducedMotion = useReducedMotion();
           hostIconKey={game?.hostIconKey || null}
           guestIconKey={game?.guestIconKey || null}
           isAiGame={isAiGame}
+          hostIsGuest={Boolean(game?.hostIsGuest)}
+          guestIsGuest={Boolean(game?.guestIsGuest)}
           player1Color={HOST_COLOR}
           player2Color={GUEST_COLOR}
           interactive={isMyTurn && !drawing && !boardLocked}

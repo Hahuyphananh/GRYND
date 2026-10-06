@@ -43,7 +43,11 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { ticTacToeMatches, ticTacToeMoves } from "../src/db/schema.ts";
-import { MATCH_STATUS, RESULT } from "../src/lib/tic-tac-toe/constants.ts";
+import {
+  MATCH_STATUS,
+  RESULT,
+  TIC_TAC_TOE_AI_PLAYER_ID,
+} from "../src/lib/tic-tac-toe/constants.ts";
 import { createInitialState } from "../src/lib/tic-tac-toe/rules.ts";
 
 const MODULE_MOCKING_AVAILABLE = typeof mock?.module === "function";
@@ -55,6 +59,14 @@ const MATCH_ID = "1a2b3c4d-1111-4111-8111-111111111111";
 const ALICE = "user_alice";
 const BOB = "user_bob";
 const MALLORY = "user_mallory";
+// The identity a signed-out practice player is handed (see
+// src/lib/auth/guestSession.ts): a synthetic id with no `users` row.
+const GUEST = "guest_abcd1234";
+
+// Routes a GUEST may reach: the free practice entry point and the routes that
+// drive the practice match it owns. Everything else stays account-only.
+const PRACTICE_ROUTES = ["createAi", "match", "move", "forfeit", "cancel"];
+const ACCOUNT_ROUTES = ["createOrJoin", "available"];
 
 const R = {
   createOrJoin: "src/app/api/tic-tac-toe/create-or-join/route.ts",
@@ -137,7 +149,10 @@ function createFakeDb() {
   const insert = (table) => ({
     values: (v) => {
       const row = {
-        id: `row-${state.nextId++}`,
+        // Match rows are addressed by a uuid in the real schema (and the routes
+        // validate it), so the fake mints one too: a test can then take an id
+        // from a CREATED match and drive the real routes with it.
+        id: table === ticTacToeMatches ? crypto.randomUUID() : `row-${state.nextId++}`,
         createdAt: new Date(),
         ...(table === ticTacToeMatches
           ? { player2Id: null, winnerId: null, result: null, startedAt: null, endedAt: null }
@@ -227,7 +242,9 @@ function installMocks(t) {
   t.mock.module("../src/lib/auth/requireAgeVerified.ts", {
     namedExports: {
       requireAgeVerifiedUser: async () => {
-        if (session.gate === "signed-out") {
+        // "no-guest" is the same visitor as "signed-out" for the account-only
+        // routes: no session, and the practice gate is not the one they hit.
+        if (session.gate === "signed-out" || session.gate === "no-guest") {
           return {
             response: Response.json(
               { success: false, error: "Unauthorized" },
@@ -250,6 +267,45 @@ function installMocks(t) {
         const id =
           session.queue && session.queue.length ? session.queue.shift() : session.userId;
         return { response: null, userId: id };
+      },
+    },
+  });
+
+  // The PRACTICE gate (create-ai + the routes that drive a practice match) is
+  // mocked alongside it. It answers the SAME way for a signed-in caller — the
+  // age gate still runs — but a signed-out one is handed a guest identity
+  // instead of a 401, which is the whole point of "play vs AI without an
+  // account". `session.gate = "no-guest"` models that same visitor with no
+  // guest cookie, and `session.userId` is ignored for the guest case.
+  t.mock.module("../src/lib/auth/guestSession.ts", {
+    namedExports: {
+      requirePracticePlayer: async () => {
+        if (session.gate === "blocked") {
+          return {
+            response: Response.json(
+              { success: false, error: "Age verification required" },
+              { status: 403 },
+            ),
+            playerId: null,
+            isGuest: false,
+          };
+        }
+        if (session.gate === "signed-out") {
+          return { response: null, playerId: GUEST, isGuest: true };
+        }
+        if (session.gate === "no-guest") {
+          return {
+            response: Response.json(
+              { success: false, error: "Unauthorized" },
+              { status: 401 },
+            ),
+            playerId: null,
+            isGuest: false,
+          };
+        }
+        const id =
+          session.queue && session.queue.length ? session.queue.shift() : session.userId;
+        return { response: null, playerId: id, isGuest: false };
       },
     },
   });
@@ -395,7 +451,23 @@ test("surface: the route list is exactly the audited one, and every route is gat
       assert.match(src, /verifyToken\(/, `${name} must verify its own token`);
       continue;
     }
+    if (PRACTICE_ROUTES.includes(name)) {
+      // Free practice is open to guests — but only through the practice gate,
+      // which still age-gates a signed-in caller. A route here must never
+      // become ungated.
+      assert.match(
+        src,
+        /requirePracticePlayer\(/,
+        `${name} must use the practice gate (age-gated for a session, guest for a visitor)`,
+      );
+      continue;
+    }
     assert.match(src, /requireAgeVerifiedUser\(\)/, `${name} must be session-gated`);
+    assert.doesNotMatch(
+      src,
+      /requirePracticePlayer/,
+      `${name} is account-only and must not accept a guest`,
+    );
   }
 
   // No route accepts a decision-shaped field off a body.
@@ -417,24 +489,88 @@ test("unauthorized: a signed-out or age-blocked caller is refused before any wor
   const fake = installMocks(t);
   seedMatch(fake);
 
-  for (const gate of ["signed-out", "blocked"]) {
-    session.gate = gate;
-    const expected = gate === "signed-out" ? 401 : 403;
-    assert.equal((await getMatch({ as: ALICE })).status, expected, `GET ${gate}`);
-    assert.equal(
-      (await move({ boardIndex: 0, cellIndex: 0, expectedVersion: 1 }, { as: ALICE })).status,
-      expected,
-      `move ${gate}`,
-    );
-    assert.equal((await forfeit({ as: ALICE })).status, expected, `forfeit ${gate}`);
-    assert.equal((await cancel({ as: ALICE })).status, expected, `cancel ${gate}`);
-    assert.equal((await invoke(R.createOrJoin, { as: ALICE })).status, expected, `create ${gate}`);
+  const practiceCalls = [
+    () => getMatch({ as: ALICE }),
+    () => move({ boardIndex: 0, cellIndex: 0, expectedVersion: 1 }, { as: ALICE }),
+    () => forfeit({ as: ALICE }),
+    () => cancel({ as: ALICE }),
+    () => invoke(R.createAi, { as: ALICE }),
+  ];
+  const accountCalls = [
+    () => invoke(R.createOrJoin, { as: ALICE }),
+    () => invoke(R.available, { method: "GET", as: ALICE }),
+  ];
+
+  // 1. Age-blocked (a signed-in minor): refused EVERYWHERE, practice included.
+  session.gate = "blocked";
+  for (const call of [...practiceCalls, ...accountCalls]) {
+    assert.equal((await call()).status, 403, "an age-blocked caller is refused");
   }
 
-  assert.equal(fake.state.writes.length, 0, "nothing was written");
+  // 2. Signed out with no guest cookie at all: refused everywhere too.
+  session.gate = "no-guest";
+  for (const call of [...practiceCalls, ...accountCalls]) {
+    assert.equal((await call()).status, 401, "a cookie-less visitor is refused");
+  }
+
+  // Both refusal paths above bail at the gate: no transaction was ever opened.
   assert.equal(fake.state.transactions, 0, "the gate runs before any transaction");
+  assert.equal(fake.state.writes.length, 0, "nothing was written");
+
+  // 3. Signed out WITH a guest cookie: the account-only routes still refuse...
+  session.gate = "signed-out";
+  for (const call of accountCalls) {
+    assert.equal((await call()).status, 401, "online play still needs an account");
+  }
+  // ...and the practice routes accept the guest, which is a STRANGER to this
+  // seeded user-vs-user match and is therefore refused by SEAT, not by the
+  // gate. Matchmaking is not what a guest gets: only a match it owns.
+  assert.equal((await getMatch({ as: ALICE })).status, 403, "guest read is seat-gated");
+  assert.equal(
+    (await move({ boardIndex: 0, cellIndex: 0, expectedVersion: 1 }, { as: ALICE })).status,
+    403,
+    "guest move is seat-gated",
+  );
+  assert.equal((await forfeit({ as: ALICE })).status, 403, "guest forfeit is seat-gated");
+  assert.equal((await cancel({ as: ALICE })).status, 403, "guest cancel is seat-gated");
+
+  // A guest reaching the store still changes nothing it does not own.
+  assert.equal(fake.state.writes.length, 0, "nothing was written");
   assert.equal(writers.rating.length, 0);
   assert.equal(rowOf(fake).status, MATCH_STATUS.PLAYING);
+});
+
+test("guest: a signed-out visitor can start, read and play a PRACTICE match", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  // No Clerk session at all — but the visitor holds a guest cookie, so the
+  // practice gate hands the route the guest identity.
+  session.gate = "signed-out";
+
+  const created = await invoke(R.createAi, { body: { difficulty: "easy" } });
+  assert.equal(created.status, 200, "a guest starts a practice match from the lobby");
+  assert.equal(created.json?.data?.practice, true);
+
+  const row = fake.rowsOf(ticTacToeMatches)[0];
+  assert.ok(row, "the practice match was created");
+  assert.equal(row.player1Id, GUEST, "the guest holds seat 1 — it never borrows a real account");
+  assert.equal(row.player2Id, TIC_TAC_TOE_AI_PLAYER_ID, "the opponent is the bot");
+  assert.equal(row.isAi, true, "the match is flagged as practice, so nothing settles");
+
+  // The guest can read and play ITS OWN match, through the real routes.
+  const read = await getMatch({ matchId: row.id });
+  assert.equal(read.status, 200, "the guest reads its own practice match");
+
+  const played = await move(
+    { boardIndex: 0, cellIndex: 4, expectedVersion: row.gameState.version },
+    { matchId: row.id },
+  );
+  assert.equal(played.status, 200, "the guest plays a move");
+  assert.equal(row.gameState.boards[0].cells[4], "X", "the guest's mark landed");
+
+  // Unrated by construction: no rating or trophy writer was ever called, even
+  // if the practice match runs to a finish.
+  assert.equal(writers.rating.length, 0, "practice never touches the rating ledger");
+  assert.equal(writers.trophy.length, 0, "practice never touches the trophy ledger");
 });
 
 test("non-participant: a stranger cannot read, move, forfeit or cancel", { skip: SKIP_REASON }, async (t) => {

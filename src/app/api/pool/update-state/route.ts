@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { db } from "../../../../db";
 import { eq } from "drizzle-orm";
 import { poolMatches } from "../../../../db/schema";
@@ -14,8 +14,11 @@ function getVersionFromGameState(gameState: unknown): number {
 }
 
 export async function POST(req: Request) {
-  const gate = await requireAgeVerifiedUser();
+  // Playable by guests (they own practice matches), but only ever on a seat
+  // they hold — see the seat check below.
+  const gate = await requirePracticePlayer();
   if (gate.response) return gate.response;
+  const callerId = gate.playerId;
 
   try {
     const { matchId, state } = await req.json();
@@ -35,6 +38,16 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { ok: false, error: "match_not_found" },
         { status: 404 },
+      );
+    }
+
+    // Only a seat of the match may write its board state. This is what keeps
+    // the guest allowance from widening access: a guest can drive the practice
+    // match they own and nothing else.
+    if (callerId !== match.player1Id && callerId !== match.player2Id) {
+      return NextResponse.json(
+        { ok: false, error: "not_a_player" },
+        { status: 403 },
       );
     }
 

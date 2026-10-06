@@ -25,7 +25,10 @@ import {
 
 
 export default function RPSLobbyPage() {
-  const { isSignedIn, user } = useUser();
+  // Kept so the page still tracks Clerk's session (guests included); the
+  // ONLINE actions route to sign-in from the shared lobby, and free practice
+  // is open to everyone.
+  useUser();
   const { socket } = useSocket();
   const router = useRouter();
   const posthog = usePostHog();
@@ -111,11 +114,10 @@ export default function RPSLobbyPage() {
     }
   };
 
+  // FREE PRACTICE is open to signed-out guests: /casino/rps/play-ai is a
+  // self-contained client-side sandbox (no server match, no wager, no reward),
+  // so there is nothing to gate. Only the ONLINE actions route to sign-in.
   const playVsAi = () => {
-    if (!isSignedIn) {
-      setError("Please sign in to play vs AI.");
-      return;
-    }
     posthog?.capture("rps_game_started", { mode: "ai", bet_amount: 0 });
     router.push("/casino/rps/play-ai");
   };
@@ -214,7 +216,7 @@ export default function RPSLobbyPage() {
       vsAi={{
         label: "Play vs AI. Free, no wager",
         badge: "Free",
-        disabled: !isSignedIn,
+        disabled: false,
         busy: loading,
         onClick: playVsAi,
       }}

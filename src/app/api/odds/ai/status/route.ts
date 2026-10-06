@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../../lib/auth/guestSession";
 import { db } from "../../../../../db/client";
 import { oddsGames } from "../../../../../db/schema";
 import { eq, and, desc } from "drizzle-orm";
@@ -9,7 +9,7 @@ import type { InteractiveOddsState } from "../../../../../lib/odds";
 
 export async function GET() {
   try {
-    const gate = await requireAgeVerifiedUser();
+    const gate = await requirePracticePlayer();
     if (gate.response) return gate.response;
 
     const { userId } = await auth();

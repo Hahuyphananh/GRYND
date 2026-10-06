@@ -7,6 +7,7 @@
 // NEVER accepts an arbitrary image URL / base64 / external avatar.
 //
 // Behavior:
+//   * guest seat                           → letter badge (no account, no icon)
 //   * malformed / unknown / null icon key  → official default icon
 //   * missing artwork file (asset not added yet or moved) → letter-avatar
 //     fallback via the <img> onError handler (never blocks a render)
@@ -18,10 +19,12 @@ import {
   iconAssetUrl,
   isIconKey,
 } from "../lib/iconAssets";
+import { GUEST_AVATAR_LETTER, GUEST_DISPLAY_NAME } from "../lib/guestIdentity";
 
 export default function IconAvatar({
   iconKey,
   name,
+  isGuest = false,
   size = "h-14 w-14",
   className = "",
 }: {
@@ -29,6 +32,11 @@ export default function IconAvatar({
   iconKey?: string | null;
   /** Display name — used only for the letter-avatar fallback. */
   name?: string | null;
+  /**
+   * True for a GUEST seat (a signed-out practice player). A guest owns no
+   * account, so it owns no icon: the avatar is the letter badge ("G").
+   */
+  isGuest?: boolean;
   /** Wrapper size classes, e.g. "h-9 w-9". */
   size?: string;
   /** Extra classes applied to the <img> (keep it an avatar shape). */
@@ -47,6 +55,22 @@ export default function IconAvatar({
   }, [src]);
 
   const initial = (name || "U").charAt(0).toUpperCase();
+
+  // A guest is signed out and has no account, so there is no catalog icon to
+  // resolve: render the badge directly rather than fetching an asset that
+  // would 404. The badge is the guest's initial — "G" for "Guest".
+  if (isGuest) {
+    return (
+      <span
+        role="img"
+        aria-label={name || GUEST_DISPLAY_NAME}
+        data-avatar="guest"
+        className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#00e5ff]/25 font-bold text-[#8ff3ff] ring-1 ring-inset ring-[#00e5ff]/40 ${size} ${className}`}
+      >
+        {name ? initial : GUEST_AVATAR_LETTER}
+      </span>
+    );
+  }
 
   const avatarEl = failed ? (
     <span

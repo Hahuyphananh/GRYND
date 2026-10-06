@@ -98,6 +98,8 @@ type SeatIdentity = {
   iconKey?: string | null;
   nameColor?: string | null;
   profileFrame?: unknown;
+  /** True for a signed-out free-play visitor (renders the "G" guest badge). */
+  isGuest?: boolean;
 } | null;
 
 type MatchDto = {
@@ -220,6 +222,7 @@ function Meter({
               profileFrame={identity?.profileFrame ?? null}
               name={label}
               isAi={isAi}
+              isGuest={Boolean(identity?.isGuest)}
               size="h-6 w-6"
             />
           ) : (

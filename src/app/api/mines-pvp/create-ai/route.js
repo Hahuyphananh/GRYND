@@ -4,7 +4,7 @@
 // (its own score, flags, reveals and completion state) via the same
 // server-authoritative pipeline a human uses — there are no turns.
 import { NextResponse } from "next/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { createAiMatch } from "../../../../lib/mines-pvp/serverStore";
 import { MINES_PER_MATCH } from "../../../../lib/mines-pvp/constants";
 
@@ -32,9 +32,9 @@ function normaliseMatch(match) {
 }
 
 export async function POST(req) {
-  const gate = await requireAgeVerifiedUser();
+  const gate = await requirePracticePlayer({ create: true });
   if (gate.response) return gate.response;
-  const userId = gate.userId;
+  const userId = gate.playerId;
 
   let body;
   try {

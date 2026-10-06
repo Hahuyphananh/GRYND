@@ -11,20 +11,36 @@
 // attachSeatIdentity plumbing instead (the match GET returns
 // player1Name/player1IconKey/player1NameColor etc. per seat).
 //
+// A SIGNED-OUT visitor practising against the bot resolves to the guest
+// identity (name "Guest", the "G" letter avatar) instead of the generic
+// fallback — they are allowed to play, so their seat must not render as an
+// empty "You".
+//
 // Returns `null` fields until the fetch resolves (or on failure), so
 // callers can render with their existing fallback labels ("You" / "AI").
 
 import { useEffect, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
+import { guestSeatIdentity } from "../lib/guestIdentity";
 
 export default function useMySeatIdentity() {
+  const { isLoaded, isSignedIn } = useAuth();
   const [identity, setIdentity] = useState({
     name: null,
     iconKey: null,
     nameColor: null,
     profileFrame: null,
+    isGuest: false,
   });
 
+  // A guest holds no account, so /api/get-user-tokens can only answer 401 for
+  // them. Resolve the guest seat locally and skip the doomed request.
   useEffect(() => {
+    if (isLoaded && !isSignedIn) setIdentity(guestSeatIdentity());
+  }, [isLoaded, isSignedIn]);
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
     let cancelled = false;
     (async () => {
       try {
@@ -40,6 +56,7 @@ export default function useMySeatIdentity() {
             name: data.data.name || null,
             iconKey: data.data.selectedIcon || null,
             nameColor: data.data.nameColor || null,
+            isGuest: false,
             // Embed the equipped avatar effect on the frame payload so the
             // shared <FrameAvatar> renders it (see src/lib/profileCosmetics).
             profileFrame: (() => {
@@ -66,7 +83,7 @@ export default function useMySeatIdentity() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isLoaded, isSignedIn]);
 
   return identity;
 }

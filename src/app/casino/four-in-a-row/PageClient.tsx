@@ -23,7 +23,10 @@ const TIMER_OPTIONS = [
 ];
 
 export default function FourInARowLobbyPage() {
-  const { isSignedIn, user } = useUser();
+  // Kept so the page still tracks Clerk's session (guests included); the
+  // ONLINE actions route to sign-in from the shared lobby, and free practice
+  // is open to everyone.
+  useUser();
   const { socket } = useSocket();
   const router = useRouter();
   const posthog = usePostHog();
@@ -106,11 +109,10 @@ export default function FourInARowLobbyPage() {
     }
   };
 
+  // FREE PRACTICE is open to signed-out guests: the page is a self-contained
+  // client-side sandbox (no server match, no wager, no rating), so there is
+  // nothing to protect. Only the ONLINE actions route to sign-in.
   const playVsAi = () => {
-    if (!isSignedIn) {
-      setError("Please sign in to play vs AI.");
-      return;
-    }
     posthog?.capture("four_in_a_row_game_started", { mode: "ai" });
     router.push("/casino/four-in-a-row/play-ai");
   };
@@ -191,7 +193,7 @@ export default function FourInARowLobbyPage() {
         vsAi={{
           label: "Play vs AI. Free, no wager",
           badge: "Free",
-          disabled: !isSignedIn,
+          disabled: false,
           busy: loading,
           onClick: playVsAi,
         }}

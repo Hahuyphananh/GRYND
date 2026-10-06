@@ -115,6 +115,8 @@ type SeatIdentity = {
   iconKey: string | null;
   nameColor?: string | null;
   profileFrame?: unknown;
+  /** True for a signed-out free-play visitor (renders the "G" guest badge). */
+  isGuest?: boolean;
 };
 
 type SeatIdentities = {
@@ -248,6 +250,7 @@ function ProgressBar({
             profileFrame={identity?.profileFrame ?? null}
             name={name}
             isAi={isAi}
+            isGuest={Boolean(identity?.isGuest)}
             size="h-6 w-6"
           />
           <span className="truncate font-bold uppercase tracking-wider text-white/70">

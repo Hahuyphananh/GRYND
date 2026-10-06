@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { db } from "../../../../db/client";
 import { eq } from "drizzle-orm";
 import { poolMatches } from "../../../../db/schema";
@@ -9,13 +8,15 @@ import { applyRatingResult } from "../../../../lib/rating";
 import { applyTrophyResult } from "../../../../lib/trophyStore";
 import { logError } from "../../../../lib/logError";
 import { normalizeStake } from "../../../../lib/games/stakes";
+import { isGuestId } from "../../../../lib/guestIdentity";
 
 export async function POST(req: Request) {
   try {
-    const gate = await requireAgeVerifiedUser();
+    // A guest may resign their own practice match (the seat check below is the
+    // authorisation; AI matches award nothing, so no counter moves).
+    const gate = await requirePracticePlayer();
     if (gate.response) return gate.response;
-
-    const { userId } = await auth();
+    const userId = gate.playerId;
     if (!userId)
       return NextResponse.json(
         { success: false, error: "Unauthorized" },
@@ -101,16 +102,19 @@ export async function POST(req: Request) {
         .where(eq(poolMatches.id, String(matchId)));
     });
 
-    // Track leaderboard stats for both players
+    // Track leaderboard stats for both players. A guest seat never moves a
+    // counter (guests are practice-only by construction, and this keeps a
+    // guest id out of the rating/trophy ledgers even if one ever got here).
     const loserId = isPlayer1 ? match.player1Id : match.player2Id;
-    if (!isAi && loserId) {
+    const guestSeat = isGuestId(loserId) || isGuestId(winnerId);
+    if (!isAi && !guestSeat && loserId) {
       applyLeaderboardCounters({
         clerkId: loserId,
         game: "Pool",
         outcome: "loss",
       }).catch(() => {});
     }
-    if (!isAi && winnerId) {
+    if (!isAi && !guestSeat && winnerId) {
       applyLeaderboardCounters({
         clerkId: winnerId,
         game: "Pool",
@@ -122,7 +126,7 @@ export async function POST(req: Request) {
     // Per-game Elo — a resign forfeit: the remaining player wins. Both seats
     // come from the canonical match row and the winner is derived server-side
     // (winnerId above), so a resigning client can only ever give away rating.
-    if (!isAi && winnerId && loserId) {
+    if (!isAi && !guestSeat && winnerId && loserId) {
       applyRatingResult({
         gameKey: "pool",
         matchId: String(matchId),

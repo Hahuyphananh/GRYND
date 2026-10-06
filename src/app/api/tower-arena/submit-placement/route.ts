@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { logError } from "../../../../lib/logError";
 import { submitPlacement } from "../../../../lib/tower-arena/serverStore";
 
 export async function POST(req: Request) {
   try {
-    const gate = await requireAgeVerifiedUser();
+    const gate = await requirePracticePlayer();
     if (gate.response) return gate.response;
-    const userId = gate.userId;
+    const userId = gate.playerId;
     const body = await req.json().catch(() => ({}));
     const { matchId, shape, positionX, rotation } = body;
     if (!matchId) return NextResponse.json({ ok: false, message: "matchId is required" }, { status: 400 });

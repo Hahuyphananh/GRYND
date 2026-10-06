@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { logError } from "../../../../lib/logError";
 import { removeParticipant } from "../../../../lib/tower-arena/serverStore";
 
 export async function POST(req: Request) {
   try {
-    const gate = await requireAgeVerifiedUser();
+    const gate = await requirePracticePlayer();
     if (gate.response) return gate.response;
-    const userId = gate.userId;
+    const userId = gate.playerId;
     const { lobbyId } = await req.json().catch(() => ({}));
     if (!lobbyId) return NextResponse.json({ ok: false, message: "Missing lobbyId" }, { status: 400 });
     const res: any = await removeParticipant({ userId, matchId: String(lobbyId) });

@@ -890,7 +890,9 @@ test("store: the participant read path is the ONLY gate on the race view", () =>
   assert.ok(view > gate, "the race view must be built only after the participant check");
   // The route that serves the snapshot cannot widen that access either.
   const route = code("src/app/api/speed-typing/match/[matchId]/route.ts");
-  assert.match(route, /requireAgeVerifiedUser\(\)/);
+  // Gated (the practice gate: age-checked for a session, guest for a visitor),
+  // with the store's participant check as the actual authorisation.
+  assert.match(route, /requirePracticePlayer\(/);
   assert.doesNotMatch(route, /matchToDto|raceViewFor/);
 });
 

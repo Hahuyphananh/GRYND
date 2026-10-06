@@ -44,6 +44,7 @@ export default function FrameAvatar({
   avatarEffect = null,
   iconKey,
   name,
+  isGuest = false,
   size = "h-14 w-14",
   className = "",
 }: {
@@ -53,6 +54,8 @@ export default function FrameAvatar({
   avatarEffect?: { visual?: unknown } | null;
   iconKey?: string | null;
   name?: string | null;
+  /** True for a GUEST seat — draws the letter badge instead of a catalog icon. */
+  isGuest?: boolean;
   size?: string;
   className?: string;
 }) {
@@ -62,7 +65,13 @@ export default function FrameAvatar({
     avatarEffect?.visual ?? frame?.avatarEffect?.visual,
   );
   const avatar = (
-    <IconAvatar iconKey={iconKey} name={name} size={size} className={className} />
+    <IconAvatar
+      iconKey={iconKey}
+      name={name}
+      isGuest={isGuest}
+      size={size}
+      className={className}
+    />
   );
 
   if (!ring.cssClass && !ring.style && !effectClass) return avatar;

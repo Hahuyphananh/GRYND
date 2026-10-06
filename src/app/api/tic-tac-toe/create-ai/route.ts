@@ -12,14 +12,18 @@
 // never be skipped by a client that fails to trigger it.
 
 import { NextResponse } from "next/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { logError } from "../../../../lib/logError";
 import { createAiMatch } from "../../../../lib/tic-tac-toe/serverStore";
 
 export async function POST(req: Request) {
-  const gate = await requireAgeVerifiedUser();
+  // Free practice vs the bot is open to signed-out guests — this is the only
+  // Tic-Tac-Toe route that mints a guest identity. Online play
+  // (/api/tic-tac-toe/create-or-join) keeps the age gate, and every follow-up
+  // route authorises by seat, so a guest can only ever drive its own match.
+  const gate = await requirePracticePlayer({ create: true });
   if (gate.response) return gate.response;
-  const userId = gate.userId;
+  const userId = gate.playerId;
   if (!userId) {
     return NextResponse.json(
       { success: false, error: "Unauthenticated" },

@@ -1,6 +1,5 @@
 import { Chess } from "chess.js";
-import { auth } from "@clerk/nextjs/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { asc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
@@ -24,10 +23,12 @@ async function getUserAliases(clerkId) {
 
 export async function POST(req) {
   try {
-    const gate = await requireAgeVerifiedUser();
+    // A guest may move in their own practice game: `isWhitePlayer` /
+    // `isBlackPlayer` below are the authorisation, resolved from the game's own
+    // seat columns, and the AI branch never awards rating or trophies.
+    const gate = await requirePracticePlayer();
     if (gate.response) return gate.response;
-
-    const { userId } = await auth();
+    const userId = gate.playerId;
     if (!userId)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

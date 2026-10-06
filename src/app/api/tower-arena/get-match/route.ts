@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { logError } from "../../../../lib/logError";
 import {
   advanceMatchOnPoll,
@@ -8,7 +8,11 @@ import {
 
 export async function GET(req: Request) {
   try {
-    const { userId } = await auth();
+    // A guest polls their own practice match here; the store's seat check
+    // (getTowerArenaMatchProjection) is what limits it to that match.
+    const gate = await requirePracticePlayer();
+    if (gate.response) return gate.response;
+    const userId = gate.playerId;
     if (!userId) return NextResponse.json({ ok: false, message: "Unauthorized" }, { status: 401 });
     const matchId = new URL(req.url).searchParams.get("matchId");
     if (!matchId) return NextResponse.json({ ok: false, message: "matchId is required" }, { status: 400 });

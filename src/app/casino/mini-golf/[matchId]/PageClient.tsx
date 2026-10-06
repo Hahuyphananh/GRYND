@@ -1174,6 +1174,7 @@ export default function MiniGolfMatchPage() {
                               profileFrame={identity?.profileFrame ?? null}
                               name={name}
                               isAi={Boolean(match.isAi) && seat === opponentSeat}
+                              isGuest={Boolean(identity?.isGuest)}
                               size="h-7 w-7"
                             />
                           </span>

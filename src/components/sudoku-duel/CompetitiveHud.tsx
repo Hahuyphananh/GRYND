@@ -28,6 +28,8 @@ export type SeatIdentity = {
   iconKey?: string | null;
   profilePicture?: string | null;
   profileFrame?: unknown;
+  /** True for a signed-out free-play visitor (renders the "G" guest badge). */
+  isGuest?: boolean;
 } | null;
 
 function Meter({
@@ -56,7 +58,9 @@ function Meter({
   // BOTH seats are identified the same way: a face and a name. A seat whose
   // identity has not resolved yet still gets its duotone dot, so the meter never
   // renders an empty gap while the snapshot is loading.
-  const hasAvatar = isAi || Boolean(identity?.iconKey);
+  // A guest has no catalog icon, but it still has a face — the "G" badge — so
+  // it must not collapse to the duotone dot.
+  const hasAvatar = isAi || Boolean(identity?.isGuest) || Boolean(identity?.iconKey);
   return (
     <div data-testid={testId} data-percent={clamped} data-completed={completed ? "true" : "false"}>
       <div className="flex items-center justify-between gap-3">
@@ -67,6 +71,7 @@ function Meter({
               profileFrame={identity?.profileFrame ?? null}
               name={label}
               isAi={isAi}
+              isGuest={Boolean(identity?.isGuest)}
               size="h-6 w-6"
             />
           ) : (

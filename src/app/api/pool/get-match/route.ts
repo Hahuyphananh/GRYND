@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "../../../../db";
 import { eq } from "drizzle-orm";
 import { poolMatches, poolLobbies } from "../../../../db/schema";
-import { auth } from "@clerk/nextjs/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { getSeatIdentity } from "../../../../lib/seatIdentity";
 
 type PoolMatchRow = typeof poolMatches.$inferSelect;
@@ -35,9 +34,13 @@ async function matchPayload(match: PoolMatchRow, userId: string | null) {
     viewerIconKey: viewer?.iconKey ?? null,
     viewerNameColor: viewer?.nameColor ?? null,
     viewerProfileFrame: viewer?.profileFrame ?? null,
+    // Guest flag: the client draws the "G" letter badge for a guest seat
+    // (a guest owns no account, so it owns no icon key to render).
+    viewerIsGuest: viewer?.isGuest ?? false,
     opponentIconKey: opponent?.iconKey ?? null,
     opponentNameColor: opponent?.nameColor ?? null,
     opponentProfileFrame: opponent?.profileFrame ?? null,
+    opponentIsGuest: opponent?.isGuest ?? false,
   };
 }
 
@@ -50,10 +53,12 @@ export async function GET(req: Request) {
   if (!UUID_RE.test(matchId)) {
     return NextResponse.json({ ok: false, error: "Invalid matchId" }, { status: 400 });
   }
-  const gate = await requireAgeVerifiedUser();
+  // A practice match is readable by the guest who owns it: the guest id is
+  // signed into a cookie, and the response is rendered from that seat.
+  const gate = await requirePracticePlayer();
   if (gate.response) return gate.response;
 
-  const { userId } = await auth();
+  const userId = gate.playerId;
 
   const [match] = await db
     .select()

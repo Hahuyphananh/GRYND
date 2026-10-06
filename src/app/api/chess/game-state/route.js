@@ -1,5 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { and, asc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
@@ -183,10 +182,11 @@ async function settleTimeoutIfNeeded(game, clocks) {
 
 export async function GET(req) {
   try {
-    const gate = await requireAgeVerifiedUser();
+    // Readable by a guest playing their own practice game (`canAccess` below is
+    // the authorisation — a guest is only ever in its own alias set).
+    const gate = await requirePracticePlayer();
     if (gate.response) return gate.response;
-
-    const { userId } = await auth();
+    const userId = gate.playerId;
     if (!userId)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

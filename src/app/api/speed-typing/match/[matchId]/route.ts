@@ -8,12 +8,12 @@
 // and will be added to the DTO there.
 //
 // Authorisation: `fetchMatch` refuses a non-participant with a 403, so a match
-// id leaking to a third party exposes nothing. `requireAgeVerifiedUser` gates
+// id leaking to a third party exposes nothing. `requirePracticePlayer` gates
 // the route before any database work, and the caller's id is taken from the
 // verified session — never from the URL, the body or a query string.
 
 import { NextResponse } from "next/server";
-import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../../lib/auth/guestSession";
 import { logError } from "../../../../../lib/logError";
 import { getSeatIdentity } from "../../../../../lib/seatIdentity";
 import { fetchMatch, isMatchId } from "../../../../../lib/speed-typing/serverStore";
@@ -24,9 +24,9 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ matchId: string }> },
 ) {
-  const gate = await requireAgeVerifiedUser();
+  const gate = await requirePracticePlayer();
   if (gate.response) return gate.response;
-  const userId = gate.userId;
+  const userId = gate.playerId;
   if (!userId) {
     return NextResponse.json(
       { success: false, error: "Unauthenticated" },

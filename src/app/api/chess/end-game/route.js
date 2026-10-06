@@ -1,5 +1,4 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { db } from "../../../../db/client";
 import { chessGames } from "../../../../db/schema";
 import { and, eq, inArray, or } from "drizzle-orm";
@@ -14,10 +13,13 @@ const UUID_RE =
 // Optional body: { gameId?: string (uuid), result?: "win" | "loss" | "draw" }
 export async function POST(req) {
   try {
-    const gate = await requireAgeVerifiedUser();
+    // A guest may close their own practice game. The AI branch below expires
+    // the row without touching any counter, so a guest can never move a
+    // leaderboard, rating or trophy; PvP games stay reachable only from the
+    // gated online routes.
+    const gate = await requirePracticePlayer();
     if (gate.response) return gate.response;
-
-    const { userId } = await auth();
+    const userId = gate.playerId;
     if (!userId) return new Response("Unauthorized", { status: 401 });
 
     let body = {};

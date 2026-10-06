@@ -1,13 +1,18 @@
 import { NextResponse } from "next/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { logError } from "../../../../lib/logError";
 import { createAiTowerArenaMatch } from "../../../../lib/tower-arena/serverStore";
 
 export async function POST(req: Request) {
   try {
-    const gate = await requireAgeVerifiedUser();
+    // Free practice vs the bots is open to signed-out guests — this is the
+    // only Tower Arena route that mints a guest identity. Everything a guest
+    // can then reach is seat-checked by the store, and an AI match never
+    // settles a rating, trophy or counter. Online play (/create-lobby,
+    // /join-lobby) keeps the age gate.
+    const gate = await requirePracticePlayer({ create: true });
     if (gate.response) return gate.response;
-    const userId = gate.userId;
+    const userId = gate.playerId;
     const { difficulty } = await req.json().catch(() => ({}));
     // AI matches are free play — no tokens move, and there is no seat count:
     // a 1v1 practice match is always the human plus one bot. `difficulty` is

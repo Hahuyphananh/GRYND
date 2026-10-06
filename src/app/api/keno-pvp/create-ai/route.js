@@ -1,6 +1,6 @@
 // POST — create a free human-vs-AI Keno Survival Duel match.
 import { NextResponse } from "next/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { createAiMatch } from "../../../../lib/keno-pvp/serverStore";
 
 function normaliseMatch(match) {
@@ -21,9 +21,9 @@ function normaliseMatch(match) {
 }
 
 export async function POST(req) {
-  const gate = await requireAgeVerifiedUser();
+  const gate = await requirePracticePlayer({ create: true });
   if (gate.response) return gate.response;
-  const userId = gate.userId;
+  const userId = gate.playerId;
 
   // The lobby's AI-difficulty pick travels in the body; an absent or
   // invalid value coerces to `normal` in the store.

@@ -12,12 +12,18 @@
 // users row and are skipped: their slot stays null and the client falls
 // back to its localized label (e.g. "GRYND AI"). Real Clerk user ids are
 // always prefixed "user_", which is how bot sentinels are excluded.
+//
+// GUEST seats (`guest_<uuid>`, see src/lib/guestIdentity.ts) resolve to the
+// fixed guest identity — name "Guest", no icon (the avatar draws the "G"
+// letter badge), no frame. They never touch the database: a guest owns no
+// account, which is exactly why it can hold no rating, trophy or stat.
 
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import { glows, tokenSubscriptions, users } from "../db/schema";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "./stripe/subscriptions";
 import { getFrameDecorations } from "./cosmetics";
+import { guestSeatIdentity, isGuestId } from "./guestIdentity";
 
 const ICON_KEY_REGEX = /^[a-z0-9][a-z0-9._-]{0,119}$/;
 const CLERK_ID_PREFIX = "user_";
@@ -39,6 +45,7 @@ function resolveSeatIdentityRow(row) {
     iconKey,
     nameColor:
       row.glowColor || (Boolean(row.isPremium) ? row.chatColor || null : null),
+    isGuest: false,
   };
 }
 
@@ -88,6 +95,7 @@ export async function getSeatIdentity(player1Id, player2Id) {
     rows.map((row, index) => [row.clerkId, decorations[index]]),
   );
   const resolve = (clerkId) => {
+    if (isGuestId(clerkId)) return guestSeatIdentity();
     if (!isRealUser(clerkId)) return null;
     const row = byClerkId.get(clerkId);
     const base = resolveSeatIdentityRow(row);
@@ -118,9 +126,11 @@ export async function attachSeatIdentity(match) {
     player1IconKey: identity.player1?.iconKey ?? null,
     player1NameColor: identity.player1?.nameColor ?? null,
     player1ProfileFrame: identity.player1?.profileFrame ?? null,
+    player1IsGuest: identity.player1?.isGuest ?? false,
     player2Name: identity.player2?.name ?? null,
     player2IconKey: identity.player2?.iconKey ?? null,
     player2NameColor: identity.player2?.nameColor ?? null,
     player2ProfileFrame: identity.player2?.profileFrame ?? null,
+    player2IsGuest: identity.player2?.isGuest ?? false,
   };
 }

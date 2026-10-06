@@ -458,7 +458,9 @@ export default function MinesPvpLobbyPage() {
       vsAi={{
         label: "Play Free vs AI",
         onClick: () => playVsAi(minesCount),
-        disabled: !canPlayAi,
+        // Free practice is open to signed-out guests (the match is unrated);
+        // only the ONLINE actions route to sign-in from the shared lobby.
+        disabled: busy,
       }}
       error={error}
       lobbies={availableMatches}

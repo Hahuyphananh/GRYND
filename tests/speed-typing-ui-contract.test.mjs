@@ -184,7 +184,8 @@ test("authority: the routes pass only the typed text into the store", () => {
     for (const forbidden of [/body\?\.wpm/, /body\?\.accuracy/, /body\?\.winner/, /body\?\.rating/, /body\?\.troph/]) {
       assert.doesNotMatch(src, forbidden, `${name} must not read ${forbidden}`);
     }
-    assert.match(src, /requireAgeVerifiedUser\(\)/, "both routes are session-gated");
+    // Guest-playable (practice), still age-gated for a signed-in caller.
+    assert.match(src, /requirePracticePlayer\(/, "both routes are gated");
   }
   // The finish route only ever resolves from the store's own verdict.
   assert.match(finish, /if \(result\.outcome\?\.settled\)/);
@@ -265,7 +266,7 @@ test("ui: waiting uses the shared takeover, and can release the open lobby", () 
 
 test("authority: cancellation only closes an unstarted lobby and rates nothing", () => {
   const cancel = code(CANCEL_ROUTE);
-  assert.match(cancel, /requireAgeVerifiedUser\(\)/, "the route is session-gated");
+  assert.match(cancel, /requirePracticePlayer\(/, "the route is gated");
   assert.match(cancel, /cancelMatch\(\{ userId, matchId \}\)/, "it delegates to the store");
   // No settlement vocabulary: a cancelled lobby never moved a rating or trophy.
   assert.doesNotMatch(cancel, /award|troph|rating|settle/i);

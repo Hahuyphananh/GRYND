@@ -132,7 +132,10 @@ test("the bot's turn is advanced by the human's own read (server-driven)", () =>
 test("a create-ai route exists and the DTO exposes isAi for labelling", () => {
   const route = read("src/app/api/mini-golf/create-ai/route.ts");
   assert.match(route, /createAiMatch/);
-  assert.match(route, /requireAgeVerifiedUser/);
+  // Free practice is open to guests, so the entry point uses the practice gate
+  // (which still runs the same age gate for a signed-in caller) rather than
+  // the account-only one.
+  assert.match(route, /requirePracticePlayer/);
   assert.match(STORE, /isAi: Boolean\(match\.isAi\)/);
 });
 

@@ -80,6 +80,14 @@ const PROMPT = selectPassageForSeed({ seed: SEED });
 const TEXT = PROMPT.text;
 assert.ok(TEXT.length > 20, "the seeded prompt must be a real passage");
 
+// The identity a signed-out practice player is handed (see
+// src/lib/auth/guestSession.ts): a synthetic id with no `users` row.
+const GUEST = "guest_abcd1234";
+
+// Routes a GUEST may reach: the practice entry point plus the routes that
+// drive a practice match it owns. Matchmaking stays account-only.
+const PRACTICE_ROUTES = ["createAi", "match", "progress", "finish", "cancel"];
+
 const R = {
   createOrJoin: "src/app/api/speed-typing/create-or-join/route.ts",
   createAi: "src/app/api/speed-typing/create-ai/route.ts",
@@ -314,6 +322,41 @@ function installMocks(t) {
     },
   });
 
+  // The PRACTICE gate answers the same way for a signed-in caller (the age
+  // gate still runs) and hands a signed-out one a guest identity instead of a
+  // 401 — that is what "play vs AI without an account" needs. `no-guest`
+  // models the same visitor with no guest cookie, which is still refused.
+  t.mock.module("../src/lib/auth/guestSession.ts", {
+    namedExports: {
+      requirePracticePlayer: async () => {
+        if (session.gate === "blocked") {
+          return {
+            response: Response.json(
+              { success: false, error: "Age verification required" },
+              { status: 403 },
+            ),
+            playerId: null,
+            isGuest: false,
+          };
+        }
+        if (session.gate === "no-guest") {
+          return {
+            response: Response.json(
+              { success: false, error: "Unauthorized" },
+              { status: 401 },
+            ),
+            playerId: null,
+            isGuest: false,
+          };
+        }
+        if (session.gate === "signed-out") {
+          return { response: null, playerId: GUEST, isGuest: true };
+        }
+        return { response: null, playerId: session.userId, isGuest: false };
+      },
+    },
+  });
+
   t.mock.module("../src/lib/rating.js", {
     namedExports: {
       applyRatingResult: async (args) => {
@@ -459,15 +502,22 @@ test("surface: the client→server path list is exactly the audited one", () => 
   walk(root);
   assert.deepEqual(found.sort(), Object.values(R).sort());
 
-  // Every one of them is session-gated before any database work, except the
-  // internal socket endpoint, which verifies its own Clerk token instead.
+  // Every one of them is gated before any database work, except the internal
+  // socket endpoint, which verifies its own Clerk token instead. The practice
+  // routes take the practice gate (age-checked for a session, guest for a
+  // signed-out visitor); matchmaking stays behind the account gate.
   for (const [name, path] of Object.entries(R)) {
     const src = readFileSync(path, "utf8");
     if (name === "disconnect") {
       assert.match(src, /verifyToken\(/, `${name} must verify its own token`);
       continue;
     }
+    if (PRACTICE_ROUTES.includes(name)) {
+      assert.match(src, /requirePracticePlayer\(/, `${name} must use the practice gate`);
+      continue;
+    }
     assert.match(src, /requireAgeVerifiedUser\(\)/, `${name} must be session-gated`);
+    assert.doesNotMatch(src, /requirePracticePlayer/, `${name} must not accept a guest`);
   }
 
   // No route anywhere accepts a decision-shaped field off a body.
@@ -683,18 +733,34 @@ test("attack: a signed-out or age-blocked caller is refused before any work", { 
   const fake = installMocks(t);
   seed(fake, armedRow());
 
-  session.gate = "signed-out";
+  // 1. Signed out with no guest cookie at all: refused everywhere.
+  session.gate = "no-guest";
   assert.equal((await get(R.match)).status, 401);
   assert.equal((await progress({ typedText: TEXT })).status, 401);
   assert.equal((await finish({ typedText: TEXT })).status, 401);
 
+  // 2. Age-blocked (a signed-in minor): refused everywhere, practice included.
   session.gate = "blocked";
   assert.equal((await get(R.match)).status, 403);
   assert.equal((await progress({ typedText: TEXT })).status, 403);
   assert.equal((await finish({ typedText: TEXT })).status, 403);
 
+  // Both refusals above happen at the gate: no transaction was ever opened.
   assert.equal(fake.state.writes.length, 0);
   assert.equal(fake.state.transactions, 0, "the gate runs before any transaction");
+
+  // 3. Signed out WITH a guest cookie: the practice routes accept the guest,
+  //    but this seeded race is ALICE vs BOB — a guest holds no seat in it, so
+  //    the store's participant check is what refuses it (403), not the gate.
+  session.gate = "signed-out";
+  assert.equal((await get(R.match)).status, 403, "guest read is seat-gated");
+  assert.equal((await progress({ typedText: TEXT })).status, 403, "guest progress is seat-gated");
+  assert.equal((await finish({ typedText: TEXT })).status, 403, "guest finish is seat-gated");
+
+  // A guest reaching the store still changes nothing it does not own.
+  assert.equal(fake.state.writes.length, 0);
+  assert.equal(writers.rating.length, 0);
+  assert.equal(rowOf(fake).status, MATCH_STATUS.PLAYING);
 });
 
 // ════════════════════════════════════════════════════════════════════════

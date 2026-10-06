@@ -1,5 +1,5 @@
-import { auth } from "@clerk/nextjs/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
+import { isGuestId } from "../../../../lib/guestIdentity";
 import { and, eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
@@ -10,7 +10,7 @@ import { coerceAiDifficulty } from "../../../../lib/aiDifficulty";
 
 export async function POST(req) {
   try {
-    const gate = await requireAgeVerifiedUser();
+    const gate = await requirePracticePlayer({ create: true });
     if (gate.response) return gate.response;
 
     const { userId } = await auth();
@@ -21,12 +21,17 @@ export async function POST(req) {
     const aiDifficulty = coerceAiDifficulty(body?.difficulty);
 
     const result = await db.transaction(async (tx) => {
-      const [user] = await tx
-        .select({ id: users.id })
-        .from(users)
-        .where(eq(users.clerkId, userId))
-        .limit(1);
-      if (!user) throw new Error("User not found");
+      // A GUEST has no `users` row by design (see src/lib/auth/guestSession.ts).
+      // The game keys on the clerk id STRING (`hostClerkId`), so the row is only
+      // needed to prove that a real account exists — a guest is exempt.
+      if (!isGuestId(userId)) {
+        const [user] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.clerkId, userId))
+          .limit(1);
+        if (!user) throw new Error("User not found");
+      }
 
       const [game] = await tx
         .insert(dotsAndBoxesGames)

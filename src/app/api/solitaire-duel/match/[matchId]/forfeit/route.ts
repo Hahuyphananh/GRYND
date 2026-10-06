@@ -13,7 +13,7 @@
 // its grace window — so a refresh never costs a rated race.
 
 import { NextResponse } from "next/server";
-import { requireAgeVerifiedUser } from "../../../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../../../lib/auth/guestSession";
 import { logError } from "../../../../../../lib/logError";
 import {
   forfeitMatch,
@@ -29,9 +29,9 @@ export async function POST(
   _req: Request,
   { params }: { params: Promise<{ matchId: string }> },
 ) {
-  const gate = await requireAgeVerifiedUser();
+  const gate = await requirePracticePlayer();
   if (gate.response) return gate.response;
-  const userId = gate.userId;
+  const userId = gate.playerId;
   if (!userId) {
     return NextResponse.json({ success: false, error: "Unauthenticated" }, { status: 401 });
   }

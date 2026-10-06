@@ -324,7 +324,8 @@ export default function KenoLobbyPage() {
         label: "Play Free vs AI",
         badge: "No tokens",
         onClick: playVsAi,
-        disabled: !isSignedIn || busy || aiBusy,
+        // Free practice is open to signed-out guests (the match is unrated).
+        disabled: busy || aiBusy,
         busy: aiBusy,
       }}
       children={

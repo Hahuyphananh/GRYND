@@ -448,6 +448,18 @@ function installMocks(t) {
     },
   });
 
+  // The practice gate (create-ai + the routes that drive a practice match) is
+  // the same age gate for a signed-in caller, which is all this suite exercises.
+  t.mock.module("../src/lib/auth/guestSession.ts", {
+    namedExports: {
+      requirePracticePlayer: async () => ({
+        response: null,
+        playerId: auth.queue.length > 0 ? auth.queue.shift() : auth.current,
+        isGuest: false,
+      }),
+    },
+  });
+
   t.mock.module("../src/lib/logError.ts", {
     namedExports: { logError: async () => {} },
   });
@@ -1751,9 +1763,12 @@ test("guarantee: the routes hand the store only what the client TYPED", () => {
   const create = code(ROUTES.createJoin);
   assert.doesNotMatch(create, /searchParams|\.json\(\)/);
   assert.match(create, /await createOrJoin\(\{ userId \}\)/);
-  // Every participant-facing route is gated before any database work.
-  for (const file of [ROUTES.createJoin, ROUTES.fetch, ROUTES.progress, ROUTES.finish, ROUTES.cancel]) {
-    assert.match(code(file), /requireAgeVerifiedUser/, `${file} must gate the caller`);
+  // Every participant-facing route is gated before any database work: the
+  // ONLINE ones behind the account gate, the practice ones behind the practice
+  // gate (age-checked for a session, guest for a signed-out visitor).
+  assert.match(code(ROUTES.createJoin), /requireAgeVerifiedUser/, `${ROUTES.createJoin} must gate the caller`);
+  for (const file of [ROUTES.fetch, ROUTES.progress, ROUTES.finish, ROUTES.cancel]) {
+    assert.match(code(file), /requirePracticePlayer/, `${file} must gate the caller`);
   }
   // The client only ever emits a bare `{ matchId }` poke over the socket.
   const rooms = code("src/lib/speed-typing/rooms.ts");

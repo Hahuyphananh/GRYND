@@ -13,7 +13,7 @@
 // flag locations are never sent.
 
 import { NextResponse } from "next/server";
-import { requireAgeVerifiedUser } from "../../../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../../../lib/auth/guestSession";
 import { unflagTile } from "../../../../../../lib/mines-pvp/serverStore";
 import {
   GRID_CELLS,
@@ -43,9 +43,9 @@ function normaliseUnflagResult(match, userId) {
 }
 
 export async function POST(req, { params }) {
-  const gate = await requireAgeVerifiedUser();
+  const gate = await requirePracticePlayer();
   if (gate.response) return gate.response;
-  const userId = gate.userId;
+  const userId = gate.playerId;
 
   const resolvedParams = (await params) || {};
   const matchId = Number(resolvedParams?.matchId);

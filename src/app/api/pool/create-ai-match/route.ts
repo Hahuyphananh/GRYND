@@ -1,20 +1,24 @@
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { db } from "../../../../db";
 import { poolMatches } from "../../../../db/schema";
 
 export async function POST(req: Request) {
   try {
-    const gate = await requireAgeVerifiedUser();
+    // Free practice: a signed-out visitor gets a guest identity here (the only
+    // pool route that mints one). Everything below is unrated — the AI seat
+    // holds no pot and no rewards — so a guest is exactly as safe as a
+    // signed-in player. PvP stays behind requireAgeVerifiedUser (/api/pool/
+    // create-lobby, /join-lobby).
+    const gate = await requirePracticePlayer({ create: true });
     if (gate.response) return gate.response;
-
-    const { userId } = await auth();
-    if (!userId)
+    const userId = gate.playerId;
+    if (!userId) {
       return NextResponse.json(
         { ok: false, message: "Unauthorized" },
         { status: 401 },
       );
+    }
     const { wager = 10 } = await req.json().catch(() => ({}));
     // Global bet cap (must match GLOBAL_MAX_BET in src/lib/games/economy.ts).
     if (!Number.isFinite(Number(wager)) || Number(wager) <= 0 || Number(wager) > 100000) {

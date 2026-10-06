@@ -198,7 +198,9 @@ test("navigation: the lobby and match routes talk to the ONE matchmaking store",
   const fetchRoute = strip(read(FETCH_ROUTE));
   assert.match(fetchRoute, /fetchMatch/);
   assert.match(fetchRoute, /isMatchId/);
-  assert.match(fetchRoute, /requireAgeVerifiedUser/);
+  // The snapshot is participant-only inside the store, so the route may accept
+  // a guest: a guest that holds no seat gets the same 403 a stranger gets.
+  assert.match(fetchRoute, /requirePracticePlayer/);
 });
 
 test("navigation: the match page reads the authoritative snapshot", () => {

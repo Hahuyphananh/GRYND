@@ -19,7 +19,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { resignMatch } from "../../../../lib/precision/serverStore";
 import { logError } from "../../../../lib/logError";
 
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     // ── IDOR hardening: only a participant may resign their own match.
     // Previously ANY caller could force-finish any match by ID, which
     // also tripped the payout flow on the clients' next poll.
-    const gate = await requireAgeVerifiedUser();
+    const gate = await requirePracticePlayer();
     if (gate.response) return gate.response;
 
     const { userId } = await auth();

@@ -34,6 +34,8 @@ export type SeatAvatarProps = {
   name?: string | null;
   /** True for the bot seat: always the GRYND logo, whatever `iconKey` says. */
   isAi?: boolean;
+  /** True for a GUEST seat (a signed-out practice player): draws the "G" badge. */
+  isGuest?: boolean;
   /** Tailwind size classes (e.g. "h-7 w-7"). */
   size?: string;
   className?: string;
@@ -50,6 +52,7 @@ export default function SeatAvatar({
   profileFrame = null,
   name,
   isAi = false,
+  isGuest = false,
   size = "h-7 w-7",
   className = "",
 }: SeatAvatarProps) {
@@ -70,6 +73,7 @@ export default function SeatAvatar({
       frame={profileFrame}
       iconKey={iconKey || null}
       name={name || undefined}
+      isGuest={isGuest}
       size={size}
       className={className}
     />

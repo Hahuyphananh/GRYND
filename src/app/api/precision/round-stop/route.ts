@@ -34,7 +34,7 @@
 // roundId/nonce, duplicate stop, etc.).
 
 import { NextRequest, NextResponse } from "next/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { verifyToken } from "@clerk/backend";
 import { recordRoundStop } from "../../../../lib/precision/serverStore";
 import { logError } from "../../../../lib/logError";
@@ -96,9 +96,9 @@ export async function POST(req: NextRequest) {
     } else {
       // Browser path: enforce the 18+ gate. The token branch above is the
       // realtime server acting for a player mid-round and has no session to check.
-      const gate = await requireAgeVerifiedUser();
+      const gate = await requirePracticePlayer();
       if (gate.response) return gate.response;
-      userId = gate.userId ?? "";
+      userId = gate.playerId ?? "";
     }
     if (!userId) {
       return NextResponse.json(
