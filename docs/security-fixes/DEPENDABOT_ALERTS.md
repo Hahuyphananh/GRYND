@@ -41,6 +41,10 @@ below (Capacitor counts twice, once per platform package).
 alerts and the moderate one are cleared. The single remaining alert is the
 unfixable `braces` advisory.
 
+This is confirmed by GitHub, not inferred: it reported 6 vulnerabilities when
+the fix branch was pushed, and **1** afterwards —
+`GitHub found 1 vulnerability on ... default branch (1 high)`, alert 312.
+
 | Advisory | Sev | Package | Was | Now |
 |----------|-----|---------|-----|-----|
 | GHSA-rvm3-566m-v7fv | **critical** | `@capacitor/android`, `@capacitor/ios` | 8.3.4 | **8.5.2** ✅ |
@@ -101,7 +105,7 @@ imports it directly.
 
 | Check | Result |
 |-------|--------|
-| Dependabot alerts | 6 → 1 (GitHub counted 6 on push; 1 remains) |
+| Dependabot alerts | 6 → 1 (GitHub reported 6 before the push, 1 after) |
 | `npm audit` totals | 14 → 8 nodes (critical 2→0, moderate 2→0, high 10→8) |
 | `npm run build` | exit 0 |
 | Rendered CSS, PSP 6.1.4 vs 7.1.6 | **byte-for-byte identical** (272,140 bytes) |
