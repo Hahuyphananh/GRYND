@@ -126,9 +126,9 @@
     "loadtest:read-mix": "npx --yes artillery@2.0.34 run load-test/scenarios/read-mix.yml"
   },
   "dependencies": {
-    "@capacitor/android": "^8.3.3",
+    "@capacitor/android": "^8.4.3",
     "@capacitor/core": "^8.3.3",
-    "@capacitor/ios": "^8.3.3",
+    "@capacitor/ios": "^8.5.2",
     "@clerk/backend": "^3.4.9",
     "@clerk/nextjs": "^7.3.5",
     "@clerk/react": "^6.6.4",
@@ -192,7 +192,7 @@
     "postcss-cli": "^11.0.1",
     "prettier": "^3.8.3",
     "puppeteer-core": "^25.9.0",
-    "tailwindcss": "^3.3.0",
+    "tailwindcss": "^4.3.3",
     "tsx": "^4.19.3",
     "typescript": "5.8.3"
   },
@@ -207,7 +207,7 @@
     "fast-uri": "^3.1.5",
     "shell-quote": "^1.10.0",
     "dompurify": "^3.4.16",
-    "sharp": "^0.35.4",
+    "sharp": "^0.35.5",
     "brace-expansion": "^5.0.12",
     "undici": "^7.29.0",
     "socket.io-parser": "^4.2.7",
