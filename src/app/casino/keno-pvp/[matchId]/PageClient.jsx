@@ -941,6 +941,7 @@ export default function KenoPvpMatchPage({ params }) {
             frame={summary?.profileFrame || null}
             iconKey={summary?.iconKey || null}
             name={name}
+            isGuest={Boolean(summary?.isGuest)}
             size="h-7 w-7"
           />
           <div className="min-w-0 flex-1">

@@ -41,6 +41,7 @@ import {
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "../stripe/subscriptions";
 import { sendSystemNotificationEmail } from "../emails/system";
 import { mirrorMinesQueued, mirrorMinesTransition } from "./canonicalLifecycle";
+import { guestSeatSummary, isGuestId } from "../guestIdentity";
 import { coerceAiDifficulty } from "../aiDifficulty";
 import {
   AI_PICK_DELAY_MS,
@@ -1218,6 +1219,9 @@ export async function enrichMatchWithPlayers(match) {
 
   const seatSummary = (clerkId, fallbackName) => {
     if (!clerkId) return null;
+    // A guest has no `users` row to enrich — hand back the guest seat so the
+    // client draws the "G" badge instead of the default catalog icon.
+    if (isGuestId(clerkId)) return guestSeatSummary(clerkId);
     return (
       summary[clerkId] || {
         id: clerkId,

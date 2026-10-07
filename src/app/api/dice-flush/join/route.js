@@ -32,7 +32,7 @@ export async function POST(req) {
       return state;
     });
 
-    return NextResponse.json({ success: true, state: result });
+    return NextResponse.json({ success: true, viewerId: userId, state: result });
   } catch (e) {
     return NextResponse.json({ success: false, error: e.message || "Failed to join" }, { status: 400 });
   }

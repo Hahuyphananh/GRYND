@@ -1,5 +1,8 @@
-import { auth } from "@clerk/nextjs/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+// Free vs-AI practice is open to signed-out guests: the game is unrated and
+// moves no tokens. A guest seat is a `guest_<uuid>` (see lib/unoSeat.ts and
+// migration 0206) and owns no `users` row, so `uno_games.user_id` is NULL for
+// it and `guest_id` carries the seat. Online matchmaking keeps the age gate.
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { db } from "../../../../db/client";
 import { users, unoGames } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
@@ -82,15 +85,9 @@ function slightlyBoostAiOpeningHand(deck, playerHand, aiHand) {
 }
 
 export async function POST(request) {
-  const gate = await requireAgeVerifiedUser();
+  const gate = await requirePracticePlayer({ create: true });
   if (gate.response) return gate.response;
-
-  const { userId } = await auth();
-  if (!userId)
-    return new Response(
-      JSON.stringify({ success: false, error: "Unauthorized" }),
-      { status: 401 },
-    );
+  const playerId = gate.playerId;
 
   const { betAmount, difficulty } = await request.json();
   // STAKES ARE RETIRED (src/lib/games/stakes.js): an AI match is free play.
@@ -102,16 +99,23 @@ export async function POST(request) {
   const aiDifficulty = coerceAiDifficulty(difficulty);
 
   try {
-    const user = await db.query.users.findFirst({
-      where: eq(users.clerkId, userId),
-    });
-    if (!user)
-      return new Response(
-        JSON.stringify({ success: false, error: "User not found" }),
-        { status: 404 },
-      );
-
-    const balance = Number(user.balance);
+    // The account seat (and its balance) exists only for a signed-in caller.
+    // A guest has neither — its seat is the guest id itself, and the free
+    // practice mode never touches a wallet.
+    let accountId = null;
+    let balance = 0;
+    if (!gate.isGuest) {
+      const user = await db.query.users.findFirst({
+        where: eq(users.clerkId, playerId),
+      });
+      if (!user)
+        return new Response(
+          JSON.stringify({ success: false, error: "User not found" }),
+          { status: 404 },
+        );
+      accountId = user.id;
+      balance = Number(user.balance);
+    }
 
     let deck = generateDeck();
     const playerHand = deck.splice(0, 7);
@@ -136,7 +140,10 @@ export async function POST(request) {
       const inserted = await tx
         .insert(unoGames)
         .values({
-          userId: user.id,
+          // Exactly one seat is set: the account id for a signed-in player,
+          // the guest id for a guest (migration 0206).
+          userId: accountId,
+          guestId: gate.isGuest ? playerId : null,
           betAmount: stake.toFixed(2),
           pot,
           result: "pending",

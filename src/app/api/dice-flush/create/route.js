@@ -24,7 +24,7 @@ export async function POST(req) {
       return { roomId, state };
     });
 
-    return NextResponse.json({ success: true, roomId: result.roomId, state: result.state });
+    return NextResponse.json({ success: true, roomId: result.roomId, viewerId: userId, state: result.state });
   } catch (e) {
     return NextResponse.json({ success: false, error: e.message || "Failed to create room" }, { status: 400 });
   }

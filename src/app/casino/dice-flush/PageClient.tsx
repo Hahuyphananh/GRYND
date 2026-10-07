@@ -49,6 +49,8 @@ type Player = {
   userId: string;
   name: string;
   isAI?: boolean;
+  /** True for a guest seat — the avatar layer draws the "G" badge. */
+  isGuest?: boolean;
   iconKey?: string | null;
   profileFrame?: unknown;
   nameColor?: string | null;
@@ -360,6 +362,10 @@ export default function DiceFlushPage() {
   // so there is no wager to pick and no token balance to load.
   const wager = 0; const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<"pvp" | "ai">("pvp");
+  // A signed-out visitor can only play the free vs-AI practice (matchmaking
+  // routes keep the account gate), so land them on that tab; a signed-in
+  // player keeps the PvP default.
+  useEffect(() => { if (isSignedIn === false) setMode("ai"); }, [isSignedIn]);
   // The tier this practice match's bot plays at. Remembered per game by the
   // picker, and sent with the start-ai request so the AI seat carries it.
   const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
@@ -386,13 +392,20 @@ export default function DiceFlushPage() {
 
   const [gameOverType, setGameOverType] = useState<"win" | "lose" | null>(null);
   const [gameOverScores, setGameOverScores] = useState<{ mine: number; theirs: number } | null>(null);
+  // The seat this browser owns, as reported by the server on every room
+  // response. A signed-in player is identified by Clerk's `user.id`; a
+  // signed-out guest has no Clerk session, so the server's `viewerId` is the
+  // only way the client can tell which seat is its own (and it marks the
+  // guest seat so the avatar layer can draw the "G" badge).
+  const [viewerId, setViewerId] = useState<string | null>(null);
+  const viewerSeatId = viewerId ?? user?.id;
   const { socket } = useSocket();
   // Emotes — both players already join the dice-flush room, so reuse it.
   const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
     socket,
     roomId,
     eventName: "dice-flush:emote",
-    selfId: user?.id,
+    selfId: viewerSeatId,
   });
   const [aiAnimating, setAiAnimating] = useState(false);
   const [aiRollSteps, setAiRollSteps] = useState<{ dice: number[]; heldDice: boolean[]; rollNum: number }[]>([]);
@@ -422,7 +435,7 @@ export default function DiceFlushPage() {
     }
     return gs;
   };
-  const fetchRoom = async (id: string) => { const res = await fetch(`/api/dice-flush/state?roomId=${encodeURIComponent(id)}`, { cache: "no-store" }); const data = await res.json().catch(() => null); if (data?.success && data.room?.gameState) { setGame(normalizeState(data.room.gameState as GameState)); } };
+  const fetchRoom = async (id: string) => { const res = await fetch(`/api/dice-flush/state?roomId=${encodeURIComponent(id)}`, { cache: "no-store" }); const data = await res.json().catch(() => null); if (data?.viewerId) setViewerId(data.viewerId); if (data?.success && data.room?.gameState) { setGame(normalizeState(data.room.gameState as GameState)); } };
   const fetchHistory = async (id: string) => { try { const res = await fetch(`/api/dice-flush/history?roomId=${encodeURIComponent(id)}`, { cache: "no-store" }); const data = await res.json(); if (data.success) setMoveHistory(data.actions || []); } catch {} };
 
   useEffect(() => { fetchGames(); }, [isSignedIn, user]);
@@ -459,8 +472,8 @@ export default function DiceFlushPage() {
     Boolean(roomId),
   );
 
-  const you = useMemo(() => game?.players?.find((p) => p.userId === user?.id) || null, [game, user?.id]);
-  const opponent = useMemo(() => game?.players?.find((p) => p.userId !== user?.id) || null, [game, user?.id]);
+  const you = useMemo(() => game?.players?.find((p) => p.userId === viewerSeatId) || null, [game, viewerSeatId]);
+  const opponent = useMemo(() => game?.players?.find((p) => p.userId !== viewerSeatId) || null, [game, viewerSeatId]);
 
   // ── Shot clock ticker ──────────────────────────────────────────
   // Counts down from the server-stamped turnDeadline. Display-only — the
@@ -563,13 +576,13 @@ export default function DiceFlushPage() {
     if (!game) return;
     const turn = game.currentTurn;
     if (prevTurnRef.current && prevTurnRef.current !== turn) {
-      const isMe = turn === user?.id;
+      const isMe = turn === viewerSeatId;
       setTurnBanner(isMe ? "YOUR TURN" : `${opponent?.name || "Opponent"}'s TURN`);
       playTurnSwitch(isMe);
       setTimeout(() => setTurnBanner(null), 1800);
     }
     prevTurnRef.current = turn;
-  }, [game?.currentTurn, game, user?.id, opponent?.name]);
+  }, [game?.currentTurn, game, viewerSeatId, opponent?.name]);
   const isYourTurn = Boolean(game && you && game.currentTurn === you.userId);
   const waitingForOpponent = Boolean(game && game.players.length < 2 && game.state === "waiting");
 
@@ -594,13 +607,13 @@ export default function DiceFlushPage() {
 
   // Extract last player and AI moves from history
   const lastMoves = useMemo(() => {
-    const playerMoves = moveHistory.filter((a: any) => a.action === "choose_category" && a.userId === user?.id);
-    const aiMoves = moveHistory.filter((a: any) => a.action === "choose_category" && a.userId !== user?.id);
+    const playerMoves = moveHistory.filter((a: any) => a.action === "choose_category" && a.userId === viewerSeatId);
+    const aiMoves = moveHistory.filter((a: any) => a.action === "choose_category" && a.userId !== viewerSeatId);
     return {
       player: playerMoves.length > 0 ? playerMoves[playerMoves.length - 1] : null,
       ai: aiMoves.length > 0 ? aiMoves[aiMoves.length - 1] : null,
     };
-  }, [moveHistory, user?.id]);
+  }, [moveHistory, viewerSeatId]);
   const preview = (key: string) => (!game || !isYourTurn || game.rollsThisTurn < 1 || !you || game.scorecards?.[key] !== undefined ? null : scoreFor(game.dice, key));
 
   // Skill layer helpers — call-the-category (from the SHARED sheet).
@@ -727,12 +740,12 @@ export default function DiceFlushPage() {
     }
   }, [game?.currentTurn, game?.turnNumber]);
 
-  const createGame = async () => { setLoading(true); try { const res = await fetch("/api/dice-flush/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wager }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable to create room"); setRoomId(d.roomId); setGame(d.state); if (socket) socket.emit("join_room", { roomId: d.roomId });} finally { setLoading(false); } };
+  const createGame = async () => { setLoading(true); try { const res = await fetch("/api/dice-flush/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wager }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable to create room"); if (d.viewerId) setViewerId(d.viewerId); setRoomId(d.roomId); setGame(d.state); if (socket) socket.emit("join_room", { roomId: d.roomId });} finally { setLoading(false); } };
   // Free play vs AI — no stake is ever sent. The match is created with a 0
   // wager (and a 0 pot server-side), so no tokens are risked and nothing is
   // credited on the result screen.
-  const playAI = async () => { setLoading(true); try { const res = await fetch("/api/dice-flush/start-ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wager: 0, difficulty: aiDifficulty }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable"); setRoomId(d.roomId); setGame(d.state); posthog?.capture("dice_flush_game_started", { mode: "ai", wager: 0, difficulty: aiDifficulty }); if (socket) socket.emit("join_room", { roomId: d.roomId });} finally { setLoading(false); } };
-  const joinGame = async (id: string) => { setLoading(true); setJoiningId(id); try { const res = await fetch("/api/dice-flush/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roomId: id }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable to join"); setRoomId(id); setGame(d.state); posthog?.capture("dice_flush_game_started", { mode: "pvp", wager: (d.state as any)?.wager || 0, game_id: id }); if (socket) { socket.emit("join_room", { roomId: id }); socket.emit("room_event", { roomId: id, event: "game_state_update" }); }} finally { setLoading(false); setJoiningId(null);} };
+  const playAI = async () => { setLoading(true); try { const res = await fetch("/api/dice-flush/start-ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wager: 0, difficulty: aiDifficulty }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable"); if (d.viewerId) setViewerId(d.viewerId); setRoomId(d.roomId); setGame(d.state); posthog?.capture("dice_flush_game_started", { mode: "ai", wager: 0, difficulty: aiDifficulty }); if (socket) socket.emit("join_room", { roomId: d.roomId });} finally { setLoading(false); } };
+  const joinGame = async (id: string) => { setLoading(true); setJoiningId(id); try { const res = await fetch("/api/dice-flush/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roomId: id }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable to join"); if (d.viewerId) setViewerId(d.viewerId); setRoomId(id); setGame(d.state); posthog?.capture("dice_flush_game_started", { mode: "pvp", wager: (d.state as any)?.wager || 0, game_id: id }); if (socket) { socket.emit("join_room", { roomId: id }); socket.emit("room_event", { roomId: id, event: "game_state_update" }); }} finally { setLoading(false); setJoiningId(null);} };
   const emitRoomEvent = () => {
     if (!socket || !roomId) return;
     socket.emit("room_event", { roomId, event: "game_state_update" });
@@ -1033,7 +1046,7 @@ export default function DiceFlushPage() {
     <div className="mb-2 flex items-center justify-between">
       <div className="flex items-center gap-2">
         <div className="relative inline-flex items-center gap-1.5 rounded-full bg-[#f87171]/20 border border-[#f87171]/30 px-3 py-1 text-sm font-black text-[#f87171]">
-          <FrameAvatar frame={opponent?.profileFrame} iconKey={opponent?.iconKey || null} name={opponent?.name} size="h-4 w-4" />
+          <FrameAvatar frame={opponent?.profileFrame} iconKey={opponent?.iconKey || null} name={opponent?.name} isGuest={Boolean(opponent?.isGuest)} size="h-4 w-4" />
           <span
             className={cosmeticEffectClass((opponent?.profileFrame as { usernameEffect?: { visual?: unknown } } | null)?.usernameEffect?.visual) || undefined}
             style={opponent?.nameColor ? { color: opponent.nameColor } : undefined}

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { callCategory } from "../../../../../game-engine/diceFlushEngine";
-import { appendAction, db, eq, loadRoom, requireUser, resolveExpiredTurn, diceFlushRooms } from "../_lib";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { appendAction, assertRoomSeat, db, eq, errorStatus, loadRoom, resolveExpiredTurn, diceFlushRooms } from "../_lib";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 
 // POST /api/dice-flush/call
 //
@@ -13,15 +13,16 @@ import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified"
 
 export async function POST(req) {
   try {
-    const gate = await requireAgeVerifiedUser();
+    const gate = await requirePracticePlayer();
     if (gate.response) return gate.response;
-    const userId = await requireUser();
+    const userId = gate.playerId;
     const { roomId, category } = await req.json();
     if (!roomId || !category) {
       return NextResponse.json({ success: false, error: "roomId and category required" }, { status: 400 });
     }
     const next = await db.transaction(async (tx) => {
       const room = await loadRoom(roomId, tx);
+      assertRoomSeat(room.gameState, userId);
       // Shot clock: resolve a stalled turn before processing the move.
       const resolved = await resolveExpiredTurn(tx, room, room.gameState);
       if (resolved.didTimeout) {
@@ -34,6 +35,6 @@ export async function POST(req) {
     });
     return NextResponse.json(next, { status: next.status ?? 200 });
   } catch (e) {
-    return NextResponse.json({ success: false, error: e.message || "Failed" }, { status: 400 });
+    return NextResponse.json({ success: false, error: e.message || "Failed" }, { status: errorStatus(e) });
   }
 }

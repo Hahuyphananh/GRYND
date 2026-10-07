@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
+import { GUEST_DISPLAY_NAME, isGuestId } from "../../../../lib/guestIdentity";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../../../db/client";
 import { glows, tokenSubscriptions, users } from "../../../../db/schema";
@@ -34,18 +35,50 @@ async function decoratePlayerBadges<T extends { userId: string }>(
     iconKey: string | null;
     nameColor: string | null;
     profileFrame: unknown;
+    isGuest: boolean;
   })[]
 > {
+  // A guest holds no `users` row, so it is never a badge lookup target: it is
+  // decorated as the guest seat (name "Guest", no icon) which the client
+  // renders as the "G" badge instead of the default catalog icon.
+  const badgeFor = (
+    p: T,
+    icons: Map<string, string | null>,
+    colors: Map<string, string | null>,
+    frames: Map<string, unknown>,
+  ) => {
+    if (isGuestId(p.userId)) {
+      return {
+        ...p,
+        name: GUEST_DISPLAY_NAME,
+        iconKey: null,
+        nameColor: null,
+        profileFrame: null,
+        isGuest: true,
+      };
+    }
+    return {
+      ...p,
+      iconKey: icons.get(String(p.userId)) ?? null,
+      nameColor: colors.get(String(p.userId)) ?? null,
+      profileFrame: frames.get(String(p.userId)) ?? null,
+      isGuest: false,
+    };
+  };
+
   const humanIds = players
-    .filter((p) => p.userId && p.userId !== "opponent" && p.userId !== "AI_BOT")
+    .filter(
+      (p) =>
+        p.userId &&
+        p.userId !== "opponent" &&
+        p.userId !== "AI_BOT" &&
+        !isGuestId(p.userId),
+    )
     .map((p) => p.userId);
   if (humanIds.length === 0) {
-    return players.map((p) => ({
-      ...p,
-      iconKey: null,
-      nameColor: null,
-      profileFrame: null,
-    }));
+    return players.map((p) =>
+      badgeFor(p, new Map(), new Map(), new Map()),
+    );
   }
   const rows = await db
     .select({
@@ -88,12 +121,7 @@ async function decoratePlayerBadges<T extends { userId: string }>(
     );
     frameByUser.set(String(row.clerkId), decorationByClerkId.get(String(row.clerkId)) || null);
   }
-  return players.map((p) => ({
-    ...p,
-    iconKey: iconByUser.get(String(p.userId)) ?? null,
-    nameColor: colorByUser.get(String(p.userId)) ?? null,
-    profileFrame: frameByUser.get(String(p.userId)) ?? null,
-  }));
+  return players.map((p) => badgeFor(p, iconByUser, colorByUser, frameByUser));
 }
 
 export const dynamic = "force-dynamic";

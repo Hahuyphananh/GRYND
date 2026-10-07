@@ -4,6 +4,29 @@ import { useUser } from "@clerk/nextjs";
 import posthog from "posthog-js";
 import { getAcquisitionParams } from "../../lib/analytics";
 
+/**
+ * Reads the server-authoritative onboarding flag for the signed-in account.
+ *
+ * Used only on the "fresh account" branch below: the sync response's message
+ * says the local row is new, which is true for an account created by the
+ * webhook moments ago — but a fresh account may already have finished the
+ * welcome tutorial (log out / log back in inside the 15-minute window). The
+ * documented rule is that a finished account is never sent back through
+ * onboarding, so the decision must come from the flag, not the sync message.
+ *
+ * Fails open (returns false) so a transient status error still lets a genuine
+ * new signup reach onboarding — exactly the behaviour before this guard.
+ */
+async function hasCompletedOnboarding() {
+  try {
+    const res = await fetch("/api/onboarding/status", { credentials: "include" });
+    const data = await res.json();
+    return res.ok && data?.success === true && data.onboardingCompleted === true;
+  } catch {
+    return false;
+  }
+}
+
 export default function SyncPage() {
   const [status, setStatus] = useState("Syncing your account...");
   const replacedRef = useRef(false);
@@ -66,11 +89,18 @@ export default function SyncPage() {
           // straight home. The documented order is
           //   signup → /welcome/questionnaire → /welcome → first game,
           // so fresh accounts start at the questionnaire (about a minute)
-          // and it hands them on to the existing welcome tutorial. Both pages
-          // re-check the server-side flags, so a "fresh" account that already
-          // completed them (log-out/log-in inside the 15-min window) still
-          // lands on the right screen.
-          const target = isNewUser ? "/welcome/questionnaire" : "/";
+          // and it hands them on to the existing welcome tutorial.
+          //
+          // "User synced successfully" means the local row is FRESH — it does
+          // NOT mean onboarding is pending. Logging out and back in inside the
+          // 15-minute window re-syncs an account that already finished the
+          // tutorial; trusting the message would send it back through the
+          // questionnaire and the tutorial again. Only enter onboarding when
+          // the account has genuinely not completed it.
+          const target =
+            isNewUser && !(await hasCompletedOnboarding())
+              ? "/welcome/questionnaire"
+              : "/";
           window.location.replace(target);
         }
       } catch (err) {

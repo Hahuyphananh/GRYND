@@ -46,6 +46,7 @@ import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
 import { getFrameDecorations } from "../cosmetics";
+import { guestSeatSummary, isGuestId } from "../guestIdentity";
 import {
   memoryGridMatches,
   memoryGridRounds,
@@ -1417,15 +1418,20 @@ export async function enrichMatchesWithUsers(matchOrMatches) {
     rows.map((r, index) => [r.clerkId, decorations[index]]),
   );
   const summary = summariseUsers(rows, decorationByClerkId);
+  // A guest has no `users` row to enrich — hand back the guest seat so the
+  // client draws the "G" badge instead of the default catalog icon.
+  const seatFor = (id) => {
+    if (!id) return null;
+    if (isGuestId(id)) return guestSeatSummary(id);
+    return summary[id] || { id, displayName: id, missing: true };
+  };
   const enrichOne = (m) => {
     if (!m) return m;
-    const p1 = m.player1Id ? summary[m.player1Id] || null : null;
-    const p2 = m.player2Id ? summary[m.player2Id] || null : null;
     return {
       ...m,
       players: {
-        p1: p1 || (m.player1Id ? { id: m.player1Id, displayName: m.player1Id, missing: true } : null),
-        p2: p2 || (m.player2Id ? { id: m.player2Id, displayName: m.player2Id, missing: true } : null),
+        p1: seatFor(m.player1Id),
+        p2: seatFor(m.player2Id),
       },
     };
   };

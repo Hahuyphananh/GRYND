@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { users } from "../../../../db/schema";
@@ -11,18 +12,6 @@ import { normalizeStake } from "../../../../lib/games/stakes";
 
 export async function POST(req: Request) {
   try {
-    const gate = await requireAgeVerifiedUser();
-    if (gate.response) return gate.response;
-
-    const { userId: clerkId } = await auth();
-
-    if (!clerkId) {
-      return NextResponse.json(
-        { success: false, error: "Unauthorized. Please sign in" },
-        { status: 401 }
-      );
-    }
-
     const body = await req.json();
     // STAKES ARE RETIRED (src/lib/games/stakes.js): a hex duel is free to
     // start. The requested wager is normalized to 0, so the atomic debit below
@@ -30,32 +19,20 @@ export async function POST(req: Request) {
     const wager = normalizeStake(body.wager);
     const isAiGame = body?.isAiGame === true;
 
-    // AI games are free play — no balance deduction, no `totalWagered`
-    // bump. We still return the user's CURRENT balance (without any
-    // deduction) so the client can keep its balance display accurate;
-    // returning a sentinel would clobber the displayed balance to 0.
-    //
-    // We also mint a short-lived, single-use AI session token in Redis.
-    // /api/hex-duel/end-game requires this token to honour the
-    // `isAiGame: true` claim, so a player cannot forge an end-game
-    // request to skip a PvP payout.
+    // Free practice (vs AI) is open to signed-out guests: the match is
+    // unrated and moves no tokens, so there is nothing to gate. The caller
+    // becomes a `guest_<uuid>` identity via the HMAC-signed cookie. PvP
+    // matchmaking keeps the full account + 18+ gate.
     if (isAiGame) {
+      const gate = await requirePracticePlayer({ create: true });
+      if (gate.response) return gate.response;
+      const clerkId = gate.playerId as string;
+
       const [currentUser] = await db
         .select({ balance: users.balance })
         .from(users)
         .where(eq(users.clerkId, clerkId));
       const aiSessionId = crypto.randomUUID();
-      // Best-effort cache write — if Redis is unavailable, /end-game
-      // will see no matching session and fall back to treating the
-      // request as PvP (i.e. fail closed). The game still plays fine;
-      // the worst case is the user loses access to free-play treatment.
-      //
-      // We bind (userId, wager, aiDifficulty) to the token so /end-game
-      // can refuse a forged end-game that simply re-uses an
-      // intercepted aiSessionId with different game parameters. We
-      // deliberately do NOT store `startedAt`: client and server
-      // clocks can drift milliseconds apart and a strict equality
-      // check there would 400 legitimate users.
       await cacheSet(
         CacheKeys.hexDuelAiSession(aiSessionId),
         {
@@ -71,12 +48,31 @@ export async function POST(req: Request) {
         success: true,
         data: {
           wager,
+          // A guest owns no `users` row, so there is no balance to report.
           newBalance: currentUser ? Number(currentUser.balance) : 0,
           aiSessionId,
         },
       });
     }
 
+    // ── PvP: account + age gate, unchanged ────────────────────────────
+    const gate = await requireAgeVerifiedUser();
+    if (gate.response) return gate.response;
+
+    const { userId: clerkId } = await auth();
+
+    if (!clerkId) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized. Please sign in" },
+        { status: 401 }
+      );
+    }
+
+    // AI games are free play — no balance deduction, no `totalWagered`
+    // bump. We still return the user's CURRENT balance (without any
+    // deduction) so the client can keep its balance display accurate;
+    // returning a sentinel would clobber the displayed balance to 0.
+    //
     // STAKES ARE RETIRED: the match is free, so no wager is deducted.
     return NextResponse.json({
       success: true,

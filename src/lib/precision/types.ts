@@ -39,6 +39,8 @@ export interface PrecisionPlayer {
   iconKey?: string | null;
   /** Equipped name color (glow > premium chat color), null when none. */
   nameColor?: string | null;
+  /** True for a signed-out practice guest — the avatar draws the "G" badge. */
+  isGuest?: boolean;
   isReady: boolean;
   isConnected: boolean;
 }

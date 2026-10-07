@@ -173,9 +173,11 @@ type OwnReveal = { cell: number; mine: boolean; hint: number | null };
 type PlayerSummary = {
   id: string;
   displayName: string;
-  iconKey: string;
+  iconKey: string | null;
   profileFrame?: unknown;
   nameColor?: string | null;
+  /** True for a signed-out practice guest — draws the "G" badge. */
+  isGuest?: boolean;
   missing?: boolean;
 };
 
@@ -291,6 +293,7 @@ function ScoreSide({
   iconKey,
   profileFrame,
   nameColor,
+  isGuest = false,
   score,
   tiles,
   tilesTotal,
@@ -307,6 +310,7 @@ function ScoreSide({
   iconKey?: string | null;
   profileFrame?: unknown;
   nameColor?: string | null;
+  isGuest?: boolean;
   score: number;
   tiles: number;
   tilesTotal: number;
@@ -329,7 +333,7 @@ function ScoreSide({
       }`}
     >
       <div className="flex items-center gap-2">
-        <FrameAvatar frame={profileFrame} iconKey={iconKey || null} name={name} size="h-7 w-7" />
+        <FrameAvatar frame={profileFrame} iconKey={iconKey || null} name={name} isGuest={isGuest} size="h-7 w-7" />
         <div className="min-w-0">
           <p className={`text-[10px] font-bold uppercase tracking-widest ${acText}`}>{label}</p>
           <p
@@ -1052,6 +1056,7 @@ export default function MinesPvpMatchPage({
           iconKey={mySummary?.iconKey || null}
           profileFrame={mySummary?.profileFrame || null}
           nameColor={mySummary?.nameColor || null}
+          isGuest={Boolean(mySummary?.isGuest)}
           score={Number(match.myScore) || 0}
           tiles={myTilesResolved}
           tilesTotal={tilesTotal}
@@ -1082,6 +1087,7 @@ export default function MinesPvpMatchPage({
           iconKey={oppSummary?.iconKey || null}
           profileFrame={oppSummary?.profileFrame || null}
           nameColor={oppSummary?.nameColor || null}
+          isGuest={Boolean(oppSummary?.isGuest)}
           score={Number(match.opponentScore) || 0}
           tiles={opponentTilesResolved}
           tilesTotal={tilesTotal}

@@ -2,14 +2,22 @@ import { NextResponse } from "next/server";
 import { asc, eq } from "drizzle-orm";
 import { db } from "../../../../db/client";
 import { diceFlushActions } from "../../../../db/schema";
-import { requireUser } from "../_lib";
+import { assertRoomSeat, errorStatus, loadRoom } from "../_lib";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 
 export async function GET(req) {
   try {
-    await requireUser();
+    const gate = await requirePracticePlayer();
+    if (gate.response) return gate.response;
+    const userId = gate.playerId;
     const { searchParams } = new URL(req.url);
     const roomId = searchParams.get("roomId");
     if (!roomId) throw new Error("roomId required");
+
+    // Per-room owner check: the move log of a room is only visible to a
+    // caller holding a seat in it.
+    const room = await loadRoom(roomId);
+    assertRoomSeat(room.gameState, userId);
 
     const actions = await db
       .select()
@@ -23,6 +31,6 @@ export async function GET(req) {
     return NextResponse.json({
       success: false,
       error: e.message || "Failed to fetch history",
-    }, { status: 400 });
+    }, { status: errorStatus(e) });
   }
 }

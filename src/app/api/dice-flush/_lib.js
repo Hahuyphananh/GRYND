@@ -7,6 +7,7 @@ import { applyLeaderboardCounters } from "../../../lib/leaderboardCounters";
 import { applyRatingResult } from "../../../lib/rating";
 import { applyTrophyResult } from "../../../lib/trophyStore";
 import { normalizeStake } from "../../../lib/games/stakes";
+import { GUEST_DISPLAY_NAME, isGuestId } from "../../../lib/guestIdentity";
 
 export function initialState(roomId, creatorId, creatorName, wager) {
   // STAKES ARE RETIRED (src/lib/games/stakes.js): the match is free, so the
@@ -61,6 +62,40 @@ export async function requireUser() {
   return userId;
 }
 
+/**
+ * Per-room SEAT check. Unlike the games that authorise inside their store,
+ * Dice Flush resolves the caller in the route, so every room-scoped route
+ * must confirm the caller actually holds a seat in this room before it reads
+ * or mutates it. A signed-in stranger and a signed-out guest with no seat
+ * both get the same 403 — which is exactly what lets the vs-AI practice path
+ * be opened to guests without leaking another player's room.
+ *
+ * Throws an error carrying `status = 403`; the route catches map that to the
+ * response status (a plain 400 is reserved for malformed input).
+ */
+export function isRoomSeat(state, playerId) {
+  const players = Array.isArray(state?.players) ? state.players : [];
+  return players.some((p) => String(p?.userId) === String(playerId));
+}
+
+export function assertRoomSeat(state, playerId) {
+  if (!isRoomSeat(state, playerId)) {
+    const err = new Error("Not a player in this room");
+    err.status = 403;
+    throw err;
+  }
+  return true;
+}
+
+/**
+ * The status a route catch block should send for an error thrown by
+ * `assertRoomSeat` (403) or any other route error that set its own `status`;
+ * falls back to the historical 400 for malformed / rejected moves.
+ */
+export function errorStatus(e) {
+  return typeof e?.status === "number" ? e.status : 400;
+}
+
 export async function loadRoom(roomId, tx = db) {
   const [room] = await tx.select().from(diceFlushRooms).where(eq(diceFlushRooms.id, roomId));
   if (!room) throw new Error("Room not found");
@@ -78,6 +113,10 @@ export async function lockBalance() {
 }
 
 export async function getDisplayName(userId, tx = db) {
+  // A guest owns no `users` row, so the `clerk_id` lookup below would fall
+  // through to the generic "Player" label. Give the guest its proper seat
+  // name instead, matching every other guest-capable game.
+  if (isGuestId(userId)) return GUEST_DISPLAY_NAME;
   const [u] = await tx.select({ name: users.name }).from(users).where(eq(users.clerkId, userId)).limit(1);
   return u?.name || "Player";
 }

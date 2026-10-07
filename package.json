@@ -33,6 +33,8 @@
     "test:onboarding": "node --import tsx --test tests/onboarding-questionnaire.test.mjs tests/onboarding-flow.test.mjs tests/onboarding-preferences.test.mjs tests/game-recommendations.test.mjs",
     "test:recommendations": "node --import tsx --test tests/game-recommendations.test.mjs tests/lobby-for-you.test.mjs tests/lobby-random-order.test.mjs",
     "test:presence": "node --import tsx --test tests/game-presence.test.mjs",
+    "test:guest-seats": "node --import tsx --test tests/guest-seat-avatars.test.mjs",
+    "test:guest-practice": "node --import tsx --test tests/guest-practice-seats.test.mjs",
     "verify:game-presence": "node --import tsx qa/game-presence-check.mjs",
     "verify:lobby-for-you": "node qa/lobby-for-you-check.mjs",
     "test:emotes": "node --import tsx --test tests/emotes.test.mjs",

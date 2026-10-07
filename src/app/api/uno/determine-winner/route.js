@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { db } from "../../../../db/client";
 import { users, unoGames } from "../../../../db/schema";
 import { and, eq } from "drizzle-orm";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
+import { isUnoSeat, unoCallerToken } from "../../../../lib/unoSeat";
 
 function safeParse(value, fallback = []) {
   if (value == null) return fallback;
@@ -20,14 +20,10 @@ function safeParse(value, fallback = []) {
 
 export async function POST(req) {
   try {
-    const gate = await requireAgeVerifiedUser();
+    const gate = await requirePracticePlayer();
     if (gate.response) return gate.response;
 
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
+    const playerId = gate.playerId;
     const { gameId } = await req.json();
     if (!gameId) {
       return NextResponse.json({ error: "Missing gameId" }, { status: 400 });
@@ -40,30 +36,52 @@ export async function POST(req) {
       return NextResponse.json({ error: "Game not found" }, { status: 404 });
     }
 
-    const requester = await db.query.users.findFirst({
-      where: eq(users.clerkId, userId),
-    });
-    if (!requester) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    // The account row exists only for a signed-in caller; a guest's seat
+    // token is its guest id (and it can never hold an online-game seat).
+    let requester = null;
+    if (!gate.isGuest) {
+      requester = await db.query.users.findFirst({
+        where: eq(users.clerkId, playerId),
+      });
+      if (!requester) {
+        return NextResponse.json({ error: "User not found" }, { status: 404 });
+      }
     }
 
     const isMultiplayer = Boolean(game.player2Id);
+
+    // Seat check: only the practice owner, or an online participant, may
+    // settle the game. A guest is never an online participant.
+    const callerToken = unoCallerToken(
+      gate.isGuest,
+      playerId,
+      requester?.id ?? null,
+    );
+    const isOwner = isUnoSeat(game, callerToken);
+    const isPlayer2 =
+      isMultiplayer && game.player2Id !== null && game.player2Id === requester?.id;
+    if (isMultiplayer ? !isOwner && !isPlayer2 : !isOwner) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    // A guest owns no `users` row and practice never moves a wallet.
+    const balance = requester ? parseFloat(requester.balance) : 0;
 
     if (game.result !== "pending" && game.winner && game.winner !== "pending") {
       return NextResponse.json({
         success: true,
         winner: game.winner,
         result: game.result,
-        newBalance: parseFloat(requester.balance),
+        newBalance: balance,
         message: "Winner already determined.",
       });
     }
 
     if (isMultiplayer) {
       const role =
-        game.userId === requester.id
+        game.userId !== null && game.userId === requester?.id
           ? "player1"
-          : game.player2Id === requester.id
+          : game.player2Id !== null && game.player2Id === requester?.id
             ? "player2"
             : null;
       if (!role) {
@@ -135,7 +153,7 @@ export async function POST(req) {
           success: true,
           winner: alreadyWinner,
           result: didRequesterWin ? "win" : "lose",
-          newBalance: parseFloat(requester.balance),
+          newBalance: balance,
           message: "Winner already determined.",
         });
       }
@@ -154,7 +172,7 @@ export async function POST(req) {
         winner,
         result: didRequesterWin ? "win" : "lose",
         // Stakes are retired — no balance ever moves on settle.
-        newBalance: parseFloat(requester.balance),
+        newBalance: balance,
         message: didRequesterWin
     ? "You won!"
     : "Opponent won.",
@@ -211,7 +229,7 @@ export async function POST(req) {
         success: true,
         winner: game.winner,
         result: game.result,
-        newBalance: parseFloat(requester.balance),
+        newBalance: balance,
         message: "Winner already determined.",
       });
     }
@@ -228,7 +246,7 @@ export async function POST(req) {
       success: true,
       winner,
       result,
-      newBalance: parseFloat(requester.balance),
+      newBalance: balance,
       message:
         result === "win"
     ? "You won!"

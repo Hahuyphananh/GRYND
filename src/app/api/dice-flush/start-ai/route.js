@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
-import { db, getDisplayName, initialState, requireUser, diceFlushPlayers, diceFlushRooms } from "../_lib";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { db, getDisplayName, initialState, diceFlushPlayers, diceFlushRooms } from "../_lib";
+// Free practice is open to signed-out guests (the match is unrated); the
+// caller becomes a `guest_<uuid>` seat via the HMAC-signed cookie. Matchmaking
+// routes (`create` / `join`) keep the age gate.
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { coerceAiDifficulty } from "../../../../lib/aiDifficulty";
 import { normalizeStake } from "../../../../lib/games/stakes";
 
 export async function POST(req) {
   try {
-    const gate = await requireAgeVerifiedUser();
+    const gate = await requirePracticePlayer({ create: true });
     if (gate.response) return gate.response;
-    const userId = await requireUser();
+    const userId = gate.playerId;
     const { wager, difficulty: rawDifficulty } = await req.json();
     // Canonical `easy | normal | hard`: an older client's `medium`, or a lobby
     // that never sent one, lands on the shared default rather than storing a
@@ -45,7 +48,10 @@ export async function POST(req) {
       return { roomId, state };
     });
 
-    return NextResponse.json({ success: true, roomId: result.roomId, state: result.state });
+    // `viewerId` lets the client identify its own seat without a Clerk
+    // session — a guest has no `user.id` client-side, so the server tells it
+    // which seat is its own.
+    return NextResponse.json({ success: true, roomId: result.roomId, viewerId: userId, state: result.state });
   } catch (e) {
     return NextResponse.json({ success: false, error: e.message || "Failed to create AI room" }, { status: 400 });
   }

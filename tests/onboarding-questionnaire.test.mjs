@@ -421,5 +421,9 @@ test("proxy keeps the questionnaire reachable before the age gate", () => {
 
 test("new signups are routed to the questionnaire first", () => {
   const sync = read("src/app/sync/PageClient.tsx");
-  assert.match(sync, /isNewUser \? "\/welcome\/questionnaire" : "\/"/);
+  // Only when the account has not already completed onboarding — the flag is
+  // read from the server rather than inferred from the sync message.
+  assert.match(sync, /\/api\/onboarding\/status/);
+  assert.match(sync, /data\.onboardingCompleted === true/);
+  assert.match(sync, /"\/welcome\/questionnaire"/);
 });

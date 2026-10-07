@@ -1,8 +1,8 @@
-import { auth } from "@clerk/nextjs/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { db } from "../../../../db/client";
 import { unoGames, users } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
+import { isUnoSeat, unoCallerToken } from "../../../../lib/unoSeat";
 
 function safeParse(value, fallback = []) {
   if (value == null) return fallback;
@@ -26,16 +26,8 @@ function getTopCard(game) {
 }
 
 export async function POST(request) {
-  const gate = await requireAgeVerifiedUser();
+  const gate = await requirePracticePlayer();
   if (gate.response) return gate.response;
-
-  const { userId } = await auth();
-  if (!userId) {
-    return new Response(
-      JSON.stringify({ success: false, error: "Unauthorized" }),
-      { status: 401 },
-    );
-  }
 
   const { gameId } = await request.json();
   if (!gameId) {
@@ -56,19 +48,24 @@ export async function POST(request) {
       );
     }
 
-    const user = await db.query.users.findFirst({
-      where: eq(users.clerkId, userId),
-    });
-    if (!user) {
-      return new Response(
-        JSON.stringify({ success: false, error: "User not found" }),
-        { status: 404 },
-      );
+    // Resolve the caller's seat token. A guest has no `users` row — its token
+    // is the guest id — and can never hold a seat in an online game.
+    let user = null;
+    if (!gate.isGuest) {
+      user = await db.query.users.findFirst({
+        where: eq(users.clerkId, gate.playerId),
+      });
+      if (!user) {
+        return new Response(
+          JSON.stringify({ success: false, error: "User not found" }),
+          { status: 404 },
+        );
+      }
     }
 
     const isMultiplayer = Boolean(game.player2Id);
-    const isPlayer1 = game.userId === user.id;
-    const isPlayer2 = game.player2Id === user.id;
+    const isPlayer1 = game.userId !== null && game.userId === user?.id;
+    const isPlayer2 = game.player2Id !== null && game.player2Id === user?.id;
 
     if (isMultiplayer && !isPlayer1 && !isPlayer2) {
       return new Response(
@@ -95,6 +92,19 @@ export async function POST(request) {
     }
 
     if (!isMultiplayer) {
+      // Per-room seat check for the practice game: only its owner may read
+      // it. This is the check the AI branch was missing entirely.
+      const callerToken = unoCallerToken(
+        gate.isGuest,
+        gate.playerId,
+        user?.id ?? null,
+      );
+      if (!isUnoSeat(game, callerToken)) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Forbidden" }),
+          { status: 403 },
+        );
+      }
       const topCard = getTopCard(game);
       return new Response(
         JSON.stringify({

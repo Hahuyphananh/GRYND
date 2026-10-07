@@ -1,5 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { hexDuelGames, users } from "../../../../db/schema";
@@ -29,17 +28,13 @@ interface HexDuelAiSessionPayload {
 
 export async function POST(req: Request) {
   try {
-    const gate = await requireAgeVerifiedUser();
+    // Free practice (vs AI / play-for-fun) is open to signed-out guests: the
+    // match is unrated and moves no tokens. A guest owns no `users` row, so
+    // every balance write below is inert for it, and the real PvP settlement
+    // path is unreachable (it would find no user to settle).
+    const gate = await requirePracticePlayer();
     if (gate.response) return gate.response;
-
-    const { userId: clerkId } = await auth();
-
-    if (!clerkId) {
-      return NextResponse.json(
-        { success: false, error: "Unauthorized. Please sign in" },
-        { status: 401 }
-      );
-    }
+    const clerkId = gate.playerId as string;
 
     const body = await req.json();
     const {
@@ -96,7 +91,10 @@ export async function POST(req: Request) {
     //    don't need this — they bypass /start-game and never credited any
     //    wager in the first place.
     let aiModeAuthorised = false;
-    if (isAiGame === true) {
+    // A pure for-fun match (`isFunMode`) never calls /start-game and never
+    // credited a wager, so it needs no AI-session proof. Only an `isAiGame`
+    // claim that is NOT already fun mode has to prove itself.
+    if (isAiGame === true && isFunMode !== true) {
       if (typeof aiSessionId !== "string" || aiSessionId.length === 0) {
         return NextResponse.json(
           {

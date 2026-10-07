@@ -1,3 +1,5 @@
+import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { db } from "../../../db/client";
 import { users } from "../../../db/schema";
@@ -5,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { cacheDelete } from "../../../lib/redis/cache";
 import { CacheKeys } from "../../../lib/redis/keys";
 import { parseAndValidateJson } from "../../../lib/security/validation";
-import { findProfanity } from "../../../lib/moderation/profanity";
+import { findProfanity, moderatedDisplayName } from "../../../lib/moderation/profanity";
 import { searchNameFor } from "../../../lib/searchName";
 import {
   calculateAge,
@@ -95,7 +97,14 @@ export async function POST(req) {
     // Update age (and the chosen username, when supplied) in DB. `search_name`
     // is kept in lockstep with `name` — it is the folded match key
     // /api/friends/search reads (src/lib/searchName.ts).
-    await db
+    //
+    // `returning` lets us detect the case where the local row does not exist
+    // yet: /complete-profile is the FIRST stop after signup, and the Clerk
+    // `user.created` webhook can still be in flight. An UPDATE that matches
+    // zero rows reports success while silently dropping the 18+ age, which
+    // sends the player back to /complete-profile on their next protected page
+    // — so we create the row ourselves instead of losing the write.
+    const updated = await db
       .update(users)
       .set({
         age,
@@ -103,7 +112,51 @@ export async function POST(req) {
           ? { name: chosenUsername, searchName: searchNameFor(chosenUsername) }
           : {}),
       })
-      .where(eq(users.clerkId, userId));
+      .where(eq(users.clerkId, userId))
+      .returning({ id: users.id });
+
+    if (updated.length === 0) {
+      // Best-effort Clerk lookup supplies the required unique email and a
+      // neutral handle. The account's stats/icons are seeded by the /sync
+      // request that always follows this page, so nothing is skipped by
+      // creating the row here.
+      const client = await clerkClient();
+      const clerkUser = await client.users.getUser(userId);
+      const email =
+        clerkUser.emailAddresses?.find(
+          (address) => address.id === clerkUser.primaryEmailAddressId,
+        )?.emailAddress ?? clerkUser.emailAddresses?.[0]?.emailAddress;
+
+      if (email) {
+        const passwordHash = await bcrypt.hash(
+          crypto.randomBytes(32).toString("hex"),
+          12,
+        );
+        const fallbackUsername =
+          typeof clerkUser.publicMetadata?.username === "string"
+            ? clerkUser.publicMetadata.username
+            : "";
+        const displayName = moderatedDisplayName(
+          chosenUsername || fallbackUsername,
+          userId,
+        );
+
+        // onConflictDoNothing covers the races: the webhook may insert
+        // between the UPDATE and this INSERT, or the email may already be
+        // owned by a row under another clerkId (which /sync re-associates).
+        await db
+          .insert(users)
+          .values({
+            clerkId: userId,
+            email,
+            name: displayName,
+            searchName: searchNameFor(displayName),
+            password: passwordHash,
+            age,
+          })
+          .onConflictDoNothing();
+      }
+    }
 
     // Invalidate the middleware age-gate cache so the next navigation
     // reflects the new age instead of the cached value.

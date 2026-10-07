@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { db } from "../../../../db/client";
 import { users, unoGames } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
 import { getUnoGameById, updateUnoGameState } from "../../../lib/unoGameUtils";
 import { applyUnoCard, isValidPlay } from "../../../lib/unoLogic";
+import { isUnoSeat, unoCallerToken } from "../../../../lib/unoSeat";
 
 function safeParse(value, fallback = []) {
   if (value == null) return fallback;
@@ -37,16 +37,8 @@ function isAllowedChosenColor(color) {
 
 export async function POST(req) {
   try {
-    const gate = await requireAgeVerifiedUser();
+    const gate = await requirePracticePlayer();
     if (gate.response) return gate.response;
-
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json(
-        { success: false, error: "Unauthorized" },
-        { status: 401 },
-      );
-    }
 
     const { gameId, card, chosenColor } = await req.json();
 
@@ -57,14 +49,19 @@ export async function POST(req) {
         { status: 404 },
       );
 
-    const user = await db.query.users.findFirst({
-      where: eq(users.clerkId, userId),
-    });
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: "User not found" },
-        { status: 404 },
-      );
+    // The account row exists only for a signed-in caller; a guest's seat
+    // token is its guest id (and it can never hold an online-game seat).
+    let user = null;
+    if (!gate.isGuest) {
+      user = await db.query.users.findFirst({
+        where: eq(users.clerkId, gate.playerId),
+      });
+      if (!user) {
+        return NextResponse.json(
+          { success: false, error: "User not found" },
+          { status: 404 },
+        );
+      }
     }
 
     const isMultiplayer = Boolean(game.player2Id);
@@ -78,9 +75,9 @@ export async function POST(req) {
       }
 
       const role =
-        game.userId === user.id
+        game.userId !== null && game.userId === user?.id
           ? "player1"
-          : game.player2Id === user.id
+          : game.player2Id !== null && game.player2Id === user?.id
             ? "player2"
             : null;
       if (!role) {
@@ -214,6 +211,19 @@ export async function POST(req) {
               : "Carte jouée, tour adverse",
         },
       });
+    }
+
+    // Per-room seat check for the practice game: only its owner may play.
+    const callerToken = unoCallerToken(
+      gate.isGuest,
+      gate.playerId,
+      user?.id ?? null,
+    );
+    if (!isUnoSeat(game, callerToken)) {
+      return NextResponse.json(
+        { success: false, error: "Forbidden" },
+        { status: 403 },
+      );
     }
 
     const playerHand = safeParse(game.playerHand, []);

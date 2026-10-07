@@ -1501,8 +1501,16 @@ export const unoGames = pgTable(
   "uno_games",
   {
     id: serial("id").primaryKey(),
-    userId: integer("user_id").notNull(),
+    // Account seat. NULLABLE since migration 0206: a free vs-AI practice game
+    // started by a signed-out visitor has NO `users` row, so its seat is the
+    // signed `guest_id` below instead. An online (PvP) game always has a
+    // `userId` — matchmaking keeps the account gate.
+    userId: integer("user_id"),
     player2Id: integer("player2_id"),
+    // Guest seat for the free vs-AI practice path (migration 0206):
+    // `guest_<uuid>` from the HMAC-signed cookie. NULL for every account game.
+    // Never a Clerk id and never a `users` row.
+    guestId: varchar("guest_id", { length: 64 }),
     betAmount: text("bet_amount").notNull(), // stored as string to match other tables
     pot: text("pot").notNull(), // total pot
     result: text("result").notNull(), // 'win' | 'lose' | 'draw' | 'pending'

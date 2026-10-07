@@ -1,16 +1,17 @@
 import { NextResponse } from "next/server";
-import { and, db, eq, loadRoom, requireUser, diceFlushRooms } from "../_lib";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { and, assertRoomSeat, db, eq, errorStatus, loadRoom, diceFlushRooms } from "../_lib";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 
 export async function POST(req) {
   try {
-    const gate = await requireAgeVerifiedUser();
+    const gate = await requirePracticePlayer();
     if (gate.response) return gate.response;
-    const userId = await requireUser();
+    const userId = gate.playerId;
     const { roomId } = await req.json();
     const result = await db.transaction(async (tx) => {
       const room = await loadRoom(roomId, tx);
       const state = room.gameState;
+      assertRoomSeat(state, userId);
       if (state.state === "finished") return { state };
       const winner = state.players.find((p) => p.userId !== userId);
       if (!winner) throw new Error("Cannot resign before opponent joins");
@@ -23,6 +24,6 @@ export async function POST(req) {
     });
     return NextResponse.json({ success: true, ...result });
   } catch (e) {
-    return NextResponse.json({ success: false, error: e.message || "Failed to resign" }, { status: 400 });
+    return NextResponse.json({ success: false, error: e.message || "Failed to resign" }, { status: errorStatus(e) });
   }
 }

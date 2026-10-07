@@ -119,6 +119,8 @@ type PlayerHead = {
   displayName: string;
   iconKey: string | null;
   profileFrame?: unknown;
+  /** True for a signed-out practice guest — draws the "G" badge. */
+  isGuest?: boolean;
   missing?: boolean;
 };
 
@@ -806,6 +808,7 @@ export default function MemoryGridMatchPage({
     : oppHead?.displayName || (match ? (viewerIsPlayer1 ? "Player 2" : "Player 1") : "Player 2");
   const oppIconKey = oppHead?.iconKey || null;
   const oppProfileFrame = oppHead?.profileFrame || null;
+  const oppIsGuest = Boolean(oppHead?.isGuest);
 
   // My own seat head — same server enrichment, so the viewer's real
   // username renders next to the opponent's (falls back to "You").
@@ -919,6 +922,7 @@ export default function MemoryGridMatchPage({
               frame={oppProfileFrame}
               iconKey={oppIconKey}
               name={oppName}
+              isGuest={oppIsGuest}
               size="h-3.5 w-3.5"
             />
             {oppName}

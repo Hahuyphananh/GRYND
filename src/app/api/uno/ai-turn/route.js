@@ -1,6 +1,5 @@
 import { db } from "../../../../db/client";
-import { auth } from "@clerk/nextjs/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import {
   getUnoGameById,
   drawUnoCard,
@@ -9,6 +8,7 @@ import {
 import { applyUnoCard, isValidPlay } from "../../../lib/unoLogic";
 import { users } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
+import { isUnoSeat, unoCallerToken } from "../../../../lib/unoSeat";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
 import { aiMistakeRate, coerceAiDifficulty } from "../../../../lib/aiDifficulty";
 
@@ -133,15 +133,8 @@ function chooseBestPlay(aiHand, playerHand, topCard, currentColor, difficulty) {
 
 export async function POST(req) {
   try {
-    const gate = await requireAgeVerifiedUser();
+    const gate = await requirePracticePlayer();
     if (gate.response) return gate.response;
-
-    const { userId: clerkId } = await auth();
-    if (!clerkId)
-      return new Response(
-        JSON.stringify({ success: false, error: "Unauthorized" }),
-        { status: 401 },
-      );
 
     const parsed = await parseAndValidateJson(req, {
       gameId: { type: "number", required: true, integer: true, min: 1 },
@@ -157,18 +150,30 @@ export async function POST(req) {
         { status: 404 },
       );
 
-    const [currentUser] = await db
-      .select()
-      .from(users)
-      .where(eq(users.clerkId, clerkId))
-      .limit(1);
-    if (!currentUser)
-      return new Response(
-        JSON.stringify({ success: false, error: "User not found" }),
-        { status: 404 },
-      );
+    // Only a signed-in caller has a `users` row to resolve to a seat token;
+    // a guest's token is the guest id itself.
+    let currentUser = null;
+    if (!gate.isGuest) {
+      [currentUser] = await db
+        .select()
+        .from(users)
+        .where(eq(users.clerkId, gate.playerId))
+        .limit(1);
+      if (!currentUser)
+        return new Response(
+          JSON.stringify({ success: false, error: "User not found" }),
+          { status: 404 },
+        );
+    }
 
-    if (String(game.userId) !== String(currentUser.id)) {
+    // Per-room seat check: only the owner of this practice game may drive the
+    // AI's turn. A signed-in stranger and a guest with no seat both 403.
+    const callerToken = unoCallerToken(
+      gate.isGuest,
+      gate.playerId,
+      currentUser?.id ?? null,
+    );
+    if (!isUnoSeat(game, callerToken)) {
       return new Response(
         JSON.stringify({ success: false, error: "Forbidden" }),
         { status: 403 },
@@ -312,9 +317,9 @@ export async function POST(req) {
 
     await updateUnoGameState(gameId, updatedGameState);
 
-    const user = await db.query.users.findFirst({
-      where: eq(users.id, game.userId),
-    });
+    // A guest game has no account to read a balance from; practice never
+    // moves a wallet, so report 0.
+    const newBalance = currentUser ? parseFloat(currentUser.balance) : 0;
 
     return new Response(
       JSON.stringify({
@@ -323,7 +328,7 @@ export async function POST(req) {
           topCard,
           playerHand,
           aiHandCount: aiHand.length,
-          newBalance: parseFloat(user.balance),
+          newBalance,
           message,
           isPlayerTurn,
           currentColor,

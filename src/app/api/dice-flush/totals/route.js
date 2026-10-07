@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
-import { db, eq, loadRoom, requireUser, diceFlushRooms } from "../_lib";
+import { assertRoomSeat, db, eq, errorStatus, loadRoom, diceFlushRooms } from "../_lib";
 import { playerTotals } from "../../../../../game-engine/diceFlushEngine";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 
 export async function GET(req) {
   try {
-    const userId = await requireUser();
+    const gate = await requirePracticePlayer();
+    if (gate.response) return gate.response;
+    const userId = gate.playerId;
     const { searchParams } = new URL(req.url);
     const roomId = searchParams.get("roomId");
     if (!roomId) throw new Error("Missing roomId");
@@ -12,6 +15,8 @@ export async function GET(req) {
     const room = await loadRoom(roomId);
     const state = room.gameState;
     if (!state) throw new Error("No game state found");
+    // Per-room owner check — a room's scorecard is only visible to its seats.
+    assertRoomSeat(state, userId);
 
     // Shared sheet: totals are computed per player from the categories each
     // one claimed (see playerTotals in the engine).
@@ -26,8 +31,8 @@ export async function GET(req) {
     return NextResponse.json({ success: true, playerTotals: playerTotalsList });
   } catch (e) {
     return NextResponse.json(
-      { success: false, error: e.message || "Failed" },
-      { status: 400 }
-    );
-  }
+      { success: false, error: e.message || "Failed"    }, { status: errorStatus(e) }
+  );
+}
+
 }

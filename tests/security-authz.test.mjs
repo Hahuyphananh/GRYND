@@ -26,14 +26,22 @@ test("dice-flush stats enforces auth and participant authorization", () => {
   );
 });
 
-test("uno ai-turn enforces auth and game ownership authorization", () => {
+test("uno ai-turn authorizes the practice seat (guest or account)", () => {
   const file = read("src/app/api/uno/ai-turn/route.js");
-  assert.match(file, /await\s+auth\(\)/, "route should require auth");
+  // The free vs-AI practice path is open to signed-out guests, so
+  // authorisation runs through the shared practice gate — a Clerk session OR a signed guest
+  // id — instead of the account-only age gate. The AI seat is still tied to the
+  // game's owner by `isUnoSeat`, so a non-owner still gets a 403.
+  assert.match(
+    file,
+    /requirePracticePlayer/,
+    "route should require a practice player (account or guest)",
+  );
   assert.match(
     file,
     /users\.clerkId/,
-    "route should resolve authenticated DB user",
+    "route should resolve the signed-in DB user",
   );
-  assert.match(file, /game\.userId/, "route should compare game owner");
+  assert.match(file, /isUnoSeat\(/, "route should compare against the game seat");
   assert.match(file, /Forbidden/, "route should reject non-owner access");
 });

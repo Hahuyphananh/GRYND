@@ -176,7 +176,7 @@ function PrecisionScoreboardImpl({
           }
           transition={{ duration: 0.6, ease: "easeOut" }}
         >          <p className="flex items-center gap-1.5 text-xs text-slate-300">
-            <FrameAvatar frame={(seat1Player as any)?.profileFrame} iconKey={seat1Player?.iconKey} name={seat1Player?.name} size="h-4 w-4" />
+            <FrameAvatar frame={(seat1Player as any)?.profileFrame} iconKey={seat1Player?.iconKey} name={seat1Player?.name} isGuest={Boolean(seat1Player?.isGuest)} size="h-4 w-4" />
             <span
               className={`truncate ${cosmeticEffectClass((seat1Player as any)?.profileFrame?.usernameEffect?.visual) || ""}`}
               style={seat1Player?.nameColor ? { color: seat1Player.nameColor } : undefined}
@@ -216,7 +216,7 @@ function PrecisionScoreboardImpl({
           }
           transition={{ duration: 0.6, ease: "easeOut" }}
         >          <p className="flex items-center gap-1.5 text-xs text-slate-300">
-            <FrameAvatar frame={(seat2Player as any)?.profileFrame} iconKey={seat2Player?.iconKey} name={seat2Player?.name} size="h-4 w-4" />
+            <FrameAvatar frame={(seat2Player as any)?.profileFrame} iconKey={seat2Player?.iconKey} name={seat2Player?.name} isGuest={Boolean(seat2Player?.isGuest)} size="h-4 w-4" />
             <span
               className={`truncate ${cosmeticEffectClass((seat2Player as any)?.profileFrame?.usernameEffect?.visual) || ""}`}
               style={seat2Player?.nameColor ? { color: seat2Player.nameColor } : undefined}

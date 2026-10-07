@@ -1,17 +1,14 @@
-import { auth } from "@clerk/nextjs/server";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { db } from "../../../../db/client";
 import { unoGames, users } from "../../../../db/schema";
 import { and, eq, or, inArray } from "drizzle-orm";
+import { isUnoSeat, unoCallerToken } from "../../../../lib/unoSeat";
 
 
 export async function POST(req) {
   try {
-    const gate = await requireAgeVerifiedUser();
+    const gate = await requirePracticePlayer();
     if (gate.response) return gate.response;
-
-    const { userId } = await auth();
-    if (!userId) return new Response("Unauthorized", { status: 401 });
 
     const body = await req.json();
     const gameId = Number(body?.gameId);
@@ -20,14 +17,19 @@ export async function POST(req) {
       return new Response("Invalid gameId", { status: 400 });
     }
 
-    const [requestingUser] = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.clerkId, userId))
-      .limit(1);
+    // The account row exists only for a signed-in caller; a guest's seat
+    // token is its guest id.
+    let requestingUser = null;
+    if (!gate.isGuest) {
+      [requestingUser] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.clerkId, gate.playerId))
+        .limit(1);
 
-    if (!requestingUser) {
-      return new Response("User not found", { status: 404 });
+      if (!requestingUser) {
+        return new Response("User not found", { status: 404 });
+      }
     }
 
     //  Find the game
@@ -35,6 +37,20 @@ export async function POST(req) {
 
     if (!game) {
       return new Response("Game not found", { status: 404 });
+    }
+
+    //  Seat check: the practice owner (the only seat a guest can hold) OR an
+    //  online participant may resign. A guest is never an online participant.
+    const callerToken = unoCallerToken(
+      gate.isGuest,
+      gate.playerId,
+      requestingUser?.id ?? null,
+    );
+    const isOwner = isUnoSeat(game, callerToken);
+    const isPlayer2 =
+      game.player2Id !== null && game.player2Id === requestingUser?.id;
+    if (!isOwner && !isPlayer2) {
+      return new Response("Forbidden", { status: 403 });
     }
 
     await db.transaction(async (tx) => {

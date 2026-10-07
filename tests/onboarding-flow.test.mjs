@@ -73,8 +73,12 @@ test("1. a brand-new account is sent to the questionnaire before the tutorial", 
     }),
     true
   );
-  // New signups start at the questionnaire (the /sync hand-off).
-  assert.match(read(SYNC), /isNewUser \? "\/welcome\/questionnaire" : "\/"/);
+  // New signups start at the questionnaire (the /sync hand-off) — but the
+  // hand-off is gated on the server-authoritative onboarding flag, so a fresh
+  // account that already finished the tutorial is never re-onboarded.
+  assert.match(read(SYNC), /\/api\/onboarding\/status/);
+  assert.match(read(SYNC), /data\.onboardingCompleted === true/);
+  assert.match(read(SYNC), /"\/welcome\/questionnaire"/);
   // …and it is reachable before the age gate.
   assert.match(read(PROXY), /"\/welcome\/questionnaire\(\.\*\)"/);
   // The lobby does NOT invite them (that invitation is for existing players).
@@ -221,6 +225,12 @@ test("6. an existing account is never sent back through the tutorial", () => {
   assert.match(lobby, /shouldShowQuestionnaireInvite\(\{/);
   // The invitation only renders for signed-in users with the tutorial done.
   assert.match(lobby, /onboardingCompleted: ok \? data\.onboardingCompleted === true : null/);
+
+  // The /sync hand-off honours the same rule: a freshly-synced account that
+  // already finished the tutorial goes home instead of back into onboarding.
+  const sync = read(SYNC);
+  assert.match(sync, /hasCompletedOnboarding/);
+  assert.match(sync, /isNewUser && !\(await hasCompletedOnboarding\(\)\)/);
 });
 
 // ── Scenario 7: existing account clicks "Customize My GRYND" ──────────────

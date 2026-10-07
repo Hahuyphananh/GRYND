@@ -74,3 +74,25 @@ export function guestSeatIdentity(): SeatIdentityLike {
     isGuest: true,
   };
 }
+
+/**
+ * The seat-summary shape the PER-GAME enrichment helpers attach
+ * (`{ id, displayName, iconKey, profileFrame, nameColor }` — mines-pvp,
+ * memory-grid, keno-pvp, precision). A guest owns no `users` row, so those
+ * lookups find nothing and would otherwise fall back to the "missing user"
+ * stub (which carries no icon key and renders the DEFAULT catalog icon).
+ *
+ * Hand this back instead: the seat stays a guest all the way to the client,
+ * where `<SeatAvatar isGuest>` / `<FrameAvatar isGuest>` draws the "G" badge.
+ */
+export function guestSeatSummary(id: string) {
+  return {
+    id,
+    displayName: GUEST_DISPLAY_NAME,
+    iconKey: null,
+    profileFrame: null,
+    nameColor: null,
+    isGuest: true,
+    missing: false,
+  };
+}

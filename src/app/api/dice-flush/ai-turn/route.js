@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { calculateScore, rollDice } from "../../../../../game-engine/diceFlushEngine";
-import { appendAction, db, eq, loadRoom, nextTurn, requireUser, resolveExpiredTurn, settleIfEnded, validateMove, diceFlushRooms } from "../_lib";
-import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { appendAction, assertRoomSeat, db, eq, errorStatus, loadRoom, nextTurn, resolveExpiredTurn, settleIfEnded, validateMove, diceFlushRooms } from "../_lib";
+import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { chooseAiOption, coerceAiDifficulty } from "../../../../lib/aiDifficulty";
 
 const ALL_CATEGORIES = ["ones","twos","threes","fours","fives","sixes","threeOfKind","fourOfKind","fullHouse","smallStraight","largeStraight","fiveKind"];
@@ -19,14 +19,17 @@ function pickAiCategory(state, difficulty) {
 
 export async function POST(req) {
   try {
-    const gate = await requireAgeVerifiedUser();
+    const gate = await requirePracticePlayer();
     if (gate.response) return gate.response;
-    const userId = await requireUser();
+    const userId = gate.playerId;
     const { roomId } = await req.json();
     if (!roomId) return NextResponse.json({ success: false, error: "roomId required" }, { status: 400 });
 
     const result = await db.transaction(async (tx) => {
       const room = await loadRoom(roomId, tx);
+      // Per-room seat check: the caller must hold a seat in this room before
+      // it may drive the AI's turn (or resolve a stalled shot clock).
+      assertRoomSeat(room.gameState, userId);
       let state = room.gameState;
 
       // Shot clock: resolve a stalled turn (e.g. the human's previous turn
@@ -81,6 +84,6 @@ export async function POST(req) {
 
     return NextResponse.json({ success: true, ...result });
   } catch (e) {
-    return NextResponse.json({ success: false, error: e.message || "Failed" }, { status: 400 });
+    return NextResponse.json({ success: false, error: e.message || "Failed" }, { status: errorStatus(e) });
   }
 }

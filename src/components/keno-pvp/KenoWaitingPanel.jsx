@@ -55,6 +55,7 @@ function SeatCard({ label, accent, occupant, name, isMe, readyLabel, emptyHint }
             frame={occupant.profileFrame || null}
             iconKey={occupant.iconKey || null}
             name={name}
+            isGuest={Boolean(occupant.isGuest)}
             size="h-9 w-9"
           />
           <p
