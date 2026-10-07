@@ -126,9 +126,9 @@
     "loadtest:read-mix": "npx --yes artillery@2.0.34 run load-test/scenarios/read-mix.yml"
   },
   "dependencies": {
-    "@capacitor/android": "^8.3.3",
-    "@capacitor/core": "^8.3.3",
-    "@capacitor/ios": "^8.3.3",
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/ios": "^8.5.2",
     "@clerk/backend": "^3.4.9",
     "@clerk/nextjs": "^7.3.5",
     "@clerk/react": "^6.6.4",
@@ -174,7 +174,7 @@
     "ws": "^8.21.0"
   },
   "devDependencies": {
-    "@capacitor/cli": "^8.3.3",
+    "@capacitor/cli": "^8.5.2",
     "@types/canvas-confetti": "^1.9.0",
     "@types/node": "22.14.1",
     "@types/pg": "^8.11.14",
@@ -207,7 +207,9 @@
     "fast-uri": "^3.1.5",
     "shell-quote": "^1.10.0",
     "dompurify": "^3.4.16",
-    "sharp": "^0.35.4",
+    "sharp": "^0.35.5",
+    "source-map-js": "^1.2.2",
+    "postcss-selector-parser": "^7.1.6",
     "brace-expansion": "^5.0.12",
     "undici": "^7.29.0",
     "socket.io-parser": "^4.2.7",
