@@ -76,38 +76,67 @@ const nextConfig = {
       process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   },
 
+  // ── /games/* routing ─────────────────────────────────────────────────
+  //
+  // Two DIFFERENT things live under /games now, and they are dispatched
+  // separately:
+  //
+  //   /games/<slug>       the PUBLIC, indexable landing page — a real App
+  //                       Router route (src/app/games/[slug]/page.tsx). It is
+  //                       deliberately NOT rewritten; the filesystem owns it.
+  //   /games/<slug>/play  the AUTHENTICATED lobby, rewritten to the existing
+  //                       /casino/<slug> route so the game application is
+  //                       completely untouched.
+  //
+  // These rules are in `beforeFiles`, not the default `afterFiles`, and the
+  // blanket `/games/:path*` catch-all is gone. That is the load-bearing part of
+  // this refactor, learned from a real run: left as an `afterFiles` rewrite, the
+  // blanket rule kept winning for /games/<slug> and served the LOBBY at the
+  // landing-page URL (a visitor saw the game application with the wrong
+  // canonical, and the new page was never reached at all). Enumerating the
+  // sub-path shapes explicitly puts the split under our control:
+  //
+  //   * `/games` exact — the games hub, which is still the /casino index.
+  //   * `/games/:slug/play` — the lobby. Declared before the sub-path rule
+  //     below, which would otherwise rewrite "<slug>/play" to the non-existent
+  //     /casino/<slug>/play (every game's lobby is /casino/<slug> itself).
+  //   * `/games/:slug/:path+` — every deep game route (/games/chess/ai,
+  //     /games/keno-pvp/<id>, /games/uno/game/<id> …), one or more segments.
+  //
+  // Anything else under /games (an unknown slug, a typo) now reaches the
+  // landing-page route and 404s there, instead of being rewritten into a
+  // non-existent /casino path.
   async rewrites() {
-    // Proxy PostHog ingestion through the app domain to prevent ad-blockers
-    // from blocking analytics requests. The /ingest path must match the
-    // api_host set in PostHogProvider.tsx (production only — dev talks to
-    // PostHog directly so external DNS failures never spam the dev server).
-    const posthogHost = process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://app.posthog.com";
-    const rewrites = [
-      // /games/* is the canonical alias for the game hub. It rewrites to the
-      // existing /casino/* routes so the app code stays untouched while
-      // /games URLs serve the same pages (and stay in the address bar).
-      // Bare /games is handled by its own exact rule: an empty catch-all
-      // (/games/:path*) rewrites to /casino/ on Vercel, and Next 16's
-      // segment tree-prefetch can't match the trailing slash — it 404s the
-      // _rsc prefetch of /games.
+    const gameRewrites = [
       {
         source: "/games",
         destination: "/casino",
       },
       {
-        source: "/games/:path*",
-        destination: "/casino/:path*",
+        source: "/games/:slug/play",
+        destination: "/casino/:slug",
+      },
+      {
+        source: "/games/:slug/:path+",
+        destination: "/casino/:slug/:path+",
       },
     ];
 
+    // Proxy PostHog ingestion through the app domain to prevent ad-blockers
+    // from blocking analytics requests. The /ingest path must match the
+    // api_host set in PostHogProvider.tsx (production only — dev talks to
+    // PostHog directly so external DNS failures never spam the dev server).
+    const posthogHost = process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://app.posthog.com";
+    const afterFiles = [];
+
     if (process.env.NODE_ENV === "production") {
-      rewrites.unshift({
+      afterFiles.push({
         source: "/ingest/:path*",
         destination: `${posthogHost}/:path*`,
       });
     }
 
-    return rewrites;
+    return { beforeFiles: gameRewrites, afterFiles };
   },
 
   async redirects() {

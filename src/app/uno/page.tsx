@@ -6,11 +6,11 @@ export const metadata: Metadata = {
   title: "Uno | GRYND",
   description:
     "Play Uno on GRYND. Match colors and numbers in a fast strategic card game against the AI or other players.",
-  alternates: {
-    // Alias route — consolidate indexing on the canonical /games/uno
-    // (/casino/uno 308-redirects to it; see next.config.js).
-    canonical: `${OG_BASE_URL}/games/uno`,
-  },
+  // Alias route for the Uno lobby: it renders the game application, not the
+  // public landing page, so it points at the play URL and is noindex — the
+  // indexable page for this game is /games/uno.
+  alternates: { canonical: `${OG_BASE_URL}/games/uno/play` },
+  robots: { index: false, follow: true },
 };
 
 export default function Page() {

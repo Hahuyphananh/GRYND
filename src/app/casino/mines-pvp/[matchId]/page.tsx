@@ -9,6 +9,7 @@ export async function generateMetadata({
   const { matchId } = await params;
   const shortId = matchId.length > 10 ? matchId.slice(0, 8) : matchId;
   return {
+    robots: { index: false, follow: false },
     title: `Mines Duel Match #${shortId} | GRYND`,
     description: `Live Mines Duel match #${shortId} on GRYND. Two players race their own 10×10 minefields on one shared clock — reveal, flag and score the most before time runs out.`,
   };

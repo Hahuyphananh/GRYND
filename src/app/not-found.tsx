@@ -8,6 +8,13 @@ export const metadata: Metadata = {
   title: "Page Not Found | GRYND",
   description:
     "The page you're looking for doesn't exist. Head back to GRYND and keep playing.",
+  // Belt and braces. A genuine mismatch is answered with a 404 status, which
+  // crawlers never index, so this is normally redundant. It matters if this
+  // boundary is ever reached from a route that had already started streaming:
+  // once the shell is flushed the status cannot be corrected, and the response
+  // would be a 200 serving not-found content — a soft 404. Declaring noindex
+  // here means such a response can never be indexed either way.
+  robots: { index: false, follow: true },
 };
 
 /* ── Slot reels ─────────────────────────────────────────────

@@ -17,6 +17,13 @@ Disallow: /profile
 
 # Dynamic live sessions / match tables (opaque IDs, not meaningful to index)
 Disallow: /casino/poker/multi/
-Disallow: /casino/chess/ai
+# The deep AI chess board. Listed under /games/* — the canonical prefix —
+# because /casino/chess/ai only 308-redirects here (see next.config.js), so a
+# rule written against the old prefix no longer blocks the page it names.
+Disallow: /games/chess/ai
+# NOTE: the game lobbies at /games/<slug>/play are deliberately NOT disallowed.
+# They carry a `noindex` robots directive instead, and a robots.txt Disallow
+# would stop a crawler from ever reading that directive. The public, indexable
+# page for each game is /games/<slug>.
 
 Sitemap: https://grynd.dedyn.io/sitemap.xml

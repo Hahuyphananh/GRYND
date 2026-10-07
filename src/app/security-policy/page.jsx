@@ -1,6 +1,7 @@
 import PageClient from "./PageClient";
 
 export const metadata = {
+  alternates: { canonical: "/security-policy" },
   title: "Security Policy | GRYND",
   description:
     "Discover how GRYND protects your account and data. Encryption, account security, payment security and vulnerability management.",

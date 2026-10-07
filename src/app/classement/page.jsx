@@ -3,6 +3,8 @@ import AdSenseScript from "../../components/AdSenseScript";
 import AdSlot from "../../components/AdSlot";
 
 export const metadata = {
+  alternates: { canonical: "/classement" },
+
   title: "Leaderboard | GRYND",
   description:
     "See the top GRYND players. Every game has its own Elo leaderboard — Chess, Pool Masters, Precision, Memory Grid and more — plus all-time and weekly boards for wins, win rate, games played, streaks and PvP wins.",

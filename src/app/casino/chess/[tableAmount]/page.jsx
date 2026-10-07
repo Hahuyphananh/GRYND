@@ -1,6 +1,8 @@
 import PageClient from "./PageClient";
 
 export const metadata = {
+  robots: { index: false, follow: false },
+
   title: "Chess Table | GRYND",
   description:
     "Join or create a chess table on GRYND and face another player in a real-time chess duel.",

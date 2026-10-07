@@ -39,6 +39,7 @@ const TIEBREAK = "src/components/tic-tac-toe/TiebreakSummary.tsx";
 const UI_HELPERS = "src/lib/tic-tac-toe/ui.ts";
 const LOBBY = "src/app/casino/PageClient.jsx";
 const SITEMAP = "src/app/sitemap.ts";
+const SEO_INVENTORY = "src/lib/seoPages.ts";
 const TRANSLATIONS = "src/lib/appTextTranslations.js";
 const MOVE_ROUTE = "src/app/api/tic-tac-toe/match/[matchId]/move/route.ts";
 
@@ -498,7 +499,7 @@ test("economy: no wager, balance or payout field anywhere in the UI", () => {
 test("discovery: the lobby card links to the game and is a 1v1 duel", () => {
   const src = code(LOBBY);
   const card = src.slice(src.indexOf('name: "Tic-Tac-Toe"'));
-  assert.match(card, /href: "\/casino\/tic-tac-toe"/);
+  assert.match(card, /href: "\/games\/tic-tac-toe"/);
   assert.match(card, /leaderboardKey: "tic-tac-toe"/);
   assert.match(card, /playsKey: "tic-tac-toe"/);
   assert.match(card, /descriptionKey: "games\.tic_tac_toe_desc"/);
@@ -516,7 +517,7 @@ test("discovery: the catalog mirrors the lobby and tags the game", () => {
   assert.deepEqual(GAME_CATALOG.map((game) => game.id), lobbyIds);
   const entry = GAMES_BY_ID["tic-tac-toe"];
   assert.ok(entry, "the catalog must carry the game");
-  assert.equal(entry.href, "/casino/tic-tac-toe");
+  assert.equal(entry.href, "/games/tic-tac-toe");
   for (const tag of ["pvp", "strategy", "skill", "competitive"]) {
     assert.ok(entry.tags.includes(tag), `expected the ${tag} tag`);
   }
@@ -528,11 +529,14 @@ test("discovery: the catalog mirrors the lobby and tags the game", () => {
 
 test("discovery: presence and the sitemap know the game under its canonical id", () => {
   assert.equal(resolveGameId("tic-tac-toe"), "tic-tac-toe");
-  const src = code(SITEMAP);
-  assert.match(src, /ticTacToeMatches,/);
+  // The sitemap entry is GENERATED from the game catalog, so the game is in the
+  // sitemap because it has a landing page — not because a literal was added.
+  assert.match(strip(read(SITEMAP)), /PUBLIC_SEO_PAGES/, "the sitemap must project the inventory");
+  const src = code(SEO_INVENTORY);
+  assert.match(src, /gameLandingPath\(game\.slug\)/, "game URLs must be generated");
   assert.match(
     src,
-    /\{ path: "\/games\/tic-tac-toe", source: \[ticTacToeMatches, ticTacToeMatches\.createdAt\] \}/,
+    /"tic-tac-toe": \{ table: ticTacToeMatches, column: ticTacToeMatches\.createdAt \}/,
   );
 });
 

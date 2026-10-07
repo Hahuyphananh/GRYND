@@ -9,6 +9,7 @@ export async function generateMetadata({
   const { matchId } = await params;
   const shortId = matchId.length > 10 ? matchId.slice(0, 8) : matchId;
   return {
+    robots: { index: false, follow: false },
     title: `Tower Arena #${shortId} | GRYND`,
     description: `Live Tower Arena match #${shortId} on GRYND. Drop blocks onto a tiny floating platform, build the tower, and don't let yours fall into the void.`,
   };

@@ -57,6 +57,7 @@ const LOBBY_PAGE = "src/app/casino/solitaire-duel/page.tsx";
 const MATCH_PAGE_ROUTE = "src/app/casino/solitaire-duel/[matchId]/page.tsx";
 const CLASSEMENT = "src/app/classement/PageClient.jsx";
 const SITEMAP = "src/app/sitemap.ts";
+const SEO_INVENTORY = "src/lib/seoPages.ts";
 const TRANSLATIONS = "src/lib/appTextTranslations.js";
 const PRESENCE = "src/lib/gamePresence.js";
 
@@ -65,7 +66,7 @@ const PRESENCE = "src/lib/gamePresence.js";
 test("discovery: solitaire-duel is in the canonical catalog with the lobby's href", () => {
   const entry = GAMES_BY_ID[KEY];
   assert.ok(entry, "solitaire-duel must be in GAME_CATALOG");
-  assert.equal(entry.href, "/casino/solitaire-duel");
+  assert.equal(entry.href, "/games/solitaire-duel");
   assert.ok(entry.tags.includes("pvp"), "it is a 1v1 duel → pvp");
   assert.ok(entry.tags.includes("skill"), "the outcome turns on ability → skill");
   assert.ok(
@@ -94,9 +95,9 @@ test("discovery: the catalog and the lobby agree on Solitaire Duel's position", 
   assert.equal(ids.filter((id) => id === KEY).length, 1);
 });
 
-test("discovery: the lobby card links to the lobby, records plays and is 1v1", () => {
+test("discovery: the lobby card links to the game, records plays and is 1v1", () => {
   const src = strip(read(LOBBY));
-  const start = src.indexOf('href: "/casino/solitaire-duel"');
+  const start = src.indexOf('href: "/games/solitaire-duel"');
   assert.ok(start > -1, "the lobby card must exist");
   const card = src.slice(Math.max(0, start - 80), start + 420);
 
@@ -159,11 +160,17 @@ test("rating: the key is in the ONE rating registry, and the trophy set is it", 
 // ── 4. Sitemap ────────────────────────────────────────────────────────────
 
 test("sitemap: the game is listed under its canonical /games path", () => {
-  const src = strip(read(SITEMAP));
-  assert.match(src, /solitaireDuelMatches,/);
+  // The URL is no longer a literal in the sitemap. The inventory
+  // (src/lib/seoPages.ts) GENERATES one entry per game in GAME_LANDING_PAGES,
+  // so the contract is now: the sitemap projects that inventory, and the
+  // inventory knows this game — including which table keeps its `lastmod`
+  // honest. Publishing a game no longer requires editing the sitemap at all.
+  assert.match(strip(read(SITEMAP)), /PUBLIC_SEO_PAGES/, "the sitemap must project the inventory");
+  const inventory = code(SEO_INVENTORY);
+  assert.match(inventory, /gameLandingPath\(game\.slug\)/, "game URLs must be generated");
   assert.match(
-    src,
-    /\{ path: "\/games\/solitaire-duel", source: \[solitaireDuelMatches, solitaireDuelMatches\.createdAt\] \}/,
+    inventory,
+    /"solitaire-duel": \{ table: solitaireDuelMatches, column: solitaireDuelMatches\.createdAt \}/,
   );
 });
 
@@ -179,8 +186,10 @@ test("ads: the lobby carries the tag and the live board never does", () => {
 
 test("metadata: the lobby title and description state the format", () => {
   const src = strip(read(LOBBY_PAGE));
-  assert.match(src, /title: "Solitaire Duel \| GRYND"/);
-  const description = src.slice(src.indexOf("description:"), src.indexOf("export default"));
+  // The values may be written inline (`title: "…"`) or hoisted into consts that
+  // the metadata object consumes — the same contract either way.
+  assert.match(src, /(?:const title = |title: )"Solitaire Duel \| GRYND"/);
+  const description = /(?:const description =\s*|description:\s*)"([^"]+)"/.exec(src)?.[1] ?? "";
   for (const trait of [/1v1/, /deterministic/i, /no wagers/i]) {
     assert.match(description, trait, `metadata description must mention ${trait}`);
   }
@@ -217,8 +226,8 @@ test("metadata: the lobby card copy exists in every locale and states the format
 test("no economy: the platform surfaces expose no wager for this game", () => {
   const src = code(LOBBY);
   const card = src.slice(
-    src.indexOf('href: "/casino/solitaire-duel"'),
-    src.indexOf('href: "/casino/solitaire-duel"') + 420,
+    src.indexOf('href: "/games/solitaire-duel"'),
+    src.indexOf('href: "/games/solitaire-duel"') + 420,
   );
   // The card carries no stake/bet/balance field at all.
   for (const forbidden of ["wager", "stake", "betAmount", "balance", "payout"]) {

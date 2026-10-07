@@ -122,6 +122,11 @@
     "test:upgrade-pro": "node --import tsx --test tests/upgrade-pro-contract.test.mjs",
     "test:bot-turns": "node --import tsx --test tests/bot-opponents-turn.test.mjs",
     "test:game-routes": "node --import tsx --test tests/game-route-public.test.mjs",
+    "test:game-landing": "node --import tsx --test tests/game-landing-pages.test.mjs",
+    "test:structured-data": "node --import tsx --test tests/game-structured-data.test.mjs",
+    "test:internal-linking": "node --import tsx --test tests/internal-linking.test.mjs",
+    "test:guides": "node --import tsx --test tests/guides.test.mjs",
+    "test:sitemap": "node --import tsx --test tests/sitemap.test.mjs",
     "test:tower-arena": "node --import tsx --test tests/tower-arena-engine.test.mjs tests/tower-arena-turns.test.mjs tests/tower-arena-settlement.test.mjs tests/tower-arena-realtime.test.mjs tests/tower-arena-qa.test.mjs",
     "loadtest:read-mix": "npx --yes artillery@2.0.34 run load-test/scenarios/read-mix.yml"
   },

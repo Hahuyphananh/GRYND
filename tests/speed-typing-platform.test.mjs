@@ -55,6 +55,7 @@ const MATCH_PAGE_ROUTE = "src/app/casino/speed-typing/[matchId]/page.tsx";
 const CREATE_ROUTE = "src/app/api/speed-typing/create-or-join/route.ts";
 const FETCH_ROUTE = "src/app/api/speed-typing/match/[matchId]/route.ts";
 const SITEMAP = "src/app/sitemap.ts";
+const SEO_INVENTORY = "src/lib/seoPages.ts";
 const TRANSLATIONS = "src/lib/appTextTranslations.js";
 const PRESENCE = "src/lib/gamePresence.js";
 
@@ -65,7 +66,7 @@ const KEY = "speed-typing";
 test("discovery: speed-typing is in the canonical catalog with the lobby's href", () => {
   const entry = GAME_CATALOG.find((game) => game.id === KEY);
   assert.ok(entry, "speed-typing must be in GAME_CATALOG");
-  assert.equal(entry.href, "/casino/speed-typing");
+  assert.equal(entry.href, "/games/speed-typing");
   assert.ok(entry.tags.includes("pvp"), "Speed Typing is a 1v1 duel → pvp");
   assert.ok(entry.tags.includes("skill"), "the outcome turns on ability → skill");
   assert.ok(
@@ -77,7 +78,7 @@ test("discovery: speed-typing is in the canonical catalog with the lobby's href"
   // Exactly one entry — a duplicate would corrupt the fallback order.
   assert.equal(GAME_CATALOG.filter((game) => game.id === KEY).length, 1);
   assert.ok(DEFAULT_GAME_ORDER.includes(KEY));
-  assert.equal(GAMES_BY_ID[KEY]?.href, "/casino/speed-typing");
+  assert.equal(GAMES_BY_ID[KEY]?.href, "/games/speed-typing");
 });
 
 test("discovery: the catalog and the lobby agree on Speed Typing's position", () => {
@@ -99,10 +100,10 @@ test("discovery: the catalog and the lobby agree on Speed Typing's position", ()
   );
 });
 
-test("discovery: the lobby card links to the lobby, records plays and is 1v1", () => {
+test("discovery: the lobby card links to the game, records plays and is 1v1", () => {
   const src = strip(read(LOBBY));
   const card = src.slice(src.indexOf('name: "Speed Typing"'));
-  assert.match(card, /href: "\/casino\/speed-typing"/);
+  assert.match(card, /href: "\/games\/speed-typing"/);
   assert.match(card, /leaderboardKey: "speed-typing"/);
   assert.match(card, /playsKey: "speed-typing"/);
   assert.match(card, /pvpMode: "1v1"/);
@@ -124,11 +125,16 @@ test("discovery: personalization always returns Speed Typing (never hidden)", ()
 });
 
 test("discovery: the game is in the sitemap under its canonical /games path", () => {
-  const src = strip(read(SITEMAP));
-  assert.match(src, /speedTypingMatches,/);
+  // The entry is GENERATED from the game catalog by src/lib/seoPages.ts, so the
+  // game is in the sitemap because it has a landing page — not because a literal
+  // was added to the sitemap. What is asserted here is that the sitemap projects
+  // that inventory and that the inventory knows this game's freshness source.
+  assert.match(strip(read(SITEMAP)), /PUBLIC_SEO_PAGES/, "the sitemap must project the inventory");
+  const src = code(SEO_INVENTORY);
+  assert.match(src, /gameLandingPath\(game\.slug\)/, "game URLs must be generated");
   assert.match(
     src,
-    /\{ path: "\/games\/speed-typing", source: \[speedTypingMatches, speedTypingMatches\.createdAt\] \}/,
+    /"speed-typing": \{ table: speedTypingMatches, column: speedTypingMatches\.createdAt \}/,
   );
 });
 
@@ -214,8 +220,10 @@ test("navigation: the match page reads the authoritative snapshot", () => {
 
 test("metadata: the page title and description state the format", () => {
   const src = strip(read(PAGE));
-  assert.match(src, /title: "Speed Typing \| GRYND"/);
-  const description = /description:\s*"([^"]+)"/.exec(src)?.[1] ?? "";
+  // The values may be written inline (`title: "…"`) or hoisted into consts that
+  // the metadata object consumes — the same contract either way.
+  assert.match(src, /(?:const title = |title: )"Speed Typing \| GRYND"/);
+  const description = /(?:const description =\s*|description:\s*)"([^"]+)"/.exec(src)?.[1] ?? "";
   for (const trait of [/1v1/, /exact same passage/, /first to finish/i, /no wagers/i, /no randomness/i]) {
     assert.match(description, trait, `metadata description must mention ${trait}`);
   }

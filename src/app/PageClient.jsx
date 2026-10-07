@@ -38,7 +38,19 @@ import useSharedPoll from "../hooks/useSharedPoll";
 // `adSlot` is a server-rendered <AdSlot /> handed down by app/page.jsx. It is
 // rendered above the footer and carries its OWN server-side entitlement check —
 // nothing about membership is passed from here.
-function MainComponent({ adSlot = null }) {
+// `popularGames` is `[{ slug, name }]` for the site's most popular games,
+// resolved from the game catalogue by app/page.jsx. The home page renders it
+// as real links to /games/<slug> — the crawlable step between the home page
+// and the game landing pages, present in the HTML with no interaction. It is a
+// prop rather than an import because the catalogue also holds every game's
+// full prose and this module is a client component.
+//
+// `explainerSlot` is a SERVER-rendered block (src/components/home/HomeExplainer)
+// handed down by app/page.jsx. It explains what GRYND is, what it plays like
+// and how progression works — content that has to exist in the HTML for a
+// crawler and for a visitor without JavaScript, which is exactly why it is
+// rendered on the server instead of here.
+function MainComponent({ adSlot = null, popularGames = [], explainerSlot = null }) {
   const router = useRouter();
   const { isLoaded, isSignedIn, signOut } = useAuth();
   const { user } = useUser();
@@ -534,6 +546,10 @@ function MainComponent({ adSlot = null }) {
         </div>
       </div>
 
+      {/* Server-rendered explainer — what GRYND is, the games, competitive
+          play, progression and how to start. Part of the HTML, not deferred. */}
+      {explainerSlot}
+
       <div className="mx-auto max-w-7xl px-4 py-8">
         <section className="mb-16 reveal">
           <div className="mb-3">
@@ -591,6 +607,31 @@ function MainComponent({ adSlot = null }) {
               {t("home.more_games")}
             </a>
           </div>
+
+          {/* Most popular games — plain links, not buttons and not a client
+              state machine. "Pick your battle" above features a single game;
+              these are the catalogue's own popular entries, so the home page
+              links straight to their public pages and a crawler finds the
+              next level of the hierarchy (/games/<slug>) from the root. */}
+          {popularGames.length > 0 && (
+            <nav
+              aria-labelledby="home-popular-games"
+              className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm"
+            >
+              <span id="home-popular-games" className="font-semibold text-[#7dd3fc]">
+                {t("home.popular_games")}
+              </span>
+              {popularGames.map((game) => (
+                <Link
+                  key={game.slug}
+                  href={`/games/${game.slug}`}
+                  className="text-[#d8fbff] underline underline-offset-2 transition-colors hover:text-[#f5ff3b]"
+                >
+                  {game.name}
+                </Link>
+              ))}
+            </nav>
+          )}
         </section>
 
         {/* Leaderboard — real weekly data, never fabricated */}

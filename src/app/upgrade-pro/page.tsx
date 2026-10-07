@@ -7,6 +7,7 @@ import {
 } from "../../lib/stripe/subscriptions";
 
 export const metadata: Metadata = {
+  alternates: { canonical: "/upgrade-pro" },
   title: "GRYND PRO | GRYND",
   description:
     "GRYND PRO — ad-free browsing, advanced statistics, advanced performance analytics and detailed match history. Monthly membership, cancel anytime. No tokens, no gameplay advantages.",

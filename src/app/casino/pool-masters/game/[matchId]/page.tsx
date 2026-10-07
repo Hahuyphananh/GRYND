@@ -9,6 +9,7 @@ export async function generateMetadata({
   const { matchId } = await params;
   const shortId = matchId.length > 10 ? matchId.slice(0, 8) : matchId;
   return {
+    robots: { index: false, follow: false },
     title: `Pool Masters Match #${shortId} | GRYND`,
     description: `Live Pool Masters match #${shortId} on GRYND. Sink the 8-ball before your opponent to win the wager.`,
   };

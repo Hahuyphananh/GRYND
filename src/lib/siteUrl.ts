@@ -37,9 +37,11 @@ function isRetiredHost(host: string): boolean {
  * A configured value reduced to a usable absolute origin, or null when it is
  * missing, malformed, not http(s), or points at a retired host.
  *
- * The real host (including a `www.`) and protocol are kept — only a trailing
- * slash and any path are dropped — so a correct configuration is passed
- * through unchanged.
+ * The protocol is kept and only a trailing slash and any path are dropped, so
+ * a correct configuration is passed through unchanged. The `www.` prefix is the
+ * one exception, and it is collapsed later in getSiteUrl() rather than here:
+ * `www.` and apex are the same site, and emitting both splits canonical URLs
+ * from the sitemap and JSON-LD across two hostnames.
  */
 function normalizeConfigured(value: string | undefined): string | null {
   const trimmed = value?.trim();
@@ -64,9 +66,23 @@ function normalizeConfigured(value: string | undefined): string | null {
  * og:image or canonical URL again.
  */
 export function getSiteUrl(): string {
-  return (
+  const configured =
     normalizeConfigured(process.env.NEXT_PUBLIC_BASE_URL) ??
-    normalizeConfigured(process.env.NEXT_PUBLIC_APP_URL) ??
-    CANONICAL_SITE_URL
-  );
+    normalizeConfigured(process.env.NEXT_PUBLIC_APP_URL);
+
+  // www and apex serve the same site, so a `www.` prefix in configuration is
+  // collapsed onto the canonical apex origin. Without this, one deployment can
+  // emit canonical/og:url on www while robots.txt and the JSON-LD advertise the
+  // apex, splitting the site across two hostnames that Google indexes
+  // separately. (A retired host never reaches here — normalizeConfigured
+  // already rejected it.)
+  if (
+    configured &&
+    comparableHost(new URL(configured).hostname) ===
+      comparableHost(new URL(CANONICAL_SITE_URL).hostname)
+  ) {
+    return CANONICAL_SITE_URL;
+  }
+
+  return configured ?? CANONICAL_SITE_URL;
 }

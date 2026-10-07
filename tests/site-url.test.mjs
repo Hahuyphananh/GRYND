@@ -59,9 +59,21 @@ test("a valid configured base URL is used, trailing slash stripped", () => {
     withEnv({ NEXT_PUBLIC_BASE_URL: "https://grynd.dedyn.io" }, getSiteUrl),
     "https://grynd.dedyn.io",
   );
+});
+
+// `www.` and apex serve the same site, so the `www.` form is collapsed onto the
+// canonical apex. This changed deliberately: the site's canonical URLs must be
+// on one host. Previously a `www.`-configured NEXT_PUBLIC_BASE_URL was passed
+// through and every canonical/og:url advertised www while robots.txt, the
+// sitemap and the JSON-LD @id advertised the apex.
+test("a www configured host is collapsed onto the canonical apex", () => {
   assert.equal(
     withEnv({ NEXT_PUBLIC_BASE_URL: "https://www.grynd.dedyn.io/" }, getSiteUrl),
-    "https://www.grynd.dedyn.io",
+    CANONICAL_SITE_URL,
+  );
+  assert.equal(
+    withEnv({ NEXT_PUBLIC_BASE_URL: "https://www.grynd.dedyn.io" }, getSiteUrl),
+    CANONICAL_SITE_URL,
   );
 });
 

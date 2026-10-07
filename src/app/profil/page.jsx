@@ -3,6 +3,8 @@ import AdSenseScript from "../../components/AdSenseScript";
 import AdSlot from "../../components/AdSlot";
 
 export const metadata = {
+  robots: { index: false, follow: false },
+
   title: "My Profile | GRYND",
   description:
     "Manage your GRYND profile. Track your balance, level, titles, streaks and game statistics.",

@@ -2,6 +2,8 @@ import PageClient from "./PageClient";
 import { ogImageUrl } from "../../lib/ogImages";
 
 export const metadata = {
+  robots: { index: false, follow: false },
+
   title: "Welcome to GRYND!",
   description:
     "Your GRYND account is ready and your free tokens are waiting. Pick a skill-based game and start playing.",

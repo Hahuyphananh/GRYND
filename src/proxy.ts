@@ -21,6 +21,15 @@ import { users } from "./db/schema";
 import { eq } from "drizzle-orm";
 import { cacheGet, cacheSet } from "./lib/redis/cache";
 import { CacheKeys, CacheTTL } from "./lib/redis/keys";
+import { isGameLandingSlug } from "./lib/gameLandingPages";
+import { isGuideSlug } from "./lib/guides";
+
+/**
+ * A path with no route behind it, used only as a rewrite target so that an
+ * unknown game slug is answered with the app's own 404 page (see the guard in
+ * `middlewareHandler`). Nothing serves it, which is the point.
+ */
+const NOT_FOUND_SENTINEL = "/__unknown-game-slug";
 
 /**
  * Playable casino/game routes — the single source of truth for
@@ -38,7 +47,13 @@ const GAME_ROUTE_PATTERNS = [
   "/uno",
   "/casino/mines-pvp(.*)",
   "/casino/chess(.*)",
-  "/casino/keno",
+  // Keno carries a `(.*)` like every other game so that its play URL
+  // (/games/keno/play, rewritten to /casino/keno) is classified as a game route
+  // too. Without it the bare pattern matched only the lobby itself, so a
+  // signed-out visitor pressing Play on the Keno landing page was bounced to
+  // /sign-in while the same visitor reached the lobby on the other twenty
+  // games — the exact inconsistency this list exists to prevent.
+  "/casino/keno(.*)",
   "/casino/keno-pvp(.*)",
   "/casino/rps(.*)",
   "/casino/four-in-a-row(.*)",
@@ -65,7 +80,7 @@ const GAME_ROUTE_PATTERNS = [
   "/games/neon-flush(.*)",
   "/games/mines-pvp(.*)",
   "/games/chess(.*)",
-  "/games/keno",
+  "/games/keno(.*)",
   "/games/keno-pvp(.*)",
   "/games/rps(.*)",
   "/games/four-in-a-row(.*)",
@@ -136,6 +151,11 @@ const isPublicRoute = createRouteMatcher([
   "/contact",
   "/reviews",
   "/faq",
+  // The guides library (src/lib/guides.ts). Public for the same reason /faq is:
+  // it is a reading surface that helps a signed-out visitor decide whether to
+  // play, and it must be indexable without a session. Matched with `(.*)` so
+  // both /guides and /guides/<slug> are covered by one entry.
+  "/guides(.*)",
   // GRYND PRO upgrade landing page — public so signed-out visitors can see the
   // offer and are routed through sign-up by the CTA.
   "/upgrade-pro",
@@ -446,6 +466,50 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
       auditLog("maintenance_redirect", { ip, path: pathname });
       return applySecurityHeaders(NextResponse.redirect(new URL("/maintenance", req.url)));
     }
+  }
+
+  // ── An unknown /games/<slug> is a REAL 404 ────────────────────────────
+  //
+  // `/games/<slug>` is the public landing page for a game, and only the 21
+  // slugs in src/lib/gameLandingPages.ts have one. Anything else must not be
+  // answered with a 200.
+  //
+  // The page cannot do this itself. `notFound()` from a page runs after the
+  // root `loading.tsx` Suspense boundary has already flushed the shell, so the
+  // response status is committed as 200 and the body is not-found content — a
+  // soft 404, which is exactly the thing crawlers punish. Declaring the slug
+  // space up front in the middleware answers with a genuine 404 before any
+  // rendering starts.
+  //
+  // Two behaviours fall out of it, both intended:
+  //   * the request is REWRITTEN, not redirected, so the URL the visitor typed
+  //     stays in the address bar while the 404 status is returned;
+  //   * it applies whatever the session is. Previously an unknown slug that the
+  //     game-route patterns did not recognise (/games/typo) was bounced to
+  //     /sign-in like any other unknown path, and one that they DID recognise
+  //     (/games/chess-game, via the /games/chess(.*) prefix) rendered a 200.
+  //     Neither is right for a URL that has no page.
+  //
+  // This adds a gate; it changes no authentication decision. The slug check is a
+  // pure lookup against the same list the pages and the sitemap use.
+  const unknownGameSlug = /^\/games\/([^/]+)\/?$/.exec(pathname);
+  if (unknownGameSlug && !isGameLandingSlug(unknownGameSlug[1])) {
+    return applySecurityHeaders(
+      NextResponse.rewrite(new URL(NOT_FOUND_SENTINEL, req.url)),
+    );
+  }
+
+  // Same rule for the guides library: `/guides/<slug>` only exists for the
+  // slugs in src/lib/guides.ts, and anything else must be a real 404. Measured
+  // behaviour is the same as the game pages — the route's own `dynamicParams =
+  // false` is not enough on this app's streaming root layout, which commits a
+  // 200 before the page can reject the param — so the slug space is declared
+  // here in the middleware, before any rendering starts.
+  const unknownGuideSlug = /^\/guides\/([^/]+)\/?$/.exec(pathname);
+  if (unknownGuideSlug && !isGuideSlug(unknownGuideSlug[1])) {
+    return applySecurityHeaders(
+      NextResponse.rewrite(new URL(NOT_FOUND_SENTINEL, req.url)),
+    );
   }
 
   if (pathname.startsWith("/api/")) {

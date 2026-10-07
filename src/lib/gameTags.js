@@ -66,50 +66,53 @@ export const GAME_TAGS = [
  *
  * Each entry:
  *   id    canonical game id (the lobby's leaderboardKey)
- *   href  the lobby route the card links to (used by consumers, e.g. a
- *         future "For You" strip that has to render a link without importing
- *         the lobby's image/name data)
+ *   href  a link to the game — its PUBLIC landing page (/games/<slug>), the
+ *         same URL the hub cards use, which is what consumers render (e.g. a
+ *         "For You" strip that has to link a game without importing the
+ *         lobby's image/name data). NOT the lobby: /games/<slug>/play is the
+ *         authenticated app route. It was /casino/<slug> before, which is the
+ *         same URL one 308 redirect later.
  *   tags  the traits above
  */
 export const GAME_CATALOG = [
   // Simultaneous 1v1 on independent 10x10 mine boards: the mine layout is
   // luck (chance), but reading the clues and racing the clock is a real
   // competitive core.
-  { id: "mines-pvp", href: "/casino/mines-pvp", tags: ["pvp", "chance", "competitive"] },
+  { id: "mines-pvp", href: "/games/mines-pvp", tags: ["pvp", "chance", "competitive"] },
 
   // Flip pairs on a 4x4 grid: memory is ability (skill), the rules take
   // seconds to learn (casual).
-  { id: "memory-grid", href: "/casino/memory-grid", tags: ["pvp", "skill", "casual"] },
+  { id: "memory-grid", href: "/games/memory-grid", tags: ["pvp", "skill", "casual"] },
 
   // "Outthink your opponent move by move": the archetypal strategy/skill game,
   // and the archetypal ranked one.
-  { id: "chess", href: "/casino/chess", tags: ["pvp", "strategy", "skill", "competitive"] },
+  { id: "chess", href: "/games/chess", tags: ["pvp", "strategy", "skill", "competitive"] },
 
   // Same 10-ball draw for both players (chance) with timed taps (fast_paced);
   // the rules need no teaching (casual).
-  { id: "keno", href: "/casino/keno", tags: ["pvp", "chance", "fast_paced", "casual"] },
+  { id: "keno", href: "/games/keno", tags: ["pvp", "chance", "fast_paced", "casual"] },
 
   // "Fast card duels. Match colors and numbers": fast_paced, instantly
   // readable (casual), head-to-head against the AI or one online opponent
   // (pvp). The multi-seat table mode was retired.
-  { id: "uno", href: "/casino/neon-flush", tags: ["pvp", "fast_paced", "casual"] },
+  { id: "uno", href: "/games/neon-flush", tags: ["pvp", "fast_paced", "casual"] },
 
   // Best-of-7 mind games: a round resolves in a click (fast_paced) and there
   // is nothing to learn (casual).
-  { id: "rps", href: "/casino/rps", tags: ["pvp", "fast_paced", "casual"] },
+  { id: "rps", href: "/games/rps", tags: ["pvp", "fast_paced", "casual"] },
 
   // Head-to-head tower survival: placement planning (strategy) and
   // collapse-risk reading (skill) in a ranked 1v1 duel (competitive).
   {
     id: "tower-arena",
-    href: "/casino/tower-arena",
+    href: "/games/tower-arena",
     tags: ["pvp", "strategy", "skill", "competitive"],
   },
 
   // Align 4 discs: pure planning (strategy) against one opponent (skill).
   {
     id: "four-in-a-row",
-    href: "/casino/four-in-a-row",
+    href: "/games/four-in-a-row",
     tags: ["pvp", "strategy", "skill"],
   },
 
@@ -117,34 +120,34 @@ export const GAME_CATALOG = [
   // reads are ability (skill) and the staked race is competitive.
   {
     id: "lane-runner",
-    href: "/casino/lane-runner",
+    href: "/games/lane-runner",
     tags: ["pvp", "skill", "competitive", "fast_paced"],
   },
 
   // Aiming and table planning: ability (skill) over a plan (strategy).
-  { id: "pool-masters", href: "/casino/pool-masters", tags: ["pvp", "skill", "strategy"] },
+  { id: "pool-masters", href: "/games/pool-masters", tags: ["pvp", "skill", "strategy"] },
 
   // Hex-grid territory conquest: capture planning (strategy) decided by play
   // (skill), on the ranked ladder (competitive).
   {
     id: "hex-duel",
-    href: "/casino/hex-duel",
+    href: "/games/hex-duel",
     tags: ["pvp", "strategy", "skill", "competitive"],
   },
 
   // Roll five dice (chance), then lock combos to outscore: the locking is the
   // plan (strategy).
-  { id: "yahtzee", href: "/casino/dice-flush", tags: ["pvp", "chance", "strategy"] },
+  { id: "yahtzee", href: "/games/dice-flush", tags: ["pvp", "chance", "strategy"] },
 
   // Hidden numbers and shrinking ranges: prediction/mind games (strategy) —
   // guessing right is reading the opponent, not the dice (skill).
-  { id: "odds", href: "/casino/odds", tags: ["pvp", "strategy", "skill"] },
+  { id: "odds", href: "/games/odds", tags: ["pvp", "strategy", "skill"] },
 
   // Stop closest to the target: reaction timing (skill + fast_paced) in a
   // staked 1v1 duel (competitive).
   {
     id: "precision",
-    href: "/casino/precision",
+    href: "/games/precision",
     tags: ["pvp", "skill", "fast_paced", "competitive"],
   },
 
@@ -152,14 +155,14 @@ export const GAME_CATALOG = [
   // play (skill).
   {
     id: "dots-and-boxes",
-    href: "/casino/dots-and-boxes",
+    href: "/games/dots-and-boxes",
     tags: ["pvp", "strategy", "skill"],
   },
 
   // Turn-based putting on a physics course: aiming and power control are the
   // whole game (skill), best-of-5 holes with a seconds-short learning curve
   // (casual), head-to-head against one opponent (pvp).
-  { id: "mini-golf", href: "/casino/mini-golf", tags: ["pvp", "skill", "casual"] },
+  { id: "mini-golf", href: "/games/mini-golf", tags: ["pvp", "skill", "casual"] },
 
   // Both seats race the SAME server-selected passage and the first to type it
   // correctly wins: raw ability (skill) decided under a clock (fast_paced), in
@@ -167,7 +170,7 @@ export const GAME_CATALOG = [
   // tagged `chance`, and it is not a pick-up game (no `casual`).
   {
     id: "speed-typing",
-    href: "/casino/speed-typing",
+    href: "/games/speed-typing",
     tags: ["pvp", "skill", "fast_paced", "competitive"],
   },
 
@@ -179,7 +182,7 @@ export const GAME_CATALOG = [
   // so it is never `chance`.
   {
     id: "tic-tac-toe",
-    href: "/casino/tic-tac-toe",
+    href: "/games/tic-tac-toe",
     tags: ["pvp", "strategy", "skill", "competitive"],
   },
 
@@ -193,7 +196,7 @@ export const GAME_CATALOG = [
   // ranked duel rather than a pick-up game, so it is not tagged `casual`.
   {
     id: "solitaire-duel",
-    href: "/casino/solitaire-duel",
+    href: "/games/solitaire-duel",
     tags: ["pvp", "skill", "fast_paced", "competitive"],
   },
 
@@ -207,7 +210,7 @@ export const GAME_CATALOG = [
   // only the puzzle in front of you.
   {
     id: "sudoku-duel",
-    href: "/casino/sudoku-duel",
+    href: "/games/sudoku-duel",
     tags: ["pvp", "skill", "competitive"],
   },
 ];

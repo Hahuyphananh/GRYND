@@ -9,6 +9,7 @@ export async function generateMetadata({
   const { matchId } = await params;
   const shortId = matchId.length > 10 ? matchId.slice(0, 8) : matchId;
   return {
+    robots: { index: false, follow: false },
     title: `Mini Golf Match #${shortId} | GRYND`,
     description: `Live Mini Golf match #${shortId} on GRYND — best of 5 holes, first to 3 hole wins.`,
   };

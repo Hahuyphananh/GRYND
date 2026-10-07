@@ -1,6 +1,7 @@
 import PageClient from "./PageClient";
 
 export const metadata = {
+  alternates: { canonical: "/terms" },
   title: "Terms & Conditions | GRYND",
   description:
     "Read the GRYND terms and conditions. Eligibility, account responsibility, virtual tokens, fair play, prohibited conduct and more.",

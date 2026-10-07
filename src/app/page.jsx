@@ -1,6 +1,11 @@
 import PageClient from "./PageClient";
 import AdSenseScript from "../components/AdSenseScript";
 import AdSlot from "../components/AdSlot";
+import HomeExplainer from "../components/home/HomeExplainer";
+import {
+  HOMEPAGE_FEATURED_SLUGS,
+  gameIndexFor,
+} from "../lib/gameLandingPages";
 import { ogImageUrl, SITE_URL } from "../lib/ogImages";
 import { getReviewAggregate } from "../lib/reviews";
 import { buildAppJsonLd } from "../lib/reviewJsonLd";
@@ -10,7 +15,7 @@ export const metadata = {
   description:
     "Challenge real players in competitive games, climb the leaderboard, and prove your skill.",
   alternates: {
-    canonical: "/",
+    canonical: `${SITE_URL}/`,
   },
   openGraph: {
     title: "GRYND — Competitive PvP Skill Gaming",
@@ -48,6 +53,15 @@ export default async function Page() {
   const reviewStats = await getReviewAggregate();
   const ratingJsonLd = buildAppJsonLd({ stats: reviewStats });
 
+  // The site's most popular games, as real links to their public pages
+  // (/games/<slug>). Resolved from the game catalogue on the SERVER and handed
+  // to the client page as plain data — the catalogue's entries carry every
+  // game's rules, tips and FAQ prose, which has no business in the browser
+  // bundle just to render a handful of anchors. A game can only appear here by
+  // existing (see HOMEPAGE_FEATURED_SLUGS), so an unknown slug is dropped
+  // rather than rendered as a link to a 404.
+  const popularGames = gameIndexFor(HOMEPAGE_FEATURED_SLUGS);
+
   return (
     <>
       {ratingJsonLd && (
@@ -64,7 +78,14 @@ export default async function Page() {
       <AdSenseScript />
       {/* Passed as a child so the slot lands in the page's own content column,
           above the footer — never over the hero, nav or a control. */}
-      <PageClient adSlot={<AdSlot placement="home" />} />
+      {/* `explainerSlot` is the server-rendered block that explains what GRYND
+          is, what the games test, how ranked play and progression work, and how
+          to start — so the whole explanation is in the page's HTML. */}
+      <PageClient
+        adSlot={<AdSlot placement="home" />}
+        popularGames={popularGames}
+        explainerSlot={<HomeExplainer />}
+      />
     </>
   );
 }

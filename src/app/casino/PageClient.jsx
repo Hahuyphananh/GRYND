@@ -94,7 +94,18 @@ function shuffledCopy(items, random = Math.random) {
   return out;
 }
 
-function MainComponent({ adSlot = null }) {
+// `gameIndex` is the same hand-down for DATA: `[{ slug, name }]` for every
+// public game, resolved from the game catalogue (src/lib/gameLandingPages.ts)
+// by app/casino/page.jsx. It drives the A–Z directory at the foot of this page
+// — the list of real links that guarantees every public game page is reachable
+// from /games with no JavaScript and no interaction. It arrives as a prop
+// rather than an import because the catalogue also holds every game's rules,
+// tips and FAQ prose, and this module is a client component.
+// `discoverySlot` is the SERVER-rendered discovery content from
+// app/casino/page.jsx (src/components/games/GameDiscovery): the catalogue
+// grouped by skill and by category, so the hub explains which game suits a
+// visitor in its own HTML rather than only in the client-filtered card grid.
+function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) {
   const { user } = useUser();
   const [selectedGame, setSelectedGame] = useState(null);
   const [error, setError] = useState(null);
@@ -366,10 +377,18 @@ function MainComponent({ adSlot = null }) {
   // (the exact key the play counter is stored under). Matches the real
   // values across src/app/casino/* — verified against every gameLabel="…"
   // in the codebase; the play-count sort only works if these line up.
+  //
+  // Each `href` is the game's PUBLIC landing page (/games/<slug>), not the
+  // lobby: a card takes you to the page that explains the game, and that
+  // page's Play CTA goes on to /games/<slug>/play. Linking the canonical
+  // landing URL directly (rather than the old /casino/<slug>, which 308s to
+  // exactly this URL) is what makes the hub a crawlable step in the
+  // / → /games → /games/<slug> → /games/<slug>/play hierarchy instead of a
+  // redirect hop in the middle of it.
   const games = [
     {
       name: "Mines Duel",
-      href: "/casino/mines-pvp",
+      href: "/games/mines-pvp",
       leaderboardKey: "mines-pvp",
       recencyKey: "mines-duel",
       playsKey: "mines-duel",
@@ -382,7 +401,7 @@ function MainComponent({ adSlot = null }) {
     },
     {
       name: "Memory Grid",
-      href: "/casino/memory-grid",
+      href: "/games/memory-grid",
       leaderboardKey: "memory-grid",
       playsKey: "memory-grid",
       image: ImgMemoryGrid,
@@ -395,7 +414,7 @@ function MainComponent({ adSlot = null }) {
 
     {
       name: "Échecs",
-      href: "/casino/chess",
+      href: "/games/chess",
       leaderboardKey: "chess",
       playsKey: "chess",
       image: Img7,
@@ -406,7 +425,7 @@ function MainComponent({ adSlot = null }) {
     },
     {
       name: "Keno",
-      href: "/casino/keno",
+      href: "/games/keno",
       leaderboardKey: "keno",
       playsKey: "keno",
       image: Img10,
@@ -416,7 +435,7 @@ function MainComponent({ adSlot = null }) {
     },
     {
       name: "Neon Flush",
-      href: "/casino/neon-flush",
+      href: "/games/neon-flush",
       leaderboardKey: "uno",
       recencyKey: "neon-flush",
       playsKey: "neon-flush",
@@ -426,7 +445,7 @@ function MainComponent({ adSlot = null }) {
     },
     {
       name: "Roche-Papier-Ciseaux",
-      href: "/casino/rps",
+      href: "/games/rps",
       leaderboardKey: "rps",
       recencyKey: "rock-paper-scissors",
       playsKey: "rock-paper-scissors",
@@ -437,7 +456,7 @@ function MainComponent({ adSlot = null }) {
     },
     {
       name: "Tower Arena",
-      href: "/casino/tower-arena",
+      href: "/games/tower-arena",
       leaderboardKey: "tower-arena",
       playsKey: "tower-arena",
       image: ImgTowerArena,
@@ -446,7 +465,7 @@ function MainComponent({ adSlot = null }) {
     },
     {
       name: "Four-In-A-Row",
-      href: "/casino/four-in-a-row",
+      href: "/games/four-in-a-row",
       leaderboardKey: "four-in-a-row",
       playsKey: "four-in-a-row",
       image: Img14,
@@ -458,7 +477,7 @@ function MainComponent({ adSlot = null }) {
 
     {
       name: "Lane Rush Duel",
-      href: "/casino/lane-runner",
+      href: "/games/lane-runner",
       leaderboardKey: "lane-runner",
       recencyKey: "lane-rush-duel",
       playsKey: "lane-rush-duel",
@@ -470,7 +489,7 @@ function MainComponent({ adSlot = null }) {
     },
     {
       name: "Pool Masters",
-      href: "/casino/pool-masters",
+      href: "/games/pool-masters",
       leaderboardKey: "pool-masters",
       playsKey: "pool-masters",
       image: Img17,
@@ -480,7 +499,7 @@ function MainComponent({ adSlot = null }) {
 
     {
       name: "HEX DUEL",
-      href: "/casino/hex-duel",
+      href: "/games/hex-duel",
       leaderboardKey: "hex-duel",
       playsKey: "hex-duel",
       image: Img18,
@@ -490,7 +509,7 @@ function MainComponent({ adSlot = null }) {
     },
      {
       name: "Dice Flush",
-      href: "/casino/dice-flush",
+      href: "/games/dice-flush",
       leaderboardKey: "yahtzee",
       playsKey: "dice-flush",
       image: Img19,
@@ -500,7 +519,7 @@ function MainComponent({ adSlot = null }) {
     },
     {
       name: "Odds",
-      href: "/casino/odds",
+      href: "/games/odds",
       leaderboardKey: "odds",
       playsKey: "odds",
       image: Img21,
@@ -511,7 +530,7 @@ function MainComponent({ adSlot = null }) {
     },
     {
       name: "Precision",
-      href: "/casino/precision",
+      href: "/games/precision",
       leaderboardKey: "precision",
       playsKey: "precision",
       image: Img22,
@@ -521,7 +540,7 @@ function MainComponent({ adSlot = null }) {
     },
     {
       name: "Dots & Boxes",
-      href: "/casino/dots-and-boxes",
+      href: "/games/dots-and-boxes",
       leaderboardKey: "dots-and-boxes",
       playsKey: "dots-and-boxes",
       image: ImgDotsBoxes,
@@ -531,7 +550,7 @@ function MainComponent({ adSlot = null }) {
     },
     {
       name: "Mini Golf",
-      href: "/casino/mini-golf",
+      href: "/games/mini-golf",
       leaderboardKey: "mini-golf",
       playsKey: "mini-golf",
       image: ImgMiniGolf,
@@ -541,7 +560,7 @@ function MainComponent({ adSlot = null }) {
     },
     {
       name: "Speed Typing",
-      href: "/casino/speed-typing",
+      href: "/games/speed-typing",
       leaderboardKey: "speed-typing",
       playsKey: "speed-typing",
       image: ImgSpeedTyping,
@@ -551,7 +570,7 @@ function MainComponent({ adSlot = null }) {
     },
     {
       name: "Tic-Tac-Toe",
-      href: "/casino/tic-tac-toe",
+      href: "/games/tic-tac-toe",
       leaderboardKey: "tic-tac-toe",
       playsKey: "tic-tac-toe",
       image: ImgTicTacToe,
@@ -561,7 +580,7 @@ function MainComponent({ adSlot = null }) {
     },
     {
       name: "Solitaire Duel",
-      href: "/casino/solitaire-duel",
+      href: "/games/solitaire-duel",
       leaderboardKey: "solitaire-duel",
       playsKey: "solitaire-duel",
       image: ImgSolitaireDuel,
@@ -571,7 +590,7 @@ function MainComponent({ adSlot = null }) {
     },
     {
       name: "Sudoku Duel",
-      href: "/casino/sudoku-duel",
+      href: "/games/sudoku-duel",
       leaderboardKey: "sudoku-duel",
       playsKey: "sudoku-duel",
       image: ImgSudokuDuel,
@@ -1247,6 +1266,45 @@ function MainComponent({ adSlot = null }) {
               </button>
             </div>
           )}
+
+        {/* Server-rendered discovery content — the catalogue grouped by what a
+            game asks of you (skill) and by kind of game (category). Part of the
+            hub's HTML, built from the same catalogue as the pages below. */}
+        {discoverySlot}
+
+        {/* ── Crawlable A–Z directory ──────────────────────────────────────
+            Every public game page, as a plain link, in the server-rendered
+            HTML. The grid above is filtered and sorted by client state; this
+            list is not. It is projected from the game catalogue on the server
+            and handed in as `gameIndex`, so a game cannot be missing from it
+            because someone forgot a card — and a crawler needs no JavaScript
+            and no interaction to follow every landing page from /games. */}
+        {gameIndex.length > 0 && (
+          <nav
+            aria-labelledby="all-games-index-heading"
+            className="mt-14 border-t border-[#00e5ff]/15 pt-8"
+          >
+            <h2
+              id="all-games-index-heading"
+              className="text-lg font-bold text-[#f5ff3b]"
+            >
+              {t("home.all_games")} A–Z
+            </h2>
+            <p className="mb-4 mt-1 text-sm text-[#7dd3fc]">{t("home.description")}</p>
+            <ul className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+              {gameIndex.map((game) => (
+                <li key={game.slug}>
+                  <Link
+                    href={`/games/${game.slug}`}
+                    className="text-[#9dd8ff] underline underline-offset-2 transition-colors hover:text-[#f5ff3b]"
+                  >
+                    {game.name}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        )}
       </div>
 
       <style jsx global>{`

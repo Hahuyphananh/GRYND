@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import PageClient from "./PageClient";
 
 export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+
   title: "Personalize your GRYND | GRYND",
   description:
     "Tell us what kind of games you like and GRYND will personalize your experience. Five quick questions, under a minute.",

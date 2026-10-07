@@ -55,9 +55,9 @@ function casinoLobbySlugs() {
     .sort();
 }
 
-/** Slugs the public hub links to, from `href: "/casino/<slug>"`. */
+/** Slugs the public hub links to, from `href: "/games/<slug>"`. */
 function hubSlugs() {
-  return [...HUB.matchAll(/href:\s*"\/casino\/([a-z0-9-]+)"/g)]
+  return [...HUB.matchAll(/href:\s*"\/games\/([a-z0-9-]+)"/g)]
     .map((m) => m[1])
     .sort();
 }
@@ -105,7 +105,7 @@ test("every game the hub advertises has a lobby page behind it", () => {
   // A card pointing at a page that no longer exists is a 404 waiting to
   // happen. (The reverse is deliberately NOT asserted: some routes are
   // aliases rather than separate cards — /casino/uno serves the "Neon Flush"
-  // lobby that the hub links as /casino/neon-flush.)
+  // lobby that the hub links as /games/neon-flush.)
   const inApp = new Set(casinoLobbySlugs());
   assert.deepEqual(
     hubSlugs().filter((slug) => !inApp.has(slug)),

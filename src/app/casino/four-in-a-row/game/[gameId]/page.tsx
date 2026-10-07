@@ -9,6 +9,7 @@ export async function generateMetadata({
   const { gameId } = await params;
   const shortId = gameId.length > 10 ? gameId.slice(0, 8) : gameId;
   return {
+    robots: { index: false, follow: false },
     title: `Four-In-A-Row Match #${shortId} | GRYND`,
     description: `Live Four-In-A-Row match #${shortId} on GRYND. Align four discs to beat your opponent and win the pot.`,
   };

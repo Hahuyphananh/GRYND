@@ -13,6 +13,8 @@ const description =
 const image = ogImageUrl("/images/og/neon-flush.jpg");
 
 export const metadata = {
+  robots: { index: false, follow: false },
+
   title,
   description,
   openGraph: {

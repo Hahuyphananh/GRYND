@@ -37,6 +37,19 @@ const PAGES = [
   { path: "/games", minText: 1000, needsHeading: true },
   { path: "/faq", minText: 1500, needsHeading: true },
   { path: "/classement", minText: 300, needsHeading: true },
+  // The guides library (src/lib/guides.ts): an index that must list every guide
+  // as a real link, and one representative article. Both are server components,
+  // so all of their text has to be in the raw HTML — which is exactly what this
+  // harness checks.
+  { path: "/guides", minText: 800, needsHeading: true },
+  { path: "/guides/how-to-improve-typing-speed", minText: 2000, needsHeading: true },
+  // Three representative game landing pages: the flagship (chess), a newer
+  // title (speed-typing) and the uno/neon-flush alias page. Their structured
+  // data is checked on all 21 below; these three also get the heading, text
+  // and hydration pass.
+  { path: "/games/chess", minText: 2000, needsHeading: true, needsGameSchema: true },
+  { path: "/games/speed-typing", minText: 2000, needsHeading: true, needsGameSchema: true },
+  { path: "/games/uno", minText: 2000, needsHeading: true, needsGameSchema: true },
 ];
 
 let pass = 0;
@@ -98,6 +111,124 @@ function schemaTypes(doc) {
   return types;
 }
 
+/** The first node of each @type in a page's JSON-LD, in document order. */
+function byType(docs, type) {
+  return docs.filter((doc) => doc && doc["@type"] === type);
+}
+
+/** Every JSON key reachable in a value. */
+function keysOf(value, found = new Set()) {
+  if (Array.isArray(value)) {
+    for (const item of value) keysOf(item, found);
+  } else if (value && typeof value === "object") {
+    for (const [key, child] of Object.entries(value)) {
+      found.add(key);
+      keysOf(child, found);
+    }
+  }
+  return found;
+}
+
+/**
+ * The structured data on the game landing pages must describe the page a
+ * visitor actually reads — so every claim is looked up in the VISIBLE text of
+ * the same response. Shared by the per-page loop and the full 21-page sweep.
+ */
+function checkGameSchema({ path, html, text, jsonLd }) {
+  const types = jsonLd.flatMap(schemaTypes);
+  check(
+    `${path}: no JSON-LD failed to parse`,
+    jsonLd.every((doc) => !doc.__parseError)
+  );
+
+  // The page's own canonical URL, from the <link> Next emits for the
+  // `alternates.canonical` the route declares.
+  const canonicalTag = /<link[^>]+rel="canonical"[^>]*>/i.exec(html)?.[0] ?? null;
+  const canonical = canonicalTag ? (/href="([^"]+)"/.exec(canonicalTag)?.[1] ?? null) : null;
+  check(
+    `${path}: declares a canonical URL that is this page, not /casino/<slug>`,
+    Boolean(canonical) && canonical.endsWith(path) && !canonical.includes("/casino"),
+    canonical ?? "no canonical link"
+  );
+
+  // Exactly one of each — a second node of the same type on one page is the
+  // "duplicate schema" case, even when the two agree.
+  for (const type of ["WebApplication", "BreadcrumbList", "FAQPage"]) {
+    const count = byType(jsonLd, type).length;
+    check(`${path}: exactly one ${type}`, count === 1, `${count} found`);
+  }
+
+  const app = byType(jsonLd, "WebApplication")[0];
+  check(
+    `${path}: the application URL and @id are the canonical page URL`,
+    Boolean(canonical) &&
+      app?.url === canonical &&
+      String(app?.["@id"] ?? "").startsWith(`${canonical}#`),
+    `${app?.url} / ${app?.["@id"]}`
+  );
+  check(
+    `${path}: no structured data points at /casino/<slug>`,
+    !JSON.stringify(jsonLd).includes("/casino")
+  );
+
+  // Everything the markup claims must be readable in the raw HTML.
+  check(
+    `${path}: the declared name is on the page`,
+    Boolean(app?.name) && text.includes(app.name),
+    app?.name
+  );
+  check(
+    `${path}: the declared description is a paragraph on the page`,
+    Boolean(app?.description) && text.includes(String(app.description).replace(/\s+/g, " ").trim()),
+    String(app?.description ?? "").slice(0, 60)
+  );
+
+  const crumbs = byType(jsonLd, "BreadcrumbList")[0]?.itemListElement ?? [];
+  check(
+    `${path}: every breadcrumb name is in the visible crumb trail`,
+    crumbs.length === 3 && crumbs.every((crumb) => text.includes(crumb.name)),
+    crumbs.map((crumb) => crumb.name).join(" > ")
+  );
+  check(
+    `${path}: the last breadcrumb is this page's canonical URL`,
+    Boolean(canonical) && crumbs.at(-1)?.item === canonical,
+    crumbs.at(-1)?.item
+  );
+
+  const faq = byType(jsonLd, "FAQPage")[0]?.mainEntity ?? [];
+  const missingQa = faq.filter(
+    (entry) => !text.includes(entry.name) || !text.includes(entry.acceptedAnswer?.text)
+  );
+  check(
+    `${path}: every question AND answer in the markup is on the page`,
+    faq.length > 0 && missingQa.length === 0,
+    `${faq.length} declared, ${missingQa.length} not visible`
+  );
+
+  // Nothing about ratings, reviews or prices, on any node.
+  const keys = keysOf(jsonLd);
+  const unearned = [
+    "aggregateRating",
+    "review",
+    "reviewCount",
+    "ratingValue",
+    "offers",
+    "price",
+  ].filter((key) => keys.has(key));
+  check(`${path}: claims no rating, review or price`, unearned.length === 0, unearned.join(", "));
+
+  // The referenced site nodes must be on the same page, or the graph dangles.
+  const referenced = (app?.isPartOf?.["@id"] ?? "") + " " + (app?.publisher?.["@id"] ?? "");
+  check(
+    `${path}: the site identity it references is on the same page`,
+    types.includes("WebSite") && types.includes("Organization") && referenced.trim().length > 0,
+    referenced.trim()
+  );
+
+  const ids = jsonLd.map((doc) => doc?.["@id"]).filter(Boolean);
+  check(`${path}: no duplicate @id`, new Set(ids).size === ids.length, `${ids.length} ids`);
+}
+
 async function main() {
   // Fail loudly with a useful message rather than a wall of connection errors.
   try {
@@ -117,35 +248,43 @@ async function main() {
     const html = await res.text();
     const text = visibleText(html);
     const headings = [...html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/gi)].map((h) =>
-      visibleText(h[1]),
+      visibleText(h[1])
     );
     const jsonLd = extractJsonLd(html);
     const types = jsonLd.flatMap(schemaTypes);
 
     console.log(
       `   ${html.length} bytes of HTML, ${text.length} chars of visible text, ` +
-        `${headings.length} h1, schema: ${types.length ? [...new Set(types)].join(", ") : "none"}`,
+        `${headings.length} h1, schema: ${types.length ? [...new Set(types)].join(", ") : "none"}`
     );
-    if (headings.length) console.log(`   h1: ${headings.map((h) => `"${h.slice(0, 70)}"`).join(", ")}`);
+    if (headings.length)
+      console.log(`   h1: ${headings.map((h) => `"${h.slice(0, 70)}"`).join(", ")}`);
 
     check(`${page.path}: served with 200`, res.status === 200, String(res.status));
     check(
       `${page.path}: exactly one non-empty <h1> in the raw HTML`,
       headings.length === 1 && headings[0].length > 0,
-      `${headings.length} found`,
+      `${headings.length} found`
     );
     check(
       `${page.path}: at least ${page.minText} chars of readable text without JS`,
       text.length >= page.minText,
-      `${text.length} chars`,
+      `${text.length} chars`
     );
-    check(`${page.path}: no JSON-LD failed to parse`, !types.includes("undefined") && jsonLd.every((d) => !d.__parseError));
+    check(
+      `${page.path}: no JSON-LD failed to parse`,
+      !types.includes("undefined") && jsonLd.every((d) => !d.__parseError)
+    );
+
+    if (page.needsGameSchema) {
+      checkGameSchema({ path: page.path, html, text, jsonLd });
+    }
 
     if (page.needsRating) {
       check(
         `${page.path}: carries an AggregateRating`,
         types.includes("AggregateRating"),
-        [...new Set(types)].join(", "),
+        [...new Set(types)].join(", ")
       );
     }
 
@@ -157,15 +296,15 @@ async function main() {
         `${page.path}: …with a real ratingValue and reviewCount`,
         Boolean(
           agg &&
-            Number(agg.ratingValue) >= 1 &&
-            Number(agg.ratingValue) <= 5 &&
-            Number(agg.reviewCount) >= 1,
-        ),
+          Number(agg.ratingValue) >= 1 &&
+          Number(agg.ratingValue) <= 5 &&
+          Number(agg.reviewCount) >= 1
+        )
       );
       check(
         `${page.path}: …and individual Review markup`,
         types.includes("Review"),
-        [...new Set(types)].join(", "),
+        [...new Set(types)].join(", ")
       );
 
       // The schema must describe reviews that are ACTUALLY ON THE PAGE — not a
@@ -179,13 +318,13 @@ async function main() {
       check(
         `${page.path}: every Review body in the markup is in the raw HTML too`,
         claimed.length > 0 && missingBodies.length === 0,
-        `${claimed.length} claimed, ${missingBodies.length} missing`,
+        `${claimed.length} claimed, ${missingBodies.length} missing`
       );
       const cards = (html.match(/Verified player/g) || []).length;
       check(
         `${page.path}: one review card rendered per review the rating counts`,
         cards === Math.min(Number(agg?.reviewCount ?? 0), 12),
-        `${cards} cards for ${agg?.reviewCount} rated reviews`,
+        `${cards} cards for ${agg?.reviewCount} rated reviews`
       );
     }
   }
@@ -230,16 +369,41 @@ async function main() {
         return h1 ? h1.innerText.replace(/\s+/g, " ").trim() : null;
       });
 
-      check(`${page.path}: no hydration mismatch or runtime error`, complaints.length === 0, complaints[0] || "");
+      check(
+        `${page.path}: no hydration mismatch or runtime error`,
+        complaints.length === 0,
+        complaints[0] || ""
+      );
       check(
         `${page.path}: the server-rendered <h1> is still there after the client render`,
         Boolean(domH1) && Boolean(rawH1) && domH1 === rawH1,
-        `server "${rawH1.slice(0, 40)}" vs dom "${String(domH1).slice(0, 40)}"`,
+        `server "${rawH1.slice(0, 40)}" vs dom "${String(domH1).slice(0, 40)}"`
       );
       await tab.close();
     }
 
     await browser.close();
+  }
+
+  // ── Every public game page, schema against the page it describes ──────
+  // The slug list comes from the sitemap — the same crawl surface a search
+  // engine uses — so a game that drops out of the sitemap fails here rather
+  // than silently reducing coverage.
+  console.log("\n=== game landing pages: the schema must describe the page ===\n");
+  const sitemap = await (await fetch(`${BASE_URL}/sitemap.xml`)).text();
+  const gamePaths = [...sitemap.matchAll(/<loc>[^<]*\/games\/([a-z0-9-]+)<\/loc>/g)].map(
+    (m) => `/games/${m[1]}`
+  );
+  check(
+    "the sitemap lists every public game page",
+    gamePaths.length >= 21 && new Set(gamePaths).size === gamePaths.length,
+    `${gamePaths.length} game URLs`
+  );
+  for (const path of gamePaths) {
+    const res = await fetch(BASE_URL + path, { redirect: "manual" });
+    const html = await res.text();
+    check(`${path}: served with 200`, res.status === 200, String(res.status));
+    checkGameSchema({ path, html, text: visibleText(html), jsonLd: extractJsonLd(html) });
   }
 
   console.log("\n=== home page: the machine-readable identity ===\n");
@@ -248,7 +412,10 @@ async function main() {
   const homeTypes = homeLd.flatMap(schemaTypes);
   check("home: Organization structured data", homeTypes.includes("Organization"));
   check("home: WebSite structured data", homeTypes.includes("WebSite"));
-  check("home: the app entity links back to the organization", homeTypes.includes("SoftwareApplication"));
+  check(
+    "home: the app entity links back to the organization",
+    homeTypes.includes("SoftwareApplication")
+  );
   // If the reviews ever legitimately drop to zero (all unapproved), the rating
   // must disappear rather than linger as a stale claim.
   const homeAgg = homeLd.map((d) => d.aggregateRating).find(Boolean);
@@ -259,7 +426,7 @@ async function main() {
   check(
     "home: the rating matches the reviews page (one claim, not two)",
     JSON.stringify(homeAgg ?? null) === JSON.stringify(reviewsAgg ?? null),
-    `${JSON.stringify(homeAgg ?? null)} vs ${JSON.stringify(reviewsAgg ?? null)}`,
+    `${JSON.stringify(homeAgg ?? null)} vs ${JSON.stringify(reviewsAgg ?? null)}`
   );
 
   console.log(`\n${pass} passed / ${fail} failed\n`);

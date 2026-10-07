@@ -9,6 +9,7 @@ export async function generateMetadata({
   const { matchId } = await params;
   const shortId = matchId.length > 10 ? matchId.slice(0, 8) : matchId;
   return {
+    robots: { index: false, follow: false },
     title: `Memory Grid Match #${shortId} | GRYND`,
     description: `Live Memory Grid match #${shortId} on GRYND. Match pairs faster than your opponent to win the wager.`,
   };

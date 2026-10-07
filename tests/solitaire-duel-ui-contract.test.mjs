@@ -463,7 +463,10 @@ test("realtime: the server broadcasts only DERIVED opponent numbers", () => {
 // ── 6. Names and copy ───────────────────────────────────────────────────
 
 test("copy: the routes state the format", () => {
-  assert.match(read(LOBBY_ROUTE), /title: "Solitaire Duel \| GRYND"/);
+  // The lobby route may state the title inline or hoist it into a const the
+  // metadata object consumes — the same contract either way. (The match route
+  // below is still written inline, and is asserted as such.)
+  assert.match(read(LOBBY_ROUTE), /(?:const title = |title: )"Solitaire Duel \| GRYND"/);
   const lobbyDescription = read(LOBBY_ROUTE);
   for (const trait of [/exact same/i, /klondike/i, /no wagers/i]) {
     assert.match(lobbyDescription, trait);

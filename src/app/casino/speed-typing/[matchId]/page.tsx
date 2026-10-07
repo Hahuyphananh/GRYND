@@ -5,6 +5,8 @@ import PageClient from "./PageClient";
 // deliberately carries NO ad tag (tests/adsense.test.mjs pins that rule for all
 // dynamic routes, because a board must never be framed by an ad).
 export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+
   title: "Speed Typing Match | GRYND",
   description:
     "A ranked 1v1 Speed Typing race — both players type the exact same passage and the first to finish it correctly wins.",

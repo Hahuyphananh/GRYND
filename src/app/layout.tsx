@@ -40,14 +40,21 @@ export const metadata = {
   // individual game pages override the image with their own screenshot art.
   // og:url must be the canonical PAGE url — not the image URL — or social
   // crawlers record the image path as the shared link.
-  alternates: {
-    canonical: "/",
-  },
+  // NOTE: deliberately NO root-level `alternates.canonical` and no
+  // `openGraph.url`.
+  //
+  // Next.js merges metadata parent → child, but it replaces the `alternates`
+  // and `openGraph` objects wholesale rather than deep-merging them. A root
+  // `canonical: "/"` was therefore inherited by every page that did not set
+  // its own, so each game page told Google "my canonical URL is the homepage"
+  // and Google consolidated the whole site into one indexed page.
+  //
+  // Both fields are intentionally page-owned now. Every public page declares
+  // its own canonical (via `alternates.canonical`) and its own `openGraph.url`.
   openGraph: {
     title: "GRYND — Competitive PvP Skill Gaming",
     description:
       "Challenge real players in competitive games, climb the leaderboard, and prove your skill.",
-    url: SITE_URL + "/",
     siteName: "GRYND",
     locale: "en_US",
     type: "website",

@@ -53,7 +53,7 @@ const KEY = "mini-golf";
 test("discovery: mini-golf is in the canonical catalog with the lobby's href", () => {
   const entry = GAME_CATALOG.find((game) => game.id === KEY);
   assert.ok(entry, "mini-golf must be in GAME_CATALOG");
-  assert.equal(entry.href, "/casino/mini-golf");
+  assert.equal(entry.href, "/games/mini-golf");
   assert.ok(entry.tags.includes("pvp"), "Mini Golf is a 1v1 duel → pvp");
   assert.ok(!entry.tags.includes("multiplayer"), "Mini Golf is strictly 2-player");
   // Exactly one entry — a duplicate would corrupt the fallback order.
@@ -83,10 +83,10 @@ test("discovery: the catalog and the lobby agree on Mini Golf's position", () =>
   );
 });
 
-test("discovery: the lobby card links to the Mini Golf lobby and records plays", () => {
+test("discovery: the lobby card links to the Mini Golf game and records plays", () => {
   const src = strip(read(LOBBY));
   const card = src.slice(src.indexOf('name: "Mini Golf"'));
-  assert.match(card, /href: "\/casino\/mini-golf"/);
+  assert.match(card, /href: "\/games\/mini-golf"/);
   assert.match(card, /leaderboardKey: "mini-golf"/);
   assert.match(card, /playsKey: "mini-golf"/);
   assert.match(card, /pvpMode: "1v1"/);
@@ -165,8 +165,10 @@ test("result: Mini Golf appears in the per-game leaderboard picker", async () =>
 
 test("metadata: the page title and description state the format", () => {
   const src = strip(read(PAGE));
-  assert.match(src, /title: "Mini Golf \| GRYND"/);
-  const description = /description:\s*"([^"]+)"/.exec(src)?.[1] ?? "";
+  // The values may be written inline (`title: "…"`) or hoisted into consts that
+  // the metadata object consumes — the same contract either way.
+  assert.match(src, /(?:const title = |title: )"Mini Golf \| GRYND"/);
+  const description = /(?:const description =\s*|description:\s*)"([^"]+)"/.exec(src)?.[1] ?? "";
   for (const trait of [/1v1/, /turn-based/, /physics-based/, /best of 5/i, /first to 3/i]) {
     assert.match(description, trait, `metadata description must mention ${trait}`);
   }
