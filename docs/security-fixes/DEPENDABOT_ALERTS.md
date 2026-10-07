@@ -6,23 +6,40 @@ remainder explained.
 ## How the alert list was obtained
 
 The GitHub Dependabot alerts API needs authentication (`security_events` scope)
-and this environment has no `gh` CLI and no token, so the list was reproduced
-locally with `npm audit`, which consumes the same GitHub Advisory Database.
+and this environment has no `gh` CLI and no token. The list was therefore
+reproduced locally with `npm audit`, which consumes the same GitHub Advisory
+Database, and cross-checked against the count GitHub itself reports on push.
+
+Two counting systems apply here and they are **not** interchangeable:
+
+- **Dependabot** opens one alert per advisory per affected package — this is the
+  number shown in the repo's Security tab.
+- **`npm audit`** counts one entry per vulnerable *package node*, so one advisory
+  appears once for the vulnerable package and again for every dependency that
+  pulls it in.
+
 Three manifests were checked:
 
-| Manifest | Result |
-|----------|--------|
-| `package.json` (root) | 14 alerts (2 critical, 10 high, 2 moderate) |
-| `realtime-server/package.json` | clean |
-| `android/` (Gradle) | no separate pin — Capacitor is consumed from `node_modules`, so it is covered by the npm bump |
+| Manifest | Dependabot alerts | `npm audit` nodes |
+|----------|-------------------|-------------------|
+| `package.json` (root) | 6 (2 critical, 3 high, 1 moderate) | 14 (2 critical, 10 high, 2 moderate) |
+| `realtime-server/package.json` | 0 | 0 |
+| `android/` (Gradle) | no separate pin — Capacitor resolves from `node_modules`, so the npm bump covers it | — |
+
+The root figure is not an estimate: pushing this fix made GitHub report
+`GitHub found 6 vulnerabilities on Hahuyphananh/GRYND's default branch
+(2 critical, 3 high, 1 moderate)` — the pre-push graph, since Dependabot
+re-scans asynchronously after the push. Those 6 map exactly to the advisories
+below (Capacitor counts twice, once per platform package).
 
 `.github/workflows/*` pin `actions/checkout@v4` and `actions/setup-node@v4`
 (current majors), so there are no GitHub Actions alerts.
 
 ## Result
 
-**14 → 8.** Every remaining alert traces to a single advisory that has no
-patched release (see below). Critical and moderate are cleared.
+**6 → 1 Dependabot alerts** (14 → 8 by `npm audit` node count). Both critical
+alerts and the moderate one are cleared. The single remaining alert is the
+unfixable `braces` advisory.
 
 | Advisory | Sev | Package | Was | Now |
 |----------|-----|---------|-----|-----|
@@ -30,7 +47,7 @@ patched release (see below). Critical and moderate are cleared.
 | GHSA-wq5f-xc86-pv6w | high | `sharp` | 0.35.4 | **0.35.5** ✅ |
 | GHSA-68fv-2mgg-jv7q | high | `source-map-js` | 1.2.1 | **1.2.2** ✅ |
 | GHSA-rj75-hqrm-r3gf | moderate | `postcss-selector-parser` | 6.1.4 | **7.1.6** ✅ |
-| GHSA-vfj7-8cjw-p6xm | high | `braces` + 7 downstream | 3.0.3 | **no fix exists** ❌ |
+| GHSA-vfj7-8cjw-p6xm | high | `braces` (1 alert; 8 `npm audit` nodes) | 3.0.3 | **no fix exists** ❌ |
 
 ## What changed
 
@@ -84,7 +101,8 @@ imports it directly.
 
 | Check | Result |
 |-------|--------|
-| `npm audit` totals | 14 → 8 (critical 2→0, moderate 2→0, high 10→8) |
+| Dependabot alerts | 6 → 1 (GitHub counted 6 on push; 1 remains) |
+| `npm audit` totals | 14 → 8 nodes (critical 2→0, moderate 2→0, high 10→8) |
 | `npm run build` | exit 0 |
 | Rendered CSS, PSP 6.1.4 vs 7.1.6 | **byte-for-byte identical** (272,140 bytes) |
 | `sharp` 0.35.5 runtime | PNG encode + resize→JPEG OK |
@@ -109,12 +127,13 @@ unrelated to dependencies:
 
 Restoring those two files will fix `npm test`.
 
-## The remaining 8 alerts cannot be fixed by a version bump
+## The remaining alert cannot be fixed by a version bump
 
 `braces` **GHSA-vfj7-8cjw-p6xm** (stack exhaustion via deeply nested brace
 patterns) affects `<= 3.0.3`, and the advisory's *Patched versions* field is
 **"None"** — 3.0.3 is the newest release on npm, so no `overrides` value can
-clear it. The other seven alerts are only present transitively:
+clear it. Dependabot raises a single alert for it, but `npm audit` lists eight
+nodes because seven more packages pull `braces` in transitively:
 
 | Package | Pulls `braces` in via |
 |---------|----------------------|
@@ -143,7 +162,7 @@ is left in place rather than dismissed silently.
 ## Reproducing
 
 ```bash
-npm audit                       # expect 8 high, all via braces
+npm audit                       # expect 8 high nodes, all via braces (1 Dependabot alert)
 
 # Show only the root advisories (ignoring transitive duplicates)
 npm audit --json | node -e "
