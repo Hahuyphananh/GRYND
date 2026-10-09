@@ -315,10 +315,52 @@ test("mega: sudden death is its own board and addresses slot -1", () => {
   assert.match(mega, /onPlay\(SUDDEN_DEATH_BOARD_INDEX, cellIndex\)/);
 });
 
-test("mega: the wider rounds scroll rather than shrinking cells on mobile", () => {
+test("mega: the lattice FITS the phone — no width floor anywhere", () => {
+  // On a phone the whole 3x3 (nine boards) must fit the content width with no
+  // sideways scroll. The old always-on inline `min-width: cols * 10.5rem`
+  // (504px at Round 3) forced the wider rounds into a horizontally-scrolling
+  // strip; there is no floor now, at ANY breakpoint — a `sm:`/`md:` floor
+  // re-creates the same sideways scroll on a narrow phone.
+  assert.match(mega, /className="mega-lattice[^"]*w-full"/);
+  assert.match(mega, /data-cols=\{cols\}/);
+  assert.doesNotMatch(mega, /const minWidth = cols === 1 \? undefined :/);
+  assert.doesNotMatch(mega, /style=\{\{ minWidth/);
+  // `overflow-x-auto` stays ONLY as a safety net; the fit is what removes the
+  // sideways scroll on a phone.
   assert.match(mega, /overflow-x-auto/);
-  assert.match(mega, /minWidth/);
-  assert.match(mega, /const minWidth = cols === 1 \? undefined :/);
+
+  // The fit is structural: zero-minimum tracks plus grid items allowed to
+  // shrink below their min-content width (a grid item defaults to
+  // `min-width: auto`, which would otherwise push the lattice out).
+  assert.match(mega, /gridTemplateColumns: `repeat\(\$\{cols\}, minmax\(0, 1fr\)\)`/);
+  assert.match(mega, /className={`min-w-0 rounded-2xl border/);
+
+  // globals.css names the lattice and must not reintroduce a floor for it.
+  const css = read("src/app/globals.css");
+  const megaRules = [...css.matchAll(/\.mega-lattice[^{]*\{([^}]*)\}/g)];
+  assert.equal(megaRules.length, 1, "the lattice gets exactly one CSS rule");
+  assert.equal(megaRules[0][1].trim(), "min-width: 0;");
+});
+
+test("mega: the phone layout is verified in a real browser and stays wired up", () => {
+  // The geometry above is static; `qa/tic-tac-toe-mega-mobile-check.mjs` mounts
+  // the REAL lattice inside the REAL Tailwind stylesheet and measures every
+  // round at 390 / 360 / 320 px (it reproduces the original 504px-lattice bug
+  // when the floor is reintroduced).
+  assert.ok(
+    fs.existsSync("qa/tic-tac-toe-mega-mobile-check.mjs"),
+    "qa/tic-tac-toe-mega-mobile-check.mjs must exist",
+  );
+  assert.ok(
+    fs.existsSync("qa/tic-tac-toe-mega-mobile-harness.jsx"),
+    "qa/tic-tac-toe-mega-mobile-harness.jsx must exist",
+  );
+  const pkg = JSON.parse(read("package.json"));
+  assert.equal(
+    pkg.scripts?.["verify:tic-tac-toe-mobile"],
+    "node qa/tic-tac-toe-mega-mobile-check.mjs",
+    "package.json must expose the browser check",
+  );
 });
 
 test("mega: the round, expansion and legend are all communicated", () => {

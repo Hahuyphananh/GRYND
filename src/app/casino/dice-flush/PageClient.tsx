@@ -1360,7 +1360,13 @@ export default function DiceFlushPage() {
         {/* ═══ MOVE HISTORY PANEL ═══ */}
         {moveHistory.length > 0 && <MoveHistoryPanel history={moveHistory} you={you} opponent={opponent} />}
 
-        {/* Turn Banner Overlay */}
+        {/* Turn Banner Overlay.
+            framer-motion owns `transform` here (it animates `y` and `scale`), so
+            Tailwind's `-translate-x-1/2` was overwritten the moment the spring
+            settled: the banner drew a half-width right of centre and was
+            clipped below ~350px. It is centred with `inset-x-0 mx-auto w-fit`
+            instead, and capped — the label carries the opponent's NAME, which
+            can be long. */}
         <AnimatePresence>
           {turnBanner && (
             <motion.div
@@ -1369,13 +1375,13 @@ export default function DiceFlushPage() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -50, scale: 0.8 }}
               transition={{ type: "spring", stiffness: 300, damping: 20 }}
-              className="fixed left-1/2 top-1/3 z-50 -translate-x-1/2 -translate-y-1/2 rounded-2xl border-2 border-[#f5ff3b]/40 bg-gradient-to-r from-[#030817] to-[#081a3d] px-10 py-6 shadow-[0_0_60px_rgba(245,255,59,0.3)] backdrop-blur"
+              className="fixed inset-x-0 top-1/3 z-50 mx-auto w-fit max-w-[calc(100vw-1.5rem)] rounded-2xl border-2 border-[#f5ff3b]/40 bg-gradient-to-r from-[#030817] to-[#081a3d] px-6 py-5 shadow-[0_0_60px_rgba(245,255,59,0.3)] backdrop-blur sm:px-10 sm:py-6"
             >
               <motion.div
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 transition={{ delay: 0.15, type: "spring", stiffness: 400 }}
-                className="text-center text-3xl font-black tracking-widest text-[#f5ff3b] drop-shadow-lg"
+                className="text-center text-2xl font-black tracking-widest text-[#f5ff3b] drop-shadow-lg sm:text-3xl"
               >
                 {turnBanner}
               </motion.div>
@@ -1402,7 +1408,7 @@ export default function DiceFlushPage() {
               animate={{ opacity: 0, scale: 2.5 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.8, ease: "easeOut" }}
-              className="pointer-events-none fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 text-6xl"
+              className="pointer-events-none fixed inset-x-0 top-1/2 z-50 mx-auto w-fit text-6xl"
             >
               <span className="inline-flex items-center gap-2"><IconSparkles size={40} /><IconDice size={48} /><IconSparkles size={40} /></span>
             </motion.div>

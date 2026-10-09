@@ -948,18 +948,24 @@ export default function ChessAIPageInner() {
       <GameSessionHost autoStart={!gameOver} autoStop={gameOver} gameLabel="chess-ai">
 
       {/* Turn Banner — chess-turn-banner. */}
+      {/* framer-motion owns `transform` on this banner (it animates `y` and
+          `scale`), so Tailwind's `-translate-x-1/2` was overwritten the moment
+          the spring settled: the banner was drawn a half-width right of centre
+          and was clipped off the right edge below ~350px. `inset-x-0 mx-auto
+          w-fit` centres it without a transform, and the cap keeps a long label
+          inside the viewport. */}
       <AnimatePresence>
         {turnBanner && (
           <motion.div
             key="turn-banner"
             {...turnBannerAnim}
-            className="chess-turn-banner fixed left-1/2 top-1/3 z-50 -translate-x-1/2 -translate-y-1/2 rounded-2xl border-4 border-amber-400 bg-gradient-to-r from-amber-700 to-orange-700 px-10 py-6 shadow-[0_0_60px_rgba(251,191,36,0.5)]"
+            className="chess-turn-banner fixed inset-x-0 top-1/3 z-50 mx-auto w-fit max-w-[calc(100vw-1.5rem)] rounded-2xl border-4 border-amber-400 bg-gradient-to-r from-amber-700 to-orange-700 px-6 py-5 shadow-[0_0_60px_rgba(251,191,36,0.5)] sm:px-10 sm:py-6"
           >
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
               transition={{ delay: 0.15, type: "spring", stiffness: 400 }}
-              className="text-center text-3xl font-black tracking-widest text-white drop-shadow-lg"
+              className="text-center text-2xl font-black tracking-widest text-white drop-shadow-lg sm:text-3xl"
             >
               {turnBanner}
             </motion.div>
@@ -977,7 +983,9 @@ export default function ChessAIPageInner() {
         )}
       </AnimatePresence>
 
-      {/* Check Banner — chess-check-banner. */}
+      {/* Check Banner — chess-check-banner. Centred the same way: it is a
+          `motion.div` animating `y`, so the Tailwind translate would be
+          clobbered and the pill would sit off the right of centre. */}
       <AnimatePresence>
         {isInCheck && !gameOver && (
           <motion.div
@@ -985,7 +993,7 @@ export default function ChessAIPageInner() {
             initial={{ opacity: 0, y: -30 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -30 }}
-            className="chess-check-banner fixed left-1/2 top-24 z-40 -translate-x-1/2 rounded-xl border-2 border-red-500 bg-red-900/80 px-6 py-2 shadow-[0_0_24px_rgba(255,0,0,0.4)]"
+            className="chess-check-banner fixed inset-x-0 top-24 z-40 mx-auto w-fit max-w-[calc(100vw-1.5rem)] rounded-xl border-2 border-red-500 bg-red-900/80 px-6 py-2 shadow-[0_0_24px_rgba(255,0,0,0.4)]"
           >
             <span className="inline-flex items-center gap-2 text-lg font-bold text-red-300 tracking-wider"><IconAlertTriangle size={20} /> CHECK!</span>
           </motion.div>

@@ -79,6 +79,22 @@ body {
   }
 }
 
+/* ── Mega Tic-Tac-Toe lattice: always FIT the screen ────────────────────
+   Rounds 2 and 3 draw a 2×2 / 3×3 lattice of small boards. The whole lattice
+   must fit the content width so all nine boards stay visible with no sideways
+   scroll — the old always-on inline `min-width: cols * 10.5rem` (504px at
+   Round 3) forced the 9-board round into a horizontally-scrolling strip on
+   every phone, i.e. exactly where it could only ever bind.
+
+   The fit itself comes from `minmax(0, 1fr)` grid tracks plus `min-w-0` on
+   each board card (a grid item otherwise refuses to shrink below its
+   min-content width). This rule names the lattice for the layout audits and
+   opts it out of any inherited floor; `data-cols` carries the round's column
+   count (2 or 3), set by MegaBoard.tsx. */
+.mega-lattice {
+  min-width: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

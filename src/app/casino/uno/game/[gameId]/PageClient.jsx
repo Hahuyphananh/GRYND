@@ -969,9 +969,12 @@ export default function UnoGamePage() {
       </AnimatePresence>
       <AnimatePresence>
         {turnBanner && (
+          // framer-motion owns `transform` here (it animates `y` and `scale`),
+          // so a Tailwind `-translate-x-1/2` would be clobbered: the banner is
+          // centred by `inset-x-0 mx-auto w-fit` instead.
           <motion.div
             {...turnBanner}
-            className="fixed left-1/2 top-1/3 z-50 -translate-x-1/2 -translate-y-1/2 rounded-2xl border-4 border-amber-400 bg-gradient-to-r from-amber-700 to-orange-700 px-10 py-6 shadow-[0_0_60px_rgba(251,191,36,0.5)]"
+            className="fixed inset-x-0 top-1/3 z-50 mx-auto w-fit max-w-[calc(100vw-1.5rem)] rounded-2xl border-4 border-amber-400 bg-gradient-to-r from-amber-700 to-orange-700 px-6 py-5 shadow-[0_0_60px_rgba(251,191,36,0.5)] sm:px-10 sm:py-6"
             key={"turn-banner"}
           >
             <motion.div
@@ -986,7 +989,7 @@ export default function UnoGamePage() {
                 type: "spring",
                 stiffness: 400,
               }}
-              className="text-center text-3xl font-black tracking-widest text-white drop-shadow-lg"
+              className="text-center text-2xl font-black tracking-widest text-white drop-shadow-lg sm:text-3xl"
             >
               {turnBanner}
             </motion.div>

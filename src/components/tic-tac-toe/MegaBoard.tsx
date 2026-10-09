@@ -161,7 +161,12 @@ function BoardCard({
       data-focused={focused ? "true" : "false"}
       onMouseEnter={onFocusBoard ? () => onFocusBoard(slot) : undefined}
       onFocus={onFocusBoard ? () => onFocusBoard(slot) : undefined}
-      className={`rounded-2xl border p-1.5 transition sm:p-2 ${frame} ${
+      // `min-w-0`: a grid item defaults to `min-width: auto`, i.e. it refuses to
+      // shrink below its own min-content width (the "Board 1" label plus the
+      // control badge). Without this the nine cards would push the lattice past
+      // the viewport on a phone; with it the cards and their `aspect-square`
+      // cells shrink to whatever the track gives them.
+      className={`min-w-0 rounded-2xl border p-1.5 transition sm:p-2 ${frame} ${
         highlight
           ? "ring-2 ring-amber-300/90 shadow-[0_0_36px_rgba(251,191,36,0.45)]"
           : focused
@@ -234,12 +239,20 @@ function MegaBoard({
   const owned = [...winningSet];
   const winningMark = owned.length ? lattice[owned[0]]?.control ?? null : null;
 
-  // The layout gets a floor width so a phone can scroll the wider rounds rather
-  // than shrinking nine boards into unusable cells. A 2x2/3x3 that fits its
-  // container is unaffected (the floor only bites when the container is narrow).
-  const minWidth = cols === 1 ? undefined : `${cols * 10.5}rem`;
+  // Responsive sizing.
+  //
+  // The lattice must FIT its column at every width, so the whole Round-3 3×3
+  // (nine boards) stays on screen on a phone with no sideways scroll. The old
+  // always-on inline `min-width: cols * 10.5rem` was 504px at Round 3 — wider
+  // than any phone's content width — so the 9-board round became a
+  // horizontally-scrolling strip, while on a wide column the `minmax(0, 1fr)`
+  // tracks already stretched well past it. There is no floor now: the tracks
+  // are `minmax(0, 1fr)` and each card carries `min-w-0`, so the boards and
+  // their `aspect-square` cells simply shrink to fit. `data-cols` names the
+  // round's column count for the CSS hook and the layout audits.
+  //
   // Round 1's lone board would otherwise stretch to the full width of its
-  // column, so it gets a ceiling: a 3x3 that stays comfortably playable and is
+  // column, so it keeps a ceiling: a 3x3 that stays comfortably playable and is
   // close to the size each board shrinks to once the lattice expands.
   const maxWidth = cols === 1 ? "20rem" : undefined;
 
@@ -394,8 +407,15 @@ function MegaBoard({
       )}
 
       {/* ── The lattice ────────────────────────────────────────────────── */}
+      {/* The lattice always fits its column (see `.mega-lattice` below), so a
+          phone never scrolls sideways and the whole 3×3 stays visible.
+          `overflow-x-auto` is only a safety net for a pathological viewport. */}
       <div className="overflow-x-auto pb-1">
-        <div className="relative mx-auto w-full" style={{ minWidth, maxWidth }}>
+        <div
+          className="mega-lattice relative mx-auto w-full"
+          data-cols={cols}
+          style={{ maxWidth }}
+        >
           <div
             className="grid gap-2 sm:gap-3"
             style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}

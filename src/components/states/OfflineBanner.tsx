@@ -85,7 +85,11 @@ export default function OfflineBanner() {
           {...motionProps}
           role="status"
           aria-live="polite"
-          className={`fixed left-1/2 top-2 z-[70] -translate-x-1/2 rounded-full border px-3.5 py-1.5 text-xs font-semibold shadow-[0_0_24px_rgba(0,0,0,0.4)] backdrop-blur-md ${
+          // Centred by margin, not by a `-translate-x-1/2` utility: the
+          // framer-motion props above animate `y`, so motion owns `transform`
+          // and the utility was being overridden — the pill was drawn a
+          // half-width right of centre, and clipped on a narrow phone.
+          className={`fixed inset-x-0 top-2 z-[70] mx-auto w-fit max-w-[calc(100vw-1.5rem)] rounded-full border px-3.5 py-1.5 text-xs font-semibold shadow-[0_0_24px_rgba(0,0,0,0.4)] backdrop-blur-md ${
             online
               ? "border-emerald-400/50 bg-emerald-500/15 text-emerald-200"
               : "border-[#f5ff3b]/50 bg-[#08142f]/95 text-[#f5ff3b]"

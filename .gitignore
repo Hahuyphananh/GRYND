@@ -17,6 +17,13 @@ realtime-server/node_modules
 # production
 /build
 
+# --- Cloudflare / Vinext build output ---
+# `npm run build:vinext` writes dist/ (dist/server + dist/client) and wrangler
+# writes .wrangler/. Both are generated artifacts, never source, and they were
+# flooding the source-control panel with >1200 untracked files.
+/dist/
+/.wrangler/
+
 # misc
 .DS_Store
 *.pem
@@ -64,6 +71,10 @@ next-env.d.ts
 **/.env.*
 !**/.env.example
 !**/.env.*.example
+
+# Cloudflare/Wrangler local dev secrets — real values, never commit.
+.dev.vars
+**/.dev.vars
 
 # Key material / credential files (public *.pub keys are fine to share)
 **/*.pem
