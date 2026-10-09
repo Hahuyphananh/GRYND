@@ -4,7 +4,7 @@ import { useUser } from "@clerk/nextjs";
 import { SignOutButton } from "./SignOutButton";
 import { motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
-import { useTheme } from "../context/ThemeContext";
+import ThemeToggle from "./ThemeToggle";
 import { useTranslation } from "../hooks/useTranslation";
 import { fadeUp, hoverScale, withReducedMotion, stagger } from "../lib/animations";
 import { UIPro01NavShell, UIPro02NavItem } from "./uipro";
@@ -36,7 +36,6 @@ const NAV_TRANSLATION_KEYS = {
 
 function NavigationBar({ currentPath = "" }) {
   const { isLoaded, isSignedIn, user } = useUser();
-  const { theme, toggleTheme } = useTheme();
   const { t } = useTranslation();
   const shouldReduceMotion = useReducedMotion();
   // Today's net (responsible-play) chip — rendered on the home page (mobile
@@ -501,6 +500,9 @@ function NavigationBar({ currentPath = "" }) {
                 the viewport edge (the sign-out button was getting clipped
                 on laptop widths when signed in). */}
             <div className="flex shrink-0 items-center gap-2 sm:gap-4">
+              {/* Light/dark switch — one control, in both the signed-in and
+                  signed-out clusters, so the theme is always reachable. */}
+              <ThemeToggle />
               {canInstall && (
                 <button
                   onClick={install}
@@ -707,6 +709,12 @@ function NavigationBar({ currentPath = "" }) {
                       <IconStar size={15} className="shrink-0" /> GRYND PRO
                     </span>
                   </Link>
+                {/* The same switch, as a labelled row — an icon-only button
+                    would be the only unlabelled control in this menu. */}
+                <ThemeToggle
+                  showLabel
+                  className="flex w-full items-center rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff] transition-colors hover:text-[#00e5ff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                />
             </div>
               {!isSignedIn && (
                 <div className="grid grid-cols-2 gap-2">

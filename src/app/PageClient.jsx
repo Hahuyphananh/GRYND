@@ -521,21 +521,22 @@ function MainComponent({ adSlot = null, popularGames = [], explainerSlot = null 
       <div className="mx-auto max-w-7xl px-4 pb-8 reveal">
         <h2 className="text-2xl font-bold text-center text-[#f5ff3b] mb-8">{t("home.how_it_works_title")}</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          {/* The badge colour is carried by CLASSES, not an inline `style`.
+              The light theme's remap layer (src/app/light-theme.css) can only
+              reach utility classes; an inline colour is invisible to it, so a
+              bright accent picked inline stays bright on a light ground and
+              the number drops to ~1.1:1. Same reason the trust badges below
+              carry a `cls` string. */}
           {[
-            { num: "01", titleKey: "home.how_it_works_steps.pick_game_title", descKey: "home.how_it_works_steps.pick_game_desc", color: "#00e5ff" },
-            { num: "02", titleKey: "home.how_it_works_steps.find_opponent_title", descKey: "home.how_it_works_steps.find_opponent_desc", color: "#f5ff3b" },
-            { num: "03", titleKey: "home.how_it_works_steps.make_move_title", descKey: "home.how_it_works_steps.make_move_desc", color: "#ff4fd8" },
-            { num: "04", titleKey: "home.how_it_works_steps.win_progress_title", descKey: "home.how_it_works_steps.win_progress_desc", color: "#00ffa6" },
-            { num: "05", titleKey: "home.how_it_works_steps.run_it_back_title", descKey: "home.how_it_works_steps.run_it_back_desc", color: "#a855f7" },
+            { num: "01", titleKey: "home.how_it_works_steps.pick_game_title", descKey: "home.how_it_works_steps.pick_game_desc", cls: "text-[#00e5ff] bg-[#00e5ff]/10 border-[#00e5ff]/40" },
+            { num: "02", titleKey: "home.how_it_works_steps.find_opponent_title", descKey: "home.how_it_works_steps.find_opponent_desc", cls: "text-[#f5ff3b] bg-[#f5ff3b]/10 border-[#f5ff3b]/40" },
+            { num: "03", titleKey: "home.how_it_works_steps.make_move_title", descKey: "home.how_it_works_steps.make_move_desc", cls: "text-[#ff4fd8] bg-[#ff4fd8]/10 border-[#ff4fd8]/40" },
+            { num: "04", titleKey: "home.how_it_works_steps.win_progress_title", descKey: "home.how_it_works_steps.win_progress_desc", cls: "text-[#00ffa6] bg-[#00ffa6]/10 border-[#00ffa6]/40" },
+            { num: "05", titleKey: "home.how_it_works_steps.run_it_back_title", descKey: "home.how_it_works_steps.run_it_back_desc", cls: "text-[#a855f7] bg-[#a855f7]/10 border-[#a855f7]/40" },
           ].map((step) => (
             <div key={step.num} className="flex flex-col items-center text-center p-4">
               <div
-                className="flex items-center justify-center w-12 h-12 rounded-full text-xl font-bold mb-3"
-                style={{
-                  color: step.color,
-                  backgroundColor: `${step.color}1a`,
-                  border: `1px solid ${step.color}55`,
-                }}
+                className={`flex items-center justify-center w-12 h-12 rounded-full border text-xl font-bold mb-3 ${step.cls}`}
               >
                 {step.num}
               </div>

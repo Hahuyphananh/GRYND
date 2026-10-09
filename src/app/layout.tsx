@@ -92,6 +92,27 @@ export const organizationJsonLd = {
   url: `${SITE_URL}/`,
 };
 
+// ── Theme bootstrap ──────────────────────────────────────────────────────
+// Runs in <head>, before the first paint, so a visitor who chose light mode
+// never sees a frame of the dark theme. It is the only place that can do this:
+// React has not hydrated yet, and the ThemeProvider cannot run during the
+// server render. It must stay in step with src/context/ThemeContext.js
+// (same storage keys, same attribute, same meta colour) — see the note there.
+// The light hex is the generator's PAGE constant; all three copies have to
+// move together or the address bar bands against the page.
+const THEME_LIGHT_GROUND = "#d3e2f7";
+const THEME_BOOTSTRAP = `(function(){try{
+var k="grynd_theme",L="casino_app_theme";
+var v=localStorage.getItem(k)||localStorage.getItem(L);
+if(v!=="light"&&v!=="dark"){v=(window.matchMedia&&window.matchMedia("(prefers-color-scheme: light)").matches)?"light":"dark";}
+var d=v!=="light",r=document.documentElement;
+r.classList.toggle("dark",d);
+r.setAttribute("data-theme",d?"dark":"light");
+r.style.colorScheme=d?"dark":"light";
+var m=document.querySelector('meta[name="theme-color"]');
+if(m)m.setAttribute("content",d?"#000000":"${THEME_LIGHT_GROUND}");
+}catch(e){}})();`;
+
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // Which consent prompt this visitor is allowed to see. Google requires its
   // own certified CMP for the EEA, the UK and Switzerland, and everyone else
@@ -124,9 +145,31 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <link rel="icon" type="image/png" href="/images/smalllogo.png" />
         <link rel="apple-touch-icon" type="image/png" href="/icon-192.png" />
         <meta name="theme-color" content="#000000" />
+        {/* A hint for the first paint, before any CSS or script has run, so a
+            dark-mode visitor never gets a white flash. The bootstrap script
+            and the stylesheet both override it as soon as they can. */}
+        <meta name="color-scheme" content="dark light" />
       </head>
 
       <body className="antialiased transition-colors duration-300 bg-[#030817] text-[#d8fbff]">
+        {/* Theme bootstrap — see THEME_BOOTSTRAP above.
+
+            IT LIVES AT THE TOP OF <body>, NOT IN <head>, AND THAT IS
+            DELIBERATE. In <head> it caused a React hydration mismatch
+            (minified error #418): React reconciles the <head> it rendered on
+            the server against the DOM, and a hand-authored inline <script>
+            there lands in a different position than the parser put it once
+            <head> also contains Next's own injected tags and an async ad tag
+            (see the note in components/ConsentModeDefault.tsx about React
+            hoisting async scripts). The mismatch made React throw away and
+            re-render the whole <html> subtree on the client.
+
+            As the first child of <body>, the script is an ordinary child node
+            that server and client both render in the same place, and it still
+            executes during parsing — before any body content exists — so the
+            theme is settled before anything is painted. Verified: the first
+            paint after a reload is already the stored theme. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
         {/* Google Analytics 4 (gtag.js) — on every page, from this one place.
             Consent-gated: it only loads after the visitor accepts the cookie
             banner (see the component for why). */}

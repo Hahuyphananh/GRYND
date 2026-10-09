@@ -154,6 +154,8 @@ export const APP_TEXT_TRANSLATIONS = {
       init_failed: "Initialization failed",
       user_fallback: "User",
       level_short: "LVL",
+      theme_light: "Switch to light mode",
+      theme_dark: "Switch to dark mode",
     },
     home: {
       title: "PICK YOUR BATTLE",
@@ -1599,6 +1601,8 @@ export const APP_TEXT_TRANSLATIONS = {
       init_failed: "Échec de l'initialisation",
       user_fallback: "Utilisateur",
       level_short: "NIV",
+      theme_light: "Passer au thème clair",
+      theme_dark: "Passer au thème sombre",
     },
     home: {
       title: "CHOISIS TON COMBAT",
@@ -2800,6 +2804,8 @@ export const APP_TEXT_TRANSLATIONS = {
       init_failed: "Error de inicialización",
       user_fallback: "Usuario",
       level_short: "NVL",
+      theme_light: "Cambiar al tema claro",
+      theme_dark: "Cambiar al tema oscuro",
     },
     home: {
       title: "ELIGE TU BATALLA",

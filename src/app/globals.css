@@ -1,4 +1,5 @@
 @import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700&display=swap");
+@import "./light-theme.css";
 
 @tailwind base;
 @tailwind components;
@@ -704,35 +705,6 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   }
 }
 
-/* Light mode palette overrides (dark mode keeps original colors) */
-:root[data-theme="light"] {
-  color-scheme: light;
-}
-
-/* 🔵 BLUE LIGHT MODE (casino style) */
-:root[data-theme="light"] {
-  color-scheme: dark; /* keep dark UI behavior */
-}
-
-/* Page background */
-:root[data-theme="light"] body {
-  background: #0a3d62;
-  color: #e6f0ff;
-}
-
-/* Main backgrounds */
-:root[data-theme="light"] .bg-\[\#003366\],
-:root[data-theme="light"] .animated-bg {
-  background: linear-gradient(180deg, #0a3d62, #0d4f8b) !important;
-}
-
-/* Cards / containers */
-:root[data-theme="light"] .bg-\[\#004080\],
-:root[data-theme="light"] .bg-black {
-  background-color: #0d4f8b !important;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
 @keyframes borderFlowX {
   0% {
     transform: translateX(-100%);
@@ -958,44 +930,6 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   animation-direction: reverse;
 }
 
-/* Secondary panels (like Mines sidebars) */
-:root[data-theme="light"] .bg-\[\#0055aa\] {
-  background-color: #1565c0 !important;
-}
-
-/* Text */
-:root[data-theme="light"] .text-white {
-  color: #e6f0ff !important;
-}
-
-:root[data-theme="light"] .text-gray-300,
-:root[data-theme="light"] .text-gray-200,
-:root[data-theme="light"] .text-gray-400 {
-  color: #bcd3ff !important;
-}
-
-/* Inputs */
-:root[data-theme="light"] input,
-:root[data-theme="light"] select,
-:root[data-theme="light"] textarea {
-  background-color: #0d4f8b !important;
-  color: #ffffff !important;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-}
-
-/* Gold accents */
-:root[data-theme="light"] .text-\[\#FFD700\] {
-  color: #ffd95a !important;
-}
-
-:root[data-theme="light"] .bg-\[\#FFD700\] {
-  background: linear-gradient(135deg, #ffd95a, #f4c430) !important;
-  color: #0a3d62 !important;
-}
-
-:root[data-theme="light"] .hover\:bg-\[\#FFD700\]\/80:hover {
-  background-color: #f4c430 !important;
-}
 /* Four-In-A-Row: sharp HUD board.
    (The falling-disc motion is now a framer-motion drop + trail in
    four-in-a-row/game/[gameId]/PageClient.tsx and play-ai/PageClient.tsx, so
