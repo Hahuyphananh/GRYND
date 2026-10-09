@@ -12,8 +12,7 @@ export async function POST(req) {
   try {
     const gate = await requirePracticePlayer({ create: true });
     if (gate.response) return gate.response;
-
-    const { userId } = await auth();
+    const userId = gate.playerId;
     if (!userId) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     // The lobby's AI-difficulty pick. Absent/invalid coerces to `normal`, so
     // an older client still starts a game.

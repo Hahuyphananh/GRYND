@@ -272,9 +272,6 @@ export default function UnoGamePage() {
       setGameOver(false);
       setMessage(t("neonFlush.yourTurn"));
       setEndPopup(null);
-      setTokens({
-        balance: data.data.newBalance,
-      });
       posthog?.capture("neon_flush_game_started", {
         mode: "ai",
         bet_amount: 0,
@@ -305,9 +302,6 @@ export default function UnoGamePage() {
         setHistoryIndex(null);
         setIsPlayerTurn(data.data.isPlayerTurn);
         setMessage(data.data.message || t("neonFlush.yourTurn"));
-        setTokens({
-          balance: data.data.newBalance,
-        });
         await checkForWinner(gameId);
       }
     } catch (err) {
@@ -497,9 +491,6 @@ export default function UnoGamePage() {
         const isMyTurn = data.data.turn === (data.data.role || "player2");
         setIsPlayerTurn(isMyTurn);
         setMessage(isMyTurn ? t("neonFlush.gameFoundYouStart") : t("neonFlush.gameFoundOppStarts"));
-        setTokens({
-          balance: data.data.newBalance,
-        });
         posthog?.capture("neon_flush_game_started", {
           mode: "online",
           bet_amount: betAmount,
@@ -674,10 +665,6 @@ export default function UnoGamePage() {
       setMessage(gameMode === "online" ? t("neonFlush.resignedYou") : t("neonFlush.resignedAi"));
       setIsPlayerTurn(false);
       pokeUnoMatch();
-      if (data.newBalance)
-        setTokens({
-          balance: data.newBalance,
-        });
       openEndPopup("loss", "resigned");
     } catch (err) {
       console.error("Erreur resign:", err);

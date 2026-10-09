@@ -52,13 +52,18 @@ function verifyScoresMatchBoxes(state) {
 }
 
 export async function POST(req) {
+  // Hoisted out of the try: the catch's audit path reads these, and the
+  // block-scoped `const`s used to throw a ReferenceError on EVERY rejection,
+  // turning a handled 400/403 into a 500.
+  let gameId;
+  let userId;
   try {
   const gate = await requirePracticePlayer();
   if (gate.response) return gate.response;
-  const userId = gate.playerId;
+  userId = gate.playerId;
 
     const body = await req.json();
-    const gameId = Number(body?.gameId);
+    gameId = Number(body?.gameId);
     const { type, row, col } = body;
 
     if (!Number.isFinite(gameId) || gameId <= 0) {

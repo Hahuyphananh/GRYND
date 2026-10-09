@@ -28,10 +28,13 @@ function getResult(player, ai) {
 const FIXED_MULTIPLIER = 1.9;
 
 export async function POST(req) {
+  // Hoisted so the catch's notification path can read it; the block-scoped
+  // `const` used to throw a ReferenceError inside the catch.
+  let userId;
   try {
     const gate = await requireAgeVerifiedUser();
     if (gate.response) return gate.response;
-    const userId = gate.userId;
+    userId = gate.userId;
 
     const body = await req.json();
     let { betAmount, choice, winStreak = 0 } = body;
