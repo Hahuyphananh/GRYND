@@ -22,11 +22,18 @@
 -- ── Ranks without a self-join ───────────────────────────────────────────
 -- Each board needs its own ranking, and the `win_rate` tab must rank ONLY the
 -- players who clear its sample-size floor. `ROW_NUMBER() OVER
--- (PARTITION BY <eligible> ORDER BY ...)` does exactly that: the eligible
--- partition numbers 1..n contiguously, so those ranks are identical to the
--- route's, which filters first and then numbers. Ineligible rows still appear
--- (with a rank from the other partition) so the client must select on
--- `rank_win_rate IS NOT NULL` for that tab — see the note at the bottom.
+-- (PARTITION BY <eligible> ORDER BY ...)` numbers the eligible partition 1..n
+-- contiguously, so those ranks are identical to the route's, which filters
+-- first and then numbers.
+--
+-- That partition is wrapped in `CASE WHEN <eligible> ... ELSE NULL END`, which
+-- matters more than it looks. Without the CASE, EVERY row gets a non-null
+-- `rank_win_rate` — ineligible rows simply get one from the other partition,
+-- and both partitions start at 1. A client filtering `rank_win_rate IS NOT
+-- NULL` would then have shown players below the floor, and two different rows
+-- would both have claimed rank 1 on the same board. The CASE makes ineligible
+-- rows genuinely NULL, so `rank_win_rate IS NOT NULL` is exactly the route's
+-- eligibility filter and the surviving ranks are 1..n with no gaps.
 --
 -- ── Same exclusions as the route ────────────────────────────────────────
 -- `recordSanityClause` drops hand-seeded impossible records — rows where
@@ -105,11 +112,14 @@ SELECT
   ROW_NUMBER() OVER (
     ORDER BY w DESC, l ASC, user_id ASC
   )::int AS rank_wins,
-  ROW_NUMBER() OVER (
-    PARTITION BY ((w + l) >= 10)
-    ORDER BY (CASE WHEN (w + l) > 0 THEN ROUND((w / NULLIF((w + l), 0)) * 100, 2) ELSE 0 END) DESC,
-             w DESC, user_id ASC
-  )::int AS rank_win_rate,
+  CASE
+    WHEN (w + l) >= 10 THEN ROW_NUMBER() OVER (
+      PARTITION BY ((w + l) >= 10)
+      ORDER BY (CASE WHEN (w + l) > 0 THEN ROUND((w / NULLIF((w + l), 0)) * 100, 2) ELSE 0 END) DESC,
+               w DESC, user_id ASC
+    )::int
+    ELSE NULL
+  END AS rank_win_rate,
   ROW_NUMBER() OVER (
     ORDER BY games DESC, user_id ASC
   )::int AS rank_games,
@@ -188,11 +198,14 @@ SELECT
   ROW_NUMBER() OVER (
     ORDER BY ww DESC, wl ASC, user_id ASC
   )::int AS rank_wins,
-  ROW_NUMBER() OVER (
-    PARTITION BY ((ww + wl) >= 5)
-    ORDER BY (CASE WHEN (ww + wl) > 0 THEN ROUND((ww / NULLIF((ww + wl), 0)) * 100, 2) ELSE 0 END) DESC,
-             ww DESC, user_id ASC
-  )::int AS rank_win_rate,
+  CASE
+    WHEN (ww + wl) >= 5 THEN ROW_NUMBER() OVER (
+      PARTITION BY ((ww + wl) >= 5)
+      ORDER BY (CASE WHEN (ww + wl) > 0 THEN ROUND((ww / NULLIF((ww + wl), 0)) * 100, 2) ELSE 0 END) DESC,
+               ww DESC, user_id ASC
+    )::int
+    ELSE NULL
+  END AS rank_win_rate,
   ROW_NUMBER() OVER (
     ORDER BY (ww::int + wl::int) DESC, user_id ASC
   )::int AS rank_games,
