@@ -1,0 +1,39 @@
+-- 0208: Let the browser key USE the `public` schema (PostgREST prerequisite).
+--
+-- ── Why this file exists ────────────────────────────────────────────────
+-- 0207 granted SELECT on the leaderboard tables and added the matching RLS
+-- policies, and it applied cleanly. Reading the tables with the PUBLIC
+-- (browser) key still failed anyway:
+--
+--   GET /rest/v1/player_ratings?select=*  ->  401
+--   {"code":"42501","message":"permission denied for schema public"}
+--
+-- The tables were reachable, the policies were right, and it still failed,
+-- because PostgREST resolves `public.player_ratings` through the role's
+-- SCHEMA privileges before any table privilege or policy is consulted. Newer
+-- Supabase projects do not grant `anon`/`authenticated` USAGE on `public` at
+-- all — the same change that removed the default table grants 0207 works
+-- around — so the request never gets as far as the policy.
+--
+-- ── Why this is safe ────────────────────────────────────────────────────
+-- USAGE on a schema conveys NO row access. It permits name resolution inside
+-- the schema and nothing else: every table is still gated by its own
+-- privileges (0207 grants SELECT on exactly two) and by RLS (enabled on all
+-- 104 tables, 91 of which carry no policy and are therefore deny-all). Run
+-- `npm run verify:rls` to see exactly what is reachable at any time.
+--
+-- The application itself is unaffected for the same reason as 0207: it
+-- connects as `postgres`, which owns the schema and the tables, so nothing
+-- here is evaluated for it.
+--
+-- ── Deliberately NOT here ───────────────────────────────────────────────
+-- No `ALTER DEFAULT PRIVILEGES ... GRANT SELECT ON TABLES TO anon`. That would
+-- silently make every table added in future readable by anyone holding the
+-- publishable key, before anyone has reviewed it — the opposite of the
+-- explicit, one-table-at-a-time approach these migrations are taking. Each new
+-- public surface should be granted on purpose, with the exposure written down.
+--
+-- Idempotent: GRANT is idempotent by nature.
+--> statement-breakpoint
+
+GRANT USAGE ON SCHEMA "public" TO anon, authenticated;
