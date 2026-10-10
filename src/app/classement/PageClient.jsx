@@ -11,6 +11,10 @@ import FrameAvatar from "../../components/FrameAvatar";
 import { cosmeticEffectClass } from "../../lib/profileCosmetics";
 import { useTranslation } from "../../hooks/useTranslation";
 import { useApiResource } from "../../hooks/useApiResource";
+import {
+  fetchLeaderboardBoard,
+  leaderboardRestKey,
+} from "../../lib/leaderboardRest";
 import AsyncState from "../../components/states/AsyncState";
 import UpgradeProButton from "../../components/UpgradeProButton";
 import ReportEntryButton from "../../components/reports/ReportEntryButton";
@@ -419,30 +423,29 @@ export default function LeaderboardPage({ adSlot = null }) {
         : category;
   const myClerkId = isSignedIn ? user?.id : null;
 
-  const endpoint = useMemo(() => {
-    // The cross-game Overall Trophies board — the headline competitive board,
-    // ranked by each player's summed per-game trophies.
-    if (tab === "trophies") return `/api/leaderboard/trophy-overall?limit=50`;
-    // The cross-game Overall Elo board — an aggregate of established game
-    // ratings, restricted to players with enough different games.
-    if (tab === "overall") return `/api/leaderboard/overall?limit=50`;
-    // The game-specific Elo board — one independent ladder per game.
-    if (tab === "per-game")
-      return `/api/leaderboard/game?game=${game}&limit=50`;
-    if (tab === "daily-current")
-      return `/api/leaderboard/daily-streak?type=current&limit=50`;
-    if (tab === "daily-best")
-      return `/api/leaderboard/daily-streak?type=best&limit=50`;
-    if (tab === "weekly-streak")
-      return `/api/leaderboard/daily-streak?type=weekly-current&limit=50`;
-    if (tab === "weekly-best")
-      return `/api/leaderboard/daily-streak?type=weekly-best&limit=50`;
-    return `/api/leaderboard/all-time?limit=50&category=${category}`;
-  }, [tab, category, game]);
+  // Every public board is read straight from PostgREST with the publishable
+  // key, so none of this ranking work costs the Worker a single millisecond of
+  // CPU (10 ms per request is what killed 5–20% of page loads with error 1102).
+  // The reader is verified to return the same rows, in the same order, with the
+  // same ranks and values as the /api/leaderboard routes it replaces.
+  const boardKey = useMemo(
+    () => leaderboardRestKey(tab, { category, game }),
+    [tab, category, game],
+  );
 
   // Cache-first: the board paints immediately from the persisted SWR cache
   // and refreshes in the background (and again automatically on reconnect).
-  const board = useApiResource(endpoint);
+  const board = useApiResource(boardKey, {
+    fetcher: (key) =>
+      fetchLeaderboardBoard(key, {
+        limit: 50,
+        // Marks the viewer's own row. The routes additionally resolved a TRUE
+        // rank for a signed-in player beyond the visible page; that per-user
+        // read belongs to the Clerk-JWT path and is not done here.
+        clerkId: myClerkId,
+        games: RATED_GAMES_FALLBACK,
+      }),
+  });
   const statsResource = useApiResource(isSignedIn ? "/api/user/stats" : null);
 
   const items = Array.isArray(board.data?.items) ? board.data.items : [];
