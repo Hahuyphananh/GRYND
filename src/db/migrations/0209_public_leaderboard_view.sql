@@ -25,17 +25,24 @@
 -- why the column list below is the thing to review, and why nothing sensitive
 -- may ever be added to it.
 --
--- ── Deliberately NOT exposed ────────────────────────────────────────────
--- `users.clerk_id` is omitted. The JSON API returns it so the board can mark
--- "you", but that is a per-request server decision; publishing stable Clerk
--- identifiers from the database surface is not necessary for the boards, and
--- the client-side "me" row needs the per-user read path (a Clerk-JWT-bound
--- policy) that stage 2 has not built yet. Until then the client boards render
--- every player and simply cannot highlight the viewer.
+-- ── Why `clerk_id` IS exposed, and why `username` is NOT ────────────────
+-- `users.clerk_id` is projected because the board cannot work without it:
+-- `PageClient.jsx` links every row to `/profil/<clerk_id>`, keys rows on it,
+-- detects the viewer's own row with it, and passes it to the report button.
+-- It is also not a new disclosure — `fetchRatingLeaderboard` and
+-- `fetchOverallEloLeaderboard` already select `u.clerk_id` into `items`, and
+-- those routes serve `items` to anonymous callers under a public cache header,
+-- so every player's Clerk id is already readable by anyone with the
+-- publishable key. Withholding it here would break the profile links for no
+-- privacy gain.
 --
--- Also not exposed: no money columns, no streak/wager data, no email, no
--- clerk_id, no admin flags. `player_trophies` gets the same treatment when its
--- board is cut over; this file is scoped to the Elo boards.
+-- `users.username` is deliberately NOT projected: it is NULL for every row in
+-- this database (verified against production), while the API renders
+-- `u.name`. Projecting `username` would have put a permanently blank display
+-- name on the board — the display column is `name`.
+--
+-- Still not exposed: no email, no password, no money columns, no streak/wager
+-- data, no admin/ban flags.
 --
 -- Idempotent: CREATE OR REPLACE VIEW, and GRANT/REVOKE are idempotent.
 --> statement-breakpoint
@@ -52,7 +59,8 @@ SELECT
   r.draws,
   r.last_rated_at,
   r.updated_at,
-  u.username,
+  u.clerk_id,
+  u.name,
   u.image_url,
   u.profile_picture,
   u.selected_title,
