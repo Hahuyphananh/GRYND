@@ -151,6 +151,14 @@ function shapeRow(row: Row, rankColumn: string, tab: LeaderboardTab): Row {
   }
   out.rank = asNumber(row[rankColumn]);
 
+  // The route's `attachProfileFrames` renames the resolved decoration to
+  // `profileFrame` and drops the raw snake_case column, so mirror that here.
+  if ("profile_frame" in out) {
+    const frame = out.profile_frame;
+    delete out.profile_frame;
+    if (frame !== null && frame !== undefined) out.profileFrame = frame;
+  }
+
   if (tab === "overall") {
     out.label = "Overall Elo";
     out.overallElo = asNumber(row.overall_elo);
