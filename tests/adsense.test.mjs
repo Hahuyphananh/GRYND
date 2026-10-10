@@ -52,6 +52,7 @@ const ENTRYPOINT = read("src/lib/adEntitlement.ts");
 const LAYOUT = read("src/app/layout.tsx");
 const PROXY = read("src/middleware.ts");
 const CONSENT_MODE = read("src/components/ConsentModeDefault.tsx");
+const GATE = read("src/components/ConsentRegionGate.tsx");
 const SETTINGS_LINK = read("src/components/CookieSettingsLink.tsx");
 const REGIONS = read("src/lib/consentRegions.ts");
 
@@ -312,17 +313,35 @@ test("EEA, UK and Swiss visitors get Google's CMP instead of our banner", () => 
   // The single prompt rule: Google requires its own certified CMP in these
   // regions, and running ours on top would be two prompts over two consent
   // records that can disagree.
+  // The region is resolved in ONE place — lib/consentRegions.ts — from the
+  // edge header (COUNTRY_HEADERS, spot-checked below) and reaches the browser as
+  // the `cf_country` cookie the middleware stamps onto page responses.
   assert.ok(
-    LAYOUT.includes("requiresGoogleCmp(countryFromHeaders(requestHeaders))"),
-    "the layout must decide the region on the server from the request headers",
+    PROXY.includes("countryFromHeaders(req.headers)") &&
+      PROXY.includes("res.cookies.set(COUNTRY_COOKIE"),
+    "the middleware must stamp the edge's country onto page responses",
+  );
+  assert.ok(
+    GATE.includes("requiresGoogleCmp(country)") && GATE.includes("COUNTRY_COOKIE"),
+    "the region gate must decide from the country the edge reported",
+  );
+  // The decision is client-side on purpose. Reading the request headers in the
+  // layout — or exporting `dynamic = "force-dynamic"` — makes EVERY route render
+  // per request, and a Cloudflare Worker request gets 10 ms of CPU (measured
+  // page renders needed 38-937 ms, so 5-20% of page loads died with error 1102).
+  // Prerendered at build time, those routes are served without rendering.
+  assert.ok(
+    !/force-dynamic/.test(LAYOUT) && !/next\/headers/.test(LAYOUT),
+    "the layout must stay static-compatible: force-dynamic / next/headers here " +
+      "force every route to render per request",
   );
   assert.match(
-    LAYOUT,
+    GATE,
     /<CookieConsentBanner suppressForCmp=\{requiresCmp\} \/>/,
     "our banner must stand aside where Google's CMP applies",
   );
   assert.match(
-    LAYOUT,
+    GATE,
     /<CmpConsentBridge enabled=\{requiresCmp\} \/>/,
     "the CMP decision must be mirrored back for the local consent record",
   );

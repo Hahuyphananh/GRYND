@@ -50,6 +50,22 @@ export const EEA_UK_CH_COUNTRIES: ReadonlySet<string> = new Set([
 const COUNTRY_HEADERS = ["x-vercel-ip-country", "cf-ipcountry", "x-country-code"];
 
 /**
+ * Name of the cookie `src/middleware.ts` stamps with the visitor's country on
+ * page responses.
+ *
+ * It exists so the consent prompt can be chosen on the CLIENT. Reading the
+ * request headers in the root layout (together with its `force-dynamic` export)
+ * made every route in the app render on each request, which the Cloudflare free
+ * plan's 10 ms CPU budget cannot afford — measured page renders needed 38-937
+ * ms, so 5-20% of page loads were killed with error 1102 (exceededCpu). The
+ * country still comes from the same header (above); it simply travels to the
+ * browser in a cookie first.
+ *
+ * Read by src/components/ConsentRegionGate.tsx.
+ */
+export const COUNTRY_COOKIE = "cf_country";
+
+/**
  * Resolve the visitor's country from the request headers, uppercased, or `""`
  * when nothing reports one.
  */

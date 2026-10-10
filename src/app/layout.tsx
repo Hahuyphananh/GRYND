@@ -1,20 +1,15 @@
 import "./globals.css";
-import { headers } from "next/headers";
 import { Providers } from "./providers";
 import ClerkSafeChatWidget from "../components/ClerkSafeChatWidget";
-import CookieConsentBanner from "../components/CookieConsentBanner";
 import ConsentModeDefault from "../components/ConsentModeDefault";
-import CmpConsentBridge from "../components/CmpConsentBridge";
 import GoogleAnalytics from "../components/GoogleAnalytics";
-import { countryFromHeaders, requiresGoogleCmp } from "../lib/consentRegions";
+import ConsentRegionGate from "../components/ConsentRegionGate";
 import { ORGANIZATION_ID, buildWebsiteJsonLd } from "../lib/reviewJsonLd";
 import DisableInspect from "../components/DisableInspect";
 import CsrfFetchGuard from "../components/CsrfFetchGuard";
 import SplashScreen from "../components/SplashScreen";
 import { ToastProvider } from "../components/toast/ToastProvider";
 import { ogImageUrl, SITE_URL } from "../lib/ogImages";
-
-export const dynamic = "force-dynamic";
 
 export const metadata = {
   metadataBase: new URL(SITE_URL),
@@ -92,14 +87,20 @@ export const organizationJsonLd = {
   url: `${SITE_URL}/`,
 };
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  // Which consent prompt this visitor is allowed to see. Google requires its
-  // own certified CMP for the EEA, the UK and Switzerland, and everyone else
-  // keeps our banner — running both would be two prompts over two consent
-  // records that disagree. The country arrives on the request headers (see
-  // lib/consentRegions.ts); it is "" in local dev, i.e. "not the EU".
-  const requestHeaders = await headers();
-  const requiresCmp = requiresGoogleCmp(countryFromHeaders(requestHeaders));
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  // NOTE: this layout deliberately reads NO request state and exports no
+  // `dynamic` / `revalidate` value. Either one makes every route in the app
+  // render on each request, and a Cloudflare Worker request gets 10 ms of CPU
+  // (measured page renders needed 38-937 ms, so 5-20% of page loads died with
+  // error 1102). Static here means Next prerenders the route at build time and
+  // the Worker serves that HTML without rendering it — while the middleware
+  // still runs every auth/age/MFA gate on the request.
+  //
+  // The one thing that legitimately needed the request — which consent prompt
+  // this visitor may see (EEA/UK/Switzerland get Google's certified CMP,
+  // everyone else our banner) — now runs in components/ConsentRegionGate.tsx
+  // from the `cf_country` cookie the middleware stamps, so the region is known
+  // on the first page view.
 
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
@@ -153,11 +154,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <DisableInspect />
             <main id="main-content" className="pt-[68px] sm:pt-16">{children}</main>
             <ClerkSafeChatWidget />
-            {/* Mirrors Google's CMP decision into the local consent record so
-                the existing gating (GA, PostHog, Sentry) keeps working for
-                EEA/UK/Swiss visitors. No-op elsewhere. */}
-            <CmpConsentBridge enabled={requiresCmp} />
-            <CookieConsentBanner suppressForCmp={requiresCmp} />
+            {/* Which consent prompt this visitor gets (Google's certified CMP
+                in the EEA/UK/Switzerland, ours everywhere else), plus the
+                bridge that mirrors the CMP's answer into our own consent
+                record so the existing gating (GA, PostHog, Sentry) keeps
+                working. */}
+            <ConsentRegionGate />
           </ToastProvider>
         </Providers>
       </body>

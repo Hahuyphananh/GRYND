@@ -24,6 +24,7 @@ import { cacheGet, cacheSet } from "./lib/redis/cache";
 import { CacheKeys, CacheTTL } from "./lib/redis/keys";
 import { isGameLandingSlug } from "./lib/gameLandingPages";
 import { isGuideSlug } from "./lib/guides";
+import { COUNTRY_COOKIE, countryFromHeaders } from "./lib/consentRegions";
 
 /**
  * A path with no route behind it, used only as a rewrite target so that an
@@ -836,19 +837,61 @@ const hasClerkSecretKey = Boolean(process.env.CLERK_SECRET_KEY);
 // (Edge-safe). Every other dependency here was already Edge-safe: the MFA
 // cookies are Web Crypto (src/lib/auth/adminMfa.ts), rate limiting is
 // fetch/in-memory, and the cache is Upstash over HTTP.
+/**
+ * Stamp the visitor's country onto page responses.
+ *
+ * The consent prompt is chosen on the client (components/ConsentRegionGate.tsx)
+ * because reading the request headers — or exporting `force-dynamic` — in the
+ * root layout made EVERY route render on each request. On Cloudflare Workers a
+ * request gets 10 ms of CPU and a measured page render needed 38-937 ms, so
+ * 5-20% of page loads were killed with error 1102 (exceededCpu). A cookie is the
+ * one way to hand the country to the browser on the SAME response that carries
+ * the HTML: the browser applies `Set-Cookie` before any script runs, so even the
+ * first page view knows its region.
+ *
+ * Deliberately skipped for `/api/*` (no consent UI renders there) and once the
+ * value is unchanged, so a session costs one extra header, not one per request.
+ * `httpOnly` must stay false — this cookie is read from JavaScript.
+ */
+function withCountryCookie(
+  res: NextResponse | Response | void,
+  req: NextRequest,
+): NextResponse | Response | void {
+  // clerkMiddleware may pass through (void) or return a bare Response; only a
+  // NextResponse can carry a Set-Cookie through its cookie API, so anything else
+  // is returned untouched.
+  if (!(res instanceof NextResponse)) return res;
+  if (req.nextUrl.pathname.startsWith("/api/")) return res;
+
+  const country = countryFromHeaders(req.headers);
+  // No geo header (local `next dev`): leave the cookie absent. The client treats
+  // that as "not the EEA", i.e. our banner — exactly as before this change.
+  if (!country) return res;
+  if (req.cookies.get(COUNTRY_COOKIE)?.value === country) return res;
+
+  res.cookies.set(COUNTRY_COOKIE, country, {
+    path: "/",
+    maxAge: 60 * 60,
+    sameSite: "lax",
+    httpOnly: false,
+    secure: true,
+  });
+  return res;
+}
+
 export default async function middleware(req: NextRequest, event: NextFetchEvent) {
   if (!hasClerkSecretKey) {
-    return applySecurityHeaders(NextResponse.next());
+    return withCountryCookie(applySecurityHeaders(NextResponse.next()), req);
   }
 
   try {
-    return await clerkProtectedMiddleware(req, event);
+    return withCountryCookie(await clerkProtectedMiddleware(req, event), req);
   } catch (error) {
     console.error(
       "[middleware] Clerk middleware invocation failed; returning safe response.",
       error
     );
-    return applySecurityHeaders(NextResponse.next());
+    return withCountryCookie(applySecurityHeaders(NextResponse.next()), req);
   }
 }
 
