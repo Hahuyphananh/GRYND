@@ -24,6 +24,12 @@ realtime-server/node_modules
 /dist/
 /.wrangler/
 
+# `opennextjs-cloudflare build` (and next.config.js's runAfterProductionCompile
+# hook, so a plain `npm run build` too) writes .open-next/ — the server bundle
+# plus the asset tree. Generated, never source, and it was the one still
+# flooding the source-control panel: 3,879 untracked files after every build.
+/.open-next/
+
 # misc
 .DS_Store
 *.pem
