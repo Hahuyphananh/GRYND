@@ -49,7 +49,7 @@ const read = (rel) => readFileSync(rel, "utf8");
 const GUIDE_INDEX_ROUTE = "src/app/guides/page.tsx";
 const GUIDE_DETAIL_ROUTE = "src/app/guides/[slug]/page.tsx";
 const GUIDE_COMPONENT = "src/components/guides/GuideArticle.tsx";
-const PROXY = "src/proxy.ts";
+const PROXY = "src/middleware.ts";
 
 const ALL_SLUGS = new Set(GAME_LANDING_SLUGS);
 const ALL_GUIDES = new Set(GUIDE_SLUGS);

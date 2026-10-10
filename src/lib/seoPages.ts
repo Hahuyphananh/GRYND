@@ -25,7 +25,7 @@
 //
 // Only CANONICAL, PUBLIC, INDEXABLE URLs. Concretely, a URL is listed iff:
 //
-//   * it is public (no session required — see isPublicRoute in src/proxy.ts),
+//   * it is public (no session required — see isPublicRoute in src/middleware.ts),
 //   * it is NOT noindex (the authenticated lobbies at /casino/* and the private
 //     account/admin/auth pages all declare `robots: { index: false }`),
 //   * and it is the CANONICAL form of the page, never a redirect or an alias.

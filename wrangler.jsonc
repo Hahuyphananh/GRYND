@@ -1,0 +1,147 @@
+{
+  // Cloudflare Workers configuration for the OpenNext build output.
+  //
+  // ADDITIVE: this file is only read by `wrangler` / `opennextjs-cloudflare`, so
+  // the existing Vercel deployment (`next build` / `next start` + vercel.json's
+  // cron config) is completely untouched while both hosts run side by side.
+  //
+  // The `name` must match the Worker you created in the Cloudflare dashboard.
+  "$schema": "node_modules/wrangler/config-schema.json",
+
+  // OpenNext emits a single Worker entrypoint plus a static-assets directory.
+  // We point at our own entrypoint instead of `.open-next/worker.js` so we can
+  // attach a `scheduled` handler for Cron Triggers; it re-uses the generated
+  // `fetch` handler. See cloudflare-worker.ts.
+  "main": "./cloudflare-worker.ts",
+  "name": "grynd",
+
+  // Any date >= 2024-09-23 is required for the assets binding to work.
+  "compatibility_date": "2026-10-09",
+
+  // `nodejs_compat` is mandatory: the app uses node:crypto, Buffer, and
+  // process.env throughout (see src/lib/security/*, src/lib/auth/*), and `pg`
+  // reaches Postgres through the node:net shim it provides.
+  //
+  // `global_fetch_strictly_public` keeps a stray fetch() from reaching a
+  // private/loopback address; every outbound call the app makes (Supabase
+  // PostgREST, the Render realtime service, Clerk, Resend, Stripe) is to a
+  // public host.
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+
+  // Static assets (including the Next.js client bundles) are served by the
+  // assets binding rather than the Worker itself.
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+
+  // Self-reference service binding used by OpenNext's caching layer; the
+  // service name must match the worker name above.
+  // See https://opennext.js.org/cloudflare/caching
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "grynd"
+    }
+  ],
+
+  // Cloudflare Images binding, used by the OpenNext image optimizer for the
+  // Next default image loader. See https://opennext.js.org/cloudflare/howtos/image
+  "images": {
+    "binding": "IMAGES"
+  },
+
+  "vars": {
+    // Non-secret RUNTIME vars only.
+    //
+    // Secrets live in `wrangler secret put <NAME>` (never in this file).
+    // `NEXT_PUBLIC_*` live in Workers BUILD variables — a runtime var cannot
+    // inline them, because `next build` bakes them into the bundle.
+    // See docs/CLOUDFLARE_ENV_AND_DOMAIN.md for the full split.
+    //
+    // CLERK_JWT_KEY is deliberately NOT here: it is the public half of Clerk's
+    // signing key, but it rotates independently of this repo, so it is set as a
+    // runtime secret alongside the rest instead of being committed.
+    "POSTHOG_PROJECT_ID": "448673",
+    "SMTP_HOST": "smtp.gmail.com",
+    "SMTP_PORT": "465",
+    "SMTP_SECURE": "true",
+    "SMTP_TLS_INSECURE": "true",
+    "SMTP_USER": "phananhalbert@gmail.com",
+    "YOUTUBE_CLIENT_ID": "238084489944-m3dj1ovik929jl4dvte0mqehafj89n0o.apps.googleusercontent.com"
+  },
+
+  // ── Hyperdrive (database): REQUIRED ──────────────────────────────────
+  //
+  // Not optional, and not an optimization: a Worker CANNOT reach Supabase
+  // Postgres directly. Workers TCP sockets always validate the origin
+  // certificate and offer no `rejectUnauthorized`/custom-CA option, while
+  // Supabase serves a private-CA chain, so the TLS handshake is rejected by the
+  // runtime and `pg` reports only "Connection terminated unexpectedly". Measured
+  // against BOTH the pooler (:6543) and the direct host (:5432); see
+  // docs/CLOUDFLARE_ENV_AND_DOMAIN.md §2. Hyperdrive terminates that connection
+  // itself, which is what makes the database reachable at all.
+  //
+  // Created with Supabase's **DIRECT** connection string (port 5432) — never the
+  // pooled/transaction one (6543), because Hyperdrive does the pooling itself:
+  //
+  //   npx wrangler hyperdrive create grynd-supabase --connection-string=...
+  //
+  // `src/db/pool.ts` prefers this binding and falls back to DATABASE_URL
+  // (Vercel/Node) when it is absent. It also deliberately does NOT request TLS
+  // on the Worker → Hyperdrive hop — see the `ssl` option there.
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "9bd858d7383f44299bc9a30b57997d39",
+
+      // ── Local development only ─────────────────────────────────────────
+      //
+      // `wrangler dev` / `opennextjs-cloudflare preview` emulate Hyperdrive by
+      // connecting to a LOCAL Postgres, and wrangler refuses to start until this
+      // is set — including on `opennextjs-cloudflare deploy`, which runs
+      // `getPlatformProxy` in local mode and throws "no local hyperdrive
+      // connection string" otherwise.
+      //
+      // It must NEVER hold the real Supabase URL: this file is committed, and
+      // the origin credentials belong to the Hyperdrive config (`wrangler
+      // hyperdrive create`), with `DATABASE_URL` kept as the Vercel/Node
+      // fallback. This value is a placeholder for a local Postgres that does not
+      // exist here — and cannot be reached from this machine anyway (outbound
+      // 5432/6543 are blocked).
+      //
+      // Plain `next dev` is unaffected: next.config.js never calls
+      // `initOpenNextCloudflareForDev`, so there is no Cloudflare context and
+      // local dev still reads DATABASE_URL. For real local work against a
+      // reachable database, override this with the
+      // CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE env var, which
+      // takes precedence over this field.
+      "localConnectionString": "postgres://postgres:postgres@127.0.0.1:5432/postgres"
+    }
+  ],
+
+  // Stream Worker logs to the Cloudflare dashboard for debugging.
+  "observability": {
+    "enabled": true
+  },
+
+  // ── Cron Triggers ─────────────────────────────────────────────────────
+  //
+  // These replace the three Vercel Cron Jobs in vercel.json (which is left
+  // untouched so the Vercel deploy keeps working during the migration). The
+  // schedules are identical, and all times are UTC — same as Vercel Cron:
+  //
+  //   "0 0 * * 1"  weekly-reset   (Mondays 00:00)
+  //   "0 4 * * *"  retention      (daily 04:00)
+  //   "0 0 * * *"  daily-reset    (daily 00:00)
+  //
+  // Each trigger invokes cloudflare-worker.ts's `scheduled` handler, which calls
+  // the matching /api/jobs/* route with the CRON_SECRET bearer token.
+  //
+  // IMPORTANT: put the secret in the Worker before relying on these —
+  // `npx wrangler secret put CRON_SECRET`. The job routes fail-secure (401)
+  // without it, so a missing secret means the jobs silently no-op.
+  "triggers": {
+    "crons": ["0 0 * * 1", "0 4 * * *", "0 0 * * *"]
+  }
+}

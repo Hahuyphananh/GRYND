@@ -6,6 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "cf:build": "opennextjs-cloudflare build",
+    "cf:preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "cf:typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
+    "verify:cloudflare": "node qa/cloudflare-verify.mjs",
     "lint": "next lint",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx ./src/db/migrate.ts",
@@ -183,6 +188,7 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.2",
+    "@opennextjs/cloudflare": "^1.20.9",
     "@types/canvas-confetti": "^1.9.0",
     "@types/node": "22.14.1",
     "@types/pg": "^8.11.14",
@@ -202,7 +208,8 @@
     "puppeteer-core": "^25.9.0",
     "tailwindcss": "^3.3.0",
     "tsx": "^4.19.3",
-    "typescript": "5.8.3"
+    "typescript": "5.8.3",
+    "wrangler": "^4.149.0"
   },
   "overrides": {
     "@types/react": "19.1.2",

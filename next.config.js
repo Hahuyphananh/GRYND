@@ -40,7 +40,27 @@ const nextConfig = {
     "/api/**": [
       "node_modules/stockfish/src/stockfish-nnue-16-single.js",
       "node_modules/stockfish/src/stockfish-nnue-16-single.wasm",
+      // `pg` (node-postgres) loads its Cloudflare socket implementation with a
+      // conditional export: `pg-cloudflare` maps the `workerd` condition to
+      // `./dist/index.js` and everything else to `./dist/empty.js`.
+      //
+      // Next's tracer runs under NODE conditions, so the .nft.json it writes
+      // records only `dist/empty.js`. OpenNext then re-bundles that traced
+      // output with esbuild under the WORKERD condition, where `pg/lib/stream.js`
+      // genuinely needs `dist/index.js` — which was never copied. The Cloudflare
+      // build therefore fails with:
+      //
+      //   ✘ [ERROR] Could not resolve "pg-cloudflare"
+      //       node_modules/pg/lib/stream.js:41
+      //
+      // Tracing the whole dist directory makes both files present, so the file
+      // the workerd condition resolves to actually exists in the bundle. This is
+      // the same technique already used for the Stockfish .wasm above.
+      "node_modules/pg-cloudflare/dist/**",
     ],
+    // The database layer is imported by server-rendered pages too, not just
+    // /api routes, so the file has to be traced for every route.
+    "/**": ["node_modules/pg-cloudflare/dist/**"],
   },
 
   // …and the package ships ~87 MB of things the engine never touches. Being an

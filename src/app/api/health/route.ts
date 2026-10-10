@@ -27,7 +27,16 @@ export async function GET() {
   } catch (err) {
     status.db = "error";
     status.ok = false;
-    console.error("[health] database check failed:", err);
+    // Log the CAUSE too. Drizzle wraps driver failures ("Failed query: ..."),
+    // and on Workers the wrapped error is all you get — pg reports the real
+    // problem on `cause` (or on the driver error inside it). Without this the
+    // log line names the symptom and nothing else.
+    const cause = (err as { cause?: unknown })?.cause;
+    console.error(
+      "[health] database check failed:",
+      (err as Error)?.message,
+      cause ? `| cause: ${(cause as Error)?.message ?? String(cause)}` : "",
+    );
   }
 
   // Redis — optional. Report status without failing the whole check.

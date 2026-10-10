@@ -300,7 +300,7 @@ test("indexing: the sitemap lists every landing page and no /play URL", () => {
 
 // ── 4. Auth is not weakened ───────────────────────────────────────────────
 
-const PROXY = read("src/proxy.ts");
+const PROXY = read("src/middleware.ts");
 
 test("auth: the landing page is public content with no Clerk dependency", () => {
   for (const file of ["src/app/games/[slug]/page.tsx", "src/components/game-landing/GameLanding.tsx"]) {

@@ -39,7 +39,7 @@ const FIRST_GAME_ROUTE = "src/app/api/onboarding/first-game-complete/route.ts";
 const LOBBY = "src/app/casino/PageClient.jsx";
 const SETTINGS = "src/app/settings/PageClient.jsx";
 const SYNC = "src/app/sync/PageClient.tsx";
-const PROXY = "src/proxy.ts";
+const PROXY = "src/middleware.ts";
 const MIGRATION = "src/db/migrations/0158_questionnaire_dismissal.sql";
 const LOCALES = ["en", "fr", "es"];
 

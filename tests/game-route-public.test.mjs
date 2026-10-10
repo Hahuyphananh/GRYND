@@ -2,7 +2,7 @@
  * game-route-public.test.mjs
  *
  * Guards the "a signed-out visitor can READ a game lobby" contract at its
- * single source of truth: `GAME_ROUTE_PATTERNS` in src/proxy.ts.
+ * single source of truth: `GAME_ROUTE_PATTERNS` in src/middleware.ts.
  *
  * A guest is supposed to browse every lobby and only be asked to sign in when
  * they press PLAY (src/components/lobby/PvpLobby.jsx). That only holds if the
@@ -29,13 +29,13 @@ import { createRouteMatcher } from "@clerk/nextjs/server";
 
 const read = (rel) => readFileSync(rel, "utf8");
 
-const PROXY = read("src/proxy.ts");
+const PROXY = read("src/middleware.ts");
 const HUB = read("src/app/casino/PageClient.jsx");
 
-/** The literal entries of the `GAME_ROUTE_PATTERNS` array in src/proxy.ts. */
+/** The literal entries of the `GAME_ROUTE_PATTERNS` array in src/middleware.ts. */
 function gameRoutePatterns() {
   const start = PROXY.indexOf("const GAME_ROUTE_PATTERNS");
-  assert.ok(start > 0, "GAME_ROUTE_PATTERNS must exist in src/proxy.ts");
+  assert.ok(start > 0, "GAME_ROUTE_PATTERNS must exist in src/middleware.ts");
   const block = PROXY.slice(start, PROXY.indexOf("] as const;", start));
   return [...block.matchAll(/"([^"]+)"/g)]
     .map((m) => m[1])
@@ -85,7 +85,7 @@ test("every lobby page in the casino app is classified as a game route", () => {
     missing,
     [],
     "a game with a lobby page but no GAME_ROUTE_PATTERNS entry bounces " +
-      "signed-out visitors to /sign-in — add it to src/proxy.ts",
+      "signed-out visitors to /sign-in — add it to src/middleware.ts",
   );
 });
 

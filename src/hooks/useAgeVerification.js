@@ -8,7 +8,7 @@ import { calculateAge, MINIMUM_AGE } from "../lib/ageVerification";
  *
  * IMPORTANT: age is AUTHORITATIVE on the server, not here. The server writes
  * `users.age` (via /api/update-birthdate) and enforces it in two places:
- *   - page navigations: src/proxy.ts redirects no-age -> /complete-profile and
+ *   - page navigations: src/middleware.ts redirects no-age -> /complete-profile and
  *     under-18 -> /access-denied;
  *   - game/wagering APIs: src/lib/auth/requireAgeVerified.ts rejects with
  *     403 unless the DB age is >= 18.
