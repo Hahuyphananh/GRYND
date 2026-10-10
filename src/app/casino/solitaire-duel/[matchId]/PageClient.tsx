@@ -70,7 +70,7 @@ import { useSocket } from "../../../../context/SocketProvider";
 import {
   useMatchSync,
 } from "../../../../hooks/useMatchSync";
-import { startVisibleInterval } from "../../../../hooks/useVisiblePoll";
+import { usePracticeBotHeartbeat } from "../../../../hooks/usePracticeBotHeartbeat";
 import {
   SOLITAIRE_DUEL_EVENTS,
   solitaireDuelMatchRoom,
@@ -141,23 +141,6 @@ type OpponentProgressPayload = OpponentProgress & { matchId?: string };
 const GO_FLASH_MS = 700;
 /** How long an invalid-move notice lingers. */
 const NOTICE_MS = 2200;
-
-/**
- * How often a live PRACTICE match re-reads its snapshot.
- *
- * A human duel is pushed: the opponent's move broadcasts MATCH_UPDATED and this
- * page re-fetches. A practice match has no such source — the bot is advanced by
- * the READ ITSELF (the store plays its whole backlog up to `now` inside
- * GET /match/[id], see `advanceAiMatch`) and emits nothing while it plays. So
- * a read is what makes the bot move at all, and this page is the only thing
- * that reads. Its cadence is therefore the bot's heartbeat.
- *
- * The value does not affect the bot's PACE: the store derives how many moves
- * the bot has earned from the server clock (`goAt + ply × delay`), so a read
- * never lets the bot run ahead or fall behind — it only decides how often the
- * opponent's bar visibly advances. 1.5 s keeps that smooth.
- */
-const PRACTICE_BOT_POLL_MS = 1_500;
 
 const TERMINAL = new Set(["finished", "cancelled"]);
 
@@ -478,25 +461,15 @@ export default function SolitaireDuelMatchPage() {
   useMatchSync(load, socket, Boolean(matchId) && Boolean(match) && !terminal);
 
   // ── Practice bot heartbeat ─────────────────────────────────────────────
-  // The one place this page must still read on a timer. `useMatchSync` above
-  // is event-driven on purpose and correct for a human duel, whose opponent
-  // pushes MATCH_UPDATED. A PRACTICE match pushes nothing while the bot plays,
-  // and the bot only advances when the store is READ — so without a read the
-  // bot simply stands still the moment the player stops moving, which is what
-  // left it looking idle right after the countdown. It also protects the
-  // finish: the bot's completion instant is simulated from the clock, so a
-  // race it has already won must be OBSERVED promptly or a slower human
-  // completion would take it.
-  //
-  // Gated on three things so no other case pays for it: the opponent is a bot,
-  // the race is live (the countdown is over and the match is not terminal), and
-  // the tab is visible (a hidden tab cannot be played). A human duel keeps the
-  // purely event-driven path with no timer at all.
+  // The one place this page must still read on a timer. `useMatchSync` above is
+  // event-driven on purpose and correct for a human duel, whose opponent pushes
+  // MATCH_UPDATED. A practice match pushes nothing while the bot plays, and the
+  // bot only advances when the store is READ — so without a read the bot simply
+  // stands still the moment the player stops moving. The shared hook carries
+  // the full reasoning and the cadence; it is gated on a bot opponent with a
+  // LIVE race, so a human duel keeps the purely event-driven path.
   const opponentIsBot = Boolean(match?.isAi);
-  useEffect(() => {
-    if (!matchId || !opponentIsBot || !racing) return undefined;
-    return startVisibleInterval(() => loadRef.current(), PRACTICE_BOT_POLL_MS);
-  }, [matchId, opponentIsBot, racing]);
+  usePracticeBotHeartbeat(opponentIsBot && racing, () => loadRef.current());
 
   // When the local inactivity clock says the forfeit is due, the server still
   // owns the verdict — ask it, and let it resolve. Nothing is decided here.

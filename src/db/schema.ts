@@ -3530,6 +3530,96 @@ export const ticTacToeMoves = pgTable(
   })
 );
 
+// BARRICADE — the 9×9 race (Quoridor under another name), played online 1v1.
+// ==============================================================================
+// `game_state` is the ONE authoritative position: the frozen `BarricadeState`
+// produced by the pure rules engine in src/lib/barricade/rules.ts
+// (`applyAction`). Barricade is perfect information — both pawns, every placed
+// barricade and both reserves are public — so nothing has to be hidden from
+// either seat.
+//
+// The append-only `barricade_moves` log is the replay record AND the
+// concurrency backstop: `expectedVersion` (the match's `ply`) is checked against
+// the row inside a `FOR UPDATE` transaction, and the unique (match_id, ply)
+// index makes "one persisted action per turn number per match" a STORAGE
+// invariant, so a double-submitted turn can never be applied twice even if a
+// future code path forgets the application check.
+//
+// There is deliberately NO wager / stake / pot / payout / prize column: the game
+// is unstaked, so no money is ever moved by settlement. There is also no
+// `is_ai` column — free practice runs entirely in the browser against a local
+// bot and never touches these tables.
+//
+// Player ids are stored as plain Clerk-id strings with no FK to `users`,
+// matching every other PvP table.
+export const barricadeMatches = pgTable(
+  "barricade_matches",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    player1Id: varchar("player1_id", { length: 255 }).notNull(),
+    // Nullable so a `waiting` row doubles as the open lobby.
+    player2Id: varchar("player2_id", { length: 255 }),
+    winnerId: varchar("winner_id", { length: 255 }),
+    // Derived from `game_state.turn` on every accepted action.
+    currentTurnUserId: varchar("current_turn_user_id", { length: 255 }),
+    // Accepted actions so far. This IS the optimistic-concurrency version the
+    // move route checks (`expectedVersion`), and the ply the next move claims.
+    ply: integer("ply").notNull().default(0),
+    /** waiting | playing | finished | cancelled — the shared house vocabulary
+     *  (`MATCH_STATUS` in src/lib/barricade/constants.ts). The second seat
+     *  joining takes the match straight to `playing`: barricade has no ready
+     *  banner, the first mover can play the moment the opponent lands. */
+    status: varchar("status", { length: 20 }).notNull().default("waiting"),
+    // The authoritative BarricadeState (see src/lib/barricade/rules.ts).
+    gameState: jsonb("game_state").notNull(),
+    // 'player1' | 'player2' — the winning SEAT. Null until the match settles.
+    result: varchar("result", { length: 20 }),
+    // How it ended: reached-baseline | resigned | abandoned | cancelled
+    // (END_REASONS in src/lib/barricade/constants.ts). Null while it is live.
+    resultReason: varchar("result_reason", { length: 24 }),
+    startedAt: timestamp("started_at"),
+    endedAt: timestamp("ended_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    statusIdx: index("barricade_matches_status_idx").on(table.status, table.createdAt),
+    player1Idx: index("barricade_matches_player1_idx").on(table.player1Id, table.createdAt),
+    player2Idx: index("barricade_matches_player2_idx").on(table.player2Id, table.createdAt),
+  })
+);
+
+// Append-only action log: the authoritative replay record, one row per accepted
+// turn, holding the exact ACTION ADDRESS the server validated (a destination
+// square for a move, or a groove + orientation for a barricade). It never stores
+// a board, a turn owner, a reserve count or a winner — those are all derived
+// from `game_state` by the engine, so a duplicated column could only drift.
+export const barricadeMoves = pgTable(
+  "barricade_moves",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    matchId: uuid("match_id")
+      .notNull()
+      .references(() => barricadeMatches.id, { onDelete: "cascade" }),
+    ply: integer("ply").notNull(),
+    playerId: varchar("player_id", { length: 255 }).notNull(),
+    // 'move' | 'wall' (ACTION_TYPES in src/lib/barricade/constants.ts).
+    actionType: varchar("action_type", { length: 12 }).notNull(),
+    // Destination square column/row (0..8) for a move; slot column/row (0..7)
+    // for a barricade — the same address the engine takes.
+    col: integer("col").notNull(),
+    row: integer("row").notNull(),
+    // 'horizontal' | 'vertical' for a barricade, NULL for a move.
+    orientation: varchar("orientation", { length: 12 }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    matchIdx: index("barricade_moves_match_idx").on(table.matchId, table.ply),
+    // Anti-replay: one persisted action per turn number per match.
+    plyIdx: unique("barricade_moves_ply_unique").on(table.matchId, table.ply),
+  })
+);
+
 // SOLITAIRE DUEL — the 1v1 simultaneous Klondike race.
 // ==============================================================================
 // ONE server-generated deal per match that BOTH seats play from their own

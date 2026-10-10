@@ -1310,6 +1310,13 @@
       "when": 1800000049000,
       "tag": "0205_realtime_publish_chess_moves",
       "breakpoints": true
+    },
+    {
+      "idx": 187,
+      "version": "7",
+      "when": 1800000050000,
+      "tag": "0207_barricade_pvp",
+      "breakpoints": true
     }
   ]
 }

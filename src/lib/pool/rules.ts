@@ -126,8 +126,18 @@ export function evaluateRules(params: {
     ? !remaining(balls, shooterAssigned)
     : false;
 
+  // The 8-ball is only ever a WIN on a stroke the shooter began already on it:
+  // sinking it on the SAME stroke as the last ball of the shooter's group is a
+  // loss of game. `balls` is the table AFTER the stroke, so "was already on the
+  // eight" means the group is clear now AND no ball of that group went down in
+  // this stroke — the one case a `remaining()` check alone cannot tell apart.
+  const ownGroupSunk = shooterAssigned
+    ? pocketed.filter((n) => n !== 8 && isOwn(n, shooterAssigned)).length
+    : 0;
+  const beganOnTheEight = shooterDone && ownGroupSunk === 0;
+
   if (sunkEight) {
-    if (!shooterAssigned || !shooterDone || scratch || foul)
+    if (!shooterAssigned || !beganOnTheEight || scratch || foul)
       winner = opponentTurn;
     else winner = turn;
   }

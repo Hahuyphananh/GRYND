@@ -285,25 +285,31 @@ test("client: a live PRACTICE match polls, because the bot only moves when it is
     "the standalone realtime server must not be growing a bot scheduler",
   );
 
-  // THE FIX. The page owns that heartbeat, visibility-gated, and only while the
-  // opponent is a bot with a live race.
-  assert.match(src, /import \{ startVisibleInterval \} from "\.\.\/\.\.\/\.\.\/\.\.\/hooks\/useVisiblePoll"/);
+  // THE FIX. The page runs the SHARED practice heartbeat (the same one Mines,
+  // Speed Typing and Sudoku Duel use), gated on a bot opponent with a live race.
+  assert.match(
+    src,
+    /import \{ usePracticeBotHeartbeat \} from "\.\.\/\.\.\/\.\.\/\.\.\/hooks\/usePracticeBotHeartbeat"/,
+  );
   assert.match(src, /const opponentIsBot = Boolean\(match\?\.isAi\)/);
   assert.match(
     src,
-    /if \(!matchId \|\| !opponentIsBot \|\| !racing\) return undefined;/,
-    "the heartbeat must be gated on a live practice match",
-  );
-  assert.match(
-    src,
-    /return startVisibleInterval\(\(\) => loadRef\.current\(\)\, PRACTICE_BOT_POLL_MS\);/,
-    "the practice heartbeat must re-read the authoritative snapshot",
+    /usePracticeBotHeartbeat\(opponentIsBot && racing, \(\) => loadRef\.current\(\)\)/,
+    "the practice heartbeat must be gated on a live bot race and re-read the authoritative snapshot",
   );
   // A HUMAN duel keeps the purely event-driven path — no timer for it.
   assert.match(src, /useMatchSync\(load, socket, Boolean\(matchId\) && Boolean\(match\) && !terminal\)/);
-  // The cadence is a named constant, so the "read = bot heartbeat" reasoning
-  // has one place to change rather than a literal buried in an effect.
-  assert.match(src, /const PRACTICE_BOT_POLL_MS = 1_500;/);
+  // The cadence lives ONCE, in the shared hook, rather than as a private copy.
+  assert.ok(
+    !src.includes("PRACTICE_BOT_POLL_MS"),
+    "the page must not carry its own copy of the heartbeat cadence",
+  );
+  const heartbeatHook = read("src/hooks/usePracticeBotHeartbeat.ts");
+  assert.match(
+    heartbeatHook,
+    /export const PRACTICE_BOT_HEARTBEAT_MS = 1_500;/,
+    "the shared heartbeat owns the cadence",
+  );
 });
 
 test("client: practice offers a restart that asks the server for a new deal", () => {

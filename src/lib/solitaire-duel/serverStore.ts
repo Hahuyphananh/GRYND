@@ -49,7 +49,7 @@ import {
   VARIANT,
   VARIANT_VERSION,
 } from "./constants";
-import { AI_STAGNATION_LIMIT, aiMoveDelayMs, planAiMoves } from "./ai";
+import { aiMoveDelayMs, legalMoves, planAiMoves } from "./ai";
 import { solvableDealFromSeed, stateSolvableVerdict } from "./solvable";
 import {
   cloneState,
@@ -750,27 +750,32 @@ async function redealSeatInTx(
 }
 
 /**
- * True when a live seat position can no longer be won.
+ * True when a HUMAN seat's live position can no longer be played at all.
  *
- * TWO gates, in order, so the expensive work is only ever done for a position
- * that has genuinely run out of road:
+ * THE PLAYER-FACING RE-DEAL TRIGGER (the bot has its own, looser one in
+ * `advanceAiMatch`), and it is deliberately the narrowest one that can be
+ * stated without a heuristic:
  *
- *   1. the strong-greedy planner must report the board STUCK (no legal move, or
- *      `AI_STAGNATION_LIMIT` moves that changed nothing). A position still being
- *      worked keeps progressing and returns false immediately.
- *   2. the complete search must EXHAUST the reachable position set with no
- *      winning line. A budget-limited search is `unknown`, never impossible, so
- *      a hard-but-winnable board is never taken from a player.
+ *   1. the authoritative engine (`legalMoves`) offers the seat NO move at all.
+ *      A board a player can still act on is NEVER taken away — not by a greedy
+ *      planner that has run out of ideas, and not by a search verdict. This is
+ *      the whole point of the gate: `planAiMoves` reports `stuck` for any board
+ *      its heuristic cannot advance within `AI_STAGNATION_LIMIT` moves (a deal
+ *      that needs an ordering it does not try, or one that only spins the stock
+ *      and waste), and treating that as "unsolvable" yanked winnable boards out
+ *      from under players mid-game.
+ *   2. the position is genuinely unwinnable. With gate 1 in place this is a
+ *      cheap corroboration — a position with no move has no line — and it keeps
+ *      the re-deal tied to the proof rather than to the absence of a move on
+ *      its own (an engine state that reports no moves while a line still exists
+ *      would be a bug worth NOT re-dealing over).
+ *
+ * A completed board is never "dead": the callers check `completed` too, but the
+ * guard is repeated here so a solved deal can never be recycled by mistake.
  */
 function seatPositionIsDead(state: SolitaireState): boolean {
-  const probe = planAiMoves({
-    state,
-    difficulty: "hard",
-    maxMoves: AI_STAGNATION_LIMIT + 8,
-    // Deterministic and slip-free: the verdict must not flicker between polls.
-    random: () => 1,
-  });
-  if (probe.completed || !probe.stuck) return false;
+  if (!state || state.completed) return false;
+  if (legalMoves(state).length > 0) return false;
   return stateSolvableVerdict(state) === "impossible";
 }
 
@@ -873,12 +878,18 @@ export async function advanceAiMatch({
       difficulty: match.aiDifficulty,
       maxMoves,
     });
-    // The bot has given up on this board: it either has no legal move at all or
-    // has spent a long run of moves that changed nothing. Its OWN seat is
-    // re-dealt below (after any moves it did earn are recorded) — the human's
-    // board, the GO instant and both inactivity clocks are left exactly alone.
+    // The BOT's own seat is re-dealt when its planner has run out of road —
+    // `stuck` means no legal move at all, or `AI_STAGNATION_LIMIT` moves that
+    // changed nothing (a deal its heuristic cannot advance). This is
+    // deliberately NOT the human gate above: a bot that merely sits on a board
+    // it cannot progress would spin there for the rest of the race, so giving
+    // it a fresh SOLVABLE deal is what keeps it racing. It only ever rewrites
+    // the bot's own seat (see `redealSeatInTx`), so the human's board, the GO
+    // instant and both clocks are untouched.
     const stuck = !plan.completed && plan.stuck;
-    if (plan.moves.length === 0 && !stuck) return { match, advanced: false } as const;
+    if (plan.moves.length === 0 && !stuck) {
+      return { match, advanced: false } as const;
+    }
 
     state = plan.state;
     const completedNow = plan.completed && !state.completedAtMs;
@@ -918,7 +929,7 @@ export async function advanceAiMatch({
       .returning();
 
     let changed = updated ?? match;
-    // A dead bot board is replaced with a fresh solvable deal, carrying the
+    // A stalled bot board is replaced with a fresh solvable deal, carrying the
     // bot's move cursor and reset count forward and leaving every other field
     // (the human's board, the clock, the last-action stamps) untouched.
     if (stuck) {

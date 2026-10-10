@@ -57,6 +57,7 @@ import { withReducedMotion } from "../../../../lib/animations";
 import {
   useMatchSync,
 } from "../../../../hooks/useMatchSync";
+import { usePracticeBotHeartbeat } from "../../../../hooks/usePracticeBotHeartbeat";
 import {
   IconBomb,
   IconSparkles,
@@ -510,6 +511,23 @@ export default function MinesPvpMatchPage({
     if (!match || !myUserId) return false;
     return match.player1Id === myUserId || match.player2Id === myUserId;
   }, [match, myUserId]);
+
+  // ── Practice bot heartbeat ─────────────────────────────────────────────
+  // The bot plays its OWN board, and the server advances it on READ (see
+  // `playAiTurnInTransaction`, run from this page's status fetch). The page's
+  // sync is event-driven on purpose and correct for a human duel, whose
+  // opponent pushes MATCH_UPDATED — but a practice match pushes nothing while
+  // the bot plays, so without a read the bot freezes the moment the player
+  // stops acting, and the board is left waiting on a clock that is only
+  // resolved on a read too.
+  //
+  // Gated on four things so nothing else pays for it: it is a practice match,
+  // the match is live (a finished/expired status settles on the next read and
+  // then stops this), the bot's own board is neither locked nor complete (it
+  // has nothing left to play), and the tab is visible.
+  const botStillPlaying =
+    isAi && isActive && !match?.opponentLocked && !match?.opponentCompleted;
+  usePracticeBotHeartbeat(botStillPlaying, fetchStatus);
 
   const myRevealMap = useMemo(() => {
     const map = new Map<number, OwnReveal>();

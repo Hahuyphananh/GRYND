@@ -48,7 +48,7 @@ export const THEMES = ["dark", "light"];
  * them can import the others (the generator is build-time, the bootstrap runs
  * before any module loads).
  */
-const META_COLOR = { dark: "#000000", light: "#d3e2f7" };
+const META_COLOR = { dark: "#000000", light: "#24417f" };
 
 export const normalizeTheme = (value) =>
   value === "light" ? "light" : value === "dark" ? "dark" : null;

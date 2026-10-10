@@ -105,53 +105,65 @@ const hexOf = (rgb) =>
 // dark theme uses (page → panel → card), so elevation still reads, just
 // inverted: in dark, "raised" is lighter; in light, "raised" is lighter too.
 //
-// THE GROUNDS STAY BLUE. GRYND's dark theme is a blue theme: the page ground
-// is #030817, the panels are #040d24 / #001933, and the body copy is cyan-
-// tinted #d8fbff. A neutral grey light theme therefore reads as a DIFFERENT
-// product — the first pass shipped #eef3f9 and looked washed out next to the
-// navy it replaces. So the neutrals below are not grey: they are the same
-// ~220° hue family as #030817, taken up to a light value. `s` is the knob —
-// if light mode ever drifts back toward grey-white, it is because these three
-// hexes lost their saturation.
-const PAGE = "#d3e2f7"; // page ground      (dark: #030817)
-const CARD = "#e6f0fc"; // raised surface   (dark: darker than the page)
-const PANEL = "#bfd2ef"; // recessed surface (dark: #040d24)
+// THE GROUNDS ARE THE DARK THEME'S OWN BLUE, LIGHTENED — not white.
+//
+// GRYND's dark theme is a blue theme: the page ground is #030817, the panels
+// are #040d24 (#001933, #08142f, #0b224f …), and the body copy is cyan-tinted.
+// The light grounds are therefore DERIVED from #040d24, the navy the app uses
+// most: its hue is 223°, and every ground below sits on that same 223° so the
+// two themes are recognisably one product.
+//
+// THE RULE: light mode moves ONLY the near-black grounds. Everything else —
+// text, hairlines, shadows, neon accents — is exactly what the dark theme
+// authored, because the ground it sits on is still dark. `text-white` stays
+// white, `border-white/10` stays a light hairline, #00e5ff stays #00e5ff.
+//
+// Earlier passes ALSO inverted the ink to a blue-black, which is what turned
+// the whole screen white and washed out: a full-bleed card was #e6f0fc (then
+// #dde4f5) with dark text on it. That inversion is gone; the grounds below are
+// deep, saturated blues (the dark ground's 223° hue, lifted a clear step) and
+// the dark theme's light type reads on them unchanged.
+const PAGE = "#24417f"; // page ground      (dark: #030817)
+const CARD = "#31508f"; // raised surface   (dark: #040d24)
+const PANEL = "#1b3266"; // recessed surface (dark: #001933)
 
-/** Body/heading ink. Blue-black, not slate — it sits with the blue grounds. */
-const INK = "#0e1c33";
-/** Deliberately muted secondary copy. */
-const MUTED_INK = "#516180";
+/** Light ink — used by the bespoke CSS below for star dots and hairlines. */
+const INK = "#eaf2ff";
+/** Muted light ink, same use. */
+const MUTED_INK = "#b7c9ea";
+/** Near-black, for the bespoke CSS's drop shadows over a dark blue ground. */
+const SHADOW = "#050b18";
 /**
- * Rose/pink ink. A full step darker than tailwind's rose-700, because the
- * hero badges paint it over a translucent panel (not the plain page), which
- * costs ~0.3 of contrast.
+ * Retained for reference only: the dark-ink counterpart of an accent. Light
+ * mode no longer needs one, because accents stay as authored.
  */
 const ROSE_INK = "#a30f35";
 
-/* The same three colours as `r, g, b`, for the bespoke CSS below. */
+/* The same colours as `r, g, b`, for the bespoke CSS below. */
 const INK_CSV = toRgb(INK).join(", ");
 const MUTED_CSV = toRgb(MUTED_INK).join(", ");
 const CARD_CSV = toRgb(CARD).join(", ");
+const SHADOW_CSV = toRgb(SHADOW).join(", ");
 
 /**
- * Tinted grounds, so a red panel still reads as "red area" in light mode.
- * Each family keeps a blue-leaning floor so a tinted panel never looks like a
- * different, greyer theme than the page it sits on.
+ * Deep tinted grounds, so a red panel still reads as "red area" and a gold one
+ * as gold — each family keeps its own hue, at the same deep-blue lightness
+ * band as the neutral grounds. They are dark, not pale: a tinted card is a
+ * dark red/blue/gold panel, never white with a hint of hue.
  */
 const TARGETS = {
   neutral: { page: PAGE, card: CARD, panel: PANEL },
-  green: { page: "#d8efe4", card: "#eaf8f1", panel: "#c3e4d4" },
-  rose: { page: "#f7dee4", card: "#fdeef2", panel: "#ecc9d4" },
-  purple: { page: "#e6dcf8", card: "#f3ecfc", panel: "#d6c6f0" },
-  gold: { page: "#f7e8cd", card: "#fdf4e2", panel: "#edd9b0" },
-  cyan: { page: "#d9edf7", card: "#ecf7fc", panel: "#c5e2f0" },
+  green: { page: "#1d4a3a", card: "#265a47", panel: "#163a2d" },
+  rose: { page: "#4a2432", card: "#5a2e3d", panel: "#3a1b26" },
+  purple: { page: "#38265e", card: "#463070", panel: "#2c1c4a" },
+  gold: { page: "#4a3a1a", card: "#5a4722", panel: "#3a2d13" },
+  cyan: { page: "#17414f", card: "#1d5062", panel: "#113340" },
 };
 
 /**
- * A bright accent has to survive as *text* on a white ground. These are the
- * darkened counterparts of each hue family — chosen so the family is still
- * recognisable (yellow stays golden, cyan stays cyan) while clearing ~4.5:1
- * against #ffffff.
+ * The dark-ink counterpart of an accent, kept only because the standard-palette
+ * helpers below still reference it. Light mode does NOT use it: on the lifted
+ * blue ground the accents are left exactly as the dark theme authored them.
  */
 function familyText(h, s) {
   // A "light grey" on dark was secondary copy. On a blue ground the muted
@@ -195,35 +207,20 @@ function mapSurface(hex) {
   return TARGETS[fam][role];
 }
 
-/** Text colours. */
-function mapText(hex) {
-  const rgb = toRgb(hex);
-  if (!rgb) return null;
-  const L = luminance(rgb);
-  const { h, s } = hsl(rgb);
-  const minCh = Math.min(...rgb) / 255;
-  // Near-white text was body/heading copy. The light-theme ink is a blue-
-  // black rather than pure slate, to sit with the blue grounds.
-  if (L > 0.82 && minCh > 0.75) return INK;
-  if (L > 0.4) return familyText(h, s);
-  // A mid-tone that is nearly grey was deliberately muted secondary copy.
-  // The cut is 0.12, not 0.15: a medium accent like #0e7490 sits at ~0.146 and
-  // only clears ~4.1:1 on the light ground, so it has to be remapped too.
-  if (L > 0.12 && s < 0.4) return MUTED_INK;
-  // A mid-tone that is saturated is still an accent (e.g. #a855f7).
-  if (L > 0.12 && s >= 0.4) return familyText(h, s);
-  return null; // already dark enough — dark text stays dark
+/**
+ * Text colours are NOT remapped.
+ *
+ * The ground light mode uses is still dark, so every colour the dark theme
+ * authored for type already reads on it: white copy stays white, `/60` copy
+ * stays muted, accents stay neon. Returning null leaves the utility untouched.
+ */
+function mapText() {
+  return null;
 }
 
-/** Border / divider / outline colours. */
-function mapBorder(hex) {
-  const rgb = toRgb(hex);
-  if (!rgb) return null;
-  const L = luminance(rgb);
-  const { h, s } = hsl(rgb);
-  if (L < 0.09) return "#aec2dd"; // a dark edge becomes a light one
-  if (s < 0.4 && L < 0.55) return "#8496b8";
-  return familyText(h, s);
+/** Border / divider / outline colours — likewise left as authored. */
+function mapBorder() {
+  return null;
 }
 
 /** Per-property dispatcher for #hex values. */
@@ -272,115 +269,35 @@ const GREY_SURFACE = { 700: PANEL, 800: PAGE, 900: PAGE, 950: CARD };
 function mapStd(prop, name, shade, alpha) {
   const s = shade;
 
-  // ── white / black ──────────────────────────────────────────────────────
-  if (name === "black") {
-    // `bg-black/NN` is used two different ways and they need opposite
-    // treatment. At 60% and up it is a BACKDROP dimming whatever is behind it
-    // (every `fixed inset-0 bg-black/60…90` in the app), and a light theme
-    // still wants to dim. Below 60% it is a PANEL fill — a bordered, rounded
-    // box that happens to be painted with black wash over the page. Leaving
-    // those dark is what made light mode broken: the panel stayed black while
-    // `text-white` inside it correctly inverted to dark ink, so the text
-    // disappeared. Half the app's panels are `bg-black/40`, so they invert.
-    if (prop !== "bg" && prop !== "from" && prop !== "via" && prop !== "to") {
-      return null;
-    }
-    if (alpha == null || alpha >= 60) return null;
-    // A deeper wash was a more recessed panel, so map it to a stronger fill.
-    return rgba(toRgb(PANEL), Math.min(0.95, 0.35 + (alpha / 100) * 0.95));
+  // ── only GROUNDS are lifted ────────────────────────────────────────────
+  //
+  // Everything the dark theme authored for type, edges, fills and translucent
+  // washes already reads on the lifted blue ground, so NONE of it is remapped:
+  // `text-white` stays white, `border-white/10` stays a light hairline, and
+  // `bg-white/5` stays a sheen. The single exception is a dark NEUTRAL surface
+  // (a near-black panel, popover or scrim), which is the ground being lifted.
+  if (alpha != null) return null;
+  if (
+    name === "white" ||
+    name === "black" ||
+    name === "transparent" ||
+    name === "current" ||
+    name === "inherit"
+  ) {
+    return null;
   }
-  if (name === "white" || name === "transparent" || name === "current" || name === "inherit") {
-    if (name !== "white") return null;
-    switch (prop) {
-      case "text":
-        // `text-white` is this app's default body copy — it MUST invert, or
-        // every light screen is white-on-white.
-        return alpha == null
-          ? INK
-          : rgba(toRgb(INK), Math.min(1, (alpha / 100) * 1.1));
-      case "border":
-      case "divide":
-      case "outline":
-        // `border-white/10` is the app's hairline. On white it has to become a
-        // dark hairline, so the alpha is lifted to stay visible.
-        return rgba(toRgb(INK), Math.max(0.07, (alpha ?? 100) * 0.007));
-      case "ring":
-        return rgba(toRgb(INK), Math.max(0.12, (alpha ?? 100) * 0.008));
-      case "ring-offset":
-        return alpha == null ? CARD : rgba(toRgb(CARD), alpha / 100);
-      case "bg":
-      case "from":
-      case "via":
-      case "to":
-        // `bg-white/5` is a raised sheen over a dark panel. Over a light one
-        // the same trick needs a dark wash at a comparable weight.
-        if (alpha == null) return null; // a solid white card is still a card
-        if (alpha >= 60) return rgba(toRgb(CARD), alpha / 100);
-        return rgba(toRgb(INK), Math.min(0.3, alpha * 0.0062));
-      default:
-        return null;
-    }
-  }
-
-  if (alpha != null) {
-    // Translucent tints are already tinted the right way for a light ground
-    // (a 10% red wash is a pale pink either way) — they only need the edge
-    // cases handled.
-    switch (prop) {
-      case "border":
-      case "divide":
-        return null; // keep tint, alpha is boosted by the caller
-      case "bg":
-      case "from":
-      case "via":
-      case "to":
-        if (NEUTRAL_FAMILIES.has(name) && s >= 700) {
-          // Translucent dark scrim-panel → translucent light panel.
-          return rgba(toRgb(CARD), Math.min(1, (alpha / 100) * 1.15));
-        }
-        return null;
-      case "text": {
-        // `text-white/60`-style muted copy, and muted greys, need darkening.
-        // The opacity gets a high floor rather than a multiplier: on a dark
-        // ground translucency is how hierarchy is expressed, but dark ink at
-        // 50% opacity on a light ground lands near 3:1, so a "muted" light
-        // label stays 76–100% opaque. Hierarchy survives through size and
-        // weight; contrast is the thing that cannot be traded away.
-        const t = stdTextTarget(name, s);
-        const rgb = t ? toRgb(t) : null;
-        return rgb
-          ? rgba(rgb, Math.min(1, 0.72 + (alpha / 100) * 0.4))
-          : null;
-      }
-      default:
-        return null;
-    }
-  }
+  if (!NEUTRAL_FAMILIES.has(name)) return null;
 
   switch (prop) {
-    case "text":
-    case "caret":
-    case "placeholder":
-    case "decoration":
-    case "fill":
-    case "stroke":
-      return stdTextTarget(name, s);
     case "bg":
     case "from":
     case "via":
-    case "to": {
+    case "to":
+    case "ring-offset": {
       const t = stdBgTarget(name, s);
       const rgb = t ? toRgb(t) : null;
       return rgb ? hexOf(rgb) : null;
     }
-    case "border":
-    case "divide":
-      return stdBorderTarget(name, s);
-    case "ring":
-    case "outline":
-      return stdBorderTarget(name, s);
-    case "ring-offset":
-      return stdBgTarget(name, s);
     default:
       return null;
   }
@@ -675,17 +592,17 @@ html[data-theme="light"] .animated-bg {
 }
 
 html[data-theme="light"] .casino-surface {
-  background: rgba(${CARD_CSV}, 0.86) !important;
-  border-color: rgba(180, 83, 9, 0.28) !important;
-  box-shadow: 0 18px 35px rgba(${INK_CSV}, 0.12) !important;
+  background: rgba(${CARD_CSV}, 0.72) !important;
+  border-color: rgba(250, 204, 21, 0.22) !important;
+  box-shadow: 0 18px 35px rgba(${SHADOW_CSV}, 0.45) !important;
 }
 
 html[data-theme="light"] .space-bg {
   background:
-    radial-gradient(1px 1px at 15% 20%, rgba(${INK_CSV}, 0.28), transparent),
-    radial-gradient(1px 1px at 70% 30%, rgba(${INK_CSV}, 0.28), transparent),
-    radial-gradient(1px 1px at 40% 70%, rgba(${INK_CSV}, 0.28), transparent),
-    radial-gradient(2px 2px at 85% 80%, rgba(${INK_CSV}, 0.28), transparent),
+    radial-gradient(1px 1px at 15% 20%, rgba(${INK_CSV}, 0.5), transparent),
+    radial-gradient(1px 1px at 70% 30%, rgba(${INK_CSV}, 0.5), transparent),
+    radial-gradient(1px 1px at 40% 70%, rgba(${INK_CSV}, 0.5), transparent),
+    radial-gradient(2px 2px at 85% 80%, rgba(${INK_CSV}, 0.5), transparent),
     linear-gradient(to bottom, ${CARD}, ${PAGE}) !important;
 }
 
@@ -693,72 +610,28 @@ html[data-theme="light"] .skeleton {
   background: linear-gradient(90deg, ${PANEL} 0%, ${CARD} 50%, ${PANEL} 100%) !important;
 }
 
-/* Four-In-A-Row paints its board, sockets, discs and HUD from stylesheet
-   colour, not utilities. The frame inverts to a light HUD; the discs keep
-   their own saturated colours, which already read on a pale board. */
+/* Four-In-A-Row paints its board, sockets and HUD from stylesheet colour, not
+   utilities. Its base styles are already a dark blue with NEON CYAN rims, so
+   light mode only lifts the GROUNDS and leaves every cyan accent as authored.
+   The previous pass repainted those rims teal-on-white, which is exactly the
+   washed-out look this file moved away from. */
 html[data-theme="light"] .four-in-a-row-board {
-  border-color: rgba(14, 116, 144, 0.5) !important;
   background:
-    linear-gradient(rgba(14, 116, 144, 0.06) 1px, transparent 1px) 0 0 / 100% 2.5rem,
+    linear-gradient(rgba(0, 229, 255, 0.06) 1px, transparent 1px) 0 0 / 100% 2.5rem,
     linear-gradient(180deg, ${CARD} 0%, ${PAGE} 58%, ${PANEL} 100%) !important;
   box-shadow:
-    inset 0 0 0 1px rgba(14, 116, 144, 0.08),
-    inset 0 0 44px rgba(14, 116, 144, 0.05),
-    0 18px 34px rgba(${INK_CSV}, 0.12),
-    0 0 26px rgba(14, 116, 144, 0.12) !important;
+    inset 0 0 0 1px rgba(0, 229, 255, 0.08),
+    inset 0 0 44px rgba(0, 229, 255, 0.05),
+    0 18px 34px rgba(${SHADOW_CSV}, 0.45) !important;
 }
 
 html[data-theme="light"] .four-in-a-row-slot {
-  background: radial-gradient(circle at 50% 46%, ${CARD} 0 44%, ${PAGE} 74%, ${PANEL} 100%) !important;
-  border-color: rgba(14, 116, 144, 0.3) !important;
-  box-shadow:
-    inset 0 0 0 1px rgba(14, 116, 144, 0.12),
-    inset 0 7px 11px rgba(${INK_CSV}, 0.1) !important;
+  background: radial-gradient(circle at 50% 46%, ${PAGE} 0 44%, ${PANEL} 74%, ${SHADOW} 100%) !important;
 }
 
 html[data-theme="light"] .four-in-a-row-panel {
-  border-color: rgba(14, 116, 144, 0.32) !important;
   background: linear-gradient(180deg, ${CARD}, ${PAGE}) !important;
-  box-shadow: 0 18px 35px rgba(${INK_CSV}, 0.1), 0 0 24px rgba(14, 116, 144, 0.06) !important;
-}
-
-html[data-theme="light"] .four-in-a-row-turn-pill {
-  border-color: rgba(138, 97, 0, 0.5) !important;
-  background: linear-gradient(180deg, ${CARD}, ${PAGE}) !important;
-  color: #6b5a00 !important;
-  text-shadow: none !important;
-  box-shadow: 0 8px 20px rgba(${INK_CSV}, 0.12) !important;
-}
-
-html[data-theme="light"] .four-in-a-row-drop-button {
-  border-color: rgba(14, 116, 144, 0.45) !important;
-  color: #0e7490 !important;
-  background: linear-gradient(180deg, rgba(14, 116, 144, 0.1), rgba(14, 116, 144, 0.02)) !important;
-  box-shadow: inset 0 0 10px rgba(14, 116, 144, 0.08) !important;
-}
-
-html[data-theme="light"] .four-in-a-row-drop-button:disabled {
-  color: rgba(14, 116, 144, 0.35) !important;
-  border-color: rgba(14, 116, 144, 0.16) !important;
-}
-
-html[data-theme="light"] .four-in-a-row-turn-line--theirs,
-html[data-theme="light"] .four-in-a-row-turn-line--thinking {
-  color: rgba(${MUTED_CSV}, 0.85) !important;
-}
-
-html[data-theme="light"] .four-in-a-row-turn-line--locked {
-  color: #0e7490 !important;
-}
-
-html[data-theme="light"] .four-in-a-row-player--active {
-  box-shadow: inset 0 0 0 1px rgba(14, 116, 144, 0.5), 0 0 18px rgba(14, 116, 144, 0.16) !important;
-}
-
-html[data-theme="light"] .cyberpunk-grid::before {
-  background-image:
-    linear-gradient(rgba(14, 116, 144, 0.09) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(14, 116, 144, 0.08) 1px, transparent 1px) !important;
+  box-shadow: 0 18px 35px rgba(${SHADOW_CSV}, 0.45), 0 0 24px rgba(0, 229, 255, 0.07) !important;
 }
 `;
 

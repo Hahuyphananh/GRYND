@@ -7,5 +7,39 @@
   "editor.formatOnSave": true, // optional
   "editor.formatOnSaveMode": "file", // required to format on save
   "files.autoSave": "onFocusChange", // optional but recommended
-  "vs-code-prettier-eslint.prettierLast": false // set as "true" to run 'prettier' last not first
+  "vs-code-prettier-eslint.prettierLast": false, // set as "true" to run 'prettier' last not first
+  // Generated / vendored output, hidden so the Explorer, Quick Open and search stay
+  // usable: node_modules alone is 106k files, and the build dirs were 11k more.
+  "files.exclude": {
+    "**/.next": true,
+    "**/.open-next": true,
+    "**/.wrangler": true,
+    "**/dist": true,
+    "**/out": true,
+    "**/node_modules": true,
+    "**/.opencode": true,
+    "**/coverage": true
+  },
+  // Same paths, for search results.
+  "search.exclude": {
+    "**/.next": true,
+    "**/.open-next": true,
+    "**/.wrangler": true,
+    "**/dist": true,
+    "**/out": true,
+    "**/.opencode": true,
+    "**/coverage": true
+  },
+  // Keep the file watcher off them too. An 11k-file build tree churning change
+  // events is what makes VS Code log UNRESPONSIVE extension host on this workspace.
+  "files.watcherExclude": {
+    "**/.next/**": true,
+    "**/.open-next/**": true,
+    "**/.wrangler/**": true,
+    "**/dist/**": true,
+    "**/out/**": true,
+    "**/node_modules/**": true,
+    "**/.opencode/**": true,
+    "**/coverage/**": true
+  }
 }

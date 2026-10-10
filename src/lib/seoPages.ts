@@ -234,6 +234,8 @@ export const EXCLUDED_FROM_SITEMAP: Record<string, string> = {
     "free AI practice board — a playable route with no unique content, and already disallowed in robots.txt",
   "/casino/rps/play-ai": "free AI practice board — a playable route, not a search surface",
   "/casino/four-in-a-row/play-ai": "free AI practice board — a playable route, not a search surface",
+  "/casino/barricade/play-ai":
+    "free AI practice board — a playable route with no unique content, and the game has no indexable landing page yet",
   "/casino/hex-duel/multiplayer": "live matchmaking surface — nothing for a crawler to index",
   "/casino/hex-duel/history": "per-player match history — user-specific data, never a landing page",
   "/casino/lane-runner/history": "per-player match history — user-specific data, never a landing page",

@@ -1,0 +1,215 @@
+{
+  "base": "http://localhost:3000",
+  "route": "/casino/barricade/play-ai",
+  "ranAt": "2026-10-10T22:20:59.468Z",
+  "passed": 41,
+  "failed": 0,
+  "problems": [],
+  "results": [
+    {
+      "name": "desktop: the practice route responds",
+      "passed": true,
+      "detail": "status=200"
+    },
+    {
+      "name": "desktop: the board mounts with both goal baselines labelled",
+      "passed": true,
+      "detail": "squares=81 legal moves=3"
+    },
+    {
+      "name": "easy: starts on a full board (81 squares, two pawns, 10 barricades each)",
+      "passed": true,
+      "detail": "squares=81 pawns=2 reserves=10/10"
+    },
+    {
+      "name": "easy: an illegal move is refused, explained and changes nothing",
+      "passed": true,
+      "detail": "notice=\"a pawn moves one square, or jumps over the opponent when face to face\""
+    },
+    {
+      "name": "easy: the groove controls are the engine's 8×8 slot grid on a 17-track board",
+      "passed": true,
+      "detail": "slots=64 squares=81 tracks=17×17"
+    },
+    {
+      "name": "easy: a legal barricade previews as legal, is placed and charged to the reserve",
+      "passed": true,
+      "detail": "previewOk=1 walls 0→1, reserve 10→9"
+    },
+    {
+      "name": "easy: a refused groove previews as invalid and states the engine's reason",
+      "passed": true,
+      "detail": "invalid=1 notice=\"both players must keep a route to their goal — that barricade seals one off\""
+    },
+    {
+      "name": "easy: clicking a refused groove places nothing and explains why",
+      "passed": true,
+      "detail": "walls 5→5, reserve 5→5, notice=\"both players must keep a route to their goal — that barricade seals one off\""
+    },
+    {
+      "name": "easy: the in-game Restart clears walls, reserves and both pawns",
+      "passed": true,
+      "detail": "walls=0 reserves=10/10"
+    },
+    {
+      "name": "easy: a complete match was played (no stall, no infinite loop)",
+      "passed": true,
+      "detail": "actions=69 outcome=\"Match result — LOSS\""
+    },
+    {
+      "name": "easy: the result overlay reports a win or a defeat",
+      "passed": true,
+      "detail": "dialog=\"Match result — LOSS\""
+    },
+    {
+      "name": "easy: New game deals a fresh board",
+      "passed": true,
+      "detail": "walls=0 pawns=[{\"seat\":\"mine\",\"row\":0,\"col\":4},{\"seat\":\"theirs\",\"row\":8,\"col\":4}]"
+    },
+    {
+      "name": "normal: starts on a full board (81 squares, two pawns, 10 barricades each)",
+      "passed": true,
+      "detail": "squares=81 pawns=2 reserves=10/10"
+    },
+    {
+      "name": "normal: an illegal move is refused, explained and changes nothing",
+      "passed": true,
+      "detail": "notice=\"a pawn moves one square, or jumps over the opponent when face to face\""
+    },
+    {
+      "name": "normal: the groove controls are the engine's 8×8 slot grid on a 17-track board",
+      "passed": true,
+      "detail": "slots=64 squares=81 tracks=17×17"
+    },
+    {
+      "name": "normal: a legal barricade previews as legal, is placed and charged to the reserve",
+      "passed": true,
+      "detail": "previewOk=1 walls 0→1, reserve 10→9"
+    },
+    {
+      "name": "normal: a refused groove previews as invalid and states the engine's reason",
+      "passed": true,
+      "detail": "invalid=1 notice=\"both players must keep a route to their goal — that barricade seals one off\""
+    },
+    {
+      "name": "normal: clicking a refused groove places nothing and explains why",
+      "passed": true,
+      "detail": "walls 6→6, reserve 5→5, notice=\"both players must keep a route to their goal — that barricade seals one off\""
+    },
+    {
+      "name": "normal: the in-game Restart clears walls, reserves and both pawns",
+      "passed": true,
+      "detail": "walls=0 reserves=10/10"
+    },
+    {
+      "name": "normal: a complete match was played (no stall, no infinite loop)",
+      "passed": true,
+      "detail": "actions=14 outcome=\"Match result — LOSS\""
+    },
+    {
+      "name": "normal: the result overlay reports a win or a defeat",
+      "passed": true,
+      "detail": "dialog=\"Match result — LOSS\""
+    },
+    {
+      "name": "normal: New game deals a fresh board",
+      "passed": true,
+      "detail": "walls=0 pawns=[{\"seat\":\"mine\",\"row\":0,\"col\":4},{\"seat\":\"theirs\",\"row\":8,\"col\":4}]"
+    },
+    {
+      "name": "hard: starts on a full board (81 squares, two pawns, 10 barricades each)",
+      "passed": true,
+      "detail": "squares=81 pawns=2 reserves=10/10"
+    },
+    {
+      "name": "hard: an illegal move is refused, explained and changes nothing",
+      "passed": true,
+      "detail": "notice=\"a pawn moves one square, or jumps over the opponent when face to face\""
+    },
+    {
+      "name": "hard: the groove controls are the engine's 8×8 slot grid on a 17-track board",
+      "passed": true,
+      "detail": "slots=64 squares=81 tracks=17×17"
+    },
+    {
+      "name": "hard: a legal barricade previews as legal, is placed and charged to the reserve",
+      "passed": true,
+      "detail": "previewOk=1 walls 0→1, reserve 10→9"
+    },
+    {
+      "name": "hard: a refused groove previews as invalid and states the engine's reason",
+      "passed": true,
+      "detail": "invalid=1 notice=\"both players must keep a route to their goal — that barricade seals one off\""
+    },
+    {
+      "name": "hard: clicking a refused groove places nothing and explains why",
+      "passed": true,
+      "detail": "walls 6→6, reserve 5→5, notice=\"both players must keep a route to their goal — that barricade seals one off\""
+    },
+    {
+      "name": "hard: the in-game Restart clears walls, reserves and both pawns",
+      "passed": true,
+      "detail": "walls=0 reserves=10/10"
+    },
+    {
+      "name": "hard: a complete match was played (no stall, no infinite loop)",
+      "passed": true,
+      "detail": "actions=9 outcome=\"Match result — LOSS\""
+    },
+    {
+      "name": "hard: the result overlay reports a win or a defeat",
+      "passed": true,
+      "detail": "dialog=\"Match result — LOSS\""
+    },
+    {
+      "name": "hard: New game deals a fresh board",
+      "passed": true,
+      "detail": "walls=0 pawns=[{\"seat\":\"mine\",\"row\":0,\"col\":4},{\"seat\":\"theirs\",\"row\":8,\"col\":4}]"
+    },
+    {
+      "name": "desktop: no JS errors",
+      "passed": true,
+      "detail": "1 expected HTTP failure(s)"
+    },
+    {
+      "name": "phone-390: nothing overflows sideways",
+      "passed": true,
+      "detail": "doc=390 viewport=390 board=22…368"
+    },
+    {
+      "name": "phone-390: the board is usable (tap targets and counters visible)",
+      "passed": true,
+      "detail": "square=34.0px board=346px"
+    },
+    {
+      "name": "phone-390: a barricade can be placed by tap",
+      "passed": true,
+      "detail": "walls 0→1"
+    },
+    {
+      "name": "phone-390: no JS errors",
+      "passed": true,
+      "detail": "1 expected HTTP failure(s)"
+    },
+    {
+      "name": "phone-320: nothing overflows sideways",
+      "passed": true,
+      "detail": "doc=320 viewport=320 board=12…319"
+    },
+    {
+      "name": "phone-320: the board is usable (tap targets and counters visible)",
+      "passed": true,
+      "detail": "square=30.1px board=307px"
+    },
+    {
+      "name": "phone-320: a barricade can be placed by tap",
+      "passed": true,
+      "detail": "walls 0→1"
+    },
+    {
+      "name": "phone-320: no JS errors",
+      "passed": true,
+      "detail": "1 expected HTTP failure(s)"
+    }
+  ]
+}

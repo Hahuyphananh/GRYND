@@ -51,6 +51,7 @@ import {
   stateSolvableVerdict,
 } from "../src/lib/solitaire-duel/solvable.ts";
 import { initialStateFromDeal } from "../src/lib/solitaire-duel/rules.ts";
+import { legalMoves } from "../src/lib/solitaire-duel/ai.ts";
 
 /**
  * The sampled deal seeds, spread across the 32-bit space rather than counting
@@ -227,6 +228,37 @@ test("state check: a board with no legal move left is impossible", () => {
 
 test("state check: one move from won is solvable", () => {
   assert.equal(stateSolvableVerdict(oneMoveFromWon()), "solvable");
+});
+
+test("state check: a position the player can still move on is never impossible", () => {
+  // THE RE-DEAL GATE's soundness, on a board with exactly ONE legal move: seven
+  // columns topped by black kings (no empty column can receive one, nothing can
+  // be placed) and a single card left in the stock, so the only move is the
+  // draw. The re-deal must be tied to "no move at all": a player with even one
+  // move plays on. This is the class of board the older trigger re-dealt — its
+  // compact search plays every foundation card the moment it fits and never
+  // models pulling one back down, so it concluded "impossible" on winnable
+  // boards and restarted them mid-game.
+  const state = initialStateFromDeal(solvableDealFromSeed(SEEDS[0]));
+  state.tableau = Array.from({ length: TABLEAU_COLUMNS }, () => [
+    { card: { suit: "spades", rank: 13 }, faceUp: true },
+  ]);
+  state.stock = [{ suit: "clubs", rank: 9 }];
+  state.waste = [];
+  state.foundations = { spades: [], hearts: [], diamonds: [], clubs: [] };
+
+  const moves = legalMoves(state);
+  assert.equal(moves.length, 1, `the fixture must offer exactly one move, saw ${moves.length}`);
+  assert.equal(moves[0].kind, "draw");
+  assert.notEqual(
+    stateSolvableVerdict(state),
+    "impossible",
+    "a board with a move left must never be reported as a loss",
+  );
+
+  // ...and the dead fixture really is the no-move case the gate keys on.
+  assert.equal(legalMoves(deadBoard()).length, 0, "the dead fixture must have no move");
+  assert.equal(stateSolvableVerdict(deadBoard()), "impossible");
 });
 
 test("state check: a blown budget is UNKNOWN, never impossible", () => {

@@ -2106,3 +2106,352 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
     animation: none;
   }
 }
+/* ── Barricade (practice board) ─────────────────────────────────────────
+   The board is a 17-track grid: 9 squares plus the 8 grooves between them on
+   each axis, so a barricade can sit IN a groove and span the two squares it
+   separates. Row 0 — player1's baseline — is drawn at the BOTTOM, so each
+   player races towards the far side of the screen. */
+.barricade-board {
+  --bc-cell: clamp(26px, 8.4vw, 46px);
+  --bc-gap: clamp(4px, 1vw, 9px);
+  display: grid;
+  grid-template-columns: repeat(8, var(--bc-cell) var(--bc-gap)) var(--bc-cell);
+  grid-template-rows: repeat(8, var(--bc-cell) var(--bc-gap)) var(--bc-cell);
+  width: max-content;
+  margin: 0 auto;
+  padding: 8px;
+  border: 1px solid rgba(124, 239, 255, 0.18);
+  border-radius: 14px;
+  background: linear-gradient(160deg, rgba(4, 22, 43, 0.95), rgba(2, 12, 26, 0.98));
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45), inset 0 0 40px rgba(0, 229, 255, 0.05);
+  touch-action: manipulation;
+  user-select: none;
+}
+
+.barricade-square {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.barricade-square.is-my-goal {
+  background: rgba(56, 189, 248, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.4);
+}
+
+.barricade-square.is-their-goal {
+  background: rgba(168, 85, 247, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(168, 85, 247, 0.4);
+}
+
+.barricade-square.is-legal {
+  cursor: pointer;
+  background: rgba(125, 211, 252, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(125, 211, 252, 0.55);
+}
+
+.barricade-square.is-legal:hover,
+.barricade-square.is-legal:focus-visible {
+  background: rgba(125, 211, 252, 0.34);
+}
+
+.barricade-square.is-last {
+  box-shadow: inset 0 0 0 2px rgba(245, 255, 59, 0.45);
+}
+
+.barricade-square.is-dimmed {
+  opacity: 0.5;
+}
+
+.barricade-move-dot {
+  width: 26%;
+  height: 26%;
+  border-radius: 999px;
+  background: rgba(125, 211, 252, 0.9);
+  box-shadow: 0 0 10px rgba(0, 229, 255, 0.6);
+}
+
+.barricade-pawn {
+  width: 66%;
+  height: 66%;
+  border-radius: 999px;
+}
+
+.barricade-pawn.is-mine {
+  background: radial-gradient(circle at 32% 30%, #bae6fd, #0ea5e9 62%, #0369a1);
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.75);
+}
+
+.barricade-pawn.is-theirs {
+  background: radial-gradient(circle at 32% 30%, #e9d5ff, #a855f7 62%, #6b21a8);
+  box-shadow: 0 0 12px rgba(168, 85, 247, 0.75);
+}
+
+.barricade-wall {
+  z-index: 2;
+  border-radius: 3px;
+}
+
+.barricade-wall.is-mine {
+  background: linear-gradient(180deg, #7dd3fc, #0284c7);
+  box-shadow: 0 0 9px rgba(56, 189, 248, 0.6);
+}
+
+.barricade-wall.is-theirs {
+  background: linear-gradient(180deg, #d8b4fe, #7c3aed);
+  box-shadow: 0 0 9px rgba(168, 85, 247, 0.6);
+}
+
+.barricade-slot {
+  z-index: 3;
+  padding: 0;
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  transition: background-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.barricade-slot:hover,
+.barricade-slot:focus-visible {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.barricade-slot.is-cleared {
+  border-color: rgba(190, 242, 100, 0.5);
+  background: rgba(190, 242, 100, 0.16);
+}
+
+.barricade-slot.is-illegal {
+  border-color: rgba(248, 113, 113, 0.35);
+  background: rgba(248, 113, 113, 0.12);
+  cursor: not-allowed;
+}
+
+.barricade-slot.is-preview-ok {
+  border-color: rgba(74, 222, 128, 0.9);
+  background: rgba(74, 222, 128, 0.6);
+  box-shadow: 0 0 10px rgba(74, 222, 128, 0.6);
+}
+
+.barricade-slot.is-preview-invalid {
+  border-color: rgba(248, 113, 113, 0.9);
+  background: rgba(248, 113, 113, 0.6);
+  box-shadow: 0 0 10px rgba(248, 113, 113, 0.55);
+}
+
+.barricade-board-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.barricade-goal-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.barricade-goal-bar.is-mine {
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  background: rgba(56, 189, 248, 0.12);
+  color: #bae6fd;
+}
+
+.barricade-goal-bar.is-theirs {
+  border: 1px solid rgba(168, 85, 247, 0.35);
+  background: rgba(168, 85, 247, 0.12);
+  color: #e9d5ff;
+}
+
+.barricade-seat {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 8px 10px;
+}
+
+.barricade-seat.is-active {
+  border-color: rgba(124, 239, 255, 0.45);
+  box-shadow: 0 0 0 1px rgba(124, 239, 255, 0.25), 0 0 18px rgba(0, 229, 255, 0.12);
+}
+
+.barricade-seat-avatar {
+  display: inline-flex;
+  height: 36px;
+  width: 36px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+}
+
+.barricade-bot-avatar {
+  display: inline-flex;
+  height: 34px;
+  width: 34px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(168, 85, 247, 0.45);
+  background: rgba(168, 85, 247, 0.18);
+  color: #e9d5ff;
+}
+
+.barricade-turn-badge {
+  border-radius: 999px;
+  border: 1px solid rgba(124, 239, 255, 0.4);
+  background: rgba(0, 229, 255, 0.14);
+  padding: 2px 8px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #a5f3fc;
+}
+
+.barricade-status {
+  margin: 0 0 10px;
+  text-align: center;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.barricade-notice {
+  min-height: 18px;
+  margin: 8px 0 0;
+  text-align: center;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.barricade-notice.is-visible {
+  color: #fca5a5;
+}
+
+.barricade-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.barricade-controls > div {
+  display: flex;
+  gap: 8px;
+}
+
+.barricade-mode-button,
+.barricade-orientation-button,
+.barricade-secondary-button {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 9px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.85);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.barricade-mode-button:hover:not(:disabled),
+.barricade-orientation-button:hover,
+.barricade-secondary-button:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.barricade-mode-button.is-active,
+.barricade-orientation-button.is-active {
+  border-color: rgba(124, 239, 255, 0.5);
+  background: rgba(0, 229, 255, 0.16);
+  color: #cffafe;
+}
+
+.barricade-mode-button:disabled,
+.barricade-secondary-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.barricade-session {
+  text-align: center;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.barricade-rules {
+  margin-top: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 10px 12px;
+}
+
+.barricade-rules-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.barricade-rules-list {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+@media (max-width: 400px) {
+  .barricade-board {
+    --bc-cell: clamp(24px, 9.4vw, 34px);
+    --bc-gap: clamp(3px, 0.9vw, 6px);
+    padding: 5px;
+  }
+
+  .barricade-seat {
+    flex-basis: 100%;
+  }
+
+  .barricade-controls > div {
+    flex-wrap: wrap;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .barricade-square,
+  .barricade-slot,
+  .barricade-mode-button,
+  .barricade-orientation-button,
+  .barricade-secondary-button {
+    transition: none;
+  }
+}

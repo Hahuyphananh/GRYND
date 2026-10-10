@@ -65,6 +65,7 @@ import {
   solvableDealFromSeed,
 } from "../src/lib/solitaire-duel/solvable.ts";
 import { initialStateFromDeal } from "../src/lib/solitaire-duel/rules.ts";
+import { legalMoves } from "../src/lib/solitaire-duel/ai.ts";
 import { deriveDealSeed, getServerSeedHash } from "../src/lib/solitaire-duel/seeds.js";
 
 const MODULE_MOCKING_AVAILABLE = typeof mock?.module === "function";
@@ -1242,6 +1243,34 @@ function deadBoard(ply = 0) {
   return state;
 }
 
+/**
+ * A board with a move but NO way to progress: seven empty columns and a stock
+ * of non-Ace, non-King cards, so the only legal move is the draw (then the
+ * recycle) and the progress key never changes.
+ *
+ * This is the exact board class the OLD re-deal gate misjudged: the planner
+ * gives up after `AI_STAGNATION_LIMIT` unchanging moves and reports `stuck`,
+ * but `legalMoves` is NOT empty. A player must keep it; a bot that cannot
+ * progress may be given a fresh deal.
+ */
+function movableButStuckBoard(ply = 0) {
+  const state = openBoard();
+  state.tableau = Array.from({ length: 7 }, () => []);
+  state.stock = [
+    card("spades", 2), card("hearts", 3), card("diamonds", 4), card("clubs", 5),
+    card("spades", 6), card("hearts", 7), card("diamonds", 8), card("clubs", 9),
+    card("spades", 10), card("hearts", 11), card("diamonds", 12), card("clubs", 2),
+    card("spades", 3), card("hearts", 4), card("diamonds", 5), card("clubs", 6),
+    card("spades", 7), card("hearts", 8), card("diamonds", 9), card("clubs", 10),
+    card("spades", 11), card("hearts", 12), card("diamonds", 2), card("clubs", 3),
+  ];
+  state.waste = [];
+  state.foundations = { spades: [], hearts: [], diamonds: [], clubs: [] };
+  state.ply = ply;
+  state.peakFoundation = 0;
+  return state;
+}
+
 /** A VALID board one move from won: 51 on the foundations, K♣ alone on column 0. */
 function boardWinnableInOne(ply = 40) {
   const state = openBoard();
@@ -1321,6 +1350,46 @@ test("read: a provably unwinnable board is re-dealt for the reader alone", { ski
   assert.equal(result.dto.view.resetCount, 1);
   assert.equal(result.dto.view.ply, 9);
   assert.equal(result.dto.status, MATCH_STATUS.PLAYING);
+});
+
+test("practice: a bot that cannot PROGRESS gets a fresh deal even though it can still move", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  const board = movableButStuckBoard(0);
+  assert.ok(legalMoves(board).length > 0, "the fixture must NOT be a dead board");
+  const row = practiceRow(fake, {
+    p2State: board,
+    p2Ply: 0,
+    p2PeakFoundation: 0,
+    p1State: { ...openBoard(), ply: 3 },
+    p1Ply: 3,
+  });
+  const humanBefore = structuredClone(row.p1State);
+
+  const result = await store.advanceAiMatch({ matchId: MATCH_ID, nowMs: NOW });
+  assert.equal(result.advanced, true);
+
+  const after = fake.rowsOf(solitaireDuelMatches)[0];
+  // The bot's board is replaced with a fresh SOLVABLE deal...
+  assert.equal(after.p2State.resetCount, 1);
+  assert.equal(after.p2State.stock.length, 24);
+  // ...and the human's board is byte-identical.
+  assert.deepEqual(after.p1State, humanBefore, "the human's board is untouched");
+});
+
+test("read: a board the PLAYER can still move is never re-dealt, however stuck the planner is", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  const board = movableButStuckBoard(40);
+  assert.ok(legalMoves(board).length > 0, "the fixture must NOT be a dead board");
+  seedMatch(fake, { p1State: board, p1Ply: 40 });
+  const before = structuredClone(board);
+
+  await store.fetchMatch({ userId: ALICE, matchId: MATCH_ID, nowMs: NOW });
+
+  const after = fake.rowsOf(solitaireDuelMatches)[0];
+  assert.deepEqual(after.p1State, before, "a board with a move must be left exactly alone");
+  assert.equal(after.p1State.resetCount ?? 0, 0);
 });
 
 test("read: a winnable board is never re-dealt", { skip: SKIP_REASON }, async (t) => {

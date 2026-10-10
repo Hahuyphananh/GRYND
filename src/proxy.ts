@@ -75,6 +75,11 @@ const GAME_ROUTE_PATTERNS = [
   "/casino/tic-tac-toe(.*)",
   "/casino/solitaire-duel(.*)",
   "/casino/sudoku-duel(.*)",
+  // Barricade's free-practice route (/casino/barricade/play-ai). There is no
+  // wager, no rating and no server-side match behind it — the whole game is
+  // played against the local bot — so a signed-out visitor must be able to
+  // read it rather than be bounced to /sign-in.
+  "/casino/barricade(.*)",
   // /games/* mirrors of the /casino/* routes.
   "/games/uno(.*)",
   "/games/neon-flush(.*)",
@@ -98,6 +103,7 @@ const GAME_ROUTE_PATTERNS = [
   "/games/tic-tac-toe(.*)",
   "/games/solitaire-duel(.*)",
   "/games/sudoku-duel(.*)",
+  "/games/barricade(.*)",
 ] as const;
 
 const isPublicRoute = createRouteMatcher([

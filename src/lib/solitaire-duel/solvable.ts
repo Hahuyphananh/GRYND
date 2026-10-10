@@ -813,7 +813,32 @@ export function stateSolvableVerdict(
   const counter = { nodes: 0 };
   const result = searchExhaustive(compact, counter, Math.max(1, Math.floor(budget)));
   if (result.solved) return "solvable";
-  return result.exhausted ? "impossible" : "unknown";
+  if (!result.exhausted) return "unknown";
+  // The search ran out of positions without finding a line. That is ONLY
+  // evidence about the real board when the board cannot be played at all: the
+  // reduction below plays every foundation card the moment it fits and never
+  // models the legal `foundation-to-tableau` move, so it can miss winning lines
+  // a player would find by hand (pulling a card back down to receive another).
+  // Reporting "impossible" for a position that still has a move is what re-dealt
+  // winnable boards out from under players mid-game, so a movable position is
+  // reported as UNKNOWN — never as a loss.
+  return compactCanBePlayed(compact) ? "unknown" : "impossible";
+}
+
+/**
+ * Whether the compact position has ANY move left in it.
+ *
+ * Free plays are applied first (the reduction's "foundation moves are free"),
+ * and then the remaining move kinds are counted: a tableau move, a pool card
+ * that fits somewhere, or a pool that still holds a card at all — the last one
+ * because a non-empty stock/waste is always drawable in the real game, whatever
+ * it holds.
+ */
+function compactCanBePlayed(state: CompactState): boolean {
+  const probe = cloneCompact(state);
+  normalize(probe);
+  if (compactMoves(probe).length > 0) return true;
+  return probe.pool.length > 0;
 }
 
 /**

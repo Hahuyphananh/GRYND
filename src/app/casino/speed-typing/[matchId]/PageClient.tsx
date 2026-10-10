@@ -46,6 +46,7 @@ import { useSocket } from "../../../../context/SocketProvider";
 import {
   useMatchSync,
 } from "../../../../hooks/useMatchSync";
+import { usePracticeBotHeartbeat } from "../../../../hooks/usePracticeBotHeartbeat";
 import {
   SPEED_TYPING_EVENTS,
   speedTypingMatchRoom,
@@ -558,6 +559,23 @@ export default function SpeedTypingMatchPage() {
   // socket reconnect and on tab focus — never on a timer. A finished race stops
   // syncing entirely.
   useMatchSync(() => load({ silent: true }), socket, Boolean(match) && !finished);
+
+  // ── Practice bot heartbeat ─────────────────────────────────────────────
+  // The bot's race is projected from the elapsed clock and written on READ
+  // (`advanceAiRace`), and this page syncs event-driven on purpose. That left
+  // the bot frozen whenever the human paused to read the passage — the "the AI
+  // is stuck" report — because nothing kept the read going. It also stops the
+  // resolve that happens on the same read (both seats finished) from being
+  // missed. Gated to a live practice race whose bot is still racing, so a human
+  // duel, a countdown and a finished race all keep the pure event-driven path.
+  const botStillRacing =
+    opponentIsAi &&
+    !finished &&
+    !resolved &&
+    goAtMs != null &&
+    now >= goAtMs &&
+    race?.opponent?.finished !== true;
+  usePracticeBotHeartbeat(botStillRacing, () => load({ silent: true }));
 
   // ── Focus: the keyboard is the whole game ────────────────────────────────
   useEffect(() => {

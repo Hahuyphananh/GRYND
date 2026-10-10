@@ -18,6 +18,7 @@ import assert from "node:assert/strict";
 
 import {
   AI_MOVE_DELAY_MS,
+  AI_STAGNATION_LIMIT,
   aiMoveDelayMs,
   chooseAiMove,
   legalMoves,
@@ -103,7 +104,12 @@ test("it takes an available foundation move above everything else", () => {
     stock: [card("clubs", 9), card("hearts", 2)],
   });
   assert.equal(foundationExpects(state, "spades"), 1);
-  const chosen = chooseAiMove({ state, difficulty: "hard" });
+  // `random` is injected for the same reason as the reveal case below: every
+  // tier slips a small percentage of the time (`AI_SKILL.hard.mistakeRate` is
+  // 0.08), so leaving it on Math.random failed this assertion roughly one run
+  // in twelve. `() => 1` is the deterministic no-slip roll, and a slip is a
+  // separate, covered case — not a weakened check.
+  const chosen = chooseAiMove({ state, difficulty: "hard", random: () => 1 });
   assert.equal(chosen.kind, "tableau-to-foundation");
   assert.equal(chosen.fromColumn, 0);
   assert.deepEqual(chosen.card, card("spades", 1));
@@ -247,6 +253,34 @@ test("the planner reports a board with no legal move at all as stuck", () => {
   assert.equal(plan.moves.length, 0);
   assert.equal(plan.completed, false);
   assert.equal(plan.stuck, true, "a dead board must be reported as stuck");
+});
+
+test("the planner's `stuck` is NOT the same as a dead board", () => {
+  // The store keys its PLAYER re-deal on `legalMoves`, never on `stuck`:
+  // `stuck` is a heuristic verdict and fires on boards that still have a move.
+  // This board is seven empty columns with a stock of non-Ace, non-King cards:
+  // its ONLY legal move is the draw (then the recycle), which never changes the
+  // progress key, so the planner gives up after the stagnation limit. The old
+  // re-deal gate treated this as "impossible" and restarted live boards.
+  const state = emptyState({
+    stock: [
+      card("spades", 2), card("hearts", 3), card("diamonds", 4), card("clubs", 5),
+      card("spades", 6), card("hearts", 7), card("diamonds", 8), card("clubs", 9),
+      card("spades", 10), card("hearts", 11), card("diamonds", 12), card("clubs", 2),
+      card("spades", 3), card("hearts", 4), card("diamonds", 5), card("clubs", 6),
+      card("spades", 7), card("hearts", 8), card("diamonds", 9), card("clubs", 10),
+      card("spades", 11), card("hearts", 12), card("diamonds", 2), card("clubs", 3),
+    ],
+  });
+  assert.ok(legalMoves(state).length > 0, "the board is NOT dead");
+  const plan = planAiMoves({
+    state,
+    difficulty: "hard",
+    maxMoves: AI_STAGNATION_LIMIT + 8,
+    random: () => 1,
+  });
+  assert.equal(plan.completed, false);
+  assert.equal(plan.stuck, true, "the planner still gives up on a movable board");
 });
 
 test("the planner does NOT call a behind-schedule bot stuck", () => {

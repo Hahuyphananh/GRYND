@@ -70,6 +70,7 @@ import { useSocket } from "../../../../context/SocketProvider";
 import {
   useMatchSync,
 } from "../../../../hooks/useMatchSync";
+import { usePracticeBotHeartbeat } from "../../../../hooks/usePracticeBotHeartbeat";
 import {
   SUDOKU_DUEL_EVENTS,
   sudokuDuelMatchRoom,
@@ -411,6 +412,17 @@ export default function SudokuDuelMatchPage() {
   // socket reconnect and on tab focus — never on a timer. A finished match
   // (`terminal`) stops syncing entirely.
   useMatchSync(load, socket, Boolean(matchId) && Boolean(match) && !terminal);
+
+  // ── Practice bot heartbeat ─────────────────────────────────────────────
+  // The bot's board is advanced on READ (`advanceAiMatch`) at a pace derived
+  // from the clock, and this page syncs event-driven on purpose — so a player
+  // who stopped to think left the bot standing still mid-puzzle, which is the
+  // "the AI is stuck" report. Gated to a live practice race whose bot has not
+  // finished, so a human duel, a countdown and a finished match all keep the
+  // pure event-driven path.
+  const botStillPlaying =
+    Boolean(match?.isAi) && phase === "racing" && !terminal && !match?.opponent?.completed;
+  usePracticeBotHeartbeat(botStillPlaying, load);
 
   // When the local inactivity clock says the forfeit is due, the server still
   // owns the verdict — ask it, and let it resolve. Nothing is decided here.

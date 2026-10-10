@@ -100,7 +100,7 @@ export const organizationJsonLd = {
 // (same storage keys, same attribute, same meta colour) — see the note there.
 // The light hex is the generator's PAGE constant; all three copies have to
 // move together or the address bar bands against the page.
-const THEME_LIGHT_GROUND = "#d3e2f7";
+const THEME_LIGHT_GROUND = "#24417f";
 const THEME_BOOTSTRAP = `(function(){try{
 var k="grynd_theme",L="casino_app_theme";
 var v=localStorage.getItem(k)||localStorage.getItem(L);

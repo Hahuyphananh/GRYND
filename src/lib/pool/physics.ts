@@ -1,6 +1,7 @@
 import {
   BALL_R,
   FRICTION,
+  MAX_SUBSTEP_PX,
   POCKET_R,
   POCKETS,
   RAIL,
@@ -9,6 +10,7 @@ import {
   TABLE_H,
   TABLE_W,
 } from "./constants";
+import { substepCount } from "../physics2d/kinematics";
 import { Ball, ShotMeta } from "./types";
 
 export const isMoving = (balls: Ball[]) =>
@@ -38,88 +40,14 @@ const SPIN_FOLLOW = 0.65;
 const SPIN_DRAW = 0.55;
 const SPIN_RAIL = 0.28;
 
-export function tickPhysics(balls: Ball[], shotMeta: ShotMeta) {
-  for (const b of balls) {
-    if (b.pocketed) continue;
-
-    if (b.animatingPocket) {
-      b.opacity = Math.max(0, (b.opacity ?? 1) - 0.12);
-      b.scale = Math.max(0.2, (b.scale ?? 1) - 0.09);
-      if ((b.opacity ?? 0) <= 0.02) {
-        b.pocketed = true;
-        b.animatingPocket = false;
-      }
-      continue;
-    }
-
-    b.x += b.vx;
-    b.y += b.vy;
-
-    // Swerve from sidespin (cue ball only)
-    if (b.number === 0 && b.spinX && Math.abs(b.spinX) > 0.01) {
-      const speed = Math.hypot(b.vx, b.vy);
-      if (speed > 0.1) {
-        const nx = b.vx / speed;
-        const ny = b.vy / speed;
-        const swerveForce = (b.spinX ?? 0) * speed * SPIN_SWERVE;
-        b.vx += -ny * swerveForce;
-        b.vy += nx * swerveForce;
-      }
-    }
-
-    b.vx *= FRICTION;
-b.vy *= FRICTION;
-
-// Stop tiny sliding velocities
-const speed = Math.hypot(b.vx, b.vy);
-
-if (speed < STOP_EPSILON) {
-  b.vx = 0;
-  b.vy = 0;
-}
-
-    for (const [px, py] of POCKETS) {
-      const dist = Math.hypot(b.x - px, b.y - py);
-      if (b.number === 0 && dist < POCKET_R - 2) {
-        b.pocketed = true;
-        b.x = px;
-        b.y = py;
-        shotMeta.cueScratch = true;
-      } else if (b.number !== 0 && dist < POCKET_R + BALL_R * 0.35) {
-        b.animatingPocket = true;
-        b.vx = 0;
-        b.vy = 0;
-        const nx = (b.x - px) / (dist || 1),
-          ny = (b.y - py) / (dist || 1);
-        b.x = px + nx * (POCKET_R - BALL_R * 0.5);
-        b.y = py + ny * (POCKET_R - BALL_R * 0.5);
-        shotMeta.pocketedNumbers.push(b.number);
-      }
-    }
-
-    if (b.pocketed || b.animatingPocket) continue;
-
-    if (b.x < RAIL + BALL_R || b.x > TABLE_W - RAIL - BALL_R) {
-      b.x = Math.max(RAIL + BALL_R, Math.min(TABLE_W - RAIL - BALL_R, b.x));
-      b.vx *= -RAIL_DAMPING;
-      // Sidespin (spinX) modifies the rail bounce angle
-      if (b.number === 0 && Math.abs(b.spinX ?? 0) > 0.01) {
-        const spinEffect = (b.spinX ?? 0) * SPIN_RAIL;
-        b.vy += b.vx * spinEffect;
-      }
-      shotMeta.railAfterContact = true;
-    }
-    if (b.y < RAIL + BALL_R || b.y > TABLE_H - RAIL - BALL_R) {
-      b.y = Math.max(RAIL + BALL_R, Math.min(TABLE_H - RAIL - BALL_R, b.y));
-      b.vy *= -RAIL_DAMPING;
-      if (b.number === 0 && Math.abs(b.spinX ?? 0) > 0.01) {
-        const spinEffect = (b.spinX ?? 0) * SPIN_RAIL;
-        b.vx += b.vy * spinEffect;
-      }
-      shotMeta.railAfterContact = true;
-    }
-  }
-
+/**
+ * Advance one tick of ball-on-ball contact for the whole table.
+ *
+ * Runs once per SUBSTEP: resolving contacts against a position the balls
+ * actually crossed is what stops a fast ball from passing through a slow one
+ * between two ticks.
+ */
+function resolveBallCollisions(balls: Ball[], shotMeta: ShotMeta) {
   for (let i = 0; i < balls.length; i++)
     for (let j = i + 1; j < balls.length; j++) {
       const a = balls[i],
@@ -183,4 +111,130 @@ if (speed < STOP_EPSILON) {
         }
       }
     }
+}
+
+/**
+ * One 60 Hz physics tick for the whole table.
+ *
+ * SUBSTEPPED. Velocities are table units per tick and a full-power shot moves a
+ * ball ~25 units — further than a ball diameter and further than a pocket mouth.
+ * Integrating that as one jump per tick let fast balls tunnel through each other
+ * and skip the pocket mouths (the rail clamp then bounced the ball back out, so
+ * pots "didn't go in" — and every bot that plans a shot through this same engine
+ * planned one that could not drop). Each tick is therefore split into substeps
+ * of at most MAX_SUBSTEP_PX, with contacts and pot capture evaluated against
+ * positions the ball really crossed.
+ *
+ * The substep count is driven by the FASTEST ball on the table, so no ball can
+ * cross more than the budget. Friction is distributed across the substeps
+ * (`FRICTION ** (1 / steps)` each), so one tick's damping — and therefore the
+ * whole rollout — is exactly the same however many substeps there are.
+ */
+export function tickPhysics(balls: Ball[], shotMeta: ShotMeta) {
+  // A pot's fade-to-pocket animation is a per-TICK effect: it must look the same
+  // however far the balls happened to travel in the tick.
+  for (const b of balls) {
+    if (b.pocketed || !b.animatingPocket) continue;
+    b.opacity = Math.max(0, (b.opacity ?? 1) - 0.12);
+    b.scale = Math.max(0.2, (b.scale ?? 1) - 0.09);
+    if ((b.opacity ?? 0) <= 0.02) {
+      b.pocketed = true;
+      b.animatingPocket = false;
+    }
+  }
+
+  let fastest = 0;
+  for (const b of balls) {
+    if (b.pocketed || b.animatingPocket) continue;
+    fastest = Math.max(fastest, Math.hypot(b.vx, b.vy));
+  }
+  const steps = substepCount(fastest, MAX_SUBSTEP_PX);
+  const damping = Math.pow(FRICTION, 1 / steps);
+
+  // Sidespin swerve is a per-tick force, so it is applied once, from the tick's
+  // own velocity, rather than once per substep.
+  for (const b of balls) {
+    if (b.pocketed || b.animatingPocket) continue;
+    if (b.number === 0 && b.spinX && Math.abs(b.spinX) > 0.01) {
+      const speed = Math.hypot(b.vx, b.vy);
+      if (speed > 0.1) {
+        const nx = b.vx / speed;
+        const ny = b.vy / speed;
+        const swerveForce = (b.spinX ?? 0) * speed * SPIN_SWERVE;
+        b.vx += -ny * swerveForce;
+        b.vy += nx * swerveForce;
+      }
+    }
+  }
+
+  // A contact that already exists when the tick starts (a rack, or a ball that
+  // was left touching another) is resolved FIRST, against the velocity the two
+  // balls are approaching with. Doing it after the movement would let a fast ball
+  // pass the other ball's centre inside the tick, where the contact normal has
+  // flipped and the pair looks like it is separating — which is exactly how a
+  // point-blank shot failed to push the ball it hit.
+  resolveBallCollisions(balls, shotMeta);
+
+  for (let s = 0; s < steps; s++) {
+    for (const b of balls) {
+      if (b.pocketed || b.animatingPocket) continue;
+
+      b.x += b.vx / steps;
+      b.y += b.vy / steps;
+
+      b.vx *= damping;
+      b.vy *= damping;
+
+      // Stop tiny sliding velocities
+      const speed = Math.hypot(b.vx, b.vy);
+
+      if (speed < STOP_EPSILON) {
+        b.vx = 0;
+        b.vy = 0;
+      }
+
+      for (const [px, py] of POCKETS) {
+        const dist = Math.hypot(b.x - px, b.y - py);
+        if (b.number === 0 && dist < POCKET_R - 2) {
+          b.pocketed = true;
+          b.x = px;
+          b.y = py;
+          shotMeta.cueScratch = true;
+        } else if (b.number !== 0 && dist < POCKET_R + BALL_R * 0.35) {
+          b.animatingPocket = true;
+          b.vx = 0;
+          b.vy = 0;
+          const nx = (b.x - px) / (dist || 1),
+            ny = (b.y - py) / (dist || 1);
+          b.x = px + nx * (POCKET_R - BALL_R * 0.5);
+          b.y = py + ny * (POCKET_R - BALL_R * 0.5);
+          shotMeta.pocketedNumbers.push(b.number);
+        }
+      }
+
+      if (b.pocketed || b.animatingPocket) continue;
+
+      if (b.x < RAIL + BALL_R || b.x > TABLE_W - RAIL - BALL_R) {
+        b.x = Math.max(RAIL + BALL_R, Math.min(TABLE_W - RAIL - BALL_R, b.x));
+        b.vx *= -RAIL_DAMPING;
+        // Sidespin (spinX) modifies the rail bounce angle
+        if (b.number === 0 && Math.abs(b.spinX ?? 0) > 0.01) {
+          const spinEffect = (b.spinX ?? 0) * SPIN_RAIL;
+          b.vy += b.vx * spinEffect;
+        }
+        shotMeta.railAfterContact = true;
+      }
+      if (b.y < RAIL + BALL_R || b.y > TABLE_H - RAIL - BALL_R) {
+        b.y = Math.max(RAIL + BALL_R, Math.min(TABLE_H - RAIL - BALL_R, b.y));
+        b.vy *= -RAIL_DAMPING;
+        if (b.number === 0 && Math.abs(b.spinX ?? 0) > 0.01) {
+          const spinEffect = (b.spinX ?? 0) * SPIN_RAIL;
+          b.vx += b.vy * spinEffect;
+        }
+        shotMeta.railAfterContact = true;
+      }
+    }
+
+    resolveBallCollisions(balls, shotMeta);
+  }
 }

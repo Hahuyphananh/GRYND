@@ -189,3 +189,99 @@ test("every bot whose turn is gated by the server has a client ask that clears t
     "the one-shot latch that froze the bot must be gone",
   );
 });
+
+// ── Read-driven bots: the page has to keep reading ────────────────────────
+
+test("mines: the practice bot is kept moving while the player watches", () => {
+  // The bot's whole board is played SERVER-side on READ
+  // (`playAiTurnInTransaction`, run from this page's status fetch), and the
+  // match page syncs event-driven on purpose. So a player who stopped acting
+  // froze the bot mid-board — and, because the 180s clock and the "both boards
+  // done" resolution are applied on a read too, could leave the match hanging.
+  // The page therefore heartbeats the bot's own read while the bot still has a
+  // board to play.
+  const minesPage = read("src/app/casino/mines-pvp/[matchId]/PageClient.tsx");
+  assert.ok(
+    minesPage.includes('from "../../../../hooks/usePracticeBotHeartbeat"'),
+    "the page must use the shared practice-bot heartbeat",
+  );
+  const start = minesPage.indexOf("Practice bot heartbeat");
+  assert.ok(start > 0, "the page must carry a bot-heartbeat block");
+  const body = minesPage.slice(start, start + 1600);
+  assert.ok(body.includes("usePracticeBotHeartbeat(botStillPlaying, fetchStatus)"));
+  assert.ok(
+    body.includes("isAi && isActive && !match?.opponentLocked && !match?.opponentCompleted"),
+    "it runs only while a practice bot still has a board to play",
+  );
+  // The read it beats with is the page's own authoritative snapshot, and that
+  // read is what advances the bot server-side.
+  const minesStore = read("src/lib/mines-pvp/serverStore.js");
+  assert.ok(minesStore.includes("playAiTurnInTransaction"));
+  const readStart = minesStore.indexOf("export async function fetchMatchWithAutoResolve");
+  assert.ok(readStart > 0 && minesStore.slice(readStart, readStart + 1800).includes("playAiTurnInTransaction"));
+});
+
+test("speed typing: the practice bot is kept racing while the player reads", () => {
+  // The bot's race is PROJECTED from the elapsed clock and written on READ
+  // (`advanceAiRace`), and the match page syncs event-driven on purpose. A
+  // player who paused to read the passage therefore froze the bot mid-race (and
+  // could miss the both-finished resolve that the same read performs). The page
+  // heartbeats the bot's own read while it is still racing.
+  const page = read("src/app/casino/speed-typing/[matchId]/PageClient.tsx");
+  assert.ok(
+    page.includes('from "../../../../hooks/usePracticeBotHeartbeat"'),
+    "the page must use the shared practice-bot heartbeat",
+  );
+  const start = page.indexOf("Practice bot heartbeat");
+  assert.ok(start > 0, "the page must carry a bot-heartbeat block");
+  const body = page.slice(start, start + 1400);
+  assert.ok(body.includes("const botStillRacing ="), "the gate must be named");
+  // It runs for a practice race that has started, is not settled, and whose bot
+  // has not already finished.
+  for (const clause of [
+    "opponentIsAi &&",
+    "!finished &&",
+    "!resolved &&",
+    "goAtMs != null &&",
+    "now >= goAtMs &&",
+    "race?.opponent?.finished !== true",
+  ]) {
+    assert.ok(body.includes(clause), `the gate must include \`${clause}\``);
+  }
+  assert.ok(body.includes("usePracticeBotHeartbeat(botStillRacing, () => load({ silent: true }))"));
+
+  // The read it beats with is the page's own snapshot loader, and the store's
+  // read path is what advances the bot.
+  const store = read("src/lib/speed-typing/serverStore.ts");
+  const fetchStart = store.indexOf("export async function fetchMatch(");
+  assert.ok(
+    fetchStart > 0 && store.slice(fetchStart, fetchStart + 2000).includes("advanceAiIfPractice"),
+    "the read path must advance the bot",
+  );
+});
+
+test("sudoku duel: the practice bot is kept playing while the player thinks", () => {
+  // Same wiring as Speed Typing: the bot's board is advanced on READ
+  // (`advanceAiMatch`, paced from the clock) and the page syncs event-driven.
+  const page = read("src/app/casino/sudoku-duel/[matchId]/PageClient.tsx");
+  assert.ok(
+    page.includes('from "../../../../hooks/usePracticeBotHeartbeat"'),
+    "the page must use the shared practice-bot heartbeat",
+  );
+  const start = page.indexOf("Practice bot heartbeat");
+  assert.ok(start > 0, "the page must carry a bot-heartbeat block");
+  const body = page.slice(start, start + 1200);
+  assert.ok(body.includes("const botStillPlaying ="), "the gate must be named");
+  assert.ok(
+    body.includes("Boolean(match?.isAi) && phase === \"racing\" && !terminal && !match?.opponent?.completed"),
+    "it runs only while a practice bot still has a board to play",
+  );
+  assert.ok(body.includes("usePracticeBotHeartbeat(botStillPlaying, load)"));
+
+  const store = read("src/lib/sudoku-duel/serverStore.ts");
+  const fetchStart = store.indexOf("export async function fetchMatch(");
+  assert.ok(
+    fetchStart > 0 && store.slice(fetchStart, fetchStart + 2200).includes("advanceAiIfPractice"),
+    "the read path must advance the bot",
+  );
+});
