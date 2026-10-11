@@ -32,6 +32,8 @@ import { mock } from "node:test";
 
 import { speedTypingMatches, users } from "../src/db/schema.ts";
 import {
+  DEVICE_CLASS,
+  DEVICE_MATCH_WIDEN_MS,
   MATCH_STATUS,
   RACE_COUNTDOWN_MS,
   RACE_LIMIT_MS,
@@ -56,6 +58,7 @@ const SKIP_REASON = MODULE_MOCKING_AVAILABLE
 const MATCH_ID = "55555555-5555-4555-8555-555555555555";
 const ALICE = "user_alice";
 const BOB = "user_bob";
+const CAROL = "user_carol";
 const MALLORY = "user_mallory";
 const GO = 1_700_000_000_000;
 
@@ -1065,4 +1068,198 @@ test("practice: advanceAiRace is a no-op for a human match", { skip: SKIP_REASON
   const result = await advanceAiRace({ matchId: MATCH_ID, nowMs: GO + 60_000 });
   assert.equal(result.advanced, false);
   assert.equal(matchWrites(fake).length, 0, "a human match is never advanced or written");
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// 9. Input-device pooling — a phone is not raced against a computer
+// ════════════════════════════════════════════════════════════════════════
+//
+// A phone has no physical keyboard, so a phone-vs-computer race measures
+// hardware instead of typing skill. `createOrJoin` therefore pools by the input
+// device the REQUEST'S HEADERS describe: same pool first, then a class-neutral
+// lobby, then the other pool only once the waiting lobby has waited past
+// DEVICE_MATCH_WIDEN_MS.
+//
+// The decision itself is tested exhaustively and independently in
+// tests/speed-typing-device-match.test.mjs. These scenarios drive the STORE:
+// the real query, the real pick and the real writes, so the wiring is proven
+// rather than just the algorithm. Each seeds exactly the rows the store should
+// act on (the fake ignores WHERE clauses by design, so a one-lobby world is the
+// faithful one).
+
+/** An open lobby row as `createOrJoin` leaves one: waiting, unarmed, one seat. */
+function waitingLobby(overrides = {}) {
+  return {
+    ...armedRow({ status: MATCH_STATUS.WAITING }),
+    player2Id: null,
+    raceSeed: null,
+    passageId: null,
+    passageVersion: null,
+    goAt: null,
+    raceState: createRaceState({ version: 0 }),
+    player1DeviceClass: null,
+    player2DeviceClass: null,
+    ...overrides,
+  };
+}
+
+const inserts = (fake) => matchWrites(fake).filter((w) => w.op === "insert");
+const updates = (fake) => matchWrites(fake).filter((w) => w.op === "update");
+
+test("device: a new lobby records the creator's input pool", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const { createOrJoin } = await loadStore();
+  const now = GO - 5_000;
+
+  const created = await createOrJoin({
+    userId: ALICE,
+    deviceClass: DEVICE_CLASS.KEYBOARD,
+    nowMs: now,
+  });
+  assert.equal(created.joined, false);
+  assert.equal(created.match.player1DeviceClass, DEVICE_CLASS.KEYBOARD);
+  assert.equal(created.match.player2DeviceClass ?? null, null);
+  // The pool is the row's, and it is what every later caller is matched against.
+  assert.equal(inserts(fake).length, 1);
+  assert.equal(inserts(fake)[0].values.player1DeviceClass, DEVICE_CLASS.KEYBOARD);
+});
+
+test("device: an unclassifiable (or unrecognised) creator writes NULL, never a third pool", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const { createOrJoin } = await loadStore();
+  const now = GO - 5_000;
+
+  // No device signal at all — the quick-queue path.
+  const unclassified = await createOrJoin({ userId: ALICE, nowMs: now });
+  assert.equal(unclassified.match.player1DeviceClass ?? null, null);
+  assert.equal(inserts(fake)[0].values.player1DeviceClass ?? null, null);
+
+  // A value outside the closed vocabulary (an older client, a forged field)
+  // resolves to unknown rather than splitting matchmaking into a third pool.
+  // Reset first: two unclassified callers would pair with each other (they are
+  // pool-compatible by definition), which is a different scenario.
+  fake.reset();
+  const bogus = await createOrJoin({ userId: BOB, deviceClass: "desktop", nowMs: now });
+  assert.equal(bogus.match.player1DeviceClass ?? null, null);
+  assert.equal(inserts(fake)[0].values.player1DeviceClass ?? null, null, "NULL, never 'desktop'");
+});
+
+test("device: a phone caller is NOT dropped into a fresh keyboard lobby", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const { createOrJoin } = await loadStore();
+  const now = GO - 5_000;
+  seed(
+    fake,
+    waitingLobby({
+      player1DeviceClass: DEVICE_CLASS.KEYBOARD,
+      createdAt: new Date(now - 1_000),
+    }),
+  );
+
+  const result = await createOrJoin({
+    userId: CAROL,
+    deviceClass: DEVICE_CLASS.TOUCH,
+    nowMs: now,
+  });
+
+  // Inside the widening window the phone opens its OWN lobby rather than being
+  // handed an unfair race the instant it arrives.
+  assert.equal(result.joined, false);
+  assert.equal(result.match.player1DeviceClass, DEVICE_CLASS.TOUCH);
+  assert.notEqual(result.match.id, MATCH_ID, "a second lobby, not the keyboard one");
+  assert.equal(inserts(fake).length, 1);
+  assert.equal(updates(fake).length, 0, "the waiting keyboard lobby is untouched");
+});
+
+test("device: a phone caller takes the keyboard lobby once it has waited past the window", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const { createOrJoin } = await loadStore();
+  const now = GO - 5_000;
+  seed(
+    fake,
+    waitingLobby({
+      player1DeviceClass: DEVICE_CLASS.KEYBOARD,
+      createdAt: new Date(now - DEVICE_MATCH_WIDEN_MS),
+    }),
+  );
+
+  const result = await createOrJoin({
+    userId: CAROL,
+    deviceClass: DEVICE_CLASS.TOUCH,
+    nowMs: now,
+  });
+
+  // A lobby that has waited this long has lost more to the queue than a
+  // mixed-input race could cost it, so it is paired with whoever is next.
+  assert.equal(result.joined, true);
+  assert.equal(result.match.id, MATCH_ID);
+  assert.equal(result.match.player2Id, CAROL);
+  assert.equal(result.match.player2DeviceClass, DEVICE_CLASS.TOUCH);
+  assert.equal(result.match.status, MATCH_STATUS.PLAYING);
+  assert.equal(inserts(fake).length, 0, "no second lobby was opened");
+});
+
+test("device: a class-neutral lobby accepts any pool immediately", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const { createOrJoin } = await loadStore();
+  const now = GO - 5_000;
+  // No device class: a legacy row, or the platform quick-queue's placeholder.
+  seed(fake, waitingLobby({ player1DeviceClass: null, createdAt: new Date(now) }));
+
+  const result = await createOrJoin({
+    userId: BOB,
+    deviceClass: DEVICE_CLASS.KEYBOARD,
+    nowMs: now,
+  });
+
+  assert.equal(result.joined, true, "no waiting period for a class-neutral lobby");
+  assert.equal(result.match.player2DeviceClass, DEVICE_CLASS.KEYBOARD);
+});
+
+test("device: an unclassifiable caller keeps the pre-0209 pairing exactly", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const { createOrJoin } = await loadStore();
+  const now = GO - 5_000;
+  // A FRESH lobby in the other pool: with no device signal the quick-queue's
+  // second call must still land on this lobby, or the queue's two ids would no
+  // longer match and the assignment would be refused.
+  seed(
+    fake,
+    waitingLobby({
+      player1DeviceClass: DEVICE_CLASS.TOUCH,
+      createdAt: new Date(now - 1_000),
+    }),
+  );
+
+  const result = await createOrJoin({ userId: BOB, nowMs: now });
+
+  assert.equal(result.joined, true);
+  assert.equal(result.match.id, MATCH_ID);
+  assert.equal(result.match.player2DeviceClass ?? null, null, "no pool is invented for them");
+});
+
+test("device: a player is never seated against themselves, whatever their pool says", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const { createOrJoin } = await loadStore();
+  const now = GO - 5_000;
+  // The caller's own FRESH lobby, in the pool the caller is no longer in.
+  seed(
+    fake,
+    waitingLobby({
+      player1Id: ALICE,
+      player1DeviceClass: DEVICE_CLASS.TOUCH,
+      createdAt: new Date(now - 1_000),
+    }),
+  );
+
+  const result = await createOrJoin({
+    userId: ALICE,
+    deviceClass: DEVICE_CLASS.KEYBOARD,
+    nowMs: now,
+  });
+
+  assert.equal(result.joined, false, "their own lobby is returned, not joined");
+  assert.equal(result.match.id, MATCH_ID);
+  assert.equal(result.match.player2Id ?? null, null);
+  assert.equal(updates(fake).length, 0);
 });

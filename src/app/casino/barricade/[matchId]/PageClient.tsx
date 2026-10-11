@@ -49,9 +49,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useUser } from "@clerk/nextjs";
 import {
   IconAlertTriangle,
-  IconArrowsHorizontal,
-  IconArrowsVertical,
-  IconBallpen,
   IconDoorExit,
   IconFlag,
   IconWall,
@@ -66,15 +63,13 @@ import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import ReportModal from "../../../../components/ReportModal";
 import GameSessionHost from "../../../../components/GameSessionHost";
-import BarricadeBoard, {
-  type BarricadePreview,
-} from "../../../../components/barricade/BarricadeBoard";
+import BarricadeBoard from "../../../../components/barricade/BarricadeBoard";
 import {
   BARRICADE_MATCH_UPDATED,
   BARRICADE_READY,
   barricadeMatchRoom,
 } from "../../../../lib/barricade/rooms";
-import { MOVE_KINDS, ORIENTATIONS } from "../../../../lib/barricade/constants";
+import { MOVE_KINDS } from "../../../../lib/barricade/constants";
 import {
   applyAction,
   classifyWall,
@@ -82,7 +77,6 @@ import {
   isMatchFinished,
   legalMoves,
   legalWalls,
-  wallKey,
 } from "../../../../lib/barricade/rules";
 import {
   durationSeconds,
@@ -101,7 +95,6 @@ import type {
   BarricadeAction,
   BarricadeState,
   MoveKind,
-  Orientation,
   Position,
   Seat,
   WallPlacement,
@@ -158,12 +151,7 @@ export default function BarricadeMatchPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingAction | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [wallMode, setWallMode] = useState(false);
-  const [orientation, setOrientation] = useState<Orientation>(ORIENTATIONS[0]);
-  const [hovered, setHovered] = useState<WallPlacement | null>(null);
-  // `null` while the post-paint legality sweep is still running: the grooves
-  // then render neutral, and a click is validated by the engine regardless.
-  const [legalWallKeys, setLegalWallKeys] = useState<ReadonlySet<string> | null>(null);
+
   const [notice, setNotice] = useState<string | null>(null);
   const [showForfeitConfirm, setShowForfeitConfirm] = useState(false);
   const [forfeiting, setForfeiting] = useState(false);
@@ -182,15 +170,12 @@ export default function BarricadeMatchPage() {
 
   // The App Router reuses this page instance when only `[matchId]` differs, so
   // every piece of per-match state is reset — otherwise the previous match's
-  // position and pending ghost would flash into the new one.
+  // position and pending turn would flash into the new one.
   useEffect(() => {
     setMatch(null);
     setLoadError(null);
     setPending(null);
     setSubmitting(false);
-    setWallMode(false);
-    setHovered(null);
-    setLegalWallKeys(null);
     setNotice(null);
     setShowForfeitConfirm(false);
     setForfeiting(false);
@@ -345,43 +330,17 @@ export default function BarricadeMatchPage() {
     [state],
   );
 
-  const preview: BarricadePreview | null = useMemo(() => {
-    if (!hovered || !state || !viewerSeat) return null;
-    const verdict = classifyWall(state, viewerSeat, hovered);
-    if (verdict.ok === false) return { wall: hovered, ok: false, message: verdict.message };
-    return { wall: hovered, ok: true, message: "Tap to place this barricade." };
-  }, [hovered, state, viewerSeat]);
-
-  // The full legality sweep over every groove costs one breadth-first search per
-  // candidate, so it runs AFTER paint. It is gated on the viewer actually being
-  // able to act, so an opponent's turn never pays for it.
-  useEffect(() => {
-    if (!wallMode || !canPlay || !state || !viewerSeat) {
-      setLegalWallKeys(null);
-      return undefined;
-    }
-    setLegalWallKeys(null);
-    let cancelledLocal = false;
-    const handle = setTimeout(() => {
-      if (cancelledLocal) return;
-      setLegalWallKeys(
-        new Set(legalWalls(state, viewerSeat).map((action) => wallKey(action.wall))),
-      );
-    }, 0);
-    return () => {
-      cancelledLocal = true;
-      clearTimeout(handle);
-    };
-  }, [wallMode, canPlay, state, viewerSeat]);
-
-  // Leave wall mode the moment it stops being the viewer's turn (a move landed,
-  // the opponent resigned, the player has no barricades left).
-  useEffect(() => {
-    if (!canPlay || viewerWalls <= 0) {
-      setWallMode(false);
-      setHovered(null);
-    }
-  }, [canPlay, viewerWalls]);
+  // THE PLACEMENT MENU IS THE ENGINE'S OWN — the same `legalWalls` generator
+  // the store re-runs inside its transaction before it writes anything. Empty
+  // whenever it is not the viewer's turn, the match is over, or the reserve is
+  // spent, which is exactly when a barricade must not be offered.
+  const wallSlots: WallPlacement[] = useMemo(
+    () =>
+      canPlay && state && state.status === "playing" && viewerSeat
+        ? legalWalls(state, viewerSeat).map((action) => action.wall)
+        : [],
+    [state, canPlay, viewerSeat],
+  );
 
   // ── Sound cues, keyed on the server's own ply ─────────────────────────
   useEffect(() => {
@@ -468,14 +427,14 @@ export default function BarricadeMatchPage() {
         const data = await res.json().catch(() => null);
         if (!res.ok || !data?.success) {
           // Rejected (stale tab, wrong turn, an action the engine refuses, a
-          // replayed turn) — drop the ghost and resync rather than guessing.
+          // replayed turn) — drop the pending turn and resync rather than
+          // guessing.
           setPending(null);
           setNotice(data?.error || "That turn was rejected.");
           playBarricadeReject();
           refresh();
           return;
         }
-        setHovered(null);
         adoptAuthoritative(data.data.match);
       } catch {
         setPending(null);
@@ -490,10 +449,10 @@ export default function BarricadeMatchPage() {
 
   const handleMove = useCallback(
     (to: Position) => {
-      if (!canPlay || wallMode) return;
+      if (!canPlay) return;
       void submitAction({ type: "move", to });
     },
-    [canPlay, wallMode, submitAction],
+    [canPlay, submitAction],
   );
 
   const handlePlaceWall = useCallback(
@@ -723,7 +682,7 @@ export default function BarricadeMatchPage() {
             {!waiting && !cancelled ? (
               <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
                 {/* ── Board column ─────────────────────────────────── */}
-                <div className="rounded-2xl border border-cyan-400/20 bg-black/40 p-3 shadow-[0_0_30px_rgba(34,211,238,0.10)] sm:p-4">
+                <div className="rounded-2xl border border-cyan-400/20 bg-black/40 p-2 shadow-[0_0_30px_rgba(34,211,238,0.10)] sm:p-4">
                   {showBoard && stage ? (
                     <div className="barricade-board-shell">
                       <p className="barricade-goal-bar is-mine" data-testid="barricade-goal-mine">
@@ -736,14 +695,10 @@ export default function BarricadeMatchPage() {
                         mySeat={viewerSeat ?? "player1"}
                         activeSeat={stage.turn}
                         moves={legalMoveList}
-                        wallMode={wallMode && canPlay}
-                        orientation={orientation}
-                        legalWallKeys={legalWallKeys}
-                        preview={preview}
+                        wallSlots={wallSlots}
                         disabled={!canPlay}
                         onMove={handleMove}
                         onPlaceWall={handlePlaceWall}
-                        onHoverWall={setHovered}
                       />
                       <p
                         className="barricade-goal-bar is-theirs"
@@ -764,68 +719,23 @@ export default function BarricadeMatchPage() {
                 {/* ── Controls / log column ────────────────────────── */}
                 <div className="flex flex-col gap-3">
                   <div className="barricade-controls">
-                    <div className="flex gap-2" role="group" aria-label="Turn action">
-                      <button
-                        type="button"
-                        className={`barricade-mode-button ${!wallMode ? "is-active" : ""}`}
-                        aria-pressed={!wallMode}
-                        data-testid="barricade-mode-move"
-                        disabled={!canPlay}
-                        onClick={() => {
-                          setWallMode(false);
-                          setHovered(null);
-                        }}
-                      >
-                        <IconBallpen size={16} aria-hidden="true" /> Move
-                      </button>
-                      <button
-                        type="button"
-                        className={`barricade-mode-button ${wallMode ? "is-active" : ""}`}
-                        aria-pressed={wallMode}
-                        data-testid="barricade-mode-wall"
-                        disabled={!canPlay || viewerWalls <= 0}
-                        onClick={() => setWallMode(true)}
-                      >
-                        <IconWall size={16} aria-hidden="true" /> Barricade
-                      </button>
-                    </div>
+                    {canPlay ? (
+                      <p className="barricade-hint" data-testid="barricade-hint">
+                        Every barricade you may place is already drawn on the board as a dashed gap
+                        — tap one to put it there. Tap a highlighted square to move instead. No
+                        mode to pick.
+                      </p>
+                    ) : null}
 
-                    <div className="flex gap-2" role="group" aria-label="Barricade orientation">
-                      <button
-                        type="button"
-                        className={`barricade-orientation-button ${
-                          orientation === ORIENTATIONS[0] ? "is-active" : ""
-                        }`}
-                        aria-pressed={orientation === ORIENTATIONS[0]}
-                        data-testid="barricade-orientation-horizontal"
-                        onClick={() => setOrientation(ORIENTATIONS[0])}
-                      >
-                        <IconArrowsHorizontal size={16} aria-hidden="true" /> Horizontal
-                      </button>
-                      <button
-                        type="button"
-                        className={`barricade-orientation-button ${
-                          orientation === ORIENTATIONS[1] ? "is-active" : ""
-                        }`}
-                        aria-pressed={orientation === ORIENTATIONS[1]}
-                        data-testid="barricade-orientation-vertical"
-                        onClick={() => setOrientation(ORIENTATIONS[1])}
-                      >
-                        <IconArrowsVertical size={16} aria-hidden="true" /> Vertical
-                      </button>
-                    </div>
-
+                    {/* The engine's refusal, or nothing: a legal placement has
+                        nothing left to explain. */}
                     <p
-                      className={`barricade-notice ${notice || (wallMode && canPlay) ? "is-visible" : ""}`}
+                      className={`barricade-notice ${notice ? "is-visible" : ""}`}
                       role="status"
                       aria-live="polite"
                       data-testid="barricade-notice"
                     >
-                      {wallMode && canPlay
-                        ? preview
-                          ? preview.message
-                          : notice ?? "Pick a groove for your barricade."
-                        : notice ?? ""}
+                      {notice ?? ""}
                     </p>
 
                     <div className="flex flex-wrap gap-2">

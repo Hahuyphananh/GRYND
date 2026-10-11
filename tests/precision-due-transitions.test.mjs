@@ -208,15 +208,54 @@ test(
       );
     }
 
-    // ── 2. A call BEFORE the deadline changes nothing and reports the instant ──
-    // This is what lets the scheduler arm one timer instead of polling.
+    // ── 1b. …and so does a human's own stop, BEFORE the bot's deadline ─────
+    // The reported complaint: "when I click stop, the AI is still in flight and
+    // the results show with a delay". The bot's stop instant is fixed at the
+    // reveal, so a round with a human stop already in is waiting on nothing —
+    // grading it here cannot change who won, only how soon they are told.
     {
+      // A hair after the human's click, and a long way before the bot's deadline.
+      const decisionAt = GO + TARGET_MS + 10;
       world.row = aiRow({ humanStopElapsedMs: TARGET_MS });
+      world.clock = decisionAt;
+      const report = await call();
+
+      assert.equal(report.changed, true, "the human's stop made the round decidable");
+      assert.equal(report.aiStopApplied, true, "the bot's stored stop is applied");
+      assert.equal(report.decided, true, "the round is graded, not held");
+      assert.equal(report.roundWinnerSeat, 1);
+      assert.equal(report.nextRoundArmed, true, "the next round is counting down");
+      assert.equal(
+        report.match.lastRoundStops.seat2.stopInstant,
+        AI_STOP_AT,
+        "the bot is graded off its STORED instant — early application cannot move it"
+      );
+      assert.equal(
+        report.match.lastRoundStops.seat2.elapsedMs,
+        TARGET_MS + AI_ERR_MS,
+        "and therefore the same elapsed it would have had at its deadline"
+      );
+      assert.equal(
+        report.nextDueAtMs,
+        decisionAt + ROUND_RESULT_REVEAL_MS + ROUND_COUNTDOWN_MS,
+        "the scheduler is handed the next round's countdown, measured from the decision"
+      );
+      assert.ok(
+        report.nextDueAtMs !== AI_STOP_AT,
+        "the bot's now-dead deadline must not be armed for"
+      );
+    }
+
+    // ── 2. A call BEFORE anything is due changes nothing and reports the instant ──
+    // This is what lets the scheduler arm one timer instead of polling: with NO
+    // human stop in yet, the bot's deadline is genuinely the next thing.
+    {
+      world.row = aiRow({ humanStopElapsedMs: null });
       world.clock = GO + 3_000;
       const report = await call();
 
       assert.equal(report.changed, false, "nothing is due yet");
-      assert.equal(report.aiStopApplied, false);
+      assert.equal(report.aiStopApplied, false, "an unstopped round is not decidable");
       assert.equal(report.decided, false);
       assert.equal(
         report.nextDueAtMs,

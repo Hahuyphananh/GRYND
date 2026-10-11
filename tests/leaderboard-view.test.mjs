@@ -84,11 +84,22 @@ test("the weekly cron rebuilds the view", () => {
 
 test("the migration is registered in the drizzle journal", () => {
   const journal = JSON.parse(read(JOURNAL));
-  const last = journal.entries.at(-1);
+  const entry = journal.entries.find((e) => e.tag === "0200_rating_leaderboard_mv");
 
-  assert.equal(last.tag, "0200_rating_leaderboard_mv");
+  // This migration is deliberately NOT asserted to be the LAST journal entry:
+  // the journal keeps growing, so pinning a moving target made this test fail
+  // the moment 0207 landed. What matters is that 0200 is present at all —
+  // an unjournaled file is skipped by db:migrate entirely.
+  assert.ok(
+    entry,
+    "0200_rating_leaderboard_mv must be in _journal.json or db:migrate skips it",
+  );
+
+  // The chain itself must stay walkable: idx is the entry's array position
+  // (drizzle reads the array in order), so the last entry carries the final
+  // index and the sequence is strictly increasing.
+  const last = journal.entries.at(-1);
   assert.equal(last.idx, journal.entries.length - 1);
-  // Idx must be strictly increasing or drizzle skips/rewinds migrations.
   const idxs = journal.entries.map((e) => e.idx);
   assert.deepEqual(idxs, [...idxs].sort((a, b) => a - b));
 });

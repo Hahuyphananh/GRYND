@@ -83,6 +83,8 @@ import {
   memoryGridMatchRoom,
 } from "../../../../lib/memory-grid/rooms";
 import { MATCH_STATUS } from "../../../../lib/memory-grid/constants";
+// The platform's ONE seat-based verdict (src/lib/results/viewerOutcome.ts).
+import { viewerOutcome, type ViewerOutcome } from "../../../../lib/results/viewerOutcome";
 import {
   useMatchSync,
 } from "../../../../hooks/useMatchSync";
@@ -588,11 +590,26 @@ export default function MemoryGridMatchPage({
     return new Set(match.pattern.active);
   }, [match?.pattern]);
 
-  const viewerWon =
-    isFinished && !!match?.winnerId && match.winnerId === user?.id;
-  const viewerLost =
-    isFinished && !!match?.winnerId && match.winnerId !== user?.id;
-  const isDraw = isFinished && !match?.winnerId;
+  // THE VERDICT IS THE SERVER'S, READ FROM THE VIEWER'S SEAT. `result` is
+  // written by settlement from the winner SEAT, so it is compared against the
+  // seat the snapshot says the viewer holds (`viewerIsPlayer1`) — never against
+  // Clerk's id. A signed-out free-play visitor has no Clerk id at all, so
+  // `winnerId === user?.id` reported a LOSS to a guest who had just won; the id
+  // comparison survives only inside the shared helper, as the fallback for a
+  // row that names a winner without a result.
+  const verdict = isFinished
+    ? viewerOutcome({
+        result: match?.result,
+        winnerId: match?.winnerId,
+        viewerSeat: match?.viewerIsPlayer1 ? "player1" : "player2",
+      })
+    : null;
+  // A finished row that names no winner carries no verdict for anyone; the
+  // honest reading of it is a draw, and never a loss.
+  const outcome: ViewerOutcome = verdict ?? "draw";
+  const viewerWon = isFinished && outcome === "win";
+  const viewerLost = isFinished && outcome === "loss";
+  const isDraw = isFinished && outcome === "draw";
 
   // ── Audio ─────────────────────────────────────────────────────────
   // Match-result fanfare/defeat plays once when the finished screen
@@ -833,8 +850,9 @@ export default function MemoryGridMatchPage({
   useEffect(() => {
     matchRef.current = match;
   }, [match]);
+  // Creator-only cancel, read from the seat the SERVER assigned the viewer.
   const viewerCanCancel =
-    match?.status === MATCH_STATUS.WAITING && Boolean(match?.player1Id === user?.id);
+    match?.status === MATCH_STATUS.WAITING && Boolean(match?.viewerIsPlayer1);
   const cancelLobby = useCallback(async () => {
     const current = matchRef.current;
     if (!current) return;
@@ -1064,7 +1082,6 @@ export default function MemoryGridMatchPage({
       }
     }
 
-    const outcome = isDraw ? "draw" : viewerWon ? "win" : "loss";
     const headline = viewerWon
       ? `You out-remembered ${oppName} ${myScore ?? 0}–${oppScore ?? 0} rounds`
       : viewerLost

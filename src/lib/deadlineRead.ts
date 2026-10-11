@@ -16,8 +16,10 @@
 // symptoms, all one defect:
 //
 //   * "when the cooldown finishes, the game doesn't start" — the pre-game
-//     countdown (Tower Arena, Mines Duel, Four in a Row, Keno, Lane Rush): both
-//     players sat on a finished countdown and the first move never came;
+//     countdown (Tower Arena, Mines Duel, Four in a Row, Keno, Lane Rush,
+//     Precision): both players sat on a finished countdown and the first move
+//     never came; a countdown that DID have a reader could still be a beat late,
+//     which is what `DEADLINE_READ_ANCHORED_SLACK_MS` is for;
 //   * a stalling opponent was never timed out, and a race whose clock expired
 //     with both seats idle was never graded.
 //
@@ -43,8 +45,40 @@
  *  round trip and any device/server clock difference. */
 export const DEADLINE_READ_SLACK_MS = 400;
 
-/** How long to wait before re-reading a deadline that did not advance. */
-export const DEADLINE_READ_RETRY_MS = 1_000;
+/**
+ * Slack used INSTEAD of `DEADLINE_READ_SLACK_MS` when the caller can express
+ * the current time in the SERVER's clock (see `useDeadlineRead`'s `serverNow`).
+ *
+ * The 400ms above is one number covering two very different errors: the device's
+ * clock skew (seconds, and the only reason it is that large) and the request's
+ * own flight time. A caller that carries a server-aligned clock — every match
+ * page that estimates the offset from its own poll round trip, which is most of
+ * them — has already removed the first error, so anchoring the read in server
+ * time leaves only the offset estimate's residual (the RTT asymmetry, a few ms)
+ * and the timer's own firing slop.
+ *
+ * That is what the player SEES: the countdown reaching 0 and the game then
+ * starting. The read cannot land before the stamped instant — the stores advance
+ * only once it has passed — so this is the one place where a smaller number is
+ * both safe and directly visible, and every millisecond of the old 400 was spent
+ * showing a finished countdown (reported as "when the countdown reaches 0 the
+ * game doesn't start immediately", in Keno and Precision alike). The retry below
+ * is the backstop for the residual: an estimate that lands early costs one
+ * retry, not the round.
+ */
+export const DEADLINE_READ_ANCHORED_SLACK_MS = 120;
+
+/**
+ * How long to wait before re-reading a deadline that did not advance.
+ *
+ * This is the recovery path for BOTH remaining failure modes of the first read:
+ * a device clock (or an offset estimate) skewed AHEAD of the server's, which
+ * makes the read arrive before the store will advance; and a backgrounded tab
+ * whose timers were throttled past the deadline. Keeping it short is what bounds
+ * how late the game can start when the first read misses — at 1s the recovery
+ * alone was longer than the stall players complained about.
+ */
+export const DEADLINE_READ_RETRY_MS = 250;
 
 /** Hard cap on reads per deadline, including the first one. Start countdowns
  *  are a few seconds and turn windows at most a minute, so this window stays
@@ -55,13 +89,24 @@ export const DEADLINE_READ_MAX_ATTEMPTS = 6;
  * Delay from `nowMs` until the first read that can advance the match.
  *
  * Never negative (an already-elapsed deadline reads immediately), and always at
- * least `DEADLINE_READ_SLACK_MS` past the stamped instant — a read that landed
- * before the deadline would return the unchanged state and, without this, leave
- * the match sitting on it.
+ * least `slackMs` past the stamped instant — a read that landed before the
+ * deadline would return the unchanged state and, without this, leave the match
+ * sitting on it.
+ *
+ * `slackMs` defaults to `DEADLINE_READ_SLACK_MS`. A caller that has already
+ * expressed `nowMs` in the SERVER's clock passes
+ * `DEADLINE_READ_ANCHORED_SLACK_MS` instead: the slack is there to cover the
+ * device clock's skew, and a server-anchored clock has had that skew taken out
+ * of it already.
  */
-export function deadlineReadDelayMs(deadlineMs: number, nowMs: number): number {
-  if (!Number.isFinite(deadlineMs)) return DEADLINE_READ_SLACK_MS;
-  return Math.max(0, deadlineMs - nowMs) + DEADLINE_READ_SLACK_MS;
+export function deadlineReadDelayMs(
+  deadlineMs: number,
+  nowMs: number,
+  slackMs: number = DEADLINE_READ_SLACK_MS,
+): number {
+  const slack = Number.isFinite(slackMs) ? slackMs : DEADLINE_READ_SLACK_MS;
+  if (!Number.isFinite(deadlineMs)) return slack;
+  return Math.max(0, deadlineMs - nowMs) + slack;
 }
 
 /** A stamped instant, in whatever shape the API/projection hands over. */
@@ -213,6 +258,35 @@ export function kenoPvpDueRead(
 ): StampedInstant {
   if (!match || match.status !== "ready") return null;
   return match.readyDeadline ?? null;
+}
+
+/** Precision. `phase`/`countdownEndsAt`. */
+export interface PrecisionReadSource {
+  phase?: string | null;
+  countdownEndsAt?: StampedInstant;
+}
+
+/**
+ * Precision: the pre-round `arming` countdown.
+ *
+ * The round opens when the `arming` → `active` transition is APPLIED, and the
+ * realtime server's due scheduler is an accelerator, not a requirement: it only
+ * runs while a socket is in the match room and only from a process that is up.
+ * Without a reader in the page, the countdown reaching 0 was therefore followed
+ * by dead air until some other event (a socket broadcast, a tab refocus) happened
+ * to read the match — the reported "when the countdown reaches 0, the game
+ * doesn't start immediately".
+ *
+ * Only the arming countdown is listed. The bot's own stop instant is deliberately
+ * NOT a public field (it is published as `state.aiStop` only once it has been
+ * applied), so a client cannot read for it — and it does not need to: the store
+ * grades an AI round the moment the human's own stop makes it decidable.
+ */
+export function precisionDueRead(
+  state: PrecisionReadSource | null | undefined,
+): StampedInstant {
+  if (!state || state.phase !== "arming") return null;
+  return state.countdownEndsAt ?? null;
 }
 
 /**

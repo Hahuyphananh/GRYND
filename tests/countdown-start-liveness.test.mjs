@@ -35,6 +35,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import {
+  DEADLINE_READ_ANCHORED_SLACK_MS,
   DEADLINE_READ_MAX_ATTEMPTS,
   DEADLINE_READ_RETRY_MS,
   DEADLINE_READ_SLACK_MS,
@@ -43,6 +44,7 @@ import {
   kenoPvpDueRead,
   laneRushDueRead,
   minesPvpDueRead,
+  precisionDueRead,
   speedTypingDueRead,
   towerArenaDueRead,
 } from "../src/lib/deadlineRead.ts";
@@ -53,9 +55,13 @@ const stripComments = (s) =>
   s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
 const HOOK = "src/hooks/useDeadlineRead.ts";
+const CLOCK_HOOK = "src/hooks/useServerClockEstimate.ts";
+const CLOCK_LIB = "src/lib/serverClock.ts";
+const CLOCK_ROUTE = "src/app/api/server-time/route.ts";
 const SHARED = "src/lib/deadlineRead.ts";
 const REALTIME = "realtime-server/server.js";
 const MINES_VIEW = "src/lib/mines-pvp/matchView.js";
+const PRECISION_MATCH_PAGE = "src/app/casino/precision/game/[matchId]/PageClient.tsx";
 
 /** Every page that brings a read forward for its own stored deadline. */
 const WIRED_PAGES = [
@@ -101,6 +107,38 @@ test("the first deadline read can never land before the stamped deadline", () =>
   );
 });
 
+test("a server-anchored read fires ON the deadline instead of a skew-sized slack past it", () => {
+  const deadline = 1_700_000_010_000;
+
+  // The reported complaint: "the countdown reaches 0 and the game doesn't start
+  // immediately". The read is what starts it, so every millisecond of slack is a
+  // millisecond of a finished countdown on screen.
+  const anchored = deadlineReadDelayMs(deadline, deadline - 10_000, DEADLINE_READ_ANCHORED_SLACK_MS);
+  assert.equal(anchored, 10_000 + DEADLINE_READ_ANCHORED_SLACK_MS);
+  assert.ok(
+    anchored < deadlineReadDelayMs(deadline, deadline - 10_000),
+    "an anchored read must be strictly tighter than the uncorrected one",
+  );
+  // …but still strictly past the deadline: the stores advance only once it has
+  // passed, so a read ON the instant would be refused and cost a whole retry.
+  assert.ok(
+    deadline - 10_000 + anchored > deadline,
+    "the anchored read still lands after the stamped instant",
+  );
+  assert.ok(
+    DEADLINE_READ_ANCHORED_SLACK_MS > 0 && DEADLINE_READ_ANCHORED_SLACK_MS < DEADLINE_READ_SLACK_MS,
+    "the anchored slack covers the offset estimate's own error and nothing else",
+  );
+
+  // An already-elapsed deadline, and an unparseable one, keep behaving.
+  assert.equal(
+    deadlineReadDelayMs(deadline, deadline + 5_000, DEADLINE_READ_ANCHORED_SLACK_MS),
+    DEADLINE_READ_ANCHORED_SLACK_MS,
+  );
+  assert.equal(deadlineReadDelayMs(NaN, 0, DEADLINE_READ_ANCHORED_SLACK_MS), DEADLINE_READ_ANCHORED_SLACK_MS);
+  assert.equal(deadlineReadDelayMs(NaN, 0, NaN), DEADLINE_READ_SLACK_MS, "a bad slack falls back, never to 0");
+});
+
 // ── 2. The shared hook: one bounded timer, never an interval ─────────────
 
 test("useDeadlineRead arms ONE bounded timer and never an interval", () => {
@@ -109,8 +147,21 @@ test("useDeadlineRead arms ONE bounded timer and never an interval", () => {
 
   assert.match(hook, /^"use client";/m, "it is a client hook");
   assert.ok(!code.includes("setInterval"), "a deadline is never watched with an interval");
-  assert.match(code, /window\.setTimeout\(run, deadlineReadDelayMs\(at, Date\.now\(\)\)\)/,
-    "the first read is offset by the shared, unit-tested timing rule");
+  // The first read is offset by the shared, unit-tested timing rule — anchored on
+  // the server clock when the page supplied one, and on the conservative slack
+  // when it did not.
+  assert.match(code, /window\.setTimeout\(run, delay\)/, "the first read uses the shared rule's delay");
+  assert.match(
+    code,
+    /deadlineReadDelayMs\(at, anchoredNow, DEADLINE_READ_ANCHORED_SLACK_MS\)/,
+    "a server-anchored read uses the tight slack",
+  );
+  assert.match(
+    code,
+    /deadlineReadDelayMs\(at, Date\.now\(\), DEADLINE_READ_SLACK_MS\)/,
+    "a caller with no server clock keeps the skew-covering slack",
+  );
+  assert.match(code, /const optionsRef = useRef\(options\);/, "the clock is ref-held like the callback, so a re-render cannot move the read");
   assert.match(code, /if \(reads < DEADLINE_READ_MAX_ATTEMPTS\)/, "the retries are bounded");
   assert.match(code, /window\.clearTimeout\(timer\)/, "the timer is cleared when the instant changes");
   assert.match(code, /if \(!deadline\) return undefined;/, "no pending instant arms nothing");
@@ -223,8 +274,124 @@ test("Speed Typing reads the race limit, including a practice race whose bot alr
   assert.equal(speedTypingDueRead({ deadlineMs: NaN, goAtMs: 1 }), null);
 });
 
+test("Precision reads its arming countdown — the reveal is a store transition", () => {
+  const DEADLINE_READ_SOURCE = { phase: "arming", countdownEndsAt: 1_700_000_010_000 };
+  assert.equal(
+    precisionDueRead(DEADLINE_READ_SOURCE),
+    DEADLINE_READ_SOURCE.countdownEndsAt,
+    "the countdown reaching 0 is what opens the round, and only a read opens it",
+  );
+  assert.equal(precisionDueRead({ phase: "arming", countdownEndsAt: null }), null, "nothing stamped → nothing to read");
+  // A round in flight, a decided round and a finished match all have a stop
+  // packet (or the store) driving them instead — arming a timer for them would
+  // only poll.
+  for (const phase of ["active", "ready_up", "finished", "waiting"]) {
+    assert.equal(
+      precisionDueRead({ phase, countdownEndsAt: DEADLINE_READ_SOURCE.countdownEndsAt }),
+      null,
+      `${phase} must not arm a countdown read`,
+    );
+  }
+  assert.equal(precisionDueRead(null), null);
+  // The bot's own stop instant is deliberately not public, so no client can arm
+  // a read for it — the store grades an AI round as soon as the human stops.
+  assert.ok(
+    !read(SHARED).includes("aiStopAt"),
+    "the bot's stop instant must stay server-only",
+  );
+});
+
+test("Precision's page brings the countdown read forward without a recurring poll", () => {
+  const page = read(PRECISION_MATCH_PAGE);
+  const code = stripComments(page);
+
+  assert.match(
+    code,
+    /import \{ useDeadlineRead \} from "\S*hooks\/useDeadlineRead"/,
+    "must use the shared hook, not a hand-rolled setTimeout",
+  );
+  assert.match(code, /import \{ precisionDueRead \} from "\S*lib\/deadlineRead"/, "must use the shared selector");
+  assert.match(code, /const \{[^}]*refreshState \} =\s*usePrecisionMatchState\(/, "the read must be the page's own authoritative fetch");
+  assert.match(code, /useDeadlineRead\(precisionDueRead\(state\), refreshState, \{/, "the read must be armed from the arming countdown");
+  assert.match(
+    code,
+    /serverNow: \(\) => serverClockNow\(Date\.now\(\), serverClockOffsetRef\.current\)/,
+    "the read times itself with the page's server-clock estimate",
+  );
+  assert.ok(!code.includes("setInterval"), "the countdown read must never become an interval");
+  // The event-driven sync path must survive: the read is an addition, not a
+  // replacement for the socket room or the snapshot fetch.
+  assert.ok(page.includes("usePrecisionMatchState"), "the authoritative state hook must stay");
+  assert.match(code, /const serverClockOffsetRef = useRef\(serverClockOffsetMs\)/, "the offset must be ref-held for the callback");
+});
+
+test("the server clock every read anchors on is shared, public, and never cached", () => {
+  const route = read(CLOCK_ROUTE);
+  assert.match(route, /now: Date\.now\(\)/, "the endpoint must answer with the server's own clock");
+  assert.match(
+    route,
+    /"cache-control": "no-store"/,
+    "a cached sample would estimate the offset against a stale instant",
+  );
+
+  const shared = stripComments(read(CLOCK_LIB));
+  assert.match(shared, /export function estimateServerClockOffset\(/);
+  assert.match(shared, /export function serverClockNow\(/);
+  assert.match(
+    shared,
+    /export const SERVER_TIME_PATH = "\/api\/server-time";/,
+    "one path constant, so the endpoint and the estimator cannot drift apart",
+  );
+
+  // Precision's round clock must RE-USE it rather than keep a second copy: two
+  // implementations is how the estimate silently diverges between games.
+  const roundClock = read("src/lib/precision/roundClock.ts");
+  assert.match(
+    roundClock,
+    /export \{ estimateServerClockOffset, serverClockNow \} from "\.\.\/serverClock";/,
+    "precision must re-export the shared estimate",
+  );
+  assert.ok(
+    !/function estimateServerClockOffset/.test(stripComments(roundClock)),
+    "precision must not keep its own copy of the estimate",
+  );
+});
+
+test("an unsampled clock is null, never the device clock pretending to be the server's", () => {
+  const hook = stripComments(read(CLOCK_HOOK));
+  assert.match(hook, /export function useServerClockEstimate\(\): \(\) => number \| null/);
+  assert.match(hook, /if \(offsetMs === null\) return null;/, "an unsampled clock must answer null");
+  assert.match(hook, /serverClockNow\(Date\.now\(\), offsetMs\)/, "and the server's frame when it has one");
+
+  // The deadline read must read that null as "use the full slack", not as "the
+  // device clock is the server clock" — anchoring on a guess is worse than the
+  // slack the guess was meant to remove.
+  const deadlineRead = stripComments(read(HOOK));
+  assert.match(deadlineRead, /let anchoredNow = NaN;/);
+  assert.match(deadlineRead, /const anchored = Number\.isFinite\(anchoredNow\);/);
+});
+
+test("Keno's ready countdown read is timed by the server clock, not the device's", () => {
+  // The other half of the report: "the countdown goes down to 0 and the game
+  // doesn't start immediately". The read is what lights the first tile, and the
+  // page already carries the offset the tile nudge uses — so the countdown
+  // ending is what fires it, in the same clock the deadline was stamped in.
+  const page = read("src/app/casino/keno-pvp/[matchId]/PageClient.jsx");
+  const code = stripComments(page);
+  assert.match(
+    code,
+    /useDeadlineRead\(kenoPvpDueRead\(match\), fetchStatus, \{/,
+    "the ready-banner read must pass the clock through",
+  );
+  assert.match(
+    code,
+    /serverNow: \(\) => Date\.now\(\) \+ clockOffset/,
+    "the page's own server-clock estimate is what the read times itself with",
+  );
+});
+
 test("a match waiting on nothing arms nothing", () => {
-  for (const selector of [towerArenaDueRead, fourInARowDueRead, minesPvpDueRead, laneRushDueRead, kenoPvpDueRead]) {
+  for (const selector of [towerArenaDueRead, fourInARowDueRead, minesPvpDueRead, laneRushDueRead, kenoPvpDueRead, precisionDueRead]) {
     assert.equal(selector(null), null);
     assert.equal(selector(undefined), null);
     assert.equal(selector({ status: "finished" }), null);
@@ -256,17 +423,54 @@ for (const [name, file] of WIRED_PAGES) {
     assert.match(page, /fetch\(/, "the snapshot must still be fetchable");
     assert.match(page, /join_room/, "the per-match socket room must still be joined");
 
-    // The read must be armed from the game's OWN selector, and its effect must
-    // not re-introduce an interval.
-    const selector = {
-      "Tower Arena": "towerArenaDueRead",
-      "Four in a Row": "fourInARowDueRead",
-      "Mines Duel": "minesPvpDueRead",
-      "Lane Rush Duel": "laneRushDueRead",
-      "Keno Duel": "kenoPvpDueRead",
-      "Speed Typing": "speedTypingDueRead",
+    // The read must be armed from the game's OWN selector, timed on the SERVER's
+    // clock, and its effect must not re-introduce an interval.
+    //
+    // The anchoring matters as much as the arming: without it the read waits out
+    // a slack sized for the DEVICE's clock skew, and a device whose clock runs
+    // ahead of the server's pays a retry on top — which is the "the countdown
+    // reaches 0 and the game doesn't start" report, in every one of these games.
+    const wiring = {
+      "Tower Arena": {
+        selector: "towerArenaDueRead",
+        anchors: "serverNow: serverNowEstimate",
+        source: "const serverNowEstimate = useServerClockEstimate();",
+      },
+      "Four in a Row": {
+        selector: "fourInARowDueRead",
+        anchors: "serverNow: serverNowEstimate",
+        source: "const serverNowEstimate = useServerClockEstimate();",
+      },
+      "Mines Duel": {
+        selector: "minesPvpDueRead",
+        anchors: "serverNow: serverNowEstimate",
+        source: "const serverNowEstimate = useServerClockEstimate();",
+      },
+      "Lane Rush Duel": {
+        selector: "laneRushDueRead",
+        anchors: "serverNow: deadlineServerNow",
+        source: "const sampledServerNow = useServerClockEstimate();",
+      },
+      "Keno Duel": {
+        selector: "kenoPvpDueRead",
+        anchors: "serverNow: () => Date.now() + clockOffset",
+        source: "const [clockOffset, setClockOffset] = useState(0);",
+      },
+      "Speed Typing": {
+        selector: "speedTypingDueRead",
+        anchors: "serverNow: serverNowEstimate",
+        source: "const serverNowEstimate = useServerClockEstimate();",
+      },
     }[name];
-    assert.match(code, new RegExp(`${selector}\\(`), `${name} must arm from ${selector}`);
+    assert.match(code, new RegExp(`${wiring.selector}\\(`), `${name} must arm from ${wiring.selector}`);
+    assert.ok(
+      code.includes(wiring.anchors),
+      `${name} must time its read on the server clock, not by adding a slack to the device's`,
+    );
+    assert.ok(
+      code.includes(wiring.source),
+      `${name} must actually obtain the server-clock estimate it anchors on`,
+    );
     assert.ok(
       !/useDeadlineRead\([\s\S]{0,200}?setInterval/.test(code),
       "the deadline read must never become an interval",
@@ -286,6 +490,7 @@ test("the obsolete per-game countdown module is gone, not left dead beside the s
     "laneRushDueRead",
     "kenoPvpDueRead",
     "speedTypingDueRead",
+    "precisionDueRead",
   ]) {
     assert.match(shared, new RegExp(`export function ${name}\\(`), `${name} must be exported`);
   }

@@ -7,7 +7,7 @@ import AdSenseScript from "../../../components/AdSenseScript";
 // than deep-merging it, so every field the card needs is restated here.
 // See scripts/audit-social-metadata.mjs.
 const title = "Memory Grid | GRYND";
-const description = "Play Memory Grid on GRYND. Stake tokens and race another player on a shared 4×4 grid. Flip two cards to match pairs, winner takes 1.9×.";
+const description = "Play Memory Grid on GRYND — free 1v1. Race another player on a shared 4×4 grid: flip two cards to match pairs and take the match.";
 const image = ogImageUrl("/images/og/memory-grid.jpg");
 
 // This page is the AUTHENTICATED game application, served at

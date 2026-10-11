@@ -8,10 +8,12 @@
 //
 //   1. the board renders 9×9 squares, both pawns and two full barricade reserves;
 //   2. an ILLEGAL tap changes nothing (no move, no state change, an explanation);
-//   3. barricade mode previews a placement, places it and charges the reserve;
+//   3. the board offers EVERY legal placement as its own slot button, and
+//      clicking one places it and charges the reserve;
 //   4. a groove the engine REFUSES (one that would seal a player's route, built
-//      by covering a whole groove until only the sealing slot is left) previews
-//      as invalid with the engine's own reason, and clicking it places nothing;
+//      by covering a whole groove until only the sealing slot is left) is simply
+//      NOT OFFERED — the menu is `legalWalls` — so there is no invalid target to
+//      press, and clicking the bare groove places nothing;
 //   5. the in-game Restart clears the board;
 //   6. a COMPLETE match finishes at Easy, Normal and Hard and the result overlay
 //      reports a win or a defeat;
@@ -64,7 +66,7 @@ const MAX_ACTIONS = 220;
 const SEAL_GROOVE_ROW = 4;
 
 const SQUARE_SELECTOR = '[data-testid="barricade-square"]';
-const SLOT_SELECTOR = '[data-testid="barricade-slot"]';
+const BOARD_SELECTOR = '[data-testid="barricade-board"]';
 
 const results = [];
 const problems = [];
@@ -228,12 +230,6 @@ async function controlPoint(page, selector, match) {
 }
 
 const squarePoint = (page, col, row) => controlPoint(page, SQUARE_SELECTOR, { col, row });
-const slotPoint = (page, slot) =>
-  controlPoint(page, SLOT_SELECTOR, {
-    col: slot.col,
-    row: slot.row,
-    orientation: slot.orientation,
-  });
 
 /** Every legal destination, with the board already re-centred. */
 async function legalSquares(page) {
@@ -246,51 +242,178 @@ async function legalSquares(page) {
   );
 }
 
-/** Every rendered groove with the engine's verdict, board re-centred. */
-async function renderedSlots(page) {
+/**
+ * The board's resolved grid geometry, in viewport coordinates. Placement is a
+ * menu of slot buttons, but the harness still needs raw groove centres to prove
+ * that a groove the engine withholds is inert (nothing there to click). It works
+ * them out the same way the board's grid does: 17 tracks per axis, a barricade
+ * centred in a groove.
+ */
+async function boardGeometry(page) {
   await focusBoard(page);
-  return page.$$eval('[data-testid="barricade-slot"]', (nodes) =>
-    nodes.map((node) => ({
-      col: Number(node.dataset.col),
-      row: Number(node.dataset.row),
-      orientation: node.dataset.orientation,
-      legal: node.dataset.legal,
+  return page.evaluate((boardSelector) => {
+    const board = document.querySelector(boardSelector);
+    const style = getComputedStyle(board);
+    const tracks = (value) => value.split(/\s+/).map(Number.parseFloat);
+    const columns = tracks(style.gridTemplateColumns);
+    const rows = tracks(style.gridTemplateRows);
+    const px = (value) =>
+      Number.isFinite(Number.parseFloat(value)) ? Number.parseFloat(value) : 0;
+    const rect = board.getBoundingClientRect();
+    return {
+      left: rect.left + px(style.borderLeftWidth) + px(style.paddingLeft),
+      top: rect.top + px(style.borderTopWidth) + px(style.paddingTop),
+      cellX: columns[0],
+      gapX: columns[1],
+      cellY: rows[0],
+      gapY: rows[1],
+      columns: columns.length,
+      rows: rows.length,
+      squares: document.querySelectorAll('[data-testid="barricade-square"]').length,
+    };
+  }, BOARD_SELECTOR);
+}
+
+/**
+ * The centre of the groove a barricade would occupy. Row 0 is at the bottom.
+ */
+function groovePoint(geometry, wall) {
+  const { left, top, cellX, gapX, cellY, gapY } = geometry;
+  const stepX = cellX + gapX;
+  const stepY = cellY + gapY;
+  if (wall.orientation === "horizontal") {
+    return {
+      x: left + wall.col * stepX + cellX / 2,
+      y: top + (7 - wall.row) * stepY + cellY + gapY / 2,
+    };
+  }
+  return {
+    x: left + wall.col * stepX + cellX + gapX / 2,
+    y: top + (7 - wall.row) * stepY + cellY / 2,
+  };
+}
+
+/**
+ * Every placement the board is currently offering, read straight off the slot
+ * buttons. This IS the menu: the page builds it from the engine's `legalWalls`,
+ * so a position missing here is a position the engine refuses.
+ */
+const listSlots = (page) =>
+  page.$$eval('[data-testid="barricade-slot"]', (slots) =>
+    slots.map((slot) => ({
+      col: Number(slot.dataset.col),
+      row: Number(slot.dataset.row),
+      orientation: slot.dataset.orientation,
     })),
+  );
+
+/**
+ * Find a point that belongs to ONE offered slot alone, and click it.
+ *
+ * Slots overlap on purpose — a barricade spans two squares, so a vertical slot
+ * at row r shares its row-r square with the vertical slot at row r-1, and every
+ * slot crosses the perpendicular ones at a groove intersection. The harness
+ * therefore tries the footprints a barricade really has (the centre of each
+ * square it spans, then the centre of its groove) and keeps the first point the
+ * target slot genuinely owns; if none is owned, it reports who does own it
+ * rather than clicking blind.
+ */
+async function slotPoint(page, wall, geometry = null) {
+  const metrics = geometry ?? (await boardGeometry(page));
+  return page.evaluate(
+    ([sel, attrs, metrics]) => {
+      const node = [...document.querySelectorAll(sel)].find((candidate) =>
+        Object.entries(attrs).every(([key, value]) => candidate.dataset[key] === String(value)),
+      );
+      if (!node) return null;
+      const { left, top, cellX, gapX, cellY, gapY } = metrics;
+      const stepX = cellX + gapX;
+      const stepY = cellY + gapY;
+      const middle = (row) => top + (7 - row) * stepY + cellY / 2;
+      const across = (col) => left + col * stepX + cellX / 2;
+      const grooveY = (row) => top + (7 - row) * stepY + cellY + gapY / 2;
+      const grooveX = (col) => left + col * stepX + cellX + gapX / 2;
+      // Row 0 is at the bottom: a wall at `row` spans rows `row` and `row + 1`.
+      const candidates =
+        attrs.orientation === "horizontal"
+          ? [
+              [across(attrs.col), grooveY(attrs.row)],
+              [across(attrs.col + 1), grooveY(attrs.row)],
+            ]
+          : [
+              [grooveX(attrs.col), middle(attrs.row + 1)],
+              [grooveX(attrs.col), middle(attrs.row)],
+              [grooveX(attrs.col), grooveY(attrs.row)],
+            ];
+      for (const [x, y] of candidates) {
+        if (document.elementFromPoint(x, y) === node) return { x, y, hitSelf: true };
+      }
+      const [x, y] = candidates[0];
+      const hit = document.elementFromPoint(x, y);
+      return {
+        x,
+        y,
+        hitSelf: false,
+        hit: hit ? `${hit.tagName}.${String(hit.className).slice(0, 48)}` : "none",
+      };
+    },
+    [
+      '[data-testid="barricade-slot"]',
+      { col: wall.col, row: wall.row, orientation: wall.orientation },
+      metrics,
+    ],
   );
 }
 
-async function enterWallMode(page) {
-  await page.click('[data-testid="barricade-mode-wall"]');
-  await page.waitForSelector('[data-testid="barricade-slot"][data-legal="true"]', { timeout: 20000 });
+/**
+ * The first of `slots` whose aim point that slot genuinely owns, with the point
+ * itself. Returns null (with the last obstruction seen) when every candidate is
+ * overlapped — the caller reports that rather than clicking a stranger.
+ */
+async function pickTappable(page, slots) {
+  const geometry = await boardGeometry(page);
+  let last = null;
+  for (const slot of slots) {
+    const point = await slotPoint(page, slot, geometry);
+    if (point?.hitSelf) return { slot, point };
+    last = point ? { slot, point } : last;
+  }
+  return last && last.point && !last.point.hitSelf
+    ? { slot: last.slot, point: last.point, blocked: true }
+    : null;
 }
 
-const previewState = (page) =>
-  page.evaluate(() => ({
-    ok: document.querySelectorAll(".barricade-slot.is-preview-ok").length,
-    invalid: document.querySelectorAll(".barricade-slot.is-preview-invalid").length,
-    notice: (document.querySelector('[data-testid="barricade-notice"]')?.textContent ?? "").trim(),
-  }));
-
-/** Hover a groove (its preview) and click it, refusing to click a covered point. */
-async function hoverAndClickSlot(page, slot) {
-  const point = await slotPoint(page, slot);
-  if (!point) return { ok: false, reason: "groove is no longer rendered" };
-  if (!point.hitSelf) return { ok: false, reason: `point is covered by ${point.hit}` };
-  await page.mouse.move(point.x, point.y);
-  await page.waitForTimeout(180);
-  const preview = await previewState(page);
-  await page.mouse.click(point.x, point.y);
+/** Click an aim point that has already been proven to belong to the slot. */
+async function placeWall(page, target) {
+  if (!target) return { ok: false, reason: "that placement is not offered" };
+  if (target.blocked) return { ok: false, reason: `point is covered by ${target.point.hit}` };
+  await page.mouse.click(target.point.x, target.point.y);
   await page.waitForTimeout(300);
-  return { ok: true, preview };
+  return { ok: true };
 }
 
-async function clickSlot(page, slot) {
-  const point = await slotPoint(page, slot);
-  if (!point) return { ok: false, reason: "groove is no longer rendered" };
-  if (!point.hitSelf) return { ok: false, reason: `point is covered by ${point.hit}` };
-  await page.mouse.click(point.x, point.y);
-  await page.waitForTimeout(280);
-  return { ok: true };
+/**
+ * How many barricades already sit in one groove, and how many slots that groove
+ * is still offering. `placed < offered + placed` is the whole point: a groove the
+ * engine has fully served offers nothing more.
+ */
+async function grooveFacts(page, { orientation, row }) {
+  return page.evaluate(
+    ([attrs]) => {
+      const match = (node) =>
+        Object.entries(attrs).every(([key, value]) => node.dataset[key] === String(value));
+      const walls = [...document.querySelectorAll('[data-testid="barricade-wall"]')].filter(
+        match,
+      );
+      return {
+        placed: walls.length,
+        columns: walls.map((wall) => Number(wall.dataset.col)),
+        offered: [...document.querySelectorAll('[data-testid="barricade-slot"]')].filter(match)
+          .length,
+      };
+    },
+    [{ orientation, row: String(row) }],
+  );
 }
 
 async function clickSquare(page, square) {
@@ -327,113 +450,124 @@ function chooseAdvance(candidates, targetRow, visits, previousKey) {
 }
 
 /**
- * Cover a whole groove until the engine refuses the last slot — the reason a
- * board-sealing barricade exists in the UI at all. Returns the groove the engine
- * now refuses, or null if the position never produced one.
+ * Cover a whole groove until the engine has nothing left to offer there — the
+ * position that would seal a pawn in is withheld by `legalWalls`, so the menu
+ * empties with squares still uncovered. Returns the groove's final state, or
+ * null if the position never got that far.
  */
-async function buildBoardSealingGroove(page, grooveRow) {
-  for (let attempt = 0; attempt < 8; attempt += 1) {
+async function tileOutGroove(page, grooveRow) {
+  const seam = { orientation: "horizontal", row: grooveRow };
+  for (let attempt = 0; attempt < 10; attempt += 1) {
     const facts = await waitForMyTurn(page);
     if (facts.result || !facts.myTurn) return null;
-    await enterWallMode(page);
 
-    const groove = (await renderedSlots(page)).filter(
-      (slot) => slot.orientation === "horizontal" && slot.row === grooveRow,
+    const offered = (await listSlots(page)).filter(
+      (slot) => slot.orientation === seam.orientation && slot.row === seam.row,
     );
-    const refused = groove.find((slot) => slot.legal === "false");
-    if (refused) return refused;
+    if (offered.length === 0) return grooveFacts(page, seam);
 
-    const legal = groove.filter((slot) => slot.legal === "true");
-    if (legal.length === 0) return null;
     // Even columns tile the groove fastest (a barricade spans two squares), so
-    // the sealing slot shows up after four placements instead of seven.
-    const even = legal.filter((slot) => slot.col % 2 === 0);
-    const pick = (even.length > 0 ? even : legal).sort((a, b) => a.col - b.col)[0];
-    const placed = await clickSlot(page, pick);
+    // the withheld slot shows up after four placements instead of seven.
+    const even = offered.filter((slot) => slot.col % 2 === 0);
+    const ordered = (even.length > 0 ? even : offered).sort((a, b) => a.col - b.col);
+    const placed = await placeWall(page, await pickTappable(page, ordered));
     if (!placed.ok) return null;
   }
   return null;
 }
 
 async function barricadeChecks(page, tier) {
-  await enterWallMode(page);
-
   // ── the groove grid is the engine's, on the CSS grid it draws ─────────
   // A ninth groove per axis would be a control the engine can only ever reject,
   // and it would widen the board with an implicit track.
-  const geometry = await page.evaluate(
-    ([squareSelector]) => {
-      const board = document.querySelector('[data-testid="barricade-board"]');
-      const style = getComputedStyle(board);
-      return {
-        columns: style.gridTemplateColumns.split(" ").length,
-        rows: style.gridTemplateRows.split(" ").length,
-        slots: document.querySelectorAll('[data-testid="barricade-slot"]').length,
-        squares: document.querySelectorAll(squareSelector).length,
-      };
-    },
-    [SQUARE_SELECTOR],
-  );
+  const geometry = await boardGeometry(page);
   record(
-    `${tier}: the groove controls are the engine's 8×8 slot grid on a 17-track board`,
-    geometry.slots === 64 &&
-      geometry.squares === 81 &&
-      geometry.columns === 17 &&
-      geometry.rows === 17,
-    `slots=${geometry.slots} squares=${geometry.squares} tracks=${geometry.columns}×${geometry.rows}`,
+    `${tier}: the board is a 17-track grid with one slot per legal placement`,
+    geometry.columns === 17 && geometry.rows === 17 && geometry.squares === 81,
+    `tracks=${geometry.columns}×${geometry.rows} squares=${geometry.squares}`,
+  );
+  // The menu exists, is a flat list of grooves, and never points off the board.
+  const offered = await listSlots(page);
+  record(
+    `${tier}: every offered slot lies inside the engine's 8-groove axis`,
+    offered.length > 0 &&
+      offered.every(
+        (slot) =>
+          slot.col >= 0 &&
+          slot.col < 8 &&
+          slot.row >= 0 &&
+          slot.row < 8 &&
+          (slot.orientation === "horizontal" || slot.orientation === "vertical"),
+      ),
+    `${offered.length} slot(s) offered`,
   );
 
-  // ── a legal placement: preview → place → charge the reserve ────────────
+  // ── a legal placement: one click → placed → charged to the reserve ─────
   const before = await boardFacts(page);
-  const bot = pawnOf(before, "theirs");
-  const targetRow = Math.max(0, (bot?.row ?? 4) - 1);
-  const legal = (await renderedSlots(page))
-    .filter((slot) => slot.orientation === "horizontal" && slot.legal === "true")
-    .sort((a, b) => Math.abs(a.row - targetRow) - Math.abs(b.row - targetRow) || a.col - b.col);
+  // Two candidate rows: the groove nearest the bot, then the mid-board one.
+  const rowsToTry = [
+    ...new Set([
+      Math.min(7, Math.max(0, (pawnOf(before, "theirs")?.row ?? 4) - 1)),
+      SEAL_GROOVE_ROW,
+    ]),
+  ];
+  const candidates = rowsToTry.flatMap((row) =>
+    offered.filter((slot) => slot.orientation === "horizontal" && slot.row === row),
+  );
+  const pick = await pickTappable(page, candidates.length > 0 ? candidates : offered);
 
-  if (legal.length === 0) {
+  if (!pick) {
     record(`${tier}: a legal barricade groove was offered`, false, "none found");
   } else {
-    const placed = await hoverAndClickSlot(page, legal[0]);
+    const placed = await placeWall(page, pick);
     const after = await boardFacts(page);
     record(
-      `${tier}: a legal barricade previews as legal, is placed and charged to the reserve`,
+      `${tier}: an offered slot is placed in one click and charged to the reserve`,
       placed.ok &&
-        placed.preview?.ok === 1 &&
-        placed.preview?.invalid === 0 &&
         after.walls === before.walls + 1 &&
         Number(after.myReserve.trim()) === Number(before.myReserve.trim()) - 1,
       placed.ok
-        ? `previewOk=${placed.preview?.ok} walls ${before.walls}→${after.walls}, reserve ${before.myReserve.trim()}→${after.myReserve.trim()}`
-        : `could not press the groove: ${placed.reason}`,
+        ? `walls ${before.walls}→${after.walls}, reserve ${before.myReserve.trim()}→${after.myReserve.trim()}`
+        : `could not press the slot: ${placed.reason}`,
     );
   }
 
-  // ── a groove the engine refuses ────────────────────────────────────────
-  const refused = await buildBoardSealingGroove(page, SEAL_GROOVE_ROW);
-  if (!refused) {
+  // ── a groove the engine refuses is never offered ───────────────────────
+  // Tile a whole groove. The placement that would seal a pawn in is withheld by
+  // the engine, so the menu empties with a square still uncovered — and because
+  // the board only ever draws the menu, there is no invalid target to press.
+  const sealed = await tileOutGroove(page, SEAL_GROOVE_ROW);
+  if (!sealed) {
     record(
-      `${tier}: a board-sealing groove is refused by the engine`,
+      `${tier}: a board-sealing groove position is withheld by the engine`,
       false,
-      `could not build a sealed groove at row ${SEAL_GROOVE_ROW}`,
+      `could not tile groove row ${SEAL_GROOVE_ROW}`,
     );
   } else {
     const beforeRefusal = await boardFacts(page);
-    const attempted = await hoverAndClickSlot(page, refused);
+    // Press the bare groove where the withheld barricade would have gone: the
+    // first column of the groove that has no barricade on it.
+    const bareColumn = Array.from({ length: 8 }, (_, col) => col).find(
+      (col) => !sealed.columns.includes(col),
+    );
+    const point = groovePoint(geometry, {
+      orientation: "horizontal",
+      row: SEAL_GROOVE_ROW,
+      col: bareColumn ?? 0,
+    });
+    await page.mouse.click(point.x, point.y);
+    await page.waitForTimeout(300);
     const afterRefusal = await boardFacts(page);
     record(
-      `${tier}: a refused groove previews as invalid and states the engine's reason`,
-      attempted.ok && attempted.preview?.invalid === 1 && attempted.preview?.notice.length > 0,
-      attempted.ok
-        ? `invalid=${attempted.preview?.invalid} notice="${attempted.preview?.notice}"`
-        : `could not press the groove: ${attempted.reason}`,
+      `${tier}: the withheld sealing slot is absent from the menu`,
+      sealed.offered === 0 && sealed.placed < 8,
+      `${sealed.placed}/8 groove positions placed, ${sealed.offered} still offered`,
     );
     record(
-      `${tier}: clicking a refused groove places nothing and explains why`,
+      `${tier}: clicking where it would go places nothing and changes nothing`,
       afterRefusal.walls === beforeRefusal.walls &&
-        afterRefusal.myReserve === beforeRefusal.myReserve &&
-        afterRefusal.notice.length > 0,
-      `walls ${beforeRefusal.walls}→${afterRefusal.walls}, reserve ${beforeRefusal.myReserve.trim()}→${afterRefusal.myReserve.trim()}, notice="${afterRefusal.notice}"`,
+        afterRefusal.myReserve === beforeRefusal.myReserve,
+      `walls ${beforeRefusal.walls}→${afterRefusal.walls}, reserve ${beforeRefusal.myReserve.trim()}→${afterRefusal.myReserve.trim()}`,
     );
   }
 
@@ -534,20 +668,19 @@ async function playMatch(page, tier) {
       actions - lastWallAction >= 3 &&
       actions > 0
     ) {
-      await enterWallMode(page);
-      const botRow = Math.max(0, bot.row - 1);
-      const candidates = (await renderedSlots(page))
-        .filter((slot) => slot.orientation === "horizontal" && slot.legal === "true")
-        .sort((a, b) => Math.abs(a.row - botRow) - Math.abs(b.row - botRow) || a.col - b.col);
-      if (candidates.length > 0) {
-        await clickSlot(page, candidates[0]);
+      const botRow = Math.min(7, Math.max(0, bot.row - 1));
+      const candidates = (await listSlots(page)).filter(
+        (slot) => slot.orientation === "horizontal" && slot.row === botRow,
+      );
+      const target = candidates.length > 0 ? await pickTappable(page, candidates) : null;
+      if (target && !target.blocked) {
+        await placeWall(page, target);
         lastWallAction = actions;
         actions += 1;
         continue;
       }
     }
 
-    await page.click('[data-testid="barricade-mode-move"]');
     const options = await legalSquares(page);
     if (options.length === 0) {
       stall = "no legal square was offered";
@@ -653,7 +786,7 @@ async function run() {
         ([squareSelector]) => {
           const board = document.querySelector('[data-testid="barricade-board"]');
           const rect = board.getBoundingClientRect();
-          const controls = document.querySelector('[data-testid="barricade-mode-wall"]');
+          const controls = document.querySelector('[data-testid="barricade-slot"]');
           const counter = document.querySelector('[data-testid="barricade-walls-player1"]');
           return {
             viewport: window.innerWidth,
@@ -682,17 +815,16 @@ async function run() {
         `square=${layout.square.toFixed(1)}px board=${layout.boardHeight}px`,
       );
 
-      // Barricade mode must work by touch too.
-      await phone.click('[data-testid="barricade-orientation-vertical"]');
-      await enterWallMode(phone);
-      const slot = (await renderedSlots(phone)).find(
-        (candidate) => candidate.orientation === "vertical" && candidate.legal === "true",
-      );
-      if (!slot) {
+      // Placing a barricade must work by touch too: a tap on an offered slot
+      // puts a real barricade in that groove.
+      const offered = await listSlots(phone);
+      const vertical = offered.filter((slot) => slot.orientation === "vertical");
+      const target = vertical.length > 0 ? await pickTappable(phone, vertical) : null;
+      if (!target) {
         record(`${size.name}: vertical grooves are offered`, false, "none found");
       } else {
         const beforeWall = await boardFacts(phone);
-        const placed = await clickSlot(phone, slot);
+        const placed = await placeWall(phone, target);
         const afterWall = await boardFacts(phone);
         record(
           `${size.name}: a barricade can be placed by tap`,

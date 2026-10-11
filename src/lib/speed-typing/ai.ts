@@ -7,18 +7,41 @@
 // WHY THIS SHAPE: Speed Typing is a real-time race, so the bot is NOT a
 // turn-based move generator. The authoritative state is a per-seat cursor into
 // the server's passage, so the bot is modelled as a typing SPEED — a constant
-// characters-per-millisecond rate derived from the shared difficulty tier —
-// plus a small error rate. Every read of the match advances the bot's cursor to
-// "now", exactly as if it had been typing all along, which is what guarantees
-// it always plays and never skips.
+// characters-per-millisecond rate derived from the shared difficulty tier.
+// Every read of the match advances the bot's cursor to "now", exactly as if it
+// had been typing all along, which is what guarantees it always plays and never
+// skips.
 //
-// The tier knobs come from the shared scale (src/lib/aiDifficulty.ts). A slower
-// tier is a genuinely slower typist (not merely one that makes more mistakes),
-// because that is what makes the race winnable rather than merely inaccurate:
+// THE BOT TYPES THE PASSAGE PERFECTLY, AT EXACTLY ITS ANNOUNCED WPM.
 //
-//   * easy   — slower and sloppier; a beginner beats it comfortably.
+// That is not a flavour choice; it is what makes the number a player reads
+// agree with the verdict they are given. The game's WPM is derived from
+// CORRECT characters (see `raceMetrics` in ./rules.ts), and a race is decided by
+// who completes the passage first — so a bot that finished with `errors` still
+// on its record was racing a SHORTER passage than its opponent:
+//
+//   * it declared itself done after `length` keystrokes, `errors` of which were
+//     wrong, while the rules require every position to match;
+//   * the WPM it announced was `correct ÷ elapsed`, i.e. its tier rate
+//     DISCOUNTED by mistakes it never paid for in time;
+//   * so it could beat a typist whose announced WPM was higher, and the slower
+//     number on the result screen belonged to the seat that won. A player at
+//     44 wpm lost to a bot announced at 43.
+//
+// An `errors: 0` seat makes those two facts one: reaching the end IS
+// every character matching, so the announced WPM is exactly the pace that
+// decides the race (see the invariant pinned by tests/speed-typing-ai.test.mjs).
+// The bot's mistake-FREE finish is also what its tier means: a bot whose
+// mistakes cost it nothing is not a weaker typist, it is a faster one.
+//
+// The finish TIMES are unchanged by this: the cursor has always advanced at the
+// tier rate, so this corrects the labels, never the difficulty.
+//
+// The tier knobs come from the shared scale (src/lib/aiDifficulty.ts):
+//
+//   * easy   — a much slower typist; a beginner beats it comfortably.
 //   * normal — a solid amateur pace, beatable by a fast typist.
-//   * hard   — a strong pace and near-perfect accuracy.
+//   * hard   — a strong pace; only a genuinely quick run beats it.
 //
 // The bot never reads or writes anything: `aiSeatRaceAt` is a pure projection
 // of (passageLength, difficulty, goAtMs, nowMs) onto a seat state, and it is
@@ -27,15 +50,20 @@
 
 import { coerceAiDifficulty, type AiDifficulty } from "../aiDifficulty";
 import { RACE_LIMIT_MS } from "./constants";
-import { emptySeatRace, type SeatRace } from "./rules";
+import { emptySeatRace, raceMetrics, type SeatRace } from "./rules";
 
 /**
- * Words-per-minute the bot types at, per tier.
+ * Words-per-minute the bot types at, per tier — and, because it types the
+ * passage perfectly, the numbers a player reads on its seat and on the result
+ * screen are exactly these.
  *
  * Chosen against the shipped catalog (25-45 words per passage) so every tier
  * finishes comfortably inside the 120 s hard limit while still being beatable:
  * a fast human types 60-80 wpm, so `normal` at 45 is a real race and `hard` at
- * 65 demands a genuinely quick typist.
+ * 65 demands a genuinely quick typist. The bot's finish time is
+ * `passageLength ÷ (wpm * 5 / 60_000)` ms after GO, so a flawless typist at the
+ * same wpm reaches the end at the same instant — a dead heat — and one wpm
+ * faster wins.
  */
 export const AI_TYPING_WPM: Record<AiDifficulty, number> = {
   easy: 30,
@@ -43,25 +71,22 @@ export const AI_TYPING_WPM: Record<AiDifficulty, number> = {
   hard: 65,
 };
 
-/** Fraction of typed characters the bot gets wrong, per tier. */
-export const AI_TYPING_ERROR_RATE: Record<AiDifficulty, number> = {
-  easy: 0.1,
-  normal: 0.04,
-  hard: 0.01,
-};
-
 /** The five-characters-to-a-word convention the rules engine uses for WPM. */
 const CHARS_PER_WORD = 5;
 
 /**
  * The bot's typing profile for a tier: how many characters it covers per
- * millisecond, and how often it mistypes.
+ * millisecond.
+ *
+ * `charsPerMs` is the tier's WPM in the same five-characters-to-a-word
+ * convention `raceMetrics` uses, so the cursor reaches the end of a passage at
+ * exactly the instant that WPM implies, and the WPM frozen onto its seat at
+ * that instant is the tier's own number.
  */
 export function aiTypingProfile(difficulty: unknown): {
   tier: AiDifficulty;
   wpm: number;
   charsPerMs: number;
-  errorRate: number;
 } {
   const tier = coerceAiDifficulty(difficulty);
   const wpm = AI_TYPING_WPM[tier];
@@ -69,13 +94,7 @@ export function aiTypingProfile(difficulty: unknown): {
     tier,
     wpm,
     charsPerMs: (wpm * CHARS_PER_WORD) / 60_000,
-    errorRate: AI_TYPING_ERROR_RATE[tier],
   };
-}
-
-/** Rounded errors for a cursor position at a tier, never exceeding it. */
-function errorsFor(charsTyped: number, errorRate: number): number {
-  return Math.min(charsTyped, Math.round(charsTyped * errorRate));
 }
 
 /**
@@ -89,6 +108,10 @@ function errorsFor(charsTyped: number, errorRate: number): number {
  * The whole simulation is a projection of elapsed server time, so the bot is
  * always exactly as far along as it should be — no accumulation, no drift, and
  * a read that happens late still reports the correct position.
+ *
+ * The seat it returns is always ERROR-FREE: reaching the end of the passage and
+ * matching every character are the same event, which is what keeps the bot's
+ * announced WPM equal to the pace that decides the race (see the file header).
  */
 export function aiSeatRaceAt({
   difficulty,
@@ -110,7 +133,7 @@ export function aiSeatRaceAt({
   if (length <= 0 || goAtMs == null) return seat;
   if (nowMs < goAtMs) return seat;
 
-  const { charsPerMs, errorRate } = aiTypingProfile(difficulty);
+  const { charsPerMs } = aiTypingProfile(difficulty);
 
   // The instant the bot completes the passage, and the elapsed time it took.
   const finishElapsedMs = Math.ceil(length / charsPerMs);
@@ -120,21 +143,26 @@ export function aiSeatRaceAt({
   );
 
   if (elapsedMs >= finishElapsedMs) {
-    const errors = errorsFor(length, errorRate);
-    const correctChars = Math.max(0, length - errors);
-    const minutes = finishElapsedMs > 0 ? finishElapsedMs / 60_000 : 0;
-    const wpm = minutes > 0 ? Math.round(correctChars / CHARS_PER_WORD / minutes) : 0;
-    const accuracy = length > 0 ? Math.round((correctChars / length) * 100) : 0;
-    return {
+    const finishedAtMs = goAtMs + finishElapsedMs;
+    const completed: SeatRace = {
       ...seat,
       charsTyped: length,
-      errors,
+      errors: 0,
       finished: true,
-      finishedAtMs: goAtMs + finishElapsedMs,
-      elapsedMs: finishElapsedMs,
-      wpm,
-      accuracy,
-      updatedAtMs: goAtMs + finishElapsedMs,
+      finishedAtMs,
+      forfeited: false,
+      updatedAtMs: finishedAtMs,
+    };
+    // Elapsed time, WPM and accuracy come from the SHARED metric human seats
+    // are measured by (./rules.ts) — never a second formula here. That is the
+    // whole point: the number the bot is announced at is the number the same
+    // rule derived, from the instant the same rule froze.
+    const metrics = raceMetrics({ seat: completed, goAtMs, nowMs: finishedAtMs });
+    return {
+      ...completed,
+      elapsedMs: metrics.elapsedMs,
+      wpm: metrics.wpm,
+      accuracy: metrics.accuracy,
     };
   }
 
@@ -144,7 +172,7 @@ export function aiSeatRaceAt({
   return {
     ...seat,
     charsTyped,
-    errors: Math.max(seat.errors, errorsFor(charsTyped, errorRate)),
+    errors: 0,
     updatedAtMs: goAtMs + elapsedMs,
   };
 }

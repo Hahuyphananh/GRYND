@@ -26,7 +26,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { useUser } from "@clerk/nextjs";
 import {
   IconAlertTriangle,
   IconChevronDown,
@@ -69,6 +68,8 @@ import {
   type HoleWinner,
 } from "../../../../lib/mini-golf/ui";
 import { HOLES_TO_WIN, HOLE_COUNT } from "../../../../lib/mini-golf/constants";
+// The platform's ONE seat-based verdict (src/lib/results/viewerOutcome.ts).
+import { viewerOutcome } from "../../../../lib/results/viewerOutcome";
 import {
   AI_DIFFICULTY_LABELS,
   coerceAiDifficulty,
@@ -146,7 +147,6 @@ export default function MiniGolfMatchPage() {
   const params = useParams<{ matchId: string }>();
   const router = useRouter();
   const { socket } = useSocket();
-  const { user } = useUser();
   const matchId = params?.matchId;
   const apiMatch = `/api/mini-golf/match/${matchId}`;
 
@@ -903,19 +903,43 @@ export default function MiniGolfMatchPage() {
 
   const finished = match?.status === "finished";
   const cancelled = match?.status === "cancelled";
+  // THE VERDICT IS THE SERVER'S, READ FROM THE VIEWER'S SEAT. `result` is
+  // settled from the winner SEAT (`player1` | `player2` | `tie`) and the
+  // snapshot already names the seat the server gave the viewer (`viewerSeat`),
+  // so no Clerk id is needed — a signed-out free-play visitor has none, and
+  // `winnerId === user.id` reported a LOSS to a guest who had just won.
+  const viewerId =
+    viewerSeat === "player1"
+      ? match?.player1Id
+      : viewerSeat === "player2"
+        ? match?.player2Id
+        : null;
+  const myHoleWins =
+    viewerSeat === "player1"
+      ? Number(match?.player1HoleWins)
+      : Number(match?.player2HoleWins);
+  const oppHoleWins =
+    viewerSeat === "player1"
+      ? Number(match?.player2HoleWins)
+      : Number(match?.player1HoleWins);
   const outcome =
-    match?.result === "tie"
-      ? "draw"
-      : match?.winnerId && user?.id
-        ? match.winnerId === user.id
+    viewerOutcome({
+      result: match?.result,
+      winnerId: match?.winnerId,
+      viewerSeat,
+      viewerId,
+    }) ??
+    // A row that names no winner AND no result: the seat-scoped hole tally is
+    // the only remaining statement, and it is only readable for a viewer the
+    // snapshot actually placed. With no seat there is nobody to hand a verdict
+    // to, so the honest reading is a draw — never a loss.
+    (viewerSeat
+      ? myHoleWins === oppHoleWins
+        ? "draw"
+        : myHoleWins > oppHoleWins
           ? "win"
           : "loss"
-        : Number(match?.player1HoleWins) === Number(match?.player2HoleWins)
-          ? "draw"
-          : (viewerSeat === "player1" ? Number(match?.player1HoleWins) > Number(match?.player2HoleWins)
-              : Number(match?.player2HoleWins) > Number(match?.player1HoleWins))
-            ? "win"
-            : "loss";
+      : "draw");
 
   // ── Turn announcement ─────────────────────────────────────────────────
   // A turn ending is the one moment a player has to re-orient, and in a

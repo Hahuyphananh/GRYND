@@ -3,9 +3,19 @@
 // POST — match the caller into an open Speed Typing lobby, or open a new one.
 //
 // Thin wrapper, exactly like every other game's: ALL matchmaking (the per-game
-// advisory lock, the `FOR UPDATE` candidate, the conditional claim) lives in
-// `createOrJoin` in src/lib/speed-typing/serverStore.ts. This route's only jobs
-// are authenticating the caller and returning the destination to navigate to.
+// advisory lock, the row-locked open-lobby scan, the conditional claim, and the
+// input-device pool preference) lives in `createOrJoin` in
+// src/lib/speed-typing/serverStore.ts. This route's only jobs are
+// authenticating the caller, telling the store which INPUT DEVICE the caller is
+// racing on, and returning the destination to navigate to.
+//
+// THE DEVICE CLASS IS READ FROM THE REQUEST'S OWN HEADERS — the client hints
+// (`Sec-CH-UA-Mobile`, then `Sec-CH-UA-Platform`) and, failing those, the
+// User-Agent. Nothing a caller can type into the request is trusted for it: the
+// game's whole contract is that a player may only ever say WHAT THEY TYPED, and
+// a self-declared device class would be one more forgeable claim — the one that
+// decides who they are matched against. See
+// src/lib/speed-typing/deviceClass.ts for the detection and its limits.
 //
 // The realtime push is a best-effort notification, never a state transfer: the
 // match view joins `speed-typing:match:<id>` on mount and re-fetches the
@@ -19,6 +29,7 @@ import { NextResponse } from "next/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { logError } from "../../../../lib/logError";
 import { createOrJoin } from "../../../../lib/speed-typing/serverStore";
+import { deviceClassFromHeaders } from "../../../../lib/speed-typing/deviceClass";
 import { RACE_COUNTDOWN_MS } from "../../../../lib/speed-typing/constants";
 import {
   SPEED_TYPING_EVENTS,
@@ -26,7 +37,11 @@ import {
   broadcastMatchUpdate,
 } from "../../../../lib/speed-typing/realtime";
 
-export async function POST() {
+// `req` is optional for the same reason every other read on this path is
+// defensive: a caller that reaches this handler without a request object has no
+// device signal at all, which is `unknown` — a class-neutral seat that pairs
+// with anyone — and never a 500.
+export async function POST(req?: Request) {
   const gate = await requireAgeVerifiedUser();
   if (gate.response) return gate.response;
   const userId = gate.userId;
@@ -38,7 +53,8 @@ export async function POST() {
   }
 
   try {
-    const result = await createOrJoin({ userId });
+    const deviceClass = deviceClassFromHeaders(req?.headers);
+    const result = await createOrJoin({ userId, deviceClass });
     if ("error" in result) {
       return NextResponse.json(
         { success: false, error: result.error },

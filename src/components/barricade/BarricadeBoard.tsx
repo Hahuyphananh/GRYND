@@ -6,13 +6,26 @@
 //
 // Everything a player can do here was already decided by the rules engine:
 //   * the highlighted destinations are the `legalMoves` the engine offered;
-//   * the barricade slots marked legal come from the engine's own generator,
-//     and a slot the engine has not cleared yet is drawn neutral;
-//   * a click reports the intent (`onMove` / `onPlaceWall`) and the page applies
-//     it through `applyAction`, which validates it again.
+//   * the highlighted grooves are the `legalWalls` the engine offered;
+//   * a click is reported as an intent (`onMove` / `onPlaceWall`) and the page
+//     applies it through `applyAction`, which validates it again.
 //
 // So there is no second copy of the movement or barricade rules in the UI: if
-// the engine would not allow it, this component cannot perform it.
+// the engine would not allow it, this component cannot offer it.
+//
+// BARRICADE PLACEMENT. There is no mode switch, no orientation switch and no
+// ghost barricade to aim with the pointer. Placement is a CHOICE BETWEEN THE
+// POSITIONS THE ENGINE OFFERS: every barricade the seat on turn may legally
+// place is drawn as a quiet dashed groove (`barricade-slot`) and clicking one
+// places exactly that barricade. A slot that is not offered cannot be clicked,
+// because a slot that is not offered does not exist on the board.
+//
+// That is strictly stronger than aiming at a groove: the old ghost addressed the
+// nearest of ALL 64 grooves and then asked the engine whether it was legal,
+// which is why an illegal aim needed a red preview and a refusal notice to
+// explain itself. Now the board can only ever offer legal positions, and each
+// slot is a real button — so Tab reaches them in the engine's own order and
+// Enter/Space places it, with no separate keyboard ghost to keep in sync.
 //
 // GEOMETRY. The board is one CSS grid of 17 tracks — 9 squares plus the 8
 // grooves between them, on each axis. A square occupies a square track; a
@@ -21,24 +34,17 @@
 // Row 0 — player1's baseline — is drawn at the BOTTOM, so each player races
 // towards the far side of the screen.
 
-import type { CSSProperties } from "react";
+import { type CSSProperties } from "react";
 
-import { BOARD_SIZE, ORIENTATIONS, WALL_SLOTS } from "../../lib/barricade/constants";
+import { BOARD_SIZE, ORIENTATIONS } from "../../lib/barricade/constants";
 import { goalRowFor, positionKey, wallKey } from "../../lib/barricade/rules";
 import type {
   BarricadeState,
   LegalMoveAction,
-  Orientation,
   Position,
   Seat,
   WallPlacement,
 } from "../../lib/barricade/types";
-
-export interface BarricadePreview {
-  wall: WallPlacement;
-  ok: boolean;
-  message: string;
-}
 
 export interface BarricadeBoardProps {
   /** The authoritative position, straight from the rules engine. */
@@ -49,23 +55,16 @@ export interface BarricadeBoardProps {
   activeSeat: Seat;
   /** The engine's legal moves for the active seat. */
   moves: readonly LegalMoveAction[];
-  /** Barricade mode: grooves become clickable instead of squares. */
-  wallMode: boolean;
-  /** Which way the barricade the player is about to place faces. */
-  orientation: Orientation;
   /**
-   * Barricade slots the engine's generator cleared, or `null` while that list is
-   * still being computed (slots then render neutral, and the click is validated
-   * all the same).
+   * The engine's legal barricade placements for the viewer's seat — the board's
+   * whole placement menu. Empty when it is not the viewer's turn, when the match
+   * is over, or when the seat has spent its reserve.
    */
-  legalWallKeys: ReadonlySet<string> | null;
-  /** The barricade under the cursor / keyboard focus, with the engine's verdict. */
-  preview: BarricadePreview | null;
+  wallSlots: readonly WallPlacement[];
   /** True while the opponent is thinking — the board stops taking input. */
   disabled: boolean;
   onMove: (to: Position) => void;
   onPlaceWall: (wall: WallPlacement) => void;
-  onHoverWall: (wall: WallPlacement | null) => void;
 }
 
 /** Grid track (1-based) of a square. Row 0 is the bottom row. */
@@ -88,29 +87,29 @@ function wallStyle(wall: WallPlacement): CSSProperties {
 function squareLabel(position: Position, occupant: "mine" | "theirs" | null, legal: boolean) {
   const where = `Row ${position.row + 1}, column ${position.col + 1}`;
   if (occupant === "mine") return `${where}: your pawn`;
-  if (occupant === "theirs") return `${where}: the AI's pawn`;
+  if (occupant === "theirs") return `${where}: the opponent's pawn`;
   if (legal) return `${where}: move your pawn here`;
   return `${where}: empty`;
 }
 
-function wallLabel(wall: WallPlacement) {
+function wallName(wall: WallPlacement) {
   const axis = wall.orientation === ORIENTATIONS[0] ? "horizontal" : "vertical";
   return `${axis} barricade between rows ${wall.row + 1} and ${wall.row + 2}, columns ${wall.col + 1} and ${wall.col + 2}`;
 }
+
+const wallLabel = (wall: WallPlacement) => wallName(wall);
+
+const slotLabel = (wall: WallPlacement) => `Place a ${wallName(wall)}`;
 
 export default function BarricadeBoard({
   state,
   mySeat,
   activeSeat,
   moves,
-  wallMode,
-  orientation,
-  legalWallKeys,
-  preview,
+  wallSlots,
   disabled,
   onMove,
   onPlaceWall,
-  onHoverWall,
 }: BarricadeBoardProps) {
   const myGoalRow = goalRowFor(mySeat);
   const opponentGoalRow = goalRowFor(mySeat === "player1" ? "player2" : "player1");
@@ -120,11 +119,6 @@ export default function BarricadeBoard({
     lastAction && lastAction.action.type === "move" ? positionKey(lastAction.action.to) : null;
 
   const rows = Array.from({ length: BOARD_SIZE }, (_, index) => index);
-  // A barricade lies IN a groove, and there are only 8 of them per axis: slot
-  // 8 would sit past the far edge, so the groove controls stop at WALL_SLOTS.
-  const slots = Array.from({ length: WALL_SLOTS }, (_, index) => index);
-  const isPlaced = (col: number, row: number) =>
-    state.walls.some((placed) => placed.col === col && placed.row === row);
 
   const occupiedBy = (position: Position): "mine" | "theirs" | null => {
     if (positionKey(state.pawns[mySeat]) === positionKey(position)) return "mine";
@@ -139,9 +133,8 @@ export default function BarricadeBoard({
       role="group"
       aria-label={`Barricade board. You play ${mySeat === "player1" ? "blue" : "purple"}.`}
       data-testid="barricade-board"
-      data-wall-mode={wallMode ? "true" : "false"}
-      data-orientation={orientation}
       data-active-seat={activeSeat}
+      data-wall-slots={wallSlots.length}
     >
       {/* ── Squares: where pawns stand and where they may go ───────────── */}
       {rows.map((row) =>
@@ -158,7 +151,6 @@ export default function BarricadeBoard({
           if (legal) classes.push("is-legal");
           if (occupant) classes.push(occupant === "mine" ? "is-mine" : "is-theirs");
           if (lastDestination === key) classes.push("is-last");
-          if (wallMode) classes.push("is-dimmed");
           return (
             <button
               key={key}
@@ -172,12 +164,9 @@ export default function BarricadeBoard({
               data-legal={legal ? "true" : "false"}
               data-goal={isMyGoal ? "mine" : isTheirGoal ? "theirs" : "none"}
               disabled={disabled}
-              tabIndex={disabled || wallMode || (!legal && !occupant) ? -1 : 0}
+              tabIndex={disabled || (!legal && !occupant) ? -1 : 0}
               aria-label={squareLabel(position, occupant, legal)}
-              onClick={() => {
-                if (wallMode) return;
-                onMove(position);
-              }}
+              onClick={() => onMove(position)}
             >
               {occupant ? (
                 <span
@@ -200,50 +189,35 @@ export default function BarricadeBoard({
           className={`barricade-wall ${wall.owner === mySeat ? "is-mine" : "is-theirs"}`}
           style={wallStyle(wall)}
           data-testid="barricade-wall"
+          data-col={wall.col}
+          data-row={wall.row}
           data-orientation={wall.orientation}
           data-owner={wall.owner}
-          aria-hidden="true"
+          role="img"
+          aria-label={wallLabel(wall)}
         />
       ))}
 
-      {/* ── Barricade mode: the grooves become the controls ────────────── */}
-      {wallMode
-        ? slots.map((row) =>
-            slots.map((col) => {
-              if (isPlaced(col, row)) return null;
-              const wall: WallPlacement = { col, row, orientation };
-              const key = wallKey(wall);
-              const cleared = legalWallKeys ? legalWallKeys.has(key) : null;
-              const isPreviewed = Boolean(
-                preview && preview.wall.col === col && preview.wall.row === row,
-              );
-              const classes = ["barricade-slot"];
-              if (cleared === true) classes.push("is-cleared");
-              if (cleared === false) classes.push("is-illegal");
-              if (isPreviewed) classes.push(preview?.ok ? "is-preview-ok" : "is-preview-invalid");
-              return (
-                <button
-                  key={`slot-${key}`}
-                  type="button"
-                  className={classes.join(" ")}
-                  style={wallStyle(wall)}
-                  data-testid="barricade-slot"
-                  data-col={col}
-                  data-row={row}
-                  data-orientation={orientation}
-                  data-legal={cleared === null ? "unknown" : cleared ? "true" : "false"}
-                  disabled={disabled}
-                  aria-label={wallLabel(wall)}
-                  onMouseEnter={() => onHoverWall(wall)}
-                  onMouseLeave={() => onHoverWall(null)}
-                  onFocus={() => onHoverWall(wall)}
-                  onBlur={() => onHoverWall(null)}
-                  onClick={() => onPlaceWall(wall)}
-                />
-              );
-            }),
-          )
-        : null}
+      {/* ── Every barricade the engine offers this turn ───────────────────
+          One button per legal placement, drawn on the groove it would occupy.
+          Nothing here is a preview or a guess: each slot IS a legal barricade,
+          so clicking it needs no verdict and no explanation. */}
+      {wallSlots.map((wall) => (
+        <button
+          key={wallKey(wall)}
+          type="button"
+          className="barricade-slot"
+          style={wallStyle(wall)}
+          data-testid="barricade-slot"
+          data-col={wall.col}
+          data-row={wall.row}
+          data-orientation={wall.orientation}
+          disabled={disabled}
+          tabIndex={disabled ? -1 : 0}
+          aria-label={slotLabel(wall)}
+          onClick={() => onPlaceWall(wall)}
+        />
+      ))}
     </div>
   );
 }

@@ -2128,6 +2128,12 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   user-select: none;
 }
 
+/* Barricade mode makes the board itself the keyboard control. */
+.barricade-board:focus-visible {
+  outline: 2px solid rgba(124, 239, 255, 0.7);
+  outline-offset: 3px;
+}
+
 .barricade-square {
   position: relative;
   display: flex;
@@ -2150,31 +2156,30 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   box-shadow: inset 0 0 0 1px rgba(168, 85, 247, 0.4);
 }
 
+/* A square the pawn can step onto: a quiet outline rather than a lit-up tile.
+   The board shows these next to the full barricade menu, so nothing here glows
+   and the flat fill is barely there — the hairline ring is what reads. */
 .barricade-square.is-legal {
   cursor: pointer;
-  background: rgba(125, 211, 252, 0.18);
-  box-shadow: inset 0 0 0 1px rgba(125, 211, 252, 0.55);
+  background: rgba(125, 211, 252, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(125, 211, 252, 0.3);
 }
 
 .barricade-square.is-legal:hover,
 .barricade-square.is-legal:focus-visible {
-  background: rgba(125, 211, 252, 0.34);
+  background: rgba(125, 211, 252, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(125, 211, 252, 0.6);
 }
 
 .barricade-square.is-last {
-  box-shadow: inset 0 0 0 2px rgba(245, 255, 59, 0.45);
-}
-
-.barricade-square.is-dimmed {
-  opacity: 0.5;
+  box-shadow: inset 0 0 0 1px rgba(245, 255, 59, 0.3);
 }
 
 .barricade-move-dot {
-  width: 26%;
-  height: 26%;
+  width: 22%;
+  height: 22%;
   border-radius: 999px;
-  background: rgba(125, 211, 252, 0.9);
-  box-shadow: 0 0 10px rgba(0, 229, 255, 0.6);
+  background: rgba(125, 211, 252, 0.5);
 }
 
 .barricade-pawn {
@@ -2199,51 +2204,45 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 }
 
 .barricade-wall.is-mine {
-  background: linear-gradient(180deg, #7dd3fc, #0284c7);
-  box-shadow: 0 0 9px rgba(56, 189, 248, 0.6);
+  background: linear-gradient(180deg, rgba(125, 211, 252, 0.9), rgba(2, 132, 199, 0.9));
 }
 
 .barricade-wall.is-theirs {
-  background: linear-gradient(180deg, #d8b4fe, #7c3aed);
-  box-shadow: 0 0 9px rgba(168, 85, 247, 0.6);
+  background: linear-gradient(180deg, rgba(216, 180, 254, 0.9), rgba(124, 58, 237, 0.9));
 }
 
+/* EVERY barricade the engine offers this turn, drawn on the groove it would
+   occupy. On an empty board that is all 128 grooves, so the mark has to be a
+   whisper: a hairline dash and NO fill. A fill looks harmless per slot and is
+   not — 128 of them cover two thirds of the board and raise its whole luminance
+   (measured: +6 mean, +4% of pixels over 60) until the board reads as lit up.
+   The dashes therefore carry the shape and the hover/focus state carries the
+   invitation; nothing here glows, and a slot must never read as a barricade
+   already in place. */
 .barricade-slot {
   z-index: 3;
   padding: 0;
-  border: 1px dashed rgba(255, 255, 255, 0.16);
+  border: 1px dashed rgba(125, 211, 252, 0.16);
   border-radius: 3px;
-  background: rgba(255, 255, 255, 0.05);
+  background: transparent;
   cursor: pointer;
-  transition: background-color 0.12s ease, box-shadow 0.12s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
-.barricade-slot:hover,
+.barricade-slot:hover:not(:disabled),
 .barricade-slot:focus-visible {
-  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(125, 211, 252, 0.55);
+  background: rgba(125, 211, 252, 0.12);
 }
 
-.barricade-slot.is-cleared {
-  border-color: rgba(190, 242, 100, 0.5);
-  background: rgba(190, 242, 100, 0.16);
+.barricade-slot:focus-visible {
+  outline: 1px solid rgba(125, 211, 252, 0.5);
+  outline-offset: 1px;
 }
 
-.barricade-slot.is-illegal {
-  border-color: rgba(248, 113, 113, 0.35);
-  background: rgba(248, 113, 113, 0.12);
-  cursor: not-allowed;
-}
-
-.barricade-slot.is-preview-ok {
-  border-color: rgba(74, 222, 128, 0.9);
-  background: rgba(74, 222, 128, 0.6);
-  box-shadow: 0 0 10px rgba(74, 222, 128, 0.6);
-}
-
-.barricade-slot.is-preview-invalid {
-  border-color: rgba(248, 113, 113, 0.9);
-  background: rgba(248, 113, 113, 0.6);
-  box-shadow: 0 0 10px rgba(248, 113, 113, 0.55);
+.barricade-slot:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 
 .barricade-board-shell {
@@ -2345,6 +2344,19 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   color: #fca5a5;
 }
 
+/* The placement hint shown on the viewer's turn: the board now offers moves
+   and barricade positions side by side, so the hint names both. */
+.barricade-hint {
+  margin: 0;
+  border: 1px dashed rgba(124, 239, 255, 0.25);
+  border-radius: 10px;
+  background: rgba(0, 229, 255, 0.06);
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: rgba(207, 250, 254, 0.85);
+}
+
 .barricade-controls {
   display: flex;
   flex-direction: column;
@@ -2357,8 +2369,9 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   gap: 8px;
 }
 
-.barricade-mode-button,
-.barricade-orientation-button,
+/* The remaining buttons (resign, report, restart, the online duel link). The
+   Move / Barricade mode switch is gone: the board offers both kinds of turn at
+   once, so there is no mode left to pick. */
 .barricade-secondary-button {
   display: inline-flex;
   flex: 1;
@@ -2375,20 +2388,10 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
-.barricade-mode-button:hover:not(:disabled),
-.barricade-orientation-button:hover,
 .barricade-secondary-button:hover {
   background: rgba(255, 255, 255, 0.12);
 }
 
-.barricade-mode-button.is-active,
-.barricade-orientation-button.is-active {
-  border-color: rgba(124, 239, 255, 0.5);
-  background: rgba(0, 229, 255, 0.16);
-  color: #cffafe;
-}
-
-.barricade-mode-button:disabled,
 .barricade-secondary-button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -2431,9 +2434,14 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 }
 
 @media (max-width: 400px) {
+  /* The board is 9 cells + 8 grooves wide and sits inside a padded card inside
+     the page's own padding, so the cell budget is what is LEFT of the viewport
+     after those, not the whole width: at 320px that is 320 - 24 (page) - 18
+     (card) - 12 (board padding and border) = 266px for the tracks. 8.2vw keeps
+     the whole thing inside 320 and still leaves a ~26px tap target. */
   .barricade-board {
-    --bc-cell: clamp(24px, 9.4vw, 34px);
-    --bc-gap: clamp(3px, 0.9vw, 6px);
+    --bc-cell: clamp(22px, 8.2vw, 34px);
+    --bc-gap: clamp(3px, 0.85vw, 6px);
     padding: 5px;
   }
 
@@ -2449,8 +2457,6 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 @media (prefers-reduced-motion: reduce) {
   .barricade-square,
   .barricade-slot,
-  .barricade-mode-button,
-  .barricade-orientation-button,
   .barricade-secondary-button {
     transition: none;
   }

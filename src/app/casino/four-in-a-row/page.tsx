@@ -4,7 +4,7 @@ import AdSenseScript from "../../../components/AdSenseScript";
 import { ogImageUrl } from "../../../lib/ogImages";
 
 const title = "Four-In-A-Row | GRYND";
-const description = "Play Four-In-A-Row on GRYND. Stake tokens and challenge another player in a 1v1 duel, or play the AI for free.";
+const description = "Play Four-In-A-Row on GRYND — free to play. Challenge another player in a 1v1 duel, or play the AI.";
 const image = ogImageUrl("/images/og-banner.png");
 
 // This page is the AUTHENTICATED game application, served at

@@ -42,6 +42,7 @@ import {
 } from "../../../../../lib/gameAudio";
 import { towerArenaDueRead } from "../../../../../lib/deadlineRead";
 import { useDeadlineRead } from "../../../../../hooks/useDeadlineRead";
+import { useServerClockEstimate } from "../../../../../hooks/useServerClockEstimate";
 import {
   blockCells,
   blockWidth,
@@ -1017,6 +1018,9 @@ export default function TowerArenaMatchPage() {
   // Always-fresh `load` for socket handlers (the effect registers listeners
   // once per socket; a ref keeps them calling the LATEST render's load so
   // `me`/state reads inside are never stale).
+  // The page's estimate of the server's clock (null until sampled), for timing
+  // the deadline read below against the server's own instants.
+  const serverNowEstimate = useServerClockEstimate();
   const loadRef = useRef<() => Promise<void>>(async () => {});
 
   // A ceiling-breaching block is not persisted in the tower. For the short
@@ -1202,7 +1206,13 @@ export default function TowerArenaMatchPage() {
   // Which instant counts lives in `lib/deadlineRead.ts`, and the bounded read
   // itself is the shared `useDeadlineRead` hook — the whole rule is unit-tested
   // there rather than re-derived per page.
-  useDeadlineRead(towerArenaDueRead(match), () => loadRef.current());
+  // `serverNow` is the page's own estimate of the server's clock, so the read
+  // fires ON the stamped instant rather than a skew-covering slack past it — the
+  // countdown ending IS the read. It answers null until the sample lands, and
+  // the hook then keeps its full slack rather than trusting the device clock.
+  useDeadlineRead(towerArenaDueRead(match), () => loadRef.current(), {
+    serverNow: serverNowEstimate,
+  });
 
   // Realtime room — participant tracking + instant lobby/match pushes.
   // Every server-authoritative in-match event triggers an authoritative

@@ -16,8 +16,14 @@
  * The contract asserted here:
  *   * every action goes through ONE retrying JSON helper (never its own fetch),
  *   * that helper retries exactly once and then rethrows,
- *   * a non-JSON reply cannot escape as a SyntaxError, and
- *   * every action reports a transport failure in the lobby's error banner.
+ *   * a non-JSON reply cannot escape as a SyntaxError,
+ *   * every action reports a transport failure in the lobby's error banner, and
+ *   * starting a game is FREE — no create route may police a stake, and the row
+ *   *   it writes must be legal at wager 0.
+ *
+ * That last one is the second reported failure: creating a lobby OR an AI match
+ * came back with "Wager must be between 1 and 100,000 tokens", and the lobby
+ * insert itself failed against a `wager > 0` check that predates free play.
  *
  * Run: node --import tsx --test tests/pool-lobby-actions.test.mjs
  */
@@ -109,4 +115,70 @@ test("lobby: a refusal shows the server's own reason, not just a generic line", 
       `${name} reads both refusal shapes`,
     );
   }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Starting a game is free
+// ════════════════════════════════════════════════════════════════════════════
+
+test("lobby: no create route can refuse the free lobby or AI match for its wager", () => {
+  // The reported failure: `{ wager: 0 }` from this page came back as
+  // "Wager must be between 1 and 100,000 tokens". Every create route takes its
+  // stake from the retired seam instead of policing the client's value.
+  for (const route of ["create-lobby", "create-ai-match"]) {
+    const src = fs.readFileSync(`src/app/api/pool/${route}/route.ts`, "utf8");
+    assert.match(src, /normalizeStake\(/, `${route} must take its stake from the seam`);
+    assert.doesNotMatch(
+      src,
+      /Number\(wager\) <= 0|wager <= 0|Wager must be between/i,
+      `${route} must not reject a free entry`,
+    );
+  }
+
+  // …and the page is what sends the free value, through the same helper.
+  assert.match(page, /const wager = 0;/, "the lobby is free");
+  for (const [name, endpoint] of Object.entries(ACTIONS)) {
+    if (endpoint === "join-lobby") continue;
+    assert.match(
+      actionBody(name),
+      /postPoolJson\(\"\/api\/pool\/\S+\", \{ wager \}\)/,
+      `${name} must send the free wager`,
+    );
+  }
+});
+
+test("the pool lobby's free wager is a LEGAL row once the migration runs", () => {
+  // The insert error in the report: `pool_lobbies.wager` was declared
+  // `CHECK (wager > 0)` in 0022, which no free lobby can satisfy.
+  const original = fs.readFileSync("src/db/migrations/0022_pool_masters.sql", "utf8");
+  assert.match(
+    original,
+    /wager INT NOT NULL CHECK \(wager > 0\)/,
+    "the constraint this migration replaces must be the one that was there",
+  );
+
+  const migration = fs.readFileSync(
+    "src/db/migrations/0208_pool_lobbies_free_wager.sql",
+    "utf8",
+  );
+  assert.match(migration, /DROP CONSTRAINT/, "the old check must be dropped by name-agnostic lookup");
+  assert.match(migration, /to_regclass\('pool_lobbies'\)/, "guarded, so a replay is safe");
+  assert.match(
+    migration,
+    /ADD CONSTRAINT "pool_lobbies_wager_free_check" CHECK \("wager" >= 0\)/,
+    "a free (0) lobby must be legal, and a negative one must not be",
+  );
+
+  // A migration that is not journaled never runs, so the fix would be inert.
+  const journal = JSON.parse(
+    fs.readFileSync("src/db/migrations/meta/_journal.json", "utf8"),
+  );
+  assert.ok(
+    journal.entries.some((e) => e.tag === "0208_pool_lobbies_free_wager"),
+    "the migration must be registered in the drizzle journal",
+  );
+
+  // The match row already allowed 0 — only the lobby's copy was missed, which is
+  // why the AI path failed at the ROUTE and the PvP path at the INSERT.
+  assert.match(original, /wager INT NOT NULL CHECK \(wager >= 0\)/);
 });

@@ -1317,6 +1317,27 @@
       "when": 1800000050000,
       "tag": "0207_barricade_pvp",
       "breakpoints": true
+    },
+    {
+      "idx": 188,
+      "version": "7",
+      "when": 1800000051000,
+      "tag": "0206_uno_guest_seat",
+      "breakpoints": true
+    },
+    {
+      "idx": 189,
+      "version": "7",
+      "when": 1800000052000,
+      "tag": "0208_pool_lobbies_free_wager",
+      "breakpoints": true
+    },
+    {
+      "idx": 190,
+      "version": "7",
+      "when": 1800000053000,
+      "tag": "0209_speed_typing_device_class",
+      "breakpoints": true
     }
   ]
 }

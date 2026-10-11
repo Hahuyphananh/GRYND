@@ -375,5 +375,10 @@ test("outcome: the viewer's result is derived from the seat and the result", () 
   assert.equal(outcomeFor(SEAT.PLAYER2, "player1"), "loss");
   assert.equal(outcomeFor(SEAT.PLAYER2, "draw"), "draw");
   assert.equal(outcomeFor(null, "player1"), null);
-  assert.equal(outcomeFor(SEAT.PLAYER1, "tie"), null);
+  // "tie" is the PLATFORM's draw spelling (Speed Typing, Tic-Tac-Toe and Mini
+  // Golf all settle ties), and this duel resolves through the same shared rule
+  // (src/lib/results/viewerOutcome.ts) — so a tie is a draw here too. What must
+  // stay null is a row whose settlement string this platform does not know.
+  assert.equal(outcomeFor(SEAT.PLAYER1, "tie"), "draw");
+  assert.equal(outcomeFor(SEAT.PLAYER1, "no_contest"), null);
 });

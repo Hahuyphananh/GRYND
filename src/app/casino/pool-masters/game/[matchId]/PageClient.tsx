@@ -614,7 +614,10 @@ export default function Page() {
         const res = await fetch("/api/pool/create-ai-match", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ wager: 10 }),
+          // Stakes are retired: the rematch is free, exactly like the first
+          // match. The route normalizes whatever is sent to 0 — this sends the
+          // honest value rather than a leftover 10 from the wagered era.
+          body: JSON.stringify({ wager: 0 }),
         });
         const data = await res.json();
         if (data.ok) {

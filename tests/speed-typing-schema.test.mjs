@@ -26,7 +26,9 @@ const read = (rel) => fs.readFileSync(path.join(process.cwd(), rel), "utf8");
 const SCHEMA = read("src/db/schema.ts");
 const SQL_0190 = read("src/db/migrations/0190_speed_typing.sql");
 const SQL_0191 = read("src/db/migrations/0191_speed_typing_race.sql");
-const SQL = `${SQL_0190}\n${SQL_0191}`;
+// The input-device columns matchmaking pools by (migration 0209).
+const SQL_0209 = read("src/db/migrations/0209_speed_typing_device_class.sql");
+const SQL = `${SQL_0190}\n${SQL_0191}\n${SQL_0209}`;
 const JOURNAL = JSON.parse(read("src/db/migrations/meta/_journal.json"));
 
 /** The drizzle table block for speed_typing_matches, on its own. */
@@ -75,6 +77,27 @@ test("the race migration only ALTERs the existing table (no second table)", () =
   assert.ok(adds.length >= 12, `expected the race columns to be added, found ${adds.length}`);
 });
 
+test("migration 0209 records the input-device pool, and is journaled", () => {
+  const entry = JOURNAL.entries.find((e) => e.tag === "0209_speed_typing_device_class");
+  assert.ok(entry, "0209_speed_typing_device_class must be in _journal.json");
+  assert.equal(entry.idx, JOURNAL.entries.length - 1, "it is the newest migration");
+
+  assert.match(SQL_0209, /ADD COLUMN IF NOT EXISTS player1_device_class VARCHAR\(16\)/);
+  assert.match(SQL_0209, /ADD COLUMN IF NOT EXISTS player2_device_class VARCHAR\(16\)/);
+
+  // The vocabulary is CLOSED, and NULL (unknown) is the only value outside it:
+  // a detection bug then fails at the write rather than quietly splitting
+  // matchmaking into a third pool nobody can join.
+  const check = stripSql(SQL_0209);
+  assert.match(check, /player1_device_class IS NULL OR player1_device_class IN \('keyboard', 'touch'\)/);
+  assert.match(check, /player2_device_class IS NULL OR player2_device_class IN \('keyboard', 'touch'\)/);
+
+  // Additive and idempotent: an ALTER of the one existing table, with no money
+  // in it anywhere.
+  assert.doesNotMatch(SQL_0209, /CREATE TABLE/i);
+  assert.doesNotMatch(check, /\b(stake|wagers?|stakes|payout|payouts|rake|prize|prizes|balance|balances|bet|bets)\b/i);
+});
+
 // ── 2. Every required field, in BOTH representations ──────────────────────
 
 /**
@@ -115,6 +138,10 @@ const REQUIRED_COLUMNS = [
   // Rating/trophy compatibility (practice matches never settle)
   "is_ai",
   "ai_difficulty",
+  // The input device each seat raced on (0209) — the pool matchmaking uses to
+  // keep a phone from being raced against a computer.
+  "player1_device_class",
+  "player2_device_class",
 ];
 
 for (const column of REQUIRED_COLUMNS) {

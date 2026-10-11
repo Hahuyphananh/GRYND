@@ -198,11 +198,12 @@ export default function PoolLobbyPage() {
             ),
           },
           {
-            heading: "Wager & pot",
+            heading: "Free to play",
             body: (
               <>
-                Both players stake the same amount. The winner takes the
-                pot minus the platform fee.
+                PvP and practice are both free — nothing is staked and no
+                tokens change hands. Results still count towards your Elo and
+                Pool trophies.
               </>
             ),
           },

@@ -61,6 +61,9 @@ import { usePrecisionMatchState } from "../../../../../hooks/usePrecisionMatchSt
 import { usePrecisionRoundClock } from "../../../../../hooks/usePrecisionRoundClock";
 import { usePrecisionRoundReveal } from "../../../../../hooks/usePrecisionRoundReveal";
 import { usePrecisionEndPopup } from "../../../../../hooks/usePrecisionEndPopup";
+import { useDeadlineRead } from "../../../../../hooks/useDeadlineRead";
+import { precisionDueRead } from "../../../../../lib/deadlineRead";
+import { serverClockNow } from "../../../../../lib/precision/roundClock";
 import {
   emitStop,
   isLocalPlayerTurn,
@@ -176,13 +179,35 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
     }
   }, []);
 
-  const { state, stateRef, serverClockOffsetMs, lookup, applySnapshot } =
+  const { state, stateRef, serverClockOffsetMs, lookup, applySnapshot, refreshState } =
     usePrecisionMatchState({
       matchId,
       socket,
       onRoundResult: handleRoundResult,
       onReadySnapshot: handleReadySnapshot,
     });
+
+  // The offset the countdown read times itself with, read through a ref so its
+  // callback stays stable while polls refine the estimate.
+  const serverClockOffsetRef = useRef(serverClockOffsetMs);
+  serverClockOffsetRef.current = serverClockOffsetMs;
+
+  // The ONE read the pre-round countdown needs.
+  //
+  // The `arming` → `active` flip is a transition the STORE performs, and only a
+  // read performs it. The realtime server's due scheduler is an accelerator — it
+  // runs only while a socket is in the match room, only from a process that is
+  // up, and it is deliberately the fallback path when it is not. Without a reader
+  // here the countdown reaching 0 was followed by dead air until some other event
+  // read the match, which is the reported "when the countdown reaches 0 the game
+  // doesn't start immediately" — in a vs-AI match and in a human duel alike.
+  //
+  // `serverNow` is the page's own server-clock estimate (the same one the round
+  // display is anchored to), so the read fires ON the stamped instant instead of
+  // a slack past it: the countdown ending IS the read.
+  useDeadlineRead(precisionDueRead(state), refreshState, {
+    serverNow: () => serverClockNow(Date.now(), serverClockOffsetRef.current),
+  });
 
   // `serverClockOffsetMs` MUST be forwarded: it is the device→server wall-clock
   // offset the authoritative read estimated from the response's own round trip.

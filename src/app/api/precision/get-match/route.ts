@@ -124,6 +124,29 @@ async function decoratePlayerBadges<T extends { userId: string }>(
   return players.map((p) => badgeFor(p, iconByUser, colorByUser, frameByUser));
 }
 
+/**
+ * The seat the SERVER says the caller holds, from the caller's own verified
+ * identity (`requirePracticePlayer` — a guest id counts, since a guest seat is a
+ * seat). Pure and exported so the rule can be asserted directly.
+ *
+ * WHY THE SERVER HAS TO STATE IT: the match view used to read its seat from
+ * `precision:localSeat` in sessionStorage, which the lobby writes and which
+ * DEFAULTS TO SEAT 1 when the tab never saw it. A seat-2 winner who reloaded in
+ * a fresh tab was therefore told they had LOST. `winnerSeat` is settled from the
+ * winner's seat, so the seat it is read against must be the server's too.
+ *
+ * Null when the caller is not in a seat — a spectator gets no verdict rather
+ * than a client's guess.
+ */
+export function seatForViewer(
+  match: Pick<PrecisionState, "players">,
+  playerId: string | null,
+): 1 | 2 | null {
+  if (!playerId) return null;
+  const seat = (match.players ?? []).find((p) => p.userId === playerId)?.seat;
+  return seat === 1 || seat === 2 ? seat : null;
+}
+
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
@@ -165,6 +188,9 @@ export async function GET(req: NextRequest) {
       now: serverNowMs,
       match: {
         ...match,
+        // The caller's own seat, stamped from the identity the gate verified —
+        // never inferred by the client (see `seatForViewer`).
+        viewerSeat: seatForViewer(match, gate.playerId),
         players: await decoratePlayerBadges(match.players ?? []),
       },
     });

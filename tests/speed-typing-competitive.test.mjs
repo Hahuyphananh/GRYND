@@ -55,7 +55,16 @@ import {
 
 const KEY = "speed-typing";
 
-const read = (rel) => fs.readFileSync(rel, "utf8");
+/**
+ * Source with line endings normalised to LF.
+ *
+ * One assertion below slices the DTO out of the store up to the first
+ * `"\n}\n"` it contains; a CRLF checkout (core.autocrlf=true on Windows) has no
+ * such sequence, so the slice would silently cover the whole file and the test
+ * would fail for a reason unrelated to what it guards. Normalising here is the
+ * same thing the headless suites do in their `strip` helper.
+ */
+const read = (rel) => fs.readFileSync(rel, "utf8").replace(/\r\n/g, "\n");
 const code = (rel) =>
   read(rel)
     .replace(/\/\*[\s\S]*?\*\//g, "")

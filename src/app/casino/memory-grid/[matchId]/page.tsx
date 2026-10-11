@@ -11,7 +11,7 @@ export async function generateMetadata({
   return {
     robots: { index: false, follow: false },
     title: `Memory Grid Match #${shortId} | GRYND`,
-    description: `Live Memory Grid match #${shortId} on GRYND. Match pairs faster than your opponent to win the wager.`,
+    description: `Live Memory Grid match #${shortId} on GRYND. Match pairs faster than your opponent to win.`,
   };
 }
 

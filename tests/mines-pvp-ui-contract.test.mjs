@@ -177,7 +177,14 @@ test("the result screen reports score, tiles, flags, mines hit and completion", 
 });
 
 test("the result maps to WIN / LOSS / DRAW with no instant-loss messaging", () => {
-  assert.match(SRC, /const outcome = isDrawResult \? "draw" : iWon \? "win" : "loss"/);
+  // THE VERDICT IS THE SERVER'S, READ FROM THE VIEWER'S SEAT: the settled
+  // `result` compared against the seat the snapshot names for this viewer —
+  // never `winnerId === user.id`, which a signed-out free-play guest (no Clerk
+  // id at all) fails whatever the row says, i.e. a false LOSS for a winner.
+  assert.match(SRC, /const verdict = viewerOutcome\(\{/);
+  assert.match(SRC, /result: match\.result/);
+  assert.match(SRC, /viewerSeat: match\.viewerSeat/);
+  assert.match(SRC, /const outcome = verdict \?\? "draw"/);
   assert.match(SRC, /outcome={outcome}/);
   // The old shared-board endings must not survive in the client.
   assert.doesNotMatch(SRC, /all_mines_flagged/);

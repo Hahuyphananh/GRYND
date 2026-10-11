@@ -49,11 +49,13 @@ import {
 import { usePracticeBotHeartbeat } from "../../../../hooks/usePracticeBotHeartbeat";
 import { speedTypingDueRead } from "../../../../lib/deadlineRead";
 import { useDeadlineRead } from "../../../../hooks/useDeadlineRead";
+import { useServerClockEstimate } from "../../../../hooks/useServerClockEstimate";
 import {
   SPEED_TYPING_EVENTS,
   speedTypingMatchRoom,
 } from "../../../../lib/speed-typing/rooms";
 import { PROGRESS_MIN_ADVANCE } from "../../../../lib/speed-typing/constants";
+import { outcomeFor } from "../../../../lib/speed-typing/ui";
 
 // ── Types (mirrors of the server's participant view) ──────────────────────
 
@@ -283,6 +285,9 @@ export default function SpeedTypingMatchPage() {
   const { user } = useUser();
   const matchId = params?.matchId;
   const snapshotUrl = `/api/speed-typing/match/${matchId}`;
+  // The page's estimate of the server's clock (null until sampled), for timing
+  // the race-limit read below against the deadline the server stamped.
+  const serverNowEstimate = useServerClockEstimate();
 
   const [match, setMatch] = useState<MatchDto | null>(null);
   const [seatIdentities, setSeatIdentities] = useState<SeatIdentities>(null);
@@ -572,6 +577,11 @@ export default function SpeedTypingMatchPage() {
   useDeadlineRead(
     speedTypingDueRead({ deadlineMs: race?.deadlineMs, goAtMs, finished, resolved }),
     () => load({ silent: true }),
+    // The limit is a SERVER instant, so the read is timed on the server's clock
+    // where this page has one — the race is graded at the instant it is due
+    // rather than a skew-covering slack past it. Null until the sample lands, and
+    // the hook then keeps its full slack rather than trusting the device clock.
+    { serverNow: serverNowEstimate },
   );
 
   // ── Practice bot heartbeat ─────────────────────────────────────────────
@@ -666,12 +676,29 @@ export default function SpeedTypingMatchPage() {
   }, [requeueing, router]);
 
   // ── Result: derived from the SNAPSHOT's verdict, never from local typing ──
+  //
+  // The verdict comes from the row (`result`), read against the seat the
+  // SNAPSHOT says is ours — see `outcomeFor` in src/lib/speed-typing/ui.ts for
+  // why that is a function: a signed-out free-play visitor holds no Clerk id
+  // (the practice gate mints them a `guest_…` identity), so deciding this from
+  // Clerk alone told a guest who had just won the race that they had lost.
+  //
+  // The seat id is the snapshot's own (guest ids included), which is also what
+  // the fallback compares `winnerId` against; Clerk is the last resort only.
+  const viewerSeatNumber = match?.viewerSeat ?? race?.seat ?? null;
+  const viewerSeatId =
+    match?.players?.find((player) => player.seat === viewerSeatNumber)?.userId ??
+    user?.id ??
+    null;
+  // A FINISHED row always carries a `result`, so `null` cannot happen here; it
+  // is rendered as a loss, exactly as it was before this helper existed.
   const outcome =
-    match?.result === "tie"
-      ? "draw"
-      : match?.winnerId && user?.id && match.winnerId === user.id
-        ? "win"
-        : "loss";
+    outcomeFor({
+      result: match?.result,
+      winnerId: match?.winnerId,
+      viewerSeat: viewerSeatNumber,
+      viewerSeatId,
+    }) ?? "loss";
   const durationSeconds = race?.you?.elapsedMs
     ? Math.round(race.you.elapsedMs / 1000)
     : match?.startedAt && match?.endedAt

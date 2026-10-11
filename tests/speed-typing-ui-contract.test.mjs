@@ -17,7 +17,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-const read = (rel) => fs.readFileSync(rel, "utf8");
+/**
+ * Source with line endings normalised to LF.
+ *
+ * The assertions below collect a regex over the page's fetch calls and slice
+ * multi-line patterns out of it; `.` does not match `\r`, so a CRLF checkout
+ * (core.autocrlf=true on Windows) would make those checks match the wrong text
+ * and fail for a reason unrelated to what they guard. Normalising here is the
+ * same thing the headless suites do in their `strip` helper.
+ */
+const read = (rel) => fs.readFileSync(rel, "utf8").replace(/\r\n/g, "\n");
 const code = (rel) =>
   read(rel)
     .replace(/\/\*[\s\S]*?\*\//g, "")
@@ -130,10 +139,36 @@ test("ui: keyboard input is immediate and the arena focuses itself", () => {
 // ════════════════════════════════════════════════════════════════════════
 
 test("authority: the result comes from the server's verdict, never from local typing", () => {
-  // The outcome is read off the snapshot's `result` / `winnerId` only.
-  const outcome = page.slice(page.indexOf("const outcome ="), page.indexOf("const durationSeconds"));
-  assert.match(outcome, /match\?\.result === "tie"/);
-  assert.match(outcome, /match\.winnerId === user\.id/);
+  // The whole derivation, from the seat the page is told it holds to the
+  // verdict it renders: the snapshot's `result`, read against THAT seat.
+  const outcome = page.slice(
+    page.indexOf("const viewerSeatNumber"),
+    page.indexOf("const durationSeconds"),
+  );
+  // The row's own facts are handed to the ONE helper that decides a verdict —
+  // the same shape src/lib/barricade/ui.ts and src/lib/tic-tac-toe/ui.ts use.
+  assert.match(outcome, /outcomeFor\(\{/);
+  assert.match(outcome, /result: match\?\.result/);
+  assert.match(outcome, /winnerId: match\?\.winnerId/);
+  assert.match(outcome, /viewerSeat: viewerSeatNumber/);
+  assert.match(outcome, /viewerSeatId/);
+  assert.match(
+    page,
+    /import \{ outcomeFor \} from "\.\.\/\.\.\/\.\.\/\.\.\/lib\/speed-typing\/ui"/,
+  );
+  // And the rule itself is THE PLATFORM'S ONE RULE, delegated to rather than
+  // re-implemented: every game's result screen resolves its verdict through
+  // src/lib/results/viewerOutcome.ts, so "who won" has exactly one answer.
+  const helper = code("src/lib/speed-typing/ui.ts");
+  assert.match(helper, /import \{ viewerOutcome \} from "\.\.\/results\/viewerOutcome"/);
+  assert.match(helper, /return viewerOutcome\(\{/);
+  assert.match(helper, /viewerId: viewerSeatId/);
+  // …and that one rule is seat-based, so it needs no Clerk id at all: the seat
+  // is compared as a seat, and ids are only the fallback.
+  assert.match(
+    code("src/lib/results/viewerOutcome.ts"),
+    /return result === seat \? "win" : "loss"/,
+  );
   // Nothing local (WPM, a finished flag, a progress comparison) may feed it.
   for (const forbidden of [/local\.wpm/, /myWpm/, /isComplete/, /typed === passage/]) {
     assert.doesNotMatch(outcome, forbidden, `the outcome must not read ${forbidden}`);
@@ -142,6 +177,29 @@ test("authority: the result comes from the server's verdict, never from local ty
   assert.match(page, /open=\{phase === "result" && match\?\.status === "finished"\}/);
   // A cancelled match is never dressed up as a win or a loss.
   assert.match(page, /data-testid="speed-typing-cancelled"/);
+});
+
+test("authority: a signed-out free-play visitor still reads its OWN seat", () => {
+  // A guest holds no Clerk id: the practice gate mints them a `guest_…`
+  // identity, so a win/loss decision keyed on `user.id` reported a LOSS to a
+  // guest who had just won the race — while the arena was still telling them
+  // the race was theirs. The seat, and the id compared against `winnerId`, must
+  // therefore come from the SNAPSHOT, which names them for everyone.
+  const seat = page.slice(
+    page.indexOf("const viewerSeatNumber"),
+    page.indexOf("const outcome ="),
+  );
+  assert.match(seat, /match\?\.viewerSeat \?\? race\?\.seat \?\? null/);
+  assert.match(
+    seat,
+    /match\?\.players\?\.find\(\(player\) => player\.seat === viewerSeatNumber\)\?\.userId/,
+    "the seat id comes from the snapshot's own seat list",
+  );
+  assert.match(seat, /user\?\.id \?\?/, "Clerk is the fallback, not the source");
+  // And the verdict itself is never decided by Clerk's id.
+  const outcome = page.slice(page.indexOf("const outcome ="), page.indexOf("const durationSeconds"));
+  assert.doesNotMatch(outcome, /winnerId === user\.id/, "no verdict keyed on Clerk alone");
+  assert.doesNotMatch(outcome, /winnerId === user\?\.id/, "no verdict keyed on Clerk alone");
 });
 
 test("authority: the server's frozen numbers win over the local estimate", () => {
@@ -175,9 +233,11 @@ test("result: the winning finish shows the result screen at once, without waitin
     /open=\{phase === "result" && match\?\.status === "finished"\}/,
     "the result screen is driven by the server's own terminal status",
   );
-  // And the result itself is read from the row, never from a local claim.
-  assert.match(page, /match\?\.result === "tie"/);
-  assert.match(page, /match\?\.winnerId/);
+  // And the result itself is read from the row, never from a local claim: the
+  // snapshot's own `result` / `winnerId`, decided against the viewer's seat.
+  assert.match(page, /result: match\?\.result/);
+  assert.match(page, /winnerId: match\?\.winnerId/);
+  assert.match(page, /outcomeFor\(\{/);
 });
 
 test("authority: the page sends the typed text and NOTHING else", () => {

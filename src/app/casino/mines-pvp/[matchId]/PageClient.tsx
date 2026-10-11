@@ -60,6 +60,7 @@ import {
 import { usePracticeBotHeartbeat } from "../../../../hooks/usePracticeBotHeartbeat";
 import { minesPvpDueRead } from "../../../../lib/deadlineRead";
 import { useDeadlineRead } from "../../../../hooks/useDeadlineRead";
+import { useServerClockEstimate } from "../../../../hooks/useServerClockEstimate";
 import {
   IconBomb,
   IconSparkles,
@@ -69,6 +70,10 @@ import {
   IconTrophy,
 } from "@tabler/icons-react";
 import { MATCH_STATUS, GRID_CELLS } from "../../../../lib/mines-pvp/constants";
+// The platform's ONE seat-based verdict (src/lib/results/viewerOutcome.ts).
+// The snapshot carries the server's own `viewerSeat`, so the result screen
+// never has to ask Clerk who the viewer is.
+import { viewerOutcome } from "../../../../lib/results/viewerOutcome";
 
 // How long the finished board keeps the table to itself before the result
 // overlay covers it (the finished reveal must land first). Reduced motion
@@ -193,7 +198,9 @@ type MatchRow = {
   minesCount: number;
   status: string;
   viewerIsPlayer1: boolean;
-  viewerSeat: string;
+  // The seat the SERVER says the viewer holds — the settled `result` is read
+  // against it (never against a Clerk id, which a free-play guest has none of).
+  viewerSeat: "player1" | "player2";
   opponentSeat: string;
   matchTimerSeconds: number;
   matchDeadline: string | null;
@@ -405,6 +412,10 @@ export default function MinesPvpMatchPage({
     { id: number; text: string; tone: "mine" | "safe" }[]
   >([]);
 
+  // The page's estimate of the server's clock (null until sampled), for timing
+  // the deadline read below against the server's own instants.
+  const serverNowEstimate = useServerClockEstimate();
+
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const resolvedFiredRef = useRef(false);
 
@@ -456,7 +467,13 @@ export default function MinesPvpMatchPage({
   // no reader the board sat on "Starting in a few seconds…" and never started.
   // ONE bounded read per pending instant, cleared the moment it is gone; which
   // instant counts is `minesPvpDueRead` (see `lib/deadlineRead.ts`).
-  useDeadlineRead(minesPvpDueRead(match), fetchStatus);
+  // `serverNow` is the page's own estimate of the server's clock, so the read
+  // fires ON the stamped instant rather than a skew-covering slack past it — the
+  // banner running out IS the read. It answers null until the sample lands, and
+  // the hook then keeps its full slack rather than trusting the device clock.
+  useDeadlineRead(minesPvpDueRead(match), fetchStatus, {
+    serverNow: serverNowEstimate,
+  });
 
   // ── Realtime: existing per-match room refetch hint ──────────────
   // `lobby:updated` is the bare "refetch the authoritative snapshot" hint
@@ -631,11 +648,18 @@ export default function MinesPvpMatchPage({
     }
     if (!resultRevealed || resultSoundFiredRef.current) return;
     resultSoundFiredRef.current = true;
-    const iWon = Boolean(match.winnerId && myUserId && match.winnerId === myUserId);
-    if (!match.winnerId) playTick();
-    else if (iWon) playVictory();
-    else playDefeat();
-  }, [match, myUserId, isFinished, resultRevealed]);
+    // The verdict, from the SERVER's result + the seat it says the viewer
+    // holds — not from `winnerId === user.id`, which a signed-out free-play
+    // visitor fails whatever the row says.
+    const verdict = viewerOutcome({
+      result: match.result,
+      winnerId: match.winnerId,
+      viewerSeat: match.viewerSeat,
+    });
+    if (verdict === "win") playVictory();
+    else if (verdict === "loss") playDefeat();
+    else playTick();
+  }, [match, isFinished, resultRevealed]);
 
   // ── Posthog: match resolved ─────────────────────────────────────
   useEffect(() => {
@@ -645,7 +669,12 @@ export default function MinesPvpMatchPage({
     }
     if (resolvedFiredRef.current) return;
     resolvedFiredRef.current = true;
-    const iWon = Boolean(match.winnerId && myUserId && match.winnerId === myUserId);
+    const iWon =
+      viewerOutcome({
+        result: match.result,
+        winnerId: match.winnerId,
+        viewerSeat: match.viewerSeat,
+      }) === "win";
     posthog?.capture("mines_pvp_match_resolved", {
       match_id: matchId,
       winner: iWon ? "you" : match.winnerId ? "opponent" : "draw",
@@ -660,7 +689,7 @@ export default function MinesPvpMatchPage({
       win_reason: match.winReason,
       mines_count: match.minesCount,
     });
-  }, [match, matchId, myUserId, posthog, isFinished]);
+  }, [match, matchId, posthog, isFinished]);
 
   // ── Timer urgency ticks (last 5s) ───────────────────────────────
   const lastTickSecondRef = useRef<number | null>(null);
@@ -923,10 +952,22 @@ export default function MinesPvpMatchPage({
   // ── Result ──────────────────────────────────────────────────────
   function renderResult() {
     if (!match || !isFinished || !resultRevealed) return null;
-    const iWon = Boolean(match.winnerId && myUserId && match.winnerId === myUserId);
-    const iLost = Boolean(match.winnerId && myUserId && match.winnerId !== myUserId);
+    // THE VERDICT IS THE SERVER'S, READ FROM THE VIEWER'S SEAT. `result` is
+    // settled from the winner SEAT, and `viewerSeat` is the seat the server
+    // says the viewer holds — so a guest sees the result the server wrote,
+    // never a false loss from comparing `winnerId` against a Clerk id the
+    // guest does not have.
+    const verdict = viewerOutcome({
+      result: match.result,
+      winnerId: match.winnerId,
+      viewerSeat: match.viewerSeat,
+    });
+    const iWon = verdict === "win";
+    const iLost = verdict === "loss";
+    // A finished row that names no winner is a draw for both seats — never a
+    // loss.
     const isDrawResult = !iWon && !iLost;
-    const outcome = isDrawResult ? "draw" : iWon ? "win" : "loss";
+    const outcome = verdict ?? "draw";
 
     const oppSummary = isPlayer1 ? match.players?.p2 : match.players?.p1;
     const oppName = oppSummary?.displayName || (isAi ? "GRYND AI" : "Opponent");

@@ -19,6 +19,7 @@
 
 import { MATCH_STATUS, ORIENTATIONS } from "./constants";
 import type { Seat } from "./types";
+import { viewerOutcome } from "../results/viewerOutcome";
 
 /** Match states that can never change again. */
 const TERMINAL_MATCH_STATUSES = new Set<string>([
@@ -95,7 +96,14 @@ export function turnLabel({
   return `${opponentName || "Your opponent"} is deciding…`;
 }
 
-/** The viewer's outcome, from the settled `result`/`winnerId`. Never a draw. */
+/**
+ * The viewer's outcome, from the settled `result`/`winnerId`. Never a draw.
+ *
+ * DELEGATED to src/lib/results/viewerOutcome.ts — the platform's one verdict
+ * rule — so Barricade answers "who won" exactly the way every other game does:
+ * from the server's settled row, read against the seat the SERVER says the
+ * viewer holds.
+ */
 export function outcomeFor({
   result,
   winnerId,
@@ -107,12 +115,13 @@ export function outcomeFor({
   viewerSeat: Seat | null;
   userId?: string | null;
 }): "win" | "loss" | null {
-  if (result === "player1" || result === "player2") {
-    if (!viewerSeat) return null;
-    return result === viewerSeat ? "win" : "loss";
-  }
-  if (winnerId && userId) return winnerId === userId ? "win" : "loss";
-  return null;
+  const outcome = viewerOutcome({
+    result,
+    winnerId,
+    viewerSeat,
+    viewerId: userId,
+  });
+  return outcome === "draw" ? null : outcome;
 }
 
 /**

@@ -53,62 +53,33 @@ export type ScheduledGoPairing = {
  */
 export const GO_DRIFT_TOLERANCE_MS = 2_000;
 
+// ── Clock estimation ─────────────────────────────────────────────────────
+//
+// How a server instant is expressed in the device's clock — and why bridging
+// through the raw device wall clock (a stale NTP, a suspended phone, a VM) puts
+// a skewed display in front of a player who then stops dead on the number they
+// are looking at and is graded seconds away from it — lives in the SHARED
+// `lib/serverClock.ts`, so every clocked game (Precision, Keno, Tower Arena,
+// Mines, Four in a Row, Lane Rush) uses one implementation instead of its own.
+//
+// The display has to count from a SERVER instant, and the only local clock that
+// can bridge to it is the device's wall clock. A response carrying the server's
+// own `now` fixes it: the classic NTP estimate — half the round trip attributed
+// to each direction — leaves the RTT ASYMMETRY (a few ms on a normal
+// connection) instead of the device's skew (seconds). Both return null / fall
+// back when an input is unusable, which leaves the caller on the uncorrected
+// clock.
+//
+// Re-exported (rather than re-implemented) so this module's existing callers and
+// tests keep the exact same surface.
+export { estimateServerClockOffset, serverClockNow } from "../serverClock";
+
 /**
  * Pair the server's scheduled GO instant with the local clock. `localNowMs`
  * and `deviceNowMs` MUST be sampled at the same moment (adjacent statements):
  * the pairing is a difference between two clocks read in the same tick, which
  * is what makes the network delay cancel out of it.
  */
-/**
- * Estimate `deviceWallClock - serverWallClock` from ONE request/response pair.
- *
- * The display has to count from a SERVER instant, and the only local clock that
- * can bridge to it is the device's wall clock — which is regularly skewed by
- * seconds (a stale NTP, a suspended phone, a VM). Bridging through a skewed
- * device clock shifts the whole display by that skew, so a player can stop dead
- * on the number they are looking at and still be graded seconds away from the
- * target: their stop "never happened".
- *
- * A response that carries the server's own `now` fixes it. This is the classic
- * NTP estimate — half the round trip is attributed to each direction — so the
- * residual error is the RTT ASYMMETRY (a few ms on a normal connection) rather
- * than the device's skew (seconds).
- *
- * Returns null when any input is unusable (no `now` on the response, a clock
- * that jumped, etc.), which leaves the caller on the uncorrected clock.
- */
-export function estimateServerClockOffset(params: {
-  /** `Date.now()` taken immediately before the request was sent. */
-  sentAtDeviceMs: number;
-  /** `Date.now()` taken the moment the response was parsed. */
-  receivedAtDeviceMs: number;
-  /** The server's `Date.now()`, stamped when it built the response. */
-  serverNowMs: number;
-}): number | null {
-  const { sentAtDeviceMs, receivedAtDeviceMs, serverNowMs } = params;
-  if (
-    !Number.isFinite(sentAtDeviceMs) ||
-    !Number.isFinite(receivedAtDeviceMs) ||
-    !Number.isFinite(serverNowMs)
-  ) {
-    return null;
-  }
-  const rttMs = Math.max(0, receivedAtDeviceMs - sentAtDeviceMs);
-  return receivedAtDeviceMs - serverNowMs - rttMs / 2;
-}
-
-/**
- * The device's wall clock expressed in the SERVER's frame, i.e. what the
- * server would read right now. Every pairing below is fed this instead of raw
- * `Date.now()`, which is what takes the device's skew (and therefore the
- * seconds-wide gap between what the player stopped at and what the server
- * measures) out of the display.
- */
-export function serverClockNow(deviceNowMs: number, offsetMs: number): number {
-  const offset = Number.isFinite(offsetMs) ? offsetMs : 0;
-  return deviceNowMs - offset;
-}
-
 export function pairScheduledGo(params: {
   /** Server-stamped `countdownEndsAt`. */
   countdownEndsAt: number;

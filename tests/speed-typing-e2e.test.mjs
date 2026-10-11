@@ -515,9 +515,26 @@ const request = (body, { raw = false } = {}) =>
     body: raw ? body : JSON.stringify(body ?? {}),
   });
 
+/**
+ * Drive the matchmaking route the way a browser does: with a real Request.
+ *
+ * The route derives the caller's INPUT DEVICE from the request's own headers
+ * (see src/lib/speed-typing/deviceClass.ts) and pools by it, so a request with
+ * no User-Agent at all would classify every caller here as `unknown` — a
+ * class-neutral seat that takes the oldest open lobby. That is deliberate and
+ * legitimate behaviour, but it is not what this file means to exercise, so it
+ * sends the one header a browser always sends.
+ */
+const BROWSER_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36";
 const postCreateOrJoin = async () => {
   const { createJoin } = await loadRoutes();
-  const res = await createJoin.POST();
+  const res = await createJoin.POST(
+    new Request("http://localhost/api/speed-typing/create-or-join", {
+      method: "POST",
+      headers: { "user-agent": BROWSER_UA },
+    }),
+  );
   return { status: res.status, json: await res.json() };
 };
 const getMatch = async (matchId) => {
@@ -1785,7 +1802,7 @@ test("guarantee: the routes hand the store only what the client TYPED", () => {
   // The create/join route takes the caller from the session only.
   const create = code(ROUTES.createJoin);
   assert.doesNotMatch(create, /searchParams|\.json\(\)/);
-  assert.match(create, /await createOrJoin\(\{ userId \}\)/);
+  assert.match(create, /await createOrJoin\(\{ userId, deviceClass \}\)/);
   // Every participant-facing route is gated before any database work: the
   // ONLINE ones behind the account gate, the practice ones behind the practice
   // gate (age-checked for a session, guest for a signed-out visitor).

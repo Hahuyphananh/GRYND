@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { db } from "../../../../db";
 import { poolMatches } from "../../../../db/schema";
+import { normalizeStake } from "../../../../lib/games/stakes";
 
 export async function POST(req: Request) {
   try {
@@ -19,14 +20,16 @@ export async function POST(req: Request) {
         { status: 401 },
       );
     }
-    const { wager = 10 } = await req.json().catch(() => ({}));
-    // Global bet cap (must match GLOBAL_MAX_BET in src/lib/games/economy.ts).
-    if (!Number.isFinite(Number(wager)) || Number(wager) <= 0 || Number(wager) > 100000) {
-      return NextResponse.json(
-        { ok: false, message: "Wager must be between 1 and 100,000 tokens" },
-        { status: 400 },
-      );
-    }
+    // STAKES ARE RETIRED (src/lib/games/stakes.js): a practice match is free.
+    //
+    // The requested wager is normalized to 0 through the shared seam, so the row
+    // carries no stake and no range check can reject free play. This route used to
+    // validate `wager > 0` against the global bet cap (and default a missing wager
+    // to 10), so the lobby's own `{ wager: 0 }` came back as a wager-range error and
+    // the practice match never started — the one pool entry point left out of the
+    // retirement. (The message itself is retired; see tests/stakes-retired.test.mjs.)
+    const { wager } = await req.json().catch(() => ({}));
+    const stake = normalizeStake(wager);
     const firstTurnSeat = Math.random() < 0.5 ? 1 : 2;
     const [m] = await db
       .insert(poolMatches)
@@ -34,7 +37,7 @@ export async function POST(req: Request) {
         id: crypto.randomUUID(),
         player1Id: userId,
         player2Id: "AI",
-        wager: Number(wager),
+        wager: stake,
         status: "active",
         gameState: {
           ai: true,

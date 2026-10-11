@@ -99,7 +99,9 @@ export default function ChessGamePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const color = searchParams.get("color") || "white";
+  // Pre-load HINT only — see `color` below, which prefers the server's own
+  // `viewerRole` the moment the first snapshot lands.
+  const urlColor = searchParams.get("color") || "white";
   const isSpectator = searchParams.get("spectator") === "1";
 
   const focusTarget = searchParams.get("focusTarget") || "";
@@ -110,6 +112,18 @@ export default function ChessGamePage() {
   const [liveFen, setLiveFen] = useState("start");
   const [status, setStatus] = useState("Loading match...");
   const [gameData, setGameData] = useState(null);
+  // ── Which side this client is playing ─────────────────────────────────────
+  // THE SERVER'S ANSWER WINS. `?color=` is only the hint the lobby link carries;
+  // `game-state` stamps `viewerRole` ("white" | "black" | "spectator") from the
+  // verified session — guest aliases included — so a stale, hand-edited or
+  // colourless link can never decide which side this client believes it is.
+  // That belief is what turned `winnerId === myId` into a WIN or a LOSS, so
+  // getting it from the URL told the losing player they had won and the winning
+  // player they had lost.
+  const color =
+    gameData?.viewerRole === "white" || gameData?.viewerRole === "black"
+      ? gameData.viewerRole
+      : urlColor;
   const [moves, setMoves] = useState([]);
   const [moveIndex, setMoveIndex] = useState(-1);
   const [isResigning, setIsResigning] = useState(false);
@@ -1374,6 +1388,10 @@ export default function ChessGamePage() {
   function renderResult() {
     if (!showResultPopup || !gameData) return null;
 
+    // THE VIEWER'S SEAT IS THE SERVER'S: `color` resolves to `viewerRole` from
+    // this payload whenever the payload names a side (see above), so `myId` is
+    // the row's own id for the seat the server says we hold — never one chosen
+    // by a URL parameter.
     const myId =
       color === "white" ? gameData.whitePlayerId : gameData.blackPlayerId;
     const iWon = Boolean(gameData.winnerId) && gameData.winnerId === myId;

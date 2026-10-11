@@ -498,7 +498,15 @@ export default function KenoPvpMatchPage({ params }) {
   // below, but the ready banner is a separate instant (it only becomes the first
   // lit tile inside a read), so both seats could sit on "Get ready…" forever.
   // Which instant counts is `kenoPvpDueRead` (see `lib/deadlineRead.ts`).
-  useDeadlineRead(kenoPvpDueRead(match), fetchStatus);
+  //
+  // `serverNow` hands the read the page's own estimate of the server clock, so
+  // the countdown reaching 0 is what FIRES it rather than a slack added on top —
+  // the same offset the tile nudge below already times itself with. Without it
+  // the first tile still arrived, just a fixed ~400ms after the countdown ended
+  // (the reported "the countdown hits 0 and the game doesn't start").
+  useDeadlineRead(kenoPvpDueRead(match), fetchStatus, {
+    serverNow: () => Date.now() + clockOffset,
+  });
 
   // Tile-deadline nudge: the server only resolves a both-miss when it is
   // read, so without this the board can sit on an expired tile for up to a

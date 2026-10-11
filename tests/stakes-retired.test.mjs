@@ -139,6 +139,11 @@ const CONVERTED = [
   "src/app/api/hex-duel/multiplayer/create/route.ts",
   "src/app/api/tower-arena/create-lobby/route.ts",
   "src/app/api/pool/create-lobby/route.ts",
+  // The pool AI route was the LAST entry point still policing a charge: it
+  // rejected the lobby's own `{ wager: 0 }` with "Wager must be between 1 and
+  // 100,000 tokens", so "Play vs AI" could not start a practice match at all.
+  // Converting it is what puts the message under this test's sweep.
+  "src/app/api/pool/create-ai-match/route.ts",
   "src/app/api/pool/join-lobby/route.ts",
   "src/app/api/pool/resign/route.ts",
   "src/app/api/dice-flush/create/route.js",
@@ -173,6 +178,10 @@ const RETIRED_REJECTIONS = [
   /Invalid wager amount/,
   /exceeds the maximum of [\d,]+ tokens/i,
   /Wager exceeds maximum limit/,
+  // The phrase the pool AI route shipped (and nothing else could use, because it
+  // is exactly the sentence a free player is shown). Named literally so it cannot
+  // reappear anywhere under src/app/api.
+  /Wager must be between 1 and 100,000 tokens/,
 ];
 
 test("every converted entry point takes its stake from the seam", () => {

@@ -826,6 +826,20 @@ test("the client renders the 5s get-ready countdown from the server clock", () =
   assert.ok(page.includes("readyRemainingMs={readyDeadlineMs ? readyRemainingMs : null}"));
   assert.ok(waitingPanel.includes("readyRemainingMs"));
   assert.ok(waitingPanel.includes("First tile in "));
+  // …and at 0 it HANDS OFF rather than holding a finished countdown: the
+  // heading, the chip and the copy all switch to the go state, so the beat the
+  // read needs before the board exists is visibly the hand-off, not a stall.
+  assert.ok(
+    waitingPanel.includes("const go = hasCountdown && readyRemainingMs <= 0;"),
+    "the hand-off must be driven by the server-derived remaining time reaching zero",
+  );
+  assert.ok(waitingPanel.includes('{go ? "GO" : isReady ? "Get ready" : "Waiting room"}'));
+  assert.ok(waitingPanel.includes('data-testid={go ? "keno-ready-go" : "keno-ready-countdown"}'),
+    "the go state needs a stable hook");
+  assert.ok(waitingPanel.includes("First tile is lighting — tap it the instant it turns blue"));
+  // The countdown must never be the thing that starts the run: the page still
+  // fetches the snapshot, and the ready read is still armed from the deadline.
+  assert.ok(page.includes("useDeadlineRead(kenoPvpDueRead(match), fetchStatus, {"));
   // …and the payload only carries it during the ready banner.
   assert.ok(
     matchRoute.includes("match.status === MATCH_STATUS.READY ? (match.roundDeadline ?? null) : null"),

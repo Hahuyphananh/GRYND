@@ -130,8 +130,16 @@ export function usePrecisionEndPopup({
     if (!state || state.phase !== "finished") return;
     if (endPopupRef.current) return;
     if (state.winnerSeat === null) return;
-    const result = state.winnerSeat === localSeat ? "win" : "loss";
-    const opponentName = players.find((p) => p.seat !== localSeat)?.name;
+    // THE VIEWER'S SEAT IS THE SERVER'S. `state.viewerSeat` is stamped by
+    // /api/precision/get-match from the caller's verified identity (guest ids
+    // included) and carried across the match's shared socket broadcasts by
+    // usePrecisionMatchState. `localSeat` — the lobby's sessionStorage hand-off,
+    // which DEFAULTS TO SEAT 1 — is only the fallback for a payload that never
+    // named a seat; reading the verdict off it alone told a seat-2 winner, who
+    // reloaded in a fresh tab, that they had lost.
+    const mySeat = state.viewerSeat ?? localSeat;
+    const result = state.winnerSeat === mySeat ? "win" : "loss";
+    const opponentName = players.find((p) => p.seat !== mySeat)?.name;
     // Payout is SERVER-ONLY — no client-side math. We render `payout: 0`
     // while `/api/precision/finish-match` resolves and replace it with the
     // authoritative server-stamped value via the payout effect below.

@@ -23,6 +23,7 @@ import {
   SUDDEN_DEATH_BOARD_INDEX,
 } from "./constants";
 import type { BoardControl, Cell, Mark, Seat, TiebreakSummary } from "./types";
+import { viewerOutcome } from "../results/viewerOutcome";
 
 // ── Seat colours (the duotone every GRYND 1v1 match view uses) ────────────
 
@@ -426,6 +427,11 @@ export type ViewerOutcome = "win" | "loss" | "draw";
  * The viewer's outcome, read from the SETTLED row — never derived from the
  * board client-side. `result` is the server's `player1 | player2 | tie`, so
  * a conceded match (no winning line on the board) reports correctly.
+ *
+ * DELEGATED to src/lib/results/viewerOutcome.ts — the platform's one verdict
+ * rule. A row that names no winner stays a DRAW here (tie-tac-toe has no other
+ * terminal state), which is why the shared rule's `null` collapses to "draw"
+ * rather than to a loss.
  */
 export function outcomeFor({
   result,
@@ -438,12 +444,14 @@ export function outcomeFor({
   viewerSeat: Seat | null;
   userId?: string | null;
 }): ViewerOutcome {
-  if (result === RESULT.TIE) return "draw";
-  if (viewerSeat && (result === "player1" || result === "player2")) {
-    return result === viewerSeat ? "win" : "loss";
-  }
-  if (winnerId && userId) return winnerId === userId ? "win" : "loss";
-  return "draw";
+  return (
+    viewerOutcome({
+      result,
+      winnerId,
+      viewerSeat,
+      viewerId: userId,
+    }) ?? "draw"
+  );
 }
 
 /** A short label for the settled outcome, from the viewer's perspective. */

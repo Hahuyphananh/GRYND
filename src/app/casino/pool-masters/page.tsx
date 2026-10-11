@@ -4,7 +4,7 @@ import AdSenseScript from "../../../components/AdSenseScript";
 import { ogImageUrl } from "../../../lib/ogImages";
 
 const title = "Pool Masters | GRYND";
-const description = "Play Pool Masters on GRYND. A strategic 1v1 game of pool. Stake tokens, sink the 8-ball and beat your opponent.";
+const description = "Play Pool Masters on GRYND. A strategic free 1v1 game of pool. Sink the 8-ball before your opponent.";
 const image = ogImageUrl("/images/og-banner.png");
 
 // This page is the AUTHENTICATED game application, served at

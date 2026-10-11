@@ -599,7 +599,11 @@ test("deploy: there is exactly one matchmaking path, so two browsers cannot pair
   // same store function, so the Vercel route and the platform queue can never
   // produce two different pairings for the same two players.
   const route = read("src/app/api/speed-typing/create-or-join/route.ts");
-  assert.match(route, /const result = await createOrJoin\(\{ userId \}\)/);
+  assert.match(route, /const result = await createOrJoin\(\{ userId, deviceClass \}\)/);
+  // The device class comes from the request's OWN HEADERS, never from anything
+  // the caller supplies (the e2e/platform suites forbid the route reading a
+  // request payload at all).
+  assert.match(route, /deviceClassFromHeaders\(req\?\.headers\)/);
   const store = read("src/lib/speed-typing/serverStore.ts");
   assert.match(store, /export async function createOrJoin/);
   // The advisory lock makes "find an open lobby, else open one" atomic across
@@ -611,5 +615,6 @@ test("deploy: there is exactly one matchmaking path, so two browsers cannot pair
   assert.match(store, /isNull\(speedTypingMatches\.player2Id\)/);
   assert.match(store, /if \(!updated\) \{[\s\S]{0,120}?Match is no longer available/);
   // A player can never be paired with themselves.
-  assert.match(store, /if \(open\.player1Id === userId\) return \{ match: open, joined: false \}/);
+  assert.match(store, /const own = candidates\.find\(\(candidate\) => candidate\.player1Id === userId\)/);
+  assert.match(store, /if \(own\) return \{ match: own, joined: false \}/);
 });

@@ -61,6 +61,7 @@ import { applyTrophyResult } from "../trophyStore";
 import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
 import { coerceAiDifficulty } from "../aiDifficulty";
 import { aiSeatRaceAt } from "./ai";
+import { coerceDeviceClass, deviceClassColumnValue, pickLobbyFor } from "./deviceClass";
 import { PASSAGE_VERSION, passageForRow, selectPassageForSeed } from "./passages";
 import {
   coerceRaceState,
@@ -83,6 +84,7 @@ import {
 } from "./rules";
 import {
   DEFAULT_AI_DIFFICULTY,
+  DEVICE_MATCH_CANDIDATE_LIMIT,
   GAME_KEY,
   MATCH_STATUS,
   RACE_COUNTDOWN_MS,
@@ -251,14 +253,44 @@ export async function listMyWaitingMatch({ userId }: { userId: string }) {
  *
  * Returns the same row for both paired players: the quick-queue worker calls
  * this once per seat and asserts the two ids match.
+ *
+ * FAIR PAIRING BY INPUT DEVICE. A phone has no physical keyboard, so a
+ * phone-vs-computer race measures hardware instead of typing skill — the one
+ * thing this game exists to measure. So an open lobby carries the input pool of
+ * the player who created it (`player1_device_class`), and `pickLobbyFor` pairs
+ * within that pool, falling back to the other pool only once the waiting lobby
+ * has waited past DEVICE_MATCH_WIDEN_MS. A caller with no class at all (the
+ * quick-queue worker, a bare HTTP call) keeps the pre-0209 behaviour exactly:
+ * the oldest open lobby, whatever pool it is in. The class only ever chooses
+ * WHICH LOBBY the caller is handed — it is never an input to the race, the
+ * result, or the rating.
  */
-export async function createOrJoin({ userId }: { userId: string }) {
+export async function createOrJoin({
+  userId,
+  deviceClass,
+  nowMs = Date.now(),
+}: {
+  userId: string;
+  /**
+   * The caller's input pool — 'keyboard' | 'touch' — or undefined/unknown when
+   * the caller could not be classified (the quick-queue path, a bare HTTP
+   * call). It only ever NARROWS which open lobby the caller is handed; it is
+   * never part of how the race is scored.
+   */
+  deviceClass?: unknown;
+  /** Injectable clock, so the widening window is testable. */
+  nowMs?: number;
+}) {
+  const pool = coerceDeviceClass(deviceClass);
   return await db.transaction(async (tx) => {
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(${SPEED_TYPING_LOCK_NAMESPACE}, 0)`,
     );
 
-    const [open] = await tx
+    // The open lobbies, OLDEST FIRST — more than just the oldest row, because
+    // the oldest may be the wrong input pool (see `pickLobbyFor`).
+    // DEVICE_MATCH_CANDIDATE_LIMIT bounds the row-locked scan.
+    const candidates = await tx
       .select()
       .from(speedTypingMatches)
       .where(
@@ -268,26 +300,31 @@ export async function createOrJoin({ userId }: { userId: string }) {
         ),
       )
       .orderBy(sql`${speedTypingMatches.createdAt} ASC`)
-      .limit(1)
+      .limit(DEVICE_MATCH_CANDIDATE_LIMIT)
       .for("update");
 
-    if (open) {
-      // The caller's own lobby — return it rather than creating a second.
-      if (open.player1Id === userId) return { match: open, joined: false };
-      return await joinExistingMatch(tx, open.id, userId);
-    }
+    // The caller's own lobby — return it rather than creating a second. Before
+    // the pool rules, so a caller can never be seated against themselves.
+    const own = candidates.find((candidate) => candidate.player1Id === userId);
+    if (own) return { match: own, joined: false };
 
-    return await createWaitingMatch(tx, userId);
+    const lobby = pickLobbyFor({ candidates, deviceClass: pool, nowMs });
+    if (lobby) return await joinExistingMatch(tx, lobby.id, userId, pool);
+
+    return await createWaitingMatch(tx, userId, pool);
   });
 }
 
-async function createWaitingMatch(tx: any, userId: string) {
+async function createWaitingMatch(tx: any, userId: string, deviceClass: unknown) {
   const [match] = await tx
     .insert(speedTypingMatches)
     .values({
       player1Id: userId,
       status: MATCH_STATUS.WAITING,
       isAi: false,
+      // The pool of an open lobby is its CREATOR's, which is the class every
+      // later caller is matched against. NULL when unclassifiable.
+      player1DeviceClass: deviceClassColumnValue(deviceClass),
     })
     .returning();
 
@@ -304,7 +341,12 @@ async function createWaitingMatch(tx: any, userId: string) {
   return { match, joined: false };
 }
 
-async function joinExistingMatch(tx: any, candidateId: string, userId: string) {
+async function joinExistingMatch(
+  tx: any,
+  candidateId: string,
+  userId: string,
+  deviceClass: unknown,
+) {
   const [match] = await tx
     .select()
     .from(speedTypingMatches)
@@ -330,6 +372,9 @@ async function joinExistingMatch(tx: any, candidateId: string, userId: string) {
     .update(speedTypingMatches)
     .set({
       player2Id: userId,
+      // The joiner's own pool. Recorded beside the creator's so a settled match
+      // says which inputs actually raced, not just what was available.
+      player2DeviceClass: deviceClassColumnValue(deviceClass),
       status: MATCH_STATUS.PLAYING,
       startedAt: new Date(nowMs),
       ...armed,

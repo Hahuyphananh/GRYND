@@ -82,6 +82,15 @@ export function usePrecisionMatchState({
   callbacksRef.current = { onRoundResult, onReadySnapshot };
 
   // ── Snapshot application (stale-response guard) ──────────────────────
+  //
+  // THE SEAT THE SERVER NAMED FOR THIS VIEWER, REMEMBERED. `/get-match` states
+  // it (`viewerSeat`, from the gate's own verified identity), but a socket
+  // broadcast carries a SHARED per-match-room payload that cannot: it is one
+  // payload for two viewers. The seat is a constant for a match, so once the
+  // server has named it, every later snapshot keeps it — otherwise the result
+  // screen would fall back to the lobby's sessionStorage hand-off, which
+  // defaults to seat 1 and told a seat-2 winner they had lost.
+  const serverSeatRef = useRef<1 | 2 | null>(null);
   const applySnapshot = useCallback(
     (next: PrecisionState | null | undefined): boolean => {
       if (!next || next.matchId !== matchId) return false;
@@ -90,10 +99,16 @@ export function usePrecisionMatchState({
         // phase / target / timer can never roll backwards.
         return false;
       }
+      if (next.viewerSeat === 1 || next.viewerSeat === 2) {
+        serverSeatRef.current = next.viewerSeat;
+      }
+      const merged: PrecisionState = serverSeatRef.current
+        ? { ...next, viewerSeat: serverSeatRef.current }
+        : next;
       // Keep the ref in lockstep so two snapshots applied in the same tick are
       // still ordered correctly relative to each other.
-      stateRef.current = next;
-      setState(next);
+      stateRef.current = merged;
+      setState(merged);
       return true;
     },
     [matchId]

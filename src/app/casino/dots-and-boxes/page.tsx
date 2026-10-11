@@ -4,7 +4,7 @@ import AdSenseScript from "../../../components/AdSenseScript";
 import { ogImageUrl } from "../../../lib/ogImages";
 
 const title = "Dots & Boxes | GRYND";
-const description = "Play Dots & Boxes on GRYND. Stake tokens and take turns drawing lines to claim the most boxes and win the pot.";
+const description = "Play Dots & Boxes on GRYND — free 1v1. Take turns drawing lines, claim the most boxes and take the match.";
 const image = ogImageUrl("/images/og-banner.png");
 
 // This page is the AUTHENTICATED game application, served at

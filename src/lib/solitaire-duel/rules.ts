@@ -22,6 +22,7 @@
 // rendering while the server stays the sole source of truth.
 
 import { cardKey } from "./deck";
+import { viewerOutcome } from "../results/viewerOutcome";
 import {
   ACE,
   COMPLETION_DEAD_HEAT_MS,
@@ -728,12 +729,11 @@ export function outcomeFor(
   seat: Seat | null,
   result: unknown,
 ): "win" | "loss" | "draw" | null {
-  if (!seat || typeof result !== "string") return null;
-  if (result === "draw") return "draw";
-  if (result === SEAT.PLAYER1 || result === SEAT.PLAYER2) {
-    return result === seat ? "win" : "loss";
-  }
-  return null;
+  // DELEGATED to src/lib/results/viewerOutcome.ts — the platform's one verdict
+  // rule. `seat` is the seat the SERVER says the viewer holds, so a guest reads
+  // the settled result exactly as a signed-in player does.
+  if (typeof result !== "string") return null;
+  return viewerOutcome({ result, viewerSeat: seat as Seat | null });
 }
 
 // ──────────────────────────────────────────────────────────────────────────

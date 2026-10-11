@@ -74,6 +74,24 @@ test("UNO schema + migration give a guest a seat without an integer users.id", (
   const migration = read("src/db/migrations/0206_uno_guest_seat.sql");
   assert.match(migration, /ALTER COLUMN "user_id" DROP NOT NULL/);
   assert.match(migration, /ADD COLUMN IF NOT EXISTS "guest_id" varchar\(64\)/);
+
+  // The migration must be REGISTERED, not merely present: the drizzle migrator
+  // only walks `_journal.json`, so an unjournaled file never runs and the app's
+  // `uno_games.guest_id` reads/inserts 500 against a real database. This is the
+  // exact regression that made starting a Neon Flush game fail.
+  const journal = JSON.parse(read("src/db/migrations/meta/_journal.json"));
+  const entry = journal.entries.find((e) => e.tag === "0206_uno_guest_seat");
+  assert.ok(entry, "0206_uno_guest_seat must be in _journal.json or db:migrate skips it");
+  assert.equal(entry.idx, journal.entries.indexOf(entry));
+  // Its `when` must beat the previous high-water mark, or an already-migrated
+  // database (which is past 0207) would skip it on the next `db:migrate`.
+  const maxPriorWhen = Math.max(
+    ...journal.entries.filter((e) => e !== entry).map((e) => e.when),
+  );
+  assert.ok(
+    entry.when > maxPriorWhen,
+    "0206 must be the newest journal entry so a database that already ran 0207 still applies it",
+  );
 });
 
 test("UNO practice routes authorise by seat and accept guests", () => {

@@ -44,7 +44,7 @@ See `tests/barricade-platform.test.mjs` for the registration contract.
 | `src/db/migrations/0207_barricade_pvp.sql` | `barricade_matches` + `barricade_moves` (with the unique `(match_id, ply)` anti-replay index). Idempotent, no money columns. |
 | `tests/barricade-rules.test.mjs` | 50 tests: setup, movement, jumps, barricade geometry, path preservation, victory, terminal behaviour, rejection/immutability, plus a deterministic self-play fuzz cross-checked against an independent reference implementation. |
 | `tests/barricade-ai.test.mjs` | The bot: every tier answers with an action the engine accepts, within the node and clock budgets, and the tiers differ by skill. |
-| `tests/barricade-practice-ui.test.mjs` | The practice screen's contracts: the engine is the only rulebook, practice stays free (no wager/rating/network), every affordance has a hook, the groove grid is the engine's own 8×8 slot grid. |
+| `tests/barricade-practice-ui.test.mjs` | The practice screen's contracts: the engine is the only rulebook, practice stays free (no wager/rating/network), every affordance has a hook, and placement offers exactly the engine's legal slots — one button each, nothing else clickable. |
 | `tests/barricade-online-store.test.mjs` | The authoritative store, driven for real against a fake Drizzle client: authorization, turn ownership, stale versions, replayed plies, engine refusals, victory/settlement, resignation, lobby cancellation, disconnect resolution. |
 | `tests/barricade-online-ui.test.mjs` | The online surface's contracts: the transport carries only an address + version, the room vocabulary matches the realtime server, every route is gated, the migration is idempotent and money-free, practice is untouched. |
 | `tests/barricade-platform.test.mjs` | The PLATFORM registration: the catalog and lobby agree on the id, position and tags, the landing page + sitemap, presence for both labels, navigation, the Quick Queue destination, server authority, the exactly-once settlement path and practice exclusion, the rated/trophy registration, and the no-economy guarantees. |
@@ -177,18 +177,28 @@ the bot is purple. Every action — the human's click and the bot's decision ali
 — goes through `applyAction`, so an illegal action is refused by the engine, not
 by the UI.
 
-**The board renders, it never decides.** `BarricadeBoard` takes the state, the
-engine's own `legalMoves` list and the engine's cleared-groove list as props. It
-highlights exactly the squares the engine offered, marks each groove with the
-engine's verdict (`unknown` while the post-paint legality pass is still running),
-and reports clicks as intent (`onMove` / `onPlaceWall`). The page then asks
-`classifyWall` for a preview verdict and applies the action through `applyAction`
-— the engine's rejection message is what the player reads.
+**The board renders, it never decides.** `BarricadeBoard` takes the state and the
+engine's own `legalMoves` / `legalWalls` output as props, highlights exactly the
+squares and grooves the engine offered, and reports clicks as intent (`onMove` /
+`onPlaceWall`). The page still re-checks a placement with `classifyWall` before
+applying it through `applyAction` — the engine's rejection message is what the
+player reads.
 
+* Barricade placement: there is nothing to switch and nothing to aim. The board
+  draws EVERY barricade the seat on turn may legally place as its own quiet
+  dashed slot on the groove it would occupy, and clicking one places exactly
+  that barricade. The menu is `legalWalls`, so an illegal position — including
+  one that would seal a pawn in — is never on the board to click, and there is no
+  ghost, no preview verdict and no full-board legality sweep in the UI at all.
+  Each slot is a real `<button>`, so Tab reaches them in the engine's own order
+  and Enter/Space places one, with no separate keyboard ghost to keep in sync.
+  The slots are deliberately quiet (a dashed hairline, no glow) because a full
+  placement menu puts many of them on the board at once and none of them is a
+  decision yet — the click is.
 * Geometry: one 17-track CSS grid (9 squares + the 8 grooves between them per
-  axis), so a barricade is drawn — and clicked — IN the groove it occupies rather
-  than inside a cell. Row 0 (player1's baseline) is drawn at the bottom, so each
-  pawn races towards the far side of the screen. Cell and groove sizes are fluid
+  axis), so a barricade is drawn IN the groove it occupies rather than inside a
+  cell. Row 0 (player1's baseline) is drawn at the bottom, so each pawn races
+  towards the far side of the screen. Cell and groove sizes are fluid
   (`clamp()`), with a tighter set below 400px.
 * Turn loop: the board stops accepting input while the bot thinks; the bot's
   answer lands after a short visible beat (`AI_THINK_DELAY_MS`), and the effect is
@@ -197,9 +207,8 @@ and reports clicks as intent (`onMove` / `onPlaceWall`). The page then asks
   whose turn it is, the active player's goal baseline, the last move, the session
   tally, win/defeat, Restart and Back-to-lobby. A wrong or illegal action is
   explained in a live region instead of being swallowed.
-* The full legality pass over all 64 grooves costs one breadth-first search per
-  candidate, so it runs after paint in a zero-delay timer; until it lands the
-  grooves are drawn neutral and a click is still validated by the engine.
+* Controls sit BESIDE the board (the same two-column layout the online match view
+  uses), not under it.
 
 **The bot** (`src/lib/barricade/ai.ts`) reads the same `legalMoves`/`legalWalls`
 menu the human does and is bounded twice — by node budget (`AI_MAX_NODES`) and by
@@ -376,10 +385,11 @@ reason, and every row the run created is deleted again. 33/33 checks pass.
 
 `npm run verify:barricade` plays the real page in a real browser
 (`qa/barricade-practice-check.mjs`, Playwright): it plays a COMPLETE match at
-Easy, Normal and Hard, checks that an illegal tap changes nothing, that a legal
-barricade previews and is charged to the reserve, that a groove the engine
-refuses (built by covering a whole groove until only the sealing slot is left)
-previews as invalid and places nothing, that Restart and the result screen's
+Easy, Normal and Hard, checks that an illegal tap changes nothing, that an offered
+slot is placed in one click and charged to the reserve, that the position the
+engine refuses (built by covering a whole groove until only the sealing slot is
+left) is simply absent from the menu and that clicking the bare groove places
+nothing, that Restart and the result screen's
 "New game" deal fresh boards, that the result overlay reports the win or the
 defeat it should, and that the board fits 1280×800 plus 390×844 and 320×568
 phones with a placeable-by-tap barricade. It re-centres the board before every

@@ -16,8 +16,18 @@
 // The Ready button is LOCAL (the user's choice): Keno has no server-side
 // ready flag — the server lights the first tile when its own ready window
 // elapses — so readying up shows the player's own state and nothing else.
+//
+// ── The countdown's zero is a HAND-OFF, not a wait ───────────────────────
+// Lighting the first tile is a transition the STORE performs, and only a read
+// performs it, so there is always a beat between the countdown reaching 0 and
+// the board existing. That beat is the read's, not the player's — and a panel
+// still saying "Get ready" through it is what reads as the game not starting.
+// So at 0 the panel switches to its `go` state: the heading becomes "GO", the
+// timer chip becomes the go banner, and the copy tells the player what to watch
+// for. The countdown is derived from the SERVER-stamped deadline, so this
+// happens on the same instant on both seats.
 
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import FrameAvatar from "../FrameAvatar";
 import { cosmeticEffectClass } from "../../lib/profileCosmetics";
 
@@ -122,6 +132,7 @@ export default function KenoWaitingPanel({
   /** True while the cancel/leave request is in flight. */
   cancelling = false,
 }) {
+  const reduceMotion = useReducedMotion();
   const isReady = state === "ready";
   const stake = Number(stakeAmount) || 0;
   const seated = isReady; // both seats are occupied exactly when ready
@@ -132,6 +143,10 @@ export default function KenoWaitingPanel({
   const countdownSec = hasCountdown
     ? Math.max(0, Math.ceil(readyRemainingMs / 1000))
     : 0;
+  // The countdown is spent. The tile itself is the server's to light, so this
+  // is where the panel stops counting and hands over instead of holding a
+  // finished countdown on screen until the read lands.
+  const go = hasCountdown && readyRemainingMs <= 0;
 
   const subtitle = isReady
     ? isAi
@@ -151,33 +166,55 @@ export default function KenoWaitingPanel({
       }`}
       role="status"
       aria-live="polite"
+      data-ready-state={go ? "go" : isReady ? "ready" : "waiting"}
     >
       <p className="text-[10px] uppercase tracking-[0.35em] text-cyan-300/80">
         Match #{String(matchId ?? "").slice(0, 6)}
       </p>
-      <h2 className="mt-1 text-2xl font-black text-[#7cefff] sm:text-3xl">
-        {isReady ? "Get ready" : "Waiting room"}
+      <h2 className="mt-1 text-2xl font-black text-[#7cefff] sm:text-3xl" data-testid="keno-ready-heading">
+        {go ? "GO" : isReady ? "Get ready" : "Waiting room"}
       </h2>
       <p className="mt-1 text-sm text-cyan-100/90">{subtitle}</p>
 
       {hasCountdown && (
-        <div
-          className="mt-4 flex items-center justify-center gap-3 rounded-xl border border-[#facc15]/40 bg-[#facc15]/10 px-4 py-3"
-          role="timer"
-          aria-live="off"
+        <motion.div
+          // Re-mounting on the hand-off is what makes it VISIBLE: the chip
+          // animates in as the GO banner rather than mutating in place.
+          key={go ? "go" : "countdown"}
+          data-testid={go ? "keno-ready-go" : "keno-ready-countdown"}
+          initial={{ opacity: 0, scale: go ? 0.92 : 1 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: reduceMotion ? 0 : 0.18, ease: "easeOut" }}
+          className={`mt-4 flex items-center justify-center gap-3 rounded-xl border px-4 py-3 ${
+            go
+              ? "border-[#00ffa6]/60 bg-[#00ffa6]/10"
+              : "border-[#facc15]/40 bg-[#facc15]/10"
+          }`}
+          role={go ? "status" : "timer"}
+          aria-live={go ? "polite" : "off"}
         >
           <span
-            className="text-3xl font-black leading-none tabular-nums text-[#ffe98a] sm:text-4xl"
-            aria-label={`${countdownSec} seconds until the first tile`}
+            className={`text-3xl font-black leading-none tabular-nums sm:text-4xl ${
+              go ? "text-[#7dffcf]" : "text-[#ffe98a]"
+            }`}
+            aria-label={
+              go
+                ? "Go — the first tile is lighting"
+                : `${countdownSec} seconds until the first tile`
+            }
           >
-            {countdownSec}s
+            {go ? "GO" : `${countdownSec}s`}
           </span>
-          <span className="text-left text-[11px] font-semibold uppercase leading-tight tracking-wider text-[#ffe98a]/80">
-            {countdownSec > 0
-              ? `First tile in ${countdownSec} second${countdownSec === 1 ? "" : "s"}`
-              : "First tile lighting now…"}
+          <span
+            className={`text-left text-[11px] font-semibold uppercase leading-tight tracking-wider ${
+              go ? "text-[#7dffcf]/80" : "text-[#ffe98a]/80"
+            }`}
+          >
+            {go
+              ? "First tile is lighting — tap it the instant it turns blue"
+              : `First tile in ${countdownSec} second${countdownSec === 1 ? "" : "s"}`}
           </span>
-        </div>
+        </motion.div>
       )}
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2">

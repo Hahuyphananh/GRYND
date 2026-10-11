@@ -146,6 +146,10 @@ test("boundary: the client-safe engine imports only pure helpers", () => {
     /from\s+"\.\/deck"/,
     /from\s+"\.\/rules"/,
     /from\s+"\.\.\/physics2d\/deterministic"/,
+    // The platform's ONE seat-based verdict rule. Pure arithmetic over the
+    // server's own `result`/`viewerSeat` — no database, no socket, no React —
+    // which is exactly what makes it safe for a client component to import.
+    /from\s+"\.\.\/results\/viewerOutcome"/,
   ];
   for (const path of CLIENT_SAFE) {
     const specifiers = [...code(path).matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1]);

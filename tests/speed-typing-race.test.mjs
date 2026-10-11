@@ -70,7 +70,15 @@ import {
   SEAT,
 } from "../src/lib/speed-typing/constants.ts";
 
-const read = (rel) => fs.readFileSync(rel, "utf8");
+/**
+ * Source with line endings normalised to LF.
+ *
+ * Several assertions in this file match multi-line patterns (`"tx\n      .update"`)
+ * that a CRLF checkout (core.autocrlf=true on Windows) would never contain, so
+ * the test would fail for a reason unrelated to what it guards. Normalising here
+ * is the same thing the headless suites do in their `strip` helper.
+ */
+const read = (rel) => fs.readFileSync(rel, "utf8").replace(/\r\n/g, "\n");
 const code = (rel) =>
   read(rel)
     .replace(/\/\*[\s\S]*?\*\//g, "")

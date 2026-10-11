@@ -39,6 +39,7 @@ import {
 } from "../../../../../hooks/useMatchSync";
 import { fourInARowDueRead } from "../../../../../lib/deadlineRead";
 import { useDeadlineRead } from "../../../../../hooks/useDeadlineRead";
+import { useServerClockEstimate } from "../../../../../hooks/useServerClockEstimate";
 import {
   IconTarget,
   IconEye,
@@ -213,6 +214,10 @@ export default function ConnectFourGamePage() {
     return { distance, seconds };
   };
 
+  // The page's estimate of the server's clock (null until sampled), for timing
+  // the deadline read below against the server's own instants.
+  const serverNowEstimate = useServerClockEstimate();
+
   const fetchState = async () => {
     const res = await fetch(`/api/four-in-a-row/game-state?gameId=${gameId}`, {
       cache: "no-store",
@@ -377,7 +382,13 @@ export default function ConnectFourGamePage() {
   // the match never started — and a stalling opponent was never timed out.
   // ONE bounded read per pending instant, cleared the moment it is gone; which
   // instant counts is `fourInARowDueRead` (see `lib/deadlineRead.ts`).
-  useDeadlineRead(fourInARowDueRead(game), fetchState);
+  // `serverNow` is the page's own estimate of the server's clock, so the read
+  // fires ON the stamped instant rather than a skew-covering slack past it — the
+  // ready countdown ending IS the read. It answers null until the sample lands,
+  // and the hook then keeps its full slack rather than trusting the device clock.
+  useDeadlineRead(fourInARowDueRead(game), fetchState, {
+    serverNow: serverNowEstimate,
+  });
 
   useEffect(() => {
     if (!socket) return;

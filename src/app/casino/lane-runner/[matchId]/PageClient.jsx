@@ -40,9 +40,13 @@ import Footer from "../../../../components/Footer";
 import { useSocket } from "../../../../context/SocketProvider";
 import {
   useMatchSync,
-} from "../../../../hooks/useMatchSync";
-import { laneRushDueRead } from "../../../../lib/deadlineRead";
+} from "../../../../hooks/useMatchSync";import {
+  laneRushDueRead
+} from "../../../../lib/deadlineRead";
+// The platform's ONE seat-based verdict (src/lib/results/viewerOutcome.ts).
+import { viewerOutcome } from "../../../../lib/results/viewerOutcome";
 import { useDeadlineRead } from "../../../../hooks/useDeadlineRead";
+import { useServerClockEstimate } from "../../../../hooks/useServerClockEstimate";
 import {
   LANE_RUSH_DUEL_MATCH_UPDATED,
   laneRushDuelMatchRoom,
@@ -748,6 +752,18 @@ export default function LaneRushDuelMatchPage({ params }) {
   // clientNow at the moment the last payload landed). The 15s window is
   // set by the server, so the countdown is measured on the server clock.
   const [clockOffsetMs, setClockOffsetMs] = useState(0);
+  // A fallback source for the SAME estimate, for the window before this page's
+  // own payload has carried a `serverNow` (the very first render, a reconnect).
+  // `clockOffsetMs` stays authoritative once it lands: it is re-estimated from
+  // every sync, whereas this is a single sample.
+  const sampledServerNow = useServerClockEstimate();
+  const clockOffsetRef = useRef(0);
+  clockOffsetRef.current = clockOffsetMs;
+  // Prefer the live payload estimate; fall back to the standalone sample.
+  const deadlineServerNow = () =>
+    clockOffsetRef.current !== 0
+      ? Date.now() + clockOffsetRef.current
+      : sampledServerNow();
   const [syncFailures, setSyncFailures] = useState(0);
   // The one-off jump animation for a seat, keyed by a monotonic id. It is
   // driven ONLY by a newly-resolved server action (see the audio effects).
@@ -872,7 +888,12 @@ export default function LaneRushDuelMatchPage({ params }) {
   // advances inside `fetchMatchWithAutoResolve` (`advanceFromReady`), so both
   // boards could sit on "Get ready…" and the duel never began. Which instant
   // counts is `laneRushDueRead` (see `lib/deadlineRead.ts`).
-  useDeadlineRead(laneRushDueRead(match), fetchStatus);
+  // `serverNow` hands the read the page's own estimate of the server clock, so
+  // the ready countdown reaching 0 is what FIRES it rather than a slack added on
+  // top — the same offset the tile-window nudge below already times itself with.
+  useDeadlineRead(laneRushDueRead(match), fetchStatus, {
+    serverNow: deadlineServerNow,
+  });
 
   useEffect(() => {
     if (!socket || !matchId) return;
@@ -1392,9 +1413,26 @@ export default function LaneRushDuelMatchPage({ params }) {
   }, [matchId, posthog, resigning, socket, fetchStatus]);
 
   // ── Result ───────────────────────────────────────────────────────
-  const wonMatch = finished && match?.winnerId === user?.id;
-  const drawMatch = finished && match?.result === "draw";
-  const lostMatch = finished && match?.winnerId && match.winnerId !== user?.id;
+  // THE VERDICT IS THE SERVER'S, READ FROM THE VIEWER'S SEAT. `result` is
+  // settled from the winner SEAT, so it is compared against the seat the
+  // snapshot names for the viewer (`viewerIsPlayer1`) — never against Clerk's
+  // id. A signed-out visitor has no Clerk id at all, so `winnerId === user?.id`
+  // reported a LOSS to a free-play guest who had just won; the id comparison
+  // survives only inside the shared helper, as the fallback for a row that
+  // names a winner without a result.
+  const verdict = finished
+    ? viewerOutcome({
+        result: match?.result,
+        winnerId: match?.winnerId,
+        viewerSeat: match?.viewerIsPlayer1 ? "player1" : "player2",
+      })
+    : null;
+  // A finished row that names no winner carries no verdict for anyone; the
+  // honest reading is a draw, and never a loss.
+  const outcome = verdict ?? "draw";
+  const wonMatch = finished && outcome === "win";
+  const lostMatch = finished && outcome === "loss";
+  const drawMatch = finished && outcome === "draw";
   const resignedEnd = wasResigned(match?.actions);
   const durationSeconds = useMemo(() => {
     if (!match?.startedAt || !match?.endedAt) return null;
@@ -1418,7 +1456,7 @@ export default function LaneRushDuelMatchPage({ params }) {
 
   const resultScreenProps = finished
     ? {
-        outcome: drawMatch ? "draw" : wonMatch ? "win" : "loss",
+        outcome,
         headline: drawMatch
           ? "Neither player crossed — draw"
           : wonMatch

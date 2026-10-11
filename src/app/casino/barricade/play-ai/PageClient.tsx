@@ -21,9 +21,6 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   IconArrowLeft,
-  IconArrowsHorizontal,
-  IconArrowsVertical,
-  IconBallpen,
   IconHelpCircle,
   IconPlayerPlay,
   IconRefresh,
@@ -37,10 +34,10 @@ import FrameAvatar from "../../../../components/FrameAvatar";
 import GameSessionHost from "../../../../components/GameSessionHost";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import AiDifficultyPicker from "../../../../components/lobby/AiDifficultyPicker";
-import BarricadeBoard, { type BarricadePreview } from "../../../../components/barricade/BarricadeBoard";
+import BarricadeBoard from "../../../../components/barricade/BarricadeBoard";
 import useMySeatIdentity from "../../../../hooks/useMySeatIdentity";
 import { BARRICADE_TIER_HINTS, chooseAiAction } from "../../../../lib/barricade/ai";
-import { MOVE_KINDS, ORIENTATIONS } from "../../../../lib/barricade/constants";
+import { MOVE_KINDS } from "../../../../lib/barricade/constants";
 import {
   BarricadeRuleError,
   applyAction,
@@ -50,13 +47,11 @@ import {
   isMatchFinished,
   legalMoves,
   legalWalls,
-  wallKey,
 } from "../../../../lib/barricade/rules";
 import type {
   BarricadeAction,
   BarricadeState,
   MoveKind,
-  Orientation,
   Position,
   Seat,
   WallPlacement,
@@ -105,10 +100,6 @@ export default function BarricadePracticePage() {
   const [difficulty, setDifficulty] = useState<AiDifficulty>(() =>
     readStoredAiDifficulty("barricade"),
   );
-  const [wallMode, setWallMode] = useState(false);
-  const [orientation, setOrientation] = useState<Orientation>(ORIENTATIONS[0]);
-  const [hovered, setHovered] = useState<WallPlacement | null>(null);
-  const [legalWallKeys, setLegalWallKeys] = useState<ReadonlySet<string> | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [aiThinking, setAiThinking] = useState(false);
   const [score, setScore] = useState({ wins: 0, losses: 0 });
@@ -124,45 +115,21 @@ export default function BarricadePracticePage() {
   // the bot is answering).
   const moves = useMemo(() => legalMoves(state, state.turn), [state]);
 
-  const preview: BarricadePreview | null = useMemo(() => {
-    if (!hovered) return null;
-    // The engine answers "could this barricade be placed?" — the UI only wraps
-    // the verdict for display.
-    const verdict = classifyWall(state, HUMAN_SEAT, hovered);
-    if (verdict.ok === false) return { wall: hovered, ok: false, message: verdict.message };
-    return { wall: hovered, ok: true, message: "Tap to place this barricade." };
-  }, [hovered, state]);
-
-  // The full legality pass over every groove costs a breadth-first search per
-  // candidate, so it is computed AFTER paint (in a zero-delay timer) instead of
-  // blocking the render. Until it lands the slots are drawn neutral; a click is
-  // still validated by the engine, so nothing can slip through.
-  useEffect(() => {
-    if (!wallMode || !canPlay) {
-      setLegalWallKeys(null);
-      return undefined;
-    }
-    setLegalWallKeys(null);
-    let cancelled = false;
-    const handle = setTimeout(() => {
-      if (cancelled) return;
-      setLegalWallKeys(new Set(legalWalls(state, HUMAN_SEAT).map((action) => wallKey(action.wall))));
-    }, 0);
-    return () => {
-      cancelled = true;
-      clearTimeout(handle);
-    };
-  }, [wallMode, canPlay, state]);
+  // THE PLACEMENT MENU IS THE ENGINE'S OWN. `legalWalls` is the same generator
+  // the store validates against, so the board offers exactly the barricades that
+  // are legal right now — nothing to aim at, nothing to explain away. It is
+  // empty whenever it is not the viewer's turn or the reserve is spent.
+  const wallSlots: WallPlacement[] = useMemo(
+    () => (canPlay ? legalWalls(state, HUMAN_SEAT).map((action) => action.wall) : []),
+    [state, canPlay],
+  );
 
   const resetGame = useCallback((announce = true) => {
     epochRef.current += 1;
     resultSoundedRef.current = null;
     setState(createInitialState());
-    setWallMode(false);
-    setHovered(null);
     setNotice(null);
     setAiThinking(false);
-    setLegalWallKeys(null);
     if (announce) playBarricadeNewGame();
   }, []);
 
@@ -244,10 +211,10 @@ export default function BarricadePracticePage() {
 
   const handleMove = useCallback(
     (to: Position) => {
-      if (!canPlay || wallMode) return;
+      if (!canPlay) return;
       play({ type: "move", to });
     },
-    [canPlay, wallMode, play],
+    [canPlay, play],
   );
 
   const handlePlaceWall = useCallback(
@@ -261,7 +228,7 @@ export default function BarricadePracticePage() {
         playBarricadeReject();
         return;
       }
-      if (play({ type: "wall", wall })) setHovered(null);
+      play({ type: "wall", wall });
     },
     [canPlay, play, state],
   );
@@ -281,12 +248,9 @@ export default function BarricadePracticePage() {
   const statusText = matchOver
     ? state.winner === HUMAN_SEAT
       ? "You reached the far side. Match won!"
-      : "The bot reached your baseline first. Match lost."
-    : aiThinking
+      : "The bot reached your baseline first. Match lost."      : aiThinking
       ? "The bot is thinking…"
-      : wallMode
-        ? "Your turn — pick a groove for your barricade."
-        : "Your turn — tap a highlighted square to move, or switch to barricades.";
+      : "Your turn — tap a highlighted square to move, or a highlighted gap to place a barricade.";
 
   const seatChip = (seat: Seat, label: string, walls: number, active: boolean) => (
     <div
@@ -336,14 +300,10 @@ export default function BarricadePracticePage() {
         mySeat={HUMAN_SEAT}
         activeSeat={state.turn}
         moves={moves}
-        wallMode={wallMode && canPlay}
-        orientation={orientation}
-        legalWallKeys={legalWallKeys}
-        preview={preview}
+        wallSlots={wallSlots}
         disabled={!canPlay}
         onMove={handleMove}
         onPlaceWall={handlePlaceWall}
-        onHoverWall={setHovered}
       />
       <p className="barricade-goal-bar is-theirs" data-testid="barricade-goal-theirs">
         <IconRobot size={12} aria-hidden="true" /> The bot&apos;s goal — its own baseline (row{" "}
@@ -354,51 +314,12 @@ export default function BarricadePracticePage() {
 
   const controlsNode = (
     <div className="barricade-controls">
-      <div className="flex gap-2" role="group" aria-label="Turn action">
-        <button
-          type="button"
-          className={`barricade-mode-button ${!wallMode ? "is-active" : ""}`}
-          aria-pressed={!wallMode}
-          data-testid="barricade-mode-move"
-          onClick={() => {
-            setWallMode(false);
-            setHovered(null);
-          }}
-        >
-          <IconBallpen size={16} aria-hidden="true" /> Move
-        </button>
-        <button
-          type="button"
-          className={`barricade-mode-button ${wallMode ? "is-active" : ""}`}
-          aria-pressed={wallMode}
-          data-testid="barricade-mode-wall"
-          disabled={!canPlay || myWalls <= 0}
-          onClick={() => setWallMode(true)}
-        >
-          <IconWall size={16} aria-hidden="true" /> Barricade
-        </button>
-      </div>
-
-      <div className="flex gap-2" role="group" aria-label="Barricade orientation">
-        <button
-          type="button"
-          className={`barricade-orientation-button ${orientation === ORIENTATIONS[0] ? "is-active" : ""}`}
-          aria-pressed={orientation === ORIENTATIONS[0]}
-          data-testid="barricade-orientation-horizontal"
-          onClick={() => setOrientation(ORIENTATIONS[0])}
-        >
-          <IconArrowsHorizontal size={16} aria-hidden="true" /> Horizontal
-        </button>
-        <button
-          type="button"
-          className={`barricade-orientation-button ${orientation === ORIENTATIONS[1] ? "is-active" : ""}`}
-          aria-pressed={orientation === ORIENTATIONS[1]}
-          data-testid="barricade-orientation-vertical"
-          onClick={() => setOrientation(ORIENTATIONS[1])}
-        >
-          <IconArrowsVertical size={16} aria-hidden="true" /> Vertical
-        </button>
-      </div>
+      {canPlay ? (
+        <p className="barricade-hint" data-testid="barricade-hint">
+          Every barricade you may place is already drawn on the board as a dashed gap — tap one
+          to put it there. Tap a highlighted square to move instead. No mode to pick.
+        </p>
+      ) : null}
 
       <div className="flex gap-2">
         <button
@@ -464,7 +385,7 @@ export default function BarricadePracticePage() {
   return (
     <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath={LOBBY_PATH} />
-      <div className="mx-auto mt-2 max-w-3xl">
+      <div className="mx-auto mt-2 max-w-5xl">
         <GameSessionHost autoStart={!matchOver} autoStop={matchOver} gameLabel="barricade-ai">
           <motion.h1
             initial={reduceMotion ? false : { opacity: 0, y: -8 }}
@@ -494,18 +415,27 @@ export default function BarricadePracticePage() {
             {statusText}
           </p>
 
-          {boardNode}
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="rounded-2xl border border-cyan-400/20 bg-black/40 p-2 shadow-[0_0_30px_rgba(34,211,238,0.10)] sm:p-4">
+              {boardNode}
+            </div>
 
-          <p
-            className={`barricade-notice ${notice ? "is-visible" : ""}`}
-            role="status"
-            aria-live="polite"
-            data-testid="barricade-notice"
-          >
-            {wallMode && canPlay ? (preview ? preview.message : (notice ?? "Pick a groove for your barricade.")) : (notice ?? "")}
-          </p>
+            {/* Controls sit BESIDE the board, not under it. */}
+            <div className="flex flex-col gap-3">
+              {/* The engine's refusal (or nothing). A legal placement has nothing to
+                  explain any more — the board only ever offers legal ones. */}
+              <p
+                className={`barricade-notice ${notice ? "is-visible" : ""}`}
+                role="status"
+                aria-live="polite"
+                data-testid="barricade-notice"
+              >
+                {notice ?? ""}
+              </p>
 
-          {controlsNode}
+              {controlsNode}
+            </div>
+          </div>
 
           <AiDifficultyPicker
             gameKey="barricade"

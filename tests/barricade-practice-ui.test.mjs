@@ -64,12 +64,10 @@ test("barricade ui: the page drives the engine and nothing else", () => {
   for (const symbol of [
     "createInitialState",
     "legalMoves",
-    "legalWalls",
     "classifyWall",
     "applyAction",
     "isMatchFinished",
     "goalRowFor",
-    "wallKey",
     "chooseAiAction",
   ]) {
     assert.ok(pageCode.includes(symbol), `the page must use the engine's ${symbol}`);
@@ -174,10 +172,7 @@ test("barricade ui: every required affordance has a stable hook", () => {
     "barricade-wall",
     "barricade-status",
     "barricade-notice",
-    "barricade-mode-move",
-    "barricade-mode-wall",
-    "barricade-orientation-horizontal",
-    "barricade-orientation-vertical",
+    "barricade-hint",
     "barricade-restart",
     "barricade-lobby",
     "barricade-result",
@@ -207,23 +202,21 @@ test("barricade ui: pawns, barricades, goal rows and turn order are drawn from t
   assert.ok(pageCode.includes("state.wallsRemaining"), "the counters come from the state");
 });
 
-test("barricade ui: the groove controls cover the 8×8 slot grid and never a ninth", () => {
-  // A barricade sits IN a groove. There are BOARD_SIZE - 1 = 8 of those per
-  // axis, so a ninth slot would address a groove past the far edge — a control
-  // the engine can only ever reject, and one that widens the grid with an
-  // implicit track. The board must take the count from the engine.
-  assert.ok(boardCode.includes("WALL_SLOTS"), "the groove count comes from the engine");
-  assert.ok(
-    boardCode.includes("Array.from({ length: WALL_SLOTS }"),
-    "the groove grid stops at WALL_SLOTS",
-  );
-  assert.equal(
-    /Array\.from\(\{ length: BOARD_SIZE \}\)[\s\S]{0,120}slot/.test(
-      boardCode.slice(boardCode.indexOf("wallMode")),
-    ),
-    false,
-    "grooves must not be generated from BOARD_SIZE",
-  );
+test("barricade ui: every legal placement is offered, and nothing else is", () => {
+  // A barricade is placed by CHOOSING ONE OF THE ENGINE'S OWN SLOTS. The board
+  // receives `legalWalls` output as a prop and draws one button per entry, so
+  // there is no ghost, no hover classification and no orientation to pick: a
+  // position the engine would refuse never exists on the board to click.
+  assert.ok(pageCode.includes("legalWalls(state, HUMAN_SEAT)"), "the menu is the engine's legalWalls");
+  assert.ok(boardCode.includes("wallSlots.map"), "one slot per legal placement");
+  assert.ok(boardCode.includes('data-testid="barricade-slot"'), "slots have a stable hook");
+  assert.ok(boardCode.includes("wallSlots: readonly WallPlacement[]"), "slots arrive as a prop");
+  assert.ok(boardCode.includes("data-orientation={wall.orientation}"), "each slot knows its axis");
+  // No aim-the-pointer machinery survives anywhere.
+  for (const gone of ["barricade-ghost", "is-preview-ok", "is-preview-invalid", "wallMode"]) {
+    assert.equal(boardCode.includes(gone), false, `the ghost/aim model is gone (${gone})`);
+    assert.equal(pageCode.includes(gone), false, `the ghost/aim model is gone (${gone})`);
+  }
 });
 
 test("barricade ui: the board is a 17-track grid and stays phone-sized", () => {
@@ -245,33 +238,38 @@ test("barricade ui: the board is a 17-track grid and stays phone-sized", () => {
   assert.ok(mobileBlock.includes(".barricade-board"));
   assert.ok(mobileBlock.includes("--bc-cell"));
 
-  assert.ok(globals.includes(".barricade-slot.is-preview-invalid"), "an invalid barricade is visible");
-  assert.ok(globals.includes(".barricade-slot.is-preview-ok"));
+  assert.ok(globals.includes(".barricade-slot"), "every legal placement is drawn as a slot");
+  assert.ok(globals.includes("border: 1px dashed"), "a slot reads as a groove, not a placed barricade");
   assert.ok(globals.includes(".barricade-square.is-legal"));
 });
 
 test("barricade ui: keyboard and screen-reader support", () => {
   assert.ok(pageCode.includes('role="status"') && pageCode.includes("aria-live"));
-  assert.ok(pageCode.includes("aria-pressed={!wallMode}") && pageCode.includes("aria-pressed={wallMode}"));
-  assert.ok(pageCode.includes("aria-pressed={orientation ==="));
-  assert.ok(pageCode.includes('aria-label="Turn action"'));
-  assert.ok(pageCode.includes('aria-label="Barricade orientation"'));
   assert.ok(boardCode.includes("aria-label={squareLabel("), "squares are labelled");
-  assert.ok(boardCode.includes("aria-label={wallLabel("), "grooves are labelled");
-  assert.ok(boardCode.includes("tabIndex="), "playable squares are reachable by keyboard");
+  assert.ok(boardCode.includes("aria-label={slotLabel("), "every placement slot is labelled");
+  assert.ok(boardCode.includes("aria-label={wallLabel("), "placed barricades are labelled");
+  assert.ok(boardCode.includes("tabIndex="), "interactive squares are reachable by keyboard");
   assert.ok(boardCode.includes("disabled={disabled}"), "input is stopped while the bot thinks");
+  // Slots are real <button>s, so Tab reaches them in the engine's own order and
+  // Enter/Space places one — there is no separate keyboard ghost to keep in sync
+  // and no mode button to toggle first.
+  assert.ok(boardCode.includes("<button"), "every affordance is a button");
+  assert.equal(boardCode.includes("onKeyDown"), false, "no bespoke keyboard ghost remains");
+  for (const gone of ['aria-label="Barricade orientation"', "aria-pressed"]) {
+    assert.equal(pageCode.includes(gone), false, `no mode/orientation switch remains (${gone})`);
+  }
 });
 
-test("barricade ui: the wall preview and the refusal notice come from the engine's verdict", () => {
-  assert.ok(pageCode.includes("classifyWall(state, HUMAN_SEAT, hovered)"));
+test("barricade ui: a refused placement is explained by the engine, never applied", () => {
+  // The board only ever offers legal slots, but the page still re-checks before
+  // applying — defence in depth for a stale render — and shows the engine's own
+  // message rather than inventing one.
   assert.ok(pageCode.includes("classifyWall(state, HUMAN_SEAT, wall)"));
   assert.ok(pageCode.includes("verdict.ok === false"));
   assert.ok(pageCode.includes("setNotice(verdict.message)"), "the engine's explanation is what the player sees");
-  assert.ok(boardCode.includes("is-preview-ok") && boardCode.includes("is-preview-invalid"));
-  // The affordance list is the engine's own generator, computed off the render
-  // path so the full legality pass cannot stall a tap.
-  assert.ok(pageCode.includes("legalWalls(state, HUMAN_SEAT)"));
-  assert.ok(pageCode.includes("setTimeout("));
+  // Every applied action goes through the engine's validator, not around it.
+  assert.ok(pageCode.includes("applyAction(state, HUMAN_SEAT, action)"));
+  assert.equal(pageCode.includes("state.walls = "), false, "the page never edits the position itself");
 });
 
 test("barricade ui: the bot is bounded, tiered and honest about it", () => {

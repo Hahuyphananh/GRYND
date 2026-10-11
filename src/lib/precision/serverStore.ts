@@ -432,11 +432,32 @@ function applyDueTransitions(
     outcome.revealed = true;
   }
 
+  // ── When the bot's stop becomes due ───────────────────────────────────
+  //
+  // The bot's stop instant is derived from the revealed target ALONE (see the
+  // reveal above), so it is already known the moment the round opens: applying
+  // it early can never change its graded time, only WHEN the players are told
+  // the round is over. Waiting for its deadline therefore bought nothing and
+  // cost real time — a human who stopped short of the bot's target watched the
+  // bot's rocket fly on for up to the rest of the round before the result
+  // appeared (reported as "when I click stop, the AI is still in flight and the
+  // results show with a delay").
+  //
+  // So this is due for two different reasons:
+  //   * the stored instant has arrived (unchanged — the timer the realtime
+  //     server's scheduler owns), or
+  //   * a HUMAN seat has already stopped, so the bot is the only thing the round
+  //     is still waiting on. The round is decidable at that instant, and the bot
+  //     is graded off its own stored instant either way — the delay was pure
+  //     dead air in front of the result popup.
+  const humanStopPending = write.state.players.some(
+    (p) => p.userId !== PRECISION_AI_USER_ID && Boolean(write.pendingStops[p.userId]),
+  );
   if (
     options.isAiGame &&
     write.state.phase === "active" &&
     write.aiStopAt !== null &&
-    write.aiStopAt.getTime() <= now &&
+    (write.aiStopAt.getTime() <= now || humanStopPending) &&
     write.state.roundGoInstant !== null &&
     !Object.prototype.hasOwnProperty.call(write.pendingStops, PRECISION_AI_USER_ID)
   ) {
@@ -1271,13 +1292,30 @@ export async function recordRoundStop(
 
     write.pendingStops[userId] = telemetry;
 
+    // A human stop against the BOT makes the round decidable immediately: the
+    // bot's stop instant was fixed at the reveal, so `applyDueTransitions`
+    // applies it here and grades the round in the same call (see the condition
+    // it tests). Without this the round sat waiting out the bot's own deadline
+    // with the result already determined — the reported "the AI is still in
+    // flight and the results show with a delay". It is a no-op for a human duel
+    // (`isAiGame` false → the block is skipped) and for a bot that was already
+    // past its instant, so this only ever brings a decided round forward.
+    const due = applyDueTransitions(write, stopInstantMs, {
+      isAiGame: row.isAiGame,
+      aiDifficulty: row.aiDifficulty,
+    });
+
     // Not both seats in yet — persist the bot's progress (if any) and wait.
-    if (!applyRoundResolutionIfReady(write, stopInstantMs).resolved) {
+    if (!due.decided && !applyRoundResolutionIfReady(write, stopInstantMs).resolved) {
       await persistMatch(tx, matchId, write);
       return stopResult(state, { bothStopped: false });
     }
 
     const resolved = write.state;
+    // Persist BEFORE reporting the decision, and report `bothStopped` so the
+    // realtime proxy broadcasts the round result in the same breath: an AI
+    // round graded here is exactly as decided as one the bot's own deadline
+    // resolved, and it must reach both clients just as immediately.
     await persistMatch(tx, matchId, write);
     return stopResult(resolved, {
       bothStopped: true,

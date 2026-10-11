@@ -182,12 +182,17 @@ test("the worker registers the speed-typing destination and creates it unstaked"
 });
 
 test("the destination is Speed Typing's own create-or-join lobby", () => {
-  assert.match(store, /export async function createOrJoin\(\{ userId \}/);
+  assert.match(store, /export async function createOrJoin\(\{/);
+  assert.match(store, /userId: string;/);
   // The same row is returned for both seats: A finds nothing open and creates
-  // the waiting lobby, B joins it. The worker asserts the two ids match.
+  // the waiting lobby, B joins it. The worker asserts the two ids match. A
+  // quick-queue caller carries no device class, so it is `unknown` — the
+  // class-neutral case that takes the OLDEST open lobby exactly as before, and
+  // the worker's two calls therefore still land on one row.
   assert.match(store, /isNull\(speedTypingMatches\.player2Id\)/);
-  assert.match(store, /return await joinExistingMatch\(tx, open\.id, userId\)/);
-  assert.match(store, /if \(open\.player1Id === userId\) return \{ match: open, joined: false \}/);
+  assert.match(store, /return await joinExistingMatch\(tx, lobby\.id, userId, pool\)/);
+  assert.match(store, /const own = candidates\.find\(\(candidate\) => candidate\.player1Id === userId\)/);
+  assert.match(store, /if \(own\) return \{ match: own, joined: false \}/);
 });
 
 test("the destination feeds the canonical queue lifecycle like every queue game", () => {

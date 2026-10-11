@@ -198,7 +198,7 @@ test("navigation: the match route renders the match client, ad-free", () => {
 test("navigation: the lobby and match routes talk to the ONE matchmaking store", () => {
   const create = strip(read(CREATE_ROUTE));
   assert.match(create, /import \{ createOrJoin \} from "\.\.\/\.\.\/\.\.\/\.\.\/lib\/speed-typing\/serverStore"/);
-  assert.match(create, /await createOrJoin\(\{ userId \}\)/);
+  assert.match(create, /await createOrJoin\(\{ userId, deviceClass \}\)/);
   // The caller's id comes from the verified session, never from the request.
   assert.match(create, /requireAgeVerifiedUser/);
   assert.doesNotMatch(create, /body|searchParams/);

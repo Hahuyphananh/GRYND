@@ -11,7 +11,7 @@ export async function generateMetadata({
   return {
     robots: { index: false, follow: false },
     title: `Pool Masters Match #${shortId} | GRYND`,
-    description: `Live Pool Masters match #${shortId} on GRYND. Sink the 8-ball before your opponent to win the wager.`,
+    description: `Live Pool Masters match #${shortId} on GRYND. Sink the 8-ball before your opponent to win.`,
   };
 }
 

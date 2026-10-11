@@ -196,3 +196,56 @@ export const RESOLUTION_REASONS: readonly string[] = [
   RESOLUTION.FORFEIT,
   RESOLUTION.DRAW,
 ];
+
+/**
+ * The input device a seat is racing on — the one axis matchmaking pools by.
+ *
+ * A phone or tablet has no physical keyboard, so its typist is structurally
+ * slower than a computer's on the same passage: the race would measure the
+ * input method, not typing skill. These two names are the closed vocabulary a
+ * match row may carry (CHECK constraint in migration 0209), and the pools
+ * `createOrJoin` prefers to pair within.
+ */
+export const DEVICE_CLASS = {
+  KEYBOARD: "keyboard",
+  TOUCH: "touch",
+} as const;
+
+export type DeviceClass = (typeof DEVICE_CLASS)[keyof typeof DEVICE_CLASS];
+
+/** The database's NULL, named: a seat whose device could not be classified. */
+export const UNKNOWN_DEVICE_CLASS = "unknown" as const;
+
+/**
+ * A seat's pool: one of the two real classes, or `unknown`.
+ *
+ * `unknown` is deliberately NOT a pool of its own. A lobby created by an
+ * unclassifiable client (the platform quick-queue path, a legacy row, a request
+ * with no User-Agent) is class-NEUTRAL and pairs with anyone, immediately —
+ * which is exactly the pre-0209 behaviour, so this feature can never strand a
+ * client that cannot be classified in a queue nobody else can join.
+ */
+export type DevicePool = DeviceClass | typeof UNKNOWN_DEVICE_CLASS;
+
+/**
+ * How long an open lobby waits before it will accept the OTHER input pool.
+ *
+ * Pooling strictly would be a fairness win and a matchmaking loss: a phone
+ * player at a quiet hour would wait forever for another phone. So the wait is
+ * what decides: within this window a lobby is only joined by its own pool, and
+ * past it the lobby is paired with whoever is next in the queue. A player who
+ * has waited this long has already lost more to the queue than a mixed-input
+ * race could cost them. Measured on the WAITING LOBBY's age (the creator's
+ * queue time), never on the arriving caller's.
+ */
+export const DEVICE_MATCH_WIDEN_MS = 10_000;
+
+/**
+ * How many open lobbies matchmaking reads to choose from, oldest first.
+ *
+ * The choice needs more than the single oldest row (that row may be the wrong
+ * pool), while still keeping the matchmaking transaction short — the candidate
+ * rows are row-locked for the duration of the pick, and the open-lobby list is
+ * never long.
+ */
+export const DEVICE_MATCH_CANDIDATE_LIMIT = 20;

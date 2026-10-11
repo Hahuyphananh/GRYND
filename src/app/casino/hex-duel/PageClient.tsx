@@ -1411,6 +1411,15 @@ export default function HexDuelPage() {
         );
         const data = await res.json();
         if (cancelled) return;
+        // ── WHICH SIDE THIS CLIENT IS PLAYING — THE SERVER'S ANSWER WINS ──
+        // `amHost` is computed in the status route from the verified session
+        // (`game.player1Id === userId`), so a stale, hand-edited or absent
+        // `?host=` link can never decide which seat this client believes it
+        // holds. That belief is what turns the settled winner into a WIN or a
+        // LOSS, so the URL told a guest who had just won that they had lost.
+        if (data?.success && typeof data.game?.amHost === "boolean") {
+          setIsPlayer1(data.game.amHost);
+        }
         if (data?.success && data.game?.isReady) {
           setOpponentReady(true);
           opponentReadyRef.current = true;

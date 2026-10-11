@@ -3408,6 +3408,15 @@ export const speedTypingMatches = pgTable(
     // finish. Null = this seat has not completed the passage.
     player1CompletedAt: timestamp("player1_completed_at"),
     player2CompletedAt: timestamp("player2_completed_at"),
+    // ── Input device (migration 0209) ──────────────────────────────────────
+    // 'keyboard' | 'touch', or NULL for 'unknown'. Derived server-side from
+    // the request's own headers (client hints, then User-Agent) — a client
+    // never sends it. Matchmaking pools by it so a phone is not raced against a
+    // computer unless the queue has already waited past DEVICE_MATCH_WIDEN_MS.
+    // An open lobby's pool is its CREATOR's class (player1); NULL is
+    // class-neutral and pairs with anyone (legacy rows, the quick-queue path).
+    player1DeviceClass: varchar("player1_device_class", { length: 16 }),
+    player2DeviceClass: varchar("player2_device_class", { length: 16 }),
     startedAt: timestamp("started_at"),
     endedAt: timestamp("ended_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),

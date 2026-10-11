@@ -86,6 +86,17 @@ export interface PrecisionState {
    *  never sends timing data of its own. */
   aiStop?: { stopInstant: number; elapsedMs: number } | null;
   players: PrecisionPlayer[];
+  /**
+   * The seat the SERVER says THIS viewer holds — 1, 2, or null (a caller the
+   * match does not seat, or a payload that did not identify one). Stamped by the
+   * get-match route from its own `requirePracticePlayer()` identity (guest ids
+   * included), so the result screen never has to claim a seat itself.
+   *
+   * It is absent on a socket broadcast: those payloads are shared per match
+   * room, so a per-viewer fact cannot ride on them. The match view remembers the
+   * last value the server stated instead (usePrecisionMatchState).
+   */
+  viewerSeat?: PlayerSeat | null;
   turn: PlayerSeat;
   // ── Best-of-5 win condition (server-authoritative) ─────────────────
   //

@@ -164,9 +164,9 @@ export default function SpeedTypingLobbyPage() {
           value={aiDifficulty}
           onChange={setAiDifficulty}
           hint={{
-            easy: "A slower typist that makes plenty of mistakes — a comfortable win.",
+            easy: "A much slower typist — a comfortable win.",
             normal: "A solid amateur pace. Beat it with quick, accurate typing.",
-            hard: "A fast, near-flawless typist. Only a genuinely quick run beats it.",
+            hard: "A fast, flawless typist. Only a genuinely quick run beats it.",
           }}
         />
       }
