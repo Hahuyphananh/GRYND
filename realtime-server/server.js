@@ -1947,7 +1947,27 @@ io.on("connection", (socket) => {
       // Acknowledge the caller FIRST so they can flip their
       // `stopSubmitting` spinner off even before the broadcast is
       // delivered (the broadcast fans out below; the ACK is direct).
-      if (typeof ack === "function") ack({ success: true });
+      //
+      // The ACK carries the POST-STOP SNAPSHOT the route just returned, so the
+      // player who pressed STOP never has to wait for the room fan-out to see
+      // their own result. The ACK is a direct packet to one socket; the
+      // broadcast below goes through the room and is what the OPPONENT
+      // receives. Without this the sender's result (and, against the bot, the
+      // parked rocket) arrived only with the fan-out — the reported "when I
+      // click stop, the AI is still in flight and the results show with a
+      // delay", where the delay was the round trip the sender did not need.
+      // The payload is the same one broadcast below (identical `match`, now
+      // stamped), so the client cannot learn two different things from the two
+      // paths; `applySnapshot` still version-guards whichever lands first.
+      if (typeof ack === "function") {
+        ack({
+          success: true,
+          match: payload.match ?? null,
+          bothStopped: payload.bothStopped === true,
+          roundWinnerSeat: payload.roundWinnerSeat ?? null,
+          matchFinished: payload.matchFinished === true,
+        });
+      }
       // Only rebroadcast the updated match state to the room once
       // BOTH seats have submitted — partial stops (one seat only)
       // keep the sender's "✓ STOP SENT" UI intact and let the

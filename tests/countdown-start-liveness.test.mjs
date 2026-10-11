@@ -162,7 +162,15 @@ test("useDeadlineRead arms ONE bounded timer and never an interval", () => {
     "a caller with no server clock keeps the skew-covering slack",
   );
   assert.match(code, /const optionsRef = useRef\(options\);/, "the clock is ref-held like the callback, so a re-render cannot move the read");
-  assert.match(code, /if \(reads < DEADLINE_READ_MAX_ATTEMPTS\)/, "the retries are bounded");
+  // Still bounded, and still bounded by the SAME cap unless the caller narrows
+  // it: a non-finite or sub-1 budget falls back to the shared maximum, so
+  // "fewer reads" can never become "unbounded reads".
+  assert.match(code, /if \(reads < attempts\)/, "the retries are bounded");
+  assert.match(
+    code,
+    /rawAttempts >= 1[\s\S]{0,80}?: DEADLINE_READ_MAX_ATTEMPTS;/,
+    "an unusable attempt budget falls back to the shared cap, never to forever",
+  );
   assert.match(code, /window\.clearTimeout\(timer\)/, "the timer is cleared when the instant changes");
   assert.match(code, /if \(!deadline\) return undefined;/, "no pending instant arms nothing");
   assert.match(code, /if \(!Number\.isFinite\(at\)\) return undefined;/, "an unparseable instant arms nothing");
@@ -312,7 +320,31 @@ test("Precision's page brings the countdown read forward without a recurring pol
   );
   assert.match(code, /import \{ precisionDueRead \} from "\S*lib\/deadlineRead"/, "must use the shared selector");
   assert.match(code, /const \{[^}]*refreshState \} =\s*usePrecisionMatchState\(/, "the read must be the page's own authoritative fetch");
-  assert.match(code, /useDeadlineRead\(precisionDueRead\(state\), refreshState, \{/, "the read must be armed from the arming countdown");
+  // The read is still armed from the arming countdown. A stop-reconcile
+  // instant takes precedence while one is armed (asserted below), because a
+  // round this seat has already stopped in is the transition it is waiting on;
+  // every other moment still counts down to `countdownEndsAt`.
+  assert.match(
+    code,
+    /useDeadlineRead\(stopReconcileAtMs \?\? precisionDueRead\(state\),\s*refreshState, \{/,
+    "the read must be armed from the arming countdown",
+  );
+  // The reconcile window is BOUNDED — a fixed number of reads, not a poll — and
+  // only that window narrows the budget, so the countdown keeps the shared
+  // defaults that cover a device clock skewed ahead of the server's.
+  assert.match(code, /const STOP_RECONCILE_READS = 3;/, "the reconcile window must be bounded");
+  assert.match(
+    code,
+    /\.\.\.\(reconciling \? \{ attempts: STOP_RECONCILE_READS, retryMs: STOP_RECONCILE_RETRY_MS \} : \{\}\)/,
+    "only the reconcile window may narrow the shared read budget",
+  );
+  // Comments are stripped from `code`, so this matches the statement sequence:
+  // dropping the window sits with the other work the resolved round does.
+  assert.match(
+    code,
+    /setStopReconcileAtMs\(null\);\s*releaseFreeze\(\);/,
+    "the window must be dropped once the round leaves active",
+  );
   assert.match(
     code,
     /serverNow: \(\) => serverClockNow\(Date\.now\(\), serverClockOffsetRef\.current\)/,

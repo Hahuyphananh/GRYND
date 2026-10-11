@@ -293,10 +293,25 @@ export function emitEndReturn(socket: RealtimeSocket, matchId: string) {
  *  server's `precision:stop` handler invokes the callback once it has
  *  either successfully proxied the stop to Next.js OR a domain validation
  *  failure caused it to refuse the stop (e.g. user not a participant,
- *  internal fetch error). */
+ *  internal fetch error).
+ *
+ *  On success it also carries the POST-STOP SNAPSHOT (`match`) the route
+ *  returned, so the seat that pressed STOP can apply its own result from the
+ *  direct ACK packet instead of waiting for the room broadcast — see the
+ *  `precision:stop` handler in `realtime-server/server.js`. Every field but
+ *  `success` is optional because an older realtime server, and the HTTPS
+ *  fallback below, answer with `{ success: true }` alone; a caller must treat a
+ *  missing `match` as "no snapshot in the ACK" and reconcile itself rather
+ *  than as "nothing happened". */
 export interface PrecisionStopAck {
   success: boolean;
   error?: string;
+  /** The authoritative state as of this stop, when the ACK carries it. */
+  match?: PrecisionState | null;
+  /** True when this stop was the one that made the round decidable. */
+  bothStopped?: boolean;
+  roundWinnerSeat?: number | null;
+  matchFinished?: boolean;
 }
 
 /** Maximum time we'll wait for the realtime-server's ACK callback before we

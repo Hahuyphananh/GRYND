@@ -82,6 +82,35 @@ import {
 import { diffToRank, makeInitialEndPopupState } from "../../../../../lib/precision/utils";
 import type { PrecisionPlayer, PrecisionState } from "../../../../../lib/precision/types";
 
+// ── Reconcile window that follows this seat's own STOP ─────────────────────
+//
+// The round result normally reaches us as the `precision:roundResult`
+// broadcast. That broadcast is the ONLY thing the page used to wait for, and
+// during `active` nothing else reads the match (the page polls on no timer —
+// see `usePrecisionMatchState`), so a broadcast that was dropped, or fanned out
+// while this socket was mid-reconnect, left the board with the rockets still
+// flying and no result until the player happened to switch tabs (the only
+// remaining read trigger).
+//
+// Our own STOP is the moment the round's outcome is decidable — against the bot
+// the server grades it in the same transaction (so one read is enough), and
+// against a human it is the opponent's packet that decides, which is exactly the
+// broadcast we must not depend on alone. So the click arms ONE bounded
+// reconciliation: a few reads over about a second, through the same
+// authoritative `/api/precision/get-match`, which applies any due transition
+// itself. Whichever arrives first — this read or the broadcast — wins;
+// `applySnapshot` version-guards the two so they can never disagree.
+//
+// Bounded on purpose: it is not a poll. It stops the moment the round leaves
+// `active` (or the match ends), and it costs three reads in the worst case.
+/** Wait before the first reconciliation read, so the STOP has certainly landed
+ *  (`stopSubmitting` is cleared by the ACK, not by this). */
+const STOP_RECONCILE_DELAY_MS = 300;
+/** Reads in the reconciliation window, this one included. */
+const STOP_RECONCILE_READS = 3;
+/** Gap between them. */
+const STOP_RECONCILE_RETRY_MS = 400;
+
 // ── Next.js 16 dynamic params are async (Promise-based).
 // The match page receives `params` as a Promise that must be unwrapped
 // with `React.use()` before accessing properties. Accessing
@@ -161,6 +190,10 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
   // already fired for this round.
   const [selfStopPending, setSelfStopPending] = useState(false);
   const [stopSubmitting, setStopSubmitting] = useState(false);
+  // The instant this seat's own STOP armed a reconciliation read for, or null
+  // while there is nothing to reconcile. Set by the click, cleared the moment
+  // the round leaves `active` (decided, tied, or the match finished).
+  const [stopReconcileAtMs, setStopReconcileAtMs] = useState<number | null>(null);
   const stopLockedThisRoundRef = useRef<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   // Report modal — flags the human opponent for moderation.
@@ -205,8 +238,23 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
   // `serverNow` is the page's own server-clock estimate (the same one the round
   // display is anchored to), so the read fires ON the stamped instant instead of
   // a slack past it: the countdown ending IS the read.
-  useDeadlineRead(precisionDueRead(state), refreshState, {
+  //
+  // The SAME read also serves the reconcile window that follows our own STOP —
+  // there is one authoritative fetch and one place that decides when to make it.
+  // `stopReconcileAtMs` takes precedence while it is set, because that window is
+  // the transition this board is waiting on: whatever the phase says, this seat
+  // has already stopped and the round it is waiting on is decidable now. It is
+  // cleared as soon as the round leaves `active`, at which point the arming
+  // countdown (or nothing) drives the reader again.
+  const reconciling = stopReconcileAtMs !== null;
+  useDeadlineRead(stopReconcileAtMs ?? precisionDueRead(state), refreshState, {
     serverNow: () => serverClockNow(Date.now(), serverClockOffsetRef.current),
+    // Only the reconcile window narrows its retry budget: it is waiting on an
+    // event (a packet landing, or the broadcast that accompanies it), not on a
+    // stamped instant, and it must not sit re-reading for the whole of an
+    // opponent's turn. The countdown read keeps the shared defaults, which is
+    // what covers a device clock skewed ahead of the server's.
+    ...(reconciling ? { attempts: STOP_RECONCILE_READS, retryMs: STOP_RECONCILE_RETRY_MS } : {}),
   });
 
   // `serverClockOffsetMs` MUST be forwarded: it is the device→server wall-clock
@@ -352,6 +400,10 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
     if (!state) return;
     if (state.phase !== "active" || state.lastRoundWinnerSeat !== null) {
       setSelfStopPending(false);
+      // The round is no longer the one we stopped in, so there is nothing left
+      // to reconcile: drop the read window rather than let it keep reading
+      // through the next round's countdown.
+      setStopReconcileAtMs(null);
       // Release the frozen timer/rocket too — the round is over, so the next
       // `active` round must start flying again from zero. The arming recap
       // reads the frozen positions from `lastRoundStops` instead.
@@ -496,6 +548,10 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
     setStopSubmitting(true);
     setError(null);
     setSelfStopPending(true);
+    // Arm the reconciliation window for this round (see
+    // `STOP_RECONCILE_DELAY_MS`): the click is what makes the round decidable,
+    // so the page stops depending on the result broadcasting back to it.
+    setStopReconcileAtMs(Date.now() + STOP_RECONCILE_DELAY_MS);
     posthog?.capture("precision_round_stop_sent", {
       matchId,
       transport: "websocket",
@@ -526,6 +582,10 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
           // can try again on the next round.
           stopLockedThisRoundRef.current = false;
           setSelfStopPending(false);
+          // There is no recorded stop to reconcile against, so the window is
+          // dropped with the click it belonged to (the round clock resumes
+          // below and the player can take a real stop).
+          setStopReconcileAtMs(null);
           // The click did NOT count, so the round this seat is timing is still
           // live: drop the freeze and put the display clock back on the air,
           // otherwise the board stays parked on a stop the server never
@@ -539,7 +599,20 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
             matchId,
             error: (ack && ack.error) || "unknown",
           });
+          return;
         }
+        // The ACK carries the post-stop snapshot (see `PrecisionStopAck`), so
+        // the seat that pressed STOP takes its own result from the direct
+        // packet instead of waiting for the room broadcast to fan back. That
+        // broadcast still arrives and is still the opponent's only path; this
+        // one is ours. `applySnapshot` applies whichever lands first and orders
+        // the rest by the snapshot's own version.
+        //
+        // `selfStopPending` is deliberately NOT flipped here: it drives the
+        // "awaiting the opponent" hint, and this snapshot may well be the
+        // not-yet-decidable one. The round-resolution effect above clears it
+        // when the phase leaves `active`, which is the same rule as before.
+        if (ack.match) applySnapshot(ack.match);
       }
     );
   }, [

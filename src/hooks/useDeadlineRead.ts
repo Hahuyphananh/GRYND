@@ -13,6 +13,22 @@ import {
 /** Options for `useDeadlineRead`. */
 export interface DeadlineReadOptions {
   /**
+   * How many reads to make for this deadline, including the first. Defaults to
+   * `DEADLINE_READ_MAX_ATTEMPTS`.
+   *
+   * A caller whose deadline is an EVENT rather than a stamped instant —
+   * Precision's "our own STOP is pending, so the result is one read away" — has
+   * no natural instant to count down to, so it arms with "now" and wants only
+   * enough attempts to survive a lost socket broadcast, not a whole window of
+   * dead air while a human opponent takes their time. Lower it there; leave it
+   * alone for the games whose deadline is a real stored instant.
+   */
+  attempts?: number;
+  /**
+   * Gap between those reads. Defaults to `DEADLINE_READ_RETRY_MS`.
+   */
+  retryMs?: number;
+  /**
    * The current time in the SERVER's clock, as this device best knows it — or
    * `null`/`undefined` while this page has no estimate yet.
    *
@@ -94,13 +110,27 @@ export function useDeadlineRead(
     if (!deadline) return undefined;
     const at = new Date(deadline).getTime();
     if (!Number.isFinite(at)) return undefined;
+    // Bounded by construction: a caller that names a smaller budget (an
+    // event-shaped deadline) cannot make this loop unbounded, because a
+    // non-finite or sub-1 value falls back to the shared cap rather than to
+    // "forever".
+    const rawAttempts = optionsRef.current?.attempts;
+    const attempts =
+      typeof rawAttempts === "number" && Number.isFinite(rawAttempts) && rawAttempts >= 1
+        ? Math.floor(rawAttempts)
+        : DEADLINE_READ_MAX_ATTEMPTS;
+    const rawRetry = optionsRef.current?.retryMs;
+    const retryMs =
+      typeof rawRetry === "number" && Number.isFinite(rawRetry) && rawRetry > 0
+        ? rawRetry
+        : DEADLINE_READ_RETRY_MS;
     let reads = 0;
     let timer = 0;
     const run = () => {
       reads += 1;
       void readRef.current();
-      if (reads < DEADLINE_READ_MAX_ATTEMPTS) {
-        timer = window.setTimeout(run, DEADLINE_READ_RETRY_MS);
+      if (reads < attempts) {
+        timer = window.setTimeout(run, retryMs);
       }
     };
     // Server-anchored when the page can express "now" in the server's clock, so
