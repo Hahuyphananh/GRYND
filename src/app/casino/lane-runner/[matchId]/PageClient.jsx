@@ -41,6 +41,8 @@ import { useSocket } from "../../../../context/SocketProvider";
 import {
   useMatchSync,
 } from "../../../../hooks/useMatchSync";
+import { laneRushDueRead } from "../../../../lib/deadlineRead";
+import { useDeadlineRead } from "../../../../hooks/useDeadlineRead";
 import {
   LANE_RUSH_DUEL_MATCH_UPDATED,
   laneRushDuelMatchRoom,
@@ -863,6 +865,14 @@ export default function LaneRushDuelMatchPage({ params }) {
   // it drops, and stops while the tab is hidden. Pacing comes from server state
   // + the local 250ms clock, never from the poll rate.
   useMatchSync(fetchStatus, socket, Boolean(matchId));
+
+  // …plus the ONE read the ready window needs. `roundDeadline` covers two
+  // instants in this game — the ready window, then the 15s tile window — and the
+  // tile window is already nudged below. The ready window was not: it only
+  // advances inside `fetchMatchWithAutoResolve` (`advanceFromReady`), so both
+  // boards could sit on "Get ready…" and the duel never began. Which instant
+  // counts is `laneRushDueRead` (see `lib/deadlineRead.ts`).
+  useDeadlineRead(laneRushDueRead(match), fetchStatus);
 
   useEffect(() => {
     if (!socket || !matchId) return;

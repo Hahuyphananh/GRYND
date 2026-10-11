@@ -92,6 +92,10 @@ export function normaliseMatchForViewer(match, viewerUserId) {
     // ── Match clock (server-authoritative) ────────────────────────────
     matchTimerSeconds: Number(match.matchTimerSeconds) || 0,
     matchDeadline: match.matchDeadline ?? null,
+    // The ready banner's stamped instant, exposed so the board can make the
+    // ONE read that flips `ready` → `active` (see `lib/deadlineRead.ts`).
+    // `roundDeadline` holds nothing else in this game — a live match clears it.
+    readyDeadline: match.roundDeadline ?? null,
     startedAt: match.startedAt,
     endedAt: match.endedAt,
     createdAt: match.createdAt,

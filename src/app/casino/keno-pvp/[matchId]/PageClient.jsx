@@ -69,6 +69,8 @@ import { withReducedMotion } from "../../../../lib/animations";
 import {
   useMatchSync,
 } from "../../../../hooks/useMatchSync";
+import { kenoPvpDueRead } from "../../../../lib/deadlineRead";
+import { useDeadlineRead } from "../../../../hooks/useDeadlineRead";
 import {
   IconCoins,
   IconHeartHandshake,
@@ -491,6 +493,12 @@ export default function KenoPvpMatchPage({ params }) {
   // Tile pacing comes from the server deadline + the local 100ms clock, never
   // from the poll rate.
   useMatchSync(fetchStatus, socket, Boolean(matchId));
+
+  // …plus the ONE read the ready banner needs. The tile window is nudged just
+  // below, but the ready banner is a separate instant (it only becomes the first
+  // lit tile inside a read), so both seats could sit on "Get ready…" forever.
+  // Which instant counts is `kenoPvpDueRead` (see `lib/deadlineRead.ts`).
+  useDeadlineRead(kenoPvpDueRead(match), fetchStatus);
 
   // Tile-deadline nudge: the server only resolves a both-miss when it is
   // read, so without this the board can sit on an expired tile for up to a

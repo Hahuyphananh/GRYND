@@ -1975,6 +1975,24 @@ io.on("connection", (socket) => {
             matchId: matchIdStr,
             match: payload.match,
           });
+          // …AND RE-ARM THE DUE SCHEDULER for the round this call just armed.
+          //
+          // A round decided by a player's own STOP is the ONE resolution that
+          // does not come back through `runPrecisionDue`, so it is the one
+          // place that has to re-arm the scheduler itself: `runPrecisionDue`
+          // re-arms from the `nextDueAtMs` of a resolution IT performed, and
+          // until this call existed the stop path simply emitted the broadcast
+          // and stopped. The armed countdown then had no owner at all — the
+          // players watched it reach 0 and the next round never opened ("when
+          // the cooldown ends the game doesn't start"), in a bot match and in a
+          // human duel alike, until someone happened to refocus the tab.
+          //
+          // An immediate kick is the same "ask what is due right now" call the
+          // room join and the ready relay already make: nothing is due yet, so
+          // the route answers with the next stored instant (the countdown end)
+          // and the scheduler arms exactly that. The bot's stop is unaffected —
+          // it is re-armed from the reveal, as before.
+          schedulePrecisionDue(matchIdStr, Date.now());
         }
       }
     } catch (err) {

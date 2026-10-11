@@ -40,6 +40,8 @@ import {
   playVictory,
   playDefeat,
 } from "../../../../../lib/gameAudio";
+import { towerArenaDueRead } from "../../../../../lib/deadlineRead";
+import { useDeadlineRead } from "../../../../../hooks/useDeadlineRead";
 import {
   blockCells,
   blockWidth,
@@ -1172,6 +1174,35 @@ export default function TowerArenaMatchPage() {
   // the engine advances; this poll is a backstop only. It relaxes while the
   // socket is healthy, tightens if it drops, and stops while the tab is hidden.
   useMatchSync(load, socket, Boolean(matchId));
+
+  // ── The read each stored deadline needs ────────────────────────────────
+  //
+  // Tower Arena keeps its pacing as a SERVER-stamped instant (`turnDeadline`)
+  // and turns it into a transition only as a side effect of a READ
+  // (`advanceMatchOnPoll`). The match page no longer polls (see `useMatchSync`)
+  // and nothing on the server wakes at either instant, so a deadline nobody
+  // read past simply ran out:
+  //
+  //   • the pre-game countdown — both players sat on a finished countdown, the
+  //     first block never came, and the match only started if someone happened
+  //     to refocus the tab. That hit vs-AI and PvP alike.
+  //   • an online turn window — a player who let their window expire was never
+  //     timed out for anyone, so the duel stalled mid-match.
+  //
+  // This arms ONE timer for the instant the match is waiting on instead. It is
+  // deliberately not the recurring state poll the sync hook removed: it exists
+  // only while something IS pending, every read it makes goes through the same
+  // authoritative `load()` every socket push uses, and it is cleared the moment
+  // that instant is gone (the match starts, the turn advances, a player
+  // unreadies), because the dependency goes null and the timer with it. The
+  // server's own `startMatchTx` / placement then broadcasts STATE +
+  // TURN_STARTED into the match room, so the OTHER seat follows without a timer
+  // of its own.
+  //
+  // Which instant counts lives in `lib/deadlineRead.ts`, and the bounded read
+  // itself is the shared `useDeadlineRead` hook — the whole rule is unit-tested
+  // there rather than re-derived per page.
+  useDeadlineRead(towerArenaDueRead(match), () => loadRef.current());
 
   // Realtime room — participant tracking + instant lobby/match pushes.
   // Every server-authoritative in-match event triggers an authoritative

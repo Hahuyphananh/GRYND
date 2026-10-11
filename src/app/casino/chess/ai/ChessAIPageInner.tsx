@@ -18,6 +18,7 @@ import useMySeatIdentity from "../../../../hooks/useMySeatIdentity";
 import { turnBanner as turnBannerAnim } from "../../../../lib/animations";
 import { playCardDraw, playVictory, playDefeat, playTick } from "../../../../lib/gameAudio";
 import { useChessClock } from "../../../../lib/useChessClock";
+import { legalTargetsFrom, isPromotionMove } from "../../../../lib/chessClickMove";
 import { usePostHog } from "posthog-js/react";
 import {
   IconAlertTriangle,
@@ -51,6 +52,14 @@ const PIECE_VALS: Record<string, number> = {
   p: 1, n: 3, b: 3, r: 5, q: 9,
   P: 1, N: 3, B: 3, R: 5, Q: 9,
 };
+
+// The four pieces a pawn can become, in the order the picker shows them.
+const PROMOTION_PIECES: { letter: string; name: string }[] = [
+  { letter: "q", name: "Queen" },
+  { letter: "r", name: "Rook" },
+  { letter: "b", name: "Bishop" },
+  { letter: "n", name: "Knight" },
+];
 
 const INITIAL_PIECES: Record<string, number> = {
   p: 8, n: 2, b: 2, r: 2, q: 1,
@@ -332,6 +341,13 @@ export default function ChessAIPageInner() {
   const [moves, setMoves] = useState<{ moveSan: string; fenAfter: string; moveUci: string; annotation: string }[]>([]);
   const [moveIndex, setMoveIndex] = useState(-1);
   const promotionHandledRef = useRef(false);
+
+  // Click-to-move. Dragging is untouched; this adds the click, click flow on
+  // top of it: the first click picks one of our pieces up (its legal
+  // destinations light up), the second click on one of those squares plays it.
+  const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
+  // Set when a picked pawn lands on the far rank — the move waits for a piece.
+  const [promotionPrompt, setPromotionPrompt] = useState<{ from: string; to: string } | null>(null);
   const aiTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const prevIsPlayerTurnRef = useRef<boolean | null>(null);
@@ -430,6 +446,20 @@ export default function ChessAIPageInner() {
   // ── Captured pieces ──
   const capturedPieces = useMemo(() => getCapturedPieces(displayFen), [displayFen]);
 
+  // ── Legal destinations of the picked-up piece (click-to-move) ──
+  const selectedTargets = useMemo(
+    () => legalTargetsFrom(displayFen, selectedSquare),
+    [displayFen, selectedSquare],
+  );
+
+  // A pick only describes the position it was made on, so drop it whenever the
+  // board changes: the AI replied, the player undid a move, or the player jumped
+  // into move history.
+  useEffect(() => {
+    setSelectedSquare(null);
+    setPromotionPrompt(null);
+  }, [displayFen]);
+
   // ── Custom square styles ──
   const customSquareStyles = useMemo(() => {
     const styles: Record<string, Record<string, string>> = {};
@@ -462,8 +492,31 @@ export default function ChessAIPageInner() {
       };
     }
 
+    // ── Click-to-move (drawn last, so a pick always reads on top) ──
+    // The picked square is highlighted and every legal destination is dotted;
+    // a capture destination gets a ring so the piece it takes stays visible.
+    for (const target of selectedTargets) {
+      styles[target.to] = target.capture
+        ? {
+            background:
+              "radial-gradient(circle, rgba(0,229,255,0) 58%, rgba(0,229,255,0.85) 60%)",
+          }
+        : {
+            background:
+              "radial-gradient(circle, rgba(0,229,255,0.85) 22%, rgba(0,229,255,0) 24%)",
+          };
+    }
+
+    if (selectedSquare) {
+      styles[selectedSquare] = {
+        ...(styles[selectedSquare] || {}),
+        backgroundColor: "rgba(0,229,255,0.35)",
+        boxShadow: "inset 0 0 12px 3px rgba(0,229,255,0.65)",
+      };
+    }
+
     return styles;
-  }, [lastMoveSquares, checkSquare]);
+  }, [hintMove, lastMoveSquares, checkSquare, selectedSquare, selectedTargets]);
 
   // ── endGame API call ──
   async function endGame(result?: "win" | "loss" | "draw") {
@@ -680,6 +733,16 @@ export default function ChessAIPageInner() {
     promotionHandledRef.current = false;
     if (alreadyHandled) return true;
 
+    // A dragged pawn reaching the far rank is promoted by the library's own
+    // dialog, which re-enters through onPromotionPieceCheck — so the drop path
+    // always arrives with the default queen.
+    return applyMove(sourceSquare, targetSquare, "q");
+  }
+
+  // The single place a player move is played, shared by the drag path (onDrop)
+  // and click-to-move, so both record the same SAN/history and the same
+  // annotation.
+  function applyMove(sourceSquare: string, targetSquare: string, promotion: string) {
     if (game.isGameOver() || !isPlayersTurn(game)) return false;
     if (moveIndex >= 0) return false;
 
@@ -687,7 +750,7 @@ export default function ChessAIPageInner() {
     const move = gameCopy.move({
       from: sourceSquare,
       to: targetSquare,
-      promotion: "q",
+      promotion,
     });
 
     if (move === null) return false;
@@ -715,6 +778,56 @@ export default function ChessAIPageInner() {
 
     if (gameCopy.isGameOver()) handleGameOver(gameCopy);
     return true;
+  }
+
+  // ── Click-to-move ──
+  //
+  // Dragging still works; this is the second, click-based way to move. A click
+  // on one of our pieces picks it up (its legal destinations are dotted by
+  // customSquareStyles), a click on one of those dots plays the move, and a
+  // click anywhere else puts the piece back down. Only the pick is new — the
+  // move itself goes through the same applyMove as a drop, so the recorded
+  // history, the clock switch and the AI reply are untouched.
+  function handleSquareClick(square: string, piece?: string) {
+    // A pending promotion owns the board until it is answered.
+    if (promotionPrompt) return;
+    if (gameOver || moveIndex >= 0) return;
+
+    // Picks are only offered on our own turn: chess.js generates moves for the
+    // side to move, so a pick out of turn could not show real targets.
+    if (game.isGameOver() || !isPlayersTurn(game)) {
+      setSelectedSquare(null);
+      return;
+    }
+
+    if (selectedSquare === square) {
+      setSelectedSquare(null);
+      return;
+    }
+
+    if (selectedSquare && selectedTargets.some((target) => target.to === square)) {
+      const from = selectedSquare;
+      setSelectedSquare(null);
+      if (isPromotionMove(displayFen, from, square)) {
+        setPromotionPrompt({ from, to: square });
+        return;
+      }
+      onDrop(from, square);
+      return;
+    }
+
+    // Pick a piece of ours; anything else (empty square, the AI's piece off the
+    // target list) clears the current pick.
+    const myPiece = playerColor === "white" ? "w" : "b";
+    setSelectedSquare(piece && piece[0] === myPiece ? square : null);
+  }
+
+  // Answer the click-path promotion prompt with the chosen piece ("q"|"r"|"b"|"n").
+  function confirmClickPromotion(pieceLetter: string) {
+    const prompt = promotionPrompt;
+    setPromotionPrompt(null);
+    if (!prompt) return;
+    applyMove(prompt.from, prompt.to, pieceLetter);
   }
 
   // ── Promotion piece selection ──
@@ -1081,6 +1194,41 @@ export default function ChessAIPageInner() {
                     />
                   )}
                 </AnimatePresence>
+                {/* Click-move promotion picker — the drag path uses the
+                    library's own dialog, which cannot be opened from a click. */}
+                <AnimatePresence>
+                  {promotionPrompt && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.15 }}
+                      role="dialog"
+                      aria-label="Choose a promotion piece"
+                      className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-[#03081f]/85 backdrop-blur-sm"
+                    >
+                      <div className="flex gap-2 rounded-xl border border-cyan-400/40 bg-[#071531] p-3 shadow-[0_0_25px_rgba(0,229,255,.35)]">
+                        {PROMOTION_PIECES.map((option) => (
+                          <button
+                            key={option.letter}
+                            type="button"
+                            onClick={() => confirmClickPromotion(option.letter)}
+                            aria-label={`Promote to ${option.name}`}
+                            className="flex h-12 w-12 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-3xl text-cyan-100 transition-colors hover:border-cyan-300 hover:bg-cyan-400/20"
+                          >
+                            {
+                              PIECE_SYMBOLS[
+                                playerColor === "white"
+                                  ? option.letter.toUpperCase()
+                                  : option.letter
+                              ]
+                            }
+                          </button>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
                 <div className="rounded-2xl overflow-hidden bg-[#0b1020] w-full h-full">
                   <Chessboard
                     id="AI-CyberBoard"
@@ -1089,6 +1237,7 @@ export default function ChessAIPageInner() {
                     boardOrientation={playerColor}
                     position={displayFen}
                     onPieceDrop={onDrop}
+                    onSquareClick={handleSquareClick}
                     onPromotionPieceSelect={onPromotionPieceCheck}
                     promotionDialogVariant="modal"
                     customDarkSquareStyle={{

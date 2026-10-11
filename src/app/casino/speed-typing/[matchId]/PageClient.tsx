@@ -47,6 +47,8 @@ import {
   useMatchSync,
 } from "../../../../hooks/useMatchSync";
 import { usePracticeBotHeartbeat } from "../../../../hooks/usePracticeBotHeartbeat";
+import { speedTypingDueRead } from "../../../../lib/deadlineRead";
+import { useDeadlineRead } from "../../../../hooks/useDeadlineRead";
 import {
   SPEED_TYPING_EVENTS,
   speedTypingMatchRoom,
@@ -559,6 +561,18 @@ export default function SpeedTypingMatchPage() {
   // socket reconnect and on tab focus — never on a timer. A finished race stops
   // syncing entirely.
   useMatchSync(() => load({ silent: true }), socket, Boolean(match) && !finished);
+
+  // …plus the race limit itself, which is a stored instant like any other: the
+  // verdict is graded by `resolveRaceIfDue` on the READ path, and both seats
+  // stop being able to score at `deadlineMs`. Nothing used to read at it once
+  // the 2s arena poll was removed, so a race where nobody finished sat in
+  // `playing` with a finished clock. Practice included: the bot heartbeat above
+  // stops as soon as the bot finishes, which is exactly when a race whose human
+  // walked away would never be graded.
+  useDeadlineRead(
+    speedTypingDueRead({ deadlineMs: race?.deadlineMs, goAtMs, finished, resolved }),
+    () => load({ silent: true }),
+  );
 
   // ── Practice bot heartbeat ─────────────────────────────────────────────
   // The bot's race is projected from the elapsed clock and written on READ

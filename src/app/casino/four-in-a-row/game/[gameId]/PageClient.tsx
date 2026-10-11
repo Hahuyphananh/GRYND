@@ -37,6 +37,8 @@ import { turnBanner as turnBannerAnim } from "../../../../../lib/animations";
 import {
   useMatchSync,
 } from "../../../../../hooks/useMatchSync";
+import { fourInARowDueRead } from "../../../../../lib/deadlineRead";
+import { useDeadlineRead } from "../../../../../hooks/useDeadlineRead";
 import {
   IconTarget,
   IconEye,
@@ -367,6 +369,15 @@ export default function ConnectFourGamePage() {
   // — never on a timer. Turn pacing comes from server deadlines + the clock
   // tick, never from a poll rate.
   useMatchSync(fetchState, socket, Boolean(gameId));
+
+  // …and the deadlines themselves still need THEIR one read: `game-state` is
+  // both the only caller of `advanceReadyIfNeeded` (its own comment says
+  // "Poll-driven") and the only caller of `settleTimeoutIfNeeded`. Nothing else
+  // wakes at those instants, so without this the board sat on "Get ready…" and
+  // the match never started — and a stalling opponent was never timed out.
+  // ONE bounded read per pending instant, cleared the moment it is gone; which
+  // instant counts is `fourInARowDueRead` (see `lib/deadlineRead.ts`).
+  useDeadlineRead(fourInARowDueRead(game), fetchState);
 
   useEffect(() => {
     if (!socket) return;

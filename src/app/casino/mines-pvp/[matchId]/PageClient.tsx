@@ -58,6 +58,8 @@ import {
   useMatchSync,
 } from "../../../../hooks/useMatchSync";
 import { usePracticeBotHeartbeat } from "../../../../hooks/usePracticeBotHeartbeat";
+import { minesPvpDueRead } from "../../../../lib/deadlineRead";
+import { useDeadlineRead } from "../../../../hooks/useDeadlineRead";
 import {
   IconBomb,
   IconSparkles,
@@ -195,6 +197,8 @@ type MatchRow = {
   opponentSeat: string;
   matchTimerSeconds: number;
   matchDeadline: string | null;
+  /** The ready banner's stamped instant — the read that flips `ready` → `active`. */
+  readyDeadline: string | null;
   startedAt: string | null;
   endedAt: string | null;
   createdAt: string;
@@ -445,6 +449,14 @@ export default function MinesPvpMatchPage({
   // Event-driven sync: the MATCH_UPDATED socket push is the fast path; this
   // reconciles ONCE on socket reconnect and on tab focus — never on a timer.
   useMatchSync(fetchStatus, socket, Boolean(isValidMatchId));
+
+  // …and each stamped deadline still needs ITS one read. This route is the only
+  // caller of `fetchMatchWithAutoResolve`, whose first step is "Ready banner
+  // elapsed → go live" and which also settles an expired 180s match timer. With
+  // no reader the board sat on "Starting in a few seconds…" and never started.
+  // ONE bounded read per pending instant, cleared the moment it is gone; which
+  // instant counts is `minesPvpDueRead` (see `lib/deadlineRead.ts`).
+  useDeadlineRead(minesPvpDueRead(match), fetchStatus);
 
   // ── Realtime: existing per-match room refetch hint ──────────────
   // `lobby:updated` is the bare "refetch the authoritative snapshot" hint

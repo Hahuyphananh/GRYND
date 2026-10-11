@@ -16,6 +16,7 @@ import GameSessionHost from "../../../../components/GameSessionHost";
 
 import { turnBanner as turnBannerAnim } from "../../../../lib/animations";
 import { playCardDraw, playVictory, playDefeat } from "../../../../lib/gameAudio";
+import { legalTargetsFrom, isPromotionMove } from "../../../../lib/chessClickMove";
 import { usePostHog } from "posthog-js/react";
 import {
   IconAlertTriangle,
@@ -41,6 +42,14 @@ const PIECE_VALUES = {
   p: 1, n: 3, b: 3, r: 5, q: 9,
   P: 1, N: 3, B: 3, R: 5, Q: 9,
 };
+
+// The four pieces a pawn can become, in the order the picker shows them.
+const PROMOTION_PIECES = [
+  { letter: "q", name: "Queen" },
+  { letter: "r", name: "Rook" },
+  { letter: "b", name: "Bishop" },
+  { letter: "n", name: "Knight" },
+];
 
 const INITIAL_PIECES = {
   p: 8, n: 2, b: 2, r: 2, q: 1,
@@ -154,6 +163,13 @@ export default function ChessGamePage() {
   const premoveRef = useRef(null); // { from, to } | null
   const [premove, setPremove] = useState(null); // mirror for re-renders
 
+  // Click-to-move. Dragging is untouched; this adds the click, click flow on
+  // top of it: the first click picks one of our pieces up (its legal
+  // destinations light up), the second click on one of those squares plays it.
+  const [selectedSquare, setSelectedSquare] = useState(null);
+  // Set when a picked pawn lands on the far rank — the move waits for a piece.
+  const [promotionPrompt, setPromotionPrompt] = useState(null); // { from, to } | null
+
   const { socket } = useSocket();
 
   const activeColor = isSpectator ? spectatorFocus : color;
@@ -216,6 +232,20 @@ export default function ChessGamePage() {
   // Captured pieces
   const capturedPieces = useMemo(() => getCapturedPieces(displayFen), [displayFen]);
 
+  // Legal destinations of the picked-up piece (click-to-move).
+  const selectedTargets = useMemo(
+    () => legalTargetsFrom(displayFen, selectedSquare),
+    [displayFen, selectedSquare],
+  );
+
+  // A pick only describes the position it was made on, so drop it whenever the
+  // board changes: the opponent replied, the game ended, or the player jumped
+  // into move history.
+  useEffect(() => {
+    setSelectedSquare(null);
+    setPromotionPrompt(null);
+  }, [displayFen]);
+
   // Custom square styles: highlight last move + check
   const customSquareStyles = useMemo(() => {
     const styles = {};
@@ -248,8 +278,31 @@ export default function ChessGamePage() {
       };
     }
 
+    // ── Click-to-move (drawn last, so a pick always reads on top) ──
+    // The picked square is highlighted and every legal destination is dotted;
+    // a capture destination gets a ring so the piece it takes stays visible.
+    for (const target of selectedTargets) {
+      styles[target.to] = target.capture
+        ? {
+            background:
+              "radial-gradient(circle, rgba(0,229,255,0) 58%, rgba(0,229,255,0.85) 60%)",
+          }
+        : {
+            background:
+              "radial-gradient(circle, rgba(0,229,255,0.85) 22%, rgba(0,229,255,0) 24%)",
+          };
+    }
+
+    if (selectedSquare) {
+      styles[selectedSquare] = {
+        ...(styles[selectedSquare] || {}),
+        backgroundColor: "rgba(0,229,255,0.35)",
+        boxShadow: "inset 0 0 12px 3px rgba(0,229,255,0.65)",
+      };
+    }
+
     return styles;
-  }, [lastMoveSquares, checkSquare, premove]);
+  }, [lastMoveSquares, checkSquare, premove, selectedSquare, selectedTargets]);
 
   async function fetchState() {
     if (gameFinishedRef.current) return;
@@ -666,6 +719,15 @@ export default function ChessGamePage() {
     promotionHandledRef.current = false;
     if (promotionAlreadyHandled) return true;
 
+    // A dragged pawn reaching the far rank is promoted by the library's own
+    // dialog, which re-enters through onPromotionPieceCheck — so the drop path
+    // always arrives with the default queen.
+    return applyMove(sourceSquare, targetSquare, "q");
+  }
+
+  // The single place a move is played, shared by the drag path (onDrop) and
+  // click-to-move, so both send the same authoritative POST /api/chess/move.
+  async function applyMove(sourceSquare, targetSquare, promotion) {
     if (isSpectator) return false;
     // Don't allow moves while browsing history
     if (moveIndex >= 0) return false;
@@ -685,19 +747,20 @@ export default function ChessGamePage() {
 
       // Validate the move locally
       const localGame = new Chess(displayFen);
-      const localMove = localGame.move({ from: sourceSquare, to: targetSquare, promotion: "q" });
+      const localMove = localGame.move({ from: sourceSquare, to: targetSquare, promotion });
       localGame.undo();
       if (!localMove) return false;
 
       // Queue as pre-move (or replace existing one)
-      premoveRef.current = { from: sourceSquare, to: targetSquare, promotion: "q" };
+      premoveRef.current = { from: sourceSquare, to: targetSquare, promotion };
       setPremove({ from: sourceSquare, to: targetSquare });
       return true;
     }
 
-    // Auto-promote to queen (promotion dialog handles selection)
+    // Promotion can't reach here as a drag — the library's dialog intercepts it
+    // and picks the piece — but it is exactly how a click-move arrives.
     const localGame = new Chess(displayFen);
-    const localMove = localGame.move({ from: sourceSquare, to: targetSquare, promotion: "q" });
+    const localMove = localGame.move({ from: sourceSquare, to: targetSquare, promotion });
     if (!localMove) return false;
 
     const isCapture = localMove.captured !== undefined;
@@ -714,7 +777,7 @@ export default function ChessGamePage() {
         gameId: gameId,
         from: sourceSquare,
         to: targetSquare,
-        promotion: "q",
+        promotion,
       }),
     });
 
@@ -738,6 +801,57 @@ export default function ChessGamePage() {
     setPremove(null);
 
     return true;
+  }
+
+  // ── Click-to-move ──
+  //
+  // Dragging still works; this is the second, click-based way to move. A click
+  // on one of our pieces picks it up (its legal destinations are dotted by
+  // customSquareStyles), a click on one of those dots plays the move, and a
+  // click anywhere else puts the piece back down. Only the pick is new — the
+  // move itself goes through the same applyMove as a drop, so the server
+  // contract, the clock and the pre-move handling are untouched.
+  function handleSquareClick(square, piece) {
+    // A pending promotion owns the board until it is answered or dismissed.
+    if (promotionPrompt) return;
+    if (isSpectator || moveIndex >= 0) return;
+
+    const myTurn = gameData?.activeTurn === (color === "white" ? "white" : "black");
+    // Picks are only offered on our own turn: chess.js generates moves for the
+    // side to move, so an opponent's-turn pick could not show real targets.
+    if (!myTurn || gameData?.status !== "in_progress") {
+      setSelectedSquare(null);
+      return;
+    }
+
+    if (selectedSquare === square) {
+      setSelectedSquare(null);
+      return;
+    }
+
+    if (selectedSquare && selectedTargets.some((target) => target.to === square)) {
+      const from = selectedSquare;
+      setSelectedSquare(null);
+      if (isPromotionMove(displayFen, from, square)) {
+        setPromotionPrompt({ from, to: square });
+        return;
+      }
+      void applyMove(from, square, "q");
+      return;
+    }
+
+    // Pick a piece of ours; anything else (empty square, opponent's piece off
+    // the target list) clears the current pick.
+    const myPiece = color === "white" ? "w" : "b";
+    setSelectedSquare(piece && piece[0] === myPiece ? square : null);
+  }
+
+  // Answer the click-path promotion prompt with the chosen piece ("q"|"r"|"b"|"n").
+  function confirmClickPromotion(pieceLetter) {
+    const prompt = promotionPrompt;
+    setPromotionPrompt(null);
+    if (!prompt) return;
+    void applyMove(prompt.from, prompt.to, pieceLetter);
   }
 
   // Handle promotion piece selection from the react-chessboard dialog.
@@ -992,6 +1106,41 @@ export default function ChessGamePage() {
                     />
                   )}
                 </AnimatePresence>
+                {/* Click-move promotion picker — the drag path uses the
+                    library's own dialog, which cannot be opened from a click. */}
+                <AnimatePresence>
+                  {promotionPrompt && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.15 }}
+                      role="dialog"
+                      aria-label="Choose a promotion piece"
+                      className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-[#03081f]/85 backdrop-blur-sm"
+                    >
+                      <div className="flex gap-2 rounded-xl border border-cyan-400/40 bg-[#071531] p-3 shadow-[0_0_25px_rgba(0,229,255,.35)]">
+                        {PROMOTION_PIECES.map((option) => (
+                          <button
+                            key={option.letter}
+                            type="button"
+                            onClick={() => confirmClickPromotion(option.letter)}
+                            aria-label={`Promote to ${option.name}`}
+                            className="flex h-12 w-12 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-3xl text-cyan-100 transition-colors hover:border-cyan-300 hover:bg-cyan-400/20"
+                          >
+                            {
+                              PIECE_SYMBOLS[
+                                color === "white"
+                                  ? option.letter.toUpperCase()
+                                  : option.letter
+                              ]
+                            }
+                          </button>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
                 <div className="rounded-2xl overflow-hidden bg-[#0b1020] w-full h-full">
                   <Chessboard
                     id="CyberBoard"
@@ -1000,6 +1149,7 @@ export default function ChessGamePage() {
                     boardOrientation={activeColor}
                     position={displayFen}
                     onPieceDrop={onDrop}
+                    onSquareClick={handleSquareClick}
                     onPromotionPieceSelect={onPromotionPieceCheck}
                     promotionDialogVariant="modal"
                     customDarkSquareStyle={{
