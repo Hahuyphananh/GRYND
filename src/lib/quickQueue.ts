@@ -12,10 +12,13 @@ export const QUICK_QUEUE_GAME_KEYS = [
   "precision",
   "hex-duel",
   "chess",
-  "dice-flush",
   "mini-golf",
   "speed-typing",
   "tic-tac-toe",
+  // Barricade is a lobby-style destination like Tic-Tac-Toe: its `createOrJoin`
+  // returns the SAME waiting-lobby id for both paired seats, and it is unstaked,
+  // so the queue's normalized stake is never passed to it.
+  "barricade",
 ] as const;
 
 export type QuickQueueGameKey = (typeof QUICK_QUEUE_GAME_KEYS)[number];

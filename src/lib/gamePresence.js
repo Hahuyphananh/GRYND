@@ -71,10 +71,13 @@ export const PRESENCE_GAME_IDS = GAME_CATALOG.map((game) => game.id);
 /**
  * Which gameLabel belongs to which canonical game id.
  *
- * The LEFT side is every value that already exists in the repo: the 21
- * `gameLabel="…"` props on game pages plus the 4 labels passed to
- * useRecordPlayedGame. The RIGHT side is the lobby's leaderboardKey, so /casino
- * can render a count with a plain `counts[game.leaderboardKey]` lookup.
+ * The LEFT side is every value that already exists in the repo: the
+ * `gameLabel="…"` props on game pages plus the labels passed to
+ * useRecordPlayedGame. tests/game-presence.test.mjs extracts both sets straight
+ * from src/ and asserts each one resolves here, so a game page can never report
+ * a label this map does not know. The RIGHT side is the lobby's leaderboardKey,
+ * so /casino can render a count with a plain `counts[game.leaderboardKey]`
+ * lookup.
  *
  * Two labels intentionally share a game id: playing Chess vs the AI
  * (`chess-ai`) and a Chess duel (`chess`) are both "Chess" on the lobby, and
@@ -98,7 +101,13 @@ export const GAME_LABEL_TO_GAME_ID = {
   "lane-rush-duel": "lane-runner",
   "pool-masters": "pool-masters",
   "hex-duel": "hex-duel",
-  "dice-flush": "yahtzee",
+  // Dice Flush was retired from the catalogue (its lobby card's old
+  // `leaderboardKey` was "yahtzee" and is gone with it), so its label now
+  // collapses onto Barricade — the game that replaced it. The retired route
+  // redirects to Barricade, so this is the same "alternate label on the same
+  // play surface" rule the renamed games use (neon-flush → uno,
+  // lane-rush-duel → lane-runner) rather than a game of its own.
+  "dice-flush": "barricade",
   odds: "odds",
   precision: "precision",
   "dots-and-boxes": "dots-and-boxes",
@@ -107,12 +116,21 @@ export const GAME_LABEL_TO_GAME_ID = {
   "tic-tac-toe": "tic-tac-toe",
   "solitaire-duel": "solitaire-duel",
   "sudoku-duel": "sudoku-duel",
+  // Barricade's online lobby and its per-match page both report this label,
+  // and it resolves to itself: the game's canonical id, its URL slug, its
+  // rating/trophy key and its presence key are the SAME string (unlike the
+  // older games whose lobby id differs from their rating key).
+  barricade: "barricade",
 
   // ── alternate labels on the same game (AI / other play surface) ────
   "chess-ai": "chess",
   "four-in-a-row-ai": "four-in-a-row",
   "neon-flush": "uno",
   "rock-paper-scissors-ai": "rps",
+  // Free practice is the same game as the online duel: a player practising
+  // Barricade against the bot is playing Barricade, and the lobby's "N playing"
+  // badge counts them under the one canonical id.
+  "barricade-ai": "barricade",
 };
 
 /** Every label that may be reported (sorted, for tests/docs readability). */

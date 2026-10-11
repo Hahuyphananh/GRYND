@@ -1,5 +1,14 @@
 # Dice Flush — Game Guide
 
+> **Retired from the public catalogue.** Dice Flush has been replaced by
+> **Barricade** (see [`docs/GAME_BARRICADE.md`](./GAME_BARRICADE.md)), which now
+> holds its lobby card, public landing page and featured slot. Its legacy URLs
+> 308-redirect to Barricade. This guide is kept because the game's engine
+> (`game-engine/diceFlushEngine.ts`), its `dice_flush_*` tables,
+> its `/api/dice-flush/*` routes, its historical matches and its per-game Elo and
+> trophy rows are all deliberately preserved by that cutover — it is simply no
+> longer offered in the product.
+
 Dice Flush is GRYND's **Yahtzee-style** dice game: roll five dice up to three times per turn, then score your hand into a category on the shared scoresheet. Build the highest total score over the match to win the pot.
 
 ## How a round works

@@ -280,23 +280,36 @@ test("combination: pvp + strategy + competitive puts the ranked strategists on t
     priorities: ["ranking_up"],
   }).recommendations;
   // pvp(10) + strategy(10) + competitive(10) + competition(4) + ranking_up(4)
-  // + experienced(2) = 40. Chess, Hex Duel, Tower Arena and Tic-Tac-Toe are the
-  // games tagged all three, so they lead — Tower Arena included, because it is
-  // now a ranked 1v1 duel like the others (it used to lose the pvp weight as a
-  // shared-table game), and Tic-Tac-Toe because it is a ranked strategist too.
+  // + experienced(2) = 40. Chess, Hex Duel, Tower Arena, Tic-Tac-Toe and
+  // Barricade are the games tagged all three, so they lead — Tower Arena
+  // included, because it is now a ranked 1v1 duel like the others (it used to
+  // lose the pvp weight as a shared-table game), Tic-Tac-Toe because it is a
+  // ranked strategist too, and Barricade because its 9x9 Quoridor-style race is
+  // decided entirely by planning against one opponent on the rated ladder.
   // Ties break by the lobby's featured order: chess, then tower-arena, then
-  // hex-duel, then tic-tac-toe.
+  // hex-duel, then tic-tac-toe, then barricade (the newest game, last in the
+  // catalogue).
   assert.deepEqual(
-    ranked.slice(0, 4).map((g) => g.id),
-    ["chess", "tower-arena", "hex-duel", "tic-tac-toe"]
+    ranked.slice(0, 5).map((g) => g.id),
+    ["chess", "tower-arena", "hex-duel", "tic-tac-toe", "barricade"]
   );
   assert.equal(ranked[0].score, 40);
   for (const tag of ["pvp", "strategy", "competitive"]) {
     assert.ok(ranked[0].tags.includes(tag));
   }
+  // …and the whole leading block really is the pvp+strategy+competitive set,
+  // derived from the catalogue rather than hardcoded to a count that a new game
+  // would silently invalidate.
+  const expectedLeaders = GAME_CATALOG.filter((game) =>
+    ["pvp", "strategy", "competitive"].every((tag) => game.tags.includes(tag))
+  ).map((game) => game.id);
+  assert.deepEqual(ranked.slice(0, expectedLeaders.length).map((g) => g.id), expectedLeaders);
+  for (const game of ranked.slice(0, expectedLeaders.length)) {
+    assert.equal(game.score, 40, `${game.id} should take the full strategy weight`);
+  }
   // …and the next block down is the competitively-tagged non-strategists.
-  assert.equal(ranked[4].score, 30);
-  assert.ok(!ranked[4].tags.includes("strategy"));
+  assert.equal(ranked[expectedLeaders.length].score, 30);
+  assert.ok(!ranked[expectedLeaders.length].tags.includes("strategy"));
 });
 
 test("combination: chance + fun puts the casual lucky game on top", () => {
@@ -311,9 +324,12 @@ test("combination: chance + fun puts the casual lucky game on top", () => {
     RECOMMENDATION_WEIGHTS.gameType + RECOMMENDATION_WEIGHTS.motivation
   );
   // Then the remaining chance games, in featured order, ahead of casual-only.
+  // Dice Flush (id "yahtzee") held a slot here before it was retired in the
+  // Dice Flush → Barricade cutover and removed from GAME_CATALOG, which moves
+  // Mini Golf up into the block.
   assert.deepEqual(
     ranked.slice(1, 6).map((g) => g.id),
-    ["mines-pvp", "yahtzee", "memory-grid", "uno", "rps"]
+    ["mines-pvp", "memory-grid", "uno", "rps", "mini-golf"]
   );
 });
 

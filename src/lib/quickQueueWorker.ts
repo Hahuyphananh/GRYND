@@ -18,10 +18,10 @@ import { createOrJoinPoolDestination } from "./quickQueuePool";
 import { createOrJoinPrecisionDestination } from "./quickQueuePrecision";
 import { createOrJoinHexDuelDestination } from "./quickQueueHexDuel";
 import { createOrJoinChessDestination } from "./quickQueueChess";
-import { createOrJoinDiceFlushDestination } from "./quickQueueDiceFlush";
 import { createOrJoin as createOrJoinMiniGolfMatch } from "./mini-golf/serverStore";
 import { createOrJoin as createOrJoinSpeedTypingMatch } from "./speed-typing/serverStore";
 import { createOrJoin as createOrJoinTicTacToeMatch } from "./tic-tac-toe/serverStore";
+import { createOrJoin as createOrJoinBarricadeMatch } from "./barricade/serverStore";
 
 export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
   return db.transaction(async (tx) => {
@@ -109,7 +109,6 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
       "precision": (userId) => createOrJoinPrecisionDestination({ userId, wager: sourceStake }),
       "hex-duel": (userId) => createOrJoinHexDuelDestination({ userId, wager: sourceStake }),
       "chess": (userId) => createOrJoinChessDestination({ userId, betAmount: sourceStake }),
-      "dice-flush": (userId) => createOrJoinDiceFlushDestination({ userId, wager: sourceStake }),
       // Mini Golf is unstaked: its `createOrJoin` takes no stake (the queue's
       // normalized stake is simply unused) and returns the same waiting lobby
       // id for both calls, exactly like the other lobby-style destinations.
@@ -123,6 +122,12 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
       // way: its `createOrJoin` returns the SAME waiting-lobby id for both
       // paired seats, so the queue's normalized stake can never reach it.
       "tic-tac-toe": (userId) => createOrJoinTicTacToeMatch({ userId }),
+      // Barricade is unstaked and lobby-style on the same terms: its
+      // `createOrJoin` seats the first caller in a waiting lobby and hands the
+      // second caller THAT SAME lobby, so both paired players land on one match
+      // id. It takes no stake at all, so the queue's normalized stake can never
+      // reach it — and therefore never a debit or a payout.
+      "barricade": (userId) => createOrJoinBarricadeMatch({ userId }),
     }[pair.candidate.gameKey];
     if (createMatch) {
       let result: any;
@@ -158,9 +163,7 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
                         ? createOrJoinHexDuelDestination({ userId: pair.partner.userId, wager: sourceStake })
                         : pair.candidate.gameKey === "chess"
                           ? createOrJoinChessDestination({ userId: pair.partner.userId, betAmount: sourceStake })
-                          : pair.candidate.gameKey === "dice-flush"
-                            ? createOrJoinDiceFlushDestination({ userId: pair.partner.userId, wager: sourceStake })
-                            : await createMatch(pair.partner.userId) as any;
+                          : await createMatch(pair.partner.userId) as any;
       } catch (error) {
         console.error("[quick-queue] destination join failed", { gameKey: pair.candidate.gameKey, userId: pair.partner.userId, destinationMatchId, error });
         return null;

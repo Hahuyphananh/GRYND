@@ -115,9 +115,12 @@ test("discovery: the lobby card links to the game, records plays and is 1v1", ()
     "the card artwork must exist",
   );
   // It rides the existing "newest" ordering, without disturbing the games that
-  // were already at its head.
+  // were already at its head. A title that ships LATER legitimately heads the
+  // list (Barricade does today), so what is asserted is the sibling order —
+  // tic-tac-toe directly ahead of speed-typing — not "tic-tac-toe is first".
   assert.match(src, /"solitaire-duel",\n/);
-  assert.match(src, /const newestOrder = \[\n\s*"tic-tac-toe",\n\s*"speed-typing",/);
+  assert.match(src, /const newestOrder = \[/);
+  assert.match(src, /"tic-tac-toe",\n\s*"speed-typing",/);
 });
 
 // ── 2. Presence ───────────────────────────────────────────────────────────

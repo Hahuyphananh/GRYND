@@ -1046,6 +1046,7 @@ test("RATED_GAMES: the registry is the audited 1v1/server-authoritative set", ()
     "tic-tac-toe",
     "solitaire-duel",
     "sudoku-duel",
+    "barricade",
   ]);
   assert.equal(isRatedGame("chess"), true);
   // The formerly-excluded games are now REGISTERED, so every listed game is a
@@ -1065,6 +1066,13 @@ test("RATED_GAMES: the registry is the audited 1v1/server-authoritative set", ()
   assert.equal(isRatedGame("sudoku-duel"), true);
   assert.equal(normalizeRatingGameKey("sudoku-duel"), "sudoku-duel");
   assert.equal(getRatingGameLabel("sudoku-duel"), "Sudoku Duel");
+  // Barricade is a perfect-information, strictly turn-by-turn race whose winner
+  // the server derives from its own frozen position (src/lib/barricade), so it
+  // is ratable on the same terms — and its key is the lobby's own canonical id,
+  // so the ladder, the trophy board and the lobby all name it "barricade".
+  assert.equal(isRatedGame("barricade"), true);
+  assert.equal(normalizeRatingGameKey("barricade"), "barricade");
+  assert.equal(getRatingGameLabel("barricade"), "Barricade");
   assert.equal(normalizeRatingGameKey("speed-typing"), "speed-typing");
   assert.equal(getRatingGameLabel("speed-typing"), "Speed Typing");
   assert.equal(isRatedGame("hex-duel"), true);

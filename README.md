@@ -48,7 +48,7 @@ GRYND currently features 20 games:
 | **Lane Rush Duel**      | Shared 10-row glass-bridge memory duel        |
 | **Pool Masters**        | Physics-based 8-ball pool                     |
 | **Hex Duel**            | Turn-based hex-grid strategy game             |
-| **Dice Flush**          | Yahtzee-style dice strategy game              |
+| **Barricade**           | 1v1 race with pawns and barricades            |
 | **Odds**                | Prediction and mind-game duel                 |
 | **Precision**           | Fast-paced reaction and timing duel           |
 | **Dots & Boxes**        | Classic territory and strategy game           |

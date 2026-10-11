@@ -42,8 +42,8 @@
 import type { MetadataRoute } from "next";
 import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
 import {
+  barricadeMatches,
   chessGames,
-  diceFlushRooms,
   dotsAndBoxesGames,
   fourInARowGames,
   hexDuelGames,
@@ -96,7 +96,7 @@ export type SeoPage = {
 // manual gate on which games appear in the sitemap.
 const GAME_FRESHNESS: Record<string, { table: AnyPgTable; column: AnyPgColumn }> = {
   "mines-pvp": { table: minesGames, column: minesGames.createdAt },
-  "dice-flush": { table: diceFlushRooms, column: diceFlushRooms.createdAt },
+  barricade: { table: barricadeMatches, column: barricadeMatches.createdAt },
   keno: { table: kenoPvpMatches, column: kenoPvpMatches.createdAt },
   rps: { table: rpsPvpGames, column: rpsPvpGames.createdAt },
   chess: { table: chessGames, column: chessGames.createdAt },
@@ -235,7 +235,7 @@ export const EXCLUDED_FROM_SITEMAP: Record<string, string> = {
   "/casino/rps/play-ai": "free AI practice board — a playable route, not a search surface",
   "/casino/four-in-a-row/play-ai": "free AI practice board — a playable route, not a search surface",
   "/casino/barricade/play-ai":
-    "free AI practice board — a playable route with no unique content, and the game has no indexable landing page yet",
+    "free AI practice board — a playable route with no unique content; the indexable page for the game is /games/barricade",
   "/casino/hex-duel/multiplayer": "live matchmaking surface — nothing for a crawler to index",
   "/casino/hex-duel/history": "per-player match history — user-specific data, never a landing page",
   "/casino/lane-runner/history": "per-player match history — user-specific data, never a landing page",

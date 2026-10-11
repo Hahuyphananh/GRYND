@@ -71,6 +71,10 @@ const ALLOWED = [
   "src/app/classement/page.jsx",
   "src/app/profil/page.jsx",
   // game lobbies (lobby route only — the board lives elsewhere)
+  // Barricade's lobby is the page the rewrite from /games/barricade/play lands
+  // on, and its board lives at /casino/barricade/[matchId] (which stays ad-free
+  // like every other match page).
+  "src/app/casino/barricade/page.tsx",
   "src/app/casino/chess/page.jsx",
   "src/app/casino/dots-and-boxes/page.tsx",
   "src/app/casino/four-in-a-row/page.tsx",
@@ -213,13 +217,17 @@ test("the consent default is declared first in the layout's <head>", () => {
     /wait_for_update: 500/,
     "wait_for_update is what covers React hoisting the ad tag ahead of this script",
   );
-  const head = LAYOUT.match(/<head>[\s\S]*?<\/head>/);
+  // Anchored to the JSX element itself, not to any mention of the tag: this
+  // file's prose explains where things run ("Runs in <head>, before the first
+  // paint"), and matching one of those mentions started the region before
+  // <html>, so the assertion was reading the wrong lines.
+  const head = LAYOUT.match(/^[ \t]*<head>[\s\S]*?<\/head>/m);
   assert.ok(head, "the layout must keep an explicit <head>");
   // Strip the opening tag and any JSX comment (the explanatory comment below
   // mentions "<head>" in prose, which would otherwise be matched as a tag),
   // then take the first element actually rendered inside.
   const headInner = head[0]
-    .replace(/^<head>/, "")
+    .replace(/^[ \t]*<head>/, "")
     .replace(/\{\/\*[\s\S]*?\*\/\}/g, "");
   const firstTag = headInner.match(/<(\w+|ConsentModeDefault)[\s/>]/);
   assert.equal(

@@ -8,7 +8,7 @@ GRYND covers dozens of arcade and table games, every one of them 1v1: playable a
 - [Poker](https://grynd.dedyn.io/games/poker/multi): Texas Hold'em against AI or other players
 - [Slots](https://grynd.dedyn.io/games/slots): Themed slot machines with bonus rounds
 - [Mines](https://grynd.dedyn.io/games/mines-pvp): Risk-based tile reveal game, solo or PvP
-- [Dice Flush](https://grynd.dedyn.io/games/dice-flush): Dice-based skill game
+- [Barricade](https://grynd.dedyn.io/games/barricade): 1v1 strategy race — step your pawn or drop a barricade on a 9x9 board
 - [Coin Flip](https://grynd.dedyn.io/games/coin-flip): Fast coin-flip game, solo or PvP
 - [Keno](https://grynd.dedyn.io/games/keno): Number-draw payout game
 - [RPS](https://grynd.dedyn.io/games/rps): Rock-paper-scissors, solo or PvP

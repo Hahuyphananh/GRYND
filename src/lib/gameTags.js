@@ -135,10 +135,6 @@ export const GAME_CATALOG = [
     tags: ["pvp", "strategy", "skill", "competitive"],
   },
 
-  // Roll five dice (chance), then lock combos to outscore: the locking is the
-  // plan (strategy).
-  { id: "yahtzee", href: "/games/dice-flush", tags: ["pvp", "chance", "strategy"] },
-
   // Hidden numbers and shrinking ranges: prediction/mind games (strategy) —
   // guessing right is reading the opponent, not the dice (skill).
   { id: "odds", href: "/games/odds", tags: ["pvp", "strategy", "skill"] },
@@ -213,6 +209,23 @@ export const GAME_CATALOG = [
     href: "/games/sudoku-duel",
     tags: ["pvp", "skill", "competitive"],
   },
+
+  // Barricade is a 9x9 race in which each turn is one action — step your pawn or
+  // drop a two-square barricade that blocks BOTH players — and the first pawn to
+  // the far baseline wins. Reading the position and the opponent is the whole
+  // game (strategy) and it is decided entirely by play, with nothing drawn or
+  // hidden (skill, never `chance`): both pawns, every barricade and both
+  // reserves are public, and the server derives the winner from its own frozen
+  // position (src/lib/barricade/rules.ts). It is a rated ladder duel
+  // (`competitive`) — the id is registered in RATED_GAMES, so its results move
+  // that game's own Elo and trophy rows. Turn-based with no clock and a board a
+  // new player can read in a minute, but it is a planned positional duel rather
+  // than a pick-up game, so it is not tagged `casual` and not `fast_paced`.
+  {
+    id: "barricade",
+    href: "/games/barricade",
+    tags: ["pvp", "strategy", "skill", "competitive"],
+  },
 ];
 
 /** The default (featured) order — exactly the lobby's order. Returned for any
@@ -230,11 +243,11 @@ export const GAMES_BY_ID = Object.fromEntries(GAME_CATALOG.map((game) => [game.i
 // /api/user/default-wagers validate against). Reused rather than re-tagged, so
 // adding a wager to a game automatically feeds the engine.
 //
-// Two catalog ids differ from their wager key (the wager catalog predates the
-// lobby rename); everything else matches by id.
+// One catalog id differs from its wager key (the wager catalog predates the
+// lobby rename); everything else matches by id. Dice Flush's entry was removed
+// with the game: it is no longer a catalogue id, so it needs no mapping.
 const WAGER_KEY_BY_GAME_ID = {
   "mines-pvp": "mines",
-  yahtzee: "dice-flush",
 };
 
 /** Does this game support a configurable token wager? */

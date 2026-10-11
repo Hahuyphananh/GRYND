@@ -265,14 +265,16 @@ test("config: a ranked win is +30, a loss −30, a draw 0", () => {
   // Trophies are UNBOUNDED — there is no per-game max or overall-max cap.
   assert.equal(TROPHY_CONFIG.max, undefined);
   assert.equal(TROPHY_CONFIG.overallMax, undefined);
-  // 20 rated keys — TROPHY_GAMES IS RATED_GAMES, so the count is derived.
-  assert.equal(TROPHY_CONFIG.gameCount, 20);
+  // 21 rated keys — TROPHY_GAMES IS RATED_GAMES, so the count is derived.
+  assert.equal(TROPHY_CONFIG.gameCount, 21);
+  assert.equal(TROPHY_CONFIG.gameCount, RATED_GAMES.length);
   assert.deepEqual([...TROPHY_OUTCOMES], ["win", "loss", "draw"]);
 });
 
 test("registry: trophies use EXACTLY the Elo game set (no drift)", () => {
   assert.deepEqual([...TROPHY_GAMES], [...RATED_GAMES]);
-  assert.equal(TROPHY_GAMES.length, 20);
+  assert.equal(TROPHY_GAMES.length, 21);
+  assert.equal(TROPHY_GAMES.length, RATED_GAMES.length);
   assert.equal(isTrophyGame("mini-golf"), true);
   // Speed Typing is a rated 1v1 duel, so it is a trophy game by the same rule
   // (TROPHY_GAMES IS RATED_GAMES — one list, no drift).
@@ -289,6 +291,12 @@ test("registry: trophies use EXACTLY the Elo game set (no drift)", () => {
   assert.equal(isTrophyGame("sudoku-duel"), true);
   assert.equal(normalizeTrophyGameKey("sudoku-duel"), "sudoku-duel");
   assert.equal(getTrophyGameLabel("sudoku-duel"), "Sudoku Duel");
+  // Barricade completes a strictly turn-by-turn race that the server settles
+  // from its own frozen position, so its trophies move on the same writer — and
+  // its key is the lobby's own canonical id.
+  assert.equal(isTrophyGame("barricade"), true);
+  assert.equal(normalizeTrophyGameKey("barricade"), "barricade");
+  assert.equal(getTrophyGameLabel("barricade"), "Barricade");
   assert.equal(isTrophyGame("chess"), true);
   assert.equal(isTrophyGame("precision"), true);
   // The 6 formerly-excluded games are now REGISTERED (their trophy/rating
@@ -1433,6 +1441,10 @@ const WIRING = [
   // comparison, or most cells at the deadline), so it uses the same original
   // 1v1 writer.
   ["sudoku-duel", "src/lib/sudoku-duel/serverStore.ts"],
+  // Barricade is a 1v1 turn-based race whose position — and therefore its
+  // winner — is derived server-side by the shared rules engine, so it uses the
+  // same original 1v1 writer. It can never draw.
+  ["barricade", "src/lib/barricade/serverStore.ts"],
 ];
 
 for (const [gameKey, file, writer = "applyTrophyResult"] of WIRING) {

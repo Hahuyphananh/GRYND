@@ -9,10 +9,21 @@ This document covers the **pure rules engine** (`src/lib/barricade/`), the
 **free practice experience** built on it (the board UI, the local bot and the
 browser play-through harness) and the **online 1v1 match**: the API routes, the
 two database tables, direct match creation/joining, the server-authoritative
-store and the realtime channel. Online play is unstaked and deliberately unrated
-— ratings, trophies, the quick-queue and the public catalogue swap are NOT part
-of it, and free practice remains entirely client-side, with no network match and
-no competitive progress.
+store and the realtime channel.
+
+Online play is **unstaked but rated**, and Barricade is a fully registered GRYND
+game: a lobby card and a public `/games/barricade` landing page, active-player
+presence (the match page under `barricade`, the practice board under
+`barricade-ai`), a platform Quick Queue destination, and a per-game Elo/trophy
+ladder — all keyed on the ONE canonical id `barricade`. Settlement goes through
+the shared writers (`applyRatingResult` / `applyTrophyResult`) from inside the
+transaction that claimed the match; free practice is excluded because it is
+entirely client-side and has no server match at all. This document does NOT
+cover Dice Flush, which Barricade has since replaced in the public catalogue
+(see `docs/GAME_DICE_FLUSH.md` for its engine guide: its code, tables, routes and
+historical records are preserved by that cutover, but it is no longer offered).
+
+See `tests/barricade-platform.test.mjs` for the registration contract.
 
 ## Files
 
@@ -36,6 +47,7 @@ no competitive progress.
 | `tests/barricade-practice-ui.test.mjs` | The practice screen's contracts: the engine is the only rulebook, practice stays free (no wager/rating/network), every affordance has a hook, the groove grid is the engine's own 8×8 slot grid. |
 | `tests/barricade-online-store.test.mjs` | The authoritative store, driven for real against a fake Drizzle client: authorization, turn ownership, stale versions, replayed plies, engine refusals, victory/settlement, resignation, lobby cancellation, disconnect resolution. |
 | `tests/barricade-online-ui.test.mjs` | The online surface's contracts: the transport carries only an address + version, the room vocabulary matches the realtime server, every route is gated, the migration is idempotent and money-free, practice is untouched. |
+| `tests/barricade-platform.test.mjs` | The PLATFORM registration: the catalog and lobby agree on the id, position and tags, the landing page + sitemap, presence for both labels, navigation, the Quick Queue destination, server authority, the exactly-once settlement path and practice exclusion, the rated/trophy registration, and the no-economy guarantees. |
 | `qa/barricade-practice-check.mjs` | The browser play-through: complete matches at every tier, refused moves and barricades, restart, the result screen, and phone layouts. |
 | `qa/barricade-online-check.mjs` | The online store against the REAL database: two seats, a played-out match, the concurrent-action race, refusals, settlement, cleanup. |
 
@@ -284,10 +296,37 @@ act on another player's match.
 
 ### Scope
 
-No wager, stake, pot or payout column exists and no money is moved. Rating,
-trophies, the quick-queue and the public catalogue entry are deliberately not
-wired (Barricade is not in the rated/trophy registries yet), and Dice Flush is
-untouched.
+No wager, stake, pot or payout column exists and no money is moved. Barricade is
+in no wager catalog (`src/lib/defaultWagers.js`) and nothing in its store or
+routes names a balance, a payout or a stake, so a match cannot move a token even
+by mistake.
+
+What IS wired, keyed on the canonical id `barricade`:
+
+* the casino lobby catalogue and the public landing page (`src/lib/gameTags.js`,
+  `src/app/casino/PageClient.jsx`, `src/lib/gameLandingPages.ts`), which also puts
+  it in the sitemap and the crawlable A–Z index;
+* active-player presence (`src/lib/gamePresence.js`);
+* the platform Quick Queue (`src/lib/quickQueue.ts` + `quickQueueWorker.ts`);
+* per-game Elo and trophies — `barricade` is registered in `RATED_GAMES`
+  (`src/lib/rating.js`), which is also the trophy registry.
+
+Dice Flush was retired from the public catalogue when Barricade replaced it. Out
+of the public experience: its lobby card, its public landing page, its game-tag
+entry, its coverage in `src/lib/guides.ts`, its footer link, its default-wager
+key (`src/lib/defaultWagers.js`) and its Quick Queue destination — and its legacy
+URLs now 308-redirect to Barricade (`/games/dice-flush` → `/games/barricade`,
+`/casino/dice-flush` → `/casino/barricade`, plus the older `/games/yahtzee` and
+`/casino/yahtzee` variants). Its presence label collapses onto `barricade`
+(`src/lib/gamePresence.js`), so no presence is ever counted for a game that is
+no longer offered.
+
+Deliberately PRESERVED: Dice Flush's engine (`game-engine/diceFlushEngine.ts`),
+its `dice_flush_*` tables and migrations, its `/api/dice-flush/*` routes, its
+historical matches, its stored `default_wagers` values (the settings route MERGES
+rather than rewrites), and its per-game Elo and trophy rows — `dice-flush` stays
+a `RATED_GAMES` key so existing ratings and trophies still render. The two games
+share no state, and the cutover needs no database migration.
 
 ## Verification
 

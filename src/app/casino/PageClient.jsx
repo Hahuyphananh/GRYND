@@ -14,7 +14,6 @@ import ImgLaneRush from "../../images/lanerushimage.png";
 import Img17 from "../../images/poolmastersimage.png";
 import Img18 from "../../images/hexduelimage.png";
 import Img21 from "../../images/odds.svg";
-import Img19 from "../../images/dice-flush.svg";
 import Img22 from "../../images/precision.svg";
 import ImgDotsBoxes from "../../images/dots-and-boxes.svg";
 import ImgMiniGolf from "../../images/mini-golf-card.svg";
@@ -22,6 +21,7 @@ import ImgSpeedTyping from "../../images/speed-typing-card.svg";
 import ImgTicTacToe from "../../images/tic-tac-toe-card.svg";
 import ImgSolitaireDuel from "../../images/solitaire-duel-card.svg";
 import ImgSudokuDuel from "../../images/sudoku-duel-card.svg";
+import ImgBarricade from "../../images/barricade-card.svg";
 import ImgTowerArena from "../../images/towersimage.jpg";
 import ImgMinesPvp from "../../images/minesimage.png";
 import ImgMemoryGrid from "../../images/memorygridimage.png";
@@ -507,16 +507,6 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       nameKey: "games.hex_duel_name",
       pvpMode: "1v1",
     },
-     {
-      name: "Dice Flush",
-      href: "/games/dice-flush",
-      leaderboardKey: "yahtzee",
-      playsKey: "dice-flush",
-      image: Img19,
-      descriptionKey: "games.dice_flush_desc",
-      pvpMode: "1v1",
-      popular: true,
-    },
     {
       name: "Odds",
       href: "/games/odds",
@@ -598,6 +588,24 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       nameKey: "games.sudoku_duel_name",
       pvpMode: "1v1",
     },
+    {
+      // Barricade is the newest game AND a rated duel, so it is the one card
+      // whose `leaderboardKey` is also its rating/trophy key (see RATED_GAMES)
+      // and its presence id — one id for the lobby, the ladder and the badge.
+      name: "Barricade",
+      href: "/games/barricade",
+      leaderboardKey: "barricade",
+      playsKey: "barricade",
+      image: ImgBarricade,
+      descriptionKey: "games.barricade_desc",
+      nameKey: "games.barricade_name",
+      pvpMode: "1v1",
+      // Barricade takes the featured slot Dice Flush held before the cutover:
+      // it is this catalogue's rated 1v1 dice-strategy successor, and
+      // HOMEPAGE_FEATURED_SLUGS (src/lib/gameLandingPages.ts) mirrors exactly
+      // these `popular: true` entries.
+      popular: true,
+    },
   ];
 
   // "For You": the engine ranks canonical game ids (leaderboardKey), so map
@@ -628,6 +636,9 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
   );
 
   const newestOrder = [
+    // Newest first: Barricade shipped last, so it leads the recency list (and
+    // takes the last "NEW" badge slot from the game it displaced).
+    "barricade",
     "tic-tac-toe",
     "speed-typing",
     "sudoku-duel",
@@ -637,7 +648,6 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
     "mines-pvp",
     "dots-and-boxes",
     "precision",
-    "yahtzee",
     "hex-duel",
     "pool-masters",
     "odds",

@@ -156,6 +156,28 @@ export const RATED_GAMES = Object.freeze([
   // match under another game's ladder (trophies reuse this list as
   // TROPHY_GAMES, so there is no second registry to keep in sync).
   "sudoku-duel",
+  // Barricade is a 9x9 Quoridor-style race played strictly turn by turn: both
+  // pawns, every barricade and both reserves are PUBLIC, nothing is drawn
+  // during play, and the winner is derived by the shared rules engine
+  // (src/lib/barricade/rules.ts) from the server’s own frozen position — the
+  // only player-authored input is an action ADDRESS plus an expectedVersion.
+  // So the result is fully server-derivable and the game is ratable on exactly
+  // the same terms as Tic-Tac-Toe.
+  //
+  // The key is the lobby’s own canonical id (`leaderboardKey: "barricade"`, the
+  // same id src/lib/gameTags.js and the presence map use), so the rating board,
+  // the lobby shortcut and the trophy board all name the game identically —
+  // unlike the older games whose rating key predates their lobby id. It is also
+  // the key src/lib/barricade/serverStore.ts settles with; registering it HERE
+  // is what makes that settlement take effect (trophies reuse this list as
+  // TROPHY_GAMES, so there is no second registry to keep in sync).
+  //
+  // Only completed online 1v1 matches reach the writer: the store settles
+  // inside the row-locked transaction that claimed the match, its `settleMatch`
+  // bails out when there is no second seat, and free practice is a client-side
+  // game with no server match row at all — so AI games can never move Elo or
+  // trophies.
+  "barricade",
 ]);
 
 /** Display labels for the rating boards (mirrors the lobby names). */
@@ -180,6 +202,7 @@ export const RATING_GAME_LABELS = Object.freeze({
   "tic-tac-toe": "Tic-Tac-Toe",
   "solitaire-duel": "Solitaire Duel",
   "sudoku-duel": "Sudoku Duel",
+  "barricade": "Barricade",
 });
 
 /** True when a game key is eligible for Elo. */

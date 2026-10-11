@@ -111,9 +111,11 @@ test("discovery: the lobby card links to the game, records plays and is 1v1", ()
   assert.match(card, /nameKey: "games.speed_typing_name"/);
   // The card art is shipped art, not a shared fallback.
   assert.match(src, /import ImgSpeedTyping from "\.\.\/\.\.\/images\/speed-typing-card\.svg"/);
-  // The "Newest" sort is newest-first: a title shipped later may precede it,
-  // but Speed Typing must sit directly behind it.
-  assert.match(src, /const newestOrder = \[\n\s*"tic-tac-toe",\n\s*"speed-typing",/);
+  // The "Newest" sort is newest-first: a title shipped later may precede it
+  // (Barricade does today), so what is asserted is that Speed Typing still sits
+  // directly behind Tic-Tac-Toe in the list.
+  assert.match(src, /const newestOrder = \[/);
+  assert.match(src, /"tic-tac-toe",\n\s*"speed-typing",/);
 });
 
 test("discovery: personalization always returns Speed Typing (never hidden)", () => {

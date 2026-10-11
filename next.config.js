@@ -152,25 +152,53 @@ const nextConfig = {
         destination: "/upgrade-pro",
         permanent: true,
       },
-      // Legacy yahtzee URLs (both old and new prefix) land on Dice Flush.
+      // Legacy yahtzee URLs (both old and new prefix) land on Barricade — the
+      // game that replaced it in the catalogue.
       {
         source: "/casino/yahtzee",
-        destination: "/games/dice-flush",
+        destination: "/games/barricade",
         permanent: true,
       },
       {
         source: "/casino/yahtzee/:path*",
-        destination: "/games/dice-flush",
+        destination: "/games/barricade",
         permanent: true,
       },
       {
         source: "/games/yahtzee",
-        destination: "/games/dice-flush",
+        destination: "/games/barricade",
         permanent: true,
       },
       {
         source: "/games/yahtzee/:path*",
-        destination: "/games/dice-flush",
+        destination: "/games/barricade",
+        permanent: true,
+      },
+      // Dice Flush is retired from the catalogue: its public landing page and
+      // its authenticated play page both land on Barricade, each keeping its
+      // own prefix (the same shape the Dice Duel → Tower Arena cutover uses,
+      // and the :path* variants carry deep links such as
+      // /games/dice-flush/rules). No source listed here is also a destination
+      // of another rule, so these cannot loop. The Dice Flush API routes and
+      // database tables are deliberately left in place.
+      {
+        source: "/games/dice-flush",
+        destination: "/games/barricade",
+        permanent: true,
+      },
+      {
+        source: "/games/dice-flush/:path*",
+        destination: "/games/barricade",
+        permanent: true,
+      },
+      {
+        source: "/casino/dice-flush",
+        destination: "/casino/barricade",
+        permanent: true,
+      },
+      {
+        source: "/casino/dice-flush/:path*",
+        destination: "/casino/barricade",
         permanent: true,
       },
       // Legacy Dice Duel URLs now land on Tower Arena (its successor).

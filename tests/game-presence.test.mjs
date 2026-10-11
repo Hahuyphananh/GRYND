@@ -130,7 +130,13 @@ test("every label the repo actually reports maps to a game (drift guard)", () =>
   assert.equal(resolveGameId("four-in-a-row-ai"), "four-in-a-row");
   assert.equal(resolveGameId("rock-paper-scissors-ai"), "rps");
   assert.equal(resolveGameId("neon-flush"), "uno");
-  assert.equal(resolveGameId("dice-flush"), "yahtzee");
+  // Dice Flush was retired from the catalogue (the Dice Flush → Barricade
+  // cutover): its label still exists in the repo on the retired, now-redirecting
+  // play surface, so it collapses onto the game that replaced it. Its old
+  // canonical id ("yahtzee") is no longer a lobby leaderboardKey, so it is no
+  // longer a presence game at all.
+  assert.equal(resolveGameId("dice-flush"), "barricade");
+  assert.equal(isPresenceGame("yahtzee"), false);
 
   // No label maps to a game that isn't in the catalog.
   for (const [label, id] of Object.entries(GAME_LABEL_TO_GAME_ID)) {

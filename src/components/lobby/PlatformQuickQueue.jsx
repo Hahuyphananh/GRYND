@@ -19,10 +19,10 @@ export const QUICK_QUEUE_GAME_OPTIONS = [
   ["precision", "Precision"],
   ["hex-duel", "Hex Duel"],
   ["chess", "Chess"],
-  ["dice-flush", "Dice Flush"],
   ["mini-golf", "Mini Golf"],
   ["speed-typing", "Speed Typing"],
   ["tic-tac-toe", "Tic-Tac-Toe"],
+  ["barricade", "Barricade"],
 ];
 
 const EMPTY_READINESS_BODY = Object.freeze({});
@@ -41,10 +41,12 @@ const GAME_ROUTES = {
   "precision": "/casino/precision/game",
   "hex-duel": "/casino/hex-duel/game",
   "chess": "/casino/chess-game",
-  "dice-flush": "/casino/dice-flush",
   "mini-golf": "/casino/mini-golf",
   "speed-typing": "/casino/speed-typing",
   "tic-tac-toe": "/casino/tic-tac-toe",
+  // A queued Barricade pair lands on the created match's own view, exactly like
+  // every other lobby-style destination above.
+  barricade: "/casino/barricade",
 };
 
 export function quickQueueGameRoute(gameKey, matchId) {

@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
+  <defs>
+    <linearGradient id="bcrd-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0d1226" />
+      <stop offset="100%" stop-color="#04060f" />
+    </linearGradient>
+    <radialGradient id="bcrd-halo" cx="50%" cy="44%" r="62%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.22" />
+      <stop offset="58%" stop-color="#c084fc" stop-opacity="0.14" />
+      <stop offset="100%" stop-color="#04060f" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <rect width="400" height="300" fill="url(#bcrd-bg)" />
+  <rect width="400" height="300" fill="url(#bcrd-halo)" />
+
+  <!-- The 9x9 board -->
+  <rect x="110" y="34" width="180" height="180" rx="10" fill="#111830" stroke="#2b3560" />
+
+  <!-- The 8x8 interior grooves the barricades sit in -->
+  <g stroke="#26305a" stroke-width="2" stroke-linecap="round">
+    <line x1="130" y1="42" x2="130" y2="206" />
+    <line x1="150" y1="42" x2="150" y2="206" />
+    <line x1="170" y1="42" x2="170" y2="206" />
+    <line x1="190" y1="42" x2="190" y2="206" />
+    <line x1="210" y1="42" x2="210" y2="206" />
+    <line x1="230" y1="42" x2="230" y2="206" />
+    <line x1="250" y1="42" x2="250" y2="206" />
+    <line x1="270" y1="42" x2="270" y2="206" />
+    <line x1="118" y1="54" x2="282" y2="54" />
+    <line x1="118" y1="74" x2="282" y2="74" />
+    <line x1="118" y1="94" x2="282" y2="94" />
+    <line x1="118" y1="114" x2="282" y2="114" />
+    <line x1="118" y1="134" x2="282" y2="134" />
+    <line x1="118" y1="154" x2="282" y2="154" />
+    <line x1="118" y1="174" x2="282" y2="174" />
+    <line x1="118" y1="194" x2="282" y2="194" />
+  </g>
+
+  <!-- Placed barricades: two-square bars lying IN the grooves -->
+  <g stroke-linecap="round">
+    <!-- horizontal barricade (blocks up/down) -->
+    <line x1="210" y1="114" x2="250" y2="114" stroke="#f59e0b" stroke-width="7" />
+    <!-- vertical barricade (blocks left/right) -->
+    <line x1="170" y1="74" x2="170" y2="114" stroke="#f59e0b" stroke-width="7" />
+    <!-- the opponent's barricade, ready to be threaded -->
+    <line x1="230" y1="154" x2="270" y2="154" stroke="#c084fc" stroke-width="7" opacity="0.9" />
+  </g>
+
+  <!-- Both pawns: player 2 (purple) on the far baseline pushing down -->
+  <circle cx="200" cy="64" r="11" fill="#c084fc" stroke="#f0dcff" stroke-width="2" />
+  <!-- player 1 (cyan) two rows up, the race in progress -->
+  <circle cx="180" cy="184" r="11" fill="#38bdf8" stroke="#d8f4ff" stroke-width="2" />
+
+  <!-- Player 1's path to the goal, drawn last so it reads as the intent -->
+  <path
+    d="M180 168 L180 148 L200 148 L200 96"
+    fill="none"
+    stroke="#38bdf8"
+    stroke-width="3"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-dasharray="7 7"
+    opacity="0.7"
+  >
+    <animate attributeName="opacity" values="0.7;0.25;0.7" dur="2.6s" repeatCount="indefinite" />
+  </path>
+
+  <!-- Two seats, plus each side's remaining barricades -->
+  <g>
+    <rect x="110" y="226" width="180" height="30" rx="15" fill="#171f3c" stroke="#2b3560" />
+    <circle cx="132" cy="241" r="9" fill="#38bdf8" />
+    <circle cx="268" cy="241" r="9" fill="#c084fc" />
+    <g fill="#f59e0b">
+      <rect x="150" y="237" width="14" height="8" rx="4" />
+      <rect x="168" y="237" width="14" height="8" rx="4" opacity="0.7" />
+      <rect x="186" y="237" width="14" height="8" rx="4" opacity="0.45" />
+    </g>
+    <g fill="#f59e0b" opacity="0.35">
+      <rect x="218" y="237" width="14" height="8" rx="4" />
+      <rect x="236" y="237" width="14" height="8" rx="4" />
+    </g>
+  </g>
+</svg>

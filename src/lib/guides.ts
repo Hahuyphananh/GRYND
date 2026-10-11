@@ -450,7 +450,7 @@ export const GUIDES: readonly Guide[] = [
         ],
         bullets: [
           "Is the random input symmetric? In Keno, both seats receive the same draw, so the only difference between players is what they do with it. In Mines Duel, each seat gets its own board and the mine positions never match, but both boards are the same size, hold the same number of mines and use the same value table — so the scoring opportunity is equivalent even though the boards differ.",
-          "How much of the outcome does a decision move? In Dice Flush, the dice are random but you decide which combinations to lock and when to stop; the roll sets the ceiling and your locking sets the result.",
+          "How much of the outcome does a decision move? In Barricade every barricade and both pawns are public, so nothing is hidden behind a draw — the result is almost entirely the decisions you and your opponent make. Compare that with Keno above, where the draw sets the ceiling and your choices only decide what you do with it.",
           "Can a better player win more often over many matches? This is the practical test. Per-game Elo ratings exist precisely to answer it: results across a series reveal who is better, even when a single match goes the other way.",
         ],
       },
@@ -471,7 +471,7 @@ export const GUIDES: readonly Guide[] = [
     ],
     gameSlugs: [
       "keno",
-      "dice-flush",
+      "barricade",
       "mines-pvp",
       "chess",
       "tic-tac-toe",

@@ -82,7 +82,7 @@ game's shipped description:
 | Lane Rush Duel | pvp, skill, competitive, fast_paced | climb-and-bank reads; staked race |
 | Pool Masters | pvp, skill, strategy | aiming + table planning |
 | HEX DUEL | pvp, strategy, skill, competitive | territory conquest on the ladder |
-| Dice Flush | pvp, chance, strategy | dice rolls, then combo locking |
+| Barricade | pvp, strategy, skill, competitive | pawn-and-barricade positional duel on the ladder |
 | Odds | pvp, strategy, skill | hidden numbers, shrinking range |
 | Precision | pvp, skill, fast_paced, competitive | reaction-timing staked duel |
 | Dots & Boxes | pvp, strategy, skill | pencil-and-paper planning |

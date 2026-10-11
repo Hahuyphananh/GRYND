@@ -36,17 +36,20 @@
 //
 // A finished match is finalised EXACTLY ONCE: the terminal write is claimed
 // with a conditional UPDATE (`status <> 'finished'`), so the loser of a
-// concurrent race is a no-op instead of a second settlement. See `settleMatch`
-// for why rating/trophies are deliberately not wired (Barricade is not in the
-// `RATED_GAMES` / trophy registries, and this phase must not enable competitive
-// surfaces), and what a future rated ladder would change.
+// concurrent race is a no-op instead of a second settlement. The same
+// transaction then settles competitive progression through the shared writers
+// (`applyRatingResult` / `applyTrophyResult`), which are journal-keyed per
+// (user, game, match) — so a retry, a reconnect or a duplicate completion event
+// can never apply a reward twice. See `settleMatch`.
 //
 // There is no wager, stake, pot, payout or token path anywhere in this file.
 
 import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { db } from "../../db/client";
-import { barricadeMatches, barricadeMoves } from "../../db/schema";
+import { barricadeMatches, barricadeMoves, users } from "../../db/schema";
+import { applyRatingResult } from "../rating";
+import { applyTrophyResult } from "../trophyStore";
 import {
   ACTION_TYPES,
   BARRICADE_LOCK_NAMESPACE,
@@ -807,21 +810,48 @@ export type SettlementOutcome = {
  * Called only from the transaction that already claimed the match (the
  * conditional `status` UPDATE inside each mutation), so it runs exactly once per
  * match: a second concurrent request finds the row already terminal and never
- * reaches here.
+ * reaches here. That claim is what makes settlement idempotent at the match
+ * level; the shared writers add their own (user, game, match) journal on top.
  *
- * DELIBERATELY NOT RATED. The platform's progression helpers
- * (`applyRatingResult` / `applyTrophyResult`) accept only games listed in
- * `RATED_GAMES` / the trophy registry (src/lib/rating.js, src/lib/trophies.js),
- * and adding "barricade" is a platform-level decision with visible consequences
- * (a rated ladder, per-game leaderboards, trophy pages). This phase explicitly
- * must not enable competitive surfaces before direct matchmaking is proven, and
- * Barricade's free-practice phase was unchallenged by competitive rewards — so
- * the outcome lives on the match row (`result`, `winnerId`, `result_reason`,
- * `ended_at`) and nothing else moves. A future rated ladder adds exactly two
- * registry entries and an `applyRatingResult`/`applyTrophyResult` pair here.
+ * RATED, through the platform's existing progression helpers and no maths of
+ * its own:
  *
- * No wager/token/payout path exists in this file, so there is nothing to pay
- * out either way.
+ *   * `applyRatingResult`  — per-game Elo (src/lib/rating.js, maths in
+ *                            src/lib/elo.js). `barricade` is registered in
+ *                            `RATED_GAMES`, so the writer accepts the key
+ *                            rather than refusing it as unrated.
+ *   * `applyTrophyResult`  — per-game trophies (src/lib/trophyStore.js), whose
+ *                            registry IS `RATED_GAMES` (TROPHY_GAMES).
+ *   * `users.gamesWon` / `users.gamesLost` — the account W/L counters the
+ *                            profile and the classement page read.
+ *
+ * The two calls spell the game key as the LITERAL `"barricade"` rather than
+ * through a constant, because that is the platform's convention for every
+ * settlement site: tests/trophy-system.test.mjs audits settlement wiring by
+ * scanning the sources for `gameKey: "<key>"` to prove that each rated game is
+ * settled by exactly one writer, and an indirected key would be invisible to
+ * that audit. The key is the SAME id the lobby's `leaderboardKey`,
+ * `GAME_CATALOG` and the presence map use, and the one registered in
+ * `RATED_GAMES` (which IS the trophy registry).
+ *
+ * Both writers are called with THIS transaction, so the terminal result and the
+ * progression commit atomically, and both are best-effort (`catch(() => {})`)
+ * exactly like every other duel: a progression failure must never un-finish a
+ * decided match.
+ *
+ * PRACTICE IS EXCLUDED BY CONSTRUCTION. There is no `is_ai` column and no
+ * server-side practice path at all: free practice runs entirely in the browser
+ * against a local bot (src/app/casino/barricade/play-ai), so it has no match row
+ * and can never reach this function. A match with no second seat is an open
+ * lobby, not a result, and returns below.
+ *
+ * Barricade can never draw — the engine's only terminal reason is
+ * `reached-baseline`, and a resignation or a disconnect forfeit names a winner —
+ * so there is no draw branch here (unlike Mini Golf / Speed Typing / Sudoku
+ * Duel, which can tie).
+ *
+ * No wager/token/payout path exists in this file, so settlement moves no tokens
+ * in either direction.
  */
 async function settleMatch(
   tx: any,
@@ -838,10 +868,30 @@ async function settleMatch(
     outcome.result === "player1" ? match.player2Id : match.player1Id;
   if (!winnerId || !loserId || winnerId === loserId) return;
 
-  // Unrated by design (see the note above). Nothing to write here yet — the
-  // terminal columns were written by the claiming transaction.
-  void tx;
-  void outcome;
+  // Account W/L counters — the same two columns every other duel increments.
+  await tx
+    .update(users)
+    .set({ gamesWon: sql`${users.gamesWon} + 1` })
+    .where(eq(users.clerkId, winnerId));
+  await tx
+    .update(users)
+    .set({ gamesLost: sql`${users.gamesLost} + 1` })
+    .where(eq(users.clerkId, loserId));
+
+  await applyRatingResult({
+    tx,
+    gameKey: "barricade",
+    matchId: String(match.id),
+    winnerClerkId: winnerId,
+    loserClerkId: loserId,
+  }).catch(() => {});
+  await applyTrophyResult({
+    tx,
+    gameKey: "barricade",
+    matchId: String(match.id),
+    winnerClerkId: winnerId,
+    loserClerkId: loserId,
+  }).catch(() => {});
 }
 
 // Re-exported so the routes can present the engine's own vocabulary without

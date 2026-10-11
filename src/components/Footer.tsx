@@ -139,8 +139,11 @@ export default function Footer() {
                 Pool Masters
               </Link>
 
-              <Link href="/games/dice-flush" className={linkClass}>
-                Dice Flush
+              {/* Barricade replaced Dice Flush in the catalogue; this slot used
+                  to link /games/dice-flush. That URL still 308-redirects to
+                  /games/barricade for old bookmarks and inbound links. */}
+              <Link href="/games/barricade" className={linkClass}>
+                Barricade
               </Link>
 
               <Link href="/games/precision" className={linkClass}>

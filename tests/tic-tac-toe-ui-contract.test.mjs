@@ -549,8 +549,11 @@ test("discovery: the lobby card links to the game and is a 1v1 duel", () => {
   assert.match(card, /pvpMode: "1v1"/);
   // Shipped card art, not a shared fallback.
   assert.match(src, /import ImgTicTacToe from "\.\.\/\.\.\/images\/tic-tac-toe-card\.svg"/);
-  // It is the newest card, so it heads the "Newest" sort.
-  assert.match(src, /const newestOrder = \[\n\s*"tic-tac-toe",/);
+  // It is a recent card, so it rides the "Newest" sort — directly ahead of
+  // Speed Typing. A title that ships later heads the list (Barricade does
+  // today), so what is asserted is the sibling order, not "tic-tac-toe is first".
+  assert.match(src, /const newestOrder = \[/);
+  assert.match(src, /"tic-tac-toe",\n\s*"speed-typing",/);
 });
 
 test("discovery: the catalog mirrors the lobby and tags the game", () => {

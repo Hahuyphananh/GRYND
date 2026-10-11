@@ -439,7 +439,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
         a: "Yes. Nothing is wagered and no tokens change hands. Competitive results move your Elo and trophies.",
       },
     ],
-    related: ["uno", "solitaire-duel", "dice-flush", "odds"],
+    related: ["uno", "solitaire-duel", "barricade", "odds"],
   },
 
   {
@@ -1325,73 +1325,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
         a: "Yes. There is no wager and no entry cost; ranked results move your Elo and trophies.",
       },
     ],
-    related: ["rps", "neon-flush", "dice-flush", "chess"],
-  },
-
-  {
-    slug: "dice-flush",
-    name: "Dice Flush",
-    headline: "Dice Flush — 1v1 Dice & Scorecard Duel",
-    category: "Dice",
-    leaderboardKey: "yahtzee",
-    ogImage: "/images/og-banner.png",
-    shortDescription:
-      "Yahtzee-style dice against a live opponent on one SHARED scorecard. A category either of you claims is closed to both, so blocking matters as much as scoring.",
-    aiPractice: true,
-    introduction: [
-      "Dice Flush is a five-dice scoring duel with a single shared scorecard. You roll, hold the dice you want to keep, and then commit the result to a category — but every category you take is taken away from your opponent, and vice versa.",
-      "It is competitive because the denial is as real as the scoring. Thirteen categories on one sheet between two players means the good ones run out fast, and the match is often decided by who claims what and when.",
-    ],
-    howToPlay: [
-      "Sign in, open the lobby and press Play to face a live opponent, or take a free practice match against the bot.",
-      "On your turn you have five dice. Roll them, choose which to hold, and reroll the rest.",
-      "When you are happy with the result — or out of rolls — commit it to an open category.",
-      "Your opponent then takes their turn the same way.",
-      "Play continues until the scorecard has no open categories left, and the higher total wins.",
-    ],
-    rules: [
-      "Five dice per turn, with the standard roll-and-hold structure: you decide which dice to keep and reroll the rest.",
-      "There is ONE shared scorecard. A category claimed by either player is closed to both, and the owner of each category is recorded.",
-      "The categories are: ones, twos, threes, fours, fives, sixes, three of a kind, four of a kind, full house, small straight, large straight, and five of a kind.",
-      "Each turn runs on a time limit, and a turn that runs out is auto-banked rather than left hanging.",
-      "Because the sheet is shared, it fills twice as fast as a solo Yahtzee card — the match ends when the last category is claimed.",
-    ],
-    scoring: [
-      "The six number categories score according to how many dice show that number.",
-      "Three of a kind, four of a kind and five of a kind score from the dice that make up the set.",
-      "Full house, small straight and large straight are pattern categories with their own fixed values.",
-      "The player with the higher total across the whole shared sheet wins the match.",
-      "Ranked results move your per-game rating and your trophy ladder for this game.",
-    ],
-    strategy: [
-      "Claim the scarce categories first. A large straight or a five of a kind is hard to roll, and if you leave it open your opponent may simply take it — and you never get another chance at it.",
-      "Use the number categories as your safety net. Ones and twos are easy to fill and free you to spend your turns chasing the big patterns.",
-      "Block deliberately. Taking a category your opponent clearly needed is often worth more than the few points you score by taking it.",
-      "Count what is left. Once few categories remain, your reroll decisions should be driven by which patterns are still claimable rather than by the current dice.",
-      "Do not over-chase. Holding dice for a straight across three rerolls usually produces nothing, and the zero you bank on that turn is a real cost.",
-      "Watch your turn timer. An expired turn is auto-banked with whatever your dice happen to show, which is a much worse outcome than committing deliberately.",
-    ],
-    competitive:
-      "Dice Flush tests probability judgement and denial. The dice supply the variance, but on a shared sheet the outcome usually turns on which categories you claim and which you deny.",
-    faq: [
-      {
-        q: "Do we each have our own scorecard?",
-        a: "No — you share one. A category claimed by either player is closed to both, so the sheet fills twice as fast and denying a category is a real, permanent play.",
-      },
-      {
-        q: "What happens if I run out of time on a turn?",
-        a: "The turn is auto-banked: whatever your dice currently show is committed rather than the turn hanging. Committing deliberately is almost always better.",
-      },
-      {
-        q: "Which categories are on the sheet?",
-        a: "Ones through sixes, three of a kind, four of a kind, full house, small straight, large straight, and five of a kind.",
-      },
-      {
-        q: "Is it free to play?",
-        a: "Yes. Nothing is wagered, and ranked results move your Elo and trophies for this game.",
-      },
-    ],
-    related: ["odds", "rps", "neon-flush", "uno"],
+    related: ["rps", "neon-flush", "barricade", "chess"],
   },
 
   {
@@ -1522,7 +1456,82 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
         a: "Yes. Nothing is wagered, and there is no entry cost of any kind.",
       },
     ],
-    related: ["neon-flush", "solitaire-duel", "dice-flush", "odds"],
+    related: ["neon-flush", "solitaire-duel", "barricade", "odds"],
+  },
+
+  {
+    slug: "barricade",
+    name: "Barricade",
+    headline: "Barricade — 1v1 Quoridor-Style Strategy Game",
+    category: "Classic Strategy",
+    leaderboardKey: "barricade",
+    ogImage: "/images/og-banner.png",
+    shortDescription:
+      "A free, rated 1v1 strategy race on a 9×9 board. Every turn is one action — step your pawn or drop a two-square barricade that blocks you both — and the first pawn to the far baseline wins.",
+    aiPractice: true,
+    introduction: [
+      "Barricade is a 9×9 race of pure position. You and your opponent each start on the centre square of your own baseline with ten barricades in reserve, and the first pawn to reach any square of the opposite row wins immediately.",
+      "It is competitive because nothing is hidden and nothing is drawn: both pawns, every placed barricade and both reserves are public at all times, so a win is planning and reading the opponent and nothing else. Every move is validated by the server from its own frozen position.",
+    ],
+    howToPlay: [
+      "Sign in, open the lobby and press Find a Match to be seated against a live opponent, or take the free practice board against the bot without an account.",
+      "You and your opponent each start on the centre square of your own baseline of a 9×9 board, with ten barricades each.",
+      "Your turn is exactly one action: walk your pawn one square up, down or sideways — never diagonally — or place one barricade.",
+      "When your pawns stand face to face with no barricade between them you may jump straight over your opponent instead; if the square directly behind them is blocked, you move diagonally to one of the two squares beside them.",
+      "The first pawn to reach any square of the opposite baseline wins the match.",
+    ],
+    rules: [
+      "A barricade is two squares long and sits in the groove between squares, so it blocks BOTH players, in both directions. Each player has ten.",
+      "Two barricades may never overlap or cross each other, and a barricade may never completely cut off either player's remaining route to their goal — a placement that traps a player for good is refused.",
+      "A pawn moves one square orthogonally per turn and never diagonally, except for the lateral jump described above.",
+      "Barricades may not be jumped. A diagonal jump in particular is only legal when both the square you pass beside the opponent and the square you land on are open.",
+      "Each turn is one action, move or barricade — never both — and the turn passes immediately afterwards.",
+      "Nothing about the position is hidden and nothing is drawn during play: there are no dice, no cards and no random element at all. Both players can see the entire board.",
+      "Every accepted action is decided by the server from its own stored position. The client sends an action address and the version of the position it was shown, and nothing else — a stale tab, a double submit or a replayed turn is refused.",
+    ],
+    scoring: [
+      "There is no score. A match has one winner: the first pawn to reach any square of the opposite baseline.",
+      "A match also ends when a player resigns — the win is awarded to the opponent, and the result is recorded server-side.",
+      "A player who leaves and does not return forfeits: the match is awarded to the opponent, and the remaining seat is told the match was decided by abandonment.",
+      "Barricade can never end in a draw. Somebody always walks to a baseline, resigns or forfeits.",
+    ],
+    strategy: [
+      "Race and block at the same time. A barricade that does not lengthen your opponent's route to the far baseline is usually a wasted turn — count the squares before you spend one.",
+      "Barricades cut both ways. Because a barricade blocks its owner too, the strongest placements are the ones that slow your opponent while leaving your own shortest path intact.",
+      "Think in shortest paths, not in steps. Your real position is the number of moves it will take each pawn to arrive, so a turn that adds two moves to your opponent's route is worth far more than a turn that adds one.",
+      "Keep a route in reserve. A barricade may never seal either player off completely, but it can leave you exactly one long way round — so avoid spending your last barricade early and then having to walk the long way yourself.",
+      "Late in the game the jump matters. Standing adjacent to your opponent with an open square behind them is a free two-square gain, so use barricades behind their pawn to deny them the same thing.",
+      "Do not mirror your opponent's walls. Copying a placement usually cancels out, whereas a barricade placed on the side they are not using buys you tempo on the side they are.",
+    ],
+    competitive:
+      "Barricade tests planning, spatial reading and nerve. It is a perfect-information game with no randomness anywhere, the winner is derived server-side from the position, and a ranked online result moves your own Barricade Elo and trophy ladder — so the ladder measures the decisions you made and nothing else.",
+    faq: [
+      {
+        q: "How many barricades do I get?",
+        a: "Ten each. That count is fixed by the rules and is shown for both seats throughout the match, straight from the server's own position.",
+      },
+      {
+        q: "Can a barricade trap a player completely?",
+        a: "No. Every legal barricade must leave both pawns a route to their goal, so a placement that would seal a player off for good is refused by the server before it is applied.",
+      },
+      {
+        q: "Can I jump over my opponent's pawn?",
+        a: "Yes, when the two pawns stand on neighbouring squares with no barricade between them. If the square directly behind your opponent is blocked or off the board, you may move diagonally to either square beside them instead — as long as neither of those squares is itself blocked.",
+      },
+      {
+        q: "Is there a turn clock?",
+        a: "No. Barricade is turn-based with no timer — you have as long as you need for each of your turns, and a match only ends on a win, a resignation or a long disconnect.",
+      },
+      {
+        q: "Does the AI practice move my rating?",
+        a: "No. Free practice runs entirely in your browser against the bot and is never recorded as a ranked match, so it cannot change your Elo, your trophies or your win record. Only a completed online 1v1 match does that.",
+      },
+      {
+        q: "Is it free to play?",
+        a: "Yes. Nothing is wagered, there is no entry cost of any kind, and a ranked result is rewarded with rating and trophies rather than anything of value.",
+      },
+    ],
+    related: ["tic-tac-toe", "chess", "dots-and-boxes", "four-in-a-row"],
   },
 ];
 
@@ -1624,7 +1633,7 @@ export function gameIndexFor(slugs: readonly string[]): GameIndexEntry[] {
 export const HOMEPAGE_FEATURED_SLUGS: readonly string[] = [
   "mines-pvp",
   "memory-grid",
-  "dice-flush",
+  "barricade",
   "odds",
 ];
 
