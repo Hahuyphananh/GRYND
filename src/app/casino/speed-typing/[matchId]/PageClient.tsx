@@ -857,8 +857,8 @@ export default function SpeedTypingMatchPage() {
                     >
                       <p className="text-sm font-bold text-amber-100">
                         {iFinished
-                          ? "You finished! Waiting for your opponent to complete the race…"
-                          : "Your opponent finished first. Keep typing — the race is still live until you finish or the clock runs out."}
+                          ? "You finished — the race is yours. Your result is on its way."
+                          : "Your opponent finished first — the race is over. Your result is on its way."}
                       </p>
                     </div>
                   )}

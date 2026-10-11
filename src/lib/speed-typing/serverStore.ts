@@ -422,7 +422,8 @@ export async function fetchMatch({
   // carries the passage text.
   //
   // For a practice race the bot is advanced to NOW first, so every poll shows
-  // its live progress (and settles the race the instant both seats finish);
+  // its live progress — and one read past the bot's own finish instant resolves
+  // and settles the race (`advanceAiRace` finalises inside its transaction) —
   // then the deadline is applied. A non-AI row is untouched by the first step.
   const advanced = await advanceAiIfPractice(match, Date.now());
   const current = await resolveRaceIfDue(advanced);
@@ -620,9 +621,10 @@ export async function armRace({ matchId, nowMs = Date.now() }: { matchId: string
  *
  * Idempotent and monotonic: a no-op for a non-AI row, an unarmed row, a row
  * whose race has already resolved, or a call that does not advance the cursor.
- * When the bot's write completes the race (both seats finished), it resolves and
- * settles inside this same transaction — the identical seam a real finish uses,
- * so a settled practice race is never rated.
+ * When the bot's own finish arrives, it resolves and settles inside this same
+ * transaction — the identical seam a real finish uses, so a settled practice
+ * race is never rated. That is what stops a solved practice race from hanging
+ * live until the hard limit: the bot needs nobody to finish it.
  */
 export async function advanceAiRace({
   matchId,
@@ -669,12 +671,13 @@ export async function advanceAiRace({
     if (!changed) return { match, advanced: false } as const;
 
     const seats = { ...state.seats, [botSeat]: nextSeat };
-    // Only the SECOND verified finish ends the race by "finish"; until the
-    // human has also completed, the practice race stays live so the player can
-    // still beat the bot's clock.
-    const bothFinished =
-      seats[SEAT.PLAYER1]?.finished === true && seats[SEAT.PLAYER2]?.finished === true;
-    const outcome = bothFinished
+    // A practice race ends the instant EITHER seat finishes — here, the bot.
+    // There is nobody left to wait for: the bot's finish instant is a pure
+    // function of the server clock, and waiting only hung the race until the
+    // hard limit at the deadline (no result screen, and a live clock that kept
+    // dividing the same character count by a growing elapsed time). The verdict
+    // is the same one `resolveRace` reaches later — the EARLIER finish wins.
+    const outcome = nextSeat.finished
       ? resolveRace({ state: { ...state, seats }, reason: RESOLUTION.FINISH, nowMs })
       : null;
 
@@ -964,33 +967,29 @@ export async function submitFinish({
     }
 
     const seats = { ...state.seats, [seat]: decision.seat };
-    const bothFinished =
-      seats[SEAT.PLAYER1]?.finished === true && seats[SEAT.PLAYER2]?.finished === true;
 
-    // Against a HUMAN opponent only the SECOND verified finish ends the race
-    // by "finish": the match stays live so the other seat can post its own
-    // time inside the hard limit, and the verdict (already fixed by the earlier
-    // instant) is written when it does or at the deadline.
+    // THE FIRST VERIFIED FINISH ENDS THE RACE. The moment a seat IS the
+    // passage, the race settles to that seat inside THIS transaction — the
+    // finisher gets the result screen at once instead of watching a clock run
+    // down towards a hard limit that used to award the loss to whoever happened
+    // to be ahead when it expired.
     //
-    // Against the PRACTICE BOT there is nobody left to wait for. The bot's
-    // finish instant is a pure function of the server clock, so the moment the
-    // human's own finish is verified the outcome is already determined — and
-    // nothing would ever advance the bot again, because a client only reads on
-    // a socket push or a tab focus (see useMatchSync). Waiting produced a race
-    // that could never resolve: no result screen, no way to move on, and a live
-    // clock that kept dividing the same character count by a growing elapsed
-    // time, so the player watched their own WPM fall. This is the same verdict
-    // `resolveRace` would reach later — the EARLIER finish instant wins, and the
-    // bot's seat was already advanced to `nowMs` at the top of this function.
-    const practiceDecided = match.isAi === true && seats[seat]?.finished === true;
-    const outcome =
-      bothFinished || practiceDecided
-        ? resolveRace({
-            state: { ...state, seats },
-            reason: RESOLUTION.FINISH,
-            nowMs,
-          })
-        : null;
+    // A later packet is then refused by the terminal row. That is deliberate:
+    // a match can never be settled twice, so the winner is whoever's verified
+    // finish reached the row first. For the practice bot that is EXACT, because
+    // its finish instant is a pure function of the server clock and
+    // `advanceAiRace` is run above, before the human's packet is graded — so a
+    // human who finished sooner wins and a human who finished later loses. In a
+    // human race both packets are submitted the instant each player types the
+    // last character, so arrival order is the finish order; only a straggler
+    // delayed past its opponent's arrival could invert that, and the
+    // alternative — letting a late packet re-decide a settled race and unwind a
+    // committed rating — is strictly worse.
+    const outcome = resolveRace({
+      state: { ...state, seats },
+      reason: RESOLUTION.FINISH,
+      nowMs,
+    });
 
     const nextState: RaceState = {
       ...state,

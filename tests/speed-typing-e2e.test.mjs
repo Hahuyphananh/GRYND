@@ -768,23 +768,26 @@ test("e2e: QUEUE → MATCH FOUND → SAME PROMPT → GO → PROGRESS → WIN →
     "the opponent's progress is server-derived, never the client's claim",
   );
 
-  // ── FIRST VERIFIED COMPLETION ───────────────────────────────────────────
+  // ── FIRST VERIFIED COMPLETION → WINNER / LOSER → MATCH FINISH ───────────
+  // The finish that solves the passage ends the race in the SAME transaction:
+  // the winner's own packet produces the result, with no wait for an opponent
+  // who could only ever post a slower time.
   at(GO + 20_000);
   const firstFinish = await postFinish(matchId, { typedText: expectedText });
   assert.equal(firstFinish.status, 200);
   assert.equal(firstFinish.json.data.accepted, true);
-  assert.equal(firstFinish.json.data.outcome, null, "one finish does not end a race");
+  assert.equal(firstFinish.json.data.outcome.settled, true);
+  assert.equal(firstFinish.json.data.outcome.winnerSeat, SEAT.PLAYER1, "the first finish wins");
+  assert.equal(firstFinish.json.data.outcome.resolutionReason, RESOLUTION.FINISH);
   assert.equal(firstFinish.json.data.seat.finished, true);
   assert.equal(firstFinish.json.data.seat.elapsedMs, 20_000, "elapsed is the server's clock");
-  assert.equal(spies.rating.length, 0, "a single finish settles nothing");
 
-  // ── SECOND COMPLETION → WINNER / LOSER → MATCH FINISH ──────────────────
+  // ── THE OPPONENT'S LATER COMPLETION FINDS AN ALREADY-DECIDED RACE ───────
   at(GO + 25_000);
   auth.current = BOB;
   const secondFinish = await postFinish(matchId, { typedText: expectedText });
-  assert.equal(secondFinish.json.data.outcome.settled, true);
-  assert.equal(secondFinish.json.data.outcome.winnerSeat, SEAT.PLAYER1, "earlier finish wins");
-  assert.equal(secondFinish.json.data.outcome.resolutionReason, RESOLUTION.FINISH);
+  assert.equal(secondFinish.json.data.accepted, false);
+  assert.equal(secondFinish.json.data.reason, "resolved");
 
   const settledRow = rowOf(fake, matchId);
   assert.equal(settledRow.status, MATCH_STATUS.FINISHED);
@@ -834,11 +837,16 @@ test("outcome: Player 1 wins normally", { skip: SKIP_REASON }, async (t) => {
   auth.current = ALICE;
   const a = await postFinish(MATCH_A, { typedText: TEXT });
   assert.equal(a.json.data.seat.finished, true);
+  assert.equal(a.json.data.outcome.settled, true);
+  assert.equal(a.json.data.outcome.winnerSeat, SEAT.PLAYER1, "Alice's own finish decides it");
+
+  // Bob's slower finish arrives to a terminal row.
   at(GO + 21_000);
   auth.current = BOB;
   const b = await postFinish(MATCH_A, { typedText: TEXT });
+  assert.equal(b.json.data.accepted, false);
+  assert.equal(b.json.data.reason, "resolved");
 
-  assert.equal(b.json.data.outcome.winnerSeat, SEAT.PLAYER1);
   assert.equal(rowOf(fake, MATCH_A).result, RESULT.PLAYER1);
   assert.equal(rowOf(fake, MATCH_A).winnerId, ALICE);
   settledExactlyOnce("p1 wins", { winner: ALICE, loser: BOB });
@@ -853,12 +861,16 @@ test("outcome: Player 2 wins normally", { skip: SKIP_REASON }, async (t) => {
   // Bob finishes first, Alice second.
   at(GO + 12_000);
   auth.current = BOB;
-  await postFinish(MATCH_A, { typedText: TEXT });
+  const first = await postFinish(MATCH_A, { typedText: TEXT });
+  assert.equal(first.json.data.outcome.settled, true);
+  assert.equal(first.json.data.outcome.winnerSeat, SEAT.PLAYER2, "Bob's own finish decides it");
+
   at(GO + 30_000);
   auth.current = ALICE;
   const second = await postFinish(MATCH_A, { typedText: TEXT });
+  assert.equal(second.json.data.accepted, false);
+  assert.equal(second.json.data.reason, "resolved");
 
-  assert.equal(second.json.data.outcome.winnerSeat, SEAT.PLAYER2);
   assert.equal(rowOf(fake, MATCH_A).result, RESULT.PLAYER2);
   assert.equal(rowOf(fake, MATCH_A).winnerId, BOB);
   settledExactlyOnce("p2 wins", { winner: BOB, loser: ALICE });
@@ -868,38 +880,39 @@ test("outcome: Player 2 wins normally", { skip: SKIP_REASON }, async (t) => {
 // 4. Both type simultaneously
 // ════════════════════════════════════════════════════════════════════════
 
-test("simultaneous: identical finish instants are a DRAW, not a packet race", { skip: SKIP_REASON }, async (t) => {
+test("simultaneous: identical finish instants are decided by the first verified finish", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   installClock(t);
   setMatches(fake, [armedRow()]);
   setUsers(fake, [ALICE, BOB]);
   at(GO + 30_000);
 
-  // Both verified finishes land on the SAME server instant.
+  // Both verified finishes land on the SAME server instant. The row lock
+  // serialises them, so the first recorded packet ends the race and the second
+  // finds it decided. (A dead heat is still a DRAW in `resolveRace`'s own
+  // contract — proven in the rules suite — but the finish path can no longer
+  // reach it, which is also why a tie can never leave the row naming a seat-2
+  // fallback winner.)
   auth.current = ALICE;
   const a = await postFinish(MATCH_A, { typedText: TEXT });
   auth.current = BOB;
   const b = await postFinish(MATCH_A, { typedText: TEXT });
 
   assert.equal(a.json.data.seat.finishedAtMs, GO + 30_000);
-  assert.equal(b.json.data.seat.finishedAtMs, GO + 30_000);
-  assert.equal(b.json.data.outcome.settled, true);
-  assert.equal(b.json.data.outcome.winnerSeat, null, "a dead heat has no winner");
-  assert.equal(b.json.data.outcome.resolutionReason, RESOLUTION.DRAW);
+  assert.equal(a.json.data.outcome.settled, true);
+  assert.equal(a.json.data.outcome.winnerSeat, SEAT.PLAYER1);
+  assert.equal(a.json.data.outcome.resolutionReason, RESOLUTION.FINISH);
+
+  assert.equal(b.json.data.accepted, false, "the second packet never completed");
+  assert.equal(b.json.data.seat.finished, false);
 
   const row = rowOf(fake, MATCH_A);
-  assert.equal(row.result, RESULT.TIE, "a draw is `tie`, never a named winner");
-  assert.equal(
-    row.winnerId,
-    null,
-    "a drawn row must NOT name player2 as its winner (the seat-2 fallback bug)",
-  );
-  settledExactlyOnce("dead heat", { draw: true });
-  // A draw moves NO win/loss counter.
-  assert.equal(userOf(fake, ALICE).gamesWon, 3);
-  assert.equal(userOf(fake, ALICE).gamesLost, 2);
-  assert.equal(userOf(fake, BOB).gamesWon, 3);
-  assert.equal(userOf(fake, BOB).gamesLost, 2);
+  assert.equal(row.result, RESULT.PLAYER1);
+  assert.equal(row.winnerId, ALICE, "the row names the seat that actually finished");
+  assert.equal(row.resolutionReason, RESOLUTION.FINISH);
+  settledExactlyOnce("simultaneous finishes", { winner: ALICE, loser: BOB });
+  assert.equal(userOf(fake, ALICE).gamesWon, 4);
+  assert.equal(userOf(fake, BOB).gamesLost, 3);
 });
 
 test("simultaneous: interleaved checkpoints stay per-seat and monotonic", { skip: SKIP_REASON }, async (t) => {
@@ -1105,22 +1118,24 @@ test("duplicate: a replayed finish is a `duplicate` with no second settlement", 
   setMatches(fake, [armedRow()]);
   setUsers(fake, [ALICE, BOB]);
   at(GO + 10_000);
-  await postFinish(MATCH_A, { typedText: TEXT });
+  const settled = await postFinish(MATCH_A, { typedText: TEXT });
+  assert.equal(settled.json.data.outcome.settled, true);
+  assert.equal(settled.json.data.outcome.winnerSeat, SEAT.PLAYER1);
+
+  // The opponent's later packet is refused: the row is already terminal.
   at(GO + 11_000);
   auth.current = BOB;
-  const settled = await postFinish(MATCH_A, { typedText: TEXT });
-  assert.equal(settled.json.data.outcome.winnerSeat, SEAT.PLAYER1);
+  const late = await postFinish(MATCH_A, { typedText: TEXT });
+  assert.equal(late.json.data.accepted, false);
+  assert.equal(late.json.data.reason, "resolved");
   const writesAfterSettle = fake.state.writes.length;
 
-  // Both seats replay the exact same packet.
-  const replayBob = await postFinish(MATCH_A, { typedText: TEXT });
-  assert.equal(replayBob.json.data.accepted, false);
-  assert.equal(replayBob.json.data.reason, "duplicate");
-  assert.equal(replayBob.json.data.seat.finishedAtMs, GO + 11_000, "the first finish stands");
-
+  // The WINNER's replay is a `duplicate`, with the FIRST frozen instant.
   auth.current = ALICE;
   const replayAlice = await postFinish(MATCH_A, { typedText: TEXT });
+  assert.equal(replayAlice.json.data.accepted, false);
   assert.equal(replayAlice.json.data.reason, "duplicate");
+  assert.equal(replayAlice.json.data.seat.finishedAtMs, GO + 10_000, "the first finish stands");
 
   assert.equal(fake.state.writes.length, writesAfterSettle, "a replay writes nothing");
   assert.equal(spies.rating.length, 1, "rating is never awarded twice");
@@ -1245,15 +1260,22 @@ test("forgery: a client cannot declare itself the winner", { skip: SKIP_REASON }
   assert.equal(matchWrites(fake).length, 0, "a forged completion writes nothing");
   assert.equal(spies.rating.length, 0);
 
-  // Even with the FULL text, the verdict is the server's: Bob finished first.
+  // Even with the FULL text, the verdict is the server's: Bob finished first, so
+  // Bob's own finish decided the race — and Alice's claimed `winner: "player1"`
+  // arrives to a row that is already over.
   at(GO + 9_000);
   auth.current = BOB;
-  await postFinish(MATCH_A, { typedText: TEXT });
-  at(GO + 20_000);
-  auth.current = ALICE;
   const real = await postFinish(MATCH_A, { typedText: TEXT, winner: "player1", result: "player1" });
+  assert.equal(real.json.data.outcome.settled, true);
   assert.equal(real.json.data.outcome.winnerSeat, SEAT.PLAYER2, "the clock decided, not the claim");
   assert.equal(rowOf(fake, MATCH_A).winnerId, BOB);
+
+  at(GO + 20_000);
+  auth.current = ALICE;
+  const late = await postFinish(MATCH_A, { typedText: TEXT, winner: "player1", result: "player1" });
+  assert.equal(late.json.data.accepted, false);
+  assert.equal(late.json.data.reason, "resolved");
+  assert.equal(rowOf(fake, MATCH_A).winnerId, BOB, "no claim can move a settled verdict");
   settledExactlyOnce("forged winner ignored", { winner: BOB, loser: ALICE });
 });
 
@@ -1347,13 +1369,15 @@ test("isolation: two matches run simultaneously with no cross-talk", { skip: SKI
   assert.equal(rowOf(fake, MATCH_B).raceState.seats[SEAT.PLAYER2].charsTyped, 0);
   assert.equal(rowOf(fake, MATCH_A).raceState.seats[SEAT.PLAYER2].charsTyped, 0);
 
-  // Both matches finish CONCURRENTLY, with different winners, using the
-  // store's own explicit server instants (`nowMs`) so the interleaving is
-  // deterministic and cross-match isolation is proven under real overlap.
+  // Both matches finish CONCURRENTLY, with different winners. The FIRST verified
+  // finish to reach a row decides that row and makes it terminal, so the calls
+  // are ordered by the server instant each seat completed at — which is the
+  // order the real packets arrive in — and the overlap still proves cross-match
+  // isolation (the fake serialises every transaction and asserts it held).
   const { submitFinish } = await import("../src/lib/speed-typing/serverStore.ts");
   await Promise.all([
-    submitFinish({ userId: CAROL, matchId: MATCH_B, typedText: TEXT, nowMs: GO + 4_000 }),
     submitFinish({ userId: DAVE, matchId: MATCH_B, typedText: TEXT, nowMs: GO + 3_000 }),
+    submitFinish({ userId: CAROL, matchId: MATCH_B, typedText: TEXT, nowMs: GO + 4_000 }),
     submitFinish({ userId: ALICE, matchId: MATCH_A, typedText: TEXT, nowMs: GO + 5_000 }),
     submitFinish({ userId: BOB, matchId: MATCH_A, typedText: TEXT, nowMs: GO + 6_000 }),
   ]);
@@ -1567,13 +1591,12 @@ test("settlement: a refusing or throwing writer can never double-settle or break
   spies.ratingMode = "throw";
   spies.trophyMode = "refuse";
   at(GO + 1_000);
-  await postFinish(MATCH_A, { typedText: TEXT });
-  at(GO + 2_000);
-  auth.current = BOB;
   const settled = await postFinish(MATCH_A, { typedText: TEXT });
 
-  // The players' match still finished, with the server's verdict.
+  // The players' match still finished, with the server's verdict — the
+  // finisher's own packet is what settled it.
   assert.equal(settled.json.data.accepted, true);
+  assert.equal(settled.json.data.outcome.settled, true);
   assert.equal(rowOf(fake, MATCH_A).status, MATCH_STATUS.FINISHED);
   assert.equal(rowOf(fake, MATCH_A).winnerId, ALICE);
   assert.equal(spies.rating.length, 1, "a throwing writer is attempted once");

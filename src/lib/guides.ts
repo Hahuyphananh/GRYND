@@ -37,8 +37,14 @@
 // (src/components/guides/GuideArticle.tsx) so no page duplicates JSX and the
 // whole article is in the HTML response with no JavaScript required.
 
-/** The canonical origin the public site is served from. */
-export const SITE_ORIGIN = "https://grynd.dedyn.io";
+import { CANONICAL_SITE_URL } from "./siteUrl";
+
+/**
+ * The canonical origin the public site is served from — www, the host the
+ * platform serves (the apex 308-redirects to it). Re-exported from the single
+ * place that decides it (src/lib/siteUrl.ts).
+ */
+export const SITE_ORIGIN = CANONICAL_SITE_URL;
 
 /** One titled block inside a guide: prose, a checklist, or both. */
 export type GuideSection = {

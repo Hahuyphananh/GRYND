@@ -10,6 +10,7 @@ import { countryFromHeaders, requiresGoogleCmp } from "../lib/consentRegions";
 import { ORGANIZATION_ID, buildWebsiteJsonLd } from "../lib/reviewJsonLd";
 import DisableInspect from "../components/DisableInspect";
 import CsrfFetchGuard from "../components/CsrfFetchGuard";
+import HostCanonicalizer from "../components/HostCanonicalizer";
 import SplashScreen from "../components/SplashScreen";
 import { ToastProvider } from "../components/toast/ToastProvider";
 import { ogImageUrl, SITE_URL } from "../lib/ogImages";
@@ -192,6 +193,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <body>, so the provider's position in the tree only matters
               for context propagation. */}
           <ToastProvider>
+            {/* The app is served on www; the platform 308s the apex. A worker
+                can still hold a page on the apex, where every POST dies on the
+                cross-origin hop (that is what killed "Create Game"), so any
+                page found on an alias relocates itself. No-op on www. */}
+            <HostCanonicalizer />
             <CsrfFetchGuard />
             <DisableInspect />
             <main id="main-content" className="pt-[68px] sm:pt-16">{children}</main>

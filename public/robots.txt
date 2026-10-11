@@ -1,5 +1,5 @@
 # GRYND robots.txt
-# https://grynd.dedyn.io/robots.txt
+# https://www.grynd.dedyn.io/robots.txt
 
 User-agent: *
 Allow: /
@@ -26,4 +26,4 @@ Disallow: /games/chess/ai
 # would stop a crawler from ever reading that directive. The public, indexable
 # page for each game is /games/<slug>.
 
-Sitemap: https://grynd.dedyn.io/sitemap.xml
+Sitemap: https://www.grynd.dedyn.io/sitemap.xml

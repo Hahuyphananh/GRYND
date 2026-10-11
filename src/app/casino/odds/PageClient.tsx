@@ -252,13 +252,65 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   const autoPickTriggeredRef = useRef(false);
   const gameOverRef = useRef(false);
   gameOverRef.current = gameOver;
+  // The active duel id, read by the leave path without a stale closure.
+  const gameIdRef = useRef<number | null>(null);
+  gameIdRef.current = gameId;
+  // Guards against a double leave (unload beacon + unmount cleanup).
+  const leftActiveGameRef = useRef(false);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
 
-  // On mount: check for an active game to resume
+  // ── Connection logic: leaving the page stops the AI duel ───────────────
+  // A vs-AI duel is tied to the open page. Navigating away, logging out, a
+  // refresh or a closed tab all end it: the beacon fires on the unload
+  // events (best effort — `sendBeacon` outlives the page) and the unmount
+  // cleanup covers in-app navigation, so the row can never stay "playing"
+  // and be resumed later. A finished duel is left untouched — it was
+  // already closed out by the pick route.
+  const leaveActiveGame = useCallback((beacon: boolean) => {
+    const id = gameIdRef.current;
+    if (!id || gameOverRef.current || leftActiveGameRef.current) return;
+    leftActiveGameRef.current = true;
+    const payload = JSON.stringify({ gameId: id });
+    try {
+      if (beacon && typeof navigator !== "undefined" && navigator.sendBeacon) {
+        navigator.sendBeacon(
+          "/api/odds/ai/leave",
+          new Blob([payload], { type: "application/json" }),
+        );
+        return;
+      }
+      fetch("/api/odds/ai/leave", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        keepalive: true,
+        body: payload,
+      }).catch(() => {});
+    } catch {
+      // Leaving is best-effort: a failed beacon must never block the
+      // navigation. The mount-time abandon below is the backstop.
+    }
+  }, []);
+
+  useEffect(() => {
+    const onLeave = () => leaveActiveGame(true);
+    window.addEventListener("pagehide", onLeave);
+    window.addEventListener("beforeunload", onLeave);
+    return () => {
+      window.removeEventListener("pagehide", onLeave);
+      window.removeEventListener("beforeunload", onLeave);
+      leaveActiveGame(false);
+    };
+  }, [leaveActiveGame]);
+
+  // On mount: a vs-AI duel only lives while the page is open. Any duel that
+  // survived a lost connection is abandoned here, so returning to Odds never
+  // drops the player onto a stale board — the create-game lobby and its
+  // buttons show again.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -266,29 +318,16 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
         const res = await fetch("/api/odds/ai/status");
         const data = await res.json();
         if (cancelled || !data.success || !data.data.active) return;
-
-        const st = data.data.gameState;
-        setGameId(data.data.gameId);
-        setInteractiveState(st);
-        setRoundHistory(data.data.rounds ?? []);
-        setPickValue("");
-        setPredictValue("");
-        setTimeLeft(PICK_TIMER_SECONDS);
-        setTimeUp(false);
-        autoPickTriggeredRef.current = false;
-
-        if (st?.gameOver) {
-          setGameOver(true);
-          setFinalWinner(st.winner ?? "");
-          setFinalResult(
-            st.winner === "player1"
-              ? "player1_won"
-              : st.winner === "player2"
-                ? "player2_won"
-                : "draw",
-          );
-          setFinalPayout(data.data.payout);
-        }
+        // A duel is still marked playing: the player left (or lost their
+        // connection) before it ended. Abandon it — nothing to settle — and
+        // fall through to the lobby.
+        await fetch("/api/odds/ai/leave", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          keepalive: true,
+          body: JSON.stringify({}),
+        });
       } catch {} finally {
         if (!cancelled) setResuming(false);
       }

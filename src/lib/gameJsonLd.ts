@@ -28,7 +28,7 @@ import { ORGANIZATION_ID, WEBSITE_ID, type JsonLdNode } from "./reviewJsonLd";
  *    the pages that actually own those reviews.
  *
  * 3. ONE URL PER GAME, THE CANONICAL ONE. Every `url`/`item` is built with
- *    `gameLandingUrl()` → `https://grynd.dedyn.io/games/<slug>`. Nothing here
+ *    `gameLandingUrl()` → `https://www.grynd.dedyn.io/games/<slug>`. Nothing here
  *    can point at `/casino/<slug>`, which is the same page one redirect later:
  *    `gameLandingPath`/`gameLandingUrl` are the only path builders the landing
  *    pages have, and a test asserts the app namespace never appears.

@@ -102,9 +102,9 @@ export async function POST(
         revision: Number(result.match.revision ?? 0),
       });
 
-      // Only the SECOND verified finish resolves the race, so this fires at
-      // most once per match — and the settlement it reports already committed
-      // in the store's transaction.
+      // The FIRST verified finish resolves the race, so this fires at most once
+      // per match — and the settlement it reports already committed in the
+      // store's transaction.
       if (result.outcome?.settled) {
         broadcastMatchEvent(matchId, SPEED_TYPING_EVENTS.MATCH_FINISHED, {
           status: result.match.status,

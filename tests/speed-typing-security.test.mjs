@@ -610,11 +610,16 @@ test("attack: forged timestamps, WPM and accuracy are all derived server-side", 
   // WPM is the server's derivation, never the body's.
   assert.equal(seat.wpm, Math.round((TEXT.length - 1) / 5 / 0.5));
   assert.notEqual(seat.wpm, 9_999);
-  // A single finish settles NOTHING, whatever the body claimed.
-  assert.equal(rowOf(fake).status, MATCH_STATUS.PLAYING);
-  assert.equal(writers.rating.length, 0);
-  assert.equal(writers.trophy.length, 0);
-  assert.equal(rowOf(fake).winnerId, null);
+  // The race ends because the seat really typed the passage — and the winner,
+  // the journal key and the settled pair are ALL the server's, never the
+  // body's. The forged `winner`/`winnerId`/`settle` fields changed nothing.
+  assert.equal(rowOf(fake).status, MATCH_STATUS.FINISHED);
+  assert.equal(rowOf(fake).winnerId, ALICE);
+  assert.equal(rowOf(fake).result, RESULT.PLAYER1);
+  assert.equal(writers.rating.length, 1, "settled exactly once, on the server's verdict");
+  assert.equal(writers.trophy.length, 1);
+  assert.equal(writers.rating[0].winnerClerkId, ALICE);
+  assert.equal(writers.rating[0].loserClerkId, BOB);
   // The race state's version is the STORE's monotonic counter — a forged
   // `version`/`expectedVersion` is not a version gate and cannot rewind it.
   assert.equal(rowOf(fake).raceState.version, 3, "1 (arm) + checkpoint + finish");
@@ -775,12 +780,13 @@ test("attack: progress after finishing is refused, and cannot rewind or re-settl
   const frozen = rowOf(fake).raceState.seats.player1;
   const writesAfterFinish = fake.state.writes.length;
 
-  // The seat's own race is closed even though the match is still live.
+  // The seat's own race is closed, and so is the match: a checkpoint after a
+  // verified finish is refused because the row is terminal.
   clock.now = GO + 11_000;
   const after = await progress({ typedText: TEXT, charsTyped: 0, progress: 0 });
   assert.equal(after.status, 200);
   assert.equal(after.json.data.accepted, false);
-  assert.equal(after.json.data.reason, "seat_closed");
+  assert.equal(after.json.data.reason, "resolved");
 
   // Shorter, longer, empty — none of it moves anything.
   assert.equal((await progress({ typedText: TEXT.slice(0, 5) })).json.data.accepted, false);
@@ -790,7 +796,7 @@ test("attack: progress after finishing is refused, and cannot rewind or re-settl
   const still = rowOf(fake).raceState.seats.player1;
   assert.equal(still.finishedAtMs, frozen.finishedAtMs, "the frozen instant stands");
   assert.equal(still.charsTyped, TEXT.length);
-  assert.equal(writers.rating.length, 0, "one finish still settles nothing");
+  assert.equal(writers.rating.length, 1, "the race settled once, and once only");
 });
 
 // ════════════════════════════════════════════════════════════════════════
@@ -832,16 +838,19 @@ test("attack: hammering completion settles exactly once", { skip: SKIP_REASON },
   seed(fake, armedRow());
 
   await completeAs(ALICE, GO + 20_000);
-  await completeAs(BOB, GO + 25_000);
   const writesAfterSettle = fake.state.writes.length;
 
+  // The first verified finish is the settlement. Everything after it is inert:
+  // the winner replaying is a `duplicate`, and the seat that never finished gets
+  // the row's `resolved` — 25 packets, no write and no second settlement.
   for (let i = 0; i < 25; i += 1) {
     clock.now = GO + 30_000 + i;
-    session.userId = i % 2 === 0 ? BOB : ALICE;
+    const asBob = i % 2 === 0;
+    session.userId = asBob ? BOB : ALICE;
     const replay = await finish({ typedText: TEXT, winner: "player2", wpm: 9_999 });
     assert.equal(replay.status, 200);
     assert.equal(replay.json.data.accepted, false);
-    assert.equal(replay.json.data.reason, "duplicate");
+    assert.equal(replay.json.data.reason, asBob ? "resolved" : "duplicate");
   }
 
   assert.equal(fake.state.writes.length, writesAfterSettle, "replays write nothing");
@@ -849,7 +858,7 @@ test("attack: hammering completion settles exactly once", { skip: SKIP_REASON },
   assert.equal(writers.trophy.length, 1, "trophies settled exactly once");
   assert.equal(rowOf(fake).winnerId, ALICE, "the winner is the first verified finish");
   assert.equal(rowOf(fake).raceState.seats.player1.finishedAtMs, GO + 20_000);
-  assert.equal(rowOf(fake).raceState.seats.player2.finishedAtMs, GO + 25_000);
+  assert.equal(rowOf(fake).raceState.seats.player2.finished, false, "the loser never finished");
 });
 
 test("attack: two completion requests in flight at once settle exactly once", { skip: SKIP_REASON }, async (t) => {
@@ -1178,7 +1187,7 @@ test("attack: the one normalisation the server DOES apply is CRLF, nothing else"
 // 15. Manual settlement
 // ════════════════════════════════════════════════════════════════════════
 
-test("attack: no request can settle rating or trophies except a verified second finish", { skip: SKIP_REASON }, async (t) => {
+test("attack: no request can settle rating or trophies — only a verified finish does", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   seed(fake, armedRow());
   clock.now = GO + 1_000;
@@ -1213,18 +1222,18 @@ test("attack: no request can settle rating or trophies except a verified second 
   assert.equal(writers.trophy.length, 0);
   assert.equal(writers.queue.filter((q) => q.status === "completed").length, 0);
 
-  // The FIRST verified finish still settles nothing, even with every field.
+  // The FIRST verified finish settles — once, through the shared writers, with
+  // ids the STORE derived. Every settlement field in the body is still ignored.
   clock.now = GO + 20_000;
   await finish({ typedText: TEXT, ...settlementPayload });
-  assert.equal(writers.rating.length, 0, "one finish is not a settlement");
-  assert.equal(writers.trophy.length, 0);
+  assert.equal(writers.rating.length, 1, "a verified finish is the only settlement");
+  assert.equal(writers.trophy.length, 1);
 
-  // Only the second verified finish settles — once, through the shared
-  // writers, with ids the STORE derived.
+  // A later finish from the losing seat cannot add a second one.
   clock.now = GO + 25_000;
   session.userId = BOB;
   await finish({ typedText: TEXT, ...settlementPayload });
-  assert.equal(writers.rating.length, 1);
+  assert.equal(writers.rating.length, 1, "and it can never settle twice");
   assert.equal(writers.trophy.length, 1);
   assert.equal(writers.rating[0].gameKey, "speed-typing");
   assert.equal(writers.rating[0].matchId, MATCH_ID, "the journal key is the row's id");
@@ -1245,8 +1254,13 @@ test("wire: broadcasts carry projections only — never the passage or the typed
   const fake = installMocks(t);
   seed(fake, armedRow());
 
-  await completeAs(ALICE, GO + 20_000);
-  await completeAs(BOB, GO + 25_000);
+  // A live checkpoint from each seat (both are projections on the wire), then
+  // the winner's verified finish, which is the one packet that ends the race.
+  await progress({ typedText: TEXT.slice(0, 20) });
+  session.userId = BOB;
+  await progress({ typedText: TEXT.slice(0, 12) });
+  const done = await completeAs(ALICE, GO + 20_000);
+  assert.equal(done.json.data.outcome.settled, true, "the first finish ends the race");
   assert.ok(broadcasts.length > 0, "the routes did broadcast");
 
   const payloads = JSON.stringify(broadcasts.map((b) => b.payload));

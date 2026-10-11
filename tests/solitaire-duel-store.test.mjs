@@ -1438,3 +1438,43 @@ test("practice: the bot can solve the deal, and the win settles nothing", { skip
   const userWrites = fake.state.writes.filter((w) => w.table === users);
   assert.equal(userWrites.length, 0, "no win/loss counter is touched");
 });
+
+test("practice: a human who solves the deal FIRST wins at once, unrated", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  // The human is one move from solved; the bot is barely started, so its own
+  // completion cannot be what ends the race.
+  seedMatch(fake, {
+    isAi: true,
+    player2Id: SOLITAIRE_DUEL_AI_PLAYER_ID,
+    aiDifficulty: "hard",
+    goAt: new Date(NOW - 1_000),
+    p1State: boardOneMoveFromComplete(),
+    p1Ply: 80,
+    p1PeakFoundation: 51,
+  });
+
+  const result = await store.submitMove({
+    userId: ALICE,
+    matchId: MATCH_ID,
+    move: FINAL_MOVE,
+    expectedPly: 80,
+    nowMs: NOW,
+  });
+
+  // The human's OWN completion resolves the race inside the move transaction —
+  // there is nothing to wait for, so no waiting screen and no clock to run out.
+  assert.equal(result.completed, true);
+  assert.equal(result.raceResolved, true);
+
+  const row = fake.rowsOf(solitaireDuelMatches)[0];
+  assert.equal(row.status, MATCH_STATUS.FINISHED);
+  assert.equal(row.result, "player1");
+  assert.equal(row.winnerId, ALICE);
+  assert.equal(row.resolutionReason, "finish");
+  assert.equal(row.p2State.completed ?? false, false, "the bot never had to finish");
+  // Practice touches no competitive progression at all.
+  assert.equal(settlement.rating.length, 0);
+  assert.equal(settlement.trophy.length, 0);
+  assert.equal(settlement.queue.length, 0);
+});

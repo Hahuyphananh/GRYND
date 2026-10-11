@@ -160,6 +160,26 @@ test("authority: the server's frozen numbers win over the local estimate", () =>
   assert.match(page, /const opponentWpm = opponent\?\.wpm \?\? race\?\.metrics\?\.opponent\?\.wpm \?\? 0/);
 });
 
+test("result: the winning finish shows the result screen at once, without waiting", () => {
+  // The finish that solves the passage SETTLES the race server-side, so the
+  // page's own response already carries the verdict: one authoritative refetch
+  // happens immediately and the result screen opens off the terminal snapshot.
+  // Nothing here polls the opponent to find out who won.
+  assert.match(
+    page,
+    /if \(complete \|\| data\.data\?\.outcome\?\.settled\) void load\(\{ silent: true \}\)/,
+    "a settled verdict triggers the authoritative refetch straight away",
+  );
+  assert.match(
+    page,
+    /open=\{phase === "result" && match\?\.status === "finished"\}/,
+    "the result screen is driven by the server's own terminal status",
+  );
+  // And the result itself is read from the row, never from a local claim.
+  assert.match(page, /match\?\.result === "tie"/);
+  assert.match(page, /match\?\.winnerId/);
+});
+
 test("authority: the page sends the typed text and NOTHING else", () => {
   const sends = [...page.matchAll(/fetch\((?:.|\n)*?\}\);/g)].map((m) => m[0]);
   assert.ok(sends.length >= 3, "expected the snapshot GET, the checkpoint POST and the finish POST");

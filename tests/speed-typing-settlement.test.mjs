@@ -427,7 +427,8 @@ test("settlement: a normal win moves the shared writers and the counters once", 
   const { submitFinish } = await loadStore();
   seed(fake, armedRow());
 
-  // Alice finishes first, Bob second: Alice wins on the earlier verified finish.
+  // Alice finishes first: her own verified finish decides the race and settles
+  // it in the same transaction.
   const first = await submitFinish({
     userId: ALICE,
     matchId: MATCH_ID,
@@ -435,18 +436,20 @@ test("settlement: a normal win moves the shared writers and the counters once", 
     nowMs: GO + 20_000,
   });
   assert.equal(first.accepted, true);
-  assert.equal(first.outcome, null, "one finish does not end a race");
-  assert.equal(writers.rating.length, 0, "one finish settles nothing");
+  assert.equal(first.outcome.settled, true);
+  assert.equal(first.outcome.winnerSeat, SEAT.PLAYER1, "the first verified finish wins");
+  assert.equal(first.outcome.resolutionReason, RESOLUTION.FINISH);
 
+  // Bob's slower finish lands on a terminal row: it cannot overtake Alice, and
+  // it certainly cannot trigger a second settlement.
   const second = await submitFinish({
     userId: BOB,
     matchId: MATCH_ID,
     typedText: TEXT,
     nowMs: GO + 25_000,
   });
-  assert.equal(second.outcome.settled, true);
-  assert.equal(second.outcome.winnerSeat, SEAT.PLAYER1, "the EARLIER finish wins");
-  assert.equal(second.outcome.resolutionReason, RESOLUTION.FINISH);
+  assert.equal(second.accepted, false);
+  assert.equal(second.reason, "resolved");
 
   settledExactlyOnce("normal win", { winner: ALICE, loser: BOB });
 
@@ -465,14 +468,14 @@ test("settlement: a normal win moves the shared writers and the counters once", 
   assert.equal(userBy(fake, BOB).gamesLost, 3);
 });
 
-test("settlement: the losing seat's own result is what settles it, not its WPM", { skip: SKIP_REASON }, async (t) => {
+test("settlement: the earlier finish settles it, never the loser's better-looking race", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   const { submitFinish } = await loadStore();
   seed(fake, armedRow());
 
-  // Bob finishes SECOND but with the better-looking race: he typed the same
-  // text, later. The result is still a loss for Bob, and the ONLY inputs the
-  // writers see are the two ids — never a time, a WPM or an accuracy.
+  // Alice finishes first; Bob types the same text, later. The verdict is a loss
+  // for Bob, and the ONLY inputs the writers see are the two ids — never a time,
+  // a WPM or an accuracy.
   await submitFinish({ userId: ALICE, matchId: MATCH_ID, typedText: TEXT, nowMs: GO + 10_000 });
   const bob = await submitFinish({
     userId: BOB,
@@ -481,7 +484,8 @@ test("settlement: the losing seat's own result is what settles it, not its WPM",
     nowMs: GO + 30_000,
   });
 
-  assert.equal(bob.accepted, true);
+  assert.equal(bob.accepted, false, "the race was already decided");
+  assert.equal(bob.reason, "resolved");
   assert.equal(row(fake).result, RESULT.PLAYER1);
   settledExactlyOnce("normal loss", { winner: ALICE, loser: BOB });
   assert.equal(userBy(fake, BOB).gamesLost, 3, "the losing seat books the loss");
@@ -509,31 +513,32 @@ test("settlement: a duplicate completion request never settles a second time", {
   seed(fake, armedRow());
 
   await submitFinish({ userId: ALICE, matchId: MATCH_ID, typedText: TEXT, nowMs: GO + 20_000 });
-  await submitFinish({ userId: BOB, matchId: MATCH_ID, typedText: TEXT, nowMs: GO + 25_000 });
   const writesAfterSettle = fake.state.writes.length;
 
   // Both seats replay, ten times each — a retrying client, a flapping network,
-  // a duplicated request. Every one must be a no-op.
+  // a duplicated request. The winner's replay is a `duplicate`; the opponent
+  // never finished at all, so for them the row simply reads `resolved`. Both
+  // are complete no-ops.
   for (let i = 0; i < 10; i += 1) {
-    const byBob = await submitFinish({
-      userId: BOB,
-      matchId: MATCH_ID,
-      typedText: TEXT,
-      nowMs: GO + 26_000 + i,
-    });
     const byAlice = await submitFinish({
       userId: ALICE,
       matchId: MATCH_ID,
       typedText: TEXT,
+      nowMs: GO + 26_000 + i,
+    });
+    const byBob = await submitFinish({
+      userId: BOB,
+      matchId: MATCH_ID,
+      typedText: TEXT,
       nowMs: GO + 27_000 + i,
     });
-    assert.equal(byBob.accepted, false);
-    assert.equal(byBob.reason, "duplicate");
     assert.equal(byAlice.accepted, false);
     assert.equal(byAlice.reason, "duplicate");
-    // The stored finish instants are the FIRST verified ones.
-    assert.equal(byBob.seatState.finishedAtMs, GO + 25_000);
+    assert.equal(byBob.accepted, false);
+    assert.equal(byBob.reason, "resolved");
+    // The stored finish instant is the FIRST verified one — Bob has none.
     assert.equal(byAlice.seatState.finishedAtMs, GO + 20_000);
+    assert.equal(byBob.seatState.finished, false);
   }
 
   assert.equal(fake.state.writes.length, writesAfterSettle, "a replay writes nothing at all");
@@ -603,8 +608,9 @@ test("settlement: simultaneous completion attempts settle exactly once", { skip:
   ]);
 
   assert.equal(fake.state.maxConcurrent, 1, "the row lock serialised both writes");
-  assert.equal(alice.accepted, true);
-  assert.equal(bob.accepted, true, "both seats legitimately completed the passage");
+  assert.equal(alice.accepted, true, "the first packet to hold the lock ended the race");
+  assert.equal(bob.accepted, false, "the second found it already decided");
+  assert.equal(bob.reason, "resolved");
 
   settledExactlyOnce("simultaneous finishes", { winner: ALICE, loser: BOB });
   assert.equal(row(fake).status, MATCH_STATUS.FINISHED);
@@ -613,31 +619,33 @@ test("settlement: simultaneous completion attempts settle exactly once", { skip:
   assert.equal(userBy(fake, BOB).gamesLost, 3);
 });
 
-test("settlement: a photo-finish inside the dead-heat window is a draw, settled once", { skip: SKIP_REASON }, async (t) => {
+test("settlement: a photo finish is decided by the first verified finish, and settles once", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   const { submitFinish } = await loadStore();
   seed(fake, armedRow());
 
-  // Two finish packets 100 ms apart — inside DEAD_HEAT_TOLERANCE_MS. A draw is
-  // the honest rating outcome: packet ARRIVAL order is not a skill signal.
+  // Two finish packets 100 ms apart. The first one to reach the row ends the
+  // race, so the second can never pull it back — settlement happens exactly
+  // once, for the seat that actually solved the passage first.
   const [alice, bob] = await Promise.all([
     submitFinish({ userId: ALICE, matchId: MATCH_ID, typedText: TEXT, nowMs: GO + 20_000 }),
     submitFinish({ userId: BOB, matchId: MATCH_ID, typedText: TEXT, nowMs: GO + 20_100 }),
   ]);
   assert.equal(fake.state.maxConcurrent, 1);
-  assert.ok(alice.accepted && bob.accepted);
+  assert.equal(alice.accepted, true);
+  assert.equal(bob.accepted, false);
+  assert.equal(bob.reason, "resolved");
 
-  // A draw journals BOTH seats with result "draw" and names no winner.
-  settledExactlyOnce("photo finish", { winner: ALICE, loser: BOB, result: "draw" });
+  settledExactlyOnce("photo finish", { winner: ALICE, loser: BOB });
   assert.equal(row(fake).status, MATCH_STATUS.FINISHED);
-  assert.equal(row(fake).result, RESULT.TIE);
-  assert.equal(row(fake).winnerId, null, "a draw names no winner");
-  assert.equal(row(fake).resolutionReason, RESOLUTION.DRAW);
-  // A draw is a result, not a win: no win/loss counter moves.
-  assert.equal(userBy(fake, ALICE).gamesWon, 3);
+  assert.equal(row(fake).result, RESULT.PLAYER1);
+  assert.equal(row(fake).winnerId, ALICE);
+  assert.equal(row(fake).resolutionReason, RESOLUTION.FINISH);
+  // A win moves exactly one counter on each side.
+  assert.equal(userBy(fake, ALICE).gamesWon, 4);
   assert.equal(userBy(fake, ALICE).gamesLost, 2);
   assert.equal(userBy(fake, BOB).gamesWon, 3);
-  assert.equal(userBy(fake, BOB).gamesLost, 2);
+  assert.equal(userBy(fake, BOB).gamesLost, 3);
 });
 
 test("settlement: a finish racing a forfeit settles once", { skip: SKIP_REASON }, async (t) => {
@@ -834,7 +842,6 @@ test("settlement: a stale client cannot move a settled result", { skip: SKIP_REA
   // ── (a) A client that was already finished replays its whole buffer.
   seed(fake, armedRow());
   await submitFinish({ userId: ALICE, matchId: MATCH_ID, typedText: TEXT, nowMs: GO + 20_000 });
-  await submitFinish({ userId: BOB, matchId: MATCH_ID, typedText: TEXT, nowMs: GO + 25_000 });
   const writesAfterSettle = fake.state.writes.length;
 
   const staleFinish = await submitFinish({ userId: ALICE, matchId: MATCH_ID, typedText: TEXT, nowMs: GO + 90_000 });
@@ -847,6 +854,7 @@ test("settlement: a stale client cannot move a settled result", { skip: SKIP_REA
   //    late packet as a benign no-op rather than an error — the socket layer
   //    must not have to fail a request whose only sin is arriving late — but it
   //    still writes nothing and cannot re-open the row.
+  const bobBefore = row(fake).raceState.seats[SEAT.PLAYER2].charsTyped;
   const staleProgress = await recordProgress({
     userId: BOB,
     matchId: MATCH_ID,
@@ -855,7 +863,7 @@ test("settlement: a stale client cannot move a settled result", { skip: SKIP_REA
   });
   assert.equal(staleProgress.accepted, false);
   assert.equal(staleProgress.reason, "resolved");
-  assert.equal(staleProgress.seatState.charsTyped, TEXT.length, "Bob's frozen progress is untouched");
+  assert.equal(staleProgress.seatState.charsTyped, bobBefore, "Bob's frozen progress is untouched");
 
   // ── (c) A stale forfeit packet from a seat that already lost.
   const staleForfeit = await forfeitMatch({ userId: BOB, matchId: MATCH_ID, nowMs: GO + 92_000 });
@@ -904,11 +912,10 @@ test("settlement: a REFUSED rating/trophy write is reported, never double-applie
   writers.trophyMode = "refuse";
   seed(fake, armedRow());
 
-  await submitFinish({ userId: ALICE, matchId: MATCH_ID, typedText: TEXT, nowMs: GO + 20_000 });
-  const settled = await submitFinish({ userId: BOB, matchId: MATCH_ID, typedText: TEXT, nowMs: GO + 25_000 });
+  const settled = await submitFinish({ userId: ALICE, matchId: MATCH_ID, typedText: TEXT, nowMs: GO + 20_000 });
 
   // The match still finishes: a progression hiccup must never withhold the
-  // result the two players earned, and must never throw into the route.
+  // result the player earned, and must never throw into the route.
   assert.equal(settled.accepted, true);
   assert.equal(settled.outcome.settled, true);
   assert.equal(row(fake).status, MATCH_STATUS.FINISHED);
@@ -927,6 +934,7 @@ test("settlement: a REFUSED rating/trophy write is reported, never double-applie
   // the writers' own job, and the store never retries a terminal row.
   assert.equal(writers.rating.length, 2, "one attempt at finish, one explicit call");
   assert.equal(writers.trophy.length, 2);
+  assert.equal(settled.outcome.resolutionReason, RESOLUTION.FINISH);
 });
 
 test("settlement: a THROWING writer never breaks the match, and never double-settles", { skip: SKIP_REASON }, async (t) => {
@@ -941,8 +949,7 @@ test("settlement: a THROWING writer never breaks the match, and never double-set
   writers.trophyMode = "throw";
   seed(fake, armedRow());
 
-  await submitFinish({ userId: ALICE, matchId: MATCH_ID, typedText: TEXT, nowMs: GO + 20_000 });
-  const settled = await submitFinish({ userId: BOB, matchId: MATCH_ID, typedText: TEXT, nowMs: GO + 25_000 });
+  const settled = await submitFinish({ userId: ALICE, matchId: MATCH_ID, typedText: TEXT, nowMs: GO + 20_000 });
 
   assert.equal(settled.accepted, true, "the finish is still accepted");
   assert.equal(settled.outcome.settled, true);
@@ -955,7 +962,7 @@ test("settlement: a THROWING writer never breaks the match, and never double-set
   // The row is terminal, so no path retries it — a replay is still a no-op,
   // which is what keeps "at most once" true even when a write fails.
   const writesAfterSettle = fake.state.writes.length;
-  const replay = await submitFinish({ userId: BOB, matchId: MATCH_ID, typedText: TEXT, nowMs: GO + 26_000 });
+  const replay = await submitFinish({ userId: ALICE, matchId: MATCH_ID, typedText: TEXT, nowMs: GO + 26_000 });
   assert.equal(replay.accepted, false);
   assert.equal(replay.reason, "duplicate");
   assert.equal(fake.state.writes.length, writesAfterSettle);

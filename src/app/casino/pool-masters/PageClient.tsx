@@ -8,6 +8,69 @@ import { type AiDifficulty, readStoredAiDifficulty } from "../../../lib/aiDiffic
 import { startVisibleInterval } from "../../../hooks/useVisiblePoll";
 
 
+/**
+ * What every failed action says when no response ever arrived.
+ *
+ * Deliberately action-oriented: the request has already been retried once, so
+ * the only useful next step is a reload (a stale service worker or a session
+ * that needs re-establishing is cleared by one).
+ */
+const UNREACHABLE =
+  "Couldn't reach the server. Try again, and reload the page if it keeps failing.";
+
+/**
+ * POST a JSON body and read the JSON reply.
+ *
+ * A browser `fetch` REJECTS with `TypeError: Failed to fetch` whenever no
+ * response is ever produced — a dropped connection, or a request that had to
+ * hop to another origin (a deployment that serves the app on a host which
+ * 308-redirects to the other one: the redirected response carries no CORS
+ * headers, so the browser discards it instead of handing it to the app).
+ * Neither is the player's fault, and both are usually momentary, so the request
+ * is retried ONCE before the action reports it.
+ *
+ * This is the call the lobby buttons were MISSING: they ran `try { fetch }
+ * finally {}`, so a rejection was neither retried, nor shown, nor caught — the
+ * click logged an uncaught promise error and otherwise did nothing at all.
+ *
+ * The reply is returned as-is (or null when the body is not JSON). The pool
+ * routes answer a refusal with `{ ok: false, message }` — never `error` — so the
+ * callers below read BOTH shapes; reading only `error` dropped the server's own
+ * explanation ("Wager must be …", "Insufficient …") on the floor.
+ */
+type PoolLobbyReply = {
+  lobbyId?: string;
+  matchId?: string;
+  firstTurnSeat?: number;
+  error?: string;
+  message?: string;
+};
+
+async function postPoolJson(
+  path: string,
+  body: unknown,
+): Promise<PoolLobbyReply | null> {
+  let failure: unknown = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const res = await fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      // A non-JSON body (an error page from the platform, say) must not surface
+      // as a confusing SyntaxError out of the action.
+      return (await res.json().catch(() => null)) as PoolLobbyReply | null;
+    } catch (error) {
+      failure = error;
+      // One retry, a beat later: a cold function, a dropped socket or a
+      // session refresh that terminated the hop all succeed on the second try.
+      if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+  }
+  throw failure;
+}
+
 export default function PoolLobbyPage() {
   const router = useRouter();
   const [lobbies, setLobbies] = useState<any[]>([]);
@@ -65,18 +128,15 @@ export default function PoolLobbyPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/pool/create-lobby", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wager }),
-      });
-      const data = await res.json();
-      if (!data.lobbyId) {
-        setError(data.error || "Unable to create lobby");
+      const data = await postPoolJson("/api/pool/create-lobby", { wager });
+      if (!data?.lobbyId) {
+        setError(data?.error || data?.message || "Unable to create lobby");
         return;
       }
       setCreatedLobbyId(data.lobbyId);
       router.push(`/casino/pool-masters/game/${data.lobbyId}`);
+    } catch {
+      setError(UNREACHABLE);
     } finally {
       setLoading(false);
     }
@@ -86,17 +146,14 @@ export default function PoolLobbyPage() {
     setJoiningId(lobby.id);
     setError(null);
     try {
-      const res = await fetch("/api/pool/join-lobby", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lobbyId: lobby.id }),
-      });
-      const data = await res.json();
-      if (!data.matchId) {
-        setError(data.error || "Unable to join lobby");
+      const data = await postPoolJson("/api/pool/join-lobby", { lobbyId: lobby.id });
+      if (!data?.matchId) {
+        setError(data?.error || data?.message || "Unable to join lobby");
         return;
       }
       router.push(`/casino/pool-masters/game/${data.matchId}`);
+    } catch {
+      setError(UNREACHABLE);
     } finally {
       setJoiningId(null);
     }
@@ -106,19 +163,16 @@ export default function PoolLobbyPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/pool/create-ai-match", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wager }),
-      });
-      const data = await res.json();
-      if (!data.matchId) {
-        setError(data.error || "Unable to start AI match");
+      const data = await postPoolJson("/api/pool/create-ai-match", { wager });
+      if (!data?.matchId) {
+        setError(data?.error || data?.message || "Unable to start AI match");
         return;
       }
       router.push(
         `/casino/pool-masters/game/${data.matchId}?ai=1&turn=${data.firstTurnSeat ?? 1}&difficulty=${aiDifficulty}`,
       );
+    } catch {
+      setError(UNREACHABLE);
     } finally {
       setLoading(false);
     }

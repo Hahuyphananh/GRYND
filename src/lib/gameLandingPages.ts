@@ -43,8 +43,15 @@
 // src/lib/rating.js). tests/game-landing-pages.test.mjs asserts that link, so
 // a page can never be added for a game that does not exist.
 
-/** The canonical origin the public site is served from. */
-export const SITE_ORIGIN = "https://grynd.dedyn.io";
+import { CANONICAL_SITE_URL } from "./siteUrl";
+
+/**
+ * The canonical origin the public site is served from — www, the host the
+ * platform actually serves (the apex 308-redirects to it). Derived from the one
+ * place that decides this (src/lib/siteUrl.ts) so a future host change cannot
+ * leave the landing pages and the sitemap advertising two different hosts.
+ */
+export const SITE_ORIGIN = CANONICAL_SITE_URL;
 
 /** One question/answer pair rendered in the landing page FAQ. */
 export type GameFaqEntry = {
