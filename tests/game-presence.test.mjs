@@ -846,10 +846,14 @@ const LOCALES = ["en", "fr", "es"];
 const lobby = source(LOBBY);
 
 /** The card region, so assertions can't be satisfied elsewhere in the file. */
-const cardStart = lobby.indexOf("const GameCard = (");
-const cardEnd = lobby.indexOf("const PlayerCountBadge = (");
-const cardBlock = lobby.slice(cardStart);
-const badgeBlock = lobby.slice(cardEnd, cardStart);
+// The card itself moved to src/components/games/GameCard.jsx when the FAQ began
+// rendering the SAME element, so the card's markup is asserted in that file and
+// the lobby is asserted to PASS the live count into it. `PlayerCountBadge` stays
+// in the lobby: it reads lobby state (one aggregate poll for the whole grid).
+const cardBlock = source("src/components/games/GameCard.jsx");
+const badgeStart = lobby.indexOf("const PlayerCountBadge = (");
+const badgeEnd = lobby.indexOf("\n  return (", badgeStart);
+const badgeBlock = lobby.slice(badgeStart, badgeEnd);
 /** The grid pipeline (filters → sort), which the badge must not touch. */
 const pipelineBlock = lobby.slice(
   lobby.indexOf("let displayedGames"),
@@ -962,11 +966,16 @@ test("the count is readable text, not a colour, and is not swallowed by the link
     /t\("home\.casino_lobby\.players_playing", \{\s*count: formatPlayerCount\(players, language\),\s*\}\)/s
   );
 
-  // The row is rendered AFTER the card's </Link>: that link carries its own
+  // The slot is rendered AFTER the card's </Link>: that link carries its own
   // aria-label, which would otherwise replace the count for screen readers.
   const linkEnd = cardBlock.indexOf("</Link>");
-  const badgeUse = cardBlock.indexOf("<PlayerCountBadge game={game} />");
-  assert.ok(linkEnd > -1 && badgeUse > linkEnd, "the badge must sit outside the card link");
+  const presenceSlot = cardBlock.indexOf("{presence}");
+  assert.ok(
+    linkEnd > -1 && presenceSlot > linkEnd,
+    "the count must sit outside the card link",
+  );
+  // …and the lobby is what fills that slot: once per card it renders.
+  assert.equal(countOf(lobby, "presence={<PlayerCountBadge game={game} />}"), 2);
 });
 
 test("the new strings exist in every locale and interpolate the count", async () => {
@@ -1007,15 +1016,20 @@ test("the browser harness exercises the longest shipped label", async () => {
   );
 });
 
-test("the lobby file is the only place the badge renders, and it uses the card", () => {
-  // The grid and the "For You" strip render the SAME GameCard, so one badge
-  // covers both — no second card system was introduced.
-  // GameCard is rendered by the grid AND the "For You" strip.
+test("there is ONE game card in the repo, and the count renders once per card", () => {
+  // The grid and the "For You" strip render the SAME card element, and that
+  // element is a shared module the FAQ renders too — so a second card system
+  // cannot appear in either surface.
+  assert.equal(countOf(lobby, "const GameCard = ("), 0);
+  assert.match(lobby, /import GameCard from "\.\.\/\.\.\/components\/games\/GameCard";/);
+  assert.equal(countOf(cardBlock, "export default function GameCard("), 1);
   assert.ok(
-    countOf(lobby, "<GameCard game={game}") >= 2,
+    countOf(lobby, "<GameCard") >= 2,
     "GameCard is reused by both the grid and the strip"
   );
-  assert.equal(countOf(lobby, "<PlayerCountBadge game={game} />"), 1);
-  assert.equal(countOf(lobby, "const GameCard = ("), 1);
+  // One badge per card: the card renders the slot exactly once, and the lobby
+  // fills it at both call sites.
+  assert.equal(countOf(cardBlock, "{presence}"), 1);
+  assert.equal(countOf(lobby, "presence={<PlayerCountBadge game={game} />}"), 2);
   assert.equal(countOf(lobby, "const PlayerCountBadge = ("), 1);
 });

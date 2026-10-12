@@ -1,8 +1,10 @@
-import Image from "next/image";
 import Link from "next/link";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
+import GameCard from "../../components/games/GameCard";
+import { GAME_CARD_ART } from "../../components/games/gameCardArt";
+import { FaqSidebarList, FaqSidebarRail } from "../../components/faq/FaqSidebar";
 
 /**
  * The help surface (/faq).
@@ -31,13 +33,25 @@ import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
  *
  * ── The game links ────────────────────────────────────────────────────────
  *
- * `gameCards` is the WHOLE catalogue as `[{ slug, name, shortDescription,
- * cardImage }]`, built on the server by app/faq/page.jsx from
- * src/lib/gameLandingPages.ts and rendered as the game directory at the foot of
- * this page — one card per game, each a real link to that game's OWN page
- * (/games/<slug>), never to the lobby (/games/<slug>/play) and never buried in
- * a collapsed answer. Every game the site publishes is therefore one click from
- * the help surface, and a new game needs no change here.
+ * `gameCards` is the WHOLE catalogue, built on the server by app/faq/page.jsx
+ * from src/lib/gameLandingPages.ts and rendered as the game directory at the
+ * foot of this page with the SAME card element the casino lobby uses
+ * (src/components/games/GameCard.jsx) — one card per game, each a real link to
+ * that game's OWN page (/games/<slug>), never to the lobby (/games/<slug>/play)
+ * and never buried in a collapsed answer. The card's artwork comes from the
+ * shared registry (src/components/games/gameCardArt.js), so a game cannot be
+ * drawn here with different art than the lobby gives it.
+ *
+ * The directory is four cards wide from `lg` and therefore sits OUTSIDE the
+ * sidebar grid below: inside a 200px sidebar column the cards would be too
+ * narrow to read.
+ *
+ * ── The section sidebar ───────────────────────────────────────────────────
+ *
+ * FaqSidebarRail / FaqSidebarList (src/components/faq/FaqSidebar.jsx) show the
+ * reader which section they are in and jump them to any other. The rail is
+ * stuck under the navbar on small screens; the list occupies the left column
+ * from `lg`. Both are real anchors, so neither needs JavaScript to be usable.
  */
 const faqSections = [
   {
@@ -258,6 +272,33 @@ const faqSections = [
   },
 ];
 
+/**
+ * A section's anchor id, derived from its heading — so a sidebar link and the
+ * heading it points at can never disagree. "Rating, trophies and leaderboards"
+ * becomes "rating-trophies-and-leaderboards".
+ */
+function sectionId(category) {
+  return category
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+/**
+ * The sidebar's contents: every answered section, then the game directory.
+ *
+ * Deliberately a MODULE-level constant: the client sidebar keys its observer
+ * effect off this array, and a fresh array on every render would tear the
+ * observer down and rebuild it each time.
+ */
+const SIDEBAR_ITEMS = [
+  ...faqSections.map((section) => ({
+    id: sectionId(section.category),
+    label: section.category,
+  })),
+  { id: "faq-games-heading", label: "Every game" },
+];
+
 // Native <details> gives us a collapsible answer that is still fully present in
 // the HTML when closed — no client state, no accordion that hides content from
 // crawlers, and it works with JavaScript disabled.
@@ -280,90 +321,115 @@ function FaqItem({ q, a }) {
 
 export default function FaqPage({ gameCards = [] }) {
   return (
-    <div className="relative min-h-screen">
+    <div className="relative min-h-screen overflow-x-clip">
       <InteractiveCasinoBg variant="subtle" />
 
       <NavigationBar currentPath="/faq" />
 
-      <div className="mx-auto max-w-4xl px-4 py-16">
-        <div>
-          <h1 className="mb-4 text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#00e5ff] to-[#f5ff3b]">
+      <div className="mx-auto max-w-6xl px-4 py-10 sm:py-14">
+        <header className="mb-6">
+          <h1 className="mb-4 text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#00e5ff] to-[#f5ff3b] sm:text-4xl">
             Frequently Asked Questions
           </h1>
-          <p className="mb-8 text-lg text-[#9dd8ff]">
+          <p className="text-base text-[#9dd8ff] sm:text-lg">
             How GRYND works: accounts, matches, matchmaking, ratings and trophies, game rules,
             profiles and support. Every answer below is open to read in full — nothing is hidden
             behind an interaction — and each game's own rules page is linked in the directory at
-            the end of this page. Can&apos;t find your answer?{" "}
+            the end of this page. The contents list follows where you are, and jumps you straight
+            to a section. Can&apos;t find your answer?{" "}
             <Link href="/contact" className="text-[#00e5ff] underline hover:text-[#f5ff3b]">
               Contact us
             </Link>
             .
           </p>
-        </div>
+        </header>
 
-        {faqSections.map((section) => (
-          <div key={section.category} className="mb-10">
-            <h2 className="mb-4 text-xl font-bold text-[#00e5ff]">{section.category}</h2>
-            <div className="space-y-3">
-              {section.questions.map((item) => (
-                <FaqItem key={item.q} q={item.q} a={item.a} />
-              ))}
+        {/* Contents. The rail sticks under the navbar on small screens; the list
+            takes the left column from `lg`. Two elements, one state — a single
+            element containing both could never stick, because `position: sticky`
+            only moves while its PARENT still has room to scroll. */}
+        <FaqSidebarRail items={SIDEBAR_ITEMS} />
+
+        <div className="lg:grid lg:grid-cols-[200px_minmax(0,1fr)] lg:gap-8">
+          <FaqSidebarList items={SIDEBAR_ITEMS} />
+
+          {/* The answers column. `minmax(0,1fr)` above is what stops a long
+              answer from widening this column and pushing the cards out. */}
+          <div>
+            {faqSections.map((section) => (
+              <section
+                key={section.category}
+                id={sectionId(section.category)}
+                aria-labelledby={`${sectionId(section.category)}-heading`}
+                className="mb-10 scroll-mt-28"
+              >
+                <h2
+                  id={`${sectionId(section.category)}-heading`}
+                  className="mb-4 text-xl font-bold text-[#00e5ff]"
+                >
+                  {section.category}
+                </h2>
+                <div className="space-y-3">
+                  {section.questions.map((item) => (
+                    <FaqItem key={item.q} q={item.q} a={item.a} />
+                  ))}
+                </div>
+              </section>
+            ))}
+
+            <div className="mt-10 rounded-lg border border-[#f5ff3b]/20 bg-[#f5ff3b]/5 p-6 text-center">
+              <p className="text-sm text-[#c9f7ff]/70">
+                Still have questions? Our team is one message away —{" "}
+                <Link href="/contact" className="text-[#00e5ff] underline hover:text-[#f5ff3b]">
+                  get in touch
+                </Link>
+                .
+              </p>
             </div>
           </div>
-        ))}
+        </div>
 
         {/* ── Every game, and its own page ─────────────────────────────────
-            One card per public game, each linking to that game's OWN info page
-            (/games/<slug>) — deliberately NOT the lobby (/games/<slug>/play),
-            which sits behind a sign-in and carries no rules to read. The cards
-            are plain <Link>s built on the server from the game catalogue, so
-            the whole catalogue is reachable from this page in the HTML, before
-            any JavaScript runs, and a new game shows up here without anyone
-            adding a card by hand. */}
+            One card per public game, drawn with the SAME card element as the
+            casino lobby (src/components/games/GameCard.jsx), each linking to
+            that game's OWN info page (/games/<slug>) — deliberately NOT the
+            lobby (/games/<slug>/play), which sits behind a sign-in and carries
+            no rules to read. The card is a real anchor on the server, so the
+            whole catalogue is reachable from this page in the HTML before any
+            JavaScript runs. Four per row from `lg`, which is why this section
+            sits outside the sidebar grid. */}
         {gameCards.length > 0 && (
-          <section id="faq-games-heading" aria-labelledby="faq-games-title" className="mt-10">
-            <h2 id="faq-games-title" className="text-xl font-bold text-[#00e5ff]">
+          <section
+            id="faq-games-heading"
+            aria-labelledby="faq-games-title"
+            className="mt-14 scroll-mt-28"
+          >
+            <h2 id="faq-games-title" className="text-xl font-bold text-[#00e5ff] sm:text-2xl">
               Every game, and where its rules live
             </h2>
-            <p className="mt-2 text-sm leading-relaxed text-[#c9f7ff]/80">
+            <p className="mt-2 max-w-3xl text-sm leading-relaxed text-[#c9f7ff]/80">
               Everything above applies to every game on GRYND, and each one has its own page: the
               rules the server enforces, how the winner is decided, strategy hints and that
               game&apos;s own questions — all readable without an account. Open the game you are
               curious about.
             </p>
-            <ul className="mt-5 grid gap-4 sm:grid-cols-2">
-              {gameCards.map((game) => (
-                <li key={game.slug}>
-                  <Link
-                    href={`/games/${game.slug}`}
-                    className="group flex h-full flex-col overflow-hidden rounded-2xl border border-[#00e5ff]/30 bg-[#040d24] transition-all hover:-translate-y-0.5 hover:border-[#00e5ff]/60 hover:shadow-[0_0_24px_rgba(0,229,255,0.2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
-                  >
-                    <span className="relative block aspect-square w-full shrink-0 overflow-hidden bg-[#02060f]">
-                      <Image
-                        src={game.cardImage}
-                        alt=""
-                        fill
-                        sizes="(max-width: 640px) 100vw, 50vw"
-                        className="object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-                      />
-                    </span>
-                    <span className="flex flex-1 flex-col p-5">
-                      <span className="block text-lg font-black tracking-tight text-[#f5ff3b]">
-                        {game.name}
-                      </span>
-                      <span className="mt-1.5 block text-sm leading-relaxed text-[#9dd8ff]">
-                        {game.shortDescription}
-                      </span>
-                      <span className="mt-3 block text-sm font-semibold text-[#00e5ff] group-hover:text-[#f5ff3b]">
-                        Rules, scoring and strategy →
-                      </span>
-                    </span>
-                  </Link>
+            <ul className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-4">
+              {gameCards.map((card) => (
+                <li key={card.slug} className="h-full">
+                  <GameCard
+                    game={{
+                      href: card.href,
+                      title: card.name,
+                      description: card.shortDescription,
+                      image: GAME_CARD_ART[card.slug],
+                      imageClassName: "group-hover:scale-[1.03]",
+                      leaderboardKey: card.leaderboardKey,
+                    }}
+                  />
                 </li>
               ))}
             </ul>
-            <p className="mt-4 text-sm text-[#c9f7ff]/80">
+            <p className="mt-6 text-sm text-[#c9f7ff]/80">
               Or{" "}
               <Link href="/games" className="text-[#00e5ff] underline hover:text-[#f5ff3b]">
                 browse all games
@@ -376,16 +442,6 @@ export default function FaqPage({ gameCards = [] }) {
             </p>
           </section>
         )}
-
-        <div className="mt-10 rounded-lg border border-[#f5ff3b]/20 bg-[#f5ff3b]/5 p-6 text-center">
-          <p className="text-sm text-[#c9f7ff]/70">
-            Still have questions? Our team is one message away —{" "}
-            <Link href="/contact" className="text-[#00e5ff] underline hover:text-[#f5ff3b]">
-              get in touch
-            </Link>
-            .
-          </p>
-        </div>
       </div>
 
       <Footer />

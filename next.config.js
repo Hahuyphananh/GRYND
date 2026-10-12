@@ -7,6 +7,16 @@ const withPWA = require("next-pwa")({
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // ── Image qualities ─────────────────────────────────────────────────
+  // Next 16 only honours a quality listed here (the default allowlist is
+  // [75]): the shared game card asks for `quality={85}` on every card, and
+  // without this the optimiser silently served 75 and logged a warning per
+  // image, so the card art on /faq and in the lobby was not the quality the
+  // component asked for. 75 stays allowed — everything else uses the default.
+  images: {
+    qualities: [75, 85],
+  },
+
   turbopack: {
     // Pin the workspace root to this directory. Without this, Next infers the
     // root from stray lockfiles higher up the tree (e.g. C:\Users\client\package-lock.json)

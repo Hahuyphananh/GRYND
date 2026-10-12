@@ -32,6 +32,7 @@ const NAV_TRANSLATION_KEYS = {
   "/games": "nav.casino",
   "/classement": "nav.leaderboard",
   "/contact": "nav.contact",
+  "/faq": "nav.faq",
 };
 
 function NavigationBar({ currentPath = "" }) {
@@ -436,13 +437,18 @@ function NavigationBar({ currentPath = "" }) {
               />
             </Link>
 
+            {/* Tighter gaps/padding up to `lg`, then the original ones: this row
+                is visible from md, where the logo + every link + the account
+                cluster have never fitted, and the /faq link must not be what
+                pushes the account buttons further off a 768px screen. From lg
+                the row has room again, so it is pixel-identical there. */}
             <motion.div
               variants={stagger}
               initial="initial"
               animate="animate"
-              className="hidden items-center space-x-4 md:flex"
+              className="hidden items-center space-x-1 md:flex lg:space-x-4"
             >
-              {["/", "/games", "/classement", "/contact"].map((path) => (
+              {["/", "/games", "/classement", "/contact", "/faq"].map((path) => (
                 <motion.div
                   key={path}
                   initial={itemVariant.initial}
@@ -452,7 +458,7 @@ function NavigationBar({ currentPath = "" }) {
                 >
                   <Link
                     href={path}
-                    className={`px-3 py-2 text-sm font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === path || (path === "/games" && isCasinoPath) ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
+                    className={`px-1 py-2 text-sm font-medium rounded lg:px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === path || (path === "/games" && isCasinoPath) ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
                   >
                     {t(NAV_TRANSLATION_KEYS[path])}
                   </Link>
@@ -467,7 +473,7 @@ function NavigationBar({ currentPath = "" }) {
               >
                 <Link
                   href="/settings"
-                  className={`px-3 py-2 text-sm font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === "/settings" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
+                  className={`px-1 py-2 text-sm font-medium rounded lg:px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === "/settings" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
                 >
                   <span className="inline-flex items-center gap-1.5">
                     <IconSettings size={15} className="shrink-0" /> {t("nav.settings")}
@@ -681,7 +687,7 @@ function NavigationBar({ currentPath = "" }) {
 
               {/* NAV LINKS */}
               <div className="space-y-2">
-                {["/", "/games", "/classement", "/contact"].map((path) => (
+                {["/", "/games", "/classement", "/contact", "/faq"].map((path) => (
                   <Link
                     key={path}
                     href={path}

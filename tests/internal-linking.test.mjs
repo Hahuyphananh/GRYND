@@ -320,11 +320,11 @@ test("the FAQ links every game's public page, in markup that exists before any c
   const section = client.slice(client.indexOf('id="faq-games-heading"'));
   assert.ok(section.length > 0, "the FAQ games section must exist");
   const block = section.slice(0, section.indexOf("</ul>"));
-  assert.match(block, /gameCards\.map\(\(game\) => \(/);
-  assert.match(block, /href=\{`\/games\/\$\{game\.slug\}`\}/);
-  // The art and the blurb come off the catalogue entry itself — a second
-  // slug→image map in the component is exactly the drift this avoids.
-  assert.match(block, /src=\{game\.cardImage\}/);
+  assert.match(block, /gameCards\.map\(\(card\) => \(/);
+  // It renders the SAME card element the lobby renders…
+  assert.match(block, /<GameCard/);
+  // …aimed at the game's own public page, which the catalogue projects for it.
+  assert.match(block, /href: card\.href/);
   // Plus the hub itself and the fairness policy the answers keep referring to.
   assert.match(section, /href="\/games"/);
   assert.match(section, /href="\/fair-play"/);
@@ -345,11 +345,11 @@ test("the FAQ directory is the whole catalogue, and links the INFO page not the 
 
   for (const card of GAME_CARDS) {
     // The card links the game's own public page …
-    assert.equal(gameLandingPath(card.slug), `/games/${card.slug}`);
+    assert.equal(card.href, `/games/${card.slug}`);
+    assert.equal(gameLandingPath(card.slug), card.href);
     // … which is a different URL from the lobby. The lobby is a sign-in wall
     // with no rules to read, so a card must never point at it.
-    assert.notEqual(gameLandingPath(card.slug), gamePlayPath(card.slug));
-    assert.match(card.cardImage, /^\/games\/[a-z0-9-]+\.png$/);
+    assert.notEqual(card.href, gamePlayPath(card.slug));
     assert.ok(
       card.shortDescription.trim().length > 80,
       `${card.slug} has no usable card blurb`,
@@ -363,14 +363,15 @@ test("the FAQ directory is the whole catalogue, and links the INFO page not the 
 
 test("the FAQ's game section is not inside the accordion", () => {
   const client = code(FAQ_CLIENT);
-  const block = client.slice(
-    client.indexOf('id="faq-games-heading"'),
-    client.indexOf("Still have questions?"),
-  );
+  // The directory is the LAST block on the page (the answered sections and the
+  // contact strip sit above it), so the region runs to the end of the component.
+  const block = client.slice(client.indexOf('id="faq-games-heading"'));
+  assert.ok(block.length > 0, "the FAQ games section must exist");
   // An accordion answer is only in the HTML once its item is open; a game link
   // rendered that way is invisible to a crawler and to a visitor who has not
   // clicked. The section must be outside every `{open && …}` branch.
   assert.doesNotMatch(block, /\{open\s*&&/, "the games section must not be accordion content");
+  assert.match(block, /gameCards\.map\(/, "the section renders its own list");
   assert.match(client, /\{gameCards\.length > 0 && \(/, "the section renders off its own list");
 });
 
@@ -379,22 +380,27 @@ test("the FAQ's game section is not inside the accordion", () => {
 test("the new game links are anchors, not click handlers", () => {
   // Each surface renders a link element with an href. A span/div/button with an
   // onClick would pass a visual review and fail a crawler, so the shape is
-  // asserted directly.
+  // asserted directly. The FAQ renders the SHARED card element, so for that
+  // surface the anchor is asserted in src/components/games/GameCard.jsx below.
   const surfaces = [
-    ["hub A–Z directory", HUB_CLIENT, 'id="all-games-index-heading"', "</nav>"],
-    ["home popular games", HOME_CLIENT, 'aria-labelledby="home-popular-games"', "</nav>"],
-    // The FAQ is a server component now (native <details> accordion), so the
-    // games block closes on a plain </section> rather than a motion wrapper.
-    ["FAQ games", FAQ_CLIENT, 'id="faq-games-heading"', "</section>"],
+    ["hub A–Z directory", HUB_CLIENT, 'id="all-games-index-heading"', "</nav>", /<Link/],
+    [
+      "home popular games",
+      HOME_CLIENT,
+      'aria-labelledby="home-popular-games"',
+      "</nav>",
+      /<Link/,
+    ],
+    ["FAQ games", FAQ_CLIENT, 'id="faq-games-heading"', "</section>", /<GameCard/],
   ];
-  for (const [label, source, anchor, close] of surfaces) {
+  for (const [label, source, anchor, close, linkShape] of surfaces) {
     const src = code(source);
     const start = src.indexOf(anchor);
     assert.ok(start > 0, `${label}: anchor not found`);
     const end = src.indexOf(close, start);
     assert.ok(end > start, `${label}: the link block must be a closed container`);
     const block = src.slice(start, end);
-    assert.match(block, /<Link/, `${label}: game links must be <Link> components`);
+    assert.match(block, linkShape, `${label}: game links must be anchors`);
     assert.doesNotMatch(
       block,
       /onClick=/,
@@ -406,4 +412,11 @@ test("the new game links are anchors, not click handlers", () => {
       `${label}: client-side navigation is not a crawlable link`,
     );
   }
+
+  // The card the FAQ renders is that anchor: one <Link> around the artwork,
+  // title, blurb and CTA, with no click handler standing in for it.
+  const cardSource = code(read("src/components/games/GameCard.jsx"));
+  assert.match(cardSource, /<Link\s+href=\{game\.href\}/);
+  assert.doesNotMatch(cardSource, /onClick=/);
+  assert.doesNotMatch(cardSource, /router\.push/);
 });

@@ -8,7 +8,13 @@
 html,
 body {
   max-width: 100%;
-  overflow-x: hidden;
+  /* `clip`, not `hidden`: both stop the page scrolling sideways, but `hidden`
+     makes html/body a scroll container, and a sticky element's scrollport then
+     becomes the body — which never scrolls internally — so `position: sticky`
+     silently never sticks anywhere in the app (the /faq contents sidebar, the
+     game pages' sticky action bars). `clip` clips identically without creating
+     that scroll container. */
+  overflow-x: clip;
 }
 
 body {

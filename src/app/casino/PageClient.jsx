@@ -4,27 +4,8 @@ import Footer from "../../components/Footer";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import { useUser } from "@clerk/nextjs";
 import React, { useEffect, useState } from "react";
-import FrameAvatar from "../../components/FrameAvatar";
-import Img7 from "../../images/chessimage.png";
-import Img10 from "../../images/kenoimage.png";
-import Img11 from "../../images/uno game div.webp";
-import Img12 from "../../images/rockpaperscissorsimage.png";
-import Img14 from "../../images/four-in-a-row-card.png";
-import ImgLaneRush from "../../images/lanerushimage.png";
-import Img17 from "../../images/poolmastersimage.png";
-import Img18 from "../../images/hexduelimage.png";
-import Img21 from "../../images/odds.svg";
-import Img22 from "../../images/precision.svg";
-import ImgDotsBoxes from "../../images/dots-and-boxes.svg";
-import ImgMiniGolf from "../../images/mini-golf-card.svg";
-import ImgSpeedTyping from "../../images/speed-typing-card.svg";
-import ImgTicTacToe from "../../images/tic-tac-toe-card.svg";
-import ImgSolitaireDuel from "../../images/solitaire-duel-card.svg";
-import ImgSudokuDuel from "../../images/sudoku-duel-card.svg";
-import ImgBarricade from "../../images/barricade-card.svg";
-import ImgTowerArena from "../../images/towersimage.jpg";
-import ImgMinesPvp from "../../images/minesimage.png";
-import ImgMemoryGrid from "../../images/memorygridimage.png";
+import GameCard from "../../components/games/GameCard";
+import { GAME_CARD_ART } from "../../components/games/gameCardArt";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -392,7 +373,7 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       leaderboardKey: "mines-pvp",
       recencyKey: "mines-duel",
       playsKey: "mines-duel",
-      image: ImgMinesPvp,
+      image: GAME_CARD_ART["mines-pvp"],
       imageClassName: "group-hover:scale-[1.03]",
       descriptionKey: "games.mines_pvp_desc",
       nameKey: "games.mines_pvp_name",
@@ -404,7 +385,7 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       href: "/games/memory-grid",
       leaderboardKey: "memory-grid",
       playsKey: "memory-grid",
-      image: ImgMemoryGrid,
+      image: GAME_CARD_ART["memory-grid"],
       imageClassName: "group-hover:scale-[1.03]",
       descriptionKey: "games.memory_grid_desc",
       nameKey: "games.memory_grid_name",
@@ -417,7 +398,7 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       href: "/games/chess",
       leaderboardKey: "chess",
       playsKey: "chess",
-      image: Img7,
+      image: GAME_CARD_ART["chess"],
       imageClassName: "group-hover:scale-[1.03]",
       descriptionKey: "games.chess_desc",
       nameKey: "games.chess_name",
@@ -428,7 +409,7 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       href: "/games/keno",
       leaderboardKey: "keno",
       playsKey: "keno",
-      image: Img10,
+      image: GAME_CARD_ART["keno"],
       imageClassName: "group-hover:scale-[1.03]",
       descriptionKey: "games.keno_desc",
       pvpMode: "1v1",
@@ -439,7 +420,7 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       leaderboardKey: "uno",
       recencyKey: "neon-flush",
       playsKey: "neon-flush",
-      image: Img11,
+      image: GAME_CARD_ART["neon-flush"],
       descriptionKey: "games.uno_desc",
       pvpMode: "1v1",
     },
@@ -449,7 +430,7 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       leaderboardKey: "rps",
       recencyKey: "rock-paper-scissors",
       playsKey: "rock-paper-scissors",
-      image: Img12,
+      image: GAME_CARD_ART["rps"],
       descriptionKey: "games.rps_desc",
       nameKey: "games.rps_name",
       pvpMode: "1v1",
@@ -459,7 +440,7 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       href: "/games/tower-arena",
       leaderboardKey: "tower-arena",
       playsKey: "tower-arena",
-      image: ImgTowerArena,
+      image: GAME_CARD_ART["tower-arena"],
       descriptionKey: "games.tower_arena_desc",
       pvpMode: "1v1",
     },
@@ -468,7 +449,7 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       href: "/games/four-in-a-row",
       leaderboardKey: "four-in-a-row",
       playsKey: "four-in-a-row",
-      image: Img14,
+      image: GAME_CARD_ART["four-in-a-row"],
       // Bigger board + gentler hover zoom so the full board stays visible.
       imageClassName: "group-hover:scale-[1.03]",
       descriptionKey: "games.four_in_a_row_desc",
@@ -481,7 +462,7 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       leaderboardKey: "lane-runner",
       recencyKey: "lane-rush-duel",
       playsKey: "lane-rush-duel",
-      image: ImgLaneRush,
+      image: GAME_CARD_ART["lane-runner"],
       // Gentler hover zoom so the twin towers stay fully visible.
       imageClassName: "group-hover:scale-[1.03]",
       descriptionKey: "games.lane_runner_desc",
@@ -492,7 +473,7 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       href: "/games/pool-masters",
       leaderboardKey: "pool-masters",
       playsKey: "pool-masters",
-      image: Img17,
+      image: GAME_CARD_ART["pool-masters"],
       descriptionKey: "games.pool_masters_desc",
       pvpMode: "1v1",
     },
@@ -502,7 +483,7 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       href: "/games/hex-duel",
       leaderboardKey: "hex-duel",
       playsKey: "hex-duel",
-      image: Img18,
+      image: GAME_CARD_ART["hex-duel"],
       descriptionKey: "games.hex_duel_desc",
       nameKey: "games.hex_duel_name",
       pvpMode: "1v1",
@@ -512,7 +493,7 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       href: "/games/odds",
       leaderboardKey: "odds",
       playsKey: "odds",
-      image: Img21,
+      image: GAME_CARD_ART["odds"],
       descriptionKey: "games.odds_desc",
       nameKey: "games.odds_name",
       pvpMode: "1v1",
@@ -523,7 +504,7 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       href: "/games/precision",
       leaderboardKey: "precision",
       playsKey: "precision",
-      image: Img22,
+      image: GAME_CARD_ART["precision"],
       descriptionKey: "games.precision_desc",
       nameKey: "games.precision_name",
       pvpMode: "1v1",
@@ -533,7 +514,7 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       href: "/games/dots-and-boxes",
       leaderboardKey: "dots-and-boxes",
       playsKey: "dots-and-boxes",
-      image: ImgDotsBoxes,
+      image: GAME_CARD_ART["dots-and-boxes"],
       descriptionKey: "games.dots_and_boxes_desc",
       nameKey: "games.dots_and_boxes_name",
       pvpMode: "1v1",
@@ -543,7 +524,7 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       href: "/games/mini-golf",
       leaderboardKey: "mini-golf",
       playsKey: "mini-golf",
-      image: ImgMiniGolf,
+      image: GAME_CARD_ART["mini-golf"],
       descriptionKey: "games.mini_golf_desc",
       nameKey: "games.mini_golf_name",
       pvpMode: "1v1",
@@ -553,7 +534,7 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       href: "/games/speed-typing",
       leaderboardKey: "speed-typing",
       playsKey: "speed-typing",
-      image: ImgSpeedTyping,
+      image: GAME_CARD_ART["speed-typing"],
       descriptionKey: "games.speed_typing_desc",
       nameKey: "games.speed_typing_name",
       pvpMode: "1v1",
@@ -563,7 +544,7 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       href: "/games/tic-tac-toe",
       leaderboardKey: "tic-tac-toe",
       playsKey: "tic-tac-toe",
-      image: ImgTicTacToe,
+      image: GAME_CARD_ART["tic-tac-toe"],
       descriptionKey: "games.tic_tac_toe_desc",
       nameKey: "games.tic_tac_toe_name",
       pvpMode: "1v1",
@@ -573,7 +554,7 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       href: "/games/solitaire-duel",
       leaderboardKey: "solitaire-duel",
       playsKey: "solitaire-duel",
-      image: ImgSolitaireDuel,
+      image: GAME_CARD_ART["solitaire-duel"],
       descriptionKey: "games.solitaire_duel_desc",
       nameKey: "games.solitaire_duel_name",
       pvpMode: "1v1",
@@ -583,7 +564,7 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       href: "/games/sudoku-duel",
       leaderboardKey: "sudoku-duel",
       playsKey: "sudoku-duel",
-      image: ImgSudokuDuel,
+      image: GAME_CARD_ART["sudoku-duel"],
       descriptionKey: "games.sudoku_duel_desc",
       nameKey: "games.sudoku_duel_name",
       pvpMode: "1v1",
@@ -596,7 +577,7 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       href: "/games/barricade",
       leaderboardKey: "barricade",
       playsKey: "barricade",
-      image: ImgBarricade,
+      image: GAME_CARD_ART["barricade"],
       descriptionKey: "games.barricade_desc",
       nameKey: "games.barricade_name",
       pvpMode: "1v1",
@@ -809,116 +790,6 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       </p>
     );
   };
-
-  const GameCard = ({ game, recommended = false }) => (
-    <div className="group relative flex h-full flex-col overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:border-[#00e5ff]/60 hover:shadow-[0_0_30px_rgba(0,229,255,0.4)] focus-within:ring-2 focus-within:ring-[#00e5ff] focus-within:ring-offset-2 focus-within:ring-offset-[#040d24]">
-      <Link
-        href={game.href}
-        className="block cursor-pointer focus-visible:outline-none"
-        aria-label={`Play ${game.nameKey ? t(game.nameKey) : game.name}`}
-      >
-        <div className="mb-3 relative aspect-video overflow-hidden rounded-lg">
-          <Image
-            src={game.image}
-            alt={game.nameKey ? t(game.nameKey) : game.name}
-            quality={85}
-            loading="lazy"
-            // Source art is 1.6–2.4MB PNGs — the card only ever displays
-            // at ~3–4 columns wide, so let the optimizer serve a
-            // viewport-sized variant instead of the full-res original.
-            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
-            className={`h-full w-full object-cover object-center transition-transform group-hover:scale-110 ${game.imageClassName || ""}`}
-          />
-          {/* PvP badge — real product data: every GRYND game is a competitive
-              1v1 duel (the shared multiplayer tables were retired). */}
-          <span className="absolute left-2 top-2 rounded-full border border-[#00e5ff]/60 bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#00e5ff] shadow-[0_0_10px_rgba(0,229,255,0.45)] backdrop-blur-sm">
-            {t("home.pvp_badge")}
-          </span>
-          {/* Popular / New badges — brand neon pills over the card art.
-              Purely informational chrome: aria-hidden so screen readers
-              don't double-announce what the game title already says. */}
-          {/* NEW takes priority: the newest games always carry the recency
-              badge even when they're also popular, so the recency signal is
-              unambiguous (popularity stays discoverable via the filter). */}
-          {newestKeys.includes(game.leaderboardKey) && (
-            <span
-              aria-hidden="true"
-              className="absolute right-2 top-2 rounded-full border border-[#00e5ff]/60 bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#00e5ff] shadow-[0_0_10px_rgba(0,229,255,0.45)] backdrop-blur-sm"
-            >
-              {t("home.casino_lobby.badge_new")}
-            </span>
-          )}
-          {game.popular && !newestKeys.includes(game.leaderboardKey) && (
-            <span
-              aria-hidden="true"
-              className="absolute right-2 top-2 rounded-full border border-[#f5ff3b]/60 bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#f5ff3b] shadow-[0_0_10px_rgba(245,255,59,0.45)] backdrop-blur-sm"
-            >
-              {t("home.casino_lobby.badge_hot")}
-            </span>
-          )}
-          {/* "For You" only: a quiet marker on a personal pick. Anchored to
-              the image's bottom-right so it never fights the PvP badge
-              (top-left) or the NEW/HOT pills (top-right). */}
-          {recommended && (
-            <span className="absolute bottom-2 right-2 rounded-full border border-[#f0abfc]/60 bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#f0abfc] shadow-[0_0_10px_rgba(240,171,252,0.4)] backdrop-blur-sm">
-              {t("home.casino_lobby.recommended_badge")}
-            </span>
-          )}
-        </div>
-
-        <h3 className="mb-2 text-lg font-extrabold tracking-tight text-[#f5ff3b] md:text-xl">
-          {game.nameKey ? t(game.nameKey) : game.name}
-        </h3>
-
-        <p className="line-clamp-2 text-sm leading-relaxed text-[#9dd8ff] md:text-[15px]">
-          {t(game.descriptionKey)}
-        </p>
-
-        {/* Primary CTA — always visible, works on touch. The whole card is
-            a link; this makes the action explicit without hover. */}
-        <div className="mt-4">
-          <span className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[#00e5ff]/50 bg-[#00e5ff]/10 px-3 py-2 text-sm font-bold text-[#00e5ff] transition-all duration-200 group-hover:bg-[#00e5ff] group-hover:text-black group-hover:shadow-[0_0_15px_rgba(0,229,255,0.5)] sm:w-auto">
-            {t("home.casino_lobby.play")}
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          </span>
-        </div>
-      </Link>
-      {/* Card footer: live activity first, then the leaderboard shortcut.
-          The count deliberately sits OUTSIDE the card's Link — that link has
-          its own aria-label ("Play <game>"), which would otherwise swallow the
-          count for screen readers — and adding it here leaves the title,
-          description, CTA and the art badges (PvP / NEW / HOT / Recommended /
-          friends) untouched. */}
-      <div className="mt-auto pt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-        <PlayerCountBadge game={game} />
-        <Link
-          href={`/classement?game=${game.leaderboardKey}`}
-          className="text-xs text-[#00e5ff] underline underline-offset-2 hover:text-[#d8fbff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24] rounded"
-        >
-          {t("home.view_leaderboard")} {game.nameKey ? t(game.nameKey) : game.name}
-        </Link>
-      </div>
-
-      {Array.isArray(friendPresenceByGame[game.leaderboardKey]) &&
-        friendPresenceByGame[game.leaderboardKey].length > 0 && (
-          <div
-            className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-1"
-            title={friendPresenceByGame[game.leaderboardKey].map((f) => f.name).join(", ")}
-          >
-            {friendPresenceByGame[game.leaderboardKey].slice(0, 4).map((friend) => (
-              <FrameAvatar
-                key={`${friend.id}-${friend.name}`}
-                frame={friend.profileFrame}
-                iconKey={friend.iconKey}
-                name={friend.name}
-                size="h-6 w-6"
-                className="border border-white/30"
-              />
-            ))}
-          </div>
-        )}
-    </div>
-  );
 
   return (
     <div className="relative min-h-screen overflow-x-clip pb-40 pt-16 md:pb-8 md:pt-20">
@@ -1162,7 +1033,13 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4">
               {forYouGames.map((game) => (
                 <div key={`for-you-${game.leaderboardKey}`} className="h-full">
-                  <GameCard game={game} recommended />
+                  <GameCard
+                    game={game}
+                    recommended
+                    isNewest={newestKeys.includes(game.leaderboardKey)}
+                    presence={<PlayerCountBadge game={game} />}
+                    friends={friendPresenceByGame[game.leaderboardKey]}
+                  />
                 </div>
               ))}
             </div>
@@ -1249,7 +1126,12 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
                   className="h-full"
                   style={{ "--i": index }}
                 >
-                  <GameCard game={game} />
+                  <GameCard
+                    game={game}
+                    isNewest={newestKeys.includes(game.leaderboardKey)}
+                    presence={<PlayerCountBadge game={game} />}
+                    friends={friendPresenceByGame[game.leaderboardKey]}
+                  />
                 </div>
               ))}
             </div>

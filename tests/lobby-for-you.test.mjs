@@ -39,6 +39,11 @@ const GRID_CLASSES = "grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-col
 
 const lobby = fs.readFileSync(path.join(process.cwd(), LOBBY), "utf8").replace(/\r\n/g, "\n");
 
+// The card element itself — shared by the lobby and the FAQ, so "no second card
+// system" is now a statement about the whole repo, not about one file.
+const CARD = "src/components/games/GameCard.jsx";
+const card = fs.readFileSync(path.join(process.cwd(), CARD), "utf8").replace(/\r\n/g, "\n");
+
 /** A complete questionnaire submission. */
 const FULL_ANSWERS = {
   motivation: ["competition"],
@@ -197,18 +202,24 @@ test("the section hides as soon as the player searches or filters", () => {
 
 // ── 4. Reuses the existing card + layout ─────────────────────────────────
 
-test("For You reuses the lobby's GameCard instead of a second card system", () => {
+test("For You reuses the shared GameCard instead of a second card system", () => {
   assert.ok(forYouStart > -1);
-  // One card component in the file, defined once…
-  assert.equal(count(lobby, "const GameCard = ("), 1);
+  // One card element across the repo, defined once — in the module both the
+  // lobby and the FAQ import…
+  assert.equal(count(lobby, "const GameCard = ("), 0);
+  assert.match(lobby, /import GameCard from "\.\.\/\.\.\/components\/games\/GameCard";/);
+  assert.equal(count(card, "export default function GameCard("), 1);
   assert.doesNotMatch(lobby, /const (ForYouCard|RecommendedCard|LobbyCard) =/);
-  // …and the section renders it with the recommendation marker.
-  assert.match(forYouBlock, /<GameCard game=\{game\} recommended \/>/);
+  // …and the section renders it, with the recommendation marker.
+  assert.match(forYouBlock, /<GameCard\b/);
   assert.match(forYouBlock, /forYouGames\.map\(\(game\) => \(/);
-  // The marker is opt-in, so All Games cards are unchanged.
-  assert.match(lobby, /const GameCard = \(\{ game, recommended = false \}\) => \(/);
-  assert.match(lobby, /\{recommended && \(/);
-  assert.match(lobby, /t\("home\.casino_lobby\.recommended_badge"\)/);
+  // The marker is opt-in — it exists once in the lobby (the strip's card) and
+  // never on an All Games card — and it is the card that draws it.
+  assert.equal(count(lobby, "recommended"), 1);
+  assert.match(forYouBlock, /\brecommended\b/);
+  assert.match(card, /recommended = false/);
+  assert.match(card, /\{recommended && \(/);
+  assert.match(card, /t\("home\.casino_lobby\.recommended_badge"\)/);
 });
 
 test("For You uses the same responsive grid as All Games (mobile-safe)", () => {

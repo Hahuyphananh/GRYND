@@ -80,7 +80,7 @@ test("catalog: slugs are unique, and the index maps agree with the list", () => 
 test("catalog: every entry carries the full set of landing-page content", () => {
   for (const game of GAME_LANDING_PAGES) {
     const where = game.slug;
-    for (const field of ["name", "headline", "category", "leaderboardKey", "ogImage", "cardImage", "shortDescription", "competitive"]) {
+    for (const field of ["name", "headline", "category", "leaderboardKey", "ogImage", "shortDescription", "competitive"]) {
       assert.equal(typeof game[field], "string", `${where}.${field} must be a string`);
       assert.ok(game[field].trim().length > 0, `${where}.${field} must not be empty`);
     }
@@ -116,31 +116,67 @@ test("catalog: every entry carries the full set of landing-page content", () => 
   }
 });
 
-test("catalog: every game card points at art that actually exists in /public", () => {
-  // The FAQ's games directory renders one card per game, image included, so a
-  // card naming art nobody added is a broken thumbnail on a public page. The
-  // field is required by the entry type; this asserts the FILE on disk.
-  for (const game of GAME_LANDING_PAGES) {
-    assert.match(
-      game.cardImage,
-      /^\/games\/[a-z0-9-]+\.png$/,
-      `${game.slug}.cardImage must be a /public/games PNG path`,
-    );
-    const file = `public${game.cardImage}`;
-    assert.ok(existsSync(file), `${game.slug} has no card art on disk: ${file}`);
-    assert.ok(statSync(file).size > 0, `${file} is an empty file`);
-  }
-
-  // …and the projection the FAQ consumes is one card per catalogue entry, so
-  // the directory cannot show fewer games than the site publishes.
+test("catalog: the card projection is one card per game, art included", () => {
+  // The FAQ's games directory renders one card per game, so the projection the
+  // page consumes must cover the whole catalogue — the directory can never show
+  // fewer games than the site publishes.
   assert.equal(GAME_CARDS.length, GAME_LANDING_PAGES.length);
   assert.deepEqual(
     [...GAME_CARDS.map((card) => card.slug)].sort(),
     [...GAME_LANDING_SLUGS].sort(),
   );
   for (const card of GAME_CARDS) {
-    assert.equal(card.cardImage, GAME_LANDING_BY_SLUG[card.slug].cardImage);
-    assert.equal(card.shortDescription, GAME_LANDING_BY_SLUG[card.slug].shortDescription);
+    const source = GAME_LANDING_BY_SLUG[card.slug];
+    assert.equal(card.href, gameLandingPath(card.slug), `${card.slug}: card href`);
+    assert.equal(card.shortDescription, source.shortDescription);
+    assert.equal(card.leaderboardKey, source.leaderboardKey);
+  }
+
+  // Every card must name art that exists on disk. Card art is a webpack import
+  // registry (a plain Node test cannot import a .png), so the registry is read
+  // as source: exactly one entry per public game, and every file it imports
+  // present in src/images/. A card naming art nobody added is a broken
+  // thumbnail on a public page.
+  const registry = read("src/components/games/gameCardArt.js");
+  const body = registry.slice(registry.indexOf("export const GAME_CARD_ART = {"));
+  const keys = [...body.matchAll(/^\s*"?([a-z0-9-]+)"?:\s*(\w+Art),/gm)].map(
+    (match) => match[1],
+  );
+  assert.deepEqual(
+    keys.slice().sort(),
+    [...GAME_LANDING_SLUGS].sort(),
+    "the card art registry must cover every public game and nothing else",
+  );
+
+  const imports = [
+    ...registry.matchAll(/import\s+(\w+)\s+from\s+"\.\.\/\.\.\/images\/([^"]+)"/g),
+  ];
+  const imported = new Map(imports.map((match) => [match[1], match[2]]));
+  // `neon-flush` and `uno` deliberately share one image, so there are fewer
+  // imports than cards — but every art identifier a card names must be one of
+  // them, and every imported file must exist.
+  for (const [, identifier] of body.matchAll(/^\s*"?[a-z0-9-]+"?\s*:\s*(\w+Art),/gm)) {
+    assert.ok(
+      imported.has(identifier),
+      `a card names art \`${identifier}\` that the registry never imports`,
+    );
+  }
+  for (const [, , file] of imports) {
+    const onDisk = `src/images/${file}`;
+    assert.ok(existsSync(onDisk), `card art missing on disk: ${onDisk}`);
+    assert.ok(statSync(onDisk).size > 0, `${onDisk} is an empty file`);
+  }
+
+  // Both card surfaces draw from that ONE registry, keyed by the same slug, so
+  // the lobby and the FAQ can never show different art for the same game.
+  for (const file of ["src/app/casino/PageClient.jsx", "src/app/faq/PageClient.jsx"]) {
+    const src = read(file);
+    assert.match(
+      src,
+      /import \{ GAME_CARD_ART \} from "\.\.\/\.\.\/components\/games\/gameCardArt"/,
+      `${file} must take card art from the shared registry`,
+    );
+    assert.match(src, /image:\s*GAME_CARD_ART\[/, `${file} must key the art by game`);
   }
 });
 
