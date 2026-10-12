@@ -24,8 +24,8 @@
  *      game links and links to the informational pages its prose makes
  *      relevant.
  *   4. The home page links to the popular games by name.
- *   5. The help/FAQ page links to games by name, in markup that exists before
- *      any accordion is opened.
+ *   5. The help/FAQ page links EVERY game's own public page, in markup that
+ *      exists before any accordion is opened.
  *   6. None of those surfaces links into the app namespace (/casino/…) or to a
  *      /play URL except through the landing page's own Play CTA.
  *
@@ -37,10 +37,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import {
+  GAME_CARDS,
   GAME_INDEX,
   GAME_LANDING_PAGES,
   GAME_LANDING_SLUGS,
-  HELP_FEATURED_SLUGS,
   HOMEPAGE_FEATURED_SLUGS,
   gameIndexFor,
   gameLandingPath,
@@ -289,8 +289,7 @@ test("the home page links the popular games by name", () => {
 test("the featured lists name real games and stay in sync with the lobby", () => {
   // Every curated slug resolves — a typo would silently render nothing.
   assert.equal(gameIndexFor(HOMEPAGE_FEATURED_SLUGS).length, HOMEPAGE_FEATURED_SLUGS.length);
-  assert.equal(gameIndexFor(HELP_FEATURED_SLUGS).length, HELP_FEATURED_SLUGS.length);
-  for (const slug of [...HOMEPAGE_FEATURED_SLUGS, ...HELP_FEATURED_SLUGS]) {
+  for (const slug of HOMEPAGE_FEATURED_SLUGS) {
     assert.ok(ALL_SLUGS.has(slug), `${slug} has no landing page`);
   }
 
@@ -308,23 +307,58 @@ test("the featured lists name real games and stay in sync with the lobby", () =>
 
 // ── 5. The help/FAQ page ─────────────────────────────────────────────────
 
-test("the FAQ links games in markup that exists before any click", () => {
+test("the FAQ links every game's public page, in markup that exists before any click", () => {
   const page = code(FAQ_PAGE);
   const client = code(FAQ_CLIENT);
 
-  assert.match(page, /import \{ HELP_FEATURED_SLUGS, gameIndexFor \}/);
-  assert.match(page, /const helpGames = gameIndexFor\(HELP_FEATURED_SLUGS\);/);
-  assert.match(page, /<PageClient helpGames=\{helpGames\} \/>/);
+  // The card list is fed from the catalogue on the SERVER, so importing the
+  // FAQ cannot ship 1,500 lines of game prose to the browser to draw a grid.
+  assert.match(page, /import \{ GAME_CARDS \} from "\.\.\/\.\.\/lib\/gameLandingPages"/);
+  assert.match(page, /<PageClient gameCards=\{GAME_CARDS\} \/>/);
 
-  assert.match(client, /export default function FaqPage\(\{ helpGames = \[\] \}\)/);
+  assert.match(client, /export default function FaqPage\(\{ gameCards = \[\] \}\)/);
   const section = client.slice(client.indexOf('id="faq-games-heading"'));
   assert.ok(section.length > 0, "the FAQ games section must exist");
   const block = section.slice(0, section.indexOf("</ul>"));
-  assert.match(block, /helpGames\.map\(\(game\) => \(/);
+  assert.match(block, /gameCards\.map\(\(game\) => \(/);
   assert.match(block, /href=\{`\/games\/\$\{game\.slug\}`\}/);
+  // The art and the blurb come off the catalogue entry itself — a second
+  // slug→image map in the component is exactly the drift this avoids.
+  assert.match(block, /src=\{game\.cardImage\}/);
   // Plus the hub itself and the fairness policy the answers keep referring to.
   assert.match(section, /href="\/games"/);
   assert.match(section, /href="\/fair-play"/);
+});
+
+test("the FAQ directory is the whole catalogue, and links the INFO page not the lobby", () => {
+  // Derived, not curated: the directory covers the catalogue exactly, so the
+  // help surface can never become a stale subset of the games that exist.
+  assert.equal(GAME_CARDS.length, GAME_LANDING_PAGES.length);
+  assert.deepEqual(
+    [...GAME_CARDS.map((card) => card.slug)].sort(),
+    [...GAME_LANDING_SLUGS].sort(),
+    "a game in the catalogue has no card on the FAQ",
+  );
+  // A–Z, so the rendered order cannot churn between deploys.
+  const names = GAME_CARDS.map((card) => card.name);
+  assert.deepEqual(names, [...names].sort((a, b) => a.localeCompare(b)));
+
+  for (const card of GAME_CARDS) {
+    // The card links the game's own public page …
+    assert.equal(gameLandingPath(card.slug), `/games/${card.slug}`);
+    // … which is a different URL from the lobby. The lobby is a sign-in wall
+    // with no rules to read, so a card must never point at it.
+    assert.notEqual(gameLandingPath(card.slug), gamePlayPath(card.slug));
+    assert.match(card.cardImage, /^\/games\/[a-z0-9-]+\.png$/);
+    assert.ok(
+      card.shortDescription.trim().length > 80,
+      `${card.slug} has no usable card blurb`,
+    );
+  }
+
+  // And the component contains no /play href at all: the only way into gameplay
+  // is the landing page's own Play CTA (asserted in game-landing-pages).
+  assert.doesNotMatch(code(FAQ_CLIENT), /\/play\b/);
 });
 
 test("the FAQ's game section is not inside the accordion", () => {
@@ -337,7 +371,7 @@ test("the FAQ's game section is not inside the accordion", () => {
   // rendered that way is invisible to a crawler and to a visitor who has not
   // clicked. The section must be outside every `{open && …}` branch.
   assert.doesNotMatch(block, /\{open\s*&&/, "the games section must not be accordion content");
-  assert.match(client, /\{helpGames\.length > 0 && \(/, "the section renders off its own list");
+  assert.match(client, /\{gameCards\.length > 0 && \(/, "the section renders off its own list");
 });
 
 // ── 6. No JavaScript-only navigation ─────────────────────────────────────

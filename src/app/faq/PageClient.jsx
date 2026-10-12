@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
@@ -30,10 +31,13 @@ import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
  *
  * ── The game links ────────────────────────────────────────────────────────
  *
- * `helpGames` is `[{ slug, name }]` for the games this page points at, resolved
- * from the game catalogue by app/faq/page.jsx and rendered as the "Where to
- * start" block below — real links in the HTML, never buried in a collapsed
- * answer.
+ * `gameCards` is the WHOLE catalogue as `[{ slug, name, shortDescription,
+ * cardImage }]`, built on the server by app/faq/page.jsx from
+ * src/lib/gameLandingPages.ts and rendered as the game directory at the foot of
+ * this page — one card per game, each a real link to that game's OWN page
+ * (/games/<slug>), never to the lobby (/games/<slug>/play) and never buried in
+ * a collapsed answer. Every game the site publishes is therefore one click from
+ * the help surface, and a new game needs no change here.
  */
 const faqSections = [
   {
@@ -274,7 +278,7 @@ function FaqItem({ q, a }) {
   );
 }
 
-export default function FaqPage({ helpGames = [] }) {
+export default function FaqPage({ gameCards = [] }) {
   return (
     <div className="relative min-h-screen">
       <InteractiveCasinoBg variant="subtle" />
@@ -289,7 +293,8 @@ export default function FaqPage({ helpGames = [] }) {
           <p className="mb-8 text-lg text-[#9dd8ff]">
             How GRYND works: accounts, matches, matchmaking, ratings and trophies, game rules,
             profiles and support. Every answer below is open to read in full — nothing is hidden
-            behind an interaction. Can&apos;t find your answer?{" "}
+            behind an interaction — and each game's own rules page is linked in the directory at
+            the end of this page. Can&apos;t find your answer?{" "}
             <Link href="/contact" className="text-[#00e5ff] underline hover:text-[#f5ff3b]">
               Contact us
             </Link>
@@ -308,30 +313,52 @@ export default function FaqPage({ helpGames = [] }) {
           </div>
         ))}
 
-        {/* Where to start — the answers above describe every game on GRYND, so
-            this is the natural place to name a few and link to their pages.
-            Rendered as plain <Link>s in the HTML: no accordion, no state. */}
-        {helpGames.length > 0 && (
-          <section
-            id="faq-games-heading"
-            aria-labelledby="faq-games-heading"
-            className="mt-10 rounded-lg border border-[#00e5ff]/20 bg-[#00e5ff]/5 p-6"
-          >
-            <h2 className="text-xl font-bold text-[#00e5ff]">Where to start</h2>
+        {/* ── Every game, and its own page ─────────────────────────────────
+            One card per public game, each linking to that game's OWN info page
+            (/games/<slug>) — deliberately NOT the lobby (/games/<slug>/play),
+            which sits behind a sign-in and carries no rules to read. The cards
+            are plain <Link>s built on the server from the game catalogue, so
+            the whole catalogue is reachable from this page in the HTML, before
+            any JavaScript runs, and a new game shows up here without anyone
+            adding a card by hand. */}
+        {gameCards.length > 0 && (
+          <section id="faq-games-heading" aria-labelledby="faq-games-title" className="mt-10">
+            <h2 id="faq-games-title" className="text-xl font-bold text-[#00e5ff]">
+              Every game, and where its rules live
+            </h2>
             <p className="mt-2 text-sm leading-relaxed text-[#c9f7ff]/80">
-              Everything above applies to every game on GRYND. If you are deciding what to play
-              first, these five cover the range — a pure strategy game, a pure reflex game, a
-              memory game, a game with a genuine chance element, and the shortest match on the
-              site. Each one has its own page with the rules, the scoring and the strategy.
+              Everything above applies to every game on GRYND, and each one has its own page: the
+              rules the server enforces, how the winner is decided, strategy hints and that
+              game&apos;s own questions — all readable without an account. Open the game you are
+              curious about.
             </p>
-            <ul className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm">
-              {helpGames.map((game) => (
+            <ul className="mt-5 grid gap-4 sm:grid-cols-2">
+              {gameCards.map((game) => (
                 <li key={game.slug}>
                   <Link
                     href={`/games/${game.slug}`}
-                    className="text-[#00e5ff] underline hover:text-[#f5ff3b]"
+                    className="group flex h-full flex-col overflow-hidden rounded-2xl border border-[#00e5ff]/30 bg-[#040d24] transition-all hover:-translate-y-0.5 hover:border-[#00e5ff]/60 hover:shadow-[0_0_24px_rgba(0,229,255,0.2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
                   >
-                    {game.name} rules and strategy
+                    <span className="relative block aspect-square w-full shrink-0 overflow-hidden bg-[#02060f]">
+                      <Image
+                        src={game.cardImage}
+                        alt=""
+                        fill
+                        sizes="(max-width: 640px) 100vw, 50vw"
+                        className="object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                      />
+                    </span>
+                    <span className="flex flex-1 flex-col p-5">
+                      <span className="block text-lg font-black tracking-tight text-[#f5ff3b]">
+                        {game.name}
+                      </span>
+                      <span className="mt-1.5 block text-sm leading-relaxed text-[#9dd8ff]">
+                        {game.shortDescription}
+                      </span>
+                      <span className="mt-3 block text-sm font-semibold text-[#00e5ff] group-hover:text-[#f5ff3b]">
+                        Rules, scoring and strategy →
+                      </span>
+                    </span>
                   </Link>
                 </li>
               ))}

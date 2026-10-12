@@ -30,10 +30,11 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import {
+  GAME_CARDS,
   GAME_LANDING_BY_SLUG,
   GAME_LANDING_PAGES,
   GAME_LANDING_SLUGS,
@@ -79,7 +80,7 @@ test("catalog: slugs are unique, and the index maps agree with the list", () => 
 test("catalog: every entry carries the full set of landing-page content", () => {
   for (const game of GAME_LANDING_PAGES) {
     const where = game.slug;
-    for (const field of ["name", "headline", "category", "leaderboardKey", "ogImage", "shortDescription", "competitive"]) {
+    for (const field of ["name", "headline", "category", "leaderboardKey", "ogImage", "cardImage", "shortDescription", "competitive"]) {
       assert.equal(typeof game[field], "string", `${where}.${field} must be a string`);
       assert.ok(game[field].trim().length > 0, `${where}.${field} must not be empty`);
     }
@@ -112,6 +113,34 @@ test("catalog: every entry carries the full set of landing-page content", () => 
     for (const related of game.related) {
       assert.ok(GAME_LANDING_BY_SLUG[related], `${where} links to unknown slug "${related}"`);
     }
+  }
+});
+
+test("catalog: every game card points at art that actually exists in /public", () => {
+  // The FAQ's games directory renders one card per game, image included, so a
+  // card naming art nobody added is a broken thumbnail on a public page. The
+  // field is required by the entry type; this asserts the FILE on disk.
+  for (const game of GAME_LANDING_PAGES) {
+    assert.match(
+      game.cardImage,
+      /^\/games\/[a-z0-9-]+\.png$/,
+      `${game.slug}.cardImage must be a /public/games PNG path`,
+    );
+    const file = `public${game.cardImage}`;
+    assert.ok(existsSync(file), `${game.slug} has no card art on disk: ${file}`);
+    assert.ok(statSync(file).size > 0, `${file} is an empty file`);
+  }
+
+  // …and the projection the FAQ consumes is one card per catalogue entry, so
+  // the directory cannot show fewer games than the site publishes.
+  assert.equal(GAME_CARDS.length, GAME_LANDING_PAGES.length);
+  assert.deepEqual(
+    [...GAME_CARDS.map((card) => card.slug)].sort(),
+    [...GAME_LANDING_SLUGS].sort(),
+  );
+  for (const card of GAME_CARDS) {
+    assert.equal(card.cardImage, GAME_LANDING_BY_SLUG[card.slug].cardImage);
+    assert.equal(card.shortDescription, GAME_LANDING_BY_SLUG[card.slug].shortDescription);
   }
 });
 

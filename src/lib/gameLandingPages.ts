@@ -79,6 +79,14 @@ export type GameLandingPage = {
   leaderboardKey: string;
   /** Open Graph / Twitter card image. Reuses the game's existing card art. */
   ogImage: string;
+  /**
+   * The square-ish gameplay thumbnail a game CARD renders (a public path under
+   * /public/games). Deliberately a required FIELD of the entry rather than a
+   * separate slug→image map: the field is type-checked, so a game added to the
+   * catalogue cannot ship a card with no art, and the file itself is asserted
+   * to exist by tests/game-landing-pages.test.mjs.
+   */
+  cardImage: string;
   /** Meta description. Doubles as the hub card blurb. */
   shortDescription: string;
   /** Does the lobby offer an unrated practice match against the bot? */
@@ -113,6 +121,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     category: "Deduction",
     leaderboardKey: "mines-pvp",
     ogImage: "/images/og/mines.jpg",
+    cardImage: "/games/mines-pvp.png",
     shortDescription:
       "Race another player across two separate 10×10 minefields. Safe reveals, correct flags and a full clear all score — one shared three-minute clock decides it.",
     aiPractice: true,
@@ -184,6 +193,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     category: "Reflex & Recall",
     leaderboardKey: "memory-grid",
     ogImage: "/images/og/memory-grid.jpg",
+    cardImage: "/games/memory-grid.png",
     shortDescription:
       "Five rounds of pattern recall on a rising difficulty ramp. Both players memorise the same server-generated lit tiles, then rebuild the pattern from memory.",
     aiPractice: true,
@@ -253,6 +263,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     category: "Classic Strategy",
     leaderboardKey: "chess",
     ogImage: "/images/og/chess.jpg",
+    cardImage: "/games/chess.png",
     shortDescription:
       "Play full-rules chess against a real opponent or the built-in bot. Every move is validated server-side, and ranked games feed a dedicated chess Elo rating.",
     aiPractice: true,
@@ -322,6 +333,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     category: "Reflex & Recall",
     leaderboardKey: "keno",
     ogImage: "/images/og/keno.jpg",
+    cardImage: "/games/keno.png",
     shortDescription:
       "Not a lottery — a survival duel. Three lives each, one tile lit at a time, and a window that tightens with every claim until it is pure reaction time.",
     aiPractice: true,
@@ -392,6 +404,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     category: "Card Games",
     leaderboardKey: "uno",
     ogImage: "/images/og/neon-flush.jpg",
+    cardImage: "/games/neon-flush.png",
     shortDescription:
       "Neon Flush is GRYND's neon-skinned colour-and-number card duel: match the colour in force or the top card's value, and empty your hand before your opponent.",
     aiPractice: true,
@@ -456,6 +469,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     category: "Mind Games",
     leaderboardKey: "rps",
     ogImage: "/images/og/rps.jpg",
+    cardImage: "/games/rps.png",
     shortDescription:
       "Best-of-seven Rock-Paper-Scissors against a live opponent. One round takes a click; the match is won by reading patterns, not by luck.",
     aiPractice: true,
@@ -519,6 +533,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     category: "Stacking",
     leaderboardKey: "tower-arena",
     ogImage: "/images/og-banner.png",
+    cardImage: "/games/tower-arena.png",
     shortDescription:
       "Head-to-head block stacking: pieces fall onto the tallest support beneath them and lock in place. Force your opponent into a placement that crosses the ceiling.",
     aiPractice: true,
@@ -583,6 +598,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     category: "Classic Strategy",
     leaderboardKey: "four-in-a-row",
     ogImage: "/images/og-banner.png",
+    cardImage: "/games/four-in-a-row.png",
     shortDescription:
       "The classic drop-the-disc duel on a 7-column, 6-row board. Take the centre, build two threats at once, and get four in a row before your opponent.",
     aiPractice: true,
@@ -646,6 +662,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     category: "Risk & Memory",
     leaderboardKey: "lane-runner",
     ogImage: "/images/og/lane-runner.jpg",
+    cardImage: "/games/lane-runner.png",
     shortDescription:
       "Cross the same ten-row glass bridge as your opponent, alternating turns. One bad tile per row, and every broken tile stays broken for the rest of the match.",
     aiPractice: true,
@@ -716,6 +733,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     category: "Physics",
     leaderboardKey: "pool-masters",
     ogImage: "/images/og-banner.png",
+    cardImage: "/games/pool-masters.png",
     shortDescription:
       "Eight-ball pool against a live opponent on a physics-driven table. Six pockets, full foul rules, and an aim guide that shares its verdict with the referee.",
     aiPractice: true,
@@ -782,6 +800,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     category: "Reflex & Recall",
     leaderboardKey: "precision",
     ogImage: "/images/og-banner.png",
+    cardImage: "/games/precision.png",
     shortDescription:
       "A hidden target time is rolled for every round. Stop your rocket as close to it as you can — best of five rounds, first to three wins.",
     aiPractice: true,
@@ -850,6 +869,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     category: "Classic Strategy",
     leaderboardKey: "dots-and-boxes",
     ogImage: "/images/og-banner.png",
+    cardImage: "/games/dots-and-boxes.png",
     shortDescription:
       "Take turns drawing lines between dots and claim the boxes you close. Complete a box and you keep your turn — the whole game is about who has to open the next chain.",
     aiPractice: true,
@@ -915,6 +935,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     category: "Physics",
     leaderboardKey: "mini-golf",
     ogImage: "/images/og-banner.png",
+    cardImage: "/games/mini-golf.png",
     shortDescription:
       "Best of five holes against a live opponent. Each seat plays its own ball, and the hole goes to whoever takes fewer strokes — aim, power and rail bounces are the whole game.",
     aiPractice: true,
@@ -983,6 +1004,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     category: "Racing",
     leaderboardKey: "speed-typing",
     ogImage: "/images/og-banner.png",
+    cardImage: "/games/speed-typing.png",
     shortDescription:
       "A rated 1v1 typing race. Both players get the exact same passage on the same server clock, and the first to type it completely and correctly wins.",
     aiPractice: true,
@@ -1054,6 +1076,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     category: "Classic Strategy",
     leaderboardKey: "tic-tac-toe",
     ogImage: "/images/og-banner.png",
+    cardImage: "/games/tic-tac-toe.png",
     shortDescription:
       "Rated 1v1 Tic-Tac-Toe where a draw does not end the match — it expands it. One board becomes four, then nine, until someone takes three in a row on the Mega grid.",
     aiPractice: true,
@@ -1126,6 +1149,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     category: "Racing",
     leaderboardKey: "solitaire-duel",
     ogImage: "/images/og-banner.png",
+    cardImage: "/games/solitaire-duel.png",
     shortDescription:
       "A rated 1v1 Klondike race. Both players get the exact same server-dealt puzzle and solve it simultaneously — first to put all 52 cards on the foundations wins.",
     aiPractice: true,
@@ -1196,6 +1220,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     category: "Puzzles",
     leaderboardKey: "sudoku-duel",
     ogImage: "/images/og-banner.png",
+    cardImage: "/games/sudoku-duel.png",
     shortDescription:
       "A rated 1v1 Sudoku race. Both players receive the exact same server-generated 9×9 puzzle and solve it simultaneously — the first correct board wins.",
     aiPractice: true,
@@ -1272,6 +1297,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     category: "Mind Games",
     leaderboardKey: "odds",
     ogImage: "/images/og-banner.png",
+    cardImage: "/games/odds.png",
     shortDescription:
       "Six rounds of hidden numbers. Lock in your own number, then predict your opponent's, while the range shrinks from 1–100 down to 1–3.",
     aiPractice: true,
@@ -1342,6 +1368,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     category: "Classic Strategy",
     leaderboardKey: "hex-duel",
     ogImage: "/images/og-banner.png",
+    cardImage: "/games/hex-duel.png",
     shortDescription:
       "Hex-grid territory conquest. Capture tiles, grow troops and push your army across the board to take your opponent's capital — owning the most tiles is not enough.",
     aiPractice: true,
@@ -1409,6 +1436,10 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     category: "Card Games",
     leaderboardKey: "uno",
     ogImage: "/images/og-banner.png",
+    // UNO and Neon Flush are two public pages for the SAME lobby (both carry
+    // leaderboardKey "uno"), and the lobby ships one card for the pair — so the
+    // alias page reuses the Neon Flush screenshot rather than inventing art.
+    cardImage: "/games/uno.png",
     shortDescription:
       "Classic UNO against a live opponent or the bot. Match the colour in force or the top card's value, spend your wilds wisely, and be first to empty your hand.",
     aiPractice: true,
@@ -1473,6 +1504,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     category: "Classic Strategy",
     leaderboardKey: "barricade",
     ogImage: "/images/og-banner.png",
+    cardImage: "/games/barricade.png",
     shortDescription:
       "A free, rated 1v1 strategy race on a 9×9 board. Every turn is one action — step your pawn or drop a two-square barricade that blocks you both — and the first pawn to the far baseline wins.",
     aiPractice: true,
@@ -1594,12 +1626,18 @@ export function relatedGames(slug: string): GameLandingPage[] {
  * catalogue from a `"use client"` module would ship 1,500 lines of game prose
  * to every visitor's browser to render a few anchors.
  *
- * So the surfaces that render game links take a minimal `{ slug, name }`
- * projection instead, built HERE, on the server, and passed down as props
- * (the same shape Next serialises across the server/client boundary). One
- * `GAME_INDEX` derivation means the links cannot drift from the pages, and a
- * game added to the catalogue shows up in every crawlable list without anyone
- * remembering to add it.
+ * So the surfaces that render game links take a projection built HERE, on the
+ * server, and passed down as props (the same shape Next serialises across the
+ * server/client boundary). There are two:
+ *
+ *   GAME_INDEX  the minimal `{ slug, name }` a plain link list needs — the hub's
+ *               A–Z directory and the homepage's popular-games rail.
+ *   GAME_CARDS  `{ slug, name, shortDescription, cardImage }` for a surface that
+ *               renders a CARD per game — the FAQ's games directory.
+ *
+ * Both are derived from the one catalogue, so the links cannot drift from the
+ * pages, and a game added to the catalogue shows up in every crawlable list
+ * without anyone remembering to add it.
  */
 
 /** The minimal shape a crawlable game link needs. */
@@ -1645,17 +1683,34 @@ export const HOMEPAGE_FEATURED_SLUGS: readonly string[] = [
 ];
 
 /**
- * The games the help/FAQ page links to by name.
+ * A game as a CARD: enough to render its thumbnail, its name and a blurb, all
+ * linking to the game's OWN public page.
  *
- * Chosen to answer the question each one is put next to: the FAQ's "skill or
- * luck?" and "AI or PvP?" entries are about exactly these five — a classic
- * strategy game, a pure-reflex game, a memory game, a game with a real chance
- * element, and the shortest match on the site.
+ * The FAQ's games directory renders one of these per game — EVERY public game,
+ * not a curated handful — so the list is derived from the whole catalogue and
+ * there is no second list to keep in step. It is a separate shape from the
+ * minimal `GameIndexEntry` for a reason: a card also needs its art
+ * (`cardImage`) and a line of description (`shortDescription`, the same meta
+ * description the game's own page declares), and the hub/homepage link lists
+ * deliberately do not ship those.
+ *
+ * The cards link `cardImage` as-is, and every one of those files is asserted to
+ * exist under /public by tests/game-landing-pages.test.mjs — so a card cannot
+ * point at art that was never added.
  */
-export const HELP_FEATURED_SLUGS: readonly string[] = [
-  "chess",
-  "speed-typing",
-  "memory-grid",
-  "mines-pvp",
-  "rps",
-];
+export type GameCardEntry = {
+  slug: string;
+  name: string;
+  shortDescription: string;
+  cardImage: string;
+};
+
+/** Every public game as a card, A–Z by display name. */
+export const GAME_CARDS: readonly GameCardEntry[] = [...GAME_LANDING_PAGES]
+  .map(({ slug, name, shortDescription, cardImage }) => ({
+    slug,
+    name,
+    shortDescription,
+    cardImage,
+  }))
+  .sort((a, b) => a.name.localeCompare(b.name));
