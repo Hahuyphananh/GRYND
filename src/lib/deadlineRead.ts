@@ -280,7 +280,10 @@ export interface PrecisionReadSource {
  * Only the arming countdown is listed. The bot's own stop instant is deliberately
  * NOT a public field (it is published as `state.aiStop` only once it has been
  * applied), so a client cannot read for it — and it does not need to: the store
- * grades an AI round the moment the human's own stop makes it decidable.
+ * reports that instant to the realtime server as `nextDueAtMs`, whose scheduler
+ * wakes on it, records the bot's stop and announces the round result. A human's
+ * own stop does NOT bring it forward (that parked both rockets while the bot was
+ * still flying); the round is decided when the LAST stop lands.
  */
 export function precisionDueRead(
   state: PrecisionReadSource | null | undefined,

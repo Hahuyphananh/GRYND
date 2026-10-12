@@ -115,7 +115,16 @@ test("a missing ACK re-submits the stop over HTTPS instead of dropping it", asyn
   const net = withFetch(() => ({ success: true, bothStopped: false }));
   try {
     socket.ackCallback(new Error("operation has timed out"), undefined);
-    assert.deepEqual(await pending, { success: true });
+    // Same shape the socket ACK delivers: with no snapshot in the answer, the
+    // page reconciles itself (`match: null` is "no snapshot", not "nothing
+    // happened").
+    assert.deepEqual(await pending, {
+      success: true,
+      match: null,
+      bothStopped: false,
+      roundWinnerSeat: null,
+      matchFinished: false,
+    });
     assert.equal(net.calls.length, 1);
     assert.match(net.calls[0].url, /\/api\/precision\/round-stop$/);
     // Same envelope, so the server's replay protection treats a double
@@ -133,15 +142,65 @@ test("a missing ACK re-submits the stop over HTTPS instead of dropping it", asyn
 test("a stop that already landed is reported as success, not as an error", async () => {
   const socket = fakeSocket();
   const pending = stopAck(socket);
+  // The route answers a duplicate with 409 + `alreadySubmitted` AND the
+  // authoritative snapshot — "your click is recorded, here is the round".
+  const decided = { matchId: "match-1", phase: "arming" };
   const net = withFetch(() => ({
     success: false,
     alreadySubmitted: true,
     error: "A stop packet has already been submitted for this round.",
+    bothStopped: true,
+    roundWinnerSeat: 1,
+    matchFinished: false,
+    match: decided,
   }));
   try {
     socket.ackCallback(new Error("timeout"), undefined);
-    // The click DID reach the server (the ACK is what got lost).
-    assert.deepEqual(await pending, { success: true });
+    // The click DID reach the server (the ACK is what got lost), so the round's
+    // outcome is reported as success rather than as an error, and the snapshot
+    // still rides back with it.
+    assert.deepEqual(await pending, {
+      success: true,
+      match: decided,
+      bothStopped: true,
+      roundWinnerSeat: 1,
+      matchFinished: false,
+    });
+  } finally {
+    net.restore();
+  }
+});
+
+test("the HTTPS fallback carries the post-stop snapshot, so the result is never dropped", async () => {
+  // The reported delay: a stop whose socket ACK was lost stopped showing its
+  // round-result popup at all, because the fallback reported a bare
+  // `{ success: true }` and the client then had no read armed to pick the
+  // decision up — the popup arrived with whatever unrelated read came next
+  // (a tab refocus, or the next round's own read), i.e. after the next round
+  // had already started. The route's snapshot has to survive this transport.
+  const socket = fakeSocket();
+  const pending = stopAck(socket);
+  const decided = {
+    matchId: "match-1",
+    phase: "arming",
+    lastRoundStops: { seat1: { elapsedMs: 3_100 }, seat2: { elapsedMs: 3_300 } },
+  };
+  const net = withFetch(() => ({
+    success: true,
+    bothStopped: true,
+    roundWinnerSeat: 1,
+    matchFinished: false,
+    match: decided,
+  }));
+  try {
+    socket.ackCallback(new Error("operation has timed out"), undefined);
+    assert.deepEqual(await pending, {
+      success: true,
+      match: decided,
+      bothStopped: true,
+      roundWinnerSeat: 1,
+      matchFinished: false,
+    });
   } finally {
     net.restore();
   }

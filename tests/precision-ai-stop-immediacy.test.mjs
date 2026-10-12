@@ -2,22 +2,28 @@
 //
 // Regression test for the reported Precision bug:
 //
-//   "When I click on stop, the AI is still in flight and the results show with
-//    a delay."
+//   "When one player stops, both of the flights stop — the AI's rocket parks at
+//    a position it has not reached yet."
 //
-// Root cause: the bot's stop instant (`aiStopAt`) is scheduled at the reveal and
-// was only ever APPLIED once that instant had passed, so a round where the human
-// stopped early stayed open for the rest of the bot's flight — up to the whole
-// round — with the outcome already determined. The bot is graded from its STORED
-// instant, not from when the transition is applied, so applying it as soon as
-// the human's own stop makes the round decidable produces the identical grade,
-// just without the dead air in front of the result.
+// Root cause (corrected): the bot's stop instant (`aiStopAt`) is scheduled at
+// the reveal, and it used to be APPLIED the moment the human's own stop made the
+// round decidable — the bot's grade cannot change either way (it comes from the
+// stored instant), so applying it early only decided WHEN the players were told.
+// What that cost was the race: the bot's lane freezes from the stop that
+// application publishes, so a human who stopped first watched BOTH rockets park
+// at once, the bot's at a position it had not reached, and the round was over on
+// screen while the bot was still supposed to be flying.
 //
-// This drives the REAL `recordRoundStop` — the path a player's packet actually
-// takes — against a fake database and a controlled clock, so "the bot's deadline
-// is still seconds away" is a fact rather than a sleep. The SAME store instance
-// is then driven for a human duel, so the guard that keeps the AI rule out of
-// PvP is asserted behaviourally rather than by reading the source.
+// The rule now is one flight per stop: the bot's stop is applied ON ITS OWN
+// INSTANT (by the due scheduler — `tests/precision-due-transitions.test.mjs`
+// covers that call directly), and the round is graded when the LAST stop lands.
+//
+// This drives the REAL `recordRoundStop` and the REAL `resolveDueTransitions` —
+// the two paths a round is decided through — against a fake database and a
+// controlled clock, so "the bot's deadline is still seconds away" is a fact
+// rather than a sleep. The SAME store instance is then driven for a human duel,
+// so the guard that keeps the AI rule out of PvP is asserted behaviourally
+// rather than by reading the source.
 //
 // It lives in its own file on purpose: `node:test`'s module mocking applies to
 // the next import, and a second `import` of the store in the SAME file resolves
@@ -33,8 +39,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "node:test";
-
-import { ROUND_COUNTDOWN_MS, ROUND_RESULT_REVEAL_MS } from "../src/lib/precision/constants.ts";
 
 const MODULE_MOCKING_AVAILABLE = typeof mock?.module === "function";
 const SKIP_REASON = MODULE_MOCKING_AVAILABLE
@@ -102,7 +106,7 @@ function activeRow({ matchId, isAiGame, secondUserId, aiStopAt }) {
 }
 
 test(
-  "a human's stop against the bot grades the round at once, and a human duel still waits",
+  "a human's stop leaves the bot's lane flying, and the bot's own instant decides the round",
   { skip: SKIP_REASON },
   async (t) => {
     const world = { clock: GO, row: null, writes: [] };
@@ -143,7 +147,9 @@ test(
       Date.now = realDateNow;
     });
 
-    const { recordRoundStop } = await import("../src/lib/precision/serverStore.ts");
+    const { recordRoundStop, resolveDueTransitions } = await import(
+      "../src/lib/precision/serverStore.ts"
+    );
 
     /** Click STOP at `elapsedMs` into the round and return the store's answer. */
     const stopAt = async (row, elapsedMs) => {
@@ -155,7 +161,10 @@ test(
       });
     };
 
-    // ── The reported case: STOP mid-flight, ~4.15s before the bot's deadline ──
+    // ── 1. The human stops FIRST, ~4.15s before the bot's deadline ─────────
+    // Nothing may be decided and nothing may be published on the bot's behalf:
+    // its rocket is mid-flight, and its timing is the server's to reveal when
+    // (and only when) its own instant arrives.
     const humanElapsedMs = 1_000;
     const result = await stopAt(
       activeRow({ matchId: AI_MATCH_ID, isAiGame: true, secondUserId: AI_ID, aiStopAt: AI_STOP_AT }),
@@ -166,43 +175,96 @@ test(
     assert.ok(world.clock < AI_STOP_AT, "the bot's deadline really was still in the future");
     assert.equal(
       result.bothStopped,
-      true,
-      "both stops exist the moment the human stops — the caller must broadcast, not wait",
+      false,
+      "the round is NOT over — the bot's lane is still flying, so the caller must not announce a result",
     );
-    // Grading early is not grading DIFFERENTLY: the bot's 150ms miss still beats
-    // a stop 4s off the target, exactly as it would have at the deadline.
-    assert.equal(result.roundWinnerSeat, 2, "the bot's 5.15s is closer to the 5s target than 1s");
+    assert.equal(result.roundWinnerSeat, null, "one stop cannot decide a round");
     assert.equal(result.matchFinished, false, "best-of-5, round 1");
 
     const state = result.match;
-    assert.equal(state.phase, "arming", "the next round is already counting down");
-    assert.equal(state.currentRound, 2);
-    assert.equal(state.score.seat2, 1);
-    assert.equal(state.lastRoundStops.seat1.elapsedMs, humanElapsedMs);
+    assert.equal(state.phase, "active", "the round stays live while the bot is in the air");
+    assert.equal(state.lastRoundStops, null, "nothing is stamped until both stops are in");
     assert.equal(
-      state.lastRoundStops.seat2.stopInstant,
-      AI_STOP_AT,
-      "the bot is graded off its STORED instant, not off the human's click",
+      state.aiStop,
+      null,
+      "the bot's stop is not published early — publishing it is what parked its lane",
     );
-    assert.equal(
-      state.lastRoundStops.seat2.elapsedMs,
-      TARGET_MS + AI_ERR_MS,
-      "so a round brought forward grades exactly as its deadline would have",
-    );
-    // `aiStop` is the bot's stop for the LIVE round, and arming the next one
-    // clears it — which is why the board parks both rockets from the DECIDED
-    // round's published stops instead. That they are stamped is the point: the
-    // bot's lane has a final position the moment the human clicks.
-    assert.equal(state.aiStop, null, "the next round starts with both rockets on the pad");
-    assert.equal(state.lastRoundStops.seat1.stopInstant, GO + humanElapsedMs);
-    assert.equal(
-      state.countdownEndsAt,
-      GO + humanElapsedMs + ROUND_RESULT_REVEAL_MS + ROUND_COUNTDOWN_MS,
-      "the next countdown is measured from the decision, not from the dead bot deadline",
-    );
-    assert.ok(world.writes.length > 0, "the graded round must be persisted");
+    assert.equal(state.score.seat2, 0, "no round was scored");
+    assert.equal(state.currentRound, 1, "no round advanced");
 
-    // ── The guard: a HUMAN opponent's stop is a real event nobody has sent ────
+    // …and the human's own stop IS recorded, so the round is now waiting on the
+    // bot's instant alone (which the store reports to the scheduler as
+    // `nextDueAtMs` — see tests/precision-due-transitions.test.mjs).
+    const persisted = world.writes[world.writes.length - 1];
+    assert.equal(
+      persisted.pendingStops[USER_ID].elapsedMs,
+      humanElapsedMs,
+      "the human's stop is persisted for the read that will resolve the round",
+    );
+
+    // ── 2. The bot's instant arrives → the round is graded, from its own stop ──
+    world.clock = AI_STOP_AT;
+    const due = await resolveDueTransitions(AI_MATCH_ID);
+
+    assert.equal(due.aiStopApplied, true, "the bot's own instant applied its stop");
+    assert.equal(due.decided, true, "both stops are in, so the round is graded here");
+    assert.equal(due.roundWinnerSeat, 2, "the bot's 5.15s is closer to the 5s target than 1s");
+    assert.equal(due.matchFinished, false, "best-of-5, round 1");
+    assert.equal(due.match.phase, "arming", "the next round is counting down");
+    assert.equal(due.match.score.seat2, 1);
+    assert.equal(due.match.lastRoundStops.seat1.elapsedMs, humanElapsedMs);
+    assert.equal(
+      due.match.lastRoundStops.seat2.stopInstant,
+      AI_STOP_AT,
+      "the bot is graded off its STORED instant, never off the human's click",
+    );
+    assert.equal(
+      due.match.lastRoundStops.seat2.elapsedMs,
+      TARGET_MS + AI_ERR_MS,
+      "so waiting for its lane to land changes nothing about the score",
+    );
+
+    // ── 3. The mirror case: the BOT stops first, the human is still flying ──
+    // The bot's lane must park ON ITS INSTANT (that is `state.aiStop`, the only
+    // moment its timing becomes public) while the round stays live for the human
+    // — which is the same rule read from the other side.
+    world.row = activeRow({
+      matchId: AI_MATCH_ID,
+      isAiGame: true,
+      secondUserId: AI_ID,
+      aiStopAt: AI_STOP_AT,
+    });
+    world.writes = [];
+    world.clock = AI_STOP_AT;
+    const botOnly = await resolveDueTransitions(AI_MATCH_ID);
+
+    assert.equal(botOnly.changed, true, "the bot's stop is a real transition");
+    assert.equal(botOnly.aiStopApplied, true);
+    assert.equal(botOnly.decided, false, "the human has not stopped — the round is open");
+    assert.equal(botOnly.match.phase, "active", "the round is still live for the human");
+    assert.equal(botOnly.match.lastRoundStops, null, "no round is graded on one stop");
+    assert.equal(
+      botOnly.match.aiStop.elapsedMs,
+      TARGET_MS + AI_ERR_MS,
+      "the bot's lane parks at its own server-measured stop",
+    );
+    assert.equal(
+      botOnly.nextDueAtMs,
+      null,
+      "nothing is left for a timer: the human's own packet is the next event",
+    );
+
+    // …and the human's later stop is what decides it.
+    world.clock = GO + 4_000;
+    const late = await recordRoundStop(AI_MATCH_ID, USER_ID, `${AI_MATCH_ID}-r-1`, "nonce-1", {
+      receivedAtMs: world.clock,
+      clientElapsedMs: 4_000,
+    });
+    assert.equal(late.bothStopped, true, "the last stop lands the decision");
+    assert.equal(late.roundWinnerSeat, 2, "5.15s beats 4s against a 5s target");
+    assert.equal(late.match.lastRoundStops.seat2.elapsedMs, TARGET_MS + AI_ERR_MS);
+
+    // ── 4. The guard: a HUMAN opponent's stop is a real event nobody has sent ──
     // Nothing may be brought forward for a human duel, and the round must still
     // be waiting when the packet lands.
     world.writes = [];

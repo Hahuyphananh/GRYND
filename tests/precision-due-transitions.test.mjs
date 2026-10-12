@@ -208,41 +208,63 @@ test(
       );
     }
 
-    // ── 1b. …and so does a human's own stop, BEFORE the bot's deadline ─────
-    // The reported complaint: "when I click stop, the AI is still in flight and
-    // the results show with a delay". The bot's stop instant is fixed at the
-    // reveal, so a round with a human stop already in is waiting on nothing —
-    // grading it here cannot change who won, only how soon they are told.
+    // ── 1b. …but a human's own stop does NOT decide it early ──────────────
+    // The other half of the same report. The round used to be graded the moment
+    // the human's packet landed — the bot's grade cannot change either way, so
+    // it was applied early purely to put the result on screen sooner. What that
+    // bought was the RACE: the bot's lane freezes from that stop, so a human who
+    // stopped first watched BOTH rockets park at once, the bot's at a position
+    // it had not reached yet, with the round already over on screen.
+    //
+    // The round is decided when the LAST stop lands, so a read BEFORE the bot's
+    // instant must change nothing — and the very next read, ON that instant,
+    // must grade it with the identical numbers.
     {
       // A hair after the human's click, and a long way before the bot's deadline.
-      const decisionAt = GO + TARGET_MS + 10;
+      const humanStopAt = GO + TARGET_MS;
       world.row = aiRow({ humanStopElapsedMs: TARGET_MS });
-      world.clock = decisionAt;
-      const report = await call();
+      world.clock = humanStopAt;
+      const early = await call();
 
-      assert.equal(report.changed, true, "the human's stop made the round decidable");
-      assert.equal(report.aiStopApplied, true, "the bot's stored stop is applied");
-      assert.equal(report.decided, true, "the round is graded, not held");
-      assert.equal(report.roundWinnerSeat, 1);
-      assert.equal(report.nextRoundArmed, true, "the next round is counting down");
+      assert.equal(early.changed, false, "the bot's lane is still flying — nothing is due");
+      assert.equal(early.aiStopApplied, false, "the bot's stop must not be applied early");
+      assert.equal(early.decided, false, "one stop does not decide the round");
+      assert.equal(early.match.phase, "active", "the round is still live");
+      assert.equal(early.match.lastRoundStops, null, "nothing is stamped yet");
       assert.equal(
-        report.match.lastRoundStops.seat2.stopInstant,
+        early.match.aiStop,
+        null,
+        "the bot's timing stays server-only until its own instant — publishing it here is what parked its lane"
+      );
+      assert.equal(
+        early.nextDueAtMs,
         AI_STOP_AT,
-        "the bot is graded off its STORED instant — early application cannot move it"
+        "the scheduler must stay armed for the bot's own instant"
+      );
+      assert.equal(world.writes.length, 0, "a read before the deadline must not write the row");
+
+      // …and the round is graded ON that instant, off the same stored stop.
+      world.clock = AI_STOP_AT;
+      const onTime = await call();
+
+      assert.equal(onTime.changed, true, "the bot's instant decides the round");
+      assert.equal(onTime.aiStopApplied, true, "the bot's stop is what came due");
+      assert.equal(onTime.decided, true, "both stops are in, so the round is graded");
+      assert.equal(onTime.roundWinnerSeat, 1, "0ms off target beats 150ms off target");
+      assert.equal(
+        onTime.match.lastRoundStops.seat2.stopInstant,
+        AI_STOP_AT,
+        "the bot is graded off its STORED instant, never off the human's click"
       );
       assert.equal(
-        report.match.lastRoundStops.seat2.elapsedMs,
+        onTime.match.lastRoundStops.seat2.elapsedMs,
         TARGET_MS + AI_ERR_MS,
-        "and therefore the same elapsed it would have had at its deadline"
+        "so the wait changes nothing about the score"
       );
       assert.equal(
-        report.nextDueAtMs,
-        decisionAt + ROUND_RESULT_REVEAL_MS + ROUND_COUNTDOWN_MS,
+        onTime.nextDueAtMs,
+        AI_STOP_AT + ROUND_RESULT_REVEAL_MS + ROUND_COUNTDOWN_MS,
         "the scheduler is handed the next round's countdown, measured from the decision"
-      );
-      assert.ok(
-        report.nextDueAtMs !== AI_STOP_AT,
-        "the bot's now-dead deadline must not be armed for"
       );
     }
 

@@ -299,10 +299,12 @@ export function emitEndReturn(socket: RealtimeSocket, matchId: string) {
  *  returned, so the seat that pressed STOP can apply its own result from the
  *  direct ACK packet instead of waiting for the room broadcast — see the
  *  `precision:stop` handler in `realtime-server/server.js`. Every field but
- *  `success` is optional because an older realtime server, and the HTTPS
- *  fallback below, answer with `{ success: true }` alone; a caller must treat a
- *  missing `match` as "no snapshot in the ACK" and reconcile itself rather
- *  than as "nothing happened". */
+ *  `success` is optional, because an older realtime server can still answer
+ *  with `{ success: true }` alone; a caller must treat a missing `match` as
+ *  "no snapshot in the ACK" and reconcile itself rather than as "nothing
+ *  happened". The HTTPS fallback below passes the route's snapshot through as
+ *  well, so a stop whose socket ACK was lost still delivers the result on the
+ *  same packet the player's own click produced. */
 export interface PrecisionStopAck {
   success: boolean;
   error?: string;
@@ -417,7 +419,22 @@ export function emitStop(
       void submitStopOverHttp(matchId, roundId, nonce, hint)
         .then((result) => {
           if (result?.success === true || result?.alreadySubmitted === true) {
-            onAck({ success: true });
+            // Carry the route's POST-STOP SNAPSHOT through, exactly like the
+            // socket ACK does. The result of a round is the answer to THIS
+            // click (against the bot the server grades it in the same
+            // transaction), so dropping it here left the player waiting on some
+            // unrelated read — a tab refocus, or the next round's own read —
+            // which is how the result popup ended up arriving after the next
+            // round had already started. `alreadySubmitted` is the same event
+            // seen twice: the packet DID land, so its snapshot is just as
+            // authoritative.
+            onAck({
+              success: true,
+              match: result.match ?? null,
+              bothStopped: result.bothStopped === true,
+              roundWinnerSeat: result.roundWinnerSeat ?? null,
+              matchFinished: result.matchFinished === true,
+            });
             return;
           }
           onAck({

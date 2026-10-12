@@ -240,6 +240,39 @@ const text = (sel) =>
   );
 const count = (sel) => page.$$eval(sel, (els) => els.length);
 const digits = (v) => String(v ?? "").replace(/[^0-9]/g, "");
+
+// The round-result card is now a win/loss/tie VERDICT with no figures in it, so
+// "which round's decision is this, and did it paint the right colour" is read
+// off the card itself: `data-outcome` / `data-decision` are stamped by the
+// panel, and the heading's computed colour is what the player actually sees.
+const readOutcome = () =>
+  page.evaluate(() => {
+    const panel = document.querySelector('[data-testid="precision-round-result-panel"]');
+    const heading = document.querySelector('[data-testid="precision-round-result-outcome"]');
+    if (!panel || !heading) return null;
+    return {
+      outcome: panel.getAttribute("data-outcome"),
+      winnerSeat: panel.getAttribute("data-winner-seat"),
+      decision: panel.getAttribute("data-decision"),
+      word: heading.textContent.replace(/\s+/g, " ").trim(),
+      // This run has no stylesheet, so the palette can only be read off the
+      // classes the card applies. The colour those classes actually PAINT is
+      // asserted in qa/precision-mobile-check.mjs, which loads real Tailwind.
+      headingClass: heading.className,
+      green: /text-emerald-200/.test(heading.className),
+      red: /text-red-200/.test(heading.className),
+      amber: /text-amber-200/.test(heading.className),
+    };
+  });
+/** The revealed decision's identity, exactly as `decisionKeyOf` builds it. */
+const decisionKey = (s1, s2, winnerSeat) =>
+  [
+    s1.stopInstant,
+    s1.elapsedMs,
+    s2.stopInstant,
+    s2.elapsedMs,
+    winnerSeat === null ? "tie" : winnerSeat,
+  ].join("|");
 const players = [
   { seat: 1, userId: "human", name: "You", isReady: true, isConnected: true },
   { seat: 2, userId: "AI_BOT", name: "GRYND AI", isReady: true, isConnected: true },
@@ -341,18 +374,23 @@ check(
   "STOP freezes the player's rocket",
   (await count('[data-testid="precision-race-stop-1"]')) > 0
 );
-const revealTarget = await text('[data-testid="precision-round-result-target"]');
+// The card answers one question — did we take the round — and the answer is the
+// COLOUR: green, red, or amber on a tie. There are no per-seat figures in it.
+const winOutcome = await readOutcome();
 check(
-  "the round-result panel appears after both seats stop",
-  digits(revealTarget) === "3000",
-  `panel target=${revealTarget}`
+  "the round-result card reports a WIN when the server says our seat took the round",
+  winOutcome?.outcome === "win" && /YOU WIN THE ROUND/i.test(winOutcome.word ?? ""),
+  `outcome=${winOutcome?.outcome} word="${winOutcome?.word}"`
 );
 check(
-  "the round-result panel names the round winner",
-  /YOU WIN THE ROUND|ROUND WON BY/i.test(
-    (await text('[data-testid="precision-round-result-banner"]')) ?? ""
-  ),
-  await text('[data-testid="precision-round-result-banner"]')
+  "…and the win card uses the GREEN palette (not the old purple both-seats banner)",
+  winOutcome?.green === true && winOutcome?.red === false && winOutcome?.amber === false,
+  `heading class "${winOutcome?.headingClass}"`
+);
+check(
+  "…and it is THIS round's decision, not a stale result",
+  winOutcome?.decision === decisionKey(STOP1, STOP2, 1),
+  `decision=${winOutcome?.decision}`
 );
 
 // Let the 3s reveal window lapse before the next round opens.
@@ -533,8 +571,12 @@ await page.waitForSelector('[data-testid="precision-race-stop-1"]', {
 check("round 3: STOP is accepted with both socket paths silent", true);
 // The server grades the round as the packet lands — AFTER the click and with
 // nothing sent back over the socket.
-await page.evaluate((go) => {
+const round3Stops = await page.evaluate((go) => {
   const now = Date.now();
+  const stops = {
+    seat1: { stopInstant: now - 900, elapsedMs: 4300, diffMs: 300, userId: "human" },
+    seat2: { stopInstant: go + 3900, elapsedMs: 3900, diffMs: 100, userId: "AI_BOT" },
+  };
   window.__precision.set(
     window.__precision.baseMatch({
       phase: "arming",
@@ -542,10 +584,7 @@ await page.evaluate((go) => {
       score: { seat1: 1, seat2: 2 },
       lastRoundWinnerSeat: 2,
       lastRoundTargetMs: 4000,
-      lastRoundStops: {
-        seat1: { stopInstant: now - 900, elapsedMs: 4300, diffMs: 300, userId: "human" },
-        seat2: { stopInstant: go + 3900, elapsedMs: 3900, diffMs: 100, userId: "AI_BOT" },
-      },
+      lastRoundStops: stops,
       roundSequence: 4,
       roundId: "m-ai-test-1-r-4",
       roundNonce: "nonce-4",
@@ -559,24 +598,28 @@ await page.evaluate((go) => {
       ],
     })
   );
+  return stops;
 }, ROUND3_GO);
-// The banner a LOST round shows is "Round won by <name>" (the won-round copy is
-// reserved for the seat that took it), and round 3's decided target is 4000 —
-// both have to be read off the panel that appears, so this cannot pass on round
-// 1's result still being on screen either.
+// The verdict a LOST round shows is the RED card (the green one is reserved for
+// the seat that took the round), which is what makes this unable to pass on
+// round 1's win card still being on screen.
 await page.waitForFunction(
   () =>
-    /ROUND WON BY/i.test(
-      document.querySelector('[data-testid="precision-round-result-banner"]')?.textContent ?? ""
-    ),
+    document
+      .querySelector('[data-testid="precision-round-result-panel"]')
+      ?.getAttribute("data-outcome") === "loss",
   null,
   { timeout: 6000 }
 );
 const reconcileMs = Date.now() - reconcileClickedAt;
+const lostOutcome = await readOutcome();
 check(
-  "the reconciled result is round 3's own decision",
-  digits(await text('[data-testid="precision-round-result-target"]')) === "4000",
-  await text('[data-testid="precision-round-result-target"]')
+  "the reconciled result is round 3's own decision, shown as a LOSS in RED",
+  lostOutcome?.decision === decisionKey(round3Stops.seat1, round3Stops.seat2, 2) &&
+    lostOutcome?.red === true &&
+    lostOutcome?.green === false &&
+    /ROUND LOST/i.test(lostOutcome?.word ?? ""),
+  `decision=${lostOutcome?.decision} word="${lostOutcome?.word}" class "${lostOutcome?.headingClass}"`
 );
 check(
   "a bare ACK with no broadcast still lands the result (bounded reconciliation)",
@@ -613,10 +656,17 @@ await page.waitForSelector('[data-testid="precision-round-result-panel"]', {
   timeout: 6000,
   state: "attached",
 });
+const freshOutcome = await readOutcome();
 check(
   "a fresh client still sees who won the round (no captured target needed)",
-  digits(await text('[data-testid="precision-round-result-target"]')) === "4200",
-  await text('[data-testid="precision-round-result-target"]')
+  freshOutcome?.outcome === "loss" &&
+    freshOutcome?.decision ===
+      decisionKey(
+        { stopInstant: 5_000, elapsedMs: 3100 },
+        { stopInstant: 5_100, elapsedMs: 3980 },
+        2
+      ),
+  `outcome=${freshOutcome?.outcome} decision=${freshOutcome?.decision}`
 );
 
 // 8. The pre-round countdown, which is the other half of the report: "when the
@@ -690,6 +740,448 @@ check(
   "the round opens AT the countdown's end, with no socket event to announce it",
   openLagMs >= 0 && openLagMs <= 1500,
   `round opened ${openLagMs}ms after the stamped end`
+);
+
+// 9. The sequencing rule, in the shape the SERVER actually produces: a
+//    decision arms the next round with `countdownEndsAt = decision +
+//    ROUND_RESULT_REVEAL_MS + ROUND_COUNTDOWN_MS` (3s of result, then a full 5s
+//    countdown). The popup has to (a) appear as soon as the decision lands and
+//    (b) be GONE the moment the next round opens — even when it opens while the
+//    popup would still have been inside its own 3s window. That is the reported
+//    overlap: "when the result popup shows up, the other round starts".
+const COOLDOWN_MS = 3_000;
+const COUNTDOWN_FULL_MS = 5_000;
+const decisionAt = await page.evaluate(
+  ({ cooldown, countdown }) => {
+    const now = Date.now();
+    window.__precision.onServe = null;
+    window.__precision.set(
+      window.__precision.baseMatch({
+        phase: "arming",
+        currentRound: 6,
+        score: { seat1: 2, seat2: 2 },
+        lastRoundWinnerSeat: 1,
+        lastRoundTargetMs: 6000,
+        // A NEW decision (fresh instants), so the page has not revealed it yet.
+        lastRoundStops: {
+          seat1: { stopInstant: now - 400, elapsedMs: 6100, diffMs: 100, userId: "human" },
+          seat2: { stopInstant: now - 300, elapsedMs: 6400, diffMs: 400, userId: "AI_BOT" },
+        },
+        roundSequence: 6,
+        roundId: "m-ai-test-1-r-6",
+        roundNonce: "nonce-6",
+        targetMs: null,
+        roundGoInstant: null,
+        armingStartedAt: now,
+        countdownEndsAt: now + cooldown + countdown,
+        version: Number(window.__precision.current?.version ?? 0) + 5,
+        players: [
+          { seat: 1, userId: "human", name: "You", isReady: true, isConnected: true },
+          { seat: 2, userId: "AI_BOT", name: "GRYND AI", isReady: true, isConnected: true },
+        ],
+      })
+    );
+    return now;
+  },
+  { cooldown: COOLDOWN_MS, countdown: COUNTDOWN_FULL_MS }
+);
+await page.evaluate(() =>
+  window.__precision.broadcast("precision:roundArmStart", {
+    matchId: "ai-test-1",
+    match: window.__precision.current,
+  })
+);
+await page.waitForSelector('[data-testid="precision-round-result-panel"]', {
+  timeout: 4000,
+  state: "attached",
+});
+const popupShownAt = Date.now();
+check(
+  "the result popup appears as soon as the decision lands",
+  popupShownAt - decisionAt <= 1500,
+  `decision → popup ${popupShownAt - decisionAt}ms`
+);
+
+// …then, a beat later but STILL inside the popup's 3s window, the next round
+// OPENS. The wait is what makes the check meaningful: the popup cannot have
+// gone away on its own timer yet, so only the round opening can remove it.
+await page.waitForTimeout(1000);
+const openAt = await page.evaluate(() => {
+  const now = Date.now();
+  const live = {
+    ...window.__precision.current,
+    phase: "active",
+    targetMs: 6500,
+    roundGoInstant: now,
+    armingStartedAt: null,
+    countdownEndsAt: null,
+    version: Number(window.__precision.current.version ?? 0) + 1,
+  };
+  window.__precision.set(live);
+  window.__precision.broadcast("precision:roundArmStart", { matchId: "ai-test-1", match: live });
+  return now;
+});
+await page.waitForFunction(
+  () => !!document.querySelector('[data-testid="precision-stop-button"]'),
+  null,
+  { timeout: 4000 }
+);
+const panelsOnOpen = await count('[data-testid="precision-round-result-panel"]');
+check(
+  "the next round opens with NO result popup on screen",
+  panelsOnOpen === 0,
+  `panels=${panelsOnOpen} (opened ${openAt - popupShownAt}ms into the popup's window)`
+);
+await page.waitForFunction(
+  () => !document.querySelector('[data-testid="precision-round-result-panel"]'),
+  null,
+  { timeout: 1000 }
+);
+check(
+  "a popup that was still up is dropped by the round opening, not by its timer",
+  openAt - popupShownAt >= 800 && openAt - popupShownAt < COOLDOWN_MS,
+  `round opened ${openAt - popupShownAt}ms after the popup appeared (window is ${COOLDOWN_MS}ms)`
+);
+
+// 10. And the sequence the report asked for, in the server's own shape: the
+//     popup holds the screen while the countdown is HELD, gives it back when
+//     the countdown starts, and the countdown the player then reads is a whole
+//     5s — not the tail of one that had been running behind the popup.
+const heldDecisionAt = await page.evaluate(
+  ({ cooldown, countdown }) => {
+    const now = Date.now();
+    window.__precision.set(
+      window.__precision.baseMatch({
+        phase: "arming",
+        currentRound: 7,
+        score: { seat1: 2, seat2: 2 },
+        lastRoundWinnerSeat: 2,
+        lastRoundTargetMs: 4200,
+        // Another fresh decision: new instants, so the popup is due again.
+        lastRoundStops: {
+          seat1: { stopInstant: now - 800, elapsedMs: 4500, diffMs: 300, userId: "human" },
+          seat2: { stopInstant: now - 700, elapsedMs: 4300, diffMs: 100, userId: "AI_BOT" },
+        },
+        roundSequence: 7,
+        roundId: "m-ai-test-1-r-7",
+        roundNonce: "nonce-7",
+        targetMs: null,
+        roundGoInstant: null,
+        armingStartedAt: now,
+        countdownEndsAt: now + cooldown + countdown,
+        version: Number(window.__precision.current?.version ?? 0) + 5,
+        players: [
+          { seat: 1, userId: "human", name: "You", isReady: true, isConnected: true },
+          { seat: 2, userId: "AI_BOT", name: "GRYND AI", isReady: true, isConnected: true },
+        ],
+      })
+    );
+    return now;
+  },
+  { cooldown: COOLDOWN_MS, countdown: COUNTDOWN_FULL_MS }
+);
+await page.evaluate(() =>
+  window.__precision.broadcast("precision:roundArmStart", {
+    matchId: "ai-test-1",
+    match: window.__precision.current,
+  })
+);
+await page.waitForSelector('[data-testid="precision-round-result-panel"]', {
+  timeout: 4000,
+  state: "attached",
+});
+// While the popup is up the countdown is held at the top of its range: the
+// cooldown is dead time, not extra ticks.
+const heldCountdown = await text('[data-testid="precision-race-center"]');
+check(
+  "the popup is up while the countdown is held at 5",
+  heldCountdown === "5",
+  `centre=${heldCountdown}`
+);
+// The popup must hand over on the SERVER's schedule (decision + cooldown), so
+// give it that long — and not the whole countdown.
+await page.waitForFunction(
+  () => !document.querySelector('[data-testid="precision-round-result-panel"]'),
+  null,
+  { timeout: COOLDOWN_MS + 2500 }
+);
+const handedOverAt = Date.now() - heldDecisionAt;
+const countdownAfterPopup = Number((await text('[data-testid="precision-race-center"]')) ?? "0");
+const stillArmed = await count('[data-testid="precision-stop-button"]');
+check(
+  "the popup gives the screen back at the cooldown's end, not mid-countdown",
+  handedOverAt >= COOLDOWN_MS - 250 && handedOverAt <= COOLDOWN_MS + 1200,
+  `handed over ${handedOverAt}ms after the decision (cooldown is ${COOLDOWN_MS}ms)`
+);
+check(
+  "the player then reads a WHOLE 5s countdown, and the round is not live yet",
+  countdownAfterPopup >= 4 && stillArmed === 0,
+  `countdown=${countdownAfterPopup}s, liveRoundPanels=${stillArmed}`
+);
+
+// 11. The other way a result used to go missing: the stop DID land, but its
+//     ACK was lost, so the player's retry (or the socket's own replay) is
+//     refused as a duplicate. That refusal carries the authoritative snapshot,
+//     and the player must see the ROUND RESULT — not a retry prompt — because
+//     their click counted.
+const duplicateRoundGo = await page.evaluate(() => {
+  const now = Date.now();
+  const live = window.__precision.baseMatch({
+    phase: "active",
+    currentRound: 8,
+    score: { seat1: 2, seat2: 2 },
+    lastRoundWinnerSeat: 2,
+    lastRoundTargetMs: 4200,
+    lastRoundStops: {
+      seat1: { stopInstant: now - 900, elapsedMs: 4500, diffMs: 300, userId: "human" },
+      seat2: { stopInstant: now - 800, elapsedMs: 4300, diffMs: 100, userId: "AI_BOT" },
+    },
+    roundSequence: 8,
+    roundId: "m-ai-test-1-r-8",
+    roundNonce: "nonce-8",
+    targetMs: 4000,
+    roundGoInstant: now,
+    armingStartedAt: null,
+    countdownEndsAt: null,
+    version: Number(window.__precision.current?.version ?? 0) + 5,
+    players: [
+      { seat: 1, userId: "human", name: "You", isReady: true, isConnected: true },
+      { seat: 2, userId: "AI_BOT", name: "GRYND AI", isReady: true, isConnected: true },
+    ],
+  });
+  window.__precision.set(live);
+  window.__precision.broadcast("precision:roundArmStart", { matchId: "ai-test-1", match: live });
+  return now;
+});
+await page.waitForSelector('[data-testid="precision-stop-button"]', {
+  timeout: 8000,
+  state: "attached",
+});
+await page.waitForFunction(
+  () =>
+    String(document.querySelector('[data-testid="precision-round-target"]')?.textContent ?? "")
+      .replace(/[^0-9]/g, "") === "4000",
+  null,
+  { timeout: 8000 }
+);
+await page.evaluate(
+  ({ go, cooldown, countdown }) => {
+    const now = Date.now();
+    // The click lands on the server (the round is decided and the next one is
+    // armed), but the answer that comes back is the DUPLICATE refusal — the
+    // exact shape the realtime proxy now forwards, snapshot included.
+    window.__precision.set(
+      window.__precision.baseMatch({
+        phase: "arming",
+        currentRound: 9,
+        score: { seat1: 3, seat2: 2 },
+        lastRoundWinnerSeat: 1,
+        lastRoundTargetMs: 4000,
+        lastRoundStops: {
+          seat1: { stopInstant: now - 300, elapsedMs: 4100, diffMs: 100, userId: "human" },
+          seat2: { stopInstant: go + 4400, elapsedMs: 4400, diffMs: 400, userId: "AI_BOT" },
+        },
+        roundSequence: 9,
+        roundId: "m-ai-test-1-r-9",
+        roundNonce: "nonce-9",
+        targetMs: null,
+        roundGoInstant: null,
+        armingStartedAt: now,
+        countdownEndsAt: now + cooldown + countdown,
+        // Newer than the live round the page is holding, exactly as a real
+        // decision is (the page drops an older snapshot rather than regressing).
+        version: Number(window.__precision.current?.version ?? 0) + 5,
+        players: [
+          { seat: 1, userId: "human", name: "You", isReady: true, isConnected: true },
+          { seat: 2, userId: "AI_BOT", name: "GRYND AI", isReady: true, isConnected: true },
+        ],
+      })
+    );
+    window.__precision.stopResponse = {
+      match: window.__precision.current,
+      bothStopped: true,
+      roundWinnerSeat: 1,
+      matchFinished: false,
+    };
+    window.__precision.stopAckMode = "duplicate";
+    window.__precision.stopBroadcast = false;
+  },
+  { go: duplicateRoundGo, cooldown: COOLDOWN_MS, countdown: COUNTDOWN_FULL_MS }
+);
+await page.click('[data-testid="precision-stop-button"]');
+await page.waitForSelector('[data-testid="precision-round-result-panel"]', {
+  timeout: 4000,
+  state: "attached",
+});
+const duplicateOutcome = await readOutcome();
+check(
+  "a duplicate-stop refusal still shows the round the click decided",
+  duplicateOutcome?.outcome === "win" && duplicateOutcome?.green === true,
+  `outcome=${duplicateOutcome?.outcome} word="${duplicateOutcome?.word}" class "${duplicateOutcome?.headingClass}"`
+);
+const duplicateBody = (await page.evaluate(() => document.body.innerText)).replace(/\s+/g, " ");
+check(
+  "and it does not tell the player their stop was rejected",
+  !/already been submitted|Stop rejected/i.test(duplicateBody),
+  duplicateBody.slice(0, 160)
+);
+
+// 12. ONE FLIGHT PER STOP. A round where WE have stopped and the bot has not is
+//     still live, and the bot's lane is still in the air: parking it (or freezing
+//     the clock both lanes share) is the reported "when I stop, both rockets stop
+//     at once". So: click STOP, have the server answer with the round STILL OPEN,
+//     and watch the two lanes — ours must hold its position while theirs climbs.
+const partialGo = await page.evaluate(() => {
+  const now = Date.now();
+  const live = window.__precision.baseMatch({
+    phase: "active",
+    currentRound: 10,
+    score: { seat1: 3, seat2: 3 },
+    lastRoundWinnerSeat: 1,
+    lastRoundTargetMs: 4000,
+    lastRoundStops: {
+      seat1: { stopInstant: now - 300, elapsedMs: 4100, diffMs: 100, userId: "human" },
+      seat2: { stopInstant: now - 200, elapsedMs: 4400, diffMs: 400, userId: "AI_BOT" },
+    },
+    roundSequence: 10,
+    roundId: "m-ai-test-1-r-10",
+    roundNonce: "nonce-10",
+    targetMs: 6000,
+    roundGoInstant: now,
+    armingStartedAt: null,
+    countdownEndsAt: null,
+    version: Number(window.__precision.current?.version ?? 0) + 5,
+    players: [
+      { seat: 1, userId: "human", name: "You", isReady: true, isConnected: true },
+      { seat: 2, userId: "AI_BOT", name: "GRYND AI", isReady: true, isConnected: true },
+    ],
+  });
+  window.__precision.set(live);
+  window.__precision.broadcast("precision:roundArmStart", { matchId: "ai-test-1", match: live });
+  return now;
+});
+await page.waitForSelector('[data-testid="precision-stop-button"]', {
+  timeout: 8000,
+  state: "attached",
+});
+await page.evaluate(() => {
+  // The stop is ACCEPTED (`success: true`) and the round is NOT decided: the
+  // other seat has not stopped, so there is nothing to announce yet.
+  window.__precision.stopResponse = {
+    match: window.__precision.current,
+    bothStopped: false,
+    roundWinnerSeat: null,
+    matchFinished: false,
+  };
+  window.__precision.stopAckMode = "withMatch";
+  window.__precision.stopBroadcast = false;
+});/**
+ * Where a lane's rocket sits on the board's TIME AXIS: the inline `bottom`
+ * percentage the board computes from that lane's elapsed. Pixel geometry is
+ * asserted in qa/precision-mobile-check.mjs (which loads the project's real
+ * Tailwind); this run has no stylesheet, so the honest "is this lane still
+ * climbing" signal is the inline position itself.
+ */
+const laneClimb = (seat) =>
+  page.evaluate((s) => {
+    const rocket = document
+      .querySelector(`[data-testid="precision-race-lane-${s}"]`)
+      ?.querySelector("svg");
+    const positioned = rocket?.closest('div[style*="bottom"]');
+    return Number.parseFloat(positioned?.style?.bottom ?? "");
+  }, seat);
+await page.click('[data-testid="precision-stop-button"]');
+await page.waitForSelector('[data-testid="precision-race-stop-1"]', {
+  timeout: 4000,
+  state: "attached",
+});
+const parkedAt = await laneClimb(1);
+const opponentAt = await laneClimb(2);
+await page.waitForTimeout(900);
+const parkedLater = await laneClimb(1);
+const opponentLater = await laneClimb(2);
+check(
+  "a stop parks OUR rocket and leaves the opponent's flying",
+  Number.isFinite(parkedAt) &&
+    Number.isFinite(opponentAt) &&
+    parkedLater === parkedAt &&
+    opponentLater > opponentAt,
+  `ours ${parkedAt}%→${parkedLater}%, theirs ${opponentAt}%→${opponentLater}% (higher = climbed)`
+);
+check(
+  "…and only OUR lane carries a stop marker while the other is in the air",
+  (await count('[data-testid="precision-race-stop-1"]')) === 1 &&
+    (await count('[data-testid="precision-race-stop-2"]')) === 0,
+  `pills: ours=${await count('[data-testid="precision-race-stop-1"]')} theirs=${await count(
+    '[data-testid="precision-race-stop-2"]'
+  )}`
+);
+check(
+  "…and the round stays live instead of resolving on our stop alone",
+  (await count('[data-testid="precision-round-result-panel"]')) === 0 &&
+    (await count('[data-testid="precision-stop-button"]')) > 0,
+  `live round opened ${Date.now() - partialGo}ms ago`
+);
+
+// 12b. The mirror case — the BOT stopped and WE have not. The bot's stop is
+//      published on `state.aiStop` (its server-measured instant, the only moment
+//      its timing is public), so ITS lane parks while ours keeps climbing.
+await page.evaluate(() => {
+  const now = Date.now();
+  const live = window.__precision.baseMatch({
+    phase: "active",
+    currentRound: 11,
+    score: { seat1: 3, seat2: 3 },
+    lastRoundWinnerSeat: 1,
+    lastRoundTargetMs: 4000,
+    lastRoundStops: {
+      seat1: { stopInstant: now - 300, elapsedMs: 4100, diffMs: 100, userId: "human" },
+      seat2: { stopInstant: now - 200, elapsedMs: 4400, diffMs: 400, userId: "AI_BOT" },
+    },
+    roundSequence: 11,
+    roundId: "m-ai-test-1-r-11",
+    roundNonce: "nonce-11",
+    targetMs: 6000,
+    roundGoInstant: now,
+    armingStartedAt: null,
+    countdownEndsAt: null,
+    // The bot's stop, applied on its own instant and published as the live
+    // round's `aiStop` — the board parks ITS lane from this and nothing else.
+    aiStop: { stopInstant: now + 2_500, elapsedMs: 2_500 },
+    version: Number(window.__precision.current?.version ?? 0) + 5,
+    players: [
+      { seat: 1, userId: "human", name: "You", isReady: true, isConnected: true },
+      { seat: 2, userId: "AI_BOT", name: "GRYND AI", isReady: true, isConnected: true },
+    ],
+  });
+  window.__precision.stopResponse = null;
+  window.__precision.set(live);
+  window.__precision.broadcast("precision:roundArmStart", { matchId: "ai-test-1", match: live });
+});
+await page.waitForSelector('[data-testid="precision-race-stop-2"]', {
+  timeout: 8000,
+  state: "attached",
+});
+const botParkedAt = await laneClimb(2);
+const selfAt = await laneClimb(1);
+await page.waitForTimeout(900);
+const botParkedLater = await laneClimb(2);
+const selfLater = await laneClimb(1);
+check(
+  "the bot's own stop parks ITS lane and leaves ours flying",
+  Number.isFinite(botParkedAt) &&
+    Number.isFinite(selfAt) &&
+    botParkedLater === botParkedAt &&
+    selfLater > selfAt,
+  `theirs ${botParkedAt}%→${botParkedLater}%, ours ${selfAt}%→${selfLater}% (higher = climbed)`
+);
+check(
+  "…and only the bot's lane carries a stop marker while we are in the air",
+  (await count('[data-testid="precision-race-stop-1"]')) === 0 &&
+    (await count('[data-testid="precision-race-stop-2"]')) === 1,
+  `pills: ours=${await count('[data-testid="precision-race-stop-1"]')} theirs=${await count(
+    '[data-testid="precision-race-stop-2"]'
+  )}`
 );
 
 check("no page/console errors", errors.length === 0, errors.slice(0, 3).join(" | "));

@@ -45,8 +45,13 @@ export interface PrecisionActiveRoundPanelProps {
   boardStops: RoundStopsSummary | null;
   /** Self has stopped; the round is waiting on the opponent. */
   awaitingOpponentStop: boolean;
-  /** Live display clock (ms). */
+  /** Live display clock (ms) for THIS seat — parks on its own STOP and drives
+   *  the rank preview / centre readout. */
   timerMs: number;
+  /** The board's SHARED clock (ms): what every lane that has NOT stopped
+   *  climbs with. Passed to the board as `liveElapsedMs`, so a lane whose seat
+   *  has not stopped yet keeps flying after the other one parks. */
+  raceElapsedMs: number;
   /** The round's target, or null when the payload omitted it. */
   liveTargetMs: number | null;
   /** Rank preview derived from the live clock, or null when unavailable. */
@@ -71,6 +76,7 @@ export default function PrecisionActiveRoundPanel({
   boardStops,
   awaitingOpponentStop,
   timerMs,
+  raceElapsedMs,
   liveTargetMs,
   previewRank,
   raceLanes,
@@ -96,15 +102,18 @@ export default function PrecisionActiveRoundPanel({
           lastRoundStops={boardStops}
         />
 
-        {/* Two-lane vertical rocket race — you | opponent. Your rocket
-            and the centre timer freeze the instant you hit STOP; the
-            bot's rocket freezes the moment its published stop lands. The
-            STOP control is mounted INSIDE the board, under that clock. */}
+        {/* Two-lane vertical rocket race — you | opponent. EACH lane parks when
+            ITS seat stops: yours the instant you hit STOP (via `raceLanes`),
+            the bot's the moment its published stop lands, a human opponent's
+            when the round resolves. The shared `raceElapsedMs` below is what
+            keeps the lanes that have NOT stopped climbing — freezing it on the
+            first stop is what used to park both rockets at once. The STOP
+            control is mounted INSIDE the board, under that clock. */}
         <PrecisionRocketRace
           phase="active"
           roundKey={state.roundSequence}
           targetMs={state.targetMs}
-          liveElapsedMs={timerMs}
+          liveElapsedMs={raceElapsedMs}
           lanes={raceLanes(false)}
           action={
             <button

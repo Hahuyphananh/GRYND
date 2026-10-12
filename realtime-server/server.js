@@ -1937,9 +1937,23 @@ io.on("connection", (socket) => {
       const payload = await res.json().catch(() => null);
       if (!payload || !payload.success) {
         if (typeof ack === "function") {
+          // Carry the route's snapshot on the REFUSAL path too. The refusal is
+          // not always "your click did not count": a stop that already landed
+          // comes back as `alreadySubmitted` (409) WITH the authoritative match,
+          // and that is exactly the case where the player's click DID count and
+          // they still have no result to look at — the packet's own ACK was
+          // lost, and without the snapshot here the page had nothing to render
+          // the round result from until some unrelated read happened to land
+          // (the reported "the result shows up after the next round started").
+          // The client applies it through its normal version-guarded snapshot
+          // path, so an older state can never be regressed onto the screen.
           ack({
             success: false,
             error: (payload && payload.error) || "Stop rejected by server.",
+            match: (payload && payload.match) || null,
+            bothStopped: Boolean(payload && payload.bothStopped),
+            roundWinnerSeat: (payload && payload.roundWinnerSeat) ?? null,
+            matchFinished: Boolean(payload && payload.matchFinished),
           });
         }
         return;

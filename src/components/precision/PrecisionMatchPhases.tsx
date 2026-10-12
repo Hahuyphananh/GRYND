@@ -55,7 +55,11 @@ export interface PrecisionMatchPhasesProps {
   awaitingOpponentStop: boolean;
   boardStops: RoundStopsSummary | null;
   countdownMs: number | null;
+  /** Live display clock (ms) for the LOCAL seat — parks on this seat's STOP. */
   timerMs: number;
+  /** The board's SHARED clock (ms). Every lane that has NOT stopped climbs with
+   *  it, so an opponent still in the air keeps flying after we park. */
+  raceElapsedMs: number;
   liveTargetMs: number | null;
   previewRank: PrecisionRank | null;
   raceLanes: (recap: boolean) => [RocketLane, RocketLane];
@@ -82,6 +86,7 @@ export default function PrecisionMatchPhases({
   boardStops,
   countdownMs,
   timerMs,
+  raceElapsedMs,
   liveTargetMs,
   previewRank,
   raceLanes,
@@ -206,6 +211,7 @@ export default function PrecisionMatchPhases({
             boardStops={boardStops}
             awaitingOpponentStop={awaitingOpponentStop}
             timerMs={timerMs}
+            raceElapsedMs={raceElapsedMs}
             liveTargetMs={liveTargetMs}
             previewRank={previewRank}
             raceLanes={raceLanes}

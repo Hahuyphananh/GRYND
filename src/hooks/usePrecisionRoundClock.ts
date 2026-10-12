@@ -5,17 +5,25 @@
 // Owns every time-shaped value the match page displays:
 //
 //   * `timerMs`              — the live elapsed counter for the round in flight,
+//                              parked on this seat's own STOP,
+//   * `raceElapsedMs`        — the SHARED clock the board's still-flying lanes
+//                              climb with. It keeps running after this seat
+//                              stops: one seat's stop says nothing about the
+//                              other seat's flight, so an unfrozen lane must
+//                              keep advancing (freezing this clock on STOP is
+//                              what parked BOTH rockets at once),
 //   * `countdownMs`          — the pre-round countdown while the server arms,
 //   * `selfFrozenElapsedMs`  — where the local player's rocket parked on STOP.
 //
-// All three are VISUAL. The number that decides a round is the server's
+// All of them are VISUAL. The number that decides a round is the server's
 // (`recordRoundStop` measures `Date.now() - roundGoInstant`), so the display
 // clock is anchored to that same server GO instant via `roundClock.ts` — the
 // poll round trip and the device's clock skew both cancel out of the pairing,
 // which is what makes the number on screen the number the server will measure.
-// The loop FREEZES the instant the player hits STOP (`freezeTimer`), so the
-// timer and the local rocket park on the spot instead of running on until the
-// round resolves.
+// The LOCAL READOUT freezes the instant the player hits STOP (`freezeTimer`), so
+// the timer and the local rocket park on the spot instead of running on until
+// the round resolves — while the loop itself stays alive, because the other
+// lane is still in the air.
 //
 // The ARMED→ACTIVE transition is NOT polled for here: the realtime server's
 // due-transition scheduler flips the phase at the stamped `countdownEndsAt`
@@ -44,14 +52,20 @@ export interface UsePrecisionRoundClockOptions {
 }
 
 export interface UsePrecisionRoundClockResult {
-  /** Live display clock (ms) for the round in flight. */
+  /** Live display clock (ms) for THIS seat — drives the centre readout and the
+   *  rank preview. Parks on this seat's own STOP. */
   timerMs: number;
+  /** The board's SHARED clock (ms): what every lane that has NOT stopped climbs
+   *  with. It advances for as long as the round is live, whoever has stopped —
+   *  an unfrozen opponent's lane must keep flying after this seat parks. */
+  raceElapsedMs: number;
   /** Pre-round countdown remaining (ms), or null while not arming. */
   countdownMs: number | null;
   /** Elapsed ms the local player is frozen at after STOP, or null while flying. */
   selfFrozenElapsedMs: number | null;
-  /** Park the display clock AND the local rocket on the spot; called the
-   *  instant STOP is sent. Returns the frozen elapsed value. */
+  /** Park THIS seat's display clock AND its rocket on the spot; called the
+   *  instant STOP is sent. Returns the frozen elapsed value. Every other lane
+   *  keeps climbing on `raceElapsedMs`. */
   freezeTimer: () => number;
   /** Release the freeze so the next `active` round starts flying from zero. */
   releaseFreeze: () => void;
@@ -66,6 +80,10 @@ export function usePrecisionRoundClock({
   serverClockOffsetMs = 0,
 }: UsePrecisionRoundClockOptions): UsePrecisionRoundClockResult {
   const [timerMs, setTimerMs] = useState(0);
+  // The clock the BOARD's unfrozen lanes climb with. Separate from `timerMs`
+  // because the two part ways on this seat's STOP: the readout parks, the other
+  // lane does not.
+  const [raceElapsedMs, setRaceElapsedMs] = useState(0);
   // Read through a ref so the effects that schedule work (and the callbacks
   // they call) keep a stable identity while the offset is refined by polls.
   const offsetRef = useRef(serverClockOffsetMs);
@@ -79,6 +97,10 @@ export function usePrecisionRoundClock({
   const [countdownMs, setCountdownMs] = useState<number | null>(null);
 
   const timerRafRef = useRef<number | null>(null);
+  // Where this seat's own readout is parked, or null while it is still flying.
+  // Held in a ref (not only in state) because the rAF tick below reads it on
+  // every frame, and a state read there would be a frame behind.
+  const selfFrozenRef = useRef<number | null>(null);
   // Local monotonic instant the round's display clock is anchored to — the
   // SERVER's GO instant expressed in `performance.now()` terms.
   const anchorLocalRef = useRef<number | null>(null);
@@ -94,26 +116,42 @@ export function usePrecisionRoundClock({
   }, []);
 
   const freezeTimer = useCallback((): number => {
-    stopTimer();
     const anchor = anchorLocalRef.current;
     const frozen = anchor === null ? 0 : elapsedSince(anchor, performance.now());
+    // The frame loop is deliberately NOT stopped here. It owns TWO clocks and
+    // only one of them parks: the opponent's lane is still flying, and killing
+    // the loop on this seat's stop is exactly what used to pin the whole board
+    // (`timerMs` served every lane, so freezing it froze both rockets). The tick
+    // reads this ref and leaves the readout alone from now on.
+    selfFrozenRef.current = frozen;
     setTimerMs(frozen);
     // Also park the local rocket: `selfFrozenElapsedMs` is what tells the
     // board this lane has stopped.
     setSelfFrozenElapsedMs(frozen);
     return frozen;
-  }, [stopTimer]);
+  }, []);
 
   const startTimer = useCallback(
     (anchorLocalMs: number) => {
       stopTimer();
       anchorLocalRef.current = anchorLocalMs;
+      // One frame's worth of work: advance BOTH clocks, leaving this seat's own
+      // readout parked once it has stopped.
+      const paint = () => {
+        const anchor = anchorLocalRef.current;
+        if (anchor === null) return false;
+        const elapsed = elapsedSince(anchor, performance.now());
+        // Every lane that has not stopped climbs with the shared clock…
+        setRaceElapsedMs(elapsed);
+        // …while this seat's own readout parks on its stop.
+        if (selfFrozenRef.current === null) setTimerMs(elapsed);
+        return true;
+      };
       // Paint the server-derived elapsed immediately so the display never
       // flashes a stale 0 before the first rAF frame.
-      setTimerMs(elapsedSince(anchorLocalMs, performance.now()));
+      paint();
       const tick = () => {
-        if (anchorLocalRef.current === null) return;
-        setTimerMs(elapsedSince(anchorLocalRef.current, performance.now()));
+        if (!paint()) return;
         timerRafRef.current = requestAnimationFrame(tick);
       };
       timerRafRef.current = requestAnimationFrame(tick);
@@ -121,7 +159,10 @@ export function usePrecisionRoundClock({
     [stopTimer]
   );
 
-  const releaseFreeze = useCallback(() => setSelfFrozenElapsedMs(null), []);
+  const releaseFreeze = useCallback(() => {
+    selfFrozenRef.current = null;
+    setSelfFrozenElapsedMs(null);
+  }, []);
 
   const resumeTimer = useCallback(() => {
     // Only meaningful while a round is anchored (i.e. the round we were
@@ -181,6 +222,11 @@ export function usePrecisionRoundClock({
     } else {
       stopTimer();
       setTimerMs(0);
+      setRaceElapsedMs(0);
+      // A round that is no longer live has no lane in the air, so no lane is
+      // parked either: the next round's board starts from the pad.
+      selfFrozenRef.current = null;
+      setSelfFrozenElapsedMs(null);
     }
     return () => stopTimer();
   }, [state?.phase, state?.roundGoInstant, state?.roundSequence, startTimer, stopTimer]);
@@ -223,6 +269,7 @@ export function usePrecisionRoundClock({
 
   return {
     timerMs,
+    raceElapsedMs,
     countdownMs,
     selfFrozenElapsedMs,
     freezeTimer,

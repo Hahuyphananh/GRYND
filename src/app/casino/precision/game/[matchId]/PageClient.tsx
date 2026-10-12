@@ -92,14 +92,15 @@ import type { PrecisionPlayer, PrecisionState } from "../../../../../lib/precisi
 // flying and no result until the player happened to switch tabs (the only
 // remaining read trigger).
 //
-// Our own STOP is the moment the round's outcome is decidable — against the bot
-// the server grades it in the same transaction (so one read is enough), and
-// against a human it is the opponent's packet that decides, which is exactly the
-// broadcast we must not depend on alone. So the click arms ONE bounded
-// reconciliation: a few reads over about a second, through the same
-// authoritative `/api/precision/get-match`, which applies any due transition
-// itself. Whichever arrives first — this read or the broadcast — wins;
-// `applySnapshot` version-guards the two so they can never disagree.
+// Our own STOP is what makes the round decidable — the round itself is graded
+// the moment the OTHER stop lands: against a human that is the opponent's own
+// packet, and against the bot it is its server-only stop instant (the realtime
+// server's due scheduler wakes on it and broadcasts). Neither is something this
+// page may depend on alone, so the click arms ONE bounded reconciliation: a few
+// reads over about a second, through the same authoritative
+// `/api/precision/get-match`, which applies any due transition itself. Whichever
+// arrives first — this read or the broadcast — wins; `applySnapshot`
+// version-guards the two so they can never disagree.
 //
 // Bounded on purpose: it is not a poll. It stops the moment the round leaves
 // `active` (or the match ends), and it costs three reads in the worst case.
@@ -266,6 +267,7 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
   // prints (and with the times the server grades the stop at).
   const {
     timerMs,
+    raceElapsedMs,
     countdownMs,
     selfFrozenElapsedMs,
     freezeTimer,
@@ -273,7 +275,16 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
     resumeTimer,
   } = usePrecisionRoundClock({ state, serverClockOffsetMs });
 
-  const { reveal, dismissReveal } = usePrecisionRoundReveal({ state, localSeat });
+  // The reveal window is measured on the SERVER's clock: it ends at the instant
+  // the server's own round-result cooldown does, so the popup hands the screen
+  // over exactly when the 5s pre-round countdown starts ticking (see
+  // `revealWindowMsOf`) instead of eating into it. The offset is what expresses
+  // "now" on the clock the decision was stamped with.
+  const { reveal, revealWindowMs, dismissReveal } = usePrecisionRoundReveal({
+    state,
+    localSeat,
+    serverClockOffsetMs,
+  });
 
   // ── Derived display values ───────────────────────────────────────────
   // Real seats only. This used to fall back to a hardcoded placeholder pair
@@ -578,6 +589,20 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
       (ack) => {
         setStopSubmitting(false);
         if (!ack || ack.success !== true) {
+          // A refusal can still carry the authoritative snapshot: "this stop is
+          // already recorded" is the same click seen twice, and its answer is
+          // the round it decided (see the realtime server's refusal ACK). Apply
+          // it before tearing down the optimistic state, so a click that DID
+          // count still shows the player their result instead of an error.
+          // Version-guarded like every other snapshot path. `stateRef` is in
+          // lockstep with the applied snapshot, so the check below reads the
+          // state this answer actually produced.
+          if (ack?.match) applySnapshot(ack.match);
+          // The stop was recorded after all (this is the duplicate-stop
+          // refusal): the round is already decided and the result popup is what
+          // the player should be reading, not a retry prompt.
+          const stopWasRecorded =
+            Boolean(ack?.match) && stateRef.current?.phase !== "active";
           // Server refused — unlock the optimistic state so the user
           // can try again on the next round.
           stopLockedThisRoundRef.current = false;
@@ -594,7 +619,9 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
           // resolved cannot restart a clock for a finished round.
           releaseFreeze();
           if (stateRef.current?.phase === "active") resumeTimer();
-          setError((ack && ack.error) || t("games.precision.stop_rejected"));
+          if (!stopWasRecorded) {
+            setError((ack && ack.error) || t("games.precision.stop_rejected"));
+          }
           posthog?.capture("precision_round_stop_rejected", {
             matchId,
             error: (ack && ack.error) || "unknown",
@@ -612,7 +639,18 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
         // "awaiting the opponent" hint, and this snapshot may well be the
         // not-yet-decidable one. The round-resolution effect above clears it
         // when the phase leaves `active`, which is the same rule as before.
-        if (ack.match) applySnapshot(ack.match);
+        if (ack.match) {
+          applySnapshot(ack.match);
+        } else if (stateRef.current?.phase === "active") {
+          // The ACK answered without a snapshot (an older realtime server, or a
+          // fallback that could not read one). The round this click decided is
+          // still exactly one bounded read away, but the window armed at the
+          // click may already have elapsed — a socket ACK can take seconds to
+          // time out. Re-arm it, so the result popup cannot end up waiting for
+          // some unrelated read and then appear once the next round is already
+          // running.
+          setStopReconcileAtMs(Date.now() + STOP_RECONCILE_DELAY_MS);
+        }
       }
     );
   }, [
@@ -695,6 +733,7 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
       boardStops={boardStops}
       countdownMs={countdownMs}
       timerMs={timerMs}
+      raceElapsedMs={raceElapsedMs}
       liveTargetMs={liveTargetMs}
       previewRank={previewRank}
       raceLanes={raceLanes}
@@ -731,18 +770,16 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
       >
         {normalView}
 
-        {/* End-of-round reveal + end-of-match result overlays. */}
+        {/* End-of-round reveal + end-of-match result overlays. The outcome
+            card is driven by the SERVER's round winner alone (green when it is
+            this seat, red when it is the other one, amber on a tie) — the
+            per-seat times it used to print are on the board behind it. */}
         {reveal && (
           <PrecisionRoundResultPanel
-            targetMs={reveal.targetMs}
-            seat1Name={players.find((p) => p.seat === 1)?.name ?? t("games.precision.seat_alpha")}
-            seat1ElapsedMs={reveal.seat1ElapsedMs}
-            seat1DiffMs={reveal.seat1DiffMs}
-            seat2Name={players.find((p) => p.seat === 2)?.name ?? t("games.precision.seat_bravo")}
-            seat2ElapsedMs={reveal.seat2ElapsedMs}
-            seat2DiffMs={reveal.seat2DiffMs}
             roundWinnerSeat={reveal.roundWinnerSeat}
             localSeat={localSeat}
+            decision={reveal.signature}
+            windowMs={revealWindowMs}
             onDismiss={dismissReveal}
           />
         )}

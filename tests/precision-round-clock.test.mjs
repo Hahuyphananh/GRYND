@@ -11,6 +11,8 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 import {
   GO_DRIFT_TOLERANCE_MS,
@@ -275,4 +277,56 @@ test("elapsed never goes negative", () => {
   assert.equal(elapsedSince(1000, 999), 0);
   assert.equal(elapsedSince(1000, 1000), 0);
   assert.equal(elapsedSince(1000, 1001), 1);
+});
+
+const source = (relative) =>
+  readFileSync(fileURLToPath(new URL(relative, import.meta.url)), "utf8");
+
+test("a stop parks the stopped seat's readout, not the whole board", () => {
+  // TWO clocks live in the round clock, and the split is the whole point:
+  //
+  //   * `timerMs`        belongs to THIS seat — it parks on this seat's STOP,
+  //   * `raceElapsedMs`  belongs to the BOARD — it advances for as long as the
+  //                      round is live, so a lane whose seat has not stopped
+  //                      keeps climbing.
+  //
+  // Serving every lane from the single frozen `timerMs` is what parked BOTH
+  // rockets the moment one player stopped (the bot's at a position it had not
+  // reached yet). These pins make a re-merge of the two clocks fail here rather
+  // than in a player's round.
+  const hook = source("../src/hooks/usePrecisionRoundClock.ts");
+  assert.match(
+    hook,
+    /const \[raceElapsedMs, setRaceElapsedMs\] = useState\(0\);/,
+    "the board needs its own clock — it cannot be the parked readout",
+  );
+  assert.match(hook, /setRaceElapsedMs\(elapsed\);/, "the frame loop must advance it");
+  assert.match(
+    hook,
+    /if \(selfFrozenRef\.current === null\) setTimerMs\(elapsed\);/,
+    "…while only a seat that has NOT stopped follows it",
+  );
+  assert.match(
+    hook,
+    /selfFrozenRef\.current = frozen;/,
+    "the STOP must record where this seat parked",
+  );
+  const freeze = hook.slice(hook.indexOf("const freezeTimer"), hook.indexOf("const startTimer"));
+  assert.ok(freeze.length > 0, "freezeTimer must still be there to park the readout");
+  assert.ok(
+    !freeze.includes("stopTimer("),
+    "a stop must NOT kill the frame loop — the other lane is still in the air",
+  );
+
+  // The live board is fed that shared clock…
+  const panel = source("../src/components/precision/PrecisionActiveRoundPanel.tsx");
+  assert.match(
+    panel,
+    /liveElapsedMs=\{raceElapsedMs\}/,
+    "the board must climb on the shared clock, not on this seat's parked readout",
+  );
+  // …and the page hands it down from the hook into the phase panels.
+  const page = source("../src/app/casino/precision/game/[matchId]/PageClient.tsx");
+  assert.match(page, /\n    raceElapsedMs,\n/, "the page must read the shared clock out of the hook");
+  assert.match(page, /raceElapsedMs=\{raceElapsedMs\}/, "and pass it to the phase panels");
 });

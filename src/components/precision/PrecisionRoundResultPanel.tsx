@@ -1,6 +1,6 @@
 "use client";
 
-// ── Per-round results overlay for the Precision match page ───────────────
+// ── Per-round outcome overlay for the Precision match page ───────────────
 //
 // After both players stop for a round, the server broadcasts a fresh
 // `precision:roundResult` carrying the per-seat timing telemetry and the
@@ -8,32 +8,36 @@
 // into a `roundResultReveal` state and renders THIS overlay on top of
 // the page for a brief reveal window.
 //
-// Behaviour:
-//   1. Staggered entrance — backdrop fades, the panel scales in, then
-//      each row hits at its own delay so the user reads the values from
-//      top (target) → bottom (winner) without feeling overloaded.
-//   2. Local-player perspective — the local seat's row is outlined and
-//      its time / diff are foregrounded.
-//   3. Tie handling — when the server emits `roundWinnerSeat === null`
-//      but both seats have stopped (a true tied difference), the
-//      winner row shows "TIE — ROUND REPLAYING" instead.
-//   4. Auto-dismiss — after 3 seconds the panel fades out. The parent
-//      page then sees the canonical phase (`arming` for replay, or
-//      `active` for the next round) and renders normally underneath.
+// The overlay answers ONE question — "did I take this round?" — in a single
+// glance:
 //
-// NOTE: All numerical inputs are SERVER-AUTHORITATIVE telemetry. The
-// client receives them from the `precision:roundResult` broadcast,
-// never measures time itself, never trusts any user-supplied ms.
+//   * GREEN → the local seat won the round,
+//   * RED   → the other seat did,
+//   * AMBER → a true tie (the same round is re-armed with a fresh target).
+//
+// It deliberately shows NO numbers. The per-seat times, deltas and rank badges
+// the previous version printed are NOT readable in the few seconds this card is
+// up, and the board underneath already recaps the round spatially (the arming
+// phase parks both rockets at their server-stamped stops). The graded values
+// remain on `state.lastRoundStops` — server-stamped telemetry the client never
+// recomputes — for the scoreboard badges and the end-of-match recap.
+//
+// Behaviour:
+//   1. Staggered entrance — backdrop fades, the card scales in, then the icon
+//      and the verdict hit at their own delays.
+//   2. Auto-dismiss — the card gives the screen back after the reveal window,
+//      and the countdown line ticks the remainder down so the player can see
+//      when the next round starts.
+//
+// NOTE: `roundWinnerSeat` is SERVER-AUTHORITATIVE. Green/red/amber is a lookup
+// of that value against the local seat and nothing else.
 
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
 import { gameOverModal } from "../../lib/animations";
-import { IconHeartHandshake, IconMedal2, IconTrophy } from "@tabler/icons-react";
-import { diffToRank } from "../../lib/precision/utils";
+import { IconHeartHandshake, IconMoodSad, IconTrophy } from "@tabler/icons-react";
 import { ROUND_RESULT_REVEAL_MS } from "../../lib/precision/constants";
-import { PrecisionRankIcon } from "./PrecisionRankIcon";
-import PrecisionRocketRace from "./PrecisionRocketRace";
 import type { PlayerSeat } from "../../lib/precision/types";
 import { useTranslation } from "../../hooks/useTranslation";
 
@@ -44,236 +48,130 @@ import { useTranslation } from "../../hooks/useTranslation";
  *  See `ROUND_RESULT_REVEAL_MS` in `lib/precision/constants.ts`. */
 export { ROUND_RESULT_REVEAL_MS } from "../../lib/precision/constants";
 
+/** What the card is telling the player. */
+export type PrecisionRoundOutcome = "win" | "loss" | "tie";
+
 export interface PrecisionRoundResultPanelProps {
-  /** The round's revealed target time in ms. Server-stamped: the panel
-   *  renders this number verbatim without computing anything locally. */
-  targetMs: number;
-  seat1Name: string;
-  /** Server-stamped elapsed time for seat 1 (stopInstant - roundGoInstant). */
-  seat1ElapsedMs: number;
-  /** Server-stamped |elapsedMs - targetMs| for seat 1. Computed once
-   *  server-side in `recordRoundStop` so the client never recomputes. */
-  seat1DiffMs: number;
-  seat2Name: string;
-  /** Server-stamped elapsed time for seat 2. */
-  seat2ElapsedMs: number;
-  /** Server-stamped diff for seat 2. */
-  seat2DiffMs: number;
-  /** 1 (seat 1 wins), 2 (seat 2 wins), or null on a true tie. */
+  /** 1 (seat 1 won the round), 2 (seat 2 won), or null on a true tie. */
   roundWinnerSeat: PlayerSeat | null;
-  /** The viewing user's local seat for perspective highlighting. */
+  /** The viewing user's own seat. This is what turns `roundWinnerSeat` into
+   *  green (we took it) or red (we didn't). */
   localSeat: PlayerSeat;
+  /** Stable identity of the decision being revealed — `RoundResultReveal.signature`
+   *  from `lib/precision/matchView`. It restarts this card's window for each new
+   *  decision (two rounds with the same outcome are otherwise indistinguishable
+   *  here) and is rendered as `data-decision`, so a check can tell one round's
+   *  result from another's. */
+  decision: string;
+  /** How long this card stays up (ms). The match page passes the window it
+   *  measured from the SERVER's decision stamp (see `revealWindowMsOf`), so the
+   *  "next round in" line counts the real remainder instead of a fixed 3s. */
+  windowMs?: number;
   /** Fires when the panel auto-dismisses or the parent unmounts it. */
   onDismiss?: () => void;
 }
 
-interface RowProps {
-  seat: PlayerSeat;
-  name: string;
-  elapsedMs: number;
-  diffMs: number;
-  isWinner: boolean;
-  isLocal: boolean;
-  isTiedRounding: boolean;
-  delay: number;
+/** The card's palette + copy, per outcome. The local seat's verdict is the
+ *  heading; the seat that was closer to the target is the one-line explainer
+ *  underneath (a tie explains the replayed round instead). */
+function outcomeCard(
+  outcome: PrecisionRoundOutcome,
+  winnerSeat: PlayerSeat | null,
+  localSeat: PlayerSeat,
+  t: (key: string, vars?: Record<string, unknown>) => string,
+) {
+  if (outcome === "win") {
+    return {
+      glow: "shadow-[0_0_60px_rgba(16,185,129,0.5)]",
+      ring: "border-emerald-300/80",
+      bg: "bg-gradient-to-b from-[#04251a] to-[#02150e]",
+      accent: "bg-gradient-to-r from-emerald-500 via-emerald-300 to-teal-300",
+      heading: "text-emerald-200",
+      iconColor: "text-emerald-300",
+      icon: <IconTrophy size={54} stroke={1.75} aria-hidden="true" />,
+      word: t("games.precision.you_win_round"),
+      subtitle: t("games.precision.closer_to_target", { seat: localSeat }),
+    };
+  }
+  if (outcome === "loss") {
+    return {
+      glow: "shadow-[0_0_60px_rgba(239,68,68,0.45)]",
+      ring: "border-red-400/80",
+      bg: "bg-gradient-to-b from-[#2a0a0f] to-[#150305]",
+      accent: "bg-gradient-to-r from-red-600 via-rose-400 to-orange-400",
+      heading: "text-red-200",
+      iconColor: "text-red-300",
+      icon: <IconMoodSad size={54} stroke={1.75} aria-hidden="true" />,
+      word: t("games.precision.you_lose_round"),
+      subtitle: t("games.precision.closer_to_target", {
+        seat: winnerSeat === null ? localSeat : winnerSeat,
+      }),
+    };
+  }
+  return {
+    glow: "shadow-[0_0_60px_rgba(245,158,11,0.45)]",
+    ring: "border-amber-300/80",
+    bg: "bg-gradient-to-b from-[#2a1e05] to-[#161003]",
+    accent: "bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500",
+    heading: "text-amber-200",
+    iconColor: "text-amber-300",
+    icon: <IconHeartHandshake size={54} stroke={1.75} aria-hidden="true" />,
+    word: t("games.precision.tie_replaying"),
+    subtitle: t("games.precision.tie_explainer"),
+  };
 }
 
-const PlayerRow = React.memo(function PlayerRow({
-  seat,
-  name,
-  elapsedMs,
-  diffMs,
-  isWinner,
-  isLocal,
-  isTiedRounding,
-  delay,
-}: RowProps) {
-  // `t` is resolved INSIDE the component (never at module scope — a
-  // hook call at module scope crashes the page on import with "Invalid
-  // hook call" / "Cannot read properties of null (reading
-  // 'useContext')").
-  const { t } = useTranslation();
-  // Per-seat palette — seat 1 is fuchsia-magenta, seat 2 is cyan-blue,
-  // matches the existing PrecisionScoreboard's colour coding so the
-  // user's eye can track "my seat" between panels quickly.
-  const palette =
-    seat === 1
-      ? {
-          ring: isWinner ? "ring-2 ring-fuchsia-300/80" : "ring-1 ring-fuchsia-700/40",
-          label: "text-fuchsia-200",
-          bg: isWinner
-            ? "bg-gradient-to-b from-fuchsia-500/25 to-fuchsia-700/15"
-            : "bg-fuchsia-950/30",
-          time: "text-fuchsia-100",
-        }
-      : {
-          ring: isWinner ? "ring-2 ring-cyan-300/80" : "ring-1 ring-cyan-700/40",
-          label: "text-cyan-200",
-          bg: isWinner
-            ? "bg-gradient-to-b from-cyan-500/25 to-cyan-700/15"
-            : "bg-cyan-950/30",
-          time: "text-cyan-100",
-        };
-  return (
-    <motion.div
-      initial={{ x: seat === 1 ? -40 : 40, opacity: 0 }}
-      animate={{ x: 0, opacity: 1 }}
-      exit={{ x: seat === 1 ? -40 : 40, opacity: 0 }}
-      transition={{ delay, type: "spring", stiffness: 280, damping: 22 }}
-      data-testid={`precision-round-result-row-${seat}`}
-      className={`relative flex items-center justify-between gap-3 rounded-2xl px-4 py-3 ${palette.bg} ${palette.ring} ${
-        isLocal ? "shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]" : ""
-      }`}
-    >
-      <div className="flex min-w-0 flex-col">
-        <span className={`text-[10px] font-bold uppercase tracking-[0.3em] ${palette.label}`}>
-          {seat === 1 ? t("games.precision.seat_alpha") : t("games.precision.seat_bravo")}{" "}
-          {isLocal ? (
-            <span data-testid="precision-round-result-local-tag" className="ml-1 rounded bg-white/10 px-1.5 py-0.5 text-[9px] tracking-wide text-white">
-              {t("games.precision.you_tag")}
-            </span>
-          ) : null}
-          {isWinner ? (
-            <span data-testid="precision-round-result-winner-tag" className="ml-1 rounded bg-yellow-300/90 px-1.5 py-0.5 text-[9px] font-black tracking-wide text-black">
-              {t("games.precision.winner_tag")}
-            </span>
-          ) : null}
-        </span>
-        <span className="truncate text-sm font-semibold text-slate-100">{name}</span>
-      </div>
-      <div className="flex flex-col items-end">
-        <span className={`text-3xl font-black tabular-nums ${palette.time}`}>
-          {elapsedMs.toLocaleString()}
-          <span className="ml-1 text-base font-bold text-slate-300">{t("games.precision.ms_suffix")}</span>
-        </span>
-        <span className="text-[11px] font-bold uppercase tracking-widest text-slate-300">
-          Δ{" "}
-          <span className={isTiedRounding ? "text-yellow-300" : "text-yellow-200/80"}>
-            {diffMs >= 0 ? `+${diffMs}` : diffMs}
-          </span>{" "}
-          ms
-        </span>
-        {/* ── Rank badge ── */}
-        {(() => {
-          const rank = diffToRank(diffMs);
-          return (
-            <span
-              data-testid={`precision-round-result-rank-${seat}`}
-              className={`mt-1 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase ${rank.bg} ${rank.border}`}
-            >
-              <span>
-                <PrecisionRankIcon label={rank.label} size={11} />
-              </span>
-              <span className={rank.color}>{rank.label}</span>
-            </span>
-          );
-        })()}
-      </div>
-    </motion.div>
-  );
-});
-
 function PrecisionRoundResultPanelImpl({
-  targetMs,
-  seat1Name,
-  seat1ElapsedMs,
-  seat1DiffMs,
-  seat2Name,
-  seat2ElapsedMs,
-  seat2DiffMs,
   roundWinnerSeat,
   localSeat,
+  decision,
+  windowMs = ROUND_RESULT_REVEAL_MS,
   onDismiss,
 }: PrecisionRoundResultPanelProps) {
   const { t } = useTranslation();
-  // OPTIMIZATION — render-shield: gate the auto-dismiss setTimeout on
-  // a STABLE inner wrapper that calls `onDismissRef.current?.()` rather
-  // than the `onDismiss` prop directly. The parent (match page)
-  // recreates `onDismiss` as a fresh arrow function on every poll tick
-  // (every ~1.5s) and the page polls continuously — without this ref
-  // indirection the panel's useEffect dep `[onDismiss]` would tear
-  // down + re-spin a 3-second setTimeout on every parent render,
-  // effectively making the timer RESET on every poll and never fire.
-  // The wrapper still calls the latest onDismiss from the ref without
-  // needing it in the dep list. The parent is expected to keep
-  // `onDismiss` stable via useCallback for full memo benefit (the
-  // outer React.memo wrapper below also helps avoid full subtree
-  // re-renders when an unrelated polling tick changes state).
-  //
-  // Bug-fix note: the auto-dismiss effect was previously `useEffect(..., [])`
-  // (mounted once). That meant a NEW round's reveal arriving within the
-  // 3s window reused the original timer, which fired at mount+3s — that
-  // would prematurely dismiss Round N+1 (only ~0.5s in if Round N mounted
-  // 2.5s ago). The dep list below includes the per-round signature data
-  // (targetMs, per-seat elapsedMs/diffMs, roundWinnerSeat). When ANY of
-  // these change (new round decision received via socket or polling),
-  // the cleanup clears the OLD timer and a NEW 3s window starts. This
-  // mirrors the prior `[onDismiss]` behavior — except the dep is now
-  // semantically meaningful (data changes), not a parent-render side
-  // effect. localSeat is intentionally excluded (stable per match).
+  // OPTIMIZATION — render-shield: gate the auto-dismiss timer on a STABLE inner
+  // wrapper that calls `onDismissRef.current?.()` rather than the `onDismiss`
+  // prop directly. The parent (match page) recreates `onDismiss` as a fresh
+  // arrow function on every render and the page re-renders on every poll tick —
+  // without this ref indirection the panel's effect dep `[onDismiss]` would
+  // tear down + re-spin its window on every parent render, effectively making
+  // the timer RESET and never fire.
   const onDismissRef = React.useRef(onDismiss);
   React.useEffect(() => {
     onDismissRef.current = onDismiss;
   }, [onDismiss]);
+
+  // A nonsensical window (0 / NaN) would show the card for a single frame and
+  // then dismiss it, which reads as "no result at all" — fall back to the
+  // shared window instead.
+  const visibleMs =
+    Number.isFinite(windowMs) && windowMs > 0 ? Math.floor(windowMs) : ROUND_RESULT_REVEAL_MS;
+  const [remainingMs, setRemainingMs] = React.useState(visibleMs);
+
+  // The window is (re)started per DECISION — `decision` is the stable identity
+  // of the result being shown, so a new one clears the old timer and starts a
+  // fresh window instead of reusing (and prematurely firing) the previous
+  // round's. The ticking remainder is display-only: the dismissal below is what
+  // actually ends the card.
   React.useEffect(() => {
-    const id = setTimeout(() => {
+    setRemainingMs(visibleMs);
+    const startedAt = Date.now();
+    const tick = setInterval(() => {
+      setRemainingMs(Math.max(0, visibleMs - (Date.now() - startedAt)));
+    }, 250);
+    const dismiss = setTimeout(() => {
       onDismissRef.current?.();
-    }, ROUND_RESULT_REVEAL_MS);
-    return () => clearTimeout(id);
-  }, [
-    targetMs,
-    seat1ElapsedMs,
-    seat1DiffMs,
-    seat2ElapsedMs,
-    seat2DiffMs,
-    roundWinnerSeat,
-  ]);
+    }, visibleMs);
+    return () => {
+      clearInterval(tick);
+      clearTimeout(dismiss);
+    };
+  }, [decision, visibleMs]);
 
-  const isTie = roundWinnerSeat === null;
-  // Diffs are server-stamped in recordRoundStop (`bucket[userId].diffMs`)
-  // and surfaced via PrecisionState.lastRoundStops.{seat1,seat2}.diffMs.
-  // The panel NEVER recomputes |elapsedMs - targetMs| locally so a
-  // tampered client cannot present a different delta than the server.
-  const seat1Diff = seat1DiffMs;
-  const seat2Diff = seat2DiffMs;
-
-  // Rounding-aware tie helper: when both seats' server-stamped elapseds
-  // are byte-identical AND their diffs are equal, surface that as a
-  // "Δ 0" alert so the user understands WHY the round counts as a tie
-  // even though their interpolated values feel different.
-  const perfectlyEqual =
-    seat1ElapsedMs === seat2ElapsedMs && seat1Diff === seat2Diff;
-
-  // Banner palette decided per outcome — winner gold, tie cyan-yellow.
-  const bannerPalette = isTie
-    ? {
-        glow: "shadow-[0_0_45px_rgba(250,204,21,0.45)]",
-        ring: "border-yellow-300/70",
-        bg: "bg-gradient-to-b from-[#0a2a1a] to-[#031a0a]",
-        heading: "text-yellow-200",
-        word: t("games.precision.tie_replaying"),
-        icon: <IconHeartHandshake size={44} />,
-        subtitle: t("games.precision.tie_explainer"),
-      }
-    : roundWinnerSeat === localSeat
-      ? {
-          glow: "shadow-[0_0_45px_rgba(250,204,21,0.55)]",
-          ring: "border-yellow-300/80",
-          bg: "bg-gradient-to-b from-[#0a2a1a] to-[#031a0a]",
-          heading: "text-yellow-200",
-          word: t("games.precision.you_win_round"),
-          icon: <IconTrophy size={44} />,
-          subtitle: t("games.precision.seat_closer", { seat: roundWinnerSeat }),
-        }
-      : {
-          glow: "shadow-[0_0_45px_rgba(217,70,239,0.45)]",
-          ring: "border-fuchsia-300/70",
-          bg: "bg-gradient-to-b from-[#2a0a1f] to-[#160322]",
-          heading: "text-fuchsia-200",
-          word: t("games.precision.round_won_by_player", { name: roundWinnerSeat === 1 ? seat1Name : seat2Name }),
-          icon: <IconMedal2 size={44} />,
-          subtitle: t("games.precision.seat_closer", { seat: roundWinnerSeat }),
-        };
+  const outcome: PrecisionRoundOutcome =
+    roundWinnerSeat === null ? "tie" : roundWinnerSeat === localSeat ? "win" : "loss";
+  const card = outcomeCard(outcome, roundWinnerSeat, localSeat, t);
+  const secondsLeft = Math.max(0, Math.ceil(remainingMs / 1000));
 
   return (
     <AnimatePresence>
@@ -281,135 +179,77 @@ function PrecisionRoundResultPanelImpl({
         {...gameOverModal.backdrop}
         key="precision-round-result-backdrop"
         data-testid="precision-round-result-panel"
+        // The outcome is the whole message, so it is also the machine-readable
+        // part of this overlay: `data-outcome` is what a check asserts instead
+        // of grepping copy out of the card.
+        data-outcome={outcome}
+        data-winner-seat={roundWinnerSeat === null ? "" : String(roundWinnerSeat)}
+        data-local-seat={String(localSeat)}
+        data-decision={decision}
         className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
       >
         <motion.div
           {...gameOverModal.panel}
-          className={`relative w-full max-w-lg max-h-[92vh] overflow-y-auto rounded-3xl border ${bannerPalette.ring} ${bannerPalette.bg} p-5 text-center shadow-2xl ${bannerPalette.glow} sm:p-7`}
+          className={`relative w-full max-w-md max-h-[92vh] overflow-y-auto rounded-3xl border ${card.ring} ${card.bg} p-6 text-center shadow-2xl ${card.glow} sm:p-8`}
         >
-          {/* Top accent strip — casino-style gradient bar */}
+          {/* Top accent strip — the outcome's own colour, so the verdict is
+              readable from the glow alone. */}
           <motion.div
             initial={{ scaleX: 0 }}
             animate={{ scaleX: 1 }}
             transition={{ delay: 0.05, duration: 0.4 }}
-            className="absolute inset-x-0 top-0 h-1 origin-left bg-gradient-to-r from-fuchsia-400 via-yellow-300 to-cyan-300"
+            className={`absolute inset-x-0 top-0 h-1.5 origin-left ${card.accent}`}
           />
 
           <motion.p
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1, duration: 0.3 }}
-            className="text-[10px] font-black uppercase tracking-[0.45em] text-cyan-200"
+            className="text-[10px] font-black uppercase tracking-[0.45em] text-slate-300/80"
           >
             {t("games.precision.round_result_title")}
           </motion.p>
 
-          {/* Target value */}
           <motion.div
-            initial={{ y: 18, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.2, type: "spring", stiffness: 240, damping: 18 }}
-            className="mt-2"
-            data-testid="precision-round-result-target"
+            initial={{ scale: 0, rotate: -25 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ delay: 0.18, type: "spring", stiffness: 220, damping: 12 }}
+            data-testid="precision-round-result-icon"
+            className={`mt-5 ${card.iconColor} drop-shadow-[0_0_18px_currentColor]`}
           >
-            <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-yellow-200/80">{t("games.precision.target_label")}</p>
-            <p className="text-5xl font-black tabular-nums text-yellow-200 sm:text-6xl">
-              {targetMs.toLocaleString()}
-              <span className="ml-1 text-2xl text-yellow-200/70">{t("games.precision.ms_suffix")}</span>
-            </p>
+            {card.icon}
           </motion.div>
 
-          {/* Where each rocket parked, relative to the target. Both lanes are
-              frozen at the server-stamped stops this panel is reporting, so
-              the spatial view can never disagree with the numbers below. */}
-          <motion.div
-            initial={{ y: 14, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.3, duration: 0.35 }}
-            className="mt-4"
-            data-testid="precision-round-result-race"
+          <motion.h2
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.26, type: "spring", stiffness: 240, damping: 18 }}
+            data-testid="precision-round-result-outcome"
+            className={`mt-4 text-3xl font-black uppercase leading-tight sm:text-4xl ${card.heading}`}
           >
-            <PrecisionRocketRace
-              compact
-              phase="arming"
-              targetMs={targetMs}
-              liveElapsedMs={0}
-              lanes={[
-                {
-                  seat: 1,
-                  name: seat1Name,
-                  isSelf: localSeat === 1,
-                  frozenElapsedMs: seat1ElapsedMs,
-                },
-                {
-                  seat: 2,
-                  name: seat2Name,
-                  isSelf: localSeat === 2,
-                  frozenElapsedMs: seat2ElapsedMs,
-                },
-              ]}
-            />
-          </motion.div>
+            {card.word}
+          </motion.h2>
 
-          {/* Player rows (staggered) */}
-          <div className="mt-5 flex flex-col gap-3">
-            <PlayerRow
-              seat={1}
-              name={seat1Name}
-              elapsedMs={seat1ElapsedMs}
-              diffMs={seat1Diff}
-              isWinner={roundWinnerSeat === 1}
-              isLocal={localSeat === 1}
-              isTiedRounding={isTie && perfectlyEqual}
-              delay={0.35}
-            />
-            <PlayerRow
-              seat={2}
-              name={seat2Name}
-              elapsedMs={seat2ElapsedMs}
-              diffMs={seat2Diff}
-              isWinner={roundWinnerSeat === 2}
-              isLocal={localSeat === 2}
-              isTiedRounding={isTie && perfectlyEqual}
-              delay={0.5}
-            />
-          </div>
-
-          {/* Winner / tie banner */}
-          <motion.div
-            initial={{ y: 18, opacity: 0, scale: 0.9 }}
-            animate={{ y: 0, opacity: 1, scale: 1 }}
-            transition={{ delay: 0.7, type: "spring", stiffness: 220, damping: 16 }}
-            data-testid="precision-round-result-banner"
-            className={`mt-5 rounded-2xl border ${bannerPalette.ring} bg-black/30 px-4 py-4`}
-          >
-            <motion.p
-              initial={{ scale: 0, rotate: -25 }}
-              animate={{ scale: 1, rotate: 0 }}
-              transition={{ delay: 0.85, type: "spring", stiffness: 220, damping: 12 }}
-              className="text-5xl leading-none"
-            >
-              {bannerPalette.icon}
-            </motion.p>
-            <h2
-              className={`mt-2 text-2xl font-black uppercase ${bannerPalette.heading} sm:text-3xl`}
-            >
-              {bannerPalette.word}
-            </h2>
-            <p className="mt-1 text-xs text-slate-200 sm:text-sm">
-              {bannerPalette.subtitle}
-            </p>
-          </motion.div>
-
-          {/* Auto-dismiss countdown hint */}
           <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: 0.9, duration: 0.4 }}
-            className="mt-4 text-[11px] font-bold uppercase tracking-widest text-cyan-100/80"
+            transition={{ delay: 0.38, duration: 0.3 }}
+            className="mx-auto mt-3 max-w-xs text-sm text-slate-200"
+          >
+            {card.subtitle}
+          </motion.p>
+
+          {/* The next round's countdown, ticking down the rest of the window
+              the match page measured — the player can see exactly how long
+              this card has left before the round opens. */}
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.45, duration: 0.4 }}
+            className="mt-6 text-[11px] font-bold uppercase tracking-widest text-slate-300/90"
             data-testid="precision-round-result-countdown"
           >
-            {t("games.precision.next_round_in")}
+            {t("games.precision.next_round_in", { seconds: secondsLeft })}
           </motion.p>
         </motion.div>
       </motion.div>
@@ -417,11 +257,9 @@ function PrecisionRoundResultPanelImpl({
   );
 }
 
-// OPTIMIZATION — wrap the panel in React.memo so the page's polling
-// tick (every 1.5s) doesn't force the entire 3-second overlay subtree
-// (animating backdrop, 2 PlayerRow motion containers, accent strip,
-// banners) to re-render unless one of the visible inputs /
-// onDismissRef wrapper actually changes. Combined with the
-// onDismiss-deferral above, the panel now stays idle between rAF
-// ticks while the result reveal is visible.
+// OPTIMIZATION — wrap the panel in React.memo so the page's render churn
+// (poll ticks, the round clock's frames) doesn't force the whole overlay subtree
+// (animating backdrop, icon, headings) to re-render unless one of the visible
+// inputs actually changes. Combined with the onDismiss-deferral above, the panel
+// stays idle between its own countdown ticks.
 export default React.memo(PrecisionRoundResultPanelImpl);

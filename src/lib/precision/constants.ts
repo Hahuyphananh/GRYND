@@ -237,6 +237,18 @@ export const ROUND_COUNTDOWN_MS = 5_000;
 // apart: `PrecisionRoundResultPanel` re-exports it for the reveal hook.
 export const ROUND_RESULT_REVEAL_MS = 3_000;
 
+// ── Floor under the round-result reveal ──────────────────────────────────
+//
+// The reveal's window is anchored on the DECISION (`armingStartedAt +
+// ROUND_RESULT_REVEAL_MS`, see `revealWindowMsOf`), so the popup ends exactly
+// when the server's countdown begins and the player is then shown the whole
+// `ROUND_COUNTDOWN_MS` instead of its tail. A client that only observes the
+// decision a moment before that instant would otherwise get a one-frame flash,
+// so an observation inside the window keeps this floor. It can never push the
+// popup into the NEXT round: the reveal is dismissed outright when the round
+// goes live (see `usePrecisionRoundReveal`).
+export const ROUND_RESULT_MIN_VISIBLE_MS = 600;
+
 // Visual sizing for the eventual game board. The exact dimensions will
 // be tuned in a future change; this is the canonical reference so any
 // placeholder UIs (waiting room, results popup) can size correctly.

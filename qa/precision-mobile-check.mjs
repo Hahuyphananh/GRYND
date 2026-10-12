@@ -174,22 +174,12 @@ const NAMES = { seat1Name: "PlayerOne", seat2Name: "GRYND AI", localSeat: 1 };co
   longname: { ...NAMES, seat1Name: "PlayerOneTwo3", phase: "active", roundKey: "r3", targetMs: TARGET, liveElapsedMs: 2_050, seat1Frozen: null, seat2Frozen: null },
 };
 
-// Digits only — `toLocaleString()` renders 2310 as "2,310" or "2 310"
-// depending on the host's locale, so the assertion must not depend on the
-// separator.
-const digits = (text) => String(text ?? "").replace(/[^0-9]/g, "");
-
-const ROUND_RESULT = {
-  targetMs: TARGET,
-  seat1Name: NAMES.seat1Name,
-  seat1ElapsedMs: SELF_STOP,
-  seat1DiffMs: Math.abs(SELF_STOP - TARGET),
-  seat2Name: NAMES.seat2Name,
-  seat2ElapsedMs: BOT_STOP,
-  seat2DiffMs: Math.abs(BOT_STOP - TARGET),
-  roundWinnerSeat: 2,
-  localSeat: 1,
-};
+// The round-result overlay is now a bare VERDICT — green win / red loss / amber
+// tie, no per-seat figures — so the scenario is just "who took the round, seen
+// from whose seat".
+const ROUND_RESULT_LOSS = { roundWinnerSeat: 2, localSeat: 1, decision: "qa-loss" };
+const ROUND_RESULT_WIN = { roundWinnerSeat: 1, localSeat: 1, decision: "qa-win" };
+const ROUND_RESULT_TIE = { roundWinnerSeat: null, localSeat: 1, decision: "qa-tie" };
 
 const POPUP = {
   targetMs: TARGET,
@@ -224,6 +214,52 @@ const snapshot = (names) =>
       return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, w: r.width, h: r.height };
     };
     const txt = (el) => (el ? el.textContent.replace(/\s+/g, " ").trim() : null);
+    // The round-result overlay is a bare win/loss/tie VERDICT — no board, no
+    // per-seat figures — so it is collected BEFORE the board lookup: a card with
+    // no board under it still has to be described by this snapshot.
+    const backdrop = document.querySelector('[data-testid="precision-round-result-panel"]');
+    const panel = backdrop?.firstElementChild ?? null;
+    const outcomeHeading = document.querySelector('[data-testid="precision-round-result-outcome"]');
+    const outcomeRgb = outcomeHeading
+      ? (getComputedStyle(outcomeHeading).color.match(/\d+/g) ?? []).map(Number)
+      : [];
+    const outcomeClasses = outcomeHeading ? outcomeHeading.className : "";
+    // Each palette is asserted BOTH ways: the class the card applies AND the
+    // colour that class actually PAINTS (which is what makes this a check on the
+    // rendered card rather than on a class string). The channel ordering is what
+    // separates the three: emerald is green-dominant, red-200 is red-dominant,
+    // amber-200 is red-then-green ABOVE blue.
+    const outcome = backdrop
+      ? {
+          outcome: backdrop.getAttribute("data-outcome"),
+          heading: txt(outcomeHeading),
+          text: txt(panel),
+          box: rect(panel),
+          headingBox: rect(outcomeHeading),
+          rgb: outcomeRgb,
+          green:
+            /text-emerald-200/.test(outcomeClasses) &&
+            outcomeRgb[1] > outcomeRgb[0] &&
+            outcomeRgb[1] > outcomeRgb[2],
+          red:
+            /text-red-200/.test(outcomeClasses) &&
+            outcomeRgb[0] > outcomeRgb[1] &&
+            outcomeRgb[0] > outcomeRgb[2],
+          amber:
+            /text-amber-200/.test(outcomeClasses) &&
+            outcomeRgb[0] > outcomeRgb[1] &&
+            outcomeRgb[1] > outcomeRgb[2],
+        }
+      : null;
+    const panelInfo = panel
+      ? {
+          box: rect(panel),
+          maxHeight: getComputedStyle(panel).maxHeight,
+          scrollHeight: panel.scrollHeight,
+          clientHeight: panel.clientHeight,
+          overflowY: getComputedStyle(panel).overflowY,
+        }
+      : null;
     const board = document.querySelector('[data-testid="precision-rocket-race"]');
     if (!board) {
       return {
@@ -232,6 +268,11 @@ const snapshot = (names) =>
         docScrollWidth: document.documentElement.scrollWidth,
         docClientWidth: document.documentElement.clientWidth,
         board: null,
+        lanes: [],
+        centre: null,
+        panel: panelInfo,
+        outcome,
+        backdrop: backdrop ? { box: rect(backdrop) } : null,
       };
     }
     const boardBox = board.getBoundingClientRect();
@@ -258,10 +299,6 @@ const snapshot = (names) =>
         d.contains(board) &&
         d !== board,
     );
-    // The overlay has a full-screen BACKDROP (`fixed inset-0`, overflow
-    // visible) wrapping the actual card that carries `max-h-[92vh] overflow-y-auto`.
-    const backdrop = document.querySelector('[data-testid="precision-round-result-panel"]');
-    const panel = backdrop?.firstElementChild ?? null;
     // The board's own scrolling ancestor inside the popup/panel.
     const scroller = fixedHost;
     return {
@@ -339,15 +376,8 @@ const snapshot = (names) =>
       ticks: [...board.querySelectorAll("span")]
         .filter((s) => /^\d+(\.\d)?s$/.test(txt(s) ?? ""))
         .map((s) => ({ text: txt(s), box: boardP(s) })),
-      panel: panel
-        ? {
-            box: rect(panel),
-            maxHeight: getComputedStyle(panel).maxHeight,
-            scrollHeight: panel.scrollHeight,
-            clientHeight: panel.clientHeight,
-            overflowY: getComputedStyle(panel).overflowY,
-          }
-        : null,
+      panel: panelInfo,
+      outcome,
       backdrop: backdrop ? { box: rect(backdrop) } : null,
       host: fixedHost
         ? {
@@ -358,21 +388,6 @@ const snapshot = (names) =>
             scrollTop: fixedHost.scrollTop,
           }
         : null,
-      resultRows: [1, 2].map((seat) => {
-        const row = document.querySelector(`[data-testid="precision-round-result-row-${seat}"]`);
-        if (!row) return null;
-        // The big numbered value in the row (the same number the lane's stop
-        // pill must agree with).
-        const big = [...row.querySelectorAll("span")].find((sp) =>
-          /text-3xl/.test(sp.className),
-        );
-        return {
-          seat,
-          text: txt(row),
-          elapsedText: txt(big),
-          rankText: txt(row.querySelector(`[data-testid="precision-round-result-rank-${seat}"]`)),
-        };
-      }),
       popupCaption: txt(
         [...document.querySelectorAll("p")].find((p) => txt(p) === "Last round") ?? null,
       ),
@@ -580,7 +595,16 @@ const mount = async (vp) => {
     consoleErrors.push(`console(${vp.label}): ${text}`);
   });
   await p.goto("file://" + join(outDir, "index.html").replace(/\\/g, "/"));
-  await p.addStyleTag({ path: join(outDir, "tw.css") });
+  // The generated stylesheet is appended through `evaluate` rather than with
+  // `addStyleTag`: Playwright's helper waits for the injected <style> element to
+  // fire a `load` event, which never happens on a file:// page in this
+  // environment — it rejects with a bare "Event" error and aborts the whole run
+  // before a single assertion. Appending the element applies the same CSS.
+  await p.evaluate((css) => {
+    const style = document.createElement("style");
+    style.textContent = css;
+    document.head.appendChild(style);
+  }, readFileSync(join(outDir, "tw.css"), "utf8"));
   await p.waitForFunction(() => typeof window.renderRace === "function", null, { timeout: 20000 });
   return p;
 };
@@ -590,7 +614,8 @@ const render = async (kind, payload, waitFor) => {
     ([k, pl]) => {
       if (["flying", "live", "stopped", "arming", "longname", "stopAction"].includes(k))
         window.renderRace(pl);
-      else if (k === "roundResult") window.renderRoundResult(pl);
+      else if (["roundResult", "roundResultWin", "roundResultTie"].includes(k))
+        window.renderRoundResult(pl);
       else if (k === "popup") window.renderPopup(pl);
       else throw new Error(`unknown scenario ${k}`);
     },
@@ -718,8 +743,6 @@ try {
       `centre "${s.centre.text}", ${s.lanes[0].stopText} / ${s.lanes[1].stopText}`,
     );
     await capture(`${vp.label}-arming`);
-    // Baseline for the compact board's wider-lane assertion below.
-    const fullLaneW = Math.min(...s.lanes.map((l) => l.box.w));
 
     // ── A long username must degrade to an ellipsis, not a broken lane ─────
     if (vp.phone) {
@@ -744,14 +767,14 @@ try {
       await capture(`${vp.label}-longname`);
     }
 
-    // ── Per-round result overlay (compact board embedded) ──────────────────
-    await render("roundResult", ROUND_RESULT, '[data-testid="precision-round-result-race"]');
+    // ── Per-round result card: the LOSS verdict on a phone ────────────────
+    await render("roundResult", ROUND_RESULT_LOSS, '[data-testid="precision-round-result-panel"]');
     s = await snapshot(NAMES);
-    const cBoard = s.board;
-    const cLane = (seat) => s.lanes.find((l) => l?.seat === seat);
     check(
-      `${vp.label} round-result: the card fits the viewport (header, board and rows reachable)`,
-      s.panel.box.top >= -1 &&
+      `${vp.label} round-result: the card fits the viewport`,
+
+      s.docScrollWidth <= s.docClientWidth + 1 &&
+        s.panel.box.top >= -1 &&
         s.panel.box.bottom <= s.vh + 1 &&
         s.panel.maxHeight !== "none" &&
         s.panel.box.h <= s.vh + 1,
@@ -762,33 +785,55 @@ try {
       s.panel.overflowY === "auto",
       `overflow-y ${s.panel.overflowY} (content ${s.panel.scrollHeight} vs box ${s.panel.clientHeight})`,
     );
+    // The whole message is the verdict, so the check is on the verdict the card
+    // RENDERS and the colour it actually paints — and on the absence of the
+    // per-seat figures the old overlay printed.
     check(
-      `${vp.label} round-result: the embedded board fits the card width, no sideways scroll`,
-      s.docScrollWidth <= s.docClientWidth + 1 &&
-        s.board.abs.left >= -1 &&
-        s.board.abs.right <= s.panel.box.right + 1,
-      `board ${px(s.board.abs.left)}..${px(s.board.abs.right)}, card ${px(s.panel.box.left)}..${px(s.panel.box.right)}`,
-    );
-    // The compact board drops the centre column. On a phone the result card is
-    // roughly as wide as the page, so the lanes must come out WIDER than the
-    // live round's; on desktop the card is `max-w-lg`, narrower than the page
-    // board, so only the absolute floor applies.
-    const compactLaneW = Math.min(cLane(1).box.w, cLane(2).box.w);
-    const compactFloor = vp.phone ? Math.max(vp.minLaneCompact, fullLaneW + 1) : vp.minLaneCompact;
-    check(
-      `${vp.label} round-result: the compact board drops the centre column so the lanes widen`,
-      s.centre === null && compactLaneW >= compactFloor,
-      `centre ${s.centre ? "present" : "absent"}, lanes ${px(compactLaneW)} vs the live board's ${px(fullLaneW)} (floor ${px(compactFloor)})`,
+      `${vp.label} round-result: a lost round is RED, says so, and shows no figures`,
+      s.outcome?.outcome === "loss" &&
+        s.outcome.red === true &&
+        s.outcome.green === false &&
+        /ROUND LOST/i.test(s.outcome.heading ?? "") &&
+        !/\d+\s*ms|Δ/.test(s.outcome.text ?? ""),
+      `outcome=${s.outcome?.outcome} rgb(${s.outcome?.rgb.join(",")}) heading "${s.outcome?.heading}"`,
     );
     check(
-      `${vp.label} round-result: both rockets are parked at the values the rows below report`,
-      cLane(1).stopText === "2.31s" &&
-        cLane(2).stopText === "4.18s" &&
-        digits(s.resultRows[0]?.elapsedText) === "2310" &&
-        digits(s.resultRows[1]?.elapsedText) === "4180",
-      `pills ${cLane(1).stopText} / ${cLane(2).stopText}; rows ${s.resultRows.map((r) => r?.elapsedText).join(" / ")}`,
+      `${vp.label} round-result: the verdict and its icon stay inside the card`,
+      inside(s.outcome?.headingBox, s.panel.box) && inside(s.outcome?.box, s.backdrop?.box),
+      s.outcome
+        ? `heading ${px(s.outcome.headingBox.left)}..${px(s.outcome.headingBox.right)} in card ${px(
+            s.panel.box.left
+          )}..${px(s.panel.box.right)}`
+        : "no card",
     );
     await capture(`${vp.label}-round-result`);
+
+    // ── The same card, WON: the verdict flips to green ────────────────────
+    await render("roundResultWin", ROUND_RESULT_WIN, '[data-testid="precision-round-result-outcome"]');
+    const wonCard = await snapshot(NAMES);
+    check(
+      `${vp.label} round-result: a won round is GREEN and says so`,
+      wonCard.outcome?.outcome === "win" &&
+        wonCard.outcome.green === true &&
+        wonCard.outcome.red === false &&
+        /YOU WIN THE ROUND/i.test(wonCard.outcome.heading ?? ""),
+      `outcome=${wonCard.outcome?.outcome} rgb(${wonCard.outcome?.rgb.join(",")}) heading "${wonCard.outcome?.heading}"`,
+    );
+    await capture(`${vp.label}-round-result-win`);
+
+    // ── A tie is AMBER: neither the win nor the loss palette ──────────────
+    await render("roundResultTie", ROUND_RESULT_TIE, '[data-testid="precision-round-result-outcome"]');
+    const tieCard = await snapshot(NAMES);
+    check(
+      `${vp.label} round-result: a tie is AMBER and says the round replays`,
+      tieCard.outcome?.outcome === "tie" &&
+        tieCard.outcome.amber === true &&
+        tieCard.outcome.red === false &&
+        tieCard.outcome.green === false &&
+        /TIE/i.test(tieCard.outcome.heading ?? ""),
+      `outcome=${tieCard.outcome?.outcome} rgb(${tieCard.outcome?.rgb.join(",")}) heading "${tieCard.outcome?.heading}"`,
+    );
+    await capture(`${vp.label}-round-result-tie`);
 
     // ── End-of-match popup (frozen last round in the main flow) ────────────
     await render("popup", POPUP, '[data-testid="precision-rocket-race"]');
@@ -810,6 +855,18 @@ try {
       `${vp.label} popup: the embedded board fits the popup width`,
       bare.board.abs.left >= -1 && bare.board.abs.right <= s.vw + 1,
       `board ${px(bare.board.abs.left)}..${px(bare.board.abs.right)} of ${px(s.vw)}`,
+    );
+    // The end-of-match popup still embeds the COMPACT board (its own recap of
+    // the last decided round), and that is where the compact layout is asserted
+    // now that the per-round card is a bare verdict.
+    check(
+      `${vp.label} popup: the compact board drops the centre column so the lanes get the card's width`,
+      bare.centre === null &&
+        bare.lanes.length === 2 &&
+        (!vp.phone || Math.min(...bare.lanes.map((l) => l.box.w)) >= vp.minLaneCompact),
+      `centre ${bare.centre ? "present" : "absent"}, lanes ${px(
+        Math.min(...bare.lanes.map((l) => l.box.w)),
+      )}${vp.phone ? ` (floor ${px(vp.minLaneCompact)})` : " — desktop: the popup card is narrower than the page board"}`,
     );
     await capture(`${vp.label}-popup-top`);
     await page.evaluate(() => window.scrollPopupToRace());

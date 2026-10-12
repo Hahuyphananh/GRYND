@@ -25,7 +25,13 @@ import {
   isStaleSnapshot,
   liveTargetMsOf,
   readStoredLocalSeat,
+  revealWindowMsOf,
 } from "../src/lib/precision/matchView.ts";
+import {
+  ROUND_COUNTDOWN_MS,
+  ROUND_RESULT_MIN_VISIBLE_MS,
+  ROUND_RESULT_REVEAL_MS,
+} from "../src/lib/precision/constants.ts";
 
 const PLAYERS = [
   { seat: 1, userId: "human", name: "You", isReady: true, isConnected: true },
@@ -120,6 +126,73 @@ test("the live target is only a fallback for snapshots without a decision target
   // A malformed payload degrades to "no reveal" instead of throwing.
   assert.equal(buildRoundResultReveal(state({ lastRoundStops: {} })), null);
   assert.equal(buildRoundResultReveal(undefined), null);
+});
+
+test("the reveal window hands the screen over to a WHOLE pre-round countdown", () => {
+  // Server-side sequencing: the next round is armed at the DECISION with
+  // `countdownEndsAt = decision + ROUND_RESULT_REVEAL_MS + ROUND_COUNTDOWN_MS`,
+  // and the client clamps the countdown it draws to ROUND_COUNTDOWN_MS. So the
+  // instant the countdown BEGINS is `armingStartedAt + ROUND_RESULT_REVEAL_MS`
+  // — which is exactly where the popup has to end, or the player reads a
+  // countdown that is already part-way through.
+  const decisionAt = 1_700_000_000_000;
+  const armed = state({
+    phase: "arming",
+    armingStartedAt: decisionAt,
+    countdownEndsAt: decisionAt + ROUND_RESULT_REVEAL_MS + ROUND_COUNTDOWN_MS,
+  });
+
+  // Observed the moment the decision lands: the full window, which ends exactly
+  // on the countdown's first tick.
+  assert.equal(revealWindowMsOf(armed, decisionAt), ROUND_RESULT_REVEAL_MS);
+  const endsAt = decisionAt + revealWindowMsOf(armed, decisionAt);
+  assert.equal(
+    endsAt,
+    armed.countdownEndsAt - ROUND_COUNTDOWN_MS,
+    "the popup must end where the countdown begins, not inside it",
+  );
+
+  // Observed mid-window (the normal case — a broadcast, or the stop's own
+  // ACK, one packet after the decision): the remainder, so the popup still ends
+  // on the same server instant instead of drifting by the delivery lag.
+  const observedLate = decisionAt + 900;
+  assert.equal(
+    observedLate + revealWindowMsOf(armed, observedLate),
+    endsAt,
+    "a late observation must not push the popup past the countdown's start",
+  );
+});
+
+test("a late reveal still gets a readable window, and never one longer than the window", () => {
+  const decisionAt = 1_700_000_000_000;
+  const armed = state({ armingStartedAt: decisionAt });
+
+  // Observed after the countdown already began (a dropped broadcast recovered
+  // by a read): the floor, so the result is not a one-frame flash.
+  assert.equal(
+    revealWindowMsOf(armed, decisionAt + ROUND_RESULT_REVEAL_MS + 5_000),
+    ROUND_RESULT_MIN_VISIBLE_MS,
+  );
+
+  // A device clock running AHEAD of the server's (or an offset estimate that
+  // lands early) must not be able to hold the popup over the countdown: the
+  // window is capped at the cooldown, never extended by the skew.
+  for (const now of [decisionAt - 60_000, decisionAt - 1, decisionAt, Number.NaN]) {
+    const window = revealWindowMsOf(armed, now);
+    assert.ok(
+      window >= ROUND_RESULT_MIN_VISIBLE_MS && window <= ROUND_RESULT_REVEAL_MS,
+      `window ${window} out of range for now=${String(now)}`,
+    );
+  }
+});
+
+test("a finished match (no decision stamp) keeps the full reveal window", () => {
+  // `finishMatchState` clears the arming stamps, so the end-of-match reveal has
+  // nothing to anchor on and must fall back to the whole window rather than to
+  // the floor — the match is over and there is no countdown to protect.
+  const finished = state({ phase: "finished", armingStartedAt: null, countdownEndsAt: null });
+  assert.equal(revealWindowMsOf(finished, 1_700_000_000_000), ROUND_RESULT_REVEAL_MS);
+  assert.equal(revealWindowMsOf(null, 1_700_000_000_000), ROUND_RESULT_REVEAL_MS);
 });
 
 test("buildRoundStops only summarises a decision when BOTH seats stopped", () => {

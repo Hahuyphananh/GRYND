@@ -8,8 +8,8 @@
 // elements across the evaluate boundary:
 //
 //   window.renderRace(payload)        → the live two-lane board (active phase)
-//   window.renderRoundResult(payload) → the per-round result overlay (which
-//                                       embeds the compact board)
+//   window.renderRoundResult(payload) → the per-round outcome card (win/loss/
+//                                       tie verdict, no board)
 //   window.renderPopup(payload)       → the end-of-match popup (which embeds
 //                                       the compact board under "Last round")
 //
@@ -79,18 +79,16 @@ window.renderRace = (p) =>
     </Shell>
   );
 
+// The per-round overlay is a bare outcome card — green win / red loss / amber
+// tie, no per-seat figures — so the scenario only has to name the round's
+// winner and the seat we are looking from.
 window.renderRoundResult = (p) =>
   root.render(
     <PrecisionRoundResultPanel
-      targetMs={p.targetMs}
-      seat1Name={p.seat1Name}
-      seat1ElapsedMs={p.seat1ElapsedMs}
-      seat1DiffMs={p.seat1DiffMs}
-      seat2Name={p.seat2Name}
-      seat2ElapsedMs={p.seat2ElapsedMs}
-      seat2DiffMs={p.seat2DiffMs}
       roundWinnerSeat={p.roundWinnerSeat ?? null}
       localSeat={p.localSeat ?? 1}
+      decision={p.decision ?? "qa-decision"}
+      windowMs={p.windowMs}
       onDismiss={noop}
     />
   );

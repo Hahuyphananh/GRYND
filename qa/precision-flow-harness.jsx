@@ -38,7 +38,11 @@ window.__precision = {
   //
   //   stopResponse    the post-stop snapshot the "server" returns
   //   stopAckMode     "withMatch" → the ACK carries it (what the realtime
-  //                   server does now); "bare" → `{ success: true }` alone
+  //                   server does now); "bare" → `{ success: true }` alone;
+  //                   "duplicate" → the refusal a stop that ALREADY LANDED
+  //                   comes back as — `success: false` WITH the snapshot, which
+  //                   is the same click seen twice and still has a result to
+  //                   show (see the realtime refusal ACK)
   //   stopBroadcast   whether the room broadcast follows, like the fan-out
   //
   // "bare" + no broadcast is the reported case: the player's own result must
@@ -164,17 +168,23 @@ function makeSocket() {
         // the snapshot inside it, unless the test scripted a bare ACK), then the
         // room fan-out happens — or does not, when the test is exercising a
         // broadcast that never arrives.
+        const delivered = {
+          match: response.match,
+          bothStopped: response.bothStopped === true,
+          roundWinnerSeat: response.roundWinnerSeat ?? null,
+          matchFinished: response.matchFinished === true,
+        };
         ack(
           null,
           script.stopAckMode === "bare"
             ? { success: true }
-            : {
-                success: true,
-                match: response.match,
-                bothStopped: response.bothStopped === true,
-                roundWinnerSeat: response.roundWinnerSeat ?? null,
-                matchFinished: response.matchFinished === true,
-              }
+            : script.stopAckMode === "duplicate"
+              ? {
+                  success: false,
+                  error: "A stop packet has already been submitted for this round.",
+                  ...delivered,
+                }
+              : { success: true, ...delivered }
         );
         if (script.stopBroadcast) {
           deliver("precision:roundResult", {

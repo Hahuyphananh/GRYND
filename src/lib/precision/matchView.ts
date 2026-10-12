@@ -10,6 +10,7 @@
 // disagree about which round just ended or where the rockets parked.
 
 import type { RocketLane } from "../../components/precision/PrecisionRocketRace";
+import { ROUND_RESULT_MIN_VISIBLE_MS, ROUND_RESULT_REVEAL_MS } from "./constants";
 import type { PlayerSeat, PrecisionPlayer, PrecisionState } from "./types";
 
 /** The running display clock's frozen value for the local seat. */
@@ -123,6 +124,45 @@ export function buildRoundStops(state: PrecisionState | null): RoundStopsSummary
     seat1: { elapsedMs: lr.seat1.elapsedMs, diffMs: lr.seat1.diffMs },
     seat2: { elapsedMs: lr.seat2.elapsedMs, diffMs: lr.seat2.diffMs },
   };
+}
+
+/**
+ * How long the round-result reveal stays on screen once a client has OBSERVED
+ * the decision — the SECOND half of the sequencing rule, and the reason the
+ * popup and the next round's countdown can no longer overlap.
+ *
+ * The server measures its windows from the DECISION (`armRoundState` stamps
+ * `armingStartedAt` = the decision instant and holds the countdown at
+ * `armingStartedAt + ROUND_RESULT_REVEAL_MS`), while a client can only start
+ * counting from the moment the decision REACHES it — up to a packet round trip,
+ * or much more when the result arrives through a reconcile read instead of the
+ * broadcast. Measured from observation, the popup therefore outlived its slot
+ * by exactly that lag: the countdown the player is supposed to see in full was
+ * already part-way through when they got their screen back, and a late enough
+ * observation put the popup on top of a round that was already live.
+ *
+ * Anchoring the window on the server's own decision stamp ends both: the popup
+ * still appears the moment the decision is seen (it is shown immediately, for
+ * whatever is LEFT of the window), and it gives up the screen exactly when the
+ * server's countdown starts — so the pre-round countdown the player then reads
+ * is always a whole `ROUND_COUNTDOWN_MS`.
+ *
+ * `serverNowMs` is the current time on the SERVER's clock (the page's own
+ * estimate), because `armingStartedAt` is a server instant. When there is no
+ * decision stamp to anchor on — a finished match (the stamp is cleared), or a
+ * payload written by an older server — the full window is used, which is what
+ * the end-of-match reveal wants anyway.
+ */
+export function revealWindowMsOf(state: PrecisionState | null, serverNowMs: number): number {
+  const decisionAt = typeof state?.armingStartedAt === "number" ? state.armingStartedAt : null;
+  if (decisionAt === null || !Number.isFinite(decisionAt)) return ROUND_RESULT_REVEAL_MS;
+  const now = Number.isFinite(serverNowMs) ? serverNowMs : Date.now();
+  const remaining = decisionAt + ROUND_RESULT_REVEAL_MS - now;
+  if (!Number.isFinite(remaining)) return ROUND_RESULT_REVEAL_MS;
+  // Never longer than the window (a skewed estimate must not hold the popup
+  // over the countdown), never shorter than the floor (a late observation still
+  // gets to READ the result).
+  return Math.min(ROUND_RESULT_REVEAL_MS, Math.max(ROUND_RESULT_MIN_VISIBLE_MS, remaining));
 }
 
 /**

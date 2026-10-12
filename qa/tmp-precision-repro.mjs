@@ -130,12 +130,17 @@ const dump = (label) =>
     const t = (sel) => document.querySelector(sel)?.textContent?.replace(/\s+/g, " ").trim() ?? null;
     const all = (sel) =>
       [...document.querySelectorAll(sel)].map((e) => e.textContent.replace(/\s+/g, " ").trim());
+    const panel = document.querySelector("[data-testid='precision-round-result-panel']");
+    const heading = document.querySelector("[data-testid='precision-round-result-outcome']");
     return {
       label: l,
-      rows: all("[data-testid^='precision-round-result-row-']"),
-      rankBadges: all("[data-testid^='precision-round-result-rank-']"),
-      banner: t("[data-testid='precision-round-result-banner']"),
-      panelTarget: t("[data-testid='precision-round-result-target']"),
+      // The per-round overlay is a bare win/loss/tie verdict now: the outcome,
+      // the seat it names, and the colour it paints are what it reports.
+      outcome: panel?.getAttribute("data-outcome") ?? null,
+      outcomeSeat: panel?.getAttribute("data-winner-seat") ?? null,
+      outcomeWord: t("[data-testid='precision-round-result-outcome']"),
+      outcomeColor: heading ? getComputedStyle(heading).color : null,
+      outcomeNextIn: t("[data-testid='precision-round-result-countdown']"),
       lanePills: all("[data-testid^='precision-race-stop-']"),
       laneLanes: all("[data-testid^='precision-race-lane-']"),
       raceCentre: t("[data-testid='precision-race-center']"),

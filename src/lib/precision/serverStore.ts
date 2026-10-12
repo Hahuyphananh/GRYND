@@ -434,30 +434,30 @@ function applyDueTransitions(
 
   // ── When the bot's stop becomes due ───────────────────────────────────
   //
-  // The bot's stop instant is derived from the revealed target ALONE (see the
-  // reveal above), so it is already known the moment the round opens: applying
-  // it early can never change its graded time, only WHEN the players are told
-  // the round is over. Waiting for its deadline therefore bought nothing and
-  // cost real time — a human who stopped short of the bot's target watched the
-  // bot's rocket fly on for up to the rest of the round before the result
-  // appeared (reported as "when I click stop, the AI is still in flight and the
-  // results show with a delay").
+  // The bot's stop is due ONLY on its own stored instant — the timer the
+  // realtime server's scheduler owns (and any read that lands past it).
   //
-  // So this is due for two different reasons:
-  //   * the stored instant has arrived (unchanged — the timer the realtime
-  //     server's scheduler owns), or
-  //   * a HUMAN seat has already stopped, so the bot is the only thing the round
-  //     is still waiting on. The round is decidable at that instant, and the bot
-  //     is graded off its own stored instant either way — the delay was pure
-  //     dead air in front of the result popup.
-  const humanStopPending = write.state.players.some(
-    (p) => p.userId !== PRECISION_AI_USER_ID && Boolean(write.pendingStops[p.userId]),
-  );
+  // This used to fire early: a human's stop made the round decidable (the bot's
+  // grade cannot change either way — it is computed from its own stored
+  // instant), so the bot's stop was applied the moment the human's packet
+  // landed, purely to put the result on screen sooner. What that cost was the
+  // RACE: the bot's lane is frozen from the stop this publishes, so a human who
+  // stopped first watched BOTH rockets park at once — the bot's at a position it
+  // had not reached yet — and the round was over on screen while the bot was
+  // still supposed to be flying. Each seat's flight now ends when that seat
+  // stops, so the round is decided when the LAST stop lands: the scheduler
+  // applies the bot's stop at its instant, and only then does either client see
+  // the round resolve.
+  //
+  // The graded time is identical either way (it is the stored instant, never
+  // the moment this call runs — see the telemetry below), so nothing about the
+  // score depends on when this fires; only the ordering of the two flights and
+  // the moment the result popup appears do.
   if (
     options.isAiGame &&
     write.state.phase === "active" &&
     write.aiStopAt !== null &&
-    (write.aiStopAt.getTime() <= now || humanStopPending) &&
+    write.aiStopAt.getTime() <= now &&
     write.state.roundGoInstant !== null &&
     !Object.prototype.hasOwnProperty.call(write.pendingStops, PRECISION_AI_USER_ID)
   ) {
@@ -1292,20 +1292,20 @@ export async function recordRoundStop(
 
     write.pendingStops[userId] = telemetry;
 
-    // A human stop against the BOT makes the round decidable immediately: the
-    // bot's stop instant was fixed at the reveal, so `applyDueTransitions`
-    // applies it here and grades the round in the same call (see the condition
-    // it tests). Without this the round sat waiting out the bot's own deadline
-    // with the result already determined — the reported "the AI is still in
-    // flight and the results show with a delay". It is a no-op for a human duel
-    // (`isAiGame` false → the block is skipped) and for a bot that was already
-    // past its instant, so this only ever brings a decided round forward.
+    // Both seats stopped → the round is graded here. Against the bot that means
+    // the human stopped AFTER the bot's instant (the usual case: the bot aims
+    // for the target, a human who is slower stops past it), so the round
+    // resolves on this packet. A human who stopped FIRST leaves the round open
+    // until the bot's own instant — the bot's lane is still flying, and the
+    // result must not appear while it is.
     const due = applyDueTransitions(write, stopInstantMs, {
       isAiGame: row.isAiGame,
       aiDifficulty: row.aiDifficulty,
     });
 
-    // Not both seats in yet — persist the bot's progress (if any) and wait.
+    // Not both seats in yet — persist this seat's stop (and the bot's, if its
+    // instant came due in the same breath) and wait for the other flight to
+    // end. `bothStopped` stays false so the caller does not announce a result.
     if (!due.decided && !applyRoundResolutionIfReady(write, stopInstantMs).resolved) {
       await persistMatch(tx, matchId, write);
       return stopResult(state, { bothStopped: false });

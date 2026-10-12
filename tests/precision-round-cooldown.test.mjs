@@ -145,6 +145,103 @@ test("the store only gates the rounds that follow a decision", () => {
   );
 });
 
+test("the result popup ends where the countdown begins, and never over a live round", () => {
+  // The other half of the same rule. The server's gate sequences the
+  // countdown behind the result; the CLIENT's reveal has to end on that same
+  // server instant, or the player reads the countdown's tail (a popup window
+  // measured from OBSERVATION drifts by the delivery lag, and a late enough
+  // observation put the popup on top of a round that was already live).
+  const matchView = read("../src/lib/precision/matchView.ts");
+  assert.match(
+    matchView,
+    /export function revealWindowMsOf\(state: PrecisionState \| null, serverNowMs: number\): number \{/,
+    "the reveal window must be derivable from the decision stamp",
+  );
+  assert.match(
+    matchView,
+    /const remaining = decisionAt \+ ROUND_RESULT_REVEAL_MS - now;/,
+    "the window must be measured from the DECISION, not from observation",
+  );
+
+  const hook = read("../src/hooks/usePrecisionRoundReveal.ts");
+  assert.match(
+    hook,
+    /revealWindowMsOf\(state, serverClockNow\(Date\.now\(\), offsetRef\.current\)\)/,
+    "the reveal timer must use the server-anchored window",
+  );
+  // A reveal is never STARTED while a round is live…
+  assert.match(
+    hook,
+    /if \(state\?\.phase === "active"\) return;/,
+    "a live round must never start a reveal (the previous round's decision is still in the snapshot)",
+  );
+  // …and an open round drops whatever is on screen.
+  assert.match(
+    hook,
+    /if \(state\?\.phase === "active"\) dismissReveal\(\);/,
+    "the round opening must dismiss the result popup outright",
+  );
+
+  // The page has to hand the hook the server clock, or the anchor is measured
+  // on the device's own wall clock.
+  const page = read("../src/app/casino/precision/game/[matchId]/PageClient.tsx");
+  assert.match(
+    page,
+    /usePrecisionRoundReveal\(\{[\s\S]{0,200}?serverClockOffsetMs,\s*\}\);/,
+    "the match page must pass its server-clock estimate to the reveal",
+  );
+});
+
+test("the round-result overlay is an outcome verdict, not a both-seats table", () => {
+  // The card answers ONE question — did our seat take the round — and it answers
+  // it with a colour: green (we won), red (we did not), amber (a true tie). The
+  // per-seat times, deltas and rank badges it used to print were unreadable in
+  // the few seconds the card is up, and the board behind it already recaps the
+  // round spatially.
+  const panel = read("../src/components/precision/PrecisionRoundResultPanel.tsx");
+  for (const removed of [
+    "precision-round-result-row-",
+    "precision-round-result-rank-",
+    "precision-round-result-target",
+    "precision-round-result-race",
+    "precision-round-result-banner",
+    "diffToRank",
+  ]) {
+    assert.ok(
+      !panel.includes(removed),
+      `the card must not carry the old both-seats furniture (${removed})`,
+    );
+  }
+  assert.match(
+    panel,
+    /roundWinnerSeat === localSeat \? "win" : "loss"/,
+    "green vs red is the server's round winner compared against our own seat, and nothing else",
+  );
+  assert.match(panel, /data-outcome=\{outcome\}/, "the verdict must be readable off the card");
+  assert.match(panel, /t\("games\.precision\.you_win_round"\)/);
+  assert.match(panel, /t\("games\.precision\.you_lose_round"\)/);
+  assert.match(panel, /t\("games\.precision\.tie_replaying"\)/);
+  // The three palettes, spelled out — a win cannot drift into the loss colour.
+  assert.match(panel, /text-emerald-200/, "the win verdict must be green");
+  assert.match(panel, /text-red-200/, "the loss verdict must be red");
+  assert.match(panel, /text-amber-200/, "a tie must be amber, neither win nor loss");
+
+  // …and the copy the card renders ships in every language: the loss line the
+  // redesign added, plus a "next round in Ns" line that takes its seconds from
+  // the window the page measured (it used to be a hardcoded 3s).
+  const text = read("../src/lib/appTextTranslations.js");
+  assert.equal(
+    (text.match(/you_lose_round:/g) ?? []).length,
+    3,
+    "en + fr + es must all carry the loss verdict",
+  );
+  assert.equal(
+    (text.match(/next_round_in: "[^"]*\{seconds\}s/g) ?? []).length,
+    3,
+    "en + fr + es must all interpolate the countdown's seconds",
+  );
+});
+
 test("the displayed countdown is clamped to the countdown's own length", () => {
   const hook = read("../src/hooks/usePrecisionRoundClock.ts");
   assert.match(

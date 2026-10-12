@@ -8,6 +8,14 @@ Precision is a **reflex-stop duel**: each round a hidden timer runs toward a ran
 2. **Active — STOP!** — a countdown/timer runs. Both players hit **Stop** when they judge the target time has been reached.
 3. **Resolution** — whoever stops closest to the target time wins the round (+1 round win). Round scores are server-authoritative.
 
+### One flight per stop
+
+Each rocket stops when **its own seat** stops, and only then: a lane whose seat has not stopped keeps flying on the board's shared clock, so a round where you stop early stays visibly open until the opponent's stop lands too. The bot's stop is applied **on its own server instant** — a human's click never brings it forward (the bot is graded from that stored instant either way, so only the moment the players are told would change) — and the round is graded when the **last** stop is in.
+
+### The round-result card
+
+Between rounds the overlay is a one-glance verdict rather than a results table: **green** when your seat took the round, **red** when the opponent did, **amber** on a tie (the round then replays with a fresh target). It deliberately carries no per-seat times, deltas or rank badges — those are unreadable in the few seconds it is up, and the board behind it parks both rockets at their server-stamped stops for exactly that. The times that decide the round stay on `state.lastRoundStops`.
+
 ## Match format
 
 - **Best of 5** — the first player to win **3 rounds** ends the match and takes the pot (max 5 rounds).
@@ -31,6 +39,8 @@ Precision is a **reflex-stop duel**: each round a hidden timer runs toward a ran
 | Target time | Random 2.5–10 s per round |
 | Seats | 2 (strictly 1v1) |
 | Arming countdown | 5 s (server-stamped) |
+| Round-result card | green win / red loss / amber tie — the verdict only, no figures |
+| Round-result popup | appears with the decision, ends when the countdown starts (3 s window), so the whole 5 s countdown is read after it |
 
 ## Server architecture
 
