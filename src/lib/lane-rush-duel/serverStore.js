@@ -49,7 +49,12 @@
 
 import { eq, and, sql, isNull } from "drizzle-orm";
 import { db } from "../../db/client";
-import { STAKES_RETIRED, normalizeStake } from "../games/stakes";
+import { normalizeStake, validateWager } from "../games/stakes";
+import {
+  escrowMatchWagers,
+  refundWager,
+  settlePayout,
+} from "../tokens/wager";
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
@@ -68,6 +73,7 @@ import {
   brokenTilesOf,
   buildSharedBridge,
   canPlaceFlag,
+  computePayout,
   decideBridgeBotAction,
   flagPlacement,
   isTileBroken,
@@ -142,14 +148,11 @@ function opponentIdOf(match, seat) {
 
 // Validate stake + difficulty at lobby creation time.
 export function validateMatchParams({ stakeAmount, difficulty }) {
-  const stake = Number(stakeAmount);
-  // STAKES ARE RETIRED: a free match is the only legal entry, so the stake
-  // range no longer rejects anything (the difficulty still must be valid).
-  if (!STAKES_RETIRED && (!Number.isFinite(stake) || stake < MIN_STAKE || stake > MAX_STAKE)) {
-    return {
-      ok: false,
-      error: `Stake must be a number in [${MIN_STAKE}, ${MAX_STAKE}]`,
-    };
+  // The wager policy owns the legal range (including "0 = free match"); the
+  // difficulty still has to be valid.
+  const wager = validateWager(stakeAmount, "lane-rush-duel");
+  if (!wager.ok) {
+    return { ok: false, error: wager.error };
   }
   const diff = String(difficulty || "").toLowerCase();
   if (!DIFFICULTIES[diff]) {
@@ -194,10 +197,8 @@ export async function listOpenMatches({ limit = 30 } = {}) {
 export async function createOrJoin({ userId, stakeAmount, difficulty, vsBot }) {
   // Test vs Bot practice match — no escrow, no matchmaking. The bot
   // is joined immediately inside the same transaction, so the player
-  // goes straight to the ready banner. Stake validation is SKIPPED
-  // here (stake is 0 by definition) — only the difficulty is checked,
-  // otherwise a zero stake trips `validateMatchParams` and the free
-  // practice button errors out with "Stake must be a number in [...]".
+  // goes straight to the ready banner. Wager validation is SKIPPED here
+  // (a bot match is free by definition) — only the difficulty is checked.
   if (vsBot) {
     const diff = String(difficulty || "").toLowerCase();
     if (!DIFFICULTIES[diff]) {
@@ -208,9 +209,9 @@ export async function createOrJoin({ userId, stakeAmount, difficulty, vsBot }) {
     });
   }
 
-  // Retired stakes: the match is free, and every escrow/payout below operates
-  // on 0 because the stake is normalized here.
-  stakeAmount = normalizeStake(stakeAmount);
+  // The wager policy clamps the requested stake to the legal range (0 = a
+  // free match); the store re-validates the result below.
+  stakeAmount = normalizeStake(stakeAmount, "lane-rush-duel");
   const validation = validateMatchParams({ stakeAmount, difficulty });
   if (!validation.ok) {
     return { error: validation.error, status: 400 };
@@ -313,6 +314,17 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
   if (!match || match.status !== MATCH_STATUS.WAITING || match.player2Id) {
     return { error: "Lobby no longer available", status: 409 };
   }
+
+  // Escrow BOTH seats before the seat fills: a match either funds fully or
+  // not at all, so a filled paid seat is always backed by two stakes.
+  const escrow = await escrowMatchWagers({
+    clerkIds: [match.player1Id, userId],
+    stake: match.stakeAmount,
+    matchId: candidateId,
+    gameKey: "lane-rush-duel",
+    tx,
+  });
+  if (!escrow.ok) return { error: escrow.error, status: escrow.status };
 
   // Coin-flip who selects first. The joined match keeps the host's already
   // stored shared bridge (one layout for both seats — the joiner's client
@@ -863,6 +875,50 @@ async function applyBridgeJump(tx, match, { entry, seat, outcome }) {
   return updated || { ...match, ...shared, [turn.rowField]: turn.row };
 }
 
+// ── Coin escrow ───────────────────────────────────────────────────────
+// Both stakes were taken at join; a settled match pays the winner 1.9× their
+// stake (pot minus the 10% house fee), a draw refunds each seat, and a
+// practice / bot match (stake 0) moves nothing.
+function escrowFor(match, result, winnerId) {
+  const stake = Number(Number(match?.stakeAmount) || 0);
+  if (stake <= 0 || isBotMatch(match)) {
+    return { paid: false, payout: null, winnerId, houseFee: "0.00", prizePaid: "0.00" };
+  }
+  const payout = computePayout({ stakeAmount: stake, result });
+  return {
+    paid: true,
+    payout,
+    winnerId,
+    houseFee: Number(payout.houseFee).toFixed(2),
+    prizePaid: Number(payout.prizePaid).toFixed(2),
+  };
+}
+
+async function settleEscrow(tx, match, escrow) {
+  if (!escrow?.paid) return;
+  if (escrow.winnerId) {
+    await settlePayout({
+      clerkId: escrow.winnerId,
+      amount: escrow.payout.winnerNet,
+      matchId: match.id,
+      gameKey: "lane-rush-duel",
+      tx,
+    });
+    return;
+  }
+  // Draw: each seat gets its own stake back.
+  for (const clerkId of [match.player1Id, match.player2Id]) {
+    if (!clerkId) continue;
+    await refundWager({
+      clerkId,
+      stake: escrow.payout.refundEach,
+      matchId: match.id,
+      gameKey: "lane-rush-duel",
+      tx,
+    });
+  }
+}
+
 // ── Resolve a settled match ───────────────────────────────────────────
 // Called only for a genuine end: a seat crossing row BRIDGE_ROWS (the
 // loser is the other seat) or a resignation. A fall never reaches here —
@@ -885,6 +941,8 @@ async function settle(tx, match, { result, action, reason }) {
         ? match.player2Id
         : null;
 
+  const escrow = escrowFor(match, result, winnerId);
+
   const existingActions = Array.isArray(match.actions) ? match.actions : [];
   const actions = action && existingActions.includes(action)
     ? existingActions
@@ -898,8 +956,8 @@ async function settle(tx, match, { result, action, reason }) {
       roundDeadline: null,
       result,
       winnerId,
-      houseFee: "0.00",
-      prizePaid: "0.00",
+      houseFee: escrow.houseFee,
+      prizePaid: escrow.prizePaid,
       actions,
       // The bridge state as it stood at the end (the winner crossed row 10; a
       // resignation keeps both seats where they were) — persisted here so the
@@ -916,6 +974,10 @@ async function settle(tx, match, { result, action, reason }) {
 
   const finalRow = updated || match;
   mirrorQueueTransition({ gameKey: "lane-rush-duel", matchId: match.id, status: "completed", playerCount: [match.player1Id, match.player2Id].filter(Boolean).length });
+
+  // A failed coin move must roll the settlement back rather than settle a
+  // paid match without paying it.
+  await settleEscrow(tx, finalRow, escrow);
 
   // Practice (bot) matches are zero-stake and never feed the
   // leaderboards — no stats, no wins to farm.

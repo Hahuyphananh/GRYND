@@ -42,12 +42,11 @@ export async function POST(req) {
     }
 
     const body = await req.json();
-    // STAKES ARE RETIRED (src/lib/games/stakes.js): competitive play is
-    // free, so a table is created at stake 0 no matter what the client sent.
-    // Whatever was requested is ignored rather than rejected — old clients,
-    // cached pages and saved stake defaults must all still be able to start a
-    // game.
-    const tableAmount = normalizeStake(body.tableAmount);
+    // The stake the table will carry. Opening a table costs nothing: both
+    // stakes are taken when the second seat fills (see /join-game), which is
+    // also what the winner is paid out of. A missing / unusable value is free
+    // play (stake 0); a real one is clamped to the game's ceiling.
+    const tableAmount = normalizeStake(body.tableAmount, "chess");
     const timerMode = String(body.timerMode || "").toLowerCase();
     const timeLimit = Number(body.timeLimit);
     

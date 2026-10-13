@@ -17,11 +17,16 @@
 //   * a human stop + the bot's stop decide exactly one round;
 //   * pairing two players produces one shared match id, and the joined id
 //     can never be joined twice;
+//   * a STAKED pairing escrows both seats behind the match row, and a teardown
+//     gives both stakes back;
 //   * forfeit / teardown / sweep leave nothing behind.
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { eq, inArray } from "drizzle-orm";
 
+import { db } from "../src/db/client.ts";
+import { users } from "../src/db/schema.ts";
 import {
   PRECISION_AI_USER_ID,
   cancelQueueEntry,
@@ -158,6 +163,59 @@ test("practice match: ready_up → armed → revealed → bot stop → round dec
   }
 });
 
+/** Create the two throwaway accounts a STAKED pairing needs, so the escrow at
+ *  pairing time has real rows (and real coins) to move. */
+async function createStakedUser(clerkId) {
+  await db.insert(users).values({
+    clerkId,
+    name: `Precision ${clerkId.slice(-2)}`,
+    email: `${clerkId}@precision-db-test.local`,
+    password: "not-a-real-login",
+    balance: "100.00",
+  });
+}
+
+async function balanceOf(clerkId) {
+  const [row] = await db
+    .select({ balance: users.balance })
+    .from(users)
+    .where(eq(users.clerkId, clerkId));
+  return Number(row?.balance ?? 0);
+}
+
+test("a staked pairing escrows both seats and gives both stakes back on teardown", { skip: !enabled }, async () => {
+  const seat1 = `${aiUser}-escrow-1`;
+  const seat2 = `${aiUser}-escrow-2`;
+  const wager = 5;
+  let matchId = null;
+  try {
+    await createStakedUser(seat1);
+    await createStakedUser(seat2);
+
+    const queued = await tryAutoMatch({ wager, hostUserId: seat1, hostName: "One" });
+    assert.equal(queued.status, "waiting");
+    matchId = queued.gameId;
+    // Waiting costs nothing: the stake is only taken when the pairing lands.
+    assert.equal(await balanceOf(seat1), 100);
+
+    const paired = await tryAutoMatch({ wager, hostUserId: seat2, hostName: "Two" });
+    assert.equal(paired.status, "matched");
+    // Both seats funded, from ONE transaction behind the match row.
+    assert.equal(await balanceOf(seat1), 100 - wager);
+    assert.equal(await balanceOf(seat2), 100 - wager);
+
+    // Tearing the match down (a resign / an abandoned sweep behaves the same)
+    // returns both stakes — a voided match leaves nobody out of pocket.
+    assert.equal(await removePrecisionMatch(matchId), true);
+    assert.equal(await balanceOf(seat1), 100);
+    assert.equal(await balanceOf(seat2), 100);
+    matchId = null;
+  } finally {
+    if (matchId) await removePrecisionMatch(matchId);
+    await db.delete(users).where(inArray(users.clerkId, [seat1, seat2]));
+  }
+});
+
 test("pairing: two players get ONE shared match id and it can't be joined twice", { skip: !enabled }, async () => {
   const userA = `${aiUser}-a`;
   const userB = `${aiUser}-b`;
@@ -165,6 +223,10 @@ test("pairing: two players get ONE shared match id and it can't be joined twice"
   const wager = 1;
   let matchId = null;
   try {
+    // A staked pairing escrows BOTH seats, so the seats must exist with coins.
+    await createStakedUser(userA);
+    await createStakedUser(userB);
+
     const first = await tryAutoMatch({ wager, hostUserId: userA, hostName: "A" });
     assert.equal(first.status, "waiting");
     matchId = first.gameId;
@@ -202,7 +264,9 @@ test("pairing: two players get ONE shared match id and it can't be joined twice"
     assert.equal(readyB.bothReady, true);
     assert.equal(readyB.match.phase, "arming");
   } finally {
+    // Teardown refunds the escrow first, so this must run before the users go.
     if (matchId) await removePrecisionMatch(matchId);
+    await db.delete(users).where(inArray(users.clerkId, [userA, userB]));
   }
 });
 

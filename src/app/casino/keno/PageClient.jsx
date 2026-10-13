@@ -28,6 +28,7 @@ import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
 import PvpLobbyPage, { CoinIcon } from "../../../components/lobby/PvpLobby";
+import { useCoinBalance } from "../../../hooks/useCoinBalance";
 import { useSocket } from "../../../context/SocketProvider";
 import {
   KENO_PVP_LOBBY_ROOM,
@@ -56,9 +57,10 @@ export default function KenoLobbyPage() {
   const posthog = usePostHog();
   const { socket } = useSocket();
 
-  // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
-  // so there is no stake to pick and no token balance to load.
-  const stake = 0;
+  // Coin wager: the player picks the stake the lobby is opened at, and the
+  // server escrows both seats the moment an opponent joins.
+  const coinBalance = useCoinBalance();
+  const [stake, setStake] = useState(10);
   const [availableMatches, setAvailableMatches] = useState([]);
   // False once the first list response lands, so the empty state never
   // flashes before the request resolves.
@@ -252,6 +254,7 @@ export default function KenoLobbyPage() {
 
   return (
     <PvpLobbyPage
+      wager={{ value: stake, onChange: setStake, balance: coinBalance }}
       title="Keno Lobby"
       subtitle={
         <>

@@ -4,6 +4,8 @@ import { dotsAndBoxesGames } from "../db/schema";
 import { applyLeaderboardCounters } from "./leaderboardCounters";
 import { applyRatingResult } from "./rating";
 import { applyTrophyResult } from "./trophyStore";
+import { PVP_RAKE_PCT } from "./games/economy";
+import { refundWager, settlePayout } from "./tokens/wager";
 import {
   TURN_SECONDS as DEFAULT_MOVE_TIME_SECONDS,
   determineResult,
@@ -131,6 +133,22 @@ export async function settleDotsAndBoxesGame(gameId, winnerClerkId, result) {
         })
         .where(eq(dotsAndBoxesGames.id, gameId));
 
+      // A draw returns BOTH escrowed stakes. `refundWager` only pays back a
+      // stake that was actually taken, so a free / vs-AI game and a waiting
+      // game settled before anyone joined are both no-ops.
+      if (!locked.isAiGame) {
+        for (const clerkId of [locked.hostClerkId, locked.guestClerkId]) {
+          if (!clerkId) continue;
+          await refundWager({
+            clerkId,
+            stake: bet,
+            matchId: gameId,
+            gameKey: "dots-and-boxes",
+            tx,
+          });
+        }
+      }
+
       // Per-game Elo — a draw moves BOTH ratings by K × (0.5 − expected).
       // The row-lock + payout guard above and the rating_events journal keep
       // this to exactly one application per match.
@@ -150,8 +168,13 @@ export async function settleDotsAndBoxesGame(gameId, winnerClerkId, result) {
 
     if (!winnerClerkId) return;
 
-    // Stakes are retired: no pot, no rake and no payout to move.
-    const payout = 0;
+    // The pot: both stakes were escrowed when the guest joined. The house
+    // keeps the shared PvP rake and the winner takes the rest — 1.9× their
+    // stake, the same split this game paid before wagering was retired.
+    const isPaid = !locked.isAiGame && bet > 0;
+    const payout = isPaid
+      ? Number((2 * bet * (1 - PVP_RAKE_PCT)).toFixed(2))
+      : 0;
 
     if (!locked.isAiGame) {
       // SKILL leaderboards only (wins/losses/win_rate/streaks) — outcome-driven
@@ -196,6 +219,18 @@ export async function settleDotsAndBoxesGame(gameId, winnerClerkId, result) {
           loserClerkId,
         }).catch(() => {});
       }
+    }
+
+    // Pay the winner from the escrowed pot; a failure rolls the settlement
+    // back rather than finishing a paid game unpaid.
+    if (isPaid) {
+      await settlePayout({
+        clerkId: winnerClerkId,
+        amount: payout,
+        matchId: gameId,
+        gameKey: "dots-and-boxes",
+        tx,
+      });
     }
 
     await tx

@@ -733,11 +733,10 @@ test("settlement clears the live tile and pays the winner", () => {
   assert.ok(settleBody.includes("liveTile: null"));
   assert.ok(settleBody.includes("liveStartedAt: null"));
   assert.ok(settleBody.includes("roundDeadline: null"));
-  // Stakes are retired: settlement records zeroed money columns and never
-  // touches a token balance.
-  assert.ok(settleBody.includes('houseFee: "0.00"'));
-  assert.ok(settleBody.includes('prizePaid: "0.00"'));
-  assert.ok(!settleBody.includes("users.balance"));
+  // The pot is paid out of the escrow taken at join: the winner is paid and a
+  // draw refunds both seats.
+  assert.ok(settleBody.includes("escrowFor("));
+  assert.ok(settleBody.includes("settleEscrow("));
   assert.ok(settleBody.includes("recordPvPResult("));
 });
 
@@ -748,9 +747,8 @@ test("the forfeit path hands the match to the opponent without touching the rule
   );
   assert.ok(forfeitBody.includes("RESULT.PLAYER2"));
   assert.ok(forfeitBody.includes("RESULT.PLAYER1"));
-  assert.ok(forfeitBody.includes('houseFee: "0.00"'));
-  assert.ok(forfeitBody.includes('prizePaid: "0.00"'));
-  assert.ok(!forfeitBody.includes("users.balance"));
+  assert.ok(forfeitBody.includes("escrowFor("));
+  assert.ok(forfeitBody.includes("settleEscrow("));
   const forfeitSection = store.slice(
     store.indexOf("export async function forfeitMatch("),
     store.indexOf("// ── Raw read (no auto-resolve)"),

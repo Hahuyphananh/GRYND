@@ -88,6 +88,22 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // An opponent was found but a seat can't cover the wager: the pairing was
+    // rolled back (the lobby is still waiting), so this is a 400 with the
+    // reason rather than a dead match page.
+    if (result.status === "insufficient") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: result.error,
+          gameId: null,
+          lobbyId: null,
+          matchId: null,
+        },
+        { status: result.statusCode },
+      );
+    }
+
     // Matched PvP pair — the lobby id becomes the match id so both
     // players navigate to the same /casino/precision/game/[id] URL.
     return NextResponse.json({

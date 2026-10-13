@@ -3,6 +3,7 @@ import { db } from "../../../../db/client";
 import { unoGames, users } from "../../../../db/schema";
 import { and, eq, or, inArray } from "drizzle-orm";
 import { isUnoSeat, unoCallerToken } from "../../../../lib/unoSeat";
+import { payPvpPot } from "../../../../lib/tokens/pvpPot";
 
 
 export async function POST(req) {
@@ -71,6 +72,8 @@ export async function POST(req) {
       //  WAITING GAME → CANCEL
       // =========================
       if (isWaiting) {
+        // A waiting game was never escrowed (the host's stake is only taken
+        // when an opponent fills the seat), so cancelling it moves no coins.
         await tx
           .update(unoGames)
           .set({
@@ -108,16 +111,42 @@ export async function POST(req) {
 
         if (!opponentId) return;
 
-        //  End game — STAKES ARE RETIRED: no pot to pay out on a resignation.
+        const winner = lockedGame.userId === requestingUser.id ? "player2" : "player1";
+
+        // The resigner forfeits their stake: the opponent banks the pot out of
+        // the escrow both seats funded at join. The winner's Clerk id is
+        // resolved from the row (never from the request), and the payout runs
+        // in the same transaction as the terminal write so the coins commit
+        // with the result.
+        const [opponent] = await tx
+          .select({ clerkId: users.clerkId })
+          .from(users)
+          .where(eq(users.id, opponentId))
+          .limit(1);
+
         await tx
           .update(unoGames)
           .set({
             status: "finished",
-            winner: lockedGame.userId === requestingUser.id ? "player2" : "player1",
+            winner,
             result: "loss",
-            payout: "0",
+            payout: "0.00",
           })
           .where(eq(unoGames.id, gameId));
+
+        const payout = await payPvpPot({
+          tx,
+          gameKey: "uno",
+          matchId: gameId,
+          winnerClerkId: opponent?.clerkId,
+          stake: Number(lockedGame.betAmount) || 0,
+        });
+        if (payout > 0) {
+          await tx
+            .update(unoGames)
+            .set({ payout: payout.toFixed(2) })
+            .where(eq(unoGames.id, gameId));
+        }
 
         return;
       }

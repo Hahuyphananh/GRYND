@@ -41,7 +41,12 @@
 
 import { eq, and, sql, isNull, inArray } from "drizzle-orm";
 import { db } from "../../db/client";
-import { STAKES_RETIRED, normalizeStake } from "../games/stakes";
+import { normalizeStake, validateWager } from "../games/stakes";
+import {
+  escrowMatchWagers,
+  refundWager,
+  settlePayout,
+} from "../tokens/wager";
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
@@ -77,6 +82,7 @@ import {
   aiSubmissionDelayMs,
   chooseAiReconstruction,
   computeFinalRoundScore,
+  computePayout,
   generatePattern,
   isFreeAiMatch,
   matchWinnerFromTotals,
@@ -149,17 +155,10 @@ function otherSeat(seat) {
 // Validate the stake at lobby creation time. Returns
 // `{ ok: true }` on success, `{ ok: false, error }` otherwise.
 export function validateMatchParams({ stakeAmount }) {
-  // STAKES ARE RETIRED: a free match is the only legal entry, so the stake
-  // range no longer rejects anything. The escrow/payout arithmetic below is
-  // inert — it runs against a 0 stake.
-  if (STAKES_RETIRED) return { ok: true };
-  const stake = Number(stakeAmount);
-  if (!Number.isFinite(stake) || stake < MIN_STAKE || stake > MAX_STAKE) {
-    return {
-      ok: false,
-      error: `Stake must be a number in [${MIN_STAKE}, ${MAX_STAKE}]`,
-    };
-  }
+  // The wager policy owns the legal range (including "0 = free match"); the
+  // escrow/payout arithmetic below reads the stake it returned.
+  const wager = validateWager(stakeAmount, "memory-grid");
+  if (!wager.ok) return { ok: false, error: wager.error };
   return { ok: true };
 }
 
@@ -319,9 +318,9 @@ export async function playAiTurn({ userId, matchId }) {
 //      `status='waiting' AND player2_id IS NULL` catches the
 //      "creator cancelled in parallel" race.
 export async function createOrJoin({ userId, stakeAmount }) {
-  // Retired stakes: the match is free, and every escrow/payout below operates
-  // on 0 because the stake is normalized here.
-  stakeAmount = normalizeStake(stakeAmount);
+  // The wager policy clamps the requested stake to the legal range (0 = a
+  // free match); the store re-validates the result below.
+  stakeAmount = normalizeStake(stakeAmount, "memory-grid");
   const validation = validateMatchParams({ stakeAmount });
   if (!validation.ok) {
     return { error: validation.error, status: 400 };
@@ -432,6 +431,17 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
   // match-found banner before round 1's memorize phase opens. /status
   // auto-advances to the memorize phase once the deadline passes
   // (see advanceFromReady).
+  // Escrow BOTH seats before the seat fills: a match either funds fully or
+  // not at all, so a filled paid seat is always backed by two stakes.
+  const escrow = await escrowMatchWagers({
+    clerkIds: [match.player1Id, userId],
+    stake: match.stakeAmount,
+    matchId: candidateId,
+    gameKey: "memory-grid",
+    tx,
+  });
+  if (!escrow.ok) return { error: escrow.error, status: escrow.status };
+
   const readyDeadline = new Date(Date.now() + READY_WINDOW_MS);
 
   const [updated] = await tx
@@ -513,6 +523,8 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
     const result = loserIsP1 ? RESULT.PLAYER2 : RESULT.PLAYER1;
     const isAi = isFreeAiMatch(match);
 
+    const escrow = escrowFor(match, result, winnerUserId);
+
     const [updated] = await tx
       .update(memoryGridMatches)
       .set({
@@ -521,8 +533,8 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
         roundDeadline: null,
         result,
         winnerId: winnerUserId,
-        houseFee: "0.00",
-        prizePaid: "0.00",
+        houseFee: escrow.houseFee,
+        prizePaid: escrow.prizePaid,
         endedAt: new Date(),
       })
       .where(
@@ -536,6 +548,10 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
       .returning();
 
     const finalRow = updated || match;
+
+    // The leaver's escrowed stake is paid to the opponent; a failed coin move
+    // rolls the settlement back rather than settling unpaid.
+    if (updated) await settleEscrow(tx, finalRow, escrow);
 
     // Best-effort stat side-effect (failures don't roll the match),
     // mirroring resolveMatch / keno-pvp forfeit.
@@ -1160,6 +1176,50 @@ async function completeRound(tx, match) {
 // the result and settles the wager. The comparison itself is the
 // shared pure helper matchWinnerFromTotals so tests cover it
 // directly.
+// ── Coin escrow ───────────────────────────────────────────────────────
+// Both stakes were taken at join; a resolved match pays the winner 1.9× their
+// stake (pot minus the 10% house fee), a draw refunds each seat, and a free /
+// AI match (stake 0) moves nothing.
+function escrowFor(match, result, winnerId) {
+  const stake = Number(Number(match?.stakeAmount) || 0);
+  if (isFreeAiMatch(match) || stake <= 0) {
+    return { paid: false, payout: null, winnerId, houseFee: "0.00", prizePaid: "0.00" };
+  }
+  const payout = computePayout({ stakeAmount: stake, result });
+  return {
+    paid: true,
+    payout,
+    winnerId,
+    houseFee: Number(payout.houseFee).toFixed(2),
+    prizePaid: Number(payout.prizePaid).toFixed(2),
+  };
+}
+
+async function settleEscrow(tx, match, escrow) {
+  if (!escrow?.paid) return;
+  if (escrow.winnerId) {
+    await settlePayout({
+      clerkId: escrow.winnerId,
+      amount: escrow.payout.winnerNet,
+      matchId: match.id,
+      gameKey: "memory-grid",
+      tx,
+    });
+    return;
+  }
+  // Draw: each seat gets its own stake back.
+  for (const clerkId of [match.player1Id, match.player2Id]) {
+    if (!clerkId) continue;
+    await refundWager({
+      clerkId,
+      stake: escrow.payout.refundEach,
+      matchId: match.id,
+      gameKey: "memory-grid",
+      tx,
+    });
+  }
+}
+
 async function resolveMatch(tx, match) {
   const result = matchWinnerFromTotals(
     Number(match.p1Total || 0),
@@ -1175,6 +1235,8 @@ async function resolveMatch(tx, match) {
         ? match.player2Id
         : null;
 
+  const escrow = escrowFor(match, result, winnerId);
+
   // Stamp the match as finished. The `board` column stays on the
   // row so the post-match reveal screen can render the full layout
   // (the /status route stops hiding it once status='finished').
@@ -1186,14 +1248,18 @@ async function resolveMatch(tx, match) {
       roundDeadline: null,
       result,
       winnerId,
-      houseFee: "0.00",
-      prizePaid: "0.00",
+      houseFee: escrow.houseFee,
+      prizePaid: escrow.prizePaid,
       endedAt: new Date(),
     })
     .where(eq(memoryGridMatches.id, match.id))
     .returning();
 
   const finalRow = updated || match;
+
+  // A failed coin move must roll the settlement back (and stay retryable)
+  // rather than settle a paid match without paying it.
+  await settleEscrow(tx, finalRow, escrow);
 
   // Best-effort stat side-effects (failures don't roll the match).
   // Draws are skipped — no winner/loser to bump.

@@ -4,9 +4,9 @@ import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerifi
 import { db } from "../../../../../db/client";
 import { rpsPvpGames } from "../../../../../db/schema";
 import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
+import { payRpsPvpWinner } from "../../../../../lib/rps-pvp/serverStore";
 import { eq } from "drizzle-orm";
 
-const HOUSE_EDGE_PERCENT = 5;
 // Best-of-7 — first player to ROUNDS_TO_WIN decided rounds takes the match.
 const ROUNDS_TO_WIN = 4;
 
@@ -52,6 +52,10 @@ export async function POST(req) {
       { status: 400 },
     );
   }
+
+  // Set inside the settlement branch (0 for every other transition): what the
+  // winner was actually paid, echoed back on the finishing response.
+  let finishPayout = 0;
 
   try {
     const game = await db.transaction(async (tx) => {
@@ -138,12 +142,23 @@ export async function POST(req) {
       ];
 
       if (matchOver) {
-        // STAKES ARE RETIRED: no pot, no rake and no payout to move.
-        const winnerPayout = 0;
-
         const winnerId = nextWon1 >= ROUNDS_TO_WIN
           ? updatedGame.player1Id
           : updatedGame.player2Id;
+
+        // The pot is paid from the escrow both seats took at join, in THIS
+        // transaction, so the coins commit with the round that won them. The
+        // row lock above plus the `status = 'matched'` guard make this the
+        // single settlement of the match (and the ledger keys it per seat).
+        const winnerPayout = await payRpsPvpWinner({
+          tx,
+          gameId: parsedGameId,
+          winnerId,
+          betAmount: updatedGame.betAmount,
+        });
+        // Report the real prize so the finishing client can show it without
+        // re-deriving the pot.
+        finishPayout = winnerPayout;
 
         await applyLeaderboardCounters({
           clerkId: winnerId,
@@ -169,6 +184,21 @@ export async function POST(req) {
           .where(eq(rpsPvpGames.id, parsedGameId))
           .returning();
 
+        // The loser takes the loss on the same authoritative path as the win,
+        // so win_rate / streaks stay in sync with the match (mirrors the
+        // forfeit settlement in the store).
+        const loserId =
+          winnerId === finished.player1Id
+            ? finished.player2Id
+            : finished.player1Id;
+        if (loserId) {
+          applyLeaderboardCounters({
+            clerkId: loserId,
+            game: "rps-pvp",
+            outcome: "loss",
+          }).catch(() => {});
+        }
+
         return finished;
       }
 
@@ -189,7 +219,7 @@ export async function POST(req) {
       return advanced;
     });
 
-    return NextResponse.json({ success: true, data: game });
+    return NextResponse.json({ success: true, data: game, winnerPayout: finishPayout });
   } catch (err) {
     return NextResponse.json(
       { success: false, error: err.message || "Failed to submit choice" },

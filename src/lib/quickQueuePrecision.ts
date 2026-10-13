@@ -36,6 +36,12 @@ export async function createOrJoinPrecisionDestination({
       hostUserId: userId,
       hostName: name,
     });
+    // A pairing that can't be funded never becomes a destination: there is no
+    // match id to hand back, and the seats are un-charged (the pairing rolled
+    // back), so the queue worker is told why instead of routing into a dead id.
+    if (result.status === "insufficient") {
+      return { error: result.error, status: result.statusCode };
+    }
     return {
       match: { id: result.gameId },
       joined: result.status === "matched",

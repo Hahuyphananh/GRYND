@@ -3,8 +3,10 @@
 // Mirror of the Hex Duel `/api/hex-duel/multiplayer/end` route pattern
 // (`src/app/api/hex-duel/multiplayer/end/route.ts`). Specifically:
 //   * Increments `gamesWon` on the winner, `currentStreak = 0` and
-//     `gamesLost += 1` on the loser. STAKES ARE RETIRED — no balance moves
-//     and no payout is credited.
+//     `gamesLost += 1` on the loser.
+//   * Credits the winner the pot minus the house rake
+//     (`PRECISION_PAYOUT_MULTIPLIER`) out of the escrow both seats paid at
+//     pairing, through `settlePayout`.
 //   * Calls `applyLeaderboardCounters({ game: "Precision", ... })` so
 //     weekly / monthly leaderboards stay consistent with how every
 //     other PvP game (Uno, Hex Duel, Pool, Chess) contributes.
@@ -38,6 +40,8 @@ import { and, eq, sql } from "drizzle-orm";
 
 import { db } from "../../db/client";
 import { users } from "../../db/schema";
+import { PVP_WINNER_SHARE } from "../games/economy";
+import { settlePayout } from "../tokens/wager";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
@@ -46,10 +50,12 @@ import { normalizeStake } from "../games/stakes";
 import type { PlayerSeat } from "./types";
 
 /** Payout multiplier applied to the winning seat's wager when a match
- *  ends. 1.9× = 5% house edge, mirroring `PAYOUT_MULTIPLIER` in
- *  `src/app/api/hex-duel/end-game/route.ts`. Pure winner-take-all —
- *  the loser's wager is forfeit and does NOT return. */
-export const PRECISION_PAYOUT_MULTIPLIER = 1.9;
+ *  ends: the whole pot (both seats' stakes) minus the shared house rake, so
+ *  2 × (1 − PVP_RAKE_PCT) = 1.9× at the current 5% rake. Derived from the
+ *  shared rake rather than a second local constant, so the two can never
+ *  drift apart. Pure winner-take-all — the loser's wager is forfeit and does
+ *  NOT return. */
+export const PRECISION_PAYOUT_MULTIPLIER = 2 * PVP_WINNER_SHARE;
 
 export interface ProcessMatchFinishedPayoutArgs {
   matchId: string;
@@ -93,8 +99,9 @@ export interface ProcessMatchFinishedPayoutResult {
  *        - `UPDATE users SET gamesWon += 1` on the winner.
  *        - `UPDATE users SET currentStreak = 0, gamesLost += 1` on
  *          the loser.
- *      STAKES ARE RETIRED, so there is no balance move and no payout — the
- *      result still settles (win/loss counters, Elo, trophies).
+ *        - credit the winner's prize through `settlePayout` — the same
+ *          transaction, so the coins commit with the result that earned
+ *          them. A free match (wager 0) moves nothing.
  *   4. Fire-and-forget leaderboard counters (no await so a no-op
  *      leaderboard failure can't stall the response).
  *
@@ -174,9 +181,9 @@ export async function processMatchFinishedPayout(
       reason: "Match has no winner yet",
     };
   }
-  // STAKES ARE RETIRED (src/lib/games/stakes.js): the match is free, so the
-  // wager is normalized to 0. The payout below is then 0 and the balance move
-  // is a no-op — but the result still settles (stats, Elo, trophies).
+  // A stored wager is always a legal one (`normalizeStake` truncates it to
+  // whole coins and clamps it to the game's ceiling); 0 means a free match,
+  // which is what a practice / AI row carries.
   const resolvedWager = normalizeStake(args.wager ?? match.wager ?? 0);
 
   const winnerPlayer = match.players.find(
@@ -213,8 +220,13 @@ export async function processMatchFinishedPayout(
     };
   }
 
-  // STAKES ARE RETIRED: no pot, no rake and no payout to move.
-  const payout = 0;
+  // The winner takes the pot minus the house rake out of the escrow both
+  // seats paid when the lobby paired (see `createMatchForPairing`). A free
+  // match — or a stub row whose wager never funded — pays nothing, and
+  // `settlePayout` independently refuses to credit a seat with no debit row.
+  const payout = Number(
+    (resolvedWager * PRECISION_PAYOUT_MULTIPLIER).toFixed(2),
+  );
 
   // ── Claim the payout ─────────────────────────────────────────────
   // Stamps `payout_processed_at` inside a `SELECT ... FOR UPDATE`
@@ -254,6 +266,23 @@ export async function processMatchFinishedPayout(
           gamesLost: sql`${users.gamesLost} + 1`,
         })
         .where(eq(users.clerkId, loserPlayer.userId));
+
+      // The balance move rides the same transaction as the win/loss counters,
+      // so the prize commits with the result that earned it (and rolls back
+      // with it if anything here fails). Idempotent per match+seat through the
+      // ledger's `(reference_type, reference_id)` key.
+      if (payout > 0) {
+        // Annotated: `strict` is off in this project, where `if (!x.ok)` does
+        // not narrow a discriminated union (see the tower-arena call site).
+        const paid: { ok: boolean; balance?: number } = await settlePayout({
+          clerkId: winnerPlayer.userId,
+          amount: payout,
+          matchId,
+          gameKey: "precision",
+          tx,
+        });
+        if (paid.ok) newBalance = paid.balance;
+      }
     });
   } catch (err) {
     // If the DB write failed, release the claim so a retry from a polling

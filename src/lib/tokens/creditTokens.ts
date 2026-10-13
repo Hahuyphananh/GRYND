@@ -34,9 +34,15 @@ export async function creditUserBalance(
   if (!Number.isFinite(amount) || amount < 0) {
     throw new Error("Invalid credit amount");
   }
+  const credit = Number(amount.toFixed(2));
   const [updated] = await ctx
     .update(users)
-    .set({ balance: sql`${users.balance} + ${Number(amount.toFixed(2))}` })
+    .set({
+      balance: sql`${users.balance} + ${credit}`,
+      // Monotonic high-water mark for the "Highest all-time coins" board.
+      // `users.balance` here is the pre-update value in the same UPDATE.
+      peakBalance: sql`GREATEST(${users.peakBalance}, ${users.balance} + ${credit})`,
+    })
     .where(eq(users.clerkId, clerkId))
     .returning({ balance: users.balance });
   return updated ? Number(updated.balance) : null;

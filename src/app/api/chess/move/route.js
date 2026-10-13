@@ -10,6 +10,8 @@ import { chessGames, chessMoves, users } from "../../../../db/schema";
 import { toStoredUci } from "../../../../lib/chessMoveUci";
 import { applyRatingResult } from "../../../../lib/rating";
 import { applyTrophyResult } from "../../../../lib/trophyStore";
+import { payPvpPot } from "../../../../lib/tokens/pvpPot";
+import { refundMatchWagers } from "../../../../lib/tokens/wager";
 
 async function getUserAliases(clerkId) {
   const aliases = new Set([String(clerkId)]);
@@ -134,6 +136,41 @@ export async function POST(req) {
             endedAt: new Date(),
           })
           .where(eq(chessGames.id, normalizedGameId));
+
+        // The winner banks the pot out of the escrow both seats funded at join.
+        // It runs inside the transaction that claimed the terminal write (the
+        // row was re-read `FOR UPDATE` and was not already `finished`), so the
+        // coins commit with the checkmate that earned them. A DRAW pays nobody
+        // and leaves the stakes escrowed for the match's void refund; an AI
+        // game was never escrowed and pays nothing.
+        const stake = Number(lockedGame.betAmount) || 0;
+        if (!isDraw && !lockedGame.isAiGame && winnerId && stake > 0) {
+          const payout = await payPvpPot({
+            tx,
+            gameKey: "chess",
+            matchId: normalizedGameId,
+            winnerClerkId: winnerId,
+            stake,
+          });
+          if (payout > 0) {
+            await tx
+              .update(chessGames)
+              .set({ payout: payout.toFixed(2) })
+              .where(eq(chessGames.id, normalizedGameId));
+          }
+        } else if (isDraw && !lockedGame.isAiGame && stake > 0) {
+          // A DRAW is VOID: nobody won, so both stakes go back rather than
+          // being stranded in escrow for a match that will never settle. The
+          // ledger refuses this if the match's seats were already paid, so a
+          // draw can never hand a winner their stake back on top of a prize.
+          await refundMatchWagers({
+            clerkIds: [lockedGame.playerWhiteId, lockedGame.playerBlackId],
+            stake,
+            matchId: normalizedGameId,
+            gameKey: "chess",
+            tx,
+          });
+        }
 
         // Competitive PvP finish. Draws and AI matches never move Elo or
         // trophies (chess vs AI is free play).

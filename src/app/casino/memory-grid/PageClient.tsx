@@ -25,6 +25,7 @@ import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
 import FrameAvatar from "../../../components/FrameAvatar";
 import PvpLobbyPage from "../../../components/lobby/PvpLobby";
+import { useCoinBalance } from "../../../hooks/useCoinBalance";
 import { useSocket } from "../../../context/SocketProvider";
 import {
   MEMORY_GRID_LOBBY_ROOM,
@@ -85,9 +86,10 @@ export default function MemoryGridLobbyPage() {
   const posthog = usePostHog();
   const { socket } = useSocket();
 
-  // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
-  // so there is no stake to pick and no token balance to load.
-  const stake = 0;
+  // Coin wager: the player picks the stake the lobby is opened at, and the
+  // server escrows both seats the moment an opponent joins.
+  const coinBalance = useCoinBalance();
+  const [stake, setStake] = useState(10);
 
   // ── Lobby state ───────────────────────────────────────────────────
   const [availableMatches, setAvailableMatches] = useState<AvailableMatch[]>(
@@ -310,6 +312,7 @@ export default function MemoryGridLobbyPage() {
 
   return (
     <PvpLobbyPage
+      wager={{ value: stake, onChange: setStake, balance: coinBalance }}
       title="Memory Grid Lobby"
       subtitle={
         <>

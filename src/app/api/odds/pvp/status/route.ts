@@ -7,6 +7,7 @@ import { eq, and, or, desc } from "drizzle-orm";
 import { viewForPlayer } from "../../../../../lib/odds";
 import type { PvPInteractiveOddsState } from "../../../../../lib/odds";
 import { getSeatIdentity } from "../../../../../lib/seatIdentity";
+import { oddsPvpPayout } from "../../../../../lib/odds-pvp/serverStore";
 
 export async function GET() {
   try {
@@ -86,7 +87,9 @@ export async function GET() {
         rounds: state?.rounds ?? [],
         gameOver: state?.gameOver ?? false,
         winner: state?.winner ?? null,
-        payout: game.wager * 1.9,
+        // The SAME helper the settlement pays through, so the prize shown here
+        // is exactly what a win credits (both stakes minus the shared rake).
+        payout: oddsPvpPayout(game.wager),
         userHasPendingPick,
       },
     });

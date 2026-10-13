@@ -14,6 +14,10 @@ import type { PvPInteractiveOddsState } from "../../../../../lib/odds";
 import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
 import { applyRatingResult } from "../../../../../lib/rating";
 import { applyTrophyResult } from "../../../../../lib/trophyStore";
+import {
+  payOddsPvpWinner,
+  refundOddsPvpStakes,
+} from "../../../../../lib/odds-pvp/serverStore";
 
 /** Maximum time (ms) a player can stay inactive before being auto-forfeited */
 const TIMEOUT_MS = 120_000;
@@ -81,8 +85,15 @@ export async function POST(req: Request) {
       if (roundAge > TIMEOUT_MS && oppDone) {
         const forfeiterId = isPlayer1 ? game.player2Id : game.player1Id;
         const winnerId = userId;
-        // STAKES ARE RETIRED: no pot, no rake and no payout to move.
-        const payout = 0;
+        // The opponent timed out: the caller banks the pot from the escrow both
+        // seats paid at join, inside this transaction (the row lock above makes
+        // it the single settlement of the match).
+        const payout = await payOddsPvpWinner({
+          tx,
+          gameId,
+          winnerId,
+          wager: game.wager,
+        });
         const winner: "player1" | "player2" = isPlayer1 ? "player1" : "player2";
         // Persist the game-over state so the opponent's polls/socket
         // refetches reflect the match ending (not just the submitter).
@@ -244,8 +255,9 @@ export async function POST(req: Request) {
 
       // Both predictions in — resolve the round (accuracy scoring)
       const pickResult = resolvePvPRound(afterPred);
-      // STAKES ARE RETIRED: no pot, no rake and no payout to move.
-      const payout = 0;
+      // The winner comes from the SERVER-SIDE engine above (never a client
+      // value), so the pot follows the same decision the scoreboard shows.
+      let payout = 0;
 
       if (pickResult.updatedState.gameOver) {
         const winner = pickResult.updatedState.winner; // null = draw
@@ -253,6 +265,12 @@ export async function POST(req: Request) {
         const winnerId = player1Won ? game.player1Id : game.player2Id;
 
         if (winner) {
+          payout = await payOddsPvpWinner({
+            tx,
+            gameId,
+            winnerId,
+            wager: game.wager,
+          });
           await tx
             .update(oddsGames)
             .set({
@@ -295,7 +313,16 @@ export async function POST(req: Request) {
             loserClerkId: loserId!,
           }).catch(() => {});
         } else {
-          // Exact tie after all rounds — no winner.
+          // Exact tie after all rounds — no winner, so neither stake is won:
+          // the whole escrow is VOIDED back to both seats. Without this the two
+          // stakes would sit in the ledger forever (the payout path pays
+          // nothing when there is no winner).
+          await refundOddsPvpStakes({
+            tx,
+            gameId,
+            clerkIds: [game.player1Id, game.player2Id],
+            wager: game.wager,
+          });
           await tx
             .update(oddsGames)
             .set({

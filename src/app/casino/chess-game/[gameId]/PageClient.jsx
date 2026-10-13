@@ -1407,10 +1407,6 @@ export default function ChessGamePage() {
       resultText ||
       (isDraw ? "Game drawn" : iWon ? "You win!" : "You lost.");
 
-    // The extra action opens this match's engine-backed evaluation at
-    // /evaluation/chess/[gameId]. It is offered ONLY for a genuinely finished
-    // match: an `expired` game cannot be evaluated (the API answers 409), so
-    // the button never sends the player to a guaranteed dead end.
     return (
       <PvpResultScreen
         open
@@ -1429,11 +1425,6 @@ export default function ChessGamePage() {
           { label: "Game ID", value: String(gameId) },
           { label: "Winner", value: isDraw ? "Draw" : iWon ? "You" : oppName },
         ]}
-        secondaryAction={
-          gameData.status === "finished"
-            ? { label: "See Evaluation", href: `/evaluation/chess/${gameId}` }
-            : null
-        }
         playAgain={{ label: "RUN IT BACK", onClick: () => router.push("/casino/chess") }}
         onReturnToLobby={() => router.push("/casino")}
         onDismiss={() => setShowResultPopup(false)}

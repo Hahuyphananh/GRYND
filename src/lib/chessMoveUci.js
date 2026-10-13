@@ -7,10 +7,8 @@
  * `/api/chess/move` used to store `${from}${to}${promotion || ""}` using the
  * REQUEST's `promotion` field, which defaults to `"q"`. Every ordinary move was
  * therefore stored with a spurious promotion suffix — `"e2e4q"` instead of
- * `"e2e4"` — while Stockfish answers `bestmove e2e4`. The evaluator compares the
- * two byte-for-byte (src/lib/evaluation/games/chessEvaluator.ts), so no move
- * could ever be recognised as the engine's own choice and `bestMoves` was
- * structurally always 0.
+ * `"e2e4"` — while Stockfish answers `bestmove e2e4`, so no move could ever be
+ * recognised as the engine's own choice.
  *
  * The fix is two rules, enforced HERE rather than at the call site:
  *

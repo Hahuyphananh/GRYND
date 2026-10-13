@@ -51,8 +51,9 @@ export async function POST(request) {
       );
     }
 
-    // STAKES ARE RETIRED (src/lib/games/stakes.js): a waiting game is free to
-    // open, so there is nothing to refund — the wallet is never touched.
+    // A waiting game is free to open and is never escrowed — the host's stake
+    // is only taken when an opponent fills the seat (see /join-online) — so
+    // cancelling it has nothing to refund and the wallet is never touched.
     const currentBalance = parseFloat(user.balance || "0");
 
     await db

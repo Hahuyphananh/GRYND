@@ -107,9 +107,9 @@ test("survival rulebook constants: 3 lives, 3s → 0.5s window, 100ms per claim"
 });
 
 test("stake + identity constants are unchanged by the rework", () => {
-  assert.deepEqual(STAKE_PRESETS, [10, 25, 50, 100, 250, 500]);
+  assert.deepEqual(STAKE_PRESETS, [5, 10, 25, 50, 100]);
   assert.equal(MIN_STAKE, 1);
-  assert.equal(MAX_STAKE, 100000);
+  assert.equal(MAX_STAKE, 100);
   assert.equal(HOUSE_FEE_PCT, 0.10);
   assert.equal(WINNER_RATIO, 0.90);
   assert.equal(HOUSE_RATIO, 0.10);

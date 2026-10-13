@@ -286,15 +286,6 @@ export default function TicTacToeMatchPage() {
 
   const stage = normaliseStage(match?.stage);
 
-  // Whether this finished match is EXACTLY evaluable, mirroring the evaluator's
-  // own gate (src/lib/evaluation/games/ticTacToeEvaluator.ts): a match DECIDED
-  // within stage 1 with a settled winning seat. An expanded lattice (stage 2/3,
-  // a stage-1 draw) or a tie is reported `unavailable` server-side, so no link
-  // is offered for it — the UI never implies a report the evaluator would reject.
-  const evaluationEligible =
-    finished &&
-    stage === 1 &&
-    (match?.result === "player1" || match?.result === "player2");
   const stageSlotList = normaliseSlotList(match?.stageBoardSlots);
   const slots = stageSlotList.length ? stageSlotList : stageSlots(stage);
   const lattice = useMemo(() => normaliseLattice(match?.boards), [match?.boards]);
@@ -1075,11 +1066,6 @@ export default function TicTacToeMatchPage() {
                 )}, ${moveCellLabel(mv.cellIndex)}`,
               })),
             ]}
-            secondaryAction={
-              evaluationEligible
-                ? { label: "See Evaluation", href: `/evaluation/tic-tac-toe/${matchId}` }
-                : null
-            }
             playAgain={{
               label: "Play again",
               onClick: () => router.push("/casino/tic-tac-toe"),

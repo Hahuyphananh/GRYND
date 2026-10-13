@@ -3,6 +3,7 @@ import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified"
 import { db } from "../../../../db/client";
 import { chessGames, users } from "../../../../db/schema";
 import { and, eq, isNull } from "drizzle-orm";
+import { escrowMatchWagers } from "../../../../lib/tokens/wager";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -55,6 +56,25 @@ export async function POST(req) {
       }
       if (userAliases.has(String(game.playerWhiteId))) {
         throw new Error("You cannot join your own game");
+      }
+
+      // Escrow BOTH stakes before the seat fills: a staked table either funds
+      // fully or the join is refused and the transaction rolls back, so an
+      // `in_progress` game is always backed by two stakes and the winner's
+      // payout is always funded. The host is identified by the row's own seat
+      // column, never by the request.
+      const escrow = await escrowMatchWagers({
+        clerkIds: [game.playerWhiteId, userId],
+        stake: Number(game.betAmount) || 0,
+        matchId: parsedGameId,
+        gameKey: "chess",
+        tx,
+      });
+      if (!escrow.ok) {
+        throw Object.assign(
+          new Error(escrow.error || "Insufficient coins"),
+          { status: 400 },
+        );
       }
 
       const [updatedGame] = await tx

@@ -4,6 +4,7 @@ import { db } from "../../../../db/client";
 import { users, unoGames } from "../../../../db/schema";
 import { eq, and, ne, isNull } from "drizzle-orm";
 import { normalizeStake } from "../../../../lib/games/stakes";
+import { escrowMatchWagers } from "../../../../lib/tokens/wager";
 
 function generateDeck() {
   const colors = ["red", "yellow", "green", "blue"];
@@ -67,6 +68,29 @@ async function joinOpenGame({ user, openGame }) {
     const firstTurn = Math.random() > 0.5 ? "player1" : "player2";
 
     const updated = await db.transaction(async (tx) => {
+      // Escrow BOTH stakes before the seat fills: a staked game either funds
+      // fully or the join is refused, so an `active` game is always backed by
+      // two stakes and the winner's payout is always funded. The host's
+      // Clerk id has to be resolved (the row stores account ids).
+      const [host] = await tx
+        .select({ clerkId: users.clerkId })
+        .from(users)
+        .where(eq(users.id, openGame.userId))
+        .limit(1);
+      const escrow = await escrowMatchWagers({
+        clerkIds: [host?.clerkId, userId],
+        stake: openGame.betAmount,
+        matchId: openGame.id,
+        gameKey: "uno",
+        tx,
+      });
+      if (!escrow.ok) {
+        throw Object.assign(
+          new Error(escrow.error || "Insufficient coins"),
+          { status: 400 },
+        );
+      }
+
       const [game] = await tx
         .update(unoGames)
         .set({
@@ -118,15 +142,25 @@ async function joinOpenGame({ user, openGame }) {
         { status: 409 },
       );
     }
+    // A seat that cannot cover the stake is a user-level error: answer 400 with
+    // the reason (the transaction rolled back, so the game is still open and
+    // nothing was charged) instead of letting it surface as a 500.
+    if (error?.status === 400) {
+      return new Response(
+        JSON.stringify({ success: false, error: error.message }),
+        { status: 400 },
+      );
+    }
     throw error;
   }
 }
 
 async function createWaitingGame({ user, betAmount }) {
-  // STAKES ARE RETIRED (src/lib/games/stakes.js): a waiting game is free to
-  // open. The requested bet is normalized to 0, so the balance debit below is
-  // a no-op and the pot is nothing.
-  betAmount = normalizeStake(betAmount);
+  // A waiting game costs nothing to open: the HOST's stake is only taken when
+  // an opponent actually fills the seat (see joinOpenGame, which escrows both
+  // seats at once). The stake is still recorded here, because that is what the
+  // joiner escrows and what the winner is paid out of.
+  betAmount = normalizeStake(betAmount, "uno");
 
   const balance = parseFloat(user.balance);
 
@@ -191,8 +225,10 @@ export async function POST(request) {
     );
 
   const { betAmount: requestedBet, mode = "join_or_create", gameId } = await request.json();
-  // STAKES ARE RETIRED — no online game is ever entered for a stake.
-  const betAmount = normalizeStake(requestedBet);
+  // The stake the table will carry. A missing / unusable value is free play
+  // (stake 0); a real one is clamped to the game's ceiling. The coins only move
+  // when the seat is filled, or on settle — never here.
+  const betAmount = normalizeStake(requestedBet, "uno");
 
   try {
     const user = await db.query.users.findFirst({

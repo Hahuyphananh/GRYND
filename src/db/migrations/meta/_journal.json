@@ -1352,6 +1352,13 @@
       "when": 1800000055000,
       "tag": "0211_chess_ai_difficulty",
       "breakpoints": true
+    },
+    {
+      "idx": 193,
+      "version": "7",
+      "when": 1800000056000,
+      "tag": "0212_user_peak_balance",
+      "breakpoints": true
     }
   ]
 }

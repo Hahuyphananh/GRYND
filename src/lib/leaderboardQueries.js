@@ -62,11 +62,21 @@ export const LEADERBOARD_CATEGORIES = [
   "net_wins",
   "win_loss_ratio",
   "current_streak",
+  // The two coin boards. They rank a monotonic high-water mark held on the
+  // `users` row, not a weekly counter, so they are all-time only:
+  //   * biggest_win    — the largest single payout ever credited.
+  //   * peak_balance   — the highest balance ever held.
+  "biggest_win",
+  "peak_balance",
 ];
 
-/** Categories the weekly board supports (no all-time-only pvp_wins). */
+/**
+ * Categories the weekly board supports: everything except the metrics that
+ * have no weekly counter — pvp_wins and the two all-time coin high-water
+ * marks.
+ */
 export const WEEKLY_CATEGORIES = LEADERBOARD_CATEGORIES.filter(
-  (c) => c !== "pvp_wins",
+  (c) => c !== "pvp_wins" && c !== "biggest_win" && c !== "peak_balance",
 );
 
 let leaderboardColumnCache = null;
@@ -259,6 +269,11 @@ function buildAllTimeConfig(category, columns) {
     cast: "int",
   });
 
+  // Coin high-water marks live on `users` (maintained by src/lib/tokens/*).
+  // A schema without the columns ranks nothing rather than guessing.
+  const biggestWin = userIdentityField(columns, "biggest_win", "0");
+  const peakBalance = userIdentityField(columns, "peak_balance", "0");
+
   const miniStats = allTimeMiniStatsFields(columns);
   const configs = {
     wins: {
@@ -294,6 +309,17 @@ function buildAllTimeConfig(category, columns) {
     current_streak: {
       fields: miniStats,
       orderBy: `${currentStreak} DESC, s.user_id ASC`,
+    },
+    biggest_win: {
+      fields: `${miniStats}, ${biggestWin} AS biggest_win`,
+      orderBy: `${biggestWin}::numeric DESC, s.user_id ASC`,
+      // Only a real payout ranks — a 0 means "never won coins", not a tie.
+      whereClause: `${biggestWin}::numeric > 0`,
+    },
+    peak_balance: {
+      fields: `${miniStats}, ${peakBalance} AS peak_balance`,
+      orderBy: `${peakBalance}::numeric DESC, s.user_id ASC`,
+      whereClause: `${peakBalance}::numeric > 0`,
     },
   };
 

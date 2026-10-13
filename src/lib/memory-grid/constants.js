@@ -225,10 +225,10 @@ export function phaseStartedAt({ phase, roundDeadlineMs, phaseDurationMs }) {
 // STAKE_PRESETS mirrors mines-pvp / blackjack-pvp so the lobby UI
 // renders the same chip row. The actual bet is still free-form
 // validated against MIN_STAKE / MAX_STAKE.
-export const STAKE_PRESETS = [10, 25, 50, 100, 250, 500];
+export const STAKE_PRESETS = [5, 10, 25, 50, 100];
 export const MIN_STAKE = 1;
 // Must match GLOBAL_MAX_BET in src/lib/games/economy.ts.
-export const MAX_STAKE = 100000;
+export const MAX_STAKE = 100;
 
 // ── House fee (per spec: 10% rake on the LOSER's stake) ─────────────
 // Same split as Mines Duel: the winner takes 90% of the loser's

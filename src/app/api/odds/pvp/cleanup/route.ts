@@ -8,6 +8,10 @@ import type { PvPInteractiveOddsState } from "../../../../../lib/odds";
 import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
 import { applyRatingResult } from "../../../../../lib/rating";
 import { applyTrophyResult } from "../../../../../lib/trophyStore";
+import {
+  payOddsPvpWinner,
+  refundOddsPvpStakes,
+} from "../../../../../lib/odds-pvp/serverStore";
 
 /** Maximum time (ms) a player can stay inactive before being auto-forfeited */
 const TIMEOUT_MS = 120_000;
@@ -90,9 +94,6 @@ async function forfeitPlayer(
   wager: number,
   winner: "player1" | "player2",
 ) {
-  // STAKES ARE RETIRED: no pot, no rake and no payout to move.
-  const payout = 0;
-
   await db.transaction(async (tx: any) => {
     // Lock the row
     const [game] = await tx
@@ -107,6 +108,15 @@ async function forfeitPlayer(
     const forfeitedState = game.gameState
       ? { ...(game.gameState as any), gameOver: true, winner }
       : undefined;
+
+    // The idle player's stake is forfeit and the opponent banks the pot, from
+    // the escrow both seats paid at join.
+    const payout = await payOddsPvpWinner({
+      tx,
+      gameId,
+      winnerId,
+      wager,
+    });
 
     // Mark game as finished (forfeit)
     await tx
@@ -171,6 +181,15 @@ async function cancelAbandonedGame(
     const cancelledState = game.gameState
       ? { ...(game.gameState as any), gameOver: true, winner: null }
       : undefined;
+
+    // Nobody won, so neither stake is won: both go back to the seats that
+    // paid them (a stake is never left stranded in the ledger).
+    await refundOddsPvpStakes({
+      tx,
+      gameId,
+      clerkIds: [player1Id, player2Id],
+      wager,
+    });
 
     // Mark game as cancelled
     await tx

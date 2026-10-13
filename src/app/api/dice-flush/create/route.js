@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db, getDisplayName, initialState, lockBalance, requireUser, diceFlushPlayers, diceFlushRooms } from "../_lib";
+import { db, getDisplayName, initialState, requireUser, diceFlushPlayers, diceFlushRooms } from "../_lib";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { normalizeStake } from "../../../../lib/games/stakes";
 
@@ -9,13 +9,14 @@ export async function POST(req) {
     if (gate.response) return gate.response;
     const userId = await requireUser();
     const { wager } = await req.json();
-    // STAKES ARE RETIRED (src/lib/games/stakes.js): creating a room is free.
-    // The requested wager is normalized to 0, so the lockBalance debit below
-    // is a no-op and the pot settles to nothing.
-    const amount = normalizeStake(wager);
+    // Creating a room is free — it is a lobby until an opponent takes the
+    // second seat, and only then are BOTH stakes taken (see /join). The
+    // requested wager is recorded so that join knows what to escrow.
+    const amount = normalizeStake(wager, "dice-flush");
 
     const result = await db.transaction(async (tx) => {
-      await lockBalance(tx, userId, amount);
+      // Nothing is charged here: the room is a lobby until an opponent takes
+      // the second seat, and /join escrows BOTH stakes at that moment.
       const roomId = `yahtzee:${Date.now()}:${Math.floor(Math.random() * 10000)}`;
       const name = await getDisplayName(userId, tx);
       const state = initialState(roomId, userId, name, amount);

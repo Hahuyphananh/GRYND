@@ -24,7 +24,9 @@ export async function POST(req: Request) {
 
 
     const body = await req.json();
-    // STAKES ARE RETIRED (src/lib/games/stakes.js) — a lobby is free to open.
+    // A lobby is free to OPEN: the stake is escrowed for BOTH seats only when
+    // the second player joins (`/api/odds/join`), so an unmatched lobby costs
+    // nothing and a filled match is always fully funded.
     const wager = normalizeStake(body.wager);
 
     // This endpoint only creates PvP lobbies — AI practice mode uses the

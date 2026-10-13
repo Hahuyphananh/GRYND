@@ -25,10 +25,11 @@
 // row `FOR UPDATE`, which is what makes "both seats stopped" and the
 // single-stop-per-seat rule atomic across instances.
 
-import { and, asc, eq, lt, ne } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, lt, ne, or } from "drizzle-orm";
 import { db } from "../../db/client";
 import { precisionLobbies, precisionMatches } from "../../db/schema";
 import { coerceAiDifficulty } from "../aiDifficulty";
+import { escrowMatchWagers, refundMatchWagers } from "../tokens/wager";
 import {
   foldPersistedSample,
   logAnomalyEvents,
@@ -73,6 +74,22 @@ import type {
 } from "./types";
 
 export const PRECISION_AI_USER_ID = "AI_BOT";
+
+/**
+ * Thrown when a pairing cannot be funded. It is deliberately typed so the
+ * callers can tell "this seat cannot cover its wager" apart from a real
+ * database failure: the pairing transaction rolls back (a claimed lobby goes
+ * back to `waiting`) and the route answers with the reason instead of a 500.
+ */
+export class PrecisionEscrowError extends Error {
+  status: number;
+
+  constructor(message: string, status = 400) {
+    super(message);
+    this.name = "PrecisionEscrowError";
+    this.status = status;
+  }
+}
 
 /** True for a free practice match against the server-controlled bot. */
 export function isPrecisionAiMatch(
@@ -810,6 +827,29 @@ export async function createMatchForPairing(
   },
   dbOrTx: any = db,
 ): Promise<PrecisionState> {
+  // ── Fund BOTH seats before the match exists ─────────────────────────────
+  // A staked duel is paid for at the moment the pairing lands, all-or-nothing:
+  // if either seat cannot cover its wager the whole pairing is refused and the
+  // caller's transaction rolls back (a claimed lobby returns to `waiting`), so
+  // a `precision_matches` row can never exist without its escrow behind it.
+  // Free practice (isAiGame, wager 0) moves nothing.
+  if (!input.isAiGame) {
+    // Annotated rather than inferred: `strict` is off in this project, where a
+    // discriminated union is not narrowed by `if (!x.ok)` (same annotation the
+    // tower-arena escrow call site uses).
+    const escrow: { ok: boolean; error?: string; status?: number } =
+      await escrowMatchWagers({
+        clerkIds: input.players.map((p) => p.userId),
+        stake: input.wager,
+        matchId: input.matchId,
+        gameKey: "precision",
+        tx: dbOrTx,
+      });
+    if (!escrow.ok) {
+      throw new PrecisionEscrowError(escrow.error || "Insufficient coins", escrow.status || 400);
+    }
+  }
+
   const state = makeInitialMatch(
     input.matchId,
     input.wager,
@@ -933,69 +973,79 @@ export async function joinLobbyById(input: {
     return { matchId: null, error: "This game has already started.", status: 409 };
   }
 
-  return db.transaction(async (tx) => {
-    // Atomic claim: whoever flips `waiting → active` owns the pairing.
-    const claim = await tx
-      .update(precisionLobbies)
-      .set({ status: "active", opponentUserId: userId, opponentName: userName })
-      .where(
-        and(
-          eq(precisionLobbies.id, lobbyId),
-          eq(precisionLobbies.status, "waiting"),
-          ne(precisionLobbies.hostUserId, userId),
-        ),
-      )
-      .returning(LOBBY_COLUMNS);
-    const claimed = claim[0]
-      ? mapLobbyRow(claim[0] as Record<string, unknown>)
-      : null;
+  try {
+    return await db.transaction(async (tx) => {
+      // Atomic claim: whoever flips `waiting → active` owns the pairing.
+      const claim = await tx
+        .update(precisionLobbies)
+        .set({ status: "active", opponentUserId: userId, opponentName: userName })
+        .where(
+          and(
+            eq(precisionLobbies.id, lobbyId),
+            eq(precisionLobbies.status, "waiting"),
+            ne(precisionLobbies.hostUserId, userId),
+          ),
+        )
+        .returning(LOBBY_COLUMNS);
+      const claimed = claim[0]
+        ? mapLobbyRow(claim[0] as Record<string, unknown>)
+        : null;
 
-    if (!claimed) {
-      const [lobbyRaw] = await tx
-        .select(LOBBY_COLUMNS)
-        .from(precisionLobbies)
-        .where(eq(precisionLobbies.id, lobbyId))
-        .limit(1);
-      if (!lobbyRaw) {
-        return { matchId: null, error: "Lobby not found.", status: 404 };
+      if (!claimed) {
+        const [lobbyRaw] = await tx
+          .select(LOBBY_COLUMNS)
+          .from(precisionLobbies)
+          .where(eq(precisionLobbies.id, lobbyId))
+          .limit(1);
+        if (!lobbyRaw) {
+          return { matchId: null, error: "Lobby not found.", status: 404 };
+        }
+        const lobby = mapLobbyRow(lobbyRaw as Record<string, unknown>);
+        if (lobby.hostUserId === userId) {
+          return {
+            matchId: null,
+            error: "You are already waiting in this lobby.",
+            status: 409,
+          };
+        }
+        return { matchId: null, error: "Lobby is no longer open.", status: 409 };
       }
-      const lobby = mapLobbyRow(lobbyRaw as Record<string, unknown>);
-      if (lobby.hostUserId === userId) {
-        return {
-          matchId: null,
-          error: "You are already waiting in this lobby.",
-          status: 409,
-        };
-      }
-      return { matchId: null, error: "Lobby is no longer open.", status: 409 };
+
+      const players: PrecisionPlayer[] = [
+        {
+          seat: 1,
+          userId: claimed.hostUserId,
+          name: claimed.hostName || "Player 1",
+          isReady: false,
+          isConnected: true,
+        },
+        {
+          seat: 2,
+          userId,
+          name: userName || "Player 2",
+          isReady: false,
+          isConnected: true,
+        },
+      ];
+      await createMatchForPairing(
+        {
+          matchId: claimed.id,
+          wager: claimed.wager,
+          players,
+        },
+        tx,
+      );
+      return { matchId: claimed.id };
+    });
+  } catch (err) {
+    // The pairing could not be funded. The transaction above rolled the claimed
+    // lobby back to `waiting`, so the host is still looking for an opponent and
+    // the caller just needs the reason (a 400 "Insufficient coins", not a 500).
+    if (err instanceof PrecisionEscrowError) {
+      return { matchId: null, error: err.message, status: err.status };
     }
-
-    const players: PrecisionPlayer[] = [
-      {
-        seat: 1,
-        userId: claimed.hostUserId,
-        name: claimed.hostName || "Player 1",
-        isReady: false,
-        isConnected: true,
-      },
-      {
-        seat: 2,
-        userId,
-        name: userName || "Player 2",
-        isReady: false,
-        isConnected: true,
-      },
-    ];
-    await createMatchForPairing(
-      {
-        matchId: claimed.id,
-        wager: claimed.wager,
-        players,
-      },
-      tx,
-    );
-    return { matchId: claimed.id };
-  });
+    throw err;
+  }
 }
 
 /** Mark one seat ready. When BOTH seats are ready the first round is armed
@@ -1387,6 +1437,12 @@ export async function resignMatch(
     if (!row.state.players.some((p) => p.userId === userId)) {
       return { ok: false, reason: "Caller is not a participant" };
     }
+    // Already over: nothing left to void, and nothing may be refunded — a
+    // match that finished NATURALLY has a winner whose payout may already be
+    // credited, so a late resign must not hand both stakes back on top of it.
+    if (row.state.phase === "finished") {
+      return { ok: true, match: row.state };
+    }
     const now = Date.now();
     const write = toWrite(row, now);
     write.state.phase = "finished";
@@ -1400,6 +1456,21 @@ export async function resignMatch(
     write.serverTargetMs = null;
     write.aiStopAt = null;
     write.endedAt = new Date(now);
+    // A resign has NO winner, so neither stake is won: the whole escrow goes
+    // back to both seats. Without this the stakes would sit in the ledger
+    // forever — the payout path deliberately pays nothing when there is no
+    // winner, so nothing else would ever return them. The refund IS this
+    // match's settlement, so stamp the payout guard with it (a later
+    // `/finish-match` call then reports `alreadyProcessed` instead of paying a
+    // "winner" that does not exist).
+    write.payoutProcessedAt = new Date(now);
+    await refundMatchWagers({
+      clerkIds: write.state.players.map((p) => p.userId),
+      stake: row.wager,
+      matchId,
+      gameKey: "precision",
+      tx,
+    });
     await persistMatch(tx, matchId, write);
     summarizePersistedLedger(matchId, write.anomalyLedger);
     void mirrorPrecisionTransition({
@@ -1416,12 +1487,36 @@ export async function resignMatch(
  *  `false` means there was nothing left to remove. */
 export async function removePrecisionMatch(matchId: string): Promise<boolean> {
   if (!matchId) return false;
-  const removed = await db
-    .delete(precisionMatches)
-    .where(eq(precisionMatches.id, matchId))
-    .returning({ id: precisionMatches.id });
-  await db.delete(precisionLobbies).where(eq(precisionLobbies.id, matchId));
-  return removed.length > 0;
+  return db.transaction(async (tx) => {
+    // The row IS the only record that a seat was charged, so any escrow behind
+    // it is handed back before the row goes away. A practice match escrows
+    // nothing, and a row that was already settled (its payout or refund ran)
+    // has nothing left to give back, so both are no-ops.
+    const [raw] = await tx
+      .select(MATCH_COLUMNS)
+      .from(precisionMatches)
+      .where(eq(precisionMatches.id, matchId))
+      .for("update")
+      .limit(1);
+    if (raw) {
+      const row = mapMatchRow(raw as Record<string, unknown>);
+      if (row && row.payoutProcessedAt === null) {
+        await refundMatchWagers({
+          clerkIds: row.state.players.map((p) => p.userId),
+          stake: row.wager,
+          matchId,
+          gameKey: "precision",
+          tx,
+        });
+      }
+    }
+    const removed = await tx
+      .delete(precisionMatches)
+      .where(eq(precisionMatches.id, matchId))
+      .returning({ id: precisionMatches.id });
+    await tx.delete(precisionLobbies).where(eq(precisionLobbies.id, matchId));
+    return removed.length > 0;
+  });
 }
 
 /** Stamp the payout guard across instances. Returns true when THIS caller
@@ -1504,7 +1599,9 @@ export interface PrecisionSweepReport {
 export async function sweepPrecisionGames(
   now: number = Date.now(),
 ): Promise<PrecisionSweepReport> {
-  const [waiting, finished, abandoned, stale] = await Promise.all([
+  // Lobbies hold no money — a stake is only taken when the pairing lands — so
+  // reclaiming them is a plain delete.
+  const [waiting, stale] = await Promise.all([
     db
       .delete(precisionLobbies)
       .where(
@@ -1514,24 +1611,6 @@ export async function sweepPrecisionGames(
         ),
       )
       .returning({ id: precisionLobbies.id }),
-    db
-      .delete(precisionMatches)
-      .where(
-        and(
-          eq(precisionMatches.phase, "finished"),
-          lt(precisionMatches.endedAt, new Date(now - MATCH_FINISHED_TTL_MS)),
-        ),
-      )
-      .returning({ id: precisionMatches.id }),
-    db
-      .delete(precisionMatches)
-      .where(
-        and(
-          ne(precisionMatches.phase, "finished"),
-          lt(precisionMatches.touchedAt, new Date(now - MATCH_ABANDONED_TTL_MS)),
-        ),
-      )
-      .returning({ id: precisionMatches.id }),
     db
       .delete(precisionLobbies)
       .where(
@@ -1543,12 +1622,89 @@ export async function sweepPrecisionGames(
       .returning({ id: precisionLobbies.id }),
   ]);
 
+  // Match rows are the ONLY record that a seat was charged, so one is never
+  // deleted before the escrow behind it is resolved: an abandoned match is
+  // refunded to both seats first, and a finished match that still owes its
+  // winner a payout is left in place for that payout to land.
+  const abandoned = await reclaimAbandonedMatches(now);
+  const finished = await reclaimFinishedMatches(now);
+
   return {
     waitingLobbies: waiting.length,
-    finishedMatches: finished.length,
-    abandonedMatches: abandoned.length,
+    finishedMatches: finished,
+    abandonedMatches: abandoned,
     staleLobbies: stale.length,
   };
+}
+
+/**
+ * Void and reclaim the matches that stopped moving before they ever finished:
+ * a quit mid-match, or a `ready_up` match both seats walked away from.
+ *
+ * Both seats' stakes are refunded BEFORE the delete, because the row is the
+ * last thing that knows who paid. `SKIP LOCKED` means a match being mutated
+ * right now (i.e. a live one) is stepped over instead of swept mid-transition,
+ * and the delete targets exactly the ids the refund ran on.
+ */
+async function reclaimAbandonedMatches(now: number): Promise<number> {
+  return db.transaction(async (tx) => {
+    const doomed = await tx
+      .select(MATCH_COLUMNS)
+      .from(precisionMatches)
+      .where(
+        and(
+          ne(precisionMatches.phase, "finished"),
+          lt(precisionMatches.touchedAt, new Date(now - MATCH_ABANDONED_TTL_MS)),
+        ),
+      )
+      .for("update", { skipLocked: true });
+
+    const ids: string[] = [];
+    for (const raw of doomed) {
+      const row = mapMatchRow(raw as Record<string, unknown>);
+      // A row whose snapshot is unreadable still gets reclaimed (nothing can
+      // play it) — there is just no escrow we can attribute to it.
+      if (row) {
+        await refundMatchWagers({
+          clerkIds: row.state.players.map((p) => p.userId),
+          stake: row.wager,
+          matchId: row.id,
+          gameKey: "precision",
+          tx,
+        });
+      }
+      ids.push(String((raw as Record<string, unknown>).id));
+    }
+    if (ids.length === 0) return 0;
+
+    const removed = await tx
+      .delete(precisionMatches)
+      .where(inArray(precisionMatches.id, ids))
+      .returning({ id: precisionMatches.id });
+    return removed.length;
+  });
+}
+
+/**
+ * Reclaim finished matches whose end-replay window has lapsed — but ONLY once
+ * nothing is owed on them: either the settlement already ran (payout or
+ * refund), or the match was free. A finished staked match with no settlement
+ * stamp is deliberately left for its `/finish-match` call: deleting it would
+ * destroy the only pointer to the winner's unclaimed prize, whereas leaving it
+ * costs one idle row.
+ */
+async function reclaimFinishedMatches(now: number): Promise<number> {
+  const removed = await db
+    .delete(precisionMatches)
+    .where(
+      and(
+        eq(precisionMatches.phase, "finished"),
+        lt(precisionMatches.endedAt, new Date(now - MATCH_FINISHED_TTL_MS)),
+        or(isNotNull(precisionMatches.payoutProcessedAt), eq(precisionMatches.wager, 0)),
+      ),
+    )
+    .returning({ id: precisionMatches.id });
+  return removed.length;
 }
 
 /** Opportunistic, throttled sweep. Read paths call this so abandoned rows are

@@ -30,6 +30,7 @@ import { mirrorPrecisionQueued } from "./canonicalLifecycle";
 import { makeInitialMatch } from "./engine";
 import {
   LOBBY_COLUMNS,
+  PrecisionEscrowError,
   createMatchForPairing,
   mapLobbyRow,
   sweepPrecisionGamesIfDue,
@@ -58,7 +59,19 @@ export interface AutoMatchMatchedResult {
   opponent: { userId: string; name: string; seat: 1 | 2 };
 }
 
-export type AutoMatchResult = AutoMatchWaitingResult | AutoMatchMatchedResult;
+/** A pairing was found but could not be funded: one of the two seats cannot
+ *  cover the wager. The claimed lobby is rolled back to `waiting`, so the
+ *  caller simply gets the reason (and can top up and retry). */
+export interface AutoMatchInsufficientResult {
+  status: "insufficient";
+  error: string;
+  statusCode: number;
+}
+
+export type AutoMatchResult =
+  | AutoMatchWaitingResult
+  | AutoMatchMatchedResult
+  | AutoMatchInsufficientResult;
 
 interface AutoPairOptions {
   /** Wager the caller is matching on, already clamped to a valid value. */
@@ -115,67 +128,78 @@ export async function tryAutoMatch({
 
   // ── Pair: claim the oldest eligible lobby and create the match in ONE ──
   // ── transaction, so two instances can never both claim it.          ──
-  const paired = await db.transaction(async (tx) => {
-    const [candidate] = await tx
-      .select(LOBBY_COLUMNS)
-      .from(precisionLobbies)
-      .where(
-        and(
-          eq(precisionLobbies.status, "waiting"),
-          eq(precisionLobbies.gameMode, "pvp"),
-          eq(precisionLobbies.wager, wager),
-          ne(precisionLobbies.hostUserId, hostUserId),
-        ),
-      )
-      .orderBy(asc(precisionLobbies.createdAt))
-      .for("update", { skipLocked: true })
-      .limit(1);
+  let paired: { host: PrecisionLobbyRow; match: PrecisionState } | null;
+  try {
+    paired = await db.transaction(async (tx) => {
+      const [candidate] = await tx
+        .select(LOBBY_COLUMNS)
+        .from(precisionLobbies)
+        .where(
+          and(
+            eq(precisionLobbies.status, "waiting"),
+            eq(precisionLobbies.gameMode, "pvp"),
+            eq(precisionLobbies.wager, wager),
+            ne(precisionLobbies.hostUserId, hostUserId),
+          ),
+        )
+        .orderBy(asc(precisionLobbies.createdAt))
+        .for("update", { skipLocked: true })
+        .limit(1);
 
-    if (!candidate) return null;
+      if (!candidate) return null;
 
-    const claim = await tx
-      .update(precisionLobbies)
-      .set({
-        status: "active",
-        opponentUserId: hostUserId,
-        opponentName: hostName,
-      })
-      .where(
-        and(
-          eq(precisionLobbies.id, candidate.id),
-          eq(precisionLobbies.status, "waiting"),
-        ),
-      )
-      .returning(LOBBY_COLUMNS);
+      const claim = await tx
+        .update(precisionLobbies)
+        .set({
+          status: "active",
+          opponentUserId: hostUserId,
+          opponentName: hostName,
+        })
+        .where(
+          and(
+            eq(precisionLobbies.id, candidate.id),
+            eq(precisionLobbies.status, "waiting"),
+          ),
+        )
+        .returning(LOBBY_COLUMNS);
 
-    if (!claim[0]) return null;
+      if (!claim[0]) return null;
 
-    const host = mapLobbyRow(claim[0] as Record<string, unknown>);
-    const players: PrecisionPlayer[] = [
-      {
-        seat: 1,
-        userId: host.hostUserId,
-        name: host.hostName || "Player 1",
-        // Both players must explicitly click Ready before the match begins —
-        // see `markPlayerReady` in serverStore.ts.
-        isReady: false,
-        isConnected: true,
-      },
-      {
-        seat: 2,
-        userId: hostUserId,
-        name: hostName || "Player 2",
-        isReady: false,
-        isConnected: true,
-      },
-    ];
+      const host = mapLobbyRow(claim[0] as Record<string, unknown>);
+      const players: PrecisionPlayer[] = [
+        {
+          seat: 1,
+          userId: host.hostUserId,
+          name: host.hostName || "Player 1",
+          // Both players must explicitly click Ready before the match begins —
+          // see `markPlayerReady` in serverStore.ts.
+          isReady: false,
+          isConnected: true,
+        },
+        {
+          seat: 2,
+          userId: hostUserId,
+          name: hostName || "Player 2",
+          isReady: false,
+          isConnected: true,
+        },
+      ];
 
-    const match = await createMatchForPairing(
-      { matchId: host.id, wager: host.wager, players },
-      tx,
-    );
-    return { host, match };
-  });
+      const match = await createMatchForPairing(
+        { matchId: host.id, wager: host.wager, players },
+        tx,
+      );
+      return { host, match };
+    });
+  } catch (err) {
+    // A pairing that cannot be funded is refused, not half-created: the
+    // transaction above rolled the claim back, so the waiting lobby is still
+    // there for someone who can cover the wager.
+    if (err instanceof PrecisionEscrowError) {
+      return { status: "insufficient", error: err.message, statusCode: err.status };
+    }
+    throw err;
+  }
 
   if (paired) {
     return {

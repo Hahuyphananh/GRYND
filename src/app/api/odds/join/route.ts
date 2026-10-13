@@ -5,6 +5,7 @@ import { db } from "../../../../db/client";
 import { oddsGames } from "../../../../db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { initPvPOddsGame } from "../../../../lib/odds";
+import { escrowMatchWagers } from "../../../../lib/tokens/wager";
 
 export async function POST(req: Request) {
   try {
@@ -45,6 +46,28 @@ export async function POST(req: Request) {
       if (!game) throw new Error("Game not found or already joined");
       if (game.player1Id === userId) throw new Error("Cannot join your own game");
 
+      // Escrow BOTH stakes before the seat is filled: a staked match either
+      // funds fully or the join is refused, so a `playing` game is always
+      // backed by two stakes (and the winner's payout is always funded). A
+      // free match (wager 0) moves nothing. Thrown with `status: 400` so the
+      // caller sees the reason — never a 500.
+      // Annotated rather than inferred: `strict` is off in this project, where
+      // a discriminated union is not narrowed by `if (!x.ok)`.
+      const escrow: { ok: boolean; error?: string; status?: number } =
+        await escrowMatchWagers({
+          clerkIds: [game.player1Id, userId],
+          stake: game.wager,
+          matchId: gameId,
+          gameKey: "odds-pvp",
+          tx,
+        });
+      if (!escrow.ok) {
+        throw Object.assign(
+          new Error(escrow.error || "Insufficient coins"),
+          { status: 400 },
+        );
+      }
+
       // Initialize interactive PvP game state
       const gameState = initPvPOddsGame();
 
@@ -75,9 +98,13 @@ export async function POST(req: Request) {
       },
     });
   } catch (error: any) {
+    // A store-level failure (game taken, own game, insufficient coins) is a
+    // user-level error and must answer 4xx with its reason; only a genuinely
+    // unexpected failure stays a 500.
+    const status = error?.status === 400 ? 400 : 500;
     return NextResponse.json(
       { success: false, error: error.message || "Failed to join game" },
-      { status: 500 }
+      { status }
     );
   }
 }

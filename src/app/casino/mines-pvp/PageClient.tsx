@@ -26,6 +26,7 @@ import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
 import PvpLobbyPage, { CoinIcon } from "../../../components/lobby/PvpLobby";
+import { useCoinBalance } from "../../../hooks/useCoinBalance";
 import { useSocket } from "../../../context/SocketProvider";
 import {
   MINES_PVP_LOBBY_ROOM,
@@ -102,10 +103,11 @@ export default function MinesPvpLobbyPage() {
   const posthog = usePostHog();
   const { socket } = useSocket();
 
-  // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
-  // so there is no stake to pick and no token balance to load. The mine count
-  // is FIXED (10 on the 10×10 board), so there is no mine picker either.
-  const stake = 0;
+  // Coin wager: the player picks the stake the lobby is opened at, and the
+  // server escrows both seats the moment an opponent joins. The mine count is
+  // FIXED (10 on the 10×10 board), so there is no mine picker.
+  const coinBalance = useCoinBalance();
+  const [stake, setStake] = useState(10);
   const minesCount = MINES_PER_MATCH;
 
   // ── Lobby state ───────────────────────────────────────────────────
@@ -359,8 +361,9 @@ export default function MinesPvpLobbyPage() {
 
   return (
     <PvpLobbyPage
+      wager={{ value: stake, onChange: setStake, balance: coinBalance }}
       quickQueuePreferences={quickQueuePreferences}
-      quickQueueReadinessBody={{ preferredGames: ["mines-pvp"], minesStakeAmount: 0, minesCount }}
+      quickQueueReadinessBody={{ preferredGames: ["mines-pvp"], minesStakeAmount: stake, minesCount }}
       title="Mines Duel Lobby"
       subtitle={
         <>

@@ -29,11 +29,13 @@
 // contract in one place. If a rule changes there, it must change here.
 //
 // Deliberate exclusions, because they would be FALSE today:
-//   * No wagering, staking, pot, rake or payout language anywhere. Tokens can
-//     no longer move for a match at all — see `STAKES_RETIRED` in
-//     src/lib/games/stakes.js. A competitive match is decided on skill and
-//     rewarded with a per-game Elo rating and trophies (src/lib/rating.js,
-//     src/lib/trophies.js).
+//   * No wagering, staking, pot, rake or payout language anywhere. THIS
+//     CATALOGUE COPY is deliberately coin-free: the lobby (and its stake
+//     picker, see src/lib/games/stakes.js) states the wager, and a landing
+//     page describes the GAME, whose competitive result is still decided on
+//     skill and rewarded with a per-game Elo rating and trophies
+//     (src/lib/rating.js, src/lib/trophies.js). tests/game-landing-pages.test.mjs
+//     enforces the coin-free copy.
 //   * No invented reward numbers. The trophy/Elo machinery is described by
 //     what it does (moves a per-game ladder), not by a delta that tuning can
 //     change out from under this copy.

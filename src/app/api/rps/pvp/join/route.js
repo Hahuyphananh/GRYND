@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../../db/client";
 import { rpsPvpGames } from "../../../../../db/schema";
+import { escrowMatchWagers } from "../../../../../lib/tokens/wager";
 import { and, eq, isNull } from "drizzle-orm";
 
 export async function POST(req) {
@@ -46,6 +47,24 @@ export async function POST(req) {
       }
       if (game.player1Id === userId) {
         throw new Error("Cannot join your own game");
+      }
+
+      // Escrow BOTH stakes before the seat fills: a staked match either funds
+      // fully or the join is refused, so a `matched` game is always backed by
+      // two stakes (and the winner's payout is always funded). A free match
+      // (bet 0) moves nothing.
+      const escrow = await escrowMatchWagers({
+        clerkIds: [game.player1Id, userId],
+        stake: game.betAmount,
+        matchId: parsedGameId,
+        gameKey: "rps-pvp",
+        tx,
+      });
+      // Thrown (not returned) so the transaction rolls back to a still-open
+      // game — the catch below answers 400 with the reason, never a 500, so a
+      // player who cannot cover the wager sees "Insufficient coins".
+      if (!escrow.ok) {
+        throw new Error(escrow.error || "Insufficient coins");
       }
 
       const [matchedGame] = await tx

@@ -13,6 +13,7 @@ import { ACTIVE_SUBSCRIPTION_STATUSES } from "../../../lib/stripe/subscriptions"
 import { getOverallEloForUser } from "../../../lib/rating";
 import { getTotalTrophiesForUser } from "../../../lib/trophyStore";
 import { OVERALL_MIN_GAMES } from "../../../lib/elo";
+import { claimEnergyGrant } from "../../../lib/tokens/energyGrant";
 
 export async function POST(req: Request) {
   try {
@@ -52,6 +53,16 @@ export async function POST(req: Request) {
           overallMinGames: OVERALL_MIN_GAMES,
         },
       });
+    }
+
+    // Daily energy grant — the only free coin faucet. Idempotent per UTC day
+    // and only fires below the grant floor, so it is safe to run on every read
+    // of the balance. A failure here must not break the navbar (the balance is
+    // simply shown without the top-up), so it degrades with a log.
+    try {
+      await claimEnergyGrant(clerkId);
+    } catch (error) {
+      console.error("Error applying the daily energy grant:", error);
     }
 
     const userData = await db

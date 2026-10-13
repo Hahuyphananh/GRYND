@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
 import { applyRatingResult } from "../../../../../lib/rating";
 import { applyTrophyResult } from "../../../../../lib/trophyStore";
+import { payOddsPvpWinner } from "../../../../../lib/odds-pvp/serverStore";
 
 export async function POST(req: Request) {
   try {
@@ -50,8 +51,15 @@ export async function POST(req: Request) {
 
       const forfeiterIsP1 = isPlayer1;
       const winnerId = forfeiterIsP1 ? game.player2Id : game.player1Id;
-      // STAKES ARE RETIRED: no pot, no rake and no payout to move.
-      const payout = 0;
+      // The forfeiter loses their stake; the opponent banks the pot out of the
+      // escrow both seats paid at join, in this transaction (declared before
+      // the terminal write, which records the amount).
+      const payout = await payOddsPvpWinner({
+        tx,
+        gameId,
+        winnerId,
+        wager: game.wager,
+      });
       const winner: "player1" | "player2" = forfeiterIsP1
         ? "player2"
         : "player1";

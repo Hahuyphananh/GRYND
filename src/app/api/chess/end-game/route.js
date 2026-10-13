@@ -5,6 +5,7 @@ import { and, eq, inArray, or } from "drizzle-orm";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 import { applyRatingResult } from "../../../../lib/rating";
 import { applyTrophyResult } from "../../../../lib/trophyStore";
+import { payPvpPot } from "../../../../lib/tokens/pvpPot";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -102,8 +103,18 @@ export async function POST(req) {
           return;
         }
 
-        // Stakes are retired: no pot, no rake and no payout to move.
-        const winnerPayout = 0;
+        // The player who STAYED banks the pot out of the escrow both seats
+        // funded at join — the leaver's stake is forfeit by definition. The
+        // row lock above (and the ledger's per-match key) make a replayed
+        // "leave" a no-op rather than a second payout.
+        const stake = Number(lockedGame.betAmount) || 0;
+        const winnerPayout = await payPvpPot({
+          tx,
+          gameKey: "chess",
+          matchId: gameId,
+          winnerClerkId: opponentId,
+          stake,
+        });
 
         await tx
           .update(chessGames)
@@ -111,7 +122,7 @@ export async function POST(req) {
             status: "finished",
             winnerId: opponentId,
             result: "opponent_left",
-            payout: winnerPayout.toString(),
+            payout: winnerPayout.toFixed(2),
             endedAt: new Date(),
           })
           .where(eq(chessGames.id, gameId));

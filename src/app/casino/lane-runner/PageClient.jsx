@@ -25,6 +25,7 @@ import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
 import PvpLobbyPage, { CoinIcon } from "../../../components/lobby/PvpLobby";
+import { useCoinBalance } from "../../../hooks/useCoinBalance";
 import { useSocket } from "../../../context/SocketProvider";
 import {
   LANE_RUSH_DUEL_LOBBY_ROOM,
@@ -64,9 +65,10 @@ export default function LaneRushDuelLobbyPage() {
   const posthog = usePostHog();
   const { socket } = useSocket();
 
-  // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
-  // so there is no stake to pick and no token balance to load.
-  const stake = 0;
+  // Coin wager: the player picks the stake the lobby is opened at, and the
+  // server escrows both seats the moment an opponent joins.
+  const coinBalance = useCoinBalance();
+  const [stake, setStake] = useState(10);
   const [difficulty, setDifficulty] = useState("easy");
 
   // ── Lobby state ───────────────────────────────────────────────────
@@ -290,6 +292,7 @@ export default function LaneRushDuelLobbyPage() {
 
   return (
     <PvpLobbyPage
+      wager={{ value: stake, onChange: setStake, balance: coinBalance }}
       title="Lane Rush Duel"
       subtitle={
         <>

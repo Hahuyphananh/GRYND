@@ -30,7 +30,12 @@
 
 import { eq, and, sql, isNull, inArray } from "drizzle-orm";
 import { db } from "../../db/client";
-import { STAKES_RETIRED, normalizeStake } from "../games/stakes";
+import { normalizeStake, validateWager } from "../games/stakes";
+import {
+  escrowMatchWagers,
+  refundWager,
+  settlePayout,
+} from "../tokens/wager";
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
@@ -48,6 +53,7 @@ import { sendSystemNotificationEmail } from "../emails/system";
 import { mirrorKenoQueued, mirrorKenoTransition } from "./canonicalLifecycle";
 import {
   ACTIVE_STATES,
+  computePayout,
   KENO_AI_PLAYER_ID,
   KENO_PVP_LOCK_NAMESPACE,
   KENO_POOL_SIZE,
@@ -96,16 +102,10 @@ export function isParticipant(match, userId) {
 }
 
 export function validateMatchParams({ stakeAmount }) {
-  // STAKES ARE RETIRED: a free match is the only legal entry, so nothing is
-  // rejected here anymore.
-  if (STAKES_RETIRED) return { ok: true };
-  const stake = Number(stakeAmount);
-  if (!Number.isFinite(stake) || stake < MIN_STAKE || stake > MAX_STAKE) {
-    return {
-      ok: false,
-      error: `Stake must be a number in [${MIN_STAKE}, ${MAX_STAKE}]`,
-    };
-  }
+  // The wager policy owns the legal range (including "0 = free match"); this
+  // only forwards its verdict, so the range cannot drift per game.
+  const wager = validateWager(stakeAmount, "keno");
+  if (!wager.ok) return { ok: false, error: wager.error };
   return { ok: true };
 }
 
@@ -293,9 +293,9 @@ export async function createAiMatch({ userId, difficulty }) {
 // parallel" race.
 
 export async function createOrJoin({ userId, stakeAmount }) {
-  // Retired stakes: the match is free, and every escrow/payout below operates
-  // on 0 because the stake is normalized here.
-  stakeAmount = normalizeStake(stakeAmount);
+  // The wager policy clamps the requested stake to the legal range (0 = a
+  // free match); the store re-validates the result below.
+  stakeAmount = normalizeStake(stakeAmount, "keno");
   const validation = validateMatchParams({ stakeAmount });
   if (!validation.ok) {
     return { error: validation.error, status: 400 };
@@ -388,6 +388,17 @@ async function joinExistingMatch(tx, candidateId, userId) {
   if (!match || match.status !== MATCH_STATUS.WAITING || match.player2Id) {
     return { error: "Lobby no longer available", status: 409 };
   }
+
+  // Escrow BOTH seats before the seat fills: a match either funds fully or
+  // not at all, so a filled paid seat is always backed by two stakes.
+  const escrow = await escrowMatchWagers({
+    clerkIds: [match.player1Id, userId],
+    stake: match.stakeAmount,
+    matchId: candidateId,
+    gameKey: "keno-pvp",
+    tx,
+  });
+  if (!escrow.ok) return { error: escrow.error, status: escrow.status };
 
   const readyDeadline = new Date(Date.now() + READY_WINDOW_MS);
 
@@ -789,6 +800,51 @@ async function applyResolution(tx, match, {
   return updated || match;
 }
 
+// ── Coin escrow ───────────────────────────────────────────────────────
+//
+// Both stakes were taken at join; a settled match pays the winner 1.9× their
+// stake (the pot minus the 10% house fee), a draw refunds each seat, and a
+// free / AI match (stake 0) moves nothing.
+function escrowFor(match, result, winnerId) {
+  const stake = round2(Number(match?.stakeAmount) || 0);
+  if (isFreeAiMatch(match) || stake <= 0) {
+    return { paid: false, payout: null, winnerId, houseFee: "0.00", prizePaid: "0.00" };
+  }
+  const payout = computePayout({ stakeAmount: stake, result });
+  return {
+    paid: true,
+    payout,
+    winnerId,
+    houseFee: payout.houseFee.toFixed(2),
+    prizePaid: payout.prizePaid.toFixed(2),
+  };
+}
+
+async function settleEscrow(tx, match, escrow) {
+  if (!escrow?.paid) return;
+  if (escrow.winnerId) {
+    await settlePayout({
+      clerkId: escrow.winnerId,
+      amount: escrow.payout.winnerNet,
+      matchId: match.id,
+      gameKey: "keno-pvp",
+      tx,
+    });
+    return;
+  }
+  // Draw: each seat gets its own stake back.
+  for (const clerkId of [match.player1Id, match.player2Id]) {
+    if (!clerkId) continue;
+    await refundWager({
+      clerkId,
+      stake: escrow.payout.refundEach,
+      matchId: match.id,
+      gameKey: "keno-pvp",
+      tx,
+    });
+  }
+}
+
 // ── Settle the match ──────────────────────────────────────────────────
 
 async function settleMatch(tx, match, { result, reason = "resolved" } = {}) {
@@ -799,13 +855,13 @@ async function settleMatch(tx, match, { result, reason = "resolved" } = {}) {
   if (finalResult === RESULT.PLAYER1) winnerId = match.player1Id;
   else if (finalResult === RESULT.PLAYER2) winnerId = match.player2Id;
 
-  // Stakes are retired: the match is always free, so there is no pot to pay
-  // out or rake. Settlement is recorded purely for history/stat purposes.
+  // The pot is paid out from the escrow taken at join.
+  const escrow = escrowFor(match, finalResult, winnerId);
   const settlement = {
     winnerId,
     result: finalResult,
-    houseFee: "0.00",
-    prizePaid: "0.00",
+    houseFee: escrow.houseFee,
+    prizePaid: escrow.prizePaid,
   };
 
   const [updated] = await tx
@@ -834,6 +890,10 @@ async function settleMatch(tx, match, { result, reason = "resolved" } = {}) {
     status: "completed",
     playerCount: [match.player1Id, match.player2Id].filter(Boolean).length,
   });
+
+  // A failed coin move must roll the settlement back (and stay retryable)
+  // rather than settle a paid match without paying it.
+  await settleEscrow(tx, finalRow, escrow);
 
   if (!isAi) {
     await recordPvPResult(tx, finalRow, winnerId, finalResult).catch(() => {});
@@ -1284,12 +1344,13 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
     const result = loserIsP1 ? RESULT.PLAYER2 : RESULT.PLAYER1;
     const isAi = isFreeAiMatch(match);
 
-    // Stakes are retired: nothing is escrowed, so nothing is paid out.
+    // The leaver forfeits their stake to the opponent.
+    const escrow = escrowFor(match, result, winnerUserId);
     const settlement = {
       winnerId: winnerUserId,
       result,
-      houseFee: "0.00",
-      prizePaid: "0.00",
+      houseFee: escrow.houseFee,
+      prizePaid: escrow.prizePaid,
     };
 
     const [updated] = await tx
@@ -1318,6 +1379,8 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
       status: "completed",
       playerCount: [match.player1Id, match.player2Id].filter(Boolean).length,
     });
+
+    await settleEscrow(tx, finalRow, escrow);
 
     if (!isAi) {
       await recordPvPResult(tx, finalRow, winnerUserId, result).catch(() => {});

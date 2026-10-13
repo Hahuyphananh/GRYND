@@ -5,6 +5,7 @@ import { users, unoGames } from "../../../../db/schema";
 import { and, eq } from "drizzle-orm";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 import { isUnoSeat, unoCallerToken } from "../../../../lib/unoSeat";
+import { payPvpPot } from "../../../../lib/tokens/pvpPot";
 
 function safeParse(value, fallback = []) {
   if (value == null) return fallback;
@@ -116,9 +117,15 @@ export async function POST(req) {
         );
       }
 
-      // STAKES ARE RETIRED: no pot, no rake, no payout. The winner is decided
-      // by trophies + Elo, so this settlement must not move a single token.
-      const payout = "0.00";
+      // The winner is paid out of the escrow both seats funded when the game
+      // was filled — inside the SAME transaction that claims the terminal
+      // write, so the coins commit with the result that earned them. The
+      // conditional WHERE makes this the only settle that can pay (a retry
+      // sees no affected rows), and the ledger adds its own per-match key on
+      // top of it. `payPvpPot` returns what the ledger ACTUALLY applied, so a
+      // free game, a replayed settle or a seat with no funding row pays 0.
+      const stake = Number(game.betAmount) || 0;
+      let payout = 0;
 
       const didFinalize = await db.transaction(async (tx) => {
         const finalized = await tx
@@ -127,7 +134,7 @@ export async function POST(req) {
             winner,
             result: "finished",
             status: "finished",
-            payout,
+            payout: "0.00",
           })
           .where(
             and(
@@ -138,7 +145,23 @@ export async function POST(req) {
           )
           .returning({ id: unoGames.id });
 
-        return finalized.length > 0;
+        if (finalized.length === 0) return false;
+
+        payout = await payPvpPot({
+          tx,
+          gameKey: "uno",
+          matchId: gameId,
+          winnerClerkId: winnerUser.clerkId,
+          stake,
+        });
+        if (payout > 0) {
+          await tx
+            .update(unoGames)
+            .set({ payout: payout.toFixed(2) })
+            .where(eq(unoGames.id, gameId));
+        }
+
+        return true;
       });
 
       if (!didFinalize) {
@@ -167,12 +190,24 @@ export async function POST(req) {
 
       const didRequesterWin = winner === role;
 
+      // The payout moved real coins, so report the requester's balance as it
+      // stands AFTER settlement rather than the pre-settle read.
+      let newBalance = balance;
+      if (didFinalize && payout > 0 && requester) {
+        const [fresh] = await db
+          .select({ balance: users.balance })
+          .from(users)
+          .where(eq(users.id, requester.id))
+          .limit(1);
+        if (fresh) newBalance = parseFloat(fresh.balance);
+      }
+
       return NextResponse.json({
         success: true,
         winner,
         result: didRequesterWin ? "win" : "lose",
-        // Stakes are retired — no balance ever moves on settle.
-        newBalance: balance,
+        newBalance,
+        payout,
         message: didRequesterWin
     ? "You won!"
     : "Opponent won.",

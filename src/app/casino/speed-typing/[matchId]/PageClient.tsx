@@ -374,10 +374,6 @@ export default function SpeedTypingMatchPage() {
   const status = match?.status ?? "";
   const finished = TERMINAL.has(status);
 
-  // The evaluator only reports a FINISHED race (a cancelled match has no
-  // performance to report), so the link is offered for `finished` alone — not
-  // the broader TERMINAL set this screen uses to close the arena.
-  const evaluationEligible = match?.status === "finished";
   const passage = race?.passageText ?? "";
   const passageChars = useMemo(() => Array.from(passage), [passage]);
   const typedChars = useMemo(() => Array.from(typed), [typed]);
@@ -985,11 +981,6 @@ export default function SpeedTypingMatchPage() {
               ]
             : []),
         ]}
-        secondaryAction={
-          evaluationEligible
-            ? { label: "See Evaluation", href: `/evaluation/speed-typing/${matchId}` }
-            : null
-        }
         playAgain={{ label: "RACE AGAIN", onClick: requeue }}
         onReturnToLobby={() => router.push("/casino/speed-typing")}
       />

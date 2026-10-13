@@ -57,10 +57,9 @@ export async function POST(req) {
     );
   }
 
-  // STAKES ARE RETIRED (src/lib/games/stakes.js): a match is free to enter.
-  // The requested stake is normalized to 0 so no range check can reject a
-  // free match, and the store's escrow/payout arithmetic runs against 0.
-  const stakeAmount = normalizeStake(body?.stakeAmount);
+  // The wager policy clamps the requested stake to the legal range (0 = a free
+  // match); the store re-validates it and rejects an out-of-range value.
+  const stakeAmount = normalizeStake(body?.stakeAmount, "keno");
 
   try {
     const result = await createOrJoin({ userId, stakeAmount });

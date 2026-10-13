@@ -37,7 +37,6 @@ import {
 import { chessSeatsForHumanColor, CHESS_AI_PLAYER_ID } from "../src/lib/chessAiSeat.ts";
 import { ChessGameplayEngineError } from "../src/lib/chessGameplayEngine.ts";
 import { disposeChessEngine } from "../src/lib/evaluation/engine/stockfishEngine.ts";
-import { MIN_EVALUABLE_PLIES } from "../src/lib/evaluation/games/chessEvaluator.ts";
 
 // The real-engine case below boots the shared Stockfish instance; release it so
 // the process can exit on its own.
@@ -617,10 +616,10 @@ test("terminal classification names the seat that owns the result", () => {
 });
 
 // ════════════════════════════════════════════════════════════════════
-// 7. The stored history, and the evaluation pipeline
+// 7. The stored move history
 // ════════════════════════════════════════════════════════════════════
 
-test("the persisted history is exactly what the evaluation pipeline reads", async () => {
+test("the persisted history stores each played ply as UCI and attributes it", async () => {
   // The human plays Black, so the bot (White) owns the ODD plies: four plies are
   // already persisted (…Bb5 will be the fifth) and it is the bot's turn.
   const db = memoryDb({
@@ -635,12 +634,9 @@ test("the persisted history is exactly what the evaluation pipeline reads", asyn
 
   const history = db.rows();
   assert.equal(history.length, 5);
-  assert.ok(history.length >= MIN_EVALUABLE_PLIES, "the game is now analysable");
 
   for (const row of history) {
-    // The evaluator compares `move_uci` byte-for-byte against Stockfish's own
-    // `bestmove`, so the stored encoding must be UCI — no stray promotion
-    // suffix, no SAN.
+    // The stored encoding must be UCI — no stray promotion suffix, no SAN.
     assert.match(row.moveUci, /^[a-h][1-8][a-h][1-8][qrbn]?$/, row.moveUci);
     assert.ok(row.moveSan.length > 0);
     assert.ok(row.fenAfter.startsWith("rnbqkbnr") || row.fenAfter.includes("/"));

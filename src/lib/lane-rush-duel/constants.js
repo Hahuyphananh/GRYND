@@ -107,10 +107,10 @@ export const FINISHED_GRACE_MS = 5000;
 export const BOT_ACTION_INTERVAL_MS = 1500;
 
 // ── Stake matchmaking constants ───────────────────────────────────
-export const STAKE_PRESETS = [10, 25, 50, 100, 250, 500];
+export const STAKE_PRESETS = [5, 10, 25, 50, 100];
 export const MIN_STAKE = 1;
 // Must match GLOBAL_MAX_BET in src/lib/games/economy.ts.
-export const MAX_STAKE = 100000;
+export const MAX_STAKE = 100;
 
 // ── House fee (10% rake on the LOSER's stake) ─────────────────────
 export const HOUSE_FEE_PCT = 0.1;

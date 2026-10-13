@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { dotsAndBoxesGames } from "../../../../db/schema";
 import { READY_WINDOW_MS } from "../../../../lib/dotsAndBoxesServer";
+import { escrowMatchWagers } from "../../../../lib/tokens/wager";
 
 export async function POST(req) {
   try {
@@ -55,6 +56,18 @@ export async function POST(req) {
       }
 
       if (!game) throw new Error("No compatible game available");
+
+      // Escrow BOTH stakes before the seat fills: a paid game either funds
+      // fully or the join is refused, so a ready game is always backed by two
+      // stakes. A free game (bet 0) moves nothing.
+      const escrow = await escrowMatchWagers({
+        clerkIds: [game.hostClerkId, userId],
+        stake: game.betAmount,
+        matchId: game.id,
+        gameKey: "dots-and-boxes",
+        tx,
+      });
+      if (!escrow.ok) throw new Error(escrow.error || "Insufficient coins");
 
       const [updatedGame] = await tx
         .update(dotsAndBoxesGames)

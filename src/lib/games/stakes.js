@@ -1,80 +1,130 @@
 // src/lib/games/stakes.js
 //
-// STAKES ARE RETIRED — a match costs nothing to enter and moves no tokens.
+// THE wager policy: the ONE place that decides whether a match may move coins,
+// and what a legal wager looks like. Every entry point, store and settlement
+// path reads this module instead of policing a wager itself.
 //
-// Every stake-based game used to take a wager from the client, check the
-// player's token balance, debit it on entry and credit a payout on settle.
-// That is over. Competitive play is now decided by TROPHIES (per-game
-// progression) and per-game ELO — a result is
-// worth the same whether or not anything was at risk, and nothing is.
+// Coins are the energy currency. A brand-new account opens with
+// `STARTING_COINS`, a bounded daily grant tops a low balance back up to
+// `ENERGY_GRANT_FLOOR`, a single wager is capped by the game's class, a single
+// match can pay out at most `MAX_WIN_PER_MATCH`, and no credit may push a
+// balance past `WALLET_HARD_CAP` (all in src/lib/games/economy.ts). Together
+// those are what stop an account from reaching millions by playing.
 //
-// WHY THIS MODULE EXISTS
-//   The wager was never validated in one place: each game had its own
-//   `stake > 0` check, its own balance guard, its own debit and its own
-//   payout. Retiring them one route at a time is the migration, and this is
-//   the ONE place the decision lives while it happens — so the answer to
-//   "can a match move tokens?" is identical for every game, and flipping the
-//   switch can never leave half the app charging players.
+// A wager of 0 is LEGAL and means "no stake" — a practice / bot / free match.
+// Any positive wager must be a whole number inside `[MIN_STAKE,
+// maxStakeFor(game)]`. Keeping free play legal at this seam is deliberate: the
+// lobby UI (which makes a coin wager the normal path) and the escrow helper
+// (which actually debits/credits) build on top of it, so no game is ever
+// unplayable in between.
 //
-//   `normalizeStake()` is applied at each entry point, which makes the
-//   downstream money arithmetic operate on 0: a debit of 0, a pot of 0, a
-//   payout of 0. Tokens cannot move even before the dead machinery is deleted,
-//   and the deletion is then a pure removal instead of a behaviour change.
-//
-// WHAT REPLACES A WAGER
-//   * A match still creates a row (with stake 0) and still counts for the
-//     leaderboard counters, trophies and Elo — the *result* is unchanged.
-//   * The lobby no longer asks for a stake (see useDefaultWager), so there is
-//     nothing to set up before playing.
-//
-// DELETION ORDER (this module goes away last)
-//   1. every entry point reads this seam  → matches stop moving tokens,
-//   2. the dead debit/payout/pot machinery is deleted per game,
-//   3. the token currency itself is retired (balance, ledger, purchases,
-//      rewards) and this file is deleted with it.
+// WHAT THIS MODULE IS NOT: it does not move coins. `validateWager` decides
+// whether a wager is legal and `maxStakeFor` decides its ceiling; the debit and
+// the payout live in src/lib/tokens/wager.ts so there is exactly one way a
+// balance changes for a match.
+
+import { GLOBAL_MAX_BET } from "./economy";
 
 /**
- * True while a match is forbidden from moving tokens. Named as a fact rather
- * than a feature flag: there is no supported mode in which a ranked match
- * takes or pays tokens, so no caller may branch on it to re-enable them.
+ * True: a match may move coins again. Named as a fact rather than a feature
+ * flag — there is no supported mode in which ranked play is free.
  */
-export const STAKES_RETIRED = true;
+export const WAGERING_ENABLED = true;
 
-/** The stake every match is created and joined with: none. */
+/** The stake a match carries when no wager was requested: none. */
 export const FREE_STAKE = 0;
 
+/** Smallest positive wager (coins). */
+export const MIN_STAKE = 1;
+
+/** Ceiling for any game that is not listed as high-variance (coins). */
+export const MAX_STAKE = GLOBAL_MAX_BET;
+
 /**
- * The stake the platform will honour for a match, given whatever the client
- * sent (a number, a string, a legacy field, or nothing at all). Always
- * FREE_STAKE while stakes are retired, so a client can neither raise a stake
- * nor make one required.
+ * Per-game ceiling overrides. Empty today: every game in the catalogue is 1v1
+ * (fixed 1.9x after rake) or single-player with a bounded payout, so the
+ * global ceiling already applies. The house multiplier games that DID spike
+ * (roulette 35:1, plinko ~120x) were retired; if one returns, add it here with
+ * `HIGH_VARIANCE_MAX_BET` from ./economy — no per-game wager arithmetic lives
+ * anywhere else.
+ */
+export const WAGER_CAPS = Object.freeze({});
+
+/**
+ * The largest legal wager for a game (coins). Unknown / missing game keys get
+ * the global ceiling.
+ */
+export function maxStakeFor(gameKey) {
+  const cap = WAGER_CAPS[String(gameKey || "").toLowerCase()];
+  return Number.isFinite(cap) ? cap : MAX_STAKE;
+}
+
+/**
+ * Validate a requested wager for a game.
  *
- * The argument is accepted and ignored on purpose: removing the parameter
- * would force every caller to change shape at the same time, and the point of
- * the seam is that each game can be migrated independently.
+ * Returns `{ ok: true, stake }` where `stake` is the normalised whole number of
+ * coins (0 for an absent / explicit "no wager"), or
+ * `{ ok: false, error, status: 400 }` for a request that must be rejected —
+ * so an entry point can answer `error` with `status` without inventing its own
+ * message or its own range.
  */
-export function normalizeStake(_requested) {
-  return STAKES_RETIRED ? FREE_STAKE : Number(_requested) || 0;
+export function validateWager(requested, gameKey) {
+  const max = maxStakeFor(gameKey);
+  // Absent / explicitly free is legal: a free match is never an error.
+  if (requested === undefined || requested === null || requested === "") {
+    return { ok: true, stake: FREE_STAKE };
+  }
+  const stake = Number(requested);
+  if (!Number.isFinite(stake)) {
+    return { ok: false, error: "Wager must be a number of coins", status: 400 };
+  }
+  if (stake < 0) {
+    return { ok: false, error: "Wager cannot be negative", status: 400 };
+  }
+  if (stake === 0) return { ok: true, stake: FREE_STAKE };
+  if (!Number.isInteger(stake)) {
+    return { ok: false, error: "Wager must be a whole number of coins", status: 400 };
+  }
+  if (stake < MIN_STAKE) {
+    return { ok: false, error: `Minimum wager is ${MIN_STAKE} coin`, status: 400 };
+  }
+  if (stake > max) {
+    return { ok: false, error: `Maximum wager is ${max} coins`, status: 400 };
+  }
+  return { ok: true, stake };
 }
 
 /**
- * True when a match may move tokens. Never, while stakes are retired — the
- * debit and payout paths guard on this instead of being half-deleted.
+ * The wager the platform will honour, given whatever the client sent (a number,
+ * a numeric string, a legacy field, or nothing at all). Finite positive values
+ * are truncated to whole coins and clamped to the game's ceiling; anything
+ * unusable becomes `FREE_STAKE`.
+ *
+ * This is the permissive companion to `validateWager`: legacy callers keep
+ * their signature and can never store an illegal wager, while entry points that
+ * must REJECT a bad request call `validateWager` instead.
  */
+export function normalizeStake(requested, gameKey) {
+  const stake = Number(requested);
+  if (!Number.isFinite(stake) || stake <= 0) return FREE_STAKE;
+  return Math.min(Math.trunc(stake), maxStakeFor(gameKey));
+}
+
+/** True when a match may move coins. */
 export function tokensMoveForMatches() {
-  return !STAKES_RETIRED;
+  return WAGERING_ENABLED;
 }
 
 /**
- * True when a non-zero stake is a legal entry value. Never, while stakes are
- * retired, so an entry point can answer "Invalid stake" for a *charging*
- * request rather than silently accepting one.
+ * True when a non-zero stake is a legal entry value for the game. A zero /
+ * absent stake is *valid* (free play) but not an accepted wager, so this stays
+ * false for it.
  */
-export function isStakeAccepted(requested) {
-  return tokensMoveForMatches() && Number(requested) > 0;
+export function isStakeAccepted(requested, gameKey) {
+  if (!tokensMoveForMatches()) return false;
+  const result = validateWager(requested, gameKey);
+  return result.ok && result.stake > 0;
 }
 
-/**
- * The display value for a stake in the UI: nothing, always.
- */
-export const STAKE_LABEL = "Free play";
+/** How a coin wager is labelled in the UI. */
+export const STAKE_LABEL = "Coins";

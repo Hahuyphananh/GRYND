@@ -26,7 +26,12 @@
 
 import { eq, and, sql, isNull, inArray } from "drizzle-orm";
 import { db } from "../../db/client";
-import { STAKES_RETIRED, normalizeStake } from "../games/stakes";
+import { normalizeStake, validateWager } from "../games/stakes";
+import {
+  escrowMatchWagers,
+  refundWager,
+  settlePayout,
+} from "../tokens/wager";
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
@@ -62,6 +67,7 @@ import {
   ACTION_KIND,
   applyScoreDelta,
   chooseAiActionForSeat,
+  computePayout,
   correctFlagsForSeat,
   flagsForSeat,
   generateBoardPair,
@@ -134,16 +140,11 @@ function statsPatch(seat, { score, safeRevealed, minesHit, correctFlagCount, inc
 
 // ── Parameter validation ──────────────────────────────────────────────
 export function validateMatchParams({ stakeAmount, minesCount }) {
-  const stake = Number(stakeAmount);
   const mines = Number(minesCount);
-  if (
-    !STAKES_RETIRED &&
-    (!Number.isFinite(stake) || stake < MIN_STAKE || stake > MAX_STAKE)
-  ) {
-    return {
-      ok: false,
-      error: `Stake must be a number in [${MIN_STAKE}, ${MAX_STAKE}]`,
-    };
+  // The wager policy owns the legal range (including "0 = free match").
+  const wager = validateWager(stakeAmount, "mines");
+  if (!wager.ok) {
+    return { ok: false, error: wager.error };
   }
   if (minesCount != null && mines !== MINES_PER_MATCH) {
     return { ok: false, error: `Mines count is fixed at ${MINES_PER_MATCH}` };
@@ -221,7 +222,9 @@ export async function createAiMatch({ userId, minesCount, difficulty }) {
 // ── Create / Join matchmaking ─────────────────────────────────────────
 export async function createOrJoin({ userId, stakeAmount, minesCount }) {
   void minesCount; // a client value is never trusted; the constant wins
-  stakeAmount = normalizeStake(stakeAmount);
+  // The wager policy clamps the requested stake to the legal range (0 = a
+  // free match); the store re-validates the result below.
+  stakeAmount = normalizeStake(stakeAmount, "mines");
   const validation = validateMatchParams({
     stakeAmount,
     minesCount: MINES_PER_MATCH,
@@ -309,8 +312,18 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
     return { error: "Lobby no longer available", status: 409 };
   }
 
+  // Escrow BOTH seats before the seat fills: a match either funds fully or
+  // not at all, so a filled paid seat is always backed by two stakes.
+  const escrow = await escrowMatchWagers({
+    clerkIds: [match.player1Id, userId],
+    stake: match.stakeAmount,
+    matchId: candidateId,
+    gameKey: "mines",
+    tx,
+  });
+  if (!escrow.ok) return { error: escrow.error, status: escrow.status };
+
   // Both boards are already fixed; joining only opens the ready banner.
-  void stakeAmount;
   const readyDeadline = new Date(Date.now() + READY_WINDOW_MS);
 
   const [updated] = await tx
@@ -878,6 +891,50 @@ function finalStateForSeat(match, seat) {
 // ── The single settle path ────────────────────────────────────────────
 // `winnerId` is optional: a resignation names the opponent explicitly; a
 // scored finish derives the winner from the tiebreak ladder.
+// ── Coin escrow ───────────────────────────────────────────────────────
+// Both stakes were taken at join; a resolved match pays the winner 1.9× their
+// stake (pot minus the 10% house fee), a draw refunds each seat, and a free /
+// AI match (stake 0) moves nothing.
+function escrowFor(match, result, winnerId) {
+  const stake = Number(Number(match?.stakeAmount) || 0);
+  if (isFreeAiMatch(match) || stake <= 0) {
+    return { paid: false, payout: null, winnerId, houseFee: "0.00", prizePaid: "0.00" };
+  }
+  const payout = computePayout({ stakeAmount: stake, result });
+  return {
+    paid: true,
+    payout,
+    winnerId,
+    houseFee: Number(payout.houseFee).toFixed(2),
+    prizePaid: Number(payout.prizePaid).toFixed(2),
+  };
+}
+
+async function settleEscrow(tx, match, escrow) {
+  if (!escrow?.paid) return;
+  if (escrow.winnerId) {
+    await settlePayout({
+      clerkId: escrow.winnerId,
+      amount: escrow.payout.winnerNet,
+      matchId: match.id,
+      gameKey: "mines",
+      tx,
+    });
+    return;
+  }
+  // Draw: each seat gets its own stake back.
+  for (const clerkId of [match.player1Id, match.player2Id]) {
+    if (!clerkId) continue;
+    await refundWager({
+      clerkId,
+      stake: escrow.payout.refundEach,
+      matchId: match.id,
+      gameKey: "mines",
+      tx,
+    });
+  }
+}
+
 async function resolveMatch(tx, match, { winnerId = null, reason } = {}) {
   if (!match) return match;
   if (TERMINAL_STATES.has(match.status)) return match;
@@ -898,6 +955,7 @@ async function resolveMatch(tx, match, { winnerId = null, reason } = {}) {
   }
 
   const isAi = isFreeAiMatch(match);
+  const escrow = escrowFor(match, result, winnerId);
 
   // Persist the replay snapshot first (both boards + final scores).
   await tx.insert(minesPvpRounds).values({
@@ -926,8 +984,8 @@ async function resolveMatch(tx, match, { winnerId = null, reason } = {}) {
       result,
       winnerId,
       winReason: reason ?? null,
-      houseFee: "0.00",
-      prizePaid: "0.00",
+      houseFee: escrow.houseFee,
+      prizePaid: escrow.prizePaid,
       endedAt: new Date(),
     })
     .where(eq(minesPvpMatches.id, match.id))
@@ -939,6 +997,10 @@ async function resolveMatch(tx, match, { winnerId = null, reason } = {}) {
     status: "completed",
     playerCount: [match.player1Id, match.player2Id].filter(Boolean).length,
   });
+
+  // A failed coin move must roll the settlement back rather than settle a
+  // paid match without paying it.
+  await settleEscrow(tx, finalRow, escrow);
 
   // Best-effort stat side-effects (failures don't roll the match). Skipped
   // for AI matches and for draws.

@@ -266,6 +266,13 @@ export const users = pgTable("users", {
   password: varchar("password", { length: 255 }).notNull(),
   age: integer("age"),
   balance: numeric("balance", { precision: 30, scale: 2 }).default("1000.00").notNull(),
+  // Highest balance ever held — a monotonic high-water mark maintained by
+  // every credit (see src/lib/tokens/*). It is what the "Highest all-time
+  // coins" leaderboard ranks, and it is deliberately NOT the spendable
+  // balance, so spending never erases a peak. Migrated in 0212.
+  peakBalance: numeric("peak_balance", { precision: 30, scale: 2 })
+    .default("0.00")
+    .notNull(),
   gamesWon: integer("games_won").default(0),
   gamesLost: integer("games_lost").default(0),
   referralCode: varchar("referral_code", { length: 30 }).unique(),

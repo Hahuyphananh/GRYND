@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { TURN_TIME_LIMIT_MS } from "../../../../../game-engine/diceFlushEngine";
-import { and, db, eq, getDisplayName, isNull, loadRoom, lockBalance, requireUser, diceFlushPlayers, diceFlushRooms } from "../_lib";
+import { and, db, eq, escrowRoomStakes, getDisplayName, isNull, loadRoom, requireUser, diceFlushPlayers, diceFlushRooms } from "../_lib";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 
 export async function POST(req) {
@@ -14,10 +14,13 @@ export async function POST(req) {
     const result = await db.transaction(async (tx) => {
       const room = await loadRoom(roomId, tx);
       if (room.status !== "waiting") throw new Error("Room unavailable");
-      await lockBalance(tx, userId, room.wager);
       const name = await getDisplayName(userId, tx);
       const state = room.gameState;
       const creatorId = state.players[0].userId;
+      // Both stakes are taken here, together: a staked room either funds fully
+      // or this join is refused and the transaction rolls back (so the room
+      // stays open and nothing was charged).
+      await escrowRoomStakes(tx, room, userId, creatorId);
       state.players.push({ userId, name });
       state.state = "playing";
       // Shared sheet: random 50/50 starter. The starter claims turns
@@ -34,6 +37,9 @@ export async function POST(req) {
 
     return NextResponse.json({ success: true, viewerId: userId, state: result });
   } catch (e) {
-    return NextResponse.json({ success: false, error: e.message || "Failed to join" }, { status: 400 });
+    return NextResponse.json(
+      { success: false, error: e.message || "Failed to join" },
+      { status: typeof e?.status === "number" ? e.status : 400 },
+    );
   }
 }

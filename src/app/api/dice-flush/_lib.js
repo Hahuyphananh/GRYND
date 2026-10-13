@@ -7,12 +7,15 @@ import { applyLeaderboardCounters } from "../../../lib/leaderboardCounters";
 import { applyRatingResult } from "../../../lib/rating";
 import { applyTrophyResult } from "../../../lib/trophyStore";
 import { normalizeStake } from "../../../lib/games/stakes";
+import { payPvpPot } from "../../../lib/tokens/pvpPot";
+import { escrowMatchWagers } from "../../../lib/tokens/wager";
 import { GUEST_DISPLAY_NAME, isGuestId } from "../../../lib/guestIdentity";
 
 export function initialState(roomId, creatorId, creatorName, wager) {
-  // STAKES ARE RETIRED (src/lib/games/stakes.js): the match is free, so the
-  // recorded wager and the pot are 0 and `settleIfEnded` pays out nothing.
-  const stake = normalizeStake(wager);
+  // The stake the room will carry. Nothing is charged at create: the room is a
+  // lobby until an opponent takes the second seat, and BOTH seats are escrowed
+  // at that moment (see `escrowRoomStakes`).
+  const stake = normalizeStake(wager, "dice-flush");
   return {
     id: roomId,
     game: "yahtzee",
@@ -106,10 +109,29 @@ export async function appendAction(tx, roomId, userId, actionType, payload) {
   await tx.insert(diceFlushActions).values({ roomId, userId, actionType, payload });
 }
 
-export async function lockBalance() {
-  // STAKES ARE RETIRED: a match never moves tokens, so there is nothing to
-  // lock and nothing to debit.
-  return 0;
+/**
+ * Escrow BOTH seats of a room, all-or-nothing, at the moment the second player
+ * joins. A staked room either funds fully or the join is refused (the
+ * transaction rolls back), so a `playing` room is always backed by two stakes
+ * and the eventual winner's payout is always funded. A seat that is a guest —
+ * or a room created with no stake — costs nothing.
+ */
+export async function escrowRoomStakes(tx, room, joinerId, creatorId) {
+  const stake = Number(room.wager) || 0;
+  if (stake <= 0) return;
+  const result = await escrowMatchWagers({
+    clerkIds: [creatorId, joinerId],
+    stake,
+    matchId: room.id,
+    gameKey: "dice-flush",
+    tx,
+  });
+  if (!result.ok) {
+    const err = new Error(result.error || "Insufficient coins");
+    // A seat that cannot cover the stake is a user-level error, not a 500.
+    err.status = 400;
+    throw err;
+  }
 }
 
 export async function getDisplayName(userId, tx = db) {
@@ -124,8 +146,11 @@ export async function getDisplayName(userId, tx = db) {
 export async function settleIfEnded(tx, roomRow, state) {
   const ended = checkGameEnd(state);
   if (!ended.ended) return { state, ended: false };
-  // STAKES ARE RETIRED: there is no pot to pay out or rake.
-  const payout = 0;
+  // Whether this room is a staked human-vs-human match. An AI practice game
+  // never pays out (and was never escrowed).
+  const isAiMatch = !!state.players?.some((p) => p.isAI);
+  const staked = !isAiMatch && Number(roomRow.wager) > 0;
+  let payout = 0;
   state.state = "finished";
   // Conditional settlement claim: only one transaction may flip the room to
   // "finished". The WHERE predicate guards against concurrent final-turn
@@ -142,7 +167,6 @@ export async function settleIfEnded(tx, roomRow, state) {
   // Record the SKILL leaderboards (wins/losses/win_rate/streaks) for a real
   // human-vs-human match only — outcome-driven and token/XP-free. An AI
   // practice game must not feed the leaderboards.
-  const isAiMatch = !!state.players?.some((p) => p.isAI);
   if (!isAiMatch && ended.winnerId) {
     applyLeaderboardCounters({
       clerkId: ended.winnerId,
@@ -189,7 +213,21 @@ export async function settleIfEnded(tx, roomRow, state) {
     }
   }
 
+  // Pay the winner out of the escrow both seats funded at join. Runs on the
+  // claim-guarded path (only the transaction that flipped the room to
+  // `finished` reaches here), and the ledger keys the move per match+seat, so
+  // a final-turn race can never pay twice.
+  if (staked) {
+    payout = await payPvpPot({
+      tx,
+      gameKey: "dice-flush",
+      matchId: roomRow.id,
+      winnerClerkId: ended.winnerId,
+      stake: Number(roomRow.wager),
+    });
+  }
+
   return { state, ended: true, winnerId: ended.winnerId, payout, totals: ended.totals };
 }
 
-export { db, eq, and, asc, isNull, ne, users, diceFlushRooms, diceFlushPlayers, rollDice, holdDice, validateMove, nextTurn };
+export { db, eq, and, asc, isNull, ne, users, diceFlushRooms, diceFlushPlayers, rollDice, holdDice, validateMove, nextTurn, payPvpPot };

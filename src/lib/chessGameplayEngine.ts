@@ -139,8 +139,7 @@ export type GameplayMoveRequest = {
 
 /**
  * The engine seam, injected so tests can drive failures (an engine that throws,
- * times out, or answers with an illegal move) without booting WASM. Same pattern
- * as `EvaluationDeps` in src/lib/evaluation/evaluationService.ts.
+ * times out, or answers with an illegal move) without booting WASM.
  */
 export type GameplayDeps = {
   analyze?: typeof analyzePosition;

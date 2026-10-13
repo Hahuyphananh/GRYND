@@ -54,10 +54,11 @@ const RATED_GAMES_FALLBACK = [
   { key: "barricade", label: "Barricade" },
 ];
 
-// Game-result categories the weekly/all-time boards rank by. Every
-// token-derived metric (wagered, won, biggest win) and level is intentionally
-// absent — those boards rank skill: games won/lost, win rate, volume, streaks
-// and PvP wins. The game-specific boards below are Elo, not category-based.
+// Game-result categories the weekly/all-time boards rank by. Alongside the
+// skill boards (games won/lost, win rate, volume, streaks, PvP wins) are the
+// two coin boards, which rank a monotonic high-water mark held on the users
+// row: the biggest single payout ever credited, and the highest balance ever
+// held. The game-specific boards below are Elo, not category-based.
 const ALL_TIME_CATEGORIES = [
   "wins",
   "win_rate",
@@ -67,7 +68,18 @@ const ALL_TIME_CATEGORIES = [
   "net_wins",
   "win_loss_ratio",
   "current_streak",
+  "biggest_win",
+  "peak_balance",
 ];
+
+// Categories with no weekly counter — `pvp_wins` plus the two all-time coin
+// high-water marks. The weekly tab must not offer them (the weekly query would
+// fall back to the headline metric while the header still named the missing
+// one), so switching tabs falls back to `wins`.
+const ALL_TIME_ONLY_CATEGORIES = new Set(["pvp_wins", "biggest_win", "peak_balance"]);
+const WEEKLY_CATEGORIES = ALL_TIME_CATEGORIES.filter(
+  (c) => !ALL_TIME_ONLY_CATEGORIES.has(c),
+);
 
 const CATEGORY_LABELS = {
   wins: "Wins",
@@ -78,6 +90,8 @@ const CATEGORY_LABELS = {
   net_wins: "Net Wins",
   win_loss_ratio: "W/L Ratio",
   current_streak: "Current Streak",
+  biggest_win: "Biggest Coin Win",
+  peak_balance: "Highest All-Time Coins",
 };
 
 /**
@@ -229,6 +243,12 @@ function getMetricValue(item, tab, category) {
     }
     case "current_streak":
       return formatNumber(field("current_streak"));
+    case "biggest_win":
+      // The largest single payout this player ever received.
+      return `${formatNumber(field("biggest_win"))} coins`;
+    case "peak_balance":
+      // The highest balance this player ever held.
+      return `${formatNumber(field("peak_balance"))} coins`;
     default:
       return formatNumber(item[category]);
   }
@@ -407,7 +427,9 @@ export default function LeaderboardPage({ adSlot = null }) {
     setTab(next);
     // pvp_wins is all-time only — fall back to the headline metric on the
     // other tabs (which have no categories).
-    if (next !== "all-time" && category === "pvp_wins") setCategory("wins");
+    if (next !== "all-time" && ALL_TIME_ONLY_CATEGORIES.has(category)) {
+      setCategory("wins");
+    }
   };
   // Per-game boards always rank by that game's current Elo; the Overall tab
   // ranks by the cross-game aggregate.
@@ -549,7 +571,7 @@ export default function LeaderboardPage({ adSlot = null }) {
           !isTrophyTab(tab) && (
             <div className="mb-4 -mx-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
               <div className="flex w-max min-w-full gap-2 sm:flex-wrap sm:justify-center">
-                {ALL_TIME_CATEGORIES.map((x) => (
+                {(tab === "all-time" ? ALL_TIME_CATEGORIES : WEEKLY_CATEGORIES).map((x) => (
                   <button
                     key={x}
                     onClick={() => setCategory(x)}

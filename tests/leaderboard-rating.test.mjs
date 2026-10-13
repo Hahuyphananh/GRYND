@@ -48,9 +48,10 @@ const RATING_LIB = "src/lib/rating.js";
 // ════════════════════════════════════════════════════════════════════════
 
 test("LEADERBOARD CATEGORIES: no token-derived metric can be selected", () => {
-  // Every one of these was a wallet metric, not a skill metric.
+  // Wallet metrics with no board. The two COIN high-water marks the economy
+  // brought back (biggest_win, peak_balance) are deliberately NOT in this
+  // list — they rank a monotonic per-player record, not a spendable balance.
   for (const banned of [
-    "biggest_win",
     "weekly_biggest_win",
     "total_won",
     "total_wagered",
@@ -85,9 +86,16 @@ test("LEADERBOARD CATEGORIES: no token-derived metric can be selected", () => {
     "net_wins",
     "win_loss_ratio",
     "current_streak",
+    "biggest_win",
+    "peak_balance",
   ]);
-  // pvp_wins is still all-time only.
+  // pvp_wins and the two coin marks are all-time only.
   assert.equal(WEEKLY_CATEGORIES.includes("pvp_wins"), false);
+  assert.equal(WEEKLY_CATEGORIES.includes("biggest_win"), false);
+  assert.equal(WEEKLY_CATEGORIES.includes("peak_balance"), false);
+  // The coin boards rank by their own columns, not by a wallet total.
+  assert.equal(normalizeLeaderboardCategory("biggest_win"), "biggest_win");
+  assert.equal(normalizeLeaderboardCategory("peak_balance"), "peak_balance");
 });
 
 test("LEADERBOARD QUERIES: no token SQL and no wallet-based per-game board", () => {
@@ -96,7 +104,6 @@ test("LEADERBOARD QUERIES: no token SQL and no wallet-based per-game board", () 
   for (const banned of [
     "total_won",
     "total_wagered",
-    "biggest_win",
     "weekly_biggest_win",
     "payout",
     "bet_amount",
@@ -353,14 +360,9 @@ test("UI: the per-game board ranks and labels by Elo", () => {
 
 test("UI: no token or winnings metric is rendered on the boards", () => {
   const code = codeOf(CLASSEMENT);
-  for (const banned of [
-    "biggest_win",
-    "biggestWin",
-    "token",
-    "wagered",
-    "totalWon",
-    "earnings",
-  ]) {
+  // The two coin boards ARE rendered (Biggest Coin Win / Highest All-Time
+  // Coins); the rest of the wallet metrics stay unrenderable.
+  for (const banned of ["token", "wagered", "totalWon", "earnings"]) {
     assert.doesNotMatch(
       code,
       new RegExp(banned, "i"),

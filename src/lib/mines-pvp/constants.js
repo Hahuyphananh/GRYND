@@ -85,9 +85,9 @@ export const MATCH_TIMER_SECONDS = 180;
 export const MATCH_TIMER_MS = MATCH_TIMER_SECONDS * 1000;
 
 // ── Stake matchmaking constants (stakes retained as values; retired) ─
-export const STAKE_PRESETS = [10, 25, 50, 100, 250, 500];
+export const STAKE_PRESETS = [5, 10, 25, 50, 100];
 export const MIN_STAKE = 1;
-export const MAX_STAKE = 100000;
+export const MAX_STAKE = 100;
 export const HOUSE_FEE_PCT = 0.1;
 export const WINNER_RATIO = 0.9;
 export const HOUSE_RATIO = 0.1;

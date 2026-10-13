@@ -51,9 +51,12 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
+    // "Game not found or not cancellable" is a NORMAL outcome (a double-tap, or
+    // a lobby that already paired) — it must not surface as a 500. No escrow
+    // exists at this point: a waiting lobby has never been charged.
     return NextResponse.json(
       { success: false, error: error.message || "Failed to cancel game" },
-      { status: 500 }
+      { status: 400 }
     );
   }
 }

@@ -5,8 +5,8 @@ import { db } from "../../../../../db/client";
 import { rpsPvpGames, users } from "../../../../../db/schema";
 import { eq } from "drizzle-orm";
 import { getSeatIdentity } from "../../../../../lib/seatIdentity";
-
-const HOUSE_EDGE_PERCENT = 10;
+import { rpsPvpPayout } from "../../../../../lib/rps-pvp/serverStore";
+import { PVP_RAKE_PCT } from "../../../../../lib/games/economy";
 
 export async function GET(req) {
   const gate = await requireAgeVerifiedUser();
@@ -70,8 +70,11 @@ export async function GET(req) {
 
   const betAmount = Number(game.betAmount);
   const pot = Number((betAmount * 2).toFixed(2));
-  const houseFee = Number(((pot * HOUSE_EDGE_PERCENT) / 100).toFixed(2));
-  const winnerPayout = Number((pot - houseFee).toFixed(2));
+  // The prize comes from the SAME helper the settlement pays through, so what
+  // this endpoint displays is exactly what `/choose` or a forfeit credits
+  // (both stakes minus the shared house rake).
+  const winnerPayout = rpsPvpPayout(betAmount);
+  const houseFee = Number((pot - winnerPayout).toFixed(2));
   const winnerProfit = Number((winnerPayout - betAmount).toFixed(2));
   const myName = game.player1Id === userId ? player1?.name : player2?.name;
   const opponentName =
@@ -110,7 +113,10 @@ export async function GET(req) {
       opponentIconKey: opponentIconKey ?? null,
       opponentNameColor: opponentNameColor ?? null,
       opponentProfileFrame: opponentProfileFrame ?? null,
-      houseEdgePercent: HOUSE_EDGE_PERCENT,
+      // The house edge the payout math above actually applies, derived from
+      // the shared rake so the number the UI prints cannot drift from the
+      // coins that move.
+      houseEdgePercent: Number((PVP_RAKE_PCT * 100).toFixed(2)),
       betAmount,
       pot,
       houseFee,

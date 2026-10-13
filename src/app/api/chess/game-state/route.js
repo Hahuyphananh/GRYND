@@ -9,6 +9,7 @@ import { chessGames, chessMoves, users } from "../../../../db/schema";
 import { chessSeatDisplayName } from "../../../../lib/chessAiSeat";
 import { applyRatingResult } from "../../../../lib/rating";
 import { applyTrophyResult } from "../../../../lib/trophyStore";
+import { payPvpPot } from "../../../../lib/tokens/pvpPot";
 
 async function getUserAliases(clerkId) {
   const aliases = new Set([String(clerkId)]);
@@ -123,21 +124,41 @@ async function settleTimeoutIfNeeded(game, clocks) {
       return;
     }
 
-    // Stakes are retired: no pot, no rake and no payout to move.
-    const winnerPayout = 0;
-
+    // The conditional UPDATE is the settlement CLAIM (only the transaction that
+    // flips the row out of `in_progress` settles), so it runs before any coin
+    // moves. The winner is then paid out of the escrow both seats funded at
+    // join, inside this same transaction as the result that earned it; the
+    // ledger keys the move per match+seat, so a racing poll can never pay twice.
     await tx
       .update(chessGames)
       .set({
         status: "finished",
         winnerId: lockedWinnerId,
         result: "timeout",
-        payout: winnerPayout.toString(),
+        payout: "0.00",
         endedAt: new Date(),
       })
       .where(
         and(eq(chessGames.id, game.id), eq(chessGames.status, "in_progress")),
       );
+
+    // The winner banks the pot. An AI game was never escrowed and pays nothing.
+    const stake = Number(lockedGame.betAmount) || 0;
+    if (!lockedGame.isAiGame && stake > 0) {
+      const winnerPayout = await payPvpPot({
+        tx,
+        gameKey: "chess",
+        matchId: game.id,
+        winnerClerkId: lockedWinnerId,
+        stake,
+      });
+      if (winnerPayout > 0) {
+        await tx
+          .update(chessGames)
+          .set({ payout: winnerPayout.toFixed(2) })
+          .where(eq(chessGames.id, game.id));
+      }
+    }
 
       // Competitive clock-timeout finish: chess vs AI is free play and never
       // earns Elo or trophies.

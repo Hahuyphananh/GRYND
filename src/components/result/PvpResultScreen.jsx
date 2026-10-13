@@ -35,8 +35,8 @@
  *   6. Actions: `playAgain`/`rematch` reuse the game's existing
  *      create-match/matchmaking flow; omit `rematch` when a direct rematch
  *      with the same opponent doesn't exist in the architecture. A game that
- *      needs one extra cross-page action (e.g. opening the finished match's
- *      post-game analysis) passes the generic `secondaryAction` — `{ label, href }` to navigate or
+ *      needs one extra cross-page action (e.g. linking back to the game's lobby)
+ *      passes the generic `secondaryAction` — `{ label, href }` to navigate or
  *      `{ label, onClick }` for an in-page action. It is deliberately generic
  *      so every result screen can reuse it, never a game-specific prop.
  */

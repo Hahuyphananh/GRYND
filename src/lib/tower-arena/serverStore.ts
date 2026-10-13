@@ -32,7 +32,12 @@ import {
   towerArenaTurns,
   users,
 } from "../../db/schema";
-import { STAKES_RETIRED } from "../games/stakes";
+import { validateWager } from "../games/stakes";
+import {
+  escrowMatchWagers,
+  refundWager,
+  settlePayout,
+} from "../tokens/wager";
 import { sendSystemNotificationEmail } from "../emails/system";
 import { DEFAULT_ICON_KEY } from "../iconAssets";
 import { GUEST_DISPLAY_NAME, isGuestId } from "../guestIdentity";
@@ -282,11 +287,12 @@ function newCycleState(match: any, idx: number) {
 // ── Create / join (matchmaking + manual join), wager escrow ────────────
 
 function validateParams(wager: number) {
-  const w = Math.trunc(Number(wager) || 0);
-  // STAKES ARE RETIRED (src/lib/games/stakes.js): a free lobby (wager 0) is
-  // the only legal entry, so the positive-integer rule no longer rejects it.
-  if (!STAKES_RETIRED && w <= 0) return { ok: false as const, error: "Wager must be a positive integer", status: 400 };
-  return { ok: true as const, wager: w };
+  // The wager policy owns the legal range (including "0 = free lobby").
+  const result = validateWager(wager, "tower-arena");
+  if (!result.ok) {
+    return { ok: false as const, error: result.error, status: result.status };
+  }
+  return { ok: true as const, wager: result.stake };
 }
 
 /**
@@ -305,6 +311,10 @@ export async function createOrJoinTowerArena({
   if (!userId) return { error: "Unauthorized", status: 401 };
   const v = validateParams(wager);
   if (!v.ok) return { error: v.error, status: v.status };
+  // A guest has no account to escrow from — they may only play free lobbies.
+  if (isGuestId(userId) && v.wager > 0) {
+    return { error: "Guests can only play free lobbies", status: 403 };
+  }
 
   const lockKey = hashMatchmakeKey(v.wager);
   return db.transaction(async (tx) => {
@@ -346,6 +356,9 @@ export async function createTowerArenaLobby({
   if (!userId) return { error: "Unauthorized", status: 401 };
   const v = validateParams(wager);
   if (!v.ok) return { error: v.error, status: v.status };
+  if (isGuestId(userId) && v.wager > 0) {
+    return { error: "Guests can only play free lobbies", status: 403 };
+  }
   const res = await db.transaction(async (tx) => createLobbyTx(tx, userId, v.wager));
   if (res.match?.id) {
     void relayTowerArenaLobbyUpdate(res.match.id, { event: "created", wager: v.wager, maxPlayers: SEATS, playerCount: 1 });
@@ -365,6 +378,10 @@ export async function joinTowerArenaLobby({ userId, lobbyId }: { userId: string;
     const cur = await fetchPlayers(tx, match.id);
     if (cur.some((p) => p.userId === userId)) return { match, joined: false };
     if (cur.length >= match.maxPlayers) return { error: "Lobby is full", status: 409 };
+    // A guest has no account to escrow from — they may only join free lobbies.
+    if (isGuestId(userId) && Number(match.wager) > 0) {
+      return { error: "Guests can only play free lobbies", status: 403 };
+    }
     return await joinLobbyTx(tx, match, userId);
   }).then(async (res: any) => {
     if (!res.error && res.match?.id) {
@@ -497,6 +514,27 @@ export async function playAiTurn({ matchId }: { matchId: string }) {
 async function joinLobbyTx(tx: any, match: any, userId: string) {
   const cur = await fetchPlayers(tx, match.id);
   const nextSeat = cur.length + 1;
+
+  // Escrow BOTH seats the moment the lobby fills (wager 0 = a free lobby): a
+  // paid match either funds fully or the join is refused, so a full lobby is
+  // always backed by two stakes. Taken before the seat is inserted, so a
+  // refused join leaves no half-filled paid lobby behind.
+  if (nextSeat >= SEATS) {
+    const escrow: { ok: boolean; error?: string; status?: number } =
+      await escrowMatchWagers({
+        clerkIds: [match.hostUserId, userId],
+        stake: match.wager,
+        matchId: match.id,
+        gameKey: "tower-arena",
+        tx,
+      });
+    if (!escrow.ok) {
+      return {
+        error: escrow.error || "Insufficient coins",
+        status: escrow.status || 400,
+      };
+    }
+  }
 
   const [player] = await tx
     .insert(towerArenaPlayers)
@@ -1012,11 +1050,25 @@ async function finishMatchTx(tx: any, match: any, players: any[]) {
     .sort((a, b) => a.placement - b.placement);
 
   const winner = ranked.find((r) => r.placement === 1) || null;
-  // STAKES ARE RETIRED: there is no pot, no rake and no payout to move.
-  const prizePool = 0;
-  const houseFee = 0;
-  const pot = 0;
-  const isPaid = false;
+
+  // Coin settlement: the two escrowed stakes (see joinLobbyTx) are the pot,
+  // the house keeps PVP_RAKE_PCT and the winner takes the rest — the exact
+  // numbers `decidedStanding` and the resign popup already preview. A free /
+  // AI match (wager 0) moves nothing.
+  const isPaid = !match.isAi && Number(match.wager) > 0;
+  const cfg = isPaid ? computePotPrize({ wager: Number(match.wager) }) : null;
+  const prizePool = cfg ? cfg.prizePool : 0;
+  const houseFee = cfg ? cfg.houseFee : 0;
+  const pot = cfg ? cfg.pot : 0;
+
+  // Per-seat payout (1v1: the winner only) so the result payload and the
+  // stored final rankings carry the real number.
+  if (cfg) {
+    const byPlacement = payoutsByPlacement({ prizePool: cfg.prizePool });
+    for (const r of ranked) {
+      r.payout = byPlacement[Math.max(0, Number(r.placement || 1) - 1)] ?? 0;
+    }
+  }
 
   // Win/lose verdict per player (drives the result popups): the seat that
   // landed in a paid slot is the winner. In 1v1 that is placement 1 exactly.
@@ -1044,6 +1096,19 @@ async function finishMatchTx(tx: any, match: any, players: any[]) {
     .returning();
 
   if (!updated) return { match, alreadyFinished: true };
+
+  // Pay the winner from the escrowed pot — once per match (the active→finished
+  // guard above), capped by the shared wallet ceiling. A failure rolls the
+  // settlement back rather than finishing a paid match unpaid.
+  if (isPaid && winner && !winner.isAi && winner.userId) {
+    await settlePayout({
+      clerkId: winner.userId,
+      amount: winner.payout,
+      matchId: match.id,
+      gameKey: "tower-arena",
+      tx,
+    });
+  }
 
   // ── Trophies: the 1v1 ladder ────────────────────────────────────────
   // `ranked` is the server-derived final standing (clients can never supply
@@ -1183,10 +1248,31 @@ export async function removeParticipant({
           .set({ status: "cancelled", phase: "cancelled", endedAt: new Date() })
           .where(and(eq(towerArenaMatches.id, matchId), eq(towerArenaMatches.status, "waiting")));
         const cancelled = await fetchMatchForUpdate(tx, matchId);
+        // Give every escrowed stake back. A lobby that never filled took no
+        // stake at all, so these calls are no-ops there (refundWager only
+        // refunds a stake that was actually taken).
+        for (const seat of players) {
+          if (!seat.userId) continue;
+          await refundWager({
+            clerkId: seat.userId,
+            stake: match.wager,
+            matchId,
+            gameKey: "tower-arena",
+            tx,
+          });
+        }
         void relayTowerArenaLobbyUpdate(matchId, { event: "cancelled", wager: match.wager, maxPlayers: match.maxPlayers, playerCount: 0 });
         return { match: cancelled, cancelled: true };
       }
-      // A waiting non-host just leaves — drop the seat.
+      // A waiting non-host just leaves — refund their stake and drop the seat.
+      // (No-op when the lobby never filled, since nothing was escrowed.)
+      await refundWager({
+        clerkId: p.userId,
+        stake: match.wager,
+        matchId,
+        gameKey: "tower-arena",
+        tx,
+      });
       const others = await fetchPlayers(tx, matchId);
       await tx.delete(towerArenaPlayers).where(eq(towerArenaPlayers.id, p.id));
       // Leaving a ready / counting-down lobby reopens it (and cancels any
