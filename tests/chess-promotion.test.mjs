@@ -75,6 +75,31 @@ const paramsOf = (source, label) => {
     .filter(Boolean);
 };
 
+/**
+ * The move a promotion plays, wherever that page keeps it.
+ *
+ * The PvP page plays it inline; the vs-AI page hands the same two squares, in
+ * the same order, to the one function that applies a human move (`applyMove`) —
+ * which is also the function that PERSISTS it. Playing it inline on the vs-AI
+ * page instead is exactly what would let a promoted move reach the board without
+ * reaching the game's row, so the shared path is asserted rather than assumed.
+ */
+test("the promotion takes its squares from the handler's two square parameters", () => {
+  assert.ok(
+    pvp.includes("const sourceSquare = promoteFromSquare;") &&
+      pvp.includes("const targetSquare = promoteToSquare;"),
+    "the PvP move must be built from the two square parameters",
+  );
+  assert.ok(
+    ai.includes("return applyMove(promoteFromSquare, promoteToSquare, promo);"),
+    "the vs-AI promotion must go through the shared applyMove",
+  );
+  assert.ok(
+    !ai.includes("const sourceSquare = promoteFromSquare;"),
+    "the vs-AI page must not keep a second, unshared copy of the move path",
+  );
+});
+
 for (const [label, source] of [
   ["the PvP page", pvp],
   ["the vs-AI page", ai],
@@ -86,13 +111,6 @@ for (const [label, source] of [
       "promoteToSquare",
     ]);
 
-    // …and the squares it plays come from those parameters, never from
-    // mixing the piece string into a square.
-    assert.ok(
-      source.includes("const sourceSquare = promoteFromSquare;") &&
-        source.includes("const targetSquare = promoteToSquare;"),
-      "the move must be built from the two square parameters",
-    );
     // The chosen piece is still read off the piece option ("wN" → "n").
     assert.ok(
       source.includes('piece ? piece[1]?.toLowerCase() : "q"'),
@@ -178,19 +196,42 @@ test("the library's argument order promotes; the old order played no move", () =
 });
 
 test("an illegal promotion never throws out of the handler", () => {
-  // chess.js v1 throws on an illegal move, so the handler resolves the move
-  // inside a try/catch: a stale board must surface as "not promoted" (return
-  // false, dialog closes) rather than an exception inside the click.
+  // chess.js v1 throws on an illegal move, so the move is resolved inside a
+  // try/catch: a stale board must surface as "not promoted" (return false,
+  // dialog closes) rather than an exception inside the click.
+
+  // The PvP page resolves it in the handler itself…
+  const pvpAt = pvp.indexOf("function onPromotionPieceCheck(");
+  const pvpBody = pvp.slice(pvpAt, pvpAt + 4000);
+  assert.ok(pvpBody.includes("try {"), "the PvP page must guard Chess.move()");
+  assert.ok(
+    /catch[\s\S]{0,80}(localMove = null|return false)/.test(pvpBody),
+    "the PvP page must treat a rejected move as \"no move\"",
+  );
+
+  // …while the vs-AI page delegates to `applyMove`, so the guard that protects
+  // the click lives there — and it must return false, never rethrow.
+  const aiAt = ai.indexOf("function applyMove(");
+  assert.ok(aiAt > 0, "the vs-AI page must have the shared move applier");
+  const aiBody = ai.slice(aiAt, aiAt + 2600);
+  assert.ok(aiBody.includes("try {"), "the vs-AI move path must guard Chess.move()");
+  assert.match(
+    aiBody,
+    /catch \{\s*return false;\s*\}/,
+    "the vs-AI page must treat a rejected move as \"no move\"",
+  );
+
+  // In both pages the no-argument backdrop call is not a move at all.
   for (const [label, source] of [
     ["the PvP page", pvp],
     ["the vs-AI page", ai],
   ]) {
     const at = source.indexOf("function onPromotionPieceCheck(");
-    const body = source.slice(at, at + 4000);
-    assert.ok(body.includes("try {"), `${label} must guard Chess.move()`);
     assert.ok(
-      /catch[\s\S]{0,80}(localMove = null|return false)/.test(body),
-      `${label} must treat a rejected move as "no move"`,
+      source
+        .slice(at, at + 1200)
+        .includes("if (!promoteFromSquare || !promoteToSquare) return false;"),
+      `${label} must ignore the backdrop's no-argument call`,
     );
   }
 });

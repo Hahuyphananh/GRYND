@@ -19,6 +19,7 @@ import { turnBanner as turnBannerAnim } from "../../../../lib/animations";
 import { playCardDraw, playVictory, playDefeat, playTick } from "../../../../lib/gameAudio";
 import { useChessClock } from "../../../../lib/useChessClock";
 import { legalTargetsFrom, isPromotionMove } from "../../../../lib/chessClickMove";
+import { resolveInitialPlayerColor } from "../../../../lib/chessAiSeat";
 import { usePostHog } from "posthog-js/react";
 import {
   IconAlertTriangle,
@@ -306,6 +307,17 @@ function getCapturedPieces(fen: string) {
 // ── Move annotation helper ──
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
+/**
+ * Total pieces in a FEN's placement field.
+ *
+ * The only thing the client uses it for is deciding whether an AI move that
+ * arrived from the SERVER captured a piece — the move itself, its legality and
+ * the resulting position all come from the server and are never re-derived here.
+ */
+function countPiecesInFen(fen: string): number {
+  return (String(fen).split(" ")[0].match(/[a-zA-Z]/g) || []).length;
+}
+
 function computeAnnotation(fenBefore: string, fenAfter: string, perspectiveColor: "w" | "b"): string {
   try {
     const gameBefore = new Chess(fenBefore);
@@ -326,10 +338,25 @@ function computeAnnotation(fenBefore: string, fenAfter: string, perspectiveColor
 // ── Main component ──
 
 export default function ChessAIPageInner() {
+  const searchParams = useSearchParams();
+  // Which side of the board the human plays. The lobby fills `color` with the
+  // SERVER's resolved seat for this game (the creation response's `humanColor`),
+  // so a concrete value is authoritative. It is resolved ONCE per URL, here, so
+  // the board's first paint, the initialize effect below and a restart can never
+  // disagree — a second roll could flip sides mid-mount, and a restart must not
+  // move a seat the game's own row has already fixed. A URL carrying no resolved
+  // colour (a bare practice board, or a page loaded by a pre-change bundle)
+  // keeps the historical coin toss, and never assumes the human is White.
+  const colorParam = searchParams.get("color");
+  const serverColor = useMemo(
+    () => resolveInitialPlayerColor(colorParam),
+    [colorParam],
+  );
+
   const [game, setGame] = useState(new Chess());
   const [aiLevel, setAiLevel] = useState(3);
   const [gameOver, setGameOver] = useState(false);
-  const [playerColor, setPlayerColor] = useState<"white" | "black">("white");
+  const [playerColor, setPlayerColor] = useState<"white" | "black">(serverColor);
   const [gameResult, setGameResult] = useState<
     "win" | "lose" | "draw" | "pending"
   >("pending");
@@ -361,14 +388,35 @@ export default function ChessAIPageInner() {
   const posthog = usePostHog();
 
   const router = useRouter();
-  const searchParams = useSearchParams();
   // Real username / official Grynd icon / equipped name color for the
   // human seat (client-side game — no server match payload).
   const myIdentity = useMySeatIdentity();
   const gameId = searchParams.get("gameId");
   const difficultyParam = searchParams.get("difficulty");
   const timerParam = searchParams.get("timer");
-  const colorParam = searchParams.get("color");
+
+  // ── Server-authoritative VS-AI play ──
+  //
+  // When this page has a game ROW (`gameId`), the board is a VIEW of that row:
+  // the human's move is persisted by POST /api/chess/move and the AI's reply is
+  // generated, validated and persisted by POST /api/chess/ai-move. In that mode
+  // nothing the client computes is authoritative — the seat comes from the row's
+  // player columns, the position from the persisted history, and `pickBestMove`
+  // is used for HINTS ONLY (display/prediction), never as a played move.
+  //
+  // Without a `gameId` this is a bare practice board with no row to persist to;
+  // there the local minimax still plays, and the server has no record of it to
+  // contradict.
+  const serverMode = Boolean(gameId);
+  const [aiThinking, setAiThinking] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
+  const aiTurnInFlightRef = useRef(false);
+  // The human's write to `/api/chess/move`, while it is in flight. The AI-turn
+  // endpoint reads the PERSISTED history, so asking for the reply before that
+  // write lands would be refused as "not the AI's turn" — and the snapshot it
+  // returns would not contain the move yet. The turn is therefore awaited
+  // behind it rather than raced against it.
+  const humanMoveInFlightRef = useRef<Promise<void> | null>(null);
 
   const endGameCalled = useRef(false);
   const initCompleteRef = useRef(false);
@@ -538,6 +586,272 @@ export default function ChessAIPageInner() {
     }
   }
 
+  // ════════════════════════════════════════════════════════════════════
+  // Server-authoritative state (VS-AI games with a row)
+  // ════════════════════════════════════════════════════════════════════
+  //
+  // In server mode the board, the seat and the move list are all views of the
+  // persisted row. These four functions are the only places that adopt server
+  // state, so a client-side guess can never become the position of record.
+
+  /** Put the server's position (and, when known, its seat) on the board. */
+  function applyBoardFromServer(
+    fen: string,
+    humanColor?: "white" | "black",
+  ): Chess {
+    const next = new Chess(fen || START_FEN);
+    if (humanColor === "white" || humanColor === "black") {
+      setPlayerColor(humanColor);
+    }
+    prevFenRef.current = next.fen();
+    setGame(next);
+    setHintMove(null);
+    setSelectedSquare(null);
+    return next;
+  }
+
+  /**
+   * Rebuild the move list from PERSISTED rows.
+   *
+   * The list is a display of the server's history: san/uci/fenAfter are the
+   * stored values, and the `annotation` glyph is the only thing computed here
+   * (it is a locally derived label — it is never stored and never sent back).
+   */
+  function applyMovesFromServer(
+    rows: { moveSan: string; moveUci: string; fenAfter: string }[],
+  ) {
+    let before = START_FEN;
+    const rebuilt = rows.map((row) => {
+      const mover = (row.fenAfter.split(" ")[1] === "w" ? "b" : "w") as
+        | "w"
+        | "b";
+      const entry = {
+        moveSan: row.moveSan,
+        moveUci: row.moveUci,
+        fenAfter: row.fenAfter,
+        annotation: computeAnnotation(before, row.fenAfter, mover),
+      };
+      before = row.fenAfter;
+      return entry;
+    });
+    setMoves(rebuilt);
+    return rebuilt;
+  }
+
+  /**
+   * Adopt `GET /api/chess/game-state` for this game — the seat from the game's
+   * own player columns (`viewerRole`), the position from its stored moves.
+   *
+   * Used on load and whenever a write is refused, so the board can never keep a
+   * move the server did not accept.
+   */
+  async function resyncFromServer(): Promise<{
+    position: Chess;
+    humanColor: "white" | "black";
+    aiColor: "white" | "black";
+    /** True when the row is no longer open — the game is over or was closed. */
+    finished: boolean;
+  } | null> {
+    if (!serverMode) return null;
+    try {
+      const res = await fetch(
+        `/api/chess/game-state?gameId=${encodeURIComponent(gameId as string)}`,
+        { credentials: "include" },
+      );
+      if (!res.ok) return null;
+      const payload = await res.json();
+      const state = payload?.data;
+      if (!state) return null;
+
+      const seat: "white" | "black" =
+        state.viewerRole === "black" ? "black" : "white";
+      applyMovesFromServer(state.moves ?? []);
+      const position = applyBoardFromServer(state.fen || START_FEN, seat);
+
+      const status = String(state.status ?? "");
+      if (status !== "in_progress") {
+        setGameOver(true);
+        if (position.isGameOver()) {
+          await handleGameOver(position, seat);
+        } else {
+          setWinnerText(status === "finished" ? "Game Over" : "Game ended");
+          setGameResult("pending");
+          setShowResultModal(true);
+        }
+      }
+
+      return {
+        position,
+        humanColor: seat,
+        aiColor: seat === "white" ? "black" : "white",
+        finished: status !== "in_progress",
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Persist the human's move through the SAME authoritative route PvP uses.
+   *
+   * The move is already on the board optimistically; if the server refuses it
+   * (a stale turn, a finished game, a session the seat does not belong to) the
+   * board is put back on the server's position rather than left disagreeing
+   * with the row.
+   */
+  async function submitHumanMove(from: string, to: string, promotion: string) {
+    if (!serverMode) return;
+    try {
+      const res = await fetch("/api/chess/move", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ gameId, from, to, promotion }),
+      });
+      if (res.ok) return;
+      const loaded = await resyncFromServer();
+      // The row is still open, so the board has been rewound to the server's
+      // position: the optimistic move — and any result the local board thought
+      // it had just produced — does not exist and is cleared here.
+      if (loaded && !loaded.finished) {
+        setGameOver(false);
+        setShowResultModal(false);
+        setWinnerText("");
+        setGameResult("pending");
+        endGameCalled.current = false;
+      }
+      setServerError(
+        res.status === 409
+          ? "That move was out of turn — the board has been reloaded."
+          : "That move was not accepted — the board has been reloaded.",
+      );
+    } catch {
+      await resyncFromServer();
+      setServerError("Connection lost — the board has been reloaded.");
+    }
+  }
+
+  /**
+   * Ask the server for the bot's move.
+   *
+   * The response is authoritative: its `fen` becomes the board, its `aiMove`
+   * becomes the last entry of the history, and a terminal `status` ends the game
+   * exactly as a locally played finish would. A refusal carries the server's own
+   * snapshot, which is adopted for the same reason; only a failure that left the
+   * row open (an engine that could not answer) is offered as a retry.
+   */
+  async function requestAiTurn() {
+    if (!serverMode || aiTurnInFlightRef.current) return;
+    if (gameOver) return;
+
+    // Only the server decides whose turn it is; this is just a request filter so
+    // the page does not ask on every render.
+    const aiChar = playerColor === "white" ? "b" : "w";
+    if (game.turn() !== aiChar) return;
+
+    aiTurnInFlightRef.current = true;
+    setAiThinking(true);
+    setServerError(null);
+
+    try {
+      // Let the human's move reach the row first. The endpoint's own assessment
+      // is still the authority — this only stops the two requests from
+      // crossing, which would otherwise be read as "the human has not moved".
+      const pendingHumanMove = humanMoveInFlightRef.current;
+      if (pendingHumanMove) await pendingHumanMove;
+
+      const res = await fetch("/api/chess/ai-move", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ gameId }),
+      });
+      const payload = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        if (payload?.state) adoptAiTurnState(payload.state, { appendMove: false });
+        setServerError(
+          payload?.error || "The AI could not move. Please try again.",
+        );
+        return;
+      }
+
+      const state = payload?.data;
+      if (!state || !state.fen) {
+        await resyncFromServer();
+        setServerError("The AI's move could not be read — please try again.");
+        return;
+      }
+      adoptAiTurnState(state, { appendMove: true });
+    } catch {
+      await resyncFromServer();
+      setServerError("Connection lost — the AI could not move. Please try again.");
+    } finally {
+      aiTurnInFlightRef.current = false;
+      setAiThinking(false);
+    }
+  }
+
+  /** Adopt the state an `/api/chess/ai-move` answer carried (applied or snapshot). */
+  function adoptAiTurnState(
+    state: {
+      fen: string;
+      status?: string;
+      isGameOver?: boolean;
+      humanColor?: "white" | "black" | null;
+      aiColor?: "white" | "black" | null;
+      aiMove?: {
+        san: string;
+        uci: string;
+        from: string;
+        to: string;
+        promotion: string | null;
+      } | null;
+    },
+    options: { appendMove: boolean },
+  ) {
+    const seat =
+      state.humanColor === "white" || state.humanColor === "black"
+        ? state.humanColor
+        : undefined;
+    const aiColorChar: "w" | "b" =
+      (state.aiColor === "black" || (!state.aiColor && playerColor === "white")
+        ? "b"
+        : "w") as "w" | "b";
+
+    if (options.appendMove && state.aiMove) {
+      const fenBefore =
+        moves.length > 0 ? moves[moves.length - 1].fenAfter : START_FEN;
+      // A capture is the one thing the client infers, and only for the flash
+      // animation — the move, its legality and the resulting FEN are the
+      // server's, byte for byte.
+      if (countPiecesInFen(fenBefore) > countPiecesInFen(state.fen)) {
+        setCaptureFlash(true);
+        setTimeout(() => setCaptureFlash(false), 400);
+      }
+      const entry = {
+        moveSan: state.aiMove.san,
+        moveUci: state.aiMove.uci,
+        fenAfter: state.fen,
+        annotation: computeAnnotation(fenBefore, state.fen, aiColorChar),
+      };
+      setMoves((prev) => [...prev, entry]);
+    }
+
+    const position = applyBoardFromServer(state.fen, seat);
+    setHintMove(null);
+    setSelectedSquare(null);
+    setActivePlayer(
+      position.turn() === (playerColor === "white" ? "w" : "b")
+        ? (playerClockKey as "player1" | "player2")
+        : (aiClockKey as "player1" | "player2"),
+    );
+
+    if (state.isGameOver || state.status === "finished") {
+      void handleGameOver(position, seat);
+    }
+  }
+
   // ── beforeunload handler ──
   useEffect(() => {
     const handleLeave = () => {
@@ -563,14 +877,11 @@ export default function ChessAIPageInner() {
   // ── Initialize ──
   useEffect(() => {
     const level = difficultyParam ? Number(difficultyParam) : 3;
-    setAiLevel(Math.min(5, Math.max(1, level)));
-
-    const chosenColor =
-      colorParam === "white" || colorParam === "black"
-        ? colorParam
-        : Math.random() > 0.5
-          ? "white"
-          : "black";
+    setAiLevel(Math.min(5, Math.max(1, level)));  // The colour the SERVER assigned this page's game, resolved once per URL
+    // above, so this pass agrees with the first paint and with a restart. In
+    // server mode the row itself has the last word — the load below adopts the
+    // seat from the persisted game state.
+    const chosenColor = serverColor;
     const newGame = new Chess();
     setPlayerColor(chosenColor);
     setGame(newGame);
@@ -590,14 +901,38 @@ export default function ChessAIPageInner() {
       timer_ms: timerMs,
     });
 
-    if (chosenColor === "black") {
-      setTimeout(() => {
-        makeAIMMove(newGame);
+    if (!serverMode) {
+      // Standalone practice board (no row): the local minimax opens for Black,
+      // exactly as before. Nothing here is persisted.
+      if (chosenColor === "black") {
+        setTimeout(() => {
+          makeAIMMove(newGame);
+          initCompleteRef.current = true;
+        }, 300);
+      } else {
         initCompleteRef.current = true;
-      }, 300);
-    } else {
-      initCompleteRef.current = true;
+      }
+      return;
     }
+
+    // Server-backed game: adopt the PERSISTED position and the seat the row
+    // gives us, then ask the server for the bot's move if it is the bot's turn
+    // (which it is from move one when the human plays Black).
+    let cancelled = false;
+    (async () => {
+      const loaded = await resyncFromServer();
+      if (cancelled) return;
+      if (!loaded) setServerError("This game could not be loaded from the server.");
+      initCompleteRef.current = true;
+      if (loaded && !loaded.position.isGameOver()) {
+        const aiChar = loaded.aiColor === "white" ? "w" : "b";
+        if (loaded.position.turn() === aiChar) void requestAiTurn();
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // ── Helpers ──
@@ -607,6 +942,14 @@ export default function ChessAIPageInner() {
   }
 
   function makeAIMMove(gameInstance: Chess) {
+    if (serverMode) {
+      // The SERVER owns the bot's move: it validates it against the persisted
+      // position, persists it, and decides whether the game is over. Nothing in
+      // this component plays it or claims the turn is complete.
+      void requestAiTurn();
+      return;
+    }
+
     if (!gameInstance || gameInstance.isGameOver()) {
       handleGameOver(gameInstance);
       return;
@@ -693,6 +1036,10 @@ export default function ChessAIPageInner() {
 
   // ── Undo move ──
   function undoMove() {
+    // A server-backed game's history is the row's — rewinding only the board
+    // would put the client out of step with the position the bot (and the
+    // evaluator) reads. Undo stays available on the standalone practice board.
+    if (serverMode) return;
     if (gameOver || moves.length === 0) return;
 
     // Cancel any pending AI move
@@ -747,13 +1094,21 @@ export default function ChessAIPageInner() {
     if (moveIndex >= 0) return false;
 
     const gameCopy = new Chess(game.fen());
-    const move = gameCopy.move({
-      from: sourceSquare,
-      to: targetSquare,
-      promotion,
-    });
+    // chess.js v1 THROWS on an illegal move rather than returning null, so both
+    // the drag path and the click path are guarded here — a bogus drop is an
+    // ignored move, not a thrown handler.
+    let move = null;
+    try {
+      move = gameCopy.move({
+        from: sourceSquare,
+        to: targetSquare,
+        promotion,
+      });
+    } catch {
+      return false;
+    }
 
-    if (move === null) return false;
+    if (!move) return false;
 
     if (move.captured) {
       setCaptureFlash(true);
@@ -777,6 +1132,20 @@ export default function ChessAIPageInner() {
     playCardDraw();
 
     if (gameCopy.isGameOver()) handleGameOver(gameCopy);
+
+    // In server mode the move must reach the row before the bot may answer:
+    // the AI-turn endpoint reads the PERSISTED history, so this POST is what
+    // makes the reply possible at all. The local board is optimistic; the server
+    // has the last word (see submitHumanMove).
+    if (serverMode) {
+      const pending = submitHumanMove(sourceSquare, targetSquare, promotion);
+      humanMoveInFlightRef.current = pending;
+      void pending.finally(() => {
+        if (humanMoveInFlightRef.current === pending) {
+          humanMoveInFlightRef.current = null;
+        }
+      });
+    }
     return true;
   }
 
@@ -844,47 +1213,18 @@ export default function ChessAIPageInner() {
   ) {
     // The dialog's backdrop click calls this with no arguments: never a move.
     if (!promoteFromSquare || !promoteToSquare) return false;
-    const sourceSquare = promoteFromSquare;
-    const targetSquare = promoteToSquare;
     if (game.isGameOver() || !isPlayersTurn(game)) return false;
     if (moveIndex >= 0) return false;
 
     promotionHandledRef.current = true;
 
     const promo = piece ? piece[1]?.toLowerCase() : "q";
-    const gameCopy = new Chess(game.fen());
-    // chess.js v1 THROWS on an illegal move rather than returning null, and a
-    // throw here would escape the click handler and leave the dialog stuck.
-    let move = null;
-    try {
-      move = gameCopy.move({ from: sourceSquare, to: targetSquare, promotion: promo });
-    } catch {
-      return false;
-    }
-    if (!move) return false;
 
-    if (move.captured) {
-      setCaptureFlash(true);
-      setTimeout(() => setCaptureFlash(false), 400);
-    }
-
-    const fenBeforePromo = moves.length > 0 ? moves[moves.length - 1].fenAfter : START_FEN;
-    const newMove = {
-      moveSan: move.san,
-      fenAfter: gameCopy.fen(),
-      moveUci: `${move.from}${move.to}${move.promotion || ""}`,
-      annotation: computeAnnotation(fenBeforePromo, gameCopy.fen(), (gameCopy.turn() === "w" ? "b" : "w") as "w" | "b"),
-    };
-    setMoves((prev) => [...prev, newMove]);
-
-    prevFenRef.current = gameCopy.fen();
-    setGame(new Chess(gameCopy.fen()));
-    setActivePlayer(aiClockKey as "player1" | "player2");
-    setHintMove(null);
-    playCardDraw();
-
-    if (gameCopy.isGameOver()) handleGameOver(gameCopy);
-    return true;
+    // One promotion move, played exactly like every other one: `applyMove` is
+    // the single place a HUMAN move is applied and (in server mode) persisted,
+    // so this path cannot drift from the drag path — a divergence here would be
+    // a move the row never saw.
+    return applyMove(promoteFromSquare, promoteToSquare, promo);
   }
 
   // ── Timeout handler ──
@@ -917,13 +1257,31 @@ export default function ChessAIPageInner() {
   }
 
   // ── Game over ──
-  async function handleGameOver(gameInstance: Chess) {
+  //
+  // `seatOverride` is the seat the ROW gives the human. It matters when this is
+  // called straight after adopting server state, where the `playerColor` state
+  // update has not been applied yet and reading it would report the result from
+  // the wrong side of the board.
+  async function handleGameOver(
+    gameInstance: Chess,
+    seatOverride?: "white" | "black",
+  ) {
+    const seat = seatOverride ?? playerColor;
     setGameOver(true);
+
+    // In SERVER mode the row is closed by the server: `/api/chess/move` and
+    // `/api/chess/ai-move` persist the result in the same transaction as the move
+    // that produced it. Re-posting `end-game` from here would race that write and
+    // could expire a game the server is finishing. Resignation still closes its
+    // own row — that path does not come through here.
+    const settle = serverMode
+      ? async () => {}
+      : (result?: "win" | "loss" | "draw") => endGame(result);
 
     if (!gameInstance) {
       setWinnerText("Game Over!");
       setGameResult("draw");
-      await endGame("draw");
+      await settle("draw");
       posthog?.capture("chess_ai_game_ended", { result: "draw", reason: "unknown" });
       setShowResultModal(true);
       return;
@@ -931,10 +1289,10 @@ export default function ChessAIPageInner() {
 
     if (gameInstance.isCheckmate()) {
       const winnerColor = gameInstance.turn() === "w" ? "black" : "white";
-      if (winnerColor === playerColor) {
+      if (winnerColor === seat) {
         setWinnerText("You win!");
         setGameResult("win");
-        await endGame("win");
+        await settle("win");
         posthog?.capture("chess_ai_game_ended", { result: "win", reason: "checkmate" });
         if (!resultCelebratedRef.current) {
           resultCelebratedRef.current = true;
@@ -943,7 +1301,7 @@ export default function ChessAIPageInner() {
       } else {
         setWinnerText("AI wins!");
         setGameResult("lose");
-        await endGame("loss");
+        await settle("loss");
         posthog?.capture("chess_ai_game_ended", { result: "lose", reason: "checkmate" });
         if (!resultCelebratedRef.current) {
           resultCelebratedRef.current = true;
@@ -957,7 +1315,7 @@ export default function ChessAIPageInner() {
     if (gameInstance.isDraw()) {
       setWinnerText("Draw!");
       setGameResult("draw");
-      await endGame("draw");
+      await settle("draw");
       posthog?.capture("chess_ai_game_ended", { result: "draw", reason: "stalemate" });
       setShowResultModal(true);
       return;
@@ -980,13 +1338,18 @@ export default function ChessAIPageInner() {
   }
 
   function resetGame() {
+    if (serverMode) {
+      // This row is finished and the server owns its history; playing again
+      // means a NEW game, which the lobby creates with the tier and colour the
+      // player picks. Rewinding the board here could only disagree with the row.
+      router.push("/casino/chess");
+      return;
+    }
+
     const newGame = new Chess();
-    const chosenColor =
-      colorParam === "white" || colorParam === "black"
-        ? colorParam
-        : Math.random() > 0.5
-          ? "white"
-          : "black";
+    // A restart keeps the seat the SERVER already fixed for this game: it is the
+    // same row, so the human must not be moved to the other side by a re-roll.
+    const chosenColor = serverColor;
     setPlayerColor(chosenColor);
     setGame(newGame);
     setGameOver(false);
@@ -1233,7 +1596,7 @@ export default function ChessAIPageInner() {
                   <Chessboard
                     id="AI-CyberBoard"
                     animationDuration={320}
-                    arePiecesDraggable={!gameOver && moveIndex === -1}
+                    arePiecesDraggable={!gameOver && moveIndex === -1 && !aiThinking}
                     boardOrientation={playerColor}
                     position={displayFen}
                     onPieceDrop={onDrop}
@@ -1283,10 +1646,36 @@ export default function ChessAIPageInner() {
               <div className="mt-4 text-center font-semibold text-cyan-300 tracking-wide">
                 {gameOver
                   ? "Game Over"
-                  : isPlayerTurnNow
-                    ? "Your turn"
-                    : "AI is thinking..."}
+                  : serverError
+                    ? serverError
+                    : isPlayerTurnNow
+                      ? "Your turn"
+                      : aiThinking
+                        ? "AI is thinking..."
+                        : "AI's turn"}
               </div>
+
+              {/*
+                A failed AI turn leaves the row OPEN, so it is recoverable: the
+                server still has the move to make. The button is offered only on
+                the bot's turn — a move the server refused for the human has
+                already been answered by reloading the board.
+              */}
+              {serverError && !gameOver && !isPlayerTurnNow && (
+                <div className="mt-2 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setServerError(null);
+                      void requestAiTurn();
+                    }}
+                    disabled={aiThinking}
+                    className="rounded-lg border border-cyan-300/40 bg-cyan-400/10 px-3 py-1.5 text-sm font-semibold text-cyan-100 transition-colors hover:border-cyan-300 hover:bg-cyan-400/20 disabled:opacity-40"
+                  >
+                    {aiThinking ? "Retrying…" : "Retry AI move"}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1354,7 +1743,12 @@ export default function ChessAIPageInner() {
             {/* Undo */}
             <button
               onClick={undoMove}
-              disabled={gameOver || moves.length === 0 || moveIndex >= 0}
+              disabled={serverMode || gameOver || moves.length === 0 || moveIndex >= 0}
+              title={
+                serverMode
+                  ? "The server holds this game's move history"
+                  : undefined
+              }
               className="mt-3 w-full bg-yellow-600 hover:bg-yellow-500 py-2 rounded-xl font-bold transition disabled:opacity-40 text-sm"
             >
               ↩ Undo Move

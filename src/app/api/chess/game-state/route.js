@@ -6,6 +6,7 @@ import { db } from "../../../../db/client";
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 import { chessGames, chessMoves, users } from "../../../../db/schema";
+import { chessSeatDisplayName } from "../../../../lib/chessAiSeat";
 import { applyRatingResult } from "../../../../lib/rating";
 import { applyTrophyResult } from "../../../../lib/trophyStore";
 
@@ -243,9 +244,20 @@ export async function GET(req) {
         blackTimeRemaining: clocks.blackTimeRemaining,
         activeTurn: clocks.activeTurn,
         whitePlayerId: game.playerWhiteId,
-        blackPlayerId: game.playerBlackId,        whitePlayerName: whiteName || "White",
-        blackPlayerName:
-          blackName || (game.isAiGame ? "Chess AI" : "Waiting..."),
+        blackPlayerId: game.playerBlackId,
+        // A VS-AI game now puts the bot in whichever seat the human is not in,
+        // so the bot's label can no longer be hardcoded onto the black seat:
+        // these resolve the sentinel seat, an EMPTY seat on an AI row (a row
+        // written before the seat model changed), and a genuinely unjoined PvP
+        // seat apart, while a real username always wins.
+        whitePlayerName: chessSeatDisplayName(game.playerWhiteId, whiteName, {
+          isAiGame: game.isAiGame,
+          emptyLabel: "White",
+        }),
+        blackPlayerName: chessSeatDisplayName(game.playerBlackId, blackName, {
+          isAiGame: game.isAiGame,
+          emptyLabel: "Waiting...",
+        }),
         viewerRole,
         winnerId: game.winnerId,
         result: game.result,

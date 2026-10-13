@@ -47,8 +47,17 @@ export function resolveGroqModel(): string {
   return configured || DEFAULT_GROQ_MODEL;
 }
 
-/** Hard ceiling on one provider call so a hung request can't stall a job. */
-const REQUEST_TIMEOUT_MS = 30_000;
+/**
+ * Hard ceiling on one provider call so a hung request can't stall a job.
+ *
+ * 15 s, not 30 s: the evaluation request budget reserves an 18 s slice for the
+ * AI half (see AI_INSIGHT_RESERVE_MS in evaluationService.ts), and the service
+ * backstops this with its own timeout. Aborting here is what lets the request
+ * RESPOND — a call that outlived the function limit would be killed with no
+ * response at all, and the objective stats (which are already computed) would
+ * be lost with it.
+ */
+const REQUEST_TIMEOUT_MS = 15_000;
 
 /** How much of an error body we keep in the failure reason. */
 const MAX_ERROR_DETAIL_CHARS = 300;

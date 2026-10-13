@@ -37,6 +37,17 @@
 // raw HTML — the "no raw HTML" contract is pinned by tests/evaluation-page.test.mjs.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+
+import { fullMoveCount } from "../../../../lib/evaluation/moveCounts";
+import {
+  looksLikeGameReportV1,
+  type GameReportV1,
+} from "../../../../lib/evaluation/gameReport";
+import {
+  buildGameReportView,
+  reportViewHasContent,
+  type ReportMetricView,
+} from "../../../../lib/evaluation/reportViewModel";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
@@ -109,10 +120,51 @@ type PlayerStats = {
 
 type ObjectiveData = {
   sufficient?: boolean;
+  /** COMPLETED FULL MOVES (ceil(plyCount / 2)) on payloads written since the
+   *  count fix; on older cached rows this was the PLY count, which is why the
+   *  header line below derives from `plyCount` instead. */
   moveCount?: number;
+  /** Every individual move by both players — the one count whose meaning has
+   *  never changed, and therefore the one the label is built from. */
+  plyCount?: number;
   engine?: { id?: string; depth?: number; moveTimeMs?: number } | null;
   players?: { white?: PlayerStats; black?: PlayerStats } | null;
 };
+
+/**
+ * The "N moves · M plies" line under the stat tiles.
+ *
+ * `plyCount` is authoritative: it exists on every stored payload and its
+ * meaning has never changed, so a row cached BEFORE the count fix — whose
+ * `moveCount` was really a ply count — still displays "7 moves played · 13
+ * plies" rather than claiming a 13-move game. New payloads agree, because their
+ * `moveCount` is `ceil(plyCount / 2)` (see src/lib/evaluation/moveCounts.ts).
+ */
+function moveCountLabel(objective?: ObjectiveData | null): string {
+  const plies = objective?.plyCount;
+  if (typeof plies === "number" && Number.isFinite(plies)) {
+    return `${fullMoveCount(plies)} moves played · ${plies} plies`;
+  }
+  const moves = objective?.moveCount;
+  const fallback = typeof moves === "number" && Number.isFinite(moves) ? moves : 0;
+  return `${fallback} moves played`;
+}
+
+/**
+ * Whether a payload is the legacy CHESS objective shape, recognized by its own
+ * `sufficient` flag. A `GameReportV1` never has that flag, so the two shapes can
+ * never be confused — and the chess renderer only ever receives a chess payload.
+ */
+function isChessObjectivePayload(
+  value: ObjectiveData | GameReportV1 | null | undefined,
+): value is ObjectiveData {
+  return (
+    Boolean(value) &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    "sufficient" in (value as Record<string, unknown>)
+  );
+}
 
 type EvaluationLimits = {
   tier?: string;
@@ -121,6 +173,12 @@ type EvaluationLimits = {
   remaining?: number | null;
 };
 
+/**
+ * The response's `objective` is EITHER the legacy chess payload OR a validated
+ * `GameReportV1` (see src/lib/evaluation/gameReport.ts). It is kept as a union
+ * so each shape is routed to its own renderer rather than coerced into the
+ * other.
+ */
 type EvaluationData = {
   evaluationId?: string | null;
   gameKey?: string;
@@ -128,7 +186,7 @@ type EvaluationData = {
   tier?: string;
   cached?: boolean;
   aiAvailable?: boolean;
-  objective?: ObjectiveData | null;
+  objective?: ObjectiveData | GameReportV1 | null;
   insight?: EvaluationInsight | null;
   limits?: EvaluationLimits | null;
   message?: string | null;
@@ -271,6 +329,65 @@ function StatTile({
   );
 }
 
+/**
+ * One tile for a VALIDATED `GameReportV1` metric.
+ *
+ * An unavailable metric never shows a value: it says so and gives the reason
+ * the schema recorded. That is what keeps "not measured" from being read as a
+ * real `0`.
+ */
+function ReportMetricTile({ metric }: { metric: ReportMetricView }) {
+  // A metric without a real value is never printed as a number: it says so, and
+  // gives the reason the report recorded.
+  if (!metric.available || metric.value === null) {
+    return (
+      <div className="rounded-xl border border-[#9dd8ff]/10 bg-[#08142f]/40 p-3 text-center">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9dd8ff]/40">
+          {metric.label}
+        </p>
+        <p className="mt-1 text-sm font-bold text-[#9dd8ff]/50">
+          Not recorded
+        </p>
+      </div>
+    );
+  }
+  return (
+    <StatTile
+      label={metric.label}
+      value={metric.unit ? `${metric.value} ${metric.unit}` : metric.value}
+    />
+  );
+}
+
+/**
+ * A grid of validated metrics, plus the unavailable ones stated explicitly.
+ *
+ * Only the metrics the report actually carries are rendered — nothing is added
+ * to fill a gap, and an empty list renders nothing at all (the caller decides
+ * what to say about that).
+ */
+function ReportMetrics({ metrics }: { metrics: ReportMetricView[] }) {
+  const unavailable = metrics.filter((metric) => !metric.available);
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {metrics.map((metric) => (
+          <ReportMetricTile key={metric.key} metric={metric} />
+        ))}
+      </div>
+      {unavailable.length > 0 ? (
+        <ul className="mt-3 space-y-1">
+          {unavailable.map((metric) => (
+            <li key={metric.key} className="text-[11px] text-[#9dd8ff]/50">
+              {metric.label}: {metric.reason ?? "Not measured for this match."}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </>
+  );
+}
+
 function OutcomeChip({ outcome }: { outcome: Outcome }) {
   if (!outcome) return null;
   const map = {
@@ -368,11 +485,39 @@ export function EvaluationResult({
   const insight = evaluation.insight || null;
   const objective = evaluation.objective || null;
 
+  // Two mutually exclusive shapes arrive in `objective`. The chess payload is
+  // rendered by the block that always rendered it, so its appearance does not
+  // change. A `GameReportV1` is VALIDATED first and only then rendered from its
+  // own `metrics`/`players` — a malformed report is never partially trusted.
+  const chessPayload = isChessObjectivePayload(objective) ? objective : null;
+  const reportResult = looksLikeGameReportV1(objective)
+    ? buildGameReportView(objective)
+    : null;
+  const report = reportResult && reportResult.ok ? reportResult.view : null;
+  const reportErrors = reportResult && !reportResult.ok ? reportResult.errors : null;
+
+  const reportHasMetrics =
+    report?.status === "complete" && reportViewHasContent(report);
+  const hasObjectiveStats =
+    Boolean(chessPayload?.sufficient) || Boolean(reportHasMetrics);
+  const showUnreadableNotice = objective !== null && !hasObjectiveStats && !report;
+
+  // The AI explanation is a SEPARATE branch. It is offered only when an AI call
+  // was actually part of this game's report: chess (which has a coach prompt)
+  // or a report that explicitly carries an unavailable `ai` branch. A
+  // performance report has no AI half, so it shows no AI card at all rather
+  // than an "AI unavailable" notice for a call that was never made.
+  const aiUnavailableReason =
+    report?.ai && !report.ai.available ? report.ai.reason : null;
+  const showAiUnavailableCard = Boolean(
+    chessPayload?.sufficient || aiUnavailableReason,
+  );
+
   const roleKnown = viewerRole === "white" || viewerRole === "black";
   const myColor = viewerRole === "black" ? "black" : "white";
   const otherColor = myColor === "white" ? "black" : "white";
-  const me = objective?.sufficient ? objective?.players?.[myColor] : null;
-  const foe = objective?.sufficient ? objective?.players?.[otherColor] : null;
+  const me = chessPayload?.sufficient ? chessPayload?.players?.[myColor] : null;
+  const foe = chessPayload?.sufficient ? chessPayload?.players?.[otherColor] : null;
   const mineLabel = roleKnown ? "Your" : "White";
   const theirsLabel = roleKnown ? "Opponent" : "Black";
 
@@ -407,21 +552,26 @@ export function EvaluationResult({
             </p>
           ) : null}
         </SectionCard>
-      ) : (
+      ) : showAiUnavailableCard ? (
         <SectionCard
           accent="warn"
           icon={<IconAlertTriangle size={16} aria-hidden="true" />}
           title="AI analysis unavailable"
         >
+          {/* The fallback only claims statistics are shown below when objective
+              statistics really are rendered below. */}
           <p className="text-sm leading-relaxed text-[#d8fbff]/90">
             {evaluation.message ||
-              "The AI coach is temporarily unavailable. Your objective match statistics were still computed from your game and are shown below."}
+              aiUnavailableReason ||
+              (hasObjectiveStats
+                ? "The AI coach didn't add a written analysis for this match. Your objective match statistics are shown below."
+                : "The AI coach didn't add a written analysis for this match.")}
           </p>
         </SectionCard>
-      )}
+      ) : null}
 
       {/* ── Objective stats (real numbers, never model output) ─────── */}
-      {objective?.sufficient ? (
+      {chessPayload?.sufficient ? (
         <SectionCard
           icon={<IconChartBar size={16} aria-hidden="true" />}
           title="Match at a Glance"
@@ -452,10 +602,89 @@ export function EvaluationResult({
             />
           </div>
           <p className="mt-3 text-[11px] text-[#9dd8ff]/50">
-            {objective.moveCount ?? 0} moves played
+            {moveCountLabel(chessPayload)}
             {engine?.id
               ? ` · judged by ${engine.id}${engine.depth ? ` at depth ${engine.depth}` : ""}`
               : ""}
+          </p>
+        </SectionCard>
+      ) : null}
+
+      {/* ── GameReportV1 — validated metrics and players ───────────── */}
+      {report ? (
+        report.status === "unavailable" ? (
+          <SectionCard
+            accent="warn"
+            icon={<IconAlertTriangle size={16} aria-hidden="true" />}
+            title="No report available"
+          >
+            <p className="text-sm leading-relaxed text-[#d8fbff]/90">
+              {report.unavailableReason
+                ? `This match could not be reported: ${report.unavailableReason.replace(
+                    /_/g,
+                    " ",
+                  )}.`
+                : "This match could not be reported."}
+            </p>
+          </SectionCard>
+        ) : (
+          <>
+            <SectionCard
+              icon={<IconChartBar size={16} aria-hidden="true" />}
+              title={report.title}
+            >
+              {report.metrics.length > 0 ? (
+                <ReportMetrics metrics={report.metrics} />
+              ) : (
+                <p className="text-sm text-[#9dd8ff]/70">
+                  No match-wide metrics were recorded for this match.
+                </p>
+              )}
+              <p className="mt-3 text-[11px] text-[#9dd8ff]/50">
+                {report.analysisType === "performance"
+                  ? "Deterministic performance metrics, computed from your match data."
+                  : report.analysisType === "statistics"
+                    ? "Descriptive match statistics, computed from your match data."
+                    : "Objective match analysis, computed from your match data."}
+              </p>
+            </SectionCard>
+
+            {report.players.length > 0 ? (
+              report.players.map((player) => (
+                <SectionCard
+                  key={player.playerId}
+                  icon={<IconTargetArrow size={16} aria-hidden="true" />}
+                  title={player.label}
+                >
+                  {player.metrics.length > 0 ? (
+                    <ReportMetrics metrics={player.metrics} />
+                  ) : (
+                    <p className="text-sm text-[#9dd8ff]/70">
+                      No metrics were recorded for this player.
+                    </p>
+                  )}
+                </SectionCard>
+              ))
+            ) : (
+              <p className="text-center text-xs text-[#9dd8ff]/50">
+                This report has no per-player breakdown.
+              </p>
+            )}
+          </>
+        )
+      ) : null}
+
+      {/* ── Unreadable or unsupported objective payload ────────────── */}
+      {showUnreadableNotice ? (
+        <SectionCard
+          accent="warn"
+          icon={<IconAlertTriangle size={16} aria-hidden="true" />}
+          title="Report unavailable"
+        >
+          <p className="text-sm leading-relaxed text-[#d8fbff]/90">
+            {reportErrors
+              ? "This match report couldn't be read, so its statistics are not shown."
+              : "No objective statistics were stored for this match."}
           </p>
         </SectionCard>
       ) : null}

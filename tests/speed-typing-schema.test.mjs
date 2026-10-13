@@ -80,7 +80,15 @@ test("the race migration only ALTERs the existing table (no second table)", () =
 test("migration 0209 records the input-device pool, and is journaled", () => {
   const entry = JOURNAL.entries.find((e) => e.tag === "0209_speed_typing_device_class");
   assert.ok(entry, "0209_speed_typing_device_class must be in _journal.json");
-  assert.equal(entry.idx, JOURNAL.entries.length - 1, "it is the newest migration");
+  // It is journaled in its own slot, AFTER the race migration. A later feature
+  // may (and did — 0210) append a newer migration, so this asserts ORDER rather
+  // than "newest"; whole-journal contiguity is guarded where it belongs, in
+  // tests/migration-journal-guard.test.mjs.
+  assert.equal(entry.idx, JOURNAL.entries.findIndex((e) => e.tag === entry.tag));
+  assert.ok(
+    entry.idx > (JOURNAL.entries.find((e) => e.tag === "0191_speed_typing_race")?.idx ?? -1),
+    "0209 must apply after the race migration",
+  );
 
   assert.match(SQL_0209, /ADD COLUMN IF NOT EXISTS player1_device_class VARCHAR\(16\)/);
   assert.match(SQL_0209, /ADD COLUMN IF NOT EXISTS player2_device_class VARCHAR\(16\)/);

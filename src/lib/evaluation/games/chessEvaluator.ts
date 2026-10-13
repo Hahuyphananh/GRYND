@@ -45,6 +45,7 @@ import { Chess } from "chess.js";
 
 import { db } from "../../../db/client";
 import { chessGames, chessMoves } from "../../../db/schema";
+import { fullMoveCount } from "../moveCounts";
 import {
   DEFAULT_ENGINE_DEPTH,
   DEFAULT_ENGINE_MOVE_TIME_MS,
@@ -64,10 +65,24 @@ export const BLUNDER_CP = 100;
 export const MISTAKE_CP = 50;
 /** Mate is folded into centipawns at this magnitude. */
 export const MATE_CP = 10_000;
-/** Below this many plies there is nothing meaningful to say about a game. */
-export const MIN_EVALUABLE_MOVES = 5;
+/**
+ * Fewer PLIES than this is not a game worth analysing (a resignation on move 1,
+ * an aborted game, ...).
+ *
+ * The unit is plies — the length of the stored move history, which is what the
+ * gate below counts. It used to be named `MIN_EVALUABLE_MOVES` while the check
+ * counted plies and the message said "moves", so the threshold, the check and
+ * the wording disagreed about what was being measured.
+ */
+export const MIN_EVALUABLE_PLIES = 5;
 /** Default ceiling on total engine time for one game (ms). */
 export const DEFAULT_TIME_BUDGET_MS = 20_000;
+/**
+ * Hard ceiling on any caller-supplied engine budget (ms). A single game can
+ * never ask the engine to run unbounded — the service picks a bounded value
+ * inside this range (see EVALUATION_ANALYSIS_OPTIONS in evaluationService.ts).
+ */
+export const MAX_TIME_BUDGET_MS = 300_000;
 
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -114,6 +129,7 @@ export type ChessMoveEvaluation = {
 export type ChessPlayerSummary = {
   playedBy: string;
   color: ChessColor;
+  /** Moves made by THIS player (their own plies) — one per turn they took. */
   moveCount: number;
   /** Plain average of per-move accuracy (see the file header). 0–100. */
   accuracyPercent: number;
@@ -153,7 +169,9 @@ export type ChessObjectiveData =
   | {
       gameId: string;
       sufficient: true;
+      /** COMPLETED FULL MOVES — `ceil(plyCount / 2)`. See ../moveCounts.ts. */
       moveCount: number;
+      /** Every individual move by both players. */
       plyCount: number;
       /**
        * Which engine judged the game, and how hard it searched — the audit
@@ -176,7 +194,10 @@ export type ChessObjectiveData =
       sufficient: false;
       reason: ChessInsufficientReason;
       detail: string;
+      /** Same unit as the sufficient payload: full moves = `ceil(plyCount / 2)`. */
       moveCount: number;
+      /** The stored history's length — the unit the eligibility gate counts. */
+      plyCount: number;
     };
 
 /** A stored move, reduced to what the analysis needs. */
@@ -204,7 +225,11 @@ export type ChessAnalysisOptions = {
   depth?: number;
   /** Hard per-position time cap in ms. Default 200. */
   moveTimeMs?: number;
-  /** Total engine budget for the game in ms. Default 20000. */
+  /**
+   * Total engine budget for the game in ms. Default `DEFAULT_TIME_BUDGET_MS`
+   * (20 000); clamped to `[0, MAX_TIME_BUDGET_MS]`. The service always supplies
+   * an explicit, bounded value so the engine fits the route's function limit.
+   */
   timeBudgetMs?: number;
 };
 
@@ -239,6 +264,17 @@ function clampInt(value: number | undefined, min: number, max: number, fallback:
   return Math.min(max, Math.max(min, Math.trunc(n)));
 }
 
+/**
+ * Resolves the engine's total time budget for one game from caller options.
+ *
+ * `undefined`/non-finite falls back to `DEFAULT_TIME_BUDGET_MS`; a value is
+ * clamped to `[0, MAX_TIME_BUDGET_MS]`. Exported so the policy (choose a budget,
+ * then bound it) is unit-testable rather than asserted in prose.
+ */
+export function resolveTimeBudgetMs(value?: number): number {
+  return clampInt(value, 0, MAX_TIME_BUDGET_MS, DEFAULT_TIME_BUDGET_MS);
+}
+
 function round(value: number, decimals = 1): number {
   const factor = 10 ** decimals;
   return Math.round(value * factor) / factor;
@@ -248,9 +284,18 @@ function insufficient(
   gameId: string,
   reason: ChessInsufficientReason,
   detail: string,
-  moveCount = 0,
+  plyCount = 0,
 ): ChessObjectiveData {
-  return { gameId, sufficient: false, reason, detail, moveCount };
+  // Both units are reported, computed from the same ply count, so a refused
+  // match cannot be read as "N moves" when N is plies.
+  return {
+    gameId,
+    sufficient: false,
+    reason,
+    detail,
+    moveCount: fullMoveCount(plyCount),
+    plyCount,
+  };
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -323,15 +368,17 @@ export async function analyzeChessGame(
   const moves = input?.moves ?? [];
   const depth = clampInt(options.depth, MIN_ENGINE_DEPTH, MAX_ENGINE_DEPTH, DEFAULT_ENGINE_DEPTH);
   const moveTimeMs = clampInt(options.moveTimeMs, 1, 10_000, DEFAULT_ENGINE_MOVE_TIME_MS);
-  const timeBudgetMs = clampInt(options.timeBudgetMs, 0, 300_000, DEFAULT_TIME_BUDGET_MS);
+  const timeBudgetMs = resolveTimeBudgetMs(options.timeBudgetMs);
 
   // Nothing to say about a game that barely happened (resignation on move 1,
   // an aborted game, ...). Never fabricate: report the flag instead.
-  if (moves.length < MIN_EVALUABLE_MOVES) {
+  // The gate counts PLIES, and the detail names plies too — the same unit as
+  // the threshold (see MIN_EVALUABLE_PLIES).
+  if (moves.length < MIN_EVALUABLE_PLIES) {
     return insufficient(
       gameId,
       "too_few_moves",
-      `only ${moves.length} move(s) were played; at least ${MIN_EVALUABLE_MOVES} are needed`,
+      `only ${moves.length} plies were played; at least ${MIN_EVALUABLE_PLIES} plies are needed`,
       moves.length,
     );
   }
@@ -443,7 +490,10 @@ export async function analyzeChessGame(
   return {
     gameId,
     sufficient: true,
-    moveCount: moves.length,
+    // `moveCount` is COMPLETED FULL MOVES and `plyCount` is every individual
+    // move — see ../moveCounts.ts. They were both the ply count before, which
+    // made a 40-ply game render as "40 moves played".
+    moveCount: fullMoveCount(moves.length),
     plyCount: moves.length,
     engine: { id: getEngineIdentity(), depth, moveTimeMs },
     players,
@@ -566,7 +616,9 @@ function summarize(
  * game is missing, too short, has an unreplayable history, or the engine cannot
  * answer inside its budget.
  *
- * No API route or UI calls this yet.
+ * CALLED BY the evaluation service (src/lib/evaluation/evaluationService.ts),
+ * which supplies the route's bounded time budget; reached from
+ * POST /api/evaluation/[gameKey]/[matchId] and the evaluation page.
  */
 export async function evaluateChessMatch(
   gameId: string,

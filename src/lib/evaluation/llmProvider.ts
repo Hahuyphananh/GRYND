@@ -15,7 +15,11 @@
  *   - resolve `data` to a parsed, structurally valid JSON object, not a raw
  *     model string.
  *
- * Nothing calls a provider yet — this is infrastructure only.
+ * LIVE PROVIDER: the evaluation service (src/lib/evaluation/
+ * evaluationService.ts) calls the configured provider through this interface
+ * (today src/lib/evaluation/providers/groqProvider.ts). Its failure is treated
+ * as OPTIONAL — the objective stats are returned whether or not the model
+ * answers, so a provider outage degrades the write-up, never the request.
  */
 
 /** Provider call succeeded; `data` is the parsed, shape-checked JSON object. */

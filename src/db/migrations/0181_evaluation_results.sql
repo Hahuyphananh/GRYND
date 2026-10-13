@@ -1,7 +1,10 @@
 -- ── Game Evaluation results — LLM post-match analysis journal ───────
 -- Foundational table for the Game Evaluation feature: one row per
--- evaluation request for a finished match. No game logic and no UI is
--- wired up yet — this only creates the storage the feature needs.
+-- evaluation request for a finished match. The feature is now live — the
+-- service at src/lib/evaluation/evaluationService.ts writes through this
+-- table behind POST /api/evaluation/[gameKey]/[matchId] and the evaluation
+-- page reads it back. Migration 0210 later added the
+-- (user_id, game_key, match_id) uniqueness the service's claim relies on.
 --
 -- WHY each column:
 --   * `user_id`  — Clerk id of the evaluated player, stored as a plain
@@ -21,7 +24,9 @@
 --     call lands (and stays NULL if it fails).
 --   * `status`   — 'pending' | 'complete' | 'failed'. The row is written
 --     as 'pending' first, then updated, so a request stays traceable
---     even when the provider call dies.
+--     even when the provider call dies. (The pending row also doubles as
+--     the caller's in-flight reservation — see migration 0210 and the
+--     concurrency count in evaluationService.ts.)
 --
 -- Values for `tier` / `status` are intentionally left unconstrained
 -- (no CHECK / enum): they mirror plain `varchar` columns in

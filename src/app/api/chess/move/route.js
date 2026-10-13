@@ -7,6 +7,7 @@ import { db } from "../../../../db/client";
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 import { chessGames, chessMoves, users } from "../../../../db/schema";
+import { toStoredUci } from "../../../../lib/chessMoveUci";
 import { applyRatingResult } from "../../../../lib/rating";
 import { applyTrophyResult } from "../../../../lib/trophyStore";
 
@@ -89,10 +90,21 @@ export async function POST(req) {
       return NextResponse.json({ error: "Illegal move" }, { status: 400 });
     }
 
+    // The stored UCI describes the move chess.js just validated and applied —
+    // never the request's `from`/`to`/`promotion`. `promotion` above defaults to
+    // "q" so an omitted field still promotes, which means interpolating it here
+    // used to append a queen to EVERY move ("e2e4q") and made the evaluator's
+    // comparison against Stockfish's `bestmove` impossible. `toStoredUci` emits
+    // the suffix only for a real promotion, with the piece actually played.
+    const storedUci = toStoredUci(playedMove);
+    if (!storedUci) {
+      return NextResponse.json({ error: "Illegal move" }, { status: 400 });
+    }
+
     await db.insert(chessMoves).values({
       gameId: normalizedGameId,
       playedBy: userId,
-      moveUci: `${from}${to}${promotion || ""}`,
+      moveUci: storedUci,
       moveSan: playedMove.san,
       fenAfter: chess.fen(),
     });

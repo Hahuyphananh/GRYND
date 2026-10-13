@@ -13,6 +13,7 @@ import {
   date,
   pgEnum,
   index,
+  uniqueIndex,
   uuid,
   bigint,
   primaryKey,
@@ -1223,7 +1224,17 @@ export const chessGames = pgTable("chess_games", {
   id: uuid("id").defaultRandom().primaryKey(),
   // Clerk IDs for players
   playerWhiteId: varchar("player_white_id", { length: 255 }).notNull(),
-  playerBlackId: varchar("player_black_id", { length: 255 }), // can be null if AI
+  /**
+   * The Black seat. NULL means the seat is UNCLAIMED — a waiting PvP table no
+   * one has joined yet (`available-games`, `join-game` and the chess quick
+   * queue all match on `IS NULL`), not "the game is vs AI".
+   *
+   * A VS-AI game fills BOTH seats: the human in the one matching the colour
+   * they chose, and the `chess_ai_bot` sentinel (src/lib/chessAiSeat.ts) in the
+   * other. `is_ai_game` says a bot is playing; `ai_difficulty` says how strong
+   * it is.
+   */
+  playerBlackId: varchar("player_black_id", { length: 255 }),
   betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
   timerMode: varchar("timer_mode", { length: 20 }).notNull().default("blitz"),
   initialTimeSeconds: integer("initial_time_seconds").notNull().default(300),
@@ -1232,6 +1243,22 @@ export const chessGames = pgTable("chess_games", {
   payout: numeric("payout", { precision: 10, scale: 2 }),
   status: text("status").notNull().default("waiting"),
   isAiGame: boolean("is_ai_game").default(false).notNull(), // new column
+  /**
+   * The VS-AI difficulty tier the game was created at — `easy`, `medium` or
+   * `hard`, enforced by the `chess_games_ai_difficulty_valid` CHECK constraint
+   * added in migration 0211.
+   *
+   * NULL on PvP rows (there is no bot, so there is no tier) and on any AI row
+   * written before 0211 — 0211 backfills those to `medium`, which is also what
+   * `chessAiDifficultyFromMatch` returns for a NULL, so a reader never has to
+   * invent a fallback of its own.
+   *
+   * Stored so the strength that PRODUCED a game's move history is recorded
+   * beside it: an evaluation can then say which bot was played, instead of
+   * analysing a game whose opponent it cannot name. Read by
+   * src/lib/chessDifficulty.ts.
+   */
+  aiDifficulty: varchar("ai_difficulty", { length: 16 }),
   startedAt: timestamp("started_at"),
   endedAt: timestamp("ended_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -3905,6 +3932,18 @@ export const evaluationResults = pgTable(
     ),
     // Match lookup: the evaluation(s) for one game's match id.
     gameMatchIdx: index("evaluation_results_game_match_idx").on(
+      table.gameKey,
+      table.matchId,
+    ),
+    // THE CLAIM KEY (migration 0210): exactly one evaluation per caller, per
+    // game, per match. `claimEvaluation()` inserts a `pending` row BEFORE the
+    // engine and the model run and lets this index arbitrate, so two concurrent
+    // requests converge on one row instead of each doing the expensive work.
+    // UNIQUE, not a plain index — `onConflictDoNothing({ target: [...] })`
+    // resolves against it, and a plain index would silently allow the
+    // duplicates this exists to prevent.
+    userGameMatchIdx: uniqueIndex("evaluation_results_user_game_match_idx").on(
+      table.userId,
       table.gameKey,
       table.matchId,
     ),

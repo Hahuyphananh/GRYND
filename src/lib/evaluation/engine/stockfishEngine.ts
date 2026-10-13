@@ -1,5 +1,21 @@
 /**
- * Stockfish 16 (WASM) wrapper — server-side position evaluation.
+ * Stockfish 16 (WASM) wrapper — server-side position evaluation AND gameplay.
+ *
+ * TWO CALLERS, ONE ENGINE
+ * -----------------------
+ * This module began as the evaluator's engine only. Chess VS-AI gameplay now
+ * needs a search too ("which move should the bot play?"), and it deliberately
+ * reuses THIS instance rather than starting a second one: one engine costs
+ * ~600 KB of wasm plus boot, and two of them would fight for the same single
+ * vCPU. So `analyzePosition` is the one entry point for both, and everything
+ * below is shared.
+ *
+ * The consequence that matters: a search's UCI options PERSIST on the engine
+ * instance between calls. A gameplay search that set `Skill Level 0` would
+ * leave a later EVALUATION running at beginner strength — producing a
+ * confidently wrong, still-successful-looking report. So every call now sends
+ * its options explicitly, with `FULL_SKILL_LEVEL` as the documented default,
+ * and nothing is ever inherited. See `analyzePosition`.
  *
  * WHY THIS PACKAGE (verified, not assumed)
  * ----------------------------------------
@@ -68,6 +84,22 @@ export const DEFAULT_ENGINE_MOVE_TIME_MS = 200;
 export const MIN_ENGINE_DEPTH = 1;
 export const MAX_ENGINE_DEPTH = 24;
 
+/**
+ * Stockfish `Skill Level` bounds. 20 is the engine's own default and means
+ * "full strength"; 0 is its weakest, and the option works by internally capping
+ * the search and randomising its choice — which is what makes a low tier play
+ * like a beginner instead of merely searching less.
+ */
+export const MIN_ENGINE_SKILL_LEVEL = 0;
+export const MAX_ENGINE_SKILL_LEVEL = 20;
+/** The skill level every caller gets unless it asks for less. */
+export const FULL_SKILL_LEVEL = MAX_ENGINE_SKILL_LEVEL;
+
+/** MultiPV bounds — how many ranked candidate moves a search may report. */
+export const MIN_ENGINE_MULTIPV = 1;
+export const MAX_ENGINE_MULTIPV = 5;
+export const DEFAULT_ENGINE_MULTIPV = 1;
+
 export type EngineScore = {
   /** Centipawns, from the SIDE TO MOVE's point of view (UCI convention). */
   cp: number | null;
@@ -79,6 +111,38 @@ export type EngineScore = {
   bestMoveUci: string | null;
   /** Wall-clock milliseconds the search took. */
   ms: number;
+  /**
+   * The engine's ranked candidate moves, best first (rank 1).
+   *
+   * Empty only when the search reported no `pv` at all. A weaker gameplay tier
+   * chooses from these instead of always taking `bestMoveUci`, which is how the
+   * difficulty tiers differ from one another. Every entry is the engine's own
+   * output — nothing here is ever synthesised.
+   */
+  candidates: EngineCandidate[];
+  /**
+   * The options this search was ISSUED with — the resolved values behind the
+   * `setoption` lines this call sends, so a caller can see what its `go` was
+   * configured with (and a test can pin the per-call reset).
+   *
+   * NOTE: these are what we SENT, not a readback from the engine. MultiPV's
+   * effect is independently observable on the engine's side (`candidates.length`
+   * is the number of ranked lines the engine actually emitted), and Skill
+   * Level's effect is behavioural (a weaker tier chooses differently).
+   */
+  settings: { skillLevel: number; multiPv: number };
+};
+
+/** One ranked MultiPV line, reduced to what a move chooser needs. */
+export type EngineCandidate = {
+  /** 1-based MultiPV rank; 1 is the engine's best move in this position. */
+  rank: number;
+  /** The candidate's FIRST move as lowercase UCI, or null when the line had no pv. */
+  uci: string | null;
+  /** Centipawns from the SIDE TO MOVE's point of view (UCI convention). */
+  cp: number | null;
+  /** Moves to mate for the side to move, if the line ends in mate. */
+  mate: number | null;
 };
 
 export type EngineOptions = {
@@ -86,6 +150,18 @@ export type EngineOptions = {
   depth?: number;
   /** Hard per-position time cap in ms (also sent to the engine). */
   moveTimeMs?: number;
+  /**
+   * Stockfish `Skill Level`, clamped to MIN..MAX_ENGINE_SKILL_LEVEL. Defaults to
+   * `FULL_SKILL_LEVEL` (20) — the default is load bearing, see the file header:
+   * it is what stops a gameplay search's weaker setting reaching a later
+   * evaluation on the same instance.
+   */
+  skillLevel?: number;
+  /**
+   * How many ranked candidates to report, clamped to MIN..MAX_ENGINE_MULTIPV.
+   * Defaults to 1, which reproduces the pre-MultiPV behaviour exactly.
+   */
+  multiPv?: number;
 };
 
 /** The bits of the Emscripten module this wrapper actually uses. */
@@ -215,11 +291,20 @@ function waitForLine(
   });
 }
 
-/** Parses the last `info ... score cp|mate ...` line of a search. */
-export function parseScoreLine(line: string): {
+/**
+ * One `info … ` line, reduced to what a MultiPV search can be ranked by.
+ *
+ * `multipv` defaults to 1 when the engine omits it (single-PV output), which is
+ * exactly the shape this module parsed before MultiPV support existed — so the
+ * evaluator's reading of a search is unchanged.
+ */
+export function parseInfoLine(line: string): {
+  multipv: number;
   cp: number | null;
   mate: number | null;
   depth: number | null;
+  /** The principal variation's moves, in order. Empty when the line has none. */
+  pv: string[];
 } | null {
   if (!line.startsWith("info ") || !line.includes(" score ")) return null;
   // `\bdepth` deliberately does not match `seldepth`.
@@ -227,11 +312,33 @@ export function parseScoreLine(line: string): {
   const cpMatch = /score cp (-?\d+)/.exec(line);
   const mateMatch = /score mate (-?\d+)/.exec(line);
   if (!cpMatch && !mateMatch) return null;
+  const multipvMatch = /\bmultipv (\d+)/.exec(line);
+  // `\bpv ` cannot match inside `multipv`: both sides of that boundary are word
+  // characters, so there is no word boundary there.
+  const pvMatch = /\bpv (.+)$/.exec(line);
   return {
+    multipv: multipvMatch ? Number(multipvMatch[1]) : 1,
     cp: cpMatch ? Number(cpMatch[1]) : null,
     mate: mateMatch ? Number(mateMatch[1]) : null,
     depth: depthMatch ? Number(depthMatch[1]) : null,
+    pv: pvMatch ? pvMatch[1].trim().split(/\s+/) : [],
   };
+}
+
+/**
+ * Parses the last `info ... score cp|mate ...` line of a search.
+ *
+ * Kept as the original public shape (and now a thin wrapper over
+ * `parseInfoLine`), so nothing that already depended on it changes.
+ */
+export function parseScoreLine(line: string): {
+  cp: number | null;
+  mate: number | null;
+  depth: number | null;
+} | null {
+  const parsed = parseInfoLine(line);
+  if (!parsed) return null;
+  return { cp: parsed.cp, mate: parsed.mate, depth: parsed.depth };
 }
 
 function clampInt(value: number | undefined, min: number, max: number, fallback: number): number {
@@ -338,6 +445,16 @@ export async function analyzePosition(
 ): Promise<EngineScore> {
   const depth = clampInt(options.depth, MIN_ENGINE_DEPTH, MAX_ENGINE_DEPTH, DEFAULT_ENGINE_DEPTH);
   const moveTimeMs = clampInt(options.moveTimeMs, 1, 10_000, DEFAULT_ENGINE_MOVE_TIME_MS);
+  // Options are ALWAYS resolved to an explicit value — never left to the
+  // instance's current state (see the file header). `undefined` therefore means
+  // full strength / single PV, not "whatever the last caller set".
+  const skillLevel = clampInt(
+    options.skillLevel,
+    MIN_ENGINE_SKILL_LEVEL,
+    MAX_ENGINE_SKILL_LEVEL,
+    FULL_SKILL_LEVEL,
+  );
+  const multiPv = clampInt(options.multiPv, MIN_ENGINE_MULTIPV, MAX_ENGINE_MULTIPV, DEFAULT_ENGINE_MULTIPV);
 
   // Guard against a FEN smuggling extra UCI commands into the engine's stdin.
   const safeFen = String(fen ?? "").replace(/[\r\n]+/g, " ").trim();
@@ -347,14 +464,42 @@ export async function analyzePosition(
     const engine = await getEngine();
 
     let score: { cp: number | null; mate: number | null; depth: number | null } | null = null;
+    /**
+     * Rank → candidate, LAST report wins. MultiPV lines arrive interleaved per
+     * depth (rank 1, 2, 3… then rank 1, 2, 3… deeper), so overwriting per rank
+     * keeps the deepest completed report for each — which is what the engine
+     * prints immediately before `bestmove`.
+     */
+    const candidatesByRank = new Map<number, EngineCandidate>();
     const scoreListener = (line: string) => {
-      const parsed = parseScoreLine(String(line));
-      if (parsed) score = parsed; // keep the deepest/last report before bestmove
+      const parsed = parseInfoLine(String(line));
+      if (!parsed) return;
+      candidatesByRank.set(parsed.multipv, {
+        rank: parsed.multipv,
+        uci: parsed.pv[0] ?? null,
+        cp: parsed.cp,
+        mate: parsed.mate,
+      });
+      // `score` stays the RANK 1 line — the engine's own best — which is what it
+      // held before MultiPV support existed, so the evaluator reads the same
+      // number it always did. With the default `multiPv` of 1 every line is
+      // rank 1, making the two paths identical.
+      if (parsed.multipv === 1) {
+        score = { cp: parsed.cp, mate: parsed.mate, depth: parsed.depth }; // deepest/last report before bestmove
+      }
     };
     engine.addMessageListener(scoreListener);
 
     const startedAt = Date.now();
     try {
+      // ── Per-call option reset (load bearing — see the file header) ──────
+      // Sent on EVERY search, before `position`/`go`, so a search can never
+      // inherit the previous caller's settings. UCI engines consume stdin in
+      // order, so these take effect before the search they precede; the engine
+      // is idle here (boot completed `uci`/`isready`, and the queue guarantees no
+      // other search is mid-flight), so no extra handshake is needed.
+      engine.onCustomMessage(`setoption name Skill Level value ${skillLevel}`);
+      engine.onCustomMessage(`setoption name MultiPV value ${multiPv}`);
       engine.onCustomMessage(`position fen ${safeFen}`);
       engine.onCustomMessage(`go depth ${depth} movetime ${moveTimeMs}`);
       const bestLine = await waitForLine(
@@ -378,6 +523,8 @@ export async function analyzePosition(
         depth: final?.depth ?? null,
         bestMoveUci,
         ms,
+        candidates: [...candidatesByRank.values()].sort((a, b) => a.rank - b.rank),
+        settings: { skillLevel, multiPv },
       };
     } catch (err) {
       // An unanswered search leaves the engine mid-search: stop it, and drop the

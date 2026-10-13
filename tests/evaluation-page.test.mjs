@@ -123,8 +123,11 @@ test("every optional evaluation section is conditional", () => {
 test("an LLM outage still shows the objective stats with a fallback message", () => {
   assert.match(CLIENT, /AI analysis unavailable/);
   assert.match(CLIENT, /evaluation\.message/);
+  // The AI caution card is shown only when an AI call was actually part of the
+  // report — a performance report has no AI half, so it shows no such card.
+  assert.match(CLIENT, /showAiUnavailableCard/);
   // Objective numbers come from the response's objective payload, not the model.
-  assert.match(CLIENT, /objective\?\.sufficient/);
+  assert.match(CLIENT, /chessPayload\?\.sufficient/);
   assert.match(CLIENT, /accuracyPercent/);
 });
 
@@ -148,8 +151,113 @@ test("the page reuses the existing result/profile component conventions", () => 
   assert.match(CLIENT, /deriveOpponent/);
 });
 
+test("the match header labels full moves and plies in their own units", () => {
+  // A 13-ply game is 7 moves. The page used to render the top-level `moveCount`
+  // — which was the PLY count — as "moves played", so a 20-move game claimed
+  // "40 moves played". The label is now built from `plyCount` through the shared
+  // convention (see src/lib/evaluation/moveCounts.ts), which is also what keeps
+  // rows cached BEFORE the fix displaying correctly: their `plyCount` is still
+  // the ply count, and their `moveCount` is never trusted for the label.
+  assert.match(
+    CLIENT,
+    /import \{ fullMoveCount \} from "\.\.\/\.\.\/\.\.\/\.\.\/lib\/evaluation\/moveCounts"/,
+  );
+  assert.match(CLIENT, /function moveCountLabel\(/);
+  assert.match(CLIENT, /fullMoveCount\(plies\)/);
+  assert.ok(
+    CLIENT.includes("moves played · ${plies} plies"),
+    "the label must state both units explicitly",
+  );
+  assert.match(
+    CLIENT,
+    /\{moveCountLabel\(chessPayload\)\}/,
+    "the header must use the label",
+  );
+  // The ply count must never be printed as a move count again.
+  assert.ok(
+    !/\{objective\.moveCount[^}]*\}[^<]*moves played/.test(CLIENT),
+    "the header must not render moveCount as \"moves played\"",
+  );
+  // The label is built from the chess payload, which is the only shape that
+  // carries `plyCount`.
+  assert.match(CLIENT, /moveCountLabel\(chessPayload\)/);
+  // The payload type carries both counts, documented.
+  assert.match(CLIENT, /plyCount\?: number;/);
+});
+
+test("a 409 (analysis already in flight) uses the retryable error path", () => {
+  // The service answers 409 `evaluation_in_progress` when a concurrent request
+  // holds the claim for this match — the work is happening elsewhere, so the
+  // right answer is the server's message plus Retry, NOT a second analysis.
+  assert.match(CLIENT, /if \(!res\.ok \|\| !json\?\.success\)/);
+  assert.match(CLIENT, /setErrorMessage\(\s*json\?\.error/);
+  assert.match(CLIENT, /onRetry=\{load\}/);
+  // Only 429 gets its own state; every other failure is the honest error path.
+  assert.match(CLIENT, /res\.status === 429/);
+});
+
 test("errors are recoverable — retry plus a way back to the games hub", () => {
   assert.match(CLIENT, /phase === "error"/);
   assert.match(CLIENT, /onRetry=\{load\}/);
   assert.match(CLIENT, /homeHref="\/casino"/);
+});
+
+test("the chess payload keeps its own renderer, unchanged", () => {
+  // Chess rows are the legacy shape, recognized by their own `sufficient` flag,
+  // and rendered by the block that always rendered them.
+  assert.match(CLIENT, /function isChessObjectivePayload/);
+  assert.match(CLIENT, /chessPayload\?\.sufficient/);
+  assert.match(CLIENT, /Match at a Glance/);
+  assert.match(CLIENT, /moveCountLabel\(chessPayload\)/);
+  // A report is routed to the report renderer only when it declares a schema
+  // version — which the chess payload never has.
+  assert.match(CLIENT, /looksLikeGameReportV1\(objective\)/);
+});
+
+test("a GameReportV1 is validated before rendering and uses its metrics/players", () => {
+  assert.match(
+    CLIENT,
+    /from "\.\.\/\.\.\/\.\.\/\.\.\/lib\/evaluation\/reportViewModel"/,
+  );
+  assert.match(CLIENT, /buildGameReportView/);
+  assert.match(CLIENT, /reportViewHasContent/);
+  // Validation happens first; a malformed report is never partially rendered.
+  assert.match(CLIENT, /reportResult\.ok/);
+  // Labels, values and units come from the validated report itself.
+  assert.match(CLIENT, /<ReportMetrics metrics=\{report\.metrics\} \/>/);
+  assert.match(CLIENT, /report\.players\.map\(/);
+  assert.match(CLIENT, /<ReportMetrics metrics=\{player\.metrics\} \/>/);
+  assert.match(CLIENT, /title=\{report\.title\}/);
+  // An unmeasured metric is never printed as a number.
+  assert.match(CLIENT, /Not recorded/);
+  assert.match(CLIENT, /metric\.value === null/);
+  // A performance report is never described as a chess/engine evaluation.
+  assert.match(
+    CLIENT,
+    /"Deterministic performance metrics, computed from your match data\."/,
+  );
+});
+
+test("no fallback claims statistics are shown below when none are rendered", () => {
+  // The old unconditional sentence is gone. The claim is now conditional on
+  // objective statistics actually being rendered below.
+  assert.equal(
+    /still computed from your game and are shown below\."/.test(CLIENT),
+    false,
+    "the fallback must not unconditionally claim statistics below",
+  );
+  assert.match(CLIENT, /hasObjectiveStats/);
+});
+
+test("absent, malformed, unavailable and cached reports each get a clear state", () => {
+  // Absent/malformed/unsupported objective payloads say so explicitly.
+  assert.match(CLIENT, /showUnreadableNotice/);
+  assert.match(CLIENT, /Report unavailable/);
+  assert.match(CLIENT, /couldn't be read, so its statistics are not shown/);
+  assert.match(CLIENT, /reportErrors/);
+  // An explicitly unavailable report states its reason.
+  assert.match(CLIENT, /No report available/);
+  assert.match(CLIENT, /report\.unavailableReason/);
+  // A cached evaluation is still labelled as such.
+  assert.match(CLIENT, /Saved evaluation/);
 });

@@ -38,6 +38,7 @@ const MEGA_BOARD = "src/components/tic-tac-toe/MegaBoard.tsx";
 const TIEBREAK = "src/components/tic-tac-toe/TiebreakSummary.tsx";
 const UI_HELPERS = "src/lib/tic-tac-toe/ui.ts";
 const LOBBY = "src/app/casino/PageClient.jsx";
+const ART_REGISTRY = "src/components/games/gameCardArt.js";
 const SITEMAP = "src/app/sitemap.ts";
 const SEO_INVENTORY = "src/lib/seoPages.ts";
 const TRANSLATIONS = "src/lib/appTextTranslations.js";
@@ -547,8 +548,14 @@ test("discovery: the lobby card links to the game and is a 1v1 duel", () => {
   assert.match(card, /descriptionKey: "games\.tic_tac_toe_desc"/);
   assert.match(card, /nameKey: "games\.tic_tac_toe_name"/);
   assert.match(card, /pvpMode: "1v1"/);
-  // Shipped card art, not a shared fallback.
-  assert.match(src, /import ImgTicTacToe from "\.\.\/\.\.\/images\/tic-tac-toe-card\.svg"/);
+  // Shipped card art, not a shared fallback. The art now lives in the shared
+  // registry (src/components/games/gameCardArt.js) so the FAQ's games directory
+  // draws the SAME card as the lobby; what must hold is that this game's own
+  // shipped art is registered there and that the lobby draws cards from it.
+  const art = code(ART_REGISTRY);
+  assert.match(art, /import ticTacToeArt from "\.\.\/\.\.\/images\/tic-tac-toe-card\.svg"/);
+  assert.match(art, /"tic-tac-toe": ticTacToeArt/);
+  assert.match(src, /import \{ GAME_CARD_ART \} from "\.\.\/\.\.\/components\/games\/gameCardArt"/);
   // It is a recent card, so it rides the "Newest" sort — directly ahead of
   // Speed Typing. A title that ships later heads the list (Barricade does
   // today), so what is asserted is the sibling order, not "tic-tac-toe is first".

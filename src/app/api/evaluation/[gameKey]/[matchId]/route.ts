@@ -85,6 +85,17 @@ export async function POST(
       );
     }
 
+    // A throttling 429 (rate or concurrency) carries a Retry-After hint so a
+    // well-behaved client can back off instead of hammering the endpoint.
+    const headers =
+      typeof result.retryAfterMs === "number" && result.retryAfterMs > 0
+        ? {
+            "Retry-After": String(
+              Math.max(1, Math.ceil(result.retryAfterMs / 1000)),
+            ),
+          }
+        : undefined;
+
     return NextResponse.json(
       {
         success: false,
@@ -94,11 +105,12 @@ export async function POST(
         gameKey: result.gameKey,
         matchId: result.matchId,
         limits: result.limits,
-        // Present on 422 so the client can explain WHY the match can't be
-        // evaluated without a second request.
-        objective: result.objective,
+        // Present ONLY on the client-explainable 422 (too short / unreplayable
+        // history) so the client can say WHY without a second request. A 5xx
+        // must not echo the evaluator's internal detail back to the caller.
+        objective: result.status === 422 ? result.objective : undefined,
       },
-      { status: result.status },
+      { status: result.status, headers },
     );
   } catch (error) {
     await logError({

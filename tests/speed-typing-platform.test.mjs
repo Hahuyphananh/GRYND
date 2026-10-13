@@ -48,6 +48,7 @@ const stripComments = (src) =>
 const code = (rel) => stripComments(strip(read(rel)));
 
 const LOBBY = "src/app/casino/PageClient.jsx";
+const ART_REGISTRY = "src/components/games/gameCardArt.js";
 const LOBBY_PAGE = "src/app/casino/speed-typing/PageClient.tsx";
 const MATCH_PAGE = "src/app/casino/speed-typing/[matchId]/PageClient.tsx";
 const PAGE = "src/app/casino/speed-typing/page.tsx";
@@ -109,8 +110,15 @@ test("discovery: the lobby card links to the game, records plays and is 1v1", ()
   assert.match(card, /pvpMode: "1v1"/);
   assert.match(card, /descriptionKey: "games.speed_typing_desc"/);
   assert.match(card, /nameKey: "games.speed_typing_name"/);
-  // The card art is shipped art, not a shared fallback.
-  assert.match(src, /import ImgSpeedTyping from "\.\.\/\.\.\/images\/speed-typing-card\.svg"/);
+  // The card art is shipped art, not a shared fallback. The art now lives in
+  // the shared registry (src/components/games/gameCardArt.js) so the FAQ's
+  // games directory can draw the SAME card as the lobby; what must hold is that
+  // Speed Typing's own shipped art is registered there and that the lobby draws
+  // its cards from that registry rather than a fallback image.
+  const art = strip(read(ART_REGISTRY));
+  assert.match(art, /import speedTypingArt from "\.\.\/\.\.\/images\/speed-typing-card\.svg"/);
+  assert.match(art, /"speed-typing": speedTypingArt/);
+  assert.match(src, /import \{ GAME_CARD_ART \} from "\.\.\/\.\.\/components\/games\/gameCardArt"/);
   // The "Newest" sort is newest-first: a title shipped later may precede it
   // (Barricade does today), so what is asserted is that Speed Typing still sits
   // directly behind Tic-Tac-Toe in the list.

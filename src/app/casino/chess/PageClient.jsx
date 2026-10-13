@@ -15,9 +15,14 @@ import {
 import { playCardDraw, playTick, playBuzz } from "../../../lib/gameAudio";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import { readStoredAiDifficulty } from "../../../lib/aiDifficulty";
-// The shared easy/normal/hard tiers map onto the engine's 1–5 minimax depth
-// levels (see `coerceAiDifficulty`): easy → 2, normal → 3, hard → 5.
-const AI_LEVEL_BY_TIER = { easy: 2, normal: 3, hard: 5 };
+// The picker stores the SHARED easy/normal/hard tier, while the server speaks
+// chess's own `easy | medium | hard` and the AI page still reads the legacy 1–5
+// level. Both translations live in src/lib/chessDifficulty.ts so this lobby,
+// the creation route and the board cannot drift apart.
+import {
+  CHESS_AI_DIFFICULTY_LEVELS,
+  coerceChessAiDifficulty,
+} from "../../../lib/chessDifficulty";
 const TIMER_OPTIONS = [
   { id: "1min", label: "1 Min", time: 60 },
   { id: "2min", label: "2 Min", time: 120 },
@@ -34,7 +39,11 @@ export default function ChessLobby() {
   const [showBetPopup, setShowBetPopup] = useState(false);
   // The shared easy/normal/hard tier, remembered per game by the picker.
   const [aiTier, setAiTier] = useState(() => readStoredAiDifficulty("chess"));
-  const aiDifficulty = AI_LEVEL_BY_TIER[aiTier] ?? 3;
+  // The same choice in chess's vocabulary — `coerceChessAiDifficulty` maps the
+  // shared `normal` onto chess's `medium` — and the legacy 1–5 level that tier
+  // corresponds to (the AI page reads the level from its URL).
+  const chessAiTier = coerceChessAiDifficulty(aiTier);
+  const aiLevel = CHESS_AI_DIFFICULTY_LEVELS[chessAiTier];
   const [aiTimer, setAiTimer] = useState("5min");
   const [aiColor, setAiColor] = useState("random");
   const [availableGames, setAvailableGames] = useState([]);
@@ -278,7 +287,13 @@ export default function ChessLobby() {
         credentials: "include",
         body: JSON.stringify({
           ai_game: true,
-          difficultyLevel: aiDifficulty,
+          // The canonical chess tier: what the server VALIDATES and persists.
+          difficulty: chessAiTier,
+          // The legacy 1–5 level, kept in the request so a cached server from
+          // before the tier existed reads the same choice out of the same body
+          // during a rolling deploy. The server prefers `difficulty`.
+          difficultyLevel: aiLevel,
+          color: aiColor,
         }),
       });
 
@@ -289,7 +304,14 @@ export default function ChessLobby() {
 
       const data = await res.json();
       const timerObj = TIMER_OPTIONS.find((t) => t.id === aiTimer);
-      router.push(`/casino/chess/ai?gameId=${data.gameId}&difficulty=${aiDifficulty}&timer=${timerObj?.time || 300}&color=${aiColor}`);
+      // The SERVER's colour, not the picker's. `random` was resolved server-side
+      // and the row's seats match this value, so the board must be drawn from it
+      // — the client no longer rolls a colour of its own (which could disagree
+      // with the seat it was actually given). A cached server from before this
+      // change omits `humanColor` and always seated the human in White, so that
+      // is the honest fallback for an older response.
+      const resolvedColor = data.humanColor === "black" ? "black" : "white";
+      router.push(`/casino/chess/ai?gameId=${data.gameId}&difficulty=${aiLevel}&timer=${timerObj?.time || 300}&color=${resolvedColor}`);
     } catch (error) {
       console.error("Error creating AI game:", error);
       setError("Failed to create AI game");
