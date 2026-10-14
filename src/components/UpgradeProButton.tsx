@@ -32,6 +32,7 @@ import {
   startProCheckout,
   useMembershipStatus,
 } from "../lib/upgradePro";
+import type { ProBillingInterval } from "../lib/proBilling";
 
 export type UpgradeProButtonProps = {
   /** `cta` (default) is the full-width attention button; `compact` fits headers. */
@@ -89,23 +90,26 @@ export default function UpgradeProButton({
     }
   }, []);
 
-  const handleUpgrade = useCallback(async () => {
-    if (!plan) return;
-    if (!signedIn) {
-      router.push(`/sign-up?redirect_url=${encodeURIComponent(UPGRADE_PRO_PATH)}`);
-      return;
-    }
-    setError(null);
-    setBusy(true);
-    const result = await startProCheckout(plan.key);
-    if (!result.ok) {
-      setBusy(false);
-      setError(result.error ?? "Could not start the subscription.");
-      // The server may already know about a subscription the client hasn't
-      // seen yet (webhook race) — re-read so the button flips to Manage.
-      void status.refresh();
-    }
-  }, [plan, signedIn, router, status]);
+  const handleUpgrade = useCallback(
+    async (interval: ProBillingInterval = "monthly") => {
+      if (!plan) return;
+      if (!signedIn) {
+        router.push(`/sign-up?redirect_url=${encodeURIComponent(UPGRADE_PRO_PATH)}`);
+        return;
+      }
+      setError(null);
+      setBusy(true);
+      const result = await startProCheckout(plan.key, interval);
+      if (!result.ok) {
+        setBusy(false);
+        setError(result.error ?? "Could not start the subscription.");
+        // The server may already know about a subscription the client hasn't
+        // seen yet (webhook race) — re-read so the button flips to Manage.
+        void status.refresh();
+      }
+    },
+    [plan, signedIn, router, status],
+  );
 
   const handleTrigger = useCallback(() => {
     setError(null);
@@ -157,6 +161,7 @@ export default function UpgradeProButton({
             active,
             signedIn,
             currentPeriodEnd: status.currentPeriodEnd,
+            currentInterval: status.billingInterval,
             busy,
             error,
             onUpgrade: handleUpgrade,

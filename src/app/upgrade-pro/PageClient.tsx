@@ -2,13 +2,18 @@
 
 // src/app/upgrade-pro/PageClient.tsx
 //
-// The GRYND PRO upgrade page (replaced the old token Shop).
+// The GRYND PRO page — ONE membership, THREE billing options.
 //
 // It does not fetch the plan or the entitlement itself: the server page
-// resolved both and passed them in, so the price in the HTML is the price
-// Stripe will charge and there is no "am I PRO?" flash. The only client work
-// is the two Stripe actions plus one confirmation poll when the visitor
-// returns from Checkout (the webhook may land a moment later).
+// resolved both (including the three authoritative price amounts) and passed
+// them in, so the price in the first HTML is the price Stripe will charge and
+// there is no "am I PRO?" flash. The only client work is the Stripe actions
+// plus one confirmation poll when the visitor returns from Checkout.
+//
+// A free visitor chooses an interval and subscribes. An existing member sees
+// their current interval, can switch to another (prorated, on the SAME
+// subscription) and can open the billing portal — they are never asked to
+// subscribe again, so no second subscription can be created.
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -18,10 +23,13 @@ import Footer from "../../components/Footer";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import UpgradeProContent from "../../components/UpgradeProContent";
 import {
+  changeProBillingInterval,
   openProBillingPortal,
   startProCheckout,
   useMembershipStatus,
 } from "../../lib/upgradePro";
+import { useTranslation } from "../../hooks/useTranslation";
+import type { ProBillingInterval } from "../../lib/proBilling";
 import type { ProPlanDisplay } from "../../lib/membershipDisplay";
 
 type Subscription = {
@@ -52,13 +60,10 @@ const FREE_FEATURES = [
 const CONFIRM_ATTEMPTS = 10;
 const CONFIRM_INTERVAL_MS = 1500;
 
-export default function PageClient({
-  plan,
-  signedIn,
-  subscription,
-}: PageClientProps) {
+export default function PageClient({ plan, signedIn, subscription }: PageClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { t } = useTranslation();
   const status = useMembershipStatus();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +78,7 @@ export default function PageClient({
     : (subscription?.currentPeriodEnd ?? null);
   const isSignedIn = status.loaded ? status.signedIn : signedIn;
   const resolvedPlan = status.plan ?? plan;
+  const currentInterval = status.billingInterval;
 
   // Returning from Stripe Checkout: the webhook records the subscription
   // asynchronously, so poll the existing session-status endpoint until it
@@ -91,7 +97,7 @@ export default function PageClient({
         if (sessionId) {
           const res = await fetch(
             `/api/stripe/session-status?session_id=${encodeURIComponent(sessionId)}`,
-            { cache: "no-store" }
+            { cache: "no-store" },
           );
           const data = await res.json().catch(() => ({}));
           if (data?.fulfilled) {
@@ -120,48 +126,56 @@ export default function PageClient({
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-    // `refresh` and `router` are both stable (useCallback / next/navigation),
-    // so this still runs exactly once per Stripe return trip.
   }, [checkoutState, sessionId, refresh, router]);
 
-  const handleUpgrade = useCallback(async () => {
-    if (!isSignedIn) {
-      router.push("/sign-up?redirect_url=%2Fupgrade-pro");
-      return;
-    }
+  const runAction = useCallback(async (action: () => Promise<{ ok: boolean; error?: string }>) => {
     setError(null);
     setBusy(true);
-    const result = await startProCheckout(resolvedPlan.key);
+    const result = await action();
     if (!result.ok) {
       setBusy(false);
-      setError(result.error ?? "Could not start the subscription.");
+      setError(result.error ?? t("pro.error_generic"));
       void status.refresh();
     }
-  }, [isSignedIn, resolvedPlan.key, router, status]);
+  }, [status, t]);
 
-  const handleManage = useCallback(async () => {
-    setError(null);
-    setBusy(true);
-    const result = await openProBillingPortal();
-    if (!result.ok) {
-      setBusy(false);
-      setError(result.error ?? "Could not open subscription management.");
-    }
-  }, []);
+  const handleUpgrade = useCallback(
+    (interval: ProBillingInterval) => {
+      if (!isSignedIn) {
+        router.push("/sign-up?redirect_url=%2Fupgrade-pro");
+        return;
+      }
+      return runAction(() => startProCheckout(resolvedPlan.key, interval));
+    },
+    [isSignedIn, resolvedPlan.key, router, runAction],
+  );
+
+  const handleChangeInterval = useCallback(
+    (interval: ProBillingInterval) => runAction(() => changeProBillingInterval(interval)),
+    [runAction],
+  );
+
+  const handleManage = useCallback(
+    () => runAction(() => openProBillingPortal()),
+    [runAction],
+  );
+
+  const currentOption = resolvedPlan.billingOptions.find(
+    (option) => option.interval === currentInterval,
+  );
 
   return (
     <div className="relative min-h-screen">
       <InteractiveCasinoBg variant="subtle" />
       <NavigationBar currentPath="/upgrade-pro" />
 
-      <main className="relative z-10 mx-auto max-w-4xl px-4 pb-20 pt-24 sm:pt-28">
-        <header className="mb-6 text-center">
-          <h1 className="text-3xl font-black tracking-tight text-[#f5ff3b] drop-shadow-[0_0_10px_rgba(245,255,59,0.5)] sm:text-4xl">
-            Upgrade to {resolvedPlan.name}
+      <main className="relative z-10 mx-auto max-w-5xl px-4 pb-20 pt-24 sm:pt-28">
+        <header className="mb-8 text-center">
+          <h1 className="text-3xl font-black tracking-tight text-[#f5ff3b] drop-shadow-[0_0_10px_rgba(245,255,59,0.5)] sm:text-5xl">
+            {t("pro.headline")}
           </h1>
-          <p className="mx-auto mt-2 max-w-2xl text-sm text-[#9dd8ff]/85 sm:text-base">
-            A monthly membership for players who want to compete without
-            distractions. It never changes your odds, Elo or matchmaking.
+          <p className="mx-auto mt-3 max-w-2xl text-sm text-[#9dd8ff]/85 sm:text-base">
+            {t("pro.subtitle")}
           </p>
         </header>
 
@@ -170,7 +184,7 @@ export default function PageClient({
             role="status"
             className="mx-auto mb-5 max-w-xl rounded-lg border border-[#00e5ff]/30 bg-[#0b224f]/80 px-4 py-2 text-center text-sm text-[#9dd8ff]"
           >
-            Checkout cancelled — nothing was charged.
+            {t("pro.checkout_cancelled")}
           </p>
         )}
 
@@ -179,9 +193,7 @@ export default function PageClient({
             role="status"
             className="mx-auto mb-5 max-w-xl rounded-lg border border-green-400/40 bg-green-500/10 px-4 py-2 text-center text-sm text-green-300"
           >
-            {confirming || !active
-              ? "Payment received — activating your GRYND PRO membership…"
-              : "You're on GRYND PRO. Enjoy the distraction-free experience."}
+            {confirming || !active ? t("pro.checkout_activating") : t("pro.checkout_active")}
           </p>
         )}
 
@@ -190,23 +202,21 @@ export default function PageClient({
           active={active}
           signedIn={isSignedIn}
           currentPeriodEnd={currentPeriodEnd}
+          currentInterval={currentInterval}
           busy={busy}
           error={error}
           variant="page"
           imagePriority
           onUpgrade={handleUpgrade}
+          onChangeInterval={handleChangeInterval}
           onManage={handleManage}
-          onSignIn={handleUpgrade}
+          onSignIn={() => handleUpgrade("yearly")}
         />
 
+        {/* ── What free players keep ─────────────────────────────────── */}
         <section className="mt-8 rounded-2xl border border-[#00e5ff]/25 bg-[#0b224f]/70 p-6">
-          <h2 className="text-xl font-bold text-[#00e5ff]">
-            Free forever — no membership required
-          </h2>
-          <p className="mt-1 text-sm text-[#9dd8ff]/80">
-            GRYND PRO is convenience and insight, never an advantage. Everything
-            competitive stays identical for every player:
-          </p>
+          <h2 className="text-xl font-bold text-[#00e5ff]">{t("pro.free_title")}</h2>
+          <p className="mt-1 text-sm text-[#9dd8ff]/80">{t("pro.free_body")}</p>
           <ul className="mt-4 grid grid-cols-2 gap-2 text-sm text-[#d8fbff] sm:grid-cols-3">
             {FREE_FEATURES.map((feature) => (
               <li key={feature} className="flex items-start gap-2">
@@ -217,26 +227,31 @@ export default function PageClient({
               </li>
             ))}
           </ul>
-          <p className="mt-4 text-xs text-[#9dd8ff]/70">
-            Free accounts see ads. GRYND PRO removes them and adds the deeper
-            statistics, analytics and match history.
-          </p>
+          <p className="mt-4 text-xs text-[#9dd8ff]/70">{t("pro.free_note")}</p>
         </section>
 
+        {/* ── Billing ────────────────────────────────────────────────── */}
         <section className="mt-6 rounded-2xl border border-[#00e5ff]/25 bg-[#0b224f]/70 p-6">
-          <h2 className="text-xl font-bold text-[#00e5ff]">Billing</h2>
+          <h2 className="text-xl font-bold text-[#00e5ff]">{t("pro.billing_title")}</h2>
           <ul className="mt-3 space-y-2 text-sm text-[#9dd8ff]/85">
+            {active && currentOption ? (
+              <li>
+                •{" "}
+                {t("pro.billing_current", {
+                  interval: t(`pro.interval.${currentOption.interval}`).toLowerCase(),
+                  price: currentOption.priceUsd,
+                  unit: t(`pro.unit.${currentOption.interval}`),
+                })}
+              </li>
+            ) : (
+              <li>• {t("pro.billing_options")}</li>
+            )}
+            <li>• {t("pro.billing_change")}</li>
             <li>
-              • Billed monthly through Stripe —{" "}
-              <span className="text-[#f5ff3b]">${resolvedPlan.priceUsd}/month</span>.
-            </li>
-            <li>• Cancel or change your payment method any time in the billing portal.</li>
-            <li>
-              • Managing an existing membership?{" "}
+              • {t("pro.billing_profile_lead")}{" "}
               <Link href="/profil" className="text-[#f5ff3b] underline">
-                Your profile
-              </Link>{" "}
-              shows your current status.
+                {t("pro.billing_profile_link")}
+              </Link>
             </li>
           </ul>
         </section>

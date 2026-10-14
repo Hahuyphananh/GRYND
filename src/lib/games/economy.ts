@@ -24,6 +24,8 @@
 //   * HOUSE_RTP                 — return-to-player ceiling for house/PvE
 //                                 games (the house keeps at least 1 − RTP).
 //   * WALLET_HARD_CAP           — balance ceiling no credit may cross.
+//   * DAILY_REWARD_CYCLE        — the curated 7-day login-reward curve.
+//   * ZERO_BALANCE_RESCUE       — the one-last-game top-up for an empty wallet.
 //   * PVP_RAKE_PCT              — every 1v1 match takes 5% of the pot
 //                                 (winner gets 95%: 1.9x on a 2x pot).
 //
@@ -83,6 +85,33 @@ export const HOUSE_RTP = 0.9;
  * which is the final guarantee that an account cannot reach millions.
  */
 export const WALLET_HARD_CAP = 100_000;
+
+/**
+ * The daily login reward paid for each day of a 7-day cycle (tokens), indexed
+ * by `cycleDay - 1`. Curated deliberately — see the note below.
+ *
+ * The cycle pays 725 tokens over a full week (≈104/day), which is:
+ *   * enough to be worth opening the app for — day 1 already funds a real
+ *     wager, and day 7 (250) is a payday worth ~2.5 max bets;
+ *   * far too little to out-earn playing — a single `GLOBAL_MAX_BET` wager is
+ *     100, and the whole week pays under one `ENERGY_GRANT_FLOOR` top-up, so
+ *     the reward nudges a player back into a game instead of replacing it;
+ *   * safe to hand out to every player who shows up and plays one game, which
+ *     is exactly what it is gated on.
+ *
+ * The curve escalates so a returning streak is visibly worth more, and day 7
+ * is the payoff that makes completing the cycle the goal.
+ */
+export const DAILY_REWARD_CYCLE = [30, 45, 60, 80, 110, 150, 250];
+
+/**
+ * Tokens handed to a broke player so they always have one more game in them
+ * (tokens). Fires only at an empty balance, at most once per UTC day, and only
+ * after the day's energy grant has already been spent — so it is a floor of
+ * "one last wager", never an income. 10 is a small, honest wager (well under
+ * `HIGH_VARIANCE_MAX_BET`), not a restart of the daily allowance.
+ */
+export const ZERO_BALANCE_RESCUE = 10;
 
 /**
  * Daily net-loss soft-warning threshold (tokens). When a player is down more

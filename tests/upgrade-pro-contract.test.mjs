@@ -39,6 +39,8 @@ const SUBSCRIBE_ROUTE = read("src/app/api/stripe/subscribe/route.ts");
 const PORTAL_ROUTE = read("src/app/api/stripe/portal/route.ts");
 const NAVBAR = read("src/components/navigation-bar.jsx");
 const PROXY = read("src/proxy.ts");
+const TRANSLATIONS = read("src/lib/appTextTranslations.js");
+const PRO_BILLING = read("src/lib/proBilling.ts");
 
 const UPGRADE_SURFACE = { BUTTON, MODAL, CONTENT, HOOK, PAGE, PAGE_CLIENT };
 
@@ -153,8 +155,16 @@ test("the price is resolved server-side and rendered from the plan, never hardco
   assert.match(SUBSCRIPTIONS, /resolveSubscriptionPlanPriceCents\(/);
   assert.match(STATUS_ROUTE, /getProPlanDisplay\(\)/);
 
-  // The client surfaces render whatever the server resolved.
-  assert.match(CONTENT, /plan\.priceUsd/);
+  // The client surfaces render whatever the server resolved: the price comes
+  // off the resolved plan's per-interval billing options — the component holds
+  // no price of its own, for any of the three options.
+  assert.match(CONTENT, /plan\.billingOptions/);
+  assert.match(CONTENT, /option\.priceUsd/);
+  assert.doesNotMatch(CONTENT, /plan\.priceUsd\s*[=+\-]/, "the component must not derive a price");
+  // Every option's price is resolved server-side from a bound Stripe price.
+  assert.match(PRO_BILLING, /PRO_BILLING_INTERVALS/);
+  assert.match(SUBSCRIPTIONS, /stripePriceIdWeekly|stripe_price_id_weekly/);
+  assert.match(SUBSCRIPTIONS, /stripePriceIdYearly|stripe_price_id_yearly/);
   assert.ok(
     !/\$\s?9\.99|\b999\b/.test(BUTTON + MODAL + CONTENT + PAGE_CLIENT),
     "no component may hardcode the subscription price",
@@ -184,8 +194,15 @@ test("entitlement is server-authoritative — the client can never claim PRO", (
       `${name} must not read membership from client storage`,
     );
   }
-  // The client sends a plan key only; the server resolves the price.
-  assert.match(HOOK, /JSON\.stringify\(\{ planKey \}\)/);
+  // The client sends a plan key and WHICH approved interval to buy — never a
+  // price. The server resolves the amount from the bound Stripe price, and the
+  // interval is validated server-side against the allowed set.
+  assert.match(HOOK, /JSON\.stringify\(\{ planKey, interval \}\)/);
+  assert.ok(
+    !/JSON\.stringify\(\{[^}]*price/.test(HOOK),
+    "the client must never send a price",
+  );
+  assert.match(SUBSCRIBE_ROUTE, /PRO_BILLING_INTERVALS|isProBillingInterval/);
 });
 
 test("the upgrade flow reuses the existing Stripe endpoints and no token system", () => {
@@ -203,9 +220,40 @@ test("the upgrade flow reuses the existing Stripe endpoints and no token system"
 
 test("the modal shows the GRYND PRO offer with the pack-mega artwork", () => {
   assert.match(CONTENT, /"\/images\/pack-mega\.png"/);
-  assert.match(CONTENT, /Compete without distractions\./);
-  assert.match(CONTENT, /Upgrade to GRYND PRO/);
-  assert.match(CONTENT, /Manage Subscription/);
+
+  // The offer copy is TRANSLATED, not hardcoded: the component renders the
+  // shared `pro.*` keys, and each key it renders exists in the English bundle
+  // that every locale falls back through.
+  assert.match(CONTENT, /t\("pro\.lead"\)/);
+  assert.match(TRANSLATIONS, /lead: "Compete without distractions\."/);
+  assert.match(CONTENT, /t\("pro\.cta\.subscribe"/);
+  assert.match(CONTENT, /t\("pro\.cta\.manage"\)/);
+  assert.match(TRANSLATIONS, /subscribe: "Subscribe — \$\{price\}\/\{unit\}"/);
+  assert.match(TRANSLATIONS, /manage: "Manage subscription"/);
+
+  // All three billing options are offered, and the offer states plainly that
+  // they are the same membership.
+  assert.match(CONTENT, /PRO_BILLING_INTERVALS\.map/);
+  assert.match(TRANSLATIONS, /same_membership:/);
+
+  // The advertised benefits are a FIXED approved list — not whatever a catalog
+  // edit happens to contain — and each one is a translated key.
+  assert.match(CONTENT, /const BENEFIT_KEYS = \[/);
+  assert.match(CONTENT, /t\(`pro\.benefit\.\$\{key\}`\)/);
+  for (const key of [
+    "ad_free",
+    "analytics",
+    "history",
+    "customization",
+    "support",
+    "matchmaking",
+  ]) {
+    assert.ok(
+      CONTENT.includes(`"${key}"`),
+      `the fixed PRO benefit list should include "${key}"`,
+    );
+  }
+
   for (const perk of [
     "Ad-free experience",
     "Advanced statistics",
@@ -218,6 +266,70 @@ test("the modal shows the GRYND PRO offer with the pack-mega artwork", () => {
     );
   }
   assert.match(read("src/db/migrations/0168_membership_single_pro.sql"), /'Ad-free experience'/);
+});
+
+test("every dynamic PRO string resolves in all three languages", async () => {
+  const { t } = await import("../src/lib/appTextTranslations.js");
+
+  // The keys the component BUILDS at runtime (template literals) can't be
+  // grepped as literals, so they are enumerated here and resolved through the
+  // real bundle. A locale that is missing one would otherwise render the raw
+  // key — or silently fall back to English mid-sentence.
+  const intervals = ["weekly", "monthly", "yearly"];
+  const benefits = [
+    "ad_free",
+    "analytics",
+    "history",
+    "customization",
+    "support",
+    "matchmaking",
+  ];
+  const keys = [
+    ...intervals.map((i) => `pro.interval.${i}`),
+    ...intervals.map((i) => `pro.unit.${i}`),
+    ...benefits.map((b) => `pro.benefit.${b}`),
+    ...["subscribe", "switch", "manage", "opening"].map((k) => `pro.cta.${k}`),
+    "pro.lead",
+    "pro.headline",
+    "pro.subtitle",
+    "pro.membership",
+    "pro.interval_group",
+    "pro.badge.best_value",
+    "pro.equivalent",
+    "pro.save",
+    "pro.flexible_weekly",
+    "pro.selected",
+    "pro.same_membership",
+    "pro.cancel_anytime",
+    "pro.active_plain",
+    "pro.active_renews",
+    "pro.close",
+    "pro.benefits_title",
+    "pro.no_advantage",
+    "pro.error_generic",
+    "pro.checkout_cancelled",
+    "pro.checkout_activating",
+    "pro.checkout_active",
+    "pro.free_title",
+    "pro.free_body",
+    "pro.free_note",
+    "pro.billing_title",
+    "pro.billing_current",
+    "pro.billing_options_lead",
+    "pro.billing_change",
+    "pro.billing_profile_lead",
+    "pro.billing_profile_link",
+  ];
+
+  for (const lang of ["en", "fr", "es"]) {
+    for (const key of keys) {
+      const value = t(lang, key);
+      assert.ok(
+        typeof value === "string" && value.length > 0 && value !== key,
+        `${lang} is missing ${key}`,
+      );
+    }
+  }
 });
 
 function MEMBERSHIP_DISPLAY_HAS(perk) {

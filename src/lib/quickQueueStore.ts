@@ -2,6 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { db } from "../db";
 import { quickQueueAssignments, quickQueueRequests } from "../db/schema";
 import { normalizeQuickQueueRequest } from "./quickQueue";
+import { getMembershipTier } from "./stripe/subscriptions";
 
 export async function createQuickQueueRequest(input: unknown) {
   const request = normalizeQuickQueueRequest(input);
@@ -12,9 +13,19 @@ export async function createQuickQueueRequest(input: unknown) {
     .limit(1);
   if (existing) return existing;
 
-  // No priority matchmaking: the `premium` column stays at its default
-  // (false) for everyone, so membership can never affect who you're paired
-  // with. Kept in the schema for backward-compatible reads.
+  // The `premium` column is an ADVISORY SNAPSHOT of membership at join time —
+  // written from the server-authoritative subscription read (never from the
+  // request body). It is deliberately NOT what the matcher trusts: the queue
+  // worker re-resolves active members from the subscription table when it
+  // pairs, so a lapsed subscription loses priority immediately. A failure to
+  // read membership here just leaves the snapshot false; it can never grant it.
+  let premium = false;
+  try {
+    premium = (await getMembershipTier(request.userId)) === "pro";
+  } catch (error) {
+    console.error("[quick-queue] failed to read membership for the queue row", error);
+  }
+
   const [created] = await db
     .insert(quickQueueRequests)
     .values({
@@ -24,6 +35,7 @@ export async function createQuickQueueRequest(input: unknown) {
       region: request.region,
       playerCount: request.playerCount,
       maxWaitMs: request.maxWaitMs,
+      premium,
     })
     .returning();
   return created;

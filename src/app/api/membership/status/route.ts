@@ -87,6 +87,10 @@ export async function GET() {
     planKey: subscription.planKey,
     tier: "pro",
     status: subscription.status,
+    // The billing option this member is actually on (weekly | monthly |
+    // yearly), for an accurate "renews …" line. Display only: the entitlement
+    // above is derived from the subscription row, never from this value.
+    billingInterval: subscription.billingInterval ?? null,
     currentPeriodEnd: subscription.currentPeriodEnd
       ? subscription.currentPeriodEnd.toISOString()
       : null,

@@ -157,6 +157,12 @@ const isPublicRoute = createRouteMatcher([
   "/contact",
   "/reviews",
   "/faq",
+  // The rewards surface. Public for the same reason /faq is: the navbar
+  // advertises it to signed-out visitors too, and it is a reading surface
+  // (what rewards are coming) rather than an account action. The coin balance
+  // it displays is read client-side and simply becomes a sign-in prompt when
+  // there is no session.
+  "/rewards",
   // The guides library (src/lib/guides.ts). Public for the same reason /faq is:
   // it is a reading surface that helps a signed-out visitor decide whether to
   // play, and it must be indexable without a session. Matched with `(.*)` so

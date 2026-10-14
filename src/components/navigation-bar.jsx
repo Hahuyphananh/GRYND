@@ -10,7 +10,7 @@ import { fadeUp, hoverScale, withReducedMotion, stagger } from "../lib/animation
 import { UIPro01NavShell, UIPro02NavItem } from "./uipro";
 import useInstallPWA from "../hooks/useInstallPWA";
 import AdminBadge from "./AdminBadge";
-import { IconDeviceMobile, IconFlame, IconMenu, IconSettings, IconStar, IconTrophy, IconX } from "@tabler/icons-react";
+import { IconDeviceMobile, IconFlame, IconGift, IconMenu, IconSettings, IconStar, IconTrophy, IconX } from "@tabler/icons-react";
 import FrameAvatar from "./FrameAvatar";
 import { cosmeticEffectClass } from "../lib/profileCosmetics";
 import useDailyLoss from "../lib/useDailyLoss";
@@ -33,7 +33,14 @@ const NAV_TRANSLATION_KEYS = {
   "/classement": "nav.leaderboard",
   "/contact": "nav.contact",
   "/faq": "nav.faq",
+  "/rewards": "nav.rewards",
 };
+
+// The one primary nav link that carries a glyph, keyed by its path. Rewards is
+// drawn with a gift icon from the project's existing Tabler set so it reads as
+// the rewards surface; every other primary link stays text-only, exactly as
+// before. The map is empty for those paths, so nothing about them changes.
+const NAV_ICONS = { "/rewards": <IconGift size={15} className="shrink-0" /> };
 
 function NavigationBar({ currentPath = "" }) {
   const { isLoaded, isSignedIn, user } = useUser();
@@ -448,7 +455,7 @@ function NavigationBar({ currentPath = "" }) {
               animate="animate"
               className="hidden items-center space-x-1 md:flex lg:space-x-4"
             >
-              {["/", "/games", "/classement", "/contact", "/faq"].map((path) => (
+              {["/", "/games", "/classement", "/rewards", "/contact", "/faq"].map((path) => (
                 <motion.div
                   key={path}
                   initial={itemVariant.initial}
@@ -460,7 +467,17 @@ function NavigationBar({ currentPath = "" }) {
                     href={path}
                     className={`px-1 py-2 text-sm font-medium rounded lg:px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === path || (path === "/games" && isCasinoPath) ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
                   >
-                    {t(NAV_TRANSLATION_KEYS[path])}
+                    {/* Only Rewards carries a glyph. Links without one render
+                        their label exactly as before (a bare text node) — the
+                        conditional wrapper means adding the icon did not shift
+                        any existing link by even a space. */}
+                    {NAV_ICONS[path] ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        {NAV_ICONS[path]} {t(NAV_TRANSLATION_KEYS[path])}
+                      </span>
+                    ) : (
+                      t(NAV_TRANSLATION_KEYS[path])
+                    )}
                   </Link>
                 </motion.div>
               ))}
@@ -687,14 +704,20 @@ function NavigationBar({ currentPath = "" }) {
 
               {/* NAV LINKS */}
               <div className="space-y-2">
-                {["/", "/games", "/classement", "/contact", "/faq"].map((path) => (
+                {["/", "/games", "/classement", "/rewards", "/contact", "/faq"].map((path) => (
                   <Link
                     key={path}
                     href={path}
                     onClick={() => setMobileMenuOpen(false)}
                     className="block rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff]"
                   >
-                    {t(NAV_TRANSLATION_KEYS[path])}
+                    {NAV_ICONS[path] ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        {NAV_ICONS[path]} {t(NAV_TRANSLATION_KEYS[path])}
+                      </span>
+                    ) : (
+                      t(NAV_TRANSLATION_KEYS[path])
+                    )}
                   </Link>
                 ))}
                   <Link

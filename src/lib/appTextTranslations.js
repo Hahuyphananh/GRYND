@@ -142,6 +142,7 @@ export const APP_TEXT_TRANSLATIONS = {
       leaderboard: "Leaderboard",
       contact: "Contact",
       faq: "FAQ",
+      rewards: "Rewards",
       settings: "Settings",
       sign_out: "Sign Out",
       create_account: "Create account",
@@ -157,6 +158,65 @@ export const APP_TEXT_TRANSLATIONS = {
       level_short: "LVL",
       theme_light: "Switch to light mode",
       theme_dark: "Switch to dark mode",
+    },
+    // GRYND PRO membership page + shared upgrade surface. Every amount,
+    // saving and percentage is passed in as an interpolation param — this
+    // block never hardcodes a price.
+    pro: {
+      headline: "Play sharper. See more. Queue smarter.",
+      subtitle:
+        "Unlock an ad-free GRYND experience, deeper performance insights, premium profile customization, and priority matchmaking.",
+      membership: "Membership",
+      lead: "Compete without distractions.",
+      interval_group: "Choose a billing option",
+      interval: { weekly: "Weekly", monthly: "Monthly", yearly: "Yearly" },
+      unit: { weekly: "week", monthly: "month", yearly: "year" },
+      badge: { best_value: "BEST VALUE" },
+      equivalent: "About ${amount}/month",
+      save: "Save ${amount}/year vs {versus} ({percent}% off)",
+      flexible_weekly: "Maximum flexibility, billed every week.",
+      selected: "Selected",
+      same_membership:
+        "All three options are the same GRYND PRO membership — only how often you are billed changes.",
+      cancel_anytime: "Cancel anytime. Billed through Stripe.",
+      active_plain: "GRYND PRO active",
+      active_renews: "GRYND PRO active · renews {date}",
+      cta: {
+        subscribe: "Subscribe — ${price}/{unit}",
+        switch: "Switch to {interval} billing",
+        manage: "Manage subscription",
+        opening: "Opening Stripe…",
+      },
+      close: "Close",
+      benefits_title: "What you get with GRYND PRO",
+      benefit: {
+        ad_free: "Ad-free browsing and gaming",
+        analytics: "Advanced statistics and performance analytics",
+        history: "Detailed match history",
+        customization:
+          "Premium profile customization, including custom chat colors and profile accents",
+        support: "Priority support",
+        matchmaking:
+          "Priority matchmaking — a fair queue tie-break, never a skill advantage",
+      },
+      no_advantage:
+        "Every game, ranked play, Elo, trophies, leaderboards, free tournaments and every cosmetic stay free. GRYND PRO never grants tokens, XP or Elo boosts, and never changes a match's outcome.",
+      error_generic: "Something went wrong. Please try again.",
+      checkout_cancelled: "Checkout cancelled — nothing was charged.",
+      checkout_activating: "Payment received — activating your GRYND PRO membership…",
+      checkout_active: "You're on GRYND PRO. Enjoy the distraction-free experience.",
+      free_title: "Free forever — no membership required",
+      free_body:
+        "GRYND PRO is convenience and insight, never an advantage. Everything competitive stays identical for every player:",
+      free_note:
+        "Free accounts see ads. GRYND PRO removes them and adds the deeper statistics, analytics and match history.",
+      billing_title: "Billing",
+      billing_current: "You're on the {interval} option — ${price}/{unit} through Stripe.",
+      billing_options_lead: "Billed through Stripe —",
+      billing_change:
+        "Switch between the weekly, monthly and yearly options at any time; the change is prorated and applied to your existing subscription.",
+      billing_profile_lead: "Managing an existing membership?",
+      billing_profile_link: "Your profile",
     },
     home: {
       title: "PICK YOUR BATTLE",
@@ -1593,6 +1653,7 @@ export const APP_TEXT_TRANSLATIONS = {
       leaderboard: "Classement",
       contact: "Contact",
       faq: "FAQ",
+      rewards: "Récompenses",
       settings: "Paramètres",
       sign_out: "Déconnexion",
       create_account: "Créer un compte",
@@ -1608,6 +1669,62 @@ export const APP_TEXT_TRANSLATIONS = {
       level_short: "NIV",
       theme_light: "Passer au thème clair",
       theme_dark: "Passer au thème sombre",
+    },
+    pro: {
+      headline: "Joue plus finement. Vois plus. File plus intelligemment.",
+      subtitle:
+        "Débloque une expérience GRYND sans publicité, des statistiques de performance plus poussées, une personnalisation de profil premium et un appariement prioritaire.",
+      membership: "Abonnement",
+      lead: "Affronte sans distractions.",
+      interval_group: "Choisis une formule de facturation",
+      interval: { weekly: "Hebdomadaire", monthly: "Mensuelle", yearly: "Annuelle" },
+      unit: { weekly: "semaine", monthly: "mois", yearly: "an" },
+      badge: { best_value: "MEILLEURE OFFRE" },
+      equivalent: "Environ {amount}/mois",
+      save: "Économise {amount}/an par rapport à la formule {versus} ({percent} % de moins)",
+      flexible_weekly: "Flexibilité maximale, facturé chaque semaine.",
+      selected: "Sélectionné",
+      same_membership:
+        "Les trois formules correspondent au même abonnement GRYND PRO — seule la fréquence de facturation change.",
+      cancel_anytime: "Résiliable à tout moment. Paiement via Stripe.",
+      active_plain: "GRYND PRO actif",
+      active_renews: "GRYND PRO actif · renouvellement le {date}",
+      cta: {
+        subscribe: "S'abonner — {price} par {unit}",
+        switch: "Passer à la facturation {interval}",
+        manage: "Gérer l'abonnement",
+        opening: "Ouverture de Stripe…",
+      },
+      close: "Fermer",
+      benefits_title: "Ce que tu obtiens avec GRYND PRO",
+      benefit: {
+        ad_free: "Navigation et jeu sans publicité",
+        analytics: "Statistiques avancées et analyse de performance",
+        history: "Historique détaillé de tes matchs",
+        customization:
+          "Personnalisation de profil premium, avec couleurs de chat et accents de profil personnalisés",
+        support: "Assistance prioritaire",
+        matchmaking:
+          "Appariement prioritaire — un simple départage équitable dans la file, jamais un avantage de niveau",
+      },
+      no_advantage:
+        "Tous les jeux, le mode classé, l'Elo, les trophées, les classements, les tournois gratuits et tous les cosmétiques restent gratuits. GRYND PRO ne donne jamais de jetons, d'XP ni de bonus d'Elo, et ne change jamais l'issue d'un match.",
+      error_generic: "Une erreur est survenue. Réessaie.",
+      checkout_cancelled: "Paiement annulé — rien n'a été débité.",
+      checkout_activating: "Paiement reçu — activation de ton abonnement GRYND PRO…",
+      checkout_active: "Tu es sur GRYND PRO. Profite d'une expérience sans distractions.",
+      free_title: "Gratuit pour toujours — aucun abonnement requis",
+      free_body:
+        "GRYND PRO, c'est du confort et des informations, jamais un avantage. Tout ce qui est compétitif reste identique pour chaque joueur :",
+      free_note:
+        "Les comptes gratuits voient des publicités. GRYND PRO les retire et ajoute les statistiques, analyses et historiques détaillés.",
+      billing_title: "Facturation",
+      billing_current: "Tu es sur la formule {interval} — {price} par {unit}, via Stripe.",
+      billing_options_lead: "Paiement via Stripe —",
+      billing_change:
+        "Change à tout moment entre les formules hebdomadaire, mensuelle et annuelle ; le changement est calculé au prorata et appliqué à ton abonnement existant.",
+      billing_profile_lead: "Tu gères un abonnement existant ?",
+      billing_profile_link: "Ton profil",
     },
     home: {
       title: "CHOISIS TON COMBAT",
@@ -2800,6 +2917,7 @@ export const APP_TEXT_TRANSLATIONS = {
       leaderboard: "Clasificaciones",
       contact: "Contacto",
       faq: "FAQ",
+      rewards: "Recompensas",
       settings: "Ajustes",
       sign_out: "Cerrar sesión",
       create_account: "Crear cuenta",
@@ -2815,6 +2933,62 @@ export const APP_TEXT_TRANSLATIONS = {
       level_short: "NVL",
       theme_light: "Cambiar al tema claro",
       theme_dark: "Cambiar al tema oscuro",
+    },
+    pro: {
+      headline: "Juega con más precisión. Ve más. Empareja mejor.",
+      subtitle:
+        "Desbloquea una experiencia GRYND sin anuncios, estadísticas de rendimiento más profundas, personalización de perfil premium y emparejamiento prioritario.",
+      membership: "Suscripción",
+      lead: "Compite sin distracciones.",
+      interval_group: "Elige una opción de facturación",
+      interval: { weekly: "Semanal", monthly: "Mensual", yearly: "Anual" },
+      unit: { weekly: "semana", monthly: "mes", yearly: "año" },
+      badge: { best_value: "MEJOR OFERTA" },
+      equivalent: "Unos {amount}/mes",
+      save: "Ahorra {amount}/año frente a la opción {versus} ({percent} % menos)",
+      flexible_weekly: "Máxima flexibilidad, facturado cada semana.",
+      selected: "Seleccionado",
+      same_membership:
+        "Las tres opciones son la misma suscripción GRYND PRO — solo cambia la frecuencia de facturación.",
+      cancel_anytime: "Cancela cuando quieras. Pago a través de Stripe.",
+      active_plain: "GRYND PRO activo",
+      active_renews: "GRYND PRO activo · se renueva el {date}",
+      cta: {
+        subscribe: "Suscribirse — {price}/{unit}",
+        switch: "Cambiar a facturación {interval}",
+        manage: "Gestionar suscripción",
+        opening: "Abriendo Stripe…",
+      },
+      close: "Cerrar",
+      benefits_title: "Lo que obtienes con GRYND PRO",
+      benefit: {
+        ad_free: "Navegación y juego sin anuncios",
+        analytics: "Estadísticas avanzadas y análisis de rendimiento",
+        history: "Historial detallado de tus partidas",
+        customization:
+          "Personalización de perfil premium, con colores de chat y acentos de perfil personalizados",
+        support: "Soporte prioritario",
+        matchmaking:
+          "Emparejamiento prioritario — un desempate justo en la cola, nunca una ventaja de nivel",
+      },
+      no_advantage:
+        "Todos los juegos, el modo clasificatorio, el Elo, los trofeos, las clasificaciones, los torneos gratuitos y todos los cosméticos siguen siendo gratis. GRYND PRO nunca otorga fichas, XP ni bonificaciones de Elo, y nunca cambia el resultado de una partida.",
+      error_generic: "Algo salió mal. Inténtalo de nuevo.",
+      checkout_cancelled: "Pago cancelado — no se cobró nada.",
+      checkout_activating: "Pago recibido — activando tu suscripción GRYND PRO…",
+      checkout_active: "Ya tienes GRYND PRO. Disfruta de la experiencia sin distracciones.",
+      free_title: "Gratis para siempre — no se requiere suscripción",
+      free_body:
+        "GRYND PRO es comodidad e información, nunca una ventaja. Todo lo competitivo sigue siendo idéntico para cada jugador:",
+      free_note:
+        "Las cuentas gratuitas ven anuncios. GRYND PRO los elimina y añade estadísticas, análisis e historial detallados.",
+      billing_title: "Facturación",
+      billing_current: "Tienes la opción {interval} — {price}/{unit} a través de Stripe.",
+      billing_options_lead: "Pago a través de Stripe —",
+      billing_change:
+        "Cambia entre las opciones semanal, mensual y anual en cualquier momento; el cambio se prorratea y se aplica a tu suscripción existente.",
+      billing_profile_lead: "¿Gestionas una suscripción existente?",
+      billing_profile_link: "Tu perfil",
     },
     home: {
       title: "ELIGE TU BATALLA",

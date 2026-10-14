@@ -2,24 +2,28 @@
 
 // src/components/UpgradeProContent.tsx
 //
-// The GRYND PRO pitch — one presentational component shared by the reusable
+// The GRYND PRO pitch — ONE presentational component shared by the reusable
 // modal (UpgradeProModal) and the /upgrade-pro landing page, so the offer, the
-// perk list and the CTA are written once.
+// perk list, the THREE billing options and the CTA are written once.
 //
-// IT RENDERS NO PRICE OF ITS OWN. `plan.priceUsd` is resolved server-side from
-// the plan catalog (or the bound Stripe price) and passed down, so the number
-// shown here is always the number Stripe will charge. Nothing in this file
-// knows about tokens, the old Shop, or how checkout works.
+// IT DERIVES NO PRICE OF ITS OWN. `plan.billingOptions` is resolved server-side
+// from the plan catalog / the bound Stripe prices and passed down, so the
+// numbers shown here are always what Stripe will charge. Savings come from the
+// same objects (computed in src/lib/proBilling.ts), never from copy typed here.
 //
-// Two membership states, two buttons:
-//   * active subscriber → "Manage Subscription" (opens the Stripe portal),
-//   * free user        → "Upgrade to GRYND PRO" (starts Stripe Checkout).
+// The caller picks the billing option; this component only renders the choice
+// and hands the selected interval back through `onUpgrade` / `onChangeInterval`.
 
+import { useEffect, useState } from "react";
 import Image from "next/image";
+import { useTranslation } from "../hooks/useTranslation";
 import {
-  PRO_PLAN_FALLBACK_PERKS,
-  type ProPlanDisplay,
-} from "../lib/membershipDisplay";
+  PRO_BILLING_INTERVALS,
+  formatUsdCents,
+  type ProBillingInterval,
+  type ProBillingOption,
+} from "../lib/proBilling";
+import type { ProPlanDisplay } from "../lib/membershipDisplay";
 
 export type UpgradeProContentProps = {
   plan: ProPlanDisplay;
@@ -29,36 +33,124 @@ export type UpgradeProContentProps = {
   signedIn: boolean;
   /** ISO date of the current period end, for subscribers. */
   currentPeriodEnd?: string | null;
+  /** Which billing option an existing member is on, when known. */
+  currentInterval?: ProBillingInterval | null;
   busy?: boolean;
   error?: string | null;
   /** `modal` is the compact dialog; `page` is the full landing hero. */
   variant?: "modal" | "page";
   imagePriority?: boolean;
-  onUpgrade: () => void;
+  onUpgrade: (interval: ProBillingInterval) => void;
+  /** An existing member switching interval (only offered when active). */
+  onChangeInterval?: (interval: ProBillingInterval) => void;
   onManage: () => void;
   onSignIn: () => void;
   onDismiss?: () => void;
 };
 
 /**
- * Headline perks in the canonical order. The catalog is the source of the
- * lines; this only fixes their order and splits the secondary ones out.
+ * The six approved benefits, in display order. Deliberately a FIXED list rather
+ * than `plan.perks`: these are the product claims this page is allowed to make
+ * (and the only ones translated), so nothing unapproved can be advertised by a
+ * catalog edit. The catalog perks remain the server-side source used elsewhere.
  */
-function splitPerks(plan: ProPlanDisplay): {
-  headline: string[];
-  secondary: string[];
-} {
-  const canonical: readonly string[] = PRO_PLAN_FALLBACK_PERKS;
-  const available: string[] =
-    plan.perks.length > 0 ? plan.perks : [...canonical];
-  const headline = canonical.filter((p) => available.includes(p));
-  if (headline.length === 0) {
-    return { headline: available.slice(0, 4), secondary: available.slice(4) };
-  }
-  return {
-    headline,
-    secondary: available.filter((p) => !headline.includes(p)),
-  };
+const BENEFIT_KEYS = [
+  "ad_free",
+  "analytics",
+  "history",
+  "customization",
+  "support",
+  "matchmaking",
+] as const;
+
+/** The default option a visitor sees selected (the recommended one). */
+const DEFAULT_INTERVAL: ProBillingInterval = "yearly";
+
+function optionFor(
+  plan: ProPlanDisplay,
+  interval: ProBillingInterval,
+): ProBillingOption | undefined {
+  return plan.billingOptions.find((option) => option.interval === interval);
+}
+
+function BillingCard({
+  option,
+  selected,
+  onSelect,
+  t,
+}: {
+  option: ProBillingOption;
+  selected: boolean;
+  onSelect: () => void;
+  t: (key: string, params?: Record<string, unknown>) => string;
+}) {
+  const interval = option.interval;
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      data-testid={`pro-interval-${interval}`}
+      data-selected={selected ? "true" : "false"}
+      onClick={onSelect}
+      className={`relative flex h-full flex-col rounded-xl border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] ${
+        selected
+          ? "border-[#f5ff3b] bg-[#f5ff3b]/10 shadow-[0_0_22px_rgba(245,255,59,0.25)]"
+          : "border-[#00e5ff]/25 bg-[#04122e]/70 hover:border-[#00e5ff]/50"
+      }`}
+    >
+      {option.badge && (
+        <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full border border-[#f5ff3b]/60 bg-[#0b224f] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#f5ff3b]">
+          {t("pro.badge.best_value")}
+        </span>
+      )}
+
+      <span className="text-xs font-semibold uppercase tracking-wider text-[#9dd8ff]">
+        {t(`pro.interval.${interval}`)}
+      </span>
+
+      <span className="mt-1 text-xl font-black text-white">
+        ${option.priceUsd}
+        <span className="ml-0.5 text-xs font-medium text-[#9dd8ff]/80">
+          /{t(`pro.unit.${interval}`)}
+        </span>
+      </span>
+
+      {option.monthlyEquivalentCents !== null && (
+        <span className="mt-0.5 text-[11px] text-[#9dd8ff]/75">
+          {t("pro.equivalent", {
+            amount: formatUsdCents(option.monthlyEquivalentCents),
+          })}
+        </span>
+      )}
+
+      <span className="mt-2 space-y-0.5">
+        {option.savings.map((saving) => (
+          <span
+            key={saving.versus}
+            className="block text-[11px] font-medium leading-snug text-[#00ffa6]"
+          >
+            {t("pro.save", {
+              amount: formatUsdCents(saving.amountCents),
+              percent: saving.percent,
+              versus: t(`pro.interval.${saving.versus}`).toLowerCase(),
+            })}
+          </span>
+        ))}
+        {option.savings.length === 0 && (
+          <span className="block text-[11px] leading-snug text-[#9dd8ff]/70">
+            {t("pro.flexible_weekly")}
+          </span>
+        )}
+      </span>
+
+      {selected && (
+        <span className="mt-2 text-[11px] font-bold text-[#f5ff3b]">
+          {t("pro.selected")}
+        </span>
+      )}
+    </button>
+  );
 }
 
 export default function UpgradeProContent({
@@ -66,28 +158,62 @@ export default function UpgradeProContent({
   active,
   signedIn,
   currentPeriodEnd = null,
+  currentInterval = null,
   busy = false,
   error = null,
   variant = "modal",
   imagePriority = false,
   onUpgrade,
+  onChangeInterval,
   onManage,
   onSignIn,
   onDismiss,
 }: UpgradeProContentProps) {
+  const { t } = useTranslation();
   const isPage = variant === "page";
-  const { headline, secondary } = splitPerks(plan);
+
+  // A member starts on the option they actually hold; a visitor starts on the
+  // recommended (yearly) one. The selection is client-side only — it chooses
+  // WHICH approved interval to request, never a price.
+  const [selected, setSelected] = useState<ProBillingInterval>(
+    active && currentInterval ? currentInterval : DEFAULT_INTERVAL,
+  );
+
+  useEffect(() => {
+    if (active && currentInterval) setSelected(currentInterval);
+  }, [active, currentInterval]);
+
+  const selectedOption = optionFor(plan, selected) ?? plan.billingOptions[0];
+  if (!selectedOption) return null;
 
   const renewsOn =
-    active && currentPeriodEnd
-      ? new Date(currentPeriodEnd).toLocaleDateString()
-      : null;
+    active && currentPeriodEnd ? new Date(currentPeriodEnd).toLocaleDateString() : null;
+
+  const switchingInterval = active && selected !== (currentInterval ?? null);
 
   const ctaLabel = busy
-    ? "Opening Stripe…"
+    ? t("pro.cta.opening")
     : active
-      ? "Manage Subscription"
-      : "Upgrade to GRYND PRO";
+      ? switchingInterval
+        ? t("pro.cta.switch", { interval: t(`pro.interval.${selected}`) })
+        : t("pro.cta.manage")
+      : t("pro.cta.subscribe", {
+          price: selectedOption.priceUsd,
+          unit: t(`pro.unit.${selected}`),
+        });
+
+  const handlePrimary = () => {
+    if (active) {
+      if (switchingInterval && onChangeInterval) onChangeInterval(selected);
+      else onManage();
+      return;
+    }
+    if (!signedIn) {
+      onSignIn();
+      return;
+    }
+    onUpgrade(selected);
+  };
 
   return (
     <section
@@ -100,7 +226,7 @@ export default function UpgradeProContent({
         <button
           type="button"
           onClick={onDismiss}
-          aria-label="Close"
+          aria-label={t("pro.close")}
           className="absolute right-3 top-3 z-10 rounded-lg border border-[#00e5ff]/30 bg-[#0b224f]/80 px-2 py-1 text-sm text-[#9dd8ff] transition hover:text-[#00e5ff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
         >
           ✕
@@ -109,25 +235,24 @@ export default function UpgradeProContent({
 
       <div
         className={`flex flex-col items-center gap-5 ${
-          isPage ? "sm:flex-row sm:items-center sm:gap-8" : ""
+          isPage ? "sm:flex-row sm:items-start sm:gap-8" : ""
         }`}
       >
-        {/* Front image for GRYND PRO. */}
         <Image
           src="/images/pack-mega.png"
           alt="GRYND PRO membership"
           width={1024}
           height={1024}
           priority={imagePriority}
-          sizes="(max-width: 640px) 220px, 260px"
-          className={`h-auto w-[180px] shrink-0 object-contain drop-shadow-[0_0_30px_rgba(245,255,59,0.35)] sm:w-[220px] ${
-            isPage ? "sm:w-[260px]" : ""
+          sizes="(max-width: 640px) 180px, 240px"
+          className={`h-auto shrink-0 object-contain drop-shadow-[0_0_30px_rgba(245,255,59,0.35)] ${
+            isPage ? "w-[160px] sm:w-[240px]" : "w-[140px]"
           }`}
         />
 
         <div className={`w-full ${isPage ? "text-left" : "text-center"}`}>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#00e5ff]">
-            Membership
+            {t("pro.membership")}
           </p>
           <h2
             id="grynd-pro-heading"
@@ -138,39 +263,43 @@ export default function UpgradeProContent({
             {plan.name}
           </h2>
           <p className="mt-2 text-sm text-[#c9f7ff] sm:text-base">
-            Compete without distractions.
+            {t("pro.lead")}
           </p>
 
-          <ul className={`mt-4 space-y-2 ${isPage ? "" : "text-left sm:mx-auto sm:max-w-xs"}`}>
-            {headline.map((perk) => (
-              <li key={perk} className="flex items-start gap-2 text-sm text-[#d8fbff]">
-                <span aria-hidden className="mt-0.5 text-[#00ffa6]">
-                  ✓
-                </span>
-                <span>{perk}</span>
-              </li>
-            ))}
-          </ul>
+          {/* ── Three billing options ─────────────────────────────────── */}
+          <div
+            role="radiogroup"
+            aria-label={t("pro.interval_group")}
+            className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3"
+          >
+            {PRO_BILLING_INTERVALS.map((interval) => {
+              const option = optionFor(plan, interval);
+              if (!option) return null;
+              return (
+                <BillingCard
+                  key={interval}
+                  option={option}
+                  selected={selected === interval}
+                  onSelect={() => setSelected(interval)}
+                  t={t}
+                />
+              );
+            })}
+          </div>
 
-          {secondary.length > 0 && (
-            <p className="mt-3 text-xs text-[#9dd8ff]/70">
-              Also includes: {secondary.join(" · ")}
-            </p>
-          )}
-
-          <p className="mt-4 text-lg font-bold text-white">
-            ${plan.priceUsd}
-            <span className="text-sm font-medium text-[#9dd8ff]/80">/month</span>
+          <p className="mt-3 text-[11px] leading-snug text-[#9dd8ff]/70">
+            {t("pro.same_membership")}
           </p>
 
+          {/* ── Status ────────────────────────────────────────────────── */}
           {active ? (
-            <p className="mt-1 text-xs font-semibold text-green-400">
-              Active{renewsOn ? ` · renews ${renewsOn}` : ""}
+            <p className="mt-3 text-xs font-semibold text-green-400">
+              {renewsOn
+                ? t("pro.active_renews", { date: renewsOn })
+                : t("pro.active_plain")}
             </p>
           ) : (
-            <p className="mt-1 text-xs text-[#9dd8ff]/70">
-              Cancel anytime. Billed monthly through Stripe.
-            </p>
+            <p className="mt-3 text-xs text-[#9dd8ff]/70">{t("pro.cancel_anytime")}</p>
           )}
 
           {error && (
@@ -180,40 +309,44 @@ export default function UpgradeProContent({
           )}
 
           <div className={`mt-4 flex flex-wrap gap-3 ${isPage ? "" : "justify-center"}`}>
-            {active ? (
+            <button
+              type="button"
+              onClick={handlePrimary}
+              disabled={busy}
+              data-testid="pro-primary-cta"
+              className="inline-flex items-center justify-center rounded-xl border border-[#f5ff3b]/60 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-2.5 font-bold text-[#1f1700] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] disabled:opacity-60"
+            >
+              {ctaLabel}
+            </button>
+            {active && (
               <button
                 type="button"
                 onClick={onManage}
                 disabled={busy}
                 className="inline-flex items-center justify-center rounded-xl border border-[#00e5ff]/60 bg-[#00e5ff]/15 px-5 py-2.5 font-semibold text-[#00e5ff] transition hover:bg-[#00e5ff]/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] disabled:opacity-60"
               >
-                {ctaLabel}
-              </button>
-            ) : signedIn ? (
-              <button
-                type="button"
-                onClick={onUpgrade}
-                disabled={busy}
-                className="inline-flex items-center justify-center rounded-xl border border-[#f5ff3b]/60 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-2.5 font-bold text-[#1f1700] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] disabled:opacity-60"
-              >
-                {ctaLabel}
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={onSignIn}
-                className="inline-flex items-center justify-center rounded-xl border border-[#f5ff3b]/60 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-2.5 font-bold text-[#1f1700] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b]"
-              >
-                {ctaLabel}
+                {t("pro.cta.manage")}
               </button>
             )}
           </div>
 
+          {/* ── Benefits ──────────────────────────────────────────────── */}
+          <h3 className={`mt-6 text-sm font-bold uppercase tracking-wider text-[#00e5ff] ${isPage ? "" : "text-center"}`}>
+            {t("pro.benefits_title")}
+          </h3>
+          <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {BENEFIT_KEYS.map((key) => (
+              <li key={key} className="flex items-start gap-2 text-sm text-[#d8fbff]">
+                <span aria-hidden className="mt-0.5 text-[#00ffa6]">
+                  ✓
+                </span>
+                <span>{t(`pro.benefit.${key}`)}</span>
+              </li>
+            ))}
+          </ul>
+
           {!active && (
-            <p className="mt-3 text-xs text-[#9dd8ff]/60">
-              Every game, ranked play, Elo, leaderboards, tournaments and every
-              cosmetic stay free — GRYND PRO never changes your odds or matchmaking.
-            </p>
+            <p className="mt-4 text-xs text-[#9dd8ff]/60">{t("pro.no_advantage")}</p>
           )}
         </div>
       </div>

@@ -13,7 +13,10 @@ import { ACTIVE_SUBSCRIPTION_STATUSES } from "../../../lib/stripe/subscriptions"
 import { getOverallEloForUser } from "../../../lib/rating";
 import { getTotalTrophiesForUser } from "../../../lib/trophyStore";
 import { OVERALL_MIN_GAMES } from "../../../lib/elo";
-import { claimEnergyGrant } from "../../../lib/tokens/energyGrant";
+import {
+  claimEnergyGrant,
+  claimZeroBalanceRescue,
+} from "../../../lib/tokens/energyGrant";
 
 export async function POST(req: Request) {
   try {
@@ -55,14 +58,27 @@ export async function POST(req: Request) {
       });
     }
 
-    // Daily energy grant — the only free coin faucet. Idempotent per UTC day
-    // and only fires below the grant floor, so it is safe to run on every read
-    // of the balance. A failure here must not break the navbar (the balance is
-    // simply shown without the top-up), so it degrades with a log.
+    // The two free coin faucets, in order and idempotent per UTC day, so both
+    // are safe to run on every read of the balance.
+    //
+    //   1. The daily energy grant tops a player below the floor back up to it.
+    //   2. The zero-balance rescue then gives an EMPTY wallet one last game.
+    //
+    // Order matters: running the grant first means a player who has not yet
+    // used today's allowance is topped up to the floor (not left at 0), and the
+    // rescue only fires for someone whose day's allowance is already gone. A
+    // failure of either must not break the navbar — the balance is simply shown
+    // without the top-up — so both degrade with a log.
     try {
       await claimEnergyGrant(clerkId);
     } catch (error) {
       console.error("Error applying the daily energy grant:", error);
+    }
+
+    try {
+      await claimZeroBalanceRescue(clerkId);
+    } catch (error) {
+      console.error("Error applying the zero-balance rescue:", error);
     }
 
     const userData = await db

@@ -43,6 +43,14 @@ export interface QuickQueueRequest {
    * constraint.
    */
   ratings?: Record<string, number> | null;
+  /**
+   * TRUE when the server has verified this player holds an ACTIVE GRYND PRO
+   * subscription. Set ONLY from the authoritative subscription read in
+   * quickQueueWorker — never from a request field — and used ONLY to break a
+   * near-tie in candidate ORDERING. It never widens a skill window and never
+   * overrides a game/mode/region constraint. Absent/false = no priority.
+   */
+  memberPriority?: boolean;
 }
 
 export interface QuickQueueCandidate {
@@ -58,6 +66,8 @@ export interface QuickQueueCandidate {
   trophies?: Record<string, number> | null;
   /** gameKey → Elo snapshot, when the caller supplied one. */
   ratings?: Record<string, number> | null;
+  /** Server-verified active GRYND PRO member (see QuickQueueRequest). */
+  memberPriority?: boolean;
 }
 
 // ── Trophy + Elo matchmaking ───────────────────────────────────────────────
@@ -71,8 +81,13 @@ export interface QuickQueueCandidate {
 // signal: BOTH gaps are checked for every pair. Each acceptable gap starts
 // small and WIDENS the longer a player waits, so nobody is starved by a thin
 // ladder — and a side with no data for a signal simply imposes no constraint
-// for it (a brand-new player, or an unplayed game). Membership never
-// influences any of this.
+// for it (a brand-new player, or an unplayed game).
+//
+// MEMBERSHIP (GRYND PRO) touches none of the above. It never widens a window
+// and never relaxes a constraint; it only breaks a near-tie in the ORDER of
+// already-eligible candidates (see PRO_PRIORITY_SKILL_TOLERANCE and
+// findCompatibleQuickQueueCandidate). Skill eligibility is decided purely by
+// trophies/Elo, for members and free players alike.
 
 /** Acceptable |trophyA − trophyB| at time zero. */
 export const TROPHY_MATCH_INITIAL_WINDOW = 200;
@@ -113,6 +128,25 @@ export function eloMatchWindow(waitMs: number): number {
     Math.floor(waited / 1000) * ELO_MATCH_WINDOW_GROWTH_PER_SEC;
   return Math.min(ELO_MATCH_MAX_WINDOW, grown);
 }
+
+/**
+ * How close (in normalised skill units) a Pro candidate's skill score must be to
+ * the BEST available match before membership may reorder candidates.
+ *
+ * 1.0 unit = one initial trophy window (200 trophies) or one initial Elo window
+ * (100 points). 0.05 therefore means "within ~10 trophies or ~5 Elo of the
+ * closest available opponent". A Pro candidate who is further away than this
+ * never jumps ahead of a closer free player, so SKILL REMAINS PRIMARY: a
+ * strictly better match always wins, and a Pro member is never paired on a
+ * worse match than a free player would have been.
+ *
+ * The band is deliberately small; combined with the wait-time window widening
+ * below (which keeps pulling previously-incompatible players into range as
+ * everyone waits) it cannot starve a free player: once the closest candidate is
+ * more than the band away, priority stops applying entirely and the free player
+ * is matched on skill alone.
+ */
+export const PRO_PRIORITY_SKILL_TOLERANCE = 0.05;
 
 /**
  * One player's trophy count for a game, or null when unknown/unplayed. A null
@@ -306,24 +340,53 @@ export function findCompatibleQuickQueueCandidate(
     return true;
   });
 
+  // Skill score per eligible candidate (lower = closer match). Computed once so
+  // the priority band and the sort agree on exactly the same numbers.
+  const gapFor = (candidate: QuickQueueCandidate) => {
+    const gap = skillGapForGame({
+      requester: request.trophies,
+      candidate: candidate.trophies,
+      requesterRatings: request.ratings,
+      candidateRatings: candidate.ratings,
+      gameKey: candidate.gameKey,
+    });
+    return gap === null ? Number.POSITIVE_INFINITY : gap;
+  };
+  const gapByCandidate = new Map<QuickQueueCandidate, number>();
+  for (const candidate of eligible) gapByCandidate.set(candidate, gapFor(candidate));
+  const bestGap = eligible.reduce(
+    (min, candidate) => Math.min(min, gapByCandidate.get(candidate) as number),
+    Number.POSITIVE_INFINITY,
+  );
+
+  // BOUNDED MEMBERSHIP PRIORITY (candidate ORDERING only).
+  //
+  // A verified active Pro candidate is preferred over an otherwise EQUIVALENT
+  // free candidate — "equivalent" meaning its skill score is within
+  // PRO_PRIORITY_SKILL_TOLERANCE of the best match on offer. Outside that band
+  // the flag is ignored entirely, so a closer free match always wins, skill
+  // stays the primary criterion, and a free player can never be starved by a
+  // worse-matched Pro player. Compatibility (game / mode / region / player
+  // count / skill window) was already enforced by the filter above: priority
+  // cannot buy a match the requester would otherwise be ineligible for.
+  const priorityRank = (candidate: QuickQueueCandidate): number => {
+    if (!candidate.memberPriority) return 1;
+    const gap = gapByCandidate.get(candidate) as number;
+    return gap <= bestGap + PRO_PRIORITY_SKILL_TOLERANCE ? 0 : 1;
+  };
+
   return [...eligible].sort((a, b) => {
-    // Matching is fair for everyone: game preference first, then the closest
-    // trophy + Elo gap (unknown gaps sort last), then FIFO. Membership NEVER
-    // affects matchmaking (no priority queue).
+    // Game preference first, then the bounded Pro tie-break, then the closest
+    // combined trophy + Elo gap (unknown gaps sort last), then FIFO.
+    // With no eligible Pro candidate every rank is 1, so the ordering reduces
+    // EXACTLY to game preference → skill gap → FIFO as it always was.
     const gamePriority = request.preferredGames.indexOf(a.gameKey) - request.preferredGames.indexOf(b.gameKey);
     if (gamePriority !== 0) return gamePriority;
-    const gapFor = (candidate: QuickQueueCandidate) => {
-      const gap = skillGapForGame({
-        requester: request.trophies,
-        candidate: candidate.trophies,
-        requesterRatings: request.ratings,
-        candidateRatings: candidate.ratings,
-        gameKey: candidate.gameKey,
-      });
-      return gap === null ? Number.POSITIVE_INFINITY : gap;
-    };
-    const gapA = gapFor(a);
-    const gapB = gapFor(b);
+    const rankA = priorityRank(a);
+    const rankB = priorityRank(b);
+    if (rankA !== rankB) return rankA - rankB;
+    const gapA = gapByCandidate.get(a) as number;
+    const gapB = gapByCandidate.get(b) as number;
     if (gapA !== gapB) return gapA - gapB;
     return a.queuedAt - b.queuedAt;
   })[0] ?? null;
@@ -360,6 +423,9 @@ export function findCompatibleQuickQueuePair(
           queuedAt: candidate.queuedAt,
           trophies: candidate.trophies ?? null,
           ratings: candidate.ratings ?? null,
+          // Server-verified, carried straight through — never inferred from the
+          // request body — so the bounded priority below is authoritative.
+          memberPriority: Boolean(candidate.memberPriority),
           available: candidate.userId !== source.userId && (source.maxWaitMs === null || now - candidate.queuedAt <= source.maxWaitMs) && (candidate.maxWaitMs === null || now - source.queuedAt <= candidate.maxWaitMs),
         })),
     );

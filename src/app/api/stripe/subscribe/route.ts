@@ -28,6 +28,12 @@ import {
   ensureSubscriptionPlanStripe,
   findActiveSubscription,
 } from "../../../../lib/stripe/subscriptions";
+import {
+  PRO_PRICE_CENTS,
+  defaultPriceCentsFor,
+  isProBillingInterval,
+  type ProBillingInterval,
+} from "../../../../lib/proBilling";
 import { auditLog } from "../../../../lib/security/auditLog";
 
 export const runtime = "nodejs";
@@ -44,7 +50,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { planKey?: unknown };
+  let body: { planKey?: unknown; interval?: unknown };
   try {
     body = await req.json().catch(() => ({}));
   } catch {
@@ -55,6 +61,14 @@ export async function POST(req: NextRequest) {
   if (!planKey) {
     return NextResponse.json({ success: false, error: "planKey is required" }, { status: 400 });
   }
+
+  // The client may only request a BILLING INTERVAL; the server resolves the
+  // approved Stripe Price for it. A missing interval defaults to monthly, so a
+  // stale client (one shipped before the three-interval catalog) still checks
+  // out on the original monthly price instead of erroring.
+  const interval: ProBillingInterval = isProBillingInterval(body?.interval)
+    ? body.interval
+    : "monthly";
 
   if (!process.env.STRIPE_SECRET_KEY) {
     return NextResponse.json(
@@ -90,21 +104,28 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Ensure the plan has a real Stripe Product + recurring monthly Price,
-  // creating and persisting both lazily on first subscribe.
+  // Ensure the plan has a real Stripe Product + a recurring Price for EVERY
+  // billing option, creating only what is missing, then use the price for the
+  // interval the caller asked for. The persisted ids are reused, so this is
+  // idempotent across checkouts.
   let resolvedPriceId: string;
   try {
-    resolvedPriceId = (
-      await ensureSubscriptionPlanStripe({
-        id: plan.id,
-        key: plan.key,
-        name: plan.name,
-        monthlyTokens: Number(plan.monthlyTokens),
-        priceCents: plan.priceCents,
-        stripeProductId: plan.stripeProductId,
-        stripePriceId: plan.stripePriceId,
-      })
-    ).priceId;
+    const { priceIds } = await ensureSubscriptionPlanStripe({
+      id: plan.id,
+      key: plan.key,
+      name: plan.name,
+      monthlyTokens: Number(plan.monthlyTokens),
+      priceCents: plan.priceCents,
+      stripeProductId: plan.stripeProductId,
+      stripePriceId: plan.stripePriceId,
+      stripePriceIdWeekly: plan.stripePriceIdWeekly,
+      stripePriceIdYearly: plan.stripePriceIdYearly,
+    });
+    const priceId = priceIds[interval];
+    if (!priceId) {
+      throw new Error(`No Stripe price resolved for the ${interval} option`);
+    }
+    resolvedPriceId = priceId;
   } catch (err) {
     console.error("[stripe/subscribe] Failed to ensure plan price:", err);
     return NextResponse.json(
@@ -112,6 +133,11 @@ export async function POST(req: NextRequest) {
       { status: 503 }
     );
   }
+
+  // The amount this checkout charges. The price we just resolved is verified
+  // against the approved catalog amount for the interval, so this is the
+  // authoritative figure — never a client-supplied one.
+  const amountCents = PRO_PRICE_CENTS[interval] ?? defaultPriceCentsFor(interval);
 
   // The origin the customer is checking out FROM, so every return path lands
   // back on the same app they left (never a different host's homepage).
@@ -132,10 +158,12 @@ export async function POST(req: NextRequest) {
       line_items: [{ price: resolvedPriceId, quantity: 1 }],
       // Omitted by design: dynamic payment methods selected by Stripe.
       client_reference_id: clerkId,
-      metadata: { clerkId, planKey: plan.key },
+      metadata: { clerkId, planKey: plan.key, billingInterval: interval },
       // Carried onto the Subscription object so the webhook can map every paid
       // invoice back to the plan (and user) without trusting the payload.
-      subscription_data: { metadata: { clerkId, planKey: plan.key } },
+      subscription_data: {
+        metadata: { clerkId, planKey: plan.key, billingInterval: interval },
+      },
       success_url: `${baseUrl}/upgrade-pro?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
       // The Checkout back button is `cancel_url` (Stripe: "If set, Checkout
       // displays a back button and customers will be directed to this URL" —
@@ -164,7 +192,7 @@ export async function POST(req: NextRequest) {
       packageKey: plan.key,
       sessionMode: "subscription",
       tokenAmount: 0,
-      amountCents: plan.priceCents,
+      amountCents,
       currency: "usd",
       paymentStatus: "open",
       fulfilled: false,
@@ -174,8 +202,9 @@ export async function POST(req: NextRequest) {
   auditLog("stripe_subscription_checkout_created", {
     userId: clerkId,
     planKey: plan.key,
+    billingInterval: interval,
     sessionId: session.id,
-    amountCents: plan.priceCents,
+    amountCents,
   });
 
   return NextResponse.json({ success: true, url: session.url ?? null });

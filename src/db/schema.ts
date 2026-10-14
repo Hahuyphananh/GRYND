@@ -155,9 +155,11 @@ export const quickQueueRequests = pgTable(
     region: varchar("region", { length: 80 }),
     playerCount: integer("player_count").notNull().default(2),
     maxWaitMs: integer("max_wait_ms"),
-    // LEGACY priority-matchmaking flag. Always false now — GRYND PRO grants no
-    // matchmaking advantage, so membership can never affect who you're paired
-    // with. Kept for backward-compatible reads.
+    // GRYND PRO priority-matchmaking snapshot, taken at JOIN time from the
+    // server-authoritative subscription read (src/lib/quickQueueStore.ts) —
+    // never from the request body. ADVISORY ONLY: the queue worker re-resolves
+    // active members when it pairs, so a lapsed subscription loses priority
+    // immediately and this column is never trusted for an entitlement.
     premium: boolean("premium").notNull().default(false),
     minesStakeAmount: numeric("mines_stake_amount", { precision: 14, scale: 2 }),
     minesCount: integer("mines_count"),
@@ -299,6 +301,11 @@ export const users = pgTable("users", {
   weekKey: varchar("week_key", { length: 8 }),
   lastLoginDate: date("last_login_date"),
   lastDailyRewardClaimed: date("last_daily_reward_claimed"),
+  // The UTC day the player last STARTED a real game session, stamped by
+  // /api/game-plays for signed-in players (both 1v1 PvP and vs-AI sessions
+  // reach that edge). The daily login reward is gated on this being today —
+  // see src/lib/tokens/dailyReward.ts.
+  lastPlayedGameDate: date("last_played_game_date"),
   pvpWins: integer("pvp_wins").default(0).notNull(),
   weeklyWagered: bigint("weekly_wagered", { mode: "number" }).default(0).notNull(),
   weeklyWon: bigint("weekly_won", { mode: "number" }).default(0).notNull(),
@@ -3059,8 +3066,17 @@ export const tokenSubscriptionPlans = pgTable(
     // Real Stripe Product + recurring Price ids backing this plan. Populated
     // lazily by src/lib/stripe/subscriptions.ts on first subscribe (mirrors
     // token_packages). Nullable — empty means "not yet created in Stripe".
+    //
+    // ONE product, THREE recurring prices (migration 0213). `stripeProductId`
+    // is the single GRYND PRO product every interval hangs off, and
+    // `stripePriceId` remains the MONTHLY price — the original binding, kept
+    // under its original column so every existing row, subscription and test
+    // reads exactly as before. The weekly and yearly prices get their own
+    // columns; all three grant the same `pro` entitlement.
     stripeProductId: varchar("stripe_product_id", { length: 255 }),
     stripePriceId: varchar("stripe_price_id", { length: 255 }),
+    stripePriceIdWeekly: varchar("stripe_price_id_weekly", { length: 255 }),
+    stripePriceIdYearly: varchar("stripe_price_id_yearly", { length: 255 }),
     badge: varchar("badge", { length: 40 }),
     // Benefit list rendered on the Shop membership card (sales copy). GRYND
     // PRO perks are non-competitive only: ad-free, advanced statistics /
@@ -3097,6 +3113,12 @@ export const tokenSubscriptions = pgTable(
     // Stripe subscription status: active | trialing | past_due | canceled |
     // incomplete | unpaid | paused.
     status: varchar("status", { length: 30 }).notNull().default("active"),
+    // Which billing option this subscription is on (migration 0213):
+    // weekly | monthly | yearly. Nullable — rows written before the catalog
+    // gained intervals, or by a subscription whose price we could not read,
+    // simply have no interval and the UI falls back to "your current plan".
+    // Display only: entitlement is still decided solely by `status`.
+    billingInterval: varchar("billing_interval", { length: 16 }),
     currentPeriodStart: timestamp("current_period_start"),
     currentPeriodEnd: timestamp("current_period_end"),
     createdAt: timestamp("created_at").notNull().defaultNow(),

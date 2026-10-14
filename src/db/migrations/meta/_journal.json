@@ -1359,6 +1359,20 @@
       "when": 1800000056000,
       "tag": "0212_user_peak_balance",
       "breakpoints": true
+    },
+    {
+      "idx": 194,
+      "version": "7",
+      "when": 1800000057000,
+      "tag": "0213_pro_billing_intervals",
+      "breakpoints": true
+    },
+    {
+      "idx": 195,
+      "version": "7",
+      "when": 1800000058000,
+      "tag": "0214_daily_rewards",
+      "breakpoints": true
     }
   ]
 }

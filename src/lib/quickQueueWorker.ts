@@ -2,6 +2,7 @@ import { asc, eq } from "drizzle-orm";
 import { db } from "../db";
 import { quickQueueAssignmentEvents, quickQueueAssignments, quickQueueRequests } from "../db/schema";
 import { findCompatibleQuickQueuePair, normalizeQuickQueueRequest } from "./quickQueue";
+import { getActiveMemberIds } from "./stripe/subscriptions";
 import { normalizeStake } from "./games/stakes";
 import { getTrophyMapsForUsers } from "./trophyStore";
 import { getRatingMapsForUsers } from "./rating";
@@ -38,8 +39,7 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
     // whose per-game trophy counts are close — widening the acceptable gap the
     // longer someone waits (see src/lib/quickQueue.ts). A player with no trophy
     // rows for a game has no skill signal and falls back to FIFO for it; this
-    // is the only place matchmaking reads progression, and membership is never
-    // consulted.
+    // is the only place matchmaking reads progression.
     let trophyMaps: Record<string, Record<string, number>> = {};
     let ratingMaps: Record<string, Record<string, number>> = {};
     try {
@@ -56,6 +56,15 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
       console.error("[quick-queue] failed to load rating snapshots", error);
     }
 
+    // GRYND PRO priority — resolved HERE, on the server, for the whole batch in
+    // one indexed query against the subscription table. The request row's
+    // `premium` column is only an advisory snapshot taken at join time and is
+    // deliberately NOT trusted: this fresh read means a subscription that was
+    // canceled, expired or moved to a non-active status since the player queued
+    // stops receiving priority immediately, and a client can never grant itself
+    // priority by submitting a flag. Fails closed (empty set = nobody is Pro).
+    const activeMembers = await getActiveMemberIds(rows.map((row) => row.userId));
+
     const requests = rows.map((row) => ({
       ...normalizeQuickQueueRequest({
         userId: row.userId,
@@ -65,7 +74,7 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
         playerCount: row.playerCount,
         maxWaitMs: row.maxWaitMs,
       }),
-      premium: Boolean(row.premium),
+      memberPriority: activeMembers.has(row.userId),
       requestId: row.id,
       queuedAt: row.queuedAt.getTime(),
       trophies: trophyMaps[row.userId] ?? null,

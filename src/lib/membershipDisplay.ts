@@ -14,20 +14,35 @@
 // plan catalog / the bound Stripe price), so there is exactly one source of
 // truth and no component can drift from what Stripe actually charges.
 
+import { PRO_BILLING_OPTIONS, type ProBillingOption } from "./proBilling";
+
 /** What the client renders for the single GRYND PRO plan. */
 export type ProPlanDisplay = {
   /** Canonical plan key — `grynd-pro`. */
   key: string;
   /** Display name from the catalog — `GRYND PRO`. */
   name: string;
-  /** Authoritative monthly price in cents (Stripe-bound price wins). */
+  /**
+   * Authoritative MONTHLY price in cents (Stripe-bound price wins). Kept as the
+   * headline number for every surface that predates the three-interval catalog
+   * — it always equals the monthly entry of `billingOptions`.
+   */
   priceCents: number;
-  /** Pre-formatted USD price, e.g. "9.99". */
+  /** Pre-formatted USD price of the monthly option, e.g. "9.99". */
   priceUsd: string;
   badge: string | null;
   /** Perk lines from the catalog, in display order. */
   perks: string[];
+  /**
+   * The THREE billing options (weekly / monthly / yearly), already resolved to
+   * authoritative amounts with their formatted prices and DERIVED savings. The
+   * upgrade surface renders these and never re-derives a price or a saving.
+   */
+  billingOptions: ProBillingOption[];
 };
+
+/** The catalog defaults for the three options, for a cold or client-only render. */
+export const FALLBACK_BILLING_OPTIONS: ProBillingOption[] = PRO_BILLING_OPTIONS;
 
 /**
  * The four headline PRO perks, in the order the upgrade surface presents them.

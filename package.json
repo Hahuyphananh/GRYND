@@ -29,6 +29,8 @@
     "test:search-name": "node --import tsx --test tests/search-name.test.mjs",
     "test:friends-search": "node --import tsx --test tests/friends-search.test.mjs tests/profil-page-i18n.test.mjs",
     "verify:profil-i18n": "node qa/profil-i18n-check.mjs",
+    "test:rewards": "node --test tests/rewards-page-contract.test.mjs",
+    "test:daily-rewards": "node --import tsx --test tests/daily-reward.test.mjs tests/energy-grant.test.mjs",
     "test:nav-glow": "node --import tsx --test tests/nav-glow.test.mjs",
     "verify:nav-glow": "node qa/nav-glow-check.mjs",
     "test:onboarding": "node --import tsx --test tests/onboarding-questionnaire.test.mjs tests/onboarding-flow.test.mjs tests/onboarding-preferences.test.mjs tests/game-recommendations.test.mjs",

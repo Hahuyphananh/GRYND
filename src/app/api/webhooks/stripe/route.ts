@@ -35,6 +35,8 @@ import {
 } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
 import { getStripe, getStripeWebhookSecret } from "../../../../lib/stripe";
+import { resolveBillingIntervalForPriceId } from "../../../../lib/stripe/subscriptions";
+import { isProBillingInterval } from "../../../../lib/proBilling";
 import { auditLog } from "../../../../lib/security/auditLog";
 import { logError } from "../../../../lib/logError";
 
@@ -57,7 +59,12 @@ type StripeSubscriptionObject = {
   customer?: string | null;
   current_period_start?: number | null;
   current_period_end?: number | null;
-  metadata?: { clerkId?: string; planKey?: string };
+  // The subscription's current price, used to label the row with the billing
+  // interval it is ACTUALLY on (object form on newer API versions).
+  items?: {
+    data?: Array<{ price?: string | { id?: string } | null }> | null;
+  } | null;
+  metadata?: { clerkId?: string; planKey?: string; billingInterval?: string };
 };
 
 type StripeInvoiceObject = {
@@ -194,6 +201,18 @@ async function recordSubscription(sub: StripeSubscriptionObject) {
     return;
   }
 
+  // The billing option this subscription is ACTUALLY on. Derived from its own
+  // price (the accurate signal — it survives a plan change made in the Stripe
+  // Dashboard), falling back to our checkout metadata. When neither is known we
+  // leave the column untouched rather than clobbering a good value.
+  const rawPrice = sub.items?.data?.[0]?.price;
+  const priceId = typeof rawPrice === "string" ? rawPrice : (rawPrice?.id ?? null);
+  const billingInterval =
+    (await resolveBillingIntervalForPriceId(priceId)) ??
+    (isProBillingInterval(sub.metadata?.billingInterval)
+      ? sub.metadata.billingInterval
+      : null);
+
   const values = {
     clerkId,
     planKey,
@@ -204,11 +223,12 @@ async function recordSubscription(sub: StripeSubscriptionObject) {
       ? new Date(sub.current_period_start * 1000)
       : null,
     currentPeriodEnd: sub.current_period_end ? new Date(sub.current_period_end * 1000) : null,
+    ...(billingInterval ? { billingInterval } : {}),
   };
 
   await db
     .insert(tokenSubscriptions)
-    .values(values)
+    .values({ ...values, billingInterval: billingInterval ?? null })
     .onConflictDoUpdate({
       target: tokenSubscriptions.stripeSubscriptionId,
       set: { ...values, updatedAt: new Date() },

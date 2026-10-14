@@ -11,12 +11,24 @@
 //                        autoStart), so a play means "a player started the
 //                        game", never a page view. Public + best-effort:
 //                        the increment is idempotent-per-event and can't
-//                        be gamed into anything meaningful (no rewards,
-//                        no leaderboard effect).
+//                        be gamed into anything meaningful (no leaderboard
+//                        effect).
+//
+//                        For a SIGNED-IN player it also stamps
+//                        `users.last_played_game_date` with today's UTC day.
+//                        That is the "played a game today" marker the daily
+//                        login reward is gated on (src/lib/tokens/
+//                        dailyReward.ts): this edge is the one signal that
+//                        covers BOTH requirement paths — a 1v1 PvP match and
+//                        a vs-AI match both start a real game session and so
+//                        both land here. The stamp is best-effort: a failure
+//                        is logged and the play count still succeeds, and a
+//                        signed-out visitor is simply not stamped.
 
+import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../db";
-import { gamePlays } from "../../../db/schema";
-import { sql } from "drizzle-orm";
+import { gamePlays, users } from "../../../db/schema";
+import { eq, sql } from "drizzle-orm";
 
 // Sanity limits — labels come from game pages (e.g. "plinko-duel",
 // "chess-ai", "mines-duel"); anything else is rejected before touching the
@@ -77,6 +89,23 @@ export async function POST(request: Request) {
           lastPlayedAt: new Date(),
         },
       });
+
+    // Stamp the player's "played today" marker — the daily login reward's
+    // gate. Fire-and-forget: this route is public and best-effort, so a missing
+    // session, a missing user row or a DB hiccup must never fail the play
+    // count. Written as the UTC day string for the DATE column, so the value
+    // and the reward's day comparison are always the same day.
+    try {
+      const { userId } = await auth();
+      if (userId) {
+        await db
+          .update(users)
+          .set({ lastPlayedGameDate: new Date().toISOString().slice(0, 10) })
+          .where(eq(users.clerkId, userId));
+      }
+    } catch (stampError) {
+      console.error("[game-plays] failed to stamp played-today:", stampError);
+    }
 
     return Response.json({ success: true });
   } catch (error) {

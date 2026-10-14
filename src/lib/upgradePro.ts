@@ -21,6 +21,11 @@
 // false and every upgrade surface renders a neutral placeholder.
 
 import { useCallback, useEffect, useState } from "react";
+import {
+  PRO_BILLING_OPTIONS,
+  isProBillingInterval,
+  type ProBillingInterval,
+} from "./proBilling";
 import type { ProPlanDisplay } from "./membershipDisplay";
 
 export type MembershipStatusResponse = {
@@ -30,6 +35,8 @@ export type MembershipStatusResponse = {
   tier: "free" | "pro";
   plan: ProPlanDisplay | null;
   status: string | null;
+  /** Which billing option the member is on, when the server knows it. */
+  billingInterval: ProBillingInterval | null;
   currentPeriodEnd: string | null;
   refresh: () => Promise<void>;
 };
@@ -41,6 +48,7 @@ type RawStatus = {
   tier?: string;
   plan?: ProPlanDisplay;
   status?: string;
+  billingInterval?: string;
   currentPeriodEnd?: string | null;
 };
 
@@ -52,6 +60,18 @@ function isProPlanDisplay(value: unknown): value is ProPlanDisplay {
     typeof (value as ProPlanDisplay).priceUsd === "string" &&
     Array.isArray((value as ProPlanDisplay).perks)
   );
+}
+
+/**
+ * Normalise a server plan for rendering. An older cached response (or a
+ * partially-degraded one) may not carry `billingOptions`; the catalog defaults
+ * are used so the selector always has three options to show.
+ */
+function normalizePlanDisplay(plan: ProPlanDisplay): ProPlanDisplay {
+  if (Array.isArray(plan.billingOptions) && plan.billingOptions.length > 0) {
+    return plan;
+  }
+  return { ...plan, billingOptions: PRO_BILLING_OPTIONS };
 }
 
 // ── Shared, deduplicated membership store ────────────────────────────────
@@ -71,6 +91,7 @@ type MembershipSnapshot = {
   active: boolean;
   plan: ProPlanDisplay | null;
   status: string | null;
+  billingInterval: ProBillingInterval | null;
   currentPeriodEnd: string | null;
   fetchedAt: number;
 };
@@ -112,9 +133,12 @@ async function loadMembership(force: boolean): Promise<void> {
         // the client can never claim PRO it does not have.
         active: Boolean(data?.active) && data?.tier === "pro",
         plan: isProPlanDisplay(data?.plan)
-          ? data.plan
+          ? normalizePlanDisplay(data.plan)
           : membershipSnapshot?.plan ?? null,
         status: typeof data?.status === "string" ? data.status : null,
+        billingInterval: isProBillingInterval(data?.billingInterval)
+          ? data.billingInterval
+          : null,
         currentPeriodEnd: data?.currentPeriodEnd ?? null,
         fetchedAt: Date.now(),
       });
@@ -130,6 +154,7 @@ async function loadMembership(force: boolean): Promise<void> {
               active: false,
               plan: null,
               status: null,
+              billingInterval: null,
               currentPeriodEnd: null,
               fetchedAt: Date.now(),
             },
@@ -148,6 +173,7 @@ const EMPTY_MEMBERSHIP: MembershipSnapshot = {
   active: false,
   plan: null,
   status: null,
+  billingInterval: null,
   currentPeriodEnd: null,
   fetchedAt: 0,
 };
@@ -193,6 +219,7 @@ export function useMembershipStatus(): MembershipStatusResponse {
     tier: state.active ? "pro" : "free",
     plan: state.plan,
     status: state.status,
+    billingInterval: state.billingInterval,
     currentPeriodEnd: state.currentPeriodEnd,
     refresh,
   };
@@ -210,13 +237,19 @@ export type ProActionResult = {
  * Start the GRYND PRO subscription checkout. Redirects the browser to the
  * Stripe-hosted Checkout page on success.
  */
-export async function startProCheckout(planKey: string): Promise<ProActionResult> {
+export async function startProCheckout(
+  planKey: string,
+  interval: ProBillingInterval = "monthly",
+): Promise<ProActionResult> {
   try {
     const res = await fetch("/api/stripe/subscribe", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
-      body: JSON.stringify({ planKey }),
+      // The client sends a plan key + a BILLING INTERVAL only. The server
+      // resolves the approved Stripe Price — an amount or a price id from the
+      // browser is never trusted.
+      body: JSON.stringify({ planKey, interval }),
     });
     const data = await res.json().catch(() => ({}));
     if (res.status === 401) {
@@ -236,6 +269,37 @@ export async function startProCheckout(planKey: string): Promise<ProActionResult
     return { ok: true };
   } catch {
     return { ok: false, error: "Could not start the subscription. Please try again." };
+  }
+}
+
+/**
+ * Switch an EXISTING subscription to a different billing interval. The server
+ * moves the caller's own subscription item with explicit proration — it never
+ * creates a second subscription. Resolves with the new interval on success.
+ */
+export async function changeProBillingInterval(
+  interval: ProBillingInterval,
+): Promise<ProActionResult> {
+  try {
+    const res = await fetch("/api/stripe/change-plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ interval }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 401) {
+      return { ok: false, needsSignIn: true, error: "Sign in to change your membership." };
+    }
+    if (!res.ok || !data?.success) {
+      return {
+        ok: false,
+        error: data?.error || "Could not change your billing interval. Please try again.",
+      };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Could not change your billing interval. Please try again." };
   }
 }
 
