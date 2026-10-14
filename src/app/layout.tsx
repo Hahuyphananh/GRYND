@@ -75,6 +75,20 @@ export const metadata = {
       "Challenge real players in competitive games, climb the leaderboard, and prove your skill.",
     images: [ogImageUrl("/images/og-banner.png")],
   },
+  // Monetag site ownership verification. `other` emits a plain
+  // <meta name="monetag" content="…"> into <head>, which is the tag Monetag's
+  // crawler reads to approve the property. The value is the public token from
+  // the Monetag dashboard's "add site" flow — it is not a secret.
+  //
+  // This is the META-TAG method on purpose: the alternative (serving Monetag's
+  // sw.js from the site root) is not available here, because /sw.js is already
+  // owned by next-pwa, which regenerates public/sw.js on every build. See
+  // next.config.js — if the service-worker-based ad formats (Vignette /
+  // In-Page Push) are ever wanted, Monetag's bootstrap has to be merged INTO
+  // the next-pwa worker rather than replacing it.
+  other: {
+    monetag: "5ff7ccfa99ccd949f62b8eeaadc1d677",
+  },
 };
 // Minimal, factual Organization structured data — name + URL only. No
 // ratings, reviews, or aggregate claims that the platform can't back. (The
