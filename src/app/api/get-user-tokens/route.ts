@@ -1,15 +1,14 @@
 import { auth } from "@clerk/nextjs/server";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../db/client";
-import { glows, tokenSubscriptions, users, cosmetics } from "../../../db/schema";
+import { glows, users, cosmetics } from "../../../db/schema";
 import { computeEquippedStreakTitle } from "../../../lib/streakTitles";
 import {
   DEFAULT_ICON_KEY,
   isIconKey,
 } from "../../../lib/iconAssets";
 import { getIconByKey } from "../../../lib/icons";
-import { ACTIVE_SUBSCRIPTION_STATUSES } from "../../../lib/stripe/subscriptions";
 import { getOverallEloForUser } from "../../../lib/rating";
 import { getTotalTrophiesForUser } from "../../../lib/trophyStore";
 import { OVERALL_MIN_GAMES } from "../../../lib/elo";
@@ -89,7 +88,6 @@ export async function POST(req: Request) {
         selectedIcon: users.selectedIcon,
         chatColor: users.chatColor,
         glowColor: glows.color,
-        isPremium: sql`(${tokenSubscriptions.status} IS NOT NULL)`,
         profileAccent: users.profileAccent,
         selectedStreakType: users.selectedStreakType,
         dailyStreakCurrent: users.dailyStreakCurrent,
@@ -100,13 +98,6 @@ export async function POST(req: Request) {
       .leftJoin(
         glows,
         and(eq(glows.key, users.selectedGlow), eq(glows.enabled, true)),
-      )
-      .leftJoin(
-        tokenSubscriptions,
-        and(
-          eq(tokenSubscriptions.clerkId, users.clerkId),
-          inArray(tokenSubscriptions.status, ACTIVE_SUBSCRIPTION_STATUSES),
-        ),
       )
       .where(eq(users.clerkId, clerkId))
       .limit(1);
@@ -202,12 +193,10 @@ export async function POST(req: Request) {
           email: user.email,
           selectedIcon,
           // Equipped name color for the client-only (vs-AI) game seats —
-          // same precedence as the chat route: an equipped catalog glow
-          // wins; the GRYND PRO custom chat color only surfaces for active
-          // members.
-          nameColor:
-            user.glowColor ||
-            (Boolean(user.isPremium) ? user.chatColor || null : null),
+          // same precedence as the chat route: an equipped catalog glow wins;
+          // the free-form chat color is the fallback and is available to every
+          // signed-in user (it is no longer a membership perk).
+          nameColor: user.glowColor || user.chatColor || null,
           // The equipped catalog name glow on its own — the catalog hex of
           // `users.selectedGlow` (already left-joined below), or null when
           // nothing is equipped. `nameColor` above cannot be used for this: it

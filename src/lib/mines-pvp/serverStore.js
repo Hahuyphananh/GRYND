@@ -40,10 +40,8 @@ import {
   glows,
   minesPvpMatches,
   minesPvpRounds,
-  tokenSubscriptions,
   users,
 } from "../../db/schema";
-import { ACTIVE_SUBSCRIPTION_STATUSES } from "../stripe/subscriptions";
 import { sendSystemNotificationEmail } from "../emails/system";
 import { mirrorMinesQueued, mirrorMinesTransition } from "./canonicalLifecycle";
 import { guestSeatSummary, isGuestId } from "../guestIdentity";
@@ -1239,19 +1237,11 @@ export async function enrichMatchWithPlayers(match) {
           equippedCosmetics: users.equippedCosmetics,
           chatColor: users.chatColor,
           glowColor: glows.color,
-          isPremium: sql`(${tokenSubscriptions.status} IS NOT NULL)`,
         })
         .from(users)
         .leftJoin(
           glows,
           and(eq(glows.key, users.selectedGlow), eq(glows.enabled, true)),
-        )
-        .leftJoin(
-          tokenSubscriptions,
-          and(
-            eq(tokenSubscriptions.clerkId, users.clerkId),
-            inArray(tokenSubscriptions.status, ACTIVE_SUBSCRIPTION_STATUSES),
-          ),
         )
         .where(inArray(users.clerkId, clerkIds));
       const decorations = await getFrameDecorations(
@@ -1267,8 +1257,9 @@ export async function enrichMatchWithPlayers(match) {
           displayName: r.displayName || r.clerkId,
           iconKey: r.iconKey || "default",
           profileFrame: decorationByClerkId.get(r.clerkId) || null,
-          nameColor:
-            r.glowColor || (Boolean(r.isPremium) ? r.chatColor || null : null),
+          // An owned glow wins, then the player's own chat color — which is
+          // free for every signed-in player and never suppressed here.
+          nameColor: r.glowColor || r.chatColor || null,
         };
       }
     } catch (err) {

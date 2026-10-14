@@ -19,6 +19,7 @@
 // no client component needs to hardcode a price.
 
 import { NextResponse } from "next/server";
+import { headers } from "next/headers";
 import { auth } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 import { db } from "../../../../db";
@@ -27,6 +28,8 @@ import {
   findActiveSubscription,
   getProPlanDisplay,
 } from "../../../../lib/stripe/subscriptions";
+import { countryFromHeaders } from "../../../../lib/consentRegions";
+import { currencyForCountry } from "../../../../lib/currency";
 
 export const runtime = "nodejs";
 
@@ -41,7 +44,15 @@ export async function GET() {
 
   // The plan the upgrade surfaces sell. Same server-resolved price as the
   // Stripe checkout, so the advertised amount is always what gets charged.
-  const plan = await getProPlanDisplay();
+  //
+  // The price is presented in the visitor's own currency when (and only when)
+  // the bound Stripe price carries a configured amount for it: the country
+  // comes from the request's geo headers — never from anything the client
+  // sends — so a client cannot shop a cheaper currency, and an unconfigured
+  // currency degrades to the base (CAD) price rather than inventing one.
+  const requestHeaders = await headers();
+  const currency = currencyForCountry(countryFromHeaders(requestHeaders));
+  const plan = await getProPlanDisplay(currency);
 
   if (!userId) {
     return NextResponse.json({

@@ -21,6 +21,7 @@ import ChooseEmotesModal from "../../components/ChooseEmotesModal";
 import UpgradeProButton from "../../components/UpgradeProButton";
 import EmoteLoadoutStrip from "../../components/EmoteLoadoutStrip";
 import UserStatsTabs from "../../components/UserStatsTabs";
+import RoomsPanel, { ChallengeFriendDialog } from "../../components/rooms/RoomsPanel";
 import { clearSessionArtifacts } from "../../lib/security/sessionCleanup";
 import { runOptimistically } from "../../lib/optimistic";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -159,6 +160,10 @@ export default function ProfilePage({ adSlot = null }) {
   const [receivedInvites, setReceivedInvites] = useState([]);
   const [activeFriendsTab, setActiveFriendsTab] = useState("friends");
   const [friendsStatus, setFriendsStatus] = useState("");
+  // The friend a Challenge dialog is open for (null = closed), and the result
+  // message of the last challenge the player sent.
+  const [challengeTarget, setChallengeTarget] = useState(null);
+  const [challengeStatus, setChallengeStatus] = useState("");
   const [friendPresenceByFriend, setFriendPresenceByFriend] = useState({});
   const [spectateOverlayUrl, setSpectateOverlayUrl] = useState("");
   const [spectateLoadError, setSpectateLoadError] = useState("");
@@ -1400,27 +1405,25 @@ export default function ProfilePage({ adSlot = null }) {
         <div className="mt-8 rounded-xl border border-emerald-400/35 bg-[#052e1f]/85 p-6 shadow-[0_0_24px_rgba(52,211,153,0.15)]">
           <div className="flex items-center justify-between gap-4 mb-4">
             <h2 className="text-xl text-emerald-300">
-              {t("profile.membership.title", "GRYND PRO Membership")}
+              {t("profile.chatcolor.title", "Chat name color")}
             </h2>
-            {membership?.active ? (
-              <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-3 py-1 text-sm font-semibold text-emerald-300">
-                {t("profile.membership.active", "Active")}
-              </span>
-            ) : (
-              <span className="rounded-full border border-white/20 bg-white/5 px-3 py-1 text-sm text-gray-400">
-                {t("profile.membership.inactive", "Not subscribed")}
-              </span>
+            {!membership?.active && (
+              <a
+                href="/upgrade-pro"
+                className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-3 py-1 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/20"
+              >
+                {t("profile.membership.seePro", "See GRYND PRO")}
+              </a>
             )}
           </div>
 
-          {membership?.active ? (
-            <>
-              <p className="mb-3 text-sm text-gray-300">
-                {t(
-                  "profile.membership.chatPerk",
-                  "Custom chat name color — GRYND PRO perk.",
-                )}
-              </p>
+          <>
+            <p className="mb-3 text-sm text-gray-300">
+              {t(
+                "profile.chatcolor.note",
+                "Your name shows in this color in chat and on your game seats. Free for everyone.",
+              )}
+            </p>
 
               <div className="mb-3 flex flex-wrap gap-2">
                 {CHAT_COLORS.map((color) => (
@@ -1497,42 +1500,25 @@ export default function ProfilePage({ adSlot = null }) {
               {chatColorMsg && (
                 <p className="mt-3 text-sm text-emerald-300">{chatColorMsg}</p>
               )}
-            </>
-          ) : (
-            <p className="text-sm text-gray-400">
-              {t(
-                "profile.membership.locked",
-                "Unlock custom chat colors with a GRYND PRO membership.",
-              )}{" "}
-              <a href="/upgrade-pro" className="text-emerald-300 underline">
-                {t("profile.membership.seePro", "See GRYND PRO")}
-              </a>
-              .
-            </p>
-          )}
+          </>
         </div>
 
-        {/* GRYND PRO Profile Customization */}
+        {/* Profile accent — free for everyone (previously advertised as a
+            GRYND PRO perk; the membership check is gone from the API too). */}
         <div className="mt-8 rounded-xl border border-sky-400/35 bg-[#03203a]/85 p-6 shadow-[0_0_24px_rgba(56,189,248,0.15)]">
           <div className="mb-4 flex items-center justify-between gap-4">
             <h2 className="text-xl text-sky-300">
               {t("profile.customization.title", "Profile Customization")}
             </h2>
-            {membership?.active && (
-              <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-3 py-1 text-sm font-semibold text-emerald-300">
-                {t("profile.customization.badge", "GRYND PRO")}
-              </span>
-            )}
           </div>
 
-          {membership?.active ? (
-            <>
-              <p className="mb-4 text-sm text-gray-300">
-                {t(
-                  "profile.customization.perk",
-                  "Accent color — GRYND PRO perk. Shown on your profile card.",
-                )}
-              </p>
+          <>
+            <p className="mb-4 text-sm text-gray-300">
+              {t(
+                "profile.customization.note",
+                "Accent color — the ring around your profile card. Free for everyone.",
+              )}
+            </p>
 
               <p className="mb-2 text-sm font-semibold text-sky-300">
                 {t("profile.customization.accent", "Accent color")}
@@ -1591,19 +1577,7 @@ export default function ProfilePage({ adSlot = null }) {
               </div>
 
               {cosmeticsMsg && <p className="mt-3 text-sm text-sky-300">{cosmeticsMsg}</p>}
-            </>
-          ) : (
-            <p className="text-sm text-gray-400">
-              {t(
-                "profile.customization.locked",
-                "Customize your profile with a GRYND PRO membership.",
-              )}{" "}
-              <a href="/upgrade-pro" className="text-sky-300 underline">
-                {t("profile.customization.seePro", "See GRYND PRO")}
-              </a>
-              .
-            </p>
-          )}
+          </>
         </div>
 
         {/* Emotes — in-game animated emote loadout (up to 9 equipped).
@@ -2236,6 +2210,26 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                       <button
                         onClick={(e) => {
                           e.preventDefault();
+                          e.stopPropagation();
+                          setChallengeTarget({
+                            clerk_id: friend.clerk_id,
+                            name: friend.name,
+                          });
+                        }}
+                        aria-label={t("profile.friends.challengeLabel", {
+                          name: friend.name,
+                        })}
+                        className="rounded-lg px-2 py-1 text-xs font-semibold text-[#003366] \
+bg-gradient-to-r from-[#00e5ff] to-[#0090c9] \
+shadow-[0_0_10px_rgba(0,229,255,0.5)] \
+hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                      >
+                        {t("profile.friends.challenge", "Challenge")}
+                      </button>
+
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
                           handleRemoveFriend(friend.id);
                         }}
                         aria-label={t("profile.friends.removeLabel", {
@@ -2309,6 +2303,36 @@ hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 f
             </div>
           )}
         </div>
+
+        {/* Private rooms & friend challenges — the same panel the shared room
+            page renders, driven by /api/rooms and refreshed by the verified
+            per-user realtime signal with a poll as the backstop. */}
+        {challengeStatus && (
+          <p className="mt-4 text-sm text-[#9dd8ff]" role="status">
+            {challengeStatus}
+          </p>
+        )}
+        <RoomsPanel friends={myFriends} />
+
+        <ChallengeFriendDialog
+          friend={challengeTarget}
+          onClose={() => setChallengeTarget(null)}
+          onSent={(ok, code, message) => {
+            setChallengeStatus(
+              ok
+                ? t("profile.friends.challengeSent", "Challenge sent.")
+                : t(
+                    `rooms.error_${code}`,
+                    message ||
+                      t(
+                        "profile.friends.challengeFailed",
+                        "Could not send the challenge.",
+                      ),
+                  ),
+            );
+          }}
+        />
+
         {spectateOverlayUrl && (
           <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4">
             <div className="relative h-[90vh] w-[95vw] rounded-xl border border-[#00e5ff]/40 bg-black overflow-hidden">
@@ -2394,6 +2418,30 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
             ratings={stats?.ratings}
             overall={stats}
           />
+
+          {/* Pointer to the GRYND PRO performance dashboard. It is a LINK, not
+              an embedded dashboard: the advanced analytics are gated on the
+              server (/api/stats/performance), so a free player sees the upsell
+              there rather than a second empty panel here. */}
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#f5ff3b]/30 bg-[#f5ff3b]/5 p-4">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#00e5ff]">
+                {t("profile.stats.advanced_badge", "GRYND PRO")}
+              </p>
+              <p className="mt-0.5 text-sm text-[#d8fbff]">
+                {t(
+                  "profile.stats.advanced",
+                  "Performance dashboard — win rates, Elo and trophy graphs, and your overall ranking over time.",
+                )}
+              </p>
+            </div>
+            <Link
+              href="/stats"
+              className="shrink-0 rounded-lg border border-[#f5ff3b]/50 bg-[#f5ff3b]/10 px-4 py-2 text-sm font-semibold text-[#f5ff3b] transition hover:bg-[#f5ff3b]/20"
+            >
+              {t("profile.stats.advanced_open", "Open dashboard")}
+            </Link>
+          </div>
         </div>
 
         <div

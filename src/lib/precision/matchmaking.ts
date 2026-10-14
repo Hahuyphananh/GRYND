@@ -26,6 +26,7 @@ import { and, asc, eq, ne } from "drizzle-orm";
 
 import { db } from "../../db/client";
 import { precisionLobbies } from "../../db/schema";
+import { MAX_WAGER } from "./constants";
 import { mirrorPrecisionQueued } from "./canonicalLifecycle";
 import { makeInitialMatch } from "./engine";
 import {
@@ -101,6 +102,104 @@ async function findOwnWaitingLobby(
     .orderBy(asc(precisionLobbies.createdAt))
     .limit(1);
   return row ? mapLobbyRow(row as Record<string, unknown>) : null;
+}
+
+/**
+ * Create the match a PRIVATE ROOM / friend challenge is for: one named pair,
+ * with nothing in the public queue.
+ *
+ * It is the SAME creation path a public pairing takes — a `precision_lobbies`
+ * row whose id becomes the match id, claimed by a conditional UPDATE, then
+ * `createMatchForPairing` (which is also what funds both seats when the room
+ * carries a stake) — but the row is inserted and claimed inside ONE
+ * transaction. A public queue can therefore never observe it (`listLobbies`
+ * selects `status = 'waiting'`) and `/api/precision/join-lobby` refuses any id
+ * that already has a match row, so a third player cannot walk into the seat.
+ *
+ * Identities come from the caller (an authenticated route), never from input.
+ */
+export async function createPrecisionMatchForPair({
+  hostUserId,
+  hostName,
+  opponentUserId,
+  opponentName,
+  wager = 0,
+}: {
+  hostUserId: string;
+  hostName?: string;
+  opponentUserId: string;
+  opponentName?: string;
+  wager?: number;
+}): Promise<
+  | { ok: true; matchId: string; state: PrecisionState }
+  | { ok: false; status: number; message: string }
+> {
+  if (!hostUserId || !opponentUserId) {
+    return { ok: false, status: 401, message: "Unauthorized" };
+  }
+  if (hostUserId === opponentUserId) {
+    return { ok: false, status: 400, message: "You cannot play yourself" };
+  }
+  const stake = Number(wager) || 0;
+  if (stake < 0 || !Number.isInteger(stake) || stake > MAX_WAGER) {
+    return { ok: false, status: 400, message: "Invalid wager" };
+  }
+
+  const lobbyId = `lobby-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+  try {
+    const state = await db.transaction(async (tx) => {
+      await tx.insert(precisionLobbies).values({
+        id: lobbyId,
+        hostUserId,
+        hostName: hostName || "Player 1",
+        opponentUserId: null,
+        opponentName: null,
+        wager: stake,
+        gameMode: "pvp",
+        status: "waiting",
+        createdAt: new Date(),
+      });
+
+      // The same conditional claim the public pairing uses: the seat is taken
+      // once, by the opponent we were asked to seat. Unreachable but checked —
+      // never build a match on a seat we do not own.
+      const [claimed] = await tx
+        .update(precisionLobbies)
+        .set({ status: "active", opponentUserId, opponentName: opponentName || "Player 2" })
+        .where(
+          and(
+            eq(precisionLobbies.id, lobbyId),
+            eq(precisionLobbies.status, "waiting"),
+            ne(precisionLobbies.hostUserId, opponentUserId),
+          ),
+        )
+        .returning(LOBBY_COLUMNS);
+
+      if (!claimed) throw new Error("Precision lobby could not be claimed");
+
+      const host = mapLobbyRow(claimed as Record<string, unknown>);
+      const players: PrecisionPlayer[] = [
+        { seat: 1, userId: hostUserId, name: host.hostName || "Player 1", isReady: false, isConnected: true },
+        { seat: 2, userId: opponentUserId, name: opponentName || "Player 2", isReady: false, isConnected: true },
+      ];
+
+      return createMatchForPairing({ matchId: host.id, wager: stake, players }, tx);
+    });
+
+    return { ok: true, matchId: lobbyId, state };
+  } catch (err) {
+    // A seat that cannot cover the stake refuses the room instead of leaving a
+    // half-created match: the transaction rolled the lobby row back with it.
+    if (err instanceof PrecisionEscrowError) {
+      return { ok: false, status: err.status, message: err.message };
+    }
+    return {
+      ok: false,
+      status: 500,
+      message: err instanceof Error ? err.message : "Unable to create the match",
+    };
+  }
 }
 
 /**

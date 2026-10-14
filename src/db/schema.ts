@@ -1168,6 +1168,55 @@ export const trophyIdentities = pgTable(
   }),
 );
 
+// RANK SNAPSHOT HISTORY — the OVERALL ELO board position, per UTC day.
+// ==============================================================================
+// `rating_events` and `trophy_events` already carry a player's exact rating and
+// trophy history (per match, written inside the settlement transaction), so a
+// progression curve can be rebuilt from real results. A RANK cannot: a rank is
+// a position among everyone else at one instant, and the platform only stores
+// the CURRENT position (`rating_leaderboard_mv`, migration 0200, plus the live
+// Overall Elo board in src/lib/rating.js). This table records that position as
+// time passes, which is the only honest way to chart ranking progression.
+//
+// One row per player per UTC day — the UNIQUE (user_id, bucket) index is the
+// duplicate guard for both the daily sweep and the dashboard's self-healing
+// capture, and it is also the index the dashboard's date-range read uses.
+//
+// NOT back-filled and NOT derivable: a snapshot only exists from the day it was
+// taken, and the UI labels the chart's start rather than inventing earlier
+// rankings. `overall_elo`/`overall_rank` are NULL while the player is not yet
+// ranked (see overallEloFromRatings: 3+ established game ratings), and
+// `eligible_games` records how many established ratings they had.
+//
+// No token, wager, XP or cosmetic value is stored or derived here.
+export const playerRankSnapshots = pgTable(
+  "player_rank_snapshots",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** UTC day this snapshot describes. */
+    bucket: date("bucket").notNull(),
+    /** Overall Elo at capture — NULL while the player is not yet ranked. */
+    overallElo: integer("overall_elo"),
+    /** Overall Elo board position at capture — NULL while unranked. */
+    overallRank: integer("overall_rank"),
+    /** Established per-game ratings that fed the average (0 when unranked). */
+    eligibleGames: integer("eligible_games").notNull().default(0),
+    capturedAt: timestamp("captured_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // Duplicate guard for (player, day) + the dashboard's range-read index.
+    uniqUserBucket: unique("player_rank_snapshots_user_bucket_unique").on(
+      table.userId,
+      table.bucket,
+    ),
+    // The daily sweep's pass over one bucket.
+    bucketIdx: index("player_rank_snapshots_bucket_idx").on(table.bucket),
+  }),
+);
+
 export const chatRoomTypeEnum = pgEnum("chat_room_type", ["global", "game"]);
 
 export const chatMessages = pgTable(
@@ -3975,6 +4024,116 @@ export const evaluationResults = pgTable(
       table.userId,
       table.gameKey,
       table.matchId,
+    ),
+  }),
+);
+
+// PRIVATE ROOMS + FRIEND CHALLENGES (migration 0217)
+// ==============================================================================
+// One record per invite-only game session, and one row per invited player.
+//
+// WHY IT IS NOT A COLUMN ON A GAME TABLE: the multiplayer games create matches
+// through two different mechanisms (`create-or-join` pools, and an explicit
+// lobby with an atomic claim in pool / precision / tower-arena), neither of
+// which has an "invite-only" notion. Adding one to each game's live lobby table
+// would mean editing queries public matchmaking depends on. A room is therefore
+// its own record — who may be in it, for which game, with which settings, and
+// (once it starts) which real match it became — and the match is still created
+// by the GAME'S OWN store (src/lib/rooms/games.ts).
+//
+// TWO KINDS, ONE MODEL:
+//   * `room`      — a GRYND PRO custom room: member-only creation, an
+//                   unguessable shareable `code`, several invitees, host starts.
+//   * `challenge` — a FREE 1v1 challenge to one friend: `code` stays NULL, one
+//                   invitee only, server-chosen settings, and it starts the
+//                   moment the friend accepts. This is what keeps challenging a
+//                   friend free without granting standalone room creation.
+//
+// Server-written only: every column here is set by /api/rooms/*, and nothing a
+// client sends (an id, a code, a match id, a status) is ever trusted.
+export const privateRooms = pgTable(
+  "private_rooms",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // Shareable join code; NULL for a challenge (nothing to share or brute-force).
+    code: varchar("code", { length: 16 }),
+    // 'room' | 'challenge'.
+    kind: varchar("kind", { length: 16 }).notNull(),
+    // Clerk id of the creator — the only account that may invite/start/cancel.
+    hostUserId: text("host_user_id").notNull(),
+    // Canonical game key from the room adapter registry.
+    gameKey: varchar("game_key", { length: 64 }).notNull(),
+    mode: varchar("mode", { length: 32 }).notNull().default("pvp"),
+    // Validated settings (the adapter's schema decides what is legal).
+    settings: jsonb("settings")
+      .$type<Record<string, string | number>>()
+      .notNull()
+      .default({}),
+    // open | starting | started | declined | expired | cancelled | failed.
+    status: varchar("status", { length: 16 }).notNull().default("open"),
+    // The game's own match id, written only after that game created the match.
+    matchId: varchar("match_id", { length: 128 }),
+    matchUrl: text("match_url"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    // Every room is time-boxed so a stale invitation cannot stay joinable.
+    expiresAt: timestamp("expires_at").notNull(),
+    // When a start claimed the room (status 'starting'). A claim that never
+    // finished is the only stuck state a room can reach, so it is stamped
+    // explicitly and the lazy sweep releases a stale claim (see
+    // src/lib/rooms/store.ts). Cleared on success and on release.
+    claimedAt: timestamp("claimed_at"),
+    startedAt: timestamp("started_at"),
+    closedAt: timestamp("closed_at"),
+  },
+  (table) => ({
+    // One room per code, across every room that has one.
+    codeUnique: uniqueIndex("private_rooms_code_unique")
+      .on(table.code)
+      .where(sql`${table.code} IS NOT NULL`),
+    // "the rooms I host" + the expiry sweep.
+    hostStatusIdx: index("private_rooms_host_status_idx").on(
+      table.hostUserId,
+      table.status,
+    ),
+    statusExpiresIdx: index("private_rooms_status_expires_idx").on(
+      table.status,
+      table.expiresAt,
+    ),
+  }),
+);
+
+// The invitation list AND the roster of a room: one row per (room, player).
+// `UNIQUE (room_id, user_id)` is the duplicate-invite / duplicate-join guard,
+// and `(user_id, invite_status)` is the "invitations addressed to me" read the
+// Friends tab uses.
+export const privateRoomMembers = pgTable(
+  "private_room_members",
+  {
+    id: serial("id").primaryKey(),
+    roomId: uuid("room_id")
+      .notNull()
+      .references(() => privateRooms.id, { onDelete: "cascade" }),
+    // Clerk id: membership is per account (the stored name is display only).
+    userId: text("user_id").notNull(),
+    // 'host' | 'guest'.
+    role: varchar("role", { length: 16 }).notNull(),
+    // 'invited' | 'accepted' | 'declined'.
+    inviteStatus: varchar("invite_status", { length: 16 })
+      .notNull()
+      .default("invited"),
+    name: text("name"),
+    invitedAt: timestamp("invited_at").notNull().defaultNow(),
+    respondedAt: timestamp("responded_at"),
+    joinedAt: timestamp("joined_at"),
+  },
+  (table) => ({
+    roomUserUnique: uniqueIndex("private_room_members_room_user_unique").on(
+      table.roomId,
+      table.userId,
+    ),
+    userStatusIdx: index("private_room_members_user_status_idx").on(
+      table.userId,
+      table.inviteStatus,
     ),
   }),
 );

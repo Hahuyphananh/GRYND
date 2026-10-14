@@ -1,11 +1,15 @@
 // src/app/api/user/chat-color/route.ts
 //
-// POST { color } — set the caller's custom chat name color (a GRYND PRO perk).
+// POST { color } — set the caller's custom chat name color.
+//
+// FREE FOR EVERYONE. This was a GRYND PRO perk; customization is no longer
+// sold, so the membership check is gone and any signed-in user can set their
+// color. The column is only ever written here, so a value that predates the
+// change keeps working for its owner — nobody lost their color.
 //
 // Security:
-//   * auth-required,
-//   * membership-gated: only active members can set a custom color (the
-//     column is otherwise never populated),
+//   * auth-required — a caller can only ever write their OWN row (the clerk id
+//     comes from the session, never from the request body),
 //   * the color is strictly validated as a #RRGGBB hex value before it is
 //     stored, so it can never inject markup into the chat UI.
 
@@ -14,7 +18,6 @@ import { auth } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 import { db } from "../../../../db";
 import { users } from "../../../../db/schema";
-import { isPremiumMember } from "../../../../lib/stripe/subscriptions";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
 
 export const runtime = "nodejs";
@@ -25,16 +28,6 @@ export async function POST(req: Request) {
   const { userId } = await auth();
   if (!userId) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-  }
-
-  if (!(await isPremiumMember(userId))) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: "This perk requires an active GRYND PRO membership.",
-      },
-      { status: 403 }
-    );
   }
 
   // Strict allowlist: only `color` is accepted (a #RRGGBB string, or null to

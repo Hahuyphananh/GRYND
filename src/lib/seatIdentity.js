@@ -5,8 +5,12 @@
 //   * name       — the real username
 //   * iconKey    — the official Grynd icon key (users.selected_icon)
 //   * nameColor  — the equipped name color (an owned catalog glow takes
-//                  precedence; the GRYND PRO custom chat color only surfaces
-//                  for active members — mirroring the chat message route)
+//                  precedence, then the player's own chat color — mirroring the
+//                  chat message route). The chat color is available to EVERY
+//                  signed-in player: it used to be a GRYND PRO perk and is no
+//                  longer gated, so it is no longer suppressed for free
+//                  accounts either (hiding it would make the profile picker
+//                  save a color nobody ever sees in a seat).
 //
 // Bot seats (e.g. "blackjack_ai_bot", "roulette_ai_bot", AI_BOT) have no
 // users row and are skipped: their slot stays null and the client falls
@@ -18,10 +22,9 @@
 // letter badge), no frame. They never touch the database: a guest owns no
 // account, which is exactly why it can hold no rating, trophy or stat.
 
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../db/client";
-import { glows, tokenSubscriptions, users } from "../db/schema";
-import { ACTIVE_SUBSCRIPTION_STATUSES } from "./stripe/subscriptions";
+import { glows, users } from "../db/schema";
 import { getFrameDecorations } from "./cosmetics";
 import { guestSeatIdentity, isGuestId } from "./guestIdentity";
 
@@ -43,8 +46,7 @@ function resolveSeatIdentityRow(row) {
   return {
     name: row.name || null,
     iconKey,
-    nameColor:
-      row.glowColor || (Boolean(row.isPremium) ? row.chatColor || null : null),
+    nameColor: row.glowColor || row.chatColor || null,
     isGuest: false,
   };
 }
@@ -67,19 +69,11 @@ export async function getSeatIdentity(player1Id, player2Id) {
       chatColor: users.chatColor,
       glowColor: glows.color,
       equippedCosmetics: users.equippedCosmetics,
-      isPremium: sql`(${tokenSubscriptions.status} IS NOT NULL)`,
     })
     .from(users)
     .leftJoin(
       glows,
       and(eq(glows.key, users.selectedGlow), eq(glows.enabled, true)),
-    )
-    .leftJoin(
-      tokenSubscriptions,
-      and(
-        eq(tokenSubscriptions.clerkId, users.clerkId),
-        inArray(tokenSubscriptions.status, ACTIVE_SUBSCRIPTION_STATUSES),
-      ),
     )
     .where(inArray(users.clerkId, clerkIds));
 

@@ -41,6 +41,8 @@ const NAVBAR = read("src/components/navigation-bar.jsx");
 const PROXY = read("src/proxy.ts");
 const TRANSLATIONS = read("src/lib/appTextTranslations.js");
 const PRO_BILLING = read("src/lib/proBilling.ts");
+const PRO_BENEFITS = read("src/lib/proBenefits.ts");
+const MIGRATION_0215 = read("src/db/migrations/0215_pro_benefit_copy.sql");
 
 const UPGRADE_SURFACE = { BUTTON, MODAL, CONTENT, HOOK, PAGE, PAGE_CLIENT };
 
@@ -150,17 +152,27 @@ test("the navbar offers GRYND PRO instead of a Shop", () => {
 });
 
 test("the price is resolved server-side and rendered from the plan, never hardcoded", () => {
-  // One authoritative resolver, reading the catalog / bound Stripe price.
+  // One authoritative resolver, reading the catalog / bound Stripe price, and
+  // taking the currency the caller's country resolves to (base CAD when the
+  // bound price has no amount configured for that currency).
   assert.match(SUBSCRIPTIONS, /export async function getProPlanDisplay\(/);
   assert.match(SUBSCRIPTIONS, /resolveSubscriptionPlanPriceCents\(/);
-  assert.match(STATUS_ROUTE, /getProPlanDisplay\(\)/);
+  assert.match(SUBSCRIPTIONS, /resolveProBillingAmountsForCurrency\(/);
+  assert.match(STATUS_ROUTE, /getProPlanDisplay\(currency\)/);
 
   // The client surfaces render whatever the server resolved: the price comes
   // off the resolved plan's per-interval billing options — the component holds
   // no price of its own, for any of the three options.
   assert.match(CONTENT, /plan\.billingOptions/);
-  assert.match(CONTENT, /option\.priceUsd/);
+  assert.match(CONTENT, /option\.priceDisplay/);
   assert.doesNotMatch(CONTENT, /plan\.priceUsd\s*[=+\-]/, "the component must not derive a price");
+  // …and the symbol is never written by a component either: it arrives with
+  // the resolved option (`currencySymbol`), so a hardcoded "$" cannot survive
+  // a currency switch.
+  assert.ok(
+    !/\$\{option\./.test(CONTENT),
+    "the price must be rendered as resolved, not re-symbolised in the component",
+  );
   // Every option's price is resolved server-side from a bound Stripe price.
   assert.match(PRO_BILLING, /PRO_BILLING_INTERVALS/);
   assert.match(SUBSCRIPTIONS, /stripePriceIdWeekly|stripe_price_id_weekly/);
@@ -228,7 +240,14 @@ test("the modal shows the GRYND PRO offer with the pack-mega artwork", () => {
   assert.match(TRANSLATIONS, /lead: "Compete without distractions\."/);
   assert.match(CONTENT, /t\("pro\.cta\.subscribe"/);
   assert.match(CONTENT, /t\("pro\.cta\.manage"\)/);
-  assert.match(TRANSLATIONS, /subscribe: "Subscribe — \$\{price\}\/\{unit\}"/);
+  // The CTA carries the fully formatted price (symbol included), so the copy has
+  // no currency of its own — the same key is correct in CAD, USD, EUR…
+  assert.match(TRANSLATIONS, /subscribe: "Subscribe — \{price}\/\{unit}\"/);
+  assert.ok(
+    !/equivalent: "About \$\{amount}/.test(TRANSLATIONS) &&
+      !/save: "Save \$\{amount}/.test(TRANSLATIONS),
+    "no pro.* copy may hardcode a currency symbol",
+  );
   assert.match(TRANSLATIONS, /manage: "Manage subscription"/);
 
   // All three billing options are offered, and the offer states plainly that
@@ -236,36 +255,51 @@ test("the modal shows the GRYND PRO offer with the pack-mega artwork", () => {
   assert.match(CONTENT, /PRO_BILLING_INTERVALS\.map/);
   assert.match(TRANSLATIONS, /same_membership:/);
 
-  // The advertised benefits are a FIXED approved list — not whatever a catalog
-  // edit happens to contain — and each one is a translated key.
-  assert.match(CONTENT, /const BENEFIT_KEYS = \[/);
-  assert.match(CONTENT, /t\(`pro\.benefit\.\$\{key\}`\)/);
-  for (const key of [
-    "ad_free",
-    "analytics",
-    "history",
-    "customization",
-    "support",
-    "matchmaking",
-  ]) {
-    assert.ok(
-      CONTENT.includes(`"${key}"`),
-      `the fixed PRO benefit list should include "${key}"`,
-    );
-  }
+  // The advertised benefits come from ONE approved catalog (lib/proBenefits.ts)
+  // — never from whatever a plan row happens to contain — and only benefits
+  // marked `available` may be rendered. An approved-but-unbuilt benefit is
+  // recorded and translated, but must not appear on the offer.
+  assert.match(
+    CONTENT,
+    /import \{ ADVERTISED_PRO_BENEFITS \} from "\.\.\/lib\/proBenefits";/,
+  );
+  assert.match(CONTENT, /ADVERTISED_PRO_BENEFITS\.map/);
+  assert.match(CONTENT, /t\(`pro\.benefit\.\$\{id\}`\)/);
+  assert.match(
+    PRO_BENEFITS,
+    /export const ADVERTISED_PRO_BENEFITS: readonly ProBenefit\[\] = PRO_BENEFITS\.filter\(\s*\(benefit\) => benefit\.availability === "available",\s*\);/,
+    "the advertised set must be derived from the catalog's availability",
+  );
+  assert.match(
+    PRO_BENEFITS,
+    /\{ id: "ad_free", availability: "available" \}/,
+    "ad-free is enforced today (lib/adEntitlement.ts) and stays advertised",
+  );
+  assert.ok(
+    !/id: "(analytics|leaderboards|private_rooms)", availability: "available"/.test(
+      PRO_BENEFITS,
+    ),
+    "statistics / ranking graphs / private rooms are not built yet — they must not be advertised",
+  );
 
-  for (const perk of [
-    "Ad-free experience",
-    "Advanced statistics",
-    "Advanced performance analytics",
-    "Detailed match history",
-  ]) {
-    assert.ok(
-      MEMBERSHIP_DISPLAY_HAS(perk),
-      `the PRO perk list should include "${perk}"`,
-    );
-  }
-  assert.match(read("src/db/migrations/0168_membership_single_pro.sql"), /'Ad-free experience'/);
+  // The perk row the API serves (/api/membership/status sends `plan.perks`) is
+  // the same catalog, and the retired claims are gone from it. The comments in
+  // the migration deliberately NAME the claims it removes (that is the audit
+  // trail), so the check reads the statement — comments stripped — not the file.
+  const sql = MIGRATION_0215.split("\n")
+    .filter((line) => !line.trim().startsWith("--"))
+    .join("\n");
+  assert.match(sql, /'Ad-free browsing and gaming'/);
+  assert.match(
+    sql,
+    /'Priority matchmaking — a fair queue tie-break, never a skill advantage'/,
+  );
+  assert.ok(
+    !/Detailed match history|Custom chat color|Priority support|customization/i.test(
+      sql,
+    ),
+    "the plan row must not carry a retracted claim",
+  );
 });
 
 test("every dynamic PRO string resolves in all three languages", async () => {
@@ -276,14 +310,12 @@ test("every dynamic PRO string resolves in all three languages", async () => {
   // real bundle. A locale that is missing one would otherwise render the raw
   // key — or silently fall back to English mid-sentence.
   const intervals = ["weekly", "monthly", "yearly"];
-  const benefits = [
-    "ad_free",
-    "analytics",
-    "history",
-    "customization",
-    "support",
-    "matchmaking",
-  ];
+  // Derived from the catalog, not a second hand-kept list: every approved
+  // benefit must be translated in every locale — INCLUDING the ones not
+  // advertised yet, so the surface that ships each feature only has to flip its
+  // availability.
+  const { PRO_BENEFIT_IDS } = await import("../src/lib/proBenefits.ts");
+  const benefits = [...PRO_BENEFIT_IDS];
   const keys = [
     ...intervals.map((i) => `pro.interval.${i}`),
     ...intervals.map((i) => `pro.unit.${i}`),
@@ -331,10 +363,6 @@ test("every dynamic PRO string resolves in all three languages", async () => {
     }
   }
 });
-
-function MEMBERSHIP_DISPLAY_HAS(perk) {
-  return DISPLAY.includes(perk) || SUBSCRIPTIONS.includes(perk);
-}
 
 test("the upgrade CTA sits on non-gameplay pages only", () => {
   for (const path of [

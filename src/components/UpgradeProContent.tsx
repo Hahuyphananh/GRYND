@@ -19,10 +19,11 @@ import Image from "next/image";
 import { useTranslation } from "../hooks/useTranslation";
 import {
   PRO_BILLING_INTERVALS,
-  formatUsdCents,
   type ProBillingInterval,
   type ProBillingOption,
 } from "../lib/proBilling";
+import { formatMoney } from "../lib/currency";
+import { ADVERTISED_PRO_BENEFITS } from "../lib/proBenefits";
 import type { ProPlanDisplay } from "../lib/membershipDisplay";
 
 export type UpgradeProContentProps = {
@@ -49,19 +50,17 @@ export type UpgradeProContentProps = {
 };
 
 /**
- * The six approved benefits, in display order. Deliberately a FIXED list rather
- * than `plan.perks`: these are the product claims this page is allowed to make
- * (and the only ones translated), so nothing unapproved can be advertised by a
- * catalog edit. The catalog perks remain the server-side source used elsewhere.
+ * The benefits this page advertises — the approved catalog's ADVERTISED set
+ * (lib/proBenefits.ts), never `plan.perks`.
+ *
+ * Both halves of that matter. A fixed list (rather than whatever a catalog edit
+ * put in the row) means nothing unapproved can be advertised; and taking only
+ * the `available` benefits means an approved-but-unbuilt feature is never shown
+ * as included. When a benefit ships, its entry flips to `available` in the
+ * catalog and it appears here with no change to this component — its copy is
+ * already translated under `pro.benefit.<id>` in every locale.
  */
-const BENEFIT_KEYS = [
-  "ad_free",
-  "analytics",
-  "history",
-  "customization",
-  "support",
-  "matchmaking",
-] as const;
+const BENEFIT_IDS = ADVERTISED_PRO_BENEFITS.map((benefit) => benefit.id);
 
 /** The default option a visitor sees selected (the recommended one). */
 const DEFAULT_INTERVAL: ProBillingInterval = "yearly";
@@ -109,8 +108,11 @@ function BillingCard({
         {t(`pro.interval.${interval}`)}
       </span>
 
+      {/* The amount Stripe charges, in the currency resolved for this visitor
+          (see lib/currency.ts). Both halves come from the same server-resolved
+          option, so the symbol can never disagree with the digits. */}
       <span className="mt-1 text-xl font-black text-white">
-        ${option.priceUsd}
+        {option.priceDisplay}
         <span className="ml-0.5 text-xs font-medium text-[#9dd8ff]/80">
           /{t(`pro.unit.${interval}`)}
         </span>
@@ -119,7 +121,7 @@ function BillingCard({
       {option.monthlyEquivalentCents !== null && (
         <span className="mt-0.5 text-[11px] text-[#9dd8ff]/75">
           {t("pro.equivalent", {
-            amount: formatUsdCents(option.monthlyEquivalentCents),
+            amount: formatMoney(option.monthlyEquivalentCents, option.currency),
           })}
         </span>
       )}
@@ -131,7 +133,7 @@ function BillingCard({
             className="block text-[11px] font-medium leading-snug text-[#00ffa6]"
           >
             {t("pro.save", {
-              amount: formatUsdCents(saving.amountCents),
+              amount: formatMoney(saving.amountCents, option.currency),
               percent: saving.percent,
               versus: t(`pro.interval.${saving.versus}`).toLowerCase(),
             })}
@@ -198,7 +200,7 @@ export default function UpgradeProContent({
         ? t("pro.cta.switch", { interval: t(`pro.interval.${selected}`) })
         : t("pro.cta.manage")
       : t("pro.cta.subscribe", {
-          price: selectedOption.priceUsd,
+          price: selectedOption.priceDisplay,
           unit: t(`pro.unit.${selected}`),
         });
 
@@ -335,12 +337,12 @@ export default function UpgradeProContent({
             {t("pro.benefits_title")}
           </h3>
           <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {BENEFIT_KEYS.map((key) => (
-              <li key={key} className="flex items-start gap-2 text-sm text-[#d8fbff]">
+            {BENEFIT_IDS.map((id) => (
+              <li key={id} className="flex items-start gap-2 text-sm text-[#d8fbff]">
                 <span aria-hidden className="mt-0.5 text-[#00ffa6]">
                   ✓
                 </span>
-                <span>{t(`pro.benefit.${key}`)}</span>
+                <span>{t(`pro.benefit.${id}`)}</span>
               </li>
             ))}
           </ul>

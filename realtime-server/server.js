@@ -107,6 +107,15 @@ app.post("/emit", (req, res) => {
 // a plain `join_room` with this id is never honored.
 const ADMIN_NOTIFICATIONS_ROOM = "admin:notifications";
 
+// Per-user notification room ("user:<clerkId>"). The Backend's internal
+// `/emit` endpoint addresses room/invitation signals here (see
+// src/lib/rooms/notify.ts). Membership is NEVER taken from the client: the
+// `user:join` handler below derives the room id from the VERIFIED Clerk
+// subject on the socket, and the generic `join_room` refuses this prefix
+// outright — so a socket cannot sit in somebody else's notification room by
+// naming it.
+const USER_ROOM_PREFIX = "user:";
+
 // H4: rate-limited logger for hot realtime paths. Logging every socket
 // event (pool shot, hex action, participant join/leave, relay) floods
 // stdout and burns CPU on the single realtime instance. `logThrottled`
@@ -1491,6 +1500,9 @@ io.on("connection", (socket) => {
     // The admin notifications room must NEVER be joinable via the generic
     // path — only the verified `admin:join` handler below may enter it.
     if (String(roomId) === ADMIN_NOTIFICATIONS_ROOM) return;
+    // Same rule for the per-user rooms: only `user:join` below may enter one,
+    // and it uses the verified subject rather than the requested id.
+    if (String(roomId).startsWith(USER_ROOM_PREFIX)) return;
     socket.join(String(roomId));
     trackPrecisionJoin(String(roomId), socket.data.userId);
     trackPlinkoJoin(String(roomId), socket.data.userId);
@@ -1540,6 +1552,24 @@ io.on("connection", (socket) => {
 
   socket.on("admin:leave", () => {
     socket.leave(ADMIN_NOTIFICATIONS_ROOM);
+  });
+
+  // ── Per-user notification room join ────────────────────────────────
+  // Joins `user:<verified clerk id>`. The id comes from the socket's VERIFIED
+  // Clerk subject (see the io.use() middleware above), never from the payload,
+  // so a client can only ever subscribe to its own notifications. The client
+  // re-emits on every reconnect (Socket.IO does not restore room membership).
+  // The signals sent here carry no room, code or game — they only say
+  // "refetch", and the refetch runs over the recipient's own session.
+  socket.on("user:join", (ack) => {
+    const userId = socket.data.userId;
+    if (!userId) {
+      socket.leave(`${USER_ROOM_PREFIX}${userId || ""}`);
+      if (typeof ack === "function") ack({ success: false, error: "Unauthenticated." });
+      return;
+    }
+    socket.join(`${USER_ROOM_PREFIX}${userId}`);
+    if (typeof ack === "function") ack({ success: true });
   });
 
   socket.on("leave_room", ({ roomId }) => {

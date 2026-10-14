@@ -83,14 +83,19 @@ test("UNO schema + migration give a guest a seat without an integer users.id", (
   const entry = journal.entries.find((e) => e.tag === "0206_uno_guest_seat");
   assert.ok(entry, "0206_uno_guest_seat must be in _journal.json or db:migrate skips it");
   assert.equal(entry.idx, journal.entries.indexOf(entry));
-  // Its `when` must beat the previous high-water mark, or an already-migrated
-  // database (which is past 0207) would skip it on the next `db:migrate`.
+  // Its `when` must beat every entry that PRECEDES it, or a database that has
+  // already migrated past 0205 would skip it on the next `db:migrate` (the
+  // drizzle migrator only runs entries newer than the stored watermark).
+  // It cannot be asserted to be the newest entry ever: later, unrelated
+  // migrations legitimately sit above it, and that must not fail this test.
   const maxPriorWhen = Math.max(
-    ...journal.entries.filter((e) => e !== entry).map((e) => e.when),
+    ...journal.entries
+      .filter((e) => e.idx < entry.idx)
+      .map((e) => e.when),
   );
   assert.ok(
     entry.when > maxPriorWhen,
-    "0206 must be the newest journal entry so a database that already ran 0207 still applies it",
+    "0206 must be newer than every migration before it so an already-migrated database still applies it",
   );
 });
 

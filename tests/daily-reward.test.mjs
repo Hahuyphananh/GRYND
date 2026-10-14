@@ -267,7 +267,13 @@ test("the play-gate column ships with a journaled migration", () => {
   const sql = read("src/db/migrations/0214_daily_rewards.sql");
   assert.match(sql, /ADD COLUMN IF NOT EXISTS "last_played_game_date" date/);
   const journal = JSON.parse(read("src/db/migrations/meta/_journal.json"));
-  const entry = journal.entries.at(-1);
-  assert.equal(entry.tag, "0214_daily_rewards");
-  assert.equal(entry.idx, journal.entries.length - 1);
+  // The entry is looked up BY TAG rather than taken from the end of the array:
+  // this asserts that the daily-reward migration is journalled and consistent
+  // (drizzle runs only journalled entries), not that it is the newest one — a
+  // later migration of an unrelated feature must not fail this test.
+  const index = journal.entries.findIndex(
+    (candidate) => candidate.tag === "0214_daily_rewards",
+  );
+  assert.notEqual(index, -1, "0214_daily_rewards must be in the journal");
+  assert.equal(journal.entries[index].idx, index);
 });

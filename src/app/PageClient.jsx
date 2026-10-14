@@ -30,6 +30,7 @@ import { useTranslation } from "../hooks/useTranslation";
 import StickyMobileCta from "../components/StickyMobileCta";
 import UpgradeProButton from "../components/UpgradeProButton";
 import GryndProWidget from "../components/GryndProWidget";
+import DailyRewardWidget from "../components/DailyRewardWidget";
 import AsyncState from "../components/states/AsyncState";
 import { SkeletonRows } from "../components/skeletons/Skeleton";
 import { useApiResource } from "../hooks/useApiResource";
@@ -274,6 +275,13 @@ function MainComponent({ adSlot = null, popularGames = [], explainerSlot = null 
   return (
     <div className="relative min-h-screen cyberpunk-grid pb-32 md:pb-0">
       <NavigationBar currentPath="/" />
+
+      {/* Daily login reward — top-right, under the navbar (fixed there from
+          `md` up, inline at the top of the page below it). The full
+          explanation of the reward stays on /rewards; this is the actionable
+          summary, and it is the surface that tells a player the claim needs a
+          game played today. Signed-out visitors render nothing. */}
+      <DailyRewardWidget />
 
       <motion.section
         initial={fadeInVariant.initial}

@@ -366,6 +366,52 @@ export async function createTowerArenaLobby({
   return res;
 }
 
+/**
+ * Create the match a PRIVATE ROOM / friend challenge is for: one named pair,
+ * with no publicly visible waiting lobby.
+ *
+ * It is the game's OWN lobby primitives (`createLobbyTx` + `joinLobbyTx`) run
+ * inside ONE transaction — the host takes seat 1, the invited opponent seat 2,
+ * the same wager escrow applies, and the lobby ends up in the SAME state a
+ * public fill produces (phase `ready`, waiting for both players to click
+ * READY). Because both statements commit together, `listOpenTowerArenaMatches`
+ * and `createOrJoinTowerArena` — which only look at `status = 'waiting'`
+ * lobbies — can never see this lobby, so no third player can be matched into a
+ * private game.
+ *
+ * Identities come from the caller (an authenticated route), never from input.
+ */
+export async function createTowerArenaMatchForPair({
+  hostUserId,
+  opponentUserId,
+  wager = 0,
+}: {
+  hostUserId: string;
+  opponentUserId: string;
+  wager?: number;
+}) {
+  if (!hostUserId || !opponentUserId) return { error: "Unauthorized", status: 401 };
+  if (hostUserId === opponentUserId) {
+    return { error: "You cannot play yourself", status: 400 };
+  }
+  const v = validateParams(wager);
+  if (!v.ok) return { error: v.error, status: v.status };
+  if (v.wager > 0 && (isGuestId(hostUserId) || isGuestId(opponentUserId))) {
+    return { error: "Guests can only play free lobbies", status: 403 };
+  }
+
+  return db.transaction(async (tx) => {
+    const created = await createLobbyTx(tx, hostUserId, v.wager);
+    const match = created.match;
+    if (!match?.id) return { error: "Unable to create the lobby", status: 500 };
+
+    const joined: any = await joinLobbyTx(tx, match, opponentUserId);
+    if (joined?.error) return { error: joined.error, status: joined.status || 400 };
+
+    return { match: joined.match ?? match, started: Boolean(joined.started) };
+  });
+}
+
 /** Manual join a specific lobby. */
 export async function joinTowerArenaLobby({ userId, lobbyId }: { userId: string; lobbyId: string }) {
   if (!userId) return { error: "Unauthorized", status: 401 };

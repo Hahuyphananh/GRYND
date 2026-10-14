@@ -71,8 +71,11 @@ test("the French-only and English-only labels are all in the bundle now", () => 
   // token currency, so there is no `balance` entry here any more.
   const sections = {
     "personal info": ["info.title", "info.settings", "info.memberSince", "info.unknownUser"],
-    "grynd+": ["membership.title", "membership.active", "membership.resetDone"],
-    customization: ["customization.title", "customization.accent"],
+    // The chat-name-colour section is no longer a membership perk (customization
+    // is free for everyone), so its heading and note are their own keys — the
+    // membership.* block it used to live in is gone.
+    "chat name color": ["chatcolor.title", "chatcolor.note", "membership.resetDone"],
+    customization: ["customization.title", "customization.note", "customization.accent"],
     emotes: ["emotes.title", "emotes.manage"],
     titles: ["titles.title", "titles.tabStreak", "titles.lockedSecret"],
     referral: ["referral.title", "referral.copy", "referral.redeemed"],

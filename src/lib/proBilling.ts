@@ -15,25 +15,43 @@
 // amounts used when Stripe is unreachable and (b) the input to the checkout
 // price sync. Savings are always computed from whichever amounts are in play,
 // never hardcoded, so a catalog/Stripe change can never leave the page
-// advertising a stale "you save $X".
+// advertising a stale "you save X".
 //
-// All amounts are USD cents, BEFORE applicable taxes. All three options grant
-// EXACTLY the same membership — billing frequency never changes entitlements.
+// ── The currency ──────────────────────────────────────────────────────────
+//
+// The catalog amounts are CAD (the base currency — lib/currency.ts). The
+// upgrade surface may present a different currency when BOTH are true: the
+// visitor's country maps to it, and the bound Stripe Price carries an amount
+// for it in `currency_options`. That second condition is not a detail — an
+// unconfigured currency must never be shown, or the page would advertise a
+// number Stripe would not charge. Both the country→currency map and the
+// formatters live in lib/currency.ts; this module only carries the currency a
+// set of amounts is expressed in.
+//
+// All amounts are BEFORE applicable taxes. All three options grant EXACTLY the
+// same membership — billing frequency never changes entitlements.
+
+import {
+  BASE_CURRENCY,
+  formatAmount,
+  currencySymbol,
+  type PresentmentCurrency,
+} from "./currency";
 
 /** The three billing options. Order here is display order. */
 export const PRO_BILLING_INTERVALS = ["weekly", "monthly", "yearly"] as const;
 
 export type ProBillingInterval = (typeof PRO_BILLING_INTERVALS)[number];
 
-/** Every GRYND PRO price is USD. */
-export const PRO_BILLING_CURRENCY = "usd";
+/** Every GRYND PRO price is defined in the base currency: CAD. */
+export const PRO_BILLING_CURRENCY = BASE_CURRENCY;
 
 /**
- * Approved catalog amounts (cents), before tax.
+ * Approved catalog amounts (cents), before tax, in the BASE currency (CAD).
  *
- *   weekly  $3.49 every week
- *   monthly $9.99 every month  (the pre-existing monthly price — preserved)
- *   yearly  $59.99 every year
+ *   weekly  CA$3.49 every week
+ *   monthly CA$9.99 every month  (the pre-existing monthly price — preserved)
+ *   yearly  CA$59.99 every year
  */
 export const PRO_PRICE_CENTS: Record<ProBillingInterval, number> = {
   weekly: 349,
@@ -68,10 +86,16 @@ export function defaultPriceCentsFor(interval: ProBillingInterval): number {
   return PRO_PRICE_CENTS[interval] ?? PRO_PRICE_CENTS.monthly;
 }
 
-/** `349` → `"3.49"`. Two decimal places, always. */
-export function formatUsdCents(cents: number): string {
-  const value = Number.isFinite(cents) ? Math.max(0, Math.round(cents)) : 0;
-  return (value / 100).toFixed(2);
+/**
+ * `349` → `"3.49"`. Two decimal places, always.
+ *
+ * This is the bare NUMBER — currency-agnostic on purpose, so the same helper
+ * formats a CAD saving, a EUR saving or a total. It is re-exported from
+ * lib/currency so every surface formats identically (and so a component never
+ * reaches for `Intl`, whose output differs between the server and the browser).
+ */
+export function formatAmountCents(cents: number): string {
+  return formatAmount(cents);
 }
 
 /** Standard rounding to two decimals (for percentages). */
@@ -141,10 +165,16 @@ export type ProBillingOption = {
   interval: ProBillingInterval;
   /** Catalog key of the membership all three options grant. */
   planKey: string;
-  /** Amount Stripe will charge per period, in cents. */
+  /** Amount Stripe will charge per period, in cents, in `currency`. */
   priceCents: number;
-  /** Pre-formatted amount, e.g. "3.49". */
-  priceUsd: string;
+  /** The currency the amounts below are expressed in (base unless localized). */
+  currency: PresentmentCurrency;
+  /** That currency's symbol, e.g. `"CA$"` / `"€"`. */
+  currencySymbol: string;
+  /** Pre-formatted amount, e.g. "3.49" (digits only). */
+  priceFormatted: string;
+  /** Symbol + amount, e.g. "CA$3.49" — what the card is charged, as written. */
+  priceDisplay: string;
   /** `"BEST VALUE"` on the yearly option, otherwise null. */
   badge: string | null;
   /** Average monthly cost, only meaningful for the yearly option. */
@@ -157,25 +187,33 @@ export type ProBillingOption = {
 export const PRO_MEMBERSHIP_KEY = "grynd-pro";
 
 /**
- * Build the three display options from a set of amounts. Callers pass the
- * server-resolved (Stripe-bound) amounts when they have them; anything missing
- * falls back to the approved catalog amount. Everything derived — the
- * formatted prices, the yearly monthly-equivalent and every savings figure —
- * is computed here from those amounts.
+ * Build the three display options from a set of amounts, all expressed in ONE
+ * currency. Callers pass the server-resolved (Stripe-bound) amounts when they
+ * have them; anything missing falls back to the approved catalog amount (which
+ * is a BASE-currency amount, so callers only pass a non-base currency when
+ * every amount they pass came from that currency — see
+ * resolveProBillingAmountsForCurrency in lib/stripe/subscriptions.ts).
+ * Everything derived — the formatted prices, the yearly monthly-equivalent and
+ * every savings figure — is computed here from those amounts.
  */
 export function buildProBillingOptions(
   amounts?: Partial<Record<ProBillingInterval, number>>,
+  currency: PresentmentCurrency = BASE_CURRENCY,
 ): ProBillingOption[] {
   const priceFor = (interval: ProBillingInterval) =>
     amounts?.[interval] ?? defaultPriceCentsFor(interval);
 
   const yearlyCents = priceFor("yearly");
+  const symbol = currencySymbol(currency);
 
   return PRO_BILLING_INTERVALS.map((interval) => ({
     interval,
     planKey: PRO_MEMBERSHIP_KEY,
     priceCents: priceFor(interval),
-    priceUsd: formatUsdCents(priceFor(interval)),
+    currency,
+    currencySymbol: symbol,
+    priceFormatted: formatAmount(priceFor(interval)),
+    priceDisplay: `${symbol}${formatAmount(priceFor(interval))}`,
     badge: interval === "yearly" ? "BEST VALUE" : null,
     // Only the yearly option advertises a monthly equivalent (it is the only
     // one billed less often than monthly).

@@ -1,15 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useUser } from "@clerk/nextjs";
 import {
   IconCheck,
   IconGift,
   IconLock,
   IconRefresh,
 } from "@tabler/icons-react";
-import { notifyCoinBalanceChanged } from "../hooks/useCoinBalance";
+import { useDailyReward } from "../hooks/useDailyReward";
 
 /**
  * The Daily Reward card.
@@ -29,18 +27,11 @@ import { notifyCoinBalanceChanged } from "../hooks/useCoinBalance";
  *   * neither — claimed today; the card says come back tomorrow.
  *
  * Copy is plain English, matching the rest of the /rewards surface.
+ *
+ * The status/claim plumbing lives in `useDailyReward`, shared with the compact
+ * corner widget on the home and games pages, so both surfaces ask the server in
+ * exactly the same way.
  */
-
-type DailyRewardStatus = {
-  claimable: boolean;
-  playGateSatisfied: boolean;
-  streakDay: number;
-  cycleDay: number;
-  reward: number;
-  today: string;
-  cycle: number[];
-  balance: number;
-};
 
 const CARD =
   "rounded-xl border border-[#00e5ff]/20 bg-[#040d24]/70 p-5 backdrop-blur-sm sm:p-6";
@@ -91,75 +82,17 @@ function CycleStrip({
 }
 
 export default function DailyRewardCard() {
-  const { isLoaded, isSignedIn } = useUser();
-  const [status, setStatus] = useState<DailyRewardStatus | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [claiming, setClaiming] = useState(false);
-  const [claimedNow, setClaimedNow] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/rewards/daily");
-      const json = await res.json().catch(() => null);
-      if (res.ok && json?.success) {
-        setStatus(json as DailyRewardStatus);
-      } else {
-        setError("We couldn't load your daily reward.");
-      }
-    } catch {
-      setError("We couldn't load your daily reward.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    // Only read once the session is known: a signed-out visitor has no reward,
-    // and firing an authenticated read first would just be a wasted 401.
-    if (!isLoaded) return;
-    if (!isSignedIn) {
-      setLoading(false);
-      return;
-    }
-    void load();
-  }, [isLoaded, isSignedIn, load]);
-
-  const claim = useCallback(async () => {
-    setClaiming(true);
-    setError(null);
-    try {
-      // The claim takes no parameters, but every mutating request must declare
-      // a JSON content type — the shared middleware rejects a bodyless POST with
-      // 415 otherwise (the same guard every other POST in the app satisfies).
-      const res = await fetch("/api/rewards/daily", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-      const json = await res.json().catch(() => null);
-      if (res.ok && json?.success) {
-        setClaimedNow(Number(json.reward) || 0);
-        await load();
-        // The claim credited the balance the navbar and lobby pickers read.
-        notifyCoinBalanceChanged();
-      } else {
-        // A refusal is a state, not a fault: the gate (403) or an
-        // already-claimed day (409) is re-read from the server either way.
-        setError(
-          typeof json?.error === "string"
-            ? json.error
-            : "We couldn't claim your reward.",
-        );
-        await load();
-      }
-    } catch {
-      setError("We couldn't claim your reward.");
-    } finally {
-      setClaiming(false);
-    }
-  }, [load]);
+  const {
+    isLoaded,
+    isSignedIn,
+    status,
+    loading,
+    claiming,
+    claimedNow,
+    error,
+    load,
+    claim,
+  } = useDailyReward();
 
   return (
     <section aria-labelledby="daily-reward-heading" className={CARD}>

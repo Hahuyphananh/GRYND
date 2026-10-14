@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
 import { and, inArray } from "drizzle-orm";
 import { asc, db, eq, isRoomSeat, resolveExpiredTurn, diceFlushRooms } from "../_lib";
-import { glows, tokenSubscriptions, users } from "../../../../db/schema";
-import { ACTIVE_SUBSCRIPTION_STATUSES } from "../../../../lib/stripe/subscriptions";
+import { glows, users } from "../../../../db/schema";
 import { getFrameDecorations } from "../../../../lib/cosmetics";
-import { sql } from "drizzle-orm";
 import { isGuestId } from "../../../../lib/guestIdentity";
 // This route is a plain GET that the page middleware does NOT cover (every
 // /api/* path is public there), and it can mutate room state via
@@ -30,19 +28,11 @@ async function enrichRoomPlayers(room) {
       equippedCosmetics: users.equippedCosmetics,
       chatColor: users.chatColor,
       glowColor: glows.color,
-      isPremium: sql`(${tokenSubscriptions.status} IS NOT NULL)`,
     })
     .from(users)
     .leftJoin(
       glows,
       and(eq(glows.key, users.selectedGlow), eq(glows.enabled, true)),
-    )
-    .leftJoin(
-      tokenSubscriptions,
-      and(
-        eq(tokenSubscriptions.clerkId, users.clerkId),
-        inArray(tokenSubscriptions.status, ACTIVE_SUBSCRIPTION_STATUSES),
-      ),
     )
     .where(inArray(users.clerkId, humanIds));
   const iconByUser = new Map();
@@ -56,13 +46,12 @@ async function enrichRoomPlayers(room) {
   );
   for (const row of rows) {
     iconByUser.set(String(row.clerkId), row.iconKey || "default");
-    // Equipped name color — an owned glow wins; the GRYND PRO chat
-    // color only surfaces for active members (chat-route precedence).
+    // Equipped name color — an owned glow wins; the free-form chat color
+    // (a former GRYND PRO perk, now available to everyone) is the fallback and
+    // is never suppressed for non-members (chat-route precedence).
     colorByUser.set(
       String(row.clerkId),
-      row.glowColor ||
-        (Boolean(row.isPremium) ? row.chatColor || null : null) ||
-        null,
+      row.glowColor || row.chatColor || null,
     );
     frameByUser.set(String(row.clerkId), decorationByClerkId.get(String(row.clerkId)) || null);
   }

@@ -15,6 +15,12 @@
 // truth and no component can drift from what Stripe actually charges.
 
 import { PRO_BILLING_OPTIONS, type ProBillingOption } from "./proBilling";
+import {
+  BASE_CURRENCY,
+  formatAmount,
+  type PresentmentCurrency,
+} from "./currency";
+import { ADVERTISED_PRO_PERKS } from "./proBenefits";
 
 /** What the client renders for the single GRYND PRO plan. */
 export type ProPlanDisplay = {
@@ -23,13 +29,19 @@ export type ProPlanDisplay = {
   /** Display name from the catalog — `GRYND PRO`. */
   name: string;
   /**
-   * Authoritative MONTHLY price in cents (Stripe-bound price wins). Kept as the
-   * headline number for every surface that predates the three-interval catalog
-   * — it always equals the monthly entry of `billingOptions`.
+   * Authoritative MONTHLY price in cents (Stripe-bound price wins), expressed
+   * in `currency`. Kept as the headline number for every surface that predates
+   * the three-interval catalog — it always equals the monthly entry of
+   * `billingOptions`.
    */
   priceCents: number;
-  /** Pre-formatted USD price of the monthly option, e.g. "9.99". */
-  priceUsd: string;
+  /** The currency the monthly price above is expressed in. */
+  currency: PresentmentCurrency;
+  /**
+   * The monthly price as written, symbol included — e.g. "CA$9.99" or "€9.99".
+   * Digits are always Western with two decimals (see lib/currency).
+   */
+  priceDisplay: string;
   badge: string | null;
   /** Perk lines from the catalog, in display order. */
   perks: string[];
@@ -45,28 +57,30 @@ export type ProPlanDisplay = {
 export const FALLBACK_BILLING_OPTIONS: ProBillingOption[] = PRO_BILLING_OPTIONS;
 
 /**
- * The four headline PRO perks, in the order the upgrade surface presents them.
- * Used only as a fallback when the catalog perks are missing/empty — the
- * database row (migration 0168) is the real source.
+ * The PRO perk lines used when the catalog's `perks` are missing or empty.
+ *
+ * DERIVED from the approved benefit catalog (lib/proBenefits.ts) and limited to
+ * the benefits that actually exist today — this list is also what the
+ * membership widget renders and what a cold/failed plan read falls back to, so
+ * it can never advertise a benefit the membership does not yet grant. The
+ * database row is the real source for the API payload; migration 0215 keeps it
+ * in step with the same catalog.
  */
-export const PRO_PLAN_FALLBACK_PERKS = [
-  "Ad-free experience",
-  "Advanced statistics",
-  "Advanced performance analytics",
-  "Detailed match history",
-] as const;
+export const PRO_PLAN_FALLBACK_PERKS = ADVERTISED_PRO_PERKS;
 
-/** Perks that are advertised but shown as secondary, smaller lines. */
-export const PRO_PLAN_SECONDARY_PERKS = [
-  "Custom chat color & profile accent",
-  "Priority support",
-] as const;
-
-/** `999` → `"9.99"`. Kept in one place so every surface formats identically. */
-export function formatUsdFromCents(priceCents: number): string {
-  const cents = Number.isFinite(priceCents) ? Math.max(0, priceCents) : 0;
-  return (cents / 100).toFixed(2);
+/**
+ * `999` → `"9.99"`.
+ *
+ * Kept as a named export for the server resolver, but the implementation (and
+ * the only place formatting is defined) is lib/currency — so a price rendered
+ * on the server and re-rendered on the client can never differ.
+ */
+export function formatAmountFromCents(priceCents: number): string {
+  return formatAmount(priceCents);
 }
+
+/** The base currency every catalog amount is defined in. */
+export const DEFAULT_PLAN_CURRENCY = BASE_CURRENCY;
 
 /** The intended GRYND PRO plan key (mirrors CANONICAL_MEMBERSHIP_PLAN_KEY). */
 export const PRO_PLAN_KEY = "grynd-pro";

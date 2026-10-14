@@ -191,11 +191,12 @@ export async function GET(req) {
         tier: premium ? "pro" : null,
         premiumTitle: premium ? MEMBERSHIP_TITLE : null,
         // Name color precedence: an equipped catalog glow (any member,
-        // catalog hex) outranks the GRYND PRO free-form chat color. The custom
-        // chat color stays a membership perk — only surfaced for members
-        // (the column is only ever set through the premium-gated API, but
-        // defense in depth: never leak it for non-members).
-        chatColor: glowColor || (premium ? (msg.chatColor || null) : null),
+        // catalog hex) outranks the free-form chat color. The free-form color
+        // is available to EVERY signed-in user — it used to be a GRYND PRO
+        // perk, and it is no longer gated, so it is no longer suppressed for
+        // free accounts either (hiding it would make the profile picker save a
+        // value nobody ever sees).
+        chatColor: glowColor || (msg.chatColor || null),
       };
     });
 
@@ -322,9 +323,8 @@ export async function POST(req) {
           premium,
           tier: premium ? "pro" : null,
           premiumTitle: premium ? MEMBERSHIP_TITLE : null,
-          // Glow outranks the free-form membership chat color (see GET).
-          chatColor:
-            appUser?.glowColor || (premium ? (appUser?.chatColor || null) : null),
+          // Glow outranks the free-form chat color (see GET).
+          chatColor: appUser?.glowColor || (appUser?.chatColor || null),
         },
         unlockedSpecialTitles,
       },

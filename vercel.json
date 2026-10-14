@@ -11,6 +11,10 @@
     {
       "path": "/api/jobs/daily-reset",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/jobs/rank-snapshots",
+      "schedule": "0 21 * * *"
     }
   ]
 }

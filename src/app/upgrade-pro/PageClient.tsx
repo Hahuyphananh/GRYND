@@ -239,7 +239,7 @@ export default function PageClient({ plan, signedIn, subscription }: PageClientP
                 •{" "}
                 {t("pro.billing_current", {
                   interval: t(`pro.interval.${currentOption.interval}`).toLowerCase(),
-                  price: currentOption.priceUsd,
+                  price: currentOption.priceDisplay,
                   unit: t(`pro.unit.${currentOption.interval}`),
                 })}
               </li>

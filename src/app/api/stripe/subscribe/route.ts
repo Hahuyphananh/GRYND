@@ -27,6 +27,7 @@ import {
   CANONICAL_MEMBERSHIP_PLAN_KEY,
   ensureSubscriptionPlanStripe,
   findActiveSubscription,
+  resolvePriceCharge,
 } from "../../../../lib/stripe/subscriptions";
 import {
   PRO_PRICE_CENTS,
@@ -34,6 +35,8 @@ import {
   isProBillingInterval,
   type ProBillingInterval,
 } from "../../../../lib/proBilling";
+import { BASE_CURRENCY, currencyForCountry } from "../../../../lib/currency";
+import { countryFromHeaders } from "../../../../lib/consentRegions";
 import { auditLog } from "../../../../lib/security/auditLog";
 
 export const runtime = "nodejs";
@@ -134,10 +137,29 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // The amount this checkout charges. The price we just resolved is verified
-  // against the approved catalog amount for the interval, so this is the
-  // authoritative figure — never a client-supplied one.
-  const amountCents = PRO_PRICE_CENTS[interval] ?? defaultPriceCentsFor(interval);
+  // ── The currency this checkout charges ──────────────────────────────────
+  //
+  // The visitor's country comes from the request's geo headers (never from the
+  // client), and the currency is only used when the price we just resolved
+  // actually carries an amount for it. `resolvePriceCharge` reads that from the
+  // Price's own `currency_options`, so:
+  //
+  //   * a configured currency is charged exactly as the upgrade page showed it
+  //     (the page reads the same options — see getProPlanDisplay),
+  //   * an unconfigured (or unreadable) one falls back to the price's own
+  //     currency, which is what Checkout would charge anyway, and
+  //   * a NULL answer (Stripe unreachable) leaves the session on the bound
+  //     price with no currency override, exactly as before this existed.
+  const desiredCurrency = currencyForCountry(countryFromHeaders(req.headers));
+  const charge = await resolvePriceCharge(resolvedPriceId, desiredCurrency);
+
+  // The amount this checkout charges, recorded on the ledger row below. When
+  // Stripe confirmed the localized price that is the authoritative figure;
+  // otherwise it is the approved catalog amount for the interval — never a
+  // client-supplied one.
+  const amountCents =
+    charge?.amountCents ?? PRO_PRICE_CENTS[interval] ?? defaultPriceCentsFor(interval);
+  const chargedCurrency = charge?.currency ?? BASE_CURRENCY;
 
   // The origin the customer is checking out FROM, so every return path lands
   // back on the same app they left (never a different host's homepage).
@@ -156,6 +178,11 @@ export async function POST(req: NextRequest) {
     {
       mode: "subscription",
       line_items: [{ price: resolvedPriceId, quantity: 1 }],
+      // Only ever an explicitly verified currency: Checkout charges this
+      // instead of the price's own when it is set, so it must be one the price
+      // is configured for. Omitted otherwise (Checkout then uses the price's
+      // currency — see the resolver above).
+      ...(charge && charge.currency !== BASE_CURRENCY ? { currency: charge.currency } : {}),
       // Omitted by design: dynamic payment methods selected by Stripe.
       client_reference_id: clerkId,
       metadata: { clerkId, planKey: plan.key, billingInterval: interval },
@@ -193,7 +220,9 @@ export async function POST(req: NextRequest) {
       sessionMode: "subscription",
       tokenAmount: 0,
       amountCents,
-      currency: "usd",
+      // The currency actually charged (base CAD unless the visitor's currency
+      // was configured AND verified on the bound price).
+      currency: chargedCurrency,
       paymentStatus: "open",
       fulfilled: false,
     })
@@ -205,6 +234,7 @@ export async function POST(req: NextRequest) {
     billingInterval: interval,
     sessionId: session.id,
     amountCents,
+    currency: chargedCurrency,
   });
 
   return NextResponse.json({ success: true, url: session.url ?? null });

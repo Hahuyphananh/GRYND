@@ -1373,6 +1373,27 @@
       "when": 1800000058000,
       "tag": "0214_daily_rewards",
       "breakpoints": true
+    },
+    {
+      "idx": 196,
+      "version": "7",
+      "when": 1800000059000,
+      "tag": "0215_pro_benefit_copy",
+      "breakpoints": true
+    },
+    {
+      "idx": 197,
+      "version": "7",
+      "when": 1800000060000,
+      "tag": "0216_player_rank_snapshots",
+      "breakpoints": true
+    },
+    {
+      "idx": 198,
+      "version": "7",
+      "when": 1800000061000,
+      "tag": "0217_private_rooms",
+      "breakpoints": true
     }
   ]
 }

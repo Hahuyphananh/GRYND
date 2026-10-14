@@ -34,6 +34,7 @@ import {
   findActiveSubscription,
 } from "../../../../lib/stripe/subscriptions";
 import { isProBillingInterval } from "../../../../lib/proBilling";
+import { BASE_CURRENCY } from "../../../../lib/currency";
 import { auditLog } from "../../../../lib/security/auditLog";
 
 export const runtime = "nodejs";
@@ -143,6 +144,38 @@ export async function POST(req: NextRequest) {
 
   if (currentPriceId === targetPriceId) {
     return NextResponse.json({ success: true, alreadyOnPlan: true, interval });
+  }
+
+  // A subscription's currency is fixed at creation and every option is priced
+  // in it (base or a `currency_options` entry). Switching intervals must stay
+  // inside that currency, so verify the target price is priced in it before
+  // moving the item — Stripe's own error for this is opaque, and this is the
+  // one case a per-currency configuration can produce (an option configured on
+  // one price but not another).
+  const subscriptionCurrency = String(stripeSubscription.currency || BASE_CURRENCY)
+    .toLowerCase();
+  try {
+    const target = await stripe.prices.retrieve(targetPriceId);
+    const pricedInTargetCurrency =
+      String(target.currency || "").toLowerCase() === subscriptionCurrency ||
+      Number.isFinite(
+        Number(target.currency_options?.[subscriptionCurrency]?.unit_amount),
+      );
+    if (!pricedInTargetCurrency) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "That billing option isn't available in your subscription's currency.",
+        },
+        { status: 409 },
+      );
+    }
+  } catch (err) {
+    console.error("[stripe/change-plan] Failed to verify the target price currency:", err);
+    return NextResponse.json(
+      { success: false, error: "Could not reach Stripe. Please try again." },
+      { status: 502 },
+    );
   }
 
   try {

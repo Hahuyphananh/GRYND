@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { auth } from "@clerk/nextjs/server";
 import PageClient from "./PageClient";
 import {
   findActiveSubscription,
   getProPlanDisplay,
 } from "../../lib/stripe/subscriptions";
+import { countryFromHeaders } from "../../lib/consentRegions";
+import { currencyForCountry } from "../../lib/currency";
 
 export const metadata: Metadata = {
   alternates: { canonical: "/upgrade-pro" },
@@ -30,7 +33,12 @@ export const dynamic = "force-dynamic";
  */
 export default async function UpgradeProPage() {
   const { userId } = await auth();
-  const plan = await getProPlanDisplay();
+  // The price is presented in the visitor's own currency when the bound Stripe
+  // price is configured for it (see lib/currency.ts + getProPlanDisplay). The
+  // country comes from the request's geo headers, never from the client.
+  const requestHeaders = await headers();
+  const currency = currencyForCountry(countryFromHeaders(requestHeaders));
+  const plan = await getProPlanDisplay(currency);
 
   let subscription: {
     planKey: string;

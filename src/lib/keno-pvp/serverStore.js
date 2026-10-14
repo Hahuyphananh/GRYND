@@ -45,10 +45,8 @@ import {
   glows,
   kenoPvpMatches,
   kenoPvpRounds,
-  tokenSubscriptions,
   users,
 } from "../../db/schema";
-import { ACTIVE_SUBSCRIPTION_STATUSES } from "../stripe/subscriptions";
 import { sendSystemNotificationEmail } from "../emails/system";
 import { mirrorKenoQueued, mirrorKenoTransition } from "./canonicalLifecycle";
 import {
@@ -143,11 +141,10 @@ function summariseUsers(rows, decorationByClerkId) {
       iconKey: r.iconKey || "default",
       // Equipped profile frame (server-resolved catalog visual), or null.
       profileFrame: decorationByClerkId?.get(r.clerkId) || null,
-      // Equipped name color — an owned glow wins; the GRYND PRO chat
-      // color only surfaces for active members (chat-route precedence).
-      nameColor:
-        r.glowColor ||
-        (Boolean(r.isPremium) ? r.chatColor || null : null),
+      // Equipped name color — an owned glow wins, then the player's own chat
+      // color. The chat color is free for every signed-in player (it is no
+      // longer a GRYND PRO perk), so it is never suppressed here either.
+      nameColor: r.glowColor || r.chatColor || null,
     };
   }
   return out;
@@ -180,19 +177,11 @@ export async function enrichMatchesWithUsers(matchOrMatches) {
         equippedCosmetics: users.equippedCosmetics,
         chatColor: users.chatColor,
         glowColor: glows.color,
-        isPremium: sql`(${tokenSubscriptions.status} IS NOT NULL)`,
       })
       .from(users)
       .leftJoin(
         glows,
         and(eq(glows.key, users.selectedGlow), eq(glows.enabled, true)),
-      )
-      .leftJoin(
-        tokenSubscriptions,
-        and(
-          eq(tokenSubscriptions.clerkId, users.clerkId),
-          inArray(tokenSubscriptions.status, ACTIVE_SUBSCRIPTION_STATUSES),
-        ),
       )
       .where(inArray(users.clerkId, Array.from(ids)));
   } catch (err) {

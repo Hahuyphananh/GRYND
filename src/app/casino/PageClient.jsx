@@ -12,6 +12,7 @@ import { useTranslation } from "../../hooks/useTranslation";
 import UpgradeProButton from "../../components/UpgradeProButton";
 import { IconClock, IconSparkles } from "@tabler/icons-react";
 import StickyMobileCta from "../../components/StickyMobileCta";
+import DailyRewardWidget from "../../components/DailyRewardWidget";
 
 
 import { clearPlayedGames, getPlayedGames } from "../../lib/recentlyPlayed";
@@ -798,6 +799,12 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       <InteractiveCasinoBg variant="subtle" />
 
       <NavigationBar currentPath="/casino" />
+
+      {/* Daily login reward — the same corner widget the home page carries
+          (top-right, under the navbar, inline below `md`). It sits on the hub
+          because the reward is gated on playing a game today, and this is the
+          page where a player picks one. Signed-out visitors render nothing. */}
+      <DailyRewardWidget />
 
       <div className="mx-auto max-w-7xl px-3 py-6 sm:px-4 sm:py-12">
         <section className="mb-8 space-y-3 text-center">

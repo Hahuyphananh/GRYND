@@ -1,10 +1,14 @@
 // src/app/api/user/profile-customization/route.ts
 //
-// POST — set the caller's GRYND PRO profile customization (accent color).
+// POST — set the caller's profile customization (accent color).
+//
+// FREE FOR EVERYONE. This was a GRYND PRO perk; customization is no longer
+// sold, so the membership check is gone. Existing members keep whatever they
+// saved — the column is untouched by this change.
 //
 // Security:
-//   * auth-required,
-//   * membership-gated: only active members can customize their profile,
+//   * auth-required — the clerk id comes from the session, so a caller can only
+//     write their own row,
 //   * accent is strictly validated as a #RRGGBB hex value,
 //   * passing null clears it (back to default styling).
 //     Unknown fields are rejected by the allowlist; invalid values reject the
@@ -15,7 +19,6 @@ import { auth } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 import { db } from "../../../../db";
 import { users } from "../../../../db/schema";
-import { isPremiumMember } from "../../../../lib/stripe/subscriptions";
 import { HEX_COLOR_REGEX } from "../../../../lib/profileCosmetics";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
 
@@ -25,16 +28,6 @@ export async function POST(req: Request) {
   const { userId } = await auth();
   if (!userId) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-  }
-
-  if (!(await isPremiumMember(userId))) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: "This perk requires an active GRYND PRO membership.",
-      },
-      { status: 403 }
-    );
   }
 
   // Strict allowlist: only `profileAccent` is accepted (a value, or null to

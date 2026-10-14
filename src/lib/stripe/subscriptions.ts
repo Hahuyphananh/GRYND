@@ -43,9 +43,24 @@ import { db } from "../../db/client";
 import { tokenSubscriptionPlans, tokenSubscriptions } from "../../db/schema";
 import { getStripe } from "../stripe";
 import { MANAGED_PAYMENTS_TAX_CODE } from "./packages";
+import { ADVERTISED_PRO_PERKS } from "../proBenefits";
+
+/**
+ * The Stripe Product description for GRYND PRO — the copy a customer reads on
+ * the product page and on their invoices.
+ *
+ * BUILT FROM THE APPROVED OFFER, not typed out again: it can only list benefits
+ * that are actually granted today (see lib/proBenefits.ts), so the copy in
+ * Stripe cannot drift from the copy on the upgrade page. It previously also
+ * advertised profile customization and priority support, neither of which is
+ * sold or provided.
+ */
+const PLAN_PRODUCT_DESCRIPTION = `GRYND PRO membership — ${ADVERTISED_PRO_PERKS.join(
+  "; ",
+)}. Billed weekly, monthly or yearly. No tokens or in-game currency are included.`;
 import {
   PRO_PLAN_FALLBACK_PERKS,
-  formatUsdFromCents,
+  formatAmountFromCents,
   type ProPlanDisplay,
 } from "../membershipDisplay";
 import {
@@ -55,6 +70,12 @@ import {
   buildProBillingOptions,
   type ProBillingInterval,
 } from "../proBilling";
+import {
+  BASE_CURRENCY,
+  currencyForCountry,
+  isPresentmentCurrency,
+  type PresentmentCurrency,
+} from "../currency";
 
 export type SubscriptionPlanBundle = {
   id: number;
@@ -147,7 +168,11 @@ export async function getMembershipTier(
 function expectedPriceSpec(interval: ProBillingInterval) {
   return {
     unitAmount: PRO_PRICE_CENTS[interval],
-    currency: "usd",
+    // The BASE currency. Prices are created in CAD, and the local currencies a
+    // visitor may be shown are `currency_options` added to those prices (in the
+    // Stripe Dashboard, where Stripe can convert for you). The base amount is
+    // what every validation below compares against.
+    currency: BASE_CURRENCY,
     interval: PRO_STRIPE_INTERVAL[interval],
   };
 }
@@ -161,9 +186,13 @@ function priceProductId(price: Stripe.Price): string | null {
 
 /**
  * True when `price` is the exact price the catalog approves for `interval`:
- * same product, same amount, USD, same recurring interval, and still active.
- * A mismatch means the binding is stale (an old amount, or a price from the
- * other Stripe mode) and must be re-resolved rather than sold.
+ * same product, same BASE amount, same base currency, same recurring interval,
+ * and still active. A mismatch means the binding is stale (an old amount, or a
+ * price from the other Stripe mode) and must be re-resolved rather than sold.
+ *
+ * A price that additionally carries `currency_options` is still a match — those
+ * are the localized amounts the visitor may be shown, and changing one in the
+ * Dashboard must not invalidate the binding.
  */
 function priceMatchesSpec(
   price: Stripe.Price,
@@ -263,10 +292,19 @@ export async function ensureSubscriptionPlanStripe(
     // code reconciled to the Managed Payments-eligible code (pre-MSP plans
     // used the ineligible `txcd_99999999`).
     try {
-      await stripe.products.retrieve(productId);
+      const existingProduct = await stripe.products.retrieve(productId);
       try {
         await stripe.products.update(productId, {
           tax_code: MANAGED_PAYMENTS_TAX_CODE,
+          // Reconcile the customer-facing description to the approved offer.
+          // The product was created (once) with copy that advertised benefits
+          // the membership does not grant, and a description is not part of any
+          // price — so correcting it is safe for every live subscription and
+          // keeps Stripe honest without a Dashboard edit. Only written when it
+          // actually differs, so an unchanged catalog costs no extra call.
+          ...(existingProduct.description === PLAN_PRODUCT_DESCRIPTION
+            ? {}
+            : { description: PLAN_PRODUCT_DESCRIPTION }),
         });
       } catch {
         // Non-fatal: recurring price resolution below still works.
@@ -288,8 +326,7 @@ export async function ensureSubscriptionPlanStripe(
   if (!productId) {
     const product = await stripe.products.create({
       name: `${plan.name} — Grynd Subscription`,
-      description:
-        "GRYND PRO membership — ad-free browsing, advanced statistics and analytics, detailed match history, profile customization, priority support and priority matchmaking. Billed weekly, monthly or yearly. No tokens or in-game currency are included.",
+      description: PLAN_PRODUCT_DESCRIPTION,
       // Same Managed Payments-eligible tax code as packages.ts (txcd_10103100).
       tax_code: MANAGED_PAYMENTS_TAX_CODE,
       metadata: { planKey: plan.key },
@@ -384,16 +421,38 @@ export async function ensureSubscriptionPlanStripe(
 }
 
 /**
- * The authoritative amounts (cents) for all three options for this plan,
- * used by the upgrade surface. Each bound Stripe price wins over the catalog
- * amount (so the advertised number is always what Stripe charges); a missing
- * or unreadable binding degrades to the product's matching price, then to the
- * approved catalog amount. Never throws.
+ * The authoritative amounts (cents, in the BASE currency) for all three options
+ * for this plan, used by the upgrade surface. Each bound Stripe price wins over
+ * the catalog amount (so the advertised number is always what Stripe charges);
+ * a missing or unreadable binding degrades to the product's matching price,
+ * then to the approved catalog amount. Never throws.
  */
 export async function resolveProBillingAmounts(
   plan: SubscriptionPlanBundle,
 ): Promise<Record<ProBillingInterval, number>> {
-  const amounts: Record<ProBillingInterval, number> = { ...PRO_PRICE_CENTS };
+  const { base } = await readPlanPrices(plan);
+  return base;
+}
+
+/**
+ * Every price this plan sells, read ONCE per call: each interval's base amount
+ * plus the localized amounts its `currency_options` carry.
+ *
+ * Resolution order per interval is the same one the upgrade surface has always
+ * used — the bound price id, then the product's matching recurring price, then
+ * the approved catalog amount — so an unreadable Stripe catalog can never blank
+ * the page. Never throws.
+ */
+async function readPlanPrices(plan: SubscriptionPlanBundle): Promise<{
+  base: Record<ProBillingInterval, number>;
+  /** Localized amounts, keyed by currency then interval. */
+  localized: Partial<Record<PresentmentCurrency, Partial<Record<ProBillingInterval, number>>>>;
+}> {
+  const base: Record<ProBillingInterval, number> = { ...PRO_PRICE_CENTS };
+  const localized: Partial<
+    Record<PresentmentCurrency, Partial<Record<ProBillingInterval, number>>>
+  > = {};
+
   const bound: StripePriceIds = {
     weekly: plan.stripePriceIdWeekly ?? null,
     monthly: plan.stripePriceId,
@@ -403,19 +462,19 @@ export async function resolveProBillingAmounts(
   let productPrices: Stripe.Price[] | null = null;
   try {
     for (const interval of PRO_BILLING_INTERVALS) {
+      let price: Stripe.Price | null = null;
+
       const priceId = bound[interval];
       if (priceId) {
         try {
-          const price = await getStripe().prices.retrieve(priceId);
-          if (typeof price.unit_amount === "number") {
-            amounts[interval] = price.unit_amount;
-            continue;
-          }
+          price = await getStripe().prices.retrieve(priceId);
         } catch {
           // fall through to the product lookup / catalog amount
+          price = null;
         }
       }
-      if (plan.stripeProductId) {
+
+      if (!price && plan.stripeProductId) {
         if (!productPrices) {
           const listed = await getStripe().prices.list({
             product: plan.stripeProductId,
@@ -425,19 +484,112 @@ export async function resolveProBillingAmounts(
           });
           productPrices = listed.data;
         }
-        const match = productPrices.find(
-          (price) => price.recurring?.interval === PRO_STRIPE_INTERVAL[interval],
-        );
-        if (typeof match?.unit_amount === "number") {
-          amounts[interval] = match.unit_amount;
-        }
+        price =
+          productPrices.find(
+            (candidate) =>
+              candidate.recurring?.interval === PRO_STRIPE_INTERVAL[interval],
+          ) ?? null;
+      }
+
+      if (typeof price?.unit_amount === "number") {
+        base[interval] = price.unit_amount;
+      }
+
+      // The localized amounts this price carries. A currency option is only
+      // ever read from Stripe — nothing here converts or invents an amount.
+      for (const [code, option] of Object.entries(price?.currency_options ?? {})) {
+        if (!isPresentmentCurrency(code)) continue;
+        if (code === BASE_CURRENCY) continue;
+        const amount = Number(option?.unit_amount);
+        if (!Number.isFinite(amount)) continue;
+        localized[code] = { ...(localized[code] ?? {}), [interval]: amount };
       }
     }
   } catch {
-    // Keep the catalog amounts — the upgrade surface must always render.
+    // Keep whatever was resolved / the catalog amounts — the upgrade surface
+    // must always render.
   }
 
-  return amounts;
+  return { base, localized };
+}
+
+/**
+ * The amounts (cents) for the three options in `currency`, together with the
+ * currency they are actually in.
+ *
+ * A localized currency is only used when EVERY option has a configured amount
+ * in it. A partial configuration falls back to the base currency for all three
+ * rather than mixing currencies — the options are compared against each other
+ * to derive the savings, so a half-converted set would advertise a saving in
+ * one currency against a price in another.
+ *
+ * The returned `currency` is what the caller must charge and display; the
+ * amounts are always consistent with it. Never throws.
+ */
+export async function resolveProBillingAmountsForCurrency(
+  plan: SubscriptionPlanBundle,
+  currency: PresentmentCurrency = BASE_CURRENCY,
+): Promise<{
+  currency: PresentmentCurrency;
+  amounts: Record<ProBillingInterval, number>;
+}> {
+  const { base, localized } = await readPlanPrices(plan);
+
+  if (currency === BASE_CURRENCY) return { currency: BASE_CURRENCY, amounts: base };
+
+  const options = localized[currency];
+  if (!options) return { currency: BASE_CURRENCY, amounts: base };
+
+  const amounts = { ...base };
+  for (const interval of PRO_BILLING_INTERVALS) {
+    const amount = options[interval];
+    if (typeof amount !== "number") {
+      // Incomplete localization — stay entirely on the base currency.
+      return { currency: BASE_CURRENCY, amounts: base };
+    }
+    amounts[interval] = amount;
+  }
+
+  return { currency, amounts };
+}
+
+/**
+ * What a SPECIFIC bound price will charge if the caller asks for `desired`
+ * currency — resolved from that price's own `currency_options`, never guessed.
+ *
+ * Returns the price's own (base) currency whenever the desired currency is not
+ * configured — that is what Checkout charges when no currency is requested —
+ * and null only when the price itself cannot be read, so a checkout can always
+ * fall back to the bound price rather than failing.
+ */
+export async function resolvePriceCharge(
+  priceId: string,
+  desired: PresentmentCurrency,
+): Promise<{ currency: PresentmentCurrency; amountCents: number } | null> {
+  try {
+    const price = await getStripe().prices.retrieve(priceId);
+    const baseAmount = Number(price.unit_amount);
+    // The currency the price itself is defined in. Legacy USD bindings predate
+    // the CAD catalog and are still billing their subscribers, so this is read
+    // rather than assumed.
+    const baseCurrency: PresentmentCurrency = isPresentmentCurrency(price.currency)
+      ? price.currency
+      : BASE_CURRENCY;
+
+    if (desired !== baseCurrency) {
+      const localized = Number(price.currency_options?.[desired]?.unit_amount);
+      if (Number.isFinite(localized)) {
+        return { currency: desired, amountCents: localized };
+      }
+    }
+
+    if (Number.isFinite(baseAmount)) {
+      return { currency: baseCurrency, amountCents: baseAmount };
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -464,12 +616,15 @@ export async function resolveSubscriptionPlanPriceCents(
  * Never throws: on a Stripe/DB failure it falls back to the catalog price (or
  * the static defaults) so the upgrade surface still renders.
  */
-export async function getProPlanDisplay(): Promise<ProPlanDisplay> {
+export async function getProPlanDisplay(
+  currency: PresentmentCurrency = BASE_CURRENCY,
+): Promise<ProPlanDisplay> {
   const fallback: ProPlanDisplay = {
     key: CANONICAL_MEMBERSHIP_PLAN_KEY,
     name: "GRYND PRO",
     priceCents: FALLBACK_PRO_PRICE_CENTS,
-    priceUsd: formatUsdFromCents(FALLBACK_PRO_PRICE_CENTS),
+    currency: BASE_CURRENCY,
+    priceDisplay: formatAmountFromCents(FALLBACK_PRO_PRICE_CENTS),
     badge: "Pro",
     perks: [...PRO_PLAN_FALLBACK_PERKS],
     // The three options are always present, so the upgrade surface can render
@@ -517,15 +672,20 @@ export async function getProPlanDisplay(): Promise<ProPlanDisplay> {
   };
 
   // Authoritative amounts for all three options (bound Stripe price wins, then
-  // the product's matching price, then the approved catalog amount).
+  // the product's matching price, then the approved catalog amount), in the
+  // CALLER's currency when every option has a configured amount for it — see
+  // resolveProBillingAmountsForCurrency for why a partial set stays on CAD.
+  let resolvedCurrency: PresentmentCurrency = BASE_CURRENCY;
   let amounts: Record<ProBillingInterval, number> = { ...PRO_PRICE_CENTS };
   try {
-    amounts = await resolveProBillingAmounts(planBundle);
+    const resolved = await resolveProBillingAmountsForCurrency(planBundle, currency);
+    resolvedCurrency = resolved.currency;
+    amounts = resolved.amounts;
   } catch {
     // Keep the catalog amounts — the upgrade surface must always render.
   }
 
-  const billingOptions = buildProBillingOptions(amounts);
+  const billingOptions = buildProBillingOptions(amounts, resolvedCurrency);
   // The headline monthly number keeps its historical meaning (and its column).
   const monthly =
     billingOptions.find((option) => option.interval === "monthly") ?? fallback.billingOptions[1];
@@ -538,7 +698,8 @@ export async function getProPlanDisplay(): Promise<ProPlanDisplay> {
     key: row.key,
     name: row.name || fallback.name,
     priceCents: monthly.priceCents,
-    priceUsd: monthly.priceUsd,
+    currency: monthly.currency,
+    priceDisplay: monthly.priceDisplay,
     badge: row.badge ?? null,
     perks: perks.length > 0 ? perks : fallback.perks,
     billingOptions,

@@ -10,11 +10,12 @@ import { fadeUp, hoverScale, withReducedMotion, stagger } from "../lib/animation
 import { UIPro01NavShell, UIPro02NavItem } from "./uipro";
 import useInstallPWA from "../hooks/useInstallPWA";
 import AdminBadge from "./AdminBadge";
-import { IconDeviceMobile, IconFlame, IconGift, IconMenu, IconSettings, IconStar, IconTrophy, IconX } from "@tabler/icons-react";
+import { IconCoins, IconDeviceMobile, IconFlame, IconGift, IconMenu, IconSettings, IconStar, IconTrophy, IconX } from "@tabler/icons-react";
 import FrameAvatar from "./FrameAvatar";
 import { cosmeticEffectClass } from "../lib/profileCosmetics";
 import useDailyLoss from "../lib/useDailyLoss";
 import { DAILY_LOSS_CHIP_THRESHOLD } from "../lib/games/economy";
+import { COIN_BALANCE_EVENT } from "../hooks/useCoinBalance";
 
 // M1: sessionStorage TTL for the nav's level + equipped-title meta. Level
 // and titles are slow-changing (and the server-side /api/user-stats is
@@ -50,10 +51,14 @@ function NavigationBar({ currentPath = "" }) {
   // menu) only, so it never duplicates the fixed lobby chip (DailyLossGuard).
   const { loss: dailyLoss, loaded: dailyLossLoaded } = useDailyLoss();
   const [profile, setProfile] = useState(() => {
-    // Seed the total-trophy display from the last known value so a fresh mount
+    // Seed the chip's two numbers from the last known values so a fresh mount
     // (the navbar remounts on every navigation) does NOT replay the change
-    // animation when nothing actually moved. Only a real change animates.
+    // animation when nothing actually moved. Only a real change animates, and
+    // a returning player sees their own numbers immediately instead of a dash.
     let totalTrophies = 0;
+    // `null` = "balance not known yet", which is deliberately NOT 0: a coin
+    // total of 0 and "we haven't read the wallet" are different claims.
+    let balance = null;
     try {
       const raw = sessionStorage.getItem("nav-trophies");
       if (raw) {
@@ -61,9 +66,11 @@ function NavigationBar({ currentPath = "" }) {
         const trophies = Number(cached?.totalTrophies);
         // Every player starts at 0 trophies, so 0 is a real displayable value.
         totalTrophies = Number.isFinite(trophies) && trophies >= 0 ? trophies : 0;
+        const coins = Number(cached?.balance);
+        balance = Number.isFinite(coins) && coins >= 0 ? coins : null;
       }
     } catch {
-      // sessionStorage unavailable (SSR / private mode) — start at 0.
+      // sessionStorage unavailable (SSR / private mode) — start at 0 / unknown.
     }
     return {
       name: "",
@@ -83,6 +90,12 @@ function NavigationBar({ currentPath = "" }) {
       // headline competitive number in the navbar (it replaced Overall Elo
       // there). Everyone starts at 0, so 0 is shown rather than a placeholder.
       totalTrophies,
+      // COIN BALANCE — the player's spendable coins, rendered UNDER the trophy
+      // total. It is the same wallet every other surface reads (the lobby
+      // wager pickers via useCoinBalance, /rewards, the energy grant), never a
+      // second currency: /api/get-user-tokens is the one source, and null means
+      // "not read yet" rather than 0.
+      balance,
     };
   });
   // Whether the chip has finished its first paint. The first render must not
@@ -164,12 +177,20 @@ function NavigationBar({ currentPath = "" }) {
   useEffect(() => {
     const handler = () => fetchBalance({ includeMeta: false });
     const titleHandler = () => refreshTitleMeta();
+    // A credit the client already knows about — the daily reward claim, for
+    // one — announces itself through this event, so the coin number under the
+    // trophies re-reads instead of showing the pre-claim amount until the next
+    // navigation. Shares the metadata-free read above: the wallet answer is
+    // what changed, and re-fetching the level/title meta would be waste.
+    const balanceHandler = () => fetchBalance({ includeMeta: false });
 
     window.addEventListener("profileUpdated", handler);
     window.addEventListener("titleUpdated", titleHandler);
+    window.addEventListener(COIN_BALANCE_EVENT, balanceHandler);
     return () => {
       window.removeEventListener("profileUpdated", handler);
       window.removeEventListener("titleUpdated", titleHandler);
+      window.removeEventListener(COIN_BALANCE_EVENT, balanceHandler);
     };
   }, []);
 
@@ -230,15 +251,27 @@ function NavigationBar({ currentPath = "" }) {
               const n = Number(data.data.totalTrophies);
               return Number.isFinite(n) && n >= 0 ? n : 0;
             })(),
+            // COIN BALANCE, from the same payload (the wallet is what this
+            // endpoint exists to report). An unreadable value stays null — the
+            // chip shows a dash rather than claiming the player has 0 coins.
+            balance: (() => {
+              const n = Number(data.data.balance);
+              return Number.isFinite(n) && n >= 0 ? n : null;
+            })(),
           }));
-        // Remember the last known trophy total so the next mount starts from it
+        // Remember the last known numbers so the next mount starts from them
         // and the chip only animates on a real change (see the state
-        // initializer).
+        // initializer). The key keeps its historical name — it is the nav
+        // chip's cache, and it now carries both displayed numbers.
         try {
           sessionStorage.setItem(
             "nav-trophies",
             JSON.stringify({
               totalTrophies: Number(data.data.totalTrophies) || 0,
+              balance: (() => {
+                const n = Number(data.data.balance);
+                return Number.isFinite(n) && n >= 0 ? n : null;
+              })(),
             }),
           );
         } catch {}
@@ -536,34 +569,56 @@ function NavigationBar({ currentPath = "" }) {
               )}
               {isLoaded && isSignedIn ? (
                 <>
-                  {/* Total trophies — sits where the token balance used to be.
-                      Server-computed sum of the player's per-game trophy
-                      counts; everyone starts at 0 and the total never hides. */}
+                  {/* Total trophies over the coin balance — this chip is where
+                      the token balance has always lived (the trophies took the
+                      headline spot), so the two numbers a player checks most
+                      share one card: the competitive total on top, the wallet
+                      that every wager reads directly beneath it. The trophies
+                      are server-computed (sum of per-game counts) and everyone
+                      starts at 0; the coins come from the same
+                      /api/get-user-tokens payload and show a dash until the
+                      wallet has actually been read. */}
                   <Link
                     href="/profil"
                     data-testid="nav-trophies"
-                    className="hidden items-center gap-1.5 rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 px-3 py-1.5 transition-colors hover:bg-[#f5ff3b]/20 lg:flex"
-                    title="Total trophies across every rated game"
+                    className="hidden items-center gap-2 rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 px-3 py-1.5 transition-colors hover:bg-[#f5ff3b]/20 lg:flex"
+                    title="Your total trophies, with your coin balance underneath"
                   >
-                    <IconTrophy size={15} className="text-[#f5ff3b]" />
-                    {/* keyed on the total so a change remounts the span and
-                        replays the pop-in; the ref suppresses the very first
-                        paint so cached values don't animate. */}
-                    <motion.span
-                      key={profile.totalTrophies}
-                      initial={
-                        trophyFirstPaint.current || shouldReduceMotion
-                          ? false
-                          : { opacity: 0, y: -4, scale: 0.9 }
-                      }
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      transition={{ duration: 0.3, ease: "easeOut" }}
-                      className="text-sm font-semibold text-[#f5ff3b]"
-                    >
-                      {Number(profile.totalTrophies || 0).toLocaleString()}
-                    </motion.span>
-                    <span className="text-[10px] uppercase tracking-wider text-[#f5ff3b]/70">
-                      Trophies
+                    <IconTrophy size={15} className="shrink-0 text-[#f5ff3b]" />
+                    <span className="flex flex-col leading-tight">
+                      <span className="flex items-baseline gap-1">
+                        {/* keyed on the total so a change remounts the span and
+                            replays the pop-in; the ref suppresses the very
+                            first paint so cached values don't animate. */}
+                        <motion.span
+                          key={profile.totalTrophies}
+                          initial={
+                            trophyFirstPaint.current || shouldReduceMotion
+                              ? false
+                              : { opacity: 0, y: -4, scale: 0.9 }
+                          }
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          transition={{ duration: 0.3, ease: "easeOut" }}
+                          className="text-sm font-semibold text-[#f5ff3b]"
+                        >
+                          {Number(profile.totalTrophies || 0).toLocaleString()}
+                        </motion.span>
+                        <span className="text-[10px] uppercase tracking-wider text-[#f5ff3b]/70">
+                          Trophies
+                        </span>
+                      </span>
+                      <span
+                        data-testid="nav-coins"
+                        className="flex items-center gap-1 text-[11px] font-semibold text-[#ffd700]"
+                      >
+                        <IconCoins size={12} className="shrink-0" aria-hidden="true" />
+                        {profile.balance === null
+                          ? "—"
+                          : Number(profile.balance).toLocaleString()}
+                        <span className="text-[9px] uppercase tracking-wider text-[#ffd700]/70">
+                          Coins
+                        </span>
+                      </span>
                     </span>
                   </Link>
                   <div className="hidden items-center space-x-4 lg:flex">
@@ -684,6 +739,17 @@ function NavigationBar({ currentPath = "" }) {
                     <div className="text-xs text-[#f5ff3b]" data-testid="nav-trophies-mobile">
                       <IconTrophy size={12} className="mb-0.5 mr-0.5 inline" />{" "}
                       {`${Number(profile.totalTrophies || 0).toLocaleString()} Trophies`}
+                    </div>
+                    {/* The coin balance, directly under the trophies — the same
+                        pair the desktop chip shows. A dash means the wallet has
+                        not been read yet, never a fabricated 0. */}
+                    <div className="text-xs text-[#ffd700]" data-testid="nav-coins-mobile">
+                      <IconCoins size={12} className="mb-0.5 mr-0.5 inline" aria-hidden="true" />{" "}
+                      {`${
+                        profile.balance === null
+                          ? "—"
+                          : Number(profile.balance).toLocaleString()
+                      } Coins`}
                     </div>
                   </div>
                 </Link>

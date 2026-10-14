@@ -47,8 +47,11 @@ export default function GryndProWidget() {
           <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-300">
             ✦ GRYND PRO
           </p>
+          {/* What the membership actually grants TODAY (see lib/proBenefits.ts —
+              the same approved catalog the offer page renders, restricted to
+              the benefits that are really enforced). */}
           <p className="mt-0.5 text-xs text-[#9dd8ff]">
-            Active — ad-free with advanced stats &amp; analytics.
+            Active — ad-free browsing and gaming.
           </p>
           <Link
             href={UPGRADE_PRO_PATH}

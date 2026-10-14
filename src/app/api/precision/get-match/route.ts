@@ -8,10 +8,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { GUEST_DISPLAY_NAME, isGuestId } from "../../../../lib/guestIdentity";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../../../../db/client";
-import { glows, tokenSubscriptions, users } from "../../../../db/schema";
-import { ACTIVE_SUBSCRIPTION_STATUSES } from "../../../../lib/stripe/subscriptions";
+import { glows, users } from "../../../../db/schema";
 import { getFrameDecorations } from "../../../../lib/cosmetics";
 import {
   getWaitingLobby,
@@ -87,19 +86,11 @@ async function decoratePlayerBadges<T extends { userId: string }>(
       equippedCosmetics: users.equippedCosmetics,
       chatColor: users.chatColor,
       glowColor: glows.color,
-      isPremium: sql`(${tokenSubscriptions.status} IS NOT NULL)`,
     })
     .from(users)
     .leftJoin(
       glows,
       and(eq(glows.key, users.selectedGlow), eq(glows.enabled, true)),
-    )
-    .leftJoin(
-      tokenSubscriptions,
-      and(
-        eq(tokenSubscriptions.clerkId, users.clerkId),
-        inArray(tokenSubscriptions.status, ACTIVE_SUBSCRIPTION_STATUSES),
-      ),
     )
     .where(inArray(users.clerkId, humanIds));
   const iconByUser = new Map<string, string | null>();
@@ -113,11 +104,11 @@ async function decoratePlayerBadges<T extends { userId: string }>(
   );
   for (const row of rows) {
     iconByUser.set(String(row.clerkId), row.iconKey || null);
+    // An owned glow wins; the free-form chat color is the fallback and is
+    // available to every signed-in player (it is no longer a membership perk).
     colorByUser.set(
       String(row.clerkId),
-      row.glowColor ||
-        (Boolean(row.isPremium) ? row.chatColor || null : null) ||
-        null,
+      row.glowColor || row.chatColor || null,
     );
     frameByUser.set(String(row.clerkId), decorationByClerkId.get(String(row.clerkId)) || null);
   }

@@ -57,7 +57,12 @@ function isProPlanDisplay(value: unknown): value is ProPlanDisplay {
     !!value &&
     typeof value === "object" &&
     typeof (value as ProPlanDisplay).key === "string" &&
-    typeof (value as ProPlanDisplay).priceUsd === "string" &&
+    // `priceDisplay` is what the server sends now (an amount plus the currency
+    // symbol it is in). `priceUsd` is accepted so a response cached by a tab
+    // running the previous build is still recognised as a plan rather than
+    // discarded — normalizePlanDisplay below will not render its prices.
+    (typeof (value as ProPlanDisplay).priceDisplay === "string" ||
+      typeof (value as unknown as { priceUsd?: unknown }).priceUsd === "string") &&
     Array.isArray((value as ProPlanDisplay).perks)
   );
 }
@@ -66,12 +71,26 @@ function isProPlanDisplay(value: unknown): value is ProPlanDisplay {
  * Normalise a server plan for rendering. An older cached response (or a
  * partially-degraded one) may not carry `billingOptions`; the catalog defaults
  * are used so the selector always has three options to show.
+ *
+ * The same fallback covers a response from the build BEFORE multi-currency:
+ * its options carry a bare USD amount (`priceUsd`) and no currency, and
+ * rendering those would mean writing a currency symbol we cannot vouch for.
+ * The catalog defaults are the base-currency amounts, which is what Stripe
+ * charges when no localized price is configured — honest, and this can only
+ * happen for the ~30s a tab holds a pre-deploy snapshot.
  */
 function normalizePlanDisplay(plan: ProPlanDisplay): ProPlanDisplay {
-  if (Array.isArray(plan.billingOptions) && plan.billingOptions.length > 0) {
-    return plan;
-  }
-  return { ...plan, billingOptions: PRO_BILLING_OPTIONS };
+  const options = plan.billingOptions;
+  const renderable =
+    Array.isArray(options) &&
+    options.length > 0 &&
+    options.every(
+      (option) =>
+        typeof option?.priceDisplay === "string" &&
+        typeof option?.currency === "string",
+    );
+
+  return renderable ? plan : { ...plan, billingOptions: PRO_BILLING_OPTIONS };
 }
 
 // ── Shared, deduplicated membership store ────────────────────────────────
