@@ -137,6 +137,7 @@
     "test:pro-stats": "node --import tsx --test tests/pro-stats.test.mjs",
     "test:pro-stats-db": "node --import tsx --env-file=.env.local --test tests/pro-stats-db.test.mjs",
     "verify:pro-stats": "node --import tsx qa/pro-stats-check.mjs",
+    "verify:monetag": "node qa/monetag-browser-check.mjs",
     "test:multicurrency": "node --import tsx --test --experimental-test-module-mocks tests/pro-multicurrency.test.mjs",
     "test:bot-turns": "node --import tsx --test tests/bot-opponents-turn.test.mjs",
     "test:game-routes": "node --import tsx --test tests/game-route-public.test.mjs",

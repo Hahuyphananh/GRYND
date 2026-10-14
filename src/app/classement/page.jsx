@@ -1,5 +1,6 @@
 import PageClient from "./PageClient";
 import AdSenseScript from "../../components/AdSenseScript";
+import MonetagScript from "../../components/MonetagScript";
 import AdSlot from "../../components/AdSlot";
 
 export const metadata = {
@@ -14,6 +15,7 @@ export default function Page() {
   return (
     <>
       <AdSenseScript />
+      <MonetagScript />
       <PageClient adSlot={<AdSlot placement="leaderboard" />} />
     </>
   );

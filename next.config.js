@@ -290,6 +290,29 @@ const nextConfig = {
       {
         source: "/:path*",
         headers: securityHeaders
+      },
+      // The Monetag service-worker file. Two things have to be true for the
+      // network's tag to be able to install it:
+      //
+      //   * the file must be reachable at the site ROOT (/sw1.js) — a service
+      //     worker's scope is its own directory, so this is the only path that
+      //     gives it the root scope the network's push/vignette formats expect;
+      //     public/sw1.js is what serves it (a copy at the repo root would never
+      //     be served at all — the same trap the old root sw.js fell into).
+      //   * it must NOT be cached, or a worker update can be pinned to a stale
+      //     revision for hours. `no-store` is the safe answer for a 156-byte
+      //     file the browser fetches once per update check.
+      //
+      // `Service-Worker-Allowed: /` states the root scope explicitly rather than
+      // relying on the script's own location. It is not a permission grant we
+      // control — the browser still decides whether the network's tag may
+      // register — it just keeps the served file honest about its scope.
+      {
+        source: "/sw1.js",
+        headers: [
+          { key: "Cache-Control", value: "no-store" },
+          { key: "Service-Worker-Allowed", value: "/" }
+        ]
       }
     ];
   }

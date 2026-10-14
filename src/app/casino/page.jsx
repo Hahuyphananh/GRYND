@@ -1,5 +1,6 @@
 import PageClient from "./PageClient";
 import AdSenseScript from "../../components/AdSenseScript";
+import MonetagScript from "../../components/MonetagScript";
 import AdSlot from "../../components/AdSlot";
 import GameDiscovery from "../../components/games/GameDiscovery";
 import { GAME_INDEX } from "../../lib/gameLandingPages";
@@ -22,6 +23,7 @@ export default function Page() {
   return (
     <>
       <AdSenseScript />
+      <MonetagScript />
       {/* Games HUB only — the individual game lobbies keep the loader they
           already had, and no slot exists on any match/board route. */}
       {/* `discoverySlot` is the SERVER-rendered discovery content (skills and

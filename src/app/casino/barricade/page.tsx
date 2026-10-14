@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import PageClient from "./PageClient";
 import AdSenseScript from "../../../components/AdSenseScript";
+import MonetagScript from "../../../components/MonetagScript";
 import { ogImageUrl } from "../../../lib/ogImages";
 
 const title = "Barricade | GRYND";
@@ -40,6 +41,7 @@ export default function Page() {
   return (
     <>
       <AdSenseScript />
+      <MonetagScript />
       <PageClient />
     </>
   );

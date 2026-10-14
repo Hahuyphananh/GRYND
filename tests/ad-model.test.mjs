@@ -29,10 +29,15 @@ import { join, relative, sep } from "node:path";
 import {
   AD_PLACEMENT_ENV,
   DEFAULT_ADSENSE_PUBLISHER_ID,
+  DEFAULT_MONETAG_ZONE,
+  MONETAG_FRAME_HOSTS,
+  MONETAG_TAG_SRC,
   adUnitId,
   adsensePublisherId,
   adsEnabled,
   hasAnyConfiguredAdUnit,
+  monetagEnabled,
+  monetagZoneId,
   normalizePublisherId,
 } from "../src/lib/ads.ts";
 
@@ -48,6 +53,8 @@ const ENTITLEMENT = read("src/lib/adEntitlement.ts");
 const SLOT = read("src/components/AdSlot.tsx");
 const UNIT = read("src/components/AdUnit.tsx");
 const LOADER = read("src/components/AdSenseScript.tsx");
+const MONETAG = read("src/components/MonetagScript.tsx");
+const PROXY = read("src/proxy.ts");
 
 /** Every page file under src/app, repo-relative POSIX. */
 function allPages(dir = "src/app") {
@@ -161,12 +168,14 @@ test("every ad slot or loader sits on a non-game browsing page", () => {
 
 test("no ad capability exists inside gameplay", () => {
   // Match/board routes are dynamic routes; nothing there may carry a slot or
-  // even the loader.
+  // even a loader — EITHER provider's loader (the rule is about gameplay, not
+  // about one vendor).
   for (const page of allPages()) {
     if (!/\[[^\]]+\]/.test(page)) continue;
     const source = read(page);
     assert.ok(!/<AdSlot\s/.test(source), `${page} is a match route and must have no ad slot`);
     assert.ok(!/AdSenseScript/.test(source), `${page} is a match route and must have no ad loader`);
+    assert.ok(!/MonetagScript/.test(source), `${page} is a match route and must have no Monetag loader`);
   }
 
   // Games whose lobby and board share one route stay entirely ad-free.
@@ -175,6 +184,7 @@ test("no ad capability exists inside gameplay", () => {
     const source = read(page);
     assert.ok(!/<AdSlot\s/.test(source), `${page} plays on its lobby URL — no ad slot`);
     assert.ok(!/AdSenseScript/.test(source), `${page} plays on its lobby URL — no ad loader`);
+    assert.ok(!/MonetagScript/.test(source), `${page} plays on its lobby URL — no Monetag loader`);
   }
 });
 
@@ -221,6 +231,113 @@ test("the ad provider is swappable without touching a page", () => {
     );
   }
   assert.ok(exists("src/lib/ads.ts"), "the provider config module must exist");
+});
+
+// ── The second provider (Monetag) ───────────────────────────────────────────
+// It is held to exactly the same model as the first: server-side entitlement,
+// configuration-driven identifiers, browsing pages only, nothing inside
+// gameplay. These assertions exist because a second loader is precisely where
+// the "ads never reach gameplay" rule and the "no client flag" rule get
+// forgotten.
+
+test("the Monetag loader is the provider's own tag, for a configured zone", () => {
+  assert.equal(MONETAG_TAG_SRC, "https://quge5.com/88/tag.min.js");
+  assert.equal(DEFAULT_MONETAG_ZONE, "295730");
+
+  // The tag markup: the loader's src, the zone as `data-zone`, async, and the
+  // Cloudflare opt-out the provider's snippet ships with.
+  assert.match(MONETAG, /src=\{MONETAG_TAG_SRC\}/, "the src must come from the config module");
+  assert.match(MONETAG, /data-zone=\{zone\}/, "the zone must be the configured one");
+  assert.match(MONETAG, /^\s*async$/m, "the tag must be async");
+  assert.match(MONETAG, /data-cfasync="false"/);
+
+  // The zone is never written into the component — same rule as the publisher
+  // id, so pointing the app at another zone is configuration, not a code edit.
+  assert.ok(
+    !MONETAG.includes(DEFAULT_MONETAG_ZONE),
+    "the zone id must not be hardcoded in the loader",
+  );
+  assert.match(MONETAG, /monetagZoneId\(\)/);
+  assert.match(MONETAG, /monetagEnabled\(\)/);
+});
+
+test("a malformed or disabled Monetag config renders nothing", () => {
+  // Ads are on by default in this checkout, and the zone falls back to the one
+  // this property is registered under.
+  assert.equal(monetagEnabled(), true);
+  assert.equal(monetagZoneId(), DEFAULT_MONETAG_ZONE);
+
+  const JUNK = ["", "   ", "29573O", "zone-295730", "12", "<script>"];
+  const previous = process.env.NEXT_PUBLIC_MONETAG_ZONE;
+  try {
+    for (const value of JUNK) {
+      process.env.NEXT_PUBLIC_MONETAG_ZONE = value;
+      // A blank value means "unset" and takes the documented fallback; junk is
+      // refused outright so a typo cannot load somebody else's zone.
+      const resolved = monetagZoneId();
+      assert.ok(
+        value.trim() === "" ? resolved === DEFAULT_MONETAG_ZONE : resolved === null,
+        `${JSON.stringify(value)} must not resolve to an emitted zone`,
+      );
+    }
+    process.env.NEXT_PUBLIC_MONETAG_ZONE = "12031482";
+    assert.equal(monetagZoneId(), "12031482", "a configured zone wins");
+
+    process.env.NEXT_PUBLIC_MONETAG_ENABLED = "false";
+    assert.equal(monetagEnabled(), false, "the provider must be switchable off");
+    assert.match(MONETAG, /if \(!monetagEnabled\(\)\) return null;/);
+  } finally {
+    if (previous === undefined) delete process.env.NEXT_PUBLIC_MONETAG_ZONE;
+    else process.env.NEXT_PUBLIC_MONETAG_ZONE = previous;
+    delete process.env.NEXT_PUBLIC_MONETAG_ENABLED;
+  }
+});
+
+test("a GRYND PRO member receives no Monetag tag either", () => {
+  assert.match(MONETAG, /isAdFreeViewer\(\)/, "the loader must check entitlement server-side");
+  assert.match(
+    code(MONETAG),
+    /await isAdFreeViewer\(\)/,
+    "the check must be awaited, not a rendered promise",
+  );
+  assert.ok(!/premium/i.test(MONETAG), "the loader takes no caller-supplied premium flag");
+  assert.ok(!/"use client"/.test(MONETAG), "it must stay a server component");
+  for (const [name, source] of Object.entries({ MONETAG })) {
+    assert.ok(
+      !/(localStorage|sessionStorage|document\.cookie)/.test(source),
+      `${name} must not read entitlement from the client`,
+    );
+  }
+});
+
+test("the Monetag loader sits on exactly the pages that carry the AdSense one", () => {
+  const withAds = allPages().filter((p) => /<AdSenseScript\s*\/>/.test(read(p)));
+  const withMonetag = allPages().filter((p) => /<MonetagScript\s*\/>/.test(read(p)));
+  assert.deepEqual(
+    withMonetag,
+    withAds,
+    "the two loaders must share one allow-list — a page that gains one must gain both",
+  );
+  // Never global: the layout must not mount it, and each page renders it once.
+  assert.ok(!/MonetagScript/.test(read("src/app/layout.tsx")), "the loader must not be global");
+  for (const page of withMonetag) {
+    const renders = read(page).match(/<MonetagScript\s*\/>/g) || [];
+    assert.equal(renders.length, 1, `${page} must render <MonetagScript /> exactly once`);
+  }
+});
+
+test("the CSP lets Monetag's ad frames through", () => {
+  // script-src/img-src/connect-src already allow all of `https:`, so the loader
+  // always downloads; frame-src is the directive that decides whether a format
+  // can actually paint. Each host named here comes from the zone's own config.
+  const frameSrc = PROXY.match(/frame-src [^;]+;/);
+  assert.ok(frameSrc, "the CSP must keep an explicit frame-src directive");
+  for (const host of MONETAG_FRAME_HOSTS) {
+    assert.ok(
+      frameSrc[0].includes(`https://${host}`),
+      `the CSP must allow ${host}, or its formats load and paint nothing`,
+    );
+  }
 });
 
 test("public/ads.txt still authorises the configured publisher", () => {

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ogImageUrl } from "../../../lib/ogImages";
 import PageClient from "./PageClient";
 import AdSenseScript from "../../../components/AdSenseScript";
+import MonetagScript from "../../../components/MonetagScript";
 
 // Next.js replaces the layout's `openGraph`/`twitter` block wholesale rather
 // than deep-merging it, so every field the card needs is restated here.
@@ -46,6 +47,7 @@ export default function Page() {
   return (
     <>
       <AdSenseScript />
+      <MonetagScript />
       <PageClient />
     </>
   );

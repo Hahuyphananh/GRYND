@@ -1,5 +1,6 @@
 import PageClient from "./PageClient";
 import AdSenseScript from "../../components/AdSenseScript";
+import MonetagScript from "../../components/MonetagScript";
 import AdSlot from "../../components/AdSlot";
 
 export const metadata = {
@@ -18,6 +19,7 @@ export default function Page() {
           the loader nor the slot — this surfaces the very membership they
           might cancel, so the entitlement check matters here. */}
       <AdSenseScript />
+      <MonetagScript />
       <PageClient adSlot={<AdSlot placement="profile" />} />
     </>
   );

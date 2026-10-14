@@ -1,5 +1,6 @@
 import PageClient from "./PageClient";
 import AdSenseScript from "../components/AdSenseScript";
+import MonetagScript from "../components/MonetagScript";
 import AdSlot from "../components/AdSlot";
 import HomeExplainer from "../components/home/HomeExplainer";
 import {
@@ -76,6 +77,7 @@ export default async function Page() {
           The loader and the slot both decide server-side whether this viewer
           gets ads at all: GRYND PRO members receive neither. */}
       <AdSenseScript />
+      <MonetagScript />
       {/* Passed as a child so the slot lands in the page's own content column,
           above the footer — never over the hero, nav or a control. */}
       {/* `explainerSlot` is the server-rendered block that explains what GRYND
