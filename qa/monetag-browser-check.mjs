@@ -6,10 +6,11 @@
 //   1. whether the loader's request chain succeeds (the tag script itself, the
 //      zone endpoint it fetches, and every extra format host the zone returns);
 //      and
-//   2. whether the network's tag registers /sw1.js, and at what scope — a second
-//      worker at the ROOT scope would displace next-pwa's /sw.js, which is the
-//      one regression this integration can cause. The check reports it as a
-//      finding, it does not fail on it.
+//   2. whether ANY worker claims the ROOT scope — a second one there would
+//      displace next-pwa's /sw.js, which is the one regression this integration
+//      can cause. The network names its worker itself (`swName`, "sw.js"), so
+//      watch for a registration pointing at /sw.js or at our own /sw1.js. The
+//      check reports it as a finding, it does not fail on it.
 //
 // Run the app first (`npm run build && npx next start -p 3112`), then:
 //   node qa/monetag-browser-check.mjs [url]
@@ -43,9 +44,14 @@ try {
   const requests = [];
   const failures = [];
   const consoleErrors = [];
+  const workerRequests = [];
 
   page.on("request", (req) => {
     if (AD_HOSTS.test(req.url())) requests.push(`${req.method()} ${req.url()}`);
+    // The worker file the network asks OUR origin for, if it ever asks: the
+    // zone names it (`swName`), and /sw.js here is next-pwa's.
+    const path = new URL(req.url()).pathname;
+    if (path === "/sw.js" || path === "/sw1.js") workerRequests.push(`${path} (${req.resourceType()})`);
   });
   page.on("requestfailed", (req) => {
     failures.push(`${req.url()} — ${req.failure()?.errorText ?? "failed"}`);
@@ -80,6 +86,7 @@ try {
   for (const f of failures) console.log(`  ${f}`);
   console.log(`\nconsole errors (${consoleErrors.length}):`);
   for (const e of consoleErrors.slice(0, 10)) console.log(`  ${e}`);
+  console.log(`\nrequests to our own origin for a worker file: ${workerRequests.length ? workerRequests.join(", ") : "none (the zone's swName is \"sw.js\", which next-pwa owns)"}`);
   console.log(`\nservice-worker registrations (${registrations.length}):`);
   for (const r of registrations) {
     console.log(`  scope=${r.scope} script=${r.scriptURL} state=${r.state}`);

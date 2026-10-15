@@ -80,12 +80,15 @@ export const metadata = {
   // crawler reads to approve the property. The value is the public token from
   // the Monetag dashboard's "add site" flow — it is not a secret.
   //
-  // This is the META-TAG method on purpose: the alternative (serving Monetag's
-  // sw.js from the site root) is not available here, because /sw.js is already
-  // owned by next-pwa, which regenerates public/sw.js on every build. See
-  // next.config.js — if the service-worker-based ad formats (Vignette /
-  // In-Page Push) are ever wanted, Monetag's bootstrap has to be merged INTO
-  // the next-pwa worker rather than replacing it.
+  // This is the META-TAG method on purpose: the file method wants Monetag's
+  // worker at the site ROOT under a name their own zone endpoint decides
+  // (`"swName":"sw.js"`, measured), and /sw.js is already owned by next-pwa,
+  // which regenerates public/sw.js on every build. Their worker is served as
+  // public/sw1.js instead — unused until Monetag renames it, see next.config.js.
+  // The alternative (merging their bootstrap INTO the next-pwa worker) is
+  // deliberately not done automatically: their worker installs a `fetch` handler
+  // (verified by executing it), so it would sit next to workbox's routing in the
+  // same worker, which is exactly how offline caching regresses.
   other: {
     monetag: "5ff7ccfa99ccd949f62b8eeaadc1d677",
   },

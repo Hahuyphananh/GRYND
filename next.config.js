@@ -291,17 +291,28 @@ const nextConfig = {
         source: "/:path*",
         headers: securityHeaders
       },
-      // The Monetag service-worker file. Two things have to be true for the
-      // network's tag to be able to install it:
+      // The Monetag worker file (public/sw1.js), served at the root path.
       //
-      //   * the file must be reachable at the site ROOT (/sw1.js) — a service
-      //     worker's scope is its own directory, so this is the only path that
-      //     gives it the root scope the network's push/vignette formats expect;
-      //     public/sw1.js is what serves it (a copy at the repo root would never
-      //     be served at all — the same trap the old root sw.js fell into).
+      // READ THIS BEFORE CHANGING ANYTHING HERE. The file's NAME is not ours to
+      // pick: the network's zone endpoint answers with `"swName":"sw.js"` and
+      // their loader registers that name, i.e. it asks this site for /sw.js —
+      // which next-pwa owns and regenerates on every build. So this route is the
+      // "if Monetag ever sets swName to sw1.js" route, and nothing requests it
+      // today (verified in a real browser against a production build: zero
+      // registrations, zero requests for /sw1.js). Serving it costs a 156-byte
+      // file and keeps that option open; registering it from our own code would
+      // not — it would put a second worker at the root scope beside next-pwa's.
+      //
+      // The two headers are the ones a worker file needs:
+      //
+      //   * it must be reachable at the site ROOT — a worker's scope is its own
+      //     directory, so the root is the only path that gives it the scope the
+      //     network's formats expect. public/ is what serves it; a copy at the
+      //     repo root would never be served at all, which is the trap the older
+      //     root sw.js fell into.
       //   * it must NOT be cached, or a worker update can be pinned to a stale
-      //     revision for hours. `no-store` is the safe answer for a 156-byte
-      //     file the browser fetches once per update check.
+      //     revision. `no-store` is the answer for a file the browser fetches
+      //     once per update check.
       //
       // `Service-Worker-Allowed: /` states the root scope explicitly rather than
       // relying on the script's own location. It is not a permission grant we

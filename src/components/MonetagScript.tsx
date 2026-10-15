@@ -41,15 +41,39 @@
  * consent-gated third parties (GA4, PostHog, Sentry) keep their own gating in
  * their own components — this change does not loosen any of them.
  *
- * A service worker is NOT registered here — `/sw.js` belongs to next-pwa (it
- * regenerates it on every build), and the network's own worker file is the one
- * its dashboard hands out as `sw1.js` precisely so it does not clash with a
- * PWA's `/sw.js`. That file is served from public/sw1.js (see next.config.js for
- * the no-store + root-scope headers): the file being SERVED is all this app
- * owes the network — whether it is installed is the tag's decision, which also
- * means the tag, not our code, is what can put a second worker at the root
- * scope (which would displace next-pwa's, and is the one thing to watch if
- * offline caching ever regresses).
+ * ONE TAG, ALL FOUR FORMATS — INCLUDING ONCLICK.
+ * The zone below is a Monetag "MultiTag", not an In-Page-Push-only zone: with
+ * one tag in the page the network activates every format of the zone — Onclick,
+ * Push Notifications, In-Page Push and Vignette Banner (its own documentation:
+ * "MultiTag consists of 4 ad formats", one tag). Measured against zone 295730,
+ * the tag fetches https://6opo.com/88/295730 and that answer pulls the other
+ * three format scripts (auqot.com/pfe…?z=12031484, ekhay.com/vignette.min.js?z=12031483,
+ * b3mny.com/tag.min.js?z=12031482), while the Onclick handler is the tag's own
+ * `function onclick` code in quge5.com/88/tag.min.js. There is therefore NO
+ * separate Onclick script to install, and adding one would double-inject the
+ * same zone — a duplicate popunder, not a second format.
+ *
+ * A service worker is NOT registered here, and this component must never start
+ * registering one. The NAME of the network's worker file is not ours to choose:
+ * their zone endpoint answers with `"swName":"sw.js"` (measured for zone
+ * 12031484) and their loader calls `navigator.serviceWorker.register(...)` with
+ * that name, i.e. it asks the site for /sw.js at the ROOT. On this site /sw.js
+ * belongs to next-pwa, which regenerates it on every build, so the network's
+ * worker cannot have that path. public/sw1.js (the same worker file, under the
+ * name it was renamed to by hand) is served from the root path with the
+ * no-store + root-scope headers instead — see next.config.js — which is a
+ * standing offer for the day Monetag sets this zone's `swName` to `sw1.js`.
+ * Until then nothing requests it: verified in a real browser against a
+ * production build, with notifications permitted and clicks simulated — zero
+ * registrations, zero requests for /sw1.js, and the tag's own four format
+ * scripts all loading. qa/monetag-browser-check.mjs (npm run verify:monetag)
+ * reports that same evidence on demand.
+ *
+ * Do not "fix" the unused file by registering it from our code: a second worker
+ * at the root scope displaces next-pwa's, and the network's worker installs a
+ * `fetch` handler (verified by executing it), so folding that worker into
+ * next-pwa's would put it next to workbox's routing in the same worker — a
+ * human decision, not a side effect of this component.
  *
  * This is a server component with no client JavaScript: React hoists `async`
  * scripts into <head>, deduplicated, so rendering it here lands it where the

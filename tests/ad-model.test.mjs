@@ -253,8 +253,10 @@ test("the Monetag loader is the provider's own tag, for a configured zone", () =
 
   // The zone is never written into the component — same rule as the publisher
   // id, so pointing the app at another zone is configuration, not a code edit.
+  // Prose may say which zone was measured against; the CODE must not carry it —
+  // that is what makes pointing the app at another zone configuration, not an edit.
   assert.ok(
-    !MONETAG.includes(DEFAULT_MONETAG_ZONE),
+    !code(MONETAG).includes(DEFAULT_MONETAG_ZONE),
     "the zone id must not be hardcoded in the loader",
   );
   assert.match(MONETAG, /monetagZoneId\(\)/);
@@ -347,4 +349,53 @@ test("public/ads.txt still authorises the configured publisher", () => {
     adsTxt.includes(`google.com, ${publisher}, DIRECT, f08c47fec0942fa0`),
     "ads.txt must list the configured publisher as a DIRECT seller",
   );
+});
+// ── The network's worker file ───────────────────────────────────────────────
+// The one regression this integration can cause is a SECOND worker at the ROOT
+// scope, which would displace next-pwa's /sw.js. Monetag names its worker itself
+// (its zone endpoint answers `"swName":"sw.js"`), so the supported move is to
+// SERVE the file under a path that does not clash and never register it — and
+// "register it, the file is just sitting there" is precisely the well-meant change
+// that breaks offline caching. Both halves are pinned here.
+
+test("no Monetag surface ever registers a service worker", () => {
+  // Comments are stripped, so prose that explains the rule cannot satisfy it.
+  for (const [name, source] of Object.entries({
+    "MonetagScript.tsx": MONETAG,
+    "ads.ts": CONFIG,
+    "layout.tsx": read("src/app/layout.tsx"),
+    "next.config.js": read("next.config.js"),
+  })) {
+    assert.ok(
+      !/serviceWorker/.test(code(source)),
+      `${name} must not register a worker — next-pwa owns the root scope`,
+    );
+  }
+  // next-pwa stays the only thing that registers anything, and it does so at the
+  // root, which is what the network's formats would otherwise fight over.
+  assert.match(read("next.config.js"), /register: true/);
+});
+
+test("the network's worker file is served from the root under a safe name", () => {
+  assert.ok(exists("public/sw1.js"), "the dashboard's worker file is served from public/");
+  assert.ok(
+    !exists("sw.js"),
+    "a copy at the repo root is never served (only public/ is) — and this path is next-pwa's",
+  );
+  assert.ok(
+    !exists("sw1.js"),
+    "a copy at the repo root would never be served; public/ is the only served root",
+  );
+
+  // Served at the root path, uncached, with the root scope stated explicitly.
+  const conf = read("next.config.js");
+  assert.match(conf, /source: "\/sw1\.js"/, "the worker must be served from the root path");
+  assert.match(conf, /\{ key: "Cache-Control", value: "no-store" \}/);
+  assert.match(conf, /\{ key: "Service-Worker-Allowed", value: "\/" \}/);
+
+  // …and it is the network's own bootstrap, bound to one of its zones.
+  const worker = read("public/sw1.js");
+  assert.match(worker, /self\.options/, "the file must be the network's own worker");
+  assert.match(worker, /importScripts\(/, "…which pulls the network's worker script");
+  assert.match(worker, /"zoneId"/, "…and is bound to a zone");
 });
