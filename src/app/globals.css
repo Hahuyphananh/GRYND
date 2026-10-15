@@ -152,6 +152,50 @@ body {
   animation: fadeIn 0.3s ease-out;
 }
 
+/* Route-change transition — the shared page wrapper for every route
+   (src/components/RouteTransition.jsx). Both animations are one-shot and the
+   wrapper is re-keyed by the pathname, so they replay on each navigation.
+
+   `route-fade-in` deliberately has NO opacity-0 resting state: the wrapper's
+   natural opacity is 1, so a cancelled, skipped or never-started animation
+   still leaves the page visible. The page used to be animated by framer-motion
+   instead, and an AnimatePresence `mode="wait"` hand-off that Next's navigation
+   interleaved with left this wrapper stuck on its `initial` opacity — a page
+   fully built in the DOM that painted nothing. See
+   docs/route-transition-blank-page.md. */
+@keyframes routeFadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+.route-fade-in {
+  animation: routeFadeIn 0.25s ease-out;
+}
+
+/* The route change's darkening wipe. The resting state (`.route-wipe`) is
+   opacity 0 — transparent — and is applied unconditionally: if the animation
+   never runs the veil stays invisible instead of covering the page it sits
+   over, and a veil without it would rest at its natural opacity of 1, i.e. an
+   opaque sheet over the page. Only the flash is conditional, so it does not
+   play on a hard load. */
+@keyframes routeWipe {
+  0% {
+    opacity: 0.34;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.route-wipe {
+  opacity: 0;
+}
+.route-wipe-flash {
+  animation: routeWipe 0.28s ease-in-out forwards;
+}
+
 @keyframes scaleIn {
   0% {
     opacity: 0;

@@ -1,0 +1,1078 @@
+{
+  "base": "http://localhost:3000",
+  "generatedAt": "2026-10-15T20:53:51.541Z",
+  "repeats": 3,
+  "results": [
+    {
+      "game": "Chess create (no opponent yet)",
+      "hub": "/casino/chess",
+      "path": "/casino/chess/10?gameId=1&color=white&timer=5min",
+      "clientNav": true,
+      "runs": [
+        {
+          "finalUrl": "http://localhost:3000/games/chess/10?gameId=1&color=white&timer=5min",
+          "contentPaintedPct": 7.67,
+          "contentTextChars": 571,
+          "visibleContentNodes": 23,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/chess/10?gameId=1&color=white&timer=5min",
+          "contentPaintedPct": 7.67,
+          "contentTextChars": 571,
+          "visibleContentNodes": 23,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/chess/10?gameId=1&color=white&timer=5min",
+          "contentPaintedPct": 7.67,
+          "contentTextChars": 571,
+          "visibleContentNodes": 23,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        }
+      ],
+      "invisible": false,
+      "jsErrors": [],
+      "pageErrors": [],
+      "crashed": false,
+      "finalUrl": "http://localhost:3000/games/chess/10?gameId=1&color=white&timer=5min",
+      "contentPaintedPct": 7.67,
+      "contentTextChars": 571,
+      "routeWrapperOpacity": 1,
+      "invisibleRuns": 0,
+      "totalRuns": 3
+    },
+    {
+      "game": "Chess create (matched at once)",
+      "hub": "/casino/chess",
+      "path": "/casino/chess-game/1?color=white&timer=5min",
+      "clientNav": true,
+      "runs": [
+        {
+          "finalUrl": "http://localhost:3000/games/chess-game/1?color=white&timer=5min",
+          "contentPaintedPct": 42.39,
+          "contentTextChars": 594,
+          "visibleContentNodes": 104,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/chess-game/1?color=white&timer=5min",
+          "contentPaintedPct": 42.39,
+          "contentTextChars": 594,
+          "visibleContentNodes": 104,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/chess-game/1?color=white&timer=5min",
+          "contentPaintedPct": 42.39,
+          "contentTextChars": 594,
+          "visibleContentNodes": 104,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        }
+      ],
+      "invisible": false,
+      "jsErrors": [],
+      "pageErrors": [],
+      "crashed": false,
+      "finalUrl": "http://localhost:3000/games/chess-game/1?color=white&timer=5min",
+      "contentPaintedPct": 42.39,
+      "contentTextChars": 594,
+      "routeWrapperOpacity": 1,
+      "invisibleRuns": 0,
+      "totalRuns": 3
+    },
+    {
+      "game": "Chess vs AI",
+      "hub": "/casino/chess",
+      "path": "/casino/chess/ai?gameId=1&difficulty=1&timer=300&color=white",
+      "clientNav": true,
+      "runs": [
+        {
+          "finalUrl": "http://localhost:3000/games/chess/ai?gameId=1&difficulty=1&timer=300&color=white",
+          "contentPaintedPct": 47.36,
+          "contentTextChars": 678,
+          "visibleContentNodes": 112,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/chess/ai?gameId=1&difficulty=1&timer=300&color=white",
+          "contentPaintedPct": 47.36,
+          "contentTextChars": 678,
+          "visibleContentNodes": 112,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/chess/ai?gameId=1&difficulty=1&timer=300&color=white",
+          "contentPaintedPct": 47.36,
+          "contentTextChars": 678,
+          "visibleContentNodes": 112,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        }
+      ],
+      "invisible": false,
+      "jsErrors": [],
+      "pageErrors": [],
+      "crashed": false,
+      "finalUrl": "http://localhost:3000/games/chess/ai?gameId=1&difficulty=1&timer=300&color=white",
+      "contentPaintedPct": 47.36,
+      "contentTextChars": 678,
+      "routeWrapperOpacity": 1,
+      "invisibleRuns": 0,
+      "totalRuns": 3
+    },
+    {
+      "game": "Pool Masters create",
+      "hub": "/casino/pool-masters",
+      "path": "/casino/pool-masters/game/1",
+      "clientNav": true,
+      "runs": [
+        {
+          "finalUrl": "http://localhost:3000/games/pool-masters/game/1",
+          "contentPaintedPct": 16.98,
+          "contentTextChars": 679,
+          "visibleContentNodes": 32,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/pool-masters/game/1",
+          "contentPaintedPct": 16.98,
+          "contentTextChars": 679,
+          "visibleContentNodes": 32,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/pool-masters/game/1",
+          "contentPaintedPct": 16.98,
+          "contentTextChars": 679,
+          "visibleContentNodes": 32,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        }
+      ],
+      "invisible": false,
+      "jsErrors": [],
+      "pageErrors": [],
+      "crashed": false,
+      "finalUrl": "http://localhost:3000/games/pool-masters/game/1",
+      "contentPaintedPct": 16.98,
+      "contentTextChars": 679,
+      "routeWrapperOpacity": 1,
+      "invisibleRuns": 0,
+      "totalRuns": 3
+    },
+    {
+      "game": "Precision create",
+      "hub": "/casino/precision",
+      "path": "/casino/precision/game/1",
+      "clientNav": true,
+      "runs": [
+        {
+          "finalUrl": "http://localhost:3000/games/precision/game/1",
+          "contentPaintedPct": 64.76,
+          "contentTextChars": 570,
+          "visibleContentNodes": 13,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/precision/game/1",
+          "contentPaintedPct": 64.76,
+          "contentTextChars": 570,
+          "visibleContentNodes": 13,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/precision/game/1",
+          "contentPaintedPct": 64.76,
+          "contentTextChars": 570,
+          "visibleContentNodes": 13,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        }
+      ],
+      "invisible": false,
+      "jsErrors": [],
+      "pageErrors": [],
+      "crashed": false,
+      "finalUrl": "http://localhost:3000/games/precision/game/1",
+      "contentPaintedPct": 64.76,
+      "contentTextChars": 570,
+      "routeWrapperOpacity": 1,
+      "invisibleRuns": 0,
+      "totalRuns": 3
+    },
+    {
+      "game": "Mini Golf create",
+      "hub": "/casino/mini-golf",
+      "path": "/casino/mini-golf/1",
+      "clientNav": true,
+      "runs": [
+        {
+          "finalUrl": "http://localhost:3000/games/mini-golf/1",
+          "contentPaintedPct": 2.79,
+          "contentTextChars": 387,
+          "visibleContentNodes": 9,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/mini-golf/1",
+          "contentPaintedPct": 2.8,
+          "contentTextChars": 387,
+          "visibleContentNodes": 9,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/mini-golf/1",
+          "contentPaintedPct": 2.79,
+          "contentTextChars": 387,
+          "visibleContentNodes": 9,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        }
+      ],
+      "invisible": false,
+      "jsErrors": [],
+      "pageErrors": [],
+      "crashed": false,
+      "finalUrl": "http://localhost:3000/games/mini-golf/1",
+      "contentPaintedPct": 2.79,
+      "contentTextChars": 387,
+      "routeWrapperOpacity": 1,
+      "invisibleRuns": 0,
+      "totalRuns": 3
+    },
+    {
+      "game": "Memory Grid create",
+      "hub": "/casino/memory-grid",
+      "path": "/casino/memory-grid/1",
+      "clientNav": true,
+      "runs": [
+        {
+          "finalUrl": "http://localhost:3000/games/memory-grid/1",
+          "contentPaintedPct": 3.67,
+          "contentTextChars": 401,
+          "visibleContentNodes": 10,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/memory-grid/1",
+          "contentPaintedPct": 3.67,
+          "contentTextChars": 401,
+          "visibleContentNodes": 10,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/memory-grid/1",
+          "contentPaintedPct": 3.67,
+          "contentTextChars": 401,
+          "visibleContentNodes": 10,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        }
+      ],
+      "invisible": false,
+      "jsErrors": [],
+      "pageErrors": [],
+      "crashed": false,
+      "finalUrl": "http://localhost:3000/games/memory-grid/1",
+      "contentPaintedPct": 3.67,
+      "contentTextChars": 401,
+      "routeWrapperOpacity": 1,
+      "invisibleRuns": 0,
+      "totalRuns": 3
+    },
+    {
+      "game": "Barricade create",
+      "hub": "/casino/barricade",
+      "path": "/casino/barricade/1",
+      "clientNav": true,
+      "runs": [
+        {
+          "finalUrl": "http://localhost:3000/games/barricade/1",
+          "contentPaintedPct": 0.92,
+          "contentTextChars": 412,
+          "visibleContentNodes": 9,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/barricade/1",
+          "contentPaintedPct": 0.92,
+          "contentTextChars": 412,
+          "visibleContentNodes": 9,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/barricade/1",
+          "contentPaintedPct": 0.92,
+          "contentTextChars": 412,
+          "visibleContentNodes": 9,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        }
+      ],
+      "invisible": false,
+      "jsErrors": [],
+      "pageErrors": [],
+      "crashed": false,
+      "finalUrl": "http://localhost:3000/games/barricade/1",
+      "contentPaintedPct": 0.92,
+      "contentTextChars": 412,
+      "routeWrapperOpacity": 1,
+      "invisibleRuns": 0,
+      "totalRuns": 3
+    },
+    {
+      "game": "Tic Tac Toe create",
+      "hub": "/casino/tic-tac-toe",
+      "path": "/casino/tic-tac-toe/1",
+      "clientNav": true,
+      "runs": [
+        {
+          "finalUrl": "http://localhost:3000/games/tic-tac-toe/1",
+          "contentPaintedPct": 0.9,
+          "contentTextChars": 389,
+          "visibleContentNodes": 9,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/tic-tac-toe/1",
+          "contentPaintedPct": 0.9,
+          "contentTextChars": 389,
+          "visibleContentNodes": 9,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/tic-tac-toe/1",
+          "contentPaintedPct": 0.9,
+          "contentTextChars": 389,
+          "visibleContentNodes": 9,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        }
+      ],
+      "invisible": false,
+      "jsErrors": [],
+      "pageErrors": [],
+      "crashed": false,
+      "finalUrl": "http://localhost:3000/games/tic-tac-toe/1",
+      "contentPaintedPct": 0.9,
+      "contentTextChars": 389,
+      "routeWrapperOpacity": 1,
+      "invisibleRuns": 0,
+      "totalRuns": 3
+    },
+    {
+      "game": "Mines PvP create",
+      "hub": "/casino/mines-pvp",
+      "path": "/casino/mines-pvp/1",
+      "clientNav": true,
+      "runs": [
+        {
+          "finalUrl": "http://localhost:3000/games/mines-pvp/1",
+          "contentPaintedPct": 34.52,
+          "contentTextChars": 412,
+          "visibleContentNodes": 9,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/mines-pvp/1",
+          "contentPaintedPct": 34.52,
+          "contentTextChars": 412,
+          "visibleContentNodes": 9,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/mines-pvp/1",
+          "contentPaintedPct": 34.52,
+          "contentTextChars": 412,
+          "visibleContentNodes": 9,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        }
+      ],
+      "invisible": false,
+      "jsErrors": [],
+      "pageErrors": [],
+      "crashed": false,
+      "finalUrl": "http://localhost:3000/games/mines-pvp/1",
+      "contentPaintedPct": 34.52,
+      "contentTextChars": 412,
+      "routeWrapperOpacity": 1,
+      "invisibleRuns": 0,
+      "totalRuns": 3
+    },
+    {
+      "game": "Four-In-A-Row create",
+      "hub": "/casino/four-in-a-row",
+      "path": "/casino/four-in-a-row/game/1",
+      "clientNav": true,
+      "runs": [
+        {
+          "finalUrl": "http://localhost:3000/games/four-in-a-row/game/1",
+          "contentPaintedPct": 20.83,
+          "contentTextChars": 586,
+          "visibleContentNodes": 43,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/four-in-a-row/game/1",
+          "contentPaintedPct": 20.83,
+          "contentTextChars": 586,
+          "visibleContentNodes": 43,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/four-in-a-row/game/1",
+          "contentPaintedPct": 20.83,
+          "contentTextChars": 586,
+          "visibleContentNodes": 43,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        }
+      ],
+      "invisible": false,
+      "jsErrors": [],
+      "pageErrors": [],
+      "crashed": false,
+      "finalUrl": "http://localhost:3000/games/four-in-a-row/game/1",
+      "contentPaintedPct": 20.83,
+      "contentTextChars": 586,
+      "routeWrapperOpacity": 1,
+      "invisibleRuns": 0,
+      "totalRuns": 3
+    },
+    {
+      "game": "Dots and Boxes create",
+      "hub": "/casino/dots-and-boxes",
+      "path": "/casino/dots-and-boxes/game/1",
+      "clientNav": true,
+      "runs": [
+        {
+          "finalUrl": "http://localhost:3000/games/dots-and-boxes/game/1",
+          "contentPaintedPct": 2.2,
+          "contentTextChars": 371,
+          "visibleContentNodes": 7,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/dots-and-boxes/game/1",
+          "contentPaintedPct": 2.2,
+          "contentTextChars": 371,
+          "visibleContentNodes": 7,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/dots-and-boxes/game/1",
+          "contentPaintedPct": 2.2,
+          "contentTextChars": 371,
+          "visibleContentNodes": 7,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        }
+      ],
+      "invisible": false,
+      "jsErrors": [],
+      "pageErrors": [],
+      "crashed": false,
+      "finalUrl": "http://localhost:3000/games/dots-and-boxes/game/1",
+      "contentPaintedPct": 2.2,
+      "contentTextChars": 371,
+      "routeWrapperOpacity": 1,
+      "invisibleRuns": 0,
+      "totalRuns": 3
+    },
+    {
+      "game": "Uno create",
+      "hub": "/casino/uno",
+      "path": "/casino/uno/game/1",
+      "clientNav": true,
+      "runs": [
+        {
+          "finalUrl": "http://localhost:3000/games/uno/game/1",
+          "contentPaintedPct": 36.44,
+          "contentTextChars": 820,
+          "visibleContentNodes": 24,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/uno/game/1",
+          "contentPaintedPct": 12.69,
+          "contentTextChars": 416,
+          "visibleContentNodes": 10,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/uno/game/1",
+          "contentPaintedPct": 12.69,
+          "contentTextChars": 416,
+          "visibleContentNodes": 10,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        }
+      ],
+      "invisible": false,
+      "jsErrors": [],
+      "pageErrors": [],
+      "crashed": false,
+      "finalUrl": "http://localhost:3000/games/uno/game/1",
+      "contentPaintedPct": 36.44,
+      "contentTextChars": 820,
+      "routeWrapperOpacity": 1,
+      "invisibleRuns": 0,
+      "totalRuns": 3
+    },
+    {
+      "game": "Tower Arena create",
+      "hub": "/casino/tower-arena",
+      "path": "/casino/tower-arena/game/1",
+      "clientNav": true,
+      "runs": [
+        {
+          "finalUrl": "http://localhost:3000/games/tower-arena/game/1",
+          "contentPaintedPct": 12.57,
+          "contentTextChars": 409,
+          "visibleContentNodes": 9,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/tower-arena/game/1",
+          "contentPaintedPct": 12.57,
+          "contentTextChars": 409,
+          "visibleContentNodes": 9,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/tower-arena/game/1",
+          "contentPaintedPct": 12.57,
+          "contentTextChars": 409,
+          "visibleContentNodes": 9,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        }
+      ],
+      "invisible": false,
+      "jsErrors": [],
+      "pageErrors": [],
+      "crashed": false,
+      "finalUrl": "http://localhost:3000/games/tower-arena/game/1",
+      "contentPaintedPct": 12.57,
+      "contentTextChars": 409,
+      "routeWrapperOpacity": 1,
+      "invisibleRuns": 0,
+      "totalRuns": 3
+    },
+    {
+      "game": "Sudoku Duel create",
+      "hub": "/casino/sudoku-duel",
+      "path": "/casino/sudoku-duel/1",
+      "clientNav": true,
+      "runs": [
+        {
+          "finalUrl": "http://localhost:3000/games/sudoku-duel/1",
+          "contentPaintedPct": 49.72,
+          "contentTextChars": 428,
+          "visibleContentNodes": 13,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/sudoku-duel/1",
+          "contentPaintedPct": 49.72,
+          "contentTextChars": 428,
+          "visibleContentNodes": 13,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/sudoku-duel/1",
+          "contentPaintedPct": 49.72,
+          "contentTextChars": 428,
+          "visibleContentNodes": 13,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        }
+      ],
+      "invisible": false,
+      "jsErrors": [],
+      "pageErrors": [],
+      "crashed": false,
+      "finalUrl": "http://localhost:3000/games/sudoku-duel/1",
+      "contentPaintedPct": 49.72,
+      "contentTextChars": 428,
+      "routeWrapperOpacity": 1,
+      "invisibleRuns": 0,
+      "totalRuns": 3
+    },
+    {
+      "game": "Speed Typing create",
+      "hub": "/casino/speed-typing",
+      "path": "/casino/speed-typing/1",
+      "clientNav": true,
+      "runs": [
+        {
+          "finalUrl": "http://localhost:3000/games/speed-typing/1",
+          "contentPaintedPct": 40.99,
+          "contentTextChars": 435,
+          "visibleContentNodes": 10,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/speed-typing/1",
+          "contentPaintedPct": 40.99,
+          "contentTextChars": 435,
+          "visibleContentNodes": 10,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/speed-typing/1",
+          "contentPaintedPct": 40.99,
+          "contentTextChars": 435,
+          "visibleContentNodes": 10,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        }
+      ],
+      "invisible": false,
+      "jsErrors": [],
+      "pageErrors": [],
+      "crashed": false,
+      "finalUrl": "http://localhost:3000/games/speed-typing/1",
+      "contentPaintedPct": 40.99,
+      "contentTextChars": 435,
+      "routeWrapperOpacity": 1,
+      "invisibleRuns": 0,
+      "totalRuns": 3
+    },
+    {
+      "game": "Solitaire Duel create",
+      "hub": "/casino/solitaire-duel",
+      "path": "/casino/solitaire-duel/1",
+      "clientNav": true,
+      "runs": [
+        {
+          "finalUrl": "http://localhost:3000/games/solitaire-duel/1",
+          "contentPaintedPct": 47.43,
+          "contentTextChars": 460,
+          "visibleContentNodes": 17,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/solitaire-duel/1",
+          "contentPaintedPct": 47.43,
+          "contentTextChars": 460,
+          "visibleContentNodes": 17,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/solitaire-duel/1",
+          "contentPaintedPct": 47.43,
+          "contentTextChars": 460,
+          "visibleContentNodes": 17,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        }
+      ],
+      "invisible": false,
+      "jsErrors": [],
+      "pageErrors": [],
+      "crashed": false,
+      "finalUrl": "http://localhost:3000/games/solitaire-duel/1",
+      "contentPaintedPct": 47.43,
+      "contentTextChars": 460,
+      "routeWrapperOpacity": 1,
+      "invisibleRuns": 0,
+      "totalRuns": 3
+    },
+    {
+      "game": "Lane Runner create",
+      "hub": "/casino/lane-runner",
+      "path": "/casino/lane-runner/1",
+      "clientNav": true,
+      "runs": [
+        {
+          "finalUrl": "http://localhost:3000/games/lane-runner/1",
+          "contentPaintedPct": 50.44,
+          "contentTextChars": 440,
+          "visibleContentNodes": 18,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/lane-runner/1",
+          "contentPaintedPct": 50.44,
+          "contentTextChars": 440,
+          "visibleContentNodes": 18,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/lane-runner/1",
+          "contentPaintedPct": 50.45,
+          "contentTextChars": 440,
+          "visibleContentNodes": 18,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        }
+      ],
+      "invisible": false,
+      "jsErrors": [],
+      "pageErrors": [],
+      "crashed": false,
+      "finalUrl": "http://localhost:3000/games/lane-runner/1",
+      "contentPaintedPct": 50.44,
+      "contentTextChars": 440,
+      "routeWrapperOpacity": 1,
+      "invisibleRuns": 0,
+      "totalRuns": 3
+    },
+    {
+      "game": "RPS create",
+      "hub": "/casino/rps",
+      "path": "/casino/rps/game/1",
+      "clientNav": true,
+      "runs": [
+        {
+          "finalUrl": "http://localhost:3000/games/rps/game/1",
+          "contentPaintedPct": 13.8,
+          "contentTextChars": 401,
+          "visibleContentNodes": 9,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/rps/game/1",
+          "contentPaintedPct": 13.8,
+          "contentTextChars": 401,
+          "visibleContentNodes": 9,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/rps/game/1",
+          "contentPaintedPct": 13.8,
+          "contentTextChars": 401,
+          "visibleContentNodes": 9,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        }
+      ],
+      "invisible": false,
+      "jsErrors": [],
+      "pageErrors": [],
+      "crashed": false,
+      "finalUrl": "http://localhost:3000/games/rps/game/1",
+      "contentPaintedPct": 13.8,
+      "contentTextChars": 401,
+      "routeWrapperOpacity": 1,
+      "invisibleRuns": 0,
+      "totalRuns": 3
+    },
+    {
+      "game": "Keno PvP create",
+      "hub": "/casino/keno",
+      "path": "/casino/keno-pvp/1",
+      "clientNav": true,
+      "runs": [
+        {
+          "finalUrl": "http://localhost:3000/sign-in?redirect_url=%2Fcasino%2Fkeno-pvp%2F1",
+          "contentPaintedPct": 53.1,
+          "contentTextChars": 531,
+          "visibleContentNodes": 43,
+          "opacityHiddenTextNodes": 1,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/sign-in?redirect_url=%2Fcasino%2Fkeno-pvp%2F1",
+          "contentPaintedPct": 53.11,
+          "contentTextChars": 531,
+          "visibleContentNodes": 43,
+          "opacityHiddenTextNodes": 1,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/sign-in?redirect_url=%2Fcasino%2Fkeno-pvp%2F1",
+          "contentPaintedPct": 53.1,
+          "contentTextChars": 531,
+          "visibleContentNodes": 43,
+          "opacityHiddenTextNodes": 1,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        }
+      ],
+      "invisible": false,
+      "jsErrors": [],
+      "pageErrors": [],
+      "crashed": false,
+      "finalUrl": "http://localhost:3000/sign-in?redirect_url=%2Fcasino%2Fkeno-pvp%2F1",
+      "contentPaintedPct": 53.1,
+      "contentTextChars": 531,
+      "routeWrapperOpacity": 1,
+      "invisibleRuns": 0,
+      "totalRuns": 3
+    },
+    {
+      "game": "Hex Duel create",
+      "hub": "/casino/hex-duel",
+      "path": "/casino/hex-duel?gameId=1&host=1",
+      "clientNav": true,
+      "runs": [
+        {
+          "finalUrl": "http://localhost:3000/games/hex-duel?gameId=1&host=1",
+          "contentPaintedPct": 11.07,
+          "contentTextChars": 4989,
+          "visibleContentNodes": 66,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/hex-duel?gameId=1&host=1",
+          "contentPaintedPct": 11.07,
+          "contentTextChars": 4989,
+          "visibleContentNodes": 66,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        },
+        {
+          "finalUrl": "http://localhost:3000/games/hex-duel?gameId=1&host=1",
+          "contentPaintedPct": 11.07,
+          "contentTextChars": 4989,
+          "visibleContentNodes": 66,
+          "opacityHiddenTextNodes": 0,
+          "routeWrapperOpacity": 1,
+          "invisibleContent": false,
+          "blank": false,
+          "stuckLoading": false
+        }
+      ],
+      "invisible": false,
+      "jsErrors": [],
+      "pageErrors": [],
+      "crashed": false,
+      "finalUrl": "http://localhost:3000/games/hex-duel?gameId=1&host=1",
+      "contentPaintedPct": 11.07,
+      "contentTextChars": 4989,
+      "routeWrapperOpacity": 1,
+      "invisibleRuns": 0,
+      "totalRuns": 3
+    }
+  ]
+}

@@ -17,12 +17,11 @@ import useDailyLoss from "../lib/useDailyLoss";
 import { DAILY_LOSS_CHIP_THRESHOLD } from "../lib/games/economy";
 import { COIN_BALANCE_EVENT } from "../hooks/useCoinBalance";
 
-// M1: sessionStorage TTL for the nav's level + equipped-title meta. Level
-// and titles are slow-changing (and the server-side /api/user-stats is
-// already Redis-cached for 3 min), so short-circuiting these lookups for a
-// few minutes after each successful fetch cuts the heaviest nav invocation
-// (/api/user-stats scans every game-history table) without changing any
-// displayed value — the same pattern the is-admin cache already uses.
+// M1: sessionStorage TTL for the nav's equipped-title meta. Titles are
+// slow-changing, so short-circuiting the /api/titles lookup for a few minutes
+// after each successful fetch saves a network round-trip on every navigation
+// without changing any displayed value — the same pattern the is-admin cache
+// already uses.
 const NAV_META_TTL_MS = 5 * 60 * 1000;
 
 
@@ -106,7 +105,6 @@ function NavigationBar({ currentPath = "" }) {
   }, []);
   const [, setError] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [level, setLevel] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
 
   // Fetch admin status from DB-backed API on mount
@@ -181,7 +179,7 @@ function NavigationBar({ currentPath = "" }) {
     // one — announces itself through this event, so the coin number under the
     // trophies re-reads instead of showing the pre-claim amount until the next
     // navigation. Shares the metadata-free read above: the wallet answer is
-    // what changed, and re-fetching the level/title meta would be waste.
+    // what changed, and re-fetching the title meta would be waste.
     const balanceHandler = () => fetchBalance({ includeMeta: false });
 
     window.addEventListener("profileUpdated", handler);
@@ -276,13 +274,11 @@ function NavigationBar({ currentPath = "" }) {
           );
         } catch {}
         if (includeMeta) {
-          // Cache level + equipped title in sessionStorage (short TTL) so a
-          // hard reload does not re-fire the two heaviest nav meta calls
-          // (/api/user-stats scans every game-history table for the level,
-          // /api/titles reads the equipped title). These values are
-          // slow-changing; the same few-minutes staleness already applies to
-          // the Redis-cached user-stats (3 min) and the is-admin cache held
-          // in sessionStorage. On a stale/missing cache we fetch fresh and
+          // Cache the equipped title in sessionStorage (short TTL) so a hard
+          // reload does not re-fire the nav's meta call (/api/titles reads the
+          // equipped title). Titles are slow-changing; the same few-minutes
+          // staleness applies as with the is-admin cache held in
+          // sessionStorage. On a stale/missing cache we fetch fresh and
           // re-store.
           const metaKey = `navmeta:${user?.id ?? ""}`;
           let cachedAt = 0;
@@ -295,8 +291,6 @@ function NavigationBar({ currentPath = "" }) {
               const cached = sessionStorage.getItem(metaKey);
               if (cached) {
                 const meta = JSON.parse(cached);
-                if (meta && typeof meta.level === "number")
-                  setLevel(meta.level);
                 if (meta && typeof meta.selectedTitle === "string")
                   setProfile((prev) => ({
                     ...prev,
@@ -306,15 +300,8 @@ function NavigationBar({ currentPath = "" }) {
               }
             } catch {}
           } else {
-            let nextLevel = null;
             let nextTitle = "";
             let nextStreak = null;
-            try {
-              const statsRes = await fetch("/api/user-stats");
-              const statsData = await statsRes.json();
-              if (statsData.success) nextLevel = statsData.stats.currentLevel;
-            } catch {}
-
             try {
               const titlesRes = await fetch("/api/titles", {
                 credentials: "include",
@@ -329,7 +316,6 @@ function NavigationBar({ currentPath = "" }) {
               }
             } catch {}
 
-            if (nextLevel !== null) setLevel(nextLevel);
             setProfile((prev) => ({
               ...prev,
               // Empty string means "no title equipped" — never fall back
@@ -348,7 +334,6 @@ function NavigationBar({ currentPath = "" }) {
               sessionStorage.setItem(
                 metaKey,
                 JSON.stringify({
-                  level: nextLevel,
                   selectedTitle: nextTitle,
                   streakTitle: nextStreak,
                 }),
@@ -650,9 +635,6 @@ function NavigationBar({ currentPath = "" }) {
                             <IconFlame size={12} className="mb-0.5 mr-0.5 inline" /> {profile.streakTitle}
                           </span>
                         )}
-                        <span className="text-[10px] text-[#7dd3fc]">
-                          {t("nav.level_short")} {level ?? "..."}
-                        </span>
                       </div>
                     </Link>
                   </div>

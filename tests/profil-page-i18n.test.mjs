@@ -83,7 +83,6 @@ test("the French-only and English-only labels are all in the bundle now", () => 
     statistics: ["stats.title"],
     danger: ["danger.title", "danger.confirm"],
     "edit popup": ["edit.title", "edit.icon", "edit.frame", "edit.close"],
-    "level up": ["levelUp.title", "levelUp.close"],
   };
 
   for (const [section, keys] of Object.entries(sections)) {
@@ -117,6 +116,24 @@ test("no user-visible text node is hardcoded in the page", () => {
     offenders,
     [],
     "these text nodes bypass the bundle — wrap them in t(...)",
+  );
+});
+
+test("the level UI is gone from the profile page", () => {
+  // Levels were removed from the product: no level-up modal, and no
+  // "unlock at level" hint on the title grid. The title card still shows
+  // `profile.titles.locked` for a title the player has not earned.
+  assert.ok(
+    !src.includes("levelUpModal"),
+    "the level-up modal must not come back",
+  );
+  assert.ok(
+    !/t\(\s*"profile\.levelUp\./.test(src),
+    "the page must not ask for level-up copy",
+  );
+  assert.ok(
+    !/t\(\s*"profile\.titles\.unlockAt"/.test(src),
+    "the page must not render a level-gated unlock hint",
   );
 });
 

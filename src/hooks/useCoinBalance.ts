@@ -43,7 +43,18 @@ export function useCoinBalance(): number | null {
 
     const read = async () => {
       try {
-        const res = await fetch("/api/get-user-tokens", { method: "POST" });
+        // The middleware's /api mutation gate rejects any POST that does not
+        // declare `application/json` with a 415 before the route is reached
+        // (src/proxy.ts), and this read is a POST with no payload — so without
+        // the header it was rejected outright and every reader stayed on
+        // "unknown" (null). The navbar never hit this because it already sends
+        // the header for the same endpoint, which is why the balance showed
+        // there and not on this page.
+        const res = await fetch("/api/get-user-tokens", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+        });
         if (!res.ok) return;
         const json = await res.json();
         if (!alive || !json?.success) return;

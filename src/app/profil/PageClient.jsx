@@ -172,9 +172,6 @@ export default function ProfilePage({ adSlot = null }) {
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [editStatus, setEditStatus] = useState("");
 
-  const [levelUpModal, setLevelUpModal] = useState(null);
-  const previousLevelRef = useRef(null);
-
   useEffect(() => {
     if (!spectateOverlayUrl || spectateIsLoaded || spectateLoadError) return;
     const timeoutId = setTimeout(() => {
@@ -932,20 +929,6 @@ export default function ProfilePage({ adSlot = null }) {
 
     return () => clearInterval(timer);
   }, [isSignedIn]);
-
-  useEffect(() => {
-    if (!stats) return;
-
-    const previousLevel = previousLevelRef.current;
-    if (previousLevel !== null && stats.currentLevel > previousLevel) {
-      setLevelUpModal({
-        level: stats.currentLevel,
-        bonus: Math.floor(500 * Math.pow(1.2, stats.currentLevel)),
-      });
-    }
-
-    previousLevelRef.current = stats.currentLevel;
-  }, [stats]);
 
   const fallbackCopy = (text) => {
     const tempInput = document.createElement("textarea");
@@ -1904,12 +1887,6 @@ export default function ProfilePage({ adSlot = null }) {
                             : t("profile.titles.locked", "Locked")}
                         </p>
 
-                        <p className="text-xs text-slate-300">
-                          {t("profile.titles.unlockAt", {
-                            level: title.level,
-                          })}
-                        </p>
-
                         {equipped && (
                           <p className="mt-2 text-yellow-300 text-xs">
                             {t(
@@ -2762,45 +2739,6 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                   : t("profile.edit.save", "Save changes")}
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {levelUpModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div
-            className="max-w-md w-full rounded-xl border border-[#FFD700] bg-[#0b224f] border border-[#00e5ff]/30 
-shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6 text-center"
-          >
-            <p className="text-2xl font-bold text-[#00e5ff]">
-              <svg
-                className="w-7 h-7 inline text-[#00e5ff]"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-              >
-                <path d="M12 2l2.4 7.2h7.6l-6 4.8 2.4 7.2-6.4-4.8-6.4 4.8 2.4-7.2-6-4.8h7.6z" />
-              </svg>{" "}
-              {t("profile.levelUp.title", {
-                level: levelUpModal.level,
-              })}
-            </p>
-            <p className="mt-2 text-gray-200">
-              {t(
-                "profile.levelUp.body",
-                "Keep playing and winning ranked matches — rewards unlock soon.",
-              )}
-            </p>
-            <button
-              onClick={() => setLevelUpModal(null)}
-              className={
-                cyberButton +
-                " focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
-              }
-            >
-              {t("profile.levelUp.close", "Awesome!")}
-            </button>
           </div>
         </div>
       )}

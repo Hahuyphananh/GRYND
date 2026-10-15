@@ -61,7 +61,14 @@ test("every coin lobby picks a real stake instead of a hard-coded 0", () => {
 
 test("the balance read applies the daily grant through the same endpoint", () => {
   const hook = fs.readFileSync("src/hooks/useCoinBalance.ts", "utf8");
-  assert.match(hook, /fetch\("\/api\/get-user-tokens", \{ method: "POST" \}\)/);
+  assert.match(hook, /fetch\("\/api\/get-user-tokens", \{/);
+  assert.match(hook, /method: "POST"/);
+  // The /api mutation gate in src/proxy.ts answers 415 to a POST that does not
+  // declare application/json, and this read sends no payload — so the header
+  // is what lets the request reach the route at all. Without it the hook's
+  // `res.ok` check failed and every balance reader (the lobby pickers and the
+  // /rewards header) stayed on its "unknown" placeholder.
+  assert.match(hook, /"Content-Type": "application\/json"/);
   // Signed-out / failed reads stay "unknown" (null), never 0.
   assert.match(hook, /useState<number \| null>\(null\)/);
 });

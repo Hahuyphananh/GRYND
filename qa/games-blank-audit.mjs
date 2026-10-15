@@ -19,6 +19,17 @@
 // chrome, and INVISIBLE-CONTENT when it has plenty of text in the DOM but
 // paints none of it (the classic "background only" regression).
 //
+// A third phase audits the CREATE JOURNEY — hub, then the route the game's own
+// create handler pushes to once the match exists — as a CLIENT-SIDE navigation,
+// because that is the only way the reported "blank until I refresh" bug shows
+// up. Every one of those routes paints perfectly on a hard load, so auditing
+// them with page.goto() is exactly what let the bug ship: Pool Masters,
+// Precision and the Chess "created, waiting for opponent" page lost the shared
+// route wrapper's enter animation and left a complete page in the DOM painting
+// nothing (7/8, 8/8 and 7/9 attempts respectively). This phase fails the run
+// (exit 1) when any create journey leaves a page invisible or blank, so the
+// regression cannot come back unnoticed. See docs/route-transition-blank-page.md.
+//
 // Also recorded per route: HTTP status, final URL after redirects, uncaught
 // page errors and console errors. Screenshots of flagged routes are written
 // to qa/reports/games-blank-audit/.
@@ -27,6 +38,8 @@
 //   node qa/games-blank-audit.mjs                        # localhost:3000
 //   BASE=http://localhost:3210 node qa/games-blank-audit.mjs
 //   node qa/games-blank-audit.mjs --shots                # screenshot everything
+//   node qa/games-blank-audit.mjs --create-only          # the create journeys
+//   CREATE_REPEATS=5 node qa/games-blank-audit.mjs --create-only
 //
 // The server must already be running (npm run build && npm run start). Run it
 // with CLERK_SECRET_KEY="" to audit without a signed-in session: the proxy
@@ -43,6 +56,12 @@ const REPORTS = join(root, "qa", "reports", "games-blank-audit");
 const BASE = process.env.BASE || "http://localhost:3000";
 const SHOT_ALL = process.argv.includes("--shots");
 const FAIL_API = process.argv.includes("--fail-api");
+const LANDING_ONLY = process.argv.includes("--landing-only");
+const MATCH_ONLY = process.argv.includes("--match-only");
+const CREATE_ONLY = process.argv.includes("--create-only");
+// Each create journey is repeated: the failure is a race in the route
+// transition, so a single attempt can pass by luck.
+const CREATE_REPEATS = Number(process.env.CREATE_REPEATS || 3);
 // Playwright's bundled Chromium is not always downloaded (e.g. on a machine
 // with system Chrome installed); BROWSER_CHANNEL=chrome uses the real one.
 const CHANNEL = process.env.BROWSER_CHANNEL || "";
@@ -106,6 +125,34 @@ const MATCH_ROUTES = [
   { game: "RPS game", path: "/games/rps/game/1" },
   { game: "Tower Arena game", path: "/games/tower-arena/game/1" },
   { game: "Uno game", path: "/games/uno/game/1" },
+];
+
+// The create journey: `hub` is the page whose button the player pressed, `path`
+// is the route that page's create handler pushes to once the game exists (the
+// `/casino/*` URL the handler actually uses, redirect included). Audited with a
+// client-side navigation, unlike every other list here.
+const CREATE_ROUTES = [
+  { game: "Chess create (no opponent yet)", hub: "/casino/chess", path: "/casino/chess/10?gameId=1&color=white&timer=5min" },
+  { game: "Chess create (matched at once)", hub: "/casino/chess", path: "/casino/chess-game/1?color=white&timer=5min" },
+  { game: "Chess vs AI", hub: "/casino/chess", path: "/casino/chess/ai?gameId=1&difficulty=1&timer=300&color=white" },
+  { game: "Pool Masters create", hub: "/casino/pool-masters", path: "/casino/pool-masters/game/1" },
+  { game: "Precision create", hub: "/casino/precision", path: "/casino/precision/game/1" },
+  { game: "Mini Golf create", hub: "/casino/mini-golf", path: "/casino/mini-golf/1" },
+  { game: "Memory Grid create", hub: "/casino/memory-grid", path: "/casino/memory-grid/1" },
+  { game: "Barricade create", hub: "/casino/barricade", path: "/casino/barricade/1" },
+  { game: "Tic Tac Toe create", hub: "/casino/tic-tac-toe", path: "/casino/tic-tac-toe/1" },
+  { game: "Mines PvP create", hub: "/casino/mines-pvp", path: "/casino/mines-pvp/1" },
+  { game: "Four-In-A-Row create", hub: "/casino/four-in-a-row", path: "/casino/four-in-a-row/game/1" },
+  { game: "Dots and Boxes create", hub: "/casino/dots-and-boxes", path: "/casino/dots-and-boxes/game/1" },
+  { game: "Uno create", hub: "/casino/uno", path: "/casino/uno/game/1" },
+  { game: "Tower Arena create", hub: "/casino/tower-arena", path: "/casino/tower-arena/game/1" },
+  { game: "Sudoku Duel create", hub: "/casino/sudoku-duel", path: "/casino/sudoku-duel/1" },
+  { game: "Speed Typing create", hub: "/casino/speed-typing", path: "/casino/speed-typing/1" },
+  { game: "Solitaire Duel create", hub: "/casino/solitaire-duel", path: "/casino/solitaire-duel/1" },
+  { game: "Lane Runner create", hub: "/casino/lane-runner", path: "/casino/lane-runner/1" },
+  { game: "RPS create", hub: "/casino/rps", path: "/casino/rps/game/1" },
+  { game: "Keno PvP create", hub: "/casino/keno", path: "/casino/keno-pvp/1" },
+  { game: "Hex Duel create", hub: "/casino/hex-duel", path: "/casino/hex-duel?gameId=1&host=1" },
 ];
 
 // ── Verdict thresholds ─────────────────────────────────────────────────────
@@ -386,16 +433,119 @@ async function audit(browser, route) {
   return result;
 }
 
+// ── Create journey: the client-side navigation a create handler performs ───
+// A hard load of these same URLs paints on every one of them, so the
+// navigation MUST be reproduced as a client-side route change — auditing these
+// with page.goto() would be vacuous for exactly this bug.
+async function auditCreateNav(browser, route) {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await context.newPage();
+  if (FAIL_API) {
+    await page.route("**/api/**", (r) =>
+      r.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ success: false, error: "Server error" }),
+      }),
+    );
+  }
+  // A create journey that throws during render is broken even when it manages
+  // to paint, so the same crash signal the direct-load phases keep is kept
+  // here too — filtered through the shared console-noise list.
+  const consoleErrors = [];
+  const pageErrors = [];
+  page.on("console", (msg) => {
+    if (msg.type() === "error") consoleErrors.push(msg.text().slice(0, 300));
+  });
+  page.on("pageerror", (err) => pageErrors.push(String(err).slice(0, 300)));
+  const result = { ...route, clientNav: true, runs: [], invisible: false };
+
+  try {
+    for (let attempt = 1; attempt <= CREATE_REPEATS; attempt += 1) {
+      await page.goto(`${BASE}${route.hub}`, { waitUntil: "domcontentloaded", timeout: 30000 });
+      // Let the hub hydrate before driving its router, or the push lands before
+      // Next is listening and the journey silently never starts.
+      await sleep(1200);
+      const pushed = await page.evaluate((target) => {
+        // The App Router's own handle, driven exactly like the create button's
+        // `router.push`. If it is missing the journey cannot be reproduced,
+        // which is a harness failure to report — never a pass.
+        if (!window.next?.router?.push) return false;
+        window.next.router.push(target);
+        return true;
+      }, route.path);
+      if (!pushed) {
+        result.error = "no client-side navigation mechanism (window.next.router.push)";
+        break;
+      }
+      await sleep(2500);
+
+      const probe = await page.evaluate(probeContent);
+      const paint = analysePaint(decodePng(await page.screenshot()));
+      const wrapperOpacity = await page.evaluate(() => {
+        // Diagnostic only — the verdict below is the generic paint + DOM read,
+        // so it stays valid whatever element ends up hiding the page.
+        const w = document.querySelector("div.relative.min-h-screen > div.min-h-screen");
+        return w ? Number(window.getComputedStyle(w).opacity) : null;
+      });
+
+      const paintsNothing = paint.contentPaintedPct < BLANK_PAINT_PCT;
+      const domIsEmpty =
+        probe.contentTextChars < BLANK_TEXT_CHARS && probe.visibleContentNodes < BLANK_NODES;
+      const stuck = /loading|creating game|chargement|waiting for/i.test(probe.firstText || "");
+      result.runs.push({
+        finalUrl: page.url(),
+        contentPaintedPct: paint.contentPaintedPct,
+        contentTextChars: probe.contentTextChars,
+        visibleContentNodes: probe.visibleContentNodes,
+        opacityHiddenTextNodes: probe.opacityHiddenTextNodes,
+        routeWrapperOpacity: wrapperOpacity,
+        // The reported bug in one line: the page is all there and paints none
+        // of it (a wrapper left transparent).
+        invisibleContent:
+          probe.contentTextChars >= BLANK_TEXT_CHARS && probe.opacityHiddenTextNodes > 0 && paintsNothing,
+        blank: paintsNothing && domIsEmpty && !stuck,
+        stuckLoading: paintsNothing && stuck,
+      });
+    }
+  } catch (err) {
+    result.error = String(err).slice(0, 300);
+  }
+
+  const failed = result.runs.filter((r) => r.invisibleContent || r.blank || r.stuckLoading);
+  result.invisible = failed.length > 0;
+  result.jsErrors = consoleErrors.filter((t) => !CONSOLE_NOISE.test(t));
+  result.pageErrors = pageErrors;
+  result.crashed = pageErrors.length > 0 || result.jsErrors.length > 0;
+  const first = result.runs[0] || {};
+  result.finalUrl = first.finalUrl ?? null;
+  result.contentPaintedPct = first.contentPaintedPct ?? null;
+  result.contentTextChars = first.contentTextChars ?? null;
+  result.routeWrapperOpacity = first.routeWrapperOpacity ?? null;
+  result.invisibleRuns = failed.length;
+  result.totalRuns = result.runs.length;
+
+  if (result.invisible) {
+    const name = route.game.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    result.screenshot = join(REPORTS, `create-${name}.png`);
+    await page.screenshot({ path: result.screenshot }).catch(() => {});
+  }
+  await context.close();
+  return result;
+}
+
 const browser = await chromium.launch(CHANNEL ? { channel: CHANNEL } : {});
 mkdirSync(REPORTS, { recursive: true });
 const results = [];
 
-const ALL_ROUTES = process.argv.includes("--landing-only")
+const ALL_ROUTES = LANDING_ONLY
   ? ROUTES
-  : process.argv.includes("--match-only")
+  : MATCH_ONLY
     ? MATCH_ROUTES
-    : [...ROUTES, ...MATCH_ROUTES];
-console.log(`auditing ${ALL_ROUTES.length} routes against ${BASE}\n`);
+    : CREATE_ONLY
+      ? []
+      : [...ROUTES, ...MATCH_ROUTES];
+if (ALL_ROUTES.length) console.log(`auditing ${ALL_ROUTES.length} routes against ${BASE}\n`);
 
 for (const route of ALL_ROUTES) {
   const r = await audit(browser, route);
@@ -421,8 +571,71 @@ for (const route of ALL_ROUTES) {
   for (const e of r.jsErrors || []) console.log(`         ! console:   ${e}`);
 }
 
+// ── Phase 3: create journeys (client-side navigation) ──────────────────────
+const RUN_CREATE = CREATE_ONLY || (!LANDING_ONLY && !MATCH_ONLY);
+const createResults = [];
+if (RUN_CREATE) {
+  console.log(
+    `\nauditing ${CREATE_ROUTES.length} create journeys as a client-side navigation ` +
+      `(${CREATE_REPEATS} attempt${CREATE_REPEATS === 1 ? "" : "s"} each) against ${BASE}\n`,
+  );
+  for (const route of CREATE_ROUTES) {
+    const r = await auditCreateNav(browser, route);
+    createResults.push(r);
+    const flag = r.invisible
+      ? "INVISIBLE"
+      : r.crashed
+        ? "JS-ERR"
+        : r.error
+          ? "ERROR"
+          : "ok";
+    console.log(
+      `${flag.padEnd(10)} ${route.game.padEnd(30)} paint:${String(r.contentPaintedPct ?? "-").padStart(6)}% ` +
+        `text:${String(r.contentTextChars ?? "-").padStart(5)} wrapperOpacity:${String(r.routeWrapperOpacity ?? "-").padStart(5)} ` +
+        `invisibleRuns:${r.invisibleRuns}/${r.totalRuns} pageerr:${r.pageErrors.length} jserr:${(r.jsErrors || []).length}` +
+        `${r.error ? ` err:${r.error}` : ""}`,
+    );
+    for (const e of r.pageErrors || []) console.log(`         ! pageerror: ${e}`);
+    for (const e of r.jsErrors || []) console.log(`         ! console:   ${e}`);
+    if (r.invisible) {
+      for (const run of r.runs.filter((x) => x.invisibleContent || x.blank || x.stuckLoading)) {
+        console.log(
+          `         ! attempt: url=${run.finalUrl} paint=${run.contentPaintedPct}% ` +
+            `text=${run.contentTextChars} opacityHiddenTextNodes=${run.opacityHiddenTextNodes} ` +
+            `wrapperOpacity=${run.routeWrapperOpacity}`,
+        );
+      }
+    }
+  }
+  writeFileSync(
+    join(REPORTS, "create-report.json"),
+    JSON.stringify(
+      { base: BASE, generatedAt: new Date().toISOString(), repeats: CREATE_REPEATS, results: createResults },
+      null,
+      2,
+    ),
+  );
+  const invisible = createResults.filter((r) => r.invisible);
+  const broken = createResults.filter((r) => r.error);
+  console.log(`\n${createResults.length} create journeys audited (${CREATE_REPEATS}x each)`);
+  console.log(
+    `invisible after create: ${invisible.length}${invisible.length ? ` -> ${invisible.map((b) => b.game).join(", ")}` : ""}`,
+  );
+  console.log(`harness errors: ${broken.length}${broken.length ? ` -> ${broken.map((b) => b.game).join(", ")}` : ""}`);
+  console.log(`report: ${join(REPORTS, "create-report.json")}`);
+  // This phase is the regression check, so it is the one that fails the run.
+  const crashedCreate = createResults.filter((r) => r.crashed);
+  console.log(
+    `create journeys that threw: ${crashedCreate.length}${crashedCreate.length ? ` -> ${crashedCreate.map((c) => c.game).join(", ")}` : ""}`,
+  );
+  if (invisible.length || broken.length || crashedCreate.length) process.exitCode = 1;
+}
+
 await browser.close();
 
+// (Skipped on a --create-only run, so the direct-load report is never
+// overwritten with an empty result set.)
+if (results.length) {
 const blanks = results.filter((r) => r.blank);
 const stuck = results.filter((r) => r.stuckLoading);
 const hidden = results.filter((r) => r.invisibleContent);
@@ -443,3 +656,4 @@ for (const c of crashed) {
   for (const e of c.jsErrors || []) console.log(`  ${c.game} [console]   ${e}`);
 }
 console.log(`report: ${join(REPORTS, "report.json")}`);
+}

@@ -294,9 +294,6 @@ export default function PublicProfilePage() {
                   </span>
                 )}
               </div>
-              <p className="text-sm text-gray-400 mt-1">
-                Level {profile.level}
-              </p>
               {/* Competitive identity strip — every number is real
                   leaderboard-record data (same source as /classement). */}
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-semibold">

@@ -102,6 +102,7 @@
     "verify:board-fit": "node qa/board-fit-check.mjs",
     "verify:tic-tac-toe-mobile": "node qa/tic-tac-toe-mega-mobile-check.mjs",
     "verify:games-mobile": "node qa/games-mobile-audit.mjs",
+    "verify:games-blank-create": "node qa/games-blank-audit.mjs --create-only",
     "verify:mini-golf": "node qa/mini-golf-flow-check.mjs",
     "verify:ta-trail": "node qa/ta-trail-check.mjs",
     "verify:ta-rumble": "node qa/ta-rumble-check.mjs",
