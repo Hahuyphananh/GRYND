@@ -12,8 +12,6 @@ import IconAvatar from "../components/IconAvatar";
 import ReportEntryButton from "../components/reports/ReportEntryButton";
 import { clearSessionArtifacts } from "../lib/security/sessionCleanup";
 import { useUser, useAuth } from "@clerk/nextjs";
-import Image from "next/image";
-import Img3 from "../images/towers.webp";
 import {
   fadeIn,
   fadeUp,
@@ -59,7 +57,6 @@ function MainComponent({ adSlot = null, popularGames = [], explainerSlot = null 
   // home page deliberately does NOT fetch /api/get-user-tokens itself — the
   // navbar already does that on every page, and a duplicate fetch here was
   // pure waste (its state was never read by any UI).
-  const [friendPresenceByGame, setFriendPresenceByGame] = useState({});
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [termsLoading, setTermsLoading] = useState(true);
   const [liveStats, setLiveStats] = useState({ playersOnline: 0, gamesPlayedToday: 0 });
@@ -77,44 +74,6 @@ function MainComponent({ adSlot = null, popularGames = [], explainerSlot = null 
   const shouldReduceMotion = useReducedMotion();
   const fadeUpVariant = withReducedMotion(shouldReduceMotion, fadeUp);
   const fadeInVariant = withReducedMotion(shouldReduceMotion, fadeIn);
-
-  // Returns the payload for the shared poller; `undefined` = "no update".
-  const fetchFriendPresence = async () => {
-    try {
-      const response = await fetch("/api/friends/game-presence", {
-        credentials: "include",
-      });
-      const data = await response.json();
-      if (response.ok && data.success) return data.byGame || {};
-    } catch (err) {
-      console.error("[FRIEND_PRESENCE_ERROR]", err);
-    }
-    return undefined;
-  };
-
-  const renderFriendWidget = (gameKey) => {
-    const friends = Array.isArray(friendPresenceByGame[gameKey])
-      ? friendPresenceByGame[gameKey]
-      : [];
-    if (!friends.length) return null;
-
-    return (
-      <div
-        className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-1"
-        title={friends.map((f) => f.name).join(", ")}
-      >
-        {friends.slice(0, 4).map((friend) => (
-          <IconAvatar
-            key={`${friend.id}-${friend.name}`}
-            iconKey={friend.iconKey}
-            name={friend.name}
-            size="h-6 w-6"
-            className="border border-white/30"
-          />
-        ))}
-      </div>
-    );
-  };
 
   // ── Check Terms & Conditions acceptance ──
   useEffect(() => {
@@ -231,20 +190,6 @@ function MainComponent({ adSlot = null, popularGames = [], explainerSlot = null 
       // ignore
     }
   };
-
-  // Friend presence is social chrome, not game state — and it is the SAME feed
-  // the casino lobby shows, so both pages (and every tab) share one request via
-  // the browser-wide poller. Only the minimum public presence fields the route
-  // already returns (name / icon / game) are ever carried; no email, balance or
-  // private profile data is involved.
-  const friendPresencePoll = useSharedPoll("friend-presence", fetchFriendPresence, {
-    intervalMs: 60000,
-    enabled: Boolean(user),
-  });
-  useEffect(() => {
-    if (friendPresencePoll.data)
-      setFriendPresenceByGame(friendPresencePoll.data);
-  }, [friendPresencePoll.data]);
 
   const useRevealOnScroll = (deps = []) => {
     useEffect(() => {
@@ -561,52 +506,11 @@ function MainComponent({ adSlot = null, popularGames = [], explainerSlot = null 
 
       <div className="mx-auto max-w-7xl px-4 py-8">
         <section className="mb-16 reveal">
-          <div className="mb-3">
-            <h2 className="text-2xl font-bold text-[#f5ff3b]">
-              {t("home.pick_your_battle")}
-            </h2>
-            <p className="mt-1 text-sm text-[#7dd3fc]">{t("home.pick_your_game_subtitle")}</p>
-          </div>
-
-          <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4 reveal-stagger">
-            <motion.a
-              initial={{ opacity: 0, y: 8 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, amount: 0.25 }}
-              whileHover={{ scale: shouldReduceMotion ? 1 : 1.02 }}
-              transition={{ duration: 0.25 }}
-              href="/games/tower-arena"
-              aria-label="Play Tower Arena"
-              className="group relative cursor-pointer overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_20px_rgba(0,229,255,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24]"
-            >
-              <div className="mb-4 h-48 overflow-hidden rounded-lg relative">
-                <Image
-                  src={Img3}
-                  alt={t("home.game_cards.tower_arena_alt")}
-                  loading="lazy"
-                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
-                  className="h-full w-full object-cover transition-transform group-hover:scale-110"
-                />
-                {/* PvP badge — this game is a real 1v1 duel */}
-                <span className="absolute left-2 top-2 rounded-full border border-[#00e5ff]/60 bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#00e5ff] shadow-[0_0_10px_rgba(0,229,255,0.45)] backdrop-blur-sm">
-                  {t("home.pvp_badge")}
-                </span>
-              </div>
-              <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">{t("games.tower_arena_name")}</h3>
-              <p className="text-[#9dd8ff]">
-                {t("home.game_cards.tower_arena_desc")}
-              </p>
-              <div className="mt-4 flex items-center gap-1.5 text-sm font-bold text-[#00e5ff]">
-                <span>{t("home.play_pvp")}</span>
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-              </div>
-              {renderFriendWidget("tower-arena")}
-            </motion.a>
-          </div>
-
-          {/* Bouton More centré sous la grille */}
+          {/* The section's call to action. It used to sit under the featured
+              game card; with that card gone it is what the section leads
+              with, so the grid's extra top margin goes with it. */}
           <div
-            className="flex justify-center mt-8 reveal"
+            className="flex justify-center reveal"
             style={{ animationDelay: "0.2s" }}
           >
             <a
@@ -618,10 +522,10 @@ function MainComponent({ adSlot = null, popularGames = [], explainerSlot = null 
           </div>
 
           {/* Most popular games — plain links, not buttons and not a client
-              state machine. "Pick your battle" above features a single game;
-              these are the catalogue's own popular entries, so the home page
-              links straight to their public pages and a crawler finds the
-              next level of the hierarchy (/games/<slug>) from the root. */}
+              state machine. These are the catalogue's own popular entries, so
+              the home page links straight to their public pages and a crawler
+              finds the next level of the hierarchy (/games/<slug>) from the
+              root. */}
           {popularGames.length > 0 && (
             <nav
               aria-labelledby="home-popular-games"

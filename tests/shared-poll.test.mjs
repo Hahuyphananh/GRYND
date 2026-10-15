@@ -8,8 +8,8 @@
  *      tests (a fake localStorage makes the cross-tab arithmetic deterministic);
  *   2. the safety/lifecycle invariants of src/hooks/useSharedPoll.ts by reading
  *      its source;
- *   3. the call sites that were migrated onto it (home live stats + friend
- *      presence, casino friend presence + active players) and the heartbeat
+ *   3. the call sites that were migrated onto it (home live stats, casino
+ *      friend presence + active players) and the heartbeat
  *      dedup (global presence beat + the two game-presence hooks), plus the
  *      removal of the profile's duplicate heartbeat writer.
  *
@@ -206,19 +206,20 @@ test("useSharedPoll stops hidden tabs and tears every listener down", () => {
 
 // ── 3. Migrated call sites ───────────────────────────────────────────────
 
-test("the home page shares live-stats and friend-presence across tabs", () => {
+test("the home page shares live-stats across tabs, and polls nothing else", () => {
   const home = strip(read(HOME));
 
   assert.match(home, /useSharedPoll\("live-stats", fetchLiveStats, \{/);
-  assert.match(home, /useSharedPoll\("friend-presence", fetchFriendPresence, \{/);
-  // Friend presence only runs for a signed-in user.
-  assert.match(home, /enabled: Boolean\(user\)/);
+
+  // Friend presence is the LOBBY's feed (asserted below). The home page only ever
+  // consumed it for the avatars on its featured game card; with that card gone it
+  // must not keep polling a value nothing reads.
+  assert.doesNotMatch(home, /useSharedPoll\("friend-presence"/);
+  assert.doesNotMatch(home, /fetchFriendPresence/);
 
   // The old per-tab intervals are gone.
   assert.doesNotMatch(home, /setInterval\(fetchLiveStats/);
   assert.doesNotMatch(home, /setInterval\(fetchFriendPresence/);
-  // The fetchers return the payload the poller broadcasts.
-  assert.match(home, /if \(response\.ok && data\.success\) return data\.byGame \|\| \{\};/);
 });
 
 test("the casino lobby shares friend-presence and the active-player aggregate", () => {
