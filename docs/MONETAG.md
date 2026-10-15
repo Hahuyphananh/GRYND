@@ -32,10 +32,25 @@ chain for this zone:
 | --- | --- |
 | The MultiTag loader (`data-zone="295730"`) | `quge5.com/88/tag.min.js`, ours |
 | Its zone answer | `6opo.com/88/295730?dmn=quge5.com` |
-| Onclick (popunder) | the tag's own `function onclick` code — no extra request |
-| Push Notifications | `b3mny.com/tag.min.js?z=12031482` |
-| Vignette Banner | `ekhay.com/vignette.min.js?z=12031483` |
-| In-Page Push | `auqot.com/pfe/current/tag.min.js?z=12031484` |
+| Onclick (popunder) | **inside the 295730 answer itself**: its `onclick` block names sub-zone `12031481` (`zoneTypeId` 115) and carries the popunder options (`clickAnywhere`, `addOverlay`, `desktopPopunderEverywhere`, `clickTrackUrl` …) — no extra request, and the click handling is the tag's own `function onclick` code |
+| Vignette Banner | `ekhay.com/vignette.min.js?z=12031483` — the vendor's own filename names this one |
+| The web-push format | `auqot.com/pfe/current/tag.min.js?z=12031484` — the only loader carrying `Notification`, `applicationServerKey` and `subscribe`, **and** the only zone whose config returns `swName` |
+| The remaining format | `b3mny.com/tag.min.js?z=12031482` — obfuscated differently, announces nothing about itself |
+
+The whole `295730` answer is plain JSON with two top-level keys — `onclick` and
+`extra_formats` — and it contains **no worker reference of any kind**: no
+`swName`, no `sw.js`/`sw1.js`, no `serviceWorker`, no `register`, no `lary`, no
+`importScripts`. The Onclick format therefore needs **no service worker at all**
+— neither `/sw.js` nor `/sw1.js`. The worker requirement in this integration
+belongs to sub-zone `12031484` (the web-push format, §2), which is exactly the zone
+the downloaded file that was renamed to `sw1.js` binds to.
+
+**Their dashboard's "Push Notifications" vs "In-Page Push" labels are not
+established here.** The loaders only tell us which script serves which zone id;
+`12031484` behaves like the web-push format (notification/permission machinery and
+the worker requirement) and `12031482` announces nothing, so anything that has to
+name them — support tickets especially — should name them **by zone id**, not by
+format.
 
 Adding the tag a second time would inject **the same zone twice** (two
 popunders), not a second format. `tests/ad-model.test.mjs` pins one loader per
@@ -51,7 +66,21 @@ decided by Monetag's server**, not by us: the zone endpoint answers with
 ```
 
 and their loader calls `navigator.serviceWorker.register(...)` with that name —
-i.e. it asks the site for **`/sw.js` at the root**.
+i.e. it asks the site for **`/sw.js` at the root**. Renaming the downloaded file
+cannot change that: the name is server-side, per zone, and the answer is the same
+whichever domain is asked. Measured for this property:
+
+| Asked as | `swName` returned |
+| --- | --- |
+| `domain=www.grynd.dedyn.io` | `sw.js` |
+| `domain=grynd.dedyn.io` | `sw.js` |
+| `domain=localhost` | `sw.js` |
+
+(`domain` in that same response is their rotating ad/worker CDN host — it moved
+between three different values across those calls — and is not `swName`.) So
+**nothing in Monetag's system looks for `sw1.js`**, which is why renaming the file
+repeatedly changes nothing; only they can change the name, and until they do, the
+file is served but unused.
 
 `/sw.js` on this site belongs to **next-pwa** (`next.config.js`, `dest: "public"`),
 which regenerates it on every build. Both cannot own that path. The current
@@ -170,14 +199,83 @@ npm run test:ads                          # the ad-model contract
 `/sw.js`/`/sw1.js` on our own origin, the service-worker registrations and their
 scopes, and any console errors.
 
-## 6. Dashboard steps (Monetag side)
+## 6. Why the dashboard still says "installation error"
+
+Monetag runs **three separate checks**, and they fail for different reasons. Do not
+treat them as one:
+
+| Check | What it looks for | State on this property |
+| --- | --- | --- |
+| 1. Site ownership | the verification method chosen when the site was added | **Done** — the file method is not used; the `<meta name="monetag" content="5ff7ccfa99ccd949f62b8eeaadc1d677">` tag is in the root layout and is present in the served HTML (`src/app/layout.tsx`, `metadata.other`). Nothing about the worker affects this check. |
+| 2. The worker file | their own worker, at the path their zone names | **Not satisfiable as configured** — the path is `/sw.js` (see §2) and that path serves next-pwa's workbox worker (76 KB, `if(!self.define){…`), not theirs. This is the check a "generic installation error" on a site that already has a service worker is most consistent with. |
+| 3. The zone installation | the zone's own tag, once, in the page | **Satisfied** — one `<script id="monetag-multitag" async data-cfasync="false" data-zone="295730" src="https://quge5.com/88/tag.min.js">` element, verified in the rendered HTML locally and on the deployed domain. |
+
+There is **no separate installation step for the Onclick format** — verified against
+the zone's own JSON (§1), not inferred: the Onclick block for sub-zone `12031481`
+carries popunder options and **no worker keys whatsoever**. So an "Onclick
+installation error" cannot be a missing Onclick worker: there is nothing of the kind
+to install. The worker file that was renamed to `sw1.js` belongs to the **In-Page
+sub-zone (`12031484`) — which is also the only zone whose configuration names
+a worker file at all. If what their dashboard is really reporting is the site-level
+worker check, that is the one requirement this deployment cannot meet as configured
+(row 2 above).
+
+One further possibility worth ruling out **in the dashboard, not by guessing**: the tag
+is deliberately served on the browsing pages only (§3) and is absent from every match
+route. If Monetag's own checker samples a match URL, it will not find the tag there
+and can report an installation problem for a reason that has nothing to do with the
+worker. Their dashboard shows which URL was checked; that is the place to look, and
+it is also the fastest question to put to their support alongside the `swName`
+request.
+
+**The safest supported fix** is therefore support, not more renaming: ask Monetag to
+set this zone's `swName` to `sw1.js`, which is already served at the root with the
+right content type, `Cache-Control: no-store` and `Service-Worker-Allowed: /`. Quote
+the table in §2 as evidence. The alternatives are worse and deliberate:
+
+* **Merging their bootstrap into next-pwa's worker** would make `/sw.js` contain
+  their code, but their import installs a `fetch` handler (measured, §2), i.e. it
+  would share a worker with workbox's routing — and the imported host in the
+  downloaded file (`3nbf4.com`) is not stable. That is the change that can break
+  offline caching, so it is not made silently.
+* **Uploading their file as `/sw.js`** replaces the PWA's worker outright. Explicitly
+  not done.
+
+## 7. Verified on the deployed site
+
+Measured against the production domain (`https://www.grynd.dedyn.io`), not just a
+local build:
+
+| What | Deployed result |
+| --- | --- |
+| `/` HTML | exactly **one** tag element: `<script id="monetag-multitag" async data-cfasync="false" data-zone="295730" src="https://quge5.com/88/tag.min.js">` |
+| Site verification meta | `<meta name="monetag" content="5ff7ccfa99ccd949f62b8eeaadc1d677"/>` present |
+| `/sw1.js` | **200**, `application/javascript; charset=utf-8`, 156 bytes, `Cache-Control: no-store`, `Service-Worker-Allowed: /`, HSTS, `X-Matched-Path: /sw1.js` |
+| `/sw1.js` body | the network's bootstrap (`self.options` + `self.lary` + `importScripts`) |
+| `/sw.js` | **200**, 76,083 bytes of next-pwa workbox — **not** Monetag's worker |
+| Redirects | `http://grynd.dedyn.io/sw1.js` → **308** → `https://grynd.dedyn.io/sw1.js` → **308** → `https://www.grynd.dedyn.io/sw1.js`, i.e. the file is served at the root of the canonical host |
+
+A local production build (`npm run build && npx next start`) produces the same tag,
+the same meta tag and the same two worker responses, differing only in next-pwa's
+own byte count (76,086 vs 76,083). So **nothing about this integration is failing
+for a hosting or packaging reason** — the file is in the build, at the root, with the
+right headers on the real domain.
+
+One operational note: `/sw1.js` comes back through the CDN with `X-Vercel-Cache: HIT`
+and an `Age` header even though it carries `Cache-Control: no-store`. If that file's
+contents ever change, expect the edge to serve the previous copy until it is
+revalidated.
+
+## 8. Dashboard steps (Monetag side)
 
 1. The site is verified — the `monetag` meta tag in the root layout is the
    verification method in use. No file upload is required for that.
 2. Confirm the zone is the MultiTag (`295730`): the dashboard marks MultiTag
    zones with a `MULTI` sign and they carry the four formats under one name.
 3. To make the network's worker usable, ask support to set the zone's `swName` to
-   `sw1.js` (the name already served here). Do not upload a file named `sw.js`:
-   that path is the PWA's, and overwriting it breaks offline caching.
+   `sw1.js` — the name already served here, at the root, with the right content type
+   and scope (see §7). Their API answers `sw.js` for this domain today (§2), which is
+   the one path this site cannot hand over. Do not upload a file named `sw.js`: that
+   path is the PWA's, and overwriting it breaks offline caching.
 4. Nothing to configure for Onclick — it is part of the same tag. Do not paste a
    second copy of the tag.
