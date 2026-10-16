@@ -9,10 +9,11 @@
 import { NextResponse } from "next/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { logError } from "../../../../lib/logError";
+import { requireStake } from "../../../../lib/games/stakes";
 import { createOrJoin } from "../../../../lib/tic-tac-toe/serverStore";
 import { broadcastMatchUpdate } from "../../../../lib/tic-tac-toe/rooms";
 
-export async function POST() {
+export async function POST(request: Request) {
   const gate = await requireAgeVerifiedUser();
   if (gate.response) return gate.response;
   const userId = gate.userId;
@@ -23,8 +24,19 @@ export async function POST() {
     );
   }
 
+  // A ranked duel always plays for coins: the requested stake is REQUIRED and
+  // must be legal, so a crafted request can never open (or join) a free table.
+  const body = await request.json().catch(() => ({}));
+  const wager = requireStake(body?.stakeAmount, "tic-tac-toe");
+  if (!wager.ok) {
+    return NextResponse.json(
+      { success: false, error: wager.error, code: wager.code },
+      { status: wager.status },
+    );
+  }
+
   try {
-    const result = await createOrJoin({ userId });
+    const result = await createOrJoin({ userId, stakeAmount: wager.stake });
     if ("error" in result) {
       return NextResponse.json(
         { success: false, error: result.error },
@@ -45,6 +57,7 @@ export async function POST() {
         matchId: result.match.id,
         status: result.match.status,
         joined: result.joined,
+        stakeAmount: Number(result.match.stakeAmount),
       },
     });
   } catch (error) {

@@ -121,7 +121,42 @@ test("schema: the tables, the unique indexes and the absent seed column", () => 
   );
   // No randomness, so nothing to reproduce with a seed.
   assert.equal(/\bseed\b/.test(block), false, "tic-tac-toe must not carry a seed column");
-  assert.equal(block.includes("stake"), false);
+});
+
+test("schema + migration 0218: the stake column and its open-lobby index", () => {
+  const schema = strip(read("src/db/schema.ts"));
+  const block = schema.slice(
+    schema.indexOf('"tic_tac_toe_matches"'),
+    schema.indexOf('"tic_tac_toe_moves"'),
+  );
+  // The coins each seat puts up, mirrored from memory_grid_matches: NOT NULL
+  // with a 0 default, so every already-written row keeps its meaning (0 = the
+  // free / practice match it always was) and the settlement path only pays when
+  // the stake is positive AND the escrow ledger holds the matching debit.
+  assert.match(
+    block,
+    /stakeAmount: numeric\("stake_amount", \{ precision: 10, scale: 2 \}\)\s*\n\s*\.notNull\(\)\s*\n\s*\.default\("0"\)/,
+  );
+  assert.match(block, /stakeIdx: index\("tic_tac_toe_matches_stake_open_idx"\)/);
+
+  const sql = strip(read("src/db/migrations/0218_tic_tac_toe_stake.sql"));
+  assert.match(
+    sql,
+    /ALTER TABLE "tic_tac_toe_matches"\s*\n\s*ADD COLUMN IF NOT EXISTS "stake_amount" numeric\(10, 2\) NOT NULL DEFAULT '0'/,
+  );
+  assert.match(
+    sql,
+    /CREATE INDEX IF NOT EXISTS "tic_tac_toe_matches_stake_open_idx"/,
+  );
+  // Additive and re-runnable: the column the game shipped WITHOUT (0192) is
+  // added here, and nothing is dropped.
+  assert.equal(/DROP COLUMN/.test(sql), false);
+  assert.equal(/DROP TABLE/.test(sql), false);
+
+  const journal = JSON.parse(read("src/db/migrations/meta/_journal.json"));
+  const entry = journal.entries.find((candidate) => candidate.tag === "0218_tic_tac_toe_stake");
+  assert.ok(entry, "0218_tic_tac_toe_stake must be registered in the journal");
+  assert.equal(entry.idx, 199);
 });
 
 test("engine: the rules module contains no randomness and no I/O", () => {
@@ -264,7 +299,7 @@ test("store: every mutator locks the match row before reading it", () => {
   assert.match(src, /pg_advisory_xact_lock\(\$\{TIC_TAC_TOE_LOCK_NAMESPACE\}, 0\)/);
 });
 
-test("store: settlement goes through the shared writers ONLY — no local Elo maths", () => {
+test("store: settlement goes through the shared writers ONLY — no local Elo or money maths", () => {
   const src = strip(read(STORE));
   assert.match(src, /applyRatingResult\(\{/);
   assert.match(src, /applyTrophyResult\(\{/);
@@ -277,10 +312,25 @@ test("store: settlement goes through the shared writers ONLY — no local Elo ma
   // Asserted as a call rather than an identifier, because the docstring names
   // the helper on purpose to explain why it is skipped.
   assert.equal(/applyLeaderboardCounters\s*\(/.test(src), false);
-  // No money may move: no balance/ledger/transaction-table writes at all.
-  for (const forbidden of ["balance", "tokenTransactions", "tokensLedger", "tokenBalance"]) {
+
+  // The pot is taken, paid and handed back through the ONE ledger
+  // (src/lib/tokens/wager.ts) — the store writes no balance and no ledger row.
+  assert.match(
+    src,
+    /import \{\s*\n\s*escrowMatchWagers,\s*\n\s*refundMatchWagers,\s*\n\s*settlePayout,\s*\n\} from "\.\.\/tokens\/wager";/,
+  );
+  for (const helper of ["escrowMatchWagers", "refundMatchWagers", "settlePayout"]) {
+    assert.match(src, new RegExp(`${helper}\\(\\{`), `the store must call ${helper}`);
+  }
+  for (const forbidden of ["users.balance", "balance:", "tokenTransactions", "tokensLedger", "tokenBalance"]) {
     assert.equal(src.includes(forbidden), false, `the store must not touch ${forbidden}`);
   }
+
+  // One payout formula, shared by the settlement and the client-facing DTO, so
+  // a displayed pot can never drift from the coins that move.
+  assert.match(src, /export function ticTacToePayout\(stake: unknown\): number \{/);
+  assert.match(src, /2 \* amount \* PVP_WINNER_SHARE/);
+  assert.match(src, /const payout = ticTacToePayout\(stake\);/);
 });
 
 test("store: the game key is a literal at every writer call site", () => {
@@ -289,11 +339,13 @@ test("store: the game key is a literal at every writer call site", () => {
   const src = strip(read(STORE));
   const literals = src.match(/gameKey: "tic-tac-toe"/g) ?? [];
   assert.ok(literals.length >= 8, `expected the literal at each writer, found ${literals.length}`);
-  // Every mirror/settle call site uses one.
+  // Every mirror / rating / trophy / LEDGER call site uses one, so the coins
+  // that move are attributed to this game exactly like the rating change is.
   const callSites =
     (src.match(/applyRatingResult\(\{/g) ?? []).length +
     (src.match(/applyTrophyResult\(\{/g) ?? []).length +
-    (src.match(/mirrorQueue(Created|Transition)\(\{/g) ?? []).length;
+    (src.match(/mirrorQueue(Created|Transition)\(\{/g) ?? []).length +
+    (src.match(/(?:escrowMatchWagers|refundMatchWagers|settlePayout)\(\{/g) ?? []).length;
   assert.equal(callSites, literals.length);
 });
 
@@ -318,21 +370,27 @@ test("constants: an unstaked game declares no wager vocabulary", () => {
 // 5. History surface
 // ════════════════════════════════════════════════════════════════════════
 
-test("history: the match-history route reads the table and formats a 0-token record", () => {
+test("history: the match-history route reads the table and formats the pot", () => {
   const src = strip(read("src/app/api/get-bet-history/route.ts"));
   assert.match(src, /ticTacToeMatches,/);
   assert.match(src, /ticTacToeRows/);
   assert.match(src, /const ticTacToeFormatted/);
   assert.match(src, /\.\.\.ticTacToeFormatted,/);
+  // The row's stake is projected, so the history entry can report the coins.
+  assert.match(src, /stakeAmount: ticTacToeMatches\.stakeAmount,/);
   const block = src.slice(src.indexOf("const ticTacToeFormatted"));
   const body = block.slice(0, block.indexOf(".filter(Boolean);"));
-  // Unstaked: every entry is a decided record with no movement.
-  assert.match(body, /amount: 0,/);
-  assert.match(body, /payout: 0,/);
-  assert.match(body, /tokenDiff: 0,/);
+  // Staked: the same shape as Mines Duel — the winner's payout is derived from
+  // the stake with the shared rake, and a draw refunds both stakes.
+  assert.match(body, /const amount = Number\(g\.stakeAmount \?\? 0\);/);
+  assert.match(body, /amount \* 2 \* PVP_WINNER_SHARE/);
+  assert.match(body, /amount,\s*\n\s*payout,/);
+  assert.match(body, /tokenDiff,/);
   assert.match(body, /"Tic-Tac-Toe"/);
   // A draw is a real outcome here, not an edge case.
   assert.match(body, /g\.result === "tie"/);
+  // …and the rake it derives the pot with comes from the one economy source.
+  assert.match(src, /import \{ PVP_WINNER_SHARE \} from "\.\.\/\.\.\/\.\.\/lib\/games\/economy";/);
 });
 
 test("routes: the expected HTTP surface exists, and only /move mutates the board", () => {

@@ -10,6 +10,8 @@ import { IconRobot } from "@tabler/icons-react";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import { readStoredAiDifficulty } from "../../../lib/aiDifficulty";
 import { startVisibleInterval } from "../../../hooks/useVisiblePoll";
+import { useCoinBalance } from "../../../hooks/useCoinBalance";
+import { MIN_STAKE } from "../../../lib/games/stakes";
 
 
 export default function UnoLobbyPage() {
@@ -17,9 +19,12 @@ export default function UnoLobbyPage() {
   // False once the first list response lands, so the empty state never
   // flashes before the request resolves.
   const [lobbiesLoading, setLobbiesLoading] = useState(true);
-  // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
-  // so there is no wager to pick and no token balance to load.
-  const wager = 0;
+  // Coin wager: the player picks the stake their online lobby carries, and the
+  // server escrows BOTH seats the moment an opponent joins. A positive stake is
+  // REQUIRED to play online (PvP always plays for coins); practice vs the AI
+  // stays free.
+  const coinBalance = useCoinBalance();
+  const [stake, setStake] = useState(10);
   const [loading, setLoading] = useState(false);
   // The AI tier the bot plays at, chosen in this lobby and remembered per
   // game by the picker; sent with the vs-AI start request.
@@ -69,27 +74,37 @@ export default function UnoLobbyPage() {
     };
   }, [socket]);
 
+  // The Play action opens an ONLINE lobby at the chosen stake. Both stakes are
+  // escrowed when an opponent takes the second seat (a waiting lobby costs
+  // nothing), and the winner is paid out of that escrow on settle.
   const createGame = async () => {
+    if (stake < MIN_STAKE) {
+      setError(`Pick a stake of at least ${MIN_STAKE} coin to open a game.`);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/uno/initialize-vs-ai", {
+      const res = await fetch("/api/uno/join-online", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ betAmount: wager, difficulty: aiDifficulty }),
+        body: JSON.stringify({ mode: "create", betAmount: stake }),
       });
       const data = await res.json();
-      if (!data.success || !data.data?.id) {
+      const createdId = data.data?.id || data.gameId;
+      if (!data.success || !createdId) {
         setError(data.error || "Unable to create game");
         return;
       }
       posthog?.capture("neon_flush_game_started", {
-        mode: "ai",
-        bet_amount: wager,
-        game_id: data.data.id,
+        mode: "create",
+        bet_amount: stake,
+        game_id: createdId,
       });
-      router.push(`/casino/uno/game/${data.data.id}`);
+      load();
+      router.push(`/casino/uno/game/${createdId}`);
     } finally {
       setLoading(false);
     }
@@ -129,7 +144,13 @@ export default function UnoLobbyPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ mode: "join-specific", gameId: lobby.id }),
+        // The stake travels with the join so the server can prove the seat is
+        // escrowed at the amount shown in the lobby row.
+        body: JSON.stringify({
+          mode: "join-specific",
+          gameId: lobby.id,
+          betAmount: lobby.betAmount,
+        }),
       });
       const data = await res.json();
       if (!data.success) {
@@ -209,8 +230,10 @@ export default function UnoLobbyPage() {
             heading: "Modes",
             body: (
               <>
-                Play vs AI for free, or go 1v1 online. The result is worth
-                trophies and rating — nothing is staked and no pot is paid.
+                Play vs AI for free, or go 1v1 online for coins: both stakes
+                are escrowed when an opponent joins and the winner takes{" "}
+                <b>1.9× their stake</b> (stake back + 90% of the loser&apos;s).
+                The result is worth trophies and rating either way.
               </>
             ),
           },
@@ -218,9 +241,11 @@ export default function UnoLobbyPage() {
       }}
       busy={loading}
       onPlay={createGame}
-      playLabel="Start vs AI"
-      playBusyLabel="Starting game…"
-      canPlay={true}
+      playLabel="Create PvP Game"
+      playBusyLabel="Creating…"
+      canPlay={stake >= MIN_STAKE}
+      wager={{ value: stake, onChange: setStake, balance: coinBalance }}
+      waitingSubtitle={`Waiting for a 1v1 Neon Flush match at ${stake} coins…`}
       vsAi={{
         label: "Free Play vs AI",
         badge: "Free",
@@ -263,7 +288,6 @@ export default function UnoLobbyPage() {
       onResume={resumeGame}
       onCancel={cancelGame}
       cancelling={cancelling}
-      waitingSubtitle="Waiting for a 1v1 Neon Flush match…"
       children={
         <AiDifficultyPicker
           gameKey="uno"

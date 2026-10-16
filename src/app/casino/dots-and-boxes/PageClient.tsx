@@ -11,6 +11,8 @@ import { IconRuler } from "@tabler/icons-react";
 import { useTranslation } from "../../../hooks/useTranslation";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import { useSocketAwarePoll } from "../../../hooks/useVisiblePoll";
+import { useCoinBalance } from "../../../hooks/useCoinBalance";
+import { MIN_STAKE } from "../../../lib/games/stakes";
 import {
   type AiDifficulty,
   readStoredAiDifficulty,
@@ -24,9 +26,12 @@ export default function DotsAndBoxesLobbyPage() {
   const posthog = usePostHog();
   const { t } = useTranslation();
 
-  // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
-  // so there is no wager to track and no token balance to load.
-  const betAmount = 0;
+  // Coin wager: the player picks the stake the lobby is opened at, and the
+  // server escrows both seats the moment an opponent joins. A positive stake
+  // is REQUIRED to enter a ranked match (PvP always plays for coins); the
+  // vs-AI game stays free.
+  const coinBalance = useCoinBalance();
+  const [stake, setStake] = useState<number>(10);
   const [loading, setLoading] = useState(false);
   const [availableGames, setAvailableGames] = useState<any[]>([]);
   // False once the first list response lands, so the empty state never
@@ -74,13 +79,18 @@ export default function DotsAndBoxesLobbyPage() {
   }, [socket]);
 
   const createGame = async () => {
+    if (stake < MIN_STAKE) {
+      setError(`Pick a stake of at least ${MIN_STAKE} coin to open a game.`);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
       const res = await fetch("/api/dots-and-boxes/create-game", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ betAmount }),
+        body: JSON.stringify({ betAmount: stake }),
       });
       const data = await res.json();
 
@@ -96,7 +106,7 @@ export default function DotsAndBoxesLobbyPage() {
       router.push(`/casino/dots-and-boxes/game/${data.gameId}`);
       posthog?.capture("dots_and_boxes_game_started", {
         mode: "create",
-        bet_amount: betAmount,
+        bet_amount: stake,
         game_id: data.gameId,
       });
     } finally {
@@ -125,16 +135,37 @@ export default function DotsAndBoxesLobbyPage() {
     }
   };
 
-  const joinGame = async (gameId?: number) => {
+  // Quick Join has no lobby in hand, so it takes the cheapest open game the
+  // player can cover (the server escrows and refuses an unaffordable seat with
+  // "Insufficient coins"). A specific lobby carries the stake the player saw in
+  // the list so the server can prove the seat is funded at the agreed amount.
+  const pickQuickJoinTarget = () => {
+    const open = (availableGames || []).filter((g) => Number(g?.betAmount) >= MIN_STAKE);
+    if (open.length === 0) return null;
+    const affordable =
+      coinBalance === null
+        ? open
+        : open.filter((g) => Number(g.betAmount) <= coinBalance);
+    const pool = affordable.length > 0 ? affordable : open;
+    return [...pool].sort((a, b) => Number(a.betAmount) - Number(b.betAmount))[0];
+  };
+
+  const joinGame = async (target?: { id: number; betAmount: number }) => {
+    const chosen = target ?? pickQuickJoinTarget();
+    if (!chosen) {
+      setError(t("games.dots_and_boxes.no_open_games"));
+      return;
+    }
+
     setLoading(true);
     setError(null);
-    if (gameId) setJoiningId(gameId);
+    setJoiningId(chosen.id);
 
     try {
       const res = await fetch("/api/dots-and-boxes/join-game", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(gameId ? { gameId } : { quickJoin: true }),
+        body: JSON.stringify({ gameId: chosen.id, betAmount: chosen.betAmount }),
       });
       const data = await res.json();
 
@@ -149,7 +180,8 @@ export default function DotsAndBoxesLobbyPage() {
       });
       router.push(`/casino/dots-and-boxes/game/${data.gameId}`);
       posthog?.capture("dots_and_boxes_game_started", {
-        mode: gameId ? "join" : "quick_join",
+        mode: target ? "join" : "quick_join",
+        bet_amount: Number(chosen.betAmount),
         game_id: data.gameId,
       });
     } finally {
@@ -201,6 +233,9 @@ export default function DotsAndBoxesLobbyPage() {
       onPlay={createGame}
       playLabel={t("games.dots_and_boxes.create_button")}
       playBusyLabel={t("games.dots_and_boxes.creating")}
+      wager={{ value: stake, onChange: setStake, balance: coinBalance }}
+      canPlay={stake >= MIN_STAKE}
+      waitingSubtitle={`Matching you at ${stake} coins — both stakes are escrowed on match-up.`}
       children={
         <AiDifficultyPicker
           gameKey="dots-and-boxes"
@@ -252,7 +287,7 @@ export default function DotsAndBoxesLobbyPage() {
           </span>
         </span>
       )}
-      onJoin={(l) => joinGame(l.id)}
+      onJoin={(l) => joinGame({ id: l.id, betAmount: Number(l.betAmount) })}
       joinBusyId={joiningId}
       joinLabel={t("games.dots_and_boxes.join_button")}
       onRefresh={fetchGames}

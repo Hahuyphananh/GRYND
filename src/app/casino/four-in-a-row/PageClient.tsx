@@ -10,6 +10,8 @@ import { CoinIcon } from "../../../components/lobby/PvpLobby";
 import { IconRobot, IconGridDots } from "@tabler/icons-react";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import { useSocketAwarePoll } from "../../../hooks/useVisiblePoll";
+import { useCoinBalance } from "../../../hooks/useCoinBalance";
+import { MIN_STAKE } from "../../../lib/games/stakes";
 import {
   type AiDifficulty,
   readStoredAiDifficulty,
@@ -31,9 +33,12 @@ export default function FourInARowLobbyPage() {
   const router = useRouter();
   const posthog = usePostHog();
 
-  // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
-  // so there is no wager to track and no token balance to load.
-  const betAmount = 0;
+  // Coin wager: the player picks the stake the lobby is opened at, and the
+  // server escrows both seats the moment an opponent joins. A positive stake
+  // is REQUIRED to enter a ranked match (PvP always plays for coins); the
+  // vs-AI sandbox stays free.
+  const coinBalance = useCoinBalance();
+  const [stake, setStake] = useState<number>(10);
   const [timerSeconds, setTimerSeconds] = useState(60);
   const [loading, setLoading] = useState(false);
   const [availableGames, setAvailableGames] = useState<any[]>([]);
@@ -82,6 +87,10 @@ export default function FourInARowLobbyPage() {
   }, [socket]);
 
   const createGame = async () => {
+    if (stake < MIN_STAKE) {
+      setError(`Pick a stake of at least ${MIN_STAKE} coin to open a game.`);
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -89,7 +98,7 @@ export default function FourInARowLobbyPage() {
       const res = await fetch("/api/four-in-a-row/create-game", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ betAmount, timerSeconds }),
+        body: JSON.stringify({ betAmount: stake, timerSeconds }),
       });
       const data = await res.json();
 
@@ -103,7 +112,7 @@ export default function FourInARowLobbyPage() {
         event: "lobby:updated",
       });
       router.push(`/casino/four-in-a-row/game/${data.gameId}`);
-      posthog?.capture("four_in_a_row_game_started", { mode: "create", bet_amount: betAmount, game_id: data.gameId, timer_seconds: timerSeconds });
+      posthog?.capture("four_in_a_row_game_started", { mode: "create", bet_amount: stake, game_id: data.gameId, timer_seconds: timerSeconds });
     } finally {
       setLoading(false);
     }
@@ -117,16 +126,37 @@ export default function FourInARowLobbyPage() {
     router.push("/casino/four-in-a-row/play-ai");
   };
 
-  const joinGame = async (gameId?: number) => {
+  // Quick Join has no lobby in hand, so it takes the cheapest open game the
+  // player can cover (the server escrows and refuses an unaffordable seat). A
+  // specific lobby carries the stake the player saw in the list so the server
+  // can prove the seat is funded at the agreed amount.
+  const pickQuickJoinTarget = () => {
+    const open = (availableGames || []).filter((g) => Number(g?.betAmount) >= MIN_STAKE);
+    if (open.length === 0) return null;
+    const affordable =
+      coinBalance === null
+        ? open
+        : open.filter((g) => Number(g.betAmount) <= coinBalance);
+    const pool = affordable.length > 0 ? affordable : open;
+    return [...pool].sort((a, b) => Number(a.betAmount) - Number(b.betAmount))[0];
+  };
+
+  const joinGame = async (target?: { id: number; betAmount: number }) => {
+    const chosen = target ?? pickQuickJoinTarget();
+    if (!chosen) {
+      setError("No open games right now. Be the first to create one.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
-    if (gameId) setJoiningId(gameId);
+    setJoiningId(chosen.id);
 
     try {
       const res = await fetch("/api/four-in-a-row/join-game", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(gameId ? { gameId } : { quickJoin: true }),
+        body: JSON.stringify({ gameId: chosen.id, betAmount: chosen.betAmount }),
       });
       const data = await res.json();
 
@@ -140,7 +170,7 @@ export default function FourInARowLobbyPage() {
         event: "lobby:updated",
       });
       router.push(`/casino/four-in-a-row/game/${data.gameId}`);
-      posthog?.capture("four_in_a_row_game_started", { mode: gameId ? "join" : "quick_join", game_id: data.gameId });
+      posthog?.capture("four_in_a_row_game_started", { mode: target ? "join" : "quick_join", bet_amount: Number(chosen.betAmount), game_id: data.gameId });
     } finally {
       setLoading(false);
       setJoiningId(null);
@@ -175,21 +205,26 @@ export default function FourInARowLobbyPage() {
                 </>
               ),
             },
-            {
-              heading: "Stake",
-              body: (
-                <>
-                  A free ranked match — the winner takes the trophies and the
-                  rating; nothing is staked and no pot is paid.
-                </>
-              ),
-            },
+          {
+            heading: "Stake",
+            body: (
+              <>
+                A ranked match plays for coins: both stakes are escrowed the
+                moment an opponent joins, and the winner takes <b>1.9× their
+                stake</b> (stake back + 90% of the loser's). Pick your stake
+                above the Play button — an exact draw refunds both seats.
+              </>
+            ),
+          },
           ],
         }}
         busy={loading}
         onPlay={createGame}
         playLabel="Create Game"
         playBusyLabel="Creating…"
+        wager={{ value: stake, onChange: setStake, balance: coinBalance }}
+        canPlay={stake >= MIN_STAKE}
+        waitingSubtitle={`Matching you at ${stake} coins — both stakes are escrowed on match-up.`}
         vsAi={{
           label: "Play vs AI. Free, no wager",
           badge: "Free",
@@ -256,7 +291,7 @@ export default function FourInARowLobbyPage() {
             <span>Timer: {Number(l.timerSeconds || 60)}s</span>
           </span>
         )}
-        onJoin={(l) => joinGame(l.id)}
+        onJoin={(l) => joinGame({ id: l.id, betAmount: Number(l.betAmount) })}
         joinBusyId={joiningId}
         onRefresh={fetchGames}
         error={error}

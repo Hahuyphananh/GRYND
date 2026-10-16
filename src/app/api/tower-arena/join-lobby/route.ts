@@ -8,9 +8,19 @@ export async function POST(req: Request) {
     const gate = await requireAgeVerifiedUser();
     if (gate.response) return gate.response;
     const userId = gate.userId;
-    const { lobbyId } = await req.json().catch(() => ({}));
+    const { lobbyId, wager } = await req.json().catch(() => ({}));
     if (!lobbyId) return NextResponse.json({ ok: false, message: "lobbyId is required" }, { status: 400 });
-    const res: any = await joinTowerArenaLobby({ userId, lobbyId: String(lobbyId) });
+    // The stake the joiner agreed to is verified against the lobby row, so a
+    // stale or crafted request cannot drop a player into an entry they never
+    // chose. Absent = no claim (an older client), and the lobby's own stake
+    // still applies.
+    const expectedWager =
+      wager === undefined || wager === null || wager === "" ? null : Number(wager);
+    const res: any = await joinTowerArenaLobby({
+      userId,
+      lobbyId: String(lobbyId),
+      expectedWager,
+    });
     return NextResponse.json(
       { ok: !res.error, match: res.match ?? null, started: Boolean(res.started), error: res.error },
       { status: res.status || 200 },

@@ -6,6 +6,7 @@ import { oddsGames } from "../../../../db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { initPvPOddsGame } from "../../../../lib/odds";
 import { escrowMatchWagers } from "../../../../lib/tokens/wager";
+import { normalizeStake } from "../../../../lib/games/stakes";
 
 export async function POST(req: Request) {
   try {
@@ -25,6 +26,14 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const gameId = Number(body.gameId);
+    // The stake the joiner agreed to when they picked this lobby. A request
+    // that names a different one is refused instead of being escrowed at an
+    // amount the player never chose (the lobby list is public and may be
+    // stale). A request that names none is still held to the lobby's stake.
+    const claimedStake =
+      body?.wager === undefined || body?.wager === null || body?.wager === ""
+        ? null
+        : normalizeStake(body.wager, "odds");
 
     if (!Number.isFinite(gameId) || gameId <= 0) {
       return NextResponse.json({ error: "Invalid game ID" }, { status: 400 });
@@ -45,6 +54,12 @@ export async function POST(req: Request) {
 
       if (!game) throw new Error("Game not found or already joined");
       if (game.player1Id === userId) throw new Error("Cannot join your own game");
+      if (claimedStake !== null && claimedStake !== Number(game.wager)) {
+        throw Object.assign(
+          new Error("This game is no longer open at that stake"),
+          { status: 400 },
+        );
+      }
 
       // Escrow BOTH stakes before the seat is filled: a staked match either
       // funds fully or the join is refused, so a `playing` game is always

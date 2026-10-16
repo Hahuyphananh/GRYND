@@ -8,6 +8,8 @@ import { CoinIcon } from "../../../components/lobby/PvpLobby";
 import { IconBuildingSkyscraper } from "@tabler/icons-react";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import { useSocketAwarePoll } from "../../../hooks/useVisiblePoll";
+import { useCoinBalance } from "../../../hooks/useCoinBalance";
+import { MIN_STAKE } from "../../../lib/games/stakes";
 import {
   type AiDifficulty,
   readStoredAiDifficulty,
@@ -18,9 +20,12 @@ export default function TowerArenaLobbyPage() {
   // False once the first list response lands, so the empty state never
   // flashes before the request resolves.
   const [lobbiesLoading, setLobbiesLoading] = useState(true);
-  // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
-  // so there is no wager to pick and no token balance to load.
-  const wager = 0;
+  // Coin wager: the player picks the stake the lobby is opened at, and the
+  // server escrows BOTH seats when an opponent joins. A positive stake is
+  // REQUIRED to enter a ranked match (PvP always plays for coins); the bot
+  // duel stays free.
+  const coinBalance = useCoinBalance();
+  const [wager, setWager] = useState(10);
   // The AI tier the bots place at, chosen in this lobby and remembered per
   // game by the picker; sent with the create-ai request.
   const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
@@ -93,6 +98,11 @@ export default function TowerArenaLobbyPage() {
   }, [socket]);
 
   const createLobby = async () => {
+    if (wager < MIN_STAKE) {
+      setError(`Pick a stake of at least ${MIN_STAKE} coin to open a lobby.`);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
@@ -149,7 +159,9 @@ export default function TowerArenaLobbyPage() {
       const res = await fetch("/api/tower-arena/join-lobby", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lobbyId: lobby.id }),
+        // The stake travels with the join so the server can prove the seat is
+        // escrowed at the amount the lobby row showed.
+        body: JSON.stringify({ lobbyId: lobby.id, wager: Number(lobby.wager) }),
       });
       const data = await res.json();
       if (!data.ok) {
@@ -227,8 +239,11 @@ export default function TowerArenaLobbyPage() {
             body: (
               <>
                 The first block to fall ends it: the player who dropped it is
-                out and the other player wins the duel. Nothing is staked and
-                no prize pool is paid; free play only.
+                out and the other player wins the duel — and the prize pool.
+                Both entries are escrowed when the second player joins (a
+                waiting lobby costs nothing), the winner takes 1.9× their
+                stake, and a lobby that is cancelled or torn down returns
+                every entry. The bot duel is free.
               </>
             ),
           },
@@ -238,6 +253,9 @@ export default function TowerArenaLobbyPage() {
       onPlay={createLobby}
       playLabel="Create PvP Lobby"
       playBusyLabel="Creating lobby…"
+      wager={{ value: wager, onChange: setWager, balance: coinBalance }}
+      canPlay={wager >= MIN_STAKE}
+      waitingSubtitle={`Waiting for an opponent to join at ${wager} coins…`}
       vsAi={{
         label: "Free Play vs Bots",
         badge: "Free",
@@ -276,7 +294,6 @@ export default function TowerArenaLobbyPage() {
       joinBusyId={joiningId}
       onRefresh={load}
       error={error}
-      waitingSubtitle="Waiting for an opponent to join…"
     >
       <AiDifficultyPicker
         gameKey="tower-arena"

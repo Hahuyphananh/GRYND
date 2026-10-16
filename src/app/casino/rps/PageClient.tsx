@@ -18,6 +18,8 @@ import { CoinIcon } from "../../../components/lobby/PvpLobby";
 import { RockFistIcon } from "../../../components/icons/CustomIcons";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import { useSocketAwarePoll } from "../../../hooks/useVisiblePoll";
+import { useCoinBalance } from "../../../hooks/useCoinBalance";
+import { MIN_STAKE } from "../../../lib/games/stakes";
 import {
   type AiDifficulty,
   readStoredAiDifficulty,
@@ -33,9 +35,12 @@ export default function RPSLobbyPage() {
   const router = useRouter();
   const posthog = usePostHog();
 
-  // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
-  // so there is no wager to track and no token balance to load.
-  const betAmount = 0;
+  // Coin wager: the player picks the stake the lobby is opened at, and the
+  // server escrows both seats when an opponent joins. A positive stake is
+  // REQUIRED to enter a ranked match (PvP always plays for coins); only the
+  // vs-AI sandbox is free.
+  const coinBalance = useCoinBalance();
+  const [stake, setStake] = useState<number>(10);
   const [loading, setLoading] = useState(false);
   const [availableGames, setAvailableGames] = useState<any[]>([]);
   // False once the first list response lands, so the empty state never
@@ -82,7 +87,14 @@ export default function RPSLobbyPage() {
     };
   }, [socket]);
 
+  // A ranked RPS match always plays for coins: with no stake there is nothing
+  // to escrow, so the Play action is refused here (and the shared lobby
+  // disables the button through `canPlay`).
   const createGame = async () => {
+    if (stake < MIN_STAKE) {
+      setError(`Pick a stake of at least ${MIN_STAKE} coin to open a game.`);
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -90,7 +102,7 @@ export default function RPSLobbyPage() {
       const res = await fetch("/api/rps/pvp/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ betAmount }),
+        body: JSON.stringify({ betAmount: stake }),
       });
       const data = await res.json();
 
@@ -106,7 +118,7 @@ export default function RPSLobbyPage() {
       router.push(`/casino/rps/game/${data.data.gameId}`);
       posthog?.capture("rps_game_started", {
         mode: "create",
-        bet_amount: betAmount,
+        bet_amount: stake,
         game_id: data.data.gameId,
       });
     } finally {
@@ -122,16 +134,40 @@ export default function RPSLobbyPage() {
     router.push("/casino/rps/play-ai");
   };
 
-  const joinGame = async (gameId?: number) => {
+  // Quick Join has no lobby in hand, so it takes the cheapest open game the
+  // player can actually cover (the server still escrows and refuses an
+  // unaffordable seat). Without a chosen lobby there is nothing to match on.
+  const pickQuickJoinTarget = () => {
+    const open = (availableGames || []).filter((g) => Number(g?.betAmount) >= MIN_STAKE);
+    if (open.length === 0) return null;
+    const affordable =
+      coinBalance === null
+        ? open
+        : open.filter((g) => Number(g.betAmount) <= coinBalance);
+    const pool = affordable.length > 0 ? affordable : open;
+    return [...pool].sort((a, b) => Number(a.betAmount) - Number(b.betAmount))[0];
+  };
+
+  const joinGame = async (target?: { id: number; betAmount: number }) => {
+    const chosen = target ?? pickQuickJoinTarget();
+    if (!chosen) {
+      setError("No open games right now. Be the first to create one.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
-    if (gameId) setJoiningId(gameId);
+    setJoiningId(chosen.id);
 
     try {
       const res = await fetch("/api/rps/pvp/join", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(gameId ? { gameId } : { quickJoin: true }),
+        // The stake travels with the join request so the server can prove the
+        // seat is being escrowed at the amount the player actually chose — a
+        // crafted request cannot drop a player into a table they never agreed
+        // to.
+        body: JSON.stringify({ gameId: chosen.id, betAmount: chosen.betAmount }),
       });
       const data = await res.json();
 
@@ -152,7 +188,8 @@ export default function RPSLobbyPage() {
       });
       router.push(`/casino/rps/game/${data.data.gameId}`);
       posthog?.capture("rps_game_started", {
-        mode: gameId ? "join" : "quick_join",
+        mode: target ? "join" : "quick_join",
+        bet_amount: Number(chosen.betAmount),
         game_id: data.data.gameId,
       });
     } finally {
@@ -202,8 +239,11 @@ export default function RPSLobbyPage() {
             heading: "Stake",
             body: (
               <>
-                A free ranked match — the best-of-7 winner takes the trophies
-                and the rating; nothing is staked and no pot is paid.
+                A ranked match plays for coins: both stakes are escrowed the
+                moment an opponent joins, and the best-of-7 winner takes{" "}
+                <b>1.9× their stake</b> (stake back + 90% of the loser's). Pick
+                your stake above the Play button — an exact draw refunds both
+                seats.
               </>
             ),
           },
@@ -213,6 +253,9 @@ export default function RPSLobbyPage() {
       onPlay={createGame}
       playLabel="Create PvP Game"
       playBusyLabel="Creating…"
+      wager={{ value: stake, onChange: setStake, balance: coinBalance }}
+      canPlay={stake >= MIN_STAKE}
+      waitingSubtitle={`Matching you at ${stake} coins — both stakes are escrowed on match-up.`}
       vsAi={{
         label: "Play vs AI. Free, no wager",
         badge: "Free",
@@ -259,7 +302,7 @@ export default function RPSLobbyPage() {
           </span>
         </span>
       )}
-      onJoin={(l) => joinGame(l.id)}
+      onJoin={(l) => joinGame({ id: l.id, betAmount: Number(l.betAmount) })}
       joinBusyId={joiningId}
       onRefresh={fetchGames}
       error={error}

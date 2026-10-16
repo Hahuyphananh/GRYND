@@ -413,13 +413,32 @@ export async function createTowerArenaMatchForPair({
 }
 
 /** Manual join a specific lobby. */
-export async function joinTowerArenaLobby({ userId, lobbyId }: { userId: string; lobbyId: string }) {
+export async function joinTowerArenaLobby({
+  userId,
+  lobbyId,
+  expectedWager,
+}: {
+  userId: string;
+  lobbyId: string;
+  /** The stake the joiner agreed to, if they stated one. */
+  expectedWager?: number | null;
+}) {
   if (!userId) return { error: "Unauthorized", status: 401 };
   return db.transaction(async (tx) => {
     const match = await fetchMatchForUpdate(tx, lobbyId);
     if (!match) return { error: "Match unavailable", status: 404 };
     if (!OPEN_MATCH_STATES.has(match.status)) {
       return { error: "Lobby is no longer available", status: 409 };
+    }
+    // A joiner who names a stake other than the lobby's is refused instead of
+    // being escrowed at an amount they never agreed to: the lobby list is
+    // public, so a player must be held to the entry they actually saw.
+    if (
+      expectedWager !== undefined &&
+      expectedWager !== null &&
+      Number(expectedWager) !== Number(match.wager)
+    ) {
+      return { error: "This lobby is no longer open at that stake", status: 400 };
     }
     const cur = await fetchPlayers(tx, match.id);
     if (cur.some((p) => p.userId === userId)) return { match, joined: false };

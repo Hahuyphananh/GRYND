@@ -6,9 +6,9 @@
  * Tic-Tac-Toe is a lobby-style destination (`createOrJoin` returns the SAME
  * waiting-lobby id for both paired players), so the adapter is the store
  * function itself — there is no separate `quickQueueTicTacToe` module to keep
- * in sync, exactly like Mini Golf and Speed Typing. It is also unstaked, so its
- * `createOrJoin` takes no stake and the queue's normalized stake can never
- * reach it.
+ * in sync, exactly like Mini Golf and Speed Typing. Unlike those two it plays
+ * for coins, so the queue's normalized stake IS handed down: both paired seats
+ * are matched at it and escrowed when the second one joins.
  *
  * Run:  npm run test:tic-tac-toe
  */
@@ -36,20 +36,25 @@ test("tic-tac-toe is a supported quick-queue game key, exactly once", () => {
   );
 });
 
-test("the worker registers the tic-tac-toe destination and creates it unstaked", () => {
+test("the worker registers the tic-tac-toe destination and matches it at the queue's stake", () => {
   assert.match(worker, /createOrJoinTicTacToeMatch/);
   assert.match(worker, /from "\.\/tic-tac-toe\/serverStore"/);
-  assert.match(worker, /"tic-tac-toe": \(userId\) => createOrJoinTicTacToeMatch\(\{ userId \}\)/);
-  // Unstaked: the queue's normalized stake is never passed to the destination.
-  assert.doesNotMatch(worker, /createOrJoinTicTacToeMatch\(\{[^}]*stake/);
+  // Staked: the destination is created at the queue's normalized stake, so the
+  // pair plays for coins like every other ranked duel.
+  assert.match(
+    worker,
+    /"tic-tac-toe": \(userId\) =>\s*\n?\s*createOrJoinTicTacToeMatch\(\{ userId, stakeAmount: sourceStake \}\)/,
+  );
 });
 
 test("the destination is Tic-Tac-Toe's own create-or-join lobby", () => {
-  assert.match(store, /export async function createOrJoin\(\{ userId \}/);
+  assert.match(store, /export async function createOrJoin\(\{\s*\n?\s*userId,\s*\n?\s*stakeAmount,/);
   // Both paired players must land on the SAME destination id, which is what the
-  // worker asserts; createOrJoin joins the oldest waiting lobby.
+  // worker asserts; createOrJoin joins the oldest waiting lobby AT THE STAKE
+  // ASKED FOR (the caller's stake is part of the candidate match).
   assert.match(store, /isNull\(ticTacToeMatches\.player2Id\)/);
-  assert.match(store, /return await joinExistingMatch\(tx, open\.id, userId\)/);
+  assert.match(store, /eq\(ticTacToeMatches\.stakeAmount, stakeAmount\.toFixed\(2\)\)/);
+  assert.match(store, /return await joinExistingMatch\(tx, open\.id, userId, stakeAmount\)/);
 });
 
 test("the queue UI offers Tic-Tac-Toe and routes to its match page", () => {

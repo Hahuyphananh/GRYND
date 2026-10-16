@@ -26,6 +26,10 @@ export async function GET() {
       matchId: row.id,
       player1Id: row.player1Id,
       status: row.status,
+      // The stake the table carries: the lobby list shows it, and the join
+      // request echoes it back so the server can prove the seat is funded at
+      // the amount the player agreed to.
+      stakeAmount: Number(row.stakeAmount),
       createdAt: row.createdAt,
     }));
     return NextResponse.json({ success: true, data });

@@ -952,6 +952,12 @@ export async function joinLobbyById(input: {
   lobbyId: string;
   userId: string;
   userName: string;
+  /**
+   * The stake the joiner agreed to, if they stated one. The claim carries it
+   * in its WHERE clause, so a join that names a different stake than the lobby
+   * holds cannot take the seat — the lobby list is public and may be stale.
+   */
+  expectedWager?: number | null;
 }): Promise<{
   /** Set when the pairing succeeded. */
   matchId: string | null;
@@ -960,6 +966,10 @@ export async function joinLobbyById(input: {
   status?: number;
 }> {
   const { lobbyId, userId, userName } = input;
+  const expectedWager =
+    input.expectedWager === undefined || input.expectedWager === null
+      ? null
+      : Number(input.expectedWager);
 
   // Already a match behind this id → never joinable again (this is also what
   // keeps a free "vs AI" practice match un-joinable: its id only ever has a
@@ -984,6 +994,11 @@ export async function joinLobbyById(input: {
             eq(precisionLobbies.id, lobbyId),
             eq(precisionLobbies.status, "waiting"),
             ne(precisionLobbies.hostUserId, userId),
+            // A stated stake must be the lobby's own: an unaffordable or
+            // mis-stated entry never claims a seat.
+            ...(expectedWager === null
+              ? []
+              : [eq(precisionLobbies.wager, expectedWager)]),
           ),
         )
         .returning(LOBBY_COLUMNS);
@@ -1006,6 +1021,18 @@ export async function joinLobbyById(input: {
             matchId: null,
             error: "You are already waiting in this lobby.",
             status: 409,
+          };
+        }
+        // Still waiting, but not at the stake the joiner agreed to.
+        if (
+          lobby.status === "waiting" &&
+          expectedWager !== null &&
+          Number(lobby.wager) !== expectedWager
+        ) {
+          return {
+            matchId: null,
+            error: "This lobby is no longer open at that stake.",
+            status: 400,
           };
         }
         return { matchId: null, error: "Lobby is no longer open.", status: 409 };

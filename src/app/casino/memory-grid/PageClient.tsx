@@ -34,6 +34,7 @@ import {
 } from "../../../lib/memory-grid/rooms";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import { useSocketAwarePoll } from "../../../hooks/useVisiblePoll";
+import { MIN_STAKE } from "../../../lib/games/stakes";
 import {
   type AiDifficulty,
   readStoredAiDifficulty,
@@ -158,6 +159,11 @@ export default function MemoryGridLobbyPage() {
   // based on whether an open lobby with this stake already exists.
   const createOrJoin = useCallback(
     async (stakeAmount: number) => {
+      // A ranked match always plays for coins: no legal stake, no match.
+      if (!(Number(stakeAmount) >= MIN_STAKE)) {
+        setError(`Pick a stake of at least ${MIN_STAKE} coin to play.`);
+        return;
+      }
       setBusy(true);
       setError(null);
       try {
@@ -391,7 +397,7 @@ export default function MemoryGridLobbyPage() {
         posthog?.capture("memory_grid_lobby_create_clicked", { stake });
         createOrJoin(stake);
       }}
-      canPlay={canCreate && !aiBusy}
+      canPlay={canCreate && !aiBusy && stake >= MIN_STAKE}
       vsAi={{
         label: "Play Free vs AI",
         badge: "No tokens",

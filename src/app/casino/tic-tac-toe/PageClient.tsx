@@ -11,9 +11,9 @@
 //   GET  /api/tic-tac-toe/available          — open lobbies (cheap poll)
 //   POST /api/tic-tac-toe/match/<id>/cancel  — close the caller's own lobby
 //
-// Entry is free (stakes are retired platform-wide) and Tic-Tac-Toe is unstaked,
-// so there is no wager picker, no balance and no escrow note — and no
-// difficulty picker, because the game has no bot, no timers and no randomness.
+// Entry ALWAYS carries a coin wager: both seats are escrowed when the second
+// player joins and the winner takes the pot (1.9× their stake), exactly like
+// every other ranked duel. Only the vs-AI practice match is free.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -28,6 +28,8 @@ import {
 } from "../../../lib/aiDifficulty";
 import { useSocket } from "../../../context/SocketProvider";
 import { useSocketAwarePoll } from "../../../hooks/useVisiblePoll";
+import { useCoinBalance } from "../../../hooks/useCoinBalance";
+import { MIN_STAKE } from "../../../lib/games/stakes";
 import {
   TIC_TAC_TOE_LOBBY_ROOM,
   TIC_TAC_TOE_MATCH_UPDATED,
@@ -37,6 +39,8 @@ type LobbyRow = {
   matchId: string;
   player1Id: string;
   status: string;
+  /** The coins each seat puts up at this table. */
+  stakeAmount?: number;
   createdAt?: string;
 };
 
@@ -46,6 +50,10 @@ export default function TicTacToeLobbyPage() {
   const router = useRouter();
   const posthog = usePostHog();
 
+  // Coin wager: the player picks the stake they are matched at, and the server
+  // escrows both seats the moment the second player joins.
+  const coinBalance = useCoinBalance();
+  const [stake, setStake] = useState(10);
   const [busy, setBusy] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,33 +109,45 @@ export default function TicTacToeLobbyPage() {
     });
   }, [socket]);
 
-  const createOrJoin = useCallback(async () => {
-    if (busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/tic-tac-toe/create-or-join", {
-        method: "POST",
-        // The proxy rejects POSTs without a JSON content-type (415), even
-        // bodyless ones — declare it so matchmaking reaches the route.
-        headers: { "Content-Type": "application/json" },
-      });
-      const data = await res.json();
-      if (!res.ok || !data?.success) {
-        setError(data?.error || "Unable to find a match");
+  // Play matches at the chosen stake; joining a listed lobby echoes that
+  // lobby's own stake so the server can prove the seat is funded at the amount
+  // the player saw.
+  const createOrJoin = useCallback(
+    async (targetStake: number = stake) => {
+      if (busy) return;
+      if (!(Number(targetStake) >= MIN_STAKE)) {
+        setError(`Pick a stake of at least ${MIN_STAKE} coin to play.`);
         return;
       }
-      pokeLobby();
-      posthog?.capture("tic_tac_toe_match_started", {
-        mode: data.data?.joined ? "join" : "create",
-      });
-      router.push(`/casino/tic-tac-toe/${data.data.matchId}`);
-    } catch {
-      setError("Unable to find a match");
-    } finally {
-      setBusy(false);
-    }
-  }, [busy, pokeLobby, posthog, router]);
+      setBusy(true);
+      setError(null);
+      try {
+        const res = await fetch("/api/tic-tac-toe/create-or-join", {
+          method: "POST",
+          // The proxy rejects POSTs without a JSON content-type (415) — declare
+          // it so matchmaking reaches the route.
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stakeAmount: Number(targetStake) }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data?.success) {
+          setError(data?.error || "Unable to find a match");
+          return;
+        }
+        pokeLobby();
+        posthog?.capture("tic_tac_toe_match_started", {
+          mode: data.data?.joined ? "join" : "create",
+          stake: Number(targetStake),
+        });
+        router.push(`/casino/tic-tac-toe/${data.data.matchId}`);
+      } catch {
+        setError("Unable to find a match");
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, pokeLobby, posthog, router, stake],
+  );
 
   const playAi = useCallback(async () => {
     setBusy(true);
@@ -218,7 +238,10 @@ export default function TicTacToeLobbyPage() {
               Every completed match feeds the platform&apos;s shared per-game
               rating and trophy system, exactly like the other ranked duels. A
               draw moves both ratings by the same half-point and awards nobody a
-              win. There are <b>no wagers, no tokens and no payouts</b>.
+              win — and returns <b>both stakes</b>. Every match plays for coins:
+              both stakes are escrowed when the second player joins and the
+              winner takes <b>1.9× their stake</b> (stake back + 90% of the
+              loser&apos;s). Only the practice match against the bot is free.
             </>
           ),
         },
@@ -230,16 +253,17 @@ export default function TicTacToeLobbyPage() {
   return (
     <PvpLobbyPage
       title="Tic-Tac-Toe"
-      subtitle="A free, rated 1v1 duel on a 3×3 board. X moves first, play is turn by turn, and the first player to line up three in a row takes the match."
+      subtitle="A rated 1v1 duel on a 3×3 board. X moves first, play is turn by turn, and the first player to line up three in a row takes the match — and the pot. Or play the bot for free."
       icon={<IconTicTac className="h-9 w-9 flex-shrink-0 text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)] sm:h-10 sm:w-10" />}
       rulesKey="tic-tac-toe"
       rules={rules}
-      waitingSubtitle="Pairing you with another Tic-Tac-Toe player…"
+      waitingSubtitle={`Matching you at ${stake} coins — both stakes are escrowed on match-up.`}
       busy={busy}
-      onPlay={createOrJoin}
+      onPlay={() => createOrJoin(stake)}
       playLabel="Find a Match"
       playBusyLabel="Searching…"
-      canPlay={Boolean(isSignedIn)}
+      canPlay={Boolean(isSignedIn) && stake >= MIN_STAKE}
+      wager={{ value: stake, onChange: setStake, balance: coinBalance }}
       children={
         <AiDifficultyPicker
           gameKey="tic-tac-toe"
@@ -275,10 +299,12 @@ export default function TicTacToeLobbyPage() {
         <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
           <span>Host: {String(row.player1Id).slice(0, 12)}…</span>
           <span>3×3 · three in a row</span>
-          <span className="text-emerald-300">Free ranked</span>
+          <span className="font-semibold text-yellow-300">
+            Stake: {Number(row.stakeAmount ?? 0).toLocaleString()}
+          </span>
         </span>
       )}
-      onJoin={() => createOrJoin()}
+      onJoin={(row: LobbyRow) => createOrJoin(Number(row.stakeAmount ?? 0))}
       joinLabel="Join"
       onRefresh={fetchLobbies}
       error={error}

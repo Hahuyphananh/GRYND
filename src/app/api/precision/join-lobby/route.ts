@@ -67,6 +67,12 @@ export async function POST(req: NextRequest) {
       lobbyId,
       userId,
       userName: sanitizeName(body?.playerName, "Player 2"),
+      // The stake the joiner agreed to (absent from an older client), checked
+      // against the lobby's own before the seat is claimed.
+      expectedWager:
+        body?.wager === undefined || body?.wager === null || body?.wager === ""
+          ? null
+          : Number(body.wager),
     });
     if (!result.matchId) {
       return NextResponse.json(

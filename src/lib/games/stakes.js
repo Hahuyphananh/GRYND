@@ -116,6 +116,31 @@ export function tokensMoveForMatches() {
 }
 
 /**
+ * The wager a PvP ENTRY POINT requires: online ranked play always plays for
+ * coins, so an entry that does not name a legal positive wager is refused
+ * instead of silently opening a free match (
+ * `validateWager` still treats an absent stake as legal FREE PLAY at the store
+ * seam, which is what keeps practice / bot / AI matches free).
+ *
+ * Returns `{ ok: true, stake }` or `{ ok: false, error, status: 400, code }`,
+ * so an entry point can answer `error` with `status` without inventing its own
+ * message.
+ */
+export function requireStake(requested, gameKey) {
+  const result = validateWager(requested, gameKey);
+  if (!result.ok) return result;
+  if (result.stake < MIN_STAKE) {
+    return {
+      ok: false,
+      error: `A stake of at least ${MIN_STAKE} coin is required to play for coins`,
+      status: 400,
+      code: "STAKE_REQUIRED",
+    };
+  }
+  return result;
+}
+
+/**
  * True when a non-zero stake is a legal entry value for the game. A zero /
  * absent stake is *valid* (free play) but not an accepted wager, so this stays
  * false for it.

@@ -525,11 +525,40 @@ test("lifecycle: forfeit and cancel reuse the existing shared conventions", () =
   assert.match(page, /onReturnToLobby=\{\(\) => router\.push\("\/casino"\)\}/);
 });
 
-test("economy: no wager, balance or payout field anywhere in the UI", () => {
-  assert.doesNotMatch(page, /betAmount|stakeAmount|prizePaid|houseFee|newBalance|tokenBalance/);
-  assert.doesNotMatch(board, /betAmount|stakeAmount|prizePaid|houseFee|newBalance/);
-  assert.doesNotMatch(mega, /betAmount|stakeAmount|prizePaid|houseFee|newBalance/);
-  assert.doesNotMatch(lobbyPage, /betAmount|stakeAmount|prizePaid|houseFee|newBalance/);
+test("economy: the lobby owns the stake, and the match page only shows the server's figures", () => {
+  // The stake comes from ONE place — the lobby's coin picker — and goes to the
+  // server as the wager the table is opened at.
+  assert.match(lobbyPage, /const \[stake, setStake\] = useState\(10\);/);
+  assert.match(
+    lobbyPage,
+    /wager=\{\{ value: stake, onChange: setStake, balance: coinBalance \}\}/,
+  );
+  assert.match(lobbyPage, /import \{ useCoinBalance \} from "[^"]*hooks\/useCoinBalance"/);
+  // PvP always plays for coins, so Play is refused without a legal stake.
+  assert.match(lobbyPage, /canPlay=\{Boolean\(isSignedIn\) && stake >= MIN_STAKE\}/);
+  assert.match(
+    lobbyPage,
+    /body: JSON\.stringify\(\{ stakeAmount: Number\(targetStake\) \}\)/,
+  );
+  // Joining a listed lobby echoes THAT lobby's stake, rather than the picker's.
+  assert.match(lobbyPage, /onJoin=\{\(row: LobbyRow\) => createOrJoin\(Number\(row\.stakeAmount \?\? 0\)\)\}/);
+
+  // The match page reads the server's own numbers and DISPLAYS them: it neither
+  // computes a pot nor declares a payout. `pot` comes from `ticTacToePayout` in
+  // the store, so what a player reads is what the ledger moves.
+  assert.match(page, /const stakeAmount = Number\(match\?\.stakeAmount \?\? 0\);/);
+  assert.match(page, /const potAmount = Number\(match\?\.pot \?\? 0\);/);
+  assert.doesNotMatch(page, /\bprizePaid\b|\bhouseFee\b|\bnewBalance\b|\btokenBalance\b/);
+  assert.doesNotMatch(page, /PVP_WINNER_SHARE/);
+
+  // The board components stay presentation-only: no stake, no balance, no pot.
+  for (const src of [board, mega]) {
+    assert.doesNotMatch(
+      src,
+      /betAmount|stakeAmount|prizePaid|houseFee|newBalance|tokenBalance/,
+    );
+  }
+
   // Free practice vs AI is offered from the lobby (unrated, so no economy).
   assert.match(lobbyPage, /AiDifficultyPicker/);
   assert.match(lobbyPage, /create-ai/);

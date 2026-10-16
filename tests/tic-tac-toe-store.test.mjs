@@ -17,6 +17,13 @@
  * transaction that flips the row terminal — and NEVER for a practice match, a
  * cancelled lobby or a draw's win counters.
  *
+ * THE POT RIDES THE SAME SEAM. The store owns no balance arithmetic either:
+ * `escrowMatchWagers` (both seats, at join), `settlePayout` (the winner, on
+ * settle) and `refundMatchWagers` (a void match) come from the shared ledger
+ * (src/lib/tokens/wager.ts), which is mocked here so the calls themselves are
+ * observable — including the invariant that an OPEN lobby escrows nothing until
+ * the second seat is taken.
+ *
  * ── THE FAKE ─────────────────────────────────────────────────────────────
  *
  * Same harness shape as tests/speed-typing-store.test.mjs and
@@ -199,7 +206,7 @@ function createFakeDb() {
 }
 
 let sharedFake = null;
-const settlement = { rating: [], trophy: [], queue: [] };
+const settlement = { rating: [], trophy: [], queue: [], wager: [] };
 
 /** Clear the fake database and the recorded settlement calls. */
 function resetAll(fake) {
@@ -207,7 +214,11 @@ function resetAll(fake) {
   settlement.rating.length = 0;
   settlement.trophy.length = 0;
   settlement.queue.length = 0;
+  settlement.wager.length = 0;
 }
+
+/** The recorded ledger calls of one kind: "escrow" | "settle" | "refund". */
+const ledgerCalls = (kind) => settlement.wager.filter((entry) => entry.kind === kind);
 
 /**
  * Register the mocks for ONE test context.
@@ -244,6 +255,24 @@ function installMocks(t) {
       mirrorQueueTransition: (args) => settlement.queue.push({ kind: "transition", ...args }),
     },
   });
+  // The coin ledger. Mocked (not stubbed out) so the store still has to call it
+  // — a settled match that stopped paying the pot would fail here.
+  t.mock.module("../src/lib/tokens/wager.js", {
+    namedExports: {
+      escrowMatchWagers: async (args) => {
+        settlement.wager.push({ kind: "escrow", ...args });
+        return { ok: true };
+      },
+      refundMatchWagers: async (args) => {
+        settlement.wager.push({ kind: "refund", ...args });
+        return { ok: true, refunded: 1 };
+      },
+      settlePayout: async (args) => {
+        settlement.wager.push({ kind: "settle", ...args });
+        return { ok: true, paid: args?.amount ?? 0 };
+      },
+    },
+  });
   return fake;
 }
 
@@ -264,6 +293,9 @@ function matchRow(overrides = {}) {
     gameState: createInitialState(),
     isAi: false,
     result: null,
+    // No stake by default: the legacy / practice shape. A staked scenario says
+    // so explicitly, so "a row with no escrow pays nothing" stays a real case.
+    stakeAmount: "0.00",
     startedAt: new Date(),
     endedAt: null,
     createdAt: new Date(),
@@ -316,7 +348,7 @@ test("createOrJoin opens a waiting lobby holding the fresh server state", async 
   const fake = installMocks(t);
   const store = await loadStore();
 
-  const result = await store.createOrJoin({ userId: ALICE });
+  const result = await store.createOrJoin({ userId: ALICE, stakeAmount: 25 });
   assert.equal("error" in result, false);
   assert.equal(result.joined, false);
 
@@ -325,6 +357,10 @@ test("createOrJoin opens a waiting lobby holding the fresh server state", async 
   assert.equal(row.player2Id, null);
   assert.equal(row.status, MATCH_STATUS.WAITING);
   assert.equal(row.ply, 0);
+  // The stake the table WILL carry — and nothing is charged for a seat nobody
+  // has taken yet, so an open lobby can never strand a player's coins.
+  assert.equal(row.stakeAmount, "25.00");
+  assert.equal(settlement.wager.length, 0, "an open lobby escrows nothing");
   assert.equal(row.isAi, false);
   assert.equal(row.result, null);
   assert.equal(row.currentTurnUserId, ALICE);
@@ -346,8 +382,8 @@ test("createOrJoin is idempotent for the same caller — no duplicate lobby", as
   const fake = installMocks(t);
   const store = await loadStore();
 
-  await store.createOrJoin({ userId: ALICE });
-  const again = await store.createOrJoin({ userId: ALICE });
+  await store.createOrJoin({ userId: ALICE, stakeAmount: 25 });
+  const again = await store.createOrJoin({ userId: ALICE, stakeAmount: 25 });
 
   assert.equal(again.joined, false);
   assert.equal(fake.rowsOf(ticTacToeMatches).length, 1);
@@ -357,13 +393,23 @@ test("createOrJoin seats the second player and takes the match straight to playi
   const fake = installMocks(t);
   const store = await loadStore();
 
-  await store.createOrJoin({ userId: ALICE });
-  const joined = await store.createOrJoin({ userId: BOB });
+  await store.createOrJoin({ userId: ALICE, stakeAmount: 25 });
+  const joined = await store.createOrJoin({ userId: BOB, stakeAmount: 25 });
 
   assert.equal(joined.joined, true);
   const row = liveMatch(fake);
   assert.equal(row.player2Id, BOB);
   assert.equal(row.status, MATCH_STATUS.PLAYING);
+
+  // BOTH seats are escrowed at once, out of the lobby's own stake, in the same
+  // transaction that fills the seat — a staked match is either fully funded or
+  // it never starts.
+  assert.equal(settlement.wager.length, 1);
+  const [escrow] = ledgerCalls("escrow");
+  assert.deepEqual(escrow.clerkIds, [ALICE, BOB]);
+  assert.equal(escrow.stake, 25);
+  assert.equal(escrow.gameKey, "tic-tac-toe");
+  assert.equal(String(escrow.matchId), String(row.id));
   assert.ok(row.startedAt);
   // X still to move — joining does not consume a turn.
   assert.equal(row.gameState.currentTurn, "player1");
@@ -379,10 +425,94 @@ test("listOpenMatches only ever returns lobbies with a free second seat", async 
   const fake = installMocks(t);
   const store = await loadStore();
 
-  await store.createOrJoin({ userId: ALICE });
+  await store.createOrJoin({ userId: ALICE, stakeAmount: 25 });
   const open = await store.listOpenMatches();
   assert.equal(open.length, 1);
   assert.equal(open[0].player2Id, null);
+  // …at the stake the lobby carries, which is what the joiner is held to.
+  assert.equal(open[0].stakeAmount, "25.00");
+});
+
+// ── The pot ───────────────────────────────────────────────────────────────
+
+test("a seat offered a lobby at another stake is refused, not escrowed at the wrong amount", async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+
+  await store.createOrJoin({ userId: ALICE, stakeAmount: 25 });
+  // The fake ignores WHERE clauses (see THE FAKE above), so this lands the
+  // candidate 25-stake lobby in front of a caller who asked for 5 — exactly the
+  // stale / crafted request `joinExistingMatch` re-checks for.
+  const mismatched = await store.createOrJoin({ userId: BOB, stakeAmount: 5 });
+
+  assert.equal("error" in mismatched, true);
+  assert.equal(mismatched.status, 400);
+  // Nothing was charged and the lobby is still open at its own stake.
+  assert.equal(settlement.wager.length, 0);
+  assert.equal(liveMatch(fake).player2Id, null);
+  assert.equal(liveMatch(fake).stakeAmount, "25.00");
+  assert.equal(liveMatch(fake).status, MATCH_STATUS.WAITING);
+});
+
+test("a win pays the pot out of the escrow — 2 × stake × PVP_WINNER_SHARE", async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  seedMatch(fake, { stakeAmount: "25.00" });
+  seedUser(fake, ALICE);
+  seedUser(fake, BOB);
+
+  const results = await playCells(store, fake, A_WIN);
+  assert.equal(results.filter((r) => "error" in r).length, 0);
+
+  const payouts = ledgerCalls("settle");
+  assert.equal(payouts.length, 1, "exactly one payout per finished match");
+  assert.equal(payouts[0].clerkId, ALICE);
+  // 2 × 25 × 0.95 = 47.5 (the loser's stake minus the 5% house rake).
+  assert.equal(payouts[0].amount, 47.5);
+  assert.equal(payouts[0].gameKey, "tic-tac-toe");
+  assert.equal(String(payouts[0].matchId), MATCH_ID);
+  // The loser is never paid, and a win is not also refunded.
+  assert.equal(ledgerCalls("refund").length, 0);
+});
+
+test("a free match pays nothing and refunds nothing", async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  seedMatch(fake); // stakeAmount "0.00"
+  seedUser(fake, ALICE);
+  seedUser(fake, BOB);
+
+  await playCells(store, fake, A_WIN);
+
+  // The row is still rated (it is real PvP), but there is no pot to move.
+  assert.equal(liveMatch(fake).status, MATCH_STATUS.FINISHED);
+  assert.equal(settlement.rating.length, 1);
+  assert.equal(settlement.wager.length, 0);
+});
+
+test("a cancelled lobby hands its escrow back and settles nothing", async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  seedMatch(fake, {
+    status: MATCH_STATUS.WAITING,
+    player2Id: null,
+    stakeAmount: "25.00",
+  });
+
+  const result = await store.cancelMatch({ userId: ALICE, matchId: MATCH_ID });
+  assert.equal("error" in result, false);
+
+  // The ledger skips a seat that was never debited, so this is a no-op for a
+  // lobby nobody funded — but an escrow that DOES exist on a void match (a
+  // cancel racing a join) is handed back rather than stranded.
+  const refunds = ledgerCalls("refund");
+  assert.equal(refunds.length, 1);
+  assert.deepEqual(refunds[0].clerkIds, [ALICE, null]);
+  assert.equal(refunds[0].stake, 25);
+  assert.equal(refunds[0].gameKey, "tic-tac-toe");
+  // A cancelled lobby never settles: no rating, no trophy, no pot.
+  assert.equal(settlement.rating.length, 0);
+  assert.equal(ledgerCalls("settle").length, 0);
 });
 
 // ── The move: server authority ────────────────────────────────────────────
@@ -1040,7 +1170,7 @@ test("every mutator takes exactly one transaction", async (t) => {
 
   // Matchmaking is the only mutator that needs a cross-matchlock: it takes the
   // per-game advisory lock so two callers cannot both create a lobby.
-  await store.createOrJoin({ userId: ALICE });
+  await store.createOrJoin({ userId: ALICE, stakeAmount: 25 });
   assert.equal(fake.state.transactions, 1, "createOrJoin");
   assert.equal(fake.state.locks.length, 1, "createOrJoin advisory lock");
 

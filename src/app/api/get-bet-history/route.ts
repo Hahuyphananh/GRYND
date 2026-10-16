@@ -27,6 +27,7 @@ import {
   ticTacToeMatches,
 } from "../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
+import { PVP_WINNER_SHARE } from "../../../lib/games/economy";
 
 // Cap each table's contribution so history stays bounded — the response
 // is the newest entries across all games after the final sort.
@@ -387,10 +388,9 @@ export async function GET(req: NextRequest) {
           ),
         )
         .limit(HISTORY_LIMIT),
-      //  Tic-Tac-Toe Duel (PvP, clerkId-based — finished-only). Unstaked,
-      //  exactly like Mini Golf and Speed Typing: it moves no tokens, so
-      //  amount/payout/tokenDiff are all 0 and the entry is a pure W/L/draw
-      //  record decided by the server-authoritative `winner_id`.
+      //  Tic-Tac-Toe Duel (PvP, clerkId-based — finished-only). Staked like
+      //  every other ranked duel: the row carries `stake_amount` and the
+      //  winner's pot is derived from it (`stake * 2 * PVP_WINNER_SHARE`).
       db
         .select({
           player1Id: ticTacToeMatches.player1Id,
@@ -398,6 +398,7 @@ export async function GET(req: NextRequest) {
           winnerId: ticTacToeMatches.winnerId,
           result: ticTacToeMatches.result,
           status: ticTacToeMatches.status,
+          stakeAmount: ticTacToeMatches.stakeAmount,
           isAi: ticTacToeMatches.isAi,
           endedAt: ticTacToeMatches.endedAt,
           createdAt: ticTacToeMatches.createdAt,
@@ -748,23 +749,40 @@ export async function GET(req: NextRequest) {
     // 0-token W/L/draw record: the server-authoritative `winner_id` decides,
     // and `tie` (nine cells filled with no line) is a draw. A draw is the
     // common case in tic-tac-toe, not an edge case.
+    // Tic-Tac-Toe Duel — same shape as Mines Duel: the winner's payout is
+    // `stake * 2 * PVP_WINNER_SHARE`, a loser's is 0, and a draw (a real
+    // outcome in this game) refunds both stakes, so payout = stake and
+    // tokenDiff = 0. A vs-AI practice match is free (`stake_amount` 0), so it
+    // still reads as a 0-token record.
     const ticTacToeFormatted = ticTacToeRows
       .map((g) => {
         if (g.status !== "finished") return null;
+        const amount = Number(g.stakeAmount ?? 0);
         const isDraw = g.result === "tie" || !g.winnerId;
         const outcome = isDraw
           ? "draw"
           : g.winnerId === clerkId
             ? "won"
             : "lost";
+        const payout =
+          outcome === "won"
+            ? Number((amount * 2 * PVP_WINNER_SHARE).toFixed(2))
+            : outcome === "draw"
+              ? amount
+              : 0;
+        const tokenDiff =
+          outcome === "won"
+            ? payout - amount
+            : outcome === "lost"
+              ? -amount
+              : 0;
         return {
           type: g.isAi ? "Tic-Tac-Toe vs AI" : "Tic-Tac-Toe",
           date: g.endedAt || g.createdAt || new Date().toISOString(),
-          // Unstaked — the record line is decided, not token movement.
-          amount: 0,
-          payout: 0,
+          amount,
+          payout,
           result: outcome,
-          tokenDiff: 0,
+          tokenDiff,
         };
       })
       .filter(Boolean);

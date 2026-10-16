@@ -33,6 +33,8 @@ import { LOBBY_LIST_POLL_INTERVAL_MS } from "../../../lib/precision/constants";
 import type { PrecisionLobby } from "../../../lib/precision/types";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import { useSocketAwarePoll } from "../../../hooks/useVisiblePoll";
+import { useCoinBalance } from "../../../hooks/useCoinBalance";
+import { MIN_STAKE } from "../../../lib/games/stakes";
 import {
   type AiDifficulty,
   readStoredAiDifficulty,
@@ -48,9 +50,12 @@ export default function PrecisionLobbyPage() {
   // False once the first list response lands, so the empty state never
   // flashes before the request resolves.
   const [lobbiesLoading, setLobbiesLoading] = useState(true);
-  // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
-  // so there is no wager to pick and no token balance to load.
-  const wager = 0;
+  // Coin wager: the player picks the stake they are matched at, and the
+  // server escrows BOTH seats the moment the two are paired. A positive stake
+  // is REQUIRED to enter a ranked match (PvP always plays for coins); the solo
+  // test sandbox and the vs-AI duel stay free.
+  const coinBalance = useCoinBalance();
+  const [wager, setWager] = useState(10);
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -123,6 +128,11 @@ export default function PrecisionLobbyPage() {
     setCreating(true);
     setError(null);
     try {
+      // A ranked duel always plays for coins: no legal stake, no match.
+      if (wager < MIN_STAKE) {
+        setError(`Pick a stake of at least ${MIN_STAKE} coin to play.`);
+        return;
+      }
       // Staked PvP matchmaking needs a signed-in player: the server seats
       // the host from the Clerk session (it never trusts a client-sent id),
       // so an anonymous caller would be rejected anyway — fail fast with a
@@ -189,7 +199,9 @@ export default function PrecisionLobbyPage() {
     setJoining(String(lobby.id));
     setError(null);
     try {
-      const res = await joinLobby(String(lobby.id), displayName);
+      // The stake the row showed travels with the join, so the server can
+      // refuse a seat at a stake the player never agreed to.
+      const res = await joinLobby(String(lobby.id), displayName, Number(lobby.wager));
       if (!res.success || !res.matchId) {
         setError(res.error ?? t("games.precision.join_failed"));
         return;
@@ -266,6 +278,8 @@ export default function PrecisionLobbyPage() {
       onPlay={handleCreatePvP}
       playLabel={t("games.precision.create_pvp_game")}
       playBusyLabel={t("games.precision.creating")}
+      wager={{ value: wager, onChange: setWager, balance: coinBalance }}
+      canPlay={wager >= MIN_STAKE}
       children={
         <AiDifficultyPicker
           gameKey="precision"

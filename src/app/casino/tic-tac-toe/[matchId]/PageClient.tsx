@@ -503,6 +503,16 @@ export default function TicTacToeMatchPage() {
     isAi: Boolean(match?.isAi),
   });
 
+  // The coins this table plays for. A vs-AI practice match is free, a ranked
+  // duel is not: both seats were escrowed at the stake the lobby was opened at
+  // and a win pays `pot` out of that escrow (the server's own figure — the
+  // client never derives the payout itself).
+  const stakeAmount = Number(match?.stakeAmount ?? 0);
+  const potAmount = Number(match?.pot ?? 0);
+  const stakeLabel = match?.isAi
+    ? "Free practice"
+    : `${stakeAmount.toLocaleString()} coin stake`;
+
   // ── Render ────────────────────────────────────────────────────────────
   if (!match && !loadError) {
     // Branded shell WITH the nav bar (this gate used to drop it entirely).
@@ -541,14 +551,14 @@ export default function TicTacToeMatchPage() {
               label: "You",
               name: seats.viewer?.name || "You",
               occupied: true,
-              wager: "Free ranked",
+              wager: stakeLabel,
             },
             match.status === "ready"
               ? {
                   label: "Opponent",
                   name: opponentName,
                   occupied: true,
-                  wager: "Free ranked",
+                  wager: stakeLabel,
                 }
               : { label: "Opponent", occupied: false },
           ]}
@@ -580,8 +590,13 @@ export default function TicTacToeMatchPage() {
                 <p className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-widest text-amber-200/70">
                   <span>1 → 4 → 9 boards · win the lattice</span>
                   <span className="rounded-full border border-emerald-400/40 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold tracking-wider text-emerald-200">
-                    Free · rated 1v1
+                    {stakeLabel} · rated 1v1
                   </span>
+                  {potAmount > 0 && (
+                    <span className="rounded-full border border-yellow-400/40 bg-yellow-500/10 px-2 py-0.5 text-[10px] font-bold tracking-wider text-yellow-200">
+                      Pot: {potAmount.toLocaleString()}
+                    </span>
+                  )}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -1044,6 +1059,14 @@ export default function TicTacToeMatchPage() {
               { label: "Match ID", value: String(matchId) },
               { label: "Your mark", value: `${viewerMark ?? "—"} (${viewerSeat ?? "—"})` },
               { label: "Opponent", value: opponentName },
+              // Coins are only ever shown for a ranked duel: a vs-AI practice
+              // match escrows nothing, so it stays a pure result record.
+              ...(stakeAmount > 0
+                ? [
+                    { label: "Stake", value: `${stakeAmount.toLocaleString()} coins` },
+                    { label: "Pot", value: `${potAmount.toLocaleString()} coins` },
+                  ]
+                : []),
               {
                 label: "Mega line",
                 value: match.winningBoards

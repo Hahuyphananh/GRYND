@@ -33,6 +33,7 @@ import {
   laneRushDuelMatchRoom,
 } from "../../../lib/lane-rush-duel/rooms";
 import { DIFFICULTIES } from "../../../lib/lane-rush-duel/constants";
+import { MIN_STAKE } from "../../../lib/games/stakes";
 import { startVisibleInterval } from "../../../hooks/useVisiblePoll";
 import { IconShieldCheck } from "@tabler/icons-react";
 
@@ -127,6 +128,11 @@ export default function LaneRushDuelLobbyPage() {
 
   const createOrJoin = useCallback(
     async (stakeAmount, chosenDifficulty) => {
+      // A ranked match always plays for coins: no legal stake, no match.
+      if (!(Number(stakeAmount) >= MIN_STAKE)) {
+        setError(`Pick a stake of at least ${MIN_STAKE} coin to play.`);
+        return;
+      }
       setBusy(true);
       setError(null);
       try {
@@ -383,7 +389,7 @@ export default function LaneRushDuelLobbyPage() {
         });
         createOrJoin(stake, difficulty);
       }}
-      canPlay={canCreate}
+      canPlay={canCreate && stake >= MIN_STAKE}
       vsAi={{
         label: "Test vs Bot",
         badge: "Free",

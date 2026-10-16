@@ -27,6 +27,7 @@ import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
 import PvpLobbyPage, { CoinIcon } from "../../../components/lobby/PvpLobby";
 import { useCoinBalance } from "../../../hooks/useCoinBalance";
+import { MIN_STAKE } from "../../../lib/games/stakes";
 import { useSocket } from "../../../context/SocketProvider";
 import {
   MINES_PVP_LOBBY_ROOM,
@@ -210,6 +211,11 @@ export default function MinesPvpLobbyPage() {
 
   const createOrJoin = useCallback(
     async (stakeAmount: number, chosenMines: number) => {
+      // A ranked match always plays for coins: no legal stake, no match.
+      if (!(Number(stakeAmount) >= MIN_STAKE)) {
+        setError(`Pick a stake of at least ${MIN_STAKE} coin to play.`);
+        return;
+      }
       setBusy(true);
       setError(null);
       try {
@@ -457,7 +463,7 @@ export default function MinesPvpLobbyPage() {
         });
         createOrJoin(stake, minesCount);
       }}
-      canPlay={canCreate}
+      canPlay={canCreate && stake >= MIN_STAKE}
       vsAi={{
         label: "Play Free vs AI",
         onClick: () => playVsAi(minesCount),

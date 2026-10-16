@@ -6,7 +6,13 @@ import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../components/navigation-bar";
 import { useRecordPlayedGame } from "../../../hooks/useRecordPlayedGame";
 import useActiveGamePresence from "../../../hooks/useActiveGamePresence";
-import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
+import {
+  CoinWagerPicker,
+  RulesModal,
+  useFirstVisitRules,
+} from "../../../components/lobby/PvpLobby";
+import { useCoinBalance } from "../../../hooks/useCoinBalance";
+import { MIN_STAKE } from "../../../lib/games/stakes";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import ReportModal from "../../../components/ReportModal";
 import PvpResultScreen from "../../../components/result/PvpResultScreen";
@@ -881,8 +887,12 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   const { socket } = useSocket();
 
   // ── Lobby state ──
-  // STAKES ARE RETIRED (src/lib/games/stakes.js): a match is free to enter.
-  const wager = 0;
+  // Coin wager: the player picks the stake the lobby is opened at, and the
+  // server escrows BOTH seats the moment an opponent joins. A positive stake
+  // is REQUIRED to enter a ranked match (PvP always plays for coins); the
+  // vs-AI duel stays free.
+  const coinBalance = useCoinBalance();
+  const [wager, setWager] = useState(10);
   const [userId, setUserId] = useState<string | null>(null);
   const [games, setGames] = useState<any[]>([]);
   const [myGameId, setMyGameId] = useState<number | null>(null);
@@ -1191,6 +1201,11 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
 
   // ── Create / Join / Cancel ──
   const createGame = async () => {
+    if (wager < MIN_STAKE) {
+      setMessage(`Pick a stake of at least ${MIN_STAKE} coin to open a lobby.`);
+      return;
+    }
+
     setMessage("Creating game...");
     setLoading(true);
     try {
@@ -1216,14 +1231,16 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
     }
   };
 
-  const joinGame = async (gameId: number) => {
+  const joinGame = async (gameId: number, lobbyWager?: number) => {
     setMessage("Joining game...");
     setLoading(true);
     try {
       const res = await fetch("/api/odds/join", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ gameId }),
+        // The stake travels with the join so the server can prove the seat is
+        // escrowed at the amount the lobby row showed.
+        body: JSON.stringify({ gameId, wager: lobbyWager }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
@@ -1567,14 +1584,25 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
       {!resuming && !gameId && !interactiveState && (
         <>
           <div className={`${LOBBY_CARD} p-6`}>
-            <LobbyFreePlayPill />
+            <div className="mb-5 text-center text-sm">
+              <span className="rounded-full border border-amber-400/40 bg-amber-500/10 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-amber-300">
+                Coin match · winner takes the pot
+              </span>
+            </div>
+            <div className="mb-4">
+              <CoinWagerPicker
+                value={wager}
+                onChange={setWager}
+                balance={coinBalance}
+              />
+            </div>
             <div className="flex flex-col items-center gap-3 text-center">
               <p className="text-xs leading-relaxed text-white/55">
-                Open a lobby and wait for a challenger, or join one below · 6 rounds · the window halves each round.
+                Open a lobby and wait for a challenger, or join one below · 6 rounds · the window halves each round. Both stakes are escrowed when your challenger joins; the winner takes 1.9× their stake.
               </p>
               <button
                 onClick={createGame}
-                disabled={loading}
+                disabled={loading || wager < MIN_STAKE}
                 className={`inline-flex items-center justify-center gap-2 rounded-xl border-b-4 px-8 py-3 text-base font-extrabold transition hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100 ${LOBBY_PLAY}`}
               >
                 {loading ? (
@@ -1622,10 +1650,16 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
                         <p className="truncate text-sm font-semibold text-white">
                           {game.player1Name}
                         </p>
-                        <p className="mt-0.5 text-xs text-white/60">Free play</p>
+                        <p className="mt-0.5 text-xs text-white/60">
+                          Stake:{" "}
+                          <span className="font-semibold text-yellow-300">
+                            {Number(game.wager).toLocaleString()}
+                          </span>{" "}
+                          coins
+                        </p>
                       </div>
                       <button
-                        onClick={() => joinGame(game.id)}
+                        onClick={() => joinGame(game.id, Number(game.wager))}
                         disabled={loading}
                         className="shrink-0 rounded-lg bg-cyan-500 px-4 py-1.5 text-sm font-bold text-black transition hover:bg-cyan-400 disabled:opacity-50"
                       >
@@ -1654,7 +1688,9 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
           <p className="text-lg font-bold text-amber-300">
             {message || "Waiting for opponent…"}
           </p>
-          <p className="mt-2 text-xs text-white/50">Free play · no stake</p>
+          <p className="mt-2 text-xs text-white/50">
+            Stake {Number(wagerLocked ?? wager).toLocaleString()} coins · both stakes are escrowed, the winner takes the pot
+          </p>
           <button
             onClick={cancelGame}
             className="mt-5 rounded-xl border border-red-500/40 bg-red-500/10 px-5 py-2.5 text-sm font-bold text-red-300 transition hover:bg-red-500/20"

@@ -18,7 +18,15 @@
 // finalises the match, exactly once — the guard is the `status` flip to
 // `finished` under a `FOR UPDATE` lock, plus those helpers' own
 // (user, game, match)-keyed idempotency journals. There is NO second Elo
-// implementation and NO wager/token/payout path anywhere in this file.
+// implementation.
+//
+// THE POT RIDES THE SAME SETTLEMENT: both seats are escrowed through the shared
+// ledger (`escrowMatchWagers`) the moment the second player takes the seat, the
+// winner is paid `ticTacToePayout(stake)` (`settlePayout`) in the transaction
+// that finalises the match, and a tie (or a cancelled/voided match) gives both
+// stakes back (`refundMatchWagers`). The ledger is keyed per (match, seat), so
+// a retry can never pay or refund twice, and it refuses to pay a seat with no
+// funding row — which is what keeps a legacy, unstaked row from minting coins.
 
 import { and, eq, isNull, sql } from "drizzle-orm";
 
@@ -27,6 +35,12 @@ import { ticTacToeMatches, ticTacToeMoves, users } from "../../db/schema";
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
 import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
+import { PVP_WINNER_SHARE } from "../games/economy";
+import {
+  escrowMatchWagers,
+  refundMatchWagers,
+  settlePayout,
+} from "../tokens/wager";
 import {
   CELL_COUNT,
   MATCH_STATUS,
@@ -62,6 +76,18 @@ import type { Seat, Seats, TicTacToeState } from "./types";
 // and a constant reference would be invisible to that check.
 
 type MatchRow = typeof ticTacToeMatches.$inferSelect;
+
+/**
+ * What a win pays: both seats' stakes (the pot) minus the shared house rake, so
+ * a 2× pot pays 1.9× the winner's own stake at the current 5% rake. Pure, so a
+ * client-facing read can never drift from the coins that actually move. A free
+ * match (stake 0) pays nothing.
+ */
+export function ticTacToePayout(stake: unknown): number {
+  const amount = Number(stake);
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  return Number((2 * amount * PVP_WINNER_SHARE).toFixed(2));
+}
 
 export type StoreError = { error: string; status: number };
 
@@ -133,6 +159,12 @@ export function matchToDto(match: MatchRow, viewerId: string | null) {
     // Free practice is not competitive; nothing that reaches this flag is ever
     // rated. Present so a future bot needs no schema or DTO change.
     isAi: Boolean(match.isAi),
+    // The stake each seat put up (0 = free practice), and the pot a win pays
+    // out of it. Read-only display values: the coins that move are the ones the
+    // escrow ledger took, which is why the pot comes from the same pure helper
+    // the settlement uses rather than from a second formula here.
+    stakeAmount: Number(match.stakeAmount) || 0,
+    pot: ticTacToePayout(match.stakeAmount),
   };
 }
 
@@ -176,8 +208,21 @@ export async function listMyWaitingMatch({ userId }: { userId: string }) {
  * The whole operation runs under a single advisory lock (per-game namespace)
  * so two concurrent callers can never both see "no open lobby" and each create
  * one, and so a caller can never join a lobby that is being cancelled.
+ *
+ * STAKED MATCHMAKING: the caller states the stake they are playing for, and
+ * only a waiting lobby AT THAT STAKE is a candidate (a PvP duel always plays
+ * for coins, so there is no free entry here — the route requires a legal stake
+ * before it calls this). The lobby's own stake is what gets escrowed, and
+ * `joinExistingMatch` re-checks it, so a stale or crafted request can never
+ * fund a seat at an amount the player did not agree to.
  */
-export async function createOrJoin({ userId }: { userId: string }) {
+export async function createOrJoin({
+  userId,
+  stakeAmount,
+}: {
+  userId: string;
+  stakeAmount: number;
+}) {
   return await db.transaction(async (tx) => {
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(${TIC_TAC_TOE_LOCK_NAMESPACE}, 0)`,
@@ -190,6 +235,7 @@ export async function createOrJoin({ userId }: { userId: string }) {
         and(
           eq(ticTacToeMatches.status, MATCH_STATUS.WAITING),
           isNull(ticTacToeMatches.player2Id),
+          eq(ticTacToeMatches.stakeAmount, stakeAmount.toFixed(2)),
         ),
       )
       .orderBy(sql`${ticTacToeMatches.createdAt} ASC`)
@@ -199,10 +245,10 @@ export async function createOrJoin({ userId }: { userId: string }) {
     if (open) {
       // The caller's own lobby — return it rather than creating a second.
       if (open.player1Id === userId) return { match: open, joined: false };
-      return await joinExistingMatch(tx, open.id, userId);
+      return await joinExistingMatch(tx, open.id, userId, stakeAmount);
     }
 
-    return await createWaitingMatch(tx, userId);
+    return await createWaitingMatch(tx, userId, stakeAmount);
   });
 }
 
@@ -245,7 +291,7 @@ export async function createAiMatch({
   return { match } as const;
 }
 
-async function createWaitingMatch(tx: any, userId: string) {
+async function createWaitingMatch(tx: any, userId: string, stakeAmount: number) {
   const state = createInitialState();
   const seats: Seats = { player1Id: userId, player2Id: null };
 
@@ -259,6 +305,10 @@ async function createWaitingMatch(tx: any, userId: string) {
       currentTurnUserId: userIdForSeat(seats, state.currentTurn),
       gameState: state,
       isAi: false,
+      // The stake the table WILL carry. An open lobby costs nothing to hold:
+      // both seats are escrowed at once when the second player joins, so a
+      // lobby that never fills never touches a balance.
+      stakeAmount: stakeAmount.toFixed(2),
     })
     .returning();
 
@@ -272,7 +322,12 @@ async function createWaitingMatch(tx: any, userId: string) {
   return { match, joined: false };
 }
 
-async function joinExistingMatch(tx: any, candidateId: string, userId: string) {
+async function joinExistingMatch(
+  tx: any,
+  candidateId: string,
+  userId: string,
+  stakeAmount: number,
+) {
   const [match] = await tx
     .select()
     .from(ticTacToeMatches)
@@ -281,6 +336,36 @@ async function joinExistingMatch(tx: any, candidateId: string, userId: string) {
 
   if (!match || match.status !== MATCH_STATUS.WAITING || match.player2Id) {
     return { error: "Match is no longer available", status: 409 } as const;
+  }
+  // The joiner is held to the stake the lobby carries: a request that names a
+  // different one is refused rather than escrowed at an amount the player never
+  // agreed to (the lobby list is public, and `createOrJoin` matches on stake
+  // equality, so this only fires for a stale or crafted request).
+  if (Number(match.stakeAmount) !== stakeAmount) {
+    return {
+      error: "This lobby is no longer open at that stake",
+      status: 400,
+    } as const;
+  }
+
+  // Escrow BOTH stakes before the seat fills: a staked match either funds
+  // fully or the join is refused, so a `playing` match is always backed by two
+  // stakes and the winner's payout is always funded. A seat that cannot cover
+  // the stake is answered with the reason (and the transaction rolls back, so
+  // the lobby is still open and nothing was charged).
+  const escrow: { ok: boolean; error?: string; status?: number } =
+    await escrowMatchWagers({
+      clerkIds: [match.player1Id, userId],
+      stake: Number(match.stakeAmount),
+      matchId: match.id,
+      gameKey: "tic-tac-toe",
+      tx,
+    });
+  if (!escrow.ok) {
+    return {
+      error: escrow.error || "Insufficient coins",
+      status: escrow.status || 400,
+    } as const;
   }
 
   const state = stateOf(match);
@@ -718,7 +803,17 @@ export async function cancelMatch({
     });
 
     // A cancelled lobby never settled, so no rating, trophy or win counter
-    // moves — settleMatch is deliberately not called here.
+    // moves — settleMatch is deliberately not called here. Any escrow it holds
+    // is handed back (a waiting lobby was never charged, so this is normally a
+    // no-op: the ledger refuses to refund a seat that was never debited).
+    await refundMatchWagers({
+      clerkIds: [match.player1Id, match.player2Id],
+      stake: Number(match.stakeAmount) || 0,
+      matchId: match.id,
+      gameKey: "tic-tac-toe",
+      tx,
+    });
+
     return { match: updated ?? match } as const;
   });
 }
@@ -837,11 +932,13 @@ export async function forfeitMatchOnDisconnect({
  * atomically, and both are idempotent per (user, game, match) via their own
  * event journals.
  *
- * No wager, no token, no payout: the game is unstaked, so the only account
- * stats touched are `users.gamesWon` / `users.gamesLost`. The leaderboard
- * counters are deliberately NOT called because `applyLeaderboardCounters` is
- * wager-gated (`bet <= 0` returns early) and this game has no wager — calling
- * it would be a no-op that reads like a bug.
+ * A win also takes the pot: both seats were escrowed at join, so the winner is
+ * paid `ticTacToePayout(stake)` out of that escrow in THIS transaction, and the
+ * free account stats touched are `users.gamesWon` / `users.gamesLost`. The
+ * leaderboard counters are deliberately NOT called: they are keyed to the
+ * single-player bet columns (`applyLeaderboardCounters` returns early for a
+ * bet of 0) and a PvP match has no such column, so calling it here would be a
+ * no-op that reads like a bug.
  *
  * A DRAW is journaled by both helpers (with `result: "draw"`, which moves both
  * ratings by K × (0.5 − expected)) but changes neither win counter, exactly as
@@ -853,11 +950,14 @@ async function settleMatch(
   match: MatchRow,
   outcome: { result: string; winnerSeat: Seat | null },
 ) {
-  // Free vs-AI matches must never affect rating, trophies or win counters.
+  // Free vs-AI matches must never affect rating, trophies or win counters —
+  // and they are never escrowed, so they never move coins either.
   if (match.isAi) return;
   if (!match.player2Id) return;
 
   const matchId = String(match.id);
+  const seatIds = [match.player1Id, match.player2Id];
+  const stake = Number(match.stakeAmount) || 0;
 
   if (outcome.result === RESULT.TIE) {
     await applyRatingResult({
@@ -876,6 +976,15 @@ async function settleMatch(
       loserClerkId: match.player2Id,
       result: "draw",
     }).catch(() => {});
+    // A tie is VOID, not a stranded pot: both stakes go back through the same
+    // ledger (which refuses the refund if the match was already paid).
+    await refundMatchWagers({
+      clerkIds: seatIds,
+      stake,
+      matchId,
+      gameKey: "tic-tac-toe",
+      tx,
+    });
     return;
   }
 
@@ -908,6 +1017,21 @@ async function settleMatch(
     winnerClerkId: winnerId,
     loserClerkId: loserId,
   }).catch(() => {});
+
+  // …and the pot, out of the escrow both seats funded at join. The ledger is
+  // keyed per (match, seat), so a replayed settle pays nothing, and a seat whose
+  // stake was never taken (a legacy unstaked row) is paid nothing rather than
+  // minted. Free matches (stake 0) skip the call: there is no pot.
+  const payout = ticTacToePayout(stake);
+  if (payout > 0) {
+    await settlePayout({
+      clerkId: winnerId,
+      amount: payout,
+      matchId,
+      gameKey: "tic-tac-toe",
+      tx,
+    });
+  }
 }
 
 // Re-exported so the routes can assert board shape without importing the rules

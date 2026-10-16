@@ -3542,22 +3542,23 @@ export const speedTypingMatches = pgTable(
 //
 // Server-authoritative 1v1 turn-based tic-tac-toe: 3x3 board, nine cells,
 // X vs O, X goes first, three in a row wins, a full board with no line is a
-// draw. No randomness during play, no wagers, no tokens, no balances, no
-// payouts.
+// draw. No randomness during play — and, like every ranked duel in the
+// catalogue, a STAKED match: both seats are escrowed when the second player
+// joins and the winner is paid out of that escrow on settle (see
+// `stake_amount` below).
 //
 // Matchmaking follows the Mini Golf pattern (0179) rather than Pool Masters'
 // lobby+match pair (0022): a single row with a nullable `player2_id` and a
 // `waiting` status IS the open lobby, so `create-or-join` matches two players
 // under one advisory lock (TIC_TAC_TOE_LOCK_NAMESPACE) with no second table to
-// keep in sync — and no per-wager queue bucket, because the game is unstaked.
+// keep in sync. An open lobby IS its stake, so the joiner states the stake they
+// agreed to and the store refuses a mismatch — there is no separate per-wager
+// queue bucket to keep in sync.
 //
 // THERE IS NO SEED COLUMN, ON PURPOSE: tic-tac-toe contains no randomness. The
 // board is a pure function of the accepted move order, so unlike mini golf's
 // course there is nothing to regenerate — the append-only move log replays the
 // whole match.
-//
-// There is deliberately NO stake_amount / prize_paid / house_fee column: the
-// game is unstaked, so no money is ever moved by settlement.
 //
 // Player ids are stored as plain clerk-id strings with no FK to `users`,
 // matching every other PvP table.
@@ -3587,6 +3588,13 @@ export const ticTacToeMatches = pgTable(
     aiDifficulty: varchar("ai_difficulty", { length: 16 }),
     // 'player1' | 'player2' | 'tie'. Null until the match settles.
     result: varchar("result", { length: 20 }),
+    // The coins EACH seat puts up (migration 0218). 0 = a free match (practice
+    // vs the bot, or a row written before wagering returned); the winner is
+    // paid 2 × stake × (1 − PVP_RAKE_PCT) through the shared escrow ledger and
+    // a tie returns both stakes. Mirrors memory_grid_matches.stake_amount.
+    stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0"),
     startedAt: timestamp("started_at"),
     endedAt: timestamp("ended_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -3596,6 +3604,11 @@ export const ticTacToeMatches = pgTable(
     statusIdx: index("tic_tac_toe_matches_status_idx").on(table.status, table.createdAt),
     player1Idx: index("tic_tac_toe_matches_player1_idx").on(table.player1Id, table.createdAt),
     player2Idx: index("tic_tac_toe_matches_player2_idx").on(table.player2Id, table.createdAt),
+    // Staked matchmaking: "the open lobby at this stake".
+    stakeIdx: index("tic_tac_toe_matches_stake_open_idx").on(
+      table.stakeAmount,
+      table.status,
+    ),
   })
 );
 

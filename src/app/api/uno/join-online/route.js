@@ -3,7 +3,7 @@ import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified"
 import { db } from "../../../../db/client";
 import { users, unoGames } from "../../../../db/schema";
 import { eq, and, ne, isNull } from "drizzle-orm";
-import { normalizeStake } from "../../../../lib/games/stakes";
+import { normalizeStake, requireStake } from "../../../../lib/games/stakes";
 import { escrowMatchWagers } from "../../../../lib/tokens/wager";
 
 function generateDeck() {
@@ -159,7 +159,8 @@ async function createWaitingGame({ user, betAmount }) {
   // A waiting game costs nothing to open: the HOST's stake is only taken when
   // an opponent actually fills the seat (see joinOpenGame, which escrows both
   // seats at once). The stake is still recorded here, because that is what the
-  // joiner escrows and what the winner is paid out of.
+  // joiner escrows and what the winner is paid out of. It arrives already
+  // validated by `requireStake` — online play always carries a positive wager.
   betAmount = normalizeStake(betAmount, "uno");
 
   const balance = parseFloat(user.balance);
@@ -225,10 +226,23 @@ export async function POST(request) {
     );
 
   const { betAmount: requestedBet, mode = "join_or_create", gameId } = await request.json();
-  // The stake the table will carry. A missing / unusable value is free play
-  // (stake 0); a real one is clamped to the game's ceiling. The coins only move
-  // when the seat is filled, or on settle — never here.
+  // The stake the table will carry, clamped to the game's ceiling. The coins
+  // only move when the seat is filled, or on settle — never here.
   const betAmount = normalizeStake(requestedBet, "uno");
+
+  // Every ONLINE mode that opens a table plays for coins, so the stake must be
+  // present and legal; `join-random` and `join-specific` instead adopt the
+  // stake of the lobby being joined, so they carry no requirement of their own.
+  const opensATable = mode !== "join-random" && mode !== "join-specific";
+  if (opensATable) {
+    const wager = requireStake(requestedBet, "uno");
+    if (!wager.ok) {
+      return new Response(
+        JSON.stringify({ success: false, error: wager.error, code: wager.code }),
+        { status: wager.status },
+      );
+    }
+  }
 
   try {
     const user = await db.query.users.findFirst({
@@ -276,6 +290,23 @@ export async function POST(request) {
         return new Response(
           JSON.stringify({ success: false, error: "Game is not available" }),
           { status: 404 },
+        );
+      }
+      // A joiner who names a different stake than the table's is refused
+      // instead of being escrowed at an amount they never agreed to (the
+      // lobby list is public and can be stale). A joiner that names none —
+      // an older client — is still held to the table's own stake.
+      const claimed =
+        requestedBet === undefined || requestedBet === null || requestedBet === ""
+          ? null
+          : normalizeStake(requestedBet, "uno");
+      if (claimed !== null && claimed !== Number(targetedGame.betAmount)) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "This game is no longer open at that stake",
+          }),
+          { status: 400 },
         );
       }
 

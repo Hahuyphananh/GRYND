@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { NextResponse } from "next/server";
-import { normalizeStake } from "../../../../lib/games/stakes";
+import { requireStake } from "../../../../lib/games/stakes";
 import { db } from "../../../../db/client";
 import { dotsAndBoxesGames } from "../../../../db/schema";
 
@@ -15,15 +15,21 @@ export async function POST(req) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
-    // STAKES ARE RETIRED (src/lib/games/stakes.js) — a lobby is free to open.
-    const betAmount = normalizeStake(body.betAmount);
-
+    // A ranked lobby always plays for coins: the requested stake is REQUIRED
+    // and must be legal, so a crafted request can never open a free match.
+    const wager = requireStake(body?.betAmount, "dots-and-boxes");
+    if (!wager.ok) {
+      return NextResponse.json(
+        { success: false, error: wager.error, code: wager.code },
+        { status: wager.status },
+      );
+    }
 
     const [created] = await db
       .insert(dotsAndBoxesGames)
       .values({
         hostClerkId: userId,
-        betAmount: betAmount.toFixed(2),
+        betAmount: wager.stake.toFixed(2),
         status: "waiting",
       })
       .returning({ id: dotsAndBoxesGames.id });

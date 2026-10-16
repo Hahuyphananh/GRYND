@@ -127,10 +127,13 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
       // both paired seats. It takes no stake at all, so the queue's normalized
       // stake can never reach it — and therefore never a debit or a payout.
       "speed-typing": (userId) => createOrJoinSpeedTypingMatch({ userId }),
-      // Tic-Tac-Toe Duel is unstaked too, and lobby-style in exactly the same
-      // way: its `createOrJoin` returns the SAME waiting-lobby id for both
-      // paired seats, so the queue's normalized stake can never reach it.
-      "tic-tac-toe": (userId) => createOrJoinTicTacToeMatch({ userId }),
+      // Tic-Tac-Toe Duel is lobby-style in exactly the same way — its
+      // `createOrJoin` returns the SAME waiting-lobby id for both paired seats —
+      // and it plays for coins like every other ranked duel, so the queue's
+      // stake is what the pair is matched at (both seats are escrowed when the
+      // second one joins).
+      "tic-tac-toe": (userId) =>
+        createOrJoinTicTacToeMatch({ userId, stakeAmount: sourceStake }),
       // Barricade is unstaked and lobby-style on the same terms: its
       // `createOrJoin` seats the first caller in a waiting lobby and hands the
       // second caller THAT SAME lobby, so both paired players land on one match

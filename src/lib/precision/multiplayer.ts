@@ -67,11 +67,14 @@ export async function joinLobby(
   /** Display name for the joining seat (seat 2). Display only — the route
    *  takes the joiner's IDENTITY from the Clerk session. */
   playerName?: string,
+  /** The stake the player saw on the lobby row, so the server can prove the
+   *  seat is funded at the amount they agreed to. */
+  wager?: number,
 ): Promise<{ success: boolean; matchId?: string; error?: string }> {
   const res = await fetch(API_ROUTES.joinLobby, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ lobbyId, playerName }),
+    body: JSON.stringify({ lobbyId, playerName, wager }),
   });
   return res.json();
 }

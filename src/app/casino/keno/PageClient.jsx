@@ -38,6 +38,7 @@ import {
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import { readStoredAiDifficulty } from "../../../lib/aiDifficulty";
 import { startVisibleInterval } from "../../../hooks/useVisiblePoll";
+import { MIN_STAKE } from "../../../lib/games/stakes";
 
 
 // ── Small inline SVG icons (mirror the slots-pvp lobby) ──────────────
@@ -115,6 +116,11 @@ export default function KenoLobbyPage() {
 
   const createOrJoin = useCallback(
     async (stakeAmount) => {
+      // A ranked match always plays for coins: no legal stake, no match.
+      if (!(Number(stakeAmount) >= MIN_STAKE)) {
+        setError(`Pick a stake of at least ${MIN_STAKE} coin to play.`);
+        return;
+      }
       setBusy(true);
       setError(null);
       try {
@@ -322,7 +328,7 @@ export default function KenoLobbyPage() {
         posthog?.capture("keno_pvp_lobby_create_clicked", { stake });
         createOrJoin(stake);
       }}
-      canPlay={canCreate}
+      canPlay={canCreate && stake >= MIN_STAKE}
       vsAi={{
         label: "Play Free vs AI",
         badge: "No tokens",

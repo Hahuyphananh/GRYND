@@ -4,6 +4,7 @@ import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerifi
 import { db } from "../../../../../db/client";
 import { rpsPvpGames } from "../../../../../db/schema";
 import { escrowMatchWagers } from "../../../../../lib/tokens/wager";
+import { normalizeStake } from "../../../../../lib/games/stakes";
 import { and, eq, isNull } from "drizzle-orm";
 
 export async function POST(req) {
@@ -18,8 +19,12 @@ export async function POST(req) {
     );
   }
 
-  const { gameId } = await req.json();
+  const { gameId, betAmount } = await req.json();
   const parsedGameId = Number(gameId);
+  // The joiner states the stake they agreed to. A joiner who names a different
+  // stake than the lobby's is refused instead of being escrowed at a number
+  // they never chose (the lobby list is public and can be stale or crafted).
+  const agreedStake = normalizeStake(betAmount, "rps");
 
   if (!Number.isFinite(parsedGameId)) {
     return NextResponse.json(
@@ -47,6 +52,9 @@ export async function POST(req) {
       }
       if (game.player1Id === userId) {
         throw new Error("Cannot join your own game");
+      }
+      if (agreedStake !== Number(game.betAmount)) {
+        throw new Error("This game is no longer open at that stake");
       }
 
       // Escrow BOTH stakes before the seat fills: a staked match either funds

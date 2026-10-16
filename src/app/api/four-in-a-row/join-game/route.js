@@ -6,6 +6,7 @@ import { db } from "../../../../db/client";
 import { fourInARowGames } from "../../../../db/schema";
 import { READY_WINDOW_MS } from "../../../../lib/fourInARowServer";
 import { escrowMatchWagers } from "../../../../lib/tokens/wager";
+import { normalizeStake } from "../../../../lib/games/stakes";
 
 export async function POST(req) {
   try {
@@ -22,6 +23,11 @@ export async function POST(req) {
     const body = await req.json();
     const requestedGameId = Number(body?.gameId);
     const quickJoin = Boolean(body?.quickJoin);
+    // The stake the joiner agreed to when they picked this lobby. A request
+    // that names a different one is refused instead of being escrowed at an
+    // amount the player never chose (the lobby list is public and may be
+    // stale).
+    const agreedStake = normalizeStake(body?.betAmount, "four-in-a-row");
 
     const joined = await db.transaction(async (tx) => {
       let game;
@@ -40,6 +46,8 @@ export async function POST(req) {
           )
           .for("update");
       } else if (quickJoin) {
+        // Cheapest waiting lobby first, so Quick Join cannot strand a player on
+        // a stake they cannot cover when a smaller one is open.
         [game] = await tx
           .select()
           .from(fourInARowGames)
@@ -50,12 +58,15 @@ export async function POST(req) {
               ne(fourInARowGames.hostClerkId, userId),
             ),
           )
-          .orderBy(asc(fourInARowGames.createdAt))
+          .orderBy(asc(fourInARowGames.betAmount), asc(fourInARowGames.createdAt))
           .for("update")
           .limit(1);
       }
 
       if (!game) throw new Error("No compatible game available");
+      if (agreedStake !== Number(game.betAmount)) {
+        throw new Error("This game is no longer open at that stake");
+      }
 
       // Escrow BOTH stakes before the seat fills: a paid game either funds
       // fully or the join is refused, so a ready game is always backed by two

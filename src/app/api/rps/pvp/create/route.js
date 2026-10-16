@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { normalizeStake } from "../../../../../lib/games/stakes";
+import { requireStake } from "../../../../../lib/games/stakes";
 import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../../db/client";
@@ -18,8 +18,16 @@ export async function POST(req) {
   }
 
   const { betAmount } = await req.json();
-  // STAKES ARE RETIRED (src/lib/games/stakes.js) — a match is free to open.
-  const parsedBet = normalizeStake(betAmount);
+  // A ranked match always plays for coins: the stake is REQUIRED and must be
+  // legal, so a crafted request can never open a free-to-enter lobby.
+  const wager = requireStake(betAmount, "rps");
+  if (!wager.ok) {
+    return NextResponse.json(
+      { success: false, error: wager.error, code: wager.code },
+      { status: wager.status },
+    );
+  }
+  const parsedBet = wager.stake;
 
   try {
     const { game } = await db.transaction(async (tx) => {

@@ -5,7 +5,7 @@ import MonetagScript from "../../../components/MonetagScript";
 import { ogImageUrl } from "../../../lib/ogImages";
 
 const title = "Tic-Tac-Toe | GRYND";
-const description = "Play Tic-Tac-Toe on GRYND — a free, rated 1v1 duel on a 3x3 board. X moves first, play is turn by turn, and the first player to line up three in a row wins. Free to play, no tokens at stake.";
+const description = "Play Tic-Tac-Toe on GRYND — a rated 1v1 duel on a 3x3 board. X moves first, play is turn by turn, and the first player to line up three in a row takes the match and the coin pot. A free practice match against the bot is always available.";
 const image = ogImageUrl("/images/og-banner.png");
 
 // This page is the AUTHENTICATED game application, served at

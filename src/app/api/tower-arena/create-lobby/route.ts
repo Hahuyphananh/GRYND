@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { logError } from "../../../../lib/logError";
 import { createTowerArenaLobby } from "../../../../lib/tower-arena/serverStore";
-import { normalizeStake } from "../../../../lib/games/stakes";
+import { requireStake } from "../../../../lib/games/stakes";
 
 export async function POST(req: Request) {
   try {
@@ -11,11 +11,19 @@ export async function POST(req: Request) {
     const userId = gate.userId;
     // A seat count is no longer part of the request: Tower Arena is 1v1, so
     // the store always opens a two-seat lobby.
-    const { wager = 10 } = await req.json().catch(() => ({}));
-    // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open.
-    // The requested wager is normalized to 0, so the host escrow is a no-op
-    // and the match settles with no prize pool.
-    const res: any = await createTowerArenaLobby({ userId, wager: normalizeStake(wager) });
+    const body = await req.json().catch(() => ({}));
+    // A ranked lobby always plays for coins, so the requested wager is REQUIRED
+    // and must be legal: a crafted request can never open a free-to-enter
+    // lobby whose winner would be paid nothing. The seats are still escrowed
+    // only when the second player joins.
+    const wager = requireStake(body?.wager, "tower-arena");
+    if (!wager.ok) {
+      return NextResponse.json(
+        { ok: false, error: wager.error, code: wager.code },
+        { status: wager.status },
+      );
+    }
+    const res: any = await createTowerArenaLobby({ userId, wager: wager.stake });
     return NextResponse.json({ ok: !res.error, match: res.match ?? null, error: res.error, message: res.error }, { status: res.status || 200 });
   } catch (error) {
     await logError({
