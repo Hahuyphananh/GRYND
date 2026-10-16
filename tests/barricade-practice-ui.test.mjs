@@ -46,9 +46,11 @@ function stripComments(source) {
   return out;
 }
 
-const PAGE_PATH = "src/app/casino/barricade/play-ai/PageClient.tsx";
+// The public route moved with the Barrier Blitz rename; the board component's
+// path is internal and unchanged.
+const PAGE_PATH = "src/app/casino/barrier-blitz/play-ai/PageClient.tsx";
 const BOARD_PATH = "src/components/barricade/BarricadeBoard.tsx";
-const ROUTE_PATH = "src/app/casino/barricade/play-ai/page.tsx";
+const ROUTE_PATH = "src/app/casino/barrier-blitz/play-ai/page.tsx";
 
 const page = read(PAGE_PATH);
 const board = read(BOARD_PATH);
@@ -255,7 +257,11 @@ test("barricade ui: keyboard and screen-reader support", () => {
   // and no mode button to toggle first.
   assert.ok(boardCode.includes("<button"), "every affordance is a button");
   assert.equal(boardCode.includes("onKeyDown"), false, "no bespoke keyboard ghost remains");
-  for (const gone of ['aria-label="Barricade orientation"', "aria-pressed"]) {
+  for (const gone of [
+    'aria-label="Barrier Blitz orientation"',
+    'aria-label="Barricade orientation"',
+    "aria-pressed",
+  ]) {
     assert.equal(pageCode.includes(gone), false, `no mode/orientation switch remains (${gone})`);
   }
 });
@@ -285,6 +291,6 @@ test("barricade ui: the bot is bounded, tiered and honest about it", () => {
 
 test("barricade ui: the route and its metadata exist", () => {
   const route = read(ROUTE_PATH);
-  assert.ok(route.includes("Barricade vs AI | GRYND"));
+  assert.ok(route.includes("Barrier Blitz vs AI | GRYND"));
   assert.ok(route.includes("PageClient"));
 });

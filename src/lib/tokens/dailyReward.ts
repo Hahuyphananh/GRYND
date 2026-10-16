@@ -15,13 +15,23 @@
 //
 // ── How much ────────────────────────────────────────────────────────────────
 //
-// The amount escalates over a 7-day cycle (`DAILY_REWARD_CYCLE` in
-// src/lib/games/economy.ts) and is indexed by the player's CURRENT daily login
-// streak, so the reward and the streak always agree: miss a day and the streak
-// (and the reward) falls back to day 1. See that constant for the calibration
-// argument — the short version is that a full week pays less than one daily
-// energy-grant top-up, so the reward is a nudge back into a game, never an
-// income that could replace playing.
+// The amount escalates over a 14-day cycle (`DAILY_REWARD_CYCLE` in
+// src/lib/games/economy.ts) and is indexed by the player's daily login streak,
+// so the reward and the streak always agree: miss a day and the streak (and the
+// reward) falls back to day 1, and finishing the fortnight wraps back to day 1
+// on the 15th day. See that constant for the calibration argument — the short
+// version is that a full fortnight is under three daily energy-grant top-ups, so
+// the reward is a nudge back into a game, never an income that could replace
+// playing.
+//
+// ── The advertised amount IS the paid amount ────────────────────────────────
+//
+// The status read and the claim both derive the streak day through the SAME
+// function (`projectDailyStreakDay` in src/lib/dailyStreak.js), so the number on
+// the button is the number that lands in the wallet. Reading the STORED streak
+// here instead — which is what this used to do — is what let a player who had
+// missed a day be shown "Claim 250" and then paid day 1's 30: the reset only
+// happens when something advances the streak.
 //
 // ── Idempotency ─────────────────────────────────────────────────────────────
 //
@@ -38,10 +48,49 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { tokenTransactions, users } from "../../db/schema";
 import { DAILY_REWARD_CYCLE, WALLET_HARD_CAP } from "../games/economy";
-import { updateDailyStreak } from "../dailyStreak";
+import { daysBetween, projectDailyStreakDay, toDateStr, updateDailyStreak } from "../dailyStreak";
+import { hasItem } from "../shopItems";
 import { checkUnlocks } from "../specialTitles";
 
 export const DAILY_REWARD_REFERENCE = "daily-reward";
+
+/** The consumable that absorbs exactly one missed day (see `updateDailyStreak`). */
+export const STREAK_SHIELD_ITEM_KEY = "streak_shield";
+
+/**
+ * The streak day a claim made RIGHT NOW would land on, read-only.
+ *
+ * This is the read-side twin of the write in `updateDailyStreak`: it derives the
+ * day through `projectDailyStreakDay` and reports whether a streak shield is
+ * there to absorb a missed day — WITHOUT consuming it. That means the status a
+ * player sees and the amount they are paid are computed from one rule, so they
+ * can never disagree.
+ */
+async function projectedStreakDay(
+  user: {
+    id: number;
+    streak: number | null;
+    lastLogin: string | Date | null;
+  },
+  now: Date
+): Promise<number> {
+  const lastLogin = toDateStr(user.lastLogin);
+  const todayStr = toDateStr(now);
+  // A shield only matters when a day was actually missed (the same branch
+  // `updateDailyStreak` consumes it in).
+  const missedADay =
+    Boolean(lastLogin) && daysBetween(lastLogin as string, todayStr as string) !== 1;
+  const shieldAvailable = missedADay ? await hasItem(user.id, STREAK_SHIELD_ITEM_KEY, 1) : false;
+
+  return projectDailyStreakDay(
+    {
+      lastLoginDate: user.lastLogin,
+      current: user.streak,
+      shieldAvailable,
+    },
+    now
+  );
+}
 
 /** Days in one reward cycle. The curve repeats after this many days. */
 export const DAILY_REWARD_CYCLE_DAYS = DAILY_REWARD_CYCLE.length;
@@ -52,10 +101,11 @@ export function utcDateKey(now: Date = new Date()): string {
 }
 
 /**
- * Which day of the 7-day cycle a streak day lands on (1-based). A streak of 1
- * is cycle day 1; a streak of 8 starts the curve over at cycle day 1. A
- * non-positive or non-finite streak day is treated as day 1, so a claim can
- * never index the curve out of bounds.
+ * Which day of the 14-day cycle a streak day lands on (1-based). A streak of 1
+ * is cycle day 1; a streak of 15 starts the curve over at cycle day 1 — which
+ * is the "14 days completed, the 15th day is day 1 again" rule. A non-positive
+ * or non-finite streak day is treated as day 1, so a claim can never index the
+ * curve out of bounds.
  */
 export function dailyRewardCycleDay(streakDay: number): number {
   const day = Math.floor(Number(streakDay));
@@ -78,7 +128,7 @@ export function dailyRewardAmount(streakDay: number): number {
  */
 export function isPlayGateSatisfied(
   lastPlayedGameDate: string | Date | null | undefined,
-  today: string,
+  today: string
 ): boolean {
   if (!lastPlayedGameDate) return false;
   const played =
@@ -95,13 +145,15 @@ export type DailyRewardStatus = {
   playGateSatisfied: boolean;
   /** Today's streak day, the index into the reward curve. */
   streakDay: number;
-  /** Which day of the 7-day cycle today falls on. */
+  /** Which day of the 14-day cycle today falls on (1-based). */
   cycleDay: number;
+  /** How many days the cycle runs for, so the UI never hardcodes it. */
+  cycleDays: number;
   /** What today's claim is worth. */
   reward: number;
   /** The day key the claim is recorded against. */
   today: string;
-  /** The full curve, so the UI can show the week at a glance. */
+  /** The full curve, so the UI can show the whole fortnight at a glance. */
   cycle: number[];
 };
 
@@ -123,14 +175,16 @@ type ClaimTxResult =
  */
 export async function getDailyRewardStatus(
   clerkId: string,
-  { now = new Date() }: { now?: Date } = {},
+  { now = new Date() }: { now?: Date } = {}
 ): Promise<(DailyRewardStatus & { balance: number }) | null> {
   if (!clerkId) return null;
 
   const [user] = await db
     .select({
+      id: users.id,
       balance: users.balance,
       streak: users.dailyStreakCurrent,
+      lastLogin: users.lastLoginDate,
       lastPlayed: users.lastPlayedGameDate,
       claimed: users.lastDailyRewardClaimed,
     })
@@ -140,13 +194,17 @@ export async function getDailyRewardStatus(
   if (!user) return null;
 
   const today = utcDateKey(now);
-  const streakDay = Math.max(1, Number(user.streak) || 1);
+  // The PROJECTED day, not the stored one: the stored streak is stale until
+  // something advances it, so a player who missed a day would otherwise be
+  // shown a payday they cannot collect (see `projectedStreakDay`).
+  const streakDay = await projectedStreakDay(user, now);
 
   return {
     claimable: String(user.claimed ?? "").slice(0, 10) !== today,
     playGateSatisfied: isPlayGateSatisfied(user.lastPlayed, today),
     streakDay,
     cycleDay: dailyRewardCycleDay(streakDay),
+    cycleDays: DAILY_REWARD_CYCLE_DAYS,
     reward: dailyRewardAmount(streakDay),
     today,
     cycle: [...DAILY_REWARD_CYCLE],
@@ -165,7 +223,7 @@ export async function getDailyRewardStatus(
  */
 export async function claimDailyReward(
   clerkId: string,
-  { now = new Date() }: { now?: Date } = {},
+  { now = new Date() }: { now?: Date } = {}
 ): Promise<DailyRewardResult> {
   if (!clerkId) return { ok: false, error: "Missing user", status: 400 };
 
@@ -219,8 +277,8 @@ export async function claimDailyReward(
       .where(
         and(
           eq(tokenTransactions.referenceType, DAILY_REWARD_REFERENCE),
-          eq(tokenTransactions.referenceId, referenceId),
-        ),
+          eq(tokenTransactions.referenceId, referenceId)
+        )
       )
       .limit(1);
     if (existing.length > 0) {
@@ -243,10 +301,7 @@ export async function claimDailyReward(
       newBalance = Number(updated.balance);
     }
 
-    await tx
-      .update(users)
-      .set({ lastDailyRewardClaimed: today })
-      .where(eq(users.id, user.id));
+    await tx.update(users).set({ lastDailyRewardClaimed: today }).where(eq(users.id, user.id));
 
     await tx.insert(tokenTransactions).values({
       clerkId,
@@ -286,6 +341,7 @@ export async function claimDailyReward(
       playGateSatisfied: true,
       streakDay,
       cycleDay: dailyRewardCycleDay(streakDay),
+      cycleDays: DAILY_REWARD_CYCLE_DAYS,
       reward,
       today,
       cycle: [...DAILY_REWARD_CYCLE],

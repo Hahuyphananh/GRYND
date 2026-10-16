@@ -1,8 +1,8 @@
 "use client";
 
-// src/app/casino/barricade/play-ai/PageClient.tsx
+// src/app/casino/barrier-blitz/play-ai/PageClient.tsx
 //
-// Barricade — free practice against the bot.
+// Barrier Blitz — free practice against the bot.
 //
 // There is no match row, no wager and no rating here: the whole match lives in
 // one React state value shaped by `src/lib/barricade/rules.ts`, and the bot is a
@@ -11,7 +11,7 @@
 // a database or a second human is unavailable.
 //
 // THE UI OWNS NO RULES. Every destination that lights up came from the engine's
-// `legalMoves`; every barricade click is checked by `classifyWall` before it is
+// `legalMoves`; every barrier click is checked by `classifyWall` before it is
 // applied through `applyAction`; the goal rows come from `goalRowFor`; the win
 // and loss come from the engine's `winner`. The board component only draws the
 // position it is handed.
@@ -75,13 +75,12 @@ const AI_THINK_DELAY_MS = 480;
 const LOBBY_PATH = "/casino";
 /**
  * The online 1v1 lobby — the other half of the game, one click away. The
- * CANONICAL form matters here: bare `/casino/barricade` permanently redirects to
- * the public landing page `/games/barricade`, and Barricade has no landing page
- * yet (its catalogue entry is a separate, later change), so that URL would 404.
- * `/games/barricade/play` is the lobby itself — the same shape every other game
- * uses — and it is rewritten to `/casino/barricade` internally.
+ * CANONICAL form matters here: bare `/casino/barrier-blitz` permanently redirects
+ * to the public landing page `/games/barrier-blitz`, so that URL would leave the
+ * lobby. `/games/barrier-blitz/play` is the lobby itself — the same shape every
+ * other game uses — and it is rewritten to `/casino/barrier-blitz` internally.
  */
-const ONLINE_PATH = "/games/barricade/play";
+const ONLINE_PATH = "/games/barrier-blitz/play";
 
 /** One cue per accepted action, keyed on what the engine actually did. */
 function playMoveSound(kind: MoveKind, mine: boolean) {
@@ -277,8 +276,7 @@ export default function BarricadePracticePage() {
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[13px] font-bold text-white">{label}</span>
         <span className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-white/50">
-          <IconWall size={12} aria-hidden="true" />
-          <span data-testid={`barricade-walls-${seat}`}>{walls}</span> barricades left
+          <IconWall size={12} aria-hidden="true" />            <span data-testid={`barricade-walls-${seat}`}>{walls}</span> barriers left
         </span>
       </span>
       {active ? (
@@ -316,7 +314,7 @@ export default function BarricadePracticePage() {
     <div className="barricade-controls">
       {canPlay ? (
         <p className="barricade-hint" data-testid="barricade-hint">
-          Every barricade you may place is already drawn on the board as a dashed gap — tap one
+          Every barrier you may place is already drawn on the board as a dashed gap — tap one
           to put it there. Tap a highlighted square to move instead. No mode to pick.
         </p>
       ) : null}
@@ -369,13 +367,13 @@ export default function BarricadePracticePage() {
           : "The bot got across this time."
       }
       subline="Free practice — no wager, no rating, no trophies."
-      gameName="Barricade vs AI"
+      gameName="Barrier Blitz vs AI"
       opponent={{ name: `AI (${difficulty})`, iconKey: null, isAi: true }}
       summary={[
         { label: "Session", value: `${score.wins}W – ${score.losses}L` },
         { label: "Actions", value: String(state.ply) },
-        { label: "Your barricades left", value: String(myWalls) },
-        { label: "Bot barricades left", value: String(aiWalls) },
+        { label: "Your barriers left", value: String(myWalls) },
+        { label: "Bot barriers left", value: String(aiWalls) },
       ]}
       playAgain={{ label: "New game", onClick: () => resetGame() }}
       onReturnToLobby={() => router.push(LOBBY_PATH)}
@@ -393,7 +391,7 @@ export default function BarricadePracticePage() {
             transition={{ duration: reduceMotion ? 0 : 0.3 }}
             className="logo-text text-center text-2xl font-black uppercase tracking-[0.12em] text-[#7cefff] drop-shadow-[0_0_16px_rgba(0,229,255,0.45)] sm:text-3xl"
           >
-            Barricade vs AI
+            Barrier Blitz vs AI
           </motion.h1>
           <p className="mb-3 text-center text-xs text-white/60">
             Free play · No wager · You are{" "}
@@ -449,29 +447,29 @@ export default function BarricadePracticePage() {
 
           <details className="barricade-rules" data-testid="barricade-rules">
             <summary className="barricade-rules-summary">
-              <IconHelpCircle size={16} aria-hidden="true" /> How to play Barricade
+              <IconHelpCircle size={16} aria-hidden="true" /> How to play Barrier Blitz
             </summary>
             <ol className="barricade-rules-list">
               <li>
                 Race your pawn from your own baseline to <strong>any square of the far row</strong>.
                 Landing there wins instantly.
               </li>
-              <li>Each turn is exactly one action: move your pawn one square, or place one barricade.</li>
+              <li>Each turn is exactly one action: move your pawn one square, or place one barrier.</li>
               <li>Pawns move up, down, left or right — never diagonally as an ordinary move.</li>
               <li>
                 Face to face, you may jump straight over the bot when the square behind it is free.
-                If a barricade or the board edge is right behind it, jump to one of the two squares
+                If a barrier or the board edge is right behind it, jump to one of the two squares
                 beside it instead.
               </li>
               <li>
-                A barricade is two squares long and blocks <em>both</em> players. They may not overlap
+                A barrier is two squares long and blocks <em>both</em> players. They may not overlap
                 or cross.
               </li>
               <li>
-                You can never seal a player in: every barricade must leave both pawns a route to
+                You can never seal a player in: every barrier must leave both pawns a route to
                 their goal.
               </li>
-              <li>You have ten barricades; when they run out you must move your pawn.</li>
+              <li>You have ten barriers; when they run out you must move your pawn.</li>
             </ol>
           </details>
 

@@ -14,7 +14,7 @@
 //
 //   Lobby → POST /api/barricade/create-or-join. Once the caller is seated, the
 //   route broadcasts, so the host already sitting on
-//   /casino/barricade/<matchId> flips waiting → playing without waiting for the
+//   /casino/barrier-blitz/<matchId> flips waiting → playing without waiting for the
 //   next poll.
 //
 //   In the match view both seats join the per-match room

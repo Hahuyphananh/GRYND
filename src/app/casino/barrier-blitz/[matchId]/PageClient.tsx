@@ -1,8 +1,8 @@
 "use client";
 
-// src/app/casino/barricade/[matchId]/PageClient.tsx
+// src/app/casino/barrier-blitz/[matchId]/PageClient.tsx
 //
-// The online Barricade match view.
+// The online Barrier Blitz match view.
 //
 // ── AUTHORITY ─────────────────────────────────────────────────────────────
 //
@@ -111,13 +111,12 @@ import {
 const ACTIVE_POLL_MS = 1800;
 const IDLE_POLL_MS = 5000;
 /**
- * The lobby, in its CANONICAL form: bare `/casino/barricade` 308-redirects to
- * the public landing page `/games/barricade`, which Barricade does not have yet
- * (its catalogue entry is a separate, later change) and which would therefore
- * 404. `/games/barricade/play` is the lobby, rewritten to `/casino/barricade`
- * internally — the same shape every other game uses.
+ * The lobby, in its CANONICAL form: bare `/casino/barrier-blitz` 308-redirects to
+ * the public landing page `/games/barrier-blitz`, so that URL would leave the
+ * lobby. `/games/barrier-blitz/play` is the lobby, rewritten to
+ * `/casino/barrier-blitz` internally — the same shape every other game uses.
  */
-const LOBBY_PATH = "/games/barricade/play";
+const LOBBY_PATH = "/games/barrier-blitz/play";
 
 /** The optimistic-feedback ghost: the action submitted at `version`. */
 type PendingAction = {
@@ -189,7 +188,7 @@ export default function BarricadeMatchPage() {
     async (signal?: AbortSignal) => {
       if (!matchId) return;
       if (signedOut) {
-        setLoadError("Sign in to play this Barricade match.");
+        setLoadError("Sign in to play this Barrier Blitz match.");
         return;
       }
       try {
@@ -517,7 +516,7 @@ export default function BarricadeMatchPage() {
 
   // ── Render ────────────────────────────────────────────────────────────
   if (!match && !loadError) {
-    return <MatchLoading label="Loading your Barricade match…" currentPath={LOBBY_PATH} />;
+    return <MatchLoading label="Loading your Barrier Blitz match…" currentPath={LOBBY_PATH} />;
   }
 
   if (!match && loadError) {
@@ -529,7 +528,7 @@ export default function BarricadeMatchPage() {
           onClick={() => router.push(LOBBY_PATH)}
           className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-black"
         >
-          Back to Barricade
+          Back to Barrier Blitz
         </button>
       </div>
     );
@@ -574,7 +573,7 @@ export default function BarricadeMatchPage() {
             >
               {walls}
             </span>{" "}
-            barricades left
+            barriers left
             <span
               aria-hidden="true"
               className="ml-1 inline-block h-2 w-2 rounded-full"
@@ -597,9 +596,9 @@ export default function BarricadeMatchPage() {
       {waiting && (
         <MatchWaiting
           state="waiting"
-          gameName="Barricade"
+          gameName="Barrier Blitz"
           icon={<IconWall className="h-8 w-8 text-cyan-300" />}
-          subtitle="Waiting for an opponent to join your Barricade table…"
+          subtitle="Waiting for an opponent to join your Barrier Blitz table…"
           seats={[
             {
               label: "You",
@@ -628,10 +627,10 @@ export default function BarricadeMatchPage() {
               <div>
                 <h1 className="logo-text flex items-center gap-2 text-2xl font-black uppercase tracking-[0.08em] text-[#7cefff] drop-shadow-[0_0_16px_rgba(0,229,255,0.45)] sm:text-3xl">
                   <IconWall className="h-7 w-7 text-cyan-300" aria-hidden="true" />
-                  Barricade
+                  Barrier Blitz
                 </h1>
                 <p className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-widest text-white/55">
-                  <span>9×9 · ten barricades each</span>
+                  <span>9×9 · ten barriers each</span>
                   <span className="rounded-full border border-emerald-400/40 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold tracking-wider text-emerald-200">
                     Free 1v1
                   </span>
@@ -721,7 +720,7 @@ export default function BarricadeMatchPage() {
                   <div className="barricade-controls">
                     {canPlay ? (
                       <p className="barricade-hint" data-testid="barricade-hint">
-                        Every barricade you may place is already drawn on the board as a dashed gap
+                        Every barrier you may place is already drawn on the board as a dashed gap
                         — tap one to put it there. Tap a highlighted square to move instead. No
                         mode to pick.
                       </p>
@@ -872,7 +871,7 @@ export default function BarricadeMatchPage() {
                   : "Match complete"
             }
             subline={resultReasonLabel(match?.resultReason, outcome)}
-            gameName="Barricade"
+            gameName="Barrier Blitz"
             durationSeconds={durationSeconds(match?.startedAt, match?.endedAt)}
             opponent={{
               name: opponentName,
@@ -882,8 +881,8 @@ export default function BarricadeMatchPage() {
             summary={[
               { label: "Result", value: outcome === "win" ? "Win" : "Loss" },
               { label: "Actions played", value: String(Number(match?.ply) || 0) },
-              { label: "Your barricades left", value: String(viewerWalls) },
-              { label: "Opponent's barricades left", value: String(opponentWalls) },
+              { label: "Your barriers left", value: String(viewerWalls) },
+              { label: "Opponent's barriers left", value: String(opponentWalls) },
             ]}
             details={[
               { label: "Match ID", value: String(matchId) },

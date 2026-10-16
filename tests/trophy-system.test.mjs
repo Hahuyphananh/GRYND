@@ -296,7 +296,9 @@ test("registry: trophies use EXACTLY the Elo game set (no drift)", () => {
   // its key is the lobby's own canonical id.
   assert.equal(isTrophyGame("barricade"), true);
   assert.equal(normalizeTrophyGameKey("barricade"), "barricade");
-  assert.equal(getTrophyGameLabel("barricade"), "Barricade");
+  // The trophy label delegates to the rating label, which follows the player-
+  // facing name (Barrier Blitz) rather than the internal `barricade` key.
+  assert.equal(getTrophyGameLabel("barricade"), "Barrier Blitz");
   assert.equal(isTrophyGame("chess"), true);
   assert.equal(isTrophyGame("precision"), true);
   // The 6 formerly-excluded games are now REGISTERED (their trophy/rating

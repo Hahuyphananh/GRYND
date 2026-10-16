@@ -1072,7 +1072,9 @@ test("RATED_GAMES: the registry is the audited 1v1/server-authoritative set", ()
   // so the ladder, the trophy board and the lobby all name it "barricade".
   assert.equal(isRatedGame("barricade"), true);
   assert.equal(normalizeRatingGameKey("barricade"), "barricade");
-  assert.equal(getRatingGameLabel("barricade"), "Barricade");
+  // The KEY is the internal id (and stays `barricade`); the LABEL is what
+  // players read, and the game was renamed Barrier Blitz.
+  assert.equal(getRatingGameLabel("barricade"), "Barrier Blitz");
   assert.equal(normalizeRatingGameKey("speed-typing"), "speed-typing");
   assert.equal(getRatingGameLabel("speed-typing"), "Speed Typing");
   assert.equal(isRatedGame("hex-duel"), true);

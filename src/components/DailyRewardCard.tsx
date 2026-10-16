@@ -1,98 +1,53 @@
 "use client";
 
+// src/components/DailyRewardCard.tsx
+//
+// The Daily Reward card on /rewards — the summary that OPENS the 14-day board
+// (components/DailyRewardBoard).
+//
+// ── What this is, and what it is not ────────────────────────────────────────
+//
+// A thin, honest view over `/api/rewards/daily`. The server owns the whole
+// reward: the curated 14-day curve, whether today has been claimed, and whether
+// the player has played a game today (the gate that unlocks the claim). This
+// component never computes an amount and never credits anything; it renders the
+// status the server reports and opens the board, which asks the server to claim.
+//
+// ── Why the board is behind a click ─────────────────────────────────────────
+//
+// The board is where the decision is made — it shows all 14 days, today's
+// highlighted, and what the fortnight pays. The card is the doorway: streak,
+// today's worth, and one button. Keeping the tiles in one place (the board)
+// means the card can be short without hiding the curve.
+//
+// The three states a player can be in, in the order they meet them:
+//
+//   * `playGateSatisfied === false` — locked. The reward requires one game
+//     today (1v1 PvP or vs AI); the card says so and links to the games, which
+//     is the only action that unlocks it.
+//   * `claimable` — the button, which opens the board.
+//   * neither — claimed today; the card says come back tomorrow.
+//
+// The status/claim plumbing lives in `useDailyReward`, shared with the compact
+// corner widget on the home and games pages, so both surfaces ask the server in
+// exactly the same way.
+
+import { useState } from "react";
 import Link from "next/link";
-import {
-  IconCheck,
-  IconGift,
-  IconLock,
-  IconRefresh,
-} from "@tabler/icons-react";
+import { IconCheck, IconGift, IconLock, IconRefresh } from "@tabler/icons-react";
 import { useDailyReward } from "../hooks/useDailyReward";
+import DailyRewardBoard from "./DailyRewardBoard";
 
-/**
- * The Daily Reward card.
- *
- * A thin, honest view over `/api/rewards/daily` — the server owns the whole
- * reward: the curated 7-day curve, whether today has been claimed, and whether
- * the player has played a game today (the gate that unlocks the claim). This
- * component never computes an amount and never credits anything itself; it
- * renders the status the server reports and asks the server to claim.
- *
- * The three states a player can be in, in the order they meet them:
- *
- *   * `playGateSatisfied === false` — locked. The reward requires one game
- *     today (1v1 PvP or vs AI); the card says so and links to the games, which
- *     is the only action that unlocks it.
- *   * `claimable` — the button. It claims for today and reports the payout.
- *   * neither — claimed today; the card says come back tomorrow.
- *
- * Copy is plain English, matching the rest of the /rewards surface.
- *
- * The status/claim plumbing lives in `useDailyReward`, shared with the compact
- * corner widget on the home and games pages, so both surfaces ask the server in
- * exactly the same way.
- */
-
-const CARD =
-  "rounded-xl border border-[#00e5ff]/20 bg-[#040d24]/70 p-5 backdrop-blur-sm sm:p-6";
+const CARD = "rounded-xl border border-[#00e5ff]/20 bg-[#040d24]/70 p-5 backdrop-blur-sm sm:p-6";
 
 function formatCoins(value: number) {
-  return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
-}
-
-/** A 7-chip strip of the cycle, with today highlighted and past days ticked. */
-function CycleStrip({
-  cycle,
-  cycleDay,
-}: {
-  cycle: number[];
-  cycleDay: number;
-}) {
-  return (
-    <ol role="list" className="grid grid-cols-7 gap-1.5 sm:gap-2">
-      {cycle.map((amount, index) => {
-        const day = index + 1;
-        const isToday = day === cycleDay;
-        const isPast = day < cycleDay;
-        return (
-          <li key={day} className="flex flex-col items-center gap-1">
-            <span
-              className={[
-                "flex w-full flex-col items-center rounded-lg border px-1 py-2 text-center",
-                isToday
-                  ? "border-[#f5ff3b] bg-[#f5ff3b]/15 text-[#f5ff3b]"
-                  : isPast
-                    ? "border-[#00e5ff]/25 bg-[#00e5ff]/5 text-[#9dd8ff]/60"
-                    : "border-[#00e5ff]/15 bg-[#040d24]/60 text-[#9dd8ff]/70",
-              ].join(" ")}
-              aria-current={isToday ? "step" : undefined}
-            >
-              <span className="text-[9px] font-semibold uppercase tracking-wider opacity-80">
-                Day {day}
-              </span>
-              <span className="text-xs font-bold sm:text-sm">
-                {isPast ? <IconCheck size={14} aria-hidden="true" /> : formatCoins(amount)}
-              </span>
-            </span>
-          </li>
-        );
-      })}
-    </ol>
-  );
+  return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
 export default function DailyRewardCard() {
-  const {
-    isLoaded,
-    isSignedIn,
-    status,
-    loading,
-    claiming,
-    claimedNow,
-    error,
-    load,
-    claim,
-  } = useDailyReward();
+  const reward = useDailyReward();
+  const { isLoaded, isSignedIn, status, loading, claimedNow, error, load } = reward;
+  const [open, setOpen] = useState(false);
 
   return (
     <section aria-labelledby="daily-reward-heading" className={CARD}>
@@ -106,6 +61,11 @@ export default function DailyRewardCard() {
         {status && (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#00e5ff]">
             {formatCoins(status.streakDay)}-day streak
+          </span>
+        )}
+        {status && (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-[#f5ff3b]">
+            Day {status.cycleDay} of {status.cycleDays}
           </span>
         )}
       </div>
@@ -135,13 +95,9 @@ export default function DailyRewardCard() {
       ) : (
         <>
           <p className="mb-4 max-w-3xl text-sm leading-relaxed text-[#c9f7ff]/80">
-            Play one game each day — against a player or the AI — and today&apos;s
-            coins are yours. Miss a day and the streak starts over.
+            Play one game each day — against a player or the AI — and today&apos;s coins are yours.
+            The board climbs for 14 days, and missing a day starts the streak over at day 1.
           </p>
-
-          <div className="mb-5">
-            <CycleStrip cycle={status.cycle} cycleDay={status.cycleDay} />
-          </div>
 
           {claimedNow !== null ? (
             <p
@@ -149,8 +105,8 @@ export default function DailyRewardCard() {
               role="status"
               data-testid="daily-reward-claimed"
             >
-              <IconCheck size={16} aria-hidden="true" /> You claimed{" "}
-              {formatCoins(claimedNow)} coins. Come back tomorrow for more.
+              <IconCheck size={16} aria-hidden="true" /> You claimed {formatCoins(claimedNow)}{" "}
+              coins. Come back tomorrow for more.
             </p>
           ) : !status.playGateSatisfied ? (
             <div className="flex flex-wrap items-center gap-3">
@@ -158,8 +114,8 @@ export default function DailyRewardCard() {
                 className="inline-flex items-center gap-1.5 rounded-lg border border-[#ff4fd8]/40 bg-[#ff4fd8]/10 px-3 py-2 text-sm font-semibold text-[#ff4fd8]"
                 data-testid="daily-reward-locked"
               >
-                <IconLock size={15} aria-hidden="true" /> Play one game to unlock
-                today&apos;s reward
+                <IconLock size={15} aria-hidden="true" /> Play one game to unlock today&apos;s
+                reward
               </span>
               <Link
                 href="/games"
@@ -167,23 +123,28 @@ export default function DailyRewardCard() {
               >
                 Choose a game
               </Link>
+              <button
+                type="button"
+                onClick={() => setOpen(true)}
+                data-testid="daily-reward-open"
+                className="text-sm font-semibold text-[#00e5ff] underline underline-offset-2 hover:text-[#f5ff3b]"
+              >
+                See the 14-day board
+              </button>
             </div>
-          ) : status.claimable ? (
-            <button
-              type="button"
-              onClick={claim}
-              disabled={claiming}
-              data-testid="daily-reward-claim"
-              className="inline-flex items-center justify-center rounded-xl border border-[#f5ff3b]/60 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-3 text-base font-bold text-[#1f1700] shadow-[0_0_25px_rgba(245,255,59,0.35)] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817] disabled:opacity-60"
-            >
-              {claiming
-                ? "Claiming…"
-                : `Claim ${formatCoins(status.reward)} coins`}
-            </button>
           ) : (
-            <p className="text-sm text-[#c9f7ff]/80" data-testid="daily-reward-claimed">
-              Already claimed today — tomorrow&apos;s reward is waiting.
-            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setOpen(true)}
+                data-testid="daily-reward-open"
+                className="inline-flex items-center justify-center rounded-xl border border-[#f5ff3b]/60 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-3 text-base font-bold text-[#1f1700] shadow-[0_0_25px_rgba(245,255,59,0.35)] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
+              >
+                {status.claimable
+                  ? `Daily reward — day ${status.cycleDay} (${formatCoins(status.reward)} coins)`
+                  : "Already claimed — see the board"}
+              </button>
+            </div>
           )}
 
           {error && (
@@ -200,6 +161,8 @@ export default function DailyRewardCard() {
           )}
         </>
       )}
+
+      <DailyRewardBoard open={open} onClose={() => setOpen(false)} reward={reward} />
     </section>
   );
 }

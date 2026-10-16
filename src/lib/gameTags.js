@@ -223,7 +223,7 @@ export const GAME_CATALOG = [
   // than a pick-up game, so it is not tagged `casual` and not `fast_paced`.
   {
     id: "barricade",
-    href: "/games/barricade",
+    href: "/games/barrier-blitz",
     tags: ["pvp", "strategy", "skill", "competitive"],
   },
 ];

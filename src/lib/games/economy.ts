@@ -24,7 +24,7 @@
 //   * HOUSE_RTP                 — return-to-player ceiling for house/PvE
 //                                 games (the house keeps at least 1 − RTP).
 //   * WALLET_HARD_CAP           — balance ceiling no credit may cross.
-//   * DAILY_REWARD_CYCLE        — the curated 7-day login-reward curve.
+//   * DAILY_REWARD_CYCLE        — the curated 14-day login-reward curve.
 //   * ZERO_BALANCE_RESCUE       — the one-last-game top-up for an empty wallet.
 //   * PVP_RAKE_PCT              — every 1v1 match takes 5% of the pot
 //                                 (winner gets 95%: 1.9x on a 2x pot).
@@ -87,22 +87,26 @@ export const HOUSE_RTP = 0.9;
 export const WALLET_HARD_CAP = 100_000;
 
 /**
- * The daily login reward paid for each day of a 7-day cycle (tokens), indexed
+ * The daily login reward paid for each day of a 14-day cycle (tokens), indexed
  * by `cycleDay - 1`. Curated deliberately — see the note below.
  *
- * The cycle pays 725 tokens over a full week (≈104/day), which is:
+ * The cycle pays 1,350 tokens over a full fortnight (≈96/day), which is:
  *   * enough to be worth opening the app for — day 1 already funds a real
- *     wager, and day 7 (250) is a payday worth ~2.5 max bets;
+ *     wager, and the ramp is steep enough that the streak you are on is
+ *     visibly worth more than the one you would restart;
  *   * far too little to out-earn playing — a single `GLOBAL_MAX_BET` wager is
- *     100, and the whole week pays under one `ENERGY_GRANT_FLOOR` top-up, so
- *     the reward nudges a player back into a game instead of replacing it;
+ *     100, the payday (200) is under three max bets, and the whole fortnight
+ *     is less than three `ENERGY_GRANT_FLOOR` top-ups, so the reward nudges a
+ *     player back into a game instead of replacing it;
  *   * safe to hand out to every player who shows up and plays one game, which
  *     is exactly what it is gated on.
  *
- * The curve escalates so a returning streak is visibly worth more, and day 7
- * is the payoff that makes completing the cycle the goal.
+ * The curve escalates on EVERY day (never flat, never a dip), so the streak a
+ * player is building always reads as progress, and day 14 (200) is the payoff
+ * that makes completing the fortnight the goal. Day 15 wraps back to 30: the
+ * cycle is a loop, not a ladder into an income.
  */
-export const DAILY_REWARD_CYCLE = [30, 45, 60, 80, 110, 150, 250];
+export const DAILY_REWARD_CYCLE = [30, 35, 45, 50, 60, 70, 80, 90, 105, 120, 135, 155, 175, 200];
 
 /**
  * Tokens handed to a broke player so they always have one more game in them

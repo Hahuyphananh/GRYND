@@ -94,7 +94,7 @@ function squareLabel(position: Position, occupant: "mine" | "theirs" | null, leg
 
 function wallName(wall: WallPlacement) {
   const axis = wall.orientation === ORIENTATIONS[0] ? "horizontal" : "vertical";
-  return `${axis} barricade between rows ${wall.row + 1} and ${wall.row + 2}, columns ${wall.col + 1} and ${wall.col + 2}`;
+  return `${axis} barrier between rows ${wall.row + 1} and ${wall.row + 2}, columns ${wall.col + 1} and ${wall.col + 2}`;
 }
 
 const wallLabel = (wall: WallPlacement) => wallName(wall);
@@ -131,7 +131,7 @@ export default function BarricadeBoard({
     <div
       className="barricade-board"
       role="group"
-      aria-label={`Barricade board. You play ${mySeat === "player1" ? "blue" : "purple"}.`}
+      aria-label={`Barrier Blitz board. You play ${mySeat === "player1" ? "blue" : "purple"}.`}
       data-testid="barricade-board"
       data-active-seat={activeSeat}
       data-wall-slots={wallSlots.length}
@@ -182,7 +182,7 @@ export default function BarricadeBoard({
         }),
       )}
 
-      {/* ── Barricades already on the board ────────────────────────────── */}
+      {/* ── Barriers already on the board ──────────────────────────────── */}
       {state.walls.map((wall) => (
         <div
           key={wallKey(wall)}
@@ -196,11 +196,8 @@ export default function BarricadeBoard({
           role="img"
           aria-label={wallLabel(wall)}
         />
-      ))}
-
-      {/* ── Every barricade the engine offers this turn ───────────────────
-          One button per legal placement, drawn on the groove it would occupy.
-          Nothing here is a preview or a guess: each slot IS a legal barricade,
+      ))}        {/* ── Every barrier the engine offers this turn ─────────────────────
+          One button per legal placement, drawn on the groove it would occupy.            Nothing here is a preview or a guess: each slot IS a legal barrier,
           so clicking it needs no verdict and no explanation. */}
       {wallSlots.map((wall) => (
         <button

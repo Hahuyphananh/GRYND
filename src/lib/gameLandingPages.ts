@@ -448,7 +448,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
         a: "Yes. Nothing is wagered and no tokens change hands. Competitive results move your Elo and trophies.",
       },
     ],
-    related: ["uno", "solitaire-duel", "barricade", "odds"],
+    related: ["uno", "solitaire-duel", "barrier-blitz", "odds"],
   },
 
   {
@@ -1334,7 +1334,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
         a: "Yes. There is no wager and no entry cost; ranked results move your Elo and trophies.",
       },
     ],
-    related: ["rps", "neon-flush", "barricade", "chess"],
+    related: ["rps", "neon-flush", "barrier-blitz", "chess"],
   },
 
   {
@@ -1465,36 +1465,36 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
         a: "Yes. Nothing is wagered, and there is no entry cost of any kind.",
       },
     ],
-    related: ["neon-flush", "solitaire-duel", "barricade", "odds"],
+    related: ["neon-flush", "solitaire-duel", "barrier-blitz", "odds"],
   },
 
   {
-    slug: "barricade",
-    name: "Barricade",
-    headline: "Barricade — 1v1 Quoridor-Style Strategy Game",
+    slug: "barrier-blitz",
+    name: "Barrier Blitz",
+    headline: "Barrier Blitz — 1v1 Quoridor-Style Strategy Game",
     category: "Classic Strategy",
     leaderboardKey: "barricade",
     ogImage: "/images/og-banner.png",
     shortDescription:
-      "A free, rated 1v1 strategy race on a 9×9 board. Every turn is one action — step your pawn or drop a two-square barricade that blocks you both — and the first pawn to the far baseline wins.",
+      "A free, rated 1v1 strategy race on a 9×9 board. Every turn is one action — step your pawn or drop a two-square barrier that blocks you both — and the first pawn to the far baseline wins.",
     aiPractice: true,
     introduction: [
-      "Barricade is a 9×9 race of pure position. You and your opponent each start on the centre square of your own baseline with ten barricades in reserve, and the first pawn to reach any square of the opposite row wins immediately.",
-      "It is competitive because nothing is hidden and nothing is drawn: both pawns, every placed barricade and both reserves are public at all times, so a win is planning and reading the opponent and nothing else. Every move is validated by the server from its own frozen position.",
+      "Barrier Blitz is a 9×9 race of pure position. You and your opponent each start on the centre square of your own baseline with ten barriers in reserve, and the first pawn to reach any square of the opposite row wins immediately.",
+      "It is competitive because nothing is hidden and nothing is drawn: both pawns, every placed barrier and both reserves are public at all times, so a win is planning and reading the opponent and nothing else. Every move is validated by the server from its own frozen position.",
     ],
     howToPlay: [
       "Sign in, open the lobby and press Find a Match to be seated against a live opponent, or take the free practice board against the bot without an account.",
-      "You and your opponent each start on the centre square of your own baseline of a 9×9 board, with ten barricades each.",
-      "Your turn is exactly one action: walk your pawn one square up, down or sideways — never diagonally — or place one barricade.",
-      "When your pawns stand face to face with no barricade between them you may jump straight over your opponent instead; if the square directly behind them is blocked, you move diagonally to one of the two squares beside them.",
+      "You and your opponent each start on the centre square of your own baseline of a 9×9 board, with ten barriers each.",
+      "Your turn is exactly one action: walk your pawn one square up, down or sideways — never diagonally — or place one barrier.",
+      "When your pawns stand face to face with no barrier between them you may jump straight over your opponent instead; if the square directly behind them is blocked, you move diagonally to one of the two squares beside them.",
       "The first pawn to reach any square of the opposite baseline wins the match.",
     ],
     rules: [
-      "A barricade is two squares long and sits in the groove between squares, so it blocks BOTH players, in both directions. Each player has ten.",
-      "Two barricades may never overlap or cross each other, and a barricade may never completely cut off either player's remaining route to their goal — a placement that traps a player for good is refused.",
+      "A barrier is two squares long and sits in the groove between squares, so it blocks BOTH players, in both directions. Each player has ten.",
+      "Two barriers may never overlap or cross each other, and a barrier may never completely cut off either player's remaining route to their goal — a placement that traps a player for good is refused.",
       "A pawn moves one square orthogonally per turn and never diagonally, except for the lateral jump described above.",
-      "Barricades may not be jumped. A diagonal jump in particular is only legal when both the square you pass beside the opponent and the square you land on are open.",
-      "Each turn is one action, move or barricade — never both — and the turn passes immediately afterwards.",
+      "Barriers may not be jumped. A diagonal jump in particular is only legal when both the square you pass beside the opponent and the square you land on are open.",
+      "Each turn is one action, move or barrier — never both — and the turn passes immediately afterwards.",
       "Nothing about the position is hidden and nothing is drawn during play: there are no dice, no cards and no random element at all. Both players can see the entire board.",
       "Every accepted action is decided by the server from its own stored position. The client sends an action address and the version of the position it was shown, and nothing else — a stale tab, a double submit or a replayed turn is refused.",
     ],
@@ -1502,34 +1502,34 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
       "There is no score. A match has one winner: the first pawn to reach any square of the opposite baseline.",
       "A match also ends when a player resigns — the win is awarded to the opponent, and the result is recorded server-side.",
       "A player who leaves and does not return forfeits: the match is awarded to the opponent, and the remaining seat is told the match was decided by abandonment.",
-      "Barricade can never end in a draw. Somebody always walks to a baseline, resigns or forfeits.",
+      "Barrier Blitz can never end in a draw. Somebody always walks to a baseline, resigns or forfeits.",
     ],
     strategy: [
-      "Race and block at the same time. A barricade that does not lengthen your opponent's route to the far baseline is usually a wasted turn — count the squares before you spend one.",
-      "Barricades cut both ways. Because a barricade blocks its owner too, the strongest placements are the ones that slow your opponent while leaving your own shortest path intact.",
+      "Race and block at the same time. A barrier that does not lengthen your opponent's route to the far baseline is usually a wasted turn — count the squares before you spend one.",
+      "Barriers cut both ways. Because a barrier blocks its owner too, the strongest placements are the ones that slow your opponent while leaving your own shortest path intact.",
       "Think in shortest paths, not in steps. Your real position is the number of moves it will take each pawn to arrive, so a turn that adds two moves to your opponent's route is worth far more than a turn that adds one.",
-      "Keep a route in reserve. A barricade may never seal either player off completely, but it can leave you exactly one long way round — so avoid spending your last barricade early and then having to walk the long way yourself.",
-      "Late in the game the jump matters. Standing adjacent to your opponent with an open square behind them is a free two-square gain, so use barricades behind their pawn to deny them the same thing.",
-      "Do not mirror your opponent's walls. Copying a placement usually cancels out, whereas a barricade placed on the side they are not using buys you tempo on the side they are.",
+      "Keep a route in reserve. A barrier may never seal either player off completely, but it can leave you exactly one long way round — so avoid spending your last barrier early and then having to walk the long way yourself.",
+      "Late in the game the jump matters. Standing adjacent to your opponent with an open square behind them is a free two-square gain, so use barriers behind their pawn to deny them the same thing.",
+      "Do not mirror your opponent's walls. Copying a placement usually cancels out, whereas a barrier placed on the side they are not using buys you tempo on the side they are.",
     ],
     competitive:
-      "Barricade tests planning, spatial reading and nerve. It is a perfect-information game with no randomness anywhere, the winner is derived server-side from the position, and a ranked online result moves your own Barricade Elo and trophy ladder — so the ladder measures the decisions you made and nothing else.",
+      "Barrier Blitz tests planning, spatial reading and nerve. It is a perfect-information game with no randomness anywhere, the winner is derived server-side from the position, and a ranked online result moves your own Barrier Blitz Elo and trophy ladder — so the ladder measures the decisions you made and nothing else.",
     faq: [
       {
-        q: "How many barricades do I get?",
+        q: "How many barriers do I get?",
         a: "Ten each. That count is fixed by the rules and is shown for both seats throughout the match, straight from the server's own position.",
       },
       {
-        q: "Can a barricade trap a player completely?",
-        a: "No. Every legal barricade must leave both pawns a route to their goal, so a placement that would seal a player off for good is refused by the server before it is applied.",
+        q: "Can a barrier trap a player completely?",
+        a: "No. Every legal barrier must leave both pawns a route to their goal, so a placement that would seal a player off for good is refused by the server before it is applied.",
       },
       {
         q: "Can I jump over my opponent's pawn?",
-        a: "Yes, when the two pawns stand on neighbouring squares with no barricade between them. If the square directly behind your opponent is blocked or off the board, you may move diagonally to either square beside them instead — as long as neither of those squares is itself blocked.",
+        a: "Yes, when the two pawns stand on neighbouring squares with no barrier between them. If the square directly behind your opponent is blocked or off the board, you may move diagonally to either square beside them instead — as long as neither of those squares is itself blocked.",
       },
       {
         q: "Is there a turn clock?",
-        a: "No. Barricade is turn-based with no timer — you have as long as you need for each of your turns, and a match only ends on a win, a resignation or a long disconnect.",
+        a: "No. Barrier Blitz is turn-based with no timer — you have as long as you need for each of your turns, and a match only ends on a win, a resignation or a long disconnect.",
       },
       {
         q: "Does the AI practice move my rating?",
@@ -1651,7 +1651,7 @@ export function gameIndexFor(slugs: readonly string[]): GameIndexEntry[] {
 export const HOMEPAGE_FEATURED_SLUGS: readonly string[] = [
   "mines-pvp",
   "memory-grid",
-  "barricade",
+  "barrier-blitz",
   "odds",
 ];
 

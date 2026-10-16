@@ -1,7 +1,7 @@
 // src/lib/barricade/ui.ts
 //
-// Pure view-model helpers for the ONLINE Barricade surface (the lobby and the
-// match view). Same role as `src/lib/tic-tac-toe/ui.ts`: it turns the
+// Pure view-model helpers for the ONLINE Barrier Blitz surface (the lobby and
+// the match view). Same role as `src/lib/tic-tac-toe/ui.ts`: it turns the
 // authoritative snapshot the server sends into the strings and verdicts the UI
 // renders, and it owns no rule of the game.
 //
@@ -92,7 +92,7 @@ export function turnLabel({
   if (state === MATCH_STATUS.CANCELLED) return "This match was cancelled.";
   if (state === MATCH_STATUS.FINISHED) return "Match complete.";
   if (!viewerSeat) return "Loading the match…";
-  if (isViewerTurn) return "Your turn — move your pawn or place a barricade.";
+  if (isViewerTurn) return "Your turn — move your pawn or place a barrier.";
   return `${opponentName || "Your opponent"} is deciding…`;
 }
 
@@ -192,19 +192,19 @@ export function loggedActionLabel(entry: {
   if (String(entry?.actionType) === "wall") {
     const orientation =
       String(entry?.orientation) === ORIENTATIONS[1] ? "vertical" : "horizontal";
-    // A barricade spans two squares, so its address is the slot it occupies.
+    // A barrier spans two squares, so its address is the slot it occupies.
     return orientation === "horizontal"
-      ? `Barricade — between rows ${row + 1} and ${row + 2}, columns ${col + 1}–${col + 2}`
-      : `Barricade — between columns ${col + 1} and ${col + 2}, rows ${row + 1}–${row + 2}`;
+      ? `Barrier — between rows ${row + 1} and ${row + 2}, columns ${col + 1}–${col + 2}`
+      : `Barrier — between columns ${col + 1} and ${col + 2}, rows ${row + 1}–${row + 2}`;
   }
   return `Pawn to row ${row + 1}, column ${col + 1}`;
 }
 
-/** "6 of 10 barricades" for the seat cards. */
+/** "6 of 10 barriers" for the seat cards. */
 export function wallInventoryLabel(remaining: unknown): string {
   const count = Number(remaining);
   const safe = Number.isFinite(count) ? count : 0;
-  return `${safe} ${safe === 1 ? "barricade" : "barricades"} left`;
+  return `${safe} ${safe === 1 ? "barrier" : "barriers"} left`;
 }
 
 /** The viewer's/opponent's remaining barricades out of the server's inventory. */

@@ -67,5 +67,5 @@ export const GAME_CARD_ART = {
   odds: oddsArt,
   "hex-duel": hexDuelArt,
   uno: unoArt,
-  barricade: barricadeArt,
+  "barrier-blitz": barricadeArt,
 };

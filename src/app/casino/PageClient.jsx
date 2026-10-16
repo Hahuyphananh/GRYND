@@ -571,19 +571,20 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       pvpMode: "1v1",
     },
     {
-      // Barricade is the newest game AND a rated duel, so it is the one card
-      // whose `leaderboardKey` is also its rating/trophy key (see RATED_GAMES)
-      // and its presence id — one id for the lobby, the ladder and the badge.
-      name: "Barricade",
-      href: "/games/barricade",
+      // Barrier Blitz (the game key `barricade` is unchanged) is the newest
+      // game AND a rated duel, so it is the one card whose `leaderboardKey` is
+      // also its rating/trophy key (see RATED_GAMES) and its presence id — one
+      // id for the lobby, the ladder and the badge.
+      name: "Barrier Blitz",
+      href: "/games/barrier-blitz",
       leaderboardKey: "barricade",
       playsKey: "barricade",
-      image: GAME_CARD_ART["barricade"],
+      image: GAME_CARD_ART["barrier-blitz"],
       descriptionKey: "games.barricade_desc",
       nameKey: "games.barricade_name",
       pvpMode: "1v1",
-      // Barricade takes the featured slot Dice Flush held before the cutover:
-      // it is this catalogue's rated 1v1 dice-strategy successor, and
+      // Barrier Blitz takes the featured slot Dice Flush held before the
+      // cutover: it is this catalogue's rated 1v1 dice-strategy successor, and
       // HOMEPAGE_FEATURED_SLUGS (src/lib/gameLandingPages.ts) mirrors exactly
       // these `popular: true` entries.
       popular: true,

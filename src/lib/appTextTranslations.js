@@ -621,8 +621,8 @@ export const APP_TEXT_TRANSLATIONS = {
       solitaire_duel_desc: "A rated 1v1 Solitaire race. Both players receive the exact same Klondike deal and play it simultaneously — solve the whole puzzle first to win instantly, or lead on progress when the match clock runs out.",
       sudoku_duel_name: "Sudoku Duel",
       sudoku_duel_desc: "A rated 1v1 Sudoku race. Both players receive the exact same server-generated 9x9 puzzle and solve it simultaneously — the first to fill the board correctly wins, and the greatest verified progress wins if the clock runs out.",
-      barricade_name: "Barricade",
-      barricade_desc: "A free, rated 1v1 race on a 9x9 board. Every turn is one action — step your pawn or drop a barricade that blocks you both — and the first pawn to the far baseline wins.",
+      barricade_name: "Barrier Blitz",
+      barricade_desc: "A free, rated 1v1 race on a 9x9 board. Every turn is one action — step your pawn or drop a barrier that blocks you both — and the first pawn to the far baseline wins.",
       dots_and_boxes_name: "Dots & Boxes",
       dots_and_boxes_desc: "A classic pencil-and-paper duel. Take turns drawing lines between dots to claim boxes. Each box scores a point and earns another turn.",
       dots_and_boxes: {
@@ -2331,8 +2331,8 @@ export const APP_TEXT_TRANSLATIONS = {
       solitaire_duel_desc: "Une course de Solitaire 1v1 notée. Les deux joueurs reçoivent exactement la même donne de Klondike et la jouent en simultané — résolvez toute la patience en premier pour gagner immédiatement, ou menez au niveau de la progression quand le chrono s'arrête.",
       sudoku_duel_name: "Sudoku Duel",
       sudoku_duel_desc: "Une course de Sudoku 1v1 notée. Les deux joueurs reçoivent exactement la même grille 9x9 générée par le serveur et la résolvent en simultané — le premier à remplir correctement la grille gagne, et la meilleure progression vérifiée l'emporte si le temps s'écoule.",
-      barricade_name: "Barricade",
-      barricade_desc: "Une course 1v1 gratuite et notée sur une grille 9x9. Chaque tour est une seule action — avancez votre pion ou posez une barricade qui bloque les deux joueurs — et le premier pion à atteindre la ligne opposée gagne.",
+      barricade_name: "Barrier Blitz",
+      barricade_desc: "Une course 1v1 gratuite et notée sur une grille 9x9. Chaque tour est une seule action — avancez votre pion ou posez une barrière qui bloque les deux joueurs — et le premier pion à atteindre la ligne opposée gagne.",
       dots_and_boxes_name: "Points & Cases",
       dots_and_boxes_desc: "Un duel stratégique classique sur papier. Tracez à tour de rôle des lignes entre les points pour revendiquer des cases. Chaque case rapporte un point et vous donne un tour supplémentaire.",
       dots_and_boxes: {
@@ -3796,8 +3796,8 @@ export const APP_TEXT_TRANSLATIONS = {
       solitaire_duel_desc: "Una carrera de Solitario 1v1 puntuada. Ambos jugadores reciben exactamente el mismo reparto de Klondike y lo juegan a la vez — resuelve todo el solitario primero para ganar al instante, o ve por delante en progreso cuando se acabe el tiempo.",
       sudoku_duel_name: "Sudoku Duel",
       sudoku_duel_desc: "Una carrera de Sudoku 1v1 puntuada. Ambos jugadores reciben exactamente el mismo tablero 9x9 generado por el servidor y lo resuelven a la vez — el primero en completar el tablero correctamente gana, y la mayor progresión verificada se impone si se acaba el tiempo.",
-      barricade_name: "Barricade",
-      barricade_desc: "Una carrera 1v1 gratuita y puntuada en un tablero 9x9. Cada turno es una sola acción — avanza tu peón o coloca una barricada que bloquea a ambos — y el primer peón en llegar a la línea opuesta gana.",
+      barricade_name: "Barrier Blitz",
+      barricade_desc: "Una carrera 1v1 gratuita y puntuada en un tablero 9x9. Cada turno es una sola acción — avanza tu peón o coloca una barrera que bloquea a ambos — y el primer peón en llegar a la línea opuesta gana.",
       dots_and_boxes_name: "Puntos y Cuadros",
       dots_and_boxes_desc: "Un duelo clásico de estrategia sobre papel. Dibuja turnos líneas entre los puntos para reclamar cuadros. Cada cuadro suma un punto y te da otro turno.",
       dots_and_boxes: {

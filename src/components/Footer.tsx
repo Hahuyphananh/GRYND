@@ -139,11 +139,12 @@ export default function Footer() {
                 Pool Masters
               </Link>
 
-              {/* Barricade replaced Dice Flush in the catalogue; this slot used
-                  to link /games/dice-flush. That URL still 308-redirects to
-                  /games/barricade for old bookmarks and inbound links. */}
-              <Link href="/games/barricade" className={linkClass}>
-                Barricade
+              {/* Barrier Blitz (formerly Barricade) replaced Dice Flush in the
+                  catalogue; this slot used to link /games/dice-flush. The old
+                  dice-flush AND barricade URLs still 308-redirect here for old
+                  bookmarks and inbound links. */}
+              <Link href="/games/barrier-blitz" className={linkClass}>
+                Barrier Blitz
               </Link>
 
               <Link href="/games/precision" className={linkClass}>

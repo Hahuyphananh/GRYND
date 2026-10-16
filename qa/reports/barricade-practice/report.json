@@ -1,8 +1,8 @@
 {
   "base": "http://localhost:3000",
-  "route": "/casino/barricade/play-ai",
-  "ranAt": "2026-10-11T22:23:28.493Z",
-  "passed": 44,
+  "route": "/casino/barrier-blitz/play-ai",
+  "ranAt": "2026-10-16T18:12:25.440Z",
+  "passed": 14,
   "failed": 0,
   "problems": [],
   "results": [
@@ -15,116 +15,6 @@
       "name": "desktop: the board mounts with both goal baselines labelled",
       "passed": true,
       "detail": "squares=81 legal moves=3"
-    },
-    {
-      "name": "easy: starts on a full board (81 squares, two pawns, 10 barricades each)",
-      "passed": true,
-      "detail": "squares=81 pawns=2 reserves=10/10"
-    },
-    {
-      "name": "easy: an illegal move is refused, explained and changes nothing",
-      "passed": true,
-      "detail": "notice=\"a pawn moves one square, or jumps over the opponent when face to face\""
-    },
-    {
-      "name": "easy: the board is a 17-track grid with one slot per legal placement",
-      "passed": true,
-      "detail": "tracks=17×17 squares=81"
-    },
-    {
-      "name": "easy: every offered slot lies inside the engine's 8-groove axis",
-      "passed": true,
-      "detail": "128 slot(s) offered"
-    },
-    {
-      "name": "easy: an offered slot is placed in one click and charged to the reserve",
-      "passed": true,
-      "detail": "walls 0→1, reserve 10→9"
-    },
-    {
-      "name": "easy: the withheld sealing slot is absent from the menu",
-      "passed": true,
-      "detail": "7/8 groove positions placed, 0 still offered"
-    },
-    {
-      "name": "easy: clicking where it would go places nothing and changes nothing",
-      "passed": true,
-      "detail": "walls 8→8, reserve 2→2"
-    },
-    {
-      "name": "easy: the in-game Restart clears walls, reserves and both pawns",
-      "passed": true,
-      "detail": "walls=0 reserves=10/10"
-    },
-    {
-      "name": "easy: a complete match was played (no stall, no infinite loop)",
-      "passed": true,
-      "detail": "actions=35 outcome=\"Match result — LOSS\""
-    },
-    {
-      "name": "easy: the result overlay reports a win or a defeat",
-      "passed": true,
-      "detail": "dialog=\"Match result — LOSS\""
-    },
-    {
-      "name": "easy: New game deals a fresh board",
-      "passed": true,
-      "detail": "walls=0 pawns=[{\"seat\":\"mine\",\"row\":0,\"col\":4},{\"seat\":\"theirs\",\"row\":8,\"col\":4}]"
-    },
-    {
-      "name": "normal: starts on a full board (81 squares, two pawns, 10 barricades each)",
-      "passed": true,
-      "detail": "squares=81 pawns=2 reserves=10/10"
-    },
-    {
-      "name": "normal: an illegal move is refused, explained and changes nothing",
-      "passed": true,
-      "detail": "notice=\"a pawn moves one square, or jumps over the opponent when face to face\""
-    },
-    {
-      "name": "normal: the board is a 17-track grid with one slot per legal placement",
-      "passed": true,
-      "detail": "tracks=17×17 squares=81"
-    },
-    {
-      "name": "normal: every offered slot lies inside the engine's 8-groove axis",
-      "passed": true,
-      "detail": "128 slot(s) offered"
-    },
-    {
-      "name": "normal: an offered slot is placed in one click and charged to the reserve",
-      "passed": true,
-      "detail": "walls 0→1, reserve 10→9"
-    },
-    {
-      "name": "normal: the withheld sealing slot is absent from the menu",
-      "passed": true,
-      "detail": "7/8 groove positions placed, 0 still offered"
-    },
-    {
-      "name": "normal: clicking where it would go places nothing and changes nothing",
-      "passed": true,
-      "detail": "walls 10→10, reserve 2→2"
-    },
-    {
-      "name": "normal: the in-game Restart clears walls, reserves and both pawns",
-      "passed": true,
-      "detail": "walls=0 reserves=10/10"
-    },
-    {
-      "name": "normal: a complete match was played (no stall, no infinite loop)",
-      "passed": true,
-      "detail": "actions=18 outcome=\"Match result — LOSS\""
-    },
-    {
-      "name": "normal: the result overlay reports a win or a defeat",
-      "passed": true,
-      "detail": "dialog=\"Match result — LOSS\""
-    },
-    {
-      "name": "normal: New game deals a fresh board",
-      "passed": true,
-      "detail": "walls=0 pawns=[{\"seat\":\"mine\",\"row\":0,\"col\":4},{\"seat\":\"theirs\",\"row\":8,\"col\":4}]"
     },
     {
       "name": "hard: starts on a full board (81 squares, two pawns, 10 barricades each)",
@@ -159,7 +49,7 @@
     {
       "name": "hard: clicking where it would go places nothing and changes nothing",
       "passed": true,
-      "detail": "walls 11→11, reserve 2→2"
+      "detail": "walls 8→8, reserve 2→2"
     },
     {
       "name": "hard: the in-game Restart clears walls, reserves and both pawns",
@@ -185,46 +75,6 @@
       "name": "desktop: no JS errors",
       "passed": true,
       "detail": "6 expected HTTP failure(s)"
-    },
-    {
-      "name": "phone-390: nothing overflows sideways",
-      "passed": true,
-      "detail": "doc=390 viewport=390 board=32…358"
-    },
-    {
-      "name": "phone-390: the board is usable (tap targets and counters visible)",
-      "passed": true,
-      "detail": "square=32.0px board=326px"
-    },
-    {
-      "name": "phone-390: a barricade can be placed by tap",
-      "passed": true,
-      "detail": "walls 0→1"
-    },
-    {
-      "name": "phone-390: no JS errors",
-      "passed": true,
-      "detail": "3 expected HTTP failure(s)"
-    },
-    {
-      "name": "phone-320: nothing overflows sideways",
-      "passed": true,
-      "detail": "doc=320 viewport=320 board=24…296"
-    },
-    {
-      "name": "phone-320: the board is usable (tap targets and counters visible)",
-      "passed": true,
-      "detail": "square=26.2px board=272px"
-    },
-    {
-      "name": "phone-320: a barricade can be placed by tap",
-      "passed": true,
-      "detail": "walls 0→1"
-    },
-    {
-      "name": "phone-320: no JS errors",
-      "passed": true,
-      "detail": "3 expected HTTP failure(s)"
     }
   ]
 }

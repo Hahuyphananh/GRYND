@@ -367,9 +367,10 @@ function replyMoves(state: BarricadeState, actor: Seat): LegalAction[] {
 
 /** What the picker shows for each tier on the practice page. */
 export const BARRICADE_TIER_HINTS: Record<AiDifficulty, string> = {
-  easy: "Walks towards the goal and barricades only when it falls behind — it misses things.",
-  normal: "Weighs both pawns' shortest paths and spends barricades when they actually slow you down.",
-  hard: "Looks a move ahead, prices its barricade reserve and answers your threats. Still slips occasionally.",
+  easy: "Walks towards the goal and places barriers only when it falls behind — it misses things.",
+  normal:
+    "Weighs both pawns' shortest paths and spends barriers when they actually slow you down.",
+  hard: "Looks a move ahead, prices its barrier reserve and answers your threats. Still slips occasionally.",
 };
 
 /** Convenience for tests and for a future server-side bot: is this seat the bot? */

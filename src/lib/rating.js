@@ -202,7 +202,7 @@ export const RATING_GAME_LABELS = Object.freeze({
   "tic-tac-toe": "Tic-Tac-Toe",
   "solitaire-duel": "Solitaire Duel",
   "sudoku-duel": "Sudoku Duel",
-  "barricade": "Barricade",
+  "barricade": "Barrier Blitz",
 });
 
 /** True when a game key is eligible for Elo. */

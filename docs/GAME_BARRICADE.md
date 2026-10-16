@@ -1,9 +1,16 @@
 # Barricade — rules engine
 
+> **Naming.** The game is published as **Barrier Blitz** and its pieces are
+> called **barriers** in player-facing copy. The engine, its module paths, the
+> API routes, the tables, the realtime rooms and the rating/trophy id all stay
+> `barricade`, and this document keeps that module-level vocabulary. The public
+> URLs are `/games/barrier-blitz` (+ `/play`, `/play-ai`) and
+> `/casino/barrier-blitz`, with 308 redirects from the old `barricade` ones.
+
 Barricade is GRYND's 9×9 race: two pawns start on the centre square of their own
-baseline, each player has ten two-square barricades, and every turn is exactly
-one pawn step (or jump) or one barricade placement. The first pawn to reach the
-opposite baseline wins, and a barricade may never seal a player's last route.
+baseline, each player has ten two-square barriers, and every turn is exactly
+one pawn step (or jump) or one barrier placement. The first pawn to reach the
+opposite baseline wins, and a barrier may never seal a player's last route.
 
 This document covers the **pure rules engine** (`src/lib/barricade/`), the
 **free practice experience** built on it (the board UI, the local bot and the
@@ -12,7 +19,7 @@ two database tables, direct match creation/joining, the server-authoritative
 store and the realtime channel.
 
 Online play is **unstaked but rated**, and Barricade is a fully registered GRYND
-game: a lobby card and a public `/games/barricade` landing page, active-player
+game: a lobby card and a public `/games/barrier-blitz` landing page, active-player
 presence (the match page under `barricade`, the practice board under
 `barricade-ai`), a platform Quick Queue destination, and a per-game Elo/trophy
 ladder — all keyed on the ONE canonical id `barricade`. Settlement goes through
@@ -170,7 +177,7 @@ Rejection codes (`REJECTION` in `constants.ts`): `invalid-action`,
 `move-blocked-by-wall`, `jump-not-available`, `no-walls-remaining`,
 `wall-overlap`, `wall-crossing`, `wall-blocks-path`.
 
-## The practice experience (`/casino/barricade/play-ai`)
+## The practice experience (`/casino/barrier-blitz/play-ai`)
 
 One screen, one opponent: the player is always blue (player1, moving first) and
 the bot is purple. Every action — the human's click and the bot's decision alike
@@ -226,7 +233,7 @@ The tier is owned by the shared lobby picker (`AiDifficultyPicker`, key
 `barricade`) and remembered per game, and a bot action the engine refuses is
 reported and resets the board instead of stalling the match.
 
-**Reachability.** `/casino/barricade(.*)` and `/games/barricade(.*)` are listed in
+**Reachability.** `/casino/barrier-blitz(.*)` and `/games/barrier-blitz(.*)` are listed in
 `GAME_ROUTE_PATTERNS` (`src/proxy.ts`) so a signed-out visitor can read the free
 practice page instead of being bounced to `/sign-in` — the same contract every
 other game lobby has, and the exact bug the Keno comment in that list records.
@@ -234,9 +241,13 @@ There is no wager, no rating and no server-side match behind this route.
 
 ## Online 1v1 (server-authoritative)
 
-Two routes and one store. `/casino/barricade` is the lobby (also served at
-`/games/barricade/play`, noindex); `/casino/barricade/<matchId>` is the live
-match. Free practice keeps its own route and is unaffected.
+Two routes and one store. `/casino/barrier-blitz` is the lobby (also served at
+`/games/barrier-blitz/play`, noindex); `/casino/barrier-blitz/<matchId>` is the
+live match. Free practice keeps its own route and is unaffected. The matchmaking
+flow matters here: Find a Match only navigates when the route answers
+`joined: true`; a caller who opens a fresh lobby stays on the matchmaking screen
+(the shared `MatchWaiting` takeover) until the server reports the match
+`playing`, so nobody is dropped onto an empty board.
 
 **The client decides nothing.** The only gameplay request is an ACTION ADDRESS
 plus the version the client was shown:

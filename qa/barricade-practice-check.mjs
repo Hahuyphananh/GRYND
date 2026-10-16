@@ -58,7 +58,8 @@ const REPORTS = join(root, "qa", "reports", "barricade-practice");
 mkdirSync(REPORTS, { recursive: true });
 
 const BASE = process.env.BASE || "http://localhost:3210";
-const ROUTE = "/casino/barricade/play-ai";
+// The game was renamed Barrier Blitz, so the public route moved.
+const ROUTE = "/casino/barrier-blitz/play-ai";
 const QUICK = process.argv.includes("--quick");
 const TIERS = QUICK ? ["hard"] : ["easy", "normal", "hard"];
 const MAX_ACTIONS = 220;

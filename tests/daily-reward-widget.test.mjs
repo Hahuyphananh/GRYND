@@ -5,9 +5,20 @@
  * the trophy chip. Both changes are wiring, so they are pinned as wiring:
  *
  *   1. ONE source of truth. The /rewards card and the corner widget both drive
- *      the same hook, and that hook is the only thing that talks to
- *      /api/rewards/daily. A second, drifting copy of the claim (or of the
- *      amount) is the failure this prevents — the claim is a real credit.
+ *      the same hook AND open the same 14-day board
+ *      (src/components/DailyRewardBoard.tsx), and that hook is the only thing
+ *      that talks to /api/rewards/daily. A second, drifting copy of the claim
+ *      (or of the amount, or of the board) is the failure this prevents — the
+ *      claim is a real credit.
+ *
+ *   1b. The board is a MODAL: clicking the reward opens it, and the single
+ *      claim button lives inside it. Escape closes it. (The reported bug was
+ *      that the amount on screen was not the amount paid; the shape of the UI
+ *      is what makes that visible, so it is pinned too.)
+ *
+ *   1c. The status read is never served from a cache: the shared fetch guard
+ *      caches GET /api/* for two seconds, so a read fired straight after a
+ *      claim could report the day that was just claimed.
  *   2. The widget is mounted on the home page and the games hub, exactly once
  *      each, and nowhere else.
  *   3. It sits in the top-right but UNDER the navbar: a fixed offset that
@@ -50,6 +61,7 @@ const stripComments = (s) =>
 const WIDGET = "src/components/DailyRewardWidget.tsx";
 const HOOK = "src/hooks/useDailyReward.ts";
 const CARD = "src/components/DailyRewardCard.tsx";
+const BOARD = "src/components/DailyRewardBoard.tsx";
 const NAV = "src/components/navigation-bar.jsx";
 const HOME = "src/app/PageClient.jsx";
 const HUB = "src/app/casino/PageClient.jsx";
@@ -81,11 +93,80 @@ test("both reward surfaces drive the same hook, which owns the HTTP", () => {
   }
 
   // The hook is where the two calls live, and they are the documented ones.
-  assert.match(hook, /fetch\("\/api\/rewards\/daily"\)/);
+  assert.match(hook, /fetch\("\/api\/rewards\/daily", \{ cache: "no-store" \}\)/);
   assert.match(hook, /method: "POST"/);
   assert.match(hook, /"Content-Type": "application\/json"/);
   // A claim credits the wallet the navbar and the wager pickers read.
   assert.match(hook, /notifyCoinBalanceChanged/);
+});
+
+test("the status read is never served from the shared two-second GET cache", () => {
+  // src/components/CsrfFetchGuard.tsx caches GET /api/* responses for 2s and
+  // skips anything that asks for `no-store`. A status read is what the board
+  // renders, so a cached answer means the board keeps showing a day that was
+  // already claimed.
+  const hook = read(HOOK);
+  assert.match(hook, /cache: "no-store"/);
+  const guard = read("src/components/CsrfFetchGuard.tsx");
+  assert.match(
+    guard,
+    /!String\(init\?\.cache \|\| ""\)\.includes\("no-store"\)/,
+    "the guard's GET cache is what `no-store` opts out of",
+  );
+});
+
+// ── The board ───────────────────────────────────────────────────────────────
+
+test("both surfaces open the one shared 14-day board", () => {
+  const board = read(BOARD);
+
+  // The board renders the whole cycle the server sent, and never invents a
+  // curve of its own.
+  assert.match(board, /status\.cycle\.map\(\(amount, index\)/);
+  assert.match(board, /status\.cycleDays/);
+  assert.ok(
+    !/\[\s*30\s*,/.test(stripComments(board)),
+    "the board must not inline its own cycle",
+  );
+  // It is a modal dialog, and it never fetches: it drives the hook it is given.
+  assert.match(board, /role="dialog"/);
+  assert.match(board, /aria-modal="true"/);
+  assert.doesNotMatch(stripComments(board), /fetch\(/);
+  assert.match(board, /reward\.claim|onClick=\{claim\}/);
+
+  // The ONE claim button in the app lives in the board.
+  assert.match(board, /data-testid="daily-reward-claim"/);
+  for (const [name, src] of [
+    ["the card", read(CARD)],
+    ["the widget", read(WIDGET)],
+  ]) {
+    assert.match(
+      stripComments(src),
+      /<DailyRewardBoard open=\{open\} onClose=\{\(\) => setOpen\(false\)\} reward=\{reward\} \/>/,
+      `${name} must mount the shared board with the shared reward state`,
+    );
+    assert.doesNotMatch(
+      stripComments(src),
+      /data-testid="daily-reward-claim"/,
+      `${name} must not carry a second claim button`,
+    );
+  }
+
+  // Escape closes it, and the page behind stops scrolling while it is open.
+  assert.match(board, /event\.key === "Escape"/);
+  assert.match(board, /document\.body\.style\.overflow = "hidden"/);
+
+  // It is portalled to <body>: both hosts mount it inside a framer-motion
+  // wrapper, and a transformed ancestor would otherwise size the `fixed`
+  // overlay to that wrapper and trap it in its stacking context.
+  assert.match(board, /createPortal\(/);
+  assert.match(board, /document\.body\s*,?\s*\);/);
+  const cardHost = read(CARD);
+  assert.match(
+    cardHost,
+    /<DailyRewardBoard/,
+    "the card must mount the portalled board, not an in-place overlay",
+  );
 });
 
 // ── Where the widget lives ──────────────────────────────────────────────────
@@ -170,7 +251,9 @@ test("the navbar reads the one wallet, and re-reads it after a credit", () => {
   const code = stripComments(nav);
 
   // The balance comes from the existing endpoint — no second currency path.
-  assert.match(code, /fetch\("\/api\/get-user-tokens"/);
+  // It goes through the shared in-flight de-duper (the profile page reads the
+  // same URL in the same tick), so the call site is `fetchDeduped`.
+  assert.match(code, /fetchDeduped\("\/api\/get-user-tokens"/);
   assert.match(code, /balance: \(\(\) => \{/);
   assert.match(code, /Number\(data\.data\.balance\)/);
 
@@ -232,9 +315,10 @@ test("the widget renders each reward state, and nothing when signed out", { skip
     playGateSatisfied: true,
     streakDay: 10,
     cycleDay: 3,
+    cycleDays: 14,
     reward: 120,
     today: "2026-10-14",
-    cycle: [25, 50, 120, 150, 180, 200, 250],
+    cycle: [30, 35, 120, 50, 60, 70, 80, 90, 105, 110, 135, 155, 175, 200],
     balance: 500,
   };
 
@@ -246,7 +330,7 @@ test("the widget renders each reward state, and nothing when signed out", { skip
   Object.assign(world, { isLoaded: false, isSignedIn: false });
   assert.equal(render(), "", "the widget must not render before the session resolves");
 
-  // 3. Claimable → the button, carrying the server's amount and cycle day.
+  // 3. Claimable → the opener, carrying the server's amount and cycle day.
   Object.assign(world, {
     isLoaded: true,
     isSignedIn: true,
@@ -254,11 +338,15 @@ test("the widget renders each reward state, and nothing when signed out", { skip
     loading: false,
   });
   const claimable = render();
-  assert.match(claimable, /Claim 120 coins/);
-  assert.match(claimable, /data-testid="daily-reward-widget-claim"/);
-  assert.match(claimable, /Day 3\/7/);
+  assert.match(claimable, /Claim day 3\s*—\s*120 coins/);
+  assert.match(claimable, /data-testid="daily-reward-widget-open"/);
+  // The board and the claim button are NOT in the initial markup: the reward
+  // opens first, and the claim is one click deeper.
+  assert.match(claimable, /Day 3\/14/);
+  assert.doesNotMatch(claimable, /data-testid="daily-reward-claim"/);
+  assert.doesNotMatch(claimable, /data-testid="daily-reward-board-dialog"/);
   // The amount comes from the server's answer, never from a literal here.
-  assert.doesNotMatch(claimable, /Claim 25 coins/);
+  assert.doesNotMatch(claimable, /Claim day 1/);
 
   // 4. The play gate → the instruction, and the link that satisfies it.
   Object.assign(world, {

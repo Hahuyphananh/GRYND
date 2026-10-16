@@ -162,30 +162,58 @@ const nextConfig = {
         destination: "/upgrade-pro",
         permanent: true,
       },
-      // Legacy yahtzee URLs (both old and new prefix) land on Barricade — the
-      // game that replaced it in the catalogue.
+      // Barricade was renamed Barrier Blitz. The old public URLs keep working
+      // and land on the NEW ones (never on each other — no rule here is the
+      // source of another, so these cannot chain or loop). Ratings, trophies
+      // and the `barricade` game key are deliberately unchanged: only the name
+      // players read and the URLs they visit moved.
+      {
+        source: "/games/barricade",
+        destination: "/games/barrier-blitz",
+        permanent: true,
+      },
+      {
+        source: "/games/barricade/:path*",
+        destination: "/games/barrier-blitz/:path*",
+        permanent: true,
+      },
+      // The /casino prefix keeps its own shape (the generic /casino/:path*
+      // bounce below would otherwise send these through /games/barricade
+      // first, spending a second redirect on a URL nobody should keep).
+      {
+        source: "/casino/barricade",
+        destination: "/games/barrier-blitz",
+        permanent: true,
+      },
+      {
+        source: "/casino/barricade/:path*",
+        destination: "/games/barrier-blitz/:path*",
+        permanent: true,
+      },
+      // Legacy yahtzee URLs (both old and new prefix) land on Barrier Blitz —
+      // the game that replaced it in the catalogue.
       {
         source: "/casino/yahtzee",
-        destination: "/games/barricade",
+        destination: "/games/barrier-blitz",
         permanent: true,
       },
       {
         source: "/casino/yahtzee/:path*",
-        destination: "/games/barricade",
+        destination: "/games/barrier-blitz",
         permanent: true,
       },
       {
         source: "/games/yahtzee",
-        destination: "/games/barricade",
+        destination: "/games/barrier-blitz",
         permanent: true,
       },
       {
         source: "/games/yahtzee/:path*",
-        destination: "/games/barricade",
+        destination: "/games/barrier-blitz",
         permanent: true,
       },
       // Dice Flush is retired from the catalogue: its public landing page and
-      // its authenticated play page both land on Barricade, each keeping its
+      // its authenticated play page both land on Barrier Blitz, each keeping its
       // own prefix (the same shape the Dice Duel → Tower Arena cutover uses,
       // and the :path* variants carry deep links such as
       // /games/dice-flush/rules). No source listed here is also a destination
@@ -193,22 +221,22 @@ const nextConfig = {
       // database tables are deliberately left in place.
       {
         source: "/games/dice-flush",
-        destination: "/games/barricade",
+        destination: "/games/barrier-blitz",
         permanent: true,
       },
       {
         source: "/games/dice-flush/:path*",
-        destination: "/games/barricade",
+        destination: "/games/barrier-blitz",
         permanent: true,
       },
       {
         source: "/casino/dice-flush",
-        destination: "/casino/barricade",
+        destination: "/casino/barrier-blitz",
         permanent: true,
       },
       {
         source: "/casino/dice-flush/:path*",
-        destination: "/casino/barricade",
+        destination: "/casino/barrier-blitz",
         permanent: true,
       },
       // Legacy Dice Duel URLs now land on Tower Arena (its successor).

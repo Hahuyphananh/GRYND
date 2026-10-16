@@ -6,10 +6,14 @@
  * it. Both are free coin faucets, so their bounds have to be pinned: too low and
  * they are pointless, too much and they replace playing.
  *
- * These tests cover the two halves of that contract:
- *   1. the PURE numbers — the 7-day curve, the cycle wrap, the play gate and
+ * These tests cover the three halves of that contract:
+ *   1. the PURE numbers — the 14-day curve, the cycle wrap, the play gate and
  *      the rescue amount, all checked against the shipped constants;
- *   2. the WIRING — the idempotency guards (day-keyed column + ledger row), the
+ *   2. the STREAK PROJECTION — the read-side day (`projectDailyStreakDay`) that
+ *      the status read reports. It MUST be the day the claim actually pays,
+ *      because the shipped bug was a board that advertised "250" and a wallet
+ *      that received 30: the status read used the stale stored streak.
+ *   3. the WIRING — the idempotency guards (day-keyed column + ledger row), the
  *      UTC-day comparison, and the fact that the play gate marker is stamped by
  *      the real game-session edge and read by the reward.
  *
@@ -23,11 +27,17 @@ import fs from "node:fs";
 import {
   DAILY_REWARD_CYCLE_DAYS,
   DAILY_REWARD_REFERENCE,
+  STREAK_SHIELD_ITEM_KEY,
   dailyRewardAmount,
   dailyRewardCycleDay,
   isPlayGateSatisfied,
   utcDateKey,
 } from "../src/lib/tokens/dailyReward.ts";
+import {
+  daysBetween,
+  projectDailyStreakDay,
+  toDateStr,
+} from "../src/lib/dailyStreak.js";
 import {
   RESCUE_GRANT_REFERENCE,
   energyGrantAmount,
@@ -48,9 +58,9 @@ const read = (rel) => fs.readFileSync(rel, "utf8");
 
 // ── The curated curve ───────────────────────────────────────────────────────
 
-test("the reward curve is a 7-day, strictly escalating week", () => {
-  assert.equal(DAILY_REWARD_CYCLE.length, 7);
-  assert.equal(DAILY_REWARD_CYCLE_DAYS, 7);
+test("the reward curve is a 14-day, strictly escalating fortnight", () => {
+  assert.equal(DAILY_REWARD_CYCLE.length, 14);
+  assert.equal(DAILY_REWARD_CYCLE_DAYS, 14);
   for (let i = 1; i < DAILY_REWARD_CYCLE.length; i += 1) {
     assert.ok(
       DAILY_REWARD_CYCLE[i] > DAILY_REWARD_CYCLE[i - 1],
@@ -59,17 +69,20 @@ test("the reward curve is a 7-day, strictly escalating week", () => {
   }
 });
 
-test("the reward is indexed by the streak day and wraps after a week", () => {
-  assert.equal(dailyRewardAmount(1), DAILY_REWARD_CYCLE[0]);
-  assert.equal(dailyRewardAmount(7), DAILY_REWARD_CYCLE[6]);
-  // Day 8 starts the curve over instead of running off the end.
-  assert.equal(dailyRewardAmount(8), DAILY_REWARD_CYCLE[0]);
-  assert.equal(dailyRewardAmount(14), DAILY_REWARD_CYCLE[6]);
+test("the 15th day of a 14-day streak is day 1 again", () => {
+  // The rule the board implements: complete the fortnight and the next login
+  // starts the cycle over, rather than paying day 15 of an endless ladder.
+  assert.equal(dailyRewardCycleDay(14), 14);
+  assert.equal(dailyRewardCycleDay(15), 1);
+  assert.equal(dailyRewardAmount(14), DAILY_REWARD_CYCLE[13]);
   assert.equal(dailyRewardAmount(15), DAILY_REWARD_CYCLE[0]);
+  assert.equal(dailyRewardAmount(16), DAILY_REWARD_CYCLE[1]);
 
+  // A much longer streak keeps wrapping rather than running off the curve.
   assert.equal(dailyRewardCycleDay(1), 1);
-  assert.equal(dailyRewardCycleDay(7), 7);
-  assert.equal(dailyRewardCycleDay(8), 1);
+  assert.equal(dailyRewardCycleDay(28), 14);
+  assert.equal(dailyRewardCycleDay(29), 1);
+  assert.equal(dailyRewardCycleDay(57), 1);
 });
 
 test("an out-of-range streak day can never index the curve out of bounds", () => {
@@ -87,34 +100,146 @@ test("an out-of-range streak day can never index the curve out of bounds", () =>
 
 // ── The "not too low, especially not too much" bound ────────────────────────
 
-test("a full week of rewards pays less than one day of energy allowance", () => {
-  const week = DAILY_REWARD_CYCLE.reduce((sum, n) => sum + n, 0);
-  // 725 vs the 500 floor: the week is worth having, and the per-day average is
-  // a fraction of the allowance the energy grant already gives, so the reward
-  // cannot become the reason to open the app over playing.
-  assert.equal(week, 725);
-  assert.ok(week <= ENERGY_GRANT_FLOOR * 2, "a week must not dwarf the daily allowance");
+test("a full fortnight of rewards stays under three daily allowances", () => {
+  const fortnight = DAILY_REWARD_CYCLE.reduce((sum, n) => sum + n, 0);
+  // Doubling the CYCLE must not double what a player takes in: the ramp is
+  // flatter per day (≈96/day vs the old week's ≈104), so a full 14-day cycle is
+  // worth only 1,350 — under three 500-token energy top-ups.
+  assert.equal(fortnight, 1350);
   assert.ok(
-    week / DAILY_REWARD_CYCLE.length < DAILY_ENERGY_GRANT,
+    fortnight <= ENERGY_GRANT_FLOOR * 3,
+    "a fortnight must not dwarf the daily allowance",
+  );
+  assert.ok(
+    fortnight / DAILY_REWARD_CYCLE.length < DAILY_ENERGY_GRANT,
     "the daily average must stay under the daily energy grant",
   );
+  // Per-day average is not more generous than the cycle it replaced.
+  assert.ok(fortnight / DAILY_REWARD_CYCLE.length <= 725 / 7);
 });
 
 test("no single day is worth more than a few max bets", () => {
   const best = Math.max(...DAILY_REWARD_CYCLE);
-  assert.equal(best, 250);
+  assert.equal(best, 200);
   assert.ok(best <= GLOBAL_MAX_BET * 3, "the payday must not fund a spending spree");
   assert.ok(best <= STARTING_COINS / 4, "no single day may rival the starting balance");
   assert.ok(best <= WALLET_HARD_CAP, "the wallet ceiling is the hard ceiling");
 });
 
 test("the reward is never zero — every day of the cycle pays something", () => {
-  for (const day of [1, 2, 3, 4, 5, 6, 7]) {
+  for (const day of DAILY_REWARD_CYCLE.map((_, index) => index + 1)) {
     const amount = dailyRewardAmount(day);
     assert.ok(Number.isInteger(amount) && amount > 0, `day ${day} pays ${amount}`);
     // Above the noise floor of a real wager, so day 1 is not an insult.
     assert.ok(amount >= HIGH_VARIANCE_MAX_BET, `day ${day} pays ${amount}`);
   }
+});
+
+// ── The streak projection: the advertised amount IS the paid amount ─────────
+//
+// The reported regression: the card said "Claim 250 coins" and the claim paid
+// 30. The status read reported the STORED streak, which is stale until
+// something advances it, while the claim advances the streak first and pays the
+// NEW day. `projectDailyStreakDay` is the one rule both sides now share.
+
+// Built from LOCAL calendar parts so these assertions hold in every timezone
+// (the streak columns are keyed on the local day — see `toDateStr`).
+const on = (year, month, dayOfMonth) => new Date(year, month - 1, dayOfMonth, 12, 0, 0);
+
+const TODAY = on(2026, 10, 16);
+
+const project = (overrides = {}) =>
+  projectDailyStreakDay(
+    { lastLoginDate: "2026-10-16", current: 1, ...overrides },
+    TODAY,
+  );
+
+test("the projection is the day a claim made right now would land on", () => {
+  // Never logged in before → day 1.
+  assert.equal(project({ lastLoginDate: null, current: 0 }), 1);
+
+  // Already logged in today: the stored streak was ALREADY advanced today, so
+  // the claim pays the day the player is on — not one more.
+  assert.equal(project({ lastLoginDate: "2026-10-16", current: 6 }), 6);
+
+  // Logged in yesterday: today advances the streak by one.
+  assert.equal(project({ lastLoginDate: "2026-10-15", current: 6 }), 7);
+
+  // Missed a day: the claim resets to day 1, so the status must say day 1.
+  assert.equal(project({ lastLoginDate: "2026-10-14", current: 6 }), 1);
+  assert.equal(project({ lastLoginDate: "2026-09-01", current: 14 }), 1);
+
+  // A streak shield absorbs exactly one missed day on both sides.
+  assert.equal(
+    project({ lastLoginDate: "2026-10-14", current: 6, shieldAvailable: true }),
+    6,
+  );
+
+  // A stored streak of 0/garbage is never reported as a day below 1.
+  for (const current of [0, -5, NaN, undefined, null, "abc"]) {
+    const day = project({ lastLoginDate: null, current });
+    assert.ok(Number.isInteger(day) && day >= 1, `current ${String(current)} → ${day}`);
+  }
+});
+
+test("the projection agrees with the login-streak day arithmetic", () => {
+  // A gap is measured in whole local days; a DST boundary cannot turn
+  // "yesterday" into 0 or 2 days.
+  assert.equal(daysBetween("2026-10-15", "2026-10-16"), 1);
+  assert.equal(daysBetween("2026-10-14", "2026-10-16"), 2);
+  assert.equal(daysBetween("2026-03-07", "2026-03-09"), 2); // US DST spring-forward
+  assert.equal(daysBetween("2026-10-31", "2026-11-01"), 1);
+
+  // The date string the streak columns are written with is a LOCAL day key, so
+  // a stored DATE and a JS Date can never disagree about "today".
+  assert.equal(toDateStr(TODAY), "2026-10-16");
+  assert.equal(toDateStr("2026-10-16T23:59:00.000Z"), "2026-10-16");
+  assert.equal(toDateStr(null), null);
+});
+
+test("the day the board advertises is the day the wallet is paid", () => {
+  // The whole point: for every (stored streak, last login) pair, the projected
+  // day's amount is what the claim pays, and the two never disagree.
+  const cases = [
+    { lastLoginDate: "2026-10-16", current: 14, expected: 14 },
+    { lastLoginDate: "2026-10-15", current: 14, expected: 15 }, // wraps to day 1
+    { lastLoginDate: "2026-10-15", current: 6, expected: 7 },
+    { lastLoginDate: "2026-10-13", current: 9, expected: 1 },
+  ];
+
+  for (const { lastLoginDate, current, expected } of cases) {
+    const projected = project({ lastLoginDate, current });
+    assert.equal(projected, expected, `${lastLoginDate} / streak ${current}`);
+    assert.equal(
+      dailyRewardAmount(projected),
+      dailyRewardAmount(expected),
+      "the advertised amount must be the paid amount",
+    );
+  }
+
+  // The regression in one assertion: a stored streak of 14 with a two-day gap
+  // must NOT advertise day 14's 200.
+  const staleDay = 14;
+  const projected = project({ lastLoginDate: "2026-10-13", current: staleDay });
+  assert.equal(projected, 1);
+  assert.equal(dailyRewardAmount(projected), 30);
+  assert.notEqual(dailyRewardAmount(staleDay), 30);
+});
+
+test("the status read and the claim share one streak rule", () => {
+  const reward = read("src/lib/tokens/dailyReward.ts");
+  // The status read PROJECTS the day; reporting the stored column is the bug.
+  assert.match(reward, /const streakDay = await projectedStreakDay\(user, now\)/);
+  assert.match(reward, /return projectDailyStreakDay\(/);
+  // The shield is READ (not consumed) on the status side...
+  assert.match(reward, /hasItem\(user\.id, STREAK_SHIELD_ITEM_KEY, 1\)/);
+
+  const streak = read("src/lib/dailyStreak.js");
+  // ...and the WRITE path derives its day from the same exported function, so
+  // the two can never drift apart again.
+  assert.match(streak, /export function projectDailyStreakDay\(/);
+  assert.match(streak, /const newDailyCurrent = projectDailyStreakDay\(/);
+  assert.match(streak, /await consumeItem\(user\.id, "streak_shield", 1\)/);
 });
 
 // ── The play gate ───────────────────────────────────────────────────────────

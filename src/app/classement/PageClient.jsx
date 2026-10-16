@@ -51,7 +51,7 @@ const RATED_GAMES_FALLBACK = [
   { key: "tic-tac-toe", label: "Tic-Tac-Toe" },
   { key: "solitaire-duel", label: "Solitaire Duel" },
   { key: "sudoku-duel", label: "Sudoku Duel" },
-  { key: "barricade", label: "Barricade" },
+  { key: "barricade", label: "Barrier Blitz" },
 ];
 
 // Game-result categories the weekly/all-time boards rank by. Alongside the

@@ -71,10 +71,11 @@ const ALLOWED = [
   "src/app/classement/page.jsx",
   "src/app/profil/page.jsx",
   // game lobbies (lobby route only — the board lives elsewhere)
-  // Barricade's lobby is the page the rewrite from /games/barricade/play lands
-  // on, and its board lives at /casino/barricade/[matchId] (which stays ad-free
+  // Barrier Blitz's lobby is the page the rewrite from
+  // /games/barrier-blitz/play lands on, and its board lives at
+  // /casino/barrier-blitz/[matchId] (which stays ad-free
   // like every other match page).
-  "src/app/casino/barricade/page.tsx",
+  "src/app/casino/barrier-blitz/page.tsx",
   "src/app/casino/chess/page.jsx",
   "src/app/casino/dots-and-boxes/page.tsx",
   "src/app/casino/four-in-a-row/page.tsx",

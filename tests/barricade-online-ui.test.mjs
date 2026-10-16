@@ -73,11 +73,14 @@ function stripComments(source) {
   return out;
 }
 
-const MATCH_PAGE = "src/app/casino/barricade/[matchId]/PageClient.tsx";
-const MATCH_ROUTE = "src/app/casino/barricade/[matchId]/page.tsx";
-const LOBBY_PAGE = "src/app/casino/barricade/PageClient.tsx";
-const LOBBY_ROUTE = "src/app/casino/barricade/page.tsx";
-const PRACTICE_PAGE = "src/app/casino/barricade/play-ai/PageClient.tsx";
+// The game was renamed Barrier Blitz, so its PUBLIC routes moved
+// (src/app/casino/barrier-blitz/*). The game key, the API paths, the database
+// tables and the realtime room names deliberately stay `barricade`.
+const MATCH_PAGE = "src/app/casino/barrier-blitz/[matchId]/PageClient.tsx";
+const MATCH_ROUTE = "src/app/casino/barrier-blitz/[matchId]/page.tsx";
+const LOBBY_PAGE = "src/app/casino/barrier-blitz/PageClient.tsx";
+const LOBBY_ROUTE = "src/app/casino/barrier-blitz/page.tsx";
+const PRACTICE_PAGE = "src/app/casino/barrier-blitz/play-ai/PageClient.tsx";
 const MOVE_ROUTE = "src/app/api/barricade/match/[matchId]/move/route.ts";
 const REALTIME = "realtime-server/server.js";
 const MIGRATION = "src/db/migrations/0207_barricade_pvp.sql";
@@ -264,21 +267,58 @@ test("barricade online: the lobby creates, joins and cancels, and stays unlisted
 });
 
 test("barricade online: the lobby URLs are the ones that actually resolve", () => {
-  // Bare /casino/barricade permanently redirects to the public landing page
-  // /games/barricade, and Barricade has no landing page yet (its catalogue entry
-  // is a separate, later change) — so every lobby link must use the canonical
-  // lobby URL, which is rewritten to /casino/barricade internally. The browser
-  // smoke check (qa/barricade-online-browser-check.mjs) walks this in a real tab.
-  assert.ok(practice.includes('const ONLINE_PATH = "/games/barricade/play"'));
-  assert.ok(page.includes('const LOBBY_PATH = "/games/barricade/play"'));
+  // Bare /casino/barrier-blitz permanently redirects to the public landing page
+  // /games/barrier-blitz — so every in-app lobby link must use the canonical
+  // lobby URL, which is rewritten to /casino/barrier-blitz internally. The
+  // browser smoke check (qa/barricade-online-browser-check.mjs) walks this in a
+  // real tab, the old URLs included.
+  assert.ok(practice.includes('const ONLINE_PATH = "/games/barrier-blitz/play"'));
+  assert.ok(page.includes('const LOBBY_PATH = "/games/barrier-blitz/play"'));
   assert.equal(
-    /push\("\/casino\/barricade"\)/.test(practice + page),
+    /push\("\/casino\/barrier-blitz"\)/.test(practice + page),
     false,
-    "a bare /casino/barricade link would 404 through the landing-page redirect",
+    "a bare /casino/barrier-blitz link would 404 through the landing-page redirect",
   );
   // A match URL keeps the house convention (/casino/<slug>/<id>), which is what
   // 308-redirects to /games/<slug>/<id> and rewrites back to the match view.
-  assert.ok(lobbyCode.includes("router.push(`/casino/barricade/${data.data.matchId}`)"));
+  assert.ok(lobbyCode.includes("`/casino/barrier-blitz/${id}`"));
+  assert.ok(lobbyCode.includes("router.push(matchPath(data.data.matchId))"));
+});
+
+test("barricade online: Find a Match waits on the matchmaking screen, not the board", () => {
+  // Reported bug: "when I click Find a Match and there is no other user joining,
+  // show the waiting page — do not redirect me directly to the game page."
+  //
+  // The route answers in two situations and they must NOT look the same:
+  // `joined: true` means the caller took an open seat (the match is already
+  // live), while `joined: false` means the caller now owns a fresh WAITING
+  // lobby. Only the first may navigate.
+  assert.ok(lobbyCode.includes("if (data.data?.joined)"));
+  // A fresh lobby sets the waiting state instead — which is what renders the
+  // shared waiting takeover over the lobby — and never pushes a route.
+  assert.ok(lobbyCode.includes("setWaitingMatchId(String(data.data.matchId))"));
+  assert.ok(lobbyCode.includes("<MatchWaiting"));
+  assert.ok(lobbyCode.includes('state="waiting"'));
+  // The wait ends on the SERVER's status, never on a timer or a local guess.
+  assert.ok(lobbyCode.includes("MATCH_STATUS.PLAYING"));
+  assert.ok(lobbyCode.includes("`/api/barricade/match/${waitingMatchId}`"));
+  // Resuming an owned lobby reactivates the same wait rather than jumping onto
+  // an empty board.
+  assert.ok(lobbyCode.includes("onResume={(id: string) => setWaitingMatchId(id)}"));
+  // The shared chrome's own resume control is what feeds it (PvpLobby renders it
+  // for the caller's owned lobby), so the wiring has to exist on both sides.
+  const chrome = stripComments(read("src/components/lobby/PvpLobby.jsx"));
+  assert.ok(chrome.includes("onClick={() => onResume(myOpenId)}"));
+  assert.ok(chrome.includes("myOpenId = null"));
+  // …and the only navigation guarded by it is the joined branch: the push sits
+  // INSIDE the `joined` test and nowhere else in the handler.
+  const handler = lobbyCode.slice(
+    lobbyCode.indexOf("const createOrJoin = useCallback"),
+    lobbyCode.indexOf("const cancelLobby"),
+  );
+  const pushes = handler.match(/router\.push\(/g) ?? [];
+  assert.equal(pushes.length, 1, "exactly one navigation in the matchmaking handler");
+  assert.ok(handler.indexOf("if (data.data?.joined)") < handler.indexOf("router.push("));
 });
 
 test("barricade online: a signed-out visitor never polls an account-gated route", () => {
@@ -287,7 +327,7 @@ test("barricade online: a signed-out visitor never polls an account-gated route"
   assert.ok(lobbyCode.includes("useSocketAwarePoll(fetchLobbies, socket, Boolean(isSignedIn))"));
   // The match view is told to sign in instead of polling the snapshot.
   assert.ok(pageCode.includes('signedOut = identityLoaded && !user'));
-  assert.ok(pageCode.includes('setLoadError("Sign in to play this Barricade match.")'));
+  assert.ok(pageCode.includes('setLoadError("Sign in to play this Barrier Blitz match.")'));
   // The list does not sit on its loading skeleton forever without an account.
   assert.ok(lobbyCode.includes("if (isSignedIn === false) setLobbiesLoading(false);"));
 });
@@ -306,7 +346,7 @@ test("barricade online: free practice still works exactly as before", () => {
   assert.ok(practiceCode.includes("chooseAiAction"), "practice keeps its own bot");
   // The online duel is one navigation away, and nothing else about practice changed.
   assert.ok(practiceCode.includes("router.push(ONLINE_PATH)"));
-  assert.ok(practiceCode.includes('const ONLINE_PATH = "/games/barricade/play"'));
+  assert.ok(practiceCode.includes('const ONLINE_PATH = "/games/barrier-blitz/play"'));
 });
 
 test("barricade online: Dice Flush is untouched and no other game was modified", () => {
@@ -325,7 +365,7 @@ test("barricade online: Dice Flush is untouched and no other game was modified",
     assert.equal(
       /barricade/i.test(source),
       false,
-      `${file} must not reference Barricade`,
+      `${file} must not reference Barricade or Barrier Blitz`,
     );
   }
 });
@@ -446,14 +486,14 @@ test("barricade ui: the log and the reserves are read from the server's own colu
   assert.equal(loggedActionLabel({ actionType: "move", col: 4, row: 1 }), "Pawn to row 2, column 5");
   assert.equal(
     loggedActionLabel({ actionType: "wall", col: 0, row: 0, orientation: "horizontal" }),
-    "Barricade — between rows 1 and 2, columns 1–2",
+    "Barrier — between rows 1 and 2, columns 1–2",
   );
   assert.equal(
     loggedActionLabel({ actionType: "wall", col: 3, row: 2, orientation: "vertical" }),
-    "Barricade — between columns 4 and 5, rows 3–4",
+    "Barrier — between columns 4 and 5, rows 3–4",
   );
-  assert.equal(wallInventoryLabel(10), "10 barricades left");
-  assert.equal(wallInventoryLabel(1), "1 barricade left");
+  assert.equal(wallInventoryLabel(10), "10 barriers left");
+  assert.equal(wallInventoryLabel(1), "1 barrier left");
   assert.equal(wallsFor({ player1: 7, player2: 3 }, "player2"), 3);
   assert.equal(wallsFor(null, "player1"), 0);
   assert.equal(wallsFor({ player1: 7 }, "player2"), 0);

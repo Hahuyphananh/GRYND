@@ -2,7 +2,78 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { users, userStats } from "../db/schema";
-import { consumeItem, hasItem } from "./shopItems";
+import { consumeItem } from "./shopItems";
+
+/**
+ * `YYYY-MM-DD` for a Date (or an already-stringified date column), in LOCAL
+ * time — the same calendar day the streak columns are keyed on.
+ */
+export function toDateStr(date) {
+  if (date instanceof Date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  if (typeof date === "string") return date.slice(0, 10);
+  return null;
+}
+
+/** Whole days from `fromStr` to `toStr`, both `YYYY-MM-DD`. UTC-normalised so
+ *  a DST boundary can never turn "yesterday" into 0 or 2 days. */
+export function daysBetween(fromStr, toStr) {
+  const parse = (s) => {
+    const [y, m, d] = String(s).slice(0, 10).split("-").map(Number);
+    return Date.UTC(y, m - 1, d);
+  };
+  return Math.round((parse(toStr) - parse(fromStr)) / 86400000);
+}
+
+/**
+ * The daily streak day a claim would land on RIGHT NOW, computed without
+ * writing anything.
+ *
+ * This exists so the daily reward's STATUS read and the CLAIM it previews can
+ * never disagree about the amount: both derive the streak day through this one
+ * function, so the number on the button is the number that gets paid. (The bug
+ * it fixes: the status read used the STORED streak, which is stale until
+ * something advances it — a player who missed a day was shown "Claim 250" and
+ * then paid day 1.)
+ *
+ * It mirrors `updateDailyStreak`'s daily arithmetic exactly:
+ *   * never logged in            → day 1;
+ *   * already logged in today    → the stored streak (already advanced today);
+ *   * logged in yesterday        → the next day;
+ *   * any longer gap             → day 1, unless a streak shield absorbs the
+ *                                  missed day, in which case the streak holds.
+ *
+ * The weekly streak, the all-time best and shields' CONSUMPTION stay in
+ * `updateDailyStreak`; this is only the read-side projection.
+ *
+ * @param {object} [state]
+ * @param {string|Date|null} [state.lastLoginDate] The stored `users.last_login_date`.
+ * @param {number|null} [state.current] The stored `users.daily_streak_current`.
+ * @param {boolean} [state.shieldAvailable] Whether a streak shield is there to
+ *   absorb the missed day (the caller consumes it; this only reports).
+ * @param {Date} [today]
+ * @returns {number} The 1-based streak day a claim made now would land on.
+ */
+export function projectDailyStreakDay(
+  { lastLoginDate, current, shieldAvailable = false } = {},
+  today = new Date()
+) {
+  const current_ = Math.max(1, Math.floor(Number(current)) || 1);
+  const last = toDateStr(lastLoginDate);
+  if (!last) return 1;
+
+  const todayStr = toDateStr(today);
+  if (last === todayStr) return current_;
+
+  // A date in the future (clock skew) falls through to the missed-day branch,
+  // exactly as it does in `updateDailyStreak`.
+  if (daysBetween(last, todayStr) === 1) return current_ + 1;
+  return shieldAvailable ? current_ : 1;
+}
 
 /**
  * Updates a user's daily login streak AND weekly streak.
@@ -54,38 +125,28 @@ export async function updateDailyStreak(clerkId) {
   }
 
   // --- Daily Streak ---
-  let newDailyCurrent;
-  let newDailyBest;
+  //
+  // The day the streak lands on is decided in ONE place —
+  // `projectDailyStreakDay` — so the daily reward's status read (which calls the
+  // same function) can never advertise an amount this write would not pay.
+  //
+  // A Daily Streak Shield (consumable) absorbs exactly one missed day. It is
+  // CONSUMED first and its result feeds the projection, so the shield is spent
+  // exactly when it is honoured and a concurrent consume cannot be
+  // double-counted.
+  const lastLoginStr = toDateStr(user.lastLoginDate);
+  const missedADay = Boolean(lastLoginStr) && daysBetween(lastLoginStr, todayStr) !== 1;
+  const shieldAvailable = missedADay ? await consumeItem(user.id, "streak_shield", 1) : false;
 
-  if (!user.lastLoginDate) {
-    // First login ever
-    newDailyCurrent = 1;
-    newDailyBest = 1;
-  } else {
-    const lastDate = new Date(user.lastLoginDate);
-    const daysSinceLastLogin = Math.floor(
-      (Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()) -
-        Date.UTC(lastDate.getFullYear(), lastDate.getMonth(), lastDate.getDate())) /
-        (1000 * 60 * 60 * 24),
-    );
-
-    if (daysSinceLastLogin === 1) {
-      newDailyCurrent = user.dailyStreakCurrent + 1;
-      newDailyBest = Math.max(user.dailyStreakBest, newDailyCurrent);
-    } else {
-      // Missed a day → the streak would reset. A Daily Streak Shield
-      // (consumable) absorbs exactly one missed day: it is consumed and the
-      // current streak is preserved instead of resetting.
-      const shielded = await consumeItem(user.id, "streak_shield", 1);
-      if (shielded) {
-        newDailyCurrent = user.dailyStreakCurrent;
-        newDailyBest = user.dailyStreakBest;
-      } else {
-        newDailyCurrent = 1;
-        newDailyBest = user.dailyStreakBest;
-      }
-    }
-  }
+  const newDailyCurrent = projectDailyStreakDay(
+    {
+      lastLoginDate: user.lastLoginDate,
+      current: user.dailyStreakCurrent,
+      shieldAvailable,
+    },
+    today
+  );
+  const newDailyBest = Math.max(Number(user.dailyStreakBest) || 0, newDailyCurrent);
 
   // --- Weekly Streak ---
   let newWeeklyCurrent;
@@ -102,12 +163,7 @@ export async function updateDailyStreak(clerkId) {
     newWeeklyBest = user.weeklyStreakBest;
   } else {
     // Same week — check consecutive day
-    const lastDate = new Date(user.lastLoginDate);
-    const daysSinceLastLogin = Math.floor(
-      (Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()) -
-        Date.UTC(lastDate.getFullYear(), lastDate.getMonth(), lastDate.getDate())) /
-        (1000 * 60 * 60 * 24),
-    );
+    const daysSinceLastLogin = daysBetween(toDateStr(user.lastLoginDate), todayStr);
 
     if (daysSinceLastLogin === 1) {
       newWeeklyCurrent = user.weeklyStreakCurrent + 1;
@@ -182,13 +238,6 @@ export async function updateDailyStreak(clerkId) {
     weeklyStreakBest: newWeeklyBest,
     updated: true,
   };
-}
-
-function toDateStr(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
 }
 
 /**

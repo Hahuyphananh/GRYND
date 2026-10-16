@@ -9,17 +9,17 @@
 //
 // The reward is gated on playing a game today (see lib/tokens/dailyReward.ts),
 // so the one place it must be visible is where a player decides what to play
-// next: the home page and the games hub. /rewards remains the full explanation
-// (the 7-day curve, the streak, the copy); this widget is the actionable
-// summary, and it points at /games when the gate is what stands in the way.
+// next: the home page and the games hub. /rewards remains the full explanation;
+// this widget is the actionable summary, and it points at /games when the gate
+// is what stands in the way.
 //
 // ── One source of truth ─────────────────────────────────────────────────────
 //
-// The status read and the claim both go through `useDailyReward`, shared with
-// DailyRewardCard, so neither surface can invent an amount or credit anything
-// itself — the server owns the curve, the gate and the idempotency. A claim
-// here credits the balance the navbar shows, which is why the hook fires the
-// shared coin-balance event.
+// The status read, the claim and the 14-day board all come from
+// `useDailyReward` + `DailyRewardBoard`, shared with DailyRewardCard, so neither
+// surface can invent an amount or credit anything itself — the server owns the
+// curve, the gate and the idempotency. A claim here credits the balance the
+// navbar shows, which is why the hook fires the shared coin-balance event.
 //
 // ── Placement ───────────────────────────────────────────────────────────────
 //
@@ -34,14 +34,11 @@
 // permanent "sign in" pitch in the corner of every page is noise. (The navbar
 // already owns the signed-out call to action.)
 
+import { useState } from "react";
 import Link from "next/link";
-import {
-  IconCheck,
-  IconGift,
-  IconLock,
-  IconRefresh,
-} from "@tabler/icons-react";
+import { IconCheck, IconGift, IconLock, IconRefresh } from "@tabler/icons-react";
 import { useDailyReward } from "../hooks/useDailyReward";
+import DailyRewardBoard from "./DailyRewardBoard";
 
 // Inline under the navbar on small screens; pinned to the top-right corner on
 // `md:` and up. The horizontal padding only applies while the widget is inline
@@ -55,12 +52,13 @@ const CARD =
   "rounded-xl border border-[#f5ff3b]/40 bg-[#040d24]/90 px-4 py-3 shadow-[0_0_25px_rgba(245,255,59,0.18)] backdrop-blur-md";
 
 function formatCoins(value: number) {
-  return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
 export default function DailyRewardWidget() {
-  const { isLoaded, isSignedIn, status, loading, claiming, claimedNow, error, load, claim } =
-    useDailyReward();
+  const reward = useDailyReward();
+  const { isLoaded, isSignedIn, status, loading, claimedNow, error, load } = reward;
+  const [open, setOpen] = useState(false);
 
   // No session yet (or no session at all) — nothing to show and nothing to
   // flash, so the corner stays empty.
@@ -78,7 +76,7 @@ export default function DailyRewardWidget() {
           </h2>
           {status && (
             <span className="rounded-full border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#00e5ff]">
-              Day {status.cycleDay}/7
+              Day {status.cycleDay}/{status.cycleDays}
             </span>
           )}
         </div>
@@ -105,8 +103,8 @@ export default function DailyRewardWidget() {
                 className="flex items-center gap-1.5 text-xs font-semibold text-[#f5ff3b]"
                 role="status"
               >
-                <IconCheck size={14} aria-hidden="true" /> Claimed{" "}
-                {formatCoins(claimedNow)} coins — back tomorrow.
+                <IconCheck size={14} aria-hidden="true" /> Claimed {formatCoins(claimedNow)} coins —
+                back tomorrow.
               </p>
             ) : !status.playGateSatisfied ? (
               <div className="space-y-1.5">
@@ -124,20 +122,21 @@ export default function DailyRewardWidget() {
             ) : status.claimable ? (
               <button
                 type="button"
-                onClick={claim}
-                disabled={claiming}
-                data-testid="daily-reward-widget-claim"
-                className="w-full rounded-lg border border-[#f5ff3b]/60 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-3 py-2 text-sm font-bold text-[#1f1700] shadow-[0_0_18px_rgba(245,255,59,0.3)] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817] disabled:opacity-60"
+                onClick={() => setOpen(true)}
+                data-testid="daily-reward-widget-open"
+                className="w-full rounded-lg border border-[#f5ff3b]/60 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-3 py-2 text-sm font-bold text-[#1f1700] shadow-[0_0_18px_rgba(245,255,59,0.3)] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
               >
-                {claiming
-                  ? "Claiming…"
-                  : `Claim ${formatCoins(status.reward)} coins`}
+                Claim day {status.cycleDay} — {formatCoins(status.reward)} coins
               </button>
             ) : (
-              <p className="flex items-center gap-1.5 text-xs text-[#c9f7ff]/80">
-                <IconCheck size={13} aria-hidden="true" /> Claimed today — back
-                tomorrow.
-              </p>
+              <button
+                type="button"
+                onClick={() => setOpen(true)}
+                data-testid="daily-reward-widget-open"
+                className="flex w-full items-center gap-1.5 rounded-lg border border-[#00e5ff]/30 bg-[#00e5ff]/10 px-3 py-2 text-xs font-semibold text-[#c9f7ff] transition hover:bg-[#00e5ff]/20"
+              >
+                <IconCheck size={13} aria-hidden="true" /> Claimed today — see the board
+              </button>
             )}
 
             {error && (
@@ -148,6 +147,8 @@ export default function DailyRewardWidget() {
           </div>
         )}
       </section>
+
+      <DailyRewardBoard open={open} onClose={() => setOpen(false)} reward={reward} />
     </div>
   );
 }

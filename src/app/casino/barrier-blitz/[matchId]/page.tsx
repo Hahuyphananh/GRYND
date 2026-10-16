@@ -13,8 +13,8 @@ export async function generateMetadata({
   const shortId = matchId && matchId.length > 10 ? matchId.slice(0, 8) : matchId;
   return {
     robots: { index: false, follow: false },
-    title: `Barricade Match #${shortId} | GRYND`,
-    description: `Live Barricade match #${shortId} on GRYND — a free 1v1 race on a 9x9 board with ten barricades each.`,
+    title: `Barrier Blitz Match #${shortId} | GRYND`,
+    description: `Live Barrier Blitz match #${shortId} on GRYND — a free 1v1 race on a 9x9 board with ten barriers each.`,
   };
 }
 

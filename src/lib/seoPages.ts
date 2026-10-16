@@ -192,6 +192,12 @@ const INFO_PAGES: SeoPage[] = [
   { path: "/reviews", group: "info", changeFrequency: "weekly", priority: 0.6 },
   // The GRYND PRO offer: a public commercial landing page.
   { path: "/upgrade-pro", group: "info", changeFrequency: "monthly", priority: 0.6 },
+  // The rewards surface. Public (src/proxy.ts) and indexable on purpose: it
+  // explains what rewards the platform offers rather than showing account data,
+  // and a signed-out visitor reads the whole page. The caller's own coin balance
+  // is a client-side read of the existing coin system, so there is nothing
+  // user-specific in the HTML for a crawler to pick up.
+  { path: "/rewards", group: "info", changeFrequency: "monthly", priority: 0.5 },
   { path: "/contact", group: "info", changeFrequency: "monthly", priority: 0.5 },
   { path: "/faq", group: "info", changeFrequency: "monthly", priority: 0.4 },
   { path: "/terms", group: "info", changeFrequency: "monthly", priority: 0.3 },
@@ -234,8 +240,8 @@ export const EXCLUDED_FROM_SITEMAP: Record<string, string> = {
     "free AI practice board — a playable route with no unique content, and already disallowed in robots.txt",
   "/casino/rps/play-ai": "free AI practice board — a playable route, not a search surface",
   "/casino/four-in-a-row/play-ai": "free AI practice board — a playable route, not a search surface",
-  "/casino/barricade/play-ai":
-    "free AI practice board — a playable route with no unique content; the indexable page for the game is /games/barricade",
+  "/casino/barrier-blitz/play-ai":
+    "free AI practice board — a playable route with no unique content; the indexable page for the game is /games/barrier-blitz",
   "/casino/hex-duel/multiplayer": "live matchmaking surface — nothing for a crawler to index",
   "/casino/hex-duel/history": "per-player match history — user-specific data, never a landing page",
   "/casino/lane-runner/history": "per-player match history — user-specific data, never a landing page",

@@ -27,6 +27,8 @@ export type DailyRewardStatus = {
   playGateSatisfied: boolean;
   streakDay: number;
   cycleDay: number;
+  /** How many days the board shows (14). Server-owned, never hardcoded. */
+  cycleDays: number;
   reward: number;
   today: string;
   cycle: number[];
@@ -64,7 +66,14 @@ export function useDailyReward(): UseDailyReward {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/rewards/daily");
+      // `no-store` is required, not a micro-optimisation: a status read is what
+      // the /rewards board and the corner widget render from, and the shared
+      // CsrfFetchGuard (src/components/CsrfFetchGuard.tsx) serves GET /api/*
+      // responses from a 2-second in-memory cache. Without this the read fired
+      // straight after a claim could be answered from that cache with the
+      // PRE-claim status, so the page kept showing the day that was just
+      // claimed. A read that must reflect a write is never cacheable.
+      const res = await fetch("/api/rewards/daily", { cache: "no-store" });
       const json = await res.json().catch(() => null);
       if (res.ok && json?.success) {
         setStatus(json as DailyRewardStatus);
@@ -107,11 +116,7 @@ export function useDailyReward(): UseDailyReward {
       } else {
         // A refusal is a state, not a fault: the gate (403) or an
         // already-claimed day (409) is re-read from the server either way.
-        setError(
-          typeof json?.error === "string"
-            ? json.error
-            : "We couldn't claim your reward.",
-        );
+        setError(typeof json?.error === "string" ? json.error : "We couldn't claim your reward.");
         await load();
       }
     } catch {

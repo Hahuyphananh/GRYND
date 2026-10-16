@@ -841,7 +841,7 @@ export type SettlementOutcome = {
  *
  * PRACTICE IS EXCLUDED BY CONSTRUCTION. There is no `is_ai` column and no
  * server-side practice path at all: free practice runs entirely in the browser
- * against a local bot (src/app/casino/barricade/play-ai), so it has no match row
+ * against a local bot (src/app/casino/barrier-blitz/play-ai), so it has no match row
  * and can never reach this function. A match with no second seat is an open
  * lobby, not a result, and returns below.
  *

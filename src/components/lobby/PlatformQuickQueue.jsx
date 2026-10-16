@@ -22,7 +22,7 @@ export const QUICK_QUEUE_GAME_OPTIONS = [
   ["mini-golf", "Mini Golf"],
   ["speed-typing", "Speed Typing"],
   ["tic-tac-toe", "Tic-Tac-Toe"],
-  ["barricade", "Barricade"],
+  ["barricade", "Barrier Blitz"],
 ];
 
 const EMPTY_READINESS_BODY = Object.freeze({});
@@ -44,9 +44,9 @@ const GAME_ROUTES = {
   "mini-golf": "/casino/mini-golf",
   "speed-typing": "/casino/speed-typing",
   "tic-tac-toe": "/casino/tic-tac-toe",
-  // A queued Barricade pair lands on the created match's own view, exactly like
-  // every other lobby-style destination above.
-  barricade: "/casino/barricade",
+  // A queued Barrier Blitz pair lands on the created match's own view, exactly
+  // like every other lobby-style destination above.
+  barricade: "/casino/barrier-blitz",
 };
 
 export function quickQueueGameRoute(gameKey, matchId) {

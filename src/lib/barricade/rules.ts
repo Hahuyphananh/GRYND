@@ -378,7 +378,7 @@ function pawnMoveCandidates(
   const separated: PawnMoveVerdict = {
     ok: false,
     code: REJECTION.JUMP_NOT_AVAILABLE,
-    message: "a barricade separates you from your opponent — you may not jump over one",
+    message: "a barrier separates you from your opponent — you may not jump over one",
   };
 
   for (const direction of STEP_DIRECTIONS) {
@@ -391,7 +391,7 @@ function pawnMoveCandidates(
         // Face to face across a barricade: neither the step, the jump nor the
         // way around the opponent is available (the Quoridor "not separated by
         // a fence" precondition).
-        offer(neighbour, blocked("a barricade separates you from your opponent"));
+        offer(neighbour, blocked("a barrier separates you from your opponent"));
         offer(
           { col: neighbour.col + direction.col, row: neighbour.row + direction.row },
           separated,
@@ -403,7 +403,7 @@ function pawnMoveCandidates(
           );
         }
       } else {
-        offer(neighbour, blocked("a barricade blocks that square"));
+        offer(neighbour, blocked("a barrier blocks that square"));
       }
       continue;
     }
@@ -420,7 +420,7 @@ function pawnMoveCandidates(
     if (beyondOpen) {
       offer(beyond, { ok: true, kind: MOVE_KINDS.JUMP_STRAIGHT });
     } else if (beyondInBounds) {
-      offer(beyond, blocked("a barricade blocks the square behind your opponent"));
+      offer(beyond, blocked("a barrier blocks the square behind your opponent"));
     }
 
     for (const perpendicular of perpendicularsFor(direction)) {
@@ -442,15 +442,15 @@ function pawnMoveCandidates(
         continue;
       }
       if (!isValidPosition(side)) {
-        offer(diagonal, blocked("a barricade blocks the way around your opponent"));
+        offer(diagonal, blocked("a barrier blocks the way around your opponent"));
         continue;
       }
       if (stepBlockedByIndex(index, from, side)) {
-        offer(diagonal, blocked("a barricade blocks the way around your opponent"));
+        offer(diagonal, blocked("a barrier blocks the way around your opponent"));
         continue;
       }
       if (stepBlockedByIndex(index, side, diagonal)) {
-        offer(diagonal, blocked("a barricade blocks the way around your opponent"));
+        offer(diagonal, blocked("a barrier blocks the way around your opponent"));
         continue;
       }
       offer(diagonal, { ok: true, kind: MOVE_KINDS.JUMP_DIAGONAL });
@@ -535,28 +535,28 @@ export function classifyWall(state: BarricadeState, seat: Seat, wall: WallPlacem
     return {
       ok: false,
       code: REJECTION.OUT_OF_BOUNDS,
-      message: "a barricade is addressed by the groove it sits in",
+      message: "a barrier is addressed by the groove it sits in",
     };
   }
   if (!isValidSlotCoordinate(candidate.col) || !isValidSlotCoordinate(candidate.row)) {
     return {
       ok: false,
       code: REJECTION.OUT_OF_BOUNDS,
-      message: `a barricade sits between squares: col and row must be 0…${WALL_SLOTS - 1}`,
+      message: `a barrier sits between squares: col and row must be 0…${WALL_SLOTS - 1}`,
     };
   }
   if (!isValidOrientation(candidate.orientation)) {
     return {
       ok: false,
       code: REJECTION.INVALID_ORIENTATION,
-      message: 'a barricade is either "horizontal" or "vertical"',
+      message: 'a barrier is either "horizontal" or "vertical"',
     };
   }
   if (state.wallsRemaining[seat] <= 0) {
     return {
       ok: false,
       code: REJECTION.NO_WALLS_REMAINING,
-      message: "you have no barricades left — you must move your pawn",
+      message: "you have no barriers left — you must move your pawn",
     };
   }
   const conflict = findWallConflict(state.walls, candidate as WallPlacement);
@@ -564,21 +564,21 @@ export function classifyWall(state: BarricadeState, seat: Seat, wall: WallPlacem
     return {
       ok: false,
       code: REJECTION.WALL_OVERLAP,
-      message: "a barricade already occupies that groove",
+      message: "a barrier already occupies that groove",
     };
   }
   if (conflict === "crossing") {
     return {
       ok: false,
       code: REJECTION.WALL_CROSSING,
-      message: "that barricade would cross one already on the board",
+      message: "that barrier would cross one already on the board",
     };
   }
   if (wallSealsAPath(state, candidate as WallPlacement)) {
     return {
       ok: false,
       code: REJECTION.WALL_BLOCKS_PATH,
-      message: "both players must keep a route to their goal — that barricade seals one off",
+      message: "both players must keep a route to their goal — that barrier seals one off",
     };
   }
   return { ok: true, kind: ACTION_TYPES.WALL };
@@ -659,7 +659,7 @@ export function validateAction(
     return {
       ok: false,
       code: REJECTION.INVALID_ACTION,
-      message: "a turn is either a pawn move or a barricade placement",
+      message: "a turn is either a pawn move or a barrier placement",
     };
   }
   if (candidate.type !== ACTION_TYPES.MOVE && candidate.type !== ACTION_TYPES.WALL) {
@@ -680,7 +680,7 @@ export function validateAction(
     return {
       ok: false,
       code: REJECTION.INVALID_ACTION,
-      message: "a barricade needs a placement",
+      message: "a barrier needs a placement",
     };
   }
 

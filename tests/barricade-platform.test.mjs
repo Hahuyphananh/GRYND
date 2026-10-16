@@ -10,7 +10,7 @@
  *
  *   * game discovery / registry — it appears in the canonical catalog and the
  *     casino lobby, in the same position, with honest tags, exactly once;
- *   * the public landing page — /games/barricade exists, is in the sitemap and
+ *   * the public landing page — /games/barrier-blitz exists, is in the sitemap and
  *     is served by the same shared component as every other game;
  *   * active-game presence — its gameLabel (and the practice alias) resolve to
  *     the canonical id, and the match page feeds the shared host REAL lifecycle
@@ -65,15 +65,18 @@ const stripComments = (src) =>
 const code = (rel) => stripComments(strip(read(rel)));
 
 const KEY = "barricade";
-const SLUG = "barricade";
+// The PUBLIC page slug and the internal game key are no longer the same string:
+// the game was renamed Barrier Blitz, so its routes moved while `barricade`
+// remains the rating/trophy/presence id (and every store and API path).
+const SLUG = "barrier-blitz";
 
 const LOBBY = "src/app/casino/PageClient.jsx";
-const LOBBY_PAGE = "src/app/casino/barricade/page.tsx";
-const LOBBY_CLIENT = "src/app/casino/barricade/PageClient.tsx";
-const MATCH_PAGE = "src/app/casino/barricade/[matchId]/page.tsx";
-const MATCH_CLIENT = "src/app/casino/barricade/[matchId]/PageClient.tsx";
-const PRACTICE_PAGE = "src/app/casino/barricade/play-ai/page.tsx";
-const PRACTICE_CLIENT = "src/app/casino/barricade/play-ai/PageClient.tsx";
+const LOBBY_PAGE = "src/app/casino/barrier-blitz/page.tsx";
+const LOBBY_CLIENT = "src/app/casino/barrier-blitz/PageClient.tsx";
+const MATCH_PAGE = "src/app/casino/barrier-blitz/[matchId]/page.tsx";
+const MATCH_CLIENT = "src/app/casino/barrier-blitz/[matchId]/PageClient.tsx";
+const PRACTICE_PAGE = "src/app/casino/barrier-blitz/play-ai/page.tsx";
+const PRACTICE_CLIENT = "src/app/casino/barrier-blitz/play-ai/PageClient.tsx";
 const STORE = "src/lib/barricade/serverStore.ts";
 const MOVE_ROUTE = "src/app/api/barricade/match/[matchId]/move/route.ts";
 
@@ -82,7 +85,7 @@ const MOVE_ROUTE = "src/app/api/barricade/match/[matchId]/move/route.ts";
 test("discovery: barricade is in the canonical catalog with the lobby's href", () => {
   const entry = GAME_CATALOG.find((game) => game.id === KEY);
   assert.ok(entry, "barricade must be in GAME_CATALOG");
-  assert.equal(entry.href, "/games/barricade");
+  assert.equal(entry.href, "/games/barrier-blitz");
   assert.ok(entry.tags.includes("pvp"), "Barricade is a 1v1 duel → pvp");
   assert.ok(entry.tags.includes("strategy"), "reading the position decides it → strategy");
   assert.ok(entry.tags.includes("skill"), "nothing is drawn during play → skill");
@@ -92,7 +95,7 @@ test("discovery: barricade is in the canonical catalog with the lobby's href", (
   // Exactly one entry — a duplicate would corrupt the fallback order.
   assert.equal(GAME_CATALOG.filter((game) => game.id === KEY).length, 1);
   assert.ok(DEFAULT_GAME_ORDER.includes(KEY));
-  assert.equal(GAMES_BY_ID[KEY]?.href, "/games/barricade");
+  assert.equal(GAMES_BY_ID[KEY]?.href, "/games/barrier-blitz");
 });
 
 test("discovery: the catalog and the lobby agree on Barricade's position", () => {
@@ -114,15 +117,21 @@ test("discovery: the catalog and the lobby agree on Barricade's position", () =>
 
 test("discovery: the lobby card links to the game, records plays and is 1v1", () => {
   const src = strip(read(LOBBY));
-  const card = src.slice(src.indexOf('name: "Barricade"'));
-  assert.match(card, /href: "\/games\/barricade"/);
+  const card = src.slice(src.indexOf('name: "Barrier Blitz"'));
+  assert.match(card, /href: "\/games\/barrier-blitz"/);
   assert.match(card, /leaderboardKey: "barricade"/);
   assert.match(card, /playsKey: "barricade"/);
   assert.match(card, /pvpMode: "1v1"/);
   assert.match(card, /descriptionKey: "games\.barricade_desc"/);
   assert.match(card, /nameKey: "games\.barricade_name"/);
-  // The card art is shipped art, not a shared fallback.
-  assert.match(src, /import ImgBarricade from "\.\.\/\.\.\/images\/barricade-card\.svg"/);
+  // The card art is shipped art, not a shared fallback — and it is looked up in
+  // the ONE shared registry, keyed by the game's PUBLIC page slug (the registry's
+  // keys are the landing slugs, asserted in tests/game-landing-pages.test.mjs).
+  assert.match(card, /image: GAME_CARD_ART\["barrier-blitz"\]/);
+  assert.match(
+    strip(read("src/components/games/gameCardArt.js")),
+    /"barrier-blitz": barricadeArt,/,
+  );
   assert.ok(fs.existsSync("src/images/barricade-card.svg"), "the card art must exist");
   // The "Newest" sort is newest-first, and Barricade is the newest game.
   assert.match(src, /const newestOrder = \[\n\s*(?:\/\/[^\n]*\n\s*)*"barricade",/);
@@ -153,13 +162,13 @@ test("discovery: personalization always returns Barricade (never hidden)", () =>
 
 // ── 2. The public landing page ────────────────────────────────────────────
 
-test("landing: /games/barricade exists with full content and its own leaderboard key", () => {
+test("landing: /games/barrier-blitz exists with full content and its own leaderboard key", () => {
   const game = GAME_LANDING_BY_SLUG[SLUG];
   assert.ok(game, "the public landing page must exist");
   assert.equal(game.leaderboardKey, KEY, "the landing page names a real GAME_CATALOG id");
-  assert.equal(gameLandingPath(SLUG), "/games/barricade");
+  assert.equal(gameLandingPath(SLUG), "/games/barrier-blitz");
   // The lobby's Play CTA and the landing Play CTA are the same derived URLs.
-  assert.equal(gamePlayPath(SLUG), "/games/barricade/play");
+  assert.equal(gamePlayPath(SLUG), "/games/barrier-blitz/play");
   assert.equal(game.aiPractice, true, "the free vs-AI board is advertised");
   assert.ok(game.faq.length >= 3);
   assert.ok(game.related.length >= 3);
@@ -170,10 +179,10 @@ test("landing: /games/barricade exists with full content and its own leaderboard
 
 test("landing: it is generated into the sitemap and never shadows the lobby", () => {
   assert.ok(
-    PUBLIC_SEO_PATHS.includes("/games/barricade"),
+    PUBLIC_SEO_PATHS.includes("/games/barrier-blitz"),
     "the indexable page must be in the sitemap",
   );
-  assert.ok(!PUBLIC_SEO_PATHS.includes("/games/barricade/play"));
+  assert.ok(!PUBLIC_SEO_PATHS.includes("/games/barrier-blitz/play"));
   // The sitemap's game entries are a projection of the catalog, and Barricade's
   // freshness hint is its own match table — never a hand-written URL.
   assert.match(code("src/lib/seoPages.ts"), /gameLandingPath\(game\.slug\)/);
@@ -187,7 +196,7 @@ test("landing: it is generated into the sitemap and never shadows the lobby", ()
 
 test("landing: the lobby is noindex and canonical to its own play URL", () => {
   const src = strip(read(LOBBY_PAGE));
-  assert.match(src, /canonical: "\/games\/barricade\/play"/);
+  assert.match(src, /canonical: "\/games\/barrier-blitz\/play"/);
   assert.match(src, /robots:\s*\{\s*index:\s*false,\s*follow:\s*true\s*\}/);
   // The match instance is not crawlable in any sense.
   const match = strip(read(MATCH_PAGE));
@@ -242,7 +251,13 @@ test("navigation: the lobby reuses the shared chrome and the one matchmaking sto
   assert.match(lobby, /rulesKey="barricade"/);
   assert.match(lobby, /fetch\("\/api\/barricade\/create-or-join"/);
   assert.match(lobby, /fetch\("\/api\/barricade\/available"/);
-  assert.match(lobby, /router\.push\(`\/casino\/barricade\/\$\{data\.data\.matchId\}`\)/);
+  // The lobby builds the match URL in one place, under the NEW public route.
+  assert.match(lobby, /`\/casino\/barrier-blitz\/\$\{id\}`/);
+  assert.match(lobby, /router\.push\(matchPath\(data\.data\.matchId\)\)/);
+  // …and only AFTER the server has seated a second player: a fresh lobby stays
+  // on the matchmaking screen (see tests/barricade-online-ui.test.mjs).
+  assert.match(lobby, /if \(data\.data\?\.joined\) \{/);
+  assert.match(lobby, /setWaitingMatchId\(String\(data\.data\.matchId\)\)/);
 
   const create = code("src/app/api/barricade/create-or-join/route.ts");
   assert.match(create, /requireAgeVerifiedUser/);
@@ -265,9 +280,9 @@ test("matchmaking: Barricade is a Quick Queue destination and route", () => {
   assert.doesNotMatch(worker, /createOrJoinBarricadeMatch\(\{[^}]*stake/);
   // The UI offers it and knows where a queued pair lands.
   const ui = strip(read("src/components/lobby/PlatformQuickQueue.jsx"));
-  assert.match(ui, /\["barricade", "Barricade"\]/);
-  assert.match(ui, /barricade: "\/casino\/barricade"/);
-  assert.equal(quickQueueGameRoute(KEY, "abc-123"), "/casino/barricade/abc-123");
+  assert.match(ui, /\["barricade", "Barrier Blitz"\]/);
+  assert.match(ui, /barricade: "\/casino\/barrier-blitz"/);
+  assert.equal(quickQueueGameRoute(KEY, "abc-123"), "/casino/barrier-blitz/abc-123");
   assert.equal(quickQueueGameRoute(KEY, ""), null);
   assert.ok(QUICK_QUEUE_GAME_OPTIONS.some(([key]) => key === KEY));
   // A Barricade-only selection is a valid queue request.
@@ -356,14 +371,17 @@ test("rating: barricade is registered once and reuses the trophy registry", () =
   assert.ok(RATED_GAMES.includes(KEY));
   assert.equal(RATED_GAMES.filter((game) => game === KEY).length, 1);
   assert.equal(normalizeRatingGameKey(KEY), KEY, "the key resolves to itself, not to chess");
-  assert.equal(getRatingGameLabel(KEY), "Barricade");
+  assert.equal(getRatingGameLabel(KEY), "Barrier Blitz");
   // Trophies have no second registry: they ARE the rated games.
   assert.equal(TROPHY_GAMES, RATED_GAMES);
   assert.ok(TROPHY_GAMES.includes(KEY));
   // The per-game Elo board (and the classement first paint) read the registry
   // rather than a hand-kept list.
   assert.match(code("src/app/api/leaderboard/game/route.js"), /RATED_GAMES\.map/);
-  assert.match(code("src/app/classement/PageClient.jsx"), /\{ key: "barricade", label: "Barricade" \}/);
+  assert.match(
+    code("src/app/classement/PageClient.jsx"),
+    /\{ key: "barricade", label: "Barrier Blitz" \}/,
+  );
 });
 
 // ── 7. The no-economy guarantee ───────────────────────────────────────────
