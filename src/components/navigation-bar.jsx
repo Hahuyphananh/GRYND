@@ -16,6 +16,7 @@ import { cosmeticEffectClass } from "../lib/profileCosmetics";
 import useDailyLoss from "../lib/useDailyLoss";
 import { DAILY_LOSS_CHIP_THRESHOLD } from "../lib/games/economy";
 import { COIN_BALANCE_EVENT } from "../hooks/useCoinBalance";
+import { fetchDeduped } from "../lib/dedupeFetch";
 
 // M1: sessionStorage TTL for the nav's equipped-title meta. Titles are
 // slow-changing, so short-circuiting the /api/titles lookup for a few minutes
@@ -151,10 +152,12 @@ function NavigationBar({ currentPath = "" }) {
   // serve the stale (previous) title afterwards.
   const refreshTitleMeta = async () => {
     try {
-      const titlesRes = await fetch("/api/titles", {
+      // Shares one in-flight /api/titles response with the profile's loaders
+      // (and with the includeMeta read in fetchBalance) when they land in the
+      // same tick. No TTL cache here: an equip must still revalidate.
+      const { data: titlesData } = await fetchDeduped("/api/titles", {
         credentials: "include",
       });
-      const titlesData = await titlesRes.json();
       if (!titlesData.success) return;
       setProfile((prev) => ({
         ...prev,
@@ -206,7 +209,11 @@ function NavigationBar({ currentPath = "" }) {
       // it is present (preferring it over the session cookie), and a custom
       // JWT-template token is not a Clerk session token — so the whole
       // request was resolved as signed-out and the route returned 401.
-      const response = await fetch("/api/get-user-tokens", {
+      // The profile reads this same endpoint on mount with the SAME init, so
+      // a cold page load makes one request instead of two. The init is
+      // intentionally byte-identical to PageClient's loadProfileData — the
+      // dedupe key is url + JSON.stringify(init), including key order.
+      const { response, data } = await fetchDeduped("/api/get-user-tokens", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -214,7 +221,6 @@ function NavigationBar({ currentPath = "" }) {
         credentials: "include",
       });
 
-      const data = await response.json();
       if (response.status === 403) return setError(t("nav.invalid_token"));
 
       if (data.success) {
@@ -303,10 +309,9 @@ function NavigationBar({ currentPath = "" }) {
             let nextTitle = "";
             let nextStreak = null;
             try {
-              const titlesRes = await fetch("/api/titles", {
+              const { data: titlesData } = await fetchDeduped("/api/titles", {
                 credentials: "include",
               });
-              const titlesData = await titlesRes.json();
               if (titlesData.success) {
                 nextTitle =
                   titlesData.selectedSpecialTitle ||

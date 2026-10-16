@@ -24,21 +24,17 @@ function read(path) {
 
 test("proxy: admin API routes are handled BEFORE public route branch", () => {
   const proxy = read("src/proxy.ts");
-  
+
   // Find the admin API handler block
-  const adminApiMatch = proxy.match(
-    /if\s*\(\s*pathname\.startsWith\s*\(\s*["']\/api\/admin["']\s*\)\s*\)\s*\{/
-  );
-  assert.ok(adminApiMatch, "Admin API handler block should exist");
-  const adminApiPos = adminApiMatch.index;
-  
-  // Find the public route handler block
-  const publicRouteMatch = proxy.match(
-    /if\s*\(\s*isPublicRoute\s*\(\s*req\s*\)\s*\)\s*\{/
-  );
-  assert.ok(publicRouteMatch, "Public route handler block should exist");
-  const publicRoutePos = publicRouteMatch.index;
-  
+  const adminApiPos = proxy.indexOf('if (pathname.startsWith("/api/admin")) {');
+  assert.ok(adminApiPos > 0, "Admin API handler block should exist");
+
+  // Find the public route handler block. Its condition now also excludes
+  // playable game routes (an isGameRoute guard), so locate it by its leading
+  // term rather than by the whole condition, and only use its index.
+  const publicRoutePos = proxy.indexOf("if (isPublicRoute(req)");
+  assert.ok(publicRoutePos > 0, "Public route handler block should exist");
+
   // Admin API handler MUST come before public route handler
   assert.ok(
     adminApiPos < publicRoutePos,

@@ -612,9 +612,10 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
     }
   }
 
-  // Admin API routes require authentication and MFA step-up, so they must
-  // be handled BEFORE the public-route branch (which would otherwise match
-  // them via the broad /api/(.*) pattern and return early).
+  // Admin API routes must NEVER be treated as public: they require
+  // authentication, admin role, and MFA step-up. They are handled
+  // BEFORE the public-route branch, which would otherwise match them via
+  // /api/(.*) and return early, bypassing the MFA gate.
   if (pathname.startsWith("/api/admin")) {
     const { userId, factorVerificationAge } = await auth();
     if (!userId) {

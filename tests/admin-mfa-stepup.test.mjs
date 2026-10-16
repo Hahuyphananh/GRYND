@@ -37,11 +37,31 @@ test("public route matcher includes the broad /api/(.*) pattern", () => {
 
 test("admin API routes are explicitly excluded from public route treatment", () => {
   const proxy = read("src/proxy.ts");
-  // The fix: admin API routes must never be treated as public
-  assert.match(
-    proxy,
-    /if\s*\(\s*isPublicRoute\(req\)\s*&&\s*!pathname\.startsWith\(["']\/api\/admin["']\)\s*\)/,
-    "middleware should exclude /api/admin from public route early return"
+  // The fix: admin API routes must never be treated as public. The current
+  // implementation guarantees this STRUCTURALLY rather than by negating the
+  // public-route condition: /api/admin has its own block that runs before the
+  // public-route branch and returns from inside it, so an admin API request can
+  // never reach the public early return at all.
+  const ADMIN_BLOCK = 'if (pathname.startsWith("/api/admin")) {';
+  const PUBLIC_BRANCH = "if (isPublicRoute(req)";
+
+  const adminApiPos = proxy.indexOf(ADMIN_BLOCK);
+  assert.ok(adminApiPos > 0, "admin API handler block should exist");
+
+  const publicRoutePos = proxy.indexOf(PUBLIC_BRANCH);
+  assert.ok(publicRoutePos > 0, "public route branch should exist");
+
+  assert.ok(
+    adminApiPos < publicRoutePos,
+    "middleware should handle /api/admin before the public route early return"
+  );
+
+  // Fail closed: the admin API block must terminate the request itself, so no
+  // code below it (including the public early return) can run for /api/admin.
+  const adminBlock = proxy.slice(adminApiPos, publicRoutePos);
+  assert.ok(
+    adminBlock.includes("return applySecurityHeaders(NextResponse.next());"),
+    "admin API block should return after auth + admin role + MFA checks"
   );
 });
 
@@ -103,21 +123,49 @@ test("admin role check returns 403 JSON for API routes", () => {
 
 test("admin MFA gate covers both /admin and /api/admin paths", () => {
   const proxy = read("src/proxy.ts");
-  // The MFA step-up check must cover API routes
-  assert.match(
-    proxy,
-    /if\s*\(\s*\(pathname\.startsWith\(["']\/admin["']\)[\s\S]{0,100}\)\s*\|\|\s*pathname\.startsWith\(["']\/api\/admin["']\)\s*\)/,
-    "MFA gate should cover both /admin and /api/admin"
+  // /api/admin and the /admin UI are now gated by separate blocks, so assert
+  // each one performs an MFA step-up rather than one combined condition.
+  const adminApiPos = proxy.indexOf('if (pathname.startsWith("/api/admin")) {');
+  assert.ok(adminApiPos > 0, "admin API handler block should exist");
+  const publicRoutePos = proxy.indexOf("if (isPublicRoute(req)");
+  const adminApiBlock = proxy.slice(adminApiPos, publicRoutePos);
+
+  const recent = adminApiBlock.indexOf("hasRecentMfa(factorVerificationAge)");
+  const adminTok = adminApiBlock.indexOf("verifyAdminMfaToken(adminMfaToken");
+  const userTok = adminApiBlock.indexOf("verifyUserMfaToken(userMfaToken");
+
+  assert.ok(recent > -1, "admin API block should accept a recent factor verification");
+  assert.ok(adminTok > -1, "admin API block should accept a valid admin MFA cookie");
+  assert.ok(userTok > -1, "admin API block should accept a valid user MFA cookie");
+  assert.ok(
+    recent < adminTok && adminTok < userTok,
+    "admin API MFA step-up should test session, then admin cookie, then user cookie"
+  );
+
+  // The /admin UI gate (defense in depth) enforces the same step-up.
+  const adminUiPos = proxy.indexOf('pathname.startsWith("/admin") && pathname !==');
+  assert.ok(adminUiPos > 0, "/admin UI MFA gate should exist");
+  assert.ok(
+    proxy.slice(adminUiPos, adminUiPos + 900).includes("hasRecentMfa(factorVerificationAge)"),
+    "/admin UI gate should enforce MFA step-up"
   );
 });
 
 test("admin MFA gate returns 403 JSON for API routes without MFA", () => {
   const proxy = read("src/proxy.ts");
-  // API routes without MFA get 403 JSON, not redirects
-  assert.match(
-    proxy,
-    /if\s*\(\s*pathname\.startsWith\(["']\/api\/admin["']\)\s*\)[\s\S]{0,300}MFA required/i,
-    "API routes without MFA should return 403 with MFA required message"
+  // API routes without MFA get 403 JSON, never a redirect. The admin API block
+  // is far longer than the old 300-char window, so scope the search to the
+  // block itself (from its start to the public-route branch).
+  const adminApiPos = proxy.indexOf('if (pathname.startsWith("/api/admin")) {');
+  assert.ok(adminApiPos > 0, "admin API handler block should exist");
+  const publicRoutePos = proxy.indexOf("if (isPublicRoute(req)");
+  const adminApiBlock = proxy.slice(adminApiPos, publicRoutePos);
+
+  assert.ok(adminApiBlock.includes("MFA required"), "should return an MFA-required error");
+  assert.ok(adminApiBlock.includes("status: 403"), "MFA-required response should be 403");
+  assert.ok(
+    !adminApiBlock.includes("NextResponse.redirect"),
+    "API routes should get JSON, never a redirect"
   );
 });
 
@@ -161,21 +209,26 @@ test("userMfaGate explicitly skips all /api/ paths", () => {
   );
 });
 
-test("admin MFA gate runs AFTER the public route early return", () => {
+test("admin MFA gate runs BEFORE the public route early return", () => {
   const proxy = read("src/proxy.ts");
-  // The fix ensures the flow reaches the admin MFA gate
-  const publicRouteMatch = proxy.match(
-    /if\s*\(\s*isPublicRoute\(req\)\s*&&\s*!pathname\.startsWith\(["']\/api\/admin["']\)\s*\)/
-  );
-  const adminMfaMatch = proxy.match(
-    /if\s*\(\s*\(pathname\.startsWith\(["']\/admin["']\)[\s\S]{0,100}\)\s*\|\|\s*pathname\.startsWith\(["']\/api\/admin["']\)\s*\)[\s\S]{0,500}adminMfaToken/
-  );
-  
-  assert.ok(publicRouteMatch, "should find public route check");
-  assert.ok(adminMfaMatch, "should find admin MFA gate");
+  // Superseded design: this gate used to sit AFTER the public-route branch and
+  // depend on that branch negating /api/admin. It now runs BEFORE the branch
+  // entirely, which is strictly safer — the public early return (and the
+  // userMfaGate call inside it, which skips every /api/ path) is unreachable
+  // for an /api/admin request. This assertion fails if the gate is ever moved
+  // back below the branch.
+  const adminApiPos = proxy.indexOf('if (pathname.startsWith("/api/admin")) {');
+  assert.ok(adminApiPos > 0, "should find the admin API handler block");
+
+  const publicRoutePos = proxy.indexOf("if (isPublicRoute(req)");
+  assert.ok(publicRoutePos > 0, "should find public route check");
+
+  const adminBlock = proxy.slice(adminApiPos, publicRoutePos);
+  assert.ok(adminBlock.includes("adminMfaToken"), "the admin MFA gate should sit in that block");
+
   assert.ok(
-    publicRouteMatch.index < adminMfaMatch.index,
-    "admin MFA gate should come after public route check"
+    adminApiPos < publicRoutePos,
+    "admin MFA gate should come BEFORE the public route check so it cannot be bypassed"
   );
 });
 
@@ -409,65 +462,77 @@ test("MFA status endpoint requires admin role", () => {
 
 test("middleware enforces all three gates in order: auth, admin role, MFA", () => {
   const proxy = read("src/proxy.ts");
-  
-  // Find the positions of each gate
-  const authGateMatch = proxy.match(/if\s*\(\s*!userId\s*\)[\s\S]{0,200}sign-in/);
-  const adminRoleMatch = proxy.match(
-    /if\s*\(\s*pathname\.startsWith\(["']\/admin["']\)\s*\|\|\s*pathname\.startsWith\(["']\/api\/admin["']\)\s*\)[\s\S]{0,500}isAdmin/
-  );
-  const adminMfaMatch = proxy.match(
-    /if\s*\(\s*\(pathname\.startsWith\(["']\/admin["']\)[\s\S]{0,100}\)\s*\|\|\s*pathname\.startsWith\(["']\/api\/admin["']\)\s*\)[\s\S]{0,500}adminMfaToken/
-  );
-  
-  assert.ok(authGateMatch, "should find authentication gate");
-  assert.ok(adminRoleMatch, "should find admin role gate");
-  assert.ok(adminMfaMatch, "should find admin MFA gate");
-  
-  // Verify they appear in the correct order
+
+  // On the /api/admin path all three checks live inside one block, and their
+  // ORDER is the security property: identity, then authorization, then MFA.
+  const adminApiPos = proxy.indexOf('if (pathname.startsWith("/api/admin")) {');
+  assert.ok(adminApiPos > 0, "admin API handler block should exist");
+  const publicRoutePos = proxy.indexOf("if (isPublicRoute(req)");
+  const adminBlock = proxy.slice(adminApiPos, publicRoutePos);
+
+  const authGate = adminBlock.indexOf("if (!userId)");
+  const adminRoleGate = adminBlock.indexOf("isAdmin(userId)");
+  const adminMfaGate = adminBlock.indexOf("hasRecentMfa(factorVerificationAge)");
+
+  assert.ok(authGate > -1, "should find the authentication gate");
+  assert.ok(adminRoleGate > -1, "should find the admin role gate");
+  assert.ok(adminMfaGate > -1, "should find the admin MFA gate");
+
   assert.ok(
-    authGateMatch.index < adminRoleMatch.index,
-    "authentication should come before admin role check"
+    authGate < adminRoleGate,
+    "authentication should come before the admin role check"
   );
   assert.ok(
-    adminRoleMatch.index < adminMfaMatch.index,
-    "admin role check should come before MFA gate"
+    adminRoleGate < adminMfaGate,
+    "admin role check should come before the MFA gate"
   );
 });
 
 test("no admin API endpoint bypasses the middleware MFA gate", () => {
   const proxy = read("src/proxy.ts");
-  
-  // The fix ensures /api/admin/* never matches the public route early return
-  const publicRoutePattern = /if\s*\(\s*isPublicRoute\(req\)\s*&&\s*!pathname\.startsWith\(["']\/api\/admin["']\)\s*\)/;
-  assert.match(
-    proxy,
-    publicRoutePattern,
-    "middleware should exclude /api/admin from public route treatment"
+
+  // The fix ensures /api/admin/* is handled by its own block, positioned before
+  // the public route early return, so no admin API path can slip through as
+  // "public" and short-circuit the MFA gate.
+  const adminApiPos = proxy.indexOf('if (pathname.startsWith("/api/admin")) {');
+  assert.ok(adminApiPos > 0, "admin API handler block should exist");
+  const publicRoutePos = proxy.indexOf("if (isPublicRoute(req)");
+  assert.ok(
+    adminApiPos < publicRoutePos,
+    "middleware should handle /api/admin before any public route treatment"
   );
-  
+
   // Verify the early return is still present (for other public routes)
-  assert.match(
-    proxy,
-    /return\s+applySecurityHeaders\(NextResponse\.next\(\)\);/,
-    "middleware should still have early return for public routes"
+  assert.ok(
+    proxy.includes("return applySecurityHeaders(NextResponse.next());"),
+    "middleware should still have an early return for public routes"
   );
 });
 
 test("admin API routes are documented as requiring MFA step-up", () => {
   const proxy = read("src/proxy.ts");
-  
-  // The comment should reference the line numbers of the MFA gate
+
+  // The comment above the admin API block must explain WHY the block is ordered
+  // before the public route branch, so a later refactor cannot "tidy" the
+  // ordering away without the rationale being visible.
+  const adminApiPos = proxy.indexOf('if (pathname.startsWith("/api/admin")) {');
+  assert.ok(adminApiPos > 0, "admin API handler block should exist");
+  const comment = proxy.slice(Math.max(0, adminApiPos - 400), adminApiPos);
+
   assert.match(
-    proxy,
-    /below at lines \d+-\d+/,
-    "comment should reference the MFA gate line numbers"
+    comment,
+    /BEFORE the public-route branch/i,
+    "comment should document the required ordering"
   );
-  
-  // The comment should explain the security requirement
   assert.match(
-    proxy,
+    comment,
     /authentication.*admin role.*MFA step-up/i,
     "comment should list all three required checks"
+  );
+  assert.match(
+    comment,
+    /bypassing the MFA gate/i,
+    "comment should reference the bypass the ordering prevents"
   );
 });
 

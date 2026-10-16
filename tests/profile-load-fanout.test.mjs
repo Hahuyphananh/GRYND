@@ -155,3 +155,83 @@ test("referral: generating a code clears the cached stats payload", () => {
     "the 3-minute user-stats payload must not keep serving referralCode: \"\"",
   );
 });
+
+// The same helper, keyed exactly as src/lib/dedupeFetch.js keys it:
+// url plus JSON.stringify(init), so PROPERTY ORDER in the init matters. Returns
+// null when the call is absent. Brace matching rather than a regex keeps this
+// free of escape sequences.
+function dedupeInitKey(source, url) {
+  const marker = 'fetchDeduped("' + url + '", ';
+  const at = source.indexOf(marker);
+  if (at < 0) return null;
+  const start = at + marker.length;
+  if (source[start] !== "{") return null;
+  let depth = 0;
+  for (let j = start; j < source.length; j++) {
+    if (source[j] === "{") depth++;
+    else if (source[j] === "}") {
+      depth--;
+      if (depth === 0) {
+        const obj = new Function("return (" + source.slice(start, j + 1) + ")")();
+        return JSON.stringify(obj) + "|" + url;
+      }
+    }
+  }
+  return null;
+}
+
+test("nav bar: the same two endpoints are read through the shared de-dupe", () => {
+  const NAV = "src/components/navigation-bar.jsx";
+  const nav = read(NAV);
+  const profil = read(PROFILE);
+
+  assert.ok(
+    nav.includes('from "../lib/dedupeFetch"'),
+    "the nav bar must import the dedupe helper",
+  );
+
+  // Both of the nav's /api/titles reads (refreshTitleMeta and the includeMeta
+  // branch of fetchBalance) go through the helper.
+  assert.equal(
+    nav.split('fetchDeduped("/api/titles"').length - 1,
+    2,
+    "both nav /api/titles reads must use fetchDeduped()",
+  );
+
+  // Nothing may still read either endpoint with a raw fetch, in either file.
+  for (const url of ["/api/titles", "/api/get-user-tokens"]) {
+    assert.equal(
+      nav.includes('fetch("' + url + '"'),
+      false,
+      "a raw fetch('" + url + "') in the nav reintroduces the duplicate request",
+    );
+    assert.equal(
+      profil.includes('fetch("' + url + '"'),
+      false,
+      "a raw fetch('" + url + "') in the profile reintroduces the duplicate request",
+    );
+  }
+
+  // THE MERGE ITSELF. The helper only shares a request when both callers land
+  // on the same key, so the nav and the profile must serialize an identical
+  // init. This is the assertion that a reordered or extra option breaks.
+  for (const url of ["/api/titles", "/api/get-user-tokens"]) {
+    const navKey = dedupeInitKey(nav, url);
+    const profilKey = dedupeInitKey(profil, url);
+    assert.ok(navKey, "the nav must call fetchDeduped for " + url);
+    assert.ok(profilKey, "the profile must call fetchDeduped for " + url);
+    assert.equal(
+      navKey,
+      profilKey,
+      "the nav and the profile must send an identical init for " + url +
+        " or the two requests will not merge",
+    );
+  }
+
+  // Pin the tokens key shape: POST + JSON content type + the session cookie.
+  // A body-less POST is not idempotent by assumption, so the init is explicit.
+  assert.equal(
+    dedupeInitKey(nav, "/api/get-user-tokens"),
+    '{"method":"POST","headers":{"Content-Type":"application/json"},"credentials":"include"}|/api/get-user-tokens',
+  );
+});

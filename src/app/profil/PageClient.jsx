@@ -354,12 +354,14 @@ export default function ProfilePage({ adSlot = null }) {
     "hover:scale-105 active:scale-95 transition-all duration-300";
 
   const loadProfileData = async () => {
-    const tokensResponse = await fetch("/api/get-user-tokens", {
+    // The nav bar reads this same endpoint when it mounts, so a cold page
+    // load shares ONE request between the two (same url + identical init;
+    // fetchDeduped keys on both, including key order).
+    const { data: tokensData } = await fetchDeduped("/api/get-user-tokens", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
     });
-    const tokensData = await tokensResponse.json();
 
     if (tokensData.success && tokensData.data) {
       const name =
