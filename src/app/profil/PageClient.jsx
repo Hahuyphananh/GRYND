@@ -23,6 +23,7 @@ import EmoteLoadoutStrip from "../../components/EmoteLoadoutStrip";
 import UserStatsTabs from "../../components/UserStatsTabs";
 import RoomsPanel, { ChallengeFriendDialog } from "../../components/rooms/RoomsPanel";
 import { clearSessionArtifacts } from "../../lib/security/sessionCleanup";
+import { fetchDeduped } from "../../lib/dedupeFetch";
 import { runOptimistically } from "../../lib/optimistic";
 import { useTranslation } from "../../hooks/useTranslation";
 
@@ -108,8 +109,9 @@ export default function ProfilePage({ adSlot = null }) {
   const [titlesOpen, setTitlesOpen] = useState(false); // collapsed by default so the profile stays compact
   const [vipTitles, setVipTitles] = useState(null);
   const loadVipTitles = async () => {
-    const response = await fetch("/api/titles", { credentials: "include" });
-    const data = await response.json();
+    const { response, data } = await fetchDeduped("/api/titles", {
+      credentials: "include",
+    });
 
     if (response.ok && data.success) {
       setVipTitles(data);
@@ -226,11 +228,15 @@ export default function ProfilePage({ adSlot = null }) {
       );
     }
     setStats(data.stats);
+    // Returned so a caller can act on THIS load's stats: the `stats` state
+    // variable is not readable in the same tick (see the bootstrap effect).
+    return data.stats;
   };
 
   const loadTitles = async () => {
-    const response = await fetch("/api/titles", { credentials: "include" });
-    const data = await response.json();
+    const { response, data } = await fetchDeduped("/api/titles", {
+      credentials: "include",
+    });
     if (response.ok && data.success) {
       setTitleMeta({
         selectedTitle: data.selectedTitle || "",
@@ -692,9 +698,15 @@ export default function ProfilePage({ adSlot = null }) {
 
     const bootstrap = async () => {
       try {
+        // Named here, awaited with the rest of the batch below. The referral
+        // check must read the stats THIS load fetched — not the `stats` state,
+        // which the effect closure resolved at mount (still null), so the check
+        // was always truthy and fired the two referral requests on every load.
+        const statsPromise = loadStats();
+
         await Promise.all([
           loadProfileData(),
-          loadStats(),
+          statsPromise,
           loadTitles(),
           loadSpecialTitles(),
           loadVipTitles(),
@@ -707,9 +719,16 @@ export default function ProfilePage({ adSlot = null }) {
           loadFriendInvites(),
         ]);
 
-        if (!stats?.referralCode) {
+        // Only a player with no code yet needs one — the first profile load
+        // after sign-up. initializeReferral() persists it server-side and
+        // merges it into `stats` locally, and /api/referral/generate clears the
+        // (3-minute) user-stats cache entry, so the next load sees the code.
+        // The old code refetched stats here instead: /api/user-stats was then
+        // served from that same cache — still without the code — and its
+        // setStats overwrote the code that had just been set, so the profile
+        // kept asking for one.
+        if (!(await statsPromise)?.referralCode) {
           await initializeReferral();
-          await loadStats();
         }
       } catch (err) {
         console.error("[PROFILE_BOOTSTRAP_ERROR]", err);
@@ -738,8 +757,9 @@ export default function ProfilePage({ adSlot = null }) {
 
   const loadStreakTitles = async () => {
     try {
-      const response = await fetch("/api/titles", { credentials: "include" });
-      const data = await response.json();
+      const { response, data } = await fetchDeduped("/api/titles", {
+        credentials: "include",
+      });
       if (response.ok && data.success) {
         setStreakState({
           selectedStreakType: data.selectedStreakType || null,

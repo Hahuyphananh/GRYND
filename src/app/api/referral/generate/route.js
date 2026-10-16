@@ -1,5 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { sql } from "../../../../db/sql";
+import { cacheDelete } from "../../../../lib/redis/cache";
+import { CacheKeys } from "../../../../lib/redis/keys";
 
 function makeReferralCode(userId) {
   const prefix = userId
@@ -37,6 +39,16 @@ export async function POST() {
         },
       );
     }
+
+    // The profile reads `referralCode` out of /api/user-stats, whose payload is
+    // cached for CacheTTL.userStats (3 minutes) under CacheKeys.userStats. A
+    // payload written before this call holds `referralCode: ""`, which is why
+    // the profile kept asking for a code: it saw the stale empty value on every
+    // load and called back here. Drop the entry on both success paths (a code
+    // may already exist in the database while the cached copy predates it) so
+    // the next stats read resolves the code and the request stops repeating.
+    // No-op when Redis is not configured.
+    await cacheDelete(CacheKeys.userStats(userId));
 
     if (existing.rows[0].referral_code) {
       return new Response(

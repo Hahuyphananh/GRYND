@@ -2,6 +2,8 @@ import { auth } from "@clerk/nextjs/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "../../../../db";
 import { userSpecialTitles, users } from "../../../../db/schema";
+import { cacheDelete } from "../../../../lib/redis/cache";
+import { CacheKeys } from "../../../../lib/redis/keys";
 
 export async function POST(request) {
   const { userId } = await auth();
@@ -26,6 +28,10 @@ export async function POST(request) {
       { status: 404 },
     );
   }
+
+  // Both success paths below (equip and unequip) change the payload the
+  // profile reads from CacheKeys.titles.
+  await cacheDelete(CacheKeys.titles(userId));
 
   if (!normalizedKey) {
     await db

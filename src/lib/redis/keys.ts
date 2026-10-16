@@ -128,6 +128,19 @@ export const CacheKeys = {
   userMfa: (clerkId: string) => `${PREFIX}:user:mfa:${clerkId}`,
   userMfaAll: `${PREFIX}:user:mfa:*`,
 
+  // ── Equipped titles (profile title widget) ───────────────────
+  // One small per-user payload: level/next title, unlocked + selected level
+  // title, the selected special title, and the streak titles.
+  //
+  // The profile asks /api/titles for it from three loaders at once —
+  // loadTitles, loadVipTitles and loadStreakTitles each read a different
+  // slice of the same response — so the route caches it and every write path
+  // (/api/titles/select, equip-special, equip-streak, sync) clears the key.
+  // Those three concurrent reads are also collapsed client-side into one
+  // request by src/lib/dedupeFetch.js.
+  titles: (clerkId: string) => `${PREFIX}:titles:${clerkId}`,
+  titlesAll: `${PREFIX}:titles:*`,
+
   // ── Friend presence ────────────────────────────────────────
   // Short-lived per-user cache for the friends game-presence feed so
   // multiple tabs/screens don't each run a friend_relations join on every
@@ -229,6 +242,11 @@ export const CacheTTL = {
   /** Bet history: 60s — a just-settled bet appears within a minute and the
       profile's recent-bets list tolerates that easily. */
   betHistory: 60,
+
+  /** Equipped titles: 60s safety net. Every equip/select/sync route clears
+      the key directly, so this only bounds a write that bypasses them (e.g.
+      a level-up applied by a settlement job, or a title granted by an admin). */
+  titles: 60,
 
   /**
    * Hex Duel AI session token. 15 min is plenty for a full AI match

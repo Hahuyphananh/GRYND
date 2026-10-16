@@ -3,6 +3,8 @@ import { db } from "../../../../db";
 import { eq } from "drizzle-orm";
 import { users } from "../../../../db/schema";
 import { isTitleUnlocked, getTitleByName } from "../../../../lib/titles";
+import { cacheDelete } from "../../../../lib/redis/cache";
+import { CacheKeys } from "../../../../lib/redis/keys";
 
 export async function POST(request) {
   const { userId } = await auth();
@@ -44,6 +46,12 @@ export async function POST(request) {
         },
       );
     }
+
+    // The profile renders its equipped ring from the cached payload
+    // (CacheKeys.titles). Cleared here rather than per success path: this
+    // route has two of them (equip and unequip) and a stale payload is
+    // worse than one extra cache miss.
+    await cacheDelete(CacheKeys.titles(userId));
 
     //  UNEQUIP TITLE
     if (!title) {

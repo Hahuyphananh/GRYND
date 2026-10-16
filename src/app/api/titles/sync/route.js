@@ -3,6 +3,8 @@ import { db } from "../../../../db";
 import { eq } from "drizzle-orm";
 import { users } from "../../../../db/schema";
 import { getHighestTitle, isTitleUnlocked } from "../../../../lib/titles";
+import { cacheDelete } from "../../../../lib/redis/cache";
+import { CacheKeys } from "../../../../lib/redis/keys";
 
 export async function POST() {
   const { userId } = await auth();
@@ -37,6 +39,10 @@ export async function POST() {
         },
       );
     }
+
+    // This route reconciles the stored title after a level-up, so the
+    // cached titles payload must not survive it.
+    await cacheDelete(CacheKeys.titles(userId));
 
     const level = Number(dbUser.level || 1);
     const computedHighest = getHighestTitle(level);

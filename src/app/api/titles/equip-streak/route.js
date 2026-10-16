@@ -3,6 +3,8 @@ import { auth } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 import { db } from "../../../../db/client";
 import { users } from "../../../../db/schema";
+import { cacheDelete } from "../../../../lib/redis/cache";
+import { CacheKeys } from "../../../../lib/redis/keys";
 
 /**
  * POST /api/titles/equip-streak
@@ -51,6 +53,9 @@ export async function POST(request) {
         .set({ selectedStreakType: null })
         .where(eq(users.clerkId, userId));
     }
+
+    // The streak title is part of the cached titles payload.
+    await cacheDelete(CacheKeys.titles(userId));
 
     return NextResponse.json({
       success: true,
