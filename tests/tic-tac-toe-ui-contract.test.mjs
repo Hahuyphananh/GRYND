@@ -1,15 +1,18 @@
 /**
  * tic-tac-toe-ui-contract.test.mjs
  *
- * The TIC-TAC-TOE DUEL frontend contract: what the Mega lattice may show, what
- * the match page may send, and — above all — what it is NOT allowed to decide.
+ * The ULTIMATE TIC-TAC-TOE frontend contract: what the nine-board lattice may
+ * show, what the match page may send, and — above all — what it is NOT allowed
+ * to decide.
  *
  * The UI is held to the same trust boundary as the server. The only values it
  * ever authors are the ADDRESS of a click (`boardIndex`, `cellIndex`) and the
- * optimistic-concurrency token; the lattice, each board's control, whose turn
- * it is, the winning lines, the Mega line, the round and the settled result all
- * arrive in the snapshot. There is no code path in which the client detects a
- * line, computes a winner or submits a result.
+ * optimistic-concurrency token; the lattice, each board's control, whose turn it
+ * is, the REQUIRED destination (`nextBoard`), the playable set
+ * (`playableBoards`), the per-board winning lines, the lattice line and the
+ * settled result all arrive in the snapshot. There is no code path in which the
+ * client detects a line, re-derives the forced destination, computes a winner or
+ * submits a result.
  *
  * Run:  node --import tsx --test tests/tic-tac-toe-ui-contract.test.mjs
  */
@@ -35,7 +38,6 @@ const LOBBY_PAGE = "src/app/casino/tic-tac-toe/PageClient.tsx";
 const LOBBY_ROUTE_PAGE = "src/app/casino/tic-tac-toe/page.tsx";
 const BOARD = "src/components/tic-tac-toe/TicTacToeBoard.tsx";
 const MEGA_BOARD = "src/components/tic-tac-toe/MegaBoard.tsx";
-const TIEBREAK = "src/components/tic-tac-toe/TiebreakSummary.tsx";
 const UI_HELPERS = "src/lib/tic-tac-toe/ui.ts";
 const LOBBY = "src/app/casino/PageClient.jsx";
 const ART_REGISTRY = "src/components/games/gameCardArt.js";
@@ -47,7 +49,6 @@ const MOVE_ROUTE = "src/app/api/tic-tac-toe/match/[matchId]/move/route.ts";
 const page = code(MATCH_PAGE);
 const board = code(BOARD);
 const mega = code(MEGA_BOARD);
-const tiebreak = code(TIEBREAK);
 const lobbyPage = code(LOBBY_PAGE);
 
 const { GAME_CATALOG, GAMES_BY_ID } = await import("../src/lib/gameTags.js");
@@ -65,40 +66,96 @@ test("ui: every required match state is rendered", () => {
   assert.match(page, /Unable to load this match/, "error state");
   assert.match(page, /<MatchWaiting/, "waiting / opponent state");
   assert.match(page, /data-testid="tic-tac-toe-match"/, "the live match");
-  assert.match(page, /<\s*MegaBoard/, "the Mega lattice");
-  assert.match(page, /data-stage=\{stage\}/, "the match carries its round");
+  assert.match(page, /<\s*MegaBoard/, "the nine-board lattice");
+  // The match carries the SERVER's destination, and says when the choice is free.
+  assert.match(page, /data-next-board=\{nextBoard \?\? ""\}/, "the required destination");
+  assert.match(
+    page,
+    /data-free-choice=\{freeChoice \? "true" : "false"\}/,
+    "whether any open board may be played",
+  );
   assert.match(page, /data-testid="tic-tac-toe-cancelled"/, "cancelled state");
   assert.match(page, /<PvpResultScreen/, "the shared win/loss/draw screen");
   assert.match(page, /<ReportModal/, "report flow");
   assert.match(page, /<EmotePicker/, "emotes");
 });
 
-test("ui: the game information block shows opponent, mark, round and turn", () => {
+test("ui: the game information block shows opponent, mark, destination and turn", () => {
   // Seat cards carry a name, a mark and whose turn it is.
   assert.match(page, /data-testid=\{`seat-\$\{seat\}`\}/);
   assert.match(page, /data-active=\{isActive \? "true" : "false"\}/);
   assert.match(page, /const isActive = match\.currentTurn === seat/);
-  // A status chip and a turn banner.
+  // A status chip, ONE generated instruction, and the progress line.
   assert.match(page, /data-testid="match-status"/);
   assert.match(page, /statusLabel\(match\.status\)/);
   assert.match(page, /data-testid="turn-status"/);
-  assert.match(page, /turnLabel\(\{/);
-  // The viewer's own mark, their opponent, the round and how far it has gone.
+  assert.match(page, /data-testid="move-instruction"/);
+  // Exactly one: a second, hand-kept copy could contradict the generated one.
+  assert.equal(
+    (page.match(/data-testid="move-instruction"/g) ?? []).length,
+    1,
+    "the turn instruction is rendered once",
+  );
+  assert.match(page, /moveInstruction\(\{ snapshot: match, submitting \}\)/);
+  assert.match(page, /data-testid="destination-status"/);
   assert.match(page, /viewerMarkLabel\(viewerSeat\)/);
-  assert.match(page, /progressLabel\(match\.boards\?\.\[effectiveFocus\]\?\.cells \?\? \[\]\)/);
-  assert.match(page, /roundLabel\(stage\)/);
-  assert.match(page, /roundName\(stage\)/);
+  assert.match(page, /progress\.label/);
+  // No hand-written turn copy survives in the view: the sentence is generated
+  // from the snapshot, so it cannot name the wrong board.
+  assert.doesNotMatch(page, /turnLabel\(/);
+  assert.doesNotMatch(page, /"Your turn — pick a cell"/);
+  assert.doesNotMatch(
+    page,
+    /"top-right"|"top-left"|"bottom-right"/,
+    "positions come from the helper, never a literal",
+  );
+  // The sidebar's summary rows.
   assert.match(page, /label="Your mark"/);
   assert.match(page, /label="Opponent"/);
-  assert.match(page, /label="Round"/);
+  assert.match(page, /label="Destination"/);
   assert.match(page, /label="Moves played"/);
   assert.match(page, /label="Turn"/);
-  assert.match(page, /Mega board/, "the Mega-board summary section");
-  // The move log is rendered from the SNAPSHOT's moves, not a local array.
+  assert.match(page, /destinationChip\(match\)/);
+  // The MOVE LOG is rendered from the SNAPSHOT's moves, not a local array.
   assert.match(page, /const moves = Array\.isArray\(match\?\.moves\) \? match\.moves : \[\]/);
   assert.match(page, /moves\.map\(\(mv: any, index: number\) =>/);
-  // Each logged move is addressed by board AND cell.
   assert.match(page, /moveBoardLabel\(mv\.boardIndex\)/);
+});
+
+test("ui: the expansion-era summaries are gone from the live screen", () => {
+  // The round tracker, the stage labels, the board-count legend ("X controls",
+  // "Boards locked") and the tiebreak panel are deleted, not hidden.
+  for (const gone of [
+    /X controls/,
+    /O controls/,
+    /label="Boards locked"/,
+    /label="Round"/,
+    /Tiebreak/,
+    /Sudden death/,
+    /Round 1|Round 2|Round 3/,
+    /mega-round|roundBlurb|stageSlots/,
+  ]) {
+    assert.doesNotMatch(page, gone, `the page must not carry ${gone}`);
+  }
+  for (const gone of [/mega-round|roundBlurb|normaliseStage/, /"Board expanding"|"Final expansion"/]) {
+    assert.doesNotMatch(mega, gone, `the lattice must not carry ${gone}`);
+  }
+});
+test("ui: no expansion-era vocabulary survives in the view", () => {
+  // The stage/round, the tiebreak summary and the sudden-death board are gone —
+  // not hidden, not conditionally rendered.
+  for (const src of [page, mega]) {
+    assert.doesNotMatch(src, /normaliseStage|stageSlots|roundLabel|roundBlurb|roundCellBudget/);
+    assert.doesNotMatch(src, /tiebreak|Tiebreak|suddenDeath|Sudden death/i);
+    assert.doesNotMatch(src, /stageBoardSlots|megaSize|MEGA_SIZE/);
+  }
+  assert.doesNotMatch(page, /EXPANSION_MS|mega-transition|inTransition/);
+  assert.doesNotMatch(page, /data-stage=/);
+  assert.equal(
+    fs.existsSync("src/components/tic-tac-toe/TiebreakSummary.tsx"),
+    false,
+    "the tiebreak component must be deleted, not left as a secondary path",
+  );
 });
 
 // ════════════════════════════════════════════════════════════════════════
@@ -117,13 +174,17 @@ test("authority: the move request carries ONLY { boardIndex, cellIndex, expected
     1,
     "the match page must have exactly one /move call",
   );
-  // The route it targets forwards only those three fields either — and the
-  // board index is an ADDRESS, not a decision (the round is derived server-side).
+  // The route it targets forwards only those three fields as well — and the
+  // board index is an ADDRESS, not a decision (the destination is derived
+  // server-side).
   const route = code(MOVE_ROUTE);
   assert.match(route, /boardIndex: body\?\.boardIndex/);
   assert.match(route, /cellIndex: body\?\.cellIndex/);
   assert.match(route, /expectedVersion: body\?\.expectedVersion/);
-  assert.doesNotMatch(route, /body\?\.(mark|winner|result|score|turn|round|stage)\b/);
+  assert.doesNotMatch(
+    route,
+    /body\?\.(mark|winner|result|score|turn|destination|nextBoard|board|round|stage)\b/,
+  );
 });
 
 test("authority: a click addresses the board AND the cell", () => {
@@ -132,9 +193,10 @@ test("authority: a click addresses the board AND the cell", () => {
     /onPlay=\{\(boardIndex, cellIndex\) => void submitMove\(boardIndex, cellIndex\)\}/,
     "the lattice must hand both the slot and the cell to the page",
   );
-  // The target board is re-checked against the SNAPSHOT before sending.
+  // The target board is re-checked against the SNAPSHOT before sending: it must
+  // be a board the server currently offers.
+  assert.match(page, /if \(!canPlayInBoard\(current, boardIndex\)\) return;/);
   assert.match(page, /const target = serverBoardAt\(current, boardIndex\)/);
-  assert.match(page, /target\.control !== "active"/);
 });
 
 test("authority: the client never computes a line, a winner or a result", () => {
@@ -142,7 +204,10 @@ test("authority: the client never computes a line, a winner or a result", () => 
   assert.doesNotMatch(page, /lib\/tic-tac-toe\/rules/);
   assert.doesNotMatch(page, /findWinningLine|WINNING_LINES|applyMove|computeMatchResult/);
   assert.doesNotMatch(board, /findWinningLine|WINNING_LINES|applyMove/);
-  assert.doesNotMatch(mega, /findWinningLine|WINNING_LINES|applyMove|findMegaWin/);
+  assert.doesNotMatch(mega, /findWinningLine|WINNING_LINES|applyMove|findLatticeWin/);
+  // …and the pure UI helpers do not smuggle the engine in either: they project
+  // the DTO, they do not re-derive it.
+  assert.doesNotMatch(code(UI_HELPERS), /lib\/tic-tac-toe\/rules|WINNING_LINES|LATTICE_LINES/);
   // The outcome is READ from the settled row: the server's `result` and
   // `winnerId` are the only inputs.
   assert.match(page, /outcomeFor\(\{\s*result: match\?\.result,\s*winnerId: match\?\.winnerId,/);
@@ -152,24 +217,25 @@ test("authority: the client never computes a line, a winner or a result", () => 
 
 test("authority: the lattice is rendered from the snapshot, never from local state", () => {
   assert.match(page, /boards=\{match\.boards\}/);
-  assert.match(page, /stage=\{stage\}/);
-  assert.match(page, /slots=\{slots\}/);
   assert.match(page, /winningBoards=\{match\.winningBoards\}/);
-  assert.match(page, /suddenDeath=\{match\.suddenDeath\}/);
+  // The destination and the playable set are passed through from the snapshot.
+  assert.match(page, /nextBoard=\{match\.nextBoard\}/);
+  assert.match(page, /playableBoards=\{match\.playableBoards\}/);
   assert.match(page, /viewerSeat=\{viewerSeat\}/);
   // The unlock flag is the SERVER's `viewerCanMove`, narrowed only by "a
   // request is in flight" and "the match is over".
   assert.match(
     page,
-    /const boardUnlocked =\s*Boolean\(match\) &&\s*!finished &&\s*!cancelled &&\s*!submitting &&\s*!inTransition &&\s*Boolean\(match\?\.viewerCanMove\)/,
+    /const boardUnlocked =\s*Boolean\(match\) &&\s*!finished &&\s*!cancelled &&\s*!submitting &&\s*Boolean\(match\?\.viewerCanMove\)/,
   );
   assert.match(page, /viewerCanMove=\{boardUnlocked\}/);
   // The board itself re-checks the cell before offering it.
   assert.match(board, /isCellPlayable\(\{/);
   assert.match(board, /if \(!actionable\) return;/);
   assert.match(board, /onPlay: \(cellIndex: number\) => void;/);
-  // Sudden death uses the server's sentinel, not a made-up slot.
-  assert.match(mega, /onPlay\(SUDDEN_DEATH_BOARD_INDEX, cellIndex\)/);
+  // There is exactly ONE addressing mode: a lattice slot.
+  assert.match(mega, /onPlay\(slot, cellIndex\)/);
+  assert.doesNotMatch(mega, /SUDDEN_DEATH_BOARD_INDEX/);
 });
 
 test("authority: the optimistic mark is feedback, and a rejection resyncs", () => {
@@ -227,11 +293,18 @@ test("board: a resolved board is locked but keeps every mark", () => {
 });
 
 test("board: empty cells advertise playability, occupied cells do nothing", () => {
-  // Only a cell the snapshot offers is styled as playable…
-  assert.match(board, /cursor-pointer border-dashed border-amber-300\/45/);
-  assert.match(board, /const look = cell\s*\? "border-white\/15 bg-white\/\[0\.06\]"\s*:\s*playable/);
-  // …and a cell that is not offered is inert (guarded click + aria-disabled),
-  // while still being focusable so the whole board can be read by keyboard.
+  // Four looks, in priority order: a real mark, a cell the server offers on the
+  // REQUIRED board (solid amber), a cell it offers during a free choice (dashed
+  // amber), and an inert cell that still reads as part of the grid.
+  assert.match(board, /\? "border-white\/10 bg-white\/\[0\.05\]"/);
+  assert.match(board, /cursor-pointer border-amber-300\/70 bg-amber-400\/\[0\.13\]/);
+  assert.match(board, /cursor-pointer border-dashed border-amber-300\/45 bg-amber-400\/\[0\.06\]/);
+  assert.match(board, /cursor-default border-white\/\[0\.07\] bg-black\/25/);
+  // The required board's affordance is chosen from the state, not guessed.
+  assert.match(board, /const required = state === "required";/);
+  assert.match(board, /playable\s*\? required/);
+  // A cell that is not offered is inert (guarded click + aria-disabled), while
+  // still being focusable so the whole board can be read by keyboard.
   assert.match(board, /aria-disabled=\{actionable \? undefined : true\}/);
   assert.match(board, /if \(!actionable\) return;/);
   // The native attribute is deliberately avoided (it would drop the cell from
@@ -240,8 +313,11 @@ test("board: empty cells advertise playability, occupied cells do nothing", () =
   // The win highlight comes from the server's line.
   assert.match(board, /winningCellSet\(winningLine\)/);
   assert.match(board, /const isWinning = winning\.has\(index\)/);
+  // The last accepted mark is announced, and a confirmed mark animates in.
+  assert.match(board, /data-last-move=\{isLast && Boolean\(cell\) \? "true" : "false"\}/);
+  assert.match(board, /<motion\.span \{\.\.\.markMotion\}/);
+  assert.match(board, /withReducedMotion\(reduce, \{/);
 });
-
 test("ui: the pure helpers encode the same gates the server enforces", async () => {
   const ui = await import("../src/lib/tic-tac-toe/ui.ts");
   const empty = [null, null, null, null, null, null, null, null, null];
@@ -264,90 +340,113 @@ test("ui: the pure helpers encode the same gates the server enforces", async () 
 });
 
 // ════════════════════════════════════════════════════════════════════════
-// 4. The Mega lattice
+// 4. The nine-board lattice
 // ════════════════════════════════════════════════════════════════════════
 
-test("mega: the lattice renders exactly the slots the server puts in play", () => {
-  assert.match(page, /const slots = stageSlotList\.length \? stageSlotList : stageSlots\(stage\)/);
+test("lattice: all nine mini-boards are mounted from the first snapshot", () => {
+  // Nine slots, always — no expansion, nothing materialised later.
+  assert.match(page, /const slots = useMemo\(\(\) => latticeSlots\(\), \[\]\)/);
   assert.match(mega, /data-testid="tic-tac-toe-mega"/);
-  assert.match(mega, /data-stage=\{round\}/);
-  // Every rendered board is a real lattice slot, keyed by that slot.
+  assert.match(mega, /data-cols=\{LATTICE_COLUMNS\}/);
+  assert.match(mega, /const lattice = useMemo\(\(\) => normaliseLattice\(boards\), \[boards\]\)/);
   assert.match(mega, /slots\.map\(\(slot\) =>/);
   assert.match(mega, /key=\{slot\}/);
   assert.match(mega, /data-testid=\{`tic-tac-toe-lattice-board-\$\{slot\}`\}/);
+  // Every card is rendered unconditionally: there is no "not in play yet" gate.
+  assert.doesNotMatch(mega, /if \(!board\) return null;/);
 });
 
-test("mega: the round chooses a 1-up, 2x2 or 3x3 layout with an expansion animation", () => {
-  assert.match(mega, /const cols = stageColumns\(round\)/);
-  assert.match(mega, /gridTemplateColumns: `repeat\(\$\{cols\}, minmax\(0, 1fr\)\)`/);
-  // The board mounts / expands through framer-motion `layout`.
-  assert.match(mega, /<motion\.div/);
-  assert.match(mega, /\blayout\b/);
-  assert.match(mega, /initial=\{\{ opacity: 0, scale: 0\.85 \}\}/);
-  assert.match(mega, /animate=\{\{ opacity: 1, scale: 1 \}\}/);
+test("lattice: the required board is highlighted and stated in words", () => {
+  assert.match(mega, /data-testid="lattice-destination"/);
+  assert.match(mega, /data-required=\{required \?\? ""\}/);
+  assert.match(mega, /data-free-choice=\{freeChoice \? "true" : "false"\}/);
+  // The destination comes from the server's own field, not from the last move.
+  assert.match(mega, /const required = requiredBoard\(snapshot\)/);
+  assert.match(mega, /const freeChoice = isFreeChoice\(snapshot\)/);
+  assert.match(mega, /const offered = playableLatticeBoards\(snapshot\)/);
+  assert.match(mega, /const chip = destinationChip\(snapshot\)/);
+  assert.match(mega, /boardPositionName\(slot\)/);
+  // EXACTLY ONE card can be the required one: its state is computed per slot
+  // from an identity check, so two boards can never both read "Play here".
+  assert.match(
+    mega,
+    /const state = boardState\(\{\s*control: board\.control,\s*required: required === slot,/,
+    "the required state must be computed from an identity check on the slot",
+  );
+  assert.match(mega, /required: required === slot,/, "one destination value, compared per slot");
+  assert.match(mega, /boardStateBadge\(state\)/);
+  assert.match(mega, /boardStateDescription\(state\)/);
+  assert.match(mega, /data-state=\{state\}/);
+  // The required card's OWN attribute is derived from that state — never from
+  // the raw slot list, so a resolved board can never be highlighted.
+  assert.match(mega, /data-required=\{state === "required" \? "true" : "false"\}/);
 });
 
-test("mega: every board shows its control, and a locked board keeps its marks", () => {
-  assert.match(mega, /boardControlShort\(board\.control\)/);
-  assert.match(mega, /boardIsResolved\(board\.control\)/);
-  assert.match(mega, /boardControlLabel\(board\.control\)/);
-  assert.match(mega, /control=\{board\.control\}/);
-  // The full board (all marks) is always passed through.
+test("lattice: the four board states are visually distinct", () => {
+  // required — amber ring + glow + chip; open — selectable; waiting — dimmed and
+  // inert; won/drawn — owner wash and badge, marks untouched.
+  assert.match(mega, /required:\s*"border-amber-300\/80 bg-amber-400\/\[0\.07\] ring-2 ring-amber-300\/60/);
+  assert.match(mega, /open: "border-amber-400\/25 bg-black\/40/);
+  assert.match(mega, /waiting: "border-white\/\[0\.08\] bg-black\/40 opacity-60"/);
+  assert.match(mega, /"won-x": "border-amber-400\/40 bg-amber-400\/\[0\.05\]"/);
+  assert.match(mega, /"won-o": "border-cyan-400\/40 bg-cyan-400\/\[0\.05\]"/);
+  assert.match(mega, /drawn: "border-white\/10 bg-white\/\[0\.03\] opacity-85"/);
+  // The chip wording comes from the shared helper, one word per state.
+  assert.match(mega, /datatestid|data-testid=\{`lattice-board-badge-\$\{slot\}`\}/);
+  assert.match(mega, /boardStateBadge\(state\)/);
+});
+
+test("lattice: a board only offers cells when the SERVER offers the board", () => {
+  // The viewer's flag AND the playable set AND the board's own state.
+  assert.match(
+    mega,
+    /selectable=\{viewerCanMove && offered\.includes\(slot\) && state !== "waiting"\}/,
+  );
+  assert.match(mega, /viewerCanMove=\{selectable\}/);
   assert.match(mega, /board=\{board\.cells\}/);
   assert.match(mega, /winningLine=\{board\.winningLine\}/);
-  // Which board the viewer is interacting with is surfaced.
+  assert.match(mega, /control=\{board\.control\}/);
+  assert.match(mega, /state=\{state\}/);
   assert.match(mega, /data-focused=\{focused \? "true" : "false"\}/);
+  // Ownership is a WASH behind the marks, never a cover over them: the glyph is
+  // faint, and the cells (with every mark at full strength) sit above it.
+  assert.match(mega, /animate: \{ opacity: 0\.11, scale: 1 \}/, "the owner glyph stays faint");
+  assert.match(mega, /boardStateMark\(state\)/);
+  assert.match(mega, /className="relative"/, "the marks sit above the wash");
 });
 
-test("mega: the winning three-board line is highlighted and drawn", () => {
+test("lattice: the winning three-board line is highlighted and drawn", () => {
   assert.match(page, /winningBoards=\{match\.winningBoards\}/);
-  assert.match(mega, /const winningSet = megaWinningSlotSet\(winningBoards\)/);
+  assert.match(mega, /const winningSet = winningBoardSet\(winningBoards\)/);
+  assert.match(mega, /const winningSlots = normaliseWinningBoards\(winningBoards\)/);
   assert.match(mega, /data-testid="mega-winning-line"/);
   assert.match(mega, /data-testid="mega-win-line"/);
-  assert.match(mega, /megaLine=\{winningSet\.has\(slot\)\}/);
+  assert.match(mega, /latticeLine=\{winningSet\.has\(slot\)\}/);
+  assert.match(mega, /data-lattice-line=\{latticeLine \? "true" : "false"\}/);
+  assert.match(mega, /Line — \{winningMark \?\? "X"\} wins the match/);
+  // The overlay is geometry over the FIXED 3x3 grid — no stage is consulted.
+  assert.match(mega, /const first = slotGridPosition\(winningSlots\[0\]\)/);
+  assert.match(mega, /const last = slotGridPosition\(winningSlots\[2\]\)/);
+  // The line animates in, and every animated cue is reduced-motion aware.
+  assert.match(mega, /<motion\.line/);
+  assert.match(mega, /withReducedMotion\(reduce,/);
+  assert.match(mega, /useReducedMotion\(\)/);
 });
 
-test("mega: sudden death is its own board and addresses slot -1", () => {
-  assert.match(page, /suddenDeath=\{match\.suddenDeath\}/);
-  assert.match(page, /match\.suddenDeath/);
-  assert.match(mega, /normaliseSuddenDeath\(suddenDeath\)/);
-  assert.match(mega, /data-testid="tic-tac-toe-sudden-death"/);
-  assert.match(mega, /SUDDEN_DEATH_BOARD_INDEX/);
-  assert.match(mega, /onPlay\(SUDDEN_DEATH_BOARD_INDEX, cellIndex\)/);
+test("lattice: the three rules are stated on the board", () => {
+  assert.match(mega, /data-testid="lattice-rules"/);
+  assert.match(mega, /HOW_TO_PLAY\.map\(/);
+  const helpers = read(UI_HELPERS);
+  assert.match(helpers, /Three in a row claims a mini-board\./);
+  assert.match(helpers, /sends your opponent to that same board/);
+  assert.match(helpers, /Claim three mini-boards in a line to win the match\./);
 });
 
-test("mega: the lattice FITS the phone — no width floor anywhere", () => {
-  // On a phone the whole 3x3 (nine boards) must fit the content width with no
-  // sideways scroll. The old always-on inline `min-width: cols * 10.5rem`
-  // (504px at Round 3) forced the wider rounds into a horizontally-scrolling
-  // strip; there is no floor now, at ANY breakpoint — a `sm:`/`md:` floor
-  // re-creates the same sideways scroll on a narrow phone.
-  assert.match(mega, /className="mega-lattice[^"]*w-full"/);
-  assert.match(mega, /data-cols=\{cols\}/);
-  assert.doesNotMatch(mega, /const minWidth = cols === 1 \? undefined :/);
-  assert.doesNotMatch(mega, /style=\{\{ minWidth/);
-  // `overflow-x-auto` stays ONLY as a safety net; the fit is what removes the
-  // sideways scroll on a phone.
-  assert.match(mega, /overflow-x-auto/);
-
-  // The fit is structural: zero-minimum tracks plus grid items allowed to
-  // shrink below their min-content width (a grid item defaults to
-  // `min-width: auto`, which would otherwise push the lattice out).
-  assert.match(mega, /gridTemplateColumns: `repeat\(\$\{cols\}, minmax\(0, 1fr\)\)`/);
-  assert.match(mega, /className={`min-w-0 rounded-2xl border/);
-
-  // globals.css names the lattice and must not reintroduce a floor for it.
-  const css = read("src/app/globals.css");
-  const megaRules = [...css.matchAll(/\.mega-lattice[^{]*\{([^}]*)\}/g)];
-  assert.equal(megaRules.length, 1, "the lattice gets exactly one CSS rule");
-  assert.equal(megaRules[0][1].trim(), "min-width: 0;");
-});
-
-test("mega: the phone layout is verified in a real browser and stays wired up", () => {
+test("lattice: the phone layout is verified in a real browser and stays wired up", () => {
   // The geometry above is static; `qa/tic-tac-toe-mega-mobile-check.mjs` mounts
-  // the REAL lattice inside the REAL Tailwind stylesheet and measures every
-  // round at 390 / 360 / 320 px (it reproduces the original 504px-lattice bug
-  // when the floor is reintroduced).
+  // the REAL lattice inside the REAL Tailwind stylesheet and measures the nine
+  // boards at 390 / 360 / 320 / 1280 px (it reproduces the original 504px-lattice
+  // bug when the floor is reintroduced).
   assert.ok(
     fs.existsSync("qa/tic-tac-toe-mega-mobile-check.mjs"),
     "qa/tic-tac-toe-mega-mobile-check.mjs must exist",
@@ -356,6 +455,10 @@ test("mega: the phone layout is verified in a real browser and stays wired up", 
     fs.existsSync("qa/tic-tac-toe-mega-mobile-harness.jsx"),
     "qa/tic-tac-toe-mega-mobile-harness.jsx must exist",
   );
+  // The harness mounts the shipped component, not a copy of it.
+  const harness = read("qa/tic-tac-toe-mega-mobile-harness.jsx");
+  assert.match(harness, /import MegaBoard from "\.\.\/src\/components\/tic-tac-toe\/MegaBoard"/);
+  assert.doesNotMatch(harness, /stageSlots|stage=/);
   const pkg = JSON.parse(read("package.json"));
   assert.equal(
     pkg.scripts?.["verify:tic-tac-toe-mobile"],
@@ -364,39 +467,18 @@ test("mega: the phone layout is verified in a real browser and stays wired up", 
   );
 });
 
-test("mega: the round, expansion and legend are all communicated", () => {
-  assert.match(page, /data-testid="mega-transition"/);
-  assert.match(mega, /data-testid="mega-round"/);
-  assert.match(mega, /data-round=\{round\}/);
-  assert.match(mega, /roundBlurb\(round\)/);
-  assert.match(mega, /data-testid="mega-legend"/);
-  assert.match(mega, /megaControlCounts\(lattice, slots\)/);
-});
-
 // ════════════════════════════════════════════════════════════════════════
-// 4b. Progression and feedback
+// 4b. Feedback and the pure destination helpers
 // ════════════════════════════════════════════════════════════════════════
 
-test("progression: an expansion is announced fast and locks input only for the beat", () => {
-  assert.match(page, /const EXPANSION_MS = 1200/);
-  assert.match(page, /const inTransition = transition !== null/);
-  assert.match(page, /!inTransition &&/);
-  assert.match(page, /data-testid="mega-transition"/);
-  assert.match(page, /data-to=\{transition\}/);
-  // Round 1 → 2 announces ROUND 2; Round 2 → 3 announces MEGA BOARD.
-  assert.match(page, /transition === 2 \? "ROUND 2" : "MEGA BOARD"/);
-  assert.match(page, /data-testid="mega-transition-title"/);
-  // It is driven ONLY by the server's stage growing — never a first load.
-  assert.match(page, /if \(previous === null \|\| stage <= previous\) return undefined;/);
-  assert.match(page, /setTransition\(stage\)/);
-});
-
-test("feedback: small-board win and draw are announced and highlighted", () => {
+test("feedback: a mini-board win or draw is announced and highlighted", () => {
   assert.match(page, /const BOARD_EVENT_MS = 1800/);
   assert.match(page, /data-testid="board-event"/);
   assert.match(page, /data-kind=\{boardEvent.control === "draw" \? "draw" : "win"\}/);
-  assert.match(page, /drawn — locked/);
-  assert.match(page, /controls it!/);
+  // The announcement names the POSITION, so it matches the board label.
+  assert.match(page, /boardPositionName\(boardEvent\.slot\)/);
+  assert.match(page, /board is drawn — locked/);
+  assert.match(page, /claims the/);
   // The board that just resolved is ring-highlighted, and the detection is a
   // SERVER control flip.
   assert.match(page, /highlightSlot=\{boardEvent\?\.slot \?\? null\}/);
@@ -404,88 +486,315 @@ test("feedback: small-board win and draw are announced and highlighted", () => {
   assert.match(mega, /highlightSlot === slot/);
 });
 
-test("feedback: the tiebreak summary uses the required board/cell/sudden-death shape", async () => {
+test("ui: the destination helpers project the server's own derivation", async () => {
   const ui = await import("../src/lib/tic-tac-toe/ui.ts");
-  assert.equal(ui.tiebreakHeading({ decidedBy: "boards" }), "BOARD CONTROL");
-  assert.equal(ui.tiebreakHeading({ decidedBy: "cells" }), "CELL CONTROL");
-  assert.equal(ui.tiebreakHeading({ decidedBy: "sudden-death" }), "SUDDEN DEATH");
-  // BOARD CONTROL — Player X: 5 boards · Player O: 4 boards · Winner: X
-  assert.deepEqual(
-    ui.tiebreakRows({ decidedBy: "boards", xBoards: 5, oBoards: 4, winner: "player1" }),
-    [
-      { label: "Player X", value: "5 boards" },
-      { label: "Player O", value: "4 boards" },
-      { label: "Winner", value: "X" },
-    ],
-  );
-  // CELL CONTROL — Player X: 31 cells · Player O: 29 cells · Winner: X
-  assert.deepEqual(
-    ui.tiebreakRows({ decidedBy: "cells", xCells: 31, oCells: 29, winner: "player1" }),
-    [
-      { label: "Player X", value: "31 cells" },
-      { label: "Player O", value: "29 cells" },
-      { label: "Winner", value: "X" },
-    ],
-  );
-  // A complete tie falls through to SUDDEN DEATH.
-  const sd = ui.tiebreakRows({ decidedBy: "sudden-death", winner: null });
-  assert.equal(sd[1].value, "Sudden death");
-  assert.equal(ui.tiebreakWinnerMark({ winner: "player2" }), "O");
-  assert.equal(ui.tiebreakWinnerMark({ winner: null }), null);
-  // The component is wired into the page and renders data-driven.
-  assert.match(page, /<TiebreakSummary tiebreak=\{match\.tiebreak\}/);
-  assert.match(tiebreak, /data-testid="tiebreak-summary"/);
-  assert.match(tiebreak, /data-decided-by=/);
-  assert.match(tiebreak, /data-winner=/);
-  assert.match(tiebreak, /tiebreakHeading\(tiebreak\)/);
-  assert.match(tiebreak, /tiebreakRows\(tiebreak\)/);
-});
+  // `nextBoard` is a slot, or null for a free choice.
+  assert.equal(ui.requiredBoard({ nextBoard: 4 }), 4);
+  assert.equal(ui.requiredBoard({ nextBoard: null }), null);
+  assert.equal(ui.requiredBoard({}), null);
+  assert.equal(ui.requiredBoard({ nextBoard: 9 }), null);
 
-test("feedback: a Mega-board win and the final reason surface from the snapshot", () => {
-  assert.match(mega, /Mega line — \{winningMark \?\? "X"\} wins the match/);
-  assert.match(page, /subline=\{resultReason\(\{/);
-  assert.match(read(UI_HELPERS), /Mega line — Boards \$\{/);
-  // The final tiebreak also appears in the result details.
-  assert.match(page, /label: "Tiebreak", value: tiebreakHeading\(match\.tiebreak\)/);
-  assert.match(page, /tiebreakRows\(match\.tiebreak\)\.map/);
-});
+  // Free choice = no required board, a live match, and more than one option.
+  assert.equal(
+    ui.isFreeChoice({ status: "playing", nextBoard: null, playableBoards: [0, 1, 2] }),
+    true,
+  );
+  assert.equal(ui.isFreeChoice({ status: "playing", nextBoard: 4, playableBoards: [4] }), false);
+  assert.equal(ui.isFreeChoice({ status: "finished", nextBoard: null, playableBoards: [0, 1] }), false);
+  assert.equal(ui.isFreeChoice(null), false);
 
-test("ui: the Mega helpers project the server's lattice without deciding anything", async () => {
-  const ui = await import("../src/lib/tic-tac-toe/ui.ts");
-  assert.deepEqual(ui.stageSlots(1), [0]);
-  assert.deepEqual(ui.stageSlots(2), [0, 1, 3, 4]);
-  assert.deepEqual(ui.stageSlots(3), [0, 1, 2, 3, 4, 5, 6, 7, 8]);
-  assert.equal(ui.stageColumns(1), 1);
-  assert.equal(ui.stageColumns(2), 2);
-  assert.equal(ui.stageColumns(3), 3);
-  assert.equal(ui.normaliseStage(99), 3);
-  assert.equal(ui.normaliseStage(0), 1);
-  assert.equal(ui.roundCellBudget(2), 36);
-  // The lattice reads the server's control and keeps `null` slots as null.
+  // The playable set is the server's; the fallback still reads the server's own
+  // per-board control rather than a rule of its own.
+  assert.deepEqual(ui.playableLatticeBoards({ playableBoards: [4] }), [4]);
+  assert.deepEqual(
+    ui.playableLatticeBoards({ boards: [{ control: "active" }, { control: "draw" }] }),
+    [0],
+  );
+  assert.equal(ui.isBoardPlayable({ playableBoards: [4] }, 4), true);
+  assert.equal(ui.isBoardPlayable({ playableBoards: [4] }, 3), false);
+
+  const open = () => ({ cells: Array(9).fill(null), control: "active", winningLine: null });
+  const snapshot = {
+    boards: [open(), open(), open(), open(), open()],
+    nextBoard: 4,
+    playableBoards: [4],
+    status: "playing",
+    viewerCanMove: true,
+  };
+  assert.equal(ui.canPlayInBoard(snapshot, 4), true);
+  assert.equal(ui.canPlayInBoard(snapshot, 0), false, "a board the rules do not offer is never clickable");
+  assert.equal(ui.canPlayInBoard({ ...snapshot, viewerCanMove: false }, 4), false);
+
+  // The nine-board projection is TOTAL: a missing slot reads as an empty, open
+  // board, so the view can never be an unstable grid.
   const cells = ["X", "X", "X", null, null, null, null, null, null];
-  const lattice = ui.normaliseLattice([
-    { cells, control: "X", winningLine: [0, 1, 2] },
-    null,
-    null,
-    { cells: [null, null, null, null, null, null, null, null, null], control: "draw" },
-  ]);
+  const lattice = ui.normaliseLattice([{ cells, control: "X", winningLine: [0, 1, 2] }, null]);
+  assert.equal(lattice.length, 9);
   assert.equal(lattice[0].control, "X");
   assert.deepEqual(lattice[0].winningLine, [0, 1, 2]);
-  assert.equal(lattice[1], null);
+  assert.equal(lattice[1].control, "active");
+  assert.equal(lattice[1].cells.every((cell) => cell === null), true);
   assert.equal(ui.boardIsResolved("X"), true);
   assert.equal(ui.boardIsResolved("draw"), true);
   assert.equal(ui.boardIsResolved("active"), false);
-  const counts = ui.megaControlCounts(lattice, [0, 1, 3]);
-  assert.equal(counts.x, 1);
-  assert.equal(counts.draw, 1);
-  assert.equal(counts.active, 0);
-  assert.deepEqual([...ui.megaWinningSlotSet([0, 4, 8])].sort((a, b) => a - b), [0, 4, 8]);
-  // Sudden-death addressing resolves to the LAST sudden-death board.
-  const sd = ui.normaliseSuddenDeath({
-    boards: [{ cells, control: "X" }, { cells, control: "active" }],
+  assert.deepEqual([...ui.winningBoardSet([0, 4, 8])].sort((a, b) => a - b), [0, 4, 8]);
+  assert.deepEqual(ui.normaliseWinningBoards([0, 4]), [], "a partial line is not a win");
+  assert.equal(ui.boardName(4), "Board 5");
+  const progress = ui.latticeProgress(lattice);
+  assert.equal(progress.total, 81);
+  assert.equal(progress.played, 3);
+  assert.match(progress.label, /3 of 81 cells played/);
+
+  // Addressing has exactly one mode: a lattice slot.
+  assert.equal(ui.serverBoardAt({ boards: [open()] }, 9), null);
+  assert.equal(ui.serverBoardAt({ boards: [open()] }, -1), null);
+  assert.equal(ui.serverBoardAt({ boards: [open()] }, 0).control, "active");
+});
+
+test("ui: the board POSITION names cover the whole lattice", async () => {
+  const ui = await import("../src/lib/tic-tac-toe/ui.ts");
+  assert.deepEqual(
+    Array.from({ length: 9 }, (_, slot) => ui.boardPositionName(slot)),
+    [
+      "top-left",
+      "top-middle",
+      "top-right",
+      "middle-left",
+      "centre",
+      "middle-right",
+      "bottom-left",
+      "bottom-middle",
+      "bottom-right",
+    ],
+  );
+  assert.equal(ui.boardPositionName(null), "—");
+  assert.equal(ui.boardPositionName(9), "—");
+});
+
+test("ui: every mini-board state maps to exactly one word and one description", async () => {
+  const ui = await import("../src/lib/tic-tac-toe/ui.ts");
+  // The state is derived from the SERVER's values only.
+  assert.equal(ui.boardState({ control: "active", required: true, offered: true }), "required");
+  assert.equal(ui.boardState({ control: "active", offered: true }), "open");
+  assert.equal(ui.boardState({ control: "active" }), "waiting");
+  assert.equal(ui.boardState({ control: "X" }), "won-x");
+  assert.equal(ui.boardState({ control: "O" }), "won-o");
+  assert.equal(ui.boardState({ control: "draw" }), "drawn");
+  // A resolved board is never reported as playable, whatever else is passed.
+  assert.equal(ui.boardState({ control: "draw", required: true, offered: true }), "drawn");
+  assert.equal(ui.boardState({ control: "X", required: true, offered: true }), "won-x");
+
+  assert.equal(ui.boardStateBadge("required"), "Play here");
+  assert.equal(ui.boardStateBadge("open"), "Open");
+  assert.equal(ui.boardStateBadge("waiting"), "Waiting");
+  assert.equal(ui.boardStateBadge("won-x"), "X");
+  assert.equal(ui.boardStateBadge("won-o"), "O");
+  assert.equal(ui.boardStateBadge("drawn"), "Draw");
+
+  assert.match(ui.boardStateDescription("required"), /play here/);
+  assert.match(ui.boardStateDescription("open"), /available/);
+  assert.match(ui.boardStateDescription("waiting"), /not available/);
+  assert.equal(ui.boardStateDescription("won-o"), "won by O");
+  assert.equal(ui.boardStateDescription("drawn"), "a draw");
+
+  assert.equal(ui.boardStateMark("won-x"), "X");
+  assert.equal(ui.boardStateMark("won-o"), "O");
+  assert.equal(ui.boardStateMark("drawn"), null);
+  assert.equal(ui.boardStateMark("required"), null);
+});
+
+test("ui: turn guidance is generated from the destination, never hardcoded", async () => {
+  const ui = await import("../src/lib/tic-tac-toe/ui.ts");
+  const base = { status: "playing", boards: [], playableBoards: [4], nextBoard: 4 };
+
+  // The seat to move is told the POSITION of the board it must play.
+  assert.equal(
+    ui.moveInstruction({ snapshot: { ...base, viewerCanMove: true } }),
+    "Play in the centre board.",
+  );
+  assert.equal(
+    ui.moveInstruction({ snapshot: { ...base, nextBoard: 2, viewerCanMove: true } }),
+    "Play in the top-right board.",
+  );
+  assert.equal(
+    ui.moveInstruction({ snapshot: { ...base, nextBoard: 8, viewerCanMove: true } }),
+    "Play in the bottom-right board.",
+  );
+  // The waiting seat is told where its OPPONENT must play.
+  assert.equal(
+    ui.moveInstruction({ snapshot: { ...base, viewerCanMove: false } }),
+    "Your opponent must play in the centre board.",
+  );
+  // A free choice is spelled out, from both seats.
+  const free = { status: "playing", boards: [], playableBoards: [0, 1, 2], nextBoard: null };
+  assert.equal(
+    ui.moveInstruction({ snapshot: { ...free, viewerCanMove: true } }),
+    "Free choice — play in any open board.",
+  );
+  assert.equal(
+    ui.moveInstruction({ snapshot: { ...free, viewerCanMove: false } }),
+    "Your opponent can choose any open board.",
+  );
+  // Terminal, lobby and in-flight states never promise a board.
+  assert.equal(ui.moveInstruction({ snapshot: { status: "finished", result: "tie" } }), "Match drawn.");
+  assert.equal(ui.moveInstruction({ snapshot: { status: "finished" } }), "Match over.");
+  assert.equal(ui.moveInstruction({ snapshot: { status: "waiting" } }), "Waiting for an opponent…");
+  assert.equal(ui.moveInstruction({ snapshot: base, submitting: true }), "Sending your move…");
+  assert.equal(ui.moveInstruction({ snapshot: null }), "Loading…");
+
+  // The header chip says the same thing without the viewer's perspective.
+  assert.equal(ui.destinationChip({ ...base, viewerCanMove: true }), "Required: centre board");
+  assert.equal(ui.destinationChip({ ...free, viewerCanMove: true }), "Free choice — any open board");
+  assert.equal(ui.destinationChip({ status: "finished" }), "Match over");
+  assert.equal(ui.destinationChip({ status: "waiting" }), "Not started");
+
+  // Three bullets, and no expansion vocabulary anywhere in the copy.
+  assert.equal(ui.HOW_TO_PLAY.length, 3);
+  assert.equal(ui.HOW_TO_PLAY[0], "Three in a row claims a mini-board.");
+  assert.match(ui.rulesHint(), /Win three mini-boards in a row\./);
+  for (const line of [...ui.HOW_TO_PLAY, ui.rulesHint()]) {
+    assert.doesNotMatch(line, /expand|stage|round|sudden|tiebreak/i);
+  }
+
+  // A decided match is described from the settled row, not recomputed.
+  assert.equal(
+    ui.resultReason({ winningBoards: [0, 4, 8], result: "player1", ply: 21 }),
+    "Lattice line — Board 1 · Board 5 · Board 9",
+  );
+  assert.match(ui.resultReason({ result: "tie", ply: 81 }), /Draw — every mini-board resolved/);
+  assert.match(ui.resultReason({ result: "player2", ply: 12 }), /Conceded/);
+
+  // Nothing tiebreak-shaped or stage-shaped is exported any more.
+  for (const gone of [
+    "tiebreakHeading",
+    "tiebreakRows",
+    "tiebreakWinnerMark",
+    "normaliseStage",
+    "stageSlots",
+    "stageColumns",
+    "stageBoardCount",
+    "roundLabel",
+    "roundName",
+    "roundBlurb",
+    "roundCellBudget",
+    "normaliseSuddenDeath",
+    "megaControlCounts",
+    "megaWinningSlotSet",
+    "latticeControlCounts",
+    "boardControlShort",
+    "boardControlLabel",
+    "boardBadge",
+    "boardOwnerSeat",
+    "markLabel",
+    "turnLabel",
+    "destinationLabel",
+    "GRID_SIZE",
+  ]) {
+    assert.equal(gone in ui, false, `${gone} must be gone from the UI helpers`);
+  }
+});
+
+test("dto: the snapshot carries the Ultimate contract and no expansion field", async () => {
+  const { normalizeForViewer, createInitialState, applyMove } = await import(
+    "../src/lib/tic-tac-toe/rules.ts"
+  );
+  const ui = await import("../src/lib/tic-tac-toe/ui.ts");
+  const seats = { player1Id: "u1", player2Id: "u2" };
+  const state = createInitialState();
+  const dto = normalizeForViewer({ state, seats, viewerId: "u1", status: "playing" });
+
+  // Everything the view needs to render, and nothing it must not decide.
+  for (const key of [
+    "version",
+    "phase",
+    "status",
+    "result",
+    "winnerId",
+    "boards",
+    "activeBoards",
+    "completedBoards",
+    "nextBoard",
+    "playableBoards",
+    "ply",
+    "currentTurn",
+    "currentTurnUserId",
+    "winner",
+    "winningBoards",
+    "lastMove",
+    "boardSize",
+    "cellCount",
+    "latticeSize",
+    "maxBoards",
+    "marks",
+    "player1Id",
+    "player2Id",
+    "viewerSeat",
+    "viewerMark",
+    "isViewerTurn",
+    "viewerCanMove",
+    "legacyState",
+  ]) {
+    assert.ok(key in dto, `the DTO must carry ${key}`);
+  }
+  for (const gone of ["stage", "stageBoardSlots", "megaSize", "tiebreak", "suddenDeath"]) {
+    assert.equal(gone in dto, false, `the DTO must not carry ${gone}`);
+  }
+
+  assert.equal(dto.boards.length, 9);
+  assert.equal(dto.latticeSize, 3);
+  assert.equal(dto.maxBoards, 9);
+  assert.equal(dto.nextBoard, null, "the opening position is a free choice");
+  assert.deepEqual(dto.playableBoards, [0, 1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.equal(dto.viewerCanMove, true);
+
+  // After a move the destination is the opponent's required board — the CELL
+  // index, derived server-side.
+  const after = applyMove({ state, seat: "player1", boardIndex: 0, cellIndex: 4 }).state;
+  const forBob = normalizeForViewer({ state: after, seats, viewerId: "u2" });
+  assert.equal(forBob.nextBoard, 4);
+  assert.deepEqual(forBob.playableBoards, [4]);
+  assert.equal(forBob.isViewerTurn, true);
+  assert.equal(forBob.viewerCanMove, true);
+  assert.equal(
+    normalizeForViewer({ state: after, seats, viewerId: "u1" }).viewerCanMove,
+    false,
+    "the seat that just moved may not move again",
+  );
+
+  // The helpers read exactly those fields, and agree with the server.
+  assert.equal(ui.requiredBoard(forBob), 4);
+  assert.deepEqual(ui.playableLatticeBoards(forBob), [4]);
+  assert.equal(ui.canPlayInBoard(forBob, 4), true);
+  assert.equal(ui.canPlayInBoard(forBob, 3), false);
+  assert.equal(ui.moveInstruction({ snapshot: forBob }), "Play in the centre board.");
+  assert.equal(ui.destinationChip(forBob), "Required: centre board");
+
+  // A destination that has since resolved becomes a free choice in the DTO, and
+  // the helpers then say so in words.
+  const resolved = {
+    ...after,
+    boards: after.boards.map((board, slot) =>
+      slot === 4
+        ? { cells: ["X", "O", "X", "X", "O", "O", "O", "X", "X"], control: "draw", plies: 9, winningLine: null }
+        : board,
+    ),
+  };
+  const forBob2 = normalizeForViewer({ state: resolved, seats, viewerId: "u2" });
+  assert.equal(forBob2.nextBoard, null, "a resolved destination is normalised away");
+  assert.equal(forBob2.playableBoards.includes(4), false);
+  assert.equal(ui.requiredBoard(forBob2), null);
+  assert.equal(ui.isFreeChoice(forBob2), true);
+  assert.equal(ui.moveInstruction({ snapshot: forBob2 }), "Free choice — play in any open board.");
+
+  // A legacy (expansion-era) row is reported and NEVER offered as playable.
+  const legacyDto = normalizeForViewer({
+    state: { ...state, stage: 1 },
+    seats,
+    viewerId: "u1",
+    status: "playing",
   });
-  assert.equal(sd.length, 2);
-  assert.equal(ui.serverBoardAt({ suddenDeath: {} }, -1), null);
+  assert.equal(legacyDto.legacyState, true);
+  assert.equal(legacyDto.viewerCanMove, false);
 });
 
 // ════════════════════════════════════════════════════════════════════════
@@ -669,4 +978,27 @@ test("navigation: the lobby reuses the ONE shared matchmaking path", () => {
   assert.match(lobbyPage, /<PvpLobbyPage/);
   assert.match(lobbyPage, /rulesKey="tic-tac-toe"/);
   assert.match(lobbyPage, /\/api\/tic-tac-toe\/available/);
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// 8. Copy: the lobby teaches the four rules of the shipped game
+// ════════════════════════════════════════════════════════════════════════
+
+test("copy: the lobby teaches the four Ultimate rules and no other game", () => {
+  // The lobby is the first place a player learns the game, so the four rules
+  // have to be there in words: a mini-board is won with three in a row, the cell
+  // played decides the opponent's board, a resolved destination means free
+  // choice, and three boards in a line wins the match.
+  assert.match(lobbyPage, /nine mini-boards/i, "rule 1: the nine-board lattice");
+  assert.match(lobbyPage, /three in a row wins a board/i, "rule 1: claiming a board");
+  assert.match(lobbyPage, /same lattice slot/i, "rule 2: the destination rule");
+  assert.match(lobbyPage, /free choice/i, "rule 3: a resolved destination frees the choice");
+  assert.match(lobbyPage, /three mini-boards in a line/i, "rule 4: the match win");
+
+  // ...and it must not still describe plain 3x3 Tic-Tac-Toe, where one line ends
+  // the match, nor the retired expansion game.
+  assert.doesNotMatch(lobbyPage, /line up three in a row takes the match/i);
+  assert.doesNotMatch(lobbyPage, /3×3 · three in a row/);
+  assert.doesNotMatch(lobbyPage, /expand|expansion|stage|sudden|tiebreak/i);
+  assert.match(lobbyPage, /Nine boards · three in a line claims one/);
 });

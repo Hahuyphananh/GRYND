@@ -48,7 +48,11 @@ import {
   RESULT,
   TIC_TAC_TOE_AI_PLAYER_ID,
 } from "../src/lib/tic-tac-toe/constants.ts";
-import { createInitialState } from "../src/lib/tic-tac-toe/rules.ts";
+import {
+  createEmptyBoard,
+  createInitialState,
+  resolveBoardControl,
+} from "../src/lib/tic-tac-toe/rules.ts";
 
 const MODULE_MOCKING_AVAILABLE = typeof mock?.module === "function";
 const SKIP_REASON = MODULE_MOCKING_AVAILABLE
@@ -79,10 +83,107 @@ const R = {
   disconnect: "src/app/api/tic-tac-toe/disconnect-forfeit/route.ts",
 };
 
-// X opens game shapes used across the suite.
-const A_WIN = [0, 3, 1, 4, 2]; // X: 0,1,2 — horizontal, wins on ply 5
-const O_WIN = [1, 0, 2, 3, 4, 6]; // O: 0,3,6 — vertical, wins on ply 6
-const A_DRAW = [0, 4, 8, 2, 6, 3, 5, 7, 1]; // nine moves, no line
+// ── Position fixtures ─────────────────────────────────────────────────────
+//
+// The suite drives complete sequences through the REAL routes. Mid-game
+// positions are seeded in the persisted shape (all nine boards materialised);
+// the move under test always goes through the route either way.
+
+function fixtureBoard(cells) {
+  assert.equal(cells.length, 9, "a fixture board must have nine cells");
+  const { control, winningLine } = resolveBoardControl(cells);
+  return {
+    cells: [...cells],
+    plies: cells.filter((cell) => cell !== null).length,
+    control,
+    winningLine,
+  };
+}
+
+const X_BOARD = ["X", "X", "X", "O", "O", null, null, null, null];
+const O_BOARD = ["O", "O", "O", "X", "X", null, null, null, null];
+const X_TWO = ["X", "X", null, "O", "O", null, null, null, null];
+const O_TWO = ["O", "O", null, "X", "X", null, null, null, null];
+const DRAW_CELLS = (() => {
+  const order = [0, 4, 8, 2, 6, 3, 5, 7, 1];
+  const cells = new Array(9).fill(null);
+  order.forEach((cell, ply) => {
+    cells[cell] = ply % 2 === 0 ? "X" : "O";
+  });
+  return cells;
+})();
+const NEAR_DRAW = (() => {
+  const cells = [...DRAW_CELLS];
+  cells[1] = null; // X's last move completes a drawn board
+  return cells;
+})();
+
+function craftState({ boards = {}, currentTurn = "player1", ply = 0, nextBoard = null, version = 100 } = {}) {
+  return {
+    version,
+    phase: "playing",
+    boards: Array.from({ length: 9 }, (_, slot) => boards[slot] ?? createEmptyBoard()),
+    currentTurn,
+    ply,
+    winner: null,
+    winningBoards: null,
+    nextBoard,
+    lastMove: null,
+  };
+}
+
+/** X claims the top row of the lattice with one move at (2, 2). */
+const xOneMoveFromWinning = () =>
+  craftState({
+    boards: { 0: fixtureBoard(X_BOARD), 1: fixtureBoard(X_BOARD), 2: fixtureBoard(X_TWO) },
+    currentTurn: "player1",
+    ply: 20,
+    nextBoard: 2,
+  });
+
+/** O claims the top row of the lattice with one move at (2, 2). */
+const oOneMoveFromWinning = () =>
+  craftState({
+    boards: { 0: fixtureBoard(O_BOARD), 1: fixtureBoard(O_BOARD), 2: fixtureBoard(O_TWO) },
+    currentTurn: "player2",
+    ply: 21,
+    nextBoard: 2,
+  });
+
+/**
+ * A REAL match from the opening position: X wins the left column (0, 3, 6) on
+ * ply 21. Every move is on the board the previous cell index required.
+ */
+const MATCH_WIN = [
+  { boardIndex: 0, cellIndex: 8 },
+  { boardIndex: 8, cellIndex: 5 },
+  { boardIndex: 5, cellIndex: 2 },
+  { boardIndex: 2, cellIndex: 6 },
+  { boardIndex: 6, cellIndex: 0 },
+  { boardIndex: 0, cellIndex: 0 },
+  { boardIndex: 0, cellIndex: 5 },
+  { boardIndex: 5, cellIndex: 3 },
+  { boardIndex: 3, cellIndex: 3 },
+  { boardIndex: 3, cellIndex: 8 },
+  { boardIndex: 8, cellIndex: 1 },
+  { boardIndex: 1, cellIndex: 6 },
+  { boardIndex: 6, cellIndex: 3 },
+  { boardIndex: 3, cellIndex: 0 },
+  { boardIndex: 0, cellIndex: 2 },
+  { boardIndex: 2, cellIndex: 3 },
+  { boardIndex: 3, cellIndex: 4 },
+  { boardIndex: 4, cellIndex: 3 },
+  { boardIndex: 3, cellIndex: 5 },
+  { boardIndex: 5, cellIndex: 0 },
+  { boardIndex: 6, cellIndex: 6 },
+];
+
+/** A short forced-destination chain: each cell names the next required board. */
+const FORCED_CHAIN = [
+  { boardIndex: 0, cellIndex: 0 },
+  { boardIndex: 0, cellIndex: 4 },
+  { boardIndex: 4, cellIndex: 8 },
+];
 
 // ── The fake database (transactions serialised, like a row lock) ──────────
 
@@ -414,13 +515,13 @@ const move = (body, opts = {}) => invoke(R.move, { body, ...opts });
 const forfeit = (opts = {}) => invoke(R.forfeit, opts);
 const cancel = (opts = {}) => invoke(R.cancel, opts);
 
-/** Play a list of cells through the REAL /move route, threading the version. */
-async function playRoute(fake, cells) {
+/** Play { boardIndex, cellIndex } moves through the REAL /move route. */
+async function playRoute(fake, moves) {
   const results = [];
-  for (let ply = 0; ply < cells.length; ply += 1) {
+  for (let ply = 0; ply < moves.length; ply += 1) {
     const who = ply % 2 === 0 ? ALICE : BOB;
     const res = await move(
-      { boardIndex: 0, cellIndex: cells[ply], expectedVersion: liveVersion(fake) },
+      { boardIndex: moves[ply].boardIndex, cellIndex: moves[ply].cellIndex, expectedVersion: liveVersion(fake) },
       { as: who },
     );
     results.push(res);
@@ -632,9 +733,12 @@ test("authority: a client cannot declare a winner, a draw, a result or a complet
       finished: true,
       status: "finished",
       phase: "finished",
+      stage: 3,
+      nextBoard: 8,
       ply: 9,
       mark: "O",
       board: ["O", "O", "O", null, null, null, null, null, null],
+      boards: ["O", "O", "O", null, null, null, null, null, null],
       currentTurn: "player2",
       turn: "player2",
       currentTurnUserId: BOB,
@@ -652,10 +756,12 @@ test("authority: a client cannot declare a winner, a draw, a result or a complet
   assert.equal(res.status, 200);
   const row = rowOf(fake);
   // The server derived everything: the mark from ALICE's seat, the board from
-  // its own state, the turn from the ply.
+  // its own state, the destination from the cell, the turn from the ply.
   assert.equal(row.gameState.boards[0].cells[3], "X", "the mark is the mover's, not the body's");
   assert.equal(row.gameState.boards[0].cells.filter(Boolean).length, 1, "the client's board is gone");
   assert.deepEqual(row.gameState.boards[0].cells.slice(0, 3), [null, null, null]);
+  assert.equal(row.gameState.nextBoard, 3, "derived from the cell, not accepted");
+  assert.equal("stage" in row.gameState, false, "no expansion-era field survives");
   assert.equal(row.gameState.ply, 1, "not 9");
   assert.equal(row.gameState.currentTurn, "player2", "derived, not accepted");
   assert.equal(row.status, MATCH_STATUS.PLAYING, "not finished");
@@ -671,11 +777,12 @@ test("authority: a client cannot declare a winner, a draw, a result or a complet
   assert.equal(res.json.data.result, null);
   assert.equal(res.json.data.winnerId, null);
   assert.equal(res.json.data.matchCompleted, false);
+  assert.equal(res.json.data.nextBoard, 3);
   assert.equal(res.json.data.match.status, MATCH_STATUS.PLAYING);
   assert.equal(res.json.data.match.viewerCanMove, false, "it is now the opponent's turn");
 });
 
-test("authority: the game logic enforces turn, occupancy and a valid index through the route", { skip: SKIP_REASON }, async (t) => {
+test("authority: turn, occupancy, a valid index and the FORCED destination are enforced through the route", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   seedMatch(fake);
 
@@ -685,14 +792,22 @@ test("authority: the game logic enforces turn, occupancy and a valid index throu
   assert.match(wrongTurn.json.error, /not your turn/i);
   assert.equal(rowOf(fake).gameState.ply, 0);
 
-  // A valid move by X.
+  // A valid move by X, which sends O to board 0.
   const opened = await move({ boardIndex: 0, cellIndex: 0, expectedVersion: 1 }, { as: ALICE });
   assert.equal(opened.status, 200);
   assert.equal(opened.json.data.move.mark, "X");
   assert.equal(opened.json.data.move.boardIndex, 0);
   assert.equal(opened.json.data.move.cellIndex, 0);
+  assert.equal(opened.json.data.nextBoard, 0);
 
-  // Occupied cell: O cannot take the cell X just claimed.
+  // Any OTHER board is refused while the destination is active — the client
+  // cannot sidestep the forced board by sending a different index.
+  const skipped = await move({ boardIndex: 4, cellIndex: 4, expectedVersion: liveVersion(fake) }, { as: BOB });
+  assert.equal(skipped.status, 409);
+  assert.match(skipped.json.error, /board 0/i);
+  assert.equal(rowOf(fake).gameState.ply, 1, "the bypass wrote nothing");
+
+  // Occupied cell, on the required board: X took cell 0.
   const taken = await move({ boardIndex: 0, cellIndex: 0, expectedVersion: liveVersion(fake) }, { as: BOB });
   assert.equal(taken.status, 409);
   assert.match(taken.json.error, /occupied/i);
@@ -709,8 +824,6 @@ test("authority: the game logic enforces turn, occupancy and a valid index throu
     assert.equal(rowOf(fake).gameState.ply, 0, JSON.stringify(bad));
   }
 
-  // Invalid / malformed BOARD indexes are a 400 too, and a valid-but-not-yet
-  // materialised slot is a clean 409 — never a silent play on another board.
   for (const badBoard of [undefined, null, "0", true, [], -1, 9, 1.5, NaN]) {
     fake.reset();
     seedMatch(fake);
@@ -719,13 +832,20 @@ test("authority: the game logic enforces turn, occupancy and a valid index throu
     assert.match(res.json.error, /board index/i);
     assert.equal(rowOf(fake).gameState.ply, 0, JSON.stringify(badBoard));
   }
-  for (const notYet of [1, 4, 8]) {
-    fake.reset();
-    seedMatch(fake);
-    const res = await move({ boardIndex: notYet, cellIndex: 0, expectedVersion: 1 }, { as: ALICE });
-    assert.equal(res.status, 409, `board ${notYet}`);
-    assert.match(res.json.error, /not in play/i, `board ${notYet}`);
-  }
+
+  // A RESOLVED board is refused even when the choice is free.
+  fake.reset();
+  seedMatch(fake, {
+    gameState: craftState({
+      boards: { 5: fixtureBoard(X_BOARD) },
+      currentTurn: "player1",
+      ply: 2,
+      nextBoard: null,
+    }),
+  });
+  const decided = await move({ boardIndex: 5, cellIndex: 0, expectedVersion: 100 }, { as: ALICE });
+  assert.equal(decided.status, 409);
+  assert.match(decided.json.error, /decided/i);
 
   // A body that is not JSON at all is a 400, not a 500.
   fake.reset();
@@ -751,17 +871,19 @@ test("authority: a stale expectedVersion is refused, and a double-submit cannot 
       JSON.stringify(bad),
     );
   }
+  assert.equal(rowOf(fake).gameState.ply, 1);
 });
 
 test("authority: a move after the match is decided is refused", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
-  seedMatch(fake);
-  await playRoute(fake, A_WIN);
+  seedMatch(fake, { gameState: xOneMoveFromWinning(), ply: 20 });
+  const winning = await move({ boardIndex: 2, cellIndex: 2, expectedVersion: 100 }, { as: ALICE });
+  assert.equal(winning.status, 200);
   assert.equal(rowOf(fake).status, MATCH_STATUS.FINISHED);
 
   const movesAfter = fake.rowsOf(ticTacToeMoves).length;
   for (const who of [ALICE, BOB]) {
-    const res = await move({ boardIndex: 0, cellIndex: 6, expectedVersion: liveVersion(fake) }, { as: who });
+    const res = await move({ boardIndex: 6, cellIndex: 6, expectedVersion: liveVersion(fake) }, { as: who });
     assert.equal(res.status, 409);
     assert.match(res.json.error, /no longer active/i);
   }
@@ -773,85 +895,148 @@ test("authority: a move after the match is decided is refused", { skip: SKIP_REA
 // 3. Game logic end-to-end (through the real route)
 // ════════════════════════════════════════════════════════════════════════
 
-test("logic: X completes a line and the match settles once, with the shared writers", { skip: SKIP_REASON }, async (t) => {
+test("logic: a REAL 21-ply match wins X the lattice and settles exactly once", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   seedMatch(fake);
 
-  const results = await playRoute(fake, A_WIN);
+  const results = await playRoute(fake, MATCH_WIN);
+  assert.equal(results.length, MATCH_WIN.length, "every move was accepted");
   assert.equal(results.filter((r) => r.status !== 200).length, 0);
-  assert.equal(results.at(-1).json.data.matchCompleted, true);
-  assert.deepEqual(results.at(-1).json.data.winningLine, [0, 1, 2]);
-  assert.equal(results.at(-1).json.data.winnerId, ALICE);
-  assert.equal(results.at(-1).json.data.result, RESULT.PLAYER1);
+
+  const last = results.at(-1).json.data;
+  assert.equal(last.matchCompleted, true);
+  assert.deepEqual(last.winningBoards, [0, 3, 6]);
+  assert.equal(last.winnerId, ALICE);
+  assert.equal(last.result, RESULT.PLAYER1);
+  // A finished match has no destination to report.
+  assert.equal(last.nextBoard, null);
 
   const row = rowOf(fake);
   assert.equal(row.status, MATCH_STATUS.FINISHED);
   assert.equal(row.result, RESULT.PLAYER1);
   assert.equal(row.winnerId, ALICE);
   assert.ok(row.endedAt);
+  assert.deepEqual(row.gameState.winningBoards, [0, 3, 6]);
+  assert.equal(row.gameState.nextBoard, null);
   assert.equal(writers.rating.length, 1);
   assert.equal(writers.trophy.length, 1);
   assert.equal(writers.rating[0].gameKey, "tic-tac-toe");
   assert.equal(writers.rating[0].matchId, MATCH_ID);
   assert.equal(writers.rating[0].winnerClerkId, ALICE);
   assert.equal(writers.rating[0].loserClerkId, BOB);
+  // Every one of the 21 moves is in the append-only log.
+  assert.equal(fake.rowsOf(ticTacToeMoves).length, MATCH_WIN.length);
 });
 
-test("logic: O completes a vertical line and loses nothing to the turn order", { skip: SKIP_REASON }, async (t) => {
+test("logic: O completes the lattice line and nothing is lost to the turn order", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
-  seedMatch(fake);
+  seedMatch(fake, { gameState: oOneMoveFromWinning(), ply: 21 });
 
-  await playRoute(fake, O_WIN);
+  const res = await move({ boardIndex: 2, cellIndex: 2, expectedVersion: 100 }, { as: BOB });
+  assert.equal(res.status, 200);
+  assert.equal(res.json.data.matchCompleted, true);
+  assert.deepEqual(res.json.data.winningBoards, [0, 1, 2]);
+
   const row = rowOf(fake);
   assert.equal(row.status, MATCH_STATUS.FINISHED);
   assert.equal(row.result, RESULT.PLAYER2);
   assert.equal(row.winnerId, BOB);
-  assert.deepEqual(row.gameState.boards[0].winningLine, [0, 3, 6]);
-  assert.deepEqual(row.gameState.winningBoards, [0]);
   assert.equal(writers.rating[0].winnerClerkId, BOB);
   assert.equal(writers.rating[0].loserClerkId, ALICE);
 });
 
-test("logic: a full opening board with no line EXPANDS — it never settles", { skip: SKIP_REASON }, async (t) => {
+test("logic: claiming a mini-board resolves it but does NOT settle the match", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
-  seedMatch(fake);
+  seedMatch(fake, {
+    ply: 6,
+    gameState: craftState({
+      boards: {
+        0: fixtureBoard(["O", null, null, null, null, null, null, null, null]),
+        1: fixtureBoard(X_TWO),
+      },
+      currentTurn: "player1",
+      ply: 6,
+      nextBoard: 1,
+    }),
+  });
 
-  const results = await playRoute(fake, A_DRAW);
-  // The last move resolved the board but did NOT finish the match.
-  assert.equal(results.at(-1).json.data.matchCompleted, false);
-  assert.equal(results.at(-1).json.data.stage, 2);
+  const res = await move({ boardIndex: 1, cellIndex: 2, expectedVersion: 100 }, { as: ALICE });
+  assert.equal(res.status, 200);
+  assert.equal(res.json.data.matchCompleted, false);
+  assert.deepEqual(res.json.data.winningLine, [0, 1, 2]);
+  assert.equal(res.json.data.winningBoards, null);
+  // The next seat is sent to the mini-board named by the cell.
+  assert.equal(res.json.data.nextBoard, 2);
 
   const row = rowOf(fake);
   assert.equal(row.status, MATCH_STATUS.PLAYING);
+  assert.deepEqual(row.gameState.boards[1].winningLine, [0, 1, 2]);
   assert.equal(row.result, null);
-  assert.equal(row.winnerId, null);
-  assert.equal(row.gameState.stage, 2);
-  assert.equal(row.gameState.ply, 9);
-  assert.equal(row.gameState.boards[0].control, "draw");
-  // An expansion is not a result: no rating, trophy or queue completion.
+  assert.equal(row.endedAt, null);
+  // One board is not a result: nothing settles.
   assert.equal(writers.rating.length, 0);
   assert.equal(writers.trophy.length, 0);
   assert.equal(writers.queue.filter((q) => q.status === "completed").length, 0);
 });
 
-test("logic: after an expansion, play continues on the new empty boards", { skip: SKIP_REASON }, async (t) => {
+test("logic: a drawn mini-board locks and play continues on the required board", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
-  seedMatch(fake);
-  await playRoute(fake, A_DRAW); // nine plies: O (BOB) is to move at stage 2
+  seedMatch(fake, {
+    ply: 8,
+    gameState: craftState({
+      boards: { 7: fixtureBoard(NEAR_DRAW) },
+      currentTurn: "player1",
+      ply: 8,
+      nextBoard: 7,
+    }),
+  });
 
-  // Board 0 is locked; a move on it is refused. The three new boards accept.
-  const locked = await move({ boardIndex: 0, cellIndex: 0, expectedVersion: liveVersion(fake) }, { as: BOB });
+  const drawn = await move({ boardIndex: 7, cellIndex: 1, expectedVersion: 100 }, { as: ALICE });
+  assert.equal(drawn.status, 200);
+  assert.equal(drawn.json.data.matchCompleted, false);
+  const row = rowOf(fake);
+  assert.equal(row.gameState.boards[7].control, "draw");
+  assert.equal(row.gameState.boards[7].winningLine, null);
+  assert.equal(row.gameState.nextBoard, 1, "cell 1 sends O to board 1");
+
+  // Play continues: the drawn board is locked, board 1 accepts.
+  const locked = await move({ boardIndex: 7, cellIndex: 0, expectedVersion: liveVersion(fake) }, { as: BOB });
   assert.equal(locked.status, 409);
-  assert.match(locked.json.error, /locked/i);
-
   const opened = await move({ boardIndex: 1, cellIndex: 4, expectedVersion: liveVersion(fake) }, { as: BOB });
   assert.equal(opened.status, 200);
-  assert.equal(opened.json.data.move.boardIndex, 1);
-  const row = rowOf(fake);
-  assert.equal(row.gameState.boards[1].cells[4], "O");
-  assert.equal(row.gameState.boards[0].control, "draw", "the original board is untouched");
-  assert.equal(row.gameState.stage, 2);
-  assert.equal(row.gameState.ply, 10);
+  assert.equal(rowOf(fake).gameState.boards[1].cells[4], "O");
+  assert.equal(rowOf(fake).gameState.boards[7].control, "draw");
+  assert.equal(writers.rating.length, 0, "a board draw is not a result");
+});
+
+test("logic: a resolved destination frees the next move, and the claimed board still refuses", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  seedMatch(fake, {
+    ply: 4,
+    gameState: craftState({
+      boards: {
+        0: fixtureBoard(["X", "O", null, null, null, null, null, null, null]),
+        5: fixtureBoard(X_BOARD),
+      },
+      currentTurn: "player1",
+      ply: 4,
+      nextBoard: 0,
+    }),
+  });
+
+  // X plays cell 5, whose destination (board 5) is already claimed → free choice.
+  const opened = await move({ boardIndex: 0, cellIndex: 5, expectedVersion: 100 }, { as: ALICE });
+  assert.equal(opened.status, 200);
+  assert.equal(opened.json.data.nextBoard, null);
+  assert.ok(opened.json.data.match.playableBoards.includes(3));
+
+  const claimed = await move({ boardIndex: 5, cellIndex: 0, expectedVersion: liveVersion(fake) }, { as: BOB });
+  assert.equal(claimed.status, 409);
+  assert.match(claimed.json.error, /decided/i);
+
+  const free = await move({ boardIndex: 3, cellIndex: 0, expectedVersion: liveVersion(fake) }, { as: BOB });
+  assert.equal(free.status, 200);
+  assert.equal(rowOf(fake).gameState.boards[3].cells[0], "O");
 });
 
 // ════════════════════════════════════════════════════════════════════════
@@ -867,7 +1052,7 @@ test("concurrency: two simultaneous moves — the row lock commits exactly one",
   session.queue = [ALICE, BOB];
   const [a, b] = await Promise.all([
     move({ boardIndex: 0, cellIndex: 0, expectedVersion: 1 }),
-    move({ boardIndex: 0, cellIndex: 4, expectedVersion: 1 }),
+    move({ boardIndex: 4, cellIndex: 4, expectedVersion: 1 }),
   ]);
 
   assert.equal(fake.state.maxConcurrent, 1, "the row lock serialised the two writes");
@@ -877,7 +1062,7 @@ test("concurrency: two simultaneous moves — the row lock commits exactly one",
   assert.equal(rejected.length, 1);
   assert.equal(rejected[0].status, 409, "the loser is a clean conflict");
   assert.equal(fake.rowsOf(ticTacToeMoves).length, 1, "one mark was persisted");
-  assert.equal(rowOf(fake).gameState.boards[0].cells.filter(Boolean).length, 1);
+  assert.equal(rowOf(fake).gameState.boards.flatMap((b2) => b2.cells).filter(Boolean).length, 1);
   assert.equal(writers.rating.length, 0, "an unfinished match settled nothing");
 });
 
@@ -896,7 +1081,7 @@ test("concurrency: a duplicated move request cannot apply twice", { skip: SKIP_R
   assert.equal([first, second].filter((r) => r.status === 409).length, 1);
   assert.equal(fake.rowsOf(ticTacToeMoves).length, 1);
   const row = rowOf(fake);
-  assert.equal(row.gameState.boards[0].cells.filter(Boolean).length, 1);
+  assert.equal(row.gameState.boards[0].cells[2], "X");
   assert.equal(row.gameState.ply, 1, "the ply advanced once, never twice");
 });
 
@@ -929,21 +1114,20 @@ test("concurrency: a storage-level duplicate (unique violation) is a clean 409",
 
 test("concurrency: repeated completion and repeated settlement happen exactly once", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
-  seedMatch(fake);
-  await playRoute(fake, A_WIN);
+  seedMatch(fake, { gameState: xOneMoveFromWinning(), ply: 20 });
+  assert.equal((await move({ boardIndex: 2, cellIndex: 2, expectedVersion: 100 }, { as: ALICE })).status, 200);
 
   assert.equal(writers.rating.length, 1, "settled once");
   assert.equal(writers.trophy.length, 1);
   const movesAfter = fake.rowsOf(ticTacToeMoves).length;
   const writesAfter = fake.state.writes.length;
 
-  // Hammer the board from both seats…
+  // Hammer the board from both seats, and the forfeit path too.
   for (let i = 0; i < 20; i += 1) {
     const who = i % 2 === 0 ? BOB : ALICE;
-    const res = await move({ boardIndex: 0, cellIndex: 6, expectedVersion: liveVersion(fake) }, { as: who });
+    const res = await move({ boardIndex: 6, cellIndex: 6, expectedVersion: liveVersion(fake) }, { as: who });
     assert.equal(res.status, 409, `retry ${i}`);
   }
-  // …and the forfeit path too.
   assert.equal((await forfeit({ as: BOB })).status, 409);
   assert.equal((await forfeit({ as: ALICE })).status, 409);
 
@@ -1007,21 +1191,29 @@ test("authority: the disconnect endpoint is token-bound and cannot be forged", {
 test("multiplayer: both seats read the same authoritative board, with mirrored viewer state", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   seedMatch(fake);
-  await playRoute(fake, [0, 4, 8]); // X:0,8 ; O:4 — now O (BOB) to move
+  // X(0,0) → O must answer board 0 at cell 4 → X must answer board 4 at cell 8.
+  await playRoute(fake, [
+    { boardIndex: 0, cellIndex: 0 },
+    { boardIndex: 0, cellIndex: 4 },
+    { boardIndex: 4, cellIndex: 8 },
+  ]);
 
   const asAlice = (await getMatch({ as: ALICE })).json.data;
   const asBob = (await getMatch({ as: BOB })).json.data;
 
   // The game state is IDENTICAL for both viewers.
-  assert.deepEqual(asAlice.board, asBob.board);
+  assert.deepEqual(asAlice.boards, asBob.boards);
   assert.equal(asAlice.version, asBob.version);
   assert.equal(asAlice.ply, asBob.ply);
   assert.equal(asAlice.status, asBob.status);
   assert.equal(asAlice.currentTurn, asBob.currentTurn);
-  assert.equal(asAlice.winningLine, asBob.winningLine);
+  assert.equal(asAlice.nextBoard, asBob.nextBoard);
+  assert.deepEqual(asAlice.playableBoards, asBob.playableBoards);
+  assert.equal(asAlice.winningBoards, asBob.winningBoards);
   assert.equal(asAlice.result, asBob.result);
   assert.equal(asAlice.player1Id, asBob.player1Id);
   assert.equal(asAlice.player2Id, asBob.player2Id);
+  assert.equal(asAlice.legacyState, false);
 
   // Only the per-viewer projection is mirrored.
   assert.equal(asAlice.viewerSeat, "player1");
@@ -1032,9 +1224,13 @@ test("multiplayer: both seats read the same authoritative board, with mirrored v
   assert.equal(asBob.isViewerTurn, true);
   assert.equal(asAlice.viewerCanMove, false);
   assert.equal(asBob.viewerCanMove, true);
+  // The destination the next seat must play is explicit.
+  assert.equal(asBob.nextBoard, 8);
+
   // The move log is the server's, in ply order, for both viewers.
   assert.equal(asAlice.moves.length, 3);
   assert.deepEqual(asBob.moves.map((m) => m.cellIndex), [0, 4, 8]);
+  assert.deepEqual(asBob.moves.map((m) => m.boardIndex), [0, 0, 4]);
   assert.equal(asAlice.players.player1.name, "Alice");
   assert.equal(asBob.players.player2.name, "Bob");
 });
@@ -1042,25 +1238,34 @@ test("multiplayer: both seats read the same authoritative board, with mirrored v
 test("multiplayer: a reconnect (or a missed realtime event) recovers the CURRENT state", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   seedMatch(fake);
-  await playRoute(fake, [0, 4, 1, 5]); // X:0,1 ; O:4,5
+  // X(0,0) → O(0,4) → X(4,1) → O(1,5): a real forced-destination chain.
+  await playRoute(fake, [
+    { boardIndex: 0, cellIndex: 0 },
+    { boardIndex: 0, cellIndex: 4 },
+    { boardIndex: 4, cellIndex: 1 },
+    { boardIndex: 1, cellIndex: 5 },
+  ]);
 
   // No socket push is ever delivered in this test — a fresh GET is the whole
   // recovery path, and it must reflect the latest committed state.
   const snap = (await getMatch({ as: ALICE })).json.data;
   assert.equal(snap.ply, 4);
   assert.equal(snap.version, 5);
-  assert.deepEqual(snap.board.slice(0, 2), ["X", "X"]);
-  assert.equal(snap.board[4], "O");
-  assert.equal(snap.board[5], "O");
-  assert.equal(snap.board[2], null);
+  assert.equal(snap.boards[0].cells[0], "X");
+  assert.equal(snap.boards[0].cells[4], "O");
+  assert.equal(snap.boards[4].cells[1], "X");
+  assert.equal(snap.boards[1].cells[5], "O");
+  assert.equal(snap.boards[0].cells[2], null);
+  assert.equal(snap.nextBoard, 5, "cell 5 sends X to board 5");
+  assert.deepEqual(snap.playableBoards, [5]);
   assert.equal(snap.moves.length, 4, "the move log is server-derived");
   assert.equal(snap.isViewerTurn, true, "X to move again (ply 4)");
 });
 
 test("multiplayer: a decided match is terminal for both viewers and accepts no further move", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
-  seedMatch(fake);
-  await playRoute(fake, A_WIN);
+  seedMatch(fake, { gameState: xOneMoveFromWinning(), ply: 20 });
+  await move({ boardIndex: 2, cellIndex: 2, expectedVersion: 100 }, { as: ALICE });
 
   for (const who of [ALICE, BOB]) {
     const snap = (await getMatch({ as: who })).json.data;
@@ -1069,7 +1274,8 @@ test("multiplayer: a decided match is terminal for both viewers and accepts no f
     assert.equal(snap.viewerCanMove, false, `no move offered to ${who}`);
     assert.equal(snap.result, RESULT.PLAYER1);
     assert.equal(snap.winnerId, ALICE);
-    assert.deepEqual(snap.winningLine, [0, 1, 2]);
+    assert.deepEqual(snap.winningBoards, [0, 1, 2]);
+    assert.equal(snap.nextBoard, null);
     // The settled row is the same for both seats; only the viewer's reading
     // of it differs, derived from their own seat against the server's result.
     const perspective = snap.viewerSeat === snap.result ? "win" : "loss";
@@ -1077,7 +1283,7 @@ test("multiplayer: a decided match is terminal for both viewers and accepts no f
   }
 
   assert.equal(
-    (await move({ boardIndex: 0, cellIndex: 6, expectedVersion: liveVersion(fake) }, { as: BOB })).status,
+    (await move({ boardIndex: 6, cellIndex: 6, expectedVersion: liveVersion(fake) }, { as: BOB })).status,
     409,
   );
 });
@@ -1107,16 +1313,19 @@ test("multiplayer: a cancelled lobby is terminal and unrated for its creator", {
 test("wire: a move broadcast is an invalidation hint, never an authoritative board", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   seedMatch(fake);
-  await playRoute(fake, A_WIN);
+  await playRoute(fake, FORCED_CHAIN);
 
   assert.ok(broadcasts.length > 0, "the routes did broadcast");
   for (const { room, event, payload } of broadcasts) {
     assert.equal(room, `tic-tac-toe:match:${MATCH_ID}`, "every push targets the match room");
     assert.equal(event, "lobby:updated");
-    // The hint may name the turn / status / result, but it must NOT carry a
-    // board the client could mistake for the source of truth.
+    // The hint may name the turn / status / destination / result, but it must
+    // NOT carry a board the client could mistake for the source of truth.
     assert.equal("board" in payload, false, "the board is never pushed");
+    assert.equal("boards" in payload, false, "nor the lattice");
     assert.equal("winningLine" in payload, false, "nor the winning line");
     assert.equal("moves" in payload, false, "nor the move log");
+    assert.equal("stage" in payload, false, "the stage no longer exists");
+    assert.ok("nextBoard" in payload, "the destination hint is explicit");
   }
 });

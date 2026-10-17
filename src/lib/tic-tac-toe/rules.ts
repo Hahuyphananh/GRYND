@@ -1,46 +1,48 @@
 // src/lib/tic-tac-toe/rules.ts
 //
-// The pure Mega Tic-Tac-Toe rules engine. NO database, NO I/O, NO randomness —
-// every function here is a deterministic transformation of the authoritative
+// The pure Ultimate Tic-Tac-Toe rules engine: NO database, NO I/O, NO randomness.
+// Every function here is a deterministic transformation of the authoritative
 // state, which makes the turn/move/match lifecycle unit-testable in isolation
 // and keeps the API routes and the store thin.
 //
 // TRUST BOUNDARY: the ONLY player-authored values that reach this module are
-// `boardIndex` and `cellIndex`. The mark, the boards, whose turn it is, every
-// board's control, the stage, the Mega line, the tiebreak and the match result
-// are all derived here. Nothing reads a client-supplied winner, result, board,
-// control, stage or completion flag — no such value is ever passed in.
+// `boardIndex` and `cellIndex` — and even `boardIndex` is only ever ACCEPTED
+// when it is the destination the rules derived from the opponent's previous
+// move. The mark, the boards, each board's control, whose turn it is, the
+// required destination, the lattice line, the winner and the match result are
+// all derived here. Nothing reads a client-supplied winner, result, board
+// owner, turn, destination or completion flag — no such value is ever passed in.
 //
 // ── THE RULES, EXACTLY ────────────────────────────────────────────────────
 //
-//   • Stage 1 is one ordinary 3x3 board. A normal line WINS THE MATCH; a
-//     full-board draw EXPANDS to stage 2.
-//   • Stages 2 and 3 play every board independently. A line decides CONTROL of
-//     that one board; it never ends the match on its own.
-//   • Controlling three collinear boards (a row, a column or a diagonal of the
-//     lattice) all with the SAME mark wins the match immediately.
-//   • A Mega line needs three boards, so a 2x2 stage 2 can never complete one:
-//     once all four of its boards resolve the match expands to stage 3.
-//   • When all nine stage-3 boards resolve with no Mega line, the TIEBREAK
-//     decides the match; if the tiebreak is itself tied, a sudden-death 3x3
-//     board is played (repeatedly, until one is won).
+//   • Nine mini-boards, always arranged in a fixed 3x3 lattice (slots 0..8).
+//   • X (player1) moves first. Each turn places exactly one mark.
+//   • Three in a row/column/diagonal INSIDE a mini-board claims that board.
+//   • A mini-board that fills with no line is a DRAW and stays locked.
+//   • The CELL index of a move is the mini-board the opponent must play next.
+//     If that destination is already resolved (claimed or drawn), the opponent
+//     may choose ANY unfinished mini-board.
+//   • Three collinear claimed mini-boards win the match IMMEDIATELY, in the
+//     same transition that completed the line.
+//   • All nine mini-boards resolved with no lattice line is a DRAW.
+//   • Once the match is finished no further move is accepted.
 //
-// There is no randomness anywhere: the state needs no seed, and `applyMove` is
-// a pure function of (state, seat, boardIndex, cellIndex).
+// The opening position is a constant — there is no seed, no dealt state and no
+// randomness — so `applyMove` is a pure function of
+// (state, seat, boardIndex, cellIndex) and `replayMoves` can rebuild a match
+// from its move log with no second implementation to drift.
 
 import {
   BOARD_SIZE,
   CELL_COUNT,
   FIRST_SEAT,
+  LATTICE_LINES,
+  LATTICE_SIZE,
+  LATTICE_SLOTS,
   MARKS,
   MATCH_STATUS,
   MAX_BOARDS,
-  MAX_MEGA_STAGE,
-  MEGA_SIZE,
-  MEGA_WINNING_LINES,
   RESULT,
-  STAGE_BOARD_SLOTS,
-  SUDDEN_DEATH_BOARD_INDEX,
   WINNING_LINES,
 } from "./constants";
 import type {
@@ -48,13 +50,11 @@ import type {
   Cell,
   Mark,
   MatchResult,
-  MegaStage,
   MoveRecord,
   Seat,
   Seats,
   SmallBoard,
   TicTacToeState,
-  TiebreakSummary,
 } from "./types";
 
 // ── Seats and marks ───────────────────────────────────────────────────────
@@ -112,57 +112,59 @@ function emptyCells(): Cell[] {
   return Array.from({ length: CELL_COUNT }, () => null);
 }
 
-/** A fresh, empty, playable 3x3 board. */
+/** A fresh, empty, playable mini-board. */
 export function createEmptyBoard(): SmallBoard {
   return { cells: emptyCells(), plies: 0, control: "active", winningLine: null };
 }
 
 /**
- * The lattice slot indices in play at `stage`, normalised to a real stage.
- * Always a NEW array, so a caller can never mutate the frozen constant.
- */
-export function stageBoardSlots(stage: unknown): number[] {
-  const raw = Math.trunc(Number(stage) || 1);
-  const key = (raw < 1 ? 1 : raw > MAX_MEGA_STAGE ? MAX_MEGA_STAGE : raw) as 1 | 2 | 3;
-  return [...STAGE_BOARD_SLOTS[key]];
-}
-
-/**
- * A fresh match. Takes no arguments at all — Mega Tic-Tac-Toe has no seed, no
- * dealt state and no randomness, so the opening position is a constant.
+ * A fresh match: NINE empty mini-boards and no required destination.
  *
- * Only slot 0 exists at stage 1; the other eight slots are `null` placeholders
- * that an expansion materialises in place.
+ * Takes no arguments at all — Ultimate Tic-Tac-Toe has no seed, no dealt state
+ * and no randomness, so the opening position is a constant.
  */
 export function createInitialState(): TicTacToeState {
-  const boards: (SmallBoard | null)[] = Array.from({ length: MAX_BOARDS }, () => null);
-  boards[0] = createEmptyBoard();
   return {
     version: 1,
     phase: "playing",
-    stage: 1,
-    boards,
+    boards: LATTICE_SLOTS.map(() => createEmptyBoard()),
     currentTurn: FIRST_SEAT,
     ply: 0,
     winner: null,
     winningBoards: null,
-    tiebreak: null,
-    suddenDeath: null,
+    nextBoard: null,
     lastMove: null,
   };
 }
 
 /**
- * Grow the match to `stage`, MATERIALISING any slot that stage adds.
+ * The nine boards of a state, normalised: every slot is a real board, and each
+ * board's `control` / `winningLine` / `plies` are RE-DERIVED from its cells.
  *
- * Existing boards are never touched, moved or re-indexed — this is what
- * guarantees "all existing board states are preserved" across an expansion.
+ * Two deliberate consequences:
+ *
+ *   1. The denormalised fields are never trusted. Even a tampered or stale
+ *      `game_state` blob cannot declare a board owned, so no caller can smuggle
+ *      a board owner or a winner past the rules engine.
+ *   2. A `null` slot — which only a legacy expansion-era row can hold, since
+ *      the engine now always writes nine boards — reads as an empty, active
+ *      mini-board instead of crashing or deadlocking the match.
+ *
+ * Always returns fresh objects, so a caller can mutate the result freely.
  */
-function advanceStage(state: TicTacToeState, stage: MegaStage): void {
-  state.stage = stage;
-  for (const slot of stageBoardSlots(stage)) {
-    if (!state.boards[slot]) state.boards[slot] = createEmptyBoard();
-  }
+export function latticeOf(state: TicTacToeState): SmallBoard[] {
+  const raw = Array.isArray(state?.boards) ? state.boards : [];
+  return LATTICE_SLOTS.map((slot) => {
+    const board = raw[slot];
+    const cells = isWellFormedBoard(board?.cells) ? [...board!.cells] : emptyCells();
+    const { control, winningLine } = resolveBoardControl(cells);
+    return {
+      cells,
+      plies: cells.reduce((count, cell) => (cell === null ? count : count + 1), 0),
+      control,
+      winningLine,
+    };
+  });
 }
 
 // ── Board queries ─────────────────────────────────────────────────────────
@@ -182,9 +184,10 @@ export function isValidCellIndex(value: unknown): boolean {
 }
 
 /**
- * True when `value` is a lattice slot (0..MAX_BOARDS-1), strictly typed.
- * The sudden-death sentinel (-1) is deliberately NOT a valid slot; it is
- * addressed explicitly by `SUDDEN_DEATH_BOARD_INDEX`.
+ * True when `value` is a lattice slot (0..8), strictly typed.
+ *
+ * There is no special sentinel in Ultimate: every legal move addresses one of
+ * the nine real mini-boards.
  */
 export function isValidBoardIndex(value: unknown): boolean {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 && value < MAX_BOARDS;
@@ -237,133 +240,188 @@ export function resolveBoardControl(cells: Cell[]): {
   return { control: "active", winningLine: null };
 }
 
-// ── Stage / Mega queries ──────────────────────────────────────────────────
-
-/**
- * The Mega lines that are LIVE at `stage`: a line only counts once every one of
- * its three slots exists. At stage 2 the live set is EMPTY, which is the formal
- * reason a 2x2 can never produce a Mega winner.
- */
-export function megaLinesForStage(stage: unknown): number[][] {
-  const present = new Set(stageBoardSlots(stage));
-  return MEGA_WINNING_LINES.filter((line) => line.every((slot) => present.has(slot))).map(
-    (line) => [...line]
-  );
+/** True when a mini-board can no longer accept a move (claimed or drawn). */
+export function isBoardResolved(board: SmallBoard | null | undefined): boolean {
+  return Boolean(board) && board!.control !== "active";
 }
 
+// ── Lattice queries ───────────────────────────────────────────────────────
+
 /**
- * The first Mega line of three boards controlled by one mark, or null.
+ * The first lattice line of three boards CLAIMED by one mark, or null.
  *
- * Reads only each board's `control`, so a still-active or drawn slot can never
- * form a line.
+ * Reads only each board's (derived) `control`, so an active or drawn slot can
+ * never form a line. Enumerates all eight lines, so a win is detected the
+ * instant the final board of any line is claimed.
  */
-export function findMegaWin(
-  boards: (SmallBoard | null)[],
-  stage: unknown
+export function findLatticeWin(
+  boards: (SmallBoard | null)[] | TicTacToeState
 ): { mark: Mark; line: number[] } | null {
-  if (!Array.isArray(boards)) return null;
-  for (const line of megaLinesForStage(stage)) {
-    const control = boards[line[0]]?.control;
+  const lattice = toLattice(boards);
+  for (const line of LATTICE_LINES) {
+    const control = lattice[line[0]].control;
     if (control !== "X" && control !== "O") continue;
-    if (line.every((slot) => boards[slot]?.control === control)) {
+    if (line.every((slot) => lattice[slot].control === control)) {
       return { mark: control, line: [...line] };
     }
   }
   return null;
 }
 
-/** True once every board in play at `stage` has resolved (won or drawn). */
-export function allStageBoardsResolved(boards: (SmallBoard | null)[], stage: unknown): boolean {
-  return stageBoardSlots(stage).every((slot) => {
-    const board = boards[slot];
-    return Boolean(board) && board!.control !== "active";
-  });
+/** True once every one of the nine mini-boards has resolved (won or drawn). */
+export function allBoardsResolved(boards: (SmallBoard | null)[] | TicTacToeState): boolean {
+  return toLattice(boards).every((board) => board.control !== "active");
+}
+
+/** Accept either a raw board array or a whole state. */
+function toLattice(boards: (SmallBoard | null)[] | TicTacToeState): SmallBoard[] {
+  if (Array.isArray(boards)) return latticeOf({ boards } as TicTacToeState);
+  return latticeOf(boards);
 }
 
 /**
- * The slots in play at the state's current stage that can STILL accept a move.
+ * The mini-boards that can STILL accept a move: all nine slots whose control is
+ * still "active".
  *
- * Derived, never stored: a board is active while it exists and its `control` is
- * still "active". A locked (won or drawn) board drops out — which is exactly
- * what makes "a completed board cannot receive more moves" a property of the
- * derived board set rather than a rule the caller has to remember.
+ * Derived, never stored — which is what makes "a resolved board cannot receive
+ * more moves" a property of the derived board set rather than a rule a caller
+ * has to remember.
  */
 export function activeBoardIndexes(state: TicTacToeState): number[] {
-  return stageBoardSlots(state?.stage).filter((slot) => state.boards?.[slot]?.control === "active");
+  const lattice = latticeOf(state);
+  return LATTICE_SLOTS.filter((slot) => lattice[slot].control === "active");
 }
 
-/** The slots in play at the state's current stage that are LOCKED (won or drawn). */
+/** The mini-boards that are LOCKED (claimed or drawn). */
 export function completedBoardIndexes(state: TicTacToeState): number[] {
-  return stageBoardSlots(state?.stage).filter((slot) => {
-    const board = state.boards?.[slot];
-    return Boolean(board) && board!.control !== "active";
-  });
+  const lattice = latticeOf(state);
+  return LATTICE_SLOTS.filter((slot) => lattice[slot].control !== "active");
 }
 
 /**
- * One board's control: a mark when it is won, "draw" when it is full with no
- * line, "active" while still playable — or null when the slot is not in play.
+ * One board's control: a mark when it is claimed, "draw" when it is full with no
+ * line, "active" while still playable.
  */
 export function boardControlAt(state: TicTacToeState, boardIndex: number): BoardControl | null {
-  const board = state.boards?.[boardIndex];
-  return board ? board.control : null;
+  if (!isValidBoardIndex(boardIndex)) return null;
+  return latticeOf(state)[boardIndex].control;
 }
 
 /**
- * The final tiebreaker, evaluated only when stage 3 resolves with no Mega line.
+ * The mini-board the seat to move MUST play, or null when it may choose freely.
  *
- * For EVERY resolved board it counts X's cells and O's cells; the greater count
- * controls that board, an equal count leaves it NEUTRAL. Then:
- *
- *   1. the player controlling the most boards wins;
- *   2. otherwise the player with the most cells across all nine boards wins;
- *   3. otherwise the match needs a sudden-death board (`winner: null`).
- *
- * NOTE: control here is by CELL COUNT, not by who completed a line. Because the
- * global turn order alternates while players choose WHICH board to play, a
- * single board's cells are not filled in strict X/O alternation — either mark
- * can end up with more cells on a board, so either mark can win rule 1. A board
- * with an equal count (possible for both a late X win and an O win) is neutral.
+ * The stored `nextBoard` is only honoured while that destination is still
+ * unfinished: a destination that has since resolved (or a legacy row with no
+ * `nextBoard` at all) yields a free choice. That single normalisation is what
+ * implements "if the destination is already resolved, play anywhere".
  */
-export function evaluateTiebreak(boards: (SmallBoard | null)[]): TiebreakSummary {
-  let xBoards = 0;
-  let oBoards = 0;
-  let neutralBoards = 0;
-  let xCells = 0;
-  let oCells = 0;
-
-  for (const board of boards) {
-    if (!board || board.control === "active") continue;
-    const x = countCells(board.cells, "X");
-    const o = countCells(board.cells, "O");
-    xCells += x;
-    oCells += o;
-    if (x > o) xBoards += 1;
-    else if (o > x) oBoards += 1;
-    else neutralBoards += 1;
-  }
-
-  const base = { xBoards, oBoards, neutralBoards, xCells, oCells };
-  if (xBoards > oBoards) {
-    return { ...base, decidedBy: "boards", winner: "player1" };
-  }
-  if (oBoards > xBoards) {
-    return { ...base, decidedBy: "boards", winner: "player2" };
-  }
-  if (xCells > oCells) {
-    return { ...base, decidedBy: "cells", winner: "player1" };
-  }
-  if (oCells > xCells) {
-    return { ...base, decidedBy: "cells", winner: "player2" };
-  }
-  return { ...base, decidedBy: "sudden-death", winner: null };
+export function requiredBoardIndex(state: TicTacToeState): number | null {
+  const raw = state?.nextBoard;
+  if (!isValidBoardIndex(raw)) return null;
+  return boardControlAt(state, raw as number) === "active" ? (raw as number) : null;
 }
 
-/** The sudden-death board currently in play, or null when there is none. */
-export function currentSuddenDeathBoard(state: TicTacToeState): SmallBoard | null {
-  const list = state.suddenDeath?.boards;
-  if (!Array.isArray(list) || list.length === 0) return null;
-  return list[list.length - 1];
+/**
+ * Every board the seat to move is ALLOWED to address: the single required
+ * destination, or all unfinished boards when the choice is free.
+ */
+export function playableBoardIndexes(state: TicTacToeState): number[] {
+  const required = requiredBoardIndex(state);
+  if (required !== null) return [required];
+  return activeBoardIndexes(state);
+}
+
+/** True when a move on `boardIndex` is addressable in the current state. */
+export function isPlayableBoard(state: TicTacToeState, boardIndex: unknown): boolean {
+  return playableBoardIndexes(state).includes(boardIndex as number);
+}
+
+/**
+ * The destination a move on `cellIndex` hands the opponent: the board with that
+ * same index — or null (free choice) when that board is already resolved.
+ */
+export function nextBoardForCell(
+  boards: (SmallBoard | null)[] | TicTacToeState,
+  cellIndex: number
+): number | null {
+  if (!isValidCellIndex(cellIndex)) return null;
+  const lattice = toLattice(boards);
+  return lattice[cellIndex].control === "active" ? cellIndex : null;
+}
+
+/**
+ * True when `state` is a structurally sound authoritative state.
+ *
+ * Deliberately shallow: it checks the SHAPE the engine indexes into (nine slots,
+ * well-formed cells, a legal phase/seat, integer counters), NOT the denormalised
+ * control/winningLine fields — those are always re-derived by `latticeOf`, so a
+ * stale value there can never change a result. A `null` slot is allowed (see
+ * `latticeOf`); anything else malformed is refused rather than guessed at.
+ */
+export function isWellFormedState(state: unknown): state is TicTacToeState {
+  if (!state || typeof state !== "object") return false;
+  const candidate = state as TicTacToeState;
+  if (candidate.phase !== "playing" && candidate.phase !== "finished") return false;
+  if (candidate.currentTurn !== "player1" && candidate.currentTurn !== "player2") return false;
+  if (!Number.isInteger(candidate.version) || candidate.version < 0) return false;
+  if (!Number.isInteger(candidate.ply) || candidate.ply < 0) return false;
+  if (!Array.isArray(candidate.boards) || candidate.boards.length !== MAX_BOARDS) return false;
+  for (const board of candidate.boards) {
+    if (board === null || board === undefined) continue;
+    if (typeof board !== "object" || !isWellFormedBoard(board.cells)) return false;
+  }
+  if (
+    candidate.nextBoard !== null &&
+    candidate.nextBoard !== undefined &&
+    !isValidBoardIndex(candidate.nextBoard)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+// ── Legacy (expansion-era) states ──────────────────────────────────────────
+
+/**
+ * True when a persisted `game_state` blob was written by the OLD, expansion-era
+ * engine ("Mega Tic-Tac-Toe": one board that grew to four, then nine).
+ *
+ * This is the compatibility boundary for in-flight matches across the rules
+ * change, and it is deliberately detect-only: the rules engine never plays such
+ * a state, because half of its meaning (stage, board materialisation, the
+ * tiebreak, sudden death) no longer exists. A legacy match with NO moves is
+ * re-seeded to the current opening position (nothing is lost); one with moves
+ * already played is VOIDED with both stakes refunded, never reinterpreted as a
+ * nine-board Ultimate position.
+ *
+ * The markers are exhaustive and cheap:
+ *
+ *   • `stage` / `tiebreak` / `suddenDeath` — keys the old engine always wrote
+ *     and the current one never does;
+ *   • a missing `nextBoard` — every state this engine writes has that key;
+ *   • a `null`/absent slot or a wrong-length lattice — the current engine always
+ *     materialises all nine mini-boards.
+ *
+ * A structurally malformed blob (e.g. a non-array `boards`) is NOT reported
+ * here; `isWellFormedState` rejects it, and the store treats both cases the same
+ * way (void + refund) so neither can lock a match forever.
+ */
+export function isExpansionEraState(state: unknown): boolean {
+  if (!state || typeof state !== "object") return false;
+  const raw = state as Record<string, unknown>;
+  // The unmistakable markers: keys only the old engine wrote.
+  for (const key of ["stage", "tiebreak", "suddenDeath"]) {
+    if (Object.prototype.hasOwnProperty.call(raw, key)) return true;
+  }
+  const boards = raw.boards;
+  // Not a nine-slot lattice at all — that is "unreadable", not "old".
+  // `isWellFormedState` is the authority for that distinction; this predicate
+  // only speaks about blobs that ARE lattice-shaped.
+  if (!Array.isArray(boards) || boards.length !== MAX_BOARDS) return false;
+  // Every state this engine writes carries `nextBoard`, and materialises all
+  // nine boards. A shape-compatible blob missing either is pre-Ultimate.
+  if (!Object.prototype.hasOwnProperty.call(raw, "nextBoard")) return true;
+  return boards.some((board) => board === null || board === undefined);
 }
 
 // ── Validation ────────────────────────────────────────────────────────────
@@ -375,7 +433,7 @@ export function currentSuddenDeathBoard(state: TicTacToeState): SmallBoard | nul
 export type MoveValidation = {
   ok: boolean;
   seat?: Seat;
-  /** The small board the move targets, once resolved. */
+  /** The mini-board the move targets, once resolved. */
   board?: SmallBoard;
   error?: string;
   status?: number;
@@ -385,19 +443,19 @@ export type MoveValidation = {
  * Validate a move request against the authoritative state. Everything the
  * client is NOT allowed to influence is checked here, in this order:
  *
- *   1. the match is not already finished            (409)
- *   2. the caller holds a seat                       (403)
- *   3. it is the caller's turn                       (409)
- *   4. the board index addresses a PLAYABLE board    (400 / 409)
- *   5. the cell index is a valid index               (400)
- *   6. the cell is empty                             (409)
- *   7. the client is not acting on stale state       (409)
+ *   1. the state is well formed                    (500)
+ *   2. the match is not already finished            (409)
+ *   3. the caller holds a seat                       (403)
+ *   4. it is the caller's turn                       (409)
+ *   5. the board index is a real slot                (400)
+ *   6. it is the REQUIRED destination, when there is one (409)
+ *   7. that mini-board is still unfinished           (409)
+ *   8. the cell index is a valid index               (400)
+ *   9. the cell is empty                             (409)
+ *  10. the client is not acting on stale state       (409)
  *
  * The participant and match-status checks live in the store (they need the
  * row), so this function only sees a caller who already holds a seat.
- *
- * Sudden death is its own addressing mode: while it is active the ONLY valid
- * `boardIndex` is `SUDDEN_DEATH_BOARD_INDEX`.
  */
 export function validateMove({
   state,
@@ -412,7 +470,7 @@ export function validateMove({
   cellIndex: unknown;
   expectedVersion?: unknown;
 }): MoveValidation {
-  if (!state || typeof state !== "object") {
+  if (!isWellFormedState(state)) {
     return { ok: false, error: "Match state is unavailable", status: 500 };
   }
   if (state.phase === "finished") {
@@ -425,49 +483,37 @@ export function validateMove({
     return { ok: false, error: "It is not your turn", status: 409 };
   }
 
-  // ── Which board does this move target? ─────────────────────────────────
-  let target: SmallBoard | null = null;
-  if (state.suddenDeath) {
-    if (boardIndex !== SUDDEN_DEATH_BOARD_INDEX) {
-      return {
-        ok: false,
-        error: "The match is in sudden death — play the sudden-death board",
-        status: 409,
-      };
-    }
-    target = currentSuddenDeathBoard(state);
-    if (!target) {
-      return { ok: false, error: "Match state is unavailable", status: 500 };
-    }
-  } else {
-    if (!isValidBoardIndex(boardIndex)) {
-      return {
-        ok: false,
-        error: `Board index must be an integer in [0, ${MAX_BOARDS - 1}]`,
-        status: 400,
-      };
-    }
-    const slot = state.boards?.[boardIndex as number] ?? null;
-    if (!slot) {
-      return {
-        ok: false,
-        error: "That board is not in play yet",
-        status: 409,
-      };
-    }
-    if (slot.control !== "active") {
-      return { ok: false, error: "That board is already locked", status: 409 };
-    }
-    target = slot;
-  }
-
-  if (!isWellFormedBoard(target.cells)) {
-    return { ok: false, error: "Match state is unavailable", status: 500 };
-  }
-
+  // ── Is this the board the rules allow? ─────────────────────────────────
+  //
   // Strict type check, not a Number() coercion: `Number("")`, `Number(true)`
   // and `Number([])` are all 0, which would let a malformed body through as a
-  // silent "place at cell 0".
+  // silent "board 0".
+  if (!isValidBoardIndex(boardIndex)) {
+    return {
+      ok: false,
+      error: `Board index must be an integer in [0, ${MAX_BOARDS - 1}]`,
+      status: 400,
+    };
+  }
+  const index = boardIndex as number;
+
+  // The FORCED DESTINATION is the rule a client most often gets wrong, so it is
+  // reported before anything about the board's own state: the destination comes
+  // from the opponent's previous move and is never negotiable.
+  const required = requiredBoardIndex(state);
+  if (required !== null && index !== required) {
+    return {
+      ok: false,
+      error: `Your move must be played in board ${required}`,
+      status: 409,
+    };
+  }
+
+  const target = latticeOf(state)[index];
+  if (target.control !== "active") {
+    return { ok: false, error: "That mini-board is already decided", status: 409 };
+  }
+
   if (!isValidCellIndex(cellIndex)) {
     return {
       ok: false,
@@ -475,19 +521,19 @@ export function validateMove({
       status: 400,
     };
   }
-  const index = cellIndex as number;
+  const cell = cellIndex as number;
 
-  if (target.cells[index] !== null) {
+  if (target.cells[cell] !== null) {
     return { ok: false, error: "Cell is already occupied", status: 409 };
   }
 
   // Optimistic concurrency: the client must prove it is acting on the state it
   // was shown, so a double-submit or a stale tab cannot apply a second move.
   //
-  // The token is checked STRICTLY, mirroring the cell-index check above: a
-  // boolean, a numeric string or a non-integer (all of which `Number()` would
-  // coerce, so `true`/"1"/[1]/1.9 would otherwise read as version 1) is
-  // refused rather than silently accepted as the client's version.
+  // The token is checked STRICTLY, mirroring the index checks above: a boolean,
+  // a numeric string or a non-integer (all of which `Number()` would coerce, so
+  // `true`/"1"/[1]/1.9 would otherwise read as version 1) is refused rather
+  // than silently accepted as the client's version.
   if (expectedVersion !== undefined && expectedVersion !== null) {
     if (
       typeof expectedVersion !== "number" ||
@@ -505,57 +551,30 @@ export function validateMove({
 
 export type AppliedMove = {
   state: TicTacToeState;
-  /** True when this move resolved the small board it was played on. */
+  /** True when this move resolved (claimed or drew) the mini-board it hit. */
   boardResolved: boolean;
-  /** True when this move expanded the match to the next stage. */
-  stageAdvanced: boolean;
-  /** The stage the match expanded INTO (only when `stageAdvanced`). */
-  stage: MegaStage;
+  /** The mark that claimed that mini-board, or null for a draw / still active. */
+  boardClaimed: Mark | null;
+  /** True when this move ended the match — by a lattice line OR a full draw. */
   matchCompleted: boolean;
+  /** The winning seat, or null for a draw. */
   winnerSeat: Seat | null;
-  /** The small board's winning line, when this move resolved that board. */
+  /** The mini-board's winning line, when this move completed one. */
   winningLine: number[] | null;
-  /** The three Mega slots that won, when the win was a Mega line. */
+  /** The three lattice slots that won, when the win was a lattice line. */
   winningBoards: number[] | null;
-  /** The tiebreak, when it was the thing that decided the match. */
-  tiebreak: TiebreakSummary | null;
-  /** True when this move began or advanced sudden death. */
-  suddenDeath: boolean;
 };
-
-function cloneBoard(board: SmallBoard): SmallBoard {
-  return {
-    cells: [...board.cells],
-    plies: board.plies,
-    control: board.control,
-    winningLine: board.winningLine ? [...board.winningLine] : null,
-  };
-}
-
-function cloneState(state: TicTacToeState): TicTacToeState {
-  return {
-    version: state.version,
-    phase: state.phase,
-    stage: state.stage,
-    boards: state.boards.map((board) => (board ? cloneBoard(board) : null)),
-    currentTurn: state.currentTurn,
-    ply: state.ply,
-    winner: state.winner,
-    winningBoards: state.winningBoards ? [...state.winningBoards] : null,
-    tiebreak: state.tiebreak ? { ...state.tiebreak } : null,
-    suddenDeath: state.suddenDeath ? { boards: state.suddenDeath.boards.map(cloneBoard) } : null,
-    lastMove: state.lastMove ? { ...state.lastMove } : null,
-  };
-}
 
 /**
  * Apply one validated move and run every downstream transition: place the mark,
- * resolve the small board, advance the stage, detect a Mega line, evaluate the
- * tiebreak, and hand the turn on if the match continues.
+ * resolve the mini-board, detect a lattice line, hand the turn over and derive
+ * the opponent's required destination.
  *
  * Assumes the move already passed `validateMove` — it does not re-check
- * legality. It derives the mark from the SEAT (never from the caller), so a
- * client cannot place the wrong mark.
+ * legality beyond the structural invariants it needs to index safely. It
+ * derives the mark from the SEAT (never from the caller), so a client cannot
+ * place the wrong mark. It never mutates `state`: the returned state owns fresh
+ * boards, fresh cells arrays and a fresh lastMove.
  */
 export function applyMove({
   state,
@@ -568,118 +587,89 @@ export function applyMove({
   boardIndex: number;
   cellIndex: number;
 }): AppliedMove {
+  if (!isWellFormedState(state)) {
+    throw new RangeError("ultimate tic-tac-toe rules: malformed match state");
+  }
+  if (state.phase === "finished") {
+    throw new RangeError("ultimate tic-tac-toe rules: the match is already finished");
+  }
   if (!isValidCellIndex(cellIndex)) {
-    throw new RangeError(`mega tic-tac-toe rules: cell ${cellIndex} is out of range`);
+    throw new RangeError(`ultimate tic-tac-toe rules: cell ${cellIndex} is out of range`);
   }
-  if (boardIndex !== SUDDEN_DEATH_BOARD_INDEX && !isValidBoardIndex(boardIndex)) {
-    throw new RangeError(`mega tic-tac-toe rules: board ${boardIndex} is out of range`);
+  if (!isValidBoardIndex(boardIndex)) {
+    throw new RangeError(`ultimate tic-tac-toe rules: board ${boardIndex} is out of range`);
   }
 
-  const next = cloneState(state);
-  const onSuddenDeath = boardIndex === SUDDEN_DEATH_BOARD_INDEX;
-
-  let target: SmallBoard;
-  if (onSuddenDeath) {
-    const current = currentSuddenDeathBoard(next);
-    if (!current) {
-      throw new RangeError("mega tic-tac-toe rules: no sudden-death board");
-    }
-    target = current;
-  } else {
-    const slot = next.boards[boardIndex];
-    if (!slot) {
-      throw new RangeError(`mega tic-tac-toe rules: board ${boardIndex} is not in play`);
-    }
-    target = slot;
+  const boards = latticeOf(state);
+  const target = boards[boardIndex];
+  if (target.cells[cellIndex] !== null) {
+    throw new RangeError(
+      `ultimate tic-tac-toe rules: cell ${cellIndex} of board ${boardIndex} is occupied`
+    );
   }
 
   const mark = markForSeat(seat);
   target.cells[cellIndex] = mark;
   target.plies += 1;
+  // `latticeOf` re-derived the control before the mark landed, so recompute it
+  // now that this board changed.
   const resolved = resolveBoardControl(target.cells);
   target.control = resolved.control;
   target.winningLine = resolved.winningLine;
 
-  next.version = state.version + 1;
-  next.ply = state.ply + 1;
-  // The turn always hands over; a decided match simply stops reading it.
-  next.currentTurn = otherSeat(seat);
-  next.lastMove = { seat, boardIndex, cellIndex, mark, ply: state.ply };
+  const next: TicTacToeState = {
+    version: state.version + 1,
+    phase: "playing",
+    boards,
+    // The turn always hands over; a decided match simply stops reading it.
+    currentTurn: otherSeat(seat),
+    ply: state.ply + 1,
+    winner: null,
+    winningBoards: null,
+    // Only a continuing match has a destination; a finished one requires none.
+    nextBoard: null,
+    lastMove: { seat, boardIndex, cellIndex, mark, ply: state.ply },
+  };
 
   const boardResolved = resolved.control !== "active";
-  let stageAdvanced = false;
+  const boardClaimed: Mark | null =
+    resolved.control === "X" || resolved.control === "O" ? resolved.control : null;
+
   let matchCompleted = false;
   let winnerSeat: Seat | null = null;
   let winningBoards: number[] | null = null;
-  let tiebreak: TiebreakSummary | null = null;
-  let suddenDeath = false;
 
-  const finishWith = (winner: Seat, line: number[] | null) => {
+  // Order matters: a lattice line is checked BEFORE the full-lattice draw. The
+  // move that completes a line on the very last unclaimed board is a WIN, not a
+  // draw.
+  const lattice = findLatticeWin(boards);
+  if (lattice) {
     next.phase = "finished";
-    next.winner = winner;
-    next.winningBoards = line;
+    next.winner = seatForMark(lattice.mark);
+    next.winningBoards = [...lattice.line];
     matchCompleted = true;
-    winnerSeat = winner;
-    winningBoards = line;
-  };
-
-  if (onSuddenDeath) {
-    // A sudden-death board is an ordinary 3x3 board: a line wins the match, and
-    // a draw simply starts the next one.
-    if (resolved.control === "X" || resolved.control === "O") {
-      finishWith(seatForMark(resolved.control), null);
-    } else if (resolved.control === "draw") {
-      next.suddenDeath!.boards.push(createEmptyBoard());
-      next.currentTurn = FIRST_SEAT;
-      suddenDeath = true;
-    }
-  } else if (state.stage === 1) {
-    // Stage 1 IS the match: a line wins it outright, a draw expands it.
-    if (resolved.control === "X" || resolved.control === "O") {
-      finishWith(seatForMark(resolved.control), [0]);
-    } else if (resolved.control === "draw") {
-      advanceStage(next, 2);
-      stageAdvanced = true;
-    }
+    winnerSeat = next.winner;
+    winningBoards = next.winningBoards;
+  } else if (allBoardsResolved(boards)) {
+    // Every mini-board resolved with no lattice line: the match is a draw, and
+    // `winner` stays null.
+    next.phase = "finished";
+    matchCompleted = true;
   } else {
-    const mega = findMegaWin(next.boards, next.stage);
-    if (mega) {
-      finishWith(seatForMark(mega.mark), mega.line);
-    } else if (allStageBoardsResolved(next.boards, next.stage)) {
-      if (next.stage === 2) {
-        // A 2x2 can never complete a Mega line, so a resolved stage 2 always
-        // expands to the full lattice.
-        advanceStage(next, 3);
-        stageAdvanced = true;
-      } else {
-        const summary = evaluateTiebreak(next.boards);
-        next.tiebreak = summary;
-        tiebreak = summary;
-        if (summary.winner) {
-          finishWith(summary.winner, null);
-        } else {
-          next.suddenDeath = { boards: [createEmptyBoard()] };
-          next.currentTurn = FIRST_SEAT;
-          suddenDeath = true;
-        }
-      }
-    }
+    next.nextBoard = nextBoardForCell(boards, cellIndex);
   }
 
   return {
     state: next,
     boardResolved,
-    stageAdvanced,
-    stage: next.stage,
+    boardClaimed,
     matchCompleted,
     winnerSeat,
-    // The line drawn on the small board this move was played on (null unless
-    // the move completed one). For a Mega win this is the line of the FINAL
+    // The line drawn on the mini-board this move was played on (null unless the
+    // move completed one). For a lattice win this is the line of the FINAL
     // board; `winningBoards` is the one that highlights the lattice.
     winningLine: resolved.winningLine,
     winningBoards,
-    tiebreak,
-    suddenDeath,
   };
 }
 
@@ -702,11 +692,10 @@ export function statusForState(state: TicTacToeState): string {
 export type ReplayResult = {
   state: TicTacToeState;
   boards: (SmallBoard | null)[];
-  stage: MegaStage;
   ply: number;
+  nextBoard: number | null;
   winner: Seat | null;
   winningBoards: number[] | null;
-  tiebreak: TiebreakSummary | null;
 };
 
 /**
@@ -714,17 +703,14 @@ export type ReplayResult = {
  *
  * The boards are stored denormalised on the match row for cheap reads, but they
  * are ALSO a pure function of the accepted moves — this function proves it. It
- * re-runs the SAME `applyMove` the store ran, so stage expansions, Mega lines
- * and the tiebreak all reconstruct exactly, with no second implementation to
- * drift.
+ * re-runs the SAME `applyMove` the store ran, so board claims, lattice lines and
+ * destinations all reconstruct exactly, with no second implementation to drift.
  *
  * The mover is the RECONSTRUCTED state's own `currentTurn` — never the logged
- * player id, so replaying does not trust the log's authorship. That matters
- * beyond tidiness: a sudden death RESETS the turn to X, which global ply parity
- * cannot express, so deriving it from the running state is the only way replay
- * reproduces a sudden-death sequence exactly. Moves that no longer address a
- * playable board (or that replay into an occupied cell) are skipped rather than
- * throwing, so a partial or duplicated log degrades instead of corrupting.
+ * player id, so replaying does not trust the log's authorship. Moves that no
+ * longer address a playable board (out of range, not the required destination,
+ * a resolved board, an occupied cell) are skipped rather than throwing, so a
+ * partial or duplicated log degrades instead of corrupting.
  */
 export function replayMoves(moves: MoveRecord[]): ReplayResult {
   const ordered = [...(moves ?? [])].sort((a, b) => a.ply - b.ply);
@@ -733,37 +719,27 @@ export function replayMoves(moves: MoveRecord[]): ReplayResult {
   for (const move of ordered) {
     if (state.phase === "finished") break;
 
-    const boardIndex = Number(move?.boardIndex);
-    const cellIndex = Number(move?.cellIndex);
-    if (!isValidCellIndex(cellIndex)) continue;
-
-    let target: SmallBoard | null;
-    if (boardIndex === SUDDEN_DEATH_BOARD_INDEX) {
-      target = currentSuddenDeathBoard(state);
-    } else if (isValidBoardIndex(boardIndex)) {
-      const slot = state.boards[boardIndex] ?? null;
-      target = slot && slot.control === "active" ? slot : null;
-    } else {
-      target = null;
-    }
-    if (!target || target.cells[cellIndex] !== null) continue;
+    const boardIndex = move?.boardIndex;
+    const cellIndex = move?.cellIndex;
+    if (!isValidCellIndex(cellIndex) || !isValidBoardIndex(boardIndex)) continue;
+    if (!isPlayableBoard(state, boardIndex)) continue;
+    if (latticeOf(state)[boardIndex].cells[cellIndex] !== null) continue;
 
     state = applyMove({
       state,
       seat: state.currentTurn,
-      boardIndex,
-      cellIndex,
+      boardIndex: boardIndex as number,
+      cellIndex: cellIndex as number,
     }).state;
   }
 
   return {
     state,
     boards: state.boards,
-    stage: state.stage,
     ply: state.ply,
+    nextBoard: state.nextBoard,
     winner: state.winner,
     winningBoards: state.winningBoards,
-    tiebreak: state.tiebreak,
   };
 }
 
@@ -772,8 +748,8 @@ export function replayMoves(moves: MoveRecord[]): ReplayResult {
 /**
  * Client-facing DTO. Adds the per-viewer flags the match page needs without
  * leaking anything the viewer is not entitled to — there is nothing hidden in
- * Mega Tic-Tac-Toe beyond the opponent's *future* move, which does not exist
- * yet.
+ * Ultimate Tic-Tac-Toe beyond the opponent's *future* move, which does not
+ * exist yet.
  */
 export function normalizeForViewer({
   state,
@@ -797,17 +773,14 @@ export function normalizeForViewer({
   /** The settled winner's user id, if any. */
   winnerId?: string | null;
 }) {
+  const boards = latticeOf(state);
+  // A legacy blob is reported as such and NEVER offers a move: the server will
+  // not accept one (the match is voided on the first attempt), so the view must
+  // not pretend otherwise. The UI phase renders the notice.
+  const legacyState = isExpansionEraState(state);
   const viewerSeat = seatForUser(seats, viewerId);
-  const isViewerTurn = Boolean(viewerSeat) && state.currentTurn === viewerSeat;
-  // ── Transitional single-board projection ─────────────────────────────
-  // A Mega match is a lattice of boards; the single-board UI is being
-  // redesigned separately. Until it is, project ONE board as `board` /
-  // `winningLine` so the existing view keeps rendering the opening position
-  // correctly and never crashes. This is NOT authoritative state — it is a
-  // convenience view of `boards[boardIndex]`, and the authoritative source is
-  // always the full `boards` lattice below.
-  const focusBoardIndex = activeBoardIndexes(state)[0] ?? stageBoardSlots(state.stage)[0] ?? 0;
-  const focusBoard = state.boards?.[focusBoardIndex] ?? null;
+  const isViewerTurn =
+    !legacyState && Boolean(viewerSeat) && state?.currentTurn === viewerSeat;
   // The row's status outranks the state blob: a conceded match finalises the
   // state too, but a row that is terminal must never offer a move even if a
   // legacy/partial write left the blob mid-game. This mirrors the store, which
@@ -815,44 +788,34 @@ export function normalizeForViewer({
   const effectiveStatus = status ?? statusForState(state);
 
   return {
-    version: state.version,
-    phase: state.phase,
+    version: state?.version ?? 0,
+    phase: state?.phase ?? "playing",
     status: effectiveStatus,
     // Settled outcome. Derived from the boards for a played-out match, and
     // taken from the row for a forfeit / cancellation — the client never has
     // to infer who won a conceded match. Never accepted FROM a client.
     result: result ?? null,
     winnerId: winnerId ?? null,
-    // The lattice (length 9; `null` slots are not yet in play).
-    boards: state.boards,
-    stage: state.stage,
-    // ── Transitional single-board projection (see above) ────────────────
-    // `boardIndex` is the slot the legacy view should offer, `board` its
-    // nine cells and `winningLine` its completed line. A redesigned UI reads
-    // `boards` / `winningBoards` instead; these carry no authority.
-    boardIndex: focusBoardIndex,
-    board: focusBoard ? focusBoard.cells : Array.from({ length: CELL_COUNT }, () => null),
-    winningLine: focusBoard ? focusBoard.winningLine : null,
-    // The slots in play at this stage, so the view never renders a slot that
-    // does not exist yet.
-    stageBoardSlots: stageBoardSlots(state.stage),
-    // Derived board groupings, so neither the client nor a route has to re-derive
-    // "which boards can I still play" / "which are done" from the raw lattice.
+    // The lattice: always nine real boards now.
+    boards,
+    // Derived board groupings, so neither the client nor a route has to
+    // re-derive "where must I play" / "which boards are done" from the lattice.
     activeBoards: activeBoardIndexes(state),
     completedBoards: completedBoardIndexes(state),
-    ply: state.ply,
-    currentTurn: state.currentTurn,
-    currentTurnUserId: userIdForSeat(seats, state.currentTurn),
-    winner: state.winner,
-    winningBoards: state.winningBoards,
-    tiebreak: state.tiebreak,
-    suddenDeath: state.suddenDeath ? { boards: state.suddenDeath.boards } : null,
-    lastMove: state.lastMove,
-    // Small-board geometry + the lattice side, so the client never hard-codes
+    // null means "free choice": the opponent may play any unfinished board.
+    nextBoard: requiredBoardIndex(state),
+    playableBoards: playableBoardIndexes(state),
+    ply: state?.ply ?? 0,
+    currentTurn: state?.currentTurn ?? FIRST_SEAT,
+    currentTurnUserId: userIdForSeat(seats, state?.currentTurn ?? FIRST_SEAT),
+    winner: state?.winner ?? null,
+    winningBoards: state?.winningBoards ?? null,
+    lastMove: state?.lastMove ?? null,
+    // Mini-board geometry + the lattice side, so the client never hard-codes
     // either.
     boardSize: BOARD_SIZE,
     cellCount: CELL_COUNT,
-    megaSize: MEGA_SIZE,
+    latticeSize: LATTICE_SIZE,
     maxBoards: MAX_BOARDS,
     marks: MARKS,
     player1Id: seats.player1Id,
@@ -863,11 +826,19 @@ export function normalizeForViewer({
     // Gated on exactly the conditions `validateMove` enforces for TURN and
     // STATUS, so the UI never offers a move the server would reject. Board and
     // cell emptiness are per-target, so the client checks them against `boards`
-    // — which it already has.
+    // and `playableBoards` — which it already has.
     viewerCanMove:
+      !legacyState &&
       effectiveStatus === MATCH_STATUS.PLAYING &&
-      state.phase === "playing" &&
+      state?.phase === "playing" &&
       Boolean(viewerSeat) &&
       isViewerTurn,
+    /**
+     * True when the persisted state predates the Ultimate rules. Terminal
+     * history is kept intact; a live row is voided (with its stakes refunded)
+     * the first time it is touched, so a client that sees this flag should
+     * treat the match as closed.
+     */
+    legacyState,
   };
 }

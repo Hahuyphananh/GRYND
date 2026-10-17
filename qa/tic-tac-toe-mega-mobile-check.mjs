@@ -1,34 +1,36 @@
 // qa/tic-tac-toe-mega-mobile-check.mjs
 //
-// Phone-presentation check for the Mega Tic-Tac-Toe lattice. It mounts the REAL
-// MegaBoard (qa/tic-tac-toe-mega-mobile-harness.jsx) inside a copy of the REAL
-// match page's width chain, together with the project's REAL Tailwind CSS
+// Phone-presentation check for the Ultimate Tic-Tac-Toe lattice. It mounts the
+// REAL MegaBoard (qa/tic-tac-toe-mega-mobile-harness.jsx) inside a copy of the
+// REAL match page's width chain, together with the project's REAL Tailwind CSS
 // (generated from tailwind.config.js + src/app/globals.css) — everything
 // asserted here is responsive layout, so a stubbed stylesheet would make every
 // assertion vacuous.
 //
 // The bug this guards: the lattice carried an always-on inline
-// `min-width: cols * 10.5rem` — 504px at Round 3 — inside an `overflow-x-auto`
-// strip. That is wider than any phone's content width, so the 9-board round
+// `min-width: cols * 10.5rem` — 504px at nine boards — inside an `overflow-x-auto`
+// strip. That is wider than any phone's content width, so the nine-board lattice
 // became a horizontally-scrolling band, and because the page root is
 // `overflow-x-clip` a phone could silently lose whole boards off the right edge.
 //
-// Asserted for every round (1 → 4 → 9 boards) at 390 / 360 / 320 px:
+// Ultimate Tic-Tac-Toe is a FIXED 3x3 lattice (there is no expansion, so there is
+// exactly one layout to verify), asserted at 390 / 360 / 320 / 1280 px:
 //   1. the page does not scroll sideways;
 //   2. the lattice's own box sits inside the page gutter;
 //   3. the lattice does not overflow its scroll strip (`overflow-x-auto` is a
 //      safety net, not the way the 3×3 is shown) and carries no width floor;
-//   4. every board is rendered, painted inside the viewport, and never overlaps
-//      its neighbours;
-//   5. Round 3 really is a 3×3 (three distinct rows AND three columns) — the fix
-//      must fit the lattice by shrinking it, never by stacking the boards;
+//   4. all nine boards are rendered, painted inside the viewport, and never
+//      overlap their neighbours;
+//   5. it really is a 3×3 (three distinct rows AND three columns) — the fix must
+//      fit the lattice by shrinking it, never by stacking the boards;
 //   6. the cards shrink as one: the nine cells fill the card's content box
 //      exactly (so nothing is clipped) and stay tappable — ≥24px, the WCAG 2.2
 //      minimum target size, wherever the geometry can reach it;
 //   7. the "Board N" label and its control badge stay inside the card;
-//   8. a tap on a shrunken board still reports the right (boardIndex, cellIndex);
-//   9. desktop is untouched;
-//  10. no console / page errors.
+//   8. the opening snapshot communicates FREE CHOICE (no required board);
+//   9. a tap on a shrunken board still reports the right (boardIndex, cellIndex);
+//  10. desktop is untouched;
+//  11. no console / page errors.
 //
 // Screenshots land in qa/reports/tic-tac-toe-mobile/.
 //
@@ -133,27 +135,31 @@ const VIEWPORTS = [
   { label: "1280", width: 1280, height: 900, dpr: 1, phone: false, minCell: 40 },
 ];
 
-const STAGE_BOARDS = { 1: 1, 2: 4, 3: 9 };
-const STAGE_COLS = { 1: 1, 2: 2, 3: 3 };
+/** Nine mini-boards, always: the lattice has no other shape. */
+const BOARDS = 9;
+const COLS = 3;
 
-// The card's inner padding (p-1.5 → 6px, sm:p-2 → 8px) and the lattice board's
-// cell gap: `compact` (rounds 2 and 3) is `gap-1 sm:gap-1.5` → 4 / 6px, while
-// Round 1's lone board is `gap-2 sm:gap-3` → 8 / 12px. `sm` is 640px.
-const cardMetrics = (viewportWidth, compact) => ({
-  pad: viewportWidth >= 640 ? 8 : 6,
-  gap: compact ? (viewportWidth >= 640 ? 6 : 4) : viewportWidth >= 640 ? 12 : 8,
+// The card's own metrics, read off the component's classes: `p-1` / `sm:p-1.5`
+// padding, a 1px border, and the compact board's `gap-[3px]` / `sm:gap-1` cells.
+const cardMetrics = (viewportWidth) => ({
+  pad: viewportWidth >= 640 ? 6 : 4,
+  gap: viewportWidth >= 640 ? 4 : 3,
+  border: 1,
 });
 
 const browser = await chromium.launch();
 const consoleErrors = [];
 const shots = [];
 
-const mount = async (vp) => {
+const mount = async (vp, { reducedMotion = false } = {}) => {
   const page = await browser.newPage({
     viewport: { width: vp.width, height: vp.height },
     deviceScaleFactor: vp.dpr,
     hasTouch: vp.phone,
   });
+  // Set BEFORE navigation: `useReducedMotion` reads the preference once, when
+  // the first board mounts, so emulating it afterwards would test nothing.
+  if (reducedMotion) await page.emulateMedia({ reducedMotion: "reduce" });
   page.on("pageerror", (err) => consoleErrors.push(`pageerror(${vp.label}): ${err.message}`));
   page.on("console", (msg) => {
     if (msg.type() !== "error") return;
@@ -167,11 +173,11 @@ const mount = async (vp) => {
   return page;
 };
 
-const render = async (page, stage) => {
-  await page.evaluate((s) => window.__ttt.mount(s), stage);
+const render = async (page) => {
+  await page.evaluate(() => window.__ttt.mount());
   await page.waitForFunction(
     (n) => document.querySelectorAll('[data-testid^="tic-tac-toe-lattice-board-"]').length === n,
-    STAGE_BOARDS[stage],
+    BOARDS,
     { timeout: 15000 },
   );
   // Let framer-motion's entrance spring settle before measuring.
@@ -182,9 +188,6 @@ const render = async (page, stage) => {
 // ── 5. The layout assertions ───────────────────────────────────────────────
 const latticeChecks = (tag, m, vp) => {
   const { lattice, scroller, boards } = m;
-  const stage = m.stage;
-  const expected = STAGE_BOARDS[stage];
-  const cols = STAGE_COLS[stage];
 
   check(
     `${tag}: the page never scrolls sideways`,
@@ -193,7 +196,11 @@ const latticeChecks = (tag, m, vp) => {
     `document ${m.documentScrollWidth}/${m.documentClientWidth}, page ${m.page.scrollWidth}/${m.page.clientWidth}`,
   );
 
-  check(`${tag}: the lattice exists and carries no width floor`, !!lattice && lattice.minWidth === "0px", `min-width ${lattice?.minWidth}`);
+  check(
+    `${tag}: the lattice exists and carries no width floor`,
+    !!lattice && lattice.minWidth === "0px",
+    `min-width ${lattice?.minWidth}`,
+  );
   if (!lattice) return;
 
   check(
@@ -206,8 +213,7 @@ const latticeChecks = (tag, m, vp) => {
   // there is nothing to scroll, so the strip's content must equal its box.
   check(
     `${tag}: the lattice never overflows its scroll strip`,
-    scroller.scrollWidth <= scroller.clientWidth + 1 &&
-      lattice.scrollWidth <= lattice.clientWidth + 1,
+    scroller.scrollWidth <= scroller.clientWidth + 1 && lattice.scrollWidth <= lattice.clientWidth + 1,
     `strip ${scroller.scrollWidth}/${scroller.clientWidth} (overflow-x ${scroller.overflowX}), lattice ${lattice.scrollWidth}/${lattice.clientWidth}`,
   );
 
@@ -216,37 +222,32 @@ const latticeChecks = (tag, m, vp) => {
     lattice.width <= scroller.clientWidth + 1,
     `lattice ${px(lattice.width)} vs strip ${px(scroller.clientWidth)}`,
   );
-  // Round 1 keeps its 20rem ceiling, so only the wider rounds must fill.
-  if (cols > 1) {
-    check(
-      `${tag}: the lattice fills the strip (it fits by shrinking, not by a floor)`,
-      Math.abs(lattice.width - scroller.clientWidth) <= 1,
-      `lattice ${px(lattice.width)} vs strip ${px(scroller.clientWidth)}`,
-    );
-  }
+  check(
+    `${tag}: the lattice fills the strip (it fits by shrinking, not by a floor)`,
+    Math.abs(lattice.width - scroller.clientWidth) <= 1,
+    `lattice ${px(lattice.width)} vs strip ${px(scroller.clientWidth)}`,
+  );
 
   check(
-    `${tag}: all ${expected} boards are rendered`,
-    boards.length === expected,
-    `${boards.length} of ${expected}`,
+    `${tag}: all ${BOARDS} boards are rendered`,
+    boards.length === BOARDS,
+    `${boards.length} of ${BOARDS}`,
   );
 
   check(
     `${tag}: every board is painted inside the viewport (none clipped off the edge)`,
-    boards.length === expected &&
+    boards.length === BOARDS &&
       boards.every((b) => b.left >= -1 && b.right <= m.viewportWidth + 1 && b.width > 0),
-    boards
-      .map((b) => `#${b.slot} ${px(b.left)}..${px(b.right)} (${px(b.width)}w)`)
-      .join(", "),
+    boards.map((b) => `#${b.slot} ${px(b.left)}..${px(b.right)} (${px(b.width)}w)`).join(", "),
   );
 
   // Group the boards into rows by their painted top, then assert the grid is
-  // genuinely `cols × cols` and that no two neighbours overlap.
+  // genuinely 3×3 and that no two neighbours overlap.
   const rows = [...new Set(boards.map((b) => Math.round(b.top)))].sort((a, b) => a - b);
   const columns = [...new Set(boards.map((b) => Math.round(b.left)))].sort((a, b) => a - b);
   check(
-    `${tag}: the round draws a real ${cols}×${cols} lattice (not a stacked column)`,
-    rows.length === cols && columns.length === cols,
+    `${tag}: the lattice draws a real ${COLS}×${COLS} grid (not a stacked column)`,
+    rows.length === COLS && columns.length === COLS,
     `${rows.length} rows × ${columns.length} columns, tops [${rows.map(Math.round).join(", ")}], lefts [${columns.map(Math.round).join(", ")}]`,
   );
 
@@ -254,8 +255,8 @@ const latticeChecks = (tag, m, vp) => {
   for (const top of rows) {
     const row = boards.filter((b) => Math.round(b.top) === top).sort((a, b) => a.left - b.left);
     check(
-      `${tag}: row at top ${top} holds ${cols} boards, ordered and non-overlapping`,
-      row.length === cols && row.every((b, i) => i === 0 || b.left >= row[i - 1].right - 0.5),
+      `${tag}: row at top ${top} holds ${COLS} boards, ordered and non-overlapping`,
+      row.length === COLS && row.every((b, i) => i === 0 || b.left >= row[i - 1].right - 0.5),
       row.map((b) => `#${b.slot} ${px(b.left)}..${px(b.right)}`).join(", "),
     );
     for (let i = 1; i < row.length; i += 1) {
@@ -266,8 +267,8 @@ const latticeChecks = (tag, m, vp) => {
 
   // The nine cells must fill the card's content box exactly: that is what proves
   // the board shrank with the card instead of spilling out of it.
-  const { pad, gap } = cardMetrics(m.viewportWidth, stage > 1);
-  const expectedCell = (boards[0].width - 2 * pad - 2 * gap) / 3;
+  const { pad, gap, border } = cardMetrics(m.viewportWidth);
+  const expectedCell = (boards[0].width - 2 * pad - 2 * gap - 2 * border) / 3;
   check(
     `${tag}: each board's cells fill its card exactly (${px(pad)} padding, ${px(gap)} gap)`,
     boards.every((b) => Math.abs(b.cellWidth - expectedCell) <= 1.5),
@@ -290,49 +291,50 @@ const latticeChecks = (tag, m, vp) => {
   );
 
   check(
-    `${tag}: the viewer can still move somewhere (cells stay playable)`,
+    `${tag}: every open board still offers its nine cells`,
     boards.every((b) => b.playableCells === 9),
     boards.map((b) => `#${b.slot}:${b.playableCells}`).join(" "),
+  );
+
+  // The opening snapshot has no required destination, so the lattice must SAY
+  // that any open board may be played — never leave it to inference.
+  check(
+    `${tag}: free choice is stated in words`,
+    m.destination?.freeChoice === "true" &&
+      m.destination?.required === "" &&
+      /any open board/i.test(m.destination?.text ?? ""),
+    `${m.destination?.required || "-"} / ${m.destination?.text?.slice(0, 60)}`,
   );
 
   return { smallest };
 };
 
-console.log("── Round 1 → 4 → 9 boards on every phone ─────────────────────────");
+console.log("── The nine-board lattice on every phone ──────────────────────────");
 for (const vp of VIEWPORTS) {
   const page = await mount(vp);
   console.log(`\n▸ ${vp.label} × ${vp.height} (dpr ${vp.dpr})`);
 
+  const m = await render(page);
   // Sanity: the shipped stylesheet really is in play, so the geometry below is
   // the geometry the app ships.
-  const first = await render(page, 1);
   check(
     `${vp.label}: the harness carries the real page chrome and stylesheet`,
-    first.page.overflowX === "clip" &&
-      first.page.paddingLeft === (vp.phone ? "12px" : "24px") &&
-      first.scroller.overflowX === "auto",
-    `overflow-x ${first.page.overflowX}, padding-left ${first.page.paddingLeft}, strip overflow-x ${first.scroller.overflowX}`,
+    m.page.overflowX === "clip" &&
+      m.page.paddingLeft === (vp.phone ? "12px" : "24px") &&
+      m.scroller.overflowX === "auto",
+    `overflow-x ${m.page.overflowX}, padding-left ${m.page.paddingLeft}, strip overflow-x ${m.scroller.overflowX}`,
   );
 
-  for (const stage of [1, 2, 3]) {
-    const m = stage === 1 && first.stage === 1 ? first : await render(page, stage);
-    const tag = `${vp.label} round ${stage}`;
-    const measured = latticeChecks(tag, m, vp);
-    if (measured) console.log(`   ${tag}: ${STAGE_BOARDS[stage]} boards, ${px(m.lattice.width)} lattice, smallest cell ${px(measured.smallest)}`);
-    await page.screenshot({
-      path: join(SHOTS, `${vp.label}-round${stage}.png`),
-      fullPage: false,
-    });
-    shots.push(join(SHOTS, `${vp.label}-round${stage}.png`));
-  }
-
-  // ── The round the user reported, measured precisely ─────────────────────
-  const nine = await render(page, 3);
-  const nineTag = `${vp.label} round 3 (9 boards)`;
-  if (vp.phone) {
-    const cell = nine.boards[0].cellWidth;
+  const measured = latticeChecks(`${vp.label} lattice`, m, vp);
+  if (measured) {
     console.log(
-      `   ${nineTag}: page gutter ${nine.page.paddingLeft}, card ${px(nine.boards[0].width + 2 * cardMetrics(vp.width, true).pad)}, cell ${px(cell)}`,
+      `   ${vp.label}: ${BOARDS} boards, ${px(m.lattice.width)} lattice, smallest cell ${px(measured.smallest)}`,
+    );
+  }
+  if (vp.phone) {
+    const cell = m.boards[0].cellWidth;
+    console.log(
+      `   ${vp.label}: page gutter ${m.page.paddingLeft}, card ${px(m.boards[0].width + 2 * cardMetrics(vp.width).pad)}, cell ${px(cell)}`,
     );
     if (vp.minCell < 24) {
       console.log(
@@ -354,27 +356,324 @@ for (const vp of VIEWPORTS) {
     JSON.stringify(plays),
   );
 
+  await page.screenshot({ path: join(SHOTS, `${vp.label}-lattice.png`), fullPage: false });
+  shots.push(join(SHOTS, `${vp.label}-lattice.png`));
   await page.close();
 }
 
 // ── Desktop must be untouched: the boards stay big ─────────────────────────
 const desktop = await mount(VIEWPORTS[3]);
-const wide = await render(desktop, 3);
-latticeChecks("1280 round 3", wide, VIEWPORTS[3]);
+const wide = await render(desktop);
+latticeChecks("1280 lattice", wide, VIEWPORTS[3]);
 check(
   "1280: the desktop lattice still uses the full board column",
   wide.boards[0].width >= 200,
   `board width ${px(wide.boards[0].width)}`,
 );
-const wideRound1 = await render(desktop, 1);
-check(
-  "1280: Round 1 keeps its 20rem ceiling",
-  wideRound1.lattice.width <= 320 + 1,
-  `Round-1 lattice ${px(wideRound1.lattice.width)}`,
-);
-await desktop.screenshot({ path: join(SHOTS, "1280-round3.png") });
-shots.push(join(SHOTS, "1280-round3.png"));
 await desktop.close();
+
+// ── The states the live page can show ──────────────────────────────────────
+// Layout is only half the board: the destination, free choice, ownership and
+// the terminal line are what the interface has to SAY. Each scenario mounts the
+// real MegaBoard with a server-produced snapshot.
+const renderScenario = async (page, name) => {
+  await page.evaluate((scenario) => window.__ttt.mount(scenario), name);
+  await page.waitForFunction(
+    (n) => document.querySelectorAll('[data-testid^="tic-tac-toe-lattice-board-"]').length === n,
+    BOARDS,
+    { timeout: 15000 },
+  );
+  // The cards animate in once; wait for the spring, never for a move.
+  await page.waitForTimeout(650);
+  return page.evaluate(() => {
+    const mega = document.querySelector('[data-testid="tic-tac-toe-mega"]');
+    const dest = document.querySelector('[data-testid="lattice-destination"]');
+    const cards = [...document.querySelectorAll('[data-testid^="tic-tac-toe-lattice-board-"]')].map((card) => ({
+      slot: Number((card.getAttribute("data-testid") ?? "").split("-").pop()),
+      state: card.getAttribute("data-state"),
+      control: card.getAttribute("data-control"),
+      required: card.getAttribute("data-required"),
+      selectable: card.getAttribute("data-selectable"),
+      latticeLine: card.getAttribute("data-lattice-line"),
+      playableCells: card.querySelectorAll('[data-playable="true"]').length,
+      marks: card.querySelectorAll('[data-state="X"], [data-state="O"]').length,
+      badge: card.querySelector('[data-testid^="lattice-board-badge-"]')?.textContent?.trim() ?? "",
+    }));
+    const cells = [...document.querySelectorAll('[data-testid^="tic-tac-toe-cell-"]')];
+    return {
+      requiredBoard: mega?.getAttribute("data-required-board"),
+      freeChoice: mega?.getAttribute("data-free-choice"),
+      destination: dest
+        ? {
+            text: dest.textContent?.trim() ?? "",
+            required: dest.getAttribute("data-required"),
+            freeChoice: dest.getAttribute("data-free-choice"),
+          }
+        : null,
+      winLineText: document.querySelector('[data-testid="mega-win-line"]')?.textContent?.trim() ?? "",
+      svgLine: !!document.querySelector('[data-testid="mega-winning-line"]'),
+      cards,
+      cells: cells.length,
+      focusableCells: cells.filter((c) => c.tabIndex >= 0 && !c.disabled).length,
+      playableTotal: cells.filter((c) => c.getAttribute("data-playable") === "true").length,
+    };
+  });
+};
+
+const scenarioPage = await mount(VIEWPORTS[0]);
+console.log("\n── Turn guidance, board states and keyboard play ─────────────────");
+
+// 1. The forced destination: ONE board, said in words.
+const requiredState = await renderScenario(scenarioPage, "required");
+check(
+  "states: the required destination is exactly one board, and it is board 5",
+  requiredState.requiredBoard === "4" &&
+    requiredState.cards.filter((c) => c.required === "true").length === 1 &&
+    requiredState.cards.find((c) => c.required === "true")?.slot === 4,
+  `required ${requiredState.requiredBoard}, flagged ${requiredState.cards
+    .filter((c) => c.required === "true")
+    .map((c) => c.slot)
+    .join(",")}`,
+);
+check(
+  "states: the destination is stated in words, from the server's own slot",
+  requiredState.destination.required === "4" &&
+    requiredState.destination.freeChoice === "false" &&
+    /required/i.test(requiredState.destination.text) &&
+    /centre/i.test(requiredState.destination.text),
+  `${requiredState.destination.required} / ${requiredState.destination.text?.slice(0, 60)}`,
+);
+// The same rule with a different destination: the copy must follow it, which is
+// only possible if it is derived rather than hardcoded.
+const cornerState = await renderScenario(scenarioPage, "requiredTopLeft");
+check(
+  "states: a different destination produces different words and a different board",
+  cornerState.requiredBoard === "0" &&
+    cornerState.cards.find((c) => c.required === "true")?.slot === 0 &&
+    /top-left/i.test(cornerState.destination.text) &&
+    cornerState.destination.text !== requiredState.destination.text,
+  `"${cornerState.destination.text?.slice(0, 40)}" vs "${requiredState.destination.text?.slice(0, 40)}"`,
+);
+// Back to board 5 for the keyboard run below.
+await renderScenario(scenarioPage, "required");
+check(
+  "states: only the required board offers cells; the other eight are inert",
+  requiredState.playableTotal === 9 &&
+    requiredState.cards.filter((c) => c.selectable === "true").length === 1 &&
+    requiredState.cards.find((c) => c.slot === 4)?.playableCells === 9 &&
+    requiredState.cards.filter((c) => c.slot !== 4).every((c) => c.playableCells === 0),
+  `${requiredState.playableTotal} playable cells, ${
+    requiredState.cards.filter((c) => c.selectable === "true").length
+  } selectable boards`,
+);
+await scenarioPage.screenshot({ path: join(SHOTS, "state-required.png") });
+shots.push(join(SHOTS, "state-required.png"));
+
+// 2. Keyboard: a cell is reachable with Tab, and Enter places the mark.
+await scenarioPage.evaluate(() => {
+  window.__ttt.plays = [];
+});
+let focusedCell = null;
+let tabs = 0;
+for (; tabs < 60 && !focusedCell; tabs += 1) {
+  await scenarioPage.keyboard.press("Tab");
+  focusedCell = await scenarioPage.evaluate(() => {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement) || active.getAttribute("data-playable") !== "true") return null;
+    const card = active.closest('[data-testid^="tic-tac-toe-lattice-board-"]');
+    return {
+      slot: Number((card?.getAttribute("data-testid") ?? "").split("-").pop()),
+      cell: Number((active.getAttribute("data-testid") ?? "").split("-").pop()),
+      label: active.getAttribute("aria-label") ?? "",
+    };
+  });
+}
+check(
+  "keyboard: Tab reaches a playable cell inside the required board",
+  focusedCell !== null && focusedCell.slot === 4,
+  `${tabs} tabs → ${
+    focusedCell ? `board ${focusedCell.slot + 1}, cell ${focusedCell.cell + 1}` : "no playable cell focused"
+  }`,
+);
+check(
+  "keyboard: every cell stays focusable, and each is labelled on its own terms",
+  requiredState.focusableCells === 81 &&
+    requiredState.cells === 81 &&
+    /Row \d, column \d/.test(focusedCell?.label ?? ""),
+  `${requiredState.focusableCells} of ${requiredState.cells} focusable — "${focusedCell?.label ?? ""}"`,
+);
+await scenarioPage.keyboard.press("Enter");
+await scenarioPage.waitForTimeout(150);
+const afterEnter = await scenarioPage.evaluate(() => window.__ttt.plays.length);
+await scenarioPage.keyboard.press("Space");
+await scenarioPage.waitForTimeout(150);
+const keyboardPlays = await scenarioPage.evaluate(() => window.__ttt.plays);
+check(
+  "keyboard: Enter and Space both place the mark on the focused cell",
+  afterEnter === 1 &&
+    keyboardPlays.length === 2 &&
+    keyboardPlays.every(([board, cell]) => board === 4 && cell === focusedCell?.cell),
+  JSON.stringify(keyboardPlays),
+);
+check(
+  "keyboard: keys never send a move outside the required board",
+  keyboardPlays.every(([board]) => board === 4),
+  JSON.stringify(keyboardPlays),
+);
+
+// 3. A resolved destination: free choice, said in words, for every open board.
+const freeState = await renderScenario(scenarioPage, "resolved");
+check(
+  "states: a resolved destination turns into free choice for every open board",
+  freeState.requiredBoard === "" &&
+    freeState.cards.every((c) => c.required === "false") &&
+    freeState.freeChoice === "true" &&
+    freeState.destination.freeChoice === "true" &&
+    /any open board/i.test(freeState.destination.text),
+  `required "${freeState.requiredBoard}" / free ${freeState.freeChoice} / ${freeState.destination.text?.slice(0, 60)}`,
+);
+check(
+  "states: free choice offers exactly the eight unfinished boards",
+  freeState.cards.filter((c) => c.selectable === "true").length === 8 &&
+    freeState.cards.find((c) => c.slot === 4)?.selectable === "false" &&
+    freeState.playableTotal === 72,
+  `${
+    freeState.cards.filter((c) => c.selectable === "true").length
+  } selectable boards, ${freeState.playableTotal} playable cells`,
+);
+
+// 4. Ownership: X, O and a draw are distinguishable, and no mark is covered.
+const ownedState = await renderScenario(scenarioPage, "claimed");
+const ownedBy = (slot) => ownedState.cards.find((c) => c.slot === slot);
+check(
+  "states: a won mini-board names its owner, without hiding its marks",
+  ownedBy(0).control === "X" &&
+    ownedBy(0).state === "won-x" &&
+    ownedBy(0).badge === "X" &&
+    ownedBy(0).marks === 3 &&
+    ownedBy(2).control === "O" &&
+    ownedBy(2).state === "won-o" &&
+    ownedBy(2).badge === "O" &&
+    ownedBy(2).marks === 3,
+  `#1 ${ownedBy(0).state}/${ownedBy(0).badge}/${ownedBy(0).marks} marks, #3 ${ownedBy(2).state}/${
+    ownedBy(2).badge
+  }/${ownedBy(2).marks} marks`,
+);
+check(
+  "states: a drawn mini-board is locked and every one of its nine marks survives",
+  ownedBy(1).control === "draw" &&
+    ownedBy(1).state === "drawn" &&
+    /draw/i.test(ownedBy(1).badge) &&
+    ownedBy(1).marks === 9 &&
+    ownedBy(1).playableCells === 0,
+  `#2 ${ownedBy(1).state}/${ownedBy(1).badge}/${ownedBy(1).marks} marks, ${ownedBy(1).playableCells} playable`,
+);
+check(
+  "states: a resolved board never offers a move of its own",
+  ownedBy(0).playableCells === 0 && ownedBy(2).playableCells === 0,
+  `#1 ${ownedBy(0).playableCells}, #3 ${ownedBy(2).playableCells}`,
+);
+await scenarioPage.screenshot({ path: join(SHOTS, "state-claimed.png") });
+shots.push(join(SHOTS, "state-claimed.png"));
+
+// 5. The terminal result: three boards ringed, a drawn line, no move offered.
+const finishedState = await renderScenario(scenarioPage, "finished");
+check(
+  "states: the winning three boards are marked as the lattice line",
+  finishedState.cards.filter((c) => c.latticeLine === "true").length === 3 &&
+    [0, 4, 8].every((slot) => finishedState.cards.find((c) => c.slot === slot)?.latticeLine === "true"),
+  `line on ${finishedState.cards
+    .filter((c) => c.latticeLine === "true")
+    .map((c) => c.slot + 1)
+    .join(",")}`,
+);
+check(
+  "states: the result banner names the line and the winner",
+  /wins the match/i.test(finishedState.winLineText) &&
+    /Board 1/.test(finishedState.winLineText) &&
+    finishedState.svgLine,
+  `"${finishedState.winLineText.replace(/\s+/g, " ").slice(0, 80)}", svg ${finishedState.svgLine}`,
+);
+check(
+  "states: a finished match offers no cells at all",
+  finishedState.playableTotal === 0 &&
+    finishedState.cards.every((c) => c.playableCells === 0) &&
+    finishedState.cards.length === 9,
+  `${finishedState.playableTotal} playable cells across ${finishedState.cards.length} boards`,
+);
+await scenarioPage.screenshot({ path: join(SHOTS, "state-finished.png") });
+shots.push(join(SHOTS, "state-finished.png"));
+await scenarioPage.close();
+
+// ── Reduced motion: the same board, without the springs ────────────────────
+// `prefers-reduced-motion` must remove the entrance animation, not the game: a
+// player who asked for less motion has to be able to move on the first frame.
+const calmPage = await mount(VIEWPORTS[0], { reducedMotion: true });
+await calmPage.evaluate(() => window.__ttt.mount("required"));
+await calmPage.waitForFunction(
+  (n) => document.querySelectorAll('[data-testid^="tic-tac-toe-lattice-board-"]').length === n,
+  BOARDS,
+  { timeout: 15000 },
+);
+// Deliberately short: the entrance spring would still be in flight at 120 ms.
+await calmPage.waitForTimeout(120);
+const calm = await calmPage.evaluate(() => {
+  const cards = [...document.querySelectorAll('[data-testid^="tic-tac-toe-lattice-board-"]')];
+  const cells = [...document.querySelectorAll('[data-testid^="tic-tac-toe-cell-"]')];
+  return {
+    cards: cards.length,
+    playable: cells.filter((c) => c.getAttribute("data-playable") === "true").length,
+    unsettled: cards
+      .map((card, slot) => {
+        const style = getComputedStyle(card);
+        const ok = style.opacity === "1" && (style.transform === "none" || style.transform === "matrix(1, 0, 0, 1, 0, 0)");
+        return ok ? null : `#${slot + 1} opacity ${style.opacity} transform ${style.transform}`;
+      })
+      .filter(Boolean),
+    animated: cells.some((c) => getComputedStyle(c).animationName !== "none"),
+  };
+});
+check(
+  "reduced motion: cards paint fully at once instead of animating in",
+  calm.cards === 9 && calm.unsettled.length === 0,
+  `${calm.cards} cards, ${calm.unsettled.length} unsettled${calm.unsettled.length ? " — " + calm.unsettled.join("; ") : ""}`,
+);
+check(
+  "reduced motion: the required board is playable on the first frame",
+  calm.playable === 9,
+  `${calm.playable} playable cells 120ms after mount`,
+);
+let calmFocused = null;
+let calmTabs = 0;
+for (; calmTabs < 60 && !calmFocused; calmTabs += 1) {
+  await calmPage.keyboard.press("Tab");
+  calmFocused = await calmPage.evaluate(() => {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement) || active.getAttribute("data-playable") !== "true") return null;
+    const card = active.closest('[data-testid^="tic-tac-toe-lattice-board-"]');
+    return {
+      slot: Number((card?.getAttribute("data-testid") ?? "").split("-").pop()),
+      cell: Number((active.getAttribute("data-testid") ?? "").split("-").pop()),
+    };
+  });
+}
+await calmPage.evaluate(() => {
+  window.__ttt.plays = [];
+});
+await calmPage.keyboard.press("Enter");
+await calmPage.waitForTimeout(80);
+const calmPlays = await calmPage.evaluate(() => window.__ttt.plays);
+check(
+  "reduced motion: a legal move is accepted with no animation delay",
+  calmFocused?.slot === 4 &&
+    calmPlays.length === 1 &&
+    calmPlays[0][0] === 4 &&
+    calmPlays[0][1] === calmFocused?.cell,
+  JSON.stringify(calmPlays),
+);
+await calmPage.screenshot({ path: join(SHOTS, "state-reduced-motion.png") });
+shots.push(join(SHOTS, "state-reduced-motion.png"));
+await calmPage.close();
 
 check("no page/console errors anywhere in the run", consoleErrors.length === 0, consoleErrors.slice(0, 3).join(" | "));
 

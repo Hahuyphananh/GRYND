@@ -5,13 +5,14 @@
 // routes are thin wrappers around these functions.
 //
 // TRUST BOUNDARY: the ONLY player-authored values that reach this module are
-// `boardIndex` and `cellIndex` — which board, and which cell on it. The mark,
-// the boards, whose turn it is, every board's control, the stage, the Mega
-// winner, the tiebreaker, the match result, the rating change and the trophies
-// are all computed from the server's own authoritative state by the pure rules
-// engine (`applyMove`). A client cannot submit a winner, a result, a score, a
-// turn, a board, a round/stage, an Elo value, a trophy or a completion flag —
-// no such field is ever read.
+// `boardIndex` and `cellIndex` — which board, and which cell on it — and
+// `boardIndex` is only honoured when it is the destination the rules derived.
+// The mark, the boards, whose turn it is, every board's control, the required
+// destination, the lattice winner, the draw, the match result, the rating change
+// and the trophies are all computed from the server's own authoritative state by
+// the pure rules engine (`applyMove`). A client cannot submit a winner, a
+// result, a score, a turn, a board owner, a destination, an Elo value, a trophy
+// or a completion flag — no such field is ever read.
 //
 // Settlement reuses the platform's existing rating/trophy infrastructure
 // (`applyRatingResult` / `applyTrophyResult`) inside the SAME transaction that
@@ -55,7 +56,9 @@ import {
   applyMove,
   computeMatchResult,
   createInitialState,
+  isExpansionEraState,
   isWellFormedBoard,
+  isWellFormedState,
   normalizeForViewer,
   otherSeat,
   seatForUser,
@@ -143,6 +146,88 @@ export function isParticipant(
 /** The persisted authoritative state of a row. */
 export function stateOf(match: MatchRow): TicTacToeState {
   return match.gameState as TicTacToeState;
+}
+
+/**
+ * Why a row's persisted state cannot be played by the CURRENT rules, or null
+ * when it can.
+ *
+ * Two cases, both treated the same way:
+ *
+ *   "legacy"     — written by the expansion-era ("Mega") engine;
+ *   "unreadable" — a structurally malformed blob the engine refuses to index.
+ *
+ * Neither may be reinterpreted as an Ultimate position: the old stage 1 was ONE
+ * board and the new game is NINE from move one, so "continuing" it would silently
+ * change the game under a rated, staked match.
+ */
+export function rulesVoidReason(
+  match: { gameState?: unknown },
+): "legacy" | "unreadable" | null {
+  const state = match?.gameState;
+  if (isExpansionEraState(state)) return "legacy";
+  if (!isWellFormedState(state)) return "unreadable";
+  return null;
+}
+
+/** True when the row's state cannot be played by the current rules. */
+export function needsRulesVoid(match: { gameState?: unknown }): boolean {
+  return rulesVoidReason(match) !== null;
+}
+
+/**
+ * Close a match that the current rules cannot continue, refunding both seats.
+ *
+ * Deliberately NOT a rating/trophy path: the match has no result, so it is
+ * CANCELLED (like a lobby closed before play) and both escrowed stakes go back
+ * through the shared ledger, which is keyed per (match, seat) and therefore
+ * idempotent — a retry can never refund twice.
+ *
+ * A lobby that never had a move is not voided here: `joinExistingMatch` simply
+ * re-seeds its state to the current opening position, because there is nothing
+ * to preserve. This is only reached for a match that already has moves, or whose
+ * blob is unreadable.
+ */
+async function voidUnplayableMatch(tx: any, match: MatchRow) {
+  const [updated] = await tx
+    .update(ticTacToeMatches)
+    .set({
+      status: MATCH_STATUS.CANCELLED,
+      endedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(ticTacToeMatches.id, match.id))
+    .returning();
+
+  await refundMatchWagers({
+    clerkIds: [match.player1Id, match.player2Id],
+    stake: Number(match.stakeAmount) || 0,
+    matchId: match.id,
+    gameKey: "tic-tac-toe",
+    tx,
+  });
+
+  // A practice match never entered the canonical queue, exactly like a normal
+  // practice completion.
+  if (!match.isAi) {
+    mirrorQueueTransition({
+      gameKey: "tic-tac-toe",
+      matchId: match.id,
+      status: "cancelled",
+      playerCount: match.player2Id ? 2 : 1,
+      cancelReason: "rules_migrated",
+      at: new Date(),
+    });
+  }
+
+  return updated ?? match;
+}
+
+/** The refusal returned when a match was voided because its state is unusable. */
+function rulesVoidError(reason: "legacy" | "unreadable"): string {
+  return reason === "legacy"
+    ? "This match was played under the previous rules and can no longer be continued — both stakes have been refunded. Please start a new match."
+    : "This match's saved state cannot be read, so it cannot be continued — both stakes have been refunded. Please start a new match.";
 }
 
 /** Client-facing DTO for a match row, from `viewerId`'s perspective. */
@@ -368,7 +453,12 @@ async function joinExistingMatch(
     } as const;
   }
 
-  const state = stateOf(match);
+  // A lobby opened BEFORE the rules change still carries the expansion-era
+  // opening position. It has no moves, so nothing is lost by re-seeding it to
+  // the CURRENT opening position — the joiner simply gets an Ultimate table
+  // instead of a state the new engine would have to void.
+  const reseed = needsRulesVoid(match);
+  const state = reseed ? createInitialState() : stateOf(match);
   const seats: Seats = { player1Id: match.player1Id, player2Id: userId };
 
   // Straight to `playing`: there is no ready banner and no countdown, so the
@@ -380,6 +470,9 @@ async function joinExistingMatch(
       status: statusForState(state),
       ply: state.ply,
       currentTurnUserId: userIdForSeat(seats, state.currentTurn),
+      // Only written when the lobby needed re-seeding, so a normal join keeps
+      // its existing single-write shape.
+      ...(reseed ? { gameState: state } : {}),
       startedAt: new Date(),
       updatedAt: new Date(),
     })
@@ -463,14 +556,18 @@ export type MoveResult =
       state: TicTacToeState;
       mark: string;
       ply: number;
-      /** The lattice slot the move landed on (-1 for sudden death). */
+      /** The lattice slot the move landed on (0..8). */
       boardIndex: number;
-      /** The expansion stage the match is on AFTER the move. */
-      stage: number;
+      /**
+       * The mini-board the OPPONENT must play after this move, or null when its
+       * destination resolved and it may choose any unfinished board. Derived by
+       * `applyMove` from the cell index; never accepted from a client.
+       */
+      nextBoard: number | null;
       matchCompleted: boolean;
       /** The small board's winning line, when the move resolved that board. */
       winningLine: number[] | null;
-      /** The three Mega slots that won the match, when it was a Mega line. */
+      /** The three lattice slots that won the match, when it was a lattice line. */
       winningBoards: number[] | null;
       winnerSeat: Seat | null;
     }
@@ -480,8 +577,8 @@ export type MoveResult =
  * Take one move.
  *
  * The request carries ONLY { boardIndex, cellIndex, expectedVersion }. Anything
- * else a client might send (a mark, a board, a winner, a result, a stage, a
- * completion flag) is ignored: the sequence
+ * else a client might send (a mark, a board owner, a winner, a result, a
+ * destination, a completion flag) is ignored: the sequence
  *   validateMove → applyMove
  * runs entirely inside the row-locked transaction below.
  *
@@ -541,6 +638,16 @@ export async function move({
         return { error: "Match is no longer active", status: 409 } as const;
       }
 
+      // Legacy compatibility: a match whose persisted state predates the
+      // Ultimate rules cannot be continued. Void it (refunding both stakes,
+      // unrated) rather than either crashing the engine or silently re-reading
+      // a one-board Mega position as a nine-board Ultimate one.
+      const voidReason = rulesVoidReason(match);
+      if (voidReason) {
+        await voidUnplayableMatch(tx, match);
+        return { error: rulesVoidError(voidReason), status: 409 } as const;
+      }
+
       const state = stateOf(match);
       const validation = validateMove({
         state,
@@ -580,9 +687,9 @@ export async function move({
       let finalApplied = applied;
       if (match.isAi && !applied.matchCompleted) {
         let guard = 0;
-        // A Mega match alternates one move per turn exactly like stage 1, so
-        // the loop runs once; the generous guard (every cell of every board)
-        // only exists so a future non-alternating bot cannot spin forever.
+        // A match alternates one move per turn by construction, so the loop
+        // runs once; the generous guard (every cell of every board) only exists
+        // so a future non-alternating bot cannot spin forever.
         while (
           finalState.phase !== "finished" &&
           finalState.currentTurn !== seat &&
@@ -667,7 +774,7 @@ export async function move({
         mark: finalApplied.state.lastMove?.mark ?? "",
         ply: state.ply,
         boardIndex: slot,
-        stage: finalState.stage,
+        nextBoard: finalState.nextBoard,
         matchCompleted: finalApplied.matchCompleted,
         winningLine: finalApplied.winningLine,
         winningBoards: finalApplied.winningBoards,
@@ -714,6 +821,13 @@ export async function forfeitMatch({
         error: "Only an active match can be forfeited",
         status: 409,
       } as const;
+    }
+    // A legacy match has no valid result to award: void it instead of settling
+    // a win on a game that was being played under different rules.
+    const voidReason = rulesVoidReason(match);
+    if (voidReason) {
+      await voidUnplayableMatch(tx, match);
+      return { error: rulesVoidError(voidReason), status: 409 } as const;
     }
 
     const winnerSeat = otherSeat(seat);
@@ -855,6 +969,13 @@ export async function forfeitMatchOnDisconnect({
       match.status === MATCH_STATUS.CANCELLED
     ) {
       return { match, forfeited: false, cancelled: false } as const;
+    }
+
+    // A match the current rules cannot continue: void it (refund both, unrated)
+    // and report it as cancelled so the realtime retry loop stops.
+    if (needsRulesVoid(match)) {
+      const voided = await voidUnplayableMatch(tx, match);
+      return { match: voided, forfeited: false, cancelled: true } as const;
     }
 
     // Still an open lobby: release it. There is no opponent to award a win to,

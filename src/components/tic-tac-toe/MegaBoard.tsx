@@ -2,73 +2,79 @@
 
 // src/components/tic-tac-toe/MegaBoard.tsx
 //
-// The Mega Tic-Tac-Toe lattice: one, four or nine small 3x3 boards laid out as
-// a clean grid (1x1 → 2x2 → 3x3).
+// The Ultimate Tic-Tac-Toe board: ONE large 3x3 board whose nine squares are
+// themselves 3x3 mini-boards.
 //
 // ── AUTHORITY ─────────────────────────────────────────────────────────────
 //
 // This component DRAWS the server snapshot and OFFERS cells; it never decides
 // anything. Every board's cells, its control ("active" / "draw" / "X" / "O"),
-// its winning line, the round (stage), the slots in play and the Mega winning
-// line all arrive in the DTO. There is no client-side winner detection and no
-// client-side control inference: a click that slipped through would still be
-// rejected by the store's `validateMove`.
+// its winning cell line, the required destination (`nextBoard`), the playable
+// set (`playableBoards`) and the winning lattice line all arrive in the DTO.
+// There is no client-side winner detection, no client-side control inference
+// and no re-derivation of the forced destination: a click that slipped through
+// would still be rejected by the store's `validateMove`.
 //
 // ── WHAT IT COMMUNICATES ──────────────────────────────────────────────────
 //
-//   • the current round (1 → 4 → 9 boards) as a three-step tracker
-//   • a live legend of how many boards X controls, O controls, are drawn and
-//     are still open
-//   • each board's own control badge, so a locked board is unmistakable while
-//     still showing its complete X/O state
-//   • the winning small-board line (via the board component) and the winning
-//     three-board Mega line (a drawn overlay + a ring on each board)
-//   • which board the player is interacting with (a focus ring, set on hover,
-//     tap or keyboard focus)
+//   • the REQUIRED mini-board, unmistakable: amber ring, glow, "Play here"
+//     chip. Exactly ONE board is ever highlighted this way.
+//   • FREE CHOICE, when the destination resolved: said in words in the header
+//     chip and every open board is drawn in the same "you may play here" style.
+//   • each board's own state as one word — Play here / Open / Waiting / X / O /
+//     Draw — over a frame that never covers the marks themselves.
+//   • the winning mini-board line (from the server's per-board winningLine) and
+//     the winning three-board lattice line (a drawn line plus emerald rings).
+//   • the three rules of the game, in a strip under the board.
 //
-// Expansion is animated with framer-motion `layout`: the original Round-1 board
-// keeps its identity (stable slot key) and visually shrinks into its quadrant
-// as the three new boards mount around it.
+// Every card is mounted at once and stays mounted: in Ultimate there is no
+// expansion, so nothing appears later and no board ever moves.
 
-import { memo } from "react";
-import { motion } from "framer-motion";
+import { memo, useMemo } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
 import TicTacToeBoard from "./TicTacToeBoard";
-import { SUDDEN_DEATH_BOARD_INDEX } from "../../lib/tic-tac-toe/constants";
+import { withReducedMotion } from "../../lib/animations";
 import {
-  boardControlLabel,
-  boardControlShort,
-  boardIsResolved,
-  boardOwnerSeat,
-  megaControlCounts,
-  megaWinningSlotSet,
+  HOW_TO_PLAY,
+  boardName,
+  boardPositionName,
+  boardState,
+  boardStateBadge,
+  boardStateDescription,
+  boardStateMark,
+  destinationChip,
+  isFreeChoice,
+  latticeProgress,
+  latticeSlots,
   normaliseLattice,
-  normaliseSlotList,
-  normaliseStage,
-  normaliseSuddenDeath,
-  roundBlurb,
-  roundLabel,
-  roundName,
+  normaliseWinningBoards,
+  playableLatticeBoards,
+  requiredBoard,
   seatColor,
   slotGridPosition,
-  stageColumns,
-  stageSlots,
+  winningBoardSet,
+  type BoardVisualState,
+  type NormalisedBoard,
 } from "../../lib/tic-tac-toe/ui";
 import type { Seat } from "../../lib/tic-tac-toe/types";
 
+/** The lattice is a fixed 3x3 grid — named so the grid template reads clearly. */
+const LATTICE_COLUMNS = 3;
+
 export type MegaBoardProps = {
-  /** The server's lattice, length 9 (`null` slots are not in play yet). */
+  /** The server's lattice, length 9. */
   boards: unknown;
-  /** The server's round (stage): 1 | 2 | 3. */
-  stage: unknown;
-  /** The server's slots in play at this stage (authoritative). */
-  slots?: unknown;
-  /** The server's winning Mega slots, or null. */
+  /** The server's winning lattice slots (three of them), or null. */
   winningBoards?: unknown;
   /** The server's last accepted move, for the "just played" marker. */
   lastMove?: unknown;
-  /** The server's sudden-death state, or null. */
-  suddenDeath?: unknown;
+  /** The server's required destination slot, or null for a free choice. */
+  nextBoard?: unknown;
+  /** The server's playable boards — the boards a move may address. */
+  playableBoards?: unknown;
+  /** The server's row status, so a terminal match says so. */
+  status?: unknown;
   /** The seat the server says the viewer occupies. */
   viewerSeat: Seat | null;
   /** The server's `viewerCanMove` flag — the only thing that unlocks a cell. */
@@ -91,133 +97,174 @@ export type MegaBoardProps = {
   className?: string;
 };
 
-/** One small board inside the lattice, with its header, badge and focus ring. */
+/** The frame + chip styling for each board state. */
+const CARD_FRAME: Record<BoardVisualState, string> = {
+  required:
+    "border-amber-300/80 bg-amber-400/[0.07] ring-2 ring-amber-300/60 shadow-[0_0_26px_-4px_rgba(251,191,36,0.55)]",
+  open: "border-amber-400/25 bg-black/40 hover:border-amber-300/45",
+  waiting: "border-white/[0.08] bg-black/40 opacity-60",
+  "won-x": "border-amber-400/40 bg-amber-400/[0.05]",
+  "won-o": "border-cyan-400/40 bg-cyan-400/[0.05]",
+  drawn: "border-white/10 bg-white/[0.03] opacity-85",
+};
+
+/** The badge styling for each board state. */
+const CARD_BADGE: Record<BoardVisualState, string> = {
+  required: "border-amber-300/70 bg-amber-400/20 text-amber-100",
+  open: "border-amber-400/30 bg-amber-500/10 text-amber-200/80",
+  waiting: "border-white/10 bg-white/5 text-white/45",
+  "won-x": "border-transparent text-[#070b16]",
+  "won-o": "border-transparent text-[#070b16]",
+  drawn: "border-white/15 bg-white/10 text-white/70",
+};
+
+/** One mini-board inside the lattice: header, board, and its state framing. */
 function BoardCard({
   board,
   slot,
-  round,
-  megaLine,
+  state,
+  latticeLine,
+  selectable,
   focused,
   highlight,
   viewerSeat,
-  viewerCanMove,
   busy,
   pendingCell,
   lastMove,
+  reduceMotion,
   onFocusBoard,
   onPlay,
 }: {
-  board: ReturnType<typeof normaliseLattice>[number];
+  board: NormalisedBoard;
   slot: number;
-  round: 1 | 2 | 3;
-  megaLine: boolean;
+  state: BoardVisualState;
+  latticeLine: boolean;
+  selectable: boolean;
   focused: boolean;
   highlight: boolean;
   viewerSeat: Seat | null;
-  viewerCanMove: boolean;
   busy: boolean;
   pendingCell: number | null;
   lastMove: unknown;
+  reduceMotion: boolean;
   onFocusBoard?: (boardIndex: number) => void;
   onPlay: (boardIndex: number, cellIndex: number) => void;
 }) {
-  // A `null` slot is not in play at this round: the server has not materialised
-  // it yet, so there is nothing to draw and nothing to offer.
-  if (!board) return null;
+  const ownerMark = boardStateMark(state);
+  const ownerColour = ownerMark ? seatColor(ownerMark === "X" ? "player1" : "player2") : null;
+  const position = boardPositionName(slot);
+  const cardLabel = `${boardName(slot)} (${position}) — ${boardStateDescription(state)}`;
 
-  const resolved = boardIsResolved(board.control);
-  const owner = boardOwnerSeat(board.control);
-  const accent = seatColor(owner);
-  const playable = viewerCanMove && board.control === "active";
-  const compact = round > 1;
-
-  const frame = megaLine
-    ? "border-emerald-300/70 bg-emerald-400/[0.07] shadow-[0_0_30px_rgba(52,211,153,0.28)]"
-    : resolved
-      ? "border-white/10 bg-black/30"
-      : playable
-        ? "border-amber-400/30 bg-black/40"
-        : "border-white/10 bg-black/35";
-
-  const badge = megaLine
-    ? "border-emerald-300/60 bg-emerald-400/15 text-emerald-200"
-    : board.control === "X" || board.control === "O"
-      ? "border-transparent text-[#0b0f1c]"
-      : board.control === "draw"
-        ? "border-white/20 bg-white/10 text-white/70"
-        : playable
-          ? "border-amber-400/50 bg-amber-500/15 text-amber-200"
-          : "border-white/10 bg-white/5 text-white/50";
+  const frame = latticeLine
+    ? "border-emerald-300/60 ring-2 ring-emerald-300/50 shadow-[0_0_26px_-4px_rgba(52,211,153,0.55)]"
+    : CARD_FRAME[state];
 
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, scale: 0.85 }}
+      initial={reduceMotion ? false : { opacity: 0, scale: 0.94 }}
       animate={{ opacity: 1, scale: 1 }}
-      transition={{ type: "spring", stiffness: 240, damping: 26 }}
+      transition={
+        reduceMotion
+          ? { duration: 0 }
+          : { type: "spring", stiffness: 260, damping: 26, delay: Math.min(slot, 8) * 0.015 }
+      }
+      role="group"
+      aria-label={cardLabel}
       data-testid={`tic-tac-toe-lattice-board-${slot}`}
+      data-state={state}
       data-control={board.control}
-      data-resolved={resolved ? "true" : "false"}
+      data-resolved={state === "won-x" || state === "won-o" || state === "drawn" ? "true" : "false"}
+      data-required={state === "required" ? "true" : "false"}
+      data-offered={state === "open" || state === "required" ? "true" : "false"}
+      data-selectable={selectable ? "true" : "false"}
       data-focused={focused ? "true" : "false"}
+      data-lattice-line={latticeLine ? "true" : "false"}
       onMouseEnter={onFocusBoard ? () => onFocusBoard(slot) : undefined}
       onFocus={onFocusBoard ? () => onFocusBoard(slot) : undefined}
       // `min-w-0`: a grid item defaults to `min-width: auto`, i.e. it refuses to
-      // shrink below its own min-content width (the "Board 1" label plus the
-      // control badge). Without this the nine cards would push the lattice past
-      // the viewport on a phone; with it the cards and their `aspect-square`
-      // cells shrink to whatever the track gives them.
-      className={`min-w-0 rounded-2xl border p-1.5 transition sm:p-2 ${frame} ${
+      // shrink below its own min-content width (the position label plus the
+      // state chip). Without this the nine cards would push the lattice past the
+      // viewport on a phone; with it the cards and their `aspect-square` cells
+      // shrink to whatever the track gives them.
+      className={`relative min-w-0 rounded-xl border p-1 transition sm:rounded-2xl sm:p-1.5 ${frame} ${
         highlight
-          ? "ring-2 ring-amber-300/90 shadow-[0_0_36px_rgba(251,191,36,0.45)]"
+          ? "ring-2 ring-amber-200/80"
           : focused
-            ? "ring-2 ring-amber-300/70"
-            : ""
+            ? "ring-1 ring-white/30"
+            : state === "required"
+              ? ""
+              : ""
       }`}
     >
-      <div className="mb-1 flex items-center justify-between gap-1">
-        <span className="truncate text-[10px] font-bold uppercase tracking-wider text-white/55 sm:text-[11px]">
-          Board {slot + 1}
+      <div className="relative mb-1 flex items-center justify-between gap-1">
+        <span className="truncate text-[9px] font-bold uppercase tracking-wider text-white/45 sm:text-[10px]">
+          {position}
         </span>
         <span
-          className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider sm:text-[10px] ${badge}`}
-          style={
-            board.control === "X" || board.control === "O"
-              ? { background: accent }
-              : undefined
-          }
+          className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[8.5px] font-black uppercase tracking-wider sm:text-[9.5px] ${
+            latticeLine ? "border-emerald-300/60 bg-emerald-400/15 text-emerald-100" : CARD_BADGE[state]
+          }`}
+          style={ownerColour ? { background: ownerColour } : undefined}
+          data-testid={`lattice-board-badge-${slot}`}
         >
-          {megaLine ? "Mega line" : boardControlShort(board.control)}
+          {latticeLine ? "Line" : boardStateBadge(state)}
         </span>
       </div>
 
-      <TicTacToeBoard
-        board={board.cells}
-        winningLine={board.winningLine}
-        control={board.control}
-        boardIndex={slot}
-        megaLine={megaLine}
-        compact={compact}
-        label={`Board ${slot + 1} — ${boardControlLabel(board.control)}`}
-        lastMove={
-          (lastMove as { boardIndex?: unknown } | null)?.boardIndex === slot ? lastMove : null
-        }
-        viewerSeat={viewerSeat}
-        viewerCanMove={playable}
-        busy={busy}
-        pendingCell={pendingCell}
-        onPlay={(cellIndex) => onPlay(slot, cellIndex)}
-      />
+      <div className="relative">
+        {/* Ownership is a WASH behind the marks, never a cover over them: the
+            owner glyph sits at 11% opacity and the cells keep every mark at full
+            strength, so "who owns this board" and "what is on this board" are
+            both readable at 100px wide. */}
+        <AnimatePresence>
+          {ownerMark && (
+            <motion.span
+              key={ownerMark}
+              aria-hidden="true"
+              {...withReducedMotion(reduceMotion, {
+                initial: { opacity: 0, scale: 0.7 },
+                animate: { opacity: 0.11, scale: 1 },
+                exit: { opacity: 0 },
+                transition: { type: "spring" as const, stiffness: 220, damping: 24 },
+              })}
+              className="pointer-events-none absolute inset-0 flex items-center justify-center text-[42px] font-black leading-none sm:text-[54px]"
+              style={{ color: ownerColour ?? undefined }}
+            >
+              {ownerMark}
+            </motion.span>
+          )}
+        </AnimatePresence>
+
+        <TicTacToeBoard
+          board={board.cells}
+          winningLine={board.winningLine}
+          control={board.control}
+          boardIndex={slot}
+          megaLine={latticeLine}
+          state={state}
+          compact
+          label={cardLabel}
+          lastMove={(lastMove as { boardIndex?: unknown } | null)?.boardIndex === slot ? lastMove : null}
+          viewerSeat={viewerSeat}
+          viewerCanMove={selectable}
+          busy={busy}
+          pendingCell={pendingCell}
+          className="relative"
+          onPlay={(cellIndex) => onPlay(slot, cellIndex)}
+        />
+      </div>
     </motion.div>
   );
 }
 
 function MegaBoard({
   boards,
-  stage,
-  slots: slotsProp,
   winningBoards,
   lastMove,
-  suddenDeath,
+  nextBoard = null,
+  playableBoards,
+  status,
   viewerSeat,
   viewerCanMove,
   busy = false,
@@ -228,270 +275,206 @@ function MegaBoard({
   onPlay,
   className = "",
 }: MegaBoardProps) {
-  const round = normaliseStage(stage);
-  const lattice = normaliseLattice(boards);
-  const serverSlots = normaliseSlotList(slotsProp);
-  const slots = serverSlots.length ? serverSlots : stageSlots(round);
-  const cols = stageColumns(round);
-  const winningSet = megaWinningSlotSet(winningBoards);
-  const counts = megaControlCounts(lattice, slots);
-  const suddenDeathBoards = normaliseSuddenDeath(suddenDeath);
-  const owned = [...winningSet];
-  const winningMark = owned.length ? lattice[owned[0]]?.control ?? null : null;
+  const reduce = useReducedMotion();
+  const lattice = useMemo(() => normaliseLattice(boards), [boards]);
+  const slots = latticeSlots();
+  const winningSlots = normaliseWinningBoards(winningBoards);
+  const winningSet = winningBoardSet(winningBoards);
+  const progress = latticeProgress(boards);
 
-  // Responsive sizing.
-  //
-  // The lattice must FIT its column at every width, so the whole Round-3 3×3
-  // (nine boards) stays on screen on a phone with no sideways scroll. The old
-  // always-on inline `min-width: cols * 10.5rem` was 504px at Round 3 — wider
-  // than any phone's content width — so the 9-board round became a
-  // horizontally-scrolling strip, while on a wide column the `minmax(0, 1fr)`
-  // tracks already stretched well past it. There is no floor now: the tracks
-  // are `minmax(0, 1fr)` and each card carries `min-w-0`, so the boards and
-  // their `aspect-square` cells simply shrink to fit. `data-cols` names the
-  // round's column count for the CSS hook and the layout audits.
-  //
-  // Round 1's lone board would otherwise stretch to the full width of its
-  // column, so it keeps a ceiling: a 3x3 that stays comfortably playable and is
-  // close to the size each board shrinks to once the lattice expands.
-  const maxWidth = cols === 1 ? "20rem" : undefined;
+  // The destination and the playable set come straight from the server's own
+  // derived fields — the same ones `validateMove` enforces.
+  const snapshot = useMemo(
+    () => ({ boards, nextBoard, playableBoards, status, viewerCanMove, lastMove }),
+    [boards, nextBoard, playableBoards, status, viewerCanMove, lastMove],
+  );
+  const required = requiredBoard(snapshot);
+  const freeChoice = isFreeChoice(snapshot);
+  const offered = playableLatticeBoards(snapshot);
+  const chip = destinationChip(snapshot);
 
-  // The Mega win overlay: a single line between the first and last winning
-  // board's centres, drawn in the winner's colour. Only a genuine three-slot
-  // line is drawn.
-  const lineSlots = owned;
+  const winningMark = winningSlots.length ? lattice[winningSlots[0]]?.control ?? null : null;
+
+  // The lattice win overlay: one line between the first and last winning board's
+  // centres, in the winner's colour. The grid is always 3x3, so a slot's index
+  // IS its row-major position in that grid.
   let overlay: { x1: number; y1: number; x2: number; y2: number; color: string } | null = null;
-  if (lineSlots.length === 3 && !suddenDeathBoards.length) {
-    const first = slotGridPosition(lineSlots[0], round);
-    const last = slotGridPosition(lineSlots[2], round);
+  if (winningSlots.length === 3) {
+    const first = slotGridPosition(winningSlots[0]);
+    const last = slotGridPosition(winningSlots[2]);
     overlay = {
       x1: ((first.col + 0.5) / first.cols) * 100,
       y1: ((first.row + 0.5) / first.rows) * 100,
       x2: ((last.col + 0.5) / last.cols) * 100,
       y2: ((last.row + 0.5) / last.rows) * 100,
-      color: seatColor(boardOwnerSeat(lattice[lineSlots[0]]?.control)),
+      color: seatColor(winningMark === "O" ? "player2" : "player1"),
     };
   }
 
   const focused = focusedBoard !== null && slots.includes(focusedBoard) ? focusedBoard : null;
 
   return (
-    <div data-testid="tic-tac-toe-mega" data-stage={round} className={className}>
-      {/* ── Round tracker + control legend ─────────────────────────────── */}
-      <div className="mb-3 space-y-2">
-        <div
-          data-testid="mega-round"
-          data-round={round}
-          className="flex flex-wrap items-center gap-1.5"
+    <div
+      data-testid="tic-tac-toe-mega"
+      data-cols={LATTICE_COLUMNS}
+      data-required-board={required ?? ""}
+      data-free-choice={freeChoice ? "true" : "false"}
+      className={className}
+    >
+      {/* ── The live destination, and how far the match has gone ─────────── */}
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <p
+          data-testid="lattice-destination"
+          data-required={required ?? ""}
+          data-free-choice={freeChoice ? "true" : "false"}
+          // Announced politely: the destination changes on every accepted move,
+          // and a screen reader must hear it without stealing focus.
+          role="status"
+          aria-live="polite"
+          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold ${
+            required !== null
+              ? "border-amber-300/60 bg-amber-400/10 text-amber-100"
+              : freeChoice
+                ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-100"
+                : "border-white/10 bg-white/5 text-white/60"
+          }`}
         >
-          {([1, 2, 3] as const).map((step) => {
-            const isCurrent = step === round;
-            const done = step < round;
-            const count = [1, 4, 9][step - 1];
-            return (
-              <span
-                key={step}
-                data-step={step}
-                data-active={isCurrent ? "true" : "false"}
-                className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider transition sm:text-[11px] ${
-                  isCurrent
-                    ? "border-amber-400/60 bg-amber-500/15 text-amber-200"
-                    : done
-                      ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-200/80"
-                      : "border-white/10 bg-white/5 text-white/35"
-                }`}
-              >
-                Round {step} · {count} {count === 1 ? "board" : "boards"}
-              </span>
-            );
-          })}
-        </div>
-
-        <div
-          data-testid="mega-legend"
-          className="flex flex-wrap items-center gap-2 text-[11px] font-semibold"
-        >
-          <LegendChip color={seatColor("player1")} label={`X controls`} value={counts.x} />
-          <LegendChip color={seatColor("player2")} label={`O controls`} value={counts.o} />
-          <LegendChip color="#94a3b8" label="Draws" value={counts.draw} />
-          <LegendChip color="#fbbf24" label="Open" value={counts.active} />
-          <span className="text-white/45">
-            {counts.resolved} of {slots.length} boards locked
-          </span>
-        </div>
-
-        <p data-testid="mega-round-blurb" className="text-[11px] text-white/45">
-          <span className="font-bold text-amber-200/80">{roundLabel(round)}</span>{" "}
-          <span className="uppercase tracking-wider text-white/35">· {roundName(round)} ·</span>{" "}
-          {roundBlurb(round)}
+          <span
+            aria-hidden="true"
+            className={`inline-block h-1.5 w-1.5 rounded-full ${
+              required !== null
+                ? "animate-pulse bg-amber-300"
+                : freeChoice
+                  ? "bg-emerald-300"
+                  : "bg-white/30"
+            }`}
+          />
+          {chip}
         </p>
+        <span data-testid="lattice-progress" className="text-[11px] tabular-nums text-white/40">
+          {progress.label}
+        </span>
+      </div>
 
+      {/* ── The lattice win ──────────────────────────────────────────────── */}
+      <AnimatePresence>
         {winningSet.size === 3 && (
           <motion.p
+            key="lattice-win"
             data-testid="mega-win-line"
-            initial={{ opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ type: "spring", stiffness: 320, damping: 24 }}
-            className="rounded-lg border border-emerald-400/50 bg-emerald-500/15 px-2.5 py-1.5 text-center text-xs font-black uppercase tracking-[0.2em] text-emerald-100"
+            {...withReducedMotion(reduce, {
+              initial: { opacity: 0, scale: 0.96 },
+              animate: { opacity: 1, scale: 1 },
+              exit: { opacity: 0 },
+              transition: { type: "spring" as const, stiffness: 320, damping: 24 },
+            })}
+            className="mb-2 rounded-lg border border-emerald-400/50 bg-emerald-500/15 px-2.5 py-1.5 text-center text-xs font-black uppercase tracking-[0.2em] text-emerald-100"
           >
-            Mega line — {winningMark ?? "X"} wins the match
+            Line — {winningMark ?? "X"} wins the match
             <span className="mt-0.5 block text-[10px] font-semibold tracking-normal text-emerald-200/80">
-              {[...winningSet].map((slot) => `Board ${slot + 1}`).join(" · ")}
+              {winningSlots.map((slot) => boardName(slot)).join(" · ")}
             </span>
           </motion.p>
         )}
-      </div>
+      </AnimatePresence>
 
-      {/* ── Sudden death ───────────────────────────────────────────────── */}
-      {suddenDeathBoards.length > 0 && (
-        <section
-          data-testid="tic-tac-toe-sudden-death"
-          className="mb-3 rounded-2xl border border-emerald-400/40 bg-emerald-500/[0.06] p-3"
-        >
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-200">
-              Sudden death
-            </h3>
-            <span className="text-[11px] text-white/60">
-              Board {suddenDeathBoards.length} of the sudden-death sequence — a win ends the match.
-            </span>
-          </div>
-          <div className="mx-auto grid max-w-sm grid-cols-1 gap-2">
-            {suddenDeathBoards.map((board, index) => {
-              const isCurrent = index === suddenDeathBoards.length - 1 && !boardIsResolved(board.control);
-              return (
-                <motion.div
-                  key={index}
-                  layout
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className={`rounded-2xl border p-2 ${
-                    isCurrent ? "border-emerald-300/60 bg-black/40" : "border-white/10 bg-black/30"
-                  }`}
-                >
-                  <div className="mb-1 flex items-center justify-between">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-white/55">
-                      {isCurrent ? "Live board" : `Board ${index + 1}`}
-                    </span>
-                    <span className="rounded-full border border-white/15 bg-white/5 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-white/60">
-                      {boardControlShort(board.control)}
-                    </span>
-                  </div>
-                  <TicTacToeBoard
-                    board={board.cells}
-                    winningLine={board.winningLine}
-                    control={board.control}
-                    boardIndex={SUDDEN_DEATH_BOARD_INDEX}
-                    label={`Sudden death board ${index + 1} — ${boardControlLabel(board.control)}`}
-                    lastMove={
-                      (lastMove as { boardIndex?: unknown } | null)?.boardIndex ===
-                      SUDDEN_DEATH_BOARD_INDEX
-                        ? lastMove
-                        : null
-                    }
-                    viewerSeat={viewerSeat}
-                    viewerCanMove={viewerCanMove && isCurrent}
-                    busy={busy}
-                    pendingCell={
-                      pending && pending.boardIndex === SUDDEN_DEATH_BOARD_INDEX
-                        ? pending.cellIndex
-                        : null
-                    }
-                    onPlay={(cellIndex) => onPlay(SUDDEN_DEATH_BOARD_INDEX, cellIndex)}
-                  />
-                </motion.div>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      {/* ── The lattice ────────────────────────────────────────────────── */}
-      {/* The lattice always fits its column (see `.mega-lattice` below), so a
-          phone never scrolls sideways and the whole 3×3 stays visible.
-          `overflow-x-auto` is only a safety net for a pathological viewport. */}
+      {/* ── The board ────────────────────────────────────────────────────── */}
+      {/* The lattice fits its column whatever the width (see `.mega-lattice` in
+          globals.css), so a phone never scrolls sideways and all nine boards
+          stay visible. `overflow-x-auto` is only a safety net for a
+          pathological viewport. */}
       <div className="overflow-x-auto pb-1">
-        <div
-          className="mega-lattice relative mx-auto w-full"
-          data-cols={cols}
-          style={{ maxWidth }}
-        >
-          <div
-            className="grid gap-2 sm:gap-3"
-            style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
-            aria-label={`Mega board — ${slots.length} boards in play`}
-          >
-            {slots.map((slot) => (
-              <BoardCard
-                key={slot}
-                board={lattice[slot]}
-                slot={slot}
-                round={round}
-                megaLine={winningSet.has(slot)}
-                focused={focused === slot}
-                highlight={highlightSlot === slot}
-                viewerSeat={viewerSeat}
-                viewerCanMove={viewerCanMove}
-                busy={busy}
-                pendingCell={
-                  pending && pending.boardIndex === slot ? pending.cellIndex : null
-                }
-                lastMove={lastMove}
-                onFocusBoard={onFocusBoard}
-                onPlay={onPlay}
-              />
-            ))}
-          </div>
+        <div className="mega-lattice relative mx-auto w-full" data-cols={LATTICE_COLUMNS}>
+          {/* The large board's own frame: it is what makes nine separate boards
+              read as ONE 3x3 game, and it carries the winning line. */}
+          <div className="relative rounded-2xl border border-white/10 bg-[#070b16]/70 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_24px_60px_-40px_rgba(0,0,0,0.95)] sm:rounded-[20px] sm:p-1.5">
+            <div className="relative">
+              <div
+                className="grid gap-1.5 sm:gap-2"
+                style={{ gridTemplateColumns: `repeat(${LATTICE_COLUMNS}, minmax(0, 1fr))` }}
+                aria-label="Ultimate Tic-Tac-Toe board — nine mini-boards"
+              >
+                {slots.map((slot) => {
+                  const board = lattice[slot];
+                  const state = boardState({
+                    control: board.control,
+                    required: required === slot,
+                    offered: offered.includes(slot),
+                  });
+                  return (
+                    <BoardCard
+                      key={slot}
+                      board={board}
+                      slot={slot}
+                      state={state}
+                      latticeLine={winningSet.has(slot)}
+                      selectable={viewerCanMove && offered.includes(slot) && state !== "waiting"}
+                      focused={focused === slot}
+                      highlight={highlightSlot === slot}
+                      viewerSeat={viewerSeat}
+                      busy={busy}
+                      pendingCell={pending && pending.boardIndex === slot ? pending.cellIndex : null}
+                      lastMove={lastMove}
+                      reduceMotion={Boolean(reduce)}
+                      onFocusBoard={onFocusBoard}
+                      onPlay={onPlay}
+                    />
+                  );
+                })}
+              </div>
 
-          {overlay && (
-            <svg
-              data-testid="mega-winning-line"
-              viewBox="0 0 100 100"
-              preserveAspectRatio="none"
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 h-full w-full"
-            >
-              <line
-                x1={overlay.x1}
-                y1={overlay.y1}
-                x2={overlay.x2}
-                y2={overlay.y2}
-                stroke={overlay.color}
-                strokeWidth="3"
-                strokeLinecap="round"
-                vectorEffect="non-scaling-stroke"
-                style={{ filter: `drop-shadow(0 0 6px ${overlay.color})` }}
-              />
-            </svg>
-          )}
+              {overlay && (
+                <svg
+                  data-testid="mega-winning-line"
+                  viewBox="0 0 100 100"
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 h-full w-full"
+                >
+                  <motion.line
+                    x1={overlay.x1}
+                    y1={overlay.y1}
+                    x2={overlay.x2}
+                    y2={overlay.y2}
+                    stroke={overlay.color}
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    vectorEffect="non-scaling-stroke"
+                    style={{ filter: `drop-shadow(0 0 7px ${overlay.color})` }}
+                    {...withReducedMotion(reduce, {
+                      initial: { opacity: 0 },
+                      animate: { opacity: 0.95 },
+                      transition: { duration: 0.4, ease: "easeOut" as const },
+                    })}
+                  />
+                </svg>
+              )}
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* ── How to play ──────────────────────────────────────────────────── */}
+      <ul
+        data-testid="lattice-rules"
+        className="mt-2.5 grid gap-x-4 gap-y-1 text-[10.5px] leading-snug text-white/45 sm:grid-cols-3 sm:text-[11px]"
+      >
+        {HOW_TO_PLAY.map((line, index) => (
+          <li key={line} className="flex items-start gap-1.5">
+            <span
+              aria-hidden="true"
+              className="mt-[3px] inline-block h-1 w-1 shrink-0 rounded-full bg-amber-300/70"
+              data-step={index + 1}
+            />
+            {line}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
 
-function LegendChip({
-  color,
-  label,
-  value,
-}: {
-  color: string;
-  label: string;
-  value: number;
-}) {
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-white/70">
-      <span
-        aria-hidden="true"
-        className="inline-block h-2 w-2 rounded-full"
-        style={{ background: color }}
-      />
-      {value} {label}
-    </span>
-  );
-}
-
 // The lattice is a pure function of its props and the page re-renders on every
-// poll tick; memoising keeps the SVG cells from reconciling when the snapshot
+// poll tick; memoising keeps the nine boards from reconciling when the snapshot
 // did not change.
 export default memo(MegaBoard);

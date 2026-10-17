@@ -4,25 +4,20 @@
 //
 // Everything here is a deterministic function of its arguments — no DOM, no
 // React, no fetch — so the board affordances, the turn copy and the
-// result mapping can be unit-tested directly and shared between the board
-// component and the match controls.
+// destination copy can be unit-tested directly and shared between the lattice
+// component and the match page.
 //
 // IMPORTANT: nothing in this module is authoritative. It only decides what the
-// player SEES and what they are OFFERED. The board, whose turn it is, the
-// winner and the draw always come from the server snapshot — this file never
-// computes a move, a winner or a result of its own.
+// player SEES and what they are OFFERED. The lattice, whose turn it is, the
+// required destination, the winner and the draw always come from the server
+// snapshot — this file never computes a move, a winner or a result of its own,
+// and it never re-implements a winning line. Every "which board / which cell"
+// answer below is read from the DTO's own derived fields (`boards`,
+// `playableBoards`, `nextBoard`, `viewerCanMove`); the store still validates
+// every submission.
 
-import {
-  CELL_COUNT,
-  BOARD_SIZE,
-  MATCH_STATUS,
-  MAX_BOARDS,
-  MEGA_SIZE,
-  RESULT,
-  STAGE_BOARD_SLOTS,
-  SUDDEN_DEATH_BOARD_INDEX,
-} from "./constants";
-import type { BoardControl, Cell, Mark, Seat, TiebreakSummary } from "./types";
+import { CELL_COUNT, LATTICE_SIZE, MATCH_STATUS, MAX_BOARDS } from "./constants";
+import type { BoardControl, Cell, Mark, Seat } from "./types";
 import { viewerOutcome } from "../results/viewerOutcome";
 
 // ── Seat colours (the duotone every GRYND 1v1 match view uses) ────────────
@@ -67,9 +62,9 @@ export function seatLabel(seat: Seat | null | undefined, viewerSeat: Seat | null
   return seat === viewerSeat ? "You" : "Opponent";
 }
 
-// ── Board helpers ─────────────────────────────────────────────────────────
+// ── Cell helpers ──────────────────────────────────────────────────────────
 
-/** True when `value` is a playable board index (0..8). */
+/** True when `value` is a playable cell index (0..8). */
 export function isBoardIndex(value: unknown): boolean {
   return (
     typeof value === "number" &&
@@ -79,7 +74,7 @@ export function isBoardIndex(value: unknown): boolean {
   );
 }
 
-/** The nine cells of a snapshot, normalised to null/Cell. */
+/** The nine cells of a snapshot board, normalised to null/Cell. */
 export function normaliseBoard(board: unknown): Cell[] {
   if (!Array.isArray(board) || board.length !== CELL_COUNT) {
     return Array.from({ length: CELL_COUNT }, () => null);
@@ -91,9 +86,10 @@ export function normaliseBoard(board: unknown): Cell[] {
  * Whether a cell should be OFFERED to the viewer.
  *
  * Mirrors the conditions the server enforces (`validateMove`): the match must
- * be live, it must be the viewer's turn, and the cell must be empty. The board
- * is the server's, so this can never disagree with what the server will accept
- * — and a click on a cell this returns false for is still rejected server-side.
+ * be live and it must be the viewer's turn (`viewerCanMove`), the target board
+ * must be playable, and the cell must be empty. The board is the server's, so
+ * this can never disagree with what the server will accept — and a click on a
+ * cell this returns false for is still rejected server-side.
  */
 export function isCellPlayable({
   board,
@@ -116,33 +112,25 @@ export function winningCellSet(winningLine: unknown): Set<number> {
   return new Set(winningLine.filter(isBoardIndex));
 }
 
-/** The 0-based index of the last accepted move, or -1. */
+/** The 0-based index of the last accepted move's cell, or -1. */
 export function lastMoveCellIndex(lastMove: unknown): number {
   const index = (lastMove as { cellIndex?: unknown } | null)?.cellIndex;
   return isBoardIndex(index) ? (index as number) : -1;
 }
 
-/** How many marks are on the board — the server's ply, clamped. */
+/** How many marks are on one board — the cells, not the server's ply. */
 export function filledCount(board: unknown): number {
   return normaliseBoard(board).filter((cell) => cell !== null).length;
 }
 
-/** "3 of 9 cells played". */
-export function progressLabel(board: unknown): string {
-  return `${filledCount(board)} of ${CELL_COUNT} cells played`;
-}
-
-/** Board geometry, re-exported so the component and tests agree. */
-export const GRID_SIZE = BOARD_SIZE;
-
-// ── The Mega lattice ──────────────────────────────────────────────────────
+// ── The nine-board lattice ────────────────────────────────────────────────
 //
-// Mega Tic-Tac-Toe is a lattice of up to nine 3x3 boards. EVERYTHING below is
-// a pure projection of the server snapshot: the lattice, each board's control,
-// the round (stage), which slots are in play and which boards the Mega line
-// highlights all arrive in the DTO. Nothing here recomputes a line, a winner
-// or a turn — it only normalises the server's values into render-friendly
-// shapes and gives the view geometry for the fixed 3x3 lattice.
+// Ultimate Tic-Tac-Toe is a FIXED 3x3 lattice of nine mini-boards: every slot
+// is in play from move one, so there is no stage, no expansion and no
+// sudden-death board. EVERYTHING below is a pure projection of the server
+// snapshot. The server derives each board's control, the required destination,
+// the playable set and the winning lattice line; this module only normalises
+// those values into render-friendly shapes and gives the view geometry.
 
 /** A server board, normalised for rendering. */
 export type NormalisedBoard = {
@@ -156,7 +144,7 @@ export type NormalisedBoard = {
 
 const BOARD_CONTROLS = new Set<string>(["X", "O", "draw", "active"]);
 
-/** Normalise the server's one small board into a render shape. */
+/** Normalise the server's one mini-board into a render shape. */
 function normaliseServerBoard(raw: unknown): NormalisedBoard | null {
   if (!raw || typeof raw !== "object") return null;
   const source = raw as { cells?: unknown; control?: unknown; winningLine?: unknown };
@@ -172,13 +160,35 @@ function normaliseServerBoard(raw: unknown): NormalisedBoard | null {
   };
 }
 
+/** An empty, open mini-board — what a missing slot reads as. */
+function emptyBoard(): NormalisedBoard {
+  return {
+    cells: Array.from({ length: CELL_COUNT }, () => null),
+    control: "active",
+    winningLine: null,
+  };
+}
+
 /**
- * The whole lattice, always length nine. A `null` slot is one the server has
- * not materialised yet (a later round owns it), exactly as the DTO reports it.
+ * The whole lattice, ALWAYS length nine.
+ *
+ * The server writes all nine mini-boards, so a missing/corrupt slot is a
+ * transport problem rather than a game state. It is normalised to an empty,
+ * open board instead of `null` so the view stays a stable 3x3 — and because a
+ * click on it is still validated (and refused) by the server, that can never
+ * offer an illegal move.
  */
-export function normaliseLattice(lattice: unknown): (NormalisedBoard | null)[] {
+export function normaliseLattice(lattice: unknown): NormalisedBoard[] {
   const source = Array.isArray(lattice) ? lattice : [];
-  return Array.from({ length: MAX_BOARDS }, (_, slot) => normaliseServerBoard(source[slot]));
+  return Array.from(
+    { length: MAX_BOARDS },
+    (_, slot) => normaliseServerBoard(source[slot]) ?? emptyBoard(),
+  );
+}
+
+/** Every lattice slot, row-major: 0..8. */
+export function latticeSlots(): number[] {
+  return Array.from({ length: MAX_BOARDS }, (_, slot) => slot);
 }
 
 /** A list of slot indices, filtered to real slots, de-duplicated and sorted. */
@@ -194,69 +204,97 @@ export function normaliseSlotList(list: unknown): number[] {
   return out.sort((a, b) => a - b);
 }
 
-/** The round (stage), clamped to 1..3. */
-export function normaliseStage(stage: unknown): 1 | 2 | 3 {
-  const raw = Math.trunc(Number(stage));
-  if (!Number.isFinite(raw) || raw < 1) return 1;
-  if (raw > 3) return 3;
-  return raw as 1 | 2 | 3;
+/** The winning lattice line, as a slot list of exactly three (or empty). */
+export function normaliseWinningBoards(winningBoards: unknown): number[] {
+  const slots = normaliseSlotList(winningBoards);
+  return slots.length === 3 ? slots : [];
 }
 
-/** The slots in play at `stage`, from the shared constant (never guessed). */
-export function stageSlots(stage: unknown): number[] {
-  return [...STAGE_BOARD_SLOTS[normaliseStage(stage)]];
+/** The three winning lattice slots, as a lookup for the highlight. */
+export function winningBoardSet(winningBoards: unknown): Set<number> {
+  return new Set(normaliseWinningBoards(winningBoards));
 }
 
-/** How many columns the lattice lays out at `stage`: 1, 2 then 3. */
-export function stageColumns(stage: unknown): number {
-  return normaliseStage(stage);
+/**
+ * The seven things a mini-board can look like, in the order the eye should read
+ * them. Exactly ONE board is ever `required` — the destination the rules
+ * forced — and `open` is what the other selectable boards look like during a
+ * free choice, so the view can never imply that several boards are mandatory.
+ */
+export type BoardVisualState =
+  | "required"
+  | "open"
+  | "waiting"
+  | "won-x"
+  | "won-o"
+  | "drawn";
+
+/**
+ * Which of those states a board is in, from the SERVER's own values only:
+ * its `control`, whether it is the required destination, and whether the server
+ * lists it as playable.
+ */
+export function boardState({
+  control,
+  required = false,
+  offered = false,
+}: {
+  control: unknown;
+  required?: boolean;
+  offered?: boolean;
+}): BoardVisualState {
+  if (control === "X") return "won-x";
+  if (control === "O") return "won-o";
+  if (control === "draw") return "drawn";
+  if (required) return "required";
+  return offered ? "open" : "waiting";
 }
 
-/** How many boards are in play at `stage`: 1, 4 then 9. */
-export function stageBoardCount(stage: unknown): number {
-  return stageSlots(stage).length;
+/** The chip on a mini-board: one short word per state. */
+export function boardStateBadge(state: BoardVisualState): string {
+  switch (state) {
+    case "required":
+      return "Play here";
+    case "open":
+      return "Open";
+    case "waiting":
+      return "Waiting";
+    case "won-x":
+      return "X";
+    case "won-o":
+      return "O";
+    case "drawn":
+      return "Draw";
+    default:
+      return "—";
+  }
 }
 
-/** The total cell budget of every board in play at `stage`. */
-export function roundCellBudget(stage: unknown): number {
-  return stageBoardCount(stage) * CELL_COUNT;
+/** The same state as a sentence fragment for a screen reader. */
+export function boardStateDescription(state: BoardVisualState): string {
+  switch (state) {
+    case "required":
+      return "required — play here";
+    case "open":
+      return "open, available to play";
+    case "waiting":
+      return "open, not available right now";
+    case "won-x":
+      return "won by X";
+    case "won-o":
+      return "won by O";
+    case "drawn":
+      return "a draw";
+    default:
+      return "";
+  }
 }
 
-/** "Round 1" / "Round 2" / "Round 3". */
-export function roundLabel(stage: unknown): string {
-  return `Round ${normaliseStage(stage)}`;
-}
-
-/** A short name for the round's shape. */
-export function roundName(stage: unknown): string {
-  const n = normaliseStage(stage);
-  if (n === 1) return "Single board";
-  if (n === 2) return "2×2 expansion";
-  return "3×3 Mega";
-}
-
-/** One sentence describing what the round adds. */
-export function roundBlurb(stage: unknown): string {
-  const n = normaliseStage(stage);
-  if (n === 1) return "Win the board, or draw it to expand the match.";
-  if (n === 2) return "Four boards. A draw on all four expands to the full lattice.";
-  return "Nine boards. Control three in a line to win the match.";
-}
-
-/** A per-board label for the status chip under a board's name. */
-export function boardControlLabel(control: unknown): string {
-  if (control === "X" || control === "O") return `${control} controls`;
-  if (control === "draw") return "Draw — locked";
-  if (control === "active") return "Open";
-  return "—";
-}
-
-/** A concise control tag for a badge: "X" | "O" | "Draw" | "Open". */
-export function boardControlShort(control: unknown): string {
-  if (control === "X" || control === "O") return String(control);
-  if (control === "draw") return "Draw";
-  if (control === "active") return "Open";
-  return "—";
+/** The mark a claimed board is owned by, or null. */
+export function boardStateMark(state: BoardVisualState): "X" | "O" | null {
+  if (state === "won-x") return "X";
+  if (state === "won-o") return "O";
+  return null;
 }
 
 /** True when a board can no longer accept moves (won or drawn). */
@@ -264,159 +302,137 @@ export function boardIsResolved(control: unknown): boolean {
   return control === "X" || control === "O" || control === "draw";
 }
 
-/** The seat that owns a controlled board, or null for an open / drawn board. */
-export function boardOwnerSeat(control: unknown): Seat | null {
-  return seatForMark(control as Mark | null | undefined);
-}
-
 /**
- * Where a lattice slot sits in the RENDERED grid at `stage`.
+ * Where a slot sits in the fixed 3x3 render grid.
  *
- * The lattice is fixed 3x3, but Round 2 only shows the top-left 2x2, so the
- * display grid re-flows: the slots in play are laid out row-major against the
- * stage's column count. Purely presentational geometry — it never changes a
- * slot's index.
+ * Purely presentational geometry: the lattice is always three columns, so a
+ * slot's index IS its row-major position.
  */
-export function slotGridPosition(
-  slot: number,
-  stage: unknown,
-): { row: number; col: number; rows: number; cols: number } {
-  const slots = stageSlots(stage);
-  const cols = stageColumns(stage);
-  const index = Math.max(0, slots.indexOf(slot));
-  const rows = Math.max(1, Math.ceil(slots.length / cols));
-  return { row: Math.floor(index / cols), col: index % cols, rows, cols };
+export function slotGridPosition(slot: number): {
+  row: number;
+  col: number;
+  rows: number;
+  cols: number;
+} {
+  const index = isBoardIndex(slot) ? slot : 0;
+  return {
+    row: Math.floor(index / LATTICE_SIZE),
+    col: index % LATTICE_SIZE,
+    rows: LATTICE_SIZE,
+    cols: LATTICE_SIZE,
+  };
 }
 
-/** The three Mega slots the win highlighted, as a lookup. */
-export function megaWinningSlotSet(winningBoards: unknown): Set<number> {
-  return new Set(normaliseSlotList(winningBoards).slice(0, 3));
+/** How far the whole match has gone: cells played out of the 81 available. */
+export function latticeProgress(boards: unknown): { played: number; total: number; label: string } {
+  const lattice = normaliseLattice(boards);
+  const played = lattice.reduce((sum, board) => sum + filledCount(board.cells), 0);
+  const total = MAX_BOARDS * CELL_COUNT;
+  return { played, total, label: `${played} of ${total} cells played` };
 }
 
-/** Control counts across the boards in play — a legend, never a decision. */
-export function megaControlCounts(
-  lattice: (NormalisedBoard | null)[],
-  slots: number[],
-): { x: number; o: number; draw: number; active: number; resolved: number } {
-  let x = 0;
-  let o = 0;
-  let draw = 0;
-  let active = 0;
-  for (const slot of slots) {
-    const board = lattice[slot];
-    if (!board) continue;
-    if (board.control === "X") x += 1;
-    else if (board.control === "O") o += 1;
-    else if (board.control === "draw") draw += 1;
-    else active += 1;
-  }
-  return { x, o, draw, active, resolved: x + o + draw };
-}
+// ── Destination / playability, read from the SERVER's own flags ───────────
+//
+// `nextBoard` and `playableBoards` are derived server-side by the same
+// function `validateMove` uses. These helpers never re-derive the rule (they
+// do not look at the last move's cell); they only interpret the DTO so the
+// view can highlight the right board and offer the right cells.
 
-/** Every sudden-death board, in play order, normalised for rendering. */
-export function normaliseSuddenDeath(value: unknown): NormalisedBoard[] {
-  const boards = (value as { boards?: unknown } | null)?.boards;
-  if (!Array.isArray(boards)) return [];
-  return boards
-    .map((raw) => normaliseServerBoard(raw))
-    .filter((board): board is NormalisedBoard => board !== null);
+/** The required destination as a slot, or null when the choice is free. */
+export function requiredBoard(snapshot: any): number | null {
+  const value = snapshot?.nextBoard;
+  return isBoardIndex(value) ? (value as number) : null;
 }
 
 /**
- * The server board a move targets, or null when the address is not in play.
+ * The boards the server says may be addressed right now.
  *
- * Sudden death is its own addressing mode: `SUDDEN_DEATH_BOARD_INDEX` (-1)
- * resolves to the LAST sudden-death board, exactly as the store's engine does.
+ * Read from `playableBoards`; when an older snapshot omits it, the fallback is
+ * still server-derived: every board whose SERVER control is `active`. It never
+ * invents a board or rescans a winning line.
+ */
+export function playableLatticeBoards(snapshot: any): number[] {
+  const declared = normaliseSlotList(snapshot?.playableBoards);
+  if (declared.length) return declared;
+  if (!snapshot || !Array.isArray(snapshot.boards)) return [];
+  // Only the slots the snapshot actually carries: a slot the payload omits is
+  // NOT read as "open and playable", it is simply not offered.
+  const out: number[] = [];
+  for (let slot = 0; slot < MAX_BOARDS; slot += 1) {
+    const raw = snapshot.boards[slot];
+    if (!raw) continue;
+    if ((normaliseServerBoard(raw)?.control ?? "active") === "active") out.push(slot);
+  }
+  return out;
+}
+
+/** True when the required board is not the only option: any open board is legal. */
+export function isFreeChoice(snapshot: any): boolean {
+  if (!snapshot) return false;
+  if (isTerminalStatus(snapshot.status)) return false;
+  if (requiredBoard(snapshot) !== null) return false;
+  return playableLatticeBoards(snapshot).length > 1;
+}
+
+/** True when the server's snapshot says `slot` is a board that may be played. */
+export function isBoardPlayable(snapshot: any, slot: number): boolean {
+  if (!isBoardIndex(slot)) return false;
+  return playableLatticeBoards(snapshot).includes(slot);
+}
+
+/**
+ * Whether the VIEWER may place a mark on `slot` right now.
+ *
+ * `viewerCanMove` already folds together status, phase, seat and turn, so this
+ * adds only the per-board half of the same server derivation.
+ */
+export function canPlayInBoard(snapshot: any, slot: number): boolean {
+  if (!snapshot?.viewerCanMove) return false;
+  if (!isBoardPlayable(snapshot, slot)) return false;
+  const board = normaliseLattice(snapshot.boards)[slot];
+  return Boolean(board) && board.control === "active";
+}
+
+/**
+ * The server board a move addresses, or null when the address is not a slot.
+ *
+ * `boardIndex` has exactly ONE addressing mode in Ultimate — a lattice slot
+ * (0..8) — so anything else resolves to null and the click is dropped before a
+ * request is ever sent.
  */
 export function serverBoardAt(match: any, boardIndex: number): NormalisedBoard | null {
-  if (!match) return null;
-  if (boardIndex === SUDDEN_DEATH_BOARD_INDEX) {
-    const boards = normaliseSuddenDeath(match.suddenDeath);
-    return boards.length ? boards[boards.length - 1] : null;
-  }
+  if (!match || !isBoardIndex(boardIndex)) return null;
   return normaliseLattice(match.boards)[boardIndex] ?? null;
 }
 
-/** Mega lattice geometry, re-exported so the component and tests agree. */
-export const MEGA_GRID_SIZE = MEGA_SIZE;
-
-// ── Tiebreak / result presentation ────────────────────────────────────────
-//
-// The tiebreak summary is DERIVED server-side and arrives in the DTO. These
-// helpers only turn it into the copy the view shows — they never recompute the
-// outcome. The wording mirrors the shared vocabulary of the engine: board
-// control, then cell control, then sudden death.
-
-/** One display row of the tiebreak summary. */
-export type ResultRow = { label: string; value: string };
-
-/** The headline for a tiebreak: BOARD CONTROL · CELL CONTROL · SUDDEN DEATH. */
-export function tiebreakHeading(tiebreak: unknown): string {
-  const decidedBy = (tiebreak as { decidedBy?: unknown } | null)?.decidedBy;
-  if (decidedBy === "cells") return "CELL CONTROL";
-  if (decidedBy === "sudden-death") return "SUDDEN DEATH";
-  return "BOARD CONTROL";
-}
-
-/** The mark that won the tiebreak, or null (a complete tie → sudden death). */
-export function tiebreakWinnerMark(tiebreak: unknown): Mark | null {
-  const winner = (tiebreak as { winner?: unknown } | null)?.winner;
-  if (winner === "player1") return "X";
-  if (winner === "player2") return "O";
-  return null;
-}
-
 /**
- * The tiebreak's body rows, in the exact vocabulary of the result summary:
+ * Where a slot sits on the large board, in words: "top-left", "centre",
+ * "bottom-right".
  *
- *   BOARD CONTROL   Player X: 5 boards · Player O: 4 boards · Winner: X
- *   CELL CONTROL    Player X: 31 cells · Player O: 29 cells · Winner: X
- *   SUDDEN DEATH    a complete tie — the match goes to sudden death
+ * The slot index IS the row-major position on the fixed 3x3 lattice, so this is
+ * a lookup, not a derivation — and it is what lets the turn guidance say "play
+ * in the top-right board" instead of pointing at a number.
  */
-export function tiebreakRows(tiebreak: unknown): ResultRow[] {
-  const summary = tiebreak as TiebreakSummary | null | undefined;
-  if (!summary) return [];
-  if (summary.decidedBy === "sudden-death") {
-    return [
-      { label: "Result", value: "Board control and cell control are level" },
-      { label: "Next", value: "Sudden death" },
-    ];
-  }
-  const byCells = summary.decidedBy === "cells";
-  const unit = byCells ? "cells" : "boards";
-  const x = byCells ? summary.xCells : summary.xBoards;
-  const o = byCells ? summary.oCells : summary.oBoards;
-  const mark = tiebreakWinnerMark(summary);
-  return [
-    { label: "Player X", value: `${x} ${unit}` },
-    { label: "Player O", value: `${o} ${unit}` },
-    { label: "Winner", value: mark ?? "—" },
-  ];
+const BOARD_POSITIONS = [
+  "top-left",
+  "top-middle",
+  "top-right",
+  "middle-left",
+  "centre",
+  "middle-right",
+  "bottom-left",
+  "bottom-middle",
+  "bottom-right",
+] as const;
+
+/** "top-right" — a slot's position on the large board, or "—". */
+export function boardPositionName(slot: number | null | undefined): string {
+  return isBoardIndex(slot) ? BOARD_POSITIONS[slot as number] : "—";
 }
 
-/** A one-line description of how a finished match was decided. */
-export function resultReason({
-  winningBoards,
-  tiebreak,
-  ply,
-}: {
-  winningBoards?: unknown;
-  tiebreak?: unknown;
-  ply?: unknown;
-}): string {
-  if (Array.isArray(winningBoards) && winningBoards.length === 3) {
-    return `Mega line — Boards ${winningBoards.map((slot) => Number(slot) + 1).join(" · ")}`;
-  }
-  const summary = tiebreak as TiebreakSummary | null | undefined;
-  if (summary && summary.decidedBy !== "sudden-death") {
-    return `${tiebreakHeading(summary)} — decided on ${
-      summary.decidedBy === "cells" ? "cells" : "boards"
-    } in ${Number(ply) || 0} moves`;
-  }
-  if (summary?.decidedBy === "sudden-death") {
-    return `Sudden death — decided in ${Number(ply) || 0} moves`;
-  }
-  return "Conceded before the lattice was decided";
+/** "Board 5" — a slot's human name. */
+export function boardName(slot: number | null | undefined): string {
+  return isBoardIndex(slot) ? `Board ${(slot as number) + 1}` : "—";
 }
 
 // ── Copy ──────────────────────────────────────────────────────────────────
@@ -429,7 +445,7 @@ export type ViewerOutcome = "win" | "loss" | "draw";
  * a conceded match (no winning line on the board) reports correctly.
  *
  * DELEGATED to src/lib/results/viewerOutcome.ts — the platform's one verdict
- * rule. A row that names no winner stays a DRAW here (tie-tac-toe has no other
+ * rule. A row that names no winner stays a DRAW here (tic-tac-toe has no other
  * terminal state), which is why the shared rule's `null` collapses to "draw"
  * rather than to a loss.
  */
@@ -479,49 +495,115 @@ export function statusLabel(status: unknown): string {
   }
 }
 
-/**
- * The primary turn line.
- *
- * Deliberately takes the snapshot's flags rather than recomputing whose turn it
- * is: the server already gated `viewerCanMove` on exactly the conditions it
- * will enforce, so the UI can never offer a move the server rejects.
- */
-export function turnLabel({
-  status,
-  moved,
-  isViewerTurn,
-  isAi,
-}: {
-  status: unknown;
-  /** True once the snapshot has loaded. */
-  moved: boolean;
-  /** True when the snapshot's turn is the viewer's. */
-  isViewerTurn: boolean;
-  isAi?: boolean;
-}): string {
-  if (!moved) return "Loading…";
+/** True when the row's status can no longer accept a move. */
+export function isTerminalStatus(status: unknown): boolean {
   const s = String(status ?? "");
-  if (s === MATCH_STATUS.FINISHED || s === MATCH_STATUS.CANCELLED) return "Match over";
-  if (s === MATCH_STATUS.WAITING || s === MATCH_STATUS.READY) {
-    return "Waiting for an opponent…";
-  }
-  if (isViewerTurn) return "Your turn — pick a cell";
-  if (isAi) return "The bot is thinking…";
-  return "Waiting for your opponent…";
+  return s === MATCH_STATUS.FINISHED || s === MATCH_STATUS.CANCELLED;
 }
 
-/** Short mark name for chips and legends. */
-export function markLabel(mark: Mark | null): string {
-  if (mark === "X") return "X";
-  if (mark === "O") return "O";
-  return "—";
+/**
+ * What the current player has to do about the DESTINATION, in one sentence,
+ * generated entirely from the snapshot: the required board's POSITION NAME, or
+ * the free-choice state, or the terminal state.
+ *
+ * Written from the viewer's seat, so the two players never read the same
+ * instruction: the seat to move is told to play, the waiting seat is told where
+ * its opponent must play. A free choice is spelled out rather than implied.
+ */
+export function moveInstruction({
+  snapshot,
+  submitting = false,
+}: {
+  snapshot: any;
+  submitting?: boolean;
+}): string {
+  if (!snapshot) return "Loading…";
+  if (submitting) return "Sending your move…";
+  const status = String(snapshot.status ?? "");
+  if (isTerminalStatus(status)) {
+    return snapshot.result === "tie" ? "Match drawn." : "Match over.";
+  }
+  if (status === MATCH_STATUS.WAITING || status === MATCH_STATUS.READY) {
+    return "Waiting for an opponent…";
+  }
+
+  const required = requiredBoard(snapshot);
+  const freeChoice = isFreeChoice(snapshot);
+  if (snapshot.viewerCanMove) {
+    if (required !== null) return `Play in the ${boardPositionName(required)} board.`;
+    if (freeChoice) return "Free choice — play in any open board.";
+    return "Your move is being checked…";
+  }
+
+  // Not the viewer's turn: say what the OPPONENT must do, so both seats always
+  // know where the next mark goes.
+  if (required !== null) {
+    return `Your opponent must play in the ${boardPositionName(required)} board.`;
+  }
+  if (freeChoice) return "Your opponent can choose any open board.";
+  if (snapshot.isAi) return "The bot is thinking…";
+  return "Waiting for your opponent's move…";
 }
+
+/**
+ * A short chip for the lattice header: the destination WITHOUT the viewer's
+ * perspective, because it labels the board rather than instructing a player.
+ */
+export function destinationChip(snapshot: any): string {
+  if (!snapshot) return "Loading…";
+  if (isTerminalStatus(snapshot.status)) return "Match over";
+  const status = String(snapshot.status ?? "");
+  if (status === MATCH_STATUS.WAITING || status === MATCH_STATUS.READY) return "Not started";
+  const required = requiredBoard(snapshot);
+  if (required !== null) return `Required: ${boardPositionName(required)} board`;
+  if (isFreeChoice(snapshot)) return "Free choice — any open board";
+  return "No board available";
+}
+
+/**
+ * The three things a player has to understand about Ultimate Tic-Tac-Toe, in
+ * the order they matter. Rendered as a strip under the board.
+ */
+export const HOW_TO_PLAY: readonly string[] = Object.freeze([
+  "Three in a row claims a mini-board.",
+  "The cell you play sends your opponent to that same board.",
+  "Claim three mini-boards in a line to win the match.",
+]);
+
+/** The one-line rules headline. */
+export function rulesHint(): string {
+  return "Win three mini-boards in a row.";
+}
+
 
 /** "You are X" / "You are O" / "Spectating". */
 export function viewerMarkLabel(viewerSeat: Seat | null): string {
   const mark = markForSeat(viewerSeat);
   if (!mark) return "Spectating";
   return `You are ${mark}`;
+}
+
+/** A one-line description of how a finished match was decided. */
+export function resultReason({
+  winningBoards,
+  result,
+  ply,
+}: {
+  winningBoards?: unknown;
+  result?: unknown;
+  ply?: unknown;
+}): string {
+  const line = normaliseWinningBoards(winningBoards);
+  if (line.length === 3) {
+    return `Lattice line — ${line.map((slot) => `Board ${slot + 1}`).join(" · ")}`;
+  }
+  if (result === "tie") {
+    return `Draw — every mini-board resolved in ${Number(ply) || 0} moves`;
+  }
+  if (result === "player1" || result === "player2") {
+    return `Conceded before the lattice line was completed (${Number(ply) || 0} moves)`;
+  }
+  return "Conceded before the lattice was decided";
 }
 
 // ── Snapshot ordering (stale-state guard) ─────────────────────────────────

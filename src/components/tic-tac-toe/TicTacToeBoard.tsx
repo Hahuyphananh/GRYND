@@ -2,30 +2,38 @@
 
 // src/components/tic-tac-toe/TicTacToeBoard.tsx
 //
-// The 3x3 Tic-Tac-Toe board.
+// ONE mini-board of the nine in the Ultimate lattice: a 3x3 grid of cells.
 //
 // ── AUTHORITY ─────────────────────────────────────────────────────────────
 //
 // This component DRAWS a board and OFFERS empty cells; it never decides
 // anything. The nine cells come from the server's authoritative snapshot
-// (`board`), the win highlight comes from the server's `winningLine`, and a
-// cell only becomes clickable when the snapshot's own `viewerCanMove` flag says
-// so. There is no local turn tracking, no local occupancy check that could
-// disagree with the server, and no client-side winner detection: a click that
-// slipped through would still be rejected by the store's `validateMove`.
+// (`board`), the win highlight comes from the server's `winningLine`, the
+// server's `control` locks a resolved board, and a cell only becomes clickable
+// when the parent passes `viewerCanMove` for a board the server actually offers.
+// There is no local turn tracking, no local occupancy rule that could disagree
+// with the server, and no client-side winner detection: a click that slipped
+// through would still be rejected by the store's `validateMove`.
 //
 // Interaction rules, enforced here by construction:
-//   • empty + your turn + match live → the cell is a live button
-//   • occupied                       → `disabled`; a click does nothing
-//   • not your turn / match over     → `disabled`; a click does nothing
+//   • empty + offered by the server → a live button, in the "you may play here"
+//     style (stronger amber when this board is the required destination)
+//   • occupied                      → inert; the mark is always drawn in full
+//   • not offered / resolved        → inert; a click does nothing at all
 //
 // Keyboard: every cell is a real <button>, so Tab/Shift+Tab moves focus and
 // Enter or Space places the mark. The grid/row/gridcell roles describe the
 // layout to a screen reader, and each cell is labelled with its coordinates and
 // state ("Row 2, column 3 — empty. Press to place X.") so a player who cannot
 // see the grid can still play it.
+//
+// Motion: a mark scales in when the SERVER confirms it, and the pending ghost
+// pulses until it is confirmed or dropped. Both are dropped entirely under
+// `prefers-reduced-motion`.
 
 import { memo } from "react";
+import { motion, useReducedMotion } from "framer-motion";
+
 import {
   isBoardIndex,
   isCellPlayable,
@@ -35,9 +43,11 @@ import {
   seatColor,
   seatForMark,
   winningCellSet,
+  boardIsResolved,
+  type BoardVisualState,
 } from "../../lib/tic-tac-toe/ui";
+import { withReducedMotion } from "../../lib/animations";
 import { BOARD_SIZE } from "../../lib/tic-tac-toe/constants";
-import { boardIsResolved } from "../../lib/tic-tac-toe/ui";
 import type { BoardControl, Cell, Mark, Seat } from "../../lib/tic-tac-toe/types";
 
 /**
@@ -52,38 +62,14 @@ function MarkGlyph({ mark, className = "" }: { mark: Mark; className?: string })
   if (mark === "X") {
     return (
       <svg viewBox="0 0 100 100" className={className} aria-hidden="true" focusable="false">
-        <line
-          x1="20"
-          y1="20"
-          x2="80"
-          y2="80"
-          stroke="currentColor"
-          strokeWidth="13"
-          strokeLinecap="round"
-        />
-        <line
-          x1="80"
-          y1="20"
-          x2="20"
-          y2="80"
-          stroke="currentColor"
-          strokeWidth="13"
-          strokeLinecap="round"
-        />
+        <line x1="20" y1="20" x2="80" y2="80" stroke="currentColor" strokeWidth="14" strokeLinecap="round" />
+        <line x1="80" y1="20" x2="20" y2="80" stroke="currentColor" strokeWidth="14" strokeLinecap="round" />
       </svg>
     );
   }
   return (
     <svg viewBox="0 0 100 100" className={className} aria-hidden="true" focusable="false">
-      <circle
-        cx="50"
-        cy="50"
-        r="32"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="13"
-        strokeLinecap="round"
-      />
+      <circle cx="50" cy="50" r="33" fill="none" stroke="currentColor" strokeWidth="14" strokeLinecap="round" />
     </svg>
   );
 }
@@ -98,13 +84,17 @@ function cellCoords(index: number): string {
 export type TicTacToeBoardProps = {
   /** The server's board: nine cells of "X" | "O" | null. */
   board: unknown;
-  /** The server's winning line, when the match is won. */
+  /** The server's winning line, when this board was claimed. */
   winningLine?: unknown;
   /** The server's last accepted move, for the "just played" marker. */
   lastMove?: unknown;
   /** The seat the server says the viewer occupies, or null. */
   viewerSeat?: Seat | null;
-  /** The server's `viewerCanMove` flag — the only thing that unlocks a cell. */
+  /**
+   * The server's offer for THIS board — the destination/playable set AND
+   * `viewerCanMove`, already folded together by the parent. This is the only
+   * thing that unlocks a cell.
+   */
   viewerCanMove?: boolean;
   /**
    * True while a move request is in flight. It blocks SUBMISSION without
@@ -114,8 +104,8 @@ export type TicTacToeBoardProps = {
   /**
    * The cell the viewer has just clicked, while the server has not yet
    * confirmed it. Rendered as a translucent "pending" mark — optimistic
-   * FEEDBACK only, never authoritative state: the real mark is the one the
-   * next snapshot carries.
+   * FEEDBACK only, never authoritative state: the real mark is the one the next
+   * snapshot carries.
    */
   pendingCell?: number | null;
   /**
@@ -125,8 +115,10 @@ export type TicTacToeBoardProps = {
   control?: BoardControl | null;
   /** The lattice slot this board sits in (0..8), or null for a standalone one. */
   boardIndex?: number | null;
-  /** True when this board is part of the winning Mega line. */
+  /** True when this board is part of the winning lattice line. */
   megaLine?: boolean;
+  /** The presentation state the parent derived from the server's values. */
+  state?: BoardVisualState;
   /** Tighter gaps / rounding, for the lattice where boards sit side by side. */
   compact?: boolean;
   /** Accessible name for the grid, so each lattice board is distinguishable. */
@@ -147,6 +139,7 @@ function TicTacToeBoard({
   control = "active",
   boardIndex = null,
   megaLine = false,
+  state = "open",
   compact = false,
   label,
   onPlay,
@@ -157,10 +150,18 @@ function TicTacToeBoard({
   const lastIndex = lastMoveCellIndex(lastMove);
   const viewerMark = markForSeat(viewerSeat);
   const pending = isBoardIndex(pendingCell) ? (pendingCell as number) : -1;
+  const reduce = useReducedMotion();
   // A resolved board (won or drawn) is LOCKED: the server will refuse a move on
   // it, so the board never offers one — while still drawing every mark it holds.
   const locked = boardIsResolved(control);
   const offers = viewerCanMove && !locked;
+  const required = state === "required";
+
+  const markMotion = withReducedMotion(reduce, {
+    initial: { opacity: 0, scale: 0.55 },
+    animate: { opacity: 1, scale: 1 },
+    transition: { type: "spring" as const, stiffness: 420, damping: 26 },
+  });
 
   return (
     <div
@@ -171,12 +172,13 @@ function TicTacToeBoard({
       data-testid="tic-tac-toe-board"
       data-board-index={boardIndex ?? ""}
       data-control={control ?? "active"}
+      data-board-state={state}
       data-locked={locked ? "true" : "false"}
       data-mega-line={megaLine ? "true" : "false"}
       data-viewer-mark={viewerMark ?? ""}
       data-viewer-can-move={offers ? "true" : "false"}
-      className={`grid grid-cols-3 ${compact ? "gap-1 sm:gap-1.5" : "gap-2 sm:gap-3"} ${
-        megaLine ? "rounded-2xl ring-2 ring-emerald-300/70 ring-offset-2 ring-offset-[#070b16]" : ""
+      className={`grid grid-cols-3 ${compact ? "gap-[3px] sm:gap-1" : "gap-1.5 sm:gap-2.5"} ${
+        megaLine ? "rounded-xl ring-2 ring-emerald-300/60 ring-offset-2 ring-offset-[#070b16]" : ""
       } ${className}`}
     >
       {Array.from({ length: BOARD_SIZE }, (_, row) => (
@@ -202,17 +204,22 @@ function TicTacToeBoard({
             const stateLabel = cell
               ? `taken by ${cell}`
               : actionable && viewerMark
-                ? `empty. Press to place ${viewerMark}`
+                ? `empty. Press to place ${viewerMark}${required ? " here" : ""}`
                 : "empty";
 
-            const base = `group relative flex aspect-square w-full items-center justify-center border-2 outline-none transition focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070b16] ${
-              compact ? "rounded-lg sm:rounded-xl" : "rounded-xl sm:rounded-2xl"
+            const base = `group relative flex aspect-square w-full items-center justify-center border outline-none transition focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-offset-[#070b16] ${
+              compact ? "rounded-[5px] sm:rounded-md" : "rounded-lg sm:rounded-xl"
             }`;
+            // Four looks, in priority order: a real mark, a cell the server
+            // offers (amber, stronger when this board is the required one), and
+            // an inert cell that still reads as part of the grid.
             const look = cell
-              ? "border-white/15 bg-white/[0.06]"
+              ? "border-white/10 bg-white/[0.05]"
               : playable
-                ? "cursor-pointer border-dashed border-amber-300/45 bg-amber-400/[0.06] hover:scale-[1.03] hover:border-amber-300 hover:bg-amber-400/15 focus-visible:ring-amber-300 active:scale-95"
-                : "cursor-default border-white/10 bg-black/30";
+                ? required
+                  ? "cursor-pointer border-amber-300/70 bg-amber-400/[0.13] hover:border-amber-200 hover:bg-amber-400/25 focus-visible:ring-amber-200 active:scale-95"
+                  : "cursor-pointer border-dashed border-amber-300/45 bg-amber-400/[0.06] hover:scale-[1.04] hover:border-amber-300 hover:bg-amber-400/15 focus-visible:ring-amber-300 active:scale-95"
+                : "cursor-default border-white/[0.07] bg-black/25";
 
             return (
               <button
@@ -227,12 +234,13 @@ function TicTacToeBoard({
                 data-state={cell ?? "empty"}
                 data-playable={actionable ? "true" : "false"}
                 data-winning={isWinning ? "true" : "false"}
+                data-last-move={isLast && Boolean(cell) ? "true" : "false"}
                 // Deliberately NOT the native `disabled` attribute: a locked cell
                 // stays focusable so a keyboard or screen-reader player can tab
                 // across all nine cells and hear every one of them.
                 onClick={() => {
-                  // Belt and braces: a click on an occupied / locked cell does
-                  // nothing at all — it must not even reach the server.
+                  // Belt and braces: a click on an occupied / locked / unoffered
+                  // cell does nothing at all — it must not even reach the server.
                   if (!actionable) return;
                   onPlay(index);
                 }}
@@ -241,7 +249,7 @@ function TicTacToeBoard({
                     ? {
                         color: colour,
                         borderColor: colour,
-                        boxShadow: `0 0 0 1px ${colour}, 0 0 28px ${colour}66`,
+                        boxShadow: `0 0 0 1px ${colour}, 0 0 22px ${colour}55`,
                         background: `${colour}1f`,
                       }
                     : { color: colour }
@@ -250,37 +258,45 @@ function TicTacToeBoard({
                   isWinning ? "focus-visible:ring-emerald-300" : "focus-visible:ring-white/40"
                 }`}
               >
-                {/* A real, server-confirmed mark. */}
+                {/* A real, server-confirmed mark. It animates in ONCE, when the
+                    snapshot first carries it. */}
                 {cell && (
-                  <MarkGlyph
-                    mark={cell}
-                    className="h-[58%] w-[58%] drop-shadow-[0_0_10px_currentColor]"
-                  />
+                  <motion.span {...markMotion} className="flex h-[58%] w-[58%] items-center justify-center">
+                    <MarkGlyph mark={cell} className="h-full w-full drop-shadow-[0_0_8px_currentColor]" />
+                  </motion.span>
                 )}
 
                 {/* Optimistic feedback only: the viewer's own pending mark. */}
                 {isPendingGhost && viewerMark && (
-                  <MarkGlyph
-                    mark={viewerMark}
-                    className="h-[58%] w-[58%] animate-pulse opacity-45"
-                  />
+                  <span
+                    className={`flex h-[58%] w-[58%] items-center justify-center opacity-45 ${
+                      reduce ? "" : "animate-pulse"
+                    }`}
+                  >
+                    <MarkGlyph mark={viewerMark} className="h-full w-full" />
+                  </span>
                 )}
 
                 {/* Which mark a click would place — a hover affordance on the
                     empty cells that are actually playable. */}
                 {!cell && actionable && viewerMark && (
-                  <MarkGlyph
-                    mark={viewerMark}
-                    className="pointer-events-none h-[58%] w-[58%] opacity-0 transition group-hover:opacity-25"
-                  />
+                  <span className="pointer-events-none flex h-[58%] w-[58%] items-center justify-center opacity-0 transition group-hover:opacity-30">
+                    <MarkGlyph mark={viewerMark} className="h-full w-full" />
+                  </span>
                 )}
 
-                {/* Just played: a small corner dot in the mover's colour. */}
-                {isLast && !isWinning && cell && (
-                  <span
+                {/* Just played: a soft ring in the mover's colour, so the last
+                    mark is findable on a nine-board lattice. */}
+                {isLast && cell && (
+                  <motion.span
                     aria-hidden="true"
-                    className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full sm:right-2 sm:top-2 sm:h-2 sm:w-2"
-                    style={{ background: colour }}
+                    {...withReducedMotion(reduce, {
+                      initial: { opacity: 0.9, scale: 1.35 },
+                      animate: { opacity: 0, scale: 1 },
+                      transition: { duration: 0.6, ease: "easeOut" as const },
+                    })}
+                    className="pointer-events-none absolute inset-0 rounded-[inherit] border-2"
+                    style={{ borderColor: colour }}
                   />
                 )}
               </button>

@@ -191,43 +191,69 @@ export default function TicTacToeLobbyPage() {
     [cancelling, pokeLobby, fetchLobbies],
   );
 
-  // Rules copy. Tic-Tac-Toe is turn-based with no timers, no abilities and no
-  // randomness, so the four sections stay to the three things a new player
-  // actually has to know: whose mark is whose, how a turn works, and what wins.
+  // Rules copy. This is ULTIMATE Tic-Tac-Toe: nine mini-boards on one fixed
+  // 3x3 lattice, with no timers, no abilities and no randomness. The sections
+  // teach the four rules a new player actually has to know — how a mini-board is
+  // won, where the next move must be played, what happens when that board is
+  // already resolved, and what wins the match.
   const rules = useMemo(
     () => ({
       title: "How to Play Tic-Tac-Toe",
       sections: [
         {
-          heading: "Three in a row wins",
+          heading: "Three in a row wins a board",
           body: (
             <>
-              You take turns filling one cell of a <b>3×3 board</b>. The first
-              player to line up <b>three of their mark</b> — a row, a column or a
-              diagonal — takes the match immediately. If all nine cells fill and
-              nobody has a line, the match is a <b>draw</b>.
+              The board is <b>nine mini-boards</b> in one 3×3 lattice. Complete a
+              line of three — a row, a column or a diagonal — inside a mini-board
+              and you <b>claim that board</b>. A mini-board that fills with no
+              line is a <b>draw</b> and is locked for the rest of the match.
             </>
           ),
         },
         {
-          heading: "X moves first",
+          heading: "Your cell sends your opponent",
+          body: (
+            <>
+              The cell you play decides where your opponent has to answer: they
+              must play in the mini-board sitting in that <b>same lattice slot</b>
+              — play the centre cell of a board, for example, and they must
+              answer in the centre board.
+            </>
+          ),
+        },
+        {
+          heading: "If that board is already resolved",
+          body: (
+            <>
+              When the board you send them to is already claimed or drawn, they
+              get a <b>free choice</b> and may play in any mini-board that is
+              still open. The game says so on the board, so you never have to
+              guess which boards you are allowed to use.
+            </>
+          ),
+        },
+        {
+          heading: "Claim three boards in a row to win",
+          body: (
+            <>
+              Claim <b>three mini-boards in a line</b> on the lattice — a row, a
+              column or a long diagonal — and the match ends immediately. If all
+              nine boards resolve with no lattice line, the match is a draw. The
+              opening move may be made in any of the nine boards.
+            </>
+          ),
+        },
+        {
+          heading: "X moves first, one click per turn",
           body: (
             <>
               The player who opened the lobby holds <b>X</b> and plays the first
-              move; the opponent holds <b>O</b>. Whose turn it is is decided by
-              the server, not by the board you can see, so a stale tab can never
-              play out of turn.
-            </>
-          ),
-        },
-        {
-          heading: "One click per turn",
-          body: (
-            <>
-              Click any <b>empty cell</b> on your turn — the board submits it and
-              shows it the moment the server accepts. Clicking an occupied cell,
-              or a cell that is not yours to play, does nothing. There are no
-              timers, no power-ups and no luck: nothing is drawn or rolled, ever.
+              move; the opponent holds <b>O</b>. Whose turn it is and which board
+              is required are decided by the <b>server</b>, not by the board you
+              can see, so a stale tab can never play out of turn or outside the
+              required board. There are no timers, no power-ups and no luck:
+              nothing is drawn or rolled, ever.
             </>
           ),
         },
@@ -253,7 +279,7 @@ export default function TicTacToeLobbyPage() {
   return (
     <PvpLobbyPage
       title="Tic-Tac-Toe"
-      subtitle="A rated 1v1 duel on a 3×3 board. X moves first, play is turn by turn, and the first player to line up three in a row takes the match — and the pot. Or play the bot for free."
+      subtitle="A rated 1v1 duel on nine mini-boards. Three in a row claims a board, the cell you play sends your opponent to the next one, and three boards in a line takes the match. Or play the bot for free."
       icon={<IconTicTac className="h-9 w-9 flex-shrink-0 text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)] sm:h-10 sm:w-10" />}
       rulesKey="tic-tac-toe"
       rules={rules}
@@ -298,7 +324,7 @@ export default function TicTacToeLobbyPage() {
       lobbyMeta={(row: LobbyRow) => (
         <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
           <span>Host: {String(row.player1Id).slice(0, 12)}…</span>
-          <span>3×3 · three in a row</span>
+          <span>Nine boards · three in a line claims one</span>
           <span className="font-semibold text-yellow-300">
             Stake: {Number(row.stakeAmount ?? 0).toLocaleString()}
           </span>

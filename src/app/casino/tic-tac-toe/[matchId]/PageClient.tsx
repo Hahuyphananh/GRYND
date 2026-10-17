@@ -2,17 +2,18 @@
 
 // src/app/casino/tic-tac-toe/[matchId]/PageClient.tsx
 //
-// The Mega Tic-Tac-Toe match view.
+// The Ultimate Tic-Tac-Toe match view: nine mini-boards in one fixed lattice.
 //
 // ── AUTHORITY ─────────────────────────────────────────────────────────────
 //
 // The server owns the lattice. The ONLY thing this page ever sends is
 // `{ boardIndex, cellIndex, expectedVersion }` where `boardIndex` is a move
-// ADDRESS (a lattice slot 0..8, or -1 for the sudden-death board) — never a
-// mark, a board state, a round, a winner or a result. The lattice it renders is
-// the one in the snapshot, the per-board control and winning lines are the
-// snapshot's, the Mega winning line is the snapshot's `winningBoards`, and the
-// result screen is driven by the snapshot's `result` / `winnerId`, so a
+// ADDRESS (a lattice slot 0..8) — never a mark, a board state, a destination, a
+// winner or a result. The lattice it renders is the one in the snapshot, the
+// per-board control and winning lines are the snapshot's, the required
+// destination is the snapshot's `nextBoard`, the playable set is the snapshot's
+// `playableBoards`, the lattice winning line is the snapshot's `winningBoards`,
+// and the result screen is driven by the snapshot's `result` / `winnerId`, so a
 // forfeited match (where no line exists) still reports the correct winner.
 //
 // Optimism is limited to FEEDBACK: clicking an empty cell paints a translucent
@@ -29,8 +30,9 @@
 //   waiting/ready → MatchWaiting · finished → the shared PvpResultScreen
 //
 // There is no clock, no countdown and no animation timeline: a tic-tac-toe turn
-// is one discrete, instantly-resolved move. Expansion (Round 1 → 2 → 3) is a
-// consequence of the SERVER's stage, animated client-side only.
+// is one discrete, instantly-resolved move. Every board is in play from the
+// first move — nothing expands and nothing is materialised later — so the only
+// progression this page animates is a mini-board resolving and the match ending.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -47,7 +49,6 @@ import { useSocket } from "../../../../context/SocketProvider";
 import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
 import MegaBoard from "../../../../components/tic-tac-toe/MegaBoard";
-import TiebreakSummary from "../../../../components/tic-tac-toe/TiebreakSummary";
 import SeatAvatar from "../../../../components/game/SeatAvatar";
 import MatchLoading from "../../../../components/game/MatchLoading";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
@@ -59,34 +60,28 @@ import {
   TIC_TAC_TOE_READY,
   ticTacToeMatchRoom,
 } from "../../../../lib/tic-tac-toe/rooms";
+import { CELL_COUNT } from "../../../../lib/tic-tac-toe/constants";
 import {
-  CELL_COUNT,
-  SUDDEN_DEATH_BOARD_INDEX,
-} from "../../../../lib/tic-tac-toe/constants";
-import {
+  boardPositionName,
+  canPlayInBoard,
+  destinationChip,
   durationSeconds,
   isCellPlayable,
+  isFreeChoice,
   isIncomingSnapshotStale,
+  latticeProgress,
+  latticeSlots,
   markForSeat,
-  megaControlCounts,
-  normaliseLattice,
-  normaliseSlotList,
-  normaliseStage,
+  moveInstruction,
   outcomeFor,
-  progressLabel,
+  playableLatticeBoards,
+  requiredBoard,
   resultReason,
-  roundCellBudget,
-  roundLabel,
-  roundName,
   seatColor,
   seatLabel,
   seatForMark,
   serverBoardAt,
-  stageSlots,
   statusLabel,
-  tiebreakHeading,
-  tiebreakRows,
-  turnLabel,
   viewerMarkLabel,
 } from "../../../../lib/tic-tac-toe/ui";
 import type { Seat } from "../../../../lib/tic-tac-toe/types";
@@ -94,9 +89,8 @@ import type { Seat } from "../../../../lib/tic-tac-toe/types";
 const ACTIVE_POLL_MS = 1800;
 const IDLE_POLL_MS = 5000;
 
-// Fast, non-blocking progression beats: long enough to read the announcement,
-// short enough that a turn is never waiting on an animation to finish.
-const EXPANSION_MS = 1200;
+// A mini-board resolving is the only progression beat: long enough to read the
+// announcement, short enough that a turn is never waiting on an animation.
 const BOARD_EVENT_MS = 1800;
 
 /** "Row 2 · Col 3" — the board cell a logged move landed on. */
@@ -106,10 +100,9 @@ function moveCellLabel(cellIndex: unknown): string {
   return `Row ${Math.floor(index / 3) + 1} · Col ${(index % 3) + 1}`;
 }
 
-/** "Board 3" / "Sudden death" — the board a logged move targeted. */
+/** "Board 3" — the lattice slot a logged move targeted. */
 function moveBoardLabel(boardIndex: unknown): string {
   const slot = Number(boardIndex);
-  if (slot === SUDDEN_DEATH_BOARD_INDEX) return "Sudden death";
   if (!Number.isInteger(slot) || slot < 0) return "—";
   return `Board ${slot + 1}`;
 }
@@ -132,8 +125,6 @@ export default function TicTacToeMatchPage() {
   const [submitting, setSubmitting] = useState(false);
   // Which lattice board the viewer is interacting with (hover / focus / tap).
   const [focusedBoard, setFocusedBoard] = useState<number | null>(null);
-  // The expansion transition: the SERVER's stage grew (Round 1 → 2 → 3).
-  const [transition, setTransition] = useState<number | null>(null);
   // The board that just resolved on the latest snapshot, for a brief highlight.
   const [boardEvent, setBoardEvent] = useState<{ slot: number; control: string } | null>(null);
   const [showForfeitConfirm, setShowForfeitConfirm] = useState(false);
@@ -143,9 +134,8 @@ export default function TicTacToeMatchPage() {
 
   const abortRef = useRef<AbortController | null>(null);
   const matchRef = useRef<any>(null);
-  // The last stage / lattice we observed, so a transition or a board event only
-  // fires when the SERVER actually moved — never on first load or a re-poll.
-  const prevStageRef = useRef<number | null>(null);
+  // The last lattice we observed, so a board event only fires when the SERVER
+  // actually resolved a board — never on first load or a re-poll.
   const prevBoardsRef = useRef<any>(null);
   const boardEventTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -162,12 +152,10 @@ export default function TicTacToeMatchPage() {
     setPending(null);
     setSubmitting(false);
     setFocusedBoard(null);
-    setTransition(null);
     setBoardEvent(null);
     setShowForfeitConfirm(false);
     setForfeiting(false);
     setShowReportModal(false);
-    prevStageRef.current = null;
     prevBoardsRef.current = null;
     if (boardEventTimerRef.current) clearTimeout(boardEventTimerRef.current);
   }, [matchId]);
@@ -284,39 +272,19 @@ export default function TicTacToeMatchPage() {
   const cancelled = match?.status === "cancelled";
   const isViewerTurn = Boolean(match?.isViewerTurn);
 
-  const stage = normaliseStage(match?.stage);
-
-  const stageSlotList = normaliseSlotList(match?.stageBoardSlots);
-  const slots = stageSlotList.length ? stageSlotList : stageSlots(stage);
-  const lattice = useMemo(() => normaliseLattice(match?.boards), [match?.boards]);
-  const counts = useMemo(() => megaControlCounts(lattice, slots), [lattice, slots]);
-  const activeSlots = useMemo(() => {
-    const fromServer = normaliseSlotList(match?.activeBoards);
-    if (fromServer.length) return fromServer;
-    return slots.filter((slot) => lattice[slot]?.control === "active");
-  }, [match?.activeBoards, lattice, slots]);
-  const cellBudget = roundCellBudget(stage);
+  // Nine slots, always: Ultimate has no expansion, so every board is mounted
+  // from the first snapshot. The required destination and the playable set are
+  // the SERVER's own derived fields (`nextBoard` / `playableBoards`).
+  const slots = useMemo(() => latticeSlots(), []);
+  const progress = useMemo(() => latticeProgress(match?.boards), [match?.boards]);
+  const nextBoard = requiredBoard(match);
+  const playable = useMemo(() => playableLatticeBoards(match), [match]);
+  const freeChoice = isFreeChoice(match);
+  const totalCells = Number(match?.maxBoards ?? 9) * Number(match?.cellCount ?? 9);
   const effectiveFocus =
     focusedBoard !== null && slots.includes(focusedBoard)
       ? focusedBoard
-      : activeSlots[0] ?? slots[0] ?? null;
-
-  // The expansion transition, driven ONLY by the server's stage growing. The
-  // first observed stage is recorded silently, so reconnecting into a match
-  // that is already Round 2/3 does not replay an expansion.
-  // `hasMatch` (not `match` itself) is the dependency: the poll hands back a NEW
-  // object every tick, and keying the effect on its identity would clear the
-  // timer mid-beat and leave the overlay stuck.
-  const hasMatch = Boolean(match);
-  useEffect(() => {
-    if (!hasMatch) return undefined;
-    const previous = prevStageRef.current;
-    prevStageRef.current = stage;
-    if (previous === null || stage <= previous) return undefined;
-    setTransition(stage);
-    const timer = setTimeout(() => setTransition(null), EXPANSION_MS);
-    return () => clearTimeout(timer);
-  }, [stage, hasMatch]);
+      : playable[0] ?? null;
 
   // A small-board win or draw, detected purely by a control flip in the
   // SERVER's lattice. At most one board resolves per ply, so this is a single
@@ -350,13 +318,11 @@ export default function TicTacToeMatchPage() {
 
   // The server's own gate, narrowed only by "a request is in flight" and
   // "the match is over" — this page never invents a third condition.
-  const inTransition = transition !== null;
   const boardUnlocked =
     Boolean(match) &&
     !finished &&
     !cancelled &&
     !submitting &&
-    !inTransition &&
     Boolean(match?.viewerCanMove);
 
   const seats = useMemo(() => {
@@ -406,15 +372,13 @@ export default function TicTacToeMatchPage() {
     async (boardIndex: number, cellIndex: number) => {
       const current = matchRef.current;
       if (!current || submitting) return;
+      // Re-checked against the snapshot the viewer is looking at: the target
+      // board must be one the SERVER offers (the required destination, or any
+      // open board once that destination has resolved) and the cell empty.
+      if (!canPlayInBoard(current, boardIndex)) return;
       const target = serverBoardAt(current, boardIndex);
-      if (!target || target.control !== "active") return;
-      if (
-        !isCellPlayable({
-          board: target.cells,
-          cellIndex,
-          viewerCanMove: Boolean(current.viewerCanMove),
-        })
-      ) {
+      if (!target) return;
+      if (!isCellPlayable({ board: target.cells, cellIndex, viewerCanMove: true })) {
         return;
       }
       const expectedVersion = current.version;
@@ -496,13 +460,6 @@ export default function TicTacToeMatchPage() {
     selfId: viewerSeat,
   });
 
-  const turnCopy = turnLabel({
-    status: match?.status,
-    moved: Boolean(match),
-    isViewerTurn,
-    isAi: Boolean(match?.isAi),
-  });
-
   // The coins this table plays for. A vs-AI practice match is free, a ranked
   // duel is not: both seats were escrowed at the stake the lobby was opened at
   // and a win pays `pot` out of that escrow (the server's own figure — the
@@ -543,7 +500,7 @@ export default function TicTacToeMatchPage() {
           icon={<IconTicTac className="h-8 w-8 text-amber-400" />}
           subtitle={
             match.status === "ready"
-              ? "Opponent found — X opens Round 1…"
+              ? "Opponent found — X opens on any board…"
               : "Waiting for an opponent to join your Mega Tic-Tac-Toe table…"
           }
           seats={[
@@ -576,7 +533,8 @@ export default function TicTacToeMatchPage() {
         <div
           data-testid="tic-tac-toe-match"
           data-status={match.status}
-          data-stage={stage}
+          data-next-board={nextBoard ?? ""}
+          data-free-choice={freeChoice ? "true" : "false"}
           className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#0d1226] via-[#080d1c] to-[#04060f] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8"
         >
           <div className="mx-auto max-w-6xl">
@@ -588,7 +546,7 @@ export default function TicTacToeMatchPage() {
                   Mega Tic-Tac-Toe
                 </h1>
                 <p className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-widest text-amber-200/70">
-                  <span>1 → 4 → 9 boards · win the lattice</span>
+                  <span>Nine mini-boards · three in a line claims one</span>
                   <span className="rounded-full border border-emerald-400/40 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold tracking-wider text-emerald-200">
                     {stakeLabel} · rated 1v1
                   </span>
@@ -683,38 +641,46 @@ export default function TicTacToeMatchPage() {
                   })}
                 </div>
 
-                {/* Turn / status banner */}
+                {/* Turn guidance: ONE instruction, generated from the server's
+                    destination, plus whose mark is live and how far the match
+                    has gone. */}
                 <div
                   data-testid="turn-status"
-                  className={`mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm ${
+                  className={`mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-xl border px-3 py-2.5 ${
                     boardUnlocked
-                      ? "border-amber-400/50 bg-amber-500/10 text-amber-100"
-                      : "border-white/10 bg-white/5 text-white/65"
+                      ? "border-amber-400/50 bg-amber-500/10"
+                      : "border-white/10 bg-white/5"
                   }`}
                 >
-                  <span className="inline-flex items-center gap-2 font-semibold">
+                  <span className="inline-flex min-w-0 items-center gap-2">
                     <span
                       aria-hidden="true"
-                      className={`inline-block h-2.5 w-2.5 rounded-full ${
+                      className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${
                         boardUnlocked ? "animate-pulse bg-amber-400" : "bg-white/30"
                       }`}
                     />
-                    {turnCopy}
-                    {boardUnlocked && effectiveFocus !== null && (
-                      <span className="text-[11px] font-normal text-white/55">
-                        · focused on Board {effectiveFocus + 1}
-                      </span>
-                    )}
+                    <span
+                      data-testid="move-instruction"
+                      role="status"
+                      aria-live="polite"
+                      className={`truncate text-sm font-extrabold ${
+                        boardUnlocked ? "text-amber-100" : "text-white/75"
+                      }`}
+                    >
+                      {moveInstruction({ snapshot: match, submitting })}
+                    </span>
                   </span>
-                  <span className="text-[11px] uppercase tracking-wider text-white/45">
-                    {roundLabel(stage)} · {viewerMarkLabel(viewerSeat)} ·{" "}
-                    {progressLabel(match.boards?.[effectiveFocus]?.cells ?? [])}
+                  <span
+                    data-testid="destination-status"
+                    className="text-[11px] uppercase tracking-wider text-white/45"
+                  >
+                    {viewerMarkLabel(viewerSeat)} · {progress.label}
                   </span>
                 </div>
 
                 {/* Small-board feedback — a win or a draw, briefly announced. */}
                 <AnimatePresence>
-                  {boardEvent !== null && transition === null && (
+                  {boardEvent !== null && (
                     <motion.div
                       key={`${boardEvent.slot}-${boardEvent.control}`}
                       data-testid="board-event"
@@ -731,21 +697,23 @@ export default function TicTacToeMatchPage() {
                       }`}
                     >
                       {boardEvent.control === "draw"
-                        ? `Board ${boardEvent.slot + 1} drawn — locked`
-                        : `Board ${boardEvent.slot + 1} — ${boardEvent.control} controls it!`}
+                        ? `The ${boardPositionName(boardEvent.slot)} board is drawn — locked`
+                        : `${boardEvent.control} claims the ${boardPositionName(
+                            boardEvent.slot,
+                          )} board!`}
                     </motion.div>
                   )}
                 </AnimatePresence>
 
-                {/* The lattice, with the expansion transition over it. */}
+                {/* The lattice: nine boards, all mounted from the first move. */}
                 <div className="relative">
                   <MegaBoard
                     boards={match.boards}
-                    stage={stage}
-                    slots={slots}
                     winningBoards={match.winningBoards}
                     lastMove={match.lastMove}
-                    suddenDeath={match.suddenDeath}
+                    nextBoard={match.nextBoard}
+                    playableBoards={match.playableBoards}
+                    status={match.status}
                     viewerSeat={viewerSeat}
                     viewerCanMove={boardUnlocked}
                     busy={submitting}
@@ -755,60 +723,18 @@ export default function TicTacToeMatchPage() {
                     onFocusBoard={setFocusedBoard}
                     onPlay={(boardIndex, cellIndex) => void submitMove(boardIndex, cellIndex)}
                   />
-
-                  {/* Strong, fast expansion announcement. Input is locked for the
-                      beat (via `boardUnlocked`), then control returns. */}
-                  <AnimatePresence>
-                    {transition !== null && (
-                      <motion.div
-                        key={transition}
-                        data-testid="mega-transition"
-                        data-to={transition}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.16 }}
-                        className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-[#04060f]/70 backdrop-blur-[3px]"
-                      >
-                        <motion.div
-                          initial={{ scale: 0.82, opacity: 0, y: 8 }}
-                          animate={{ scale: 1, opacity: 1, y: 0 }}
-                          exit={{ scale: 1.06, opacity: 0 }}
-                          transition={{ type: "spring", stiffness: 340, damping: 24 }}
-                          className="mx-3 rounded-2xl border border-amber-400/60 bg-gradient-to-b from-amber-500/25 to-black/70 px-8 py-6 text-center shadow-[0_0_60px_rgba(251,191,36,0.4)]"
-                        >
-                          <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-amber-200/80">
-                            {transition === 2 ? "Board expanding" : "Final expansion"}
-                          </p>
-                          <p
-                            data-testid="mega-transition-title"
-                            className="mt-1 bg-clip-text text-4xl font-black tracking-wider text-transparent bg-gradient-to-r from-amber-200 via-yellow-100 to-amber-200 sm:text-5xl"
-                          >
-                            {transition === 2 ? "ROUND 2" : "MEGA BOARD"}
-                          </p>
-                          <p className="mt-1 text-xs font-semibold text-white/70">
-                            {transition === 2
-                              ? "Four boards · control three in a line"
-                              : "Nine boards · control three in a line"}
-                          </p>
-                        </motion.div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
                 </div>
 
-                {/* Controls */}
+                {/* Controls. The turn instruction lives in the guidance card
+                    above the board — ONE generated sentence, never two that
+                    could disagree. */}
                 <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-xs font-semibold text-white/60">
-                      {submitting
-                        ? "Sending your move…"
-                        : finished || cancelled
-                          ? "Match over"
-                          : boardUnlocked
-                            ? "Your turn — click any empty cell on any open board."
-                            : "Waiting for your opponent's move…"}
-                    </span>
+                    <p className="text-[11px] leading-relaxed text-white/45">
+                      {boardUnlocked
+                        ? "The cell you play sends your opponent to that same board. Every click is checked by the server."
+                        : "The board is the server's: a claimed board locks while keeping every mark, and the match is decided server-side."}
+                    </p>
                     {!finished && !cancelled && match.status === "playing" && (
                       <button
                         data-testid="forfeit-button"
@@ -821,11 +747,6 @@ export default function TicTacToeMatchPage() {
                       </button>
                     )}
                   </div>
-                  <p className="mt-2 text-[11px] leading-relaxed text-white/45">
-                    {boardUnlocked
-                      ? "Every click is verified by the server: it decides the mark, whose turn it is, which board is locked and when the Mega line wins. Empty cells are outlined; occupied, locked and out-of-turn cells do nothing."
-                      : "The lattice is the server's. Open boards are outlined on your turn, a completed board locks while keeping every mark, and the winner is decided server-side."}
-                  </p>
                   {loadError && (
                     <p className="mt-2 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-200">
                       {loadError}
@@ -842,13 +763,11 @@ export default function TicTacToeMatchPage() {
                   </h2>
                   <div className="space-y-1.5 text-xs">
                     <Row label="Status" value={statusLabel(match.status)} />
-                    <Row label="Round" value={`${roundLabel(stage)} · ${roundName(stage)}`} />
-                    <Row label="Boards in play" value={`${slots.length}`} />
-                    <Row label="Boards locked" value={`${counts.resolved} of ${slots.length}`} />
+                    <Row label="Destination" value={destinationChip(match)} />
                     <Row label="Your mark" value={viewerMark ?? "—"} />
                     <Row label="Opponent" value={opponentName} />
                     <Row label="Opponent's mark" value={opponentMark ?? "—"} />
-                    <Row label="Moves played" value={`${Number(match.ply) || 0} of ${cellBudget}`} />
+                    <Row label="Moves played" value={`${Number(match.ply) || 0} of ${totalCells}`} />
                     <Row
                       label="Turn"
                       value={
@@ -867,34 +786,11 @@ export default function TicTacToeMatchPage() {
 
                 <section className="rounded-2xl border border-amber-500/20 bg-black/40 p-4">
                   <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-amber-300">
-                    Mega board
-                  </h2>
-                  <div className="space-y-1.5 text-xs">
-                    <Row label="X controls" value={`${counts.x}`} />
-                    <Row label="O controls" value={`${counts.o}`} />
-                    <Row label="Draws" value={`${counts.draw}`} />
-                    <Row label="Open boards" value={`${counts.active}`} />
-                    {Number.isInteger(match.winningBoards?.[0]) ? (
-                      <Row
-                        label="Mega line"
-                        value={(match.winningBoards as number[])
-                          .map((slot: number) => `B${slot + 1}`)
-                          .join(" · ")}
-                      />
-                    ) : (
-                      <Row label="Mega line" value="—" />
-                    )}
-                  </div>
-                  {match.tiebreak && <TiebreakSummary tiebreak={match.tiebreak} className="mt-2" />}
-                </section>
-
-                <section className="rounded-2xl border border-amber-500/20 bg-black/40 p-4">
-                  <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-amber-300">
                     Move history
                   </h2>
                   {moves.length === 0 ? (
                     <p className="text-xs text-white/50">
-                      No moves yet — X opens Round 1.
+                      No moves yet — X opens on any board.
                     </p>
                   ) : (
                     <div className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
@@ -1035,7 +931,7 @@ export default function TicTacToeMatchPage() {
             }
             subline={resultReason({
               winningBoards: match.winningBoards,
-              tiebreak: match.tiebreak,
+              result: match.result,
               ply: match.ply,
             })}
             gameName="Mega Tic-Tac-Toe"
@@ -1052,8 +948,7 @@ export default function TicTacToeMatchPage() {
                 value: outcome === "win" ? "Win" : outcome === "loss" ? "Loss" : "Draw",
               },
               { label: "Your mark", value: viewerMark ?? "—" },
-              { label: "Round", value: `${stage}` },
-              { label: "Moves played", value: `${Number(match.ply) || 0} of ${cellBudget}` },
+              { label: "Moves played", value: `${Number(match.ply) || 0} of ${totalCells}` },
             ]}
             details={[
               { label: "Match ID", value: String(matchId) },
@@ -1068,20 +963,11 @@ export default function TicTacToeMatchPage() {
                   ]
                 : []),
               {
-                label: "Mega line",
+                label: "Lattice line",
                 value: match.winningBoards
                   ? (match.winningBoards as number[]).map((slot: number) => `Board ${slot + 1}`).join(" · ")
                   : "—",
               },
-              ...(match.tiebreak
-                ? [
-                    { label: "Tiebreak", value: tiebreakHeading(match.tiebreak) },
-                    ...tiebreakRows(match.tiebreak).map((row) => ({
-                      label: row.label,
-                      value: row.value,
-                    })),
-                  ]
-                : []),
               ...moves.map((mv: any) => ({
                 label: `Move ${Number(mv.ply) + 1}`,
                 value: `${mv.playerId === match.player1Id ? "X" : "O"} → ${moveBoardLabel(

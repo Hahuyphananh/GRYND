@@ -30,7 +30,7 @@ function normaliseMove(row: {
   return {
     ply: row.ply,
     playerId: row.playerId,
-    // Slot 0..8, or -1 for the sudden-death board.
+    // The lattice slot the move landed on (0..8).
     boardIndex: Number(row.boardIndex),
     cellIndex: Number(row.cellIndex),
     createdAt: row.createdAt,

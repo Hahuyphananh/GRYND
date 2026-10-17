@@ -1,25 +1,34 @@
 // src/lib/tic-tac-toe/ai.ts
 //
 // The Tic-Tac-Toe practice bot. PURE and deterministic under an injected
-// `random`, exactly like every other GRYND AI: the store passes the board and
-// the bot's seat, and gets back ONE legal cell index. No database, no I/O.
+// `random`, exactly like every other GRYND AI: the store passes the state and
+// the bot's seat, and gets back ONE legal (board, cell) move. No database, no
+// I/O.
+//
+// Two layers live here:
+//
+//   • `chooseAiCell` — the single 3x3 board solver. It is the shared, tested
+//     minimax used for one mini-board, and it is what keeps a tiered opponent
+//     (easy = random, normal = shallow, hard = full depth with a small slip)
+//     available for an ordinary 3x3 board.
+//   • `chooseAiMove` — the Ultimate chooser. It enumerates every move the RULES
+//     allow (which means it respects the forced destination), runs the real
+//     `applyMove` on each candidate and scores the resulting position. So it
+//     never re-implements a rule: the engine decides legality, board claims,
+//     lattice lines and the draw, and the bot only ranks the outcomes.
 //
 // Skill tiers come from the shared scale (src/lib/aiDifficulty.ts), and they
 // are separated on TWO axes so the picker visibly changes the game:
 //
-//   • easy   — a uniformly random legal cell (no lookahead at all).
-//   • normal — a shallow search (a few plies), so it misses some threats.
-//   • hard   — full-depth minimax with a small slip, so it is very strong but
+//   • easy   — a uniformly random legal move (no lookahead at all).
+//   • normal — a shallow search on a single board, so it misses some threats.
+//   • hard   — full-depth analysis with a small slip, so it is very strong but
 //              no longer literally unbeatable.
-//
-// The DEPTH limit is what makes the weaker tiers actually lose. A pure minimax
-// is unbeatable at full depth, and a small slip on top of a perfect search
-// still draws almost every game — which is why `normal` and `hard` used to play
-// indistinguishably. Searching only a few plies makes a weak tier miss the
-// opponent's threats entirely, which is a real, visible weakness.
 
-import { CELL_COUNT, SUDDEN_DEATH_BOARD_INDEX, WINNING_LINES } from "./constants";
+import { CELL_COUNT, LATTICE_LINES, WINNING_LINES } from "./constants";
 import { chooseAiOption, coerceAiDifficulty, type AiDifficulty } from "../aiDifficulty";
+import { applyMove, markForSeat, otherSeat, playableBoardIndexes } from "./rules";
+import type { Cell, Mark, Seat, SmallBoard, TicTacToeState } from "./types";
 
 /**
  * How many plies each tier searches before scoring statically.
@@ -31,16 +40,6 @@ import { chooseAiOption, coerceAiDifficulty, type AiDifficulty } from "../aiDiff
 const AI_LOOKAHEAD_PLIES: Partial<Record<AiDifficulty, number>> = {
   normal: 3,
 };
-import {
-  activeBoardIndexes,
-  applyMove,
-  countCells,
-  currentSuddenDeathBoard,
-  markForSeat,
-  megaLinesForStage,
-  otherSeat,
-} from "./rules";
-import type { Cell, Mark, Seat, SmallBoard, TicTacToeState } from "./types";
 
 /** The winning mark, or null. Repeated here so the bot never touches state. */
 function findWinner(board: Cell[]): Mark | null {
@@ -94,8 +93,8 @@ function minimax(
 }
 
 /**
- * Pick the bot's next cell. Returns a 0..8 index, or null when the board is
- * full (the caller treats that as "nothing to play").
+ * Pick the bot's next cell on ONE 3x3 board. Returns a 0..8 index, or null when
+ * the board is full (the caller treats that as "nothing to play").
  *
  * `random` is injectable so the tests can pin the tier behaviour.
  */
@@ -138,42 +137,43 @@ export function chooseAiCell({
   return chosen ?? legal[0];
 }
 
-// ── Mega-aware move selection ─────────────────────────────────────────────
+// ── Ultimate move selection ───────────────────────────────────────────────
 //
-// `chooseAiCell` reasons about ONE small board. A Mega match is a lattice of
-// boards whose STATE changes when a board resolves and the match expands, so
-// the store needs a chooser that picks a (boardIndex, cellIndex) pair against
-// the whole match. It reuses the same pure machinery: it enumerates every
-// legal move, runs the REAL `applyMove` on each and scores the resulting
-// position, so a move that wins a board, blocks the opponent's finish or
-// completes a Mega line is preferred without a second rules implementation.
+// `chooseAiCell` reasons about ONE mini-board. An Ultimate match adds a forced
+// destination and a lattice win, so the store needs a chooser that picks a
+// (boardIndex, cellIndex) pair against the whole match. It reuses the same pure
+// machinery: it enumerates every move the RULES allow, runs the REAL `applyMove`
+// on each and scores the resulting position, so a move that claims a board,
+// blocks the opponent's finish or completes a lattice line is preferred without
+// a second rules implementation.
 
-/** One candidate move on the match. `boardIndex` is a slot (0..8), or the
- *  sudden-death sentinel (-1) while sudden death is live. */
+/** One candidate move on the match: always one of the nine real mini-boards. */
 export type AiMove = { boardIndex: number; cellIndex: number };
 
-/** Every legal move for the side to play, in a stable order. */
+/**
+ * Every move the seat to move is allowed to make, in a stable order.
+ *
+ * `playableBoardIndexes` is the same derivation `validateMove` uses, so during a
+ * forced destination the bot is offered ONLY that board — it can never name a
+ * completed/drawn board, a board it is not allowed to play, or an occupied cell.
+ */
 function legalMoves(state: TicTacToeState): AiMove[] {
+  if (!state || state.phase === "finished") return [];
   const out: AiMove[] = [];
-  const collect = (boardIndex: number, board: SmallBoard) => {
+  for (const boardIndex of playableBoardIndexes(state)) {
+    // A legacy row can hold an un-materialised slot; the engine reads it as an
+    // empty, active board, so the bot must offer its nine cells too.
+    const cells = state.boards?.[boardIndex]?.cells;
     for (let cellIndex = 0; cellIndex < CELL_COUNT; cellIndex += 1) {
-      if (board.cells[cellIndex] === null) out.push({ boardIndex, cellIndex });
+      if (!cells || cells[cellIndex] === null) out.push({ boardIndex, cellIndex });
     }
-  };
-  const sudden = currentSuddenDeathBoard(state);
-  if (state?.suddenDeath && sudden) {
-    collect(SUDDEN_DEATH_BOARD_INDEX, sudden);
-    return out;
-  }
-  for (const slot of activeBoardIndexes(state)) {
-    const board = state.boards?.[slot];
-    if (board) collect(slot, board);
   }
   return out;
 }
 
 /** True when `seat` has a move that ends the whole match right now. */
 function canFinish(state: TicTacToeState, seat: Seat): boolean {
+  if (!state || state.phase === "finished") return false;
   for (const move of legalMoves(state)) {
     const applied = applyMove({ state, seat, boardIndex: move.boardIndex, cellIndex: move.cellIndex });
     if (applied.matchCompleted) return true;
@@ -181,22 +181,22 @@ function canFinish(state: TicTacToeState, seat: Seat): boolean {
   return false;
 }
 
-// ── Mega position evaluation ──────────────────────────────────────────────
+// ── Position evaluation ───────────────────────────────────────────────────
 //
 // These read ONLY the visible, authoritative state — no hidden information, no
 // lookahead past what a human reading the board could see. They turn the
-// one-ply score into a Mega-aware one: control of small boards, latent Mega
-// lines (two controlled boards plus the open third), and a lean toward the
-// final tiebreak. They never decide a result; the server still does.
+// one-ply score into a lattice-aware one: board control, latent lattice lines
+// (two claimed boards plus the open third) and the board-count differential.
+// They never decide a result; the server still does.
 
 /**
- * How many LIVE Mega lines are one controlled board away from `mark`: exactly
- * two slots controlled by `mark` and the third still active. A line whose
- * third slot is drawn or taken by the opponent is dead and uncounted.
+ * How many lattice lines are one claimed board away from `mark`: exactly two
+ * slots claimed by `mark` and the third still active. A line whose third slot
+ * is drawn or taken by the opponent is dead and uncounted.
  */
-function megaThreatCount(boards: (SmallBoard | null)[], stage: unknown, mark: Mark): number {
+function latticeThreatCount(boards: (SmallBoard | null)[], mark: Mark): number {
   let threats = 0;
-  for (const line of megaLinesForStage(stage)) {
+  for (const line of LATTICE_LINES) {
     let mine = 0;
     let open = 0;
     for (const slot of line) {
@@ -209,7 +209,7 @@ function megaThreatCount(boards: (SmallBoard | null)[], stage: unknown, mark: Ma
   return threats;
 }
 
-/** Controlled-board differential: boards we own minus boards the opponent owns. */
+/** Claimed-board differential: boards we own minus boards the opponent owns. */
 function boardControlBalance(boards: (SmallBoard | null)[], seat: Seat): number {
   const mine = markForSeat(seat);
   const theirs = markForSeat(otherSeat(seat));
@@ -223,43 +223,18 @@ function boardControlBalance(boards: (SmallBoard | null)[], seat: Seat): number 
 }
 
 /**
- * A lean toward the stage-3 tiebreak, MIRRORING `evaluateTiebreak`'s units:
- * only resolved boards count, board control by cell majority first, then the
- * total cell differential. This only biases which board/cell the bot plays —
- * the server computes the actual tiebreak.
- */
-function tiebreakLean(boards: (SmallBoard | null)[], seat: Seat): number {
-  const mine = markForSeat(seat);
-  const theirs = markForSeat(otherSeat(seat));
-  let boardsLed = 0;
-  let cellDiff = 0;
-  for (const board of boards ?? []) {
-    if (!board || board.control === "active") continue;
-    const x = countCells(board.cells, mine);
-    const o = countCells(board.cells, theirs);
-    cellDiff += x - o;
-    if (x > o) boardsLed += 1;
-    else if (o > x) boardsLed -= 1;
-  }
-  return boardsLed * 100 + cellDiff * 5;
-}
-
-/**
- * Pick the bot's next move on a Mega match. Returns null only when there is no
- * legal move (every board in play is resolved — which cannot happen while the
- * match is still `playing`) or when the match is already finished.
+ * Pick the bot's next move on an Ultimate match. Returns null only when there
+ * is no legal move (which cannot happen while the match is `playing`) or when
+ * the match is already finished.
  *
- * The candidate set comes from `activeBoardIndexes`, so the bot can never name
- * a completed/drawn board, an un-materialised slot, or an occupied cell — and
- * during sudden death only the sentinel slot is offered. Each candidate is run
- * through the REAL engine (`applyMove`), so a small-board win, a draw, a stage
- * expansion, a Mega line and the tiebreak all resolve exactly as the server
- * would. The one-ply score then rewards:
+ * Each candidate is run through the REAL engine (`applyMove`), so a mini-board
+ * claim, a draw, a forced destination and a lattice line all resolve exactly as
+ * the server would. The one-ply score then rewards:
  *
- *   • ending the match outright (a Mega win) above all;
- *   • controlling a small board (12k) — and a draw on it (a small lock);
- *   • creating our Mega threats and denying the opponent's;
- *   • controlling more boards and leaning into the final tiebreak;
+ *   • ending the match outright above all;
+ *   • claiming the mini-board it lands on, or drawing it (a useful lock);
+ *   • creating our lattice threats and denying the opponent's;
+ *   • owning more mini-boards;
  * and heavily punishes handing the opponent an immediate match win.
  *
  * `easy` plays a uniformly random legal move (no lookahead). `normal` and
@@ -301,35 +276,30 @@ export function chooseAiMove({
       cellIndex: move.cellIndex,
     });
     let score = 0;
-    // Ending the match outright — a Mega line (or the stage-1 / sudden-death
-    // board) — dominates everything else.
+    // Ending the match outright — a lattice line or the draw that finishes the
+    // last board — dominates everything else.
     if (applied.matchCompleted) {
       score += 1_000_000;
     } else {
       // What did this move do to the board it landed on? A move can only ever
       // finish OUR line or fill the board to a draw; it can never hand control
       // to the opponent.
-      const target =
-        move.boardIndex === SUDDEN_DEATH_BOARD_INDEX
-          ? currentSuddenDeathBoard(applied.state)
-          : applied.state.boards?.[move.boardIndex];
+      const target = applied.state.boards?.[move.boardIndex];
       if (target?.control === aiMark) score += 12_000;
       else if (target?.control === "draw") score += 400;
 
       // A move that hands the opponent an immediate finish is almost never
-      // right — checked with the real engine, so it covers a board win that
-      // completes their Mega line as well as a direct match win.
+      // right — checked with the real engine, so it covers a mini-board claim
+      // that completes their lattice line as well as a direct match win.
       if (canFinish(applied.state, opponent)) {
         score -= 500_000;
       } else {
         const next = applied.state;
-        // Controlling more small boards is how a Mega line is built.
+        // Owning more mini-boards is how a lattice line is built.
         score += boardControlBalance(next.boards, seat) * 300;
-        // Our latent Mega lines are good; the opponent's are a real danger.
-        score += megaThreatCount(next.boards, next.stage, aiMark) * 5_000;
-        score -= megaThreatCount(next.boards, next.stage, oppMark) * 6_000;
-        // Late in a full Round 3, the tiebreak is what decides it.
-        score += tiebreakLean(next.boards, seat);
+        // Our latent lattice lines are good; the opponent's are a real danger.
+        score += latticeThreatCount(next.boards, aiMark) * 5_000;
+        score -= latticeThreatCount(next.boards, oppMark) * 6_000;
       }
     }
     // Positional preference inside the target board (centre > corner > edge).
@@ -343,4 +313,3 @@ export function chooseAiMove({
   const chosen = chooseAiOption(tier, moves, scoreOf, random, 0);
   return chosen ?? moves[0];
 }
-
