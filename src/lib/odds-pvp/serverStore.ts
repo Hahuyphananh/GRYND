@@ -11,7 +11,7 @@
 // displays (`/api/odds/pvp/status`) is always the number the ledger moves.
 //
 // The pot is the two stakes minus the shared house rake (`PVP_WINNER_SHARE`),
-// i.e. 1.9× the winner's own stake at the current 5% rake. A free match
+// i.e. 1.8× the winner's own stake at the current 10% rake. A free match
 // (wager 0) moves nothing, and `settlePayout` independently refuses to credit
 // a seat that has no funding debit row — so a legacy unmounted row can never
 // mint coins.

@@ -253,13 +253,13 @@ test("barricade online: the lobby creates, joins and cancels, and stays unlisted
   assert.ok(lobbyCode.includes("/cancel`"));
   // The proxy rejects a bodyless POST without a JSON content-type (415).
   assert.ok(lobbyCode.includes('headers: { "Content-Type": "application/json" }'));
-  // Online play needs a real account; practice is the guest path.
-  assert.ok(lobbyCode.includes("canPlay={Boolean(isSignedIn)}"));
+  // Online play needs a real account AND a stake: practice is the guest path.
+  assert.ok(lobbyCode.includes("canPlay={Boolean(isSignedIn) && stake >= 1}"));
   assert.ok(lobbyCode.includes("onResume"));
-  // Barricade is unstaked: no wager/balance surface is wired into the lobby.
-  for (const money of ["wager:", "wagerAmount", "stake:", "balance", "stakes"]) {
-    assert.equal(lobbyCode.includes(money), false, `the lobby must have no ${money}`);
-  }
+  // Barricade is a coin match, so the lobby wires the shared stake picker and
+  // sends the stake the pair is escrowed at.
+  assert.ok(lobbyCode.includes("wager={{ value: stake, onChange: setStake }}"));
+  assert.ok(lobbyCode.includes("body: JSON.stringify({ stake })"));
   // Both new pages are noindex, so they are not advertised as landing pages.
   for (const route of [LOBBY_ROUTE, MATCH_ROUTE]) {
     assert.ok(read(route).includes("index: false"), `${route} must be noindex`);
@@ -381,7 +381,8 @@ test("barricade online: the schema declares the match row and the replay log", (
     schema.includes('unique("barricade_moves_ply_unique").on(table.matchId, table.ply)'),
     "one persisted action per turn number must be a storage invariant",
   );
-  // No money columns anywhere in the model — only the Barricade block is read.
+  // The money columns are the shared stake/settlement trio — only the Barricade
+  // block is read.
   const block = schema.slice(
     schema.indexOf("export const barricadeMatches"),
     schema.indexOf("export const solitaireDuelMatches"),
@@ -390,7 +391,9 @@ test("barricade online: the schema declares the match row and the replay log", (
     block.includes('"barricade_moves"') && block.includes('"barricade_matches"'),
     "the block must be the Barricade one",
   );
-  assert.equal(/wager|stake|payout|prize|pot_amount/i.test(stripComments(block)), false);
+  assert.ok(block.includes('numeric("stake_amount"'));
+  assert.ok(block.includes('numeric("house_fee"'));
+  assert.ok(block.includes('numeric("prize_paid"'));
 });
 
 test("barricade online: the migration is idempotent, constrained and money-free", () => {

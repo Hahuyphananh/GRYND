@@ -26,10 +26,10 @@
 // There are NO points, NO banking, NO multipliers, NO risk paths and NO
 // peek. See the SHARED BRIDGE section at the bottom of this file.
 //
-// Payout (90/10 split, mirrors mines-pvp / roulette-pvp):
-//   Winner: own stake back + 90% of loser's stake (1.9× net)
+// Payout (80/20 split of the loser's stake = 10% of the pot, mirrors mines-pvp):
+//   Winner: own stake back + 80% of loser's stake (1.8× net)
 //   Loser:   loses entire stake
-//   House:   10% rake on loser's stake only
+//   House:   20% of loser's stake only (= 10% of the pot)
 //   Draw:    both refunded, no rake
 
 import crypto from "crypto";
@@ -112,10 +112,10 @@ export const MIN_STAKE = 1;
 // Must match GLOBAL_MAX_BET in src/lib/games/economy.ts.
 export const MAX_STAKE = 100;
 
-// ── House fee (10% rake on the LOSER's stake) ─────────────────────
-export const HOUSE_FEE_PCT = 0.1;
-export const WINNER_RATIO = 0.9;
-export const HOUSE_RATIO = 0.1;
+// ── House fee (20% of the loser's stake = 10% of the pot) ──────────
+export const HOUSE_FEE_PCT = 0.2;
+export const WINNER_RATIO = 0.8;
+export const HOUSE_RATIO = 0.2;
 
 // ── Result string constants ───────────────────────────────────────
 export const RESULT = Object.freeze({
@@ -155,8 +155,8 @@ export function decideOutcome({ loserId, player1Id, player2Id }) {
 // ── Payout calculator ─────────────────────────────────────────────
 // { stake, winnerNet, loserNet, houseFee, prizePaid }
 //   DRAW:    both refunded. winnerNet = loserNet = null, fees = 0.
-//   PLAYER1: player1 gets (stake + 0.9*stake); player2 loses stake;
-//            house rake = 0.1*stake. prizePaid = 1.9*stake.
+//   PLAYER1: player1 gets (stake + 0.8*stake); player2 loses stake;
+//            house rake = 0.2*stake. prizePaid = 1.8*stake.
 export function computePayout({ stakeAmount, result }) {
   const stake = Number(stakeAmount);
   if (!Number.isFinite(stake) || stake < 0) {

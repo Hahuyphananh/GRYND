@@ -45,7 +45,7 @@ After **6 rounds**, the player with the higher **cumulative score** wins the pot
 
 ## Payout
 
-- **Winner** — takes the pot (stake back + winnings; standard 90/10 rake on the loser's stake).
+- **Winner** — takes the pot (stake back + winnings; standard 80/20 rake on the loser's stake (10% of the pot)).
 - **Loser** — loses the stake.
 - **Draw** — both refunded.
 

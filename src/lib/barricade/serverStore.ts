@@ -42,12 +42,16 @@
 // (user, game, match) — so a retry, a reconnect or a duplicate completion event
 // can never apply a reward twice. See `settleMatch`.
 //
-// There is no wager, stake, pot, payout or token path anywhere in this file.
+// PvP is staked: both seats are escrowed when the second player joins and the
+// winner is paid the pot minus the shared 10% rake (see `settleMatch`). A
+// practice row (stake 0) never moves coins.
 
 import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { db } from "../../db/client";
 import { barricadeMatches, barricadeMoves, users } from "../../db/schema";
+import { escrowMatchWagers } from "../tokens/wager";
+import { payPvpPot } from "../tokens/pvpPot";
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
 import {
@@ -247,12 +251,23 @@ export async function listMyWaitingMatch({ userId }: { userId: string }) {
  * callers can never both see "no open lobby" and each create one, and a caller
  * can never join a lobby that is being cancelled at the same moment.
  */
-export async function createOrJoin({ userId }: { userId: string }) {
+export async function createOrJoin({
+  userId,
+  stake = 0,
+}: {
+  userId: string;
+  /** Coins each seat escrows; 0 means a free match. PvP entry passes a positive
+   *  stake (validated by the route). */
+  stake?: number;
+}) {
+  const stakeAmount = Number(stake) > 0 ? Number(stake) : 0;
   return await db.transaction(async (tx) => {
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(${BARRICADE_LOCK_NAMESPACE}, 0)`,
     );
 
+    // Only a lobby AT THE CALLER'S STAKE is joinable, so two players never
+    // escrow different sums into one pot.
     const [open] = await tx
       .select()
       .from(barricadeMatches)
@@ -260,6 +275,7 @@ export async function createOrJoin({ userId }: { userId: string }) {
         and(
           eq(barricadeMatches.status, MATCH_STATUS.WAITING),
           isNull(barricadeMatches.player2Id),
+          sql`${barricadeMatches.stakeAmount} = ${stakeAmount}`,
         ),
       )
       .orderBy(sql`${barricadeMatches.createdAt} ASC`)
@@ -270,14 +286,14 @@ export async function createOrJoin({ userId }: { userId: string }) {
       // Already the caller's own lobby — hand it back instead of opening a
       // second one (and never seat the creator against themselves).
       if (open.player1Id === userId) return { match: open, joined: false };
-      return await joinExistingMatch(tx, open.id, userId);
+      return await joinExistingMatch(tx, open.id, userId, stakeAmount);
     }
 
-    return await createWaitingMatch(tx, userId);
+    return await createWaitingMatch(tx, userId, stakeAmount);
   });
 }
 
-async function createWaitingMatch(tx: any, userId: string) {
+async function createWaitingMatch(tx: any, userId: string, stakeAmount = 0) {
   const state = createInitialState();
   const [match] = await tx
     .insert(barricadeMatches)
@@ -286,6 +302,7 @@ async function createWaitingMatch(tx: any, userId: string) {
       // No opponent yet: the row IS the open lobby.
       player2Id: null,
       status: MATCH_STATUS.WAITING,
+      stakeAmount: stakeAmount.toFixed(2),
       ply: state.ply,
       // Nobody can act yet, but the column stays consistent with the state.
       currentTurnUserId: userId,
@@ -296,7 +313,12 @@ async function createWaitingMatch(tx: any, userId: string) {
   return { match, joined: false } as const;
 }
 
-async function joinExistingMatch(tx: any, candidateId: string, userId: string) {
+async function joinExistingMatch(
+  tx: any,
+  candidateId: string,
+  userId: string,
+  stakeAmount = 0,
+) {
   const [match] = await tx
     .select()
     .from(barricadeMatches)
@@ -336,6 +358,24 @@ async function joinExistingMatch(tx: any, candidateId: string, userId: string) {
   if (!updated) {
     // Another joiner raced us and won the conditional UPDATE.
     return { error: "Match is no longer available", status: 409 } as const;
+  }
+
+  // Fund the match: both seats escrow now, before a single move. A seat that
+  // cannot pay throws, rolling the seat claim back so the lobby stays waiting.
+  // Annotated rather than inferred: `strict` is off, where a discriminated
+  // union is not narrowed by `if (!x.ok)`.
+  const escrow: { ok: boolean; error?: string; status?: number } =
+    await escrowMatchWagers({
+      clerkIds: [updated.player1Id, userId],
+      stake: stakeAmount,
+      matchId: updated.id,
+      gameKey: "barricade",
+      tx,
+    });
+  if (!escrow.ok) {
+    throw Object.assign(new Error(escrow.error || "Insufficient coins"), {
+      status: escrow.status && escrow.status < 500 ? escrow.status : 400,
+    });
   }
 
   return { match: updated, joined: true } as const;
@@ -850,8 +890,8 @@ export type SettlementOutcome = {
  * so there is no draw branch here (unlike Mini Golf / Speed Typing / Sudoku
  * Duel, which can tie).
  *
- * No wager/token/payout path exists in this file, so settlement moves no tokens
- * in either direction.
+ * Staked: the winner is paid the pot (both escrowed stakes) minus the shared
+ * 10% rake. A match whose escrow was never taken (stake 0) pays nothing.
  */
 async function settleMatch(
   tx: any,
@@ -867,6 +907,26 @@ async function settleMatch(
   const loserId =
     outcome.result === "player1" ? match.player2Id : match.player1Id;
   if (!winnerId || !loserId || winnerId === loserId) return;
+
+  // The winner takes the pot minus the shared rake; the ledger is keyed per
+  // (match, seat), so a retried settlement can never pay twice.
+  const stake = Number((match as any).stakeAmount ?? 0) || 0;
+  const payout = await payPvpPot({
+    tx,
+    gameKey: "barricade",
+    matchId: String(match.id),
+    winnerClerkId: winnerId,
+    stake,
+  });
+  if (stake > 0) {
+    await tx
+      .update(barricadeMatches)
+      .set({
+        houseFee: (stake * 0.2).toFixed(2),
+        prizePaid: payout.toFixed(2),
+      })
+      .where(eq(barricadeMatches.id, match.id));
+  }
 
   // Account W/L counters — the same two columns every other duel increments.
   await tx

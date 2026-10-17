@@ -25,7 +25,7 @@ Memory Grid is a **pattern-recall race** between two players. A grid of tiles li
 
 ## Payout
 
-- **Winner** — own stake back + 90% of the loser's stake.
+- **Winner** — own stake back + 80% of the loser's stake.
 - **Loser** — loses the entire stake.
 - **Draw** — both refunded, no rake (a tiebreak-round draw refunds 95% per side).
 

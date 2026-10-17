@@ -1401,6 +1401,14 @@
       "when": 1800000062000,
       "tag": "0218_tic_tac_toe_stake",
       "breakpoints": true
+    },
+    {
+      "idx": 200,
+      "version": "7",
+      "when": 1800000063000,
+      "tag": "0219_duel_pvp_stakes",
+      "breakpoints": true
     }
   ]
 }
+

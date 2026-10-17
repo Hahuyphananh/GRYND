@@ -84,13 +84,14 @@ export const SCORE = Object.freeze({
 export const MATCH_TIMER_SECONDS = 180;
 export const MATCH_TIMER_MS = MATCH_TIMER_SECONDS * 1000;
 
-// ── Stake matchmaking constants (stakes retained as values; retired) ─
+// ── Stake matchmaking constants (live: every PvP match escrows a stake) ─
 export const STAKE_PRESETS = [5, 10, 25, 50, 100];
 export const MIN_STAKE = 1;
 export const MAX_STAKE = 100;
-export const HOUSE_FEE_PCT = 0.1;
-export const WINNER_RATIO = 0.9;
-export const HOUSE_RATIO = 0.1;
+// 20% of the loser's stake = 10% of the two-stake pot (PVP_RAKE_PCT).
+export const HOUSE_FEE_PCT = 0.2;
+export const WINNER_RATIO = 0.8;
+export const HOUSE_RATIO = 0.2;
 
 // ── Status state machine ─────────────────────────────────────────────
 // `active` is the new simultaneous-play state. The old `p1_turn` /

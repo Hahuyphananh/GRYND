@@ -890,7 +890,7 @@ function finalStateForSeat(match, seat) {
 // `winnerId` is optional: a resignation names the opponent explicitly; a
 // scored finish derives the winner from the tiebreak ladder.
 // ── Coin escrow ───────────────────────────────────────────────────────
-// Both stakes were taken at join; a resolved match pays the winner 1.9× their
+// Both stakes were taken at join; a resolved match pays the winner 1.8× their
 // stake (pot minus the 10% house fee), a draw refunds each seat, and a free /
 // AI match (stake 0) moves nothing.
 function escrowFor(match, result, winnerId) {

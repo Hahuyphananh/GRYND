@@ -42,7 +42,7 @@ export const MAX_STAKE = GLOBAL_MAX_BET;
 
 /**
  * Per-game ceiling overrides. Empty today: every game in the catalogue is 1v1
- * (fixed 1.9x after rake) or single-player with a bounded payout, so the
+ * (fixed 1.8x after rake) or single-player with a bounded payout, so the
  * global ceiling already applies. The house multiplier games that DID spike
  * (roulette 35:1, plinko ~120x) were retired; if one returns, add it here with
  * `HIGH_VARIANCE_MAX_BET` from ./economy — no per-game wager arithmetic lives

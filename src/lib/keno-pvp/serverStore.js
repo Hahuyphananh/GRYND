@@ -19,7 +19,7 @@
 //     the match progresses even if both players go AFK
 //   * 3-second ready banner auto-advance
 //   * end-state resolution per the survival rulebook (lives 3 → 0)
-//   * 90/10 payout split (winner 1.9× stake, house keeps 0.1×)
+//   * 80/20 payout split (winner 1.8× stake, house keeps 0.2×)
 //
 // State machine:
 //   waiting → ready → <live> → finished
@@ -791,7 +791,7 @@ async function applyResolution(tx, match, {
 
 // ── Coin escrow ───────────────────────────────────────────────────────
 //
-// Both stakes were taken at join; a settled match pays the winner 1.9× their
+// Both stakes were taken at join; a settled match pays the winner 1.8× their
 // stake (the pot minus the 10% house fee), a draw refunds each seat, and a
 // free / AI match (stake 0) moves nothing.
 function escrowFor(match, result, winnerId) {
@@ -1327,7 +1327,7 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
     }
 
     // The OPPONENT wins the match outright: the leaver's lives are zeroed
-    // and the standard 90/10 payout applies.
+    // and the standard 80/20 payout applies.
     const loserIsP1 = match.player1Id === loserClerkId;
     const winnerUserId = loserIsP1 ? match.player2Id : match.player1Id;
     const result = loserIsP1 ? RESULT.PLAYER2 : RESULT.PLAYER1;

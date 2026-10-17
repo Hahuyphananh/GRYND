@@ -510,20 +510,20 @@ test("refillResourcePool appends fresh pieces without touching existing ones", (
 // Payout
 // ═══════════════════════════════════════════════════════════════════
 
-test("pot / rake / prize pool math follows the 5% house rake", () => {
-  // 2 × 100 = 200; house = floor(200*0.05) = 10; prize = 190.
+test("pot / rake / prize pool math follows the 10% house rake", () => {
+  // 2 × 100 = 200; house = floor(200*0.10) = 20; prize = 180.
   const cfg = computePotPrize({ wager: 100 });
   assert.equal(cfg.maxPlayers, SEATS);
   assert.equal(cfg.pot, 200);
-  assert.equal(cfg.houseFee, 10);
-  assert.equal(cfg.prizePool, 190);
+  assert.equal(cfg.houseFee, 20);
+  assert.equal(cfg.prizePool, 180);
 });
 
 test("the winner takes the entire prize pool, the runner-up gets 0", () => {
   const cfg = computePotPrize({ wager: 100 });
-  assert.equal(cfg.prizePool, 190);
+  assert.equal(cfg.prizePool, 180);
   const payouts = payoutsByPlacement({ prizePool: cfg.prizePool });
-  assert.equal(payouts[0], 190);
+  assert.equal(payouts[0], 180);
   assert.equal(payouts[1], 0);
   assert.equal(payouts.reduce((a, b) => a + b, 0), cfg.prizePool);
 });
@@ -571,7 +571,7 @@ test("the payout weight table is 1v1 only", () => {
   assert.deepEqual(PAYOUT_WEIGHTS[SEATS], [1, 0]);
   assert.equal(
     netForPlacement({ wager: 100, prizePool: computePotPrize({ wager: 100 }).prizePool, placement: 1 }),
-    90,
+    80,
   );
   assert.equal(
     netForPlacement({ wager: 100, prizePool: computePotPrize({ wager: 100 }).prizePool, placement: 2 }),

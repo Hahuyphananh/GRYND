@@ -602,24 +602,24 @@ test("matchWinnerFromTotals — exactly equal totals is a DRAW (existing PvP tie
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// computePayout (90/10 split, mirroring Mines Duel)
+// computePayout (80/20 split, mirroring Mines Duel)
 // ═══════════════════════════════════════════════════════════════════
 
-test("computePayout — player1 wins: winner takes 1.9×, house 0.1×", () => {
+test("computePayout — player1 wins: winner takes 1.8×, house 0.2×", () => {
   const p = computePayout({ stakeAmount: 100, result: RESULT.PLAYER1 });
   assert.equal(p.stake, 100);
-  assert.equal(p.winnerNet, 190);
+  assert.equal(p.winnerNet, 180);
   assert.equal(p.loserNet, -100);
-  assert.equal(p.houseFee, 10);
-  assert.equal(p.prizePaid, 190);
+  assert.equal(p.houseFee, 20);
+  assert.equal(p.prizePaid, 180);
 });
 
 test("computePayout — player2 wins mirrors player1", () => {
   const p = computePayout({ stakeAmount: 50, result: RESULT.PLAYER2 });
-  assert.equal(p.winnerNet, 95);
+  assert.equal(p.winnerNet, 90);
   assert.equal(p.loserNet, -50);
-  assert.equal(p.houseFee, 5);
-  assert.equal(p.prizePaid, 95);
+  assert.equal(p.houseFee, 10);
+  assert.equal(p.prizePaid, 90);
 });
 
 test("computePayout — draw refunds both, no fee", () => {
@@ -657,15 +657,15 @@ test("computePayout — TIEBREAK draw takes 5% of each player's wager", () => {
     result: RESULT.PLAYER1,
     drawFeePct: 0.05,
   });
-  assert.equal(win.winnerNet, 190);
-  assert.equal(win.houseFee, 10);
+  assert.equal(win.winnerNet, 180);
+  assert.equal(win.houseFee, 20);
   assert.equal(win.refundEach, null);
 });
 
 test("computePayout — rounding to 2dp", () => {
   const p = computePayout({ stakeAmount: 33.33, result: RESULT.PLAYER1 });
-  assert.equal(p.winnerNet, 63.33); // 33.33 + 29.997 → 63.33
-  assert.equal(p.houseFee, 3.33);
+  assert.equal(p.winnerNet, 59.99); // 33.33 + 26.664 → 59.99
+  assert.equal(p.houseFee, 6.67);
 });
 
 test("computePayout rejects invalid inputs", () => {
@@ -720,7 +720,7 @@ test("stake presets / limits are in the expected range", () => {
 
 test("house split constants sum to the loser's stake", () => {
   assert.equal(WINNER_RATIO + HOUSE_RATIO, 1);
-  assert.equal(HOUSE_FEE_PCT, 0.1);
+  assert.equal(HOUSE_FEE_PCT, HOUSE_RATIO);
 });
 
 test("advisory-lock namespace is a positive 32-bit int", () => {

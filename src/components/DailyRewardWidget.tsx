@@ -119,6 +119,34 @@ export default function DailyRewardWidget() {
                   Choose a game
                 </Link>
               </div>
+            ) : status.claimable && status.walletFull ? (
+              // The server would refuse this claim — the wallet is at its
+              // ceiling. Show the reason here rather than a Claim button whose
+              // only outcome is a refusal.
+              <div className="space-y-1.5">
+                <p
+                  className="flex items-start gap-1.5 text-xs font-semibold text-[#ff4fd8]"
+                  data-testid="daily-reward-widget-wallet-full"
+                >
+                  <IconLock size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+                  Wallet full ({formatCoins(status.walletCap)} coin limit) — spend some coins to
+                  claim {formatCoins(status.reward)}.
+                </p>
+                <Link
+                  href="/games"
+                  className="inline-block text-xs font-semibold text-[#00e5ff] underline underline-offset-2 hover:text-[#f5ff3b]"
+                >
+                  Play a game
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setOpen(true)}
+                  data-testid="daily-reward-widget-open"
+                  className="flex w-full items-center gap-1.5 rounded-lg border border-[#00e5ff]/30 bg-[#00e5ff]/10 px-3 py-2 text-xs font-semibold text-[#c9f7ff] transition hover:bg-[#00e5ff]/20"
+                >
+                  <IconGift size={13} aria-hidden="true" /> See the board
+                </button>
+              </div>
             ) : status.claimable ? (
               <button
                 type="button"

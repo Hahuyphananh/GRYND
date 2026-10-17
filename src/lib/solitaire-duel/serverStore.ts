@@ -31,6 +31,8 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { solitaireDuelMatches, solitaireDuelMoves, users } from "../../db/schema";
 import { applyRatingResult } from "../rating";
+import { escrowMatchWagers } from "../tokens/wager";
+import { payPvpPot, refundPvpPot } from "../tokens/pvpPot";
 import { applyTrophyResult } from "../trophyStore";
 import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
 import { coerceAiDifficulty } from "../aiDifficulty";
@@ -417,16 +419,22 @@ export async function listMyWaitingMatch({ userId }: { userId: string }) {
  */
 export async function createOrJoin({
   userId,
+  stake = 0,
   nowMs = Date.now(),
 }: {
   userId: string;
+  /** Coins each seat escrows; 0 means a free match. */
+  stake?: number;
   nowMs?: number;
 }) {
+  const stakeAmount = Number(stake) > 0 ? Number(stake) : 0;
   return await db.transaction(async (tx) => {
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(${SOLITAIRE_DUEL_LOCK_NAMESPACE}, 0)`,
     );
 
+    // Only a lobby AT THE CALLER'S STAKE is joinable, so two players never
+    // escrow different sums into one pot.
     const [open] = await tx
       .select()
       .from(solitaireDuelMatches)
@@ -434,6 +442,7 @@ export async function createOrJoin({
         and(
           eq(solitaireDuelMatches.status, MATCH_STATUS.WAITING),
           isNull(solitaireDuelMatches.player2Id),
+          sql`${solitaireDuelMatches.stakeAmount} = ${stakeAmount}`,
         ),
       )
       .orderBy(sql`${solitaireDuelMatches.createdAt} ASC`)
@@ -443,10 +452,10 @@ export async function createOrJoin({
     if (open) {
       // The caller's own lobby — return it rather than creating a second.
       if (open.player1Id === userId) return { match: open, joined: false } as const;
-      return await joinExistingMatch(tx, open.id, userId, nowMs);
+      return await joinExistingMatch(tx, open.id, userId, nowMs, stakeAmount);
     }
 
-    return await createWaitingMatch(tx, userId, nowMs);
+    return await createWaitingMatch(tx, userId, nowMs, stakeAmount);
   });
 }
 
@@ -458,7 +467,7 @@ export async function createOrJoin({
  * "both players receive the exact same initial puzzle" is a structural property
  * of the row rather than something a join path has to remember to do.
  */
-async function createWaitingMatch(tx: any, userId: string, nowMs: number) {
+async function createWaitingMatch(tx: any, userId: string, nowMs: number, stakeAmount = 0) {
   // Server-generated entropy only. Never client-supplied, never Math.random().
   const serverSeed = randomHex(32);
   const serverSeedHash = getServerSeedHash(serverSeed);
@@ -482,6 +491,7 @@ async function createWaitingMatch(tx: any, userId: string, nowMs: number) {
       variantVersion: VARIANT_VERSION,
       player1Id: userId,
       status: MATCH_STATUS.WAITING,
+      stakeAmount: stakeAmount.toFixed(2),
       serverSeed,
       serverSeedHash,
       dealSeed,
@@ -520,7 +530,13 @@ async function createWaitingMatch(tx: any, userId: string, nowMs: number) {
  * before `go_at` are refused, so the countdown is a shared planning window
  * rather than dead time.
  */
-async function joinExistingMatch(tx: any, candidateId: string, userId: string, nowMs: number) {
+async function joinExistingMatch(
+  tx: any,
+  candidateId: string,
+  userId: string,
+  nowMs: number,
+  stakeAmount = 0,
+) {
   const [match] = await tx
     .select()
     .from(solitaireDuelMatches)
@@ -559,6 +575,24 @@ async function joinExistingMatch(tx: any, candidateId: string, userId: string, n
   if (!updated) {
     // Another joiner raced us and won the conditional UPDATE.
     return { error: "Match is no longer available", status: 409 } as const;
+  }
+
+  // Fund the match: both seats escrow now, before a single move. A seat that
+  // cannot pay throws, rolling the seat claim back so the lobby stays waiting.
+  // Annotated rather than inferred: `strict` is off, where a discriminated
+  // union is not narrowed by `if (!x.ok)`.
+  const escrow: { ok: boolean; error?: string; status?: number } =
+    await escrowMatchWagers({
+      clerkIds: [updated.player1Id, userId],
+      stake: stakeAmount,
+      matchId: updated.id,
+      gameKey: "solitaire-duel",
+      tx,
+    });
+  if (!escrow.ok) {
+    throw Object.assign(new Error(escrow.error || "Insufficient coins"), {
+      status: escrow.status && escrow.status < 500 ? escrow.status : 400,
+    });
   }
 
   mirrorQueueCreated({
@@ -1556,11 +1590,11 @@ async function finalizeMatch(
  * transaction so the match finalisation and the rating change commit atomically,
  * and both are idempotent per (user, game, match) via their own event journals.
  *
- * No wager, no token, no payout: the game is unstaked, so the only account stats
- * touched are `users.gamesWon` / `users.gamesLost`. The leaderboard counters are
- * deliberately NOT called because `applyLeaderboardCounters` is wager-gated
- * (`bet <= 0` returns early) and this game has no wager — calling it would be a
- * no-op that reads like a bug.
+ * Staked: the winner is paid the pot minus the shared 10% rake and a draw
+ * refunds both seats. The only other account stats touched are
+ * `users.gamesWon` / `users.gamesLost`; the leaderboard counters are
+ * deliberately NOT called here because this settlement already owns the coin
+ * path and reports it itself.
  *
  * A DRAW is journaled by both helpers (with `result: "draw"`, which moves both
  * ratings by K × (0.5 − expected)) but changes neither win counter, exactly as
@@ -1584,8 +1618,17 @@ async function settleSolitaireDuelMatch(
   if (!match.player2Id) return;
 
   const matchId = String(match.id);
+  const stake = Number((match as any).stakeAmount ?? 0) || 0;
 
   if (outcome.result === RESULT.DRAW) {
+    // A draw is a void pot: both seats get their own stake back, no rake.
+    await refundPvpPot({
+      tx,
+      gameKey: "solitaire-duel",
+      matchId,
+      clerkIds: [match.player1Id, match.player2Id],
+      stake,
+    });
     await applyRatingResult({
       tx,
       gameKey: "solitaire-duel",
@@ -1610,6 +1653,21 @@ async function settleSolitaireDuelMatch(
   const loserId =
     outcome.result === RESULT.PLAYER1 ? match.player2Id : match.player1Id;
   if (!winnerId || !loserId || winnerId === loserId) return;
+
+  // The winner takes the pot (both escrowed stakes) minus the shared 10% rake.
+  const payout = await payPvpPot({
+    tx,
+    gameKey: "solitaire-duel",
+    matchId,
+    winnerClerkId: winnerId,
+    stake,
+  });
+  if (stake > 0) {
+    await tx
+      .update(solitaireDuelMatches)
+      .set({ houseFee: (stake * 0.2).toFixed(2), prizePaid: payout.toFixed(2) })
+      .where(eq(solitaireDuelMatches.id, matchId));
+  }
 
   await tx
     .update(users)

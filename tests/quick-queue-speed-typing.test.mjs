@@ -168,17 +168,15 @@ test("matcher: skill windows apply to speed-typing like every other game", () =>
 
 // ── 3. The worker can create the destination ─────────────────────────────
 
-test("the worker registers the speed-typing destination and creates it unstaked", () => {
+test("the worker registers the speed-typing destination at the queue's stake", () => {
   assert.match(worker, /createOrJoinSpeedTypingMatch/);
   assert.match(worker, /from "\.\/speed-typing\/serverStore"/);
+  // The race plays for coins in PvP, so the queue's normalized stake is what
+  // both paired seats are escrowed at.
   assert.match(
     worker,
-    /"speed-typing": \(userId\) => createOrJoinSpeedTypingMatch\(\{ userId \}\)/,
+    /"speed-typing":\s*\(userId\) =>\s*createOrJoinSpeedTypingMatch\(\{ userId, stake: sourceStake \}\)/,
   );
-  // Speed Typing moves no tokens, so the queue's normalized stake is never
-  // passed — and therefore can never be debited or paid out.
-  assert.doesNotMatch(worker, /createOrJoinSpeedTypingMatch\(\{[^}]*stake/);
-  assert.doesNotMatch(worker, /createOrJoinSpeedTypingMatch\(\{[^}]*wager/);
 });
 
 test("the destination is Speed Typing's own create-or-join lobby", () => {
@@ -190,7 +188,7 @@ test("the destination is Speed Typing's own create-or-join lobby", () => {
   // class-neutral case that takes the OLDEST open lobby exactly as before, and
   // the worker's two calls therefore still land on one row.
   assert.match(store, /isNull\(speedTypingMatches\.player2Id\)/);
-  assert.match(store, /return await joinExistingMatch\(tx, lobby\.id, userId, pool\)/);
+  assert.match(store, /return await joinExistingMatch\(tx, lobby\.id, userId, pool, stakeAmount\)/);
   assert.match(store, /const own = candidates\.find\(\(candidate\) => candidate\.player1Id === userId\)/);
   assert.match(store, /if \(own\) return \{ match: own, joined: false \}/);
 });

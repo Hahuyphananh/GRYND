@@ -132,6 +132,34 @@ export default function DailyRewardCard() {
                 See the 14-day board
               </button>
             </div>
+          ) : status.claimable && status.walletFull ? (
+            // The wallet cannot accept today's reward, so the server would
+            // refuse the claim. Say so HERE, before the click, instead of
+            // offering a button whose only outcome is a refusal message.
+            <div className="flex flex-wrap items-center gap-3">
+              <span
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[#ff4fd8]/40 bg-[#ff4fd8]/10 px-3 py-2 text-sm font-semibold text-[#ff4fd8]"
+                data-testid="daily-reward-wallet-full"
+              >
+                <IconLock size={15} aria-hidden="true" /> Wallet full (
+                {formatCoins(status.walletCap)} coin limit) — spend some coins to claim
+                today&apos;s {formatCoins(status.reward)}
+              </span>
+              <Link
+                href="/games"
+                className="text-sm font-semibold text-[#00e5ff] underline underline-offset-2 hover:text-[#f5ff3b]"
+              >
+                Play a game
+              </Link>
+              <button
+                type="button"
+                onClick={() => setOpen(true)}
+                data-testid="daily-reward-open"
+                className="text-sm font-semibold text-[#00e5ff] underline underline-offset-2 hover:text-[#f5ff3b]"
+              >
+                See the 14-day board
+              </button>
+            </div>
           ) : (
             <div className="flex flex-wrap items-center gap-3">
               <button

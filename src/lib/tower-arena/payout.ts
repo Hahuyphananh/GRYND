@@ -4,7 +4,7 @@
 // computes payouts or authorizes token transfers — every balance mutation
 // happens in a DB transaction keyed off the values returned here.
 //
-// Economics (consistent with the shared 5% PvP rake in
+// Economics (consistent with the shared 10% PvP rake in
 // `src/lib/games/economy.ts`):
 //   pot       = maxPlayers × wager
 //   houseFee  = floor(pot × PVP_RAKE_PCT)

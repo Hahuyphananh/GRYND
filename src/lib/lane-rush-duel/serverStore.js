@@ -32,7 +32,7 @@
 //     timeoutAttempt)
 //   * end-state resolution: crossing the bridge / resignation (a fall
 //     never settles the match)
-//   * 90/10 payout split (winner gets 1.9× stake, house keeps 0.1×)
+//   * 80/20 payout split (winner gets 1.8× stake, house keeps 0.2×)
 //   * the bridge layout + server seed are hidden from clients until the
 //     match finishes (the client receives geometry + broken tiles only)
 //
@@ -876,7 +876,7 @@ async function applyBridgeJump(tx, match, { entry, seat, outcome }) {
 }
 
 // ── Coin escrow ───────────────────────────────────────────────────────
-// Both stakes were taken at join; a settled match pays the winner 1.9× their
+// Both stakes were taken at join; a settled match pays the winner 1.8× their
 // stake (pot minus the 10% house fee), a draw refunds each seat, and a
 // practice / bot match (stake 0) moves nothing.
 function escrowFor(match, result, winnerId) {

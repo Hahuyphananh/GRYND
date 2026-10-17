@@ -93,13 +93,11 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
       .limit(1);
     if (alreadyAssigned.length > 0) return null;
     let destinationMatchId = null;
-    // STAKES ARE RETIRED (src/lib/games/stakes.js). Every queue-matched game
-    // used to be created at the stake the players queued with (the Mines
-    // request's stake field doubles as the queue's stake envelope). That value
-    // is now normalized away HERE, at the one place all queue games are
-    // created, so matchmaking can never hand a game a stake — and therefore
-    // never a debit or a payout — no matter what a queue row still carries
-    // from before the retirement.
+    // Every queue-matched game is created at the stake the players queued with
+    // (the Mines request's stake field doubles as the queue's stake envelope),
+    // normalized HERE at the one place all queue games are created — so a
+    // queue row can never hand a game an out-of-range stake, and a free (0)
+    // queue still opens a free match.
     const sourceStake = normalizeStake(pair.source.row?.minesStakeAmount);
     const sourceMines = Number(pair.source.row?.minesCount ?? 3);
     const partnerStake = normalizeStake(pair.partner.row?.minesStakeAmount);
@@ -118,15 +116,15 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
       "precision": (userId) => createOrJoinPrecisionDestination({ userId, wager: sourceStake }),
       "hex-duel": (userId) => createOrJoinHexDuelDestination({ userId, wager: sourceStake }),
       "chess": (userId) => createOrJoinChessDestination({ userId, betAmount: sourceStake }),
-      // Mini Golf is unstaked: its `createOrJoin` takes no stake (the queue's
-      // normalized stake is simply unused) and returns the same waiting lobby
-      // id for both calls, exactly like the other lobby-style destinations.
-      "mini-golf": (userId) => createOrJoinMiniGolfMatch({ userId }),
-      // Speed Typing is unstaked too, and identical in shape: one lobby-style
-      // destination whose `createOrJoin` returns the SAME waiting-lobby id for
-      // both paired seats. It takes no stake at all, so the queue's normalized
-      // stake can never reach it — and therefore never a debit or a payout.
-      "speed-typing": (userId) => createOrJoinSpeedTypingMatch({ userId }),
+      // Mini Golf is lobby-style: both paired seats land on the SAME waiting
+      // lobby, and it plays for coins like every other ranked duel, so the
+      // queue's stake is what the pair is matched at (both seats are escrowed
+      // when the second one joins).
+      "mini-golf": (userId) => createOrJoinMiniGolfMatch({ userId, stake: sourceStake }),
+      // Speed Typing is identical in shape — one shared waiting lobby, both
+      // seats escrowed at the queue's stake when the second one joins.
+      "speed-typing": (userId) =>
+        createOrJoinSpeedTypingMatch({ userId, stake: sourceStake }),
       // Tic-Tac-Toe Duel is lobby-style in exactly the same way — its
       // `createOrJoin` returns the SAME waiting-lobby id for both paired seats —
       // and it plays for coins like every other ranked duel, so the queue's
@@ -134,12 +132,11 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
       // second one joins).
       "tic-tac-toe": (userId) =>
         createOrJoinTicTacToeMatch({ userId, stakeAmount: sourceStake }),
-      // Barricade is unstaked and lobby-style on the same terms: its
-      // `createOrJoin` seats the first caller in a waiting lobby and hands the
-      // second caller THAT SAME lobby, so both paired players land on one match
-      // id. It takes no stake at all, so the queue's normalized stake can never
-      // reach it — and therefore never a debit or a payout.
-      "barricade": (userId) => createOrJoinBarricadeMatch({ userId }),
+      // Barricade is lobby-style on the same terms: its `createOrJoin` seats
+      // the first caller in a waiting lobby and hands the second caller THAT
+      // SAME lobby, so both paired players land on one match id — escrowed at
+      // the queue's stake the moment the second seat fills.
+      "barricade": (userId) => createOrJoinBarricadeMatch({ userId, stake: sourceStake }),
     }[pair.candidate.gameKey];
     if (createMatch) {
       let result: any;

@@ -51,7 +51,7 @@ import type { PlayerSeat } from "./types";
 
 /** Payout multiplier applied to the winning seat's wager when a match
  *  ends: the whole pot (both seats' stakes) minus the shared house rake, so
- *  2 × (1 − PVP_RAKE_PCT) = 1.9× at the current 5% rake. Derived from the
+ *  2 × (1 − PVP_RAKE_PCT) = 1.8× at the current 10% rake. Derived from the
  *  shared rake rather than a second local constant, so the two can never
  *  drift apart. Pure winner-take-all — the loser's wager is forfeit and does
  *  NOT return. */

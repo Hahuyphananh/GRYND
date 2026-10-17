@@ -673,7 +673,11 @@ export default function MemoryGridMatchPage({
     try {
       const res = await fetch(
         `/api/memory-grid/match/${matchId}/forfeit`,
-        { method: "POST", credentials: "include" },
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+        },
       );
       const data = await res.json();
       if (!res.ok || !data?.success) {

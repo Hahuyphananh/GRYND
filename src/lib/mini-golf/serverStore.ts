@@ -25,6 +25,8 @@ import { db } from "../../db/client";
 import { miniGolfMatches, miniGolfShots, users } from "../../db/schema";
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
+import { escrowMatchWagers } from "../tokens/wager";
+import { payPvpPot, refundPvpPot } from "../tokens/pvpPot";
 import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
 import {
   COURSE_VERSION,
@@ -180,12 +182,22 @@ export async function listMyWaitingMatch({ userId }: { userId: string }) {
  * so two concurrent callers can never both see "no open lobby" and each create
  * one, and so a caller can never join a lobby that is being cancelled.
  */
-export async function createOrJoin({ userId }: { userId: string }) {
+export async function createOrJoin({
+  userId,
+  stake = 0,
+}: {
+  userId: string;
+  /** Coins each seat escrows; 0 means a free match. */
+  stake?: number;
+}) {
+  const stakeAmount = Number(stake) > 0 ? Number(stake) : 0;
   return await db.transaction(async (tx) => {
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(${MINI_GOLF_LOCK_NAMESPACE}, 0)`,
     );
 
+    // Only a lobby AT THE CALLER'S STAKE is joinable, so two players never
+    // escrow different sums into one pot.
     const [open] = await tx
       .select()
       .from(miniGolfMatches)
@@ -193,6 +205,7 @@ export async function createOrJoin({ userId }: { userId: string }) {
         and(
           eq(miniGolfMatches.status, MATCH_STATUS.WAITING),
           isNull(miniGolfMatches.player2Id),
+          sql`${miniGolfMatches.stakeAmount} = ${stakeAmount}`,
         ),
       )
       .orderBy(sql`${miniGolfMatches.createdAt} ASC`)
@@ -202,14 +215,14 @@ export async function createOrJoin({ userId }: { userId: string }) {
     if (open) {
       // The caller's own lobby — return it rather than creating a second.
       if (open.player1Id === userId) return { match: open, joined: false };
-      return await joinExistingMatch(tx, open.id, userId);
+      return await joinExistingMatch(tx, open.id, userId, stakeAmount);
     }
 
-    return await createWaitingMatch(tx, userId);
+    return await createWaitingMatch(tx, userId, stakeAmount);
   });
 }
 
-async function createWaitingMatch(tx: any, userId: string) {
+async function createWaitingMatch(tx: any, userId: string, stakeAmount = 0) {
   const seed = generateMatchSeed();
   const state = createInitialState({ seed, courseVersion: COURSE_VERSION });
   const seats: Seats = { player1Id: userId, player2Id: null };
@@ -219,6 +232,7 @@ async function createWaitingMatch(tx: any, userId: string) {
     .values({
       player1Id: userId,
       status: MATCH_STATUS.WAITING,
+      stakeAmount: stakeAmount.toFixed(2),
       currentHole: state.currentHole,
       // No opponent yet, so the only seat is player1.
       currentTurnUserId: userIdForSeat(seats, state.currentTurn),
@@ -241,7 +255,12 @@ async function createWaitingMatch(tx: any, userId: string) {
   return { match, joined: false };
 }
 
-async function joinExistingMatch(tx: any, candidateId: string, userId: string) {
+async function joinExistingMatch(
+  tx: any,
+  candidateId: string,
+  userId: string,
+  stakeAmount = 0,
+) {
   const [match] = await tx
     .select()
     .from(miniGolfMatches)
@@ -281,6 +300,24 @@ async function joinExistingMatch(tx: any, candidateId: string, userId: string) {
   if (!updated) {
     // Another joiner raced us and won the conditional UPDATE.
     return { error: "Match is no longer available", status: 409 } as const;
+  }
+
+  // Fund the match: both seats escrow now, before a single shot. A seat that
+  // cannot pay throws, rolling the seat claim back so the lobby stays waiting.
+  // Annotated rather than inferred: `strict` is off, where a discriminated
+  // union is not narrowed by `if (!x.ok)`.
+  const escrow: { ok: boolean; error?: string; status?: number } =
+    await escrowMatchWagers({
+      clerkIds: [updated.player1Id, userId],
+      stake: stakeAmount,
+      matchId: updated.id,
+      gameKey: "mini-golf",
+      tx,
+    });
+  if (!escrow.ok) {
+    throw Object.assign(new Error(escrow.error || "Insufficient coins"), {
+      status: escrow.status && escrow.status < 500 ? escrow.status : 400,
+    });
   }
 
   mirrorQueueCreated({
@@ -947,11 +984,11 @@ export async function forfeitMatchOnDisconnect({
  * finalisation and the rating change commit atomically, and both are
  * idempotent per (user, game, match) via their own event journals.
  *
- * No wager, no token, no payout: Mini Golf is unstaked, so the only account
- * stats touched are `users.gamesWon` / `users.gamesLost`. The leaderboard
- * counters are deliberately NOT called because `applyLeaderboardCounters` is
- * wager-gated (`bet <= 0` returns early) and this game has no wager — calling
- * it would be a no-op that reads like a bug.
+ * Staked: the winner is paid the pot minus the shared 10% rake and a tie
+ * refunds both seats. The only other account stats touched are
+ * `users.gamesWon` / `users.gamesLost`. The leaderboard counters are
+ * deliberately NOT called here: `applyLeaderboardCounters` takes the wager from
+ * its caller and this settlement already owns the coin path.
  */
 async function settleMatch(
   tx: any,
@@ -963,10 +1000,19 @@ async function settleMatch(
   if (!match.player2Id) return;
 
   const matchId = String(match.id);
+  const stake = Number((match as any).stakeAmount ?? 0) || 0;
 
   if (outcome.result === RESULT.TIE) {
     // A draw moves both ratings by K × (0.5 − expected) and awards no
     // trophies, but it is still journaled so the event history stays complete.
+    // A tie is a void pot: both seats get their own stake back, no rake.
+    await refundPvpPot({
+      tx,
+      gameKey: "mini-golf",
+      matchId,
+      clerkIds: [match.player1Id, match.player2Id],
+      stake,
+    });
     await applyRatingResult({
       tx,
       gameKey: "mini-golf",
@@ -991,6 +1037,21 @@ async function settleMatch(
   const loserId =
     outcome.winnerSeat === "player1" ? match.player2Id : match.player1Id;
   if (!winnerId || !loserId || winnerId === loserId) return;
+
+  // The winner takes the pot (both escrowed stakes) minus the shared 10% rake.
+  const payout = await payPvpPot({
+    tx,
+    gameKey: "mini-golf",
+    matchId,
+    winnerClerkId: winnerId,
+    stake,
+  });
+  if (stake > 0) {
+    await tx
+      .update(miniGolfMatches)
+      .set({ houseFee: (stake * 0.2).toFixed(2), prizePaid: payout.toFixed(2) })
+      .where(eq(miniGolfMatches.id, matchId));
+  }
 
   await tx
     .update(users)

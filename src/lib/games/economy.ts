@@ -26,8 +26,8 @@
 //   * WALLET_HARD_CAP           — balance ceiling no credit may cross.
 //   * DAILY_REWARD_CYCLE        — the curated 14-day login-reward curve.
 //   * ZERO_BALANCE_RESCUE       — the one-last-game top-up for an empty wallet.
-//   * PVP_RAKE_PCT              — every 1v1 match takes 5% of the pot
-//                                 (winner gets 95%: 1.9x on a 2x pot).
+//   * PVP_RAKE_PCT              — every 1v1 match takes 10% of the pot
+//                                 (winner gets 90%: 1.8x on a 2x pot).
 //
 // IMPORTANT: the plain-JS constants files under src/lib/*-pvp/constants.js
 // (which are imported by the `node --test` engine tests WITHOUT tsx) keep
@@ -128,8 +128,8 @@ export const DAILY_LOSS_WARNING_THRESHOLD = 500;
 /** Below this daily loss, the lobby shows a subtle "down today" chip. */
 export const DAILY_LOSS_CHIP_THRESHOLD = 100;
 
-/** Shared PvP rake: 5% of the pot, winner keeps 95% (payout = 1.9x wager). */
-export const PVP_RAKE_PCT = 0.05;
+/** Shared PvP rake: 10% of the pot, winner keeps 90% (payout = 1.8x wager). */
+export const PVP_RAKE_PCT = 0.10;
 
 /** Winner's share of the pot after rake (1 - PVP_RAKE_PCT). */
-export const PVP_WINNER_SHARE = 1 - PVP_RAKE_PCT; // 0.95
+export const PVP_WINNER_SHARE = 1 - PVP_RAKE_PCT; // 0.90

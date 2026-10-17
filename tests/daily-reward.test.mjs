@@ -29,7 +29,9 @@ import {
   DAILY_REWARD_REFERENCE,
   STREAK_SHIELD_ITEM_KEY,
   dailyRewardAmount,
+  dailyRewardCredit,
   dailyRewardCycleDay,
+  dailyRewardFitsInWallet,
   isPlayGateSatisfied,
   utcDateKey,
 } from "../src/lib/tokens/dailyReward.ts";
@@ -124,6 +126,40 @@ test("no single day is worth more than a few max bets", () => {
   assert.ok(best <= GLOBAL_MAX_BET * 3, "the payday must not fund a spending spree");
   assert.ok(best <= STARTING_COINS / 4, "no single day may rival the starting balance");
   assert.ok(best <= WALLET_HARD_CAP, "the wallet ceiling is the hard ceiling");
+});
+
+test("the wallet ceiling caps the credit, never the advertised amount", () => {
+  // Room for the whole reward → the whole reward.
+  assert.equal(dailyRewardCredit(30, 1000), 30);
+  // At (or above) the hard ceiling there is no room at all. The claim must
+  // REFUSE this rather than pay 0 and consume the day.
+  assert.equal(dailyRewardCredit(30, WALLET_HARD_CAP), 0);
+  assert.equal(dailyRewardCredit(30, WALLET_HARD_CAP + 500), 0);
+  // Partial room is reported as partial, so the claim can refuse instead of
+  // paying less than the button advertised.
+  assert.equal(dailyRewardCredit(30, WALLET_HARD_CAP - 10), 10);
+  // Malformed inputs never invent coins.
+  assert.equal(dailyRewardCredit(0, 100), 0);
+  assert.equal(dailyRewardCredit(-5, 100), 0);
+  assert.equal(dailyRewardCredit(30, Number.NaN), 0);
+  assert.equal(dailyRewardCredit(30, -50), 30);
+});
+
+test("a wallet with no room for the reward is reported as full", () => {
+  assert.equal(dailyRewardFitsInWallet(35, 100000), false);
+  // Partial room is not room: the advertised amount must fit ENTIRELY.
+  assert.equal(dailyRewardFitsInWallet(35, 99970), false);
+  assert.equal(dailyRewardFitsInWallet(35, 99965), true);
+  assert.equal(dailyRewardFitsInWallet(35, 0), true);
+});
+
+test("the status read carries the wallet verdict so the UI can warn early", () => {
+  // The pre-click state cannot be dropped server-side without the card and the
+  // widget silently going back to offering a claim that can only be refused.
+  const src = read("src/lib/tokens/dailyReward.ts");
+  assert.match(src, /walletFull: !dailyRewardFitsInWallet\(reward, balance\)/);
+  assert.match(src, /walletCap: WALLET_HARD_CAP/);
+  assert.match(read("src/hooks/useDailyReward.ts"), /walletFull: boolean/);
 });
 
 test("the reward is never zero — every day of the cycle pays something", () => {
@@ -345,6 +381,40 @@ test("the reward is idempotent per UTC day through the column AND the ledger", (
   assert.match(src, /sql`\$\{users\.balance\} \+ \$\{credit\}`/);
   assert.match(src, /GREATEST\(\$\{users\.peakBalance\}/);
   assert.match(src, /WALLET_HARD_CAP/);
+});
+
+test("a full wallet refuses the claim instead of burning the day for 0 coins", () => {
+  const src = read("src/lib/tokens/dailyReward.ts");
+  // The guard compares the wallet's actual room against the advertised amount.
+  assert.match(src, /const credit = dailyRewardCredit\(reward, balance\)/);
+  assert.match(src, /if \(credit < reward\)/);
+  // It runs BEFORE the day marker and the ledger row, so a refused claim
+  // leaves both untouched and today's reward claimable once room is made.
+  const guardAt = src.indexOf("if (credit < reward)");
+  assert.ok(guardAt > 0, "the wallet-room guard must exist");
+  assert.ok(
+    guardAt < src.indexOf("lastDailyRewardClaimed: today"),
+    "the refusal must precede the day marker",
+  );
+  assert.ok(
+    guardAt < src.indexOf("tx.insert(tokenTransactions)"),
+    "the refusal must precede the ledger row",
+  );
+  // The player is told why, with the amount they would have been paid.
+  assert.match(src, /wallet is full/i);
+  assert.match(src, /WALLET_HARD_CAP\.toLocaleString/);
+  assert.match(src, /\$\{reward\}/);
+});
+
+test("the claim reports what was credited and the UI shows that figure", () => {
+  assert.match(
+    read("src/app/api/rewards/daily/route.ts"),
+    /credited:\s*result\.credit/,
+  );
+  assert.match(
+    read("src/hooks/useDailyReward.ts"),
+    /json\.credited \?\? json\.reward/,
+  );
 });
 
 test("the rescue is idempotent per UTC day through its own ledger key", () => {

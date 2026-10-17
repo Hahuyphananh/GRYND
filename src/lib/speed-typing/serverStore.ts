@@ -40,7 +40,8 @@
 //   score, a duration or a rating from anything a caller passed in.
 //
 // ECONOMY
-//   Speed Typing is unstaked: no tokens, no wagers, no balances, no payouts and
+//   Speed Typing is staked in PvP: both seats escrow at join, the winner is paid
+//   the pot minus the shared rake, a dead heat refunds both — and
 //   no house rake. There is deliberately no stake/prize column on the table and
 //   no money-moving code path here. The only account stats a settled match
 //   touches are `users.gamesWon` / `users.gamesLost`, plus the per-game Elo and
@@ -58,6 +59,8 @@ import { db } from "../../db/client";
 import { speedTypingMatches, users } from "../../db/schema";
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
+import { escrowMatchWagers } from "../tokens/wager";
+import { payPvpPot, refundPvpPot } from "../tokens/pvpPot";
 import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
 import { coerceAiDifficulty } from "../aiDifficulty";
 import { aiSeatRaceAt } from "./ai";
@@ -268,9 +271,13 @@ export async function listMyWaitingMatch({ userId }: { userId: string }) {
 export async function createOrJoin({
   userId,
   deviceClass,
+  stake = 0,
   nowMs = Date.now(),
 }: {
   userId: string;
+  /** Coins each seat escrows; 0 means a free race. PvP entry passes a positive
+   *  stake (validated by the route). */
+  stake?: number;
   /**
    * The caller's input pool — 'keyboard' | 'touch' — or undefined/unknown when
    * the caller could not be classified (the quick-queue path, a bare HTTP
@@ -282,6 +289,7 @@ export async function createOrJoin({
   nowMs?: number;
 }) {
   const pool = coerceDeviceClass(deviceClass);
+  const stakeAmount = Number(stake) > 0 ? Number(stake) : 0;
   return await db.transaction(async (tx) => {
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(${SPEED_TYPING_LOCK_NAMESPACE}, 0)`,
@@ -297,6 +305,9 @@ export async function createOrJoin({
         and(
           eq(speedTypingMatches.status, MATCH_STATUS.WAITING),
           isNull(speedTypingMatches.player2Id),
+          // Only a lobby AT THE CALLER'S STAKE: two racers must never escrow
+          // different sums into one pot.
+          sql`${speedTypingMatches.stakeAmount} = ${stakeAmount}`,
         ),
       )
       .orderBy(sql`${speedTypingMatches.createdAt} ASC`)
@@ -309,19 +320,25 @@ export async function createOrJoin({
     if (own) return { match: own, joined: false };
 
     const lobby = pickLobbyFor({ candidates, deviceClass: pool, nowMs });
-    if (lobby) return await joinExistingMatch(tx, lobby.id, userId, pool);
+    if (lobby) return await joinExistingMatch(tx, lobby.id, userId, pool, stakeAmount);
 
-    return await createWaitingMatch(tx, userId, pool);
+    return await createWaitingMatch(tx, userId, pool, stakeAmount);
   });
 }
 
-async function createWaitingMatch(tx: any, userId: string, deviceClass: unknown) {
+async function createWaitingMatch(
+  tx: any,
+  userId: string,
+  deviceClass: unknown,
+  stakeAmount = 0,
+) {
   const [match] = await tx
     .insert(speedTypingMatches)
     .values({
       player1Id: userId,
       status: MATCH_STATUS.WAITING,
       isAi: false,
+      stakeAmount: stakeAmount.toFixed(2),
       // The pool of an open lobby is its CREATOR's, which is the class every
       // later caller is matched against. NULL when unclassifiable.
       player1DeviceClass: deviceClassColumnValue(deviceClass),
@@ -346,6 +363,7 @@ async function joinExistingMatch(
   candidateId: string,
   userId: string,
   deviceClass: unknown,
+  stakeAmount = 0,
 ) {
   const [match] = await tx
     .select()
@@ -392,6 +410,25 @@ async function joinExistingMatch(
   if (!updated) {
     // Another joiner raced us and won the conditional UPDATE.
     return { error: "Match is no longer available", status: 409 } as const;
+  }
+
+  // Fund the race: both seats escrow now, before a single keystroke. A seat
+  // that cannot pay throws, rolling the seat claim back, so the lobby stays
+  // waiting instead of holding a half-funded race.
+  // Annotated rather than inferred: `strict` is off, where a discriminated
+  // union is not narrowed by `if (!x.ok)`.
+  const escrow: { ok: boolean; error?: string; status?: number } =
+    await escrowMatchWagers({
+      clerkIds: [updated.player1Id, userId],
+      stake: stakeAmount,
+      matchId: updated.id,
+      gameKey: GAME_KEY,
+      tx,
+    });
+  if (!escrow.ok) {
+    throw Object.assign(new Error(escrow.error || "Insufficient coins"), {
+      status: escrow.status && escrow.status < 500 ? escrow.status : 400,
+    });
   }
 
   mirrorQueueCreated({
@@ -1295,6 +1332,7 @@ async function settleFinishedRace(
     winnerClerkId,
     loserClerkId,
     result: settlementResultFor({ winnerSeat: outcome.winnerSeat }),
+    stake: Number((match as any).stakeAmount ?? 0) || 0,
   });
 }
 
@@ -1350,8 +1388,9 @@ export type SettlementOutcome = {
  * (or fails) leaves the match finished and settled-at-most-once, so the caller
  * is told the truth and the last thing it does is claim a rating it did not get.
  *
- * No wager, no token, no payout, no rake: Speed Typing is unstaked, so the only
- * account stats touched are `users.gamesWon` / `users.gamesLost`.
+ * Staked: the winner is paid the pot (both escrowed stakes) minus the shared
+ * 10% PvP rake, and a dead heat refunds both seats. `users.gamesWon` /
+ * `users.gamesLost` move alongside.
  *
  * @param params.tx              the caller's settlement transaction
  * @param params.matchId         the authoritative match id (the journal key)
@@ -1365,12 +1404,15 @@ export async function settleSpeedTypingMatch({
   winnerClerkId,
   loserClerkId,
   result = SETTLEMENT_RESULT.WIN,
+  stake = 0,
 }: {
   tx: any;
   matchId: string;
   winnerClerkId: string;
   loserClerkId: string;
   result?: SettlementResult;
+  /** Coins each seat escrowed (0 = practice / legacy row). */
+  stake?: number;
 }): Promise<SettlementOutcome> {
   const eventId = String(matchId ?? "");
   const outcome =
@@ -1383,7 +1425,17 @@ export async function settleSpeedTypingMatch({
   }
   if (!eventId) return { rated: false, trophied: false };
 
+  const stakeAmount = Number(stake) > 0 ? Number(stake) : 0;
+
   if (outcome === SETTLEMENT_RESULT.DRAW) {
+    // A draw is a void pot: both seats get their own stake back, no rake.
+    await refundPvpPot({
+      tx,
+      gameKey: GAME_KEY,
+      matchId: eventId,
+      clerkIds: [String(winnerClerkId), String(loserClerkId)],
+      stake: stakeAmount,
+    });
     // A draw is a result, not a win: no game counter moves, but the rating and
     // trophy journals are still written so the event history stays complete.
     const drawRating = await applyRatingResult({
@@ -1403,6 +1455,25 @@ export async function settleSpeedTypingMatch({
       result: "draw",
     }).catch(() => null);
     return { rated: drawRating?.applied === true, trophied: drawTrophy?.applied === true };
+  }
+
+  // The winner takes the pot (both escrowed stakes) minus the shared 10% rake.
+  // A race that was never escrowed credits nothing.
+  const payout = await payPvpPot({
+    tx,
+    gameKey: GAME_KEY,
+    matchId: eventId,
+    winnerClerkId: String(winnerClerkId),
+    stake: stakeAmount,
+  });
+  if (stakeAmount > 0) {
+    await tx
+      .update(speedTypingMatches)
+      .set({
+        houseFee: (stakeAmount * 0.2).toFixed(2),
+        prizePaid: payout.toFixed(2),
+      })
+      .where(eq(speedTypingMatches.id, eventId));
   }
 
   await tx

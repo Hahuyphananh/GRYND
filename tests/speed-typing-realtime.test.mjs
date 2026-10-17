@@ -519,7 +519,10 @@ test("route: matchmaking broadcasts the countdown and start when it ARMS the rac
   assert.match(route, /new Date\(result\.match\.goAt\)\.getTime\(\)/);
   assert.match(route, /countdownMs: RACE_COUNTDOWN_MS/);
   // And the route still only returns the destination to navigate to.
-  assert.match(route, /await createOrJoin\(\{ userId, deviceClass \}\)/);
+  assert.match(
+    route,
+    /await createOrJoin\(\{ userId, deviceClass, stake: required\.stake \}\)/,
+  );
   assert.match(route, /matchId: result\.match\.id/);
 });
 

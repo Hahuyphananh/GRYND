@@ -2495,8 +2495,8 @@ export const minesPvpRoundsRelations = relations(minesPvpRounds, ({ one }) => ({
 // Skill mechanic: the active-tile pattern is server-generated and
 // hidden from every client except its own memorize phase (per-viewer
 // reveal in the /status route). Payout mirrors Mines Duel: winner
-// takes 1.9× their stake (stake back + 90% of the loser's), house
-// keeps 0.1×; DRAW refunds both.
+// takes 1.8× their stake (stake back + 80% of the loser's), house
+// keeps 0.2×; DRAW refunds both.
 export const memoryGridMatches = pgTable(
   "memory_grid_matches",
   {
@@ -2700,8 +2700,8 @@ export const memoryGridRoundsRelations = relations(memoryGridRounds, ({ one }) =
 //   * Fallback when both climbs are over (nobody banked 1,000) →
 //     higher final wins; equal → DRAW
 //
-// Payout (90/10 split, mirrors mines-pvp / roulette-pvp):
-//   Winner: own stake back + 90% of loser's stake (1.9× net)
+// Payout (80/20 split, mirrors mines-pvp / roulette-pvp):
+//   Winner: own stake back + 80% of loser's stake (1.8× net)
 //   Loser:   loses entire stake
 //   House:   10% rake on loser's stake only
 //   Draw:    both refunded, no rake
@@ -2823,7 +2823,7 @@ export const laneRushDuelMatches = pgTable(
 // (both lose a life). The claim window starts at 1.6s, tightens 100ms per
 // claimed tile and floors at 0.4s. Lives at 0 = eliminated (opponent
 // takes the pot); both eliminated on the same both-miss = draw (full
-// refund). Payout is the standard 90/10 split.
+// refund). Payout is the standard 80/20 split.
 //
 // Match flow: waiting → ready → <live> → finished (waiting → cancelled).
 // The live run reuses the legacy `round_1` enum value for its whole
@@ -3347,7 +3347,8 @@ export const tokenTransactions = pgTable(
 // ── Mini Golf (PvP) ─────────────────────────────────────────────────────
 //
 // Server-authoritative 1v1 turn-based mini golf: best-of-5 holes, first to
-// win 3 holes takes the match, no wagers / no tokens / no payouts.
+// win 3 holes takes the match. PvP plays for coins (both seats escrowed at
+// join, winner takes 1.8×); practice vs the bot is free.
 //
 // Matchmaking follows the Plinko Duel pattern rather than Pool Masters'
 // lobby+match pair: a single row with a nullable `player2_id` and a
@@ -3374,6 +3375,17 @@ export const miniGolfMatches = pgTable(
     player1Id: varchar("player1_id", { length: 255 }).notNull(),
     // Nullable so a `waiting` row doubles as the open lobby.
     player2Id: varchar("player2_id", { length: 255 }),
+    // Coins each seat escrows (0 = free / practice match). The winner is paid
+    // the pot (both stakes) minus the shared 10% rake; a draw refunds both.
+    stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    houseFee: numeric("house_fee", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
     winnerId: varchar("winner_id", { length: 255 }),
     // Derived from `game_state.current_turn` on every write.
     currentTurnUserId: varchar("current_turn_user_id", { length: 255 }),
@@ -3447,7 +3459,8 @@ export const miniGolfShots = pgTable(
 // lobby+match pair: a single row with a nullable `player2_id` and a `waiting`
 // status IS the open lobby, so `create-or-join` matches two players under one
 // advisory lock (SPEED_TYPING_LOCK_NAMESPACE) with no second table to keep in
-// sync — and no per-wager queue bucket, because the game is unstaked.
+// sync — the stake is part of the matchmaking key, so a pair is only ever
+// matched inside one stake bucket.
 //
 // HOUSE COLUMNS ONLY, ON PURPOSE. This table currently carries the match's
 // IDENTITY and LIFECYCLE — everything matchmaking, the lobby list, the
@@ -3458,7 +3471,8 @@ export const miniGolfShots = pgTable(
 // its `ai_difficulty` column in 0182 after shipping in 0179.
 //
 // There is deliberately NO stake_amount / prize_paid / house_fee column: the
-// game is unstaked, so no money is ever moved by settlement.
+// game plays for coins in PvP: both seats are escrowed at join and the winner
+// is paid the pot minus the shared 10% rake. Practice rows (stake 0) never move.
 //
 // Player ids are stored as plain clerk-id strings with no FK to `users`,
 // matching every other PvP table.
@@ -3469,6 +3483,17 @@ export const speedTypingMatches = pgTable(
     player1Id: varchar("player1_id", { length: 255 }).notNull(),
     // Nullable so a `waiting` row doubles as the open lobby.
     player2Id: varchar("player2_id", { length: 255 }),
+    // Coins each seat escrows (0 = free / practice match). The winner is paid
+    // the pot (both stakes) minus the shared 10% rake; a draw refunds both.
+    stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    houseFee: numeric("house_fee", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
     winnerId: varchar("winner_id", { length: 255 }),
     /** waiting | ready | playing | finished | cancelled — the shared house
      *  vocabulary the retention sweep, the queue mirror and the match-history
@@ -3672,10 +3697,10 @@ export const ticTacToeMoves = pgTable(
 // invariant, so a double-submitted turn can never be applied twice even if a
 // future code path forgets the application check.
 //
-// There is deliberately NO wager / stake / pot / payout / prize column: the game
-// is unstaked, so no money is ever moved by settlement. There is also no
-// `is_ai` column — free practice runs entirely in the browser against a local
-// bot and never touches these tables.
+// PvP plays for coins: `stake_amount` is what each seat escrowed at join and
+// `house_fee` / `prize_paid` record the settlement. Free practice runs entirely
+// in the browser against a local bot and never touches these tables, so there is
+// no `is_ai` column and no practice row here.
 //
 // Player ids are stored as plain Clerk-id strings with no FK to `users`,
 // matching every other PvP table.
@@ -3686,6 +3711,17 @@ export const barricadeMatches = pgTable(
     player1Id: varchar("player1_id", { length: 255 }).notNull(),
     // Nullable so a `waiting` row doubles as the open lobby.
     player2Id: varchar("player2_id", { length: 255 }),
+    // Coins each seat escrows (0 = free / practice match). The winner is paid
+    // the pot (both stakes) minus the shared 10% rake; a draw refunds both.
+    stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    houseFee: numeric("house_fee", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
     winnerId: varchar("winner_id", { length: 255 }),
     // Derived from `game_state.turn` on every accepted action.
     currentTurnUserId: varchar("current_turn_user_id", { length: 255 }),
@@ -3759,7 +3795,8 @@ export const barricadeMoves = pgTable(
 // deal that was actually played.
 //
 // There is deliberately NO stake_amount / prize_paid / house_fee column: the
-// game is unstaked, so no money is ever moved by settlement.
+// game plays for coins in PvP: both seats are escrowed at join and the winner
+// is paid the pot minus the shared 10% rake. Practice rows (stake 0) never move.
 export const solitaireDuelMatches = pgTable(
   "solitaire_duel_matches",
   {
@@ -3770,6 +3807,17 @@ export const solitaireDuelMatches = pgTable(
     player1Id: varchar("player1_id", { length: 255 }).notNull(),
     // Nullable so a `waiting` row doubles as the open lobby.
     player2Id: varchar("player2_id", { length: 255 }),
+    // Coins each seat escrows (0 = free / practice match). The winner is paid
+    // the pot (both stakes) minus the shared 10% rake; a draw refunds both.
+    stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    houseFee: numeric("house_fee", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
     winnerId: varchar("winner_id", { length: 255 }),
     /** waiting | ready | playing | finished | cancelled — the shared house
      *  vocabulary the retention sweep, the queue mirror and the match-history
@@ -3873,7 +3921,8 @@ export const solitaireDuelMoves = pgTable(
 // puzzle that was actually played.
 //
 // There is deliberately NO stake_amount / prize_paid / house_fee column: the
-// game is unstaked, so no money is ever moved by settlement.
+// game plays for coins in PvP: both seats are escrowed at join and the winner
+// is paid the pot minus the shared 10% rake. Practice rows (stake 0) never move.
 export const sudokuDuelMatches = pgTable(
   "sudoku_duel_matches",
   {
@@ -3886,6 +3935,17 @@ export const sudokuDuelMatches = pgTable(
     player1Id: varchar("player1_id", { length: 255 }).notNull(),
     // Nullable so a `waiting` row doubles as the open lobby.
     player2Id: varchar("player2_id", { length: 255 }),
+    // Coins each seat escrows (0 = free / practice match). The winner is paid
+    // the pot (both stakes) minus the shared 10% rake; a draw refunds both.
+    stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    houseFee: numeric("house_fee", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
     winnerId: varchar("winner_id", { length: 255 }),
     /** waiting | ready | playing | finished | cancelled — the shared house
      *  vocabulary. `ready` is never entered: joining takes the match straight to

@@ -26,6 +26,12 @@
 //
 // ── The advertised amount IS the paid amount ────────────────────────────────
 //
+// The wallet's hard ceiling (WALLET_HARD_CAP, economy.ts) is part of that rule.
+// A player already at it has no room, so the claim is REFUSED with an
+// actionable message and nothing is written — the day is not consumed for a
+// 0-coin payout. Paying the room that happens to be left instead would pay less
+// than the button advertised, which is the same lie in a smaller dose.
+//
 // The status read and the claim both derive the streak day through the SAME
 // function (`projectDailyStreakDay` in src/lib/dailyStreak.js), so the number on
 // the button is the number that lands in the wallet. Reading the STORED streak
@@ -122,6 +128,32 @@ export function dailyRewardAmount(streakDay: number): number {
 }
 
 /**
+ * How much of `reward` a wallet on `balance` can actually accept under the
+ * `WALLET_HARD_CAP`. The ceiling is a hard product rule (see economy.ts), so a
+ * player already at it has ZERO room: a claim that ignores that would be
+ * recorded, consume the day, and pay nothing.
+ *
+ * Pure, so the cap arithmetic is unit-testable without a database.
+ */
+export function dailyRewardCredit(reward: number, balance: number): number {
+  const amount = Number(reward);
+  const wallet = Number(balance);
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  if (!Number.isFinite(wallet)) return 0;
+  return Math.max(0, Math.min(amount, WALLET_HARD_CAP - wallet));
+}
+
+/**
+ * Whether the wallet can take the WHOLE reward — i.e. whether a claim made now
+ * would be paid rather than refused. The status read reports the negation as
+ * `walletFull`, so the card, the widget and the board can say so BEFORE the
+ * player presses Claim, instead of only after a refusal.
+ */
+export function dailyRewardFitsInWallet(reward: number, balance: number): boolean {
+  return dailyRewardCredit(reward, balance) >= Number(reward);
+}
+
+/**
  * Whether today's reward is unlocked: the player must have played a game today
  * (the `last_played_game_date` marker). Compared as `YYYY-MM-DD` strings so a
  * stored DATE and a JS Date can never disagree about the day.
@@ -155,10 +187,25 @@ export type DailyRewardStatus = {
   today: string;
   /** The full curve, so the UI can show the whole fortnight at a glance. */
   cycle: number[];
+  /**
+   * True when the wallet has no room for today's reward under the hard ceiling,
+   * so a claim made now would be REFUSED. Surfaces read this to warn before the
+   * player presses Claim.
+   */
+  walletFull: boolean;
+  /** The wallet ceiling this verdict was computed against (never hardcoded). */
+  walletCap: number;
 };
 
 export type DailyRewardResult =
-  | { ok: true; status: DailyRewardStatus; claimed: boolean; balance: number }
+  | {
+      ok: true;
+      status: DailyRewardStatus;
+      claimed: boolean;
+      balance: number;
+      /** What actually landed in the wallet (always `status.reward`). */
+      credit: number;
+    }
   | { ok: false; error: string; status: number };
 
 // The claim transaction's own result — a proper discriminated union so the
@@ -199,16 +246,21 @@ export async function getDailyRewardStatus(
   // shown a payday they cannot collect (see `projectedStreakDay`).
   const streakDay = await projectedStreakDay(user, now);
 
+  const reward = dailyRewardAmount(streakDay);
+  const balance = Number(user.balance ?? 0);
+
   return {
     claimable: String(user.claimed ?? "").slice(0, 10) !== today,
     playGateSatisfied: isPlayGateSatisfied(user.lastPlayed, today),
     streakDay,
     cycleDay: dailyRewardCycleDay(streakDay),
     cycleDays: DAILY_REWARD_CYCLE_DAYS,
-    reward: dailyRewardAmount(streakDay),
+    reward,
     today,
     cycle: [...DAILY_REWARD_CYCLE],
-    balance: Number(user.balance ?? 0),
+    walletFull: !dailyRewardFitsInWallet(reward, balance),
+    walletCap: WALLET_HARD_CAP,
+    balance,
   };
 }
 
@@ -285,8 +337,19 @@ export async function claimDailyReward(
       return { ok: false as const, error: "Already claimed today", status: 409 };
     }
 
-    // Same wallet ceiling as every other credit.
-    const credit = Math.min(reward, Math.max(0, WALLET_HARD_CAP - balance));
+    // Same wallet ceiling as every other credit. If the wallet cannot accept
+    // the WHOLE reward, refuse the claim instead of paying a partial (or zero)
+    // amount while consuming the day: the advertised amount must be the paid
+    // amount. Nothing is written here, so the reward stays claimable once the
+    // player makes room.
+    const credit = dailyRewardCredit(reward, balance);
+    if (credit < reward) {
+      return {
+        ok: false as const,
+        error: `Your wallet is full (${WALLET_HARD_CAP.toLocaleString("en-US")} coin limit) — spend some coins to claim today's ${reward}.`,
+        status: 409,
+      };
+    }
 
     let newBalance = balance;
     if (credit > 0) {
@@ -336,6 +399,7 @@ export async function claimDailyReward(
     ok: true,
     claimed: true,
     balance: result.balance,
+    credit: result.credit,
     status: {
       claimable: false,
       playGateSatisfied: true,
@@ -345,6 +409,10 @@ export async function claimDailyReward(
       reward,
       today,
       cycle: [...DAILY_REWARD_CYCLE],
+      // Just credited, so the wallet certainly had room (and now has that much
+      // less of it) — recomputed rather than assumed.
+      walletFull: !dailyRewardFitsInWallet(reward, result.balance),
+      walletCap: WALLET_HARD_CAP,
     },
   };
 }

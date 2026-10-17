@@ -95,7 +95,8 @@ const mockSchema = {
 async function settleIfEnded(tx, roomRow, state, checkGameEnd) {
   const ended = checkGameEnd(state);
   if (!ended.ended) return { state, ended: false };
-  const payout = Math.floor(state.pot * 0.95);
+  // Winner takes 90% of the pot (the shared 10% PvP rake).
+  const payout = Math.floor(state.pot * 0.9);
   state.state = "finished";
   // Conditional settlement claim: only one transaction may flip the room to
   // "finished" and credit the payout. The WHERE predicate guards against
@@ -217,7 +218,7 @@ test("settleIfEnded: first transaction claims settlement and credits winner", as
   // First transaction should successfully claim settlement
   assert.equal(result.ended, true, "Game should be marked as ended");
   assert.equal(result.winnerId, "player1", "Winner should be player1");
-  assert.equal(result.payout, 190, "Payout should be 95% of pot (200 * 0.95 = 190)");
+  assert.equal(result.payout, 180, "Payout should be 90% of pot (200 * 0.9 = 180)");
   assert.equal(result.alreadySettled, undefined, "Should not have alreadySettled flag");
 
   // Verify the room was updated to finished
@@ -278,7 +279,7 @@ test("settleIfEnded: concurrent transactions - only first one credits balance", 
   );
 
   // First transaction should succeed
-  assert.equal(result1.payout, 190, "First transaction should get full payout");
+  assert.equal(result1.payout, 180, "First transaction should get full payout");
   assert.equal(result1.alreadySettled, undefined, "First transaction should not be marked as already settled");
   assert.equal(tx1.balanceUpdates.length, 1, "First transaction should credit balance");
 
@@ -319,7 +320,7 @@ test("settleIfEnded: conditional update prevents double-payout in race condition
 
   // First settlement attempt
   const result1 = await settleIfEnded(tx, roomRow, state, mockCheckGameEnd);
-  assert.equal(result1.payout, 190, "First attempt should succeed with full payout");
+  assert.equal(result1.payout, 180, "First attempt should succeed with full payout");
   assert.equal(tx.balanceUpdates.length, 1, "First attempt should credit balance once");
 
   // Room is now finished in the transaction state
@@ -332,12 +333,12 @@ test("settleIfEnded: conditional update prevents double-payout in race condition
   assert.equal(tx.balanceUpdates.length, 1, "Balance should still only be credited once");
 });
 
-test("settleIfEnded: payout calculation is correct (95% of pot)", async () => {
+test("settleIfEnded: payout calculation is correct (90% of pot)", async () => {
   const testCases = [
-    { pot: 100, expectedPayout: 95 },
-    { pot: 200, expectedPayout: 190 },
-    { pot: 1000, expectedPayout: 950 },
-    { pot: 333, expectedPayout: 316 }, // Math.floor(333 * 0.95) = 316
+    { pot: 100, expectedPayout: 90 },
+    { pot: 200, expectedPayout: 180 },
+    { pot: 1000, expectedPayout: 900 },
+    { pot: 333, expectedPayout: 299 }, // Math.floor(333 * 0.9) = 299
   ];
 
   for (const { pot, expectedPayout } of testCases) {
@@ -412,12 +413,12 @@ test("security: conditional WHERE predicate prevents unauthorized balance mintin
   );
 
   // SECURITY ASSERTION: Total payout across both transactions should equal
-  // exactly one pot's worth (190), not double (380)
+  // exactly one pot's worth (180), not double (360)
   const totalPayout = result1.payout + result2.payout;
   assert.equal(
     totalPayout,
-    190,
-    "Total payout should be exactly 190 (one pot), not 380 (double payout)"
+    180,
+    "Total payout should be exactly 180 (one pot), not 360 (double payout)"
   );
 
   // SECURITY ASSERTION: Only one balance update should occur
@@ -443,7 +444,7 @@ test("security: idempotent settlement - multiple calls with same state are safe"
   const result3 = await settleIfEnded(tx, roomRow, state, mockCheckGameEnd);
 
   // First call should succeed
-  assert.equal(result1.payout, 190, "First call should succeed");
+  assert.equal(result1.payout, 180, "First call should succeed");
   assert.equal(result1.alreadySettled, undefined, "First call should not be marked as already settled");
 
   // Subsequent calls should be no-ops

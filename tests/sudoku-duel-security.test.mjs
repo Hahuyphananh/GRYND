@@ -132,10 +132,14 @@ test("store: settlement reuses the shared writers with the canonical game key", 
   assert.match(source, /gameKey: "sudoku-duel"/);
   assert.match(source, /mirrorQueueCreated/);
   assert.match(source, /mirrorQueueTransition/);
-  // No hand-rolled rating maths or money path anywhere in the store.
+  // No hand-rolled rating maths. The money path is the SHARED one — the store
+  // escrows both seats at join and pays the pot through the platform helpers,
+  // never re-deriving a payout itself.
   assert.equal(source.includes("eloDelta"), false);
-  assert.equal(source.includes("stakeAmount"), false);
-  assert.equal(source.includes("prizePaid"), false);
+  assert.match(source, /import \{ escrowMatchWagers \} from "\.\.\/tokens\/wager";/);
+  assert.match(source, /import \{ payPvpPot, refundPvpPot \} from "\.\.\/tokens\/pvpPot";/);
+  assert.match(source, /stakeAmount: stakeAmount\.toFixed\(2\)/);
+  assert.match(source, /prizePaid: payout\.toFixed\(2\)/);
 });
 
 test("store: matchmaking takes one per-game advisory lock and never regenerates on join", () => {
@@ -324,14 +328,16 @@ test("client: the race view sends only an action and its own ply cursor", () => 
   }
 });
 
-test("client: matchmaking carries no payload, so difficulty cannot be chosen", () => {
+test("client: matchmaking carries the stake and nothing else", () => {
   const source = read(LOBBY_PAGE);
   assert.match(source, /fetch\("\/api\/sudoku-duel\/create-or-join"/);
-  // The RANKED create-or-join POST is bodyless — the server's own
-  // DEFAULT_DIFFICULTY decides the puzzle, so a client cannot choose it.
+  // The RANKED create-or-join POST carries exactly one field — the stake the
+  // pair is escrowed at. The server's own DEFAULT_DIFFICULTY still decides the
+  // puzzle, so a client cannot choose it.
   const post = sliceBetween(source, '"/api/sudoku-duel/create-or-join"', "});");
   assert.ok(post.length > 0, "the create-or-join call must exist");
-  assert.equal(post.includes("body:"), false, "create-or-join must not send a body");
+  assert.match(post, /body: JSON\.stringify\(\{ stake \}\)/);
+  assert.doesNotMatch(post, /difficulty/);
   assert.match(post, /method: "POST"/);
   // The ONLY body the lobby composes is the practice-bot difficulty, and it can
   // carry nothing but that one tier.

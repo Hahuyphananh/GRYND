@@ -241,7 +241,7 @@ export default function TowerArenaLobbyPage() {
                 The first block to fall ends it: the player who dropped it is
                 out and the other player wins the duel — and the prize pool.
                 Both entries are escrowed when the second player joins (a
-                waiting lobby costs nothing), the winner takes 1.9× their
+                waiting lobby costs nothing), the winner takes 1.8× their
                 stake, and a lobby that is cancelled or torn down returns
                 every entry. The bot duel is free.
               </>

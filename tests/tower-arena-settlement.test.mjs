@@ -31,14 +31,14 @@ test("1v1 @100: winner-take-all — 2nd place forfeits exactly the wager", () =>
   const cfg = computePotPrize({ wager });
   assert.equal(cfg.maxPlayers, 2);
   assert.equal(cfg.pot, 200);
-  assert.equal(cfg.houseFee, 10);
-  assert.equal(cfg.prizePool, 190);
+  assert.equal(cfg.houseFee, 20);
+  assert.equal(cfg.prizePool, 180);
 
   const payouts = payoutsByPlacement({ prizePool: cfg.prizePool });
-  assert.deepEqual(payouts, [190, 0]);
+  assert.deepEqual(payouts, [180, 0]);
 
-  // Winner nets +90; runner-up nets exactly −100.
-  assert.equal(netForPlacement({ wager, prizePool: cfg.prizePool, placement: 1 }), 90);
+  // Winner nets +80; runner-up nets exactly −100.
+  assert.equal(netForPlacement({ wager, prizePool: cfg.prizePool, placement: 1 }), 80);
   assert.equal(netForPlacement({ wager, prizePool: cfg.prizePool, placement: 2 }), -100);
   // Winner takes the entire prize pool (winner-take-most after rake).
   assert.equal(payouts[0], cfg.prizePool);

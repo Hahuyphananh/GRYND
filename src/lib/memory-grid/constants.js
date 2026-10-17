@@ -60,12 +60,12 @@
 //     from both clients once the match finishes, for the reveal).
 //
 // Payout (mirrors Mines Duel):
-//   Winner: own stake back + 90% of loser's stake (1.9× total)
+//   Winner: own stake back + 80% of loser's stake (1.8× total)
 //   Loser:  loses entire stake
-//   House:  10% rake on loser's stake only
+//   House:  20% of loser's stake only (= 10% of the pot)
 //   Draw:   both refunded, no rake — EXCEPT a tiebreak-round draw
 //           (equal totals after the 6th round): each player is
-//           refunded 95% of their stake (5% rake per side → 10% of
+//           refunded 95% of their stake (5% per side → 10% of the
 //           the pot total, matching the house take on a winner).
 //           Mirrors keno-pvp's OVERTIME_DRAW_FEE_PCT.
 
@@ -230,19 +230,19 @@ export const MIN_STAKE = 1;
 // Must match GLOBAL_MAX_BET in src/lib/games/economy.ts.
 export const MAX_STAKE = 100;
 
-// ── House fee (per spec: 10% rake on the LOSER's stake) ─────────────
-// Same split as Mines Duel: the winner takes 90% of the loser's
-// stake, house keeps 10% of it. Distinct from roulette-pvp
-// (HOUSE_FEE_PCT = 0.025).
-export const HOUSE_FEE_PCT = 0.1;
-export const WINNER_RATIO = 0.9; // 90% of the loser's stake
-export const HOUSE_RATIO = 0.1; // 10% of the loser's stake
+// ── House fee (the shared PvP rake: 10% of the POT) ─────────────────
+// Same split as Mines Duel: the winner takes 80% of the loser's
+// stake, house keeps 20% of it — 10% of the two-stake pot, the rate
+// PVP_RAKE_PCT sets for every game.
+export const HOUSE_FEE_PCT = 0.2;
+export const WINNER_RATIO = 0.8; // 80% of the loser's stake
+export const HOUSE_RATIO = 0.2; // 20% of the loser's stake
 
 // ── Tiebreak-draw fee (mirrors keno-pvp's OVERTIME_DRAW_FEE_PCT) ────
 // Applied ONLY when the 6th tiebreak round ALSO ties (equal totals
 // after round 6): each player is refunded 95% of their stake (5%
-// taken from each side — 10% of the pot total, matching the house
-// take on a winner). Normal draws (which can no longer occur — the
+// taken from each side — half the 10%-of-pot rake a decisive match
+// takes). Normal draws (which can no longer occur — the
 // tiebreak round always fires first) stay a full refund with no
 // rake.
 export const OVERTIME_DRAW_FEE_PCT = 0.05;
@@ -560,9 +560,9 @@ export function computeFinalRoundScore({
 //               and the house takes 2 × that fee (e.g. 5% per side
 //               → 10% of the pot total, matching the house take on
 //               a winner). Mirrors keno-pvp's computePayout.
-//   PLAYER1:    player1 wins. player1 gets (stake + 0.9 * stake) =
-//               1.9x stake back; player2 loses stake. House rake
-//               = 0.1 * stake. prizePaid = 1.9 * stake.
+//   PLAYER1:    player1 wins. player1 gets (stake + 0.8 * stake) =
+//               1.8x stake back; player2 loses stake. House rake
+//               = 0.2 * stake. prizePaid = 1.8 * stake.
 //   PLAYER2:    mirror of PLAYER1.
 //
 // Returns NUMBER (rounded to 2dp via round2) so callers can persist
@@ -596,17 +596,17 @@ export function computePayout({ stakeAmount, result, drawFeePct = 0 }) {
       refundEach: round2(stake - fee),
     };
   }
-  const winnerPrize = round2(stake * WINNER_RATIO); // 90% of loser's stake
-  const houseFee = round2(stake * HOUSE_RATIO); // 10% of loser's stake
+  const winnerPrize = round2(stake * WINNER_RATIO); // 80% of loser's stake
+  const houseFee = round2(stake * HOUSE_RATIO); // 20% of loser's stake
   return {
     stake: round2(stake),
-    // winner is refunded their own stake + 90% of the loser's stake
+    // winner is refunded their own stake + 80% of the loser's stake
     winnerNet: round2(stake + winnerPrize),
     // loser loses their entire stake (net = -stake)
     loserNet: round2(-stake),
     houseFee,
     // prizePaid = the total payout to the winner (their stake back
-    // + the 90% they won from the loser).
+    // + the 80% they won from the loser).
     prizePaid: round2(stake + winnerPrize),
     refundEach: null,
   };

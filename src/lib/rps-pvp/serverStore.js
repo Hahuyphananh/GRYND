@@ -24,7 +24,7 @@ import { eq } from "drizzle-orm";
 
 /**
  * What a win pays: both seats' stakes (the pot) minus the shared house rake,
- * so a 2× pot pays 1.9× the winner's own stake at the current 5% rake. Pure,
+ * so a 2× pot pays 1.8× the winner's own stake at the current 10% rake. Pure,
  * so the display math in `/api/rps/pvp/status` can never drift from the coins
  * that actually move. A free match (wager 0) pays nothing.
  */

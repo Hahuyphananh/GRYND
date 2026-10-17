@@ -3,7 +3,7 @@
 // Internal endpoint called by the realtime server when a memory-grid
 // participant's socket has stayed disconnected past the grace window
 // (tab closed, long network drop). Resolves the match in the
-// opponent's favor with the standard 90/10 payout (winner gets their
+// opponent's favor with the standard 80/20 payout (winner gets their
 // stake back + 90% of the forfeiter's stake, house keeps 10%); a
 // WAITING match with no opponent is cancelled and the creator's stake
 // refunded. Idempotent — terminal matches are left untouched, so a

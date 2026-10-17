@@ -599,7 +599,10 @@ test("deploy: there is exactly one matchmaking path, so two browsers cannot pair
   // same store function, so the Vercel route and the platform queue can never
   // produce two different pairings for the same two players.
   const route = read("src/app/api/speed-typing/create-or-join/route.ts");
-  assert.match(route, /const result = await createOrJoin\(\{ userId, deviceClass \}\)/);
+  assert.match(
+    route,
+    /const result = await createOrJoin\(\{ userId, deviceClass, stake: required\.stake \}\)/,
+  );
   // The device class comes from the request's OWN HEADERS, never from anything
   // the caller supplies (the e2e/platform suites forbid the route reading a
   // request payload at all).

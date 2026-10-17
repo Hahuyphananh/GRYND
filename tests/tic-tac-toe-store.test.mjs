@@ -467,8 +467,8 @@ test("a win pays the pot out of the escrow — 2 × stake × PVP_WINNER_SHARE", 
   const payouts = ledgerCalls("settle");
   assert.equal(payouts.length, 1, "exactly one payout per finished match");
   assert.equal(payouts[0].clerkId, ALICE);
-  // 2 × 25 × 0.95 = 47.5 (the loser's stake minus the 5% house rake).
-  assert.equal(payouts[0].amount, 47.5);
+  // 2 × 25 × 0.9 = 45 (the pot minus the shared 10% house rake).
+  assert.equal(payouts[0].amount, 45);
   assert.equal(payouts[0].gameKey, "tic-tac-toe");
   assert.equal(String(payouts[0].matchId), MATCH_ID);
   // The loser is never paid, and a win is not also refunded.

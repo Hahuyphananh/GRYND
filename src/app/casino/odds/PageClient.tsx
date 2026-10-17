@@ -1598,7 +1598,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
             </div>
             <div className="flex flex-col items-center gap-3 text-center">
               <p className="text-xs leading-relaxed text-white/55">
-                Open a lobby and wait for a challenger, or join one below · 6 rounds · the window halves each round. Both stakes are escrowed when your challenger joins; the winner takes 1.9× their stake.
+                Open a lobby and wait for a challenger, or join one below · 6 rounds · the window halves each round. Both stakes are escrowed when your challenger joins; the winner takes 1.8× their stake.
               </p>
               <button
                 onClick={createGame}

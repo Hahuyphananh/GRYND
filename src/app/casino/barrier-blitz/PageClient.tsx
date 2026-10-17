@@ -49,9 +49,10 @@
 // and needs no match, no socket and no database — `canPlay` gates the button and
 // the practice route stays one click away.
 //
-// Entry is free: Barrier Blitz is unstaked, so there is no wager picker, no
-// balance and no escrow note, and there is no bot on this route (practice is its
-// own route at /casino/barrier-blitz/play-ai).
+// PvP is a coin match: the player picks the stake above, both seats are escrowed
+// when the opponent joins, and the winner takes 1.8× (the house keeps 10%).
+// There is no bot on this route — practice is its own route at
+// /casino/barrier-blitz/play-ai and stays free.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -99,6 +100,10 @@ export default function BarrierBlitzLobbyPage() {
   const router = useRouter();
   const posthog = usePostHog();
 
+  // Coin wager: the player picks the stake the lobby opens at, and the server
+  // escrows BOTH seats when an opponent joins. The vs-AI practice board stays
+  // free (it is entirely client-side).
+  const [stake, setStake] = useState<number>(10);
   const [busy, setBusy] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -222,9 +227,9 @@ export default function BarrierBlitzLobbyPage() {
     try {
       const res = await fetch("/api/barricade/create-or-join", {
         method: "POST",
-        // The proxy rejects POSTs without a JSON content-type (415), even
-        // bodyless ones — declare it so matchmaking reaches the route.
         headers: { "Content-Type": "application/json" },
+        // Both seats are escrowed at this stake the moment an opponent joins.
+        body: JSON.stringify({ stake }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.success) {
@@ -332,7 +337,9 @@ export default function BarrierBlitzLobbyPage() {
               goal — a placement that traps a player for good is refused by the
               server. Whose turn it is, what is legal and who won are all decided
               server-side, so a stale tab can never play out of turn or invent a
-              win. There are <b>no wagers, no tokens and no payouts</b>.
+              win. Online matches are played for coins: both seats stake the
+              amount you pick and the winner takes <b>1.8×</b> — practice against
+              the bot at /casino/barrier-blitz/play-ai is free.
             </>
           ),
         },
@@ -351,12 +358,13 @@ export default function BarrierBlitzLobbyPage() {
         }
         rulesKey="barricade"
         rules={rules}
-        waitingSubtitle={`Pairing you with another ${GAME_NAME} player…`}
+        wager={{ value: stake, onChange: setStake }}
+        waitingSubtitle={`Pairing you at ${stake} coins — both stakes are escrowed on match-up.`}
         busy={busy}
         onPlay={createOrJoin}
         playLabel="Find a Match"
         playBusyLabel="Searching…"
-        canPlay={Boolean(isSignedIn)}
+        canPlay={Boolean(isSignedIn) && stake >= 1}
         extraActions={
           <button
             type="button"

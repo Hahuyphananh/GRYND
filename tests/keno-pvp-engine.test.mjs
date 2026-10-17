@@ -110,9 +110,9 @@ test("stake + identity constants are unchanged by the rework", () => {
   assert.deepEqual(STAKE_PRESETS, [5, 10, 25, 50, 100]);
   assert.equal(MIN_STAKE, 1);
   assert.equal(MAX_STAKE, 100);
-  assert.equal(HOUSE_FEE_PCT, 0.10);
-  assert.equal(WINNER_RATIO, 0.90);
-  assert.equal(HOUSE_RATIO, 0.10);
+  assert.equal(HOUSE_FEE_PCT, 0.20);
+  assert.equal(WINNER_RATIO, 0.80);
+  assert.equal(HOUSE_RATIO, 0.20);
   assert.equal(OVERTIME_DRAW_FEE_PCT, 0.05); // legacy rows only
   // The get-ready countdown before the first tile lights.
   assert.equal(READY_WINDOW_MS, 5000);
@@ -124,12 +124,12 @@ test("stake + identity constants are unchanged by the rework", () => {
   assert.equal(isFreeAiMatch(null), false);
 });
 
-test("computePayout: winner takes 1.9x net, draw refunds in full", () => {
+test("computePayout: winner takes 1.8x net, draw refunds in full", () => {
   const win = computePayout({ stakeAmount: 100, result: RESULT.PLAYER1 });
-  assert.equal(win.winnerNet, 190);
+  assert.equal(win.winnerNet, 180);
   assert.equal(win.loserNet, -100);
-  assert.equal(win.houseFee, 10);
-  assert.equal(win.prizePaid, 190);
+  assert.equal(win.houseFee, 20);
+  assert.equal(win.prizePaid, 180);
 
   const draw = computePayout({ stakeAmount: 100, result: RESULT.DRAW });
   assert.equal(draw.refundEach, 100);

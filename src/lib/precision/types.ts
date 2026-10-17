@@ -295,10 +295,10 @@ export interface PrecisionEndPopupState {
    *  show a "(3 : 1)" tally, distinguishing a clean win from a
    *  near-loss. */
   finalScore?: { seat1: number; seat2: number } | null;
-  /** Payout multiplier applied to the wager (e.g. 1.9×). Used by the
+  /** Payout multiplier applied to the wager (e.g. 1.8×). Used by the
    *  popup's "Prize" line to clarify the rule set. Defaults to 1.9. */
   prizeMultiplier?: number;
   /** Wager amount the match was played for. Used by the popup's
-   *  prize line to show the basis (e.g. "1.9× on 100 wagered"). */
+   *  prize line to show the basis (e.g. "1.8× on 100 wagered"). */
   wager?: number;
 }

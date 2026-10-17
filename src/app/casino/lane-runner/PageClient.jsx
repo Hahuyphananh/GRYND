@@ -310,8 +310,8 @@ export default function LaneRushDuelLobbyPage() {
           that tile for good and sends you back to row 1. Mark tiles you
           have landed on with <b className="text-amber-300">memory flags</b>{" "}
           (2 each, both players see them). You get 15 seconds per choice.{" "}
-          <b>First across row 10 wins</b> — 1.9× your stake, house takes
-          0.1×.
+          <b>First across row 10 wins</b> — 1.8× your stake, house takes
+          0.2×.
         </>
       }
       icon={
@@ -365,7 +365,7 @@ export default function LaneRushDuelLobbyPage() {
             body: (
               <>
                 The first player to <b>cross row 10 wins</b> the match
-                instantly. 1.9× your stake, house takes 0.1×.
+                instantly. 1.8× your stake, house takes 0.2×.
               </>
             ),
           },

@@ -27,20 +27,25 @@ test("mini-golf is a supported quick-queue game key", () => {
   assert.match(queue, /"mini-golf"/);
 });
 
-test("the worker registers the mini-golf destination and creates it unstaked", () => {
+test("the worker registers the mini-golf destination at the queue's stake", () => {
   assert.match(worker, /createOrJoinMiniGolfMatch/);
   assert.match(worker, /from "\.\/mini-golf\/serverStore"/);
-  assert.match(worker, /"mini-golf": \(userId\) => createOrJoinMiniGolfMatch\(\{ userId \}\)/);
-  // Mini Golf moves no tokens, so the queue's normalized stake is never passed.
-  assert.doesNotMatch(worker, /createOrJoinMiniGolfMatch\(\{[^}]*stake/);
+  // Mini Golf plays for coins in PvP, so the queue's normalized stake is what
+  // both paired seats are escrowed at.
+  assert.match(
+    worker,
+    /"mini-golf": \(userId\) => createOrJoinMiniGolfMatch\(\{ userId, stake: sourceStake \}\)/,
+  );
 });
 
 test("the destination is Mini Golf's own create-or-join lobby", () => {
-  assert.match(store, /export async function createOrJoin\(\{ userId \}/);
+  assert.match(store, /export async function createOrJoin\(\{/);
+  assert.match(store, /stake = 0,/);
   // Both paired players must land on the SAME destination id, which is what
-  // the worker asserts; createOrJoin joins the oldest waiting lobby.
+  // the worker asserts; createOrJoin joins the oldest waiting lobby at the
+  // caller's own stake.
   assert.match(store, /isNull\(miniGolfMatches\.player2Id\)/);
-  assert.match(store, /return await joinExistingMatch\(tx, open\.id, userId\)/);
+  assert.match(store, /return await joinExistingMatch\(tx, open\.id, userId, stakeAmount\)/);
 });
 
 test("the queue UI offers Mini Golf and routes to its match page", () => {

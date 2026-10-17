@@ -53,6 +53,32 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
 const read = (rel) => readFileSync(join(root, rel), "utf8");
 
+// ONE mutable world for the mocked hook. The components are imported once (the
+// ESM graph is cached), so whichever test registers the mock first, every test
+// that renders them drives this same object — a per-test copy would be
+// invisible to the mock and the renders would silently show stale state.
+const REWARD_WORLD = {
+  isLoaded: true,
+  isSignedIn: true,
+  status: null,
+  loading: false,
+  claiming: false,
+  claimedNow: null,
+  error: null,
+};
+
+const resetWorld = (overrides = {}) =>
+  Object.assign(REWARD_WORLD, {
+    isLoaded: true,
+    isSignedIn: true,
+    status: null,
+    loading: false,
+    claiming: false,
+    claimedNow: null,
+    error: null,
+    ...overrides,
+  });
+
 // Prose must not be mistaken for code: these files explain the endpoints and
 // the rules in their doc comments.
 const stripComments = (s) =>
@@ -98,6 +124,34 @@ test("both reward surfaces drive the same hook, which owns the HTTP", () => {
   assert.match(hook, /"Content-Type": "application\/json"/);
   // A claim credits the wallet the navbar and the wager pickers read.
   assert.match(hook, /notifyCoinBalanceChanged/);
+});
+
+test("a refused claim keeps its message — the re-read cannot swallow it", () => {
+  // The reported bug: pressing Claim appeared to do nothing. `load()` starts by
+  // clearing the error, so a refusal set before the re-read was wiped in the
+  // same click — the play gate, "already claimed" and "wallet full" were all
+  // invisible. The message must be applied AFTER the re-read.
+  const hook = read(HOOK);
+  const code = stripComments(hook);
+  const claimAt = code.indexOf("const claim = useCallback");
+  assert.ok(claimAt > 0, "the claim callback must exist");
+  const refusalAt = code.indexOf("} else {", claimAt);
+  const catchAt = code.indexOf("} catch {", claimAt);
+  const refusalBranch = code.slice(refusalAt, catchAt);
+
+  assert.match(refusalBranch, /const message =/, "the refusal must be captured first");
+  assert.match(
+    refusalBranch,
+    /await load\(\);\s*setError\(\(previous\) => previous \?\? message\)/,
+    "the refusal message must be set after the re-read that clears errors",
+  );
+  assert.doesNotMatch(
+    refusalBranch,
+    /setError\([^)]*\)\s*;\s*await load\(\)/,
+    "setting the error before the re-read is the bug this pins",
+  );
+  // The re-read still happens — a refusal is re-read, never guessed at.
+  assert.match(refusalBranch, /await load\(\)/);
 });
 
 test("the status read is never served from the shared two-second GET cache", () => {
@@ -281,15 +335,7 @@ test("the navbar reads the one wallet, and re-reads it after a credit", () => {
 
 test("the widget renders each reward state, and nothing when signed out", { skip: SKIP_REASON }, async (t) => {
   // Mutable world: the mocked hook reads this on every render.
-  const world = {
-    isLoaded: true,
-    isSignedIn: true,
-    status: null,
-    loading: true,
-    claiming: false,
-    claimedNow: null,
-    error: null,
-  };
+  const world = resetWorld({ loading: true });
 
   t.mock.module("../src/hooks/useDailyReward.ts", {
     namedExports: {
@@ -380,6 +426,92 @@ test("the widget renders each reward state, and nothing when signed out", { skip
   assert.match(failed, /Your daily reward isn&#x27;t available right now/);
   assert.match(failed, /Try again/);
   assert.doesNotMatch(failed, /Claim /);
+});
+
+test("a full wallet is shown BEFORE the claim is pressed", { skip: SKIP_REASON }, async (t) => {
+  // The reported follow-up: a player at the wallet ceiling only found out after
+  // pressing Claim — the server refused and nothing happened. Both surfaces now
+  // carry the verdict up front.
+  const world = resetWorld();
+
+  t.mock.module("../src/hooks/useDailyReward.ts", {
+    namedExports: {
+      useDailyReward: () => ({
+        ...world,
+        load: async () => {},
+        claim: async () => {},
+      }),
+    },
+  });
+
+  const React = (await import("react")).default;
+  const { renderToStaticMarkup } = await import("react-dom/server");
+  const { default: DailyRewardWidget } = await import(
+    "../src/components/DailyRewardWidget.tsx"
+  );
+  const { default: DailyRewardCard } = await import(
+    "../src/components/DailyRewardCard.tsx"
+  );
+
+  const AT_CEILING = {
+    claimable: true,
+    playGateSatisfied: true,
+    streakDay: 2,
+    cycleDay: 2,
+    cycleDays: 14,
+    reward: 35,
+    today: "2026-10-17",
+    cycle: [30, 35, 45, 50, 60, 70, 80, 90, 105, 120, 135, 155, 175, 200],
+    balance: 100000,
+    walletFull: true,
+    walletCap: 100000,
+  };
+
+  Object.assign(world, { status: AT_CEILING });
+
+  // `formatCoins` follows the RUNNER's locale, so the thousands separator is
+  // matched separator-agnostically (fr-FR renders 100 000 with a space).
+  const COIN_LIMIT = /100[\s,.\u00A0\u202F]?000 coin limit/;
+
+  // The widget names the reason, the ceiling and what is waiting for them.
+  const widget = renderToStaticMarkup(React.createElement(DailyRewardWidget));
+  assert.match(widget, /data-testid="daily-reward-widget-wallet-full"/);
+  assert.match(widget, /Wallet full/);
+  assert.match(widget, COIN_LIMIT);
+  assert.match(widget, /35/);
+  // …and does NOT offer the claim: that CTA is what led nowhere before.
+  assert.doesNotMatch(widget, /Claim day 2/);
+
+  // The /rewards card says the same thing in its claim slot.
+  const card = renderToStaticMarkup(React.createElement(DailyRewardCard));
+  assert.match(card, /data-testid="daily-reward-wallet-full"/);
+  assert.match(card, /Wallet full/);
+  assert.match(card, COIN_LIMIT);
+  assert.doesNotMatch(card, /Daily reward &#x2014; day 2/);
+
+  // With room again, both surfaces go back to offering the claim.
+  Object.assign(world, {
+    status: { ...AT_CEILING, walletFull: false, balance: 500 },
+  });
+  const refilledWidget = renderToStaticMarkup(React.createElement(DailyRewardWidget));
+  assert.match(refilledWidget, /Claim day 2\s*—\s*35 coins/);
+  assert.doesNotMatch(refilledWidget, /Wallet full/);
+  const refilledCard = renderToStaticMarkup(React.createElement(DailyRewardCard));
+  assert.doesNotMatch(refilledCard, /Wallet full/);
+  assert.match(refilledCard, /day 2 \(35 coins\)/);
+});
+
+test("the one claim button is withheld when the wallet is full", () => {
+  // The board owns the only claim button in the app, so the verdict has to gate
+  // it too — the card and the widget merely open the board.
+  const board = read(BOARD);
+  const gate = board.indexOf("status.claimable && status.walletFull");
+  const claimButton = board.indexOf('data-testid="daily-reward-claim"');
+  assert.ok(gate > 0, "the board must read the wallet verdict");
+  assert.ok(gate < claimButton, "the wallet-full branch must precede the claim button");
+  assert.match(board, /data-testid="daily-reward-wallet-full"/);
+  // The server-side refusal stays as the backstop for a stale status read.
+  assert.match(read("src/lib/tokens/dailyReward.ts"), /if \(credit < reward\)/);
 });
 
 test("an unread wallet shows a dash, never a fabricated zero", () => {

@@ -33,6 +33,14 @@ export type DailyRewardStatus = {
   today: string;
   cycle: number[];
   balance: number;
+  /**
+   * True when the wallet has no room for today's reward under the hard ceiling,
+   * so the server would REFUSE a claim. The surfaces warn with this BEFORE the
+   * player presses Claim — a refusal they cannot act on is not a UX.
+   */
+  walletFull: boolean;
+  /** The ceiling that verdict was computed against (server-owned). */
+  walletCap: number;
 };
 
 export type UseDailyReward = {
@@ -109,15 +117,23 @@ export function useDailyReward(): UseDailyReward {
       });
       const json = await res.json().catch(() => null);
       if (res.ok && json?.success) {
-        setClaimedNow(Number(json.reward) || 0);
+        // `credited` is what the server actually paid; the advertised `reward`
+        // is only a fallback for an older response shape.
+        setClaimedNow(Number(json.credited ?? json.reward) || 0);
         await load();
         // The claim credited the balance the navbar and lobby pickers read.
         notifyCoinBalanceChanged();
       } else {
-        // A refusal is a state, not a fault: the gate (403) or an
-        // already-claimed day (409) is re-read from the server either way.
-        setError(typeof json?.error === "string" ? json.error : "We couldn't claim your reward.");
+        // A refusal is a state, not a fault: the gate (403), an already-claimed
+        // day (409) or a full wallet (409) is re-read from the server either
+        // way. The message must be set AFTER that re-read — `load()` starts by
+        // clearing the error, so setting it first made every refusal vanish
+        // and a refused claim looked exactly like a claim that paid nothing.
+        const message =
+          typeof json?.error === "string" ? json.error : "We couldn't claim your reward.";
         await load();
+        // Keep a load failure if the re-read was the thing that broke.
+        setError((previous) => previous ?? message);
       }
     } catch {
       setError("We couldn't claim your reward.");

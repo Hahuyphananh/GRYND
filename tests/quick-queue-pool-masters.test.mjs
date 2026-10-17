@@ -5,6 +5,7 @@ import fs from "node:fs";
 const adapter = fs.readFileSync("src/lib/quickQueuePool.ts", "utf8");
 const createRoute = fs.readFileSync("src/app/api/pool/create-lobby/route.ts", "utf8");
 const joinRoute = fs.readFileSync("src/app/api/pool/join-lobby/route.ts", "utf8");
+const lobbyJoin = fs.readFileSync("src/lib/pool/lobbyJoin.ts", "utf8");
 const worker = fs.readFileSync("src/lib/quickQueueWorker.ts", "utf8");
 const queue = fs.readFileSync("src/lib/quickQueue.ts", "utf8");
 const ui = fs.readFileSync("src/components/lobby/PlatformQuickQueue.jsx", "utf8");
@@ -17,7 +18,10 @@ test("Pool adapter preserves lobby, player, turn, and state initialization", () 
   assert.match(adapter, /currentTurnUserId/);
   assert.match(adapter, /gameState/);
   assert.match(createRoute, /poolLobbies/);
-  assert.match(joinRoute, /poolMatches/);
+  // The join route is a thin wrapper: the claim, the match insert and the turn
+  // initialization all live in src/lib/pool/lobbyJoin.ts.
+  assert.match(joinRoute, /claimPoolLobbyForPair/);
+  assert.match(lobbyJoin, /poolMatches/);
 });
 
 test("Pool Masters is registered without changing native routes", () => {

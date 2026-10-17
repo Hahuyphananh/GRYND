@@ -106,13 +106,21 @@ test("discovery: the lobby card links to the game, records plays and is 1v1", ()
   assert.match(card, /pvpMode: "1v1"/);
   assert.match(card, /descriptionKey: "games.solitaire_duel_desc"/);
   assert.match(card, /nameKey: "games.solitaire_duel_name"/);
+  // The card artwork comes from the ONE central art registry, not a per-lobby
+  // import: every lobby card renders `image: GAME_CARD_ART[key]`.
   assert.match(
     src,
-    /import ImgSolitaireDuel from "\.\.\/\.\.\/images\/solitaire-duel-card\.svg"/,
+    /import \{ GAME_CARD_ART \} from "\.\.\/\.\.\/components\/games\/gameCardArt"/,
   );
+  assert.match(card, /image: GAME_CARD_ART\["solitaire-duel"\]/);
   assert.ok(
     fs.existsSync("src/images/solitaire-duel-card.svg"),
     "the card artwork must exist",
+  );
+  assert.match(
+    fs.readFileSync("src/components/games/gameCardArt.js", "utf8"),
+    /"solitaire-duel": solitaireDuelArt/,
+    "the registry must map the key onto that artwork",
   );
   // It rides the existing "newest" ordering, without disturbing the games that
   // were already at its head. A title that ships LATER legitimately heads the

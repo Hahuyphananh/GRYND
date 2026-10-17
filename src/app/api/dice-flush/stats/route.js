@@ -4,6 +4,7 @@ import { db } from "../../../../db/client";
 import { diceFlushRooms, diceFlushPlayers } from "../../../../db/schema";
 import { requireUser } from "../_lib";
 import { matchBreakdown } from "../../../../../game-engine/diceFlushEngine";
+import { pvpPotPayout } from "../../../../lib/tokens/pvpPot";
 
 // GET /api/dice-flush/stats
 //
@@ -59,10 +60,12 @@ function buildMatchView(room, userId) {
   const myResult = winnerId ? (winnerId === userId ? "won" : "lost") : "draw";
 
   // PvP money math (AI / free-play matches never move tokens). Winner takes
-  // ~95% of the pot; loser loses their wager.
+  // 90% of the pot (the shared 10% rake); loser loses their wager. Derived from
+  // the same helper the settlement credits, so the displayed net cannot drift
+  // from the coins that actually move.
   const wager = Number(room.wager ?? 0);
   const pot = Number(room.pot ?? 0);
-  const payout = Math.floor(pot * 0.95);
+  const payout = pvpPotPayout(wager);
   const netTokens =
     isAi || myResult === "draw"
       ? 0

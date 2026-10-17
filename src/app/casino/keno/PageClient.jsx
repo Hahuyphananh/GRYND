@@ -273,7 +273,7 @@ export default function KenoLobbyPage() {
           A <b>5s</b> countdown gets you ready, then the window starts at{" "}
           <b>3s</b> and tightens <b>100ms per claimed tile</b> (floor
           <b>0.5s</b>). First to strip all 3 lives takes the pot{" "}
-          <b>1.9× their stake</b>, house takes 0.1×.
+          <b>1.8× their stake</b>, house takes 0.2×.
         </>
       }
       icon={
@@ -317,7 +317,7 @@ export default function KenoLobbyPage() {
                 <b>3s</b>. Every tile either player claims shaves{" "}
                 <b>100ms</b> off the next window, down to a <b>0.5s</b>{" "}
                 floor — later tiles are won on reaction alone. Winner
-                takes 1.9× their stake; the house keeps 0.1×.
+                takes 1.8× their stake; the house keeps 0.2×.
               </>
             ),
           },

@@ -169,7 +169,7 @@ export async function settleDotsAndBoxesGame(gameId, winnerClerkId, result) {
     if (!winnerClerkId) return;
 
     // The pot: both stakes were escrowed when the guest joined. The house
-    // keeps the shared PvP rake and the winner takes the rest — 1.9× their
+    // keeps the shared PvP rake and the winner takes the rest — 1.8× their
     // stake, the same split this game paid before wagering was retired.
     const isPaid = !locked.isAiGame && bet > 0;
     const payout = isPaid

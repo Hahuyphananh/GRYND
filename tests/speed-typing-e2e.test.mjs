@@ -67,7 +67,7 @@ import path from "node:path";
 
 import { getTableColumns } from "drizzle-orm";
 
-import { speedTypingMatches, users } from "../src/db/schema.ts";
+import { speedTypingMatches, tokenTransactions, users } from "../src/db/schema.ts";
 import {
   GAME_KEY,
   MATCH_STATUS,
@@ -157,8 +157,15 @@ function columnMap(table) {
 
 const MATCH_COLUMNS = columnMap(speedTypingMatches);
 const USER_COLUMNS = columnMap(users);
+const TOKEN_COLUMNS = columnMap(tokenTransactions);
 const columnsFor = (table) =>
-  table === speedTypingMatches ? MATCH_COLUMNS : table === users ? USER_COLUMNS : {};
+  table === speedTypingMatches
+    ? MATCH_COLUMNS
+    : table === users
+      ? USER_COLUMNS
+      : table === tokenTransactions
+        ? TOKEN_COLUMNS
+        : {};
 
 /** Flatten a Drizzle condition into its individual (AND-ed) leaves. */
 function leaves(node, out = []) {
@@ -183,6 +190,17 @@ function tokens(node, out = []) {
       tokens(chunk, out);
       continue;
     }
+    // `inArray(col, [...])` spreads its bounds as a raw array of params.
+    if (Array.isArray(chunk)) {
+      for (const item of chunk) {
+        const isItemObject = typeof item === "object" && item !== null;
+        out.push({
+          kind: "param",
+          value: isItemObject && "value" in item ? item.value : item,
+        });
+      }
+      continue;
+    }
     if (chunk?.constructor?.name === "StringChunk") {
       out.push({ kind: "text", text: (chunk.value ?? []).join("") });
       continue;
@@ -191,15 +209,35 @@ function tokens(node, out = []) {
       out.push({ kind: "column", name: chunk.name });
       continue;
     }
-    // A Drizzle `Param` wraps the bound value; a raw literal (Date, string, …)
-    // is the value itself.
-    out.push({ kind: "param", value: "value" in chunk ? chunk.value : chunk });
+    // A Drizzle `Param` wraps the bound value; a raw literal (Date, string,
+    // number, …) is the value itself.
+    const isObject = typeof chunk === "object" && chunk !== null;
+    out.push({ kind: "param", value: isObject && "value" in chunk ? chunk.value : chunk });
   }
   return out;
 }
 
 const asTime = (value) =>
   value instanceof Date ? value.getTime() : new Date(value).getTime();
+
+/**
+ * Equality for a WHERE leaf. Numeric strings and numbers compare by VALUE:
+ * a stake is written as `stakeAmount: "5.00"` (numeric column) but filtered as
+ * `stakeAmount = 5`, exactly like Postgres would.
+ */
+function looseEq(a, b) {
+  if (a instanceof Date || b instanceof Date) return asTime(a) === asTime(b);
+  const numeric = (value) =>
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))
+        ? Number(value)
+        : null;
+  const left = numeric(a);
+  const right = numeric(b);
+  if (left !== null && right !== null) return left === right;
+  return a === b;
+}
 
 /** Evaluate ONE condition leaf against a row. Returns true when in doubt. */
 function evalLeaf(leaf, row, colMap) {
@@ -213,19 +251,28 @@ function evalLeaf(leaf, row, colMap) {
     .map((part) => part.text)
     .join(" ")
     .toLowerCase();
-  const param = parts.find((part) => part.kind === "param");
+  const params = parts.filter((part) => part.kind === "param");
+  const param = params[0];
 
   if (text.includes("not null")) return actual !== null && actual !== undefined;
   if (text.includes("null")) return actual === null || actual === undefined;
   if (!param) return true;
 
+  // `inArray(col, [...])` — any-of, whatever way Drizzle spread the bounds.
+  if (/\bin\b/.test(text)) {
+    const wanted = params.flatMap((part) =>
+      Array.isArray(part.value) ? part.value : [part.value],
+    );
+    if (wanted.length > 0) return wanted.some((item) => looseEq(actual, item));
+  }
+
   const wanted = param.value;
   if (text.includes("<=")) return asTime(actual) <= asTime(wanted);
   if (text.includes(">=")) return asTime(actual) >= asTime(wanted);
-  if (text.includes("<>") || text.includes("!=")) return !eq(actual, wanted);
+  if (text.includes("<>") || text.includes("!=")) return !looseEq(actual, wanted);
   if (text.includes("<")) return asTime(actual) < asTime(wanted);
   if (text.includes(">")) return asTime(actual) > asTime(wanted);
-  return eq(actual, wanted);
+  return looseEq(actual, wanted);
 
   function eq(a, b) {
     if (a instanceof Date || b instanceof Date) return asTime(a) === asTime(b);
@@ -252,6 +299,43 @@ function orderFor(clause, colMap) {
     key: column ? colMap[column.name] ?? column.name : null,
     desc: text.includes("desc"),
   };
+}
+
+/**
+ * Evaluate a Drizzle `sql` value used as an UPDATE operand.
+ *
+ * The shared ledger writes its money moves as expressions (`balance - 5`,
+ * `totalWagered + 5`, `GREATEST(peakBalance, balance + 9)`), so the fake has to
+ * apply them instead of treating them as literals — otherwise the balances and
+ * the idempotency checks that ride on them are meaningless.
+ */
+function evalSqlExpression(expression, row, colMap) {
+  const values = [];
+  let source = "";
+  for (const part of tokens(expression)) {
+    if (part.kind === "text") {
+      source += part.text;
+      continue;
+    }
+    const raw = part.kind === "column" ? row[colMap[part.name] ?? part.name] : part.value;
+    values.push(Number(raw ?? 0));
+    source += `#${values.length - 1}#`;
+  }
+  if (values.length === 0) return null;
+
+  // Only arithmetic survives the substitution — every column and param has been
+  // replaced by a number, so the remaining text is digits, operators and (for
+  // `GREATEST`) one Math.max call.
+  const prepared = source
+    .replace(/greatest\s*\(/gi, "__max(")
+    .replace(/#(\d+)#/g, (_, index) => String(values[Number(index)]));
+  if (!/^[\s\d+\-*/().,a-z_]*$/i.test(prepared)) return null;
+  try {
+    const result = new Function("__max", `return (${prepared});`)(Math.max);
+    return Number.isFinite(result) ? result : null;
+  } catch {
+    return null;
+  }
 }
 
 /** A deterministic, valid UUID for an inserted row (`isMatchId` must accept it). */
@@ -329,8 +413,13 @@ function createFakeDb() {
       const matched = rowsOf(table).filter(predicate);
       for (const row of matched) {
         for (const [key, value] of Object.entries(values ?? {})) {
-          const isIncrement = value && typeof value === "object" && Array.isArray(value.queryChunks);
-          row[key] = isIncrement ? (Number(row[key]) || 0) + 1 : value;
+          const isSqlExpression =
+            value && typeof value === "object" && Array.isArray(value.queryChunks);
+          // A Drizzle `sql` value is an expression over the row, not a literal:
+          // `balance - 5`, `totalWagered + 5`, `GREATEST(peakBalance, balance + 18)`.
+          row[key] = isSqlExpression
+            ? evalSqlExpression(value, row, columnsFor(table))
+            : value;
         }
       }
       return Promise.resolve(matched.map((row) => ({ ...row })));
@@ -357,18 +446,23 @@ function createFakeDb() {
 
   const insert = (table) => ({
     values(v) {
+      const write = () => {
+        const row = {
+          id: uuidFor(state.nextId++),
+          revision: 0,
+          createdAt: new Date(NOW - 10_000),
+          ...v,
+        };
+        state.writes.push({ table, op: "insert", values: v });
+        rowsOf(table).push(row);
+        return row;
+      };
+      // Both shapes appear in the code under test: `.values(...).returning()`
+      // (match rows) and a bare `await insert(...).values(...)` (ledger rows),
+      // so the result is a thenable that also exposes `returning`.
       return {
-        returning() {
-          const row = {
-            id: uuidFor(state.nextId++),
-            revision: 0,
-            createdAt: new Date(NOW - 10_000),
-            ...v,
-          };
-          state.writes.push({ table, op: "insert", values: v });
-          rowsOf(table).push(row);
-          return Promise.resolve([{ ...row }]);
-        },
+        returning: () => Promise.resolve([{ ...write() }]),
+        then: (resolve, reject) => Promise.resolve([{ ...write() }]).then(resolve, reject),
       };
     },
   });
@@ -438,6 +532,10 @@ function installMocks(t) {
   auth.queue.length = 0;
 
   t.mock.module("../src/db/client.ts", { namedExports: { db: fake.db } });
+
+  // The REAL escrow runs against the fake ledger here: this suite's whole point
+  // is that a staked race funds both seats exactly once and pays the pot once,
+  // through the shared helpers — never a hand-rolled balance write.
 
   t.mock.module("../src/lib/auth/requireAgeVerified.ts", {
     namedExports: {
@@ -527,12 +625,13 @@ const request = (body, { raw = false } = {}) =>
  */
 const BROWSER_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36";
-const postCreateOrJoin = async () => {
+const postCreateOrJoin = async (stake = 5) => {
   const { createJoin } = await loadRoutes();
   const res = await createJoin.POST(
     new Request("http://localhost/api/speed-typing/create-or-join", {
       method: "POST",
-      headers: { "user-agent": BROWSER_UA },
+      headers: { "user-agent": BROWSER_UA, "content-type": "application/json" },
+      body: JSON.stringify({ stake }),
     }),
   );
   return { status: res.status, json: await res.json() };
@@ -613,7 +712,18 @@ const setMatches = (fake, rows) => {
 const setUsers = (fake, ids) =>
   fake.state.tables.set(
     users,
-    ids.map((clerkId, index) => ({ id: index + 1, clerkId, gamesWon: 3, gamesLost: 2 })),
+    ids.map((clerkId, index) => ({
+      id: index + 1,
+      clerkId,
+      gamesWon: 3,
+      gamesLost: 2,
+      // Both seats must be able to cover the stake the entry posts: the race is
+      // escrowed the moment the second seat fills.
+      balance: 1000,
+      totalWagered: 0,
+      dailyWagered: 0,
+      weeklyWagered: 0,
+    })),
   );
 const rowOf = (fake, id) => fake.rowsOf(speedTypingMatches).find((row) => row.id === id);
 const userOf = (fake, clerkId) => fake.rowsOf(users).find((row) => row.clerkId === clerkId);
@@ -684,11 +794,16 @@ function settledExactlyOnce(label, { winner, loser, draw = false } = {}) {
   }
 }
 
-/** No token / balance / payout / wager write exists anywhere in the flow. */
-function assertNoEconomyWrites(fake, label) {
+/**
+ * The flow's ONLY coin path is the shared escrow: the two seats are debited once
+ * each when the race is funded, and the winner is paid the pot (2 × stake less
+ * the 10% rake) once, out of that escrow. A match whose rows were seeded directly
+ * (`funded: false`) never moved a coin at all.
+ */
+function assertEconomyWrites(fake, label, { stake = 5, funded = true } = {}) {
   for (const write of fake.state.writes) {
     assert.ok(
-      write.table === speedTypingMatches || write.table === users,
+      [speedTypingMatches, users, tokenTransactions].includes(write.table),
       `${label}: flow wrote to ${String(write.table?.toString?.() ?? write.table)}`,
     );
   }
@@ -697,12 +812,51 @@ function assertNoEconomyWrites(fake, label) {
       .filter((write) => write.table === users && write.op === "update")
       .flatMap((write) => Object.keys(write.values ?? {})),
   );
+  const allowedUserKeys = [
+    "gamesWon",
+    "gamesLost",
+    "currentStreak",
+    "balance",
+    "totalWagered",
+    "dailyWagered",
+    "weeklyWagered",
+    "peakBalance",
+    "totalWon",
+    "dailyWon",
+    "weeklyWon",
+    "biggestWin",
+  ];
   for (const key of userKeys) {
     assert.ok(
-      key === "gamesWon" || key === "gamesLost",
+      allowedUserKeys.includes(key),
       `${label}: settlement wrote users.${key}`,
     );
   }
+
+  const ledger = fake.rowsOf(tokenTransactions);
+  if (!funded) {
+    assert.equal(ledger.length, 0, `${label}: a seeded match moves no coins`);
+    return;
+  }
+
+  const debits = ledger.filter((row) => row.type === "spend");
+  const credits = ledger.filter((row) => row.type === "reward");
+  const refunds = ledger.filter((row) => row.type === "refund");
+  assert.equal(debits.length, 2, `${label}: both seats are escrowed exactly once`);
+  for (const debit of debits) assert.equal(Number(debit.amount), -stake);
+  assert.equal(refunds.length, 0, `${label}: a settled race refunds nobody`);
+  assert.equal(credits.length, 1, `${label}: the pot is paid exactly once`);
+  // 2 × stake less the 10% rake — the same arithmetic the client displays.
+  assert.equal(Number(credits[0].amount), Number((2 * stake * 0.9).toFixed(2)));
+  // And the winner's balance actually moved by that payout.
+  const winnerBalance = Number(
+    fake.rowsOf(users).find((row) => row.clerkId === credits[0].clerkId)?.balance,
+  );
+  assert.equal(
+    winnerBalance,
+    1000 - stake + Number((2 * stake * 0.9).toFixed(2)),
+    `${label}: the winner's balance is the escrow minus the stake plus the pot`,
+  );
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -825,8 +979,8 @@ test("e2e: QUEUE → MATCH FOUND → SAME PROMPT → GO → PROGRESS → WIN →
     assert.ok(field in settledRow, `history selects ${field}`);
   }
 
-  // ── The whole flow moved no token, no balance, no payout. ──────────────
-  assertNoEconomyWrites(fake, "full flow");
+  // ── The whole flow moved only the escrow: two stakes in, one pot out. ──
+  assertEconomyWrites(fake, "full flow", { stake: 5 });
 
   // The queue lifecycle mirror saw the lobby created, the pair armed, the race done.
   assert.ok(spies.queue.some((entry) => entry.kind === "created"), "lobby mirrored");
@@ -988,7 +1142,9 @@ test("disconnect: a seat that leaves hands the live race to the opponent and set
   assert.equal(row.raceState.seats[SEAT.PLAYER1].charsTyped, 30);
   assert.equal(row.raceState.seats[SEAT.PLAYER1].forfeited, true);
   settledExactlyOnce("forfeit", { winner: BOB, loser: ALICE });
-  assertNoEconomyWrites(fake, "forfeit");
+  // The row was seeded, not joined, so nothing was escrowed and a payout with no
+  // funding row behind it must move no coins.
+  assertEconomyWrites(fake, "forfeit", { funded: false });
 });
 
 test("disconnect: a still-open lobby is CANCELLED and settles nothing", { skip: SKIP_REASON }, async (t) => {
@@ -1412,7 +1568,9 @@ test("isolation: two matches run simultaneously with no cross-talk", { skip: SKI
   assert.equal(userOf(fake, BOB).gamesLost, 3);
   assert.equal(userOf(fake, DAVE).gamesWon, 4, "match B's result touched only match B");
   assert.equal(userOf(fake, CAROL).gamesLost, 3);
-  assertNoEconomyWrites(fake, "two matches");
+  // The rows are pre-armed, so no join ran and nothing was escrowed: settling a
+  // pre-funded match must not move coins again.
+  assertEconomyWrites(fake, "two matches", { funded: false });
 });
 
 test("isolation: N matches complete in parallel, one settlement each", { skip: SKIP_REASON }, async (t) => {
@@ -1475,6 +1633,9 @@ test("queue: eight concurrent callers pair into four matches, never eight lobbie
   installClock(t);
   setMatches(fake, []);
   const everyone = [ALICE, BOB, CAROL, DAVE, ERIN, FRANK, GRACE, HEIDI];
+  // A staked join escrows the moment the second seat lands, so every caller
+  // needs a seat that can cover the entry.
+  setUsers(fake, everyone);
   auth.queue.push(...everyone);
 
   const results = await Promise.all(everyone.map(() => postCreateOrJoin()));
@@ -1513,6 +1674,7 @@ test("queue: a caller who already has a lobby gets it back; a second joiner cann
   const fake = installMocks(t);
   installClock(t);
   setMatches(fake, []);
+  setUsers(fake, [ALICE, BOB]);
   auth.current = ALICE;
 
   const first = await postCreateOrJoin();
@@ -1711,18 +1873,22 @@ test("leaderboard: speed-typing is a rated game and settlement feeds its board",
 // 18. No economy, no randomness, no client-authored result — anywhere
 // ════════════════════════════════════════════════════════════════════════
 
-test("guarantee: the whole flow touches no token, balance, wager or payout", () => {
-  for (const file of [STORE, RULES, ROUTES.createJoin, ROUTES.fetch, ROUTES.progress, ROUTES.finish, ROUTES.cancel]) {
+test("guarantee: the only coin path is the shared escrow and pot helper", () => {
+  // The store never re-derives a payout and never writes a balance itself: the
+  // escrow and the settlement both go through the shared token helpers, and the
+  // rake comes from the shared estimate rather than a local literal.
+  const store = code(STORE);
+  assert.match(store, /import \{ escrowMatchWagers \} from "\.\.\/tokens\/wager";/);
+  assert.match(store, /import \{ payPvpPot, refundPvpPot \} from "\.\.\/tokens\/pvpPot";/);
+  assert.match(store, /await payPvpPot\(\{/);
+  assert.match(store, /await refundPvpPot\(\{/);
+  // No hand-rolled balance arithmetic anywhere in the store.
+  assert.doesNotMatch(store, /balance: sql`\$\{users\.balance\}/);
+
+  // The read/gameplay routes never touch coins at all.
+  for (const file of [RULES, ROUTES.fetch, ROUTES.progress, ROUTES.finish, ROUTES.cancel]) {
     const src = code(file);
-    for (const forbidden of [
-      /balance/i,
-      /payout/i,
-      /wager/i,
-      /stakeAmount|stake_amount|\bstake\b/i,
-      /prizePaid|prize_paid/i,
-      /houseFee|house_fee/i,
-      /tokenTransactions|token_transactions/i,
-    ]) {
+    for (const forbidden of [/payout/i, /prizePaid|prize_paid/i, /houseFee|house_fee/i, /tokenTransactions|token_transactions/i]) {
       assert.doesNotMatch(src, forbidden, `${file} must not touch the economy (${forbidden})`);
     }
   }
@@ -1799,10 +1965,13 @@ test("guarantee: the routes hand the store only what the client TYPED", () => {
       `${file} must not read a decision field from the body`,
     );
   }
-  // The create/join route takes the caller from the session only.
+  // The create/join route takes the caller from the session only. The ONE thing
+  // it reads from the request is the stake, which the shared validator checks.
   const create = code(ROUTES.createJoin);
-  assert.doesNotMatch(create, /searchParams|\.json\(\)/);
-  assert.match(create, /await createOrJoin\(\{ userId, deviceClass \}\)/);
+  assert.doesNotMatch(create, /searchParams/);
+  assert.match(create, /requireStake\(body\?\.stake, "speed-typing"\)/);
+  assert.match(create, /await createOrJoin\(\{ userId, deviceClass, stake: required\.stake \}\)/);
+  assert.doesNotMatch(create, /body\?\.(winner|winnerSeat|wpm|accuracy|result|elo|rating)/);
   // Every participant-facing route is gated before any database work: the
   // ONLINE ones behind the account gate, the practice ones behind the practice
   // gate (age-checked for a session, guest for a signed-out visitor).

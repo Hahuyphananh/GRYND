@@ -242,8 +242,8 @@ test("RPS's payout is the pot minus the shared rake", async () => {
   const { rpsPvpPayout } = await import("../src/lib/rps-pvp/serverStore.js");
   const { PVP_RAKE_PCT } = await import("../src/lib/games/economy.ts");
   assert.equal(rpsPvpPayout(0), 0, "a free match pays nothing");
-  assert.equal(rpsPvpPayout(10), 19); // 2 × 10 × 0.95
-  assert.equal(rpsPvpPayout(100), 190);
+  assert.equal(rpsPvpPayout(10), 18); // 2 × 10 × 0.9
+  assert.equal(rpsPvpPayout(100), 180);
   for (const stake of [1, 3, 7, 25, 100]) {
     const pot = 2 * stake;
     const payout = rpsPvpPayout(stake);
@@ -257,10 +257,10 @@ test("Precision's payout is the pot minus the shared rake", async () => {
     "../src/lib/precision/finishMatch.ts"
   );
   const { PVP_WINNER_SHARE } = await import("../src/lib/games/economy.ts");
-  // 2 × (1 − 5%) — the same 1.9× the retired-stakes era promised, now funded
+  // 2 × (1 − 10%) — the same 1.8× the retired-stakes era promised, now funded
   // by two real stakes instead of nothing.
   assert.equal(PRECISION_PAYOUT_MULTIPLIER, 2 * PVP_WINNER_SHARE);
-  assert.equal(Number(PRECISION_PAYOUT_MULTIPLIER.toFixed(2)), 1.9);
+  assert.equal(Number(PRECISION_PAYOUT_MULTIPLIER.toFixed(2)), 1.8);
 
   for (const stake of [1, 5, 10, 100]) {
     const pot = 2 * stake;
@@ -362,7 +362,7 @@ test("Odds escrows both seats at join and settles every ending through one helpe
   assert.match(join, /throw Object.assign\(\s*\n\s*new Error\(escrow\.error \|\| "Insufficient coins"\),/);
   assert.match(join, /const status = error\?\.status === 400 \? 400 : 500;/);
 
-  // ONE pot helper, derived from the shared rake (no second literal 1.9).
+  // ONE pot helper, derived from the shared rake (no second literal 1.8).
   assert.match(store, /export function oddsPvpPayout\(wager: unknown\)/);
   assert.match(store, /2 \* stake \* PVP_WINNER_SHARE/);
   assert.match(store, /export async function payOddsPvpWinner\(/);
@@ -391,7 +391,7 @@ test("Odds's payout is the pot minus the shared rake", async () => {
   const { oddsPvpPayout } = await import("../src/lib/odds-pvp/serverStore.ts");
   const { PVP_RAKE_PCT } = await import("../src/lib/games/economy.ts");
   assert.equal(oddsPvpPayout(0), 0, "a free match pays nothing");
-  assert.equal(oddsPvpPayout(10), 19);
+  assert.equal(oddsPvpPayout(10), 18);
   for (const stake of [1, 4, 20, 100]) {
     const pot = 2 * stake;
     const payout = oddsPvpPayout(stake);

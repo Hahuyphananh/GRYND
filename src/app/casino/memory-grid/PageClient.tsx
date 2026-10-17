@@ -328,7 +328,7 @@ export default function MemoryGridLobbyPage() {
           get a few seconds to memorize the pattern, then you
           reconstruct it from memory. More tiles right wins the
           round; after 5 rounds the higher <b>total score</b> wins
-          the pot. <b>1.9×</b>, house takes 0.1×. Equal → full
+          the pot. <b>1.8×</b>, house takes 0.2×. Equal → full
           refund.
         </>
       }
@@ -384,8 +384,8 @@ export default function MemoryGridLobbyPage() {
             body: (
               <>
                 After 5 rounds the player with the higher{" "}
-                <b>total score</b> takes <b>1.9× their stake</b>
-                (stake back + 90% of the loser's), house takes 0.1×.
+                <b>total score</b> takes <b>1.8× their stake</b>
+                (stake back + 80% of the loser's), house takes 0.2×.
                 Exactly equal total scores → <b>full refund</b>.
               </>
             ),

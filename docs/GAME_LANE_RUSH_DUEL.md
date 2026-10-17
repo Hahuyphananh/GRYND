@@ -23,7 +23,7 @@ Lane Rush Duel is a **memory-deduction race** across one shared, provably-fair g
 
 ## Payout
 
-- **Winner** — own stake back + 90% of the loser's stake.
+- **Winner** — own stake back + 80% of the loser's stake.
 - **Loser** — loses the stake.
 - **Draw** — both refunded, no rake.
 

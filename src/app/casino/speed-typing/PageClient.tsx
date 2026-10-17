@@ -37,6 +37,9 @@ export default function SpeedTypingLobbyPage() {
   const { isSignedIn } = useUser();
   const router = useRouter();
 
+  // Coin wager: the player picks the stake the lobby opens at, and the server
+  // escrows BOTH seats when an opponent joins. vs-AI practice stays free.
+  const [stake, setStake] = useState<number>(10);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
@@ -50,9 +53,9 @@ export default function SpeedTypingLobbyPage() {
     try {
       const res = await fetch("/api/speed-typing/create-or-join", {
         method: "POST",
-        // The proxy rejects POSTs without a JSON content-type (415), even
-        // bodyless ones — declare it so matchmaking reaches the route.
         headers: { "Content-Type": "application/json" },
+        // Both seats are escrowed at this stake the moment an opponent joins.
+        body: JSON.stringify({ stake }),
       });
       const data = await res.json();
       if (!res.ok || !data?.success) {
@@ -91,9 +94,9 @@ export default function SpeedTypingLobbyPage() {
     }
   }, [aiDifficulty, busy, router]);
 
-  // Speed Typing is unstaked — stakes are retired platform-wide and this game
-  // never had one — so there is no wager picker, no balance and no escrow note
-  // anywhere on this screen.
+  // PvP is a coin race: the player picks the stake above, both seats are
+  // escrowed when the opponent joins, and the winner takes 1.8× (the house
+  // keeps 10%). Practice against the bot stays free.
   const rules = useMemo(
     () => ({
       title: "How to Play Speed Typing",
@@ -123,8 +126,9 @@ export default function SpeedTypingLobbyPage() {
           body: (
             <>
               Nothing is drawn during play: the outcome is entirely down to your
-              typing. There are <b>no wagers, no tokens and no payouts</b> —
-              ranked Speed Typing moves your rating and trophies, nothing else.
+              typing. PvP is played for coins — both seats stake the amount you
+              pick and the winner takes <b>1.8×</b> — while practice vs the bot
+              is free.
             </>
           ),
         },
@@ -152,12 +156,13 @@ export default function SpeedTypingLobbyPage() {
       }
       rules={rules}
       rulesKey="speed-typing"
-      waitingSubtitle="Pairing you with another Speed Typing player…"
+      wager={{ value: stake, onChange: setStake }}
+      waitingSubtitle={`Pairing you at ${stake} coins — both stakes are escrowed on match-up.`}
       busy={busy}
       onPlay={createOrJoin}
       playLabel="Find a Match"
       playBusyLabel="Searching…"
-      canPlay={Boolean(isSignedIn)}
+      canPlay={Boolean(isSignedIn) && stake >= 1}
       children={
         <AiDifficultyPicker
           gameKey="speed-typing"

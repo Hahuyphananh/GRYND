@@ -17,7 +17,7 @@ Four in a Row is the classic **connect-4** duel: drop coloured discs into a 6×7
 
 ## Payout
 
-- **Winner** — takes the pot (stake back + winnings; standard 90/10 rake on the loser's stake).
+- **Winner** — takes the pot (stake back + winnings; standard 80/20 rake on the loser's stake (10% of the pot)).
 - **Loser** — loses the stake.
 - **Draw** — both refunded in full.
 

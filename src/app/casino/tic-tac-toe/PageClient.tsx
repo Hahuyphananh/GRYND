@@ -12,7 +12,7 @@
 //   POST /api/tic-tac-toe/match/<id>/cancel  — close the caller's own lobby
 //
 // Entry ALWAYS carries a coin wager: both seats are escrowed when the second
-// player joins and the winner takes the pot (1.9× their stake), exactly like
+// player joins and the winner takes the pot (1.8× their stake), exactly like
 // every other ranked duel. Only the vs-AI practice match is free.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -240,7 +240,7 @@ export default function TicTacToeLobbyPage() {
               draw moves both ratings by the same half-point and awards nobody a
               win — and returns <b>both stakes</b>. Every match plays for coins:
               both stakes are escrowed when the second player joins and the
-              winner takes <b>1.9× their stake</b> (stake back + 90% of the
+              winner takes <b>1.8× their stake</b> (stake back + 90% of the
               loser&apos;s). Only the practice match against the bot is free.
             </>
           ),

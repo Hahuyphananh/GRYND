@@ -30,6 +30,7 @@ import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified"
 import { logError } from "../../../../lib/logError";
 import { createOrJoin } from "../../../../lib/speed-typing/serverStore";
 import { deviceClassFromHeaders } from "../../../../lib/speed-typing/deviceClass";
+import { requireStake } from "../../../../lib/games/stakes";
 import { RACE_COUNTDOWN_MS } from "../../../../lib/speed-typing/constants";
 import {
   SPEED_TYPING_EVENTS,
@@ -54,7 +55,17 @@ export async function POST(req?: Request) {
 
   try {
     const deviceClass = deviceClassFromHeaders(req?.headers);
-    const result = await createOrJoin({ userId, deviceClass });
+    // PvP is staked: a seat without a legal positive stake is refused rather
+    // than silently opening a free race (practice vs the bot is its own route).
+    const body = await req.json().catch(() => ({}));
+    const required = requireStake(body?.stake, "speed-typing");
+    if (!required.ok) {
+      return NextResponse.json(
+        { success: false, error: required.error, code: required.code },
+        { status: required.status },
+      );
+    }
+    const result = await createOrJoin({ userId, deviceClass, stake: required.stake });
     if ("error" in result) {
       return NextResponse.json(
         { success: false, error: result.error },
@@ -87,6 +98,14 @@ export async function POST(req?: Request) {
       },
     });
   } catch (error) {
+    // An unfundable seat is a client error, not a crash.
+    const status = (error as any)?.status;
+    if (status && status < 500) {
+      return NextResponse.json(
+        { success: false, error: (error as Error).message },
+        { status },
+      );
+    }
     await logError({
       errorType: "speed_typing_create_or_join_error",
       errorMessage:

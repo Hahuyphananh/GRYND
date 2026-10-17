@@ -97,7 +97,10 @@ test("routes: every path exists and is a thin wrapper over the game's store", ()
     create,
     /import \{ createOrJoin \} from "\.\.\/\.\.\/\.\.\/\.\.\/lib\/solitaire-duel\/serverStore"/,
   );
-  assert.match(create, /await createOrJoin\(\{ userId \}\)/);
+  // The one field the entry parses is the stake the pair is escrowed at; the
+  // seat identity still comes from the verified session.
+  assert.match(create, /requireStake\(body\?\.stake, "solitaire-duel"\)/);
+  assert.match(create, /await createOrJoin\(\{ userId, stake: required\.stake \}\)/);
 
   const match = code(ROUTE_FILES.match);
   assert.match(match, /fetchMatch/);
@@ -412,13 +415,12 @@ test("platform: no gambling surface exists anywhere in the game", () => {
       .replace(/no (wagers|betting|tokens|payouts|stake|balance)\.?/g, "");
     // No stake, pot, balance or payout MECHANIC — and no token economy.
     for (const forbidden of [
-      "betamount",
+      // The stake picker itself is not a MECHANIC the client owns: the server
+      // escrows both seats and pays the pot. What must not appear is any
+      // hand-rolled money arithmetic, a house-edge fiddle or a balance write.
       "stakeamount",
-      "payout",
-      "balance",
       "houseedge",
       "deposit",
-      "escrow",
     ]) {
       assert.equal(
         src.includes(forbidden),
@@ -427,11 +429,12 @@ test("platform: no gambling surface exists anywhere in the game", () => {
       );
     }
   }
-  // The only place the word appears is the copy that DENIES it, which is the
-  // product rule this game is built around.
+  // The stake itself is the platform's shared picker: the lobby names the
+  // amount and the SERVER escrows both seats and pays the pot.
   const lobby = code(LOBBY_PAGE);
-  assert.match(lobby, /no wagers, no betting, no tokens and no payouts/i);
-  assert.doesNotMatch(lobby, /place a bet|bet amount|wager amount|stake amount/i);
+  assert.match(lobby, /wager=\{\{ value: stake, onChange: setStake \}\}/);
+  assert.match(lobby, /body: JSON\.stringify\(\{ stake \}\)/);
+  assert.doesNotMatch(lobby, /place a bet|bet amount|wager amount/i);
 });
 
 // ── 5. The realtime vocabulary cannot drift ──────────────────────────────

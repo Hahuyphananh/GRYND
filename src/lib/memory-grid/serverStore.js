@@ -25,7 +25,7 @@
 //       (higher total wins; equal totals → round 6 tiebreak is
 //       dealt, and a round-6 tie is a DRAW refunding 95% per player
 //       — 5% rake per side)
-//     * 90/10 payout split (winner gets 1.9× stake, house keeps 0.1×)
+//     * 80/20 payout split (winner gets 1.8× stake, house keeps 0.2×)
 //     * tile pattern hidden from clients except during the memorize
 //       phase (and the post-match reveal)
 //   Centralising this in a tiny module keeps the API routes thin
@@ -480,7 +480,7 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
 // plinko-pvp forfeit pattern exactly:
 //   • WAITING (no opponent yet) → cancel + refund the creator's stake.
 //   • READY / ACTIVE (opponent present) → the OPPONENT wins outright
-//     with the standard 1.9× payout (winner gets their stake back +
+//     with the standard 1.8× payout (winner gets their stake back +
 //     90% of the forfeiter's stake, house keeps 10%) — the same money
 //     math as a natural resolveMatch.
 //   • Terminal (finished/cancelled) → idempotent no-op (no double
@@ -1164,8 +1164,8 @@ async function completeRound(tx, match) {
 // round are complete, so compare the players' TOTAL cumulative round
 // scores (`p1_total` / `p2_total` — each round scores /100, so a
 // 5-round match totals up to 500, plus the tiebreak round's /100 if
-// it was played). The higher total wins (winner takes 1.9× their
-// stake, house keeps 0.1×). A DRAW is only reachable when the
+// it was played). The higher total wins (winner takes 1.8× their
+// stake, house keeps 0.2×). A DRAW is only reachable when the
 // TIEBREAK round ALSO ties (equal totals after round 5 deal round 6
 // instead of finishing — see advancePhaseOnPoll), so a draw here
 // refunds each player 95% of their stake (5% rake per side —
@@ -1177,7 +1177,7 @@ async function completeRound(tx, match) {
 // shared pure helper matchWinnerFromTotals so tests cover it
 // directly.
 // ── Coin escrow ───────────────────────────────────────────────────────
-// Both stakes were taken at join; a resolved match pays the winner 1.9× their
+// Both stakes were taken at join; a resolved match pays the winner 1.8× their
 // stake (pot minus the 10% house fee), a draw refunds each seat, and a free /
 // AI match (stake 0) moves nothing.
 function escrowFor(match, result, winnerId) {

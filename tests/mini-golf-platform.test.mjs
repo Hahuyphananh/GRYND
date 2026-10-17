@@ -90,8 +90,12 @@ test("discovery: the lobby card links to the Mini Golf game and records plays", 
   assert.match(card, /leaderboardKey: "mini-golf"/);
   assert.match(card, /playsKey: "mini-golf"/);
   assert.match(card, /pvpMode: "1v1"/);
-  // The card art is the shipped Mini Golf image, not a shared fallback.
-  assert.match(src, /import ImgMiniGolf from "\.\.\/\.\.\/images\/mini-golf-card\.svg"/);
+  // The card art is the shipped Mini Golf image, not a shared fallback — now
+  // resolved through the ONE central art registry every lobby card renders.
+  assert.match(card, /image: GAME_CARD_ART\["mini-golf"\]/);
+  const art = fs.readFileSync("src/components/games/gameCardArt.js", "utf8");
+  assert.match(art, /"mini-golf": miniGolfArt/);
+  assert.match(art, /import miniGolfArt from "\.\.\/\.\.\/images\/mini-golf-card\.svg"/);
 });
 
 test("discovery: personalization always returns Mini Golf (never hidden)", () => {

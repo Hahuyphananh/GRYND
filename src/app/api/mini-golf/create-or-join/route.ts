@@ -10,9 +10,10 @@ import { NextResponse } from "next/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { logError } from "../../../../lib/logError";
 import { createOrJoin } from "../../../../lib/mini-golf/serverStore";
+import { requireStake } from "../../../../lib/games/stakes";
 import { broadcastMatchUpdate } from "../../../../lib/mini-golf/rooms";
 
-export async function POST() {
+export async function POST(req: Request) {
   const gate = await requireAgeVerifiedUser();
   if (gate.response) return gate.response;
   const userId = gate.userId;
@@ -23,8 +24,20 @@ export async function POST() {
     );
   }
 
+  // PvP is staked: a seat without a legal positive stake is refused rather
+  // than silently opening free play (the vs-AI path has its own route and
+  // stays free).
+  const body = await req.json().catch(() => ({}));
+  const required = requireStake(body?.stake, "mini-golf");
+  if (!required.ok) {
+    return NextResponse.json(
+      { success: false, error: required.error, code: required.code },
+      { status: required.status },
+    );
+  }
+
   try {
-    const result = await createOrJoin({ userId });
+    const result = await createOrJoin({ userId, stake: required.stake });
     if ("error" in result) {
       return NextResponse.json(
         { success: false, error: result.error },
@@ -49,6 +62,14 @@ export async function POST() {
       },
     });
   } catch (error) {
+    // An unfundable seat is a client error, not a crash.
+    const status = (error as any)?.status;
+    if (status && status < 500) {
+      return NextResponse.json(
+        { success: false, error: (error as Error).message },
+        { status },
+      );
+    }
     await logError({
       errorType: "mini_golf_create_or_join_error",
       errorMessage:

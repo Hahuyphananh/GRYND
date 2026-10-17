@@ -563,7 +563,7 @@ export function PvpLobby({
             {wager ? (
               <>
                 Coins are energy: both stakes are escrowed on match-up and the
-                winner takes <b>1.9× their stake</b> (stake back + 90% of the
+                winner takes <b>1.8× their stake</b> (stake back + 90% of the
                 loser&apos;s). An exact draw refunds both seats.
               </>
             ) : (

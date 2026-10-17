@@ -13,7 +13,7 @@ RPS on GRYND is a **best-of-7** duel: you and your opponent pick rock, paper, or
 
 ## Payout
 
-- **Winner** — takes the pot minus the 5% PvP rake.
+- **Winner** — takes the pot minus the 10% PvP rake.
 - **Loser** — loses the bet.
 - **Draw** — both refunded.
 
@@ -27,4 +27,4 @@ RPS on GRYND is a **best-of-7** duel: you and your opponent pick rock, paper, or
 | Constant | Value |
 | --- | --- |
 | Match format | Best of 7 (first to 4) |
-| PvP rake | 5% of the pot |
+| PvP rake | 10% of the pot (winner 1.8×) |

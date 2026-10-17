@@ -206,10 +206,13 @@ test("navigation: the match route renders the match client, ad-free", () => {
 test("navigation: the lobby and match routes talk to the ONE matchmaking store", () => {
   const create = strip(read(CREATE_ROUTE));
   assert.match(create, /import \{ createOrJoin \} from "\.\.\/\.\.\/\.\.\/\.\.\/lib\/speed-typing\/serverStore"/);
-  assert.match(create, /await createOrJoin\(\{ userId, deviceClass \}\)/);
-  // The caller's id comes from the verified session, never from the request.
+  // Both seats are escrowed at the stake the entry names, so the route parses
+  // exactly one field out of the request body before the store sees it.
+  assert.match(create, /requireStake\(body\?\.stake, "speed-typing"\)/);
+  assert.match(create, /await createOrJoin\(\{ userId, deviceClass, stake: required\.stake \}\)/);
+  // The caller's IDENTITY comes from the verified session, never the request.
   assert.match(create, /requireAgeVerifiedUser/);
-  assert.doesNotMatch(create, /body|searchParams/);
+  assert.doesNotMatch(create, /searchParams|body\.userId/);
 
   const fetchRoute = strip(read(FETCH_ROUTE));
   assert.match(fetchRoute, /fetchMatch/);
@@ -275,24 +278,19 @@ test("ads: the lobby page carries the ad script, the match page carries none", (
 
 // ── 6. The no-economy guarantee ──────────────────────────────────────────
 
-test("economy: the server surfaces never reference an economy field", () => {
-  // The two routes and the store are CODE — no marketing prose to confuse the
-  // scan — so they can be held to the strict rule: a game with no wagers has no
-  // business naming a balance, a payout, a stake or a prize.
-  for (const file of [CREATE_ROUTE, FETCH_ROUTE, "src/lib/speed-typing/serverStore.ts"]) {
-    const src = code(file);
-    for (const forbidden of [
-      /balance/i,
-      /payout/i,
-      /wager/i,
-      /stake/i,
-      /prizePaid|prize_paid/i,
-      /houseFee|house_fee/i,
-      /tokenTransactions|token_transactions/i,
-    ]) {
-      assert.doesNotMatch(src, forbidden, `${file} must not touch the economy (${forbidden})`);
-    }
-  }
+test("economy: the race escrows both seats and pays the pot through the shared helpers", () => {
+  const store = code("src/lib/speed-typing/serverStore.ts");
+  // Both seats are escrowed when the second one joins…
+  assert.match(store, /import \{ escrowMatchWagers \} from "\.\.\/tokens\/wager";/);
+  assert.match(store, /clerkIds: \[updated\.player1Id, userId\]/);
+  // …and the winner is paid the pot minus the shared rake, while a dead heat
+  // refunds both seats. No hand-rolled balance arithmetic.
+  assert.match(store, /import \{ payPvpPot, refundPvpPot \} from "\.\.\/tokens\/pvpPot";/);
+  assert.match(store, /await payPvpPot\(\{/);
+  assert.match(store, /await refundPvpPot\(\{/);
+  // The READ route moves no coins at all.
+  const fetchRoute = code(FETCH_ROUTE);
+  assert.doesNotMatch(fetchRoute, /escrowMatchWagers|payPvpPot|refundPvpPot|debitWager/);
 });
 
 test("economy: the UI never calls an economy endpoint or reads an economy field", () => {
@@ -313,11 +311,11 @@ test("economy: the UI never calls an economy endpoint or reads an economy field"
   }
 });
 
-test("economy: the game is not a wager game and has no wager catalog entry", async () => {
+test("economy: the game is a wager game with a catalog entry", async () => {
   const { supportsTokenWager } = await import("../src/lib/gameTags.js");
   const { WAGER_GAME_KEYS } = await import("../src/lib/defaultWagers.js");
-  assert.equal(supportsTokenWager(KEY), false);
-  assert.equal(WAGER_GAME_KEYS.includes(KEY), false);
+  assert.equal(supportsTokenWager(KEY), true);
+  assert.equal(WAGER_GAME_KEYS.includes(KEY), true);
 });
 
 test("economy: the game is registered as a rated game and nothing else", () => {

@@ -232,7 +232,7 @@ export default function UnoLobbyPage() {
               <>
                 Play vs AI for free, or go 1v1 online for coins: both stakes
                 are escrowed when an opponent joins and the winner takes{" "}
-                <b>1.9× their stake</b> (stake back + 90% of the loser&apos;s).
+                <b>1.8× their stake</b> (stake back + 80% of the loser&apos;s).
                 The result is worth trophies and rating either way.
               </>
             ),

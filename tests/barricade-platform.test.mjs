@@ -261,9 +261,13 @@ test("navigation: the lobby reuses the shared chrome and the one matchmaking sto
 
   const create = code("src/app/api/barricade/create-or-join/route.ts");
   assert.match(create, /requireAgeVerifiedUser/);
-  assert.match(create, /await createOrJoin\(\{ userId \}\)/);
-  // The caller's id comes from the verified session, never from the request.
-  assert.doesNotMatch(create, /req\.json|searchParams|body\.userId/);
+  // PvP plays for coins: the lobby must name a legal stake, which the route
+  // validates before the store ever sees it.
+  assert.match(create, /requireStake\(body\?\.stake, "barricade"\)/);
+  assert.match(create, /await createOrJoin\(\{ userId, stake: required\.stake \}\)/);
+  // The caller's IDENTITY comes from the verified session, never from the
+  // request (only the stake is read from the body).
+  assert.doesNotMatch(create, /searchParams|body\.userId/);
 });
 
 test("matchmaking: Barricade is a Quick Queue destination and route", () => {
@@ -275,9 +279,11 @@ test("matchmaking: Barricade is a Quick Queue destination and route", () => {
   );
   const worker = strip(read("src/lib/quickQueueWorker.ts"));
   assert.match(worker, /import \{ createOrJoin as createOrJoinBarricadeMatch \} from "\.\/barricade\/serverStore"/);
-  assert.match(worker, /"barricade": \(userId\) => createOrJoinBarricadeMatch\(\{ userId \}\)/);
-  // Unstaked: the queue's normalized stake is never passed to the destination.
-  assert.doesNotMatch(worker, /createOrJoinBarricadeMatch\(\{[^}]*stake/);
+  // Staked: the queue's normalized stake IS what the pair is matched at.
+  assert.match(
+    worker,
+    /"barricade": \(userId\) => createOrJoinBarricadeMatch\(\{ userId, stake: sourceStake \}\)/,
+  );
   // The UI offers it and knows where a queued pair lands.
   const ui = strip(read("src/components/lobby/PlatformQuickQueue.jsx"));
   assert.match(ui, /\["barricade", "Barrier Blitz"\]/);
@@ -292,7 +298,8 @@ test("matchmaking: Barricade is a Quick Queue destination and route", () => {
   );
   // The destination is the game's OWN lobby: both paired seats land on one id.
   const store = strip(read(STORE));
-  assert.match(store, /export async function createOrJoin\(\{ userId \}: \{ userId: string \}\)/);
+  assert.match(store, /export async function createOrJoin\(\{/);
+  assert.match(store, /userId,\s*stake = 0,/);
   assert.match(store, /return \{ match: updated, joined: true \} as const;/);
 });
 
@@ -327,7 +334,9 @@ test("authority: the store settles exactly once, through the shared writers", ()
   // convention precisely so the wiring audits can see it: every call site must
   // read `gameKey: "barricade"` for tests/trophy-system.test.mjs to be able to
   // prove one writer per rated game.
-  assert.equal((store.match(/gameKey: "barricade",/g) ?? []).length, 2);
+  // Four call sites spell the key as the LITERAL: rating, trophies, the escrow
+  // that funds both seats, and the pot payout.
+  assert.equal((store.match(/gameKey: "barricade",/g) ?? []).length, 4);
   assert.match(store, /gameKey: "barricade",\n\s+matchId: String\(match\.id\),/);
   assert.equal((store.match(/await applyRatingResult\(\{/g) ?? []).length, 1);
   assert.equal((store.match(/await applyTrophyResult\(\{/g) ?? []).length, 1);
@@ -354,7 +363,7 @@ test("authority: free practice cannot touch progression at all", () => {
   assert.doesNotMatch(store, /isAi|is_ai/);
   // …and the schema says so explicitly, so a future "just add an is_ai column"
   // change has to answer this note first.
-  assert.match(strip(read("src/db/schema.ts")), /There is also no\n\/\/ `is_ai` column/);
+  assert.match(strip(read("src/db/schema.ts")), /no `is_ai` column/);
   // The store refuses to settle a lobby with no second seat.
   assert.match(store, /if \(!match\.player2Id\) return;/);
   assert.match(store, /if \(!winnerId \|\| !loserId \|\| winnerId === loserId\) return;/);
@@ -386,34 +395,31 @@ test("rating: barricade is registered once and reuses the trophy registry", () =
 
 // ── 7. The no-economy guarantee ───────────────────────────────────────────
 
-test("economy: the game is in no wager catalog and its own surfaces move no tokens", () => {
-  assert.equal(supportsTokenWager(KEY), false);
-  assert.equal(WAGER_GAME_KEYS.includes(KEY), false);
-  for (const rel of [
-    STORE,
-    MOVE_ROUTE,
-    "src/app/api/barricade/create-or-join/route.ts",
-    "src/app/api/barricade/match/[matchId]/forfeit/route.ts",
-    "src/app/api/barricade/match/[matchId]/cancel/route.ts",
-  ]) {
-    const src = code(rel);
-    for (const forbidden of [
-      /balance/i,
-      /payout/i,
-      /wager/i,
-      /stake/i,
-      /prizePaid|prize_paid/i,
-      /tokenTransactions|token_transactions/i,
-      /houseFee|house_fee/i,
-    ]) {
-      assert.doesNotMatch(src, forbidden, `${rel} must not touch the economy (${forbidden})`);
-    }
-  }
-  // The schema has no stake/pot/prize column either.
+test("economy: a Barricade match escrows both seats and pays the pot minus the rake", () => {
+  // The game is a coin match now, so the wager catalog knows it.
+  assert.equal(supportsTokenWager(KEY), true);
+  assert.equal(WAGER_GAME_KEYS.includes(KEY), true);
+
+  const store = code(STORE);
+  // Both seats are escrowed when the second one joins…
+  assert.match(store, /import \{ escrowMatchWagers \} from "\.\.\/tokens\/wager";/);
+  assert.match(store, /clerkIds: \[updated\.player1Id, userId\]/);
+  assert.match(store, /stake: stakeAmount,/);
+  // …and the winner is paid the pot out of that escrow, minus the shared rake.
+  assert.match(store, /import \{ payPvpPot \} from "\.\.\/tokens\/pvpPot";/);
+  assert.match(store, /await payPvpPot\(\{/);
+  assert.match(store, /houseFee: \(stake \* 0\.2\)\.toFixed\(2\)/);
+  assert.match(store, /prizePaid: payout\.toFixed\(2\)/);
+  // A practice row (stake 0) records nothing, so a legacy match can never mint.
+  assert.match(store, /if \(stake > 0\) \{/);
+
+  // The schema carries the stake + settlement columns.
   const schema = code("src/db/schema.ts");
   const table = schema.slice(
     schema.indexOf('export const barricadeMatches'),
     schema.indexOf('export const barricadeMoves'),
   );
-  assert.doesNotMatch(table, /wager|stake|pot|prize|payout/i);
+  assert.match(table, /stakeAmount: numeric\("stake_amount"/);
+  assert.match(table, /houseFee: numeric\("house_fee"/);
+  assert.match(table, /prizePaid: numeric\("prize_paid"/);
 });

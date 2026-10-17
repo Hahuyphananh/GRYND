@@ -19,7 +19,7 @@ Chess on GRYND is classic chess played against the GRYND AI (5 difficulty levels
 
 ## Payout (PvP)
 
-- **Winner** — takes the pot (stake back + winnings; 90/10 rake on the loser's stake).
+- **Winner** — takes the pot (stake back + winnings; 80/20 rake on the loser's stake (10% of the pot)).
 - **Loser** — loses the stake.
 - **Draw** — both refunded.
 

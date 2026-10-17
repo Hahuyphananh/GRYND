@@ -3,8 +3,8 @@
 // The shared pot arithmetic for a staked 1v1 match, so no game re-derives it:
 //
 //   pvpPotPayout  — what a win pays (the two escrowed stakes minus the shared
-//                   house rake, i.e. 1.9× the winner's own stake at the
-//                   current 5% rake). Pure, so display math and the coins that
+//                   house rake, i.e. 1.8× the winner's own stake at the
+//                   current 10% rake). Pure, so display math and the coins that
 //                   move can never drift apart.
 //   payPvpPot     — credit the winner out of the escrow both seats paid,
 //                   inside the caller's settlement transaction. Returns what

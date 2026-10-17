@@ -409,7 +409,7 @@ export const APP_TEXT_TRANSLATIONS = {
         "Race a rival in real time on your own 10×10 minefield — 10 mines, one shared 180-second clock, no turns. Safe tiles +5, correct flags score the mine's value, mine hits −25, clearing your board +100. Highest score wins.",
       memory_grid_name: "Memory Grid",
       memory_grid_desc:
-        "Stake tokens and race another player on a shared 4×4 memory grid. Flip two cards to match pairs. A match keeps your turn, winner takes 1.9× their stake; a 5% platform fee applies.",
+        "Stake tokens and race another player on a shared 4×4 memory grid. Flip two cards to match pairs. A match keeps your turn, winner takes 1.8× their stake; a 10% platform fee applies.",
       chess_desc: "Outthink your opponent move by move.",
       keno_desc: "1v1 Keno Survival Duel. 3 lives each, one lit tile and the same window for both: tap it in time and you keep your life — beat your rival to it and it costs them nothing. Miss it and the life is yours to lose. Take the pot.",
       uno_desc:

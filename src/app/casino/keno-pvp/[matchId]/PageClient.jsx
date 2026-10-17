@@ -1429,7 +1429,7 @@ function RulesModal({ onClose }) {
           <IconTrophy size={15} /> The pot
         </h3>
         <ul className="space-y-1.5 text-xs text-white/70">
-          <li>Winner takes their stake + 90% of the loser's stake (house keeps 10%).</li>
+          <li>Winner takes their stake + 80% of the loser's stake (house keeps 10%).</li>
           <li className="flex items-start gap-1">
             <IconHeartHandshake size={12} className="mt-0.5 shrink-0" />
             <span>A draw (both eliminated on the same tile) refunds both stakes in full.</span>

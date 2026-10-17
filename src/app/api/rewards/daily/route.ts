@@ -83,6 +83,11 @@ export async function POST() {
     return NextResponse.json({
       success: true,
       reward: result.status.reward,
+      // What actually landed. `reward` is the advertised amount and the two
+      // are equal — the claim refuses rather than under-pay — but the client
+      // reads the credited figure so a future cap/rounding change cannot make
+      // the confirmation message lie again.
+      credited: result.credit,
       balance: result.balance,
       claimedDay: result.status.streakDay,
       cycleDay: result.status.cycleDay,

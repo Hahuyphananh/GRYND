@@ -229,15 +229,25 @@ test("wiring: the settlement seam is exported and takes the caller's transaction
   );
 });
 
-test("wiring: settlement never touches tokens, balances or payouts", () => {
-  // Comments stripped: the file's prose legitimately explains that the game is
-  // unstaked, and that prose must not be mistaken for a money-moving call.
+test("wiring: settlement moves coins only through the shared pot helpers", () => {
+  // Comments stripped: the file's prose explains the pot at length, and that
+  // prose must not be mistaken for a money-moving call.
   const storeCode = code(STORE);
   const settlement = storeCode.slice(
     storeCode.indexOf("export async function settleSpeedTypingMatch("),
   );
-  assert.doesNotMatch(settlement, /balance|payout|wager|stake|token|prize/i);
-  // The only account stats a settled race moves are the win/loss counters.
+  // The pot is won by the winner's seat and given back on a dead heat — both
+  // through the SHARED helpers, inside the caller's transaction.
+  assert.match(storeCode, /import \{ payPvpPot, refundPvpPot \} from "\.\.\/tokens\/pvpPot"/);
+  assert.match(settlement, /payPvpPot\(\{/);
+  assert.match(settlement, /refundPvpPot\(\{/);
+  assert.match(settlement, /clerkIds: \[String\(winnerClerkId\), String\(loserClerkId\)\]/);
+  // …and it never hand-rolls a balance move of its own: no ledger row, no
+  // direct balance arithmetic, no escrow call (funding belongs to matchmaking).
+  assert.doesNotMatch(settlement, /tokenTransactions/);
+  assert.doesNotMatch(settlement, /balance/i);
+  assert.doesNotMatch(settlement, /escrowMatchWagers/);
+  // The account stats a settled race moves are the win/loss counters.
   assert.match(settlement, /gamesWon/);
   assert.match(settlement, /gamesLost/);
 });

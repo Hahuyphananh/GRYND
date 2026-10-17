@@ -29,7 +29,7 @@ GRYND has two Keno games built on the same 40-ball pool and the same multiplier 
 ## Payout
 
 - **Solo** — instant payout = bet × multiplier from the table.
-- **PvP** — winner takes the pot (90/10 rake on the loser's stake); draws refund.
+- **PvP** — winner takes the pot (80/20 rake on the loser's stake (10% of the pot)); draws refund.
 
 ## Key numbers
 

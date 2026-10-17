@@ -27,7 +27,7 @@ Hex Duel is a **hex-grid strategy territory war** between two players. Each turn
 
 ## Payout
 
-- **Winner** — takes the pot (stake back + winnings; standard 90/10 rake on the loser's stake).
+- **Winner** — takes the pot (stake back + winnings; standard 80/20 rake on the loser's stake (10% of the pot)).
 - **Loser** — loses the stake.
 - **Draw** — both refunded.
 

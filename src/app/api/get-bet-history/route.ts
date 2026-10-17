@@ -589,7 +589,7 @@ export async function GET(req: NextRequest) {
     //  Mines Duel — only finished matches count. Maps the
     // server-side `result` enum ('player1' | 'player2' | 'draw')
     // plus `winner_id` (null on draw) to a UI-friendly
-    // won/lost/draw string. The 90/10 split means a winner's
+    // won/lost/draw string. The 80/20 split means a winner's
     // payout is `stake * 1.9` and a loser's payout is 0; a draw
     // refunds both stakes (payout = stake, tokenDiff = 0). Named
     // `outcome` instead of `result` to avoid shadowing the server

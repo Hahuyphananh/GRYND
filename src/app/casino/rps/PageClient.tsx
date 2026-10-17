@@ -241,7 +241,7 @@ export default function RPSLobbyPage() {
               <>
                 A ranked match plays for coins: both stakes are escrowed the
                 moment an opponent joins, and the best-of-7 winner takes{" "}
-                <b>1.9× their stake</b> (stake back + 90% of the loser's). Pick
+                <b>1.8× their stake</b> (stake back + 80% of the loser's). Pick
                 your stake above the Play button — an exact draw refunds both
                 seats.
               </>

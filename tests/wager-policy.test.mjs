@@ -65,7 +65,7 @@ test("the economy constants are balanced and bounded", () => {
   assert.equal(MAX_WIN_PER_MATCH, 1_000);
   assert.equal(HOUSE_RTP, 0.9);
   assert.equal(WALLET_HARD_CAP, 100_000);
-  assert.equal(PVP_RAKE_PCT, 0.05);
+  assert.equal(PVP_RAKE_PCT, 0.1);
 });
 
 test("the balanced economy cannot mint millions", () => {

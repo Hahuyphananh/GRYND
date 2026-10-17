@@ -260,9 +260,9 @@ test("economy: house fee correct; payouts sum exactly to the prize pool, never e
   }
 });
 
-test("economy: the 1v1 reference config pays the winner the whole 190 pool", () => {
+test("economy: the 1v1 reference config pays the winner the whole 180 pool", () => {
   const cfg = computePotPrize({ wager: 100 });
-  assert.deepEqual(payoutsByPlacement({ prizePool: cfg.prizePool }), [190, 0]);
+  assert.deepEqual(payoutsByPlacement({ prizePool: cfg.prizePool }), [180, 0]);
 });
 
 test("final payouts map to placements from an actual completed match", () => {

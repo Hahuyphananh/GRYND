@@ -193,10 +193,10 @@ export const MIN_STAKE = 1;
 // Must match GLOBAL_MAX_BET in src/lib/games/economy.ts.
 export const MAX_STAKE = 100;
 
-// Standard win: 90/10 split of the loser's stake (winner 1.9x net).
-export const HOUSE_FEE_PCT = 0.10;
-export const WINNER_RATIO = 0.90;
-export const HOUSE_RATIO = 0.10;
+// Standard win: 80/20 split of the loser's stake (winner 1.8x net).
+export const HOUSE_FEE_PCT = 0.20;
+export const WINNER_RATIO = 0.80;
+export const HOUSE_RATIO = 0.20;
 
 // ──────────────────────────────────────────────────────────────────────
 // Advisory-lock namespace
@@ -229,8 +229,8 @@ export const RESULT = Object.freeze({
 //   { stake, winnerNet, loserNet, houseFee, prizePaid, refundEach }
 //
 // Rules:
-//   PLAYER1 / PLAYER2: winner gets stake + 90% of loser's stake
-//                      (winnerNet = 1.9x stake); loser loses their stake.
+//   PLAYER1 / PLAYER2: winner gets stake + 80% of loser's stake
+//                      (winnerNet = 1.8x stake); loser loses their stake.
 //   DRAW:              both fully refunded (refundEach = stake), no rake
 //                      — UNLESS `drawFeePct` is passed (legacy overtime
 //                      ties on pre-rework rows): each player keeps
@@ -266,8 +266,8 @@ export function computePayout({ stakeAmount, result, drawFeePct = 0 }) {
       refundEach: round2(stake - fee),
     };
   }
-  const winnerPrize = round2(stake * WINNER_RATIO); // 90% of loser's stake
-  const houseFee = round2(stake * HOUSE_RATIO); // 10% of loser's stake
+  const winnerPrize = round2(stake * WINNER_RATIO); // 80% of loser's stake
+  const houseFee = round2(stake * HOUSE_RATIO); // 20% of loser's stake
   return {
     stake: round2(stake),
     winnerNet: round2(stake + winnerPrize),
