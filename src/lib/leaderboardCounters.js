@@ -52,6 +52,13 @@ export async function applyLeaderboardCounters({
   // outcome is a no-op rather than a guess.
   if (!clerkId || (!isWin && !isLoss)) return;
 
+  // The daily login reward is gated on an online win today. The rating writer
+  // stamps this too, but not every PvP result goes through Elo (UNO and Hex
+  // Duel settle through these counters), so record it here for a real
+  // human-vs-human win as well. `isPvpWin` is the caller's already-filtered
+  // "this was a human opponent" signal.
+  const utcDay = new Date().toISOString().slice(0, 10);
+
   // Fetch the player's email + current streak BEFORE the update so the loss
   // streak email (if any) reflects this result.
   const userBefore = await getSql()`
@@ -69,6 +76,7 @@ export async function applyLeaderboardCounters({
       UPDATE users
       SET current_streak = CASE WHEN ${isWin} THEN current_streak + 1 ELSE 0 END,
           best_streak = GREATEST(best_streak, CASE WHEN ${isWin} THEN current_streak + 1 ELSE best_streak END),
+          last_won_game_date = CASE WHEN ${isPvpWin && isWin} THEN ${utcDay} ELSE last_won_game_date END,
           weekly_wins = weekly_wins + CASE WHEN ${isWin} THEN 1 ELSE 0 END,
           pvp_wins = pvp_wins + CASE WHEN ${isPvpWin} THEN 1 ELSE 0 END,
           -- Result-screen progression: the wins/losses this settlement moved,

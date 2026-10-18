@@ -106,11 +106,11 @@ export default function DailyRewardWidget() {
                 <IconCheck size={14} aria-hidden="true" /> Claimed {formatCoins(claimedNow)} coins —
                 back tomorrow.
               </p>
-            ) : !status.playGateSatisfied ? (
+            ) : !status.winGateSatisfied ? (
               <div className="space-y-1.5">
                 <p className="flex items-start gap-1.5 text-xs font-semibold text-[#ff4fd8]">
                   <IconLock size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
-                  Play one game to unlock today&apos;s reward
+                  Win an online match to unlock today&apos;s reward
                 </p>
                 <Link
                   href="/games"

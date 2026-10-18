@@ -188,8 +188,8 @@ export default function DailyRewardBoard({ open, onClose, reward }: Props) {
               <IconGift size={20} aria-hidden="true" /> Daily Reward
             </h2>
             <p className="mt-1 text-xs leading-relaxed text-[#c9f7ff]/75 sm:text-sm">
-              Log in and play one game each day. The streak climbs for 14 days — miss a day and it
-              starts again at day 1.
+              Log in and win one online match each day. The streak climbs for 14 days — miss a day
+              and it starts again at day 1.
             </p>
           </div>
           <button
@@ -240,14 +240,14 @@ export default function DailyRewardBoard({ open, onClose, reward }: Props) {
                     Nice!
                   </button>
                 </div>
-              ) : !status.playGateSatisfied ? (
+              ) : !status.winGateSatisfied ? (
                 <div className="flex flex-wrap items-center gap-3">
                   <span
                     className="inline-flex items-center gap-1.5 rounded-lg border border-[#ff4fd8]/40 bg-[#ff4fd8]/10 px-3 py-2 text-sm font-semibold text-[#ff4fd8]"
                     data-testid="daily-reward-locked"
                   >
-                    <IconLock size={15} aria-hidden="true" /> Play one game to unlock today&apos;s
-                    reward
+                    <IconLock size={15} aria-hidden="true" /> Win an online match to unlock
+                    today&apos;s reward
                   </span>
                   <Link
                     href="/games"

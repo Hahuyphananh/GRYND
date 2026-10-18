@@ -2,13 +2,13 @@
 //
 // GET  /api/rewards/daily  → today's login-reward state for the signed-in
 //                            player: whether it is claimable, whether the
-//                            play gate is satisfied, the streak/cycle day,
+//                            win gate is satisfied, the streak/cycle day,
 //                            what today pays, and the full 7-day curve.
 // POST /api/rewards/daily  → claims it. Refuses with a specific, actionable
-//                            reason when the player has not played a game
-//                            today (403) or already claimed (409).
+//                            reason when the player has not won an online
+//                            match today (403) or already claimed (409).
 //
-// The reward itself — the curated amounts, the play gate and the
+// The reward itself — the curated amounts, the win gate and the
 // idempotency guarantees — lives in src/lib/tokens/dailyReward.ts; this route
 // is only the HTTP edge over it, so both the status read and the claim can
 // never disagree about the rules.
@@ -68,13 +68,13 @@ export async function POST() {
     // project compiles with `strict: false`, where discriminated-union
     // narrowing on a boolean literal is not applied.
     if ("error" in result) {
-      // 409 (already claimed) and 403 (play gate) are the two expected
+      // 409 (already claimed) and 403 (win gate) are the two expected
       // refusals; both are the UI's instructions, not server faults.
       return NextResponse.json(
         {
           success: false,
           error: result.error,
-          ...(result.status === 403 ? { playGateSatisfied: false } : {}),
+          ...(result.status === 403 ? { winGateSatisfied: false } : {}),
         },
         { status: result.status },
       );

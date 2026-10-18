@@ -302,10 +302,14 @@ export const users = pgTable("users", {
   lastLoginDate: date("last_login_date"),
   lastDailyRewardClaimed: date("last_daily_reward_claimed"),
   // The UTC day the player last STARTED a real game session, stamped by
-  // /api/game-plays for signed-in players (both 1v1 PvP and vs-AI sessions
-  // reach that edge). The daily login reward is gated on this being today —
-  // see src/lib/tokens/dailyReward.ts.
+  // /api/game-plays for signed-in players. Retained as a general activity
+  // marker; the daily login reward no longer uses it (it gates on a win).
   lastPlayedGameDate: date("last_played_game_date"),
+  // The UTC day the player last WON a rated online match, stamped by the
+  // authoritative rating writer (src/lib/rating.js). The daily login reward is
+  // gated on this being today, so starting a match and resigning — or playing
+  // the AI — cannot unlock it. See src/lib/tokens/dailyReward.ts.
+  lastWonGameDate: date("last_won_game_date"),
   pvpWins: integer("pvp_wins").default(0).notNull(),
   weeklyWagered: bigint("weekly_wagered", { mode: "number" }).default(0).notNull(),
   weeklyWon: bigint("weekly_won", { mode: "number" }).default(0).notNull(),

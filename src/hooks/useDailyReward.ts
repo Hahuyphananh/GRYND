@@ -10,8 +10,8 @@
 // not be re-implemented per surface.
 //
 // The SERVER owns the whole reward: the curated 7-day curve, whether today was
-// claimed, and whether the player has played a game today (the gate that
-// unlocks the claim). This hook never computes an amount and never credits
+// claimed, and whether the player has won a rated online match today (the gate
+// that unlocks the claim). This hook never computes an amount and never credits
 // anything; it reads the status `/api/rewards/daily` reports and asks the
 // server to claim.
 //
@@ -24,7 +24,7 @@ import { notifyCoinBalanceChanged } from "./useCoinBalance";
 
 export type DailyRewardStatus = {
   claimable: boolean;
-  playGateSatisfied: boolean;
+  winGateSatisfied: boolean;
   streakDay: number;
   cycleDay: number;
   /** How many days the board shows (14). Server-owned, never hardcoded. */

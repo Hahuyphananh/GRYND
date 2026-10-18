@@ -1,17 +1,18 @@
 // src/lib/tokens/dailyReward.ts
 //
 // The daily login reward — a small, curated token payout for coming back each
-// day, gated on having actually PLAYED something today.
+// day, gated on having WON an online match today.
 //
 // ── Why there is a gate ─────────────────────────────────────────────────────
 //
 // A logged-in claim that pays out for nothing is just a faucet with extra
 // steps: a player could open the app, claim, close it. So a claim requires
-// `users.lastPlayedGameDate` to be today — the marker written by
-// `/api/game-plays` when a real game session starts (see that route for the
-// exact signal). That covers both requirement paths: a 1v1 PvP match and a
-// vs-AI match both start through the same game-session edge, so both satisfy
-// the gate. Playing is the price of the reward, exactly as intended.
+// `users.lastWonGameDate` to be today — the marker written by the authoritative
+// settlement writers when an online match settles in the player's favour (the
+// rating writer in src/lib/rating.js, plus the PvP leaderboard counter writer
+// for modes that settle outside Elo). Starting a game is not enough: a
+// player could open a practice match against the AI and resign immediately.
+// The win itself is the price of the reward.
 //
 // ── How much ────────────────────────────────────────────────────────────────
 //
@@ -154,27 +155,27 @@ export function dailyRewardFitsInWallet(reward: number, balance: number): boolea
 }
 
 /**
- * Whether today's reward is unlocked: the player must have played a game today
- * (the `last_played_game_date` marker). Compared as `YYYY-MM-DD` strings so a
- * stored DATE and a JS Date can never disagree about the day.
+ * Whether today's reward is unlocked: the player must have won an online match
+ * today (the `last_won_game_date` marker). Compared as `YYYY-MM-DD` strings so
+ * a stored DATE and a JS Date can never disagree about the day.
  */
-export function isPlayGateSatisfied(
-  lastPlayedGameDate: string | Date | null | undefined,
+export function isWinGateSatisfied(
+  lastWonGameDate: string | Date | null | undefined,
   today: string
 ): boolean {
-  if (!lastPlayedGameDate) return false;
-  const played =
-    lastPlayedGameDate instanceof Date
-      ? utcDateKey(lastPlayedGameDate)
-      : String(lastPlayedGameDate).slice(0, 10);
-  return played === today;
+  if (!lastWonGameDate) return false;
+  const won =
+    lastWonGameDate instanceof Date
+      ? utcDateKey(lastWonGameDate)
+      : String(lastWonGameDate).slice(0, 10);
+  return won === today;
 }
 
 export type DailyRewardStatus = {
   /** True when today's reward has not been claimed yet. */
   claimable: boolean;
-  /** True when the player has played a game today (the claim gate). */
-  playGateSatisfied: boolean;
+  /** True when the player has won an online match today (the claim gate). */
+  winGateSatisfied: boolean;
   /** Today's streak day, the index into the reward curve. */
   streakDay: number;
   /** Which day of the 14-day cycle today falls on (1-based). */
@@ -232,7 +233,7 @@ export async function getDailyRewardStatus(
       balance: users.balance,
       streak: users.dailyStreakCurrent,
       lastLogin: users.lastLoginDate,
-      lastPlayed: users.lastPlayedGameDate,
+      lastWon: users.lastWonGameDate,
       claimed: users.lastDailyRewardClaimed,
     })
     .from(users)
@@ -251,7 +252,7 @@ export async function getDailyRewardStatus(
 
   return {
     claimable: String(user.claimed ?? "").slice(0, 10) !== today,
-    playGateSatisfied: isPlayGateSatisfied(user.lastPlayed, today),
+    winGateSatisfied: isWinGateSatisfied(user.lastWon, today),
     streakDay,
     cycleDay: dailyRewardCycleDay(streakDay),
     cycleDays: DAILY_REWARD_CYCLE_DAYS,
@@ -268,7 +269,7 @@ export async function getDailyRewardStatus(
  * Claim today's login reward for a signed-in player.
  *
  * Refuses (with a specific reason the UI can act on) when the reward was
- * already claimed today, or when the player has not played a game today. On
+ * already claimed today, or when the player has not won a match today. On
  * success the player's streak is advanced first, so the amount paid matches the
  * streak the player will see, and the credit is written atomically with a
  * ledger row.
@@ -294,7 +295,7 @@ export async function claimDailyReward(
       .select({
         id: users.id,
         balance: users.balance,
-        lastPlayed: users.lastPlayedGameDate,
+        lastWon: users.lastWonGameDate,
         claimed: users.lastDailyRewardClaimed,
       })
       .from(users)
@@ -312,10 +313,10 @@ export async function claimDailyReward(
       };
     }
 
-    if (!isPlayGateSatisfied(user.lastPlayed, today)) {
+    if (!isWinGateSatisfied(user.lastWon, today)) {
       return {
         ok: false as const,
-        error: "Play a game to unlock today's reward",
+        error: "Win an online match to unlock today's reward",
         status: 403,
       };
     }
@@ -402,7 +403,7 @@ export async function claimDailyReward(
     credit: result.credit,
     status: {
       claimable: false,
-      playGateSatisfied: true,
+      winGateSatisfied: true,
       streakDay,
       cycleDay: dailyRewardCycleDay(streakDay),
       cycleDays: DAILY_REWARD_CYCLE_DAYS,

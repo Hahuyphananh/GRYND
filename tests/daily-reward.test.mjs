@@ -1,21 +1,21 @@
 /**
  * daily-reward.test.mjs
  *
- * The daily login reward is a curated token payout gated on having played a
- * game today, and the zero-balance rescue is the "one last game" floor beneath
- * it. Both are free coin faucets, so their bounds have to be pinned: too low and
- * they are pointless, too much and they replace playing.
+ * The daily login reward is a curated token payout gated on having won a rated
+ * online match today, and the zero-balance rescue is the "one last game" floor
+ * beneath it. Both are free coin faucets, so their bounds have to be pinned: too
+ * low and they are pointless, too much and they replace playing.
  *
  * These tests cover the three halves of that contract:
- *   1. the PURE numbers — the 14-day curve, the cycle wrap, the play gate and
+ *   1. the PURE numbers — the 14-day curve, the cycle wrap, the win gate and
  *      the rescue amount, all checked against the shipped constants;
  *   2. the STREAK PROJECTION — the read-side day (`projectDailyStreakDay`) that
  *      the status read reports. It MUST be the day the claim actually pays,
  *      because the shipped bug was a board that advertised "250" and a wallet
  *      that received 30: the status read used the stale stored streak.
  *   3. the WIRING — the idempotency guards (day-keyed column + ledger row), the
- *      UTC-day comparison, and the fact that the play gate marker is stamped by
- *      the real game-session edge and read by the reward.
+ *      UTC-day comparison, and the fact that the win-gate marker is stamped by
+ *      the authoritative rating writer and read by the reward.
  *
  * Run:  npm run test:daily-rewards
  */
@@ -32,7 +32,7 @@ import {
   dailyRewardCredit,
   dailyRewardCycleDay,
   dailyRewardFitsInWallet,
-  isPlayGateSatisfied,
+  isWinGateSatisfied,
   utcDateKey,
 } from "../src/lib/tokens/dailyReward.ts";
 import {
@@ -278,30 +278,30 @@ test("the status read and the claim share one streak rule", () => {
   assert.match(streak, /await consumeItem\(user\.id, "streak_shield", 1\)/);
 });
 
-// ── The play gate ───────────────────────────────────────────────────────────
+// ── The win gate ────────────────────────────────────────────────────────────
 
-test("the play gate only unlocks on the same UTC day", () => {
+test("the win gate only unlocks on the same UTC day", () => {
   const today = "2026-10-13";
-  assert.equal(isPlayGateSatisfied(today, today), true);
-  assert.equal(isPlayGateSatisfied("2026-10-12", today), false);
-  assert.equal(isPlayGateSatisfied("2026-10-14", today), false);
+  assert.equal(isWinGateSatisfied(today, today), true);
+  assert.equal(isWinGateSatisfied("2026-10-12", today), false);
+  assert.equal(isWinGateSatisfied("2026-10-14", today), false);
 });
 
-test("the play gate fails closed for a missing or malformed marker", () => {
+test("the win gate fails closed for a missing or malformed marker", () => {
   for (const value of [null, undefined, "", "not-a-date"]) {
     assert.equal(
-      isPlayGateSatisfied(value, "2026-10-13"),
+      isWinGateSatisfied(value, "2026-10-13"),
       false,
       `marker ${String(value)} must not unlock the reward`,
     );
   }
   // A Date is compared as its UTC day, so the DATE column and a JS Date agree.
   assert.equal(
-    isPlayGateSatisfied(new Date("2026-10-13T23:59:00.000Z"), "2026-10-13"),
+    isWinGateSatisfied(new Date("2026-10-13T23:59:00.000Z"), "2026-10-13"),
     true,
   );
   assert.equal(
-    isPlayGateSatisfied(new Date("2026-10-14T00:00:00.000Z"), "2026-10-13"),
+    isWinGateSatisfied(new Date("2026-10-14T00:00:00.000Z"), "2026-10-13"),
     false,
   );
 });
@@ -425,24 +425,28 @@ test("the rescue is idempotent per UTC day through its own ledger key", () => {
   assert.match(src, /referenceId = `\$\{utcDayKey\(now\)\}:\$\{clerkId\}`/);
 });
 
-test("the play-gate marker is stamped by the real game-session edge", () => {
-  const route = read("src/app/api/game-plays/route.ts");
-  // The one edge BOTH requirement paths reach: a 1v1 PvP match and a vs-AI
-  // match each start a real game session, and each records a play here.
-  assert.match(route, /lastPlayedGameDate: new Date\(\)\.toISOString\(\)\.slice\(0, 10\)/);
-  assert.match(route, /from "@clerk\/nextjs\/server"/);
-  // Best-effort: the stamp can never fail the play count, and the route stays
-  // public for signed-out visitors.
-  assert.match(route, /catch \(stampError\)/);
-  assert.doesNotMatch(route, /status: 401/);
+test("the win-gate marker is stamped by the authoritative rating writer", () => {
+  const rating = read("src/lib/rating.js");
+  // Only a rated online match reaches this writer, and the winner is derived
+  // server-side, so the marker is a real win — never a started-and-resigned
+  // practice match. A draw must not unlock the daily reward.
+  assert.match(rating, /SET last_won_game_date = \$\{new Date\(\)\.toISOString\(\)\.slice\(0, 10\)\}/);
+  assert.match(rating, /if \(!isDraw\) \{/);
+
+  // PvP games that settle outside Elo (UNO, Hex Duel) stamp the same marker
+  // through the shared leaderboard-counter writer, and only for a real
+  // human-vs-human win.
+  const counters = read("src/lib/leaderboardCounters.js");
+  assert.match(counters, /last_won_game_date = CASE WHEN \$\{isPvpWin && isWin\}/);
+  assert.match(counters, /const utcDay = new Date\(\)\.toISOString\(\)\.slice\(0, 10\)/);
 });
 
-test("the reward reads exactly the marker the game edge writes", () => {
+test("the reward reads exactly the marker the rating writer writes", () => {
   const reward = read("src/lib/tokens/dailyReward.ts");
-  assert.match(reward, /isPlayGateSatisfied\(user\.lastPlayed, today\)/);
-  assert.match(reward, /Play a game to unlock/);
+  assert.match(reward, /isWinGateSatisfied\(user\.lastWon, today\)/);
+  assert.match(reward, /Win an online match to unlock/);
   const schema = read("src/db/schema.ts");
-  assert.match(schema, /lastPlayedGameDate: date\("last_played_game_date"\)/);
+  assert.match(schema, /lastWonGameDate: date\("last_won_game_date"\)/);
 });
 
 // ── The HTTP edge and the migration ─────────────────────────────────────────
@@ -458,17 +462,17 @@ test("the daily-reward route exposes a status read and a claim", () => {
   assert.match(route, /status: result\.status/);
 });
 
-test("the play-gate column ships with a journaled migration", () => {
-  const sql = read("src/db/migrations/0214_daily_rewards.sql");
-  assert.match(sql, /ADD COLUMN IF NOT EXISTS "last_played_game_date" date/);
+test("the win-gate column ships with a journaled migration", () => {
+  const sql = read("src/db/migrations/0220_daily_reward_win_gate.sql");
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS "last_won_game_date" date/);
   const journal = JSON.parse(read("src/db/migrations/meta/_journal.json"));
   // The entry is looked up BY TAG rather than taken from the end of the array:
   // this asserts that the daily-reward migration is journalled and consistent
   // (drizzle runs only journalled entries), not that it is the newest one — a
   // later migration of an unrelated feature must not fail this test.
   const index = journal.entries.findIndex(
-    (candidate) => candidate.tag === "0214_daily_rewards",
+    (candidate) => candidate.tag === "0220_daily_reward_win_gate",
   );
-  assert.notEqual(index, -1, "0214_daily_rewards must be in the journal");
+  assert.notEqual(index, -1, "0220_daily_reward_win_gate must be in the journal");
   assert.equal(journal.entries[index].idx, index);
 });

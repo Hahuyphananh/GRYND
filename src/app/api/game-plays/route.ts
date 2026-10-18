@@ -16,14 +16,13 @@
 //
 //                        For a SIGNED-IN player it also stamps
 //                        `users.last_played_game_date` with today's UTC day.
-//                        That is the "played a game today" marker the daily
-//                        login reward is gated on (src/lib/tokens/
-//                        dailyReward.ts): this edge is the one signal that
-//                        covers BOTH requirement paths — a 1v1 PvP match and
-//                        a vs-AI match both start a real game session and so
-//                        both land here. The stamp is best-effort: a failure
-//                        is logged and the play count still succeeds, and a
-//                        signed-out visitor is simply not stamped.
+//                        This is a general activity marker, NOT the daily
+//                        login reward gate: the reward now requires a win
+//                        (stamped by the authoritative rating writer — see
+//                        src/lib/tokens/dailyReward.ts). The stamp is
+//                        best-effort: a failure is logged and the play count
+//                        still succeeds, and a signed-out visitor is simply
+//                        not stamped.
 
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../db";
@@ -90,11 +89,11 @@ export async function POST(request: Request) {
         },
       });
 
-    // Stamp the player's "played today" marker — the daily login reward's
-    // gate. Fire-and-forget: this route is public and best-effort, so a missing
-    // session, a missing user row or a DB hiccup must never fail the play
-    // count. Written as the UTC day string for the DATE column, so the value
-    // and the reward's day comparison are always the same day.
+    // Stamp the player's "played today" activity marker. Fire-and-forget: this
+    // route is public and best-effort, so a missing session, a missing user row
+    // or a DB hiccup must never fail the play count. Written as the UTC day
+    // string for the DATE column. (The daily reward no longer reads this — it
+    // requires a win, recorded by the rating writer.)
     try {
       const { userId } = await auth();
       if (userId) {

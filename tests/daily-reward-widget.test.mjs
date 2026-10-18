@@ -129,7 +129,7 @@ test("both reward surfaces drive the same hook, which owns the HTTP", () => {
 test("a refused claim keeps its message — the re-read cannot swallow it", () => {
   // The reported bug: pressing Claim appeared to do nothing. `load()` starts by
   // clearing the error, so a refusal set before the re-read was wiped in the
-  // same click — the play gate, "already claimed" and "wallet full" were all
+  // same click — the win gate, "already claimed" and "wallet full" were all
   // invisible. The message must be applied AFTER the re-read.
   const hook = read(HOOK);
   const code = stripComments(hook);
@@ -358,7 +358,7 @@ test("the widget renders each reward state, and nothing when signed out", { skip
 
   const STATUS = {
     claimable: true,
-    playGateSatisfied: true,
+    winGateSatisfied: true,
     streakDay: 10,
     cycleDay: 3,
     cycleDays: 14,
@@ -394,12 +394,12 @@ test("the widget renders each reward state, and nothing when signed out", { skip
   // The amount comes from the server's answer, never from a literal here.
   assert.doesNotMatch(claimable, /Claim day 1/);
 
-  // 4. The play gate → the instruction, and the link that satisfies it.
+  // 4. The win gate → the instruction, and the link that satisfies it.
   Object.assign(world, {
-    status: { ...STATUS, claimable: false, playGateSatisfied: false },
+    status: { ...STATUS, claimable: false, winGateSatisfied: false },
   });
   const locked = render();
-  assert.match(locked, /Play one game to unlock today&#x27;s reward/);
+  assert.match(locked, /Win an online match to unlock today&#x27;s reward/);
   assert.match(locked, /href="\/games"/);
   assert.doesNotMatch(locked, /daily-reward-widget-claim/);
 
@@ -455,7 +455,7 @@ test("a full wallet is shown BEFORE the claim is pressed", { skip: SKIP_REASON }
 
   const AT_CEILING = {
     claimable: true,
-    playGateSatisfied: true,
+    winGateSatisfied: true,
     streakDay: 2,
     cycleDay: 2,
     cycleDays: 14,

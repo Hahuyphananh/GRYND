@@ -1408,6 +1408,13 @@
       "when": 1800000063000,
       "tag": "0219_duel_pvp_stakes",
       "breakpoints": true
+    },
+    {
+      "idx": 201,
+      "version": "7",
+      "when": 1800000064000,
+      "tag": "0220_daily_reward_win_gate",
+      "breakpoints": true
     }
   ]
 }
