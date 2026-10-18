@@ -146,6 +146,13 @@ const CARD_CSV = toRgb(CARD).join(", ");
 const SHADOW_CSV = toRgb(SHADOW).join(", ");
 
 /**
+ * The same colours as `r g b` (space-separated), for the game-visual tokens.
+ * Tailwind's `rgb(var(--x) / <alpha-value>)` form needs a space-separated
+ * triple — a comma-separated one would render an invalid `rgb(0, 229, 255 / .4)`.
+ */
+const rgbSpace = (hex) => toRgb(hex).join(" ");
+
+/**
  * Deep tinted grounds, so a red panel still reads as "red area" and a gold one
  * as gold — each family keeps its own hue, at the same deep-blue lightness
  * band as the neutral grounds. They are dark, not pale: a tinted card is a
@@ -632,6 +639,25 @@ html[data-theme="light"] .four-in-a-row-slot {
 html[data-theme="light"] .four-in-a-row-panel {
   background: linear-gradient(180deg, ${CARD}, ${PAGE}) !important;
   box-shadow: 0 18px 35px rgba(${SHADOW_CSV}, 0.45), 0 0 24px rgba(0, 229, 255, 0.07) !important;
+}
+
+/* The game-visual token layer (the "GRYND GAME VISUAL TOKENS" block in
+   globals.css) declares its own dark-first defaults. Light mode re-points ONLY
+   its three GROUNDS — the same rule the rest of this file follows — so brand
+   cyan/yellow, the two seat colours, the state colours and the motion scale
+   stay exactly as authored, because the light grounds are still deep blues.
+
+   What makes that work is SPECIFICITY, not order: html[data-theme="light"]
+   (0,1,1) out-ranks the :root block (0,1,0) however the two sheets are
+   ordered. The token block and this sheet therefore never have to agree on
+   load order. */
+html[data-theme="light"] {
+  --gr-surface-page: ${PAGE};
+  --gr-surface-page-rgb: ${rgbSpace(PAGE)};
+  --gr-surface-raised: ${CARD};
+  --gr-surface-raised-rgb: ${rgbSpace(CARD)};
+  --gr-surface-panel: ${PANEL};
+  --gr-surface-panel-rgb: ${rgbSpace(PANEL)};
 }
 `;
 

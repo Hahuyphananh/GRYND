@@ -848,7 +848,14 @@ test("the client renders the 5s get-ready countdown from the server clock", () =
 test("the client renders untouched tiles identically (no information leak)", () => {
   // One class chain per state, and the fallback state is a single shared
   // style for every tile that is not live / claimed / missed.
-  assert.ok(page.includes('let cls = "bg-[#0b224f] border border-[#00e5ff]/20 text-white/40 cursor-default";'));
+  // The exact chain matters: every untouched tile must share this ONE style.
+  // It is painted on the shared cartoon slab (dark outline + three values),
+  // which is why the assertion names the outline token and the raised inset.
+  assert.ok(
+    page.includes(
+      'let cls = `border-[color:var(--gr-outline)] bg-[#0b224f] text-white/45 ${RAISED} cursor-default`;',
+    ),
+  );
   assert.ok(/Tile \$\{num\}/.test(page), "an untouched tile must only be labelled by its number");
   // Tiles are disabled unless they are a live tile this viewer has not
   // already tapped (a tapped live tile is no longer a target).

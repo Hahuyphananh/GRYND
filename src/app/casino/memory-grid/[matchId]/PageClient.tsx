@@ -263,7 +263,7 @@ function RoundResultGrid({
   const pickedCount = picks.length;
 
   return (
-    <div className="mb-5 rounded-2xl border border-white/10 bg-black/30 p-4">
+    <div className="mb-5 rounded-2xl border-2 border-[color:var(--gr-outline)] bg-[#08142f] p-4 shadow-[inset_0_2px_0_rgba(255,255,255,0.05)]">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-sm font-black uppercase tracking-widest text-white/70">
           {title}
@@ -279,27 +279,30 @@ function RoundResultGrid({
         {Array.from({ length: total }, (_, i) => {
           const isActive = active.has(i);
           const isPicked = picked.has(i);
-          let cls = "border-white/10 bg-[#08142f]";
+          // Same three-value slabs as the live board, so the review sheet
+          // reads as the same game. Hue alone carries the verdict.
+          let cls =
+            "border-[color:var(--gr-outline)] bg-[#0e2743] shadow-[inset_0_2px_0_rgba(255,255,255,0.08),inset_0_-2px_0_rgba(3,8,20,0.5)]";
           if (highlight === "pattern") {
             if (isActive) {
               cls =
-                "border-amber-400/80 bg-gradient-to-br from-amber-400/80 to-yellow-500/70 shadow-[0_0_12px_rgba(251,191,36,0.45)]";
+                "border-[color:var(--gr-outline)] bg-[#c98513] shadow-[inset_0_2px_0_rgba(255,232,160,0.5),inset_0_-2px_0_rgba(95,58,2,0.55)]";
             }
           } else {
             // Reconstruction: correct picks emerald, wrong picks red.
             if (isPicked) {
               cls = isActive
-                ? "border-emerald-400/70 bg-gradient-to-br from-emerald-500/60 to-teal-600/40 shadow-[0_0_10px_rgba(52,211,153,0.4)]"
-                : "border-red-400/70 bg-gradient-to-br from-red-500/60 to-rose-600/40 shadow-[0_0_10px_rgba(248,113,113,0.4)]";
+                ? "border-[color:var(--gr-outline)] bg-[#10603f] shadow-[inset_0_2px_0_rgba(150,255,205,0.4),inset_0_-2px_0_rgba(0,55,35,0.5)]"
+                : "border-[color:var(--gr-outline)] bg-[#5a1420] shadow-[inset_0_2px_0_rgba(255,170,180,0.35),inset_0_-2px_0_rgba(70,0,10,0.55)]";
             } else if (isActive) {
-              // Missed active tile — faint amber outline (no face).
-              cls = "border-amber-500/40 bg-[#0b1a33]";
+              // Missed active tile — a thin amber edge (no face).
+              cls = "border-amber-400/70 bg-[#0b1a33]";
             }
           }
           return (
             <div
               key={i}
-              className={`relative aspect-square overflow-hidden rounded-lg border ${cls}`}
+              className={`relative aspect-square overflow-hidden rounded-[3px] border-2 ${cls}`}
             >
               {(highlight === "pattern" ? isActive : isPicked) && (
                 <Image
@@ -1536,16 +1539,29 @@ export default function MemoryGridMatchPage({
                 disabled={!clickable}
                 whileTap={clickable ? { scale: 0.92 } : undefined}
                 aria-label={`Tile ${tileIndex + 1}`}
-                className={`relative aspect-square select-none overflow-hidden rounded-none border transition-colors [transform-style:preserve-3d] [perspective:600px] ${
+                // The shared cartoon tile: ONE dark outline (`--gr-outline`), a
+                // light band along the top and a darker underside, lit from the
+                // top-left — the same slab language as the other board games.
+                // The state only picks the hue:
+                //   pattern (amber)  the tiles to memorise
+                //   selected (cyan)  your reconstruction picks
+                //   reveal (emerald) the finished round's pattern
+                //   rest             a face-down card, raised and tappable
+                // Focus comes from `.gr-focusable`, so a keyboard player rings
+                // every tile the same way whatever its state.
+                // The border COLOUR lives on each state (not on the shared
+                // base), so a state and the base can never fight over the same
+                // property.
+                className={`gr-focusable relative aspect-square select-none overflow-hidden rounded-[4px] border-2 transition-[background-color,border-color,box-shadow] duration-150 [transform-style:preserve-3d] [perspective:600px] ${
                   revealActive
-                    ? "border-emerald-400/60 bg-gradient-to-br from-emerald-500/50 to-teal-600/40 shadow-[0_0_16px_rgba(52,211,153,0.45)]"
+                    ? "border-[color:var(--gr-outline)] bg-[#10603f] shadow-[inset_0_2px_0_rgba(150,255,205,0.4),inset_0_-3px_0_rgba(0,55,35,0.5)]"
                     : faceUp
-                      ? "border-amber-400/80 bg-gradient-to-br from-amber-400/80 to-yellow-500/70 shadow-[0_0_18px_rgba(251,191,36,0.6)]"
+                      ? "border-[color:var(--gr-outline)] bg-[#c98513] shadow-[inset_0_2px_0_rgba(255,232,160,0.5),inset_0_-3px_0_rgba(95,58,2,0.55)]"
                       : isSelected
-                        ? "border-cyan-300 bg-cyan-500/25"
+                        ? "gr-selected border-[color:var(--gr-outline)] bg-[#0f3f63] shadow-[inset_0_2px_0_rgba(150,240,255,0.35),inset_0_-3px_0_rgba(0,45,70,0.5)]"
                         : clickable
-                          ? "cursor-pointer border-cyan-600/40 bg-[#08142f] hover:border-cyan-400/70 hover:bg-[#0b224f]"
-                          : "border-white/10 bg-[#08142f]"
+                          ? "cursor-pointer border-[color:var(--gr-outline)] bg-[#0e2743] shadow-[inset_0_2px_0_rgba(255,255,255,0.10),inset_0_-3px_0_rgba(3,8,20,0.55)] hover:-translate-y-px hover:border-[#2f7fb8] hover:bg-[#143555]"
+                          : "border-[color:var(--gr-hairline,#1b2c4a)] bg-[#0a1a33] opacity-80"
                 }`}
               >
                 {/* Card-flip: one continuous 3D rotation (framer-motion,
@@ -1572,7 +1588,7 @@ export default function MemoryGridMatchPage({
                       alt=""
                       width={64}
                       height={64}
-                      className="h-full w-full object-contain drop-shadow-[0_0_8px_rgba(251,191,36,0.9)]"
+                      className="h-full w-full object-contain"
                     />
                   </span>
                 </motion.div>

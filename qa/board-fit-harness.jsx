@@ -5,10 +5,8 @@
 //   • Memory Grid  — src/app/casino/memory-grid/[matchId]/PageClient.tsx
 //
 // qa/board-fit-check.mjs bundles this file (stubbing Clerk, the socket, the
-// router, analytics, nav/footer, the waiting takeover and the creator-mode
-// HOST — the creator-mode LAYOUT stays real, so the exemption under test is
-// the shipped one) and mounts the REAL page against a scripted match through a
-// stubbed `fetch`. Both boards are squares, so the whole point of the check is
+// router, analytics, nav/footer and the waiting takeover) and mounts the REAL
+// page against a scripted match through a stubbed `fetch`. Both boards are squares, so the whole point of the check is
 // measurable in the browser: the board's painted box must end ABOVE the
 // viewport bottom, i.e. no scrolling is needed to see all 25 tiles / the whole
 // grid.
@@ -17,7 +15,6 @@
 //   * `set(page, overrides)` — install a payload WITHOUT announcing it
 //   * `mount(page)`          — render the page (mines | memory)
 //   * `unmount()`
-//   * `setCreator(bool)`     — flip creator mode on/off (real <CreatorView>)
 //   * `measure(selector)`    — the painted box + viewport metrics
 //   * `posts` / `fetchCount` — what the page sent / asked
 
@@ -38,7 +35,6 @@ window.__bf = {
   current: null,
   posts: [],
   fetchCount: 0,
-  creator: false,
   minesUpdatedEvent: MINES_PVP_MATCH_UPDATED,
   memoryUpdatedEvent: MEMORY_GRID_MATCH_UPDATED,
 };
@@ -84,7 +80,9 @@ window.__bf.minesMatch = (overrides = {}) => ({
   player2Id: "user_2",
   isAi: false,
   stakeAmount: "25",
-  status: "p1_turn",
+  // Mines Duel is simultaneous now; only `active` is pickable (PICKABLE_STATES),
+  // so the legacy `p1_turn` fixture rendered an inert board.
+  status: "active",
   minesCount: 5,
   safeTilesRemaining: 14,
   board: null,
@@ -125,7 +123,10 @@ window.__bf.memoryMatch = (overrides = {}) => ({
   player2Id: "user_2",
   isAi: false,
   stakeAmount: 25,
-  status: "p1_turn",
+  // Memory Grid moved to the simultaneous `active` status (migration 0073);
+  // the legacy `p1_turn` fixture left the board inert, so the check measured
+  // disabled tiles instead of the playable ones.
+  status: "active",
   phase: "reconstruct",
   roundNumber: 2,
   roundsPerMatch: 5,
@@ -203,9 +204,6 @@ window.fetch = async (input, init) => {
 };
 
 // ── Mount / unmount ────────────────────────────────────────────────────────
-window.__bf.setCreator = (on) => {
-  window.__bf.creator = Boolean(on);
-};
 
 window.__bf.mount = (page) => {
   window.__bf.page = page;

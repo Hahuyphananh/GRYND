@@ -122,6 +122,11 @@ const check = (name, ok, extra = "") => {
 };
 const px = (v) => (v == null ? "?" : `${Math.round(v * 10) / 10}px`);
 
+// The shared cartoon outline and the two seat colours, as the browser resolves
+// them. The visual checks below assert the rendered strokes, not the source.
+const OUTLINE_STROKE = /rgb\(5,\s*16,\s*31\)/;
+const SEAT_STROKE = /rgb\((245,\s*158,\s*11|34,\s*211,\s*238)\)/;
+
 // ── 4. Viewports ───────────────────────────────────────────────────────────
 // `minCell` is the WCAG 2.2 SC 2.5.8 minimum (24 CSS px). At 320 px the
 // arithmetic cannot reach it: nine boards need 3 × (3 cells + 2 gaps) + card
@@ -400,7 +405,40 @@ const renderScenario = async (page, name) => {
       badge: card.querySelector('[data-testid^="lattice-board-badge-"]')?.textContent?.trim() ?? "",
     }));
     const cells = [...document.querySelectorAll('[data-testid^="tic-tac-toe-cell-"]')];
+    // The drawn win line and the marks' own strokes: the visual contract asserts
+    // the outline-under-colour two-pass art and the line through the won cells,
+    // not just their attributes.
+    const winLines = [...document.querySelectorAll('[data-testid="tic-tac-toe-win-line"]')].map((svg) => {
+      const card = svg.closest('[data-testid^="tic-tac-toe-lattice-board-"]');
+      const cardBox = card.getBoundingClientRect();
+      const box = svg.getBoundingClientRect();
+      const lines = [...svg.querySelectorAll("line")];
+      return {
+        slot: Number((card.getAttribute("data-testid") ?? "").split("-").pop()),
+        strokes: lines.map((line) => getComputedStyle(line).stroke),
+        inside:
+          box.left >= cardBox.left - 1 &&
+          box.right <= cardBox.right + 1 &&
+          box.top >= cardBox.top - 1 &&
+          box.bottom <= cardBox.bottom + 1,
+        span: lines.map((line) => {
+          const r = line.getBoundingClientRect();
+          return { w: Math.round(r.width), h: Math.round(r.height) };
+        }),
+      };
+    });
+    const marks = cells
+      .filter((cell) => ["X", "O"].includes(cell.getAttribute("data-state")))
+      .map((cell) => {
+        const svg = cell.querySelector("svg");
+        return {
+          state: cell.getAttribute("data-state"),
+          strokes: svg ? [...svg.querySelectorAll("g")].map((g) => getComputedStyle(g).stroke) : [],
+        };
+      });
     return {
+      winLines,
+      marks,
       requiredBoard: mega?.getAttribute("data-required-board"),
       freeChoice: mega?.getAttribute("data-free-choice"),
       destination: dest
@@ -502,6 +540,19 @@ check(
     /Row \d, column \d/.test(focusedCell?.label ?? ""),
   `${requiredState.focusableCells} of ${requiredState.cells} focusable — "${focusedCell?.label ?? ""}"`,
 );
+// Keyboard parity with the pointer: focusing an offered cell previews the mark
+// (a SHAPE cue), instead of only recolouring the cell.
+await scenarioPage.waitForTimeout(200);
+const ghostOpacity = await scenarioPage.evaluate(() => {
+  const active = document.activeElement;
+  const ghost = active?.querySelector?.('[data-testid="tic-tac-toe-mark-preview"]');
+  return ghost ? Number.parseFloat(getComputedStyle(ghost).opacity) : null;
+});
+check(
+  "keyboard: focusing a playable cell previews the mark, not just a colour change",
+  ghostOpacity !== null && ghostOpacity > 0.2,
+  `ghost opacity ${ghostOpacity}`,
+);
 await scenarioPage.keyboard.press("Enter");
 await scenarioPage.waitForTimeout(150);
 const afterEnter = await scenarioPage.evaluate(() => window.__ttt.plays.length);
@@ -573,6 +624,29 @@ check(
   ownedBy(0).playableCells === 0 && ownedBy(2).playableCells === 0,
   `#1 ${ownedBy(0).playableCells}, #3 ${ownedBy(2).playableCells}`,
 );
+check(
+  "visual: every placed mark is drawn twice — the shared dark outline under the seat colour",
+  ownedState.marks.length === 15 &&
+    ownedState.marks.every(
+      (mark) => mark.strokes.some((s) => OUTLINE_STROKE.test(s)) && mark.strokes.some((s) => SEAT_STROKE.test(s)),
+    ),
+  `${ownedState.marks.length} marks, e.g. ${JSON.stringify(ownedState.marks[0]?.strokes)}`,
+);
+check(
+  "visual: each won mini-board draws a line across its own three winning cells",
+  ownedState.winLines.length === 2 &&
+    ownedState.winLines.every(
+      (line) =>
+        line.strokes.length === 2 &&
+        line.strokes.some((s) => OUTLINE_STROKE.test(s)) &&
+        line.strokes.some((s) => SEAT_STROKE.test(s)) &&
+        line.inside &&
+        line.span.every((s) => s.w > 4 || s.h > 4),
+    ),
+  `lines on ${ownedState.winLines.map((l) => l.slot + 1).join(",")} — ${JSON.stringify(
+    ownedState.winLines.map((l) => l.span),
+  )}`,
+);
 await scenarioPage.screenshot({ path: join(SHOTS, "state-claimed.png") });
 shots.push(join(SHOTS, "state-claimed.png"));
 
@@ -600,6 +674,14 @@ check(
     finishedState.cards.every((c) => c.playableCells === 0) &&
     finishedState.cards.length === 9,
   `${finishedState.playableTotal} playable cells across ${finishedState.cards.length} boards`,
+);
+check(
+  "visual: the finished match draws a line in each of the three claimed boards",
+  finishedState.winLines.length === 3 &&
+    finishedState.winLines.every(
+      (line) => line.inside && line.span.some((s) => s.w > 4 || s.h > 4),
+    ),
+  `lines on ${finishedState.winLines.map((l) => l.slot + 1).join(",")}`,
 );
 await scenarioPage.screenshot({ path: join(SHOTS, "state-finished.png") });
 shots.push(join(SHOTS, "state-finished.png"));

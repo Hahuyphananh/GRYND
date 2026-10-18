@@ -2511,3 +2511,317 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
     transition: none;
   }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   GRYND GAME VISUAL TOKENS — the shared cartoon-2D foundation (phase 1)
+   ══════════════════════════════════════════════════════════════════════════
+
+   WHY THIS BLOCK EXISTS
+   Every game board in GRYND is drawn with its own inline colours, radii and
+   shadows today, so player 2 is red in one game, purple in another and pink in
+   a third, and selection/ownership states are carried by hue alone. This block
+   is the single place those decisions are made from now on.
+
+   IT IS ADDITIVE AND OPT-IN. Nothing here restyles an existing game: no
+   selector below targets a class that already exists (every class is prefixed
+   `gr-`, which was unused in src/ before this block). Games adopt a token or a
+   primitive in a later phase, one at a time.
+
+   Values are GRYND's own colours wherever one already exists — cyan #00e5ff,
+   yellow #f5ff3b, the four navy grounds, and the magenta the opponent has been
+   drawn in all along. Only the roles are new.
+
+   ICON SCOPE: docs/GRYND_ICON_SPEC.md governs the player-icon AVATARS shipped
+   as /icons/<key>.webp, and it is unchanged — that spec's decision 6 keeps
+   icons rim-lit and line-free, so an icon avatar and a cartoon piece with a
+   --gr-outline edge will read differently side by side in a HUD. The spec does
+   not cover gameplay boards (it never mentions them), so these tokens add a
+   scoped language for board surfaces and pieces rather than extending or
+   amending it.
+
+   LIGHT MODE: light mode moves ONLY the near-black grounds (see
+   src/app/light-theme.css, generated from scripts/generate-light-theme.mjs).
+   These tokens follow that same rule — the three surface tokens are re-pointed
+   there, and brand, seat, state and motion tokens stay exactly as authored,
+   because the light grounds are still deep blues.
+   ────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* ── Brand ──────────────────────────────────────────────────────────────
+     Cyan and yellow are GRYND's identity and are not redefined here; the
+     `-rgb` triplets exist so Tailwind's `/40` opacity modifiers keep working
+     on a custom property (see tailwind.config.js). */
+  --gr-brand-cyan: #00e5ff;
+  --gr-brand-cyan-rgb: 0 229 255;
+  --gr-brand-cyan-soft: #7cefff;
+  --gr-brand-cyan-soft-rgb: 124 239 255;
+  --gr-brand-yellow: #f5ff3b;
+  --gr-brand-yellow-rgb: 245 255 59;
+  --gr-brand-gold: #ffd700;
+  --gr-brand-gold-rgb: 255 215 0;
+
+  /* ── Neutral surfaces — the three grounds every game sits on ──────────── */
+  --gr-surface-page: #030817; /* the page itself            */
+  --gr-surface-page-rgb: 3 8 23;
+  --gr-surface-raised: #040d24; /* cards, boards, HUD panels  */
+  --gr-surface-raised-rgb: 4 13 36;
+  --gr-surface-panel: #001933; /* recessed cells and sockets */
+  --gr-surface-panel-rgb: 0 25 51;
+
+  /* ── Text ─────────────────────────────────────────────────────────────── */
+  --gr-ink: #ffffff;
+  --gr-ink-rgb: 255 255 255;
+  --gr-ink-muted: rgba(255, 255, 255, 0.65);
+  --gr-ink-subtle: rgba(255, 255, 255, 0.45);
+  /* Ink for type sitting ON a cyan/yellow fill (a seat chip, a piece label). */
+  --gr-ink-on-accent: #04121c;
+  --gr-ink-on-accent-rgb: 4 18 28;
+
+  /* Every HEX-valued colour token above and below carries a matching
+     `-rgb` triplet: it is what lets Tailwind apply an opacity modifier
+     (`bg-seat-1/40`) instead of silently emitting nothing for a colour it
+     cannot decompose. The tokens that are ALREADY semi-transparent (the two
+     muted inks, the hairlines, the shading) are pre-composited and take no
+     triplet, because there is no such modifier to apply. */
+
+  /* ── Hairlines and borders ────────────────────────────────────────────── */
+  --gr-hairline: rgba(255, 255, 255, 0.1);
+  --gr-border: rgba(255, 255, 255, 0.18);
+  --gr-border-strong: rgba(255, 255, 255, 0.3);
+
+  /* ── Cartoon outline ────────────────────────────────────────────────────
+     One dark navy edge, drawn around every piece in every game. It is what
+     makes two pieces of different shapes read as the same art style, and it
+     is what keeps a piece legible when its fill is low-contrast against the
+     ground (see the seat section below). */
+  --gr-outline: #05101f;
+  --gr-outline-rgb: 5 16 31;
+  --gr-outline-width: 2px;
+
+  /* ── Seats ──────────────────────────────────────────────────────────────
+     PLAYER 1 = cyan #00e5ff. Already the app's "you" colour (~1000 uses) and
+     the brand anchor, so it needs no new value.
+     PLAYER 2 = magenta #ff4fd8. The opponent family the app already draws
+     most often (#ff4fd8/#ff5d8f/#ff2d9b), and it keeps yellow free for brand
+     and status meaning instead of seat identity.
+
+     CONTRAST (WCAG, measured against --gr-surface-raised #040d24):
+       player 1  12.55:1   ·   player 2  6.77:1   ·   against each other 1.85:1
+     Colour is therefore NEVER the only cue: seat 1 is a CIRCLE and seat 2 is
+     a DIAMOND (--gr-seat-1-shape / --gr-seat-2-shape, carried by .gr-seat-pip
+     and .gr-owned below). Under simulated deuteranopia the two fills collapse
+     to #8ba6ff and #7087d2 — close — which is exactly why the shape cue is
+     part of the token layer and not a per-game detail. */
+  --gr-player-1: #00e5ff;
+  --gr-player-1-rgb: 0 229 255;
+  --gr-player-2: #ff4fd8;
+  --gr-player-2-rgb: 255 79 216;
+  /* The neutral third party used by the existing seatColor() helpers. */
+  --gr-seat-neutral: #94a3b8;
+  --gr-seat-neutral-rgb: 148 163 184;
+  --gr-seat-1-shape: circle;
+  --gr-seat-2-shape: diamond;
+
+  /* ── Interaction states ─────────────────────────────────────────────────
+     All three are chosen to clear 3:1 on BOTH themes' grounds, so they need
+     no light-mode override: legal-move 17.57:1 dark / 7.15:1 light,
+     focus 12.59:1 dark / 5.12:1 light, selected (brand yellow) 17.69:1 dark
+     / 14.20:1 light. */
+  --gr-selected: #f5ff3b;
+  --gr-selected-rgb: 245 255 59;
+  --gr-selected-style: dashed;
+  --gr-legal-move: #eaf6ff;
+  --gr-legal-move-rgb: 234 246 255;
+  --gr-focus-ring: #9dd8ff;
+  --gr-focus-ring-rgb: 157 216 255;
+  --gr-focus-ring-width: 2px;
+  --gr-disabled-ink: #8fa3bf;
+  --gr-disabled-ink-rgb: 143 163 191;
+  --gr-disabled-surface: rgba(148, 163, 184, 0.14);
+
+  /* ── Board cells and pieces ─────────────────────────────────────────────
+     Radii, spacing and the three-value shading every cartoon piece uses:
+     a base fill, one restrained highlight, one restrained shade.
+
+     NOTE — there is deliberately no cell SIZE token. Board geometry lives in
+     per-game `clamp()` rules guarded by the board-fit and mobile-audit
+     harnesses (tests/board-fit-desktop.test.mjs, qa/game-mobile-audit.mjs);
+     a shared size would fight them. Outlines and piece insets must be checked
+     at 320/360/390/1280px as they are adopted. */
+  --gr-cell-radius: 10px;
+  --gr-cell-gap: 6px;
+  --gr-piece-radius: 12px;
+  --gr-piece-shadow: 0 2px 0 0 rgba(0, 0, 0, 0.55);
+  --gr-piece-highlight: rgba(255, 255, 255, 0.28);
+  --gr-piece-shade: rgba(0, 0, 0, 0.22);
+
+  /* ── Frame depth ────────────────────────────────────────────────────────
+     A board panel's soft drop shadow, plus the top-lit hairline that gives a
+     flat navy surface its edge. Both are deliberately dark in BOTH themes —
+     light mode's own surfaces cast the same near-black shadow (see the
+     generator's hand-written rules) — so neither needs a light override. */
+  --gr-frame-shadow: 0 18px 35px rgba(3, 8, 23, 0.55);
+  --gr-frame-inset: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+  /* ── Seat glow (the existing neon language, per seat) ─────────────────── */
+  --gr-glow-1: 0 0 18px rgba(0, 229, 255, 0.35);
+  --gr-glow-2: 0 0 18px rgba(255, 79, 216, 0.35);
+
+  /* ── Motion ─────────────────────────────────────────────────────────────
+     One duration scale, zeroed wholesale under reduced motion below, so a
+     game that animates from tokens cannot forget the preference. */
+  --gr-duration-fast: 120ms;
+  --gr-duration-base: 200ms;
+  --gr-duration-slow: 320ms;
+  --gr-ease-standard: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --gr-ease-pop: cubic-bezier(0.34, 1.3, 0.64, 1);
+}
+
+/* ── Seat primitives ──────────────────────────────────────────────────────
+   Set `gr-seat gr-seat--1` (or --2) on a board or a piece wrapper and every
+   cue below inherits that seat's colour AND its shape. Nothing consumes these
+   classes yet; each game opts in during phases 2–3. */
+
+.gr-seat {
+  --gr-seat-color: var(--gr-seat-neutral);
+  --gr-seat-shape: circle;
+}
+
+.gr-seat--1 {
+  --gr-seat-color: var(--gr-player-1);
+  --gr-seat-shape: circle;
+}
+
+.gr-seat--2 {
+  --gr-seat-color: var(--gr-player-2);
+  --gr-seat-shape: diamond;
+}
+
+/* The non-colour cue: a circle pip for seat 1, a diamond for seat 2. */
+.gr-seat-pip {
+  display: inline-block;
+  inline-size: var(--gr-seat-pip-size, 0.62em);
+  block-size: var(--gr-seat-pip-size, 0.62em);
+  background: var(--gr-seat-color, var(--gr-seat-neutral));
+  border: var(--gr-outline-width) solid var(--gr-outline);
+  border-radius: 50%;
+}
+
+.gr-seat--2 .gr-seat-pip,
+.gr-seat-pip--diamond {
+  border-radius: 26%;
+  transform: rotate(45deg);
+}
+
+/* An inverted pip: the same seat SHAPE, painted in the outline colour, for use
+   ON TOP of a seat-coloured fill — an owned cell, a piece. The shape still
+   comes from the seat scope above, so the two pips can never disagree. */
+.gr-seat-pip--invert {
+  background: var(--gr-outline);
+}
+
+/* ── Board cell and piece frame ───────────────────────────────────────── */
+
+.gr-cell {
+  border-radius: var(--gr-cell-radius);
+}
+
+.gr-cell-grid {
+  gap: var(--gr-cell-gap);
+}
+
+.gr-piece {
+  position: relative;
+  border: var(--gr-outline-width) solid var(--gr-outline);
+  border-radius: var(--gr-piece-radius);
+  /* Drop shadow (hard, cartoon) + shade (the dark third of the three values). */
+  box-shadow:
+    var(--gr-piece-shadow),
+    inset 0 -0.18em 0 0 var(--gr-piece-shade);
+}
+
+.gr-piece--seat-1 {
+  background-color: var(--gr-player-1);
+}
+
+.gr-piece--seat-2 {
+  background-color: var(--gr-player-2);
+}
+
+/* The light third of the three values — one gloss, no gradients per game. */
+.gr-piece::before {
+  content: "";
+  position: absolute;
+  inset: 0.14em 0.18em auto 0.18em;
+  block-size: 34%;
+  border-radius: inherit;
+  background: linear-gradient(180deg, var(--gr-piece-highlight), transparent);
+  pointer-events: none;
+}
+
+/* ── Ownership, selection, legal moves, focus ───────────────────────────
+   Ownership is an inset ring in the seat's colour, so it survives without
+   hue (a diamond piece is seat 2 whatever colour it is dimmed to) and reads
+   on either theme. */
+
+.gr-owned {
+  box-shadow: inset 0 0 0 var(--gr-outline-width)
+    var(--gr-seat-color, var(--gr-player-1));
+}
+
+.gr-selected {
+  outline: var(--gr-outline-width) var(--gr-selected-style) var(--gr-selected);
+  outline-offset: 2px;
+}
+
+/* A hollow, outlined marker rather than the faint filled dot the audit found
+   hard to see — 17.57:1 on the dark ground, 7.15:1 on the light one. */
+.gr-legal-move {
+  position: relative;
+}
+
+.gr-legal-move::after {
+  content: "";
+  position: absolute;
+  inset: 50% auto auto 50%;
+  inline-size: 34%;
+  block-size: 34%;
+  translate: -50% -50%;
+  border: var(--gr-outline-width) solid var(--gr-legal-move);
+  border-radius: 50%;
+  background: rgba(234, 246, 255, 0.16);
+  pointer-events: none;
+}
+
+.gr-focusable:focus-visible {
+  outline: var(--gr-focus-ring-width) solid var(--gr-focus-ring);
+  outline-offset: 2px;
+}
+
+/* ── Disabled ─────────────────────────────────────────────────────────── */
+
+.gr-disabled {
+  color: var(--gr-disabled-ink);
+  background-color: var(--gr-disabled-surface);
+  box-shadow: none;
+}
+
+/* ── Reduced motion ─────────────────────────────────────────────────────
+   Zeroes the duration scale at its source, so anything animating from a
+   --gr-duration-* token stops without each game enumerating its own rules. */
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --gr-duration-fast: 0s;
+    --gr-duration-base: 0s;
+    --gr-duration-slow: 0s;
+  }
+
+  .gr-piece,
+  .gr-seat-pip,
+  .gr-cell,
+  .gr-focusable {
+    transition-duration: 0s;
+    animation-duration: 0s;
+  }
+}

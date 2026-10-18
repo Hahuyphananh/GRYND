@@ -296,7 +296,12 @@ test("board: empty cells advertise playability, occupied cells do nothing", () =
   // Four looks, in priority order: a real mark, a cell the server offers on the
   // REQUIRED board (solid amber), a cell it offers during a free choice (dashed
   // amber), and an inert cell that still reads as part of the grid.
-  assert.match(board, /\? "border-white\/10 bg-white\/\[0\.05\]"/);
+  // Occupied: a raised, top-lit socket (the inset edge is the restrained depth
+  // the cartoon-2D standard asks for) with the mark itself carrying the colour.
+  assert.match(
+    board,
+    /\? "border-white\/10 bg-white\/\[0\.06\] shadow-\[inset_0_1px_0_rgba\(255,255,255,0\.06\)\]"/,
+  );
   assert.match(board, /cursor-pointer border-amber-300\/70 bg-amber-400\/\[0\.13\]/);
   assert.match(board, /cursor-pointer border-dashed border-amber-300\/45 bg-amber-400\/\[0\.06\]/);
   assert.match(board, /cursor-default border-white\/\[0\.07\] bg-black\/25/);
@@ -313,11 +318,41 @@ test("board: empty cells advertise playability, occupied cells do nothing", () =
   // The win highlight comes from the server's line.
   assert.match(board, /winningCellSet\(winningLine\)/);
   assert.match(board, /const isWinning = winning\.has\(index\)/);
+  // The winning line is DRAWN across the three cells, not only tinted: the line
+  // is the non-colour half of the win cue. It is presentational, and it is only
+  // mounted for a complete line whose cells really hold the same mark.
+  assert.match(board, /winningCellLine\(winningLine\)/);
+  assert.match(board, /data-testid="tic-tac-toe-win-line"/);
+  assert.match(board, /const lineColor = lineMark \? seatColor\(seatForMark\(lineMark\)\) : null;/);
+  assert.match(board, /pointer-events-none absolute inset-0 z-\[3\] h-full w-full/);
   // The last accepted mark is announced, and a confirmed mark animates in.
   assert.match(board, /data-last-move=\{isLast && Boolean\(cell\) \? "true" : "false"\}/);
   assert.match(board, /<motion\.span \{\.\.\.markMotion\}/);
   assert.match(board, /withReducedMotion\(reduce, \{/);
 });
+
+test("visual: marks, focus and the win line use the shared cartoon language", () => {
+  // Every mark is the SAME silhouette painted twice: the shared dark outline
+  // (`--gr-outline`, the token every GRYND piece uses) under the seat colour.
+  // That is the depth — there is no glow left to compete with the win cue.
+  assert.match(board, /stroke="var\(--gr-outline, #05101f\)"/);
+  assert.match(board, /stroke="currentColor"/);
+  assert.doesNotMatch(board, /drop-shadow/, "marks are edged, not haloed");
+  // One focus language for every cell, taken from the shared token — a playable
+  // cell, a taken cell and an inert cell all ring the same way.
+  assert.match(board, /focus-visible:ring-state-focus/);
+  assert.doesNotMatch(board, /focus-visible:ring-white\/40/);
+  assert.doesNotMatch(board, /focus-visible:ring-amber-\d00/);
+  // Keyboard parity with the pointer: focusing an offered cell previews the mark
+  // (a shape cue), not only a border colour change.
+  assert.match(board, /group-focus-visible:opacity-30/);
+  assert.match(board, /data-testid="tic-tac-toe-mark-preview"/);
+  // The win line is a casing over the colour stroke, drawn at a constant screen
+  // weight so a 20px phone cell and a 76px desktop cell read the same.
+  assert.match(board, /strokeWidth="5"/);
+  assert.match(board, /vectorEffect="non-scaling-stroke"/);
+});
+
 test("ui: the pure helpers encode the same gates the server enforces", async () => {
   const ui = await import("../src/lib/tic-tac-toe/ui.ts");
   const empty = [null, null, null, null, null, null, null, null, null];
@@ -337,6 +372,16 @@ test("ui: the pure helpers encode the same gates the server enforces", async () 
   assert.equal(ui.outcomeFor({ result: "player1", viewerSeat: "player1" }), "win");
   assert.equal(ui.outcomeFor({ result: "player2", viewerSeat: "player1" }), "loss");
   assert.equal(ui.outcomeFor({ result: "tie", viewerSeat: "player1" }), "draw");
+
+  // A winning line is ORDERED for drawing, and only a complete line is one.
+  assert.deepEqual(ui.winningCellLine([0, 1, 2]), [0, 1, 2]);
+  assert.deepEqual(ui.winningCellLine([2, 0, 1]), [0, 1, 2]);
+  assert.deepEqual(ui.winningCellLine([0, 4, 8]), [0, 4, 8]);
+  assert.deepEqual(ui.winningCellLine([2, 4, 6]), [2, 4, 6]);
+  assert.deepEqual(ui.winningCellLine([0, 1]), [], "a partial line is not drawable");
+  assert.deepEqual(ui.winningCellLine([0, 0, 1]), [], "duplicates cannot make a line");
+  assert.deepEqual(ui.winningCellLine([0, 1, 9]), [], "out-of-range cells are not a line");
+  assert.deepEqual(ui.winningCellLine(null), []);
 });
 
 // ════════════════════════════════════════════════════════════════════════
@@ -891,7 +936,7 @@ test("discovery: the lobby card links to the game and is a 1v1 duel", () => {
   // draws the SAME card as the lobby; what must hold is that this game's own
   // shipped art is registered there and that the lobby draws cards from it.
   const art = code(ART_REGISTRY);
-  assert.match(art, /import ticTacToeArt from "\.\.\/\.\.\/images\/tic-tac-toe-card\.svg"/);
+  assert.match(art, /import ticTacToeArt from "\.\.\/\.\.\/images\/cards\/tic-tac-toe\.svg"/);
   assert.match(art, /"tic-tac-toe": ticTacToeArt/);
   assert.match(src, /import \{ GAME_CARD_ART \} from "\.\.\/\.\.\/components\/games\/gameCardArt"/);
   // It is a recent card, so it rides the "Newest" sort — directly ahead of

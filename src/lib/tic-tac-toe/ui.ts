@@ -112,6 +112,25 @@ export function winningCellSet(winningLine: unknown): Set<number> {
   return new Set(winningLine.filter(isBoardIndex));
 }
 
+/**
+ * The winning cells as an ORDERED line, or [] when it cannot be drawn.
+ *
+ * `winningCellSet` answers "which cells are highlighted"; this answers "draw a
+ * line through them". A line needs exactly three distinct valid cells (the
+ * server always sends three for a claimed board), and the endpoints must be the
+ * two ends of the run — sorting the indices gives that for every line shape
+ * (row, column and both diagonals), so a payload that arrives in a different
+ * order still draws the same line. Anything else is treated as no line at all
+ * rather than guessing: the renderer must never invent a winning line the
+ * server did not send.
+ */
+export function winningCellLine(winningLine: unknown): number[] {
+  if (!Array.isArray(winningLine)) return [];
+  const cells = winningLine.map(Number).filter(isBoardIndex);
+  const unique = Array.from(new Set(cells)).sort((a, b) => a - b);
+  return unique.length === 3 ? unique : [];
+}
+
 /** The 0-based index of the last accepted move's cell, or -1. */
 export function lastMoveCellIndex(lastMove: unknown): number {
   const index = (lastMove as { cellIndex?: unknown } | null)?.cellIndex;

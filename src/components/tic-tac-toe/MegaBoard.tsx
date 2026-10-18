@@ -99,9 +99,12 @@ export type MegaBoardProps = {
 
 /** The frame + chip styling for each board state. */
 const CARD_FRAME: Record<BoardVisualState, string> = {
+  // The required board owns the eye, but with a seated shadow rather than a
+  // halo: a downward drop plus a 1px top-lit edge reads as a raised card on a
+  // dark ground without smearing the board's own border.
   required:
-    "border-amber-300/80 bg-amber-400/[0.07] ring-2 ring-amber-300/60 shadow-[0_0_26px_-4px_rgba(251,191,36,0.55)]",
-  open: "border-amber-400/25 bg-black/40 hover:border-amber-300/45",
+    "border-amber-300/80 bg-amber-400/[0.07] ring-2 ring-amber-300/60 shadow-[0_14px_28px_-22px_rgba(251,191,36,0.9),inset_0_1px_0_rgba(255,255,255,0.07)]",
+  open: "border-amber-400/25 bg-black/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] hover:border-amber-300/45",
   waiting: "border-white/[0.08] bg-black/40 opacity-60",
   "won-x": "border-amber-400/40 bg-amber-400/[0.05]",
   "won-o": "border-cyan-400/40 bg-cyan-400/[0.05]",
@@ -431,6 +434,19 @@ function MegaBoard({
                   aria-hidden="true"
                   className="pointer-events-none absolute inset-0 h-full w-full"
                 >
+                  {/* Dark casing under the animated line, so the outcome reads
+                      over three different card grounds without a glow. */}
+                  <line
+                    x1={overlay.x1}
+                    y1={overlay.y1}
+                    x2={overlay.x2}
+                    y2={overlay.y2}
+                    stroke="var(--gr-outline, #05101f)"
+                    strokeWidth="7"
+                    strokeLinecap="round"
+                    vectorEffect="non-scaling-stroke"
+                    opacity="0.7"
+                  />
                   <motion.line
                     x1={overlay.x1}
                     y1={overlay.y1}
@@ -440,7 +456,6 @@ function MegaBoard({
                     strokeWidth="3"
                     strokeLinecap="round"
                     vectorEffect="non-scaling-stroke"
-                    style={{ filter: `drop-shadow(0 0 7px ${overlay.color})` }}
                     {...withReducedMotion(reduce, {
                       initial: { opacity: 0 },
                       animate: { opacity: 0.95 },

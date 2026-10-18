@@ -44,6 +44,13 @@ import { towerArenaDueRead } from "../../../../../lib/deadlineRead";
 import { useDeadlineRead } from "../../../../../hooks/useDeadlineRead";
 import { useServerClockEstimate } from "../../../../../hooks/useServerClockEstimate";
 import {
+  BlockCell,
+  BlockGlyph,
+  BLOCK_DANGER_PALETTE,
+  blockPaletteFor,
+} from "../../../../../components/tower-arena/BlockArt";
+import { GameBoardFrame } from "../../../../../components/game-ui";
+import {
   blockCells,
   blockWidth,
   centerXFor,
@@ -80,81 +87,6 @@ const SHAPE_NAME: Record<BlockShape, string> = {
   long: "Long Beam",
   big: "Big Block",
 };
-
-// Per-shape color identity (fill + bright edge). Each shape family keeps one
-// hue so players can read the piece type at a glance; the cell renderer adds
-// a top gloss + bottom bevel on top of these.
-const SHAPE_COLORS: Record<BlockShape, { fill: string; edge: string }> = {
-  short: { fill: "#a5f3fc", edge: "#e0fcff" },   // ice
-  square: { fill: "#f5ff3b", edge: "#ffffd1" },  // neon
-  I: { fill: "#00e5ff", edge: "#9df6ff" },       // cyan beam
-  L: { fill: "#ff5c8a", edge: "#ffb8cd" },       // rose spire
-  T: { fill: "#a78bfa", edge: "#d9ccff" },       // violet post
-  long: { fill: "#7cf29c", edge: "#c9ffe1" },    // mint slab
-  big: { fill: "#ff9f43", edge: "#ffdcb0" },     // amber block
-};
-
-/**
- * One cell of a block, drawn in the shared block visual language (rounded
- * slab, bright top gloss, grounded bottom bevel, crisp edge in the shape's
- * accent color). Used by the MINI BLOCK ICONS in the chooser AND by the
- * real blocks in the tower — a block looks exactly like its icon, so the
- * picker never misrepresents what lands. Coordinates are in the caller's
- * own space; `size` is the cell edge length.
- */
-function BlockCell({
-  x,
-  y,
-  fill,
-  edge,
-  size = 0.96,
-  rx = 0.1,
-  opacity = 1,
-}: {
-  x: number;
-  y: number;
-  fill: string;
-  edge: string;
-  size?: number;
-  rx?: number;
-  opacity?: number;
-}) {
-  return (
-    <g opacity={opacity}>
-      {/* Base slab in the shape color with a crisp edge. */}
-      <rect
-        x={x}
-        y={y}
-        width={size}
-        height={size}
-        rx={rx}
-        fill={fill}
-        stroke={edge}
-        strokeWidth={Math.max(0.03, size * 0.05)}
-      />
-      {/* Top gloss — light catching the upper face. */}
-      <rect
-        x={x + size * 0.1}
-        y={y + size * 0.09}
-        width={size * 0.8}
-        height={size * 0.22}
-        rx={Math.max(0.02, size * 0.08)}
-        fill="#ffffff"
-        opacity={0.32}
-      />
-      {/* Bottom bevel — grounds the cell. */}
-      <rect
-        x={x + size * 0.1}
-        y={y + size * 0.8}
-        width={size * 0.8}
-        height={size * 0.13}
-        rx={Math.max(0.02, size * 0.05)}
-        fill="#000000"
-        opacity={0.2}
-      />
-    </g>
-  );
-}
 
 // ── Types (mirror the get-match projection) ───────────────────────────
 
@@ -487,16 +419,14 @@ export function TowerScene({
     return () => window.clearTimeout(timer);
   }, [falling?.key, fallSeconds]);
 
-  // The falling block's own look, resolved once: the trail ghosts render in
-  // exactly these two colors, so a ghost can only ever be a faded copy of the
-  // block it trails (never a different shade, and never a different shape —
-  // both walk the same `falling.cells`).
-  const fallingFill = falling?.willFall
-    ? "#ff4d6d"
-    : SHAPE_COLORS[falling?.shape as BlockShape]?.fill ?? "#a7f3d0";
-  const fallingEdge = falling?.willFall
-    ? "#ff8fa3"
-    : SHAPE_COLORS[falling?.shape as BlockShape]?.edge ?? "#ffffff";
+  // The falling block's own look, resolved once: the trail ghosts render with
+  // exactly this palette, so a ghost can only ever be a faded copy of the block
+  // it trails (never a different shade, and never a different shape — both walk
+  // the same `falling.cells`). A doomed drop wears the shared danger palette,
+  // which is the same three-value shading in red rather than a separate style.
+  const fallingPalette = falling?.willFall
+    ? BLOCK_DANGER_PALETTE
+    : blockPaletteFor(falling?.shape);
 
   // Decorative motion only — reduced-motion viewers get the drop without the
   // trail (the block itself still falls, so no gameplay feedback is lost).
@@ -677,15 +607,14 @@ export function TowerScene({
           cell drawn with the shared BlockCell look so each landed block
           matches its chooser icon exactly. */}
       {sortedBlocks.map((b) => {
-        const style = SHAPE_COLORS[b.shape as BlockShape] ?? SHAPE_COLORS.short;
+        const palette = blockPaletteFor(b.shape);
         return (b.cells || []).map((c: any) => (
           <BlockCell
             key={`${b.id}-${c.x}:${c.z}`}
             x={c.x + 0.02}
             y={cellY(c.z) + 0.02}
             size={0.96}
-            fill={style.fill}
-            edge={style.edge}
+            palette={palette}
           />
         ));
       })}
@@ -798,8 +727,7 @@ export function TowerScene({
                   x={c.x + 0.02}
                   y={cellY(c.z) + 0.02}
                   size={0.96}
-                  fill="#ff9f43"
-                  edge="#ffdcb0"
+                  palette={blockPaletteFor("big")}
                 />
               ))}
             </motion.g>
@@ -844,8 +772,7 @@ export function TowerScene({
                     x={c.x + 0.02}
                     y={cellY(c.z) + 0.02}
                     size={0.96}
-                    fill={fallingFill}
-                    edge={fallingEdge}
+                    palette={fallingPalette}
                   />
                 ))}
               </motion.g>
@@ -888,8 +815,7 @@ export function TowerScene({
                 x={c.x + 0.02}
                 y={cellY(c.z) + 0.02}
                 size={0.96}
-                fill={fallingFill}
-                edge={fallingEdge}
+                palette={fallingPalette}
               />
             ))}
           </motion.g>
@@ -917,15 +843,8 @@ export function TowerScene({
               x={c.x + 0.02}
               y={cellY(c.z) + 0.02}
               size={0.96}
-              fill={
-                cursor?.danger
-                  ? "#ff4d6d"
-                  : SHAPE_COLORS[cursor.shape as BlockShape]?.fill ?? "#67e8f9"
-              }
-              edge={
-                cursor?.danger
-                  ? "#ff8fa3"
-                  : SHAPE_COLORS[cursor.shape as BlockShape]?.edge ?? "#ffffff"
+              palette={
+                cursor?.danger ? BLOCK_DANGER_PALETTE : blockPaletteFor(cursor.shape)
               }
               opacity={0.85}
             />
@@ -2478,71 +2397,6 @@ function PauseChip({ paused, busy, onToggle }: { paused: boolean; busy: boolean;
   );
 }
 
-// Small side-view glyph of a block shape — the chooser's icon for that
-// block. It is drawn from the REAL footprint (blockCells: the same cells
-// that land in the tower) and uses the same per-shape color + a matching
-// gloss/edge treatment, so the icon is a truthful miniature of the actual
-// block — never a misleading text glyph or a different-looking shape.
-function BlockGlyph({ shape, size = 26 }: { shape: BlockShape; size?: number }) {
-  const cells = blockCells(shape, 0);
-  const maxX = Math.max(...cells.map(([x]) => x));
-  const maxZ = Math.max(...cells.map(([, z]) => z));
-  const w = maxX + 1;
-  const h = maxZ + 1;
-  // Lay the icon out in real pixels (cell ≈ 6-8 px) so the 1px edges and
-  // gloss read crisply at button size.
-  const cell = size / Math.max(w, h);
-  const style = SHAPE_COLORS[shape] ?? SHAPE_COLORS.short;
-  return (
-    <svg
-      width={w * cell}
-      height={h * cell}
-      viewBox={`0 0 ${w * cell} ${h * cell}`}
-      className="shrink-0"
-      aria-hidden
-    >
-      {cells.map(([x, z], i) => {
-        const cx = x * cell;
-        const cy = (h - 1 - z) * cell;
-        return (
-          <g key={i}>
-            <rect
-              x={cx + 0.6}
-              y={cy + 0.6}
-              width={cell - 1.2}
-              height={cell - 1.2}
-              rx={Math.max(1, cell * 0.14)}
-              fill={style.fill}
-              stroke={style.edge}
-              strokeWidth={Math.max(0.8, cell * 0.09)}
-            />
-            {/* Top gloss — same orientation as the real block cells. */}
-            <rect
-              x={cx + cell * 0.14}
-              y={cy + cell * 0.12}
-              width={cell * 0.72}
-              height={cell * 0.24}
-              rx={Math.max(0.6, cell * 0.09)}
-              fill="#ffffff"
-              opacity={0.34}
-            />
-            {/* Bottom bevel */}
-            <rect
-              x={cx + cell * 0.14}
-              y={cy + cell * 0.78}
-              width={cell * 0.72}
-              height={cell * 0.14}
-              rx={Math.max(0.5, cell * 0.06)}
-              fill="#000000"
-              opacity={0.22}
-            />
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
 // ── Placement controls ─────────────────────────────────────────────────
 
 function PlacementControls(props: any) {
@@ -2565,11 +2419,11 @@ function PlacementControls(props: any) {
   const interactive = !disabled;
 
   return (
-    <div
-      className={`mt-4 rounded-xl border bg-black/30 p-4 ${
-        disabled ? "border-cyan-900/30" : "border-cyan-700/40"
-      }`}
-    >
+    // The tray is a board surface like any other in GRYND: the shared frame
+    // supplies the hairline, radius, raised ground and depth, so the picker sits
+    // in the same panel language as the rest of the app instead of its own
+    // `rounded-xl border bg-black/30` copy.
+    <GameBoardFrame padding="md" className="mt-4">
       <p className="mb-2 text-xs font-semibold text-white/70">
         {disabled
           ? "Blocks left in the shared pool — pick one when it's your turn."
@@ -2594,15 +2448,24 @@ function PlacementControls(props: any) {
               }
               aria-label={`${SHAPE_NAME[s]} block, ${shapeCounts[s] || 0} available${disabled ? ", disabled until your turn" : ""}`}
               aria-disabled={disabled || undefined}
+              // Selection uses the shared state language (the brand-yellow
+              // dashed keyline from `.gr-selected`, plus the glyph's own
+              // selected keyline) instead of a one-off cyan glow, so a picked
+              // piece is unmistakable without mistaking it for a hover.
+              aria-pressed={selectedShape === s}
               className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 transition ${
-                interactive && selectedShape === s
-                  ? "border-cyan-400 bg-cyan-500/20 shadow-[0_0_14px_rgba(0,229,255,0.3)]"
-                  : disabled
-                    ? "cursor-not-allowed border-white/10 bg-white/[0.02] opacity-60"
-                    : "border-white/15 bg-white/[0.03] hover:border-cyan-500/40"
-              } disabled:opacity-60`}
+                disabled
+                  ? "cursor-not-allowed border-white/10 bg-white/[0.02] opacity-70"
+                  : selectedShape === s
+                    ? "gr-selected border-brand-yellow/60 bg-brand-yellow/10"
+                    : "border-white/15 bg-white/[0.03] hover:border-cyan-500/40 hover:bg-white/[0.06]"
+              }`}
             >
-              <BlockGlyph shape={s} size={26} />
+              <BlockGlyph
+                shape={s}
+                size={26}
+                state={disabled ? "unavailable" : selectedShape === s ? "selected" : "available"}
+              />
               <span
                 className={`text-xs font-bold ${disabled ? "text-white/45" : "text-white/70"}`}
               >
@@ -2649,7 +2512,7 @@ function PlacementControls(props: any) {
           land; crossing the ceiling eliminates the current player.
         </p>
       ) : null}
-    </div>
+    </GameBoardFrame>
   );
 }
 

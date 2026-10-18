@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GRYND — Migrated game screens</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #030817;
+        --panel: #08142f;
+        --line: #05101f;
+        --cyan: #00e5ff;
+        --ink: #eaf6ff;
+        --muted: #9db4cc;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: radial-gradient(1200px 600px at 20% 0%, #0b1c3a 0%, var(--bg) 60%);
+        color: var(--ink);
+        font:
+          15px/1.55 "Segoe UI",
+          system-ui,
+          -apple-system,
+          sans-serif;
+      }
+      main {
+        max-width: 1360px;
+        margin: 0 auto;
+        padding: 40px 24px 72px;
+      }
+      header h1 {
+        margin: 0 0 6px;
+        font-size: 28px;
+        letter-spacing: -0.01em;
+      }
+      header p {
+        margin: 0;
+        max-width: 78ch;
+        color: var(--muted);
+      }
+      header a {
+        color: var(--cyan);
+      }
+      .sheets {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin: 22px 0 8px;
+      }
+      .sheets a {
+        padding: 8px 14px;
+        border: 2px solid var(--line);
+        border-radius: 10px;
+        background: var(--panel);
+        color: var(--ink);
+        font-weight: 700;
+        text-decoration: none;
+      }
+      .sheets a:hover {
+        border-color: var(--cyan);
+      }
+      section.game {
+        margin-top: 42px;
+      }
+      section.game h2 {
+        margin: 0 0 4px;
+        font-size: 20px;
+      }
+      section.game h2 span {
+        color: var(--cyan);
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        margin-left: 10px;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+        margin-top: 14px;
+      }
+      figure {
+        margin: 0;
+        border: 2px solid var(--line);
+        border-radius: 14px;
+        background: var(--panel);
+        overflow: hidden;
+      }
+      figure a {
+        display: block;
+      }
+      figure img {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+      figcaption {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 9px 12px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      figcaption a {
+        color: var(--cyan);
+        text-decoration: none;
+        text-transform: none;
+        letter-spacing: 0;
+      }
+      .phone .row {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+      .phone figure img {
+        aspect-ratio: 390 / 844;
+        object-fit: cover;
+        object-position: top;
+      }
+      @media (max-width: 900px) {
+        .phone .row {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Migrated game screens</h1>
+        <p>
+          The four games migrated in prompts 6 and 7 — Mines Duel, Memory Grid, Solitaire Duel
+          and Keno PvP — captured fully loaded from the real pages at 1280×900 and 390×844.
+          These are design references; the account and match payloads are fixtures.
+        </p>
+        <div class="sheets">
+          <a href="contact-desktop.png">Desktop contact sheet (all 8)</a>
+          <a href="contact-mobile.png">Mobile contact sheet (all 8)</a>
+        </div>
+      </header>
+
+      <section class="game">
+        <h2>Solitaire Duel <span>Cards</span></h2>
+        <div class="row">
+          <figure>
+            <a href="solitaire-lobby-1280.png"><img src="solitaire-lobby-1280.png" alt="Solitaire Duel lobby at 1280px" loading="lazy" /></a>
+            <figcaption><span>Lobby · 1280</span><a href="solitaire-lobby-390.png">390 version</a></figcaption>
+          </figure>
+          <figure>
+            <a href="solitaire-match-1280.png"><img src="solitaire-match-1280.png" alt="Solitaire Duel game at 1280px" loading="lazy" /></a>
+            <figcaption><span>Game · 1280</span><a href="solitaire-match-390.png">390 version</a></figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="game">
+        <h2>Keno PvP <span>Numbers</span></h2>
+        <div class="row">
+          <figure>
+            <a href="keno-lobby-1280.png"><img src="keno-lobby-1280.png" alt="Keno lobby at 1280px" loading="lazy" /></a>
+            <figcaption><span>Lobby · 1280</span><a href="keno-lobby-390.png">390 version</a></figcaption>
+          </figure>
+          <figure>
+            <a href="keno-match-1280.png"><img src="keno-match-1280.png" alt="Keno PvP game at 1280px" loading="lazy" /></a>
+            <figcaption><span>Game · 1280</span><a href="keno-match-390.png">390 version</a></figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="game">
+        <h2>Mines Duel <span>Grid · flags</span></h2>
+        <div class="row">
+          <figure>
+            <a href="mines-lobby-1280.png"><img src="mines-lobby-1280.png" alt="Mines Duel lobby at 1280px" loading="lazy" /></a>
+            <figcaption><span>Lobby · 1280</span><a href="mines-lobby-390.png">390 version</a></figcaption>
+          </figure>
+          <figure>
+            <a href="mines-match-1280.png"><img src="mines-match-1280.png" alt="Mines Duel game at 1280px" loading="lazy" /></a>
+            <figcaption><span>Game · 1280</span><a href="mines-match-390.png">390 version</a></figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="game">
+        <h2>Memory Grid <span>Grid · pattern</span></h2>
+        <div class="row">
+          <figure>
+            <a href="memory-lobby-1280.png"><img src="memory-lobby-1280.png" alt="Memory Grid lobby at 1280px" loading="lazy" /></a>
+            <figcaption><span>Lobby · 1280</span><a href="memory-lobby-390.png">390 version</a></figcaption>
+          </figure>
+          <figure>
+            <a href="memory-match-1280.png"><img src="memory-match-1280.png" alt="Memory Grid game at 1280px" loading="lazy" /></a>
+            <figcaption><span>Game · 1280</span><a href="memory-match-390.png">390 version</a></figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="game phone">
+        <h2>Phone captures <span>390 × 844 · full page</span></h2>
+        <div class="row">
+          <figure><a href="solitaire-lobby-390.png"><img src="solitaire-lobby-390.png" alt="Solitaire lobby phone" loading="lazy" /></a><figcaption>Solitaire lobby</figcaption></figure>
+          <figure><a href="solitaire-match-390.png"><img src="solitaire-match-390.png" alt="Solitaire game phone" loading="lazy" /></a><figcaption>Solitaire game</figcaption></figure>
+          <figure><a href="keno-lobby-390.png"><img src="keno-lobby-390.png" alt="Keno lobby phone" loading="lazy" /></a><figcaption>Keno lobby</figcaption></figure>
+          <figure><a href="keno-match-390.png"><img src="keno-match-390.png" alt="Keno game phone" loading="lazy" /></a><figcaption>Keno game</figcaption></figure>
+          <figure><a href="mines-lobby-390.png"><img src="mines-lobby-390.png" alt="Mines lobby phone" loading="lazy" /></a><figcaption>Mines lobby</figcaption></figure>
+          <figure><a href="mines-match-390.png"><img src="mines-match-390.png" alt="Mines game phone" loading="lazy" /></a><figcaption>Mines game</figcaption></figure>
+          <figure><a href="memory-lobby-390.png"><img src="memory-lobby-390.png" alt="Memory lobby phone" loading="lazy" /></a><figcaption>Memory lobby</figcaption></figure>
+          <figure><a href="memory-match-390.png"><img src="memory-match-390.png" alt="Memory game phone" loading="lazy" /></a><figcaption>Memory game</figcaption></figure>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

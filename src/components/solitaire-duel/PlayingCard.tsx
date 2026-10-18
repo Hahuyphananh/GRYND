@@ -77,14 +77,22 @@ export default function PlayingCard({
 }: PlayingCardProps) {
   const red = faceUp && card ? isRedSuit(card.suit) : false;
 
-  // The selected card is lifted a hair; a legal target gets a warm ring. Both
-  // are transform/ring only — no layout shift, so a fast player never has a
+  // The selected card is lifted a hair AND takes the shared dashed selection
+  // outline; a legal target gets a SOLID cyan ring. The two differ in shape
+  // (dashed vs solid) as well as hue, so a colour-blind player can tell the
+  // card they are holding from the piles that will accept it. Both are
+  // outline/transform only — no layout shift, so a fast player never has a
   // card move out from under the cursor mid-click.
   const stateClasses = selected
-    ? "-translate-y-[3px] ring-2 ring-amber-300 shadow-[0_6px_18px_rgba(251,191,36,0.45)]"
+    ? // A dark 2px halo first, then the dashed yellow outline: the selected
+      // card usually overlaps the white card BELOW it, and yellow dashes on
+      // white would disappear there.
+      "gr-selected z-10 -translate-y-[3px] shadow-[0_0_0_2px_#030817,0_6px_16px_rgba(3,8,20,0.5)]"
     : highlighted
-      ? "ring-2 ring-[#00e5ff]/80 shadow-[0_0_14px_rgba(0,229,255,0.4)]"
-      : "ring-1 ring-black/40";
+      ? // Cyan, not the near-white legal-move token: this ring paints over the
+        // white face of the card above it in a fan.
+        "ring-2 ring-[color:var(--gr-brand-cyan)] shadow-[0_0_0_1px_var(--gr-outline),0_0_12px_rgba(0,229,255,0.35)]"
+      : "";
   const dim = dimmed ? "opacity-70" : "";
 
   if (!faceUp || !card) {
@@ -100,13 +108,13 @@ export default function PlayingCard({
         data-testid={testId}
         data-face-up="false"
         style={style}
-        className={`relative flex h-full w-full select-none items-center justify-center overflow-hidden rounded-[6px] border border-[#1b2a4a] bg-gradient-to-br from-[#1d3a63] via-[#16294a] to-[#0f1d36] transition ${stateClasses} ${dim} ${
+        className={`gr-focusable relative flex h-full w-full select-none items-center justify-center overflow-hidden rounded-[6px] border-2 border-[color:var(--gr-outline)] bg-gradient-to-br from-[#1d3a63] via-[#16294a] to-[#0f1d36] shadow-[0_1px_2px_rgba(3,8,20,0.55)] transition focus-visible:z-10 ${stateClasses} ${dim} ${
           interactive ? "cursor-pointer hover:brightness-125" : "cursor-default"
         } ${className}`}
       >
         <span
           aria-hidden="true"
-          className="h-[62%] w-[62%] rounded-[4px] border border-[#00e5ff]/25 bg-[repeating-linear-gradient(45deg,rgba(0,229,255,0.16)_0_3px,transparent_3px_6px)]"
+          className="h-[62%] w-[62%] rounded-[4px] border border-[color:var(--gr-hairline)] bg-[repeating-linear-gradient(45deg,rgba(0,229,255,0.16)_0_3px,transparent_3px_6px)]"
         />
       </button>
     );
@@ -123,7 +131,7 @@ export default function PlayingCard({
       data-face-up="true"
       data-card={`${card.suit}-${card.rank}`}
       style={style}
-      className={`relative flex h-full w-full select-none flex-col overflow-hidden rounded-[6px] border border-black/30 bg-gradient-to-b from-white to-[#e8ecf3] text-left shadow-[0_1px_2px_rgba(0,0,0,0.4)] transition ${
+      className={`gr-focusable relative flex h-full w-full select-none flex-col overflow-hidden rounded-[6px] border-2 border-[color:var(--gr-outline)] bg-gradient-to-b from-white to-[#e8ecf3] text-left shadow-[0_2px_0_-1px_rgba(3,8,20,0.8),0_1px_3px_rgba(0,0,0,0.4)] transition focus-visible:z-10 ${
         red ? "text-[#d81f3a]" : "text-[#141a24]"
       } ${stateClasses} ${dim} ${
         interactive ? "cursor-pointer hover:brightness-105" : "cursor-default"

@@ -120,10 +120,12 @@ function EmptySlot({
       data-testid={testId}
       aria-label={hint || label}
       style={slotStyle()}
-      className={`flex select-none flex-col items-center justify-center rounded-[6px] border-2 border-dashed text-white/35 transition ${
+      className={`gr-focusable flex select-none flex-col items-center justify-center rounded-[6px] border-2 transition ${
         highlighted
-          ? "border-[#00e5ff]/80 bg-[#00e5ff]/10 text-[#9beaff] shadow-[0_0_14px_rgba(0,229,255,0.35)]"
-          : "border-white/15 bg-white/[0.03]"
+          ? // An empty pile that will accept the held card: SOLID edge, while
+            // the held card itself wears the dashed selection outline.
+            "border-solid border-[color:var(--gr-legal-move)] bg-[#eaf6ff]/10 text-[color:var(--gr-legal-move)] shadow-[0_0_12px_rgba(234,246,255,0.25)]"
+          : "border-dashed border-[color:var(--gr-border)] bg-[#040d24]/70 text-[color:var(--gr-ink-subtle)]"
       } ${interactive ? "cursor-pointer hover:border-white/30" : "cursor-default"}`}
     >
       <span aria-hidden="true" className="text-[clamp(13px,2vw,22px)] leading-none">
@@ -196,7 +198,7 @@ export default function SolitaireBoard({
       <div
         data-testid="solitaire-board"
         data-empty="true"
-        className="flex h-64 items-center justify-center rounded-2xl border border-white/10 bg-black/30 text-sm text-white/50"
+        className="flex h-64 items-center justify-center rounded-2xl border border-[color:var(--gr-hairline)] bg-black/30 text-sm text-white/50"
       >
         Waiting for the server&apos;s deal…
       </div>
@@ -258,13 +260,13 @@ export default function SolitaireBoard({
             data-testid="solitaire-stock"
             data-remaining={stockCount}
             style={slotStyle()}
-            className={`relative flex select-none items-center justify-center overflow-hidden rounded-[6px] border border-[#1b2a4a] bg-gradient-to-br from-[#1d3a63] via-[#16294a] to-[#0f1d36] transition ${
+            className={`gr-focusable relative flex select-none items-center justify-center overflow-hidden rounded-[6px] border-2 border-[color:var(--gr-outline)] bg-gradient-to-br from-[#1d3a63] via-[#16294a] to-[#0f1d36] shadow-[0_1px_2px_rgba(3,8,20,0.55)] transition ${
               stockInteractive ? "cursor-pointer hover:brightness-125" : "cursor-default"
             }`}
           >
             <span
               aria-hidden="true"
-              className="h-[62%] w-[62%] rounded-[4px] border border-[#00e5ff]/25 bg-[repeating-linear-gradient(45deg,rgba(0,229,255,0.16)_0_3px,transparent_3px_6px)]"
+              className="h-[62%] w-[62%] rounded-[4px] border border-[color:var(--gr-hairline)] bg-[repeating-linear-gradient(45deg,rgba(0,229,255,0.16)_0_3px,transparent_3px_6px)]"
             />
             <span className="absolute bottom-0.5 right-1 text-[10px] font-black text-white/80">
               {stockCount}

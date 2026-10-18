@@ -62,7 +62,6 @@ import { minesPvpDueRead } from "../../../../lib/deadlineRead";
 import { useDeadlineRead } from "../../../../hooks/useDeadlineRead";
 import { useServerClockEstimate } from "../../../../hooks/useServerClockEstimate";
 import {
-  IconBomb,
   IconSparkles,
   IconDiamondFilled,
   IconQuestionMark,
@@ -82,7 +81,52 @@ const RESULT_BEAT_MS = 900;
 // Finished-reveal sweep step (in index order: top-left → bottom-right).
 const REVEAL_STEP_MS = 6;
 
-// ── Animation: bomb glyph (reused from the original Mines board) ─────
+// ── The mine and the flag ─────────────────────────────────────────────
+//
+// Drawn here, in the shared cartoon language, instead of borrowed from an
+// icon set: a spiked ball with one dark outline, a pink body and a single
+// highlight — the same three-value treatment (and the same `--gr-outline`
+// edge) as every other game piece. A mine must never read as a generic token,
+// and a flag must look planted, not pasted on.
+const GR_OUTLINE = "var(--gr-outline, #05101f)";
+
+function MineGlyph({ size = 18, className = "" }: { size?: number; className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      className={className}
+      aria-hidden="true"
+      focusable="false"
+    >
+      <g stroke={GR_OUTLINE} strokeWidth="2.8" strokeLinecap="round">
+        <path d="M12 2.6V6M12 18v3.4M2.6 12H6M18 12h3.4M5.4 5.4l2.4 2.4M16.2 16.2l2.4 2.4M18.6 5.4l-2.4 2.4M7.8 16.2l-2.4 2.4" />
+      </g>
+      <circle cx="12" cy="12" r="6.6" fill="#ff4fd8" stroke={GR_OUTLINE} strokeWidth="2.4" />
+      <path d="M8.6 9.6a4.4 4.4 0 0 1 3-2.3" fill="none" stroke="#ffe4f8" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function FlagGlyph({ size = 16, className = "" }: { size?: number; className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      className={className}
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M8 21V4" stroke={GR_OUTLINE} strokeWidth="3.2" strokeLinecap="round" />
+      <path d="M8 4.6 19 8 8 11.4 Z" fill="#ff5a6e" stroke={GR_OUTLINE} strokeWidth="2" strokeLinejoin="round" />
+      <rect x="4.6" y="18.8" width="10" height="2.6" rx="1.3" fill="#22d3ee" stroke={GR_OUTLINE} strokeWidth="1.4" />
+    </svg>
+  );
+}
+
+// ── Animation: the mine's fuse + explosion (reused from the original board) ─
 function AnimatedBomb({
   exploded = false,
   delayMs = 0,
@@ -92,12 +136,12 @@ function AnimatedBomb({
 }) {
   return (
     <span
-      className={`relative text-lg ${
+      className={`relative inline-flex ${
         exploded ? "animate-bomb-explode" : "animate-bomb-fuse"
       }`}
       style={delayMs > 0 ? { animationDelay: `${delayMs}ms` } : undefined}
     >
-      <IconBomb size={15} className="text-red-400" />
+      <MineGlyph size={18} />
       {!exploded && (
         <span className="absolute -top-1.5 -right-1.5 animate-ping">
           <IconSparkles size={8} className="text-orange-400" />
@@ -879,7 +923,7 @@ export default function MinesPvpMatchPage({
       return {
         content: (
           <span className="relative inline-flex items-center justify-center animate-tile-reveal">
-            <IconBomb size={15} className="text-red-300" />
+            <MineGlyph size={17} />
             <span className="animate-hint-pop absolute -top-2 -right-2 flex h-3.5 w-3.5 items-center justify-center rounded-full border border-emerald-300/50 bg-emerald-500/20 text-emerald-200">
               <CheckIcon className="h-2.5 w-2.5" />
             </span>
@@ -894,7 +938,7 @@ export default function MinesPvpMatchPage({
       return {
         content: (
           <span className="relative inline-flex items-center justify-center animate-tile-reveal">
-            <IconFlag size={15} className="text-red-300" />
+            <FlagGlyph size={17} />
             <span className="animate-hint-pop absolute -top-2 -right-2 flex h-3.5 w-3.5 items-center justify-center rounded-full border border-red-400/50 bg-red-500/20 text-red-200">
               <CrossIcon className="h-2.5 w-2.5" />
             </span>
@@ -927,25 +971,59 @@ export default function MinesPvpMatchPage({
     }
     // Flag mode: an unrevealed cell is a flag target.
     if (flagMode && !match.myLocked && isActive) {
-      return { content: <IconFlag size={15} className="text-red-300/70" />, revealed: false, isMine: false, tone: "flagTarget" };
+      return {
+        content: <FlagGlyph size={16} className="opacity-70" />,
+        revealed: false,
+        isMine: false,
+        tone: "flagTarget",
+      };
     }
     return { content: <IconQuestionMark size={15} className="text-white/25" />, revealed: false, isMine: false, tone: "hidden" };
   }
 
+  // ── The tiles, in the shared cartoon language ────────────────────────
+  //
+  // Every tile is a slab with ONE dark outline (`--gr-outline`), a light band
+  // along the top and a darker underside — the three values the rest of
+  // GRYND's pieces use, lit from the top-left. The tone only picks the HUE:
+  //
+  //   hidden      deep blue, raised: a tile you may still turn over
+  //   safe        revealed, flatter: carries the clue number
+  //   mine        detonated: hot pink, the loudest thing on the board
+  //   correctFlag emerald: a mine you PROVED by flagging it
+  //   wrongFlag   red: a flag the server rejected
+  //   flagTarget  red-tinted: the cell flag mode is pointing at
+  //
+  // Focus is the shared ring (`.gr-focusable`), so a keyboard player gets the
+  // same cue on a hidden, revealed or inert tile; `cursor-not-allowed` is the
+  // only "disabled" signal, because a revealed tile is still information, not
+  // a blanked-out control.
+  const TILE_DEPTH = {
+    raised: "shadow-[inset_0_2px_0_rgba(255,255,255,0.10),inset_0_-3px_0_rgba(3,8,20,0.55)]",
+    flat: "shadow-[inset_0_2px_0_rgba(160,235,255,0.16),inset_0_-2px_0_rgba(3,8,20,0.45)]",
+    hot: "shadow-[inset_0_2px_0_rgba(255,150,235,0.45),inset_0_-3px_0_rgba(70,0,45,0.6)]",
+    good: "shadow-[inset_0_2px_0_rgba(140,255,205,0.35),inset_0_-3px_0_rgba(0,50,30,0.55)]",
+    bad: "shadow-[inset_0_2px_0_rgba(255,160,170,0.3),inset_0_-3px_0_rgba(70,0,10,0.55)]",
+  } as const;
+
   function getCellClass(tone: ReturnType<typeof getCellDisplay>["tone"]): string {
+    // The border COLOUR lives on each tone (not on the shared base), so a tone
+    // class and the base can never fight over the same property.
+    const base =
+      "gr-focusable relative isolate flex h-full w-full items-center justify-center rounded-[4px] border-2 text-sm transition-[background-color,border-color,box-shadow,transform] duration-150 ease-out";
     switch (tone) {
       case "mine":
-        return "bg-[#3b1021] border-2 border-[#ff4fd8] shadow-[0_0_14px_rgba(255,79,216,0.6)]";
+        return `${base} bg-[#4a1030] border-[#ff4fd8] ${TILE_DEPTH.hot}`;
       case "correctFlag":
-        return "bg-[#12251a] border-2 border-emerald-400/70 shadow-[0_0_14px_rgba(52,211,153,0.5)]";
+        return `${base} bg-[#10291c] border-emerald-400/80 ${TILE_DEPTH.good}`;
       case "wrongFlag":
-        return "bg-[#2a0d1e] border-2 border-red-400/60";
+        return `${base} bg-[#2c0f16] border-[#ff5a6e] ${TILE_DEPTH.bad}`;
       case "safe":
-        return "bg-[#09243f] border border-[#00e5ff] ring-1 ring-cyan-300/40 shadow-[0_0_8px_rgba(0,229,255,0.25)]";
+        return `${base} bg-[#0b2a44] border-[#1d5b80] ${TILE_DEPTH.flat}`;
       case "flagTarget":
-        return "bg-[#2a0d1e] border border-red-400/60 hover:border-red-300 hover:shadow-[0_0_16px_rgba(248,113,113,0.45)]";
+        return `${base} bg-[#2c0f16] border-[#ff5a6e] ${TILE_DEPTH.bad} hover:-translate-y-px hover:border-[#ff8a99]`;
       default:
-        return "bg-[#071226] border border-[#00e5ff]/20 hover:border-[#00e5ff]/70 hover:shadow-[0_0_16px_rgba(0,229,255,0.35)]";
+        return `${base} border-[color:var(--gr-outline)] bg-[#0e2743] ${TILE_DEPTH.raised} hover:-translate-y-px hover:border-[#2f7fb8] hover:bg-[#143555]`;
     }
   }
 
@@ -1117,8 +1195,8 @@ export default function MinesPvpMatchPage({
 
   // ── Top scoreboard: YOU | clock | OPPONENT, with compact progress ──
   const scoreboardNode = (
-    <div className="mx-auto mt-4 w-full max-w-3xl rounded-2xl border border-[#00e5ff]/30 bg-[#08142f]/70 px-3 py-3 shadow-[0_0_30px_rgba(0,229,255,0.12)] sm:px-5">
-      <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-2 sm:gap-4">
+    <div className="mx-auto mt-4 w-full max-w-3xl rounded-2xl border border-[color:var(--gr-outline)] bg-[#08142f]/70 px-3 py-3 shadow-[inset_0_2px_0_rgba(255,255,255,0.05),0_10px_0_-4px_rgba(3,8,20,0.7)] sm:px-5 lg:mt-0 lg:max-w-none">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-2 sm:gap-4 lg:mt-0 lg:grid-cols-1">
         <ScoreSide
           align="left"
           accent="cyan"
@@ -1212,7 +1290,7 @@ export default function MinesPvpMatchPage({
 
   // ── Board ───────────────────────────────────────────────────────
   const boardNode = (
-    <div className="mines-board-frame relative mx-auto mt-4 w-full rounded-2xl border border-[#00e5ff]/40 bg-gradient-to-br from-[#001933] via-[#00111f] to-[#000814] p-2 shadow-[0_0_60px_rgba(0,229,255,0.18),inset_0_0_30px_rgba(0,229,255,0.08)] sm:p-3">
+    <div className="mines-board-frame mx-auto relative mt-4 w-full rounded-2xl border-2 border-[color:var(--gr-outline)] bg-[#0a1c33] p-2 shadow-[0_10px_0_-2px_rgba(3,8,20,0.85),inset_0_2px_0_rgba(255,255,255,0.07)] sm:p-3">
       <div className="grid grid-cols-10 gap-1 sm:gap-1.5">
         {Array.from({ length: GRID_CELLS }, (_, i) => i).map((cellIndex) => {
           const display = getCellDisplay(cellIndex);
@@ -1224,9 +1302,9 @@ export default function MinesPvpMatchPage({
               onClick={() => handleCellClick(cellIndex)}
               disabled={!clickable || busy}
               aria-label={`Tile ${cellIndex + 1}`}
-              className={`group w-full aspect-square rounded-none flex items-center justify-center transition-all duration-300 text-sm ${getCellClass(
-                display.tone,
-              )} ${!clickable ? "cursor-not-allowed" : ""}`}
+              className={`group w-full aspect-square ${getCellClass(display.tone)} ${
+                clickable ? "cursor-pointer" : "cursor-not-allowed"
+              }`}
               style={revealDelay > 0 ? { transitionDelay: `${revealDelay}ms` } : undefined}
             >
               <span className="inline-flex transition-transform duration-100 ease-out group-active:scale-90">
@@ -1274,7 +1352,7 @@ export default function MinesPvpMatchPage({
   );
 
   // ── Controls ────────────────────────────────────────────────────
-  const controlsNode =
+  const pickToggleNode =
     isActive && !match.myLocked ? (
       <div className="mt-3 flex flex-col items-center gap-2">
         <div className="inline-flex rounded-xl border border-cyan-300/30 bg-[#08142f]/80 p-1 text-xs font-bold">
@@ -1422,24 +1500,40 @@ export default function MinesPvpMatchPage({
       <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
         <NavigationBar currentPath="/casino" />
 
-        <div className="mx-auto mt-4 max-w-3xl sm:mt-8 lg:mt-4">
+        <div className="mx-auto mt-4 max-w-3xl sm:mt-8 lg:mt-4 lg:max-w-5xl">
           <GameSessionHost
             autoStart={Boolean(match) && !isWaiting && !isFinished && !isCancelled}
             autoStop={isFinished || isCancelled}
             gameLabel="mines-duel"
           >
             {titleNode}
-            {scoreboardNode}
-            {infoNode}
-            <div className="mt-3">{renderStatus()}</div>
-            {boardNode}
-            {messagesNode}
-            {controlsNode}
-            {errorNode}
-            {emoteNode}
-            {resignNode}
-            {legendNode}
-            {cancelNode}
+            {/* Desktop puts the seats, clock, status and controls in a
+                right-hand rail BESIDE the board, which is what frees the
+                height the square board grows into
+                (tests/board-fit-desktop.test.mjs pins this). Below `lg` the
+                rail is the same stack it always was: seats, status, controls,
+                then the board — so the phone layout keeps its reading order. */}
+            <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_17rem] lg:items-start lg:gap-6">
+              <div className="lg:order-2 lg:col-start-2 lg:row-start-1 lg:flex lg:flex-col lg:gap-3">
+                {scoreboardNode}
+                {infoNode}
+                <div className="mt-3 lg:mt-0">{renderStatus()}</div>
+                {resignNode || pickToggleNode || emoteNode ? (
+                  <div className="flex flex-col items-center gap-3 lg:mt-0">
+                    {pickToggleNode}
+                    {emoteNode}
+                    {resignNode}
+                  </div>
+                ) : null}
+              </div>
+              <div className="lg:order-1 lg:col-start-1 lg:row-start-1">
+                {boardNode}
+                {legendNode}
+                {messagesNode}
+                {errorNode}
+                {cancelNode}
+              </div>
+            </div>
             {renderResult()}
           </GameSessionHost>
 

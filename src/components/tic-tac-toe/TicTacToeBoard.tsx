@@ -30,6 +30,17 @@
 // Motion: a mark scales in when the SERVER confirms it, and the pending ghost
 // pulses until it is confirmed or dropped. Both are dropped entirely under
 // `prefers-reduced-motion`.
+//
+// ── SHARED PRIMITIVES ─────────────────────────────────────────────────────
+//
+// The tokens carry the visual standard: `--gr-outline` edges every mark, the
+// focus ring comes from `colors.state.focus`, and each cell's depth is the
+// shared inset-edge treatment. The cell SHELL is local on purpose: `GameCell`
+// publishes `data-state` for its own socket/legal/occupied states, while this
+// board's `data-state` is the mark on the cell ("X" / "O" / "empty") — the
+// attribute the tests and the browser harness read a position from. Merging the
+// two would change that contract, so the board keeps its own button and takes
+// only the primitives' language, not its markup.
 
 import { memo } from "react";
 import { motion, useReducedMotion } from "framer-motion";
@@ -42,6 +53,7 @@ import {
   normaliseBoard,
   seatColor,
   seatForMark,
+  winningCellLine,
   winningCellSet,
   boardIsResolved,
   type BoardVisualState,
@@ -57,19 +69,45 @@ import type { BoardControl, Cell, Mark, Seat } from "../../lib/tic-tac-toe/types
  * any size and inherit the seat's colour: a crossed pair of lines versus a
  * single ring. Shape AND colour both distinguish the players, so the board is
  * still readable for a colour-blind player.
+ *
+ * Each mark is painted TWICE — the same silhouette first in the shared cartoon
+ * outline (`--gr-outline`, the token every GRYND piece uses) and then in the
+ * seat's colour on top. That gives the marks the same dark edge as the rest of
+ * the app's pieces, keeps them legible on the lightened occupied cell, and adds
+ * depth without a glow (the old `drop-shadow` halo is gone). The two passes use
+ * one stroke weight, so X and O look like one family.
  */
 function MarkGlyph({ mark, className = "" }: { mark: Mark; className?: string }) {
-  if (mark === "X") {
-    return (
-      <svg viewBox="0 0 100 100" className={className} aria-hidden="true" focusable="false">
-        <line x1="20" y1="20" x2="80" y2="80" stroke="currentColor" strokeWidth="14" strokeLinecap="round" />
-        <line x1="80" y1="20" x2="20" y2="80" stroke="currentColor" strokeWidth="14" strokeLinecap="round" />
-      </svg>
+  const shape =
+    mark === "X" ? (
+      <>
+        <line x1="21" y1="21" x2="79" y2="79" />
+        <line x1="79" y1="21" x2="21" y2="79" />
+      </>
+    ) : (
+      <circle cx="50" cy="50" r="33" fill="none" />
     );
-  }
+
   return (
     <svg viewBox="0 0 100 100" className={className} aria-hidden="true" focusable="false">
-      <circle cx="50" cy="50" r="33" fill="none" stroke="currentColor" strokeWidth="14" strokeLinecap="round" />
+      <g
+        fill="none"
+        stroke="var(--gr-outline, #05101f)"
+        strokeWidth="21"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        {shape}
+      </g>
+      <g
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="13"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        {shape}
+      </g>
     </svg>
   );
 }
@@ -157,6 +195,22 @@ function TicTacToeBoard({
   const offers = viewerCanMove && !locked;
   const required = state === "required";
 
+  // The winning line, DRAWN and not just tinted. `winningCellLine` orders the
+  // three cells and rejects anything that is not a complete line; the colour is
+  // used only when all three cells really hold the same mark, so an
+  // inconsistent payload draws nothing instead of a wrong line.
+  const winLine = winningCellLine(winningLine);
+  const winMark = winLine.length === 3 ? cells[winLine[0]] : null;
+  const lineMark =
+    winMark && winLine.every((index) => cells[index] === winMark) ? winMark : null;
+  const lineColor = lineMark ? seatColor(seatForMark(lineMark)) : null;
+  // Cell centre in the 3x3 grid, as a percentage of the whole board. The gaps
+  // shift a centre by well under 1% of the board, which the rounded caps absorb.
+  const linePoint = (index: number) => ({
+    x: (((index % BOARD_SIZE) + 0.5) / BOARD_SIZE) * 100,
+    y: ((Math.floor(index / BOARD_SIZE) + 0.5) / BOARD_SIZE) * 100,
+  });
+
   const markMotion = withReducedMotion(reduce, {
     initial: { opacity: 0, scale: 0.55 },
     animate: { opacity: 1, scale: 1 },
@@ -177,7 +231,7 @@ function TicTacToeBoard({
       data-mega-line={megaLine ? "true" : "false"}
       data-viewer-mark={viewerMark ?? ""}
       data-viewer-can-move={offers ? "true" : "false"}
-      className={`grid grid-cols-3 ${compact ? "gap-[3px] sm:gap-1" : "gap-1.5 sm:gap-2.5"} ${
+      className={`relative grid grid-cols-3 ${compact ? "gap-[3px] sm:gap-1" : "gap-1.5 sm:gap-2.5"} ${
         megaLine ? "rounded-xl ring-2 ring-emerald-300/60 ring-offset-2 ring-offset-[#070b16]" : ""
       } ${className}`}
     >
@@ -207,6 +261,9 @@ function TicTacToeBoard({
                 ? `empty. Press to place ${viewerMark}${required ? " here" : ""}`
                 : "empty";
 
+            // One focus language for every cell, from the shared token, so an
+            // inert cell's focus ring is as visible as a playable one's (the
+            // old 40%-white ring was the faintest thing on the board).
             const base = `group relative flex aspect-square w-full items-center justify-center border outline-none transition focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-offset-[#070b16] ${
               compact ? "rounded-[5px] sm:rounded-md" : "rounded-lg sm:rounded-xl"
             }`;
@@ -214,11 +271,11 @@ function TicTacToeBoard({
             // offers (amber, stronger when this board is the required one), and
             // an inert cell that still reads as part of the grid.
             const look = cell
-              ? "border-white/10 bg-white/[0.05]"
+              ? "border-white/10 bg-white/[0.06] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
               : playable
                 ? required
-                  ? "cursor-pointer border-amber-300/70 bg-amber-400/[0.13] hover:border-amber-200 hover:bg-amber-400/25 focus-visible:ring-amber-200 active:scale-95"
-                  : "cursor-pointer border-dashed border-amber-300/45 bg-amber-400/[0.06] hover:scale-[1.04] hover:border-amber-300 hover:bg-amber-400/15 focus-visible:ring-amber-300 active:scale-95"
+                  ? "cursor-pointer border-amber-300/70 bg-amber-400/[0.13] hover:border-amber-200 hover:bg-amber-400/25 active:scale-95"
+                  : "cursor-pointer border-dashed border-amber-300/45 bg-amber-400/[0.06] hover:scale-[1.04] hover:border-amber-300 hover:bg-amber-400/15 active:scale-95"
                 : "cursor-default border-white/[0.07] bg-black/25";
 
             return (
@@ -249,20 +306,22 @@ function TicTacToeBoard({
                     ? {
                         color: colour,
                         borderColor: colour,
-                        boxShadow: `0 0 0 1px ${colour}, 0 0 22px ${colour}55`,
-                        background: `${colour}1f`,
+                        // A crisp inner ring instead of the old wide halo: the
+                        // winning line itself now carries the cue, so the cell
+                        // only needs to seat it. 2px keeps the ring legible on
+                        // a 20px phone cell.
+                        boxShadow: `inset 0 0 0 2px ${colour}, 0 0 14px ${colour}40`,
+                        background: `${colour}24`,
                       }
                     : { color: colour }
                 }
-                className={`${base} ${look} ${
-                  isWinning ? "focus-visible:ring-emerald-300" : "focus-visible:ring-white/40"
-                }`}
+                className={`${base} ${look} focus-visible:ring-state-focus`}
               >
                 {/* A real, server-confirmed mark. It animates in ONCE, when the
                     snapshot first carries it. */}
                 {cell && (
                   <motion.span {...markMotion} className="flex h-[58%] w-[58%] items-center justify-center">
-                    <MarkGlyph mark={cell} className="h-full w-full drop-shadow-[0_0_8px_currentColor]" />
+                    <MarkGlyph mark={cell} className="h-full w-full" />
                   </motion.span>
                 )}
 
@@ -280,7 +339,13 @@ function TicTacToeBoard({
                 {/* Which mark a click would place — a hover affordance on the
                     empty cells that are actually playable. */}
                 {!cell && actionable && viewerMark && (
-                  <span className="pointer-events-none flex h-[58%] w-[58%] items-center justify-center opacity-0 transition group-hover:opacity-30">
+                  // Shown on hover AND on keyboard focus: a keyboard player gets
+                  // the same "this is the mark I would place" preview a pointer
+                  // player gets, without relying on the amber tint alone.
+                  <span
+                    data-testid="tic-tac-toe-mark-preview"
+                    className="pointer-events-none flex h-[58%] w-[58%] items-center justify-center opacity-0 transition group-hover:opacity-30 group-focus-visible:opacity-30"
+                  >
                     <MarkGlyph mark={viewerMark} className="h-full w-full" />
                   </span>
                 )}
@@ -304,6 +369,42 @@ function TicTacToeBoard({
           })}
         </div>
       ))}
+
+      {/* The winning line itself, drawn across the three cells the server named.
+          This is the non-colour half of the win cue: the tinted cells say WHICH
+          cells, the line says WHY. It is static, pointer-transparent and only
+          mounted for a complete, consistent line. */}
+      {lineColor && winLine.length === 3 && (
+        <svg
+          aria-hidden="true"
+          data-testid="tic-tac-toe-win-line"
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          className="pointer-events-none absolute inset-0 z-[3] h-full w-full"
+        >
+          <line
+            x1={linePoint(winLine[0]).x}
+            y1={linePoint(winLine[0]).y}
+            x2={linePoint(winLine[2]).x}
+            y2={linePoint(winLine[2]).y}
+            stroke="var(--gr-outline, #05101f)"
+            strokeWidth="5"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+            opacity="0.7"
+          />
+          <line
+            x1={linePoint(winLine[0]).x}
+            y1={linePoint(winLine[0]).y}
+            x2={linePoint(winLine[2]).x}
+            y2={linePoint(winLine[2]).y}
+            stroke={lineColor}
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
+      )}
     </div>
   );
 }

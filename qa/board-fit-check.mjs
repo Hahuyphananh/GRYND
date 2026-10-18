@@ -16,27 +16,35 @@
 //   1. desktop 1280×800  — the board's painted bottom is above the fold
 //   2. desktop 1440×900  — same, on a taller screen
 //   3. the board still fills its column (the cap did not collapse it)
-//   4. phone width       — the cap is desktop-only, mobile sizing untouched
-//   5. creator frame     — the cap is RELEASED (a recording frame is not the
-//                          browser viewport, so a vh cap would shrink a clip)
-//   6. no console / page errors
-//   7. MINES only        — the board is CENTRED in its column. It used to hug
+//   4. phone widths      — 320 / 360 / 390: the cap is desktop-only, the board
+//                          stays square and on screen, and the tiles stay
+//                          tappable (Mines: 24px WCAG target floor)
+//   5. no console / page errors
+//   6. MINES only        — the board is CENTRED in its column. It used to hug
 //                          the left edge: a `w-full` block with a `max-width`
 //                          does not centre itself, so a 260px board sat at the
 //                          left of a 768px column, ~256px off-centre on screen.
-//   8. MINES only        — the board actually USES the height its compacted
+//   7. MINES only        — the board actually USES the height its compacted
 //                          chrome freed: the cap is `100vh - 12.5rem`, so the
 //                          board lands within a few px of that budget (or of
 //                          its column width, whichever binds), and it must
 //                          beat the old `100vh - 34rem` cap it sat at.
+//   8. cartoon cells     — both boards are drawn from square slabs with the
+//                          SHARED outline token, and keyboard focus is wired to
+//                          the shared focus ring (read from the rendered CSS).
 //
 // Run: node qa/board-fit-check.mjs
 //
 // Fully offline: Clerk, the socket, the router, analytics, nav/footer, the
-// waiting takeover, the result screen and the creator-mode HOST are stubbed by
-// the esbuild step; the creator-mode LAYOUT stays REAL (the exemption under
-// test is the shipped one) and the match payload comes from a stubbed `fetch`
-// — no auth, no database, no dev server.
+// waiting takeover and the result screen are stubbed by the esbuild step, and
+// the match payload comes from a stubbed `fetch` — no auth, no database, no dev
+// server.
+//
+// NOTE: this check used to have a creator-frame phase, asserting that the
+// board's desktop cap was released inside `[data-creator-layout]`. Creator mode
+// was retired (3f5a7229) and no page renders that attribute any more, so the
+// phase could only ever fail; it was removed rather than relaxed. The tile
+// assertions below are unchanged.
 
 import esbuild from "esbuild";
 import postcss from "postcss";
@@ -55,10 +63,6 @@ mkdirSync(REPORTS, { recursive: true });
 const TRACE = process.argv.includes("--trace");
 
 // ── Stubs (everything noisy around the two match pages) ────────────────────
-// NOTE: `components/creator-mode/CreatorModeLayout` is deliberately NOT
-// stubbed — the real shell primitives and the real <CreatorView> branches are
-// what the creator-exemption phase checks. Only the HOST (recording chrome)
-// and the creator-mode PROVIDER (which selects the frame dimensions) are.
 const STUBS = {
   "next/navigation": `
     const record = (href) => { (window.__bf = window.__bf || {}).nav = ((window.__bf && window.__bf.nav) || []).concat([href]); };
@@ -94,27 +98,6 @@ const STUBS = {
   "components/ReportModal": `
     import React from "react";
     export default function ReportModal() { return null; }
-  `,
-  "components/creator-mode/CreatorModeHost": `
-    import React from "react";
-    export default function Host({ children }) { return children ?? null; }
-  `,
-  "lib/creator-mode/CreatorModeProvider": `
-    import React from "react";
-    const noop = () => {};
-    export const useCreatorMode = () => {
-      const on = Boolean(window.__bf?.creator);
-      return {
-        isCreatorMode: on,
-        dimensions: on ? { width: 390, height: 693 } : { width: 1280, height: 720 },
-        orientation: on ? "portrait" : "landscape",
-        setDimensions: noop,
-        start: noop,
-        stop: noop,
-      };
-    };
-    export const CreatorModeProvider = ({ children }) => children ?? null;
-    export default { useCreatorMode, CreatorModeProvider };
   `,
   "lib/animations": `
     const staticMotion = { initial: false, animate: {}, exit: {}, transition: { duration: 0 } };
@@ -350,68 +333,110 @@ for (const [game, label] of [
   ["memory", "Memory Grid"],
 ]) {
   const sel = SELECTOR[game];
-  const { context, page } = await boot(game, { width: 390, height: 844 });
-  const m = await page.evaluate((s) => window.__bf.measure(s), sel);
-  const computed = await page.evaluate((s) => {
-    const el = document.querySelector(s);
-    return el ? getComputedStyle(el).maxWidth : null;
-  }, sel);
-  const tag = `${label} @ 390 wide`;
-  console.log(`   ${tag}: board ${m.width}×${m.height}, computed max-width=${computed}`);
-  // The desktop rule is inside a `min-width: 1024px` media query, so at phone
-  // width the computed cap must be the element's own class cap (or none), never
-  // the vh-derived value.
-  check(
-    `${tag}: the desktop cap does not apply on mobile`,
-    !/calc\(|px\)/.test(String(computed)) || m.width >= 280,
-    `max-width=${computed} width=${m.width}`,
-  );
-  await context.close();
+  // Every phone width the product supports, not just one: 320 is the narrowest
+  // device the site targets, 360 and 390 are the common Android / iPhone
+  // widths. The desktop cap must be absent at all of them, the board must stay
+  // square and fully on screen, and the tiles must stay tappable.
+  for (const widthPx of [320, 360, 390]) {
+    const { context, page } = await boot(game, { width: widthPx, height: 844 });
+    const m = await page.evaluate((s) => window.__bf.measure(s), sel);
+    const computed = await page.evaluate((s) => {
+      const el = document.querySelector(s);
+      return el ? getComputedStyle(el).maxWidth : null;
+    }, sel);
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    const tag = `${label} @ ${widthPx} wide`;
+    console.log(`   ${tag}: board ${m.width}×${m.height}, computed max-width=${computed}`);
+    // The desktop rule is inside a `min-width: 1024px` media query, so at phone
+    // width the computed cap must be the element's own class cap (or none), never
+    // the vh-derived value.
+    check(
+      `${tag}: the desktop cap does not apply on mobile`,
+      !/calc\(|px\)/.test(String(computed)) || m.width >= 280,
+      `max-width=${computed} width=${m.width}`,
+    );
+    check(
+      `${tag}: the board stays square`,
+      m.width === m.height,
+      `${m.width}×${m.height}`,
+    );
+    check(
+      `${tag}: the board fits the phone page (no sideways scroll)`,
+      overflow <= 0 && m.right <= m.viewportWidth + 1,
+      `overflow=${overflow}px right=${m.right} viewport=${m.viewportWidth}`,
+    );
+    if (game === "mines") {
+      // 10 columns: the WCAG 2.2 SC 2.5.8 minimum target size is 24 CSS px.
+      check(
+        `${tag}: every mine tile still meets the 24px touch floor`,
+        m.width / 10 >= 24,
+        `${(m.width / 10).toFixed(1)}px per tile`,
+      );
+    }
+    await context.close();
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Creator frame — the cap must be RELEASED (a recording frame is not the
-// browser viewport, so a vh cap would shrink the recorded clip)
+// Cartoon cell language — the shared tokens are actually painted
+//
+// Both boards were migrated to one slab language: ONE dark outline
+// (`--gr-outline`), square tiles, and the shared focus ring on keyboard focus.
+// These assertions read the RENDERED values, so a class that stops resolving
+// (a renamed token, a purged utility) fails here rather than in a screenshot
+// nobody looks at.
 // ═══════════════════════════════════════════════════════════════════════════
+const OUTLINE_RGB = "rgb(5, 16, 31)"; // --gr-outline #05101f
+const FOCUS_RGB = "rgb(157, 216, 255)"; // --gr-focus-ring #9dd8ff
+// The harness loads the stylesheet from `file://`, where CSSOM (`sheet.cssRules`)
+// is opaque, so the focus rule is read from the stylesheet SOURCE. The token
+// itself is still read from the live document below.
+const FOCUS_RULE = readFileSync(join(root, "src/app/globals.css"), "utf8");
 for (const [game, label] of [
   ["mines", "Mines Duel"],
   ["memory", "Memory Grid"],
 ]) {
   const sel = SELECTOR[game];
-  const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
-  const page = await context.newPage();
-  await page.goto(fileUrl);
-  await page.waitForFunction(() => !!window.__bf?.mount, null, { timeout: 20000 });
-  await page.evaluate(
-    ([g]) => {
-      window.__bf.setCreator(true);
-      window.__bf.set(g, {});
-      window.__bf.mount(g);
-    },
-    [game],
-  );
-  await page.waitForSelector(sel, { timeout: 15000 });
-  await page.waitForTimeout(400);
-  const inside = await page.evaluate((s) => {
-    const el = document.querySelector(s);
-    if (!el) return null;
-    const frame = document.querySelector("[data-creator-layout]");
+  const { context, page } = await boot(game, { width: 1280, height: 800 });
+  const tiles = await page.evaluate((s) => {
+    const list = [...document.querySelectorAll(`${s} button`)];
     return {
-      inCreatorFrame: Boolean(frame),
-      maxWidth: getComputedStyle(el).maxWidth,
+      count: list.length,
+      square: list.every((el) => Math.abs(el.offsetWidth - el.offsetHeight) <= 1),
+      outlineBorders: [...new Set(list.map((el) => getComputedStyle(el).borderColor))],
+      focusable: list.every((el) => el.classList.contains("gr-focusable")),
     };
   }, sel);
   check(
-    `${label}: creator frame renders inside data-creator-layout`,
-    inside?.inCreatorFrame === true,
-    JSON.stringify(inside),
+    `${label}: the board is drawn from square tiles`,
+    tiles.count > 0 && tiles.square,
+    `${tiles.count} tiles`,
   );
   check(
-    `${label}: the desktop cap is released inside the creator frame`,
-    inside?.maxWidth === "none",
-    `max-width=${inside?.maxWidth}`,
+    `${label}: every tile is a cartoon slab with the shared dark outline`,
+    tiles.focusable && tiles.outlineBorders.includes(OUTLINE_RGB),
+    `borders ${tiles.outlineBorders.slice(0, 5).join(" / ")}`,
   );
-  await page.screenshot({ path: join(REPORTS, `board-fit-${game}-creator.png`) });
+  // Keyboard focus must use the shared focus-ring token, not a per-game colour.
+  // The harness mounts a WAITING payload (every tile disabled), so no tile can
+  // take focus here; what is checked instead is the wiring that gives it a ring:
+  // every tile carries `.gr-focusable`, the token resolves to #9dd8ff, and the
+  // `.gr-focusable:focus-visible` rule paints with that token.
+  const focusValue = await page.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue("--gr-focus-ring").trim(),
+  );
+  const rule = FOCUS_RULE.slice(FOCUS_RULE.indexOf(".gr-focusable:focus-visible"));
+  const ruleBody = rule.slice(rule.indexOf("{") + 1, rule.indexOf("}"));
+  check(
+    `${label}: keyboard focus is wired to the shared focus ring`,
+    tiles.focusable &&
+      focusValue.toLowerCase() === "#9dd8ff" &&
+      /outline:\s*var\(--gr-focus-ring-width\)\s+solid\s+var\(--gr-focus-ring\)/.test(ruleBody),
+    `token=${focusValue} rule=${ruleBody.trim().replace(/\s+/g, " ")}`,
+  );
+  await page.screenshot({ path: join(REPORTS, `board-fit-${game}-cells.png`) });
   await context.close();
 }
 

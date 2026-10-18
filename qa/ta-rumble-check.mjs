@@ -90,6 +90,17 @@ const STUBS = [
   { match: /components\/Footer$/, source: `export default function Footer() { return null; }` },
   { match: /components\/IconAvatar$/, source: `export default function IconAvatar() { return null; }` },
   { match: /components\/lobby\/PvpLobby$/, source: `export const CoinIcon = () => null;\nexport default function PvpLobby() { return null; }` },
+  // Same non-visual page siblings as the trail check: leaving them real pulls
+  // Clerk/Next/three contexts into the bundle, which is not what the rumble
+  // measures.
+  { match: /components\/GameSessionHost$/, source: `export default function GameSessionHost() { return null; }` },
+  { match: /components\/game\/MatchLoading$/, source: `export default function MatchLoading() { return null; }` },
+  { match: /components\/FrameAvatar$/, source: `export default function FrameAvatar() { return null; }` },
+  { match: /components\/result\/PvpResultScreen$/, source: `export default function PvpResultScreen() { return null; }` },
+  { match: /hooks\/useMatchSync$/, source: `export const useMatchSync = () => {};` },
+  { match: /hooks\/useDeadlineRead$/, source: `export const useDeadlineRead = () => {};` },
+  { match: /hooks\/useServerClockEstimate$/, source: `export const useServerClockEstimate = () => ({ offsetMs: 0, nowMs: 0, serverNow: () => Date.now() });` },
+  { match: /lib\/deadlineRead$/, source: `export const towerArenaDueRead = () => false;` },
   { match: /context\/SocketProvider$/, source: `export const useSocket = () => ({ socket: null });` },
   { match: /lib\/gameAudio$/, source: `export const playTurnSwitch = () => {};\nexport const playCrash = () => {};\nexport const playTick = () => {};\nexport const playVictory = () => {};\nexport const playDefeat = () => {};` },
 ];

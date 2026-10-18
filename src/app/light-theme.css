@@ -7,7 +7,7 @@
    text-white, border-[#00e5ff]/40, …), so there is no `dark:` variant to
    flip. The light theme therefore remaps those utilities instead, and this
    file is the result of scanning src/ for every colour utility the app
-   actually uses (1270 of them) and mapping each one to a light
+   actually uses (1296 of them) and mapping each one to a light
    counterpart.
 
    Every rule is `html[data-theme="light"]` + the utility's own selector, so
@@ -30,7 +30,7 @@ html[data-theme="dark"] {
 }
 
 /* ── Colour utilities in use in src/ ──────────────────────────────────
-   214 rules. Grouped only by the source-order scan; each rule is
+   226 rules. Grouped only by the source-order scan; each rule is
    independent. */
 
 html[data-theme="light"] .bg-\[\#00111f\]\/85 {
@@ -101,16 +101,20 @@ html[data-theme="light"] .bg-\[\#030817\] {
   background-color: #24417f !important;
 }
 
+html[data-theme="light"] .bg-\[\#030817\]\/95 {
+  background-color: rgb(36 65 127 / 0.95) !important;
+}
+
+html[data-theme="light"] .bg-\[\#03081f\]\/85 {
+  background-color: rgb(36 65 127 / 0.85) !important;
+}
+
 html[data-theme="light"] .bg-\[\#031a37\] {
   background-color: #113340 !important;
 }
 
 html[data-theme="light"] .bg-\[\#03203a\]\/85 {
   background-color: rgb(17 51 64 / 0.85) !important;
-}
-
-html[data-theme="light"] .bg-\[\#04060f\]\/70 {
-  background-color: rgb(36 65 127 / 0.7) !important;
 }
 
 html[data-theme="light"] .bg-\[\#040d24\] {
@@ -143,6 +147,26 @@ html[data-theme="light"] .bg-\[\#040d24\]\/90 {
 
 html[data-theme="light"] .bg-\[\#040d24\]\/95 {
   background-color: rgb(49 80 143 / 0.95) !important;
+}
+
+html[data-theme="light"] .bg-\[\#04122b\] {
+  background-color: #31508f !important;
+}
+
+html[data-theme="light"] .bg-\[\#04122b\]\/40 {
+  background-color: rgb(49 80 143 / 0.4) !important;
+}
+
+html[data-theme="light"] .bg-\[\#04122b\]\/70 {
+  background-color: rgb(49 80 143 / 0.7) !important;
+}
+
+html[data-theme="light"] .bg-\[\#04122b\]\/95 {
+  background-color: rgb(49 80 143 / 0.95) !important;
+}
+
+html[data-theme="light"] .bg-\[\#04122e\]\/70 {
+  background-color: rgb(49 80 143 / 0.7) !important;
 }
 
 html[data-theme="light"] .bg-\[\#050512\] {
@@ -197,6 +221,10 @@ html[data-theme="light"] .bg-\[\#061530\]\/70 {
   background-color: rgb(49 80 143 / 0.7) !important;
 }
 
+html[data-theme="light"] .bg-\[\#070b16\]\/70 {
+  background-color: rgb(36 65 127 / 0.7) !important;
+}
+
 html[data-theme="light"] .bg-\[\#071226\] {
   background-color: #31508f !important;
 }
@@ -221,10 +249,6 @@ html[data-theme="light"] .bg-\[\#08142f\] {
   background-color: #31508f !important;
 }
 
-html[data-theme="light"] .bg-\[\#08142f\]\/60 {
-  background-color: rgb(49 80 143 / 0.6) !important;
-}
-
 html[data-theme="light"] .bg-\[\#08142f\]\/70 {
   background-color: rgb(49 80 143 / 0.7) !important;
 }
@@ -239,6 +263,10 @@ html[data-theme="light"] .bg-\[\#08142f\]\/90 {
 
 html[data-theme="light"] .bg-\[\#08142f\]\/95 {
   background-color: rgb(49 80 143 / 0.95) !important;
+}
+
+html[data-theme="light"] .bg-\[\#08203f\] {
+  background-color: #113340 !important;
 }
 
 html[data-theme="light"] .bg-\[\#091737\] {
@@ -286,6 +314,10 @@ html[data-theme="light"] .bg-\[\#0b0f1c\] {
 }
 
 html[data-theme="light"] .bg-\[\#0b1020\] {
+  background-color: #31508f !important;
+}
+
+html[data-theme="light"] .bg-\[\#0b1226\] {
   background-color: #31508f !important;
 }
 
@@ -461,6 +493,10 @@ html[data-theme="light"] .focus-visible\:ring-offset-\[\#040d24\]:focus-visible 
   --tw-ring-offset-color: #31508f !important;
 }
 
+html[data-theme="light"] .focus-visible\:ring-offset-\[\#04122b\]:focus-visible {
+  --tw-ring-offset-color: #31508f !important;
+}
+
 html[data-theme="light"] .focus-visible\:ring-offset-\[\#050b1e\]:focus-visible {
   --tw-ring-offset-color: #31508f !important;
 }
@@ -550,6 +586,11 @@ html[data-theme="light"] .from-\[\#041a2e\] {
   --tw-gradient-to: rgb(17 51 64 / 0) var(--tw-gradient-to-position) !important;
 }
 
+html[data-theme="light"] .from-\[\#04251a\] {
+  --tw-gradient-from: #163a2d var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgb(22 58 45 / 0) var(--tw-gradient-to-position) !important;
+}
+
 html[data-theme="light"] .from-\[\#06120f\] {
   --tw-gradient-from: #265a47 var(--tw-gradient-from-position) !important;
   --tw-gradient-to: rgb(38 90 71 / 0) var(--tw-gradient-to-position) !important;
@@ -610,11 +651,6 @@ html[data-theme="light"] .from-\[\#0a214d\]\/95 {
   --tw-gradient-to: rgb(27 50 102 / 0) var(--tw-gradient-to-position) !important;
 }
 
-html[data-theme="light"] .from-\[\#0a2a1a\] {
-  --tw-gradient-from: #163a2d var(--tw-gradient-from-position) !important;
-  --tw-gradient-to: rgb(22 58 45 / 0) var(--tw-gradient-to-position) !important;
-}
-
 html[data-theme="light"] .from-\[\#0b224f\]\/60 {
   --tw-gradient-from: rgb(27 50 102 / 0.6) var(--tw-gradient-from-position) !important;
   --tw-gradient-to: rgb(27 50 102 / 0) var(--tw-gradient-to-position) !important;
@@ -670,7 +706,7 @@ html[data-theme="light"] .from-\[\#1d3a63\] {
   --tw-gradient-to: rgb(27 50 102 / 0) var(--tw-gradient-to-position) !important;
 }
 
-html[data-theme="light"] .from-\[\#2a0a1f\] {
+html[data-theme="light"] .from-\[\#2a0a0f\] {
   --tw-gradient-from: #5a2e3d var(--tw-gradient-from-position) !important;
   --tw-gradient-to: rgb(90 46 61 / 0) var(--tw-gradient-to-position) !important;
 }
@@ -678,6 +714,11 @@ html[data-theme="light"] .from-\[\#2a0a1f\] {
 html[data-theme="light"] .from-\[\#2a0f14\] {
   --tw-gradient-from: #5a2e3d var(--tw-gradient-from-position) !important;
   --tw-gradient-to: rgb(90 46 61 / 0) var(--tw-gradient-to-position) !important;
+}
+
+html[data-theme="light"] .from-\[\#2a1e05\] {
+  --tw-gradient-from: #3a2d13 var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgb(58 45 19 / 0) var(--tw-gradient-to-position) !important;
 }
 
 html[data-theme="light"] .from-\[\#3a1a1a\] {
@@ -733,6 +774,10 @@ html[data-theme="light"] .to-\[\#020f08\] {
   --tw-gradient-to: #265a47 var(--tw-gradient-to-position) !important;
 }
 
+html[data-theme="light"] .to-\[\#02150e\] {
+  --tw-gradient-to: #265a47 var(--tw-gradient-to-position) !important;
+}
+
 html[data-theme="light"] .to-\[\#030817\] {
   --tw-gradient-to: #24417f var(--tw-gradient-to-position) !important;
 }
@@ -745,16 +790,16 @@ html[data-theme="light"] .to-\[\#03150c\] {
   --tw-gradient-to: #265a47 var(--tw-gradient-to-position) !important;
 }
 
-html[data-theme="light"] .to-\[\#031a0a\] {
-  --tw-gradient-to: #265a47 var(--tw-gradient-to-position) !important;
-}
-
 html[data-theme="light"] .to-\[\#04060f\] {
   --tw-gradient-to: #24417f var(--tw-gradient-to-position) !important;
 }
 
 html[data-theme="light"] .to-\[\#040d24\] {
   --tw-gradient-to: #31508f var(--tw-gradient-to-position) !important;
+}
+
+html[data-theme="light"] .to-\[\#04122b\]\/90 {
+  --tw-gradient-to: rgb(49 80 143 / 0.9) var(--tw-gradient-to-position) !important;
 }
 
 html[data-theme="light"] .to-\[\#04170e\] {
@@ -853,8 +898,12 @@ html[data-theme="light"] .to-\[\#140608\] {
   --tw-gradient-to: #4a2432 var(--tw-gradient-to-position) !important;
 }
 
-html[data-theme="light"] .to-\[\#160322\] {
-  --tw-gradient-to: #463070 var(--tw-gradient-to-position) !important;
+html[data-theme="light"] .to-\[\#150305\] {
+  --tw-gradient-to: #4a2432 var(--tw-gradient-to-position) !important;
+}
+
+html[data-theme="light"] .to-\[\#161003\] {
+  --tw-gradient-to: #5a4722 var(--tw-gradient-to-position) !important;
 }
 
 html[data-theme="light"] .to-\[\#2b0d0d\] {
@@ -990,4 +1039,23 @@ html[data-theme="light"] .four-in-a-row-slot {
 html[data-theme="light"] .four-in-a-row-panel {
   background: linear-gradient(180deg, #31508f, #24417f) !important;
   box-shadow: 0 18px 35px rgba(5, 11, 24, 0.45), 0 0 24px rgba(0, 229, 255, 0.07) !important;
+}
+
+/* The game-visual token layer (the "GRYND GAME VISUAL TOKENS" block in
+   globals.css) declares its own dark-first defaults. Light mode re-points ONLY
+   its three GROUNDS — the same rule the rest of this file follows — so brand
+   cyan/yellow, the two seat colours, the state colours and the motion scale
+   stay exactly as authored, because the light grounds are still deep blues.
+
+   What makes that work is SPECIFICITY, not order: html[data-theme="light"]
+   (0,1,1) out-ranks the :root block (0,1,0) however the two sheets are
+   ordered. The token block and this sheet therefore never have to agree on
+   load order. */
+html[data-theme="light"] {
+  --gr-surface-page: #24417f;
+  --gr-surface-page-rgb: 36 65 127;
+  --gr-surface-raised: #31508f;
+  --gr-surface-raised-rgb: 49 80 143;
+  --gr-surface-panel: #1b3266;
+  --gr-surface-panel-rgb: 27 50 102;
 }

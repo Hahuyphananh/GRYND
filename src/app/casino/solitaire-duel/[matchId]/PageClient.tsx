@@ -942,7 +942,7 @@ export default function SolitaireDuelMatchPage() {
                   </div>
 
                   {/* ── The board (the main focus) ─────────────────── */}
-                  <div className="relative rounded-2xl border border-amber-500/25 bg-black/45 p-2 sm:p-4">
+                  <div className="relative rounded-2xl border-2 border-[color:var(--gr-outline)] bg-black/45 p-2 shadow-[0_10px_0_-2px_rgba(3,8,20,0.85),inset_0_2px_0_rgba(255,255,255,0.06)] sm:p-4">
                     <SolitaireBoard
                       view={view}
                       interactive={canPlayNow}

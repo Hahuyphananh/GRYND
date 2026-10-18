@@ -168,20 +168,22 @@ function liveStatusText({ isLive, hasLiveTile, remainingMs, viewerCanClaim, save
   return "Tap the lit tile before the window closes";
 }
 
-// Lives as pips: filled = remaining, hollow = lost.
+// Lives as pips: filled = remaining, hollow = lost. The SHAPE carries the
+// seat as well as the colour — your lives are circles, the opponent's are
+// diamonds (the same circle/diamond pair the shared seat tokens use), so the
+// two pips never differ by hue alone.
 function LivesPips({ lives, total = STARTING_LIVES, tone = "cyan" }) {
   const filled = Math.max(0, Math.min(total, Number(lives) || 0));
   const color = tone === "opp" ? "bg-[#FFD700]" : "bg-[#00ffa6]";
+  const shape = tone === "opp" ? "rotate-45 rounded-[2px]" : "rounded-full";
   return (
     <span className="inline-flex items-center gap-1" aria-label={`${filled} of ${total} lives left`}>
       {Array.from({ length: total }, (_, i) => (
         <span
           key={i}
           className={
-            "h-2.5 w-2.5 rounded-full border " +
-            (i < filled
-              ? `${color} border-transparent shadow-[0_0_6px_rgba(0,229,255,0.5)]`
-              : "border-white/30 bg-white/5")
+            `h-2.5 w-2.5 border ${shape} border-[color:var(--gr-outline)] ` +
+            (i < filled ? `${color}` : "bg-white/10")
           }
         />
       ))}
@@ -207,27 +209,34 @@ const KenoTile = memo(function KenoTile({
   frozen,
   onClaim,
 }) {
-  let cls = "bg-[#0b224f] border border-[#00e5ff]/20 text-white/40 cursor-default";
+  // ONE dark outline (the shared `--gr-outline`) on every tile, with the
+  // state choosing only the hue. That outline is what stops a claimed green
+  // tile and the neon-cyan live tile reading as two different games.
+  const RAISED =
+    "shadow-[inset_0_2px_0_rgba(255,255,255,0.10),inset_0_-3px_0_rgba(3,8,20,0.55)]";
+  const FLAT = "shadow-[inset_0_2px_0_rgba(255,255,255,0.05)]";
+  let cls = `border-[color:var(--gr-outline)] bg-[#0b224f] text-white/45 ${RAISED} cursor-default`;
   // `missed` means THIS viewer did not tap the tile — that is the only
   // thing that costs a life, so it drives the tile red even when the
-  // opponent took it (the gold border marks that case).
+  // opponent took it (their diamond marker marks that case).
   if (missed && claimedByOpp)
-    cls = "bg-red-900/40 border border-[#FFD700]/60 text-red-300/70 cursor-default";
-  else if (missed) cls = "bg-red-900/40 border border-red-500/40 text-red-300/70 cursor-default";
+    cls = `border-[color:var(--gr-outline)] bg-[#3a1418] text-red-200/80 ${FLAT} cursor-default`;
+  else if (missed)
+    cls = `border-[color:var(--gr-outline)] bg-[#4a1020] text-red-200/85 ${FLAT} cursor-default`;
   else if (claimedByMe)
-    cls = "bg-[#00ffa6] border border-[#00ffa6]/70 text-[#001933] font-black cursor-default";
+    cls = `border-[color:var(--gr-outline)] bg-[#00c98a] text-[#001933] font-black ${FLAT} cursor-default`;
   else if (claimedByOpp)
-    cls = "bg-[#FFD700]/30 border border-[#FFD700]/60 text-[#FFD700] cursor-default";
+    cls = `border-[color:var(--gr-outline)] bg-[#FFD700]/30 text-[#FFD700] ${FLAT} cursor-default`;
   if (isLive && savedByMe) {
     // Tapped already: the tile stays lit for the rest of its window (so the
     // other player can still save themselves), but it is no longer a target.
     cls =
-      "bg-[#00ffa6] border border-[#00ffa6]/80 text-[#001933] font-black scale-110 " +
-      "ring-2 ring-[#00ffa6]/70 shadow-[0_0_22px_rgba(0,255,166,0.75)] cursor-default";
+      "border-[color:var(--gr-outline)] bg-[#00ffa6] text-[#001933] font-black scale-110 " +
+      "ring-2 ring-[#eaf6ff] shadow-[0_0_0_2px_var(--gr-outline),0_0_18px_rgba(0,255,166,0.5)] cursor-default";
   } else if (isLive) {
     cls =
-      "bg-[#00e5ff] border border-white/70 text-[#001933] font-black scale-110 " +
-      "ring-2 ring-white/80 shadow-[0_0_22px_rgba(0,229,255,0.9)] cursor-pointer animate-pulse";
+      "border-[color:var(--gr-legal-move)] bg-[#00e5ff] text-[#001933] font-black scale-110 " +
+      "ring-2 ring-[#eaf6ff] shadow-[0_0_0_2px_var(--gr-outline),0_0_18px_rgba(0,229,255,0.55)] cursor-pointer animate-pulse";
   }
   const disabled = frozen || !isLive || savedByMe;
   return (
@@ -254,20 +263,24 @@ const KenoTile = memo(function KenoTile({
                 ? `Tile ${num} claimed by your opponent`
                 : `Tile ${num}`
       }
-      className={`relative w-full aspect-square overflow-hidden flex items-center justify-center rounded-lg text-sm font-bold transition-all duration-200 touch-manipulation select-none active:scale-90 ${cls}`}
+      className={`gr-focusable relative w-full aspect-square overflow-hidden flex items-center justify-center rounded-[6px] border-2 text-sm font-bold leading-none tabular-nums transition-all duration-200 touch-manipulation select-none active:scale-90 ${cls}`}
     >
-      {num}
-      {isLive && savedByMe && (
+      <span className="relative z-0">{num}</span>
+      {/* Ownership is a SHAPE, not only a hue: a white dot in the top-right
+          corner is your claim, a gold diamond in the top-left is theirs. Both
+          can sit on one tile, which is why they occupy opposite corners. They
+          are kept 4px so a two-digit numeral never collides with them, even
+          at the 30px tile 320px screens get. */}
+      {claimedByMe && !missed && (
         <span
           aria-hidden="true"
-          className="absolute inset-x-0 bottom-0 h-1 bg-white/85 transition-[width] duration-100 ease-linear"
-          style={{ width: `${Math.max(0, Math.min(1, liveRemainingRatio)) * 100}%` }}
+          className="absolute right-0.5 top-0.5 z-10 h-1 w-1 rounded-full border border-[color:var(--gr-outline)] bg-white"
         />
       )}
-      {!isLive && claimedByMe && claimedByOpp && (
+      {claimedByOpp && (
         <span
           aria-hidden="true"
-          className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-[#FFD700]"
+          className="absolute left-0.5 top-0.5 z-10 h-1 w-1 rotate-45 border border-[color:var(--gr-outline)] bg-[#FFD700]"
         />
       )}
       {isLive && (
@@ -1122,7 +1135,7 @@ export default function KenoPvpMatchPage({ params }) {
 
   // ── Board ──────────────────────────────────────────────────────────
   const boardNode = (
-    <div className="relative rounded-2xl border border-[#00e5ff]/35 bg-[#050d1f]/70 p-3 sm:p-5">
+    <div className="relative rounded-2xl border-2 border-[color:var(--gr-outline)] bg-[#050d1f]/70 p-3 shadow-[0_10px_0_-2px_rgba(3,8,20,0.9),inset_0_2px_0_rgba(255,255,255,0.05)] sm:p-5">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-bold uppercase tracking-wider text-[#7cefff]">
           <span className="inline-flex items-center gap-1.5">
@@ -1153,13 +1166,14 @@ export default function KenoPvpMatchPage({ params }) {
         ))}
       </div>
       <p className="mt-3 text-[11px] text-white/40">
-        <span className="text-[#00e5ff]">Cyan</span> = the live tile, waiting for
+        <span className="text-[#00e5ff]">cyan</span> = the live tile, waiting for
         you · <span className="text-[#00ffa6]">green</span> = you tapped it, so
         your life is safe ·{" "}
-        <span className="text-[#FFD700]">gold dot</span> = {oppName} tapped it
-        too · <span className="text-red-300">red</span> = you missed it and lost
-        a life (a gold border means {oppName} took that tile). Untouched tiles
-        all look the same — the board never reveals what is coming.
+        <span className="text-[#FFD700]">gold</span> = {oppName} took it ·{" "}
+        <span className="text-red-300">red</span> = you missed it and lost a
+        life. A white dot in a tile&apos;s corner is yours and a gold diamond is{" "}
+        {oppName}&apos;s. Untouched tiles all look the same — the board never
+        reveals what is coming.
       </p>
       {recentFeed.length > 0 && (
         <div className="mt-3 space-y-1 border-t border-[#00e5ff]/20 pt-3">

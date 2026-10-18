@@ -590,6 +590,9 @@ export default function TicTacToeMatchPage() {
                         mv.playerId ===
                         (seat === "player1" ? match.player1Id : match.player2Id),
                     ).length;
+                    // The seat on the move gets an extra RING as well as the amber
+                    // wash: the active card is then identifiable by its edge (a
+                    // shape cue), not by hue alone.
                     return (
                       <div
                         key={seat}
@@ -597,7 +600,7 @@ export default function TicTacToeMatchPage() {
                         data-active={isActive ? "true" : "false"}
                         className={`rounded-xl border p-2.5 transition ${
                           isActive
-                            ? "border-amber-400/60 bg-amber-500/10"
+                            ? "border-amber-400/60 bg-amber-500/10 ring-1 ring-amber-300/40"
                             : "border-white/10 bg-white/5"
                         }`}
                       >
