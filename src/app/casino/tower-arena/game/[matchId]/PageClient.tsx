@@ -1365,15 +1365,26 @@ export default function TowerArenaMatchPage() {
     if (aiTurnFiredTurn.current === match.turnNumber) return;
     aiTurnFiredTurn.current = match.turnNumber;
     if (aiTurnTimer.current) window.clearTimeout(aiTurnTimer.current);
-    aiTurnTimer.current = window.setTimeout(() => {
-      void fetch("/api/tower-arena/ai-turn", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ matchId }),
-      }).catch(() => {
-        // Transient failure (e.g. the poll already resolved the bot) — the
-        // next get-match refetch reconciles.
-      });
+    aiTurnTimer.current = window.setTimeout(async () => {
+      try {
+        await fetch("/api/tower-arena/ai-turn", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ matchId }),
+        });
+      } catch {
+        // Transient failure — the authoritative re-read below (and the
+        // deadline read at the bot's own window) is the backstop.
+      }
+      // ALWAYS adopt the server's answer, whatever the ask returned:
+      //   • 200 — the bot played; the route only answers with flags, so the
+      //     board needs this read to show the new block and turn;
+      //   • 403 — the turn already moved (a get-match read resolved the bot
+      //     first); the board is stale and must follow it;
+      //   • 409 — the ask arrived inside the bot's think window.
+      // Dropping this read was the "bot never plays" bug: the UI stayed on the
+      // bot's turn with every control disabled while the store had moved on.
+      await loadRef.current();
     }, BOT_PLAN_DELAY_MS);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [match?.status, match?.phase, match?.currentTurnPlayerId, match?.turnNumber, match?.paused]);

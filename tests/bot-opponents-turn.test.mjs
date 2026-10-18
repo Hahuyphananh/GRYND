@@ -57,15 +57,24 @@ test("tower arena: the page's ask lands after the server's think window", () => 
   // The page only asks while a bot actually holds the turn, once per turn.
   const start = towerPage.indexOf("AI turns: when a bot holds the placement turn");
   assert.ok(start > 0, "the page must carry a bot-turn effect");
-  const body = towerPage.slice(start, start + 1600);
+  const body = towerPage.slice(start, start + 2600);
   assert.ok(body.includes("holder?.isAi"), "only a bot's turn is woken");
   assert.ok(body.includes("match.phase !== \"placement\""), "only during placement");
   assert.ok(
     body.includes("aiTurnFiredTurn.current === match.turnNumber"),
     "one ask per turn number, so a re-render cannot spam the route",
   );
-  assert.ok(body.includes('void fetch("/api/tower-arena/ai-turn"'));
+  assert.ok(body.includes('fetch("/api/tower-arena/ai-turn"'));
   assert.ok(body.includes("}, BOT_PLAN_DELAY_MS);"), "the ask is scheduled, not fired inline");
+  // The ask's ANSWER is not the state: the route replies with flags only, and it
+  // may refuse the ask outright (403 "Not an AI turn" when a read resolved the
+  // bot first, 409 when the ask arrived inside the think window). Dropping the
+  // read left the board on the bot's turn — every control disabled — while the
+  // store had already moved on, which is reported as "the bot never plays".
+  assert.ok(
+    body.includes("await loadRef.current();"),
+    "every ask must be followed by an authoritative re-read",
+  );
 
   // The route reads matchId from the JSON body the page sends — a query-param
   // mismatch would 400 silently and hand every turn to the poll backstop.

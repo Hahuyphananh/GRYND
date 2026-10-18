@@ -201,10 +201,18 @@ test("Tower Arena reads its start countdown in every mode, and a HUMAN turn wind
     towerArenaDueRead({ status: "active", phase: "placement", isAi: false, turnDeadline: DEADLINE }),
     DEADLINE,
   );
-  // vs-AI is untimed for the human, its bot turns are driven by `/ai-turn`, and a
-  // paused free-play match has nothing to advance.
+  // vs-AI is untimed for the human (their deadline is null), but a BOT's turn
+  // carries its short think window — and the store's bot backstop only runs on a
+  // read. Without this the bot had a single driver (`/ai-turn`), so an ask that
+  // landed inside the window or was lost froze the duel.
   assert.equal(
     towerArenaDueRead({ status: "active", phase: "placement", isAi: true, paused: false, turnDeadline: DEADLINE }),
+    DEADLINE,
+    "a vs-AI bot turn must be read at its think-window deadline",
+  );
+  // A paused free-play match has nothing to advance.
+  assert.equal(
+    towerArenaDueRead({ status: "active", phase: "placement", isAi: true, paused: true, turnDeadline: DEADLINE }),
     null,
   );
   assert.equal(

@@ -129,15 +129,21 @@ export interface TowerArenaReadSource {
 }
 
 /**
- * Tower Arena: the start countdown in any mode, plus an ONLINE placement turn's
+ * Tower Arena: the start countdown in any mode, plus an ACTIVE placement turn's
  * own window.
  *
  *   * `countdown` — the 10s start countdown. The read is what starts the match
  *     (`startMatchTx`), and it is also what broadcasts the start, so the other
  *     seat follows without a timer of its own.
- *   * an ACTIVE `placement` turn — humans only: a vs-AI match is untimed for the
- *     human, and its bot turns are already driven by the client's `/ai-turn`
- *     call plus the store's own bot backstop.
+ *   * an ACTIVE `placement` turn — whoever holds it. A vs-AI match is untimed
+ *     for the HUMAN (their deadline is null), but a BOT's turn carries its
+ *     short think window (`BOT_THINK_MS`), and the store's bot backstop —
+ *     `advanceMatchOnPoll` playing a bot whose window has expired — only runs
+ *     on a READ. Excluding vs-AI here therefore left the bot with exactly one
+ *     driver, the client's `/ai-turn` ask: an ask that landed inside the
+ *     window (refused 409) or was lost froze the duel on the bot's turn with
+ *     nothing to advance it. Reading the stamped window is what makes the
+ *     store's own backstop run.
  *
  * A paused free-play match is excluded: the server freezes the turn engine while
  * paused, so there is nothing at the deadline to advance.
@@ -147,12 +153,7 @@ export function towerArenaDueRead(
 ): StampedInstant {
   if (!match || !match.turnDeadline) return null;
   if (match.phase === "countdown") return match.turnDeadline;
-  if (
-    match.status === "active" &&
-    match.phase === "placement" &&
-    !match.isAi &&
-    !match.paused
-  ) {
+  if (match.status === "active" && match.phase === "placement" && !match.paused) {
     return match.turnDeadline;
   }
   return null;
