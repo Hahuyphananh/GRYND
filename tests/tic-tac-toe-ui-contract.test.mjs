@@ -936,7 +936,7 @@ test("discovery: the lobby card links to the game and is a 1v1 duel", () => {
   // draws the SAME card as the lobby; what must hold is that this game's own
   // shipped art is registered there and that the lobby draws cards from it.
   const art = code(ART_REGISTRY);
-  assert.match(art, /import ticTacToeArt from "\.\.\/\.\.\/images\/cards\/tic-tac-toe\.svg"/);
+  assert.match(art, /import ticTacToeArt from "\.\.\/\.\.\/images\/tic-tac-toe-card\.svg"/);
   assert.match(art, /"tic-tac-toe": ticTacToeArt/);
   assert.match(src, /import \{ GAME_CARD_ART \} from "\.\.\/\.\.\/components\/games\/gameCardArt"/);
   // It is a recent card, so it rides the "Newest" sort — directly ahead of
