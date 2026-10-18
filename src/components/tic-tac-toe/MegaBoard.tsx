@@ -414,12 +414,18 @@ function MegaBoard({
           column alone, so the bottom row sat below the fold and the player had
           to scroll mid-turn to reach it. The cap below is the SHORTEST of the
           column and the room left under the page chrome, floored so a short
-          window shrinks the board rather than crushing it. */}
+          window shrinks the board rather than crushing it.
+
+          The width also reserves 20px, not the full column: on a phone the last
+          row was ending within a pixel or two of (or just past) the viewport,
+          so a slight inset keeps every cell reachable without shrinking them
+          below the tap target. The 445px height reserve is 10px tighter than
+          before, while keeping desktop cells at or above 40px. */}
       <div className="overflow-x-auto pb-1">
         <div
           className="mega-lattice relative mx-auto w-full"
           data-cols={LATTICE_COLUMNS}
-          style={{ maxWidth: "min(100%, max(300px, calc(100svh - 435px)))" }}
+          style={{ maxWidth: "min(calc(100% - 20px), max(300px, calc(100svh - 445px)))" }}
         >
           {/* The large board's own frame: it is what makes nine separate boards
               read as ONE 3x3 game, and it carries the winning line. */}

@@ -511,7 +511,10 @@ test("createOrJoin seats the second player and takes the match straight to playi
 
   assert.equal(joined.joined, true);
   const row = liveMatch(fake);
-  assert.equal(row.player2Id, BOB);
+  // The join ROLLS who opens: both players own one seat, but the host is no
+  // longer guaranteed to be `player1` (the seat that moves first).
+  assert.deepEqual(new Set([row.player1Id, row.player2Id]), new Set([ALICE, BOB]));
+  assert.notEqual(row.player1Id, row.player2Id);
   assert.equal(row.status, MATCH_STATUS.PLAYING);
 
   // BOTH seats are escrowed at once, out of the lobby's own stake, in the same
@@ -524,9 +527,11 @@ test("createOrJoin seats the second player and takes the match straight to playi
   assert.equal(escrow.gameKey, "tic-tac-toe");
   assert.equal(String(escrow.matchId), String(row.id));
   assert.ok(row.startedAt);
-  // X still to move — joining does not consume a turn.
+  // X still to move — joining does not consume a turn, and the turn owner
+  // follows the rolled `player1` seat rather than always the host.
   assert.equal(row.gameState.currentTurn, "player1");
-  assert.equal(row.currentTurnUserId, ALICE);
+  assert.equal(row.currentTurnUserId, row.player1Id);
+  assert.ok([ALICE, BOB].includes(row.currentTurnUserId));
   assert.equal(row.ply, 0);
   assert.deepEqual(
     settlement.queue.filter((entry) => entry.kind === "created").map((e) => e.playerCount),
@@ -1739,9 +1744,11 @@ test("legacy: an untouched WAITING lobby is re-seeded to the Ultimate opening on
   // Nothing was voided or refunded: there were no moves to preserve.
   assert.equal(ledgerCalls("refund").length, 0);
 
-  // …and the re-seeded table is immediately playable.
+  // …and the re-seeded table is immediately playable by the player the roll
+  // seated in `player1`, whoever that is.
+  assert.equal(row.currentTurnUserId, row.player1Id);
   const played = await store.move({
-    userId: ALICE,
+    userId: row.currentTurnUserId,
     matchId: MATCH_ID,
     boardIndex: 3,
     cellIndex: 1,

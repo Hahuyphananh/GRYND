@@ -216,8 +216,8 @@ test("board: a resolved mini-board is covered by a huge outcome overlay", () => 
 
 test("board: the lattice is capped by the room left on screen, not by the column alone", () => {
   assert.ok(
-    MEGA.includes('maxWidth: "min(100%, max(300px, calc(100svh - 435px)))"'),
-    "the lattice must shrink with the viewport height so the bottom row stays on screen",
+    MEGA.includes('maxWidth: "min(calc(100% - 20px), max(300px, calc(100svh - 445px)))"'),
+    "the lattice must shrink with the viewport height and inset slightly from the column so the bottom row stays on screen",
   );
   // The floor keeps it from being crushed on a very short window.
   assert.ok(MEGA.includes("max(300px"));
