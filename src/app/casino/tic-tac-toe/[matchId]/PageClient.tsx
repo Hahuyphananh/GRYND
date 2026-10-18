@@ -473,7 +473,7 @@ export default function TicTacToeMatchPage() {
   // ── Render ────────────────────────────────────────────────────────────
   if (!match && !loadError) {
     // Branded shell WITH the nav bar (this gate used to drop it entirely).
-    return <MatchLoading label="Loading Mega Tic-Tac-Toe…" currentPath="/casino/tic-tac-toe" />;
+    return <MatchLoading label="Loading Ultimate Tic-Tac-Toe…" currentPath="/casino/tic-tac-toe" />;
   }
 
   if (!match && loadError) {
@@ -485,7 +485,7 @@ export default function TicTacToeMatchPage() {
           onClick={() => router.push("/casino/tic-tac-toe")}
           className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-black"
         >
-          Back to Tic-Tac-Toe
+          Back to Ultimate Tic-Tac-Toe
         </button>
       </div>
     );
@@ -496,12 +496,12 @@ export default function TicTacToeMatchPage() {
       {(match.status === "waiting" || match.status === "ready") && (
         <MatchWaiting
           state={match.status === "ready" ? "ready" : "waiting"}
-          gameName="Mega Tic-Tac-Toe"
+          gameName="Ultimate Tic-Tac-Toe"
           icon={<IconTicTac className="h-8 w-8 text-amber-400" />}
           subtitle={
             match.status === "ready"
               ? "Opponent found — X opens on any board…"
-              : "Waiting for an opponent to join your Mega Tic-Tac-Toe table…"
+              : "Waiting for an opponent to join your Ultimate Tic-Tac-Toe table…"
           }
           seats={[
             {
@@ -546,7 +546,7 @@ export default function TicTacToeMatchPage() {
               <div>
                 <h1 className="flex items-center gap-2 text-xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-300 to-yellow-200 sm:text-2xl">
                   <IconTicTac className="h-6 w-6 text-amber-400" />
-                  Mega Tic-Tac-Toe
+                  Ultimate Tic-Tac-Toe
                 </h1>
                 <p className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-amber-200/70">
                   <span>Nine mini-boards · three in a line claims one</span>
@@ -874,7 +874,7 @@ export default function TicTacToeMatchPage() {
                 onClick={() => router.push("/casino/tic-tac-toe")}
                 className="mt-4 inline-flex items-center justify-center rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-bold text-amber-200 transition hover:bg-amber-500/20"
               >
-                Back to the Tic-Tac-Toe lobby
+                Back to the Ultimate Tic-Tac-Toe lobby
               </button>
             </div>
           )}
@@ -940,7 +940,7 @@ export default function TicTacToeMatchPage() {
               result: match.result,
               ply: match.ply,
             })}
-            gameName="Mega Tic-Tac-Toe"
+            gameName="Ultimate Tic-Tac-Toe"
             gameKey="tic-tac-toe"
             durationSeconds={durationSeconds(match.startedAt, match.endedAt)}
             opponent={{

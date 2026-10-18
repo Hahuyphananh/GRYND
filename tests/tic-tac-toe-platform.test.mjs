@@ -59,9 +59,9 @@ test("registry: tic-tac-toe is a rated game under the canonical key", () => {
   assert.equal(normalizeRatingGameKey(KEY), KEY);
 });
 
-test("registry: the display name is exactly \"Tic-Tac-Toe\"", () => {
-  assert.equal(RATING_GAME_LABELS[KEY], "Tic-Tac-Toe");
-  assert.equal(getRatingGameLabel(KEY), "Tic-Tac-Toe");
+test("registry: the display name is exactly \"Ultimate Tic-Tac-Toe\"", () => {
+  assert.equal(RATING_GAME_LABELS[KEY], "Ultimate Tic-Tac-Toe");
+  assert.equal(getRatingGameLabel(KEY), "Ultimate Tic-Tac-Toe");
 });
 
 test("registry: trophies are derived from the same list, so there is one source", () => {
@@ -386,7 +386,7 @@ test("history: the match-history route reads the table and formats the pot", () 
   assert.match(body, /amount \* 2 \* PVP_WINNER_SHARE/);
   assert.match(body, /amount,\s*\n\s*payout,/);
   assert.match(body, /tokenDiff,/);
-  assert.match(body, /"Tic-Tac-Toe"/);
+  assert.match(body, /"Ultimate Tic-Tac-Toe"/);
   // A draw is a real outcome here, not an edge case.
   assert.match(body, /g\.result === "tie"/);
   // …and the rake it derives the pot with comes from the one economy source.

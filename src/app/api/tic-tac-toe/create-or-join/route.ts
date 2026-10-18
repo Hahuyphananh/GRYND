@@ -64,10 +64,10 @@ export async function POST(request: Request) {
     await logError({
       errorType: "tic_tac_toe_create_or_join_error",
       errorMessage:
-        error instanceof Error ? error.message : "Tic-Tac-Toe matchmaking failed",
+        error instanceof Error ? error.message : "Ultimate Tic-Tac-Toe matchmaking failed",
       stackTrace: error instanceof Error ? error.stack : undefined,
       endpoint: "/api/tic-tac-toe/create-or-join",
-      game: "Tic-Tac-Toe",
+      game: "Ultimate Tic-Tac-Toe",
       metadata: { operation: "create_or_join" },
     });
     return NextResponse.json(

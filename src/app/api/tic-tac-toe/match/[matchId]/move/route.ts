@@ -120,10 +120,10 @@ export async function POST(
     await logError({
       errorType: "tic_tac_toe_move_error",
       errorMessage:
-        error instanceof Error ? error.message : "Tic-Tac-Toe move failed",
+        error instanceof Error ? error.message : "Ultimate Tic-Tac-Toe move failed",
       stackTrace: error instanceof Error ? error.stack : undefined,
       endpoint: "/api/tic-tac-toe/match/[matchId]/move",
-      game: "Tic-Tac-Toe",
+      game: "Ultimate Tic-Tac-Toe",
       metadata: { operation: "move" },
     });
     return NextResponse.json(

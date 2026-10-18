@@ -62,7 +62,7 @@ const { APP_TEXT_TRANSLATIONS } = await import("../src/lib/appTextTranslations.j
 test("ui: every required match state is rendered", () => {
   // The first-load gate is the shared branded shell (nav + MatchLoading),
   // not a bare centered string on an otherwise empty page.
-  assert.match(page, /<MatchLoading label="Loading Mega Tic-Tac-Toe…"/, "loading state");
+  assert.match(page, /<MatchLoading label="Loading Ultimate Tic-Tac-Toe…"/, "loading state");
   assert.match(page, /Unable to load this match/, "error state");
   assert.match(page, /<MatchWaiting/, "waiting / opponent state");
   assert.match(page, /data-testid="tic-tac-toe-match"/, "the live match");
@@ -930,7 +930,7 @@ test("economy: the lobby owns the stake, and the match page only shows the serve
 
 test("discovery: the lobby card links to the game and is a 1v1 duel", () => {
   const src = code(LOBBY);
-  const card = src.slice(src.indexOf('name: "Tic-Tac-Toe"'));
+  const card = src.slice(src.indexOf('name: "Ultimate Tic-Tac-Toe"'));
   assert.match(card, /href: "\/games\/tic-tac-toe"/);
   assert.match(card, /leaderboardKey: "tic-tac-toe"/);
   assert.match(card, /playsKey: "tic-tac-toe"/);

@@ -60,10 +60,10 @@ export async function POST(
     await logError({
       errorType: "tic_tac_toe_forfeit_error",
       errorMessage:
-        error instanceof Error ? error.message : "Tic-Tac-Toe forfeit failed",
+        error instanceof Error ? error.message : "Ultimate Tic-Tac-Toe forfeit failed",
       stackTrace: error instanceof Error ? error.stack : undefined,
       endpoint: "/api/tic-tac-toe/match/[matchId]/forfeit",
-      game: "Tic-Tac-Toe",
+      game: "Ultimate Tic-Tac-Toe",
       metadata: { operation: "forfeit" },
     });
     return NextResponse.json(

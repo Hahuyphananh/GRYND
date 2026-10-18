@@ -222,7 +222,7 @@ export default function TicTacToeLobbyPage() {
   // already resolved, and what wins the match.
   const rules = useMemo(
     () => ({
-      title: "How to Play Tic-Tac-Toe",
+      title: "How to Play Ultimate Tic-Tac-Toe",
       sections: [
         {
           heading: "Three in a row wins a board",
@@ -303,7 +303,7 @@ export default function TicTacToeLobbyPage() {
   return (
     <>
       <PvpLobbyPage
-      title="Tic-Tac-Toe"
+      title="Ultimate Tic-Tac-Toe"
       subtitle="A rated 1v1 duel on nine mini-boards. Three in a row claims a board, the cell you play sends your opponent to the next one, and three boards in a line takes the match. Or play the bot for free."
       icon={<IconTicTac className="h-9 w-9 flex-shrink-0 text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)] sm:h-10 sm:w-10" />}
       rulesKey="tic-tac-toe"
@@ -331,7 +331,7 @@ export default function TicTacToeLobbyPage() {
       cancelling={cancelling}
       lobbies={lobbies}
       lobbiesLoading={lobbiesLoading}
-      lobbyEmptyText="No open Tic-Tac-Toe lobbies right now. Create one and an opponent will be matched in."
+      lobbyEmptyText="No open Ultimate Tic-Tac-Toe lobbies right now. Create one and an opponent will be matched in."
       lobbyKey={(row: LobbyRow) => row.matchId}
       lobbyTitle={(row: LobbyRow) => <>Table #{String(row.matchId).slice(0, 8)}</>}
       lobbyMeta={(row: LobbyRow) => (

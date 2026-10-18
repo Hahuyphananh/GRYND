@@ -1051,8 +1051,8 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
 
   {
     slug: "tic-tac-toe",
-    name: "Tic-Tac-Toe",
-    headline: "Mega Tic-Tac-Toe — Nine Boards, One Lattice",
+    name: "Ultimate Tic-Tac-Toe",
+    headline: "Ultimate Tic-Tac-Toe — Nine Boards, One Lattice",
     category: "Classic Strategy",
     leaderboardKey: "tic-tac-toe",
     ogImage: "/images/og-banner.png",
@@ -1060,7 +1060,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
       "Rated 1v1 Ultimate Tic-Tac-Toe: nine mini-boards on one 3×3 lattice, all live from the first move. Claim a board with three in a row — and the cell you play sends your opponent to the next one.",
     aiPractice: true,
     introduction: [
-      "This is Tic-Tac-Toe played as a rated 1v1 duel, and it is a different game: one large 3×3 board whose nine squares are themselves 3×3 mini-boards. All nine are in play from the opening move.",
+      "This is Ultimate Tic-Tac-Toe played as a rated 1v1 duel: one large 3×3 board whose nine squares are themselves 3×3 mini-boards, all nine in play from the opening move.",
       "The twist is the destination rule. The cell you claim decides which mini-board your opponent must answer in, so every mark you place is also a routing decision. Claim three mini-boards in a line — a row, a column or a diagonal of the lattice — and the match is yours.",
     ],
     howToPlay: [
@@ -1095,10 +1095,10 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
       "Watch the lattice, not just the board in front of you. Most mini-boards matter through the slot they occupy.",
     ],
     competitive:
-      "Mega Tic-Tac-Toe tests forcing sequences and fork construction, then adds a second layer: every move is also a routing decision, because the cell you take decides where your opponent has to play next.",
+      "Ultimate Tic-Tac-Toe tests forcing sequences and fork construction, then adds a second layer: every move is also a routing decision, because the cell you take decides where your opponent has to play next.",
     faq: [
       {
-        q: "What is Mega Tic-Tac-Toe?",
+        q: "What is Ultimate Tic-Tac-Toe?",
         a: "Ultimate Tic-Tac-Toe: nine mini-boards on one fixed 3×3 lattice, all in play from the first move. Claim a mini-board with three in a row, then claim three boards in a line to win the match.",
       },
       {

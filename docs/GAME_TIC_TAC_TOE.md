@@ -1,6 +1,6 @@
-# Tic-Tac-Toe (Ultimate) — Game Guide
+# Ultimate Tic-Tac-Toe — Game Guide
 
-Tic-Tac-Toe on GRYND is **Classic Ultimate Tic-Tac-Toe**: one large 3×3 board
+Ultimate Tic-Tac-Toe on GRYND is **Classic Ultimate Tic-Tac-Toe**: one large 3×3 board
 whose nine squares are themselves 3×3 mini-boards. All nine mini-boards are in
 play from the opening move. Live route: `/casino/tic-tac-toe` (lobby) and
 `/casino/tic-tac-toe/<matchId>` (match).

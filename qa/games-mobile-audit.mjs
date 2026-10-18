@@ -82,14 +82,14 @@ const ROUTES = [
   { game: "RPS vs AI", path: "/games/rps/play-ai" },
   { game: "Solitaire Duel", path: "/games/solitaire-duel" },
   { game: "Sudoku Duel", path: "/games/sudoku-duel" },
-  { game: "Tic-Tac-Toe", path: "/games/tic-tac-toe" },
+  { game: "Ultimate Tic-Tac-Toe", path: "/games/tic-tac-toe" },
   { game: "Tower Arena", path: "/games/tower-arena" },
   { game: "Uno", path: "/games/uno" },
 ];
 
 // Match / table pages: the render path a real game link takes.
 const MATCH_ROUTES = [
-  { game: "Tic-Tac-Toe match", path: "/games/tic-tac-toe/1" },
+  { game: "Ultimate Tic-Tac-Toe match", path: "/games/tic-tac-toe/1" },
   { game: "Chess table", path: "/games/chess/10" },
   { game: "Dots and Boxes game", path: "/games/dots-and-boxes/game/1" },
   { game: "Four-In-A-Row game", path: "/games/four-in-a-row/game/1" },

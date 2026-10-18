@@ -58,10 +58,10 @@ export async function POST(
     await logError({
       errorType: "tic_tac_toe_cancel_error",
       errorMessage:
-        error instanceof Error ? error.message : "Tic-Tac-Toe cancel failed",
+        error instanceof Error ? error.message : "Ultimate Tic-Tac-Toe cancel failed",
       stackTrace: error instanceof Error ? error.stack : undefined,
       endpoint: "/api/tic-tac-toe/match/[matchId]/cancel",
-      game: "Tic-Tac-Toe",
+      game: "Ultimate Tic-Tac-Toe",
       metadata: { operation: "cancel" },
     });
     return NextResponse.json(

@@ -541,7 +541,7 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       pvpMode: "1v1",
     },
     {
-      name: "Tic-Tac-Toe",
+      name: "Ultimate Tic-Tac-Toe",
       href: "/games/tic-tac-toe",
       leaderboardKey: "tic-tac-toe",
       playsKey: "tic-tac-toe",

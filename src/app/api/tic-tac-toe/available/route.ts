@@ -39,10 +39,10 @@ export async function GET() {
       errorMessage:
         error instanceof Error
           ? error.message
-          : "Tic-Tac-Toe lobby listing failed",
+          : "Ultimate Tic-Tac-Toe lobby listing failed",
       stackTrace: error instanceof Error ? error.stack : undefined,
       endpoint: "/api/tic-tac-toe/available",
-      game: "Tic-Tac-Toe",
+      game: "Ultimate Tic-Tac-Toe",
       metadata: { operation: "list_open_matches" },
     });
     return NextResponse.json(

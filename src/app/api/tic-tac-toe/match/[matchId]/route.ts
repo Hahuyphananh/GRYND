@@ -105,10 +105,10 @@ export async function GET(
     await logError({
       errorType: "tic_tac_toe_match_fetch_error",
       errorMessage:
-        error instanceof Error ? error.message : "Tic-Tac-Toe match fetch failed",
+        error instanceof Error ? error.message : "Ultimate Tic-Tac-Toe match fetch failed",
       stackTrace: error instanceof Error ? error.stack : undefined,
       endpoint: "/api/tic-tac-toe/match/[matchId]",
-      game: "Tic-Tac-Toe",
+      game: "Ultimate Tic-Tac-Toe",
       metadata: { operation: "fetch_match" },
     });
     return NextResponse.json(

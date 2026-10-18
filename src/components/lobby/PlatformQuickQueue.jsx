@@ -21,7 +21,7 @@ export const QUICK_QUEUE_GAME_OPTIONS = [
   ["chess", "Chess"],
   ["mini-golf", "Mini Golf"],
   ["speed-typing", "Speed Typing"],
-  ["tic-tac-toe", "Tic-Tac-Toe"],
+  ["tic-tac-toe", "Ultimate Tic-Tac-Toe"],
   ["barricade", "Barrier Blitz"],
 ];
 

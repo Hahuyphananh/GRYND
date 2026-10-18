@@ -463,7 +463,7 @@ export const GUIDES: readonly Guide[] = [
       {
         heading: "Perfect-information duels versus managed chance",
         paragraphs: [
-          "At one end sit games like Chess, Tic-Tac-Toe, Four-in-a-Row and Dots & Boxes: nothing is hidden and nothing is drawn, so the outcome is a pure function of planning and reading the opponent. At the other end sit games built around a random input you manage rather than control.",
+          "At one end sit games like Chess, Ultimate Tic-Tac-Toe, Four-in-a-Row and Dots & Boxes: nothing is hidden and nothing is drawn, so the outcome is a pure function of planning and reading the opponent. At the other end sit games built around a random input you manage rather than control.",
           "Most of GRYND's catalogue sits in between, and the useful thing to notice is which side your game leans toward. In a perfect-information duel, the way to improve is study and pattern recognition. In a chance-managed game, the way to improve is pricing risk — knowing when a gamble is worth taking and when it is simply a losing bet.",
         ],
       },
@@ -632,7 +632,7 @@ export const GUIDES: readonly Guide[] = [
       {
         heading: "In solved games, plan for the reply, not the move",
         paragraphs: [
-          "Turn-based games like Tic-Tac-Toe, Four-in-a-Row and Dots & Boxes do not reward reading a personality so much as reading a position. The habit that wins is treating your opponent's turn as part of your own move: before you commit, work out what they must do in response, and only then decide whether the move is good.",
+          "Turn-based games like Ultimate Tic-Tac-Toe, Four-in-a-Row and Dots & Boxes do not reward reading a personality so much as reading a position. The habit that wins is treating your opponent's turn as part of your own move: before you commit, work out what they must do in response, and only then decide whether the move is good.",
           "This is where 'reading' stops being about psychology and becomes pure calculation. If your move creates a threat they cannot answer, the choice is right regardless of who is sitting opposite; if it does not, the choice is wrong even against a player you have never faced.",
         ],
       },

@@ -58,7 +58,7 @@ test("the destination is Tic-Tac-Toe's own create-or-join lobby", () => {
 });
 
 test("the queue UI offers Tic-Tac-Toe and routes to its match page", () => {
-  assert.match(ui, /\["tic-tac-toe", "Tic-Tac-Toe"\]/);
+  assert.match(ui, /\["tic-tac-toe", "Ultimate Tic-Tac-Toe"\]/);
   assert.match(ui, /"tic-tac-toe": "\/casino\/tic-tac-toe"/);
   assert.equal(quickQueueGameRoute("tic-tac-toe", "abc-123"), "/casino/tic-tac-toe/abc-123");
   assert.equal(quickQueueGameRoute("tic-tac-toe", ""), null);

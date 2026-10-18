@@ -10,8 +10,8 @@ export async function generateMetadata({
   const shortId = matchId.length > 10 ? matchId.slice(0, 8) : matchId;
   return {
     robots: { index: false, follow: false },
-    title: `Tic-Tac-Toe Match #${shortId} | GRYND`,
-    description: `Live Tic-Tac-Toe match #${shortId} on GRYND — a rated 1v1 duel on a 3x3 board, three in a row to win.`,
+    title: `Ultimate Tic-Tac-Toe Match #${shortId} | GRYND`,
+    description: `Live Ultimate Tic-Tac-Toe match #${shortId} on GRYND — a rated 1v1 duel on nine mini-boards, three boards in a line to win.`,
   };
 }
 

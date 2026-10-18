@@ -63,10 +63,10 @@ export async function POST(req: Request) {
     await logError({
       errorType: "tic_tac_toe_create_ai_error",
       errorMessage:
-        error instanceof Error ? error.message : "Tic-Tac-Toe practice failed",
+        error instanceof Error ? error.message : "Ultimate Tic-Tac-Toe practice failed",
       stackTrace: error instanceof Error ? error.stack : undefined,
       endpoint: "/api/tic-tac-toe/create-ai",
-      game: "Tic-Tac-Toe",
+      game: "Ultimate Tic-Tac-Toe",
       metadata: { operation: "create_ai" },
     });
     return NextResponse.json(

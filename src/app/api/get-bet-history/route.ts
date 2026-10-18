@@ -777,7 +777,7 @@ export async function GET(req: NextRequest) {
               ? -amount
               : 0;
         return {
-          type: g.isAi ? "Tic-Tac-Toe vs AI" : "Tic-Tac-Toe",
+          type: g.isAi ? "Ultimate Tic-Tac-Toe vs AI" : "Ultimate Tic-Tac-Toe",
           date: g.endedAt || g.createdAt || new Date().toISOString(),
           amount,
           payout,

@@ -810,7 +810,7 @@ export default function AdminDashboardClient({
       profile: "Profile",
       "hex-duel": "Hex Duel",
       "pool-masters": "Pool Masters",
-      "tic-tac-toe": "Tic-Tac-Toe",
+      "tic-tac-toe": "Ultimate Tic-Tac-Toe",
       "four-in-a-row": "Four in a Row",
       "dots-and-boxes": "Dots and Boxes",
       "mini-golf": "Mini Golf",
