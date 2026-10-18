@@ -77,7 +77,7 @@ import type { BoardControl, Cell, Mark, Seat } from "../../lib/tic-tac-toe/types
  * depth without a glow (the old `drop-shadow` halo is gone). The two passes use
  * one stroke weight, so X and O look like one family.
  */
-function MarkGlyph({ mark, className = "" }: { mark: Mark; className?: string }) {
+export function MarkGlyph({ mark, className = "" }: { mark: Mark; className?: string }) {
   const shape =
     mark === "X" ? (
       <>

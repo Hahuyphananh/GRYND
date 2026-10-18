@@ -572,14 +572,31 @@ test("surface: the route list is exactly the audited one, and every route is gat
   }
 
   // No route accepts a decision-shaped field off a body.
+  //
+  // `mark` is deliberately NOT on this list any more. A practice player chooses
+  // which mark they hold — X opens, O hands the opening move to the bot — like
+  // chess colours, so it is a PREFERENCE, not an outcome: the store resolves it
+  // (`parseMarkChoice` / `resolveHumanMark`) and writes the row's seats from the
+  // result, and it is only read by the practice create route. A stale or crafted
+  // value can therefore pick a seat and nothing else.
   for (const path of Object.values(R)) {
     const src = readFileSync(path, "utf8");
     assert.doesNotMatch(
       src,
-      /body\??\.(winner|winnerId|loserId|result|draw|tie|board|mark|currentTurn|turn|ply|status|elo|rating|trophies|trophy|matchCompleted|completed)\b/,
+      /body\??\.(winner|winnerId|loserId|result|draw|tie|board|currentTurn|turn|ply|status|elo|rating|trophies|trophy|matchCompleted|completed)\b/,
       `${path} must not read a client-supplied decision`,
     );
+    if (path !== R.createAi) {
+      assert.doesNotMatch(src, /body\??\.mark\b/, `${path} must not read a seat preference`);
+    }
   }
+  // The one route that does read it hands it to the store's resolver — it never
+  // turns the field into a seat itself.
+  assert.match(readFileSync(R.createAi, "utf8"), /mark: body\?\.mark/);
+  assert.match(
+    readFileSync("src/lib/tic-tac-toe/serverStore.ts", "utf8"),
+    /let humanMark = resolveHumanMark\(parseMarkChoice\(mark\), random\);/,
+  );
 });
 
 // ════════════════════════════════════════════════════════════════════════
@@ -647,7 +664,10 @@ test("guest: a signed-out visitor can start, read and play a PRACTICE match", { 
   // practice gate hands the route the guest identity.
   session.gate = "signed-out";
 
-  const created = await invoke(R.createAi, { body: { difficulty: "easy" } });
+  // An explicit mark: which seat the guest takes is now a choice (or a roll), and
+  // this test is about the guest's access, not the roll. X keeps the guest in
+  // seat 1 so the move below addresses the human's own turn.
+  const created = await invoke(R.createAi, { body: { difficulty: "easy", mark: "X" } });
   assert.equal(created.status, 200, "a guest starts a practice match from the lobby");
   assert.equal(created.json?.data?.practice, true);
 

@@ -22,7 +22,9 @@
 //   • FREE CHOICE, when the destination resolved: said in words in the header
 //     chip and every open board is drawn in the same "you may play here" style.
 //   • each board's own state as one word — Play here / Open / Waiting / X / O /
-//     Draw — over a frame that never covers the marks themselves.
+//     Draw — and, once a board is DONE, a claimed-board overlay: a dark wash
+//     with the owner's mark blown up across the whole board (or DRAW), so a
+//     resolved board is unmistakable at a glance on a nine-board lattice.
 //   • the winning mini-board line (from the server's per-board winningLine) and
 //     the winning three-board lattice line (a drawn line plus emerald rings).
 //   • the three rules of the game, in a strip under the board.
@@ -33,7 +35,7 @@
 import { memo, useMemo } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
-import TicTacToeBoard from "./TicTacToeBoard";
+import TicTacToeBoard, { MarkGlyph } from "./TicTacToeBoard";
 import { withReducedMotion } from "../../lib/animations";
 import {
   HOW_TO_PLAY,
@@ -216,26 +218,47 @@ function BoardCard({
       </div>
 
       <div className="relative">
-        {/* Ownership is a WASH behind the marks, never a cover over them: the
-            owner glyph sits at 11% opacity and the cells keep every mark at full
-            strength, so "who owns this board" and "what is on this board" are
-            both readable at 100px wide. */}
+        {/* A CLAIMED or DRAWN board is covered: a dark wash plus the outcome
+            blown up across the whole board. On a nine-board lattice the player
+            needs to see which boards are gone without reading nine headers, and
+            the giant glyph is the same silhouette (outline + seat colour) the
+            cells use, so it reads as this game's own language rather than a
+            badge. The wash is translucent, so the line that won the board is
+            still visible underneath; the overlay itself is inert. */}
         <AnimatePresence>
-          {ownerMark && (
-            <motion.span
-              key={ownerMark}
+          {(ownerMark || state === "drawn") && (
+            <motion.div
+              key={`overlay-${ownerMark ?? "draw"}`}
               aria-hidden="true"
+              data-testid={`lattice-board-overlay-${slot}`}
+              data-outcome={ownerMark ?? "draw"}
               {...withReducedMotion(reduceMotion, {
-                initial: { opacity: 0, scale: 0.7 },
-                animate: { opacity: 0.11, scale: 1 },
+                initial: { opacity: 0 },
+                animate: { opacity: 1 },
                 exit: { opacity: 0 },
-                transition: { type: "spring" as const, stiffness: 220, damping: 24 },
+                transition: { duration: 0.22, ease: "easeOut" as const },
               })}
-              className="pointer-events-none absolute inset-0 flex items-center justify-center text-[42px] font-black leading-none sm:text-[54px]"
-              style={{ color: ownerColour ?? undefined }}
+              className="pointer-events-none absolute inset-0 z-[4] flex items-center justify-center overflow-hidden rounded-[6px] bg-[#050a14]/60"
             >
-              {ownerMark}
-            </motion.span>
+              {ownerMark ? (
+                <motion.span
+                  {...withReducedMotion(reduceMotion, {
+                    initial: { opacity: 0, scale: 0.55 },
+                    animate: { opacity: 0.94, scale: 1 },
+                    exit: { opacity: 0 },
+                    transition: { type: "spring" as const, stiffness: 240, damping: 22 },
+                  })}
+                  className="flex h-[74%] w-[74%] items-center justify-center"
+                  style={{ color: ownerColour ?? undefined }}
+                >
+                  <MarkGlyph mark={ownerMark} className="h-full w-full" />
+                </motion.span>
+              ) : (
+                <span className="rotate-[-8deg] text-[13px] font-black uppercase tracking-[0.28em] text-white/70 sm:text-base">
+                  Draw
+                </span>
+              )}
+            </motion.div>
           )}
         </AnimatePresence>
 
@@ -385,9 +408,19 @@ function MegaBoard({
       {/* The lattice fits its column whatever the width (see `.mega-lattice` in
           globals.css), so a phone never scrolls sideways and all nine boards
           stay visible. `overflow-x-auto` is only a safety net for a
-          pathological viewport. */}
+          pathological viewport.
+
+          HEIGHT, not just width: on a laptop the nine boards were sized by the
+          column alone, so the bottom row sat below the fold and the player had
+          to scroll mid-turn to reach it. The cap below is the SHORTEST of the
+          column and the room left under the page chrome, floored so a short
+          window shrinks the board rather than crushing it. */}
       <div className="overflow-x-auto pb-1">
-        <div className="mega-lattice relative mx-auto w-full" data-cols={LATTICE_COLUMNS}>
+        <div
+          className="mega-lattice relative mx-auto w-full"
+          data-cols={LATTICE_COLUMNS}
+          style={{ maxWidth: "min(100%, max(300px, calc(100svh - 435px)))" }}
+        >
           {/* The large board's own frame: it is what makes nine separate boards
               read as ONE 3x3 game, and it carries the winning line. */}
           <div className="relative rounded-2xl border border-white/10 bg-[#070b16]/70 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_24px_60px_-40px_rgba(0,0,0,0.95)] sm:rounded-[20px] sm:p-1.5">

@@ -51,6 +51,7 @@ import {
   TIC_TAC_TOE_LOCK_NAMESPACE,
 } from "./constants";
 import { chooseAiMove } from "./ai";
+import { openingSeatIsHost, parseMarkChoice, resolveHumanMark } from "./seating";
 import { coerceAiDifficulty } from "../aiDifficulty";
 import {
   applyMove,
@@ -337,43 +338,96 @@ export async function createOrJoin({
   });
 }
 
+// The opening-seat policy (which USER takes the X seat) lives in its own pure
+// module so it can be pinned without a database; re-exported here because every
+// caller of the store already reaches for it through this module.
+export { parseMarkChoice, resolveHumanMark, openingSeatIsHost } from "./seating";
+export type { MarkChoice } from "./seating";
+
 /**
  * Start a free practice match against the built-in bot.
  *
  * Practice is UNRATED: the row is `isAi`, so `settleMatch` skips ratings,
  * trophies and win counters entirely. It never enters the open-lobby pool (the
- * bot occupies player2 immediately), so it can never be joined or listed.
+ * bot occupies the other seat immediately), so it can never be joined or listed.
  *
- * The human is player1 (X) and moves first, exactly as a real lobby host — the
- * bot takes the O seat.
+ * WHO OPENS is the player's choice (or a server-side roll), like chess colours:
+ * `mark` is the human's X/O preference. X is `player1` and opens — so picking O
+ * seats the bot in `player1` and gives it the first move. That opening move is
+ * played HERE, at creation, because tic-tac-toe's bot otherwise answers inside a
+ * HUMAN move's transaction: a bot that opens has no human move to ride on, and
+ * the board would sit waiting on it forever.
  */
 export async function createAiMatch({
   userId,
   difficulty,
+  mark,
+  random = Math.random,
 }: {
   userId: string;
   difficulty?: unknown;
+  mark?: unknown;
+  random?: () => number;
 }) {
-  const state = createInitialState();
-  const seats: Seats = { player1Id: userId, player2Id: TIC_TAC_TOE_AI_PLAYER_ID };
   const tier = coerceAiDifficulty(difficulty);
+  let humanMark = resolveHumanMark(parseMarkChoice(mark), random);
+  let humanSeat: Seat = humanMark === "X" ? "player1" : "player2";
 
-  const [match] = await db
-    .insert(ticTacToeMatches)
-    .values({
-      player1Id: userId,
-      player2Id: TIC_TAC_TOE_AI_PLAYER_ID,
-      status: statusForState(state),
-      ply: state.ply,
-      currentTurnUserId: userIdForSeat(seats, state.currentTurn),
-      gameState: state,
-      isAi: true,
-      aiDifficulty: tier,
-      startedAt: new Date(),
-    })
-    .returning();
+  let state = createInitialState();
+  let opening: { boardIndex: number; cellIndex: number } | null = null;
+  if (state.currentTurn !== humanSeat) {
+    const move = chooseAiMove({ state, seat: state.currentTurn, difficulty: tier });
+    if (move) {
+      state = applyMove({
+        state,
+        seat: state.currentTurn,
+        boardIndex: move.boardIndex,
+        cellIndex: move.cellIndex,
+      }).state;
+      opening = { boardIndex: move.boardIndex, cellIndex: move.cellIndex };
+    } else {
+      // Defensive: an empty board always offers a move, but a bot that could not
+      // open must never leave the match waiting on itself — hand X to the human.
+      humanMark = "X";
+      humanSeat = "player1";
+    }
+  }
 
-  return { match } as const;
+  const seats: Seats =
+    humanSeat === "player1"
+      ? { player1Id: userId, player2Id: TIC_TAC_TOE_AI_PLAYER_ID }
+      : { player1Id: TIC_TAC_TOE_AI_PLAYER_ID, player2Id: userId };
+
+  return db.transaction(async (tx) => {
+    const [match] = await tx
+      .insert(ticTacToeMatches)
+      .values({
+        player1Id: seats.player1Id,
+        player2Id: seats.player2Id,
+        status: statusForState(state),
+        ply: state.ply,
+        currentTurnUserId: userIdForSeat(seats, state.currentTurn),
+        gameState: state,
+        isAi: true,
+        aiDifficulty: tier,
+        startedAt: new Date(),
+      })
+      .returning();
+
+    // The bot's opening move belongs in the append-only log exactly like a human
+    // move, so replaying the log reconstructs the same position.
+    if (opening) {
+      await tx.insert(ticTacToeMoves).values({
+        matchId: match.id,
+        ply: 0,
+        playerId: TIC_TAC_TOE_AI_PLAYER_ID,
+        boardIndex: opening.boardIndex,
+        cellIndex: opening.cellIndex,
+      });
+    }
+
+    return { match, humanMark, humanSeat } as const;
+  });
 }
 
 async function createWaitingMatch(tx: any, userId: string, stakeAmount: number) {
@@ -459,14 +513,22 @@ async function joinExistingMatch(
   // instead of a state the new engine would have to void.
   const reseed = needsRulesVoid(match);
   const state = reseed ? createInitialState() : stateOf(match);
-  const seats: Seats = { player1Id: match.player1Id, player2Id: userId };
+  // WHO OPENS IS ROLLED HERE, like chess colours. The host is not automatically
+  // X: `player1` is the seat that opens (one engine invariant this change does
+  // not touch), and the roll decides which USER takes it. Both seats are already
+  // escrowed above by user id, so the swap moves no coins; the seat cards and
+  // the first move then follow the row.
+  const seats: Seats = openingSeatIsHost()
+    ? { player1Id: match.player1Id, player2Id: userId }
+    : { player1Id: userId, player2Id: match.player1Id };
 
   // Straight to `playing`: there is no ready banner and no countdown, so the
   // first move (X, player1) is available the moment the second seat lands.
   const [updated] = await tx
     .update(ticTacToeMatches)
     .set({
-      player2Id: userId,
+      player1Id: seats.player1Id,
+      player2Id: seats.player2Id,
       status: statusForState(state),
       ply: state.ply,
       currentTurnUserId: userIdForSeat(seats, state.currentTurn),

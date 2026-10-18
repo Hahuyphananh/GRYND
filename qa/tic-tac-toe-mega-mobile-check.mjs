@@ -227,10 +227,20 @@ const latticeChecks = (tag, m, vp) => {
     lattice.width <= scroller.clientWidth + 1,
     `lattice ${px(lattice.width)} vs strip ${px(scroller.clientWidth)}`,
   );
+  // The lattice is no longer asked to fill the strip: on a desktop column it is
+  // TALLER than it is wide, and a board sized by width alone pushed its bottom
+  // row (and the free-choice controls under it) below the fold. It is capped by
+  // the room left under the page chrome instead, so the answer here is "fits
+  // inside the strip" plus "ends above the fold".
   check(
-    `${tag}: the lattice fills the strip (it fits by shrinking, not by a floor)`,
-    Math.abs(lattice.width - scroller.clientWidth) <= 1,
+    `${tag}: the lattice fits inside the strip instead of overflowing it`,
+    lattice.width <= scroller.clientWidth + 1,
     `lattice ${px(lattice.width)} vs strip ${px(scroller.clientWidth)}`,
+  );
+  check(
+    `${tag}: the whole lattice ends inside the viewport (one screen, no scroll)`,
+    lattice.bottom <= m.viewportHeight + 1,
+    `lattice bottom ${px(lattice.bottom)} of ${px(m.viewportHeight)}`,
   );
 
   check(
@@ -370,9 +380,12 @@ for (const vp of VIEWPORTS) {
 const desktop = await mount(VIEWPORTS[3]);
 const wide = await render(desktop);
 latticeChecks("1280 lattice", wide, VIEWPORTS[3]);
+// Desktop is capped by HEIGHT now, not by the column: the boards shrink just
+// enough to keep the whole lattice on one screen, and not beyond that — a
+// readable board is the point of the cap, so a floor is asserted too.
 check(
-  "1280: the desktop lattice still uses the full board column",
-  wide.boards[0].width >= 200,
+  "1280: the desktop lattice stays a readable size after the height cap",
+  wide.boards[0].width >= 140,
   `board width ${px(wide.boards[0].width)}`,
 );
 await desktop.close();
@@ -401,8 +414,31 @@ const renderScenario = async (page, name) => {
       selectable: card.getAttribute("data-selectable"),
       latticeLine: card.getAttribute("data-lattice-line"),
       playableCells: card.querySelectorAll('[data-playable="true"]').length,
-      marks: card.querySelectorAll('[data-state="X"], [data-state="O"]').length,
+      marks: card.querySelectorAll('button[data-state="X"], button[data-state="O"]').length,
       badge: card.querySelector('[data-testid^="lattice-board-badge-"]')?.textContent?.trim() ?? "",
+      // The claimed-board overlay: what it says, whether it is inert, whether it
+      // really covers the board, and how big the outcome glyph is drawn.
+      overlay: (() => {
+        const el = card.querySelector('[data-testid^="lattice-board-overlay-"]');
+        if (!el) return null;
+        // "The board" is the 3x3 cell grid, not the card chrome: the overlay
+        // covers the playfield while the card's own label and badge stay
+        // readable above it.
+        const grid = card.querySelector('[data-testid="tic-tac-toe-board"]');
+        const target = (grid ?? card).getBoundingClientRect();
+        const box = el.getBoundingClientRect();
+        const glyph = el.querySelector("svg")?.getBoundingClientRect() ?? null;
+        return {
+          outcome: el.getAttribute("data-outcome"),
+          inert: getComputedStyle(el).pointerEvents === "none",
+          covers:
+            box.left <= target.left + 1 &&
+            box.right >= target.right - 1 &&
+            box.top <= target.top + 1 &&
+            box.bottom >= target.bottom - 1,
+          glyphRatio: glyph ? glyph.width / box.width : 0,
+        };
+      })(),
     }));
     const cells = [...document.querySelectorAll('[data-testid^="tic-tac-toe-cell-"]')];
     // The drawn win line and the marks' own strokes: the visual contract asserts
@@ -610,6 +646,38 @@ check(
     ownedBy(2).badge
   }/${ownedBy(2).marks} marks`,
 );
+// A resolved board is COVERED, not merely tinted: the overlay spans the card,
+// it is inert (the cells underneath never lose a click), and the outcome mark is
+// drawn huge — the point is to read "this board is gone" from across the room.
+const covered = [ownedBy(0), ownedBy(2), ownedBy(1)];
+check(
+  "states: every resolved mini-board carries a covering outcome overlay",
+  covered.every((c) => c.overlay && c.overlay.covers && c.overlay.inert),
+  covered
+    .map((c) => (c.overlay ? `#${c.slot} ${c.overlay.outcome} covers=${c.overlay.covers} inert=${c.overlay.inert}` : `#${c.slot} MISSING`))
+    .join(", "),
+);
+check(
+  "states: a won mini-board's overlay is its owner's mark, drawn huge",
+  ownedBy(0).overlay?.outcome === "X" &&
+    ownedBy(2).overlay?.outcome === "O" &&
+    ownedBy(0).overlay.glyphRatio >= 0.6 &&
+    ownedBy(2).overlay.glyphRatio >= 0.6,
+  `#1 ${ownedBy(0).overlay?.outcome} ${Math.round((ownedBy(0).overlay?.glyphRatio ?? 0) * 100)}%, #3 ${
+    ownedBy(2).overlay?.outcome
+  } ${Math.round((ownedBy(2).overlay?.glyphRatio ?? 0) * 100)}%`,
+);
+check(
+  "states: a drawn mini-board says so in its overlay",
+  ownedBy(1).overlay?.outcome === "draw",
+  `#2 ${ownedBy(1).overlay?.outcome ?? "missing"}`,
+);
+check(
+  "states: an open board is never covered by an outcome overlay",
+  [3, 4, 5, 6, 7, 8].every((slot) => ownedBy(slot)?.overlay === null),
+  ownedState.cards.filter((c) => c.overlay).map((c) => c.slot).join(",") || "none",
+);
+
 check(
   "states: a drawn mini-board is locked and every one of its nine marks survives",
   ownedBy(1).control === "draw" &&

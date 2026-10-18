@@ -31,14 +31,19 @@ export async function POST(req: Request) {
     );
   }
 
-  // The lobby's AI-difficulty pick. Absent/invalid coerces to the default so an
-  // older client still starts a practice match.
-  const body = (await req.json().catch(() => ({}))) as { difficulty?: unknown };
+  // The lobby's AI-difficulty and starting-mark picks. Absent/invalid values
+  // coerce to the documented defaults (`normal`, and a SERVER-side `random`
+  // roll) so an older client still starts a practice match.
+  const body = (await req.json().catch(() => ({}))) as {
+    difficulty?: unknown;
+    mark?: unknown;
+  };
 
   try {
-    const { match } = await createAiMatch({
+    const { match, humanMark, humanSeat } = await createAiMatch({
       userId,
       difficulty: body?.difficulty,
+      mark: body?.mark,
     });
     return NextResponse.json({
       success: true,
@@ -47,6 +52,11 @@ export async function POST(req: Request) {
         status: match.status,
         practice: true,
         aiDifficulty: match.aiDifficulty ?? null,
+        // The SERVER's resolution of `random`, plus the seat it wrote the human
+        // into. The client draws its mark from the snapshot; these are echoed so
+        // a caller can label the match without a second read.
+        humanMark,
+        humanSeat,
       },
     });
   } catch (error) {

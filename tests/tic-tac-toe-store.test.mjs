@@ -1212,7 +1212,9 @@ test("createAiMatch seats the bot on player2, unrated, on the Ultimate opening",
   const store = await loadStore();
   settlement.queue.length = 0;
 
-  const { match } = await store.createAiMatch({ userId: ALICE, difficulty: "normal" });
+  // An explicit `mark` — the choice is the player's now (or a server roll), so a
+  // test that is about the SEAT must pin it.
+  const { match } = await store.createAiMatch({ userId: ALICE, difficulty: "normal", mark: "X" });
 
   assert.equal(match.player1Id, ALICE);
   assert.equal(match.player2Id, BOT);
@@ -1227,6 +1229,47 @@ test("createAiMatch seats the bot on player2, unrated, on the Ultimate opening",
   // the row can never satisfy the `player2_id IS NULL` open-lobby predicate,
   // and no queue transition is mirrored.
   assert.equal(settlement.queue.length, 0);
+});
+
+test("createAiMatch seats the BOT on player1 when the human picks O — and the bot opens", async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+
+  const { match, humanMark, humanSeat } = await store.createAiMatch({
+    userId: ALICE,
+    difficulty: "hard",
+    mark: "O",
+  });
+
+  assert.equal(humanMark, "O");
+  assert.equal(humanSeat, "player2");
+  assert.equal(match.player1Id, BOT, "X is the bot's seat when the human asks for O");
+  assert.equal(match.player2Id, ALICE);
+  assert.equal(match.isAi, true);
+  // The opening move is already played and logged: tic-tac-toe's bot normally
+  // answers inside a human move, and a bot that opens has none to ride on.
+  assert.equal(match.gameState.ply, 1, "the bot's opening move is on the board");
+  assert.equal(match.gameState.currentTurn, "player2", "the human answers");
+  assert.equal(match.gameState.lastMove?.mark, "X");
+  const moves = fake.rowsOf(ticTacToeMoves);
+  assert.equal(moves.length, 1);
+  assert.equal(moves[0].ply, 0);
+  assert.equal(moves[0].playerId, BOT);
+  assert.equal(moves[0].boardIndex, match.gameState.lastMove.boardIndex);
+  assert.equal(moves[0].cellIndex, match.gameState.lastMove.cellIndex);
+});
+
+test("createAiMatch rolls the mark when the request does not pin one", async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+
+  const asX = await store.createAiMatch({ userId: ALICE, difficulty: "normal", mark: "random", random: () => 0.1 });
+  assert.equal(asX.humanMark, "X");
+  assert.equal(asX.match.gameState.ply, 0);
+
+  const asO = await store.createAiMatch({ userId: ALICE, difficulty: "normal", mark: "random", random: () => 0.9 });
+  assert.equal(asO.humanMark, "O");
+  assert.equal(asO.match.gameState.ply, 1);
 });
 
 test("createAiMatch coerces an unknown difficulty onto the shared scale", async (t) => {

@@ -539,13 +539,16 @@ export default function TicTacToeMatchPage() {
         >
           <div className="mx-auto max-w-6xl">
             {/* ── Header ────────────────────────────────────────────── */}
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            {/* Deliberately compact: every pixel above the lattice is a pixel
+                the nine boards cannot use, and the bottom row has to be
+                playable without scrolling. */}
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h1 className="flex items-center gap-2 text-2xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-300 to-yellow-200 sm:text-3xl">
-                  <IconTicTac className="h-7 w-7 text-amber-400" />
+                <h1 className="flex items-center gap-2 text-xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-300 to-yellow-200 sm:text-2xl">
+                  <IconTicTac className="h-6 w-6 text-amber-400" />
                   Mega Tic-Tac-Toe
                 </h1>
-                <p className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-widest text-amber-200/70">
+                <p className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-amber-200/70">
                   <span>Nine mini-boards · three in a line claims one</span>
                   <span className="rounded-full border border-emerald-400/40 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold tracking-wider text-emerald-200">
                     {stakeLabel} · rated 1v1
@@ -575,9 +578,9 @@ export default function TicTacToeMatchPage() {
 
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
               {/* ── Board column ───────────────────────────────────── */}
-              <div className="rounded-2xl border border-amber-500/20 bg-black/40 p-3 shadow-[0_0_30px_rgba(251,191,36,0.10)] sm:p-4">
+              <div className="rounded-2xl border border-amber-500/20 bg-black/40 p-2 shadow-[0_0_30px_rgba(251,191,36,0.10)] sm:p-3">
                 {/* Seat cards: who is who, and which mark they hold. */}
-                <div className="mb-3 grid grid-cols-2 gap-2">
+                <div className="mb-2 grid grid-cols-2 gap-2">
                   {(["player1", "player2"] as Seat[]).map((seat) => {
                     const identity =
                       seat === "player1" ? match.players?.player1 : match.players?.player2;
@@ -598,7 +601,7 @@ export default function TicTacToeMatchPage() {
                         key={seat}
                         data-testid={`seat-${seat}`}
                         data-active={isActive ? "true" : "false"}
-                        className={`rounded-xl border p-2.5 transition ${
+                        className={`rounded-xl border p-1.5 transition sm:p-2 ${
                           isActive
                             ? "border-amber-400/60 bg-amber-500/10 ring-1 ring-amber-300/40"
                             : "border-white/10 bg-white/5"
@@ -612,7 +615,7 @@ export default function TicTacToeMatchPage() {
                               name={name}
                               isAi={Boolean(match.isAi) && !isViewer}
                               isGuest={Boolean(identity?.isGuest)}
-                              size="h-7 w-7"
+                              size="h-6 w-6"
                             />
                             {/* The seat's mark rides the avatar's corner: the
                                 face says WHO, the badge says which mark they
@@ -649,7 +652,7 @@ export default function TicTacToeMatchPage() {
                     has gone. */}
                 <div
                   data-testid="turn-status"
-                  className={`mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-xl border px-3 py-2.5 ${
+                  className={`mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-xl border px-3 py-1.5 ${
                     boardUnlocked
                       ? "border-amber-400/50 bg-amber-500/10"
                       : "border-white/10 bg-white/5"

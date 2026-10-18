@@ -17,15 +17,24 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
 import { useUser } from "@clerk/nextjs";
 import { usePostHog } from "posthog-js/react";
-import { IconTicTac } from "@tabler/icons-react";
+import { IconTicTac, IconX } from "@tabler/icons-react";
 import PvpLobbyPage from "../../../components/lobby/PvpLobby";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import {
   type AiDifficulty,
   readStoredAiDifficulty,
 } from "../../../lib/aiDifficulty";
+import {
+  AI_MARKS,
+  AI_MARK_HINTS,
+  coerceAiMark,
+  readStoredAiMark,
+  storeAiMark,
+  type AiMark,
+} from "../../../lib/tic-tac-toe/marks";
 import { useSocket } from "../../../context/SocketProvider";
 import { useSocketAwarePoll } from "../../../hooks/useVisiblePoll";
 import { useCoinBalance } from "../../../hooks/useCoinBalance";
@@ -65,6 +74,12 @@ export default function TicTacToeLobbyPage() {
   const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
     readStoredAiDifficulty("tic-tac-toe"),
   );
+  // Practice setup: the mark the player wants (X opens, O hands the bot the
+  // opening move, Random lets the SERVER roll it), chosen in a small dialog
+  // before the match starts — never rolled by the browser, so the seat the row
+  // records and the board the player sees cannot disagree.
+  const [aiSetupOpen, setAiSetupOpen] = useState(false);
+  const [aiMark, setAiMark] = useState<AiMark>(() => readStoredAiMark());
 
   const fetchLobbies = useCallback(async () => {
     try {
@@ -153,25 +168,34 @@ export default function TicTacToeLobbyPage() {
     setBusy(true);
     setError(null);
     try {
+      storeAiMark(aiMark);
       const res = await fetch("/api/tic-tac-toe/create-ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ difficulty: aiDifficulty }),
+        // `mark` is a PREFERENCE: the server owns the resolution (including the
+        // `random` roll) and writes the seats, so the board is drawn from the
+        // row rather than from anything decided here.
+        body: JSON.stringify({ difficulty: aiDifficulty, mark: aiMark }),
       });
       const data = await res.json();
       if (!res.ok || !data?.success) {
         setError(data?.error || "Unable to start the practice match");
         return;
       }
-      posthog?.capture("tic_tac_toe_match_started", { mode: "ai" });
+      setAiSetupOpen(false);
+      posthog?.capture("tic_tac_toe_match_started", {
+        mode: "ai",
+        mark: data.data?.humanMark ?? aiMark,
+        difficulty: aiDifficulty,
+      });
       router.push(`/casino/tic-tac-toe/${data.data.matchId}`);
     } catch {
       setError("Unable to start the practice match");
     } finally {
       setBusy(false);
     }
-  }, [aiDifficulty, posthog, router]);
+  }, [aiDifficulty, aiMark, posthog, router]);
 
   const cancelLobby = useCallback(
     async (matchId: string) => {
@@ -248,12 +272,12 @@ export default function TicTacToeLobbyPage() {
           heading: "X moves first, one click per turn",
           body: (
             <>
-              The player who opened the lobby holds <b>X</b> and plays the first
-              move; the opponent holds <b>O</b>. Whose turn it is and which board
-              is required are decided by the <b>server</b>, not by the board you
-              can see, so a stale tab can never play out of turn or outside the
-              required board. There are no timers, no power-ups and no luck:
-              nothing is drawn or rolled, ever.
+            <b>X</b> plays the first move and <b>O</b> answers. Who holds X is
+            decided when the match starts — a duel <b>rolls</b> the two seats,
+            like chess colours, and a practice match lets you pick X, O or a
+            random roll. Whose turn it is and which board is required are
+            decided by the <b>server</b>, not by the board you can see, so a
+            stale tab can never play out of turn or outside the required board.
             </>
           ),
         },
@@ -277,7 +301,8 @@ export default function TicTacToeLobbyPage() {
   );
 
   return (
-    <PvpLobbyPage
+    <>
+      <PvpLobbyPage
       title="Tic-Tac-Toe"
       subtitle="A rated 1v1 duel on nine mini-boards. Three in a row claims a board, the cell you play sends your opponent to the next one, and three boards in a line takes the match. Or play the bot for free."
       icon={<IconTicTac className="h-9 w-9 flex-shrink-0 text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)] sm:h-10 sm:w-10" />}
@@ -290,22 +315,10 @@ export default function TicTacToeLobbyPage() {
       playBusyLabel="Searching…"
       canPlay={Boolean(isSignedIn) && stake >= MIN_STAKE}
       wager={{ value: stake, onChange: setStake, balance: coinBalance }}
-      children={
-        <AiDifficultyPicker
-          gameKey="tic-tac-toe"
-          value={aiDifficulty}
-          onChange={setAiDifficulty}
-          hint={{
-            easy: "The bot plays a random empty cell and never blocks or wins on purpose.",
-            normal: "The bot plays to win, but slips occasionally — it is beatable.",
-            hard: "A perfect opponent: it never loses and forces a draw at worst.",
-          }}
-        />
-      }
       extraActions={
         <button
           type="button"
-          onClick={playAi}
+          onClick={() => setAiSetupOpen(true)}
           disabled={busy}
           className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-400/40 bg-cyan-400/10 py-2 text-sm font-bold text-cyan-200 transition hover:bg-cyan-400/20 disabled:opacity-50"
         >
@@ -335,5 +348,131 @@ export default function TicTacToeLobbyPage() {
       onRefresh={fetchLobbies}
       error={error}
     />
+
+      {/* ── Practice setup ────────────────────────────────────────────────
+          Opened by Play Free vs AI. Two settings, both sent with the create
+          request: the MARK (who opens) and the bot's tier. The mark is a
+          preference only — the server resolves `random` and writes the seats,
+          so the board is drawn from the row. */}
+      <AnimatePresence>
+        {aiSetupOpen && (
+          <motion.div
+            key="ai-setup"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
+            onClick={() => !busy && setAiSetupOpen(false)}
+          >
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="ai-setup-title"
+              initial={{ opacity: 0, y: 12, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              transition={{ type: "spring", stiffness: 340, damping: 28 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md rounded-2xl border border-cyan-400/30 bg-[#0b1122] p-5 text-left shadow-[0_30px_80px_-30px_rgba(0,0,0,0.9)]"
+            >
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <h2 id="ai-setup-title" className="text-lg font-black text-white">
+                    Practice vs AI
+                  </h2>
+                  <p className="mt-0.5 text-xs text-white/50">
+                    Free and unrated. Pick who opens, and how hard the bot plays.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Close"
+                  onClick={() => !busy && setAiSetupOpen(false)}
+                  disabled={busy}
+                  className="rounded-lg border border-white/10 bg-white/5 p-1.5 text-white/60 transition hover:bg-white/10 disabled:opacity-40"
+                >
+                  <IconX size={15} />
+                </button>
+              </div>
+
+              <fieldset>
+                <legend className="mb-2 text-[11px] font-bold uppercase tracking-wider text-white/50">
+                  Who opens
+                </legend>
+                <div className="grid grid-cols-3 gap-2">
+                  {AI_MARKS.map((choice) => {
+                    const selected = aiMark === choice;
+                    return (
+                      <button
+                        key={choice}
+                        type="button"
+                        aria-pressed={selected}
+                        data-testid={`ai-mark-${choice}`}
+                        onClick={() => setAiMark(choice)}
+                        className={`rounded-xl border px-2 py-2.5 text-center transition ${
+                          selected
+                            ? "gr-selected border-cyan-300/70 bg-cyan-400/15 text-cyan-100"
+                            : "border-white/10 bg-white/[0.03] text-white/70 hover:border-cyan-400/40 hover:bg-white/[0.06]"
+                        }`}
+                      >
+                        <span className="block text-base font-black leading-none">
+                          {choice === "random" ? "?" : choice}
+                        </span>
+                        <span className="mt-1 block text-[10px] font-semibold uppercase tracking-wider">
+                          {choice === "random" ? "Random" : choice === "X" ? "You first" : "Bot first"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-2 text-[11px] leading-relaxed text-white/50">
+                  {AI_MARK_HINTS[coerceAiMark(aiMark)]}
+                </p>
+              </fieldset>
+
+              <div className="mt-4 border-t border-white/10 pt-3">
+                <AiDifficultyPicker
+                  gameKey="tic-tac-toe"
+                  value={aiDifficulty}
+                  onChange={setAiDifficulty}
+                  hint={{
+                    easy: "The bot plays a random empty cell and never blocks or wins on purpose.",
+                    normal: "The bot plays to win, but slips occasionally — it is beatable.",
+                    hard: "A perfect opponent: it never loses and forces a draw at worst.",
+                  }}
+                />
+              </div>
+
+              {error && (
+                <p className="mt-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200">
+                  {error}
+                </p>
+              )}
+
+              <div className="mt-4 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAiSetupOpen(false)}
+                  disabled={busy}
+                  className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm font-bold text-white/70 transition hover:bg-white/10 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  data-testid="ai-start"
+                  onClick={() => void playAi()}
+                  disabled={busy}
+                  className="rounded-xl bg-cyan-400 px-4 py-2 text-sm font-black text-black transition hover:brightness-110 disabled:opacity-50"
+                >
+                  {busy ? "Starting…" : "Start match"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }

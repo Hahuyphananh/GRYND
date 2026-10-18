@@ -453,11 +453,17 @@ test("lattice: a board only offers cells when the SERVER offers the board", () =
   assert.match(mega, /control=\{board\.control\}/);
   assert.match(mega, /state=\{state\}/);
   assert.match(mega, /data-focused=\{focused \? "true" : "false"\}/);
-  // Ownership is a WASH behind the marks, never a cover over them: the glyph is
-  // faint, and the cells (with every mark at full strength) sit above it.
-  assert.match(mega, /animate: \{ opacity: 0\.11, scale: 1 \}/, "the owner glyph stays faint");
+  // A resolved board is COVERED now, not merely tinted: a dark wash plus the
+  // outcome blown up across the playfield, so "this board is gone" reads at a
+  // glance across nine boards. The faint 11% ownership wash it replaced could
+  // only be seen once you were already looking at that board.
+  assert.match(mega, /data-testid=\{`lattice-board-overlay-\$\{slot\}`\}/);
+  assert.match(mega, /data-outcome=\{ownerMark \?\? "draw"\}/);
+  assert.match(mega, /<MarkGlyph mark=\{ownerMark\}/, "the overlay reuses the board's glyph");
+  assert.match(mega, /h-\[74%\] w-\[74%\]/, "the outcome mark is drawn huge");
+  assert.doesNotMatch(mega, /opacity: 0\.11/, "the faint wash is gone");
   assert.match(mega, /boardStateMark\(state\)/);
-  assert.match(mega, /className="relative"/, "the marks sit above the wash");
+  assert.match(mega, /className="relative"/, "the board sits under the overlay");
 });
 
 test("lattice: the winning three-board line is highlighted and drawn", () => {
