@@ -421,20 +421,21 @@ function MegaBoard({
           so a slight inset keeps every cell reachable without shrinking them
           below the tap target.
 
-          The 420px height reserve is MEASURED, not guessed: the QA harness
-          mounts the shipped page's own chrome (header, seat cards, turn
-          guidance, the controls box) and reports what it costs — 363px above
-          the lattice on a desktop column. That leaves the boards as large as
-          they can be while the bottom row still ends inside the fold, INCLUDING
-          the ~50px the transient "X claims the board!" banner adds for its two
-          seconds. It is 25px tighter than the 445px figure it replaces, which is
-          what buys the extra size (a 480px lattice and ~45px cells at 1280×900,
-          up from 455px and 40px). */}
+          The 400px height reserve is MEASURED, not guessed, and it now covers a
+          fixed-height desktop page: the match card is the only thing under the
+          page chrome, so the reserve is the room above the lattice (290px) plus
+          the lattice's own fixed overhead (three card headers + gaps + frame
+          padding, 73px) plus the card/page padding and a small safety margin.
+          The controls moved to the sidebar and the rules strip is desktop-
+          hidden, which is what frees the board to grow while the card ends
+          inside the viewport — no page scroll at 1280×800 or 1440×900. The
+          transient "X claims the board!" toast is fixed-position on desktop, so
+          it no longer eats 50px of board height for two seconds. */}
       <div className="overflow-x-auto pb-1">
         <div
           className="mega-lattice relative mx-auto w-full"
           data-cols={LATTICE_COLUMNS}
-          style={{ maxWidth: "min(calc(100% - 20px), max(300px, calc(100svh - 420px)))" }}
+          style={{ maxWidth: "min(calc(100% - 20px), max(300px, calc(100svh - 400px)))" }}
         >
           {/* The large board's own frame: it is what makes nine separate boards
               read as ONE 3x3 game, and it carries the winning line. */}
@@ -518,9 +519,11 @@ function MegaBoard({
       </div>
 
       {/* ── How to play ──────────────────────────────────────────────────── */}
+      {/* Desktop hides this strip so the board card can end inside the
+          viewport; the match page repeats the same three lines in its sidebar. */}
       <ul
         data-testid="lattice-rules"
-        className="mt-2.5 grid gap-x-4 gap-y-1 text-[10.5px] leading-snug text-white/45 sm:grid-cols-3 sm:text-[11px]"
+        className="mt-2.5 grid gap-x-4 gap-y-1 text-[10.5px] leading-snug text-white/45 sm:grid-cols-3 sm:text-[11px] lg:hidden"
       >
         {HOW_TO_PLAY.map((line, index) => (
           <li key={line} className="flex items-start gap-1.5">

@@ -66,6 +66,7 @@ import {
   canPlayInBoard,
   destinationChip,
   durationSeconds,
+  HOW_TO_PLAY,
   isCellPlayable,
   isFreeChoice,
   isIncomingSnapshotStale,
@@ -535,14 +536,20 @@ export default function TicTacToeMatchPage() {
           data-status={match.status}
           data-next-board={nextBoard ?? ""}
           data-free-choice={freeChoice ? "true" : "false"}
-          className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#0d1226] via-[#080d1c] to-[#04060f] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8"
+          // Desktop is EXACTLY one viewport tall and never scrolls at the sizes
+          // the match is built for: the card fills the height left under the
+          // page chrome, and the sidebar scrolls on its own if it has more to
+          // say than the window does. `overflow-y-auto` is the safety valve for
+          // a very short window (e.g. a zoomed laptop) rather than clipping the
+          // bottom row.
+          className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#0d1226] via-[#080d1c] to-[#04060f] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8 lg:flex lg:h-[100svh] lg:flex-col lg:overflow-y-auto lg:pb-4"
         >
-          <div className="mx-auto max-w-6xl">
+          <div className="mx-auto w-full max-w-6xl lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
             {/* ── Header ────────────────────────────────────────────── */}
             {/* Deliberately compact: every pixel above the lattice is a pixel
                 the nine boards cannot use, and the bottom row has to be
                 playable without scrolling. */}
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2 lg:shrink-0">
               <div>
                 <h1 className="flex items-center gap-2 text-xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-300 to-yellow-200 sm:text-2xl">
                   <IconTicTac className="h-6 w-6 text-amber-400" />
@@ -576,7 +583,7 @@ export default function TicTacToeMatchPage() {
               </div>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-rows-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_320px]">
               {/* ── Board column ───────────────────────────────────── */}
               <div className="rounded-2xl border border-amber-500/20 bg-black/40 p-2 shadow-[0_0_30px_rgba(251,191,36,0.10)] sm:p-3">
                 {/* Seat cards: who is who, and which mark they hold. */}
@@ -696,7 +703,11 @@ export default function TicTacToeMatchPage() {
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: -6 }}
                       transition={{ duration: 0.18 }}
-                      className={`mb-3 rounded-xl border px-3 py-2 text-center text-sm font-bold ${
+                      // Desktop floats this toast BELOW the nav instead of
+                      // pushing the lattice down: a finished mini-board must not
+                      // resize the board mid-match (it is also what lets the
+                      // lattice keep the full height budget).
+                      className={`mb-3 rounded-xl border px-3 py-2 text-center text-sm font-bold lg:fixed lg:inset-x-0 lg:top-20 lg:z-[60] lg:mx-auto lg:mb-0 lg:max-w-md lg:shadow-[0_18px_40px_-24px_rgba(0,0,0,0.9)] ${
                         boardEvent.control === "draw"
                           ? "border-white/20 bg-white/10 text-white/80"
                           : "border-emerald-400/50 bg-emerald-500/15 text-emerald-100"
@@ -731,10 +742,18 @@ export default function TicTacToeMatchPage() {
                   />
                 </div>
 
+                {/* Everything below the lattice (the rules strip lives inside
+                    MegaBoard) is deliberately OUT of the board card now: the
+                    card has to end inside the viewport, so the controls moved
+                    to the sidebar and the rules strip is desktop-hidden. */}
+              </div>
+
+              {/* ── Sidebar ────────────────────────────────────────── */}
+              <aside className="space-y-3 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
                 {/* Controls. The turn instruction lives in the guidance card
                     above the board — ONE generated sentence, never two that
                     could disagree. */}
-                <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
+                <div className="rounded-xl border border-white/10 bg-white/5 p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-[11px] leading-relaxed text-white/45">
                       {boardUnlocked
@@ -759,10 +778,25 @@ export default function TicTacToeMatchPage() {
                     </p>
                   )}
                 </div>
-              </div>
 
-              {/* ── Sidebar ────────────────────────────────────────── */}
-              <aside className="space-y-3">
+                {/* The board's rules strip is hidden on desktop to keep the
+                    card one screen tall; the same three lines live here. */}
+                <section className="hidden rounded-2xl border border-amber-500/20 bg-black/40 p-4 lg:block">
+                  <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-amber-300">
+                    How to play
+                  </h2>
+                  <ul className="space-y-1.5 text-[11px] leading-snug text-white/50">
+                    {HOW_TO_PLAY.map((line) => (
+                      <li key={line} className="flex items-start gap-1.5">
+                        <span
+                          aria-hidden="true"
+                          className="mt-[4px] inline-block h-1 w-1 shrink-0 rounded-full bg-amber-300/70"
+                        />
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
                 <section className="rounded-2xl border border-amber-500/20 bg-black/40 p-4">
                   <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-amber-300">
                     Match

@@ -141,8 +141,8 @@ let root = null;
 //   seat cards (two, the active one ringed)              … mb-2 grid grid-cols-2 gap-2
 //   turn guidance (ONE instruction + progress)           … mb-2 … px-3 py-1.5
 //   [optional] the transient "X claims the board!" banner … mb-3 … px-3 py-2
-//   … the lattice …
-//   controls box (the server subtitle + Forfeit)         … mt-3 … p-3
+//   … the lattice …                                   (rules hidden on desktop)
+//   sidebar: controls box (the server subtitle + Forfeit) … p-3
 //   [optional] the load-error line                       … mt-2
 //
 // The two optional rows are the worst case the height reserve has to cover: a
@@ -174,12 +174,12 @@ function App({ scenario, banner = false, loadError = false }) {
   return (
     <div
       data-testid="ttt-harness-page"
-      className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#0d1226] via-[#080d1c] to-[#04060f] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8"
+      className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#0d1226] via-[#080d1c] to-[#04060f] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8 lg:flex lg:h-[100svh] lg:flex-col lg:overflow-y-auto lg:pb-4"
     >
-      <div className="mx-auto max-w-6xl">
+      <div className="mx-auto w-full max-w-6xl lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
         <div
           data-testid="ttt-harness-header"
-          className="mb-2 flex flex-wrap items-center justify-between gap-2"
+          className="mb-2 flex flex-wrap items-center justify-between gap-2 lg:shrink-0"
         >
           <div>
             <h1 className="flex items-center gap-2 text-xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-300 to-yellow-200 sm:text-2xl">
@@ -206,8 +206,11 @@ function App({ scenario, banner = false, loadError = false }) {
           </div>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="rounded-2xl border border-amber-500/20 bg-black/40 p-2 shadow-[0_0_30px_rgba(251,191,36,0.10)] sm:p-3">
+        <div className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-rows-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div
+            data-testid="ttt-harness-card"
+            className="rounded-2xl border border-amber-500/20 bg-black/40 p-2 shadow-[0_0_30px_rgba(251,191,36,0.10)] sm:p-3"
+          >
             <div data-testid="ttt-harness-seats" className="mb-2 grid grid-cols-2 gap-2">
               <SeatCard mark="X" name="You" moves={4} active />
               <SeatCard mark="O" name="Opponent" moves={3} active={false} />
@@ -229,7 +232,7 @@ function App({ scenario, banner = false, loadError = false }) {
             {banner && (
               <div
                 data-testid="ttt-harness-banner"
-                className="mb-3 rounded-xl border border-emerald-400/50 bg-emerald-500/15 px-3 py-2 text-center text-sm font-bold text-emerald-100"
+                className="mb-3 rounded-xl border border-emerald-400/50 bg-emerald-500/15 px-3 py-2 text-center text-sm font-bold text-emerald-100 lg:fixed lg:inset-x-0 lg:top-20 lg:z-[60] lg:mx-auto lg:mb-0 lg:max-w-md"
               >
                 X claims the top-left board!
               </div>
@@ -255,9 +258,15 @@ function App({ scenario, banner = false, loadError = false }) {
               />
             </div>
 
+          </div>
+
+          {/* The controls live in the sidebar on the shipped page, not under the
+              lattice — mirrored here so the card height the checks measure is
+              the shipped card height. */}
+          <aside className="space-y-3 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
             <div
               data-testid="ttt-harness-controls"
-              className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3"
+              className="rounded-xl border border-white/10 bg-white/5 p-3"
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-[11px] leading-relaxed text-white/45">
@@ -277,7 +286,7 @@ function App({ scenario, banner = false, loadError = false }) {
                 </p>
               )}
             </div>
-          </div>
+          </aside>
         </div>
       </div>
     </div>
@@ -338,7 +347,10 @@ window.__ttt = {
       viewportHeight: window.innerHeight,
       documentScrollWidth: document.documentElement.scrollWidth,
       documentClientWidth: document.documentElement.clientWidth,
+      documentScrollHeight: document.documentElement.scrollHeight,
+      documentClientHeight: document.documentElement.clientHeight,
       bodyScrollWidth: document.body.scrollWidth,
+      card: box(document.querySelector('[data-testid="ttt-harness-card"]')),
       destination: destination
         ? {
             text: destination.textContent?.trim() ?? "",

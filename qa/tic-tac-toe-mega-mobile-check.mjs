@@ -29,7 +29,9 @@
 //   7. the "Board N" label and its control badge stay inside the card;
 //   8. the opening snapshot communicates FREE CHOICE (no required board);
 //   9. a tap on a shrunken board still reports the right (boardIndex, cellIndex);
-//  10. desktop is untouched;
+//  10. desktop is one screen: the page does not scroll, the match card ends
+//      inside the viewport, and the lattice grew (500px at 1280×900, 400px at
+//      1280×800, up from 480px / 380px);
 //  11. no console / page errors.
 //
 // Screenshots land in qa/reports/tic-tac-toe-mobile/.
@@ -146,6 +148,11 @@ const VIEWPORTS = [
 // it is a sizing check, not a phone-presentation check.
 const LAPTOP = { label: "1280x800", width: 1280, height: 800, dpr: 1, phone: false, minCell: 40 };
 
+// The desktop promise is "one screen, no page scroll" at the two laptop sizes
+// the match page is built for — including the wider 1440×900, where the board
+// is height-capped rather than column-capped.
+const WIDE = { label: "1440x900", width: 1440, height: 900, dpr: 1, phone: false, minCell: 40 };
+
 // The transient banner (~50px) is part of the reserve: when a board resolves the
 // message pushes the lattice down for two seconds, so a board sized to fit
 // ONLY without it would push its bottom row under the fold right after a move.
@@ -154,6 +161,7 @@ const BANNER_CASES = [
   { vp: VIEWPORTS[3], banner: true },
   { vp: LAPTOP, banner: false },
   { vp: LAPTOP, banner: true },
+  { vp: WIDE, banner: false },
 ];
 
 /** Nine mini-boards, always: the lattice has no other shape. */
@@ -368,7 +376,9 @@ for (const vp of VIEWPORTS) {
   // the geometry the app ships.
   check(
     `${vp.label}: the harness carries the real page chrome and stylesheet`,
-    m.page.overflowX === "clip" &&
+    // Desktop locks BOTH axes (`lg:overflow-hidden`) so the fixed-height page
+    // can never scroll; phones keep the older `overflow-x: clip`.
+    (m.page.overflowX === "clip" || m.page.overflowX === "hidden") &&
       m.page.paddingLeft === (vp.phone ? "12px" : "24px") &&
       m.scroller.overflowX === "auto",
     `overflow-x ${m.page.overflowX}, padding-left ${m.page.paddingLeft}, strip overflow-x ${m.scroller.overflowX}`,
@@ -442,11 +452,29 @@ for (const { vp, banner } of BANNER_CASES) {
     m.lattice.bottom <= m.viewportHeight + 1,
     `lattice bottom ${px(m.lattice.bottom)} of ${px(m.viewportHeight)} — chrome above ${px(m.chrome.aboveLattice)}, board ${px(m.lattice.width)}${banner ? `, banner ${px(m.chrome.banner)}` : ""}`,
   );
-  if (!banner && vp.height === 900) {
+  // The page itself must fit too: the whole match card ends inside the
+  // viewport, so scrolling is never needed while the board is being recorded.
+  check(
+    `${tag}: the match card ends inside the viewport`,
+    m.card !== null && m.card.bottom <= m.viewportHeight + 1,
+    `card bottom ${px(m.card?.bottom)} of ${px(m.viewportHeight)}`,
+  );
+  check(
+    `${tag}: the match page does not scroll vertically`,
+    m.documentScrollHeight <= m.viewportHeight + 1,
+    `document ${px(m.documentScrollHeight)} vs viewport ${px(m.viewportHeight)}`,
+  );
+  // Every board the check was previously capped at: the reserve used to be
+  // 420px, so the same viewport now has to produce a bigger lattice.
+  const wasWidth = vp.height - 420;
+  if (!banner) {
+    // At 900px the 40px desktop target still holds; a 1280×800 window has less
+    // height to give, so its floor is the 32px it already cleared before.
+    const cellFloor = vp.height >= 900 ? 40 : 32;
     check(
-      `${tag}: the boards grew, and every cell still clears the 40px target`,
-      m.lattice.width > 455 && Math.round(m.boards[0].cellWidth) >= 40,
-      `lattice ${px(m.lattice.width)} (was 455px), smallest cell ${px(m.boards[0].cellWidth)}`,
+      `${tag}: the boards grew, and every cell still clears the ${cellFloor}px target`,
+      m.lattice.width > wasWidth && Math.round(m.boards[0].cellWidth) >= cellFloor,
+      `lattice ${px(m.lattice.width)} (was ${px(wasWidth)}), smallest cell ${px(m.boards[0].cellWidth)}`,
     );
   }
   await page.screenshot({ path: join(SHOTS, `${vp.label}${banner ? "-banner" : ""}-fold.png`), fullPage: false });
