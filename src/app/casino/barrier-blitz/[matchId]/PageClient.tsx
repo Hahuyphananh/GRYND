@@ -88,6 +88,7 @@ import {
   seatLabel,
   seatName,
   statusLabel,
+  viewerRow,
   turnLabel,
   wallsFor,
 } from "../../../../lib/barricade/ui";
@@ -684,9 +685,12 @@ export default function BarricadeMatchPage() {
                 <div className="rounded-2xl border border-cyan-400/20 bg-black/40 p-2 shadow-[0_0_30px_rgba(34,211,238,0.10)] sm:p-4">
                   {showBoard && stage ? (
                     <div className="barricade-board-shell">
-                      <p className="barricade-goal-bar is-mine" data-testid="barricade-goal-mine">
+                      <p
+                        className={`barricade-goal-bar seat-${viewerSeat ?? "player1"}`}
+                        data-testid="barricade-goal-mine"
+                      >
                         {viewerSeat
-                          ? `Your goal — reach any square of row ${goalRowFor(viewerSeat) + 1}`
+                          ? `Your goal — reach any square of row ${viewerRow(goalRowFor(viewerSeat), viewerSeat)}`
                           : "Your goal — the far row"}
                       </p>
                       <BarricadeBoard
@@ -700,11 +704,11 @@ export default function BarricadeMatchPage() {
                         onPlaceWall={handlePlaceWall}
                       />
                       <p
-                        className="barricade-goal-bar is-theirs"
+                        className={`barricade-goal-bar seat-${opponentSeat ?? "player2"}`}
                         data-testid="barricade-goal-theirs"
                       >
                         {opponentSeat
-                          ? `${opponentName}'s goal — row ${goalRowFor(opponentSeat) + 1}`
+                          ? `${opponentName}'s goal — row ${viewerRow(goalRowFor(opponentSeat), viewerSeat)}`
                           : "Opponent's goal"}
                       </p>
                     </div>
@@ -803,7 +807,7 @@ export default function BarricadeMatchPage() {
                                 >
                                   {row.playerId === match?.player1Id ? "Blue" : "Purple"}
                                 </span>
-                                {loggedActionLabel(row)}
+                                {loggedActionLabel(row, viewerSeat)}
                               </span>
                             </li>
                           ))}
@@ -893,7 +897,7 @@ export default function BarricadeMatchPage() {
               },
               ...moves.map((row: any) => ({
                 label: `Action ${Number(row.ply) + 1}`,
-                value: `${row.playerId === match?.player1Id ? "Blue" : "Purple"} — ${loggedActionLabel(row)}`,
+                value: `${row.playerId === match?.player1Id ? "Blue" : "Purple"} — ${loggedActionLabel(row, viewerSeat)}`,
               })),
             ]}
             playAgain={{

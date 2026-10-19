@@ -123,7 +123,8 @@ async function main() {
   const strangerView = await fetchMatch({ userId: `qa_barricade_mallory_${stamp}`, matchId });
   check("the host reads its seat", aliceView.dto?.viewerSeat === "player1");
   check("the opponent reads the mirrored seat", bobView.dto?.viewerSeat === "player2");
-  check("only the seat on turn may act", aliceView.dto?.isViewerTurn === true && bobView.dto?.isViewerTurn === false);
+  check("purple (the joining seat) opens the match", bobView.dto?.gameState.turn === "player2");
+  check("only the seat on turn may act", aliceView.dto?.isViewerTurn === false && bobView.dto?.isViewerTurn === true);
   check(
     "the opponent's reserve is visible to both seats",
     aliceView.dto?.wallsRemaining?.player2 === 10 && bobView.dto?.wallsRemaining?.player2 === 10,
@@ -132,37 +133,37 @@ async function main() {
 
   console.log("─ authority ──────────────────────────────────────────────────");
   const outOfTurn = await move({
-    userId: BOB,
+    userId: ALICE,
     matchId,
-    action: nextAction(aliceView.dto.gameState),
+    action: nextAction(bobView.dto.gameState),
     expectedVersion: 0,
   });
   check("an out-of-turn action is refused", outOfTurn.status === 409, JSON.stringify(outOfTurn));
 
   const stale = await move({
-    userId: ALICE,
+    userId: BOB,
     matchId,
-    action: nextAction(aliceView.dto.gameState),
+    action: nextAction(bobView.dto.gameState),
     expectedVersion: 99,
   });
   check("a stale version is refused", stale.status === 409, JSON.stringify(stale));
 
-  const first = nextAction(aliceView.dto.gameState);
-  const played = await move({ userId: ALICE, matchId, action: first, expectedVersion: 0 });
-  const expected = applyAction(aliceView.dto.gameState, "player1", first);
+  const first = nextAction(bobView.dto.gameState);
+  const played = await move({ userId: BOB, matchId, action: first, expectedVersion: 0 });
+  const expected = applyAction(bobView.dto.gameState, "player2", first);
   check("the server's next state IS the engine's next state", played.state.ply === expected.ply);
-  check("the turn passed to the other seat", played.state.turn === "player2");
+  check("the turn passed to the other seat", played.state.turn === "player1");
   check("the version advanced by one", played.match.ply === 1);
 
-  const replay = await move({ userId: ALICE, matchId, action: first, expectedVersion: 0 });
+  const replay = await move({ userId: BOB, matchId, action: first, expectedVersion: 0 });
   check("a replayed action is refused", replay.status === 409, JSON.stringify(replay));
 
   console.log("─ concurrency: two actions on one turn ───────────────────────");
-  const current = (await fetchMatch({ userId: BOB, matchId })).dto;
+  const current = (await fetchMatch({ userId: ALICE, matchId })).dto;
   const shared = nextAction(current.gameState);
   const [a, b] = await Promise.all([
-    move({ userId: BOB, matchId, action: shared, expectedVersion: current.version }),
-    move({ userId: BOB, matchId, action: shared, expectedVersion: current.version }),
+    move({ userId: ALICE, matchId, action: shared, expectedVersion: current.version }),
+    move({ userId: ALICE, matchId, action: shared, expectedVersion: current.version }),
   ]);
   const wins = [a, b].filter((r) => r.error === undefined).length;
   const conflicts = [a, b].filter((r) => r.status === 409 || r.status === 503).length;

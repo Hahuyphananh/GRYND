@@ -38,6 +38,7 @@ import {
   seatName,
   statusLabel,
   turnLabel,
+  viewerRow,
   wallInventoryLabel,
   wallsFor,
 } from "../src/lib/barricade/ui.ts";
@@ -495,6 +496,17 @@ test("barricade ui: the log and the reserves are read from the server's own colu
     loggedActionLabel({ actionType: "wall", col: 3, row: 2, orientation: "vertical" }),
     "Barrier — between columns 4 and 5, rows 3–4",
   );
+  // The log speaks in the viewer's own row numbering, so it agrees with the
+  // mirrored board the purple seat is looking at.
+  assert.equal(
+    loggedActionLabel({ actionType: "move", col: 4, row: 1 }, "player2"),
+    "Pawn to row 8, column 5",
+  );
+  assert.equal(
+    loggedActionLabel({ actionType: "wall", col: 0, row: 0, orientation: "horizontal" }, "player2"),
+    "Barrier — between rows 8 and 9, columns 1–2",
+  );
+  assert.equal(viewerRow(1, "player2"), 8);
   assert.equal(wallInventoryLabel(10), "10 barriers left");
   assert.equal(wallInventoryLabel(1), "1 barrier left");
   assert.equal(wallsFor({ player1: 7, player2: 3 }, "player2"), 3);

@@ -195,13 +195,60 @@ test("barricade ui: every required affordance has a stable hook", () => {
 
 test("barricade ui: pawns, barricades, goal rows and turn order are drawn from the state", () => {
   assert.ok(boardCode.includes("barricade-pawn"));
-  assert.ok(boardCode.includes("is-mine") && boardCode.includes("is-theirs"));
+  // Pieces are coloured by SEAT, so a purple viewer's own pawn stays purple.
+  assert.ok(boardCode.includes("barricade-pawn seat-") && boardCode.includes("data-seat"));
+  assert.ok(!boardCode.includes("is-mine"), "the board no longer paints mine/theirs");
   assert.ok(boardCode.includes("barricade-move-dot"), "legal destinations are highlighted");
   assert.ok(boardCode.includes("data-legal"), "each square reports whether it is playable");
   assert.ok(boardCode.includes('data-goal={isMyGoal ? "mine"'), "goal rows are marked");
   assert.ok(boardCode.includes("data-owner"), "placed barricades carry their owner");
   assert.ok(boardCode.includes("data-active-seat"));
   assert.ok(pageCode.includes("state.wallsRemaining"), "the counters come from the state");
+});
+
+test("barricade ui: the board is projected so each seat sees its own baseline at the bottom", () => {
+  assert.ok(boardCode.includes("data-viewer-seat"), "the board reports whose view it is");
+  assert.ok(boardCode.includes("projectedRow"), "the projection is the shared, tested helper");
+  assert.ok(boardCode.includes("viewRow(row, mySeat)"), "every square is drawn through it");
+  assert.ok(
+    boardCode.includes("squareStyle(row, col, mySeat)") &&
+      boardCode.includes("onClick={() => onMove(position)}"),
+    "the click still reports the engine's canonical position",
+  );
+  // Both goal rows are identified by the seat that owns them.
+  assert.ok(boardCode.includes("goal-${mySeat}") && boardCode.includes("goal-${opponentSeat}"));
+});
+
+test("barricade ui: purple opens online PvP and the practice board still gives the human the first move", async () => {
+  const { STARTING_SEAT, BOTTOM_SEAT } = await import("../src/lib/barricade/constants.ts");
+  const { createInitialState, goalRowFor, startPositionFor } = await import(
+    "../src/lib/barricade/rules.ts"
+  );
+  const { projectedRow, viewerRow } = await import("../src/lib/barricade/ui.ts");
+
+  assert.equal(STARTING_SEAT, "player2");
+  assert.equal(BOTTOM_SEAT, "player1");
+  assert.equal(createInitialState(STARTING_SEAT).turn, "player2");
+  assert.equal(createInitialState().turn, "player1", "practice still starts with the human");
+  assert.equal(viewerRow(0, "player1"), 1);
+  assert.equal(viewerRow(8, "player1"), 9);
+  assert.equal(viewerRow(8, "player2"), 1, "the purple viewer's own baseline is row 1");
+  assert.equal(viewerRow(0, "player2"), 9, "the purple viewer's goal is their row 9");
+
+  // The core projection property: in BOTH views each seat's starting pawn is
+  // drawn on row 0 (the bottom) and its goal on row 8 (the top).
+  for (const seat of ["player1", "player2"]) {
+    assert.equal(
+      projectedRow(startPositionFor(seat).row, seat),
+      0,
+      `${seat} starts at the bottom of its own view`,
+    );
+    assert.equal(
+      projectedRow(goalRowFor(seat), seat),
+      8,
+      `${seat}'s goal is the top of its own view`,
+    );
+  }
 });
 
 test("barricade ui: every legal placement is offered, and nothing else is", () => {

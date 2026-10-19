@@ -59,8 +59,15 @@ export const CENTRE_COLUMN = (BOARD_SIZE - 1) / 2; // 4
 /** The two seats, in turn order. Seat is derived from the match, never a client. */
 export const SEATS = ["player1", "player2"] as const;
 
-/** player1 owns the bottom baseline (row 0) and races upwards; player2 mirrors. */
-export const FIRST_SEAT = "player1";
+/** player1 owns the bottom canonical baseline (row 0) and races upwards. */
+export const BOTTOM_SEAT = "player1";
+
+/**
+ * The seat that opens a PvP match. Purple (player2) moves first; the view is
+ * projected so each player sees their own baseline at the bottom of the board.
+ * The practice page keeps the human (player1/blue) opening its solo game.
+ */
+export const STARTING_SEAT = "player2";
 
 /** A wall is either horizontal (blocks up/down) or vertical (blocks left/right). */
 export const ORIENTATIONS = ["horizontal", "vertical"] as const;

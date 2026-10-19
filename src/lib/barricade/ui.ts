@@ -17,7 +17,7 @@
 // Like the engine, this module imports nothing — no React, no HTTP, no DB — so
 // the client bundle can share it with a Node test.
 
-import { MATCH_STATUS, ORIENTATIONS } from "./constants";
+import { BOARD_SIZE, MATCH_STATUS, ORIENTATIONS } from "./constants";
 import type { Seat } from "./types";
 import { viewerOutcome } from "../results/viewerOutcome";
 
@@ -32,6 +32,22 @@ export const LIVE_STATUSES = new Set<string>([MATCH_STATUS.PLAYING]);
 
 export function isTerminalStatus(status: unknown): boolean {
   return TERMINAL_MATCH_STATUSES.has(String(status ?? ""));
+}
+
+/**
+ * A canonical engine row as the viewer sees it, 0-based from their bottom edge.
+ *
+ * The board is projected so every seat sees its own baseline at the bottom;
+ * player2's view is a vertical mirror. Engine coordinates never change — this
+ * is presentation only, and clicks are mapped back before they are reported.
+ */
+export function projectedRow(row: number, seat: Seat | null | undefined): number {
+  return seat === "player2" ? BOARD_SIZE - 1 - row : row;
+}
+
+/** The same row, 1-based, for copy and ARIA labels. */
+export function viewerRow(row: number, seat: Seat | null | undefined): number {
+  return projectedRow(row, seat) + 1;
 }
 
 /** The seat's accent colour — the board draws player1 blue and player2 purple. */
@@ -181,23 +197,32 @@ export function resultReasonLabel(reason: unknown, outcome: "win" | "loss" | nul
 }
 
 /** One logged action (`barricade_moves` row) as human copy. */
-export function loggedActionLabel(entry: {
-  actionType?: unknown;
-  col?: unknown;
-  row?: unknown;
-  orientation?: unknown;
-}): string {
+export function loggedActionLabel(
+  entry: {
+    actionType?: unknown;
+    col?: unknown;
+    row?: unknown;
+    orientation?: unknown;
+  },
+  viewerSeat?: Seat | null,
+): string {
   const col = Number(entry?.col);
   const row = Number(entry?.row);
   if (String(entry?.actionType) === "wall") {
     const orientation =
       String(entry?.orientation) === ORIENTATIONS[1] ? "vertical" : "horizontal";
-    // A barrier spans two squares, so its address is the slot it occupies.
+    // A barrier spans two squares, so its address is the slot it occupies. Its
+    // rows are stated in the viewer's own numbering, matching the projected
+    // board (player2 counts from the bottom of their mirrored view).
+    const first = viewerRow(row, viewerSeat);
+    const second = viewerRow(row + 1, viewerSeat);
+    const low = Math.min(first, second);
+    const high = Math.max(first, second);
     return orientation === "horizontal"
-      ? `Barrier — between rows ${row + 1} and ${row + 2}, columns ${col + 1}–${col + 2}`
-      : `Barrier — between columns ${col + 1} and ${col + 2}, rows ${row + 1}–${row + 2}`;
+      ? `Barrier — between rows ${low} and ${high}, columns ${col + 1}–${col + 2}`
+      : `Barrier — between columns ${col + 1} and ${col + 2}, rows ${low}–${high}`;
   }
-  return `Pawn to row ${row + 1}, column ${col + 1}`;
+  return `Pawn to row ${viewerRow(row, viewerSeat)}, column ${col + 1}`;
 }
 
 /** "6 of 10 barriers" for the seat cards. */

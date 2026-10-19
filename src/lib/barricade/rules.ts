@@ -42,8 +42,8 @@
 import {
   ACTION_TYPES,
   BOARD_SIZE,
+  BOTTOM_SEAT,
   CENTRE_COLUMN,
-  FIRST_SEAT,
   MATCH_STATUS,
   MOVE_KINDS,
   ORIENTATIONS,
@@ -111,12 +111,12 @@ export function otherSeat(seat: Seat): Seat {
 
 /** The row a seat's pawn starts on and must never be pushed back past. */
 export function baselineRowFor(seat: Seat): number {
-  return seat === FIRST_SEAT ? 0 : BOARD_SIZE - 1;
+  return seat === BOTTOM_SEAT ? 0 : BOARD_SIZE - 1;
 }
 
 /** The row that wins the game for a seat — the far side of the board. */
 export function goalRowFor(seat: Seat): number {
-  return seat === FIRST_SEAT ? BOARD_SIZE - 1 : 0;
+  return seat === BOTTOM_SEAT ? BOARD_SIZE - 1 : 0;
 }
 
 /** The centre square of a seat's own baseline ("middle square of their back row"). */
@@ -752,11 +752,17 @@ function freezeState(state: BarricadeState): BarricadeState {
   });
 }
 
-/** A fresh, ready-to-play match: both pawns home, 10 barricades each, player1 to move. */
-export function createInitialState(): BarricadeState {
+/**
+ * A fresh, ready-to-play match: both pawns home, 10 barricades each.
+ *
+ * `startingSeat` is the seat that opens. It defaults to the bottom-baseline
+ * seat so a local/practice game stays human-first; the PvP store passes
+ * `STARTING_SEAT` (purple) so online matches open with player2 to move.
+ */
+export function createInitialState(startingSeat: Seat = BOTTOM_SEAT): BarricadeState {
   return freezeState({
     status: MATCH_STATUS.PLAYING,
-    turn: FIRST_SEAT,
+    turn: startingSeat,
     ply: 0,
     pawns: {
       player1: startPositionFor(SEATS[0]),

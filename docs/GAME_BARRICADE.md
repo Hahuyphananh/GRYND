@@ -204,9 +204,10 @@ player reads.
   decision yet — the click is.
 * Geometry: one 17-track CSS grid (9 squares + the 8 grooves between them per
   axis), so a barricade is drawn IN the groove it occupies rather than inside a
-  cell. Row 0 (player1's baseline) is drawn at the bottom, so each pawn races
-  towards the far side of the screen. Cell and groove sizes are fluid
-  (`clamp()`), with a tighter set below 400px.
+  cell. The board is projected per viewer (see “View projection” below), so a
+  player always sees their own baseline at the bottom, and pieces are coloured
+  by seat — player1 blue, player2 purple — never by “mine/theirs”. Cell and
+  groove sizes are fluid (`clamp()`), with a tighter set below 400px.
 * Turn loop: the board stops accepting input while the bot thinks; the bot's
   answer lands after a short visible beat (`AI_THINK_DELAY_MS`), and the effect is
   epoch-guarded so a Restart drops a stale timer.
@@ -264,12 +265,31 @@ derived by the server from its own row through the same engine
 (`validateAction` → `applyAction`). No field for any of them is read from the
 request, and `barricade_matches.game_state` is never written from client input.
 
+### Opening seat and view projection
+
+Purple (`player2`, the joining seat) always opens a PvP match:
+`createWaitingMatch` seeds `gameState` with
+`createInitialState(STARTING_SEAT)` (`STARTING_SEAT = "player2"`), and joining
+sets `currentTurnUserId` from the resulting state. Practice keeps
+`createInitialState()`'s default of blue (`player1`) opening, so a human always
+moves first against the bot.
+
+Canonical engine coordinates are fixed: row 0 is player1's baseline, row 8 is
+player2's. The BOARD is projected for its viewer: player1 sees canonical rows,
+player2 sees a vertical mirror (`row → 8 − row`), so both players click their
+own pawn and race towards the far side of their screen. Clicks report the
+canonical square/groove back to the engine — the mirror is presentation only.
+Copy and ARIA labels use `viewerRow()` from `src/lib/barricade/ui.ts` so row
+numbers are counted from the viewer's own baseline. Pawns, barricades and goal
+rows are coloured by seat (`seat-player1` / `seat-player2`), so a purple viewer's
+own pawn stays purple instead of being repainted blue by a fixed “mine” style.
+
 ### Lifecycle
 
 | Status | Meaning |
 | --- | --- |
 | `waiting` | The row IS the open lobby (`player2_id` is NULL). Direct create/join only — no public matchmaking is advertised. |
-| `playing` | Both seats hold a real age-verified account id; the first mover plays immediately (no ready banner, no countdown). |
+| `playing` | Both seats hold a real age-verified account id; purple (the joiner, `player2`) is on turn immediately (no ready banner, no countdown). |
 | `finished` | Settled exactly once, with `result` (the winning SEAT), `winner_id`, `result_reason` and `ended_at`. |
 | `cancelled` | An open lobby released by its creator, or abandoned past the grace window. Never settles, so no winner is recorded. |
 

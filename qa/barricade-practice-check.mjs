@@ -147,10 +147,13 @@ async function boardFacts(page) {
       return {
         squares: squares.length,
         legal: squares.filter((square) => square.dataset.legal === "true").length,
+        viewerSeat:
+          document.querySelector('[data-testid="barricade-board"]')?.dataset.viewerSeat ?? "",
         pawns: squares
           .filter((square) => square.dataset.occupant !== "none")
           .map((square) => ({
             seat: square.dataset.occupant,
+            pawnSeat: square.dataset.occupantSeat,
             row: Number(square.dataset.row),
             col: Number(square.dataset.col),
           })),
@@ -593,6 +596,20 @@ async function playMatch(page, tier) {
       started.myReserve.trim() === "10" &&
       started.aiReserve.trim() === "10",
     `squares=${started.squares} pawns=${started.pawns.length} reserves=${started.myReserve.trim()}/${started.aiReserve.trim()}`,
+  );
+
+  // The practice board is the human's view: player1's baseline is the bottom
+  // row, and both pawns are painted by seat (blue player1, purple player2).
+  const humanPawn = started.pawns.find((pawn) => pawn.seat === "mine");
+  const botPawn = started.pawns.find((pawn) => pawn.seat === "theirs");
+  record(
+    `${tier}: the human's baseline is the bottom row and colours follow the seat`,
+    started.viewerSeat === "player1" &&
+      humanPawn?.pawnSeat === "player1" &&
+      botPawn?.pawnSeat === "player2" &&
+      humanPawn?.row === 0 &&
+      botPawn?.row === 8,
+    `viewer=${started.viewerSeat} human=${JSON.stringify(humanPawn)} bot=${JSON.stringify(botPawn)}`,
   );
 
   // ── an illegal tap must change nothing ────────────────────────────────

@@ -289,7 +289,10 @@ export default function BarricadePracticePage() {
 
   const boardNode = (
     <div className="barricade-board-shell">
-      <p className="barricade-goal-bar is-mine" data-testid="barricade-goal-mine">
+      <p
+        className={`barricade-goal-bar seat-${HUMAN_SEAT}`}
+        data-testid="barricade-goal-mine"
+      >
         <IconPlayerPlay size={12} aria-hidden="true" /> Your goal — reach any square of this row (row{" "}
         {myGoalRow + 1})
       </p>
@@ -303,7 +306,10 @@ export default function BarricadePracticePage() {
         onMove={handleMove}
         onPlaceWall={handlePlaceWall}
       />
-      <p className="barricade-goal-bar is-theirs" data-testid="barricade-goal-theirs">
+      <p
+        className={`barricade-goal-bar seat-${AI_SEAT}`}
+        data-testid="barricade-goal-theirs"
+      >
         <IconRobot size={12} aria-hidden="true" /> The bot&apos;s goal — its own baseline (row{" "}
         {aiGoalRow + 1})
       </p>

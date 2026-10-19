@@ -674,9 +674,28 @@ test("createOrJoin: opens one lobby, never seats a host against itself", { skip:
   assert.equal(joined.match.player2Id, BOB);
   assert.equal(joined.match.status, MATCH_STATUS.PLAYING);
   assert.ok(joined.match.startedAt instanceof Date);
-  assert.equal(joined.match.currentTurnUserId, ALICE);
+  // Purple (the joining seat) opens every PvP match, so the stored turn owner
+  // is the joiner — not the host who created the lobby.
+  assert.equal(joined.match.gameState.turn, "player2");
+  assert.equal(joined.match.currentTurnUserId, BOB);
   // Joining regenerates nothing: the position is still the engine's opening one.
-  assert.deepEqual(joined.match.gameState, createInitialState());
+  assert.deepEqual(joined.match.gameState, createInitialState("player2"));
+
+  // The authority follows the same opening: the host may not move first.
+  const hostFirst = await store.move({
+    userId: ALICE,
+    matchId: joined.match.id,
+    action: move({ col: 4, row: 1 }),
+    expectedVersion: 0,
+  });
+  assert.equal(hostFirst.status, 409, "player1 cannot open the match");
+  const joinerFirst = await store.move({
+    userId: BOB,
+    matchId: joined.match.id,
+    action: move({ col: 4, row: 7 }),
+    expectedVersion: 0,
+  });
+  assert.equal(joinerFirst.state?.turn, "player1", "the joiner's move hands over");
 });
 
 // ── Reads and guards ──────────────────────────────────────────────────────

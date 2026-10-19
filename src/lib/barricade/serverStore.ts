@@ -60,6 +60,7 @@ import {
   END_REASONS,
   MATCH_STATUS,
   REJECTION,
+  STARTING_SEAT,
   WIN_REASON,
 } from "./constants";
 import { applyAction, createInitialState, otherSeat, validateAction } from "./rules";
@@ -294,7 +295,10 @@ export async function createOrJoin({
 }
 
 async function createWaitingMatch(tx: any, userId: string, stakeAmount = 0) {
-  const state = createInitialState();
+  // PvP opens with purple (player2) to move; once the second seat lands it is
+  // the joiner's turn. The waiting row still carries the host as a placeholder
+  // `currentTurnUserId` because there is no second seat to name yet.
+  const state = createInitialState(STARTING_SEAT);
   const [match] = await tx
     .insert(barricadeMatches)
     .values({
@@ -332,17 +336,25 @@ async function joinExistingMatch(
     return { error: "You already host this lobby", status: 409 } as const;
   }
 
-  const state = stateOf(match);
+  // A lobby's state never advances (a waiting match accepts nothing), so the
+  // opening position is (re)seeded here. That also normalises lobbies created
+  // before purple became the opening seat: the joiner always gets the first turn.
+  const lobbyState = stateOf(match);
+  const state = lobbyState.ply === 0 ? createInitialState(STARTING_SEAT) : lobbyState;
 
   // Straight to `playing`: Barricade has no ready banner and no countdown, so
-  // player1's first turn is available the moment the second seat lands.
+  // purple's first turn is available the moment the second seat lands.
   const [updated] = await tx
     .update(barricadeMatches)
     .set({
       player2Id: userId,
       status: statusForState(state),
       ply: state.ply,
-      currentTurnUserId: match.player1Id,
+      gameState: state,
+      currentTurnUserId: userIdForSeat(
+        { player1Id: match.player1Id, player2Id: userId },
+        state.turn,
+      ),
       startedAt: new Date(),
       updatedAt: new Date(),
     })
