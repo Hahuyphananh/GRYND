@@ -20,6 +20,7 @@ import { and, eq, ne } from "drizzle-orm";
 import { db } from "../../db";
 import { poolLobbies, poolMatches } from "../../db/schema";
 import { normalizeStake } from "../games/stakes";
+import { escrowMatchWagers } from "../tokens/wager";
 
 /** The one shape a lobby id must have (uuid) before it is used in a query. */
 export const POOL_UUID_RE =
@@ -135,12 +136,32 @@ export async function claimPoolLobbyForPair({
       return { ok: false as const, status: 409, message: "Lobby unavailable" };
     }
 
+    const wager = normalizeStake(claimedLobby.wager, "pool");
     const { matchId, firstTurnSeat } = await insertPoolMatch(tx, {
       lobbyId: claimedLobby.id,
       hostUserId: claimedLobby.hostUserId,
       opponentUserId,
-      wager: normalizeStake(claimedLobby.wager, "pool"),
+      wager,
     });
+
+    // FUND BOTH SEATS, all-or-nothing, inside the claim's own transaction: a
+    // staked match is never half-funded, and a seat that cannot cover the stake
+    // rolls the claim back so the lobby stays waiting for someone who can.
+    const escrow: { ok: boolean; error?: string; status?: number } =
+      await escrowMatchWagers({
+        clerkIds: [claimedLobby.hostUserId, opponentUserId],
+        stake: wager,
+        matchId,
+        gameKey: "pool",
+        tx,
+      });
+    if (!escrow.ok) {
+      // Throwing is what rolls the claim + match insert back; the route turns
+      // the status into the response.
+      throw Object.assign(new Error(escrow.error || "Insufficient coins"), {
+        _httpStatus: escrow.status ?? 400,
+      });
+    }
 
     return { ok: true as const, matchId, firstTurnSeat, lobbyId: claimedLobby.id };
   });
@@ -172,8 +193,9 @@ export async function createPoolMatchForPair({
     return { ok: false, status: 400, message: "You cannot play yourself" };
   }
 
-  // Pool's lobby flow carries no escrow of its own, so a room may only open a
-  // FREE table here; anything else is refused rather than silently dropped.
+  // A private room opens a FREE table: the inviter's own stake is not debited
+  // here, and a room has no lobby amount to escrow against before the guest
+  // accepts. Anything else is refused rather than silently dropped.
   const wager = normalizeStake(stake, "pool");
   if (wager !== 0) {
     return {

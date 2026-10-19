@@ -6,8 +6,14 @@ import { eq, sql } from "drizzle-orm";
 import { CacheKeys } from "../../../../lib/redis/keys";
 import { cacheDelete, cacheGet } from "../../../../lib/redis/cache";
 import { normalizeStake } from "../../../../lib/games/stakes";
+import { PVP_WINNER_SHARE } from "../../../../lib/games/economy";
 
-const PAYOUT_MULTIPLIER = 1.9; // 5% house edge
+// The shared PvP pot multiplier: 2 stakes × the 90% winner share = 1.8× at the
+// platform's 10% rake (`PVP_RAKE_PCT`). Derived from the one rake constant so
+// this route can never advertise a different house edge than the rest of the
+// casino. AI / for-fun matches move no coins, so this is only echoed back to
+// the client.
+const PAYOUT_MULTIPLIER = 2 * PVP_WINNER_SHARE;
 
 /**
  * AI session payload stored in Redis at start-game time.

@@ -3,7 +3,20 @@ import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerifi
 import { and, asc, eq, isNull, not } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../../db/client";
-import { hexDuelGames } from "../../../../../db/schema";
+import { hexDuelGames, users } from "../../../../../db/schema";
+import { escrowMatchWagers } from "../../../../../lib/tokens/wager";
+
+/**
+ * POST /api/hex-duel/multiplayer/join
+ *
+ * Seat the opponent and FUND BOTH SEATS.
+ *
+ * The escrow runs inside the same transaction that claims the lobby — the
+ * platform's rule for every staked duel (`src/lib/tokens/wager.ts`): a staked
+ * match is never half-funded, a seat that cannot cover the stake leaves the
+ * lobby untouched and waiting, and the coins commit with the seat that earned
+ * them. A 0-stake row (a legacy free lobby) escrows nothing.
+ */
 export async function POST(req: Request) {
   // Hoisted above the try so the catch block's diagnostics can read
   // them without re-parsing the request body.
@@ -64,9 +77,41 @@ export async function POST(req: Request) {
           startedAt: new Date(),
         })
         .where(and(eq(hexDuelGames.id, game.id), eq(hexDuelGames.status, "waiting"), isNull(hexDuelGames.player2Id)))
-        .returning({ id: hexDuelGames.id });
+        .returning({ id: hexDuelGames.id, wagerAmount: hexDuelGames.wagerAmount });
       if (!row) throw new Error("Game unavailable");
-      return { gameId: row.id, newBalance: null };
+
+      // Both seats pay the stake the lobby carries, all-or-nothing.
+      const stake = Number(row.wagerAmount) || 0;
+      // Annotated rather than inferred: `strict` is off in this project, where a
+      // discriminated union is not narrowed by `if (!x.ok)` (same note as
+      // src/lib/tokens/pvpPot.ts).
+      const escrow: { ok: boolean; error?: string; status?: number } =
+        await escrowMatchWagers({
+          clerkIds: [game.player1Id, userId],
+          stake,
+          matchId: row.id,
+          gameKey: "hex-duel",
+          tx,
+        });
+      if (!escrow.ok) {
+        throw Object.assign(new Error(escrow.error || "Insufficient coins"), {
+          _httpStatus: escrow.status ?? 400,
+        });
+      }
+
+      // Report the caller's balance as it now stands (post-escrow) so the
+      // header chip reflects the stake that just moved.
+      const [me] = await tx
+        .select({ balance: users.balance })
+        .from(users)
+        .where(eq(users.clerkId, userId))
+        .limit(1);
+
+      return {
+        gameId: row.id,
+        wager: stake,
+        newBalance: me ? Number(me.balance) : null,
+      };
     });
 
     return NextResponse.json({ success: true, ...joined });
@@ -85,6 +130,9 @@ export async function POST(req: Request) {
         stack: error?.stack,
       },
     );
-    return NextResponse.json({ success: false, error: error?.message || "Unable to join game" }, { status: 400 });
+    return NextResponse.json(
+      { success: false, error: error?.message || "Unable to join game" },
+      { status: typeof error?._httpStatus === "number" ? error._httpStatus : 400 },
+    );
   }
 }

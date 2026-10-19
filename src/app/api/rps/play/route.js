@@ -4,6 +4,7 @@ import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified"
 import { db } from "../../../../db/client";  import { users, rpsGames } from "../../../../db/schema"; // import rpsGames
 import { eq } from "drizzle-orm";
 import { normalizeStake } from "../../../../lib/games/stakes";
+import { PVP_WINNER_SHARE } from "../../../../lib/games/economy";
 
 // Random AI choice
 function getAIChoice() {
@@ -24,8 +25,11 @@ function getResult(player, ai) {
   return "lose";
 }
 
-// Fixed multiplier
-const FIXED_MULTIPLIER = 1.9;
+// The shared PvP pot multiplier: 2 stakes × the 90% winner share = 1.8× at the
+// platform's 10% rake. Derived from the one rake constant so this route cannot
+// advertise a 5% edge the rest of the casino does not take. The vs-AI match
+// moves no coins, so this value is only echoed back to the client.
+const FIXED_MULTIPLIER = 2 * PVP_WINNER_SHARE;
 
 export async function POST(req) {
   // Hoisted so the catch's notification path can read it; the block-scoped

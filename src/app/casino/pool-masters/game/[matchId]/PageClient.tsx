@@ -12,7 +12,7 @@ import { BALL_LAYOUT, MAX_PULL, TABLE_H, TABLE_W } from "../../../../../lib/pool
 import { applyShotPower, isMoving, tickPhysics } from "../../../../../lib/pool/physics";
 import { evaluateRules } from "../../../../../lib/pool/rules";
 import { drawAimGuide, drawBalls, drawBankPreview, drawShotPreview, drawTable } from "../../../../../lib/pool/render";
-import { isNewerVersion, pushPoolState } from "../../../../../lib/pool/multiplayer";
+import { isNewerVersion, pushPoolState, submitPoolShot } from "../../../../../lib/pool/multiplayer";
 import { DEFAULT_AI_DIFFICULTY, poolAiAimSpreadRad } from "../../../../../lib/pool/ai";
 import {
   chooseAiOption,
@@ -20,7 +20,7 @@ import {
   readStoredAiDifficulty,
   type AiDifficulty,
 } from "../../../../../lib/aiDifficulty";
-import { Ball, PlayerTurn, ShotLifecycle, ShotMeta, Team } from "../../../../../lib/pool/types";
+import { Ball, PlayerTurn, ShotLifecycle, ShotMeta, SyncedState, Team } from "../../../../../lib/pool/types";
 import { useUser } from "@clerk/nextjs";
 import EmotePicker, { EmoteBubble } from "../../../../../components/game/EmotePicker";
 import useGameEmotes from "../../../../../hooks/useGameEmotes";
@@ -253,6 +253,9 @@ export default function Page() {
   });
   const lifecycleRef = useRef<ShotLifecycle>("IDLE");
   const activeShotIdRef = useRef<string | null>(null);
+  // The server's ruling for the stroke in flight (see /api/pool/submit-shot).
+  // The local rollout animates the shot; this decides the outcome.
+  const serverShotRef = useRef<(SyncedState & { shotId: string }) | null>(null);
   const remoteShotMetaInitializedRef = useRef(false);
   const userIdRef = useRef<string | undefined>(undefined);
   const myNameRef = useRef("Player 1");
@@ -672,7 +675,16 @@ export default function Page() {
     if (!shotLock.current || isMoving(balls)) return;
     shotLock.current = false;
     lifecycleRef.current = "SETTLED";
-    const res = evaluateRules({
+    // THE SERVER'S RULING WINS. `/api/pool/submit-shot` replays the stroke from
+    // the row's own rack with this same rulebook and, for a staked match, pays
+    // the winner out of the escrow. The local evaluation below is only the
+    // fallback for a stroke the server never saw (a dropped request), and its
+    // winner is never persisted: /api/pool/update-state strips it.
+    const serverShot =
+      serverShotRef.current && serverShotRef.current.shotId === activeShotIdRef.current
+        ? serverShotRef.current
+        : null;
+    const localRes = evaluateRules({
       balls,
       turn,
       myTurn: owner,
@@ -684,6 +696,19 @@ export default function Page() {
       pocketed: [...new Set(shotMeta.current.pocketedNumbers)],
       scratch: shotMeta.current.cueScratch,
     });
+    const res = serverShot
+      ? {
+          foul: serverShot.foul === true,
+          foulMessage: serverShot.foulMessage ?? null,
+          nextTurn: serverShot.turn,
+          ballInHand: serverShot.ballInHand === true,
+          winner: serverShot.winner ?? null,
+          assignedMyTeam: serverShot.myTeam ?? myTeam,
+          assignedOppTeam: serverShot.oppTeam ?? oppTeam,
+          keepTurn: serverShot.turn === turn,
+        }
+      : localRes;
+    serverShotRef.current = null;
     // ── Generate shot notifications ──
     const pocketedSet = [...new Set(shotMeta.current.pocketedNumbers)];
     if (pocketedSet.length > 0) {
@@ -846,6 +871,36 @@ if (!aiMode && turnRef.current !== owner) return;
     };
     const speed = applyShotPower(p);
     const currentSpin = spinRef.current;
+    // The stroke goes to the server, which simulates it and rules on it. A
+    // practice (AI) match is free and local, so it skips the round trip.
+    if (!aiMode) {
+      serverShotRef.current = null;
+      const cueNow = balls.find((b) => b.number === 0);
+      void submitPoolShot(activeMatchId, shotId, {
+        angle: a,
+        pull: p,
+        spinX: currentSpin.x,
+        spinY: currentSpin.y,
+        // Ball in hand: the server must simulate from where the shooter put the
+        // cue ball, not from the spot it was spotted on.
+        cueX: ballInHand ? cueNow?.x : undefined,
+        cueY: ballInHand ? cueNow?.y : undefined,
+      }).then((resp) => {
+        const st = resp?.state;
+        if (!st) return;
+        if (st.winner) {
+          // The server decided the match. Adopt it even if the local rollout
+          // has already settled without the response (a slow round trip).
+          setWinner(st.winner);
+          setTurn(st.turn);
+          setMyTeam(st.myTeam);
+          setOppTeam(st.oppTeam);
+          setOpenTable(!!st.openTable);
+          return;
+        }
+        serverShotRef.current = { ...st, shotId };
+      });
+    }
     setBalls((prev) => {
       const next = prev.map((b) =>
         b.number === 0

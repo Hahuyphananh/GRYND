@@ -295,8 +295,10 @@ export interface PrecisionEndPopupState {
    *  show a "(3 : 1)" tally, distinguishing a clean win from a
    *  near-loss. */
   finalScore?: { seat1: number; seat2: number } | null;
-  /** Payout multiplier applied to the wager (e.g. 1.8×). Used by the
-   *  popup's "Prize" line to clarify the rule set. Defaults to 1.9. */
+  /** Payout multiplier applied to the wager. Always the shared pot
+   *  multiplier — `PRECISION_PAYOUT_MULTIPLIER` (2 × the 90% winner share =
+   *  1.8× at the platform's 10% rake). Used by the popup's "Prize" line to
+   *  clarify the rule set. Resolved server-side, never a hand-written number. */
   prizeMultiplier?: number;
   /** Wager amount the match was played for. Used by the popup's
    *  prize line to show the basis (e.g. "1.8× on 100 wagered"). */

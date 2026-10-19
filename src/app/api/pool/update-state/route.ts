@@ -4,6 +4,7 @@ import { db } from "../../../../db";
 import { eq } from "drizzle-orm";
 import { poolMatches } from "../../../../db/schema";
 import { logError } from "../../../../lib/logError";
+import { readPoolServerState } from "../../../../lib/pool/rack";
 
 function getVersionFromGameState(gameState: unknown): number {
   if (!gameState || typeof gameState !== "object") return 0;
@@ -51,6 +52,12 @@ export async function POST(req: Request) {
       );
     }
 
+    // A finished match is final: the settlement already moved the coins and
+    // stamped the winner, so a late live-sync write must not rewrite it.
+    if (match.status === "finished") {
+      return NextResponse.json({ ok: true, skipped: true, reason: "finished" });
+    }
+
     // Accept all lifecycle states so the polling fallback always has the
     // latest ball positions. Version-based dedup prevents stale overwrites.
     const currentVersion = getVersionFromGameState(match.gameState);
@@ -59,11 +66,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, skipped: true, reason: "stale_version" });
     }
 
+    // THE WINNER IS NOT A CLIENT FIELD. Live sync exists to carry the table for
+    // the polling fallback; who won is decided by `/api/pool/submit-shot` from
+    // the server's own replay. Whatever `state.winner` says is replaced with the
+    // winner the server has already recorded (usually none — the match is still
+    // running), so this endpoint can never hand out coins.
+    const serverState = readPoolServerState(match.gameState);
+    const sanitized = {
+      ...(state as Record<string, unknown>),
+      winner: serverState?.winner ?? null,
+    };
+
     const nextTurnUserId = state.turn === 2 ? match.player2Id : match.player1Id;
     await db
       .update(poolMatches)
       .set({
-        gameState: state,
+        gameState: sanitized,
         currentTurnUserId: nextTurnUserId ?? null,
       })
       .where(eq(poolMatches.id, String(matchId)));

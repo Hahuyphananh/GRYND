@@ -29,7 +29,14 @@ import ReportModal from "../../../components/ReportModal";
 import PvpResultScreen from "../../../components/result/PvpResultScreen";
 import FrameAvatar from "../../../components/FrameAvatar";
 import { cosmeticEffectClass } from "../../../lib/profileCosmetics";
-import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
+import {
+  CoinWagerPicker,
+  RulesModal,
+  formatTokens,
+  useFirstVisitRules,
+} from "../../../components/lobby/PvpLobby";
+import { WAGER_BY_KEY } from "../../../lib/defaultWagers";
+import { PVP_WINNER_SHARE } from "../../../lib/games/economy";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import { readStoredAiDifficulty } from "../../../lib/aiDifficulty";
 import {
@@ -199,15 +206,17 @@ function WagerModal({
   aiDifficulty: AIDifficulty;
   onAiDifficultyChange: (d: AIDifficulty) => void;
 }) {
-  // STAKES ARE RETIRED (src/lib/games/stakes.js): every match is free.
-  const wager = 0;
+  // Coin PvP: the stake the lobby opens at. The server re-validates it
+  // (`requireStake`) and escrows BOTH seats the moment an opponent joins, so
+  // this is a request — never a decision. Practice vs the bot stays free.
+  const [wager, setWager] = useState<number>(() => Number(WAGER_BY_KEY["hex-duel"]) || 10);
   const [queueMode, setQueueMode] = useState<"ai" | "multiplayer">("ai");
   const [showRules, setShowRules] = useState(false);
   const firstVisitRules = useFirstVisitRules("hex-duel");
   useEffect(() => {
     if (firstVisitRules) setShowRules(true);
   }, [firstVisitRules]);
-  const canAfford = true;
+  const canAfford = wager >= 1;
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Set Stake">
@@ -301,7 +310,12 @@ function WagerModal({
             >
               {multiplayerGames.map((game) => (
               <div key={game.id} className="flex items-center justify-between rounded-md border border-white/10 px-2 py-1.5">
-                <span className="text-[11px] text-slate-300">#{game.id} · {game.hostName || "Player"} · Free play</span>
+                <span className="text-[11px] text-slate-300">
+                  #{game.id} · {game.hostName || "Player"} ·{' '}
+                  {Number(game.wagerAmount) > 0
+                    ? `${formatTokens(game.wagerAmount)} coins`
+                    : "Free play"}
+                </span>
                 <button onClick={() => onJoinMultiplayer(game.id)} className="rounded border border-cyan-400/40 px-2 py-0.5 text-[10px] text-cyan-300 hover:bg-cyan-500/20">
                   Join
                 </button>
@@ -312,14 +326,35 @@ function WagerModal({
         </div>
 
         <div className="mb-5 text-center">
-          <span className="inline-flex rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-300">
-            Free play · no tokens at stake
-          </span>
+          {queueMode === "multiplayer" ? (
+            <span className="inline-flex rounded-full border border-amber-400/40 bg-amber-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-amber-300">
+              Coin match · winner takes the pot
+            </span>
+          ) : (
+            <span className="inline-flex rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-300">
+              Free practice · no tokens at stake
+            </span>
+          )}
         </div>
 
         <div className="mb-4 rounded-lg border border-cyan-400/40 bg-cyan-500/15 p-3 text-center">
-          <p className="mb-1 flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-cyan-300"><IconDeviceGamepad2 size={13} /> Free Play</p>
-          <p className="text-[10px] text-cyan-100/70">No tokens are staked. Every match is free.</p>
+          <p className="mb-1 flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-cyan-300">
+            {queueMode === "multiplayer" ? <><IconCoins size={13} /> Stake per seat</> : <><IconDeviceGamepad2 size={13} /> Free Play</>}
+          </p>
+          {queueMode === "multiplayer" ? (
+            <>
+              <div className="mx-auto max-w-[240px] text-left">
+                <CoinWagerPicker value={wager} onChange={setWager} />
+              </div>
+              <p className="mt-2 text-[10px] text-cyan-100/70">
+                Both seats are escrowed when an opponent joins; the winner takes{' '}
+                <b>{2 * PVP_WINNER_SHARE}× their stake</b> (the house keeps 10%). A
+                lobby nobody joins costs nothing.
+              </p>
+            </>
+          ) : (
+            <p className="text-[10px] text-cyan-100/70">No tokens are staked. Practice is free.</p>
+          )}
           {queueMode === "ai" && (
             <AiDifficultyPicker
               gameKey="hex-duel"
@@ -341,10 +376,10 @@ function WagerModal({
 
         <button
           onClick={() => {
-            if (queueMode === "multiplayer") return onCreateMultiplayer(0);
+            if (queueMode === "multiplayer") return onCreateMultiplayer(wager);
             return onStartFun();
           }}
-          disabled={loading}
+          disabled={loading || (queueMode === "multiplayer" && !canAfford)}
           className="w-full rounded-xl py-3 text-sm font-bold uppercase tracking-[0.15em] transition-all duration-200
             bg-gradient-to-r from-cyan-500 to-blue-600 text-white
             shadow-[0_0_20px_rgba(34,211,238,0.3)]
@@ -359,7 +394,7 @@ function WagerModal({
           ) : (
             <span className="inline-flex items-center gap-2">
               {queueMode === "multiplayer"
-                ? <><IconGlobe size={16} /> Create Multiplayer Game</>
+                ? <><IconGlobe size={16} /> Create Game · {formatTokens(wager)} coins</>
                 : <><IconDeviceGamepad2 size={16} /> Free Play vs AI</>}
             </span>
           )}
@@ -1550,32 +1585,57 @@ export default function HexDuelPage() {
       duration_seconds: durationSeconds,
     });
 
-    fetch(endPoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({
-        wager: gameMode === "for-fun" ? 0 : wager,
-        winner: effectiveWinner,
-        isFunMode: gameMode === "for-fun",
-        isAiGame: aiEnabled,
-        // Use the difficulty captured at start-game time so end-game's
-        // matcher sees the exact value start-game cached. If the user
-        // moved the difficulty slider mid-game this protects us from
-        // breaking the strict-match check.
-        aiDifficulty: aiEnabled ? (aiDifficultyAtStartRef.current ?? aiDifficulty) : null,
-        player1Moves: p1MoveCount,
-        player2Moves: p2MoveCount,
-        player1Territory: p1Territory,
-        player2Territory: p2Territory,
-        durationSeconds,
-        startedAt: startedAtRef.current,
-        // Single-use proof that the user actually started this AI match.
-        // end-game verifies this against Redis before honoring `isAiGame`.
-        aiSessionId: aiSessionIdRef.current,
-      }),
-    })
-      .then((r) => r.json())
+    // A PvP finish is a SIGNAL that the board is over: the SERVER decides who
+    // won, from the moves it accepted, and pays the pot out of the escrow both
+    // seats funded. `winner` is still sent for the AI/for-fun route (which has
+    // no server-side board to replay); the multiplayer route ignores it.
+    // `gameId` is what keeps a stale tab from settling a newer match.
+    //
+    // A 409 `RESULT_PENDING` means the server has not recorded the deciding move
+    // yet (the move POST is still in flight, or a race put the finish request
+    // first). That is not a failure: retry briefly, and let the finish request
+    // that eventually follows the move settle it.
+    const finish = async (attempt = 0): Promise<any> => {
+      const res = await fetch(endPoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          gameId: multiplayerGameId,
+          wager: gameMode === "for-fun" ? 0 : wager,
+          winner: effectiveWinner,
+          isFunMode: gameMode === "for-fun",
+          isAiGame: aiEnabled,
+          // Use the difficulty captured at start-game time so end-game's
+          // matcher sees the exact value start-game cached. If the user
+          // moved the difficulty slider mid-game this protects us from
+          // breaking the strict-match check.
+          aiDifficulty: aiEnabled ? (aiDifficultyAtStartRef.current ?? aiDifficulty) : null,
+          player1Moves: p1MoveCount,
+          player2Moves: p2MoveCount,
+          player1Territory: p1Territory,
+          player2Territory: p2Territory,
+          durationSeconds,
+          startedAt: startedAtRef.current,
+          // Single-use proof that the user actually started this AI match.
+          // end-game verifies this against Redis before honoring `isAiGame`.
+          aiSessionId: aiSessionIdRef.current,
+        }),
+      });
+      const payload = await res.json().catch(() => null);
+      if (
+        gameMode === "multiplayer" &&
+        !res.ok &&
+        payload?.code === "RESULT_PENDING" &&
+        attempt < 3
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 700));
+        return finish(attempt + 1);
+      }
+      return payload;
+    };
+
+    finish()
       .then((d) => {
         // The result screen never shows a token/stake figure — only the
         // settled balance is applied here.
@@ -1610,9 +1670,23 @@ export default function HexDuelPage() {
     setClockLoser(expiredPlayer);
     // Notify opponent in multiplayer mode
     if (gameMode === "multiplayer") {
+      // The clock is mirrored on both clients, so either tab can see either
+      // seat run out. Only the seat that actually expired may REPORT it — that
+      // is a report of one's own loss, the single direction that cannot be used
+      // to claim a win. The other tab only gets the socket hint and its finish
+      // request settles on the concession this POST records.
+      const mySeat: DuelPlayer = isPlayer1 ? "player1" : "player2";
+      if (expiredPlayer === mySeat && multiplayerGameId) {
+        fetch("/api/hex-duel/multiplayer/resign", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ gameId: multiplayerGameId, reason: "timeout" }),
+        }).catch(() => {});
+      }
       sendClockExpiryRef.current();
     }
-  }, [gameMode]);
+  }, [gameMode, isPlayer1, multiplayerGameId]);
 
   const [clockLoser, setClockLoser] = useState<DuelPlayer | null>(null);
 
@@ -3247,9 +3321,27 @@ export default function HexDuelPage() {
             onConfirm={async () => {
               setShowResignConfirm(false);
 
-              // Emit resign event for multiplayer so opponent gets notified
-              if (gameMode === "multiplayer" && socket && multiplayerGameId) {
-                socket.emit("hexDuel:resign", { gameId: multiplayerGameId });
+              // Multiplayer: CONCEDE to the server first. The resign route is the
+              // only client-reported way a staked match can end, and it can only
+              // ever put the caller on the losing side — the server derives the
+              // winner (the opponent) and pays the pot out of escrow. The socket
+              // event afterwards is just the opponent's UI hint.
+              if (gameMode === "multiplayer" && multiplayerGameId) {
+                try {
+                  await fetch("/api/hex-duel/multiplayer/resign", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ gameId: multiplayerGameId, reason: "resign" }),
+                  });
+                } catch {
+                  // The board still shows the loss; the conceding seat can retry
+                  // from the lobby, and the disconnect forfeit covers an actual
+                  // disconnect.
+                }
+                if (socket) {
+                  socket.emit("hexDuel:resign", { gameId: multiplayerGameId });
+                }
               }
 
               // Set winner override to trigger the losing popup and end-game settlement

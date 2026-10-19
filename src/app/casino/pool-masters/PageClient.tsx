@@ -1,7 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import PvpLobbyPage from "../../../components/lobby/PvpLobby";
+import { WAGER_BY_KEY } from "../../../lib/defaultWagers";
+import { PVP_WINNER_SHARE } from "../../../lib/games/economy";
+import PvpLobbyPage, { formatTokens } from "../../../components/lobby/PvpLobby";
 import { IconTarget } from "@tabler/icons-react";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import { type AiDifficulty, readStoredAiDifficulty } from "../../../lib/aiDifficulty";
@@ -77,8 +79,12 @@ export default function PoolLobbyPage() {
   // False once the first list response lands, so the empty state never
   // flashes before the request resolves.
   const [lobbiesLoading, setLobbiesLoading] = useState(true);
-  // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open.
-  const wager = 0;
+  // THE STAKE THE LOBBY OPENS AT. The server re-validates it
+  // (`requireStake`), stores it on the lobby and escrows BOTH seats when an
+  // opponent joins; the winner takes 1.8× (the house keeps 10% of the pot).
+  const [wager, setWager] = useState<number>(
+    () => Number(WAGER_BY_KEY["pool-masters"]) || 10,
+  );
   const [loading, setLoading] = useState(false);
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -163,7 +169,8 @@ export default function PoolLobbyPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await postPoolJson("/api/pool/create-ai-match", { wager });
+      // Practice stays free: the AI seat holds no pot, so no stake is sent.
+      const data = await postPoolJson("/api/pool/create-ai-match", { wager: 0 });
       if (!data?.matchId) {
         setError(data?.error || data?.message || "Unable to start AI match");
         return;
@@ -198,12 +205,14 @@ export default function PoolLobbyPage() {
             ),
           },
           {
-            heading: "Free to play",
+            heading: "Coins",
             body: (
               <>
-                PvP and practice are both free — nothing is staked and no
-                tokens change hands. Results still count towards your Elo and
-                Pool trophies.
+                A ranked 1v1 match plays for the stake you pick. Both stakes
+                are escrowed when the second player joins, and the winner takes
+                <b> {2 * PVP_WINNER_SHARE}× their stake</b> (the house keeps
+                10% of the pot). A loss costs exactly the stake you agreed to.
+                Results still count towards your Elo and Pool trophies.
               </>
             ),
           },
@@ -217,9 +226,16 @@ export default function PoolLobbyPage() {
           },
         ],
       }}
+      wager={{
+        value: wager,
+        onChange: setWager,
+        min: 1,
+        max: 100,
+        label: "Stake",
+      }}
       busy={loading}
       onPlay={createLobby}
-      playLabel="Create PvP Game"
+      playLabel={wager > 0 ? `Create Game · ${wager} coins` : "Create PvP Game"}
       playBusyLabel="Creating lobby…"
       vsAi={{
         label: "Play vs AI",
@@ -251,7 +267,11 @@ export default function PoolLobbyPage() {
       )}
       lobbyMeta={(l) => (
         <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="font-semibold text-emerald-300">Free play</span>
+          <span className="font-semibold text-amber-300">
+            {Number(l.wager) > 0
+              ? `${formatTokens(l.wager)} coins`
+              : "Free play"}
+          </span>
           <span className="capitalize">Mode: {l.gameMode}</span>
           <span className="text-white/40">Waiting for player</span>
         </span>

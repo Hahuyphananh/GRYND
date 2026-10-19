@@ -58,9 +58,12 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   } catch (error: any) {
+    // An escrow refusal (insufficient coins, unknown seat) is a 400-class
+    // answer, not a server fault: the lobby is untouched and still waiting.
+    const status = typeof error?._httpStatus === "number" ? error._httpStatus : 500;
     return NextResponse.json(
       { ok: false, message: error?.message || "Unable to join lobby" },
-      { status: 500 },
+      { status },
     );
   }
 }

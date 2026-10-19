@@ -27,14 +27,18 @@ Hex Duel is a **hex-grid strategy territory war** between two players. Each turn
 
 ## Payout
 
-- **Winner** — takes the pot (stake back + winnings; standard 80/20 rake on the loser's stake (10% of the pot)).
+- **Winner** — takes the pot: **1.8× their own stake** (both stakes minus the platform's 10% rake — the same 80/20 split of the loser's stake, written the other way).
 - **Loser** — loses the stake.
-- **Draw** — both refunded.
+- **Draw** — pays nobody.
+
+Both stakes are escrowed when the opponent joins, and all three endings (the server's verdict, a resignation, a disconnect forfeit) settle through one writer (`src/lib/hex-duel/settle.ts`), so the pot is paid exactly once. The **winner is the server's**: the action endpoint replays the moves it accepted through the game's own rulebook (`src/lib/hex-duel/rules.ts`) and writes the winner itself — the finish request only signals that the board is over and cannot name a winner.
 
 ## Key numbers
 
 | Constant | Value |
 | --- | --- |
+| Stake | 1–100 coins (`GLOBAL_MAX_BET`), required to open a ranked lobby |
+| Payout | 1.8× the winner's stake (10% rake: `PVP_RAKE_PCT`) |
 | Action points per turn | 3 |
 | Action costs | 1 AP each (move / push / reinforce / attack) |
 | Win | Most territory at match end (or elimination) |

@@ -1,10 +1,12 @@
 import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerified";
-import { and, eq, or } from "drizzle-orm";
+import { and, asc, eq, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../../db/client";
 import { hexDuelActions, hexDuelGames } from "../../../../../db/schema";
 import { logError } from "../../../../../lib/logError";
+import { applyRecordedMove, checkHexDuelMove, type HexDuelMoveType } from "../../../../../lib/hex-duel/rules";
+import { replayHexDuel, type StoredHexDuelAction } from "../../../../../lib/hex-duel/authority";
 
 const ALLOWED_ACTION_TYPES = ["attack", "displace", "endTurn", "skipRound"] as const;
 type AllowedActionType = typeof ALLOWED_ACTION_TYPES[number];
@@ -12,28 +14,26 @@ type AllowedActionType = typeof ALLOWED_ACTION_TYPES[number];
 /**
  * POST /api/hex-duel/multiplayer/action
  *
- * Atomic, server-authoritative action write. Replaces the previous
- * "insert into hex_duel_actions and hope both clients stay in sync"
- * pattern that caused both clients to drift (each client reconstructed
- * its own board state by replaying opponent actions only) AND let
- * either player flip the game status via the companion
- * `/multiplayer/status` POST.
+ * The SERVER-AUTHORITATIVE move write, and — for a staked match — the place the
+ * winner is decided.
  *
- * New flow:
- *   1. Wrap in a single `db.transaction` so the SELECT-FOR-UPDATE,
- *      INSERT, and UPDATE either all happen or none do.
- *   2. Lock the game row (`for("update")`) — blocks a second player
- *      from racing the same action.
- *   3. Verify the caller IS the player whose turn it currently is,
- *      using the server-authoritative `current_turn` column added in
- *      migration 0054. Reject with 409 if not — eliminates the
- *      turn-bounce bug from the legacy `status` POST.
- *   4. INSERT into hex_duel_actions with the action payload.
- *   5. UPDATE the game row: for `endTurn` (or `skipRound`) flip
- *      `current_turn` to the other player, otherwise leave it on
- *      the caller. Always advance `last_action_seq` to the new
- *      action id so the polling endpoint can cheaply detect missed
- *      actions after a reconnect.
+ *   1. Wrap in a single `db.transaction` so the SELECT-FOR-UPDATE, the
+ *      legality replay, the INSERT and the UPDATE either all happen or none do.
+ *   2. Lock the game row (`for("update")`) — blocks a second player from
+ *      racing the same action.
+ *   3. Verify the caller IS the player whose turn it currently is, using the
+ *      server-authoritative `current_turn` column added in migration 0054.
+ *   4. REPLAY the moves already stored for this match through the shared
+ *      rulebook (`src/lib/hex-duel/rules.ts`) to rebuild the board the server
+ *      believes in, then validate the incoming move against it with
+ *      `checkHexDuelMove`. A move that is impossible there (a tile the caller
+ *      does not hold, a non-adjacent hop, more troops than the tile has, no
+ *      action points left) is REFUSED and nothing is written — so the recorded
+ *      log is a legal game, and a client cannot fabricate a winning attack it
+ *      could not have played.
+ *   5. Record the accepted action, and if it captured the opponent's capital,
+ *      write the winner onto the game row. That column is what
+ *      `/multiplayer/end` settles on; the end request no longer names a winner.
  *
  * NOTE: this handler intentionally does NOT silently retry the
  * transaction on failure — a half-applied insert + update would be
@@ -108,16 +108,11 @@ export async function POST(req: Request) {
       //       the React-page bug where one player could send attacks
       //       to an open lobby and clutter the action log for the
       //       future player2.
-      //     - `completed`: someone already called `/multiplayer/end`.
-      //       A racing POST here must not write another action on top
-      //       of a finished game.
-      // The legacy `in_progress` and the new `turn_player1` /
+      //     - `completed`: the match has been settled.
+      // The legacy `in_progress` and the `turn_player1` /
       // `turn_player2` strings both pass; the column stays the source
-      // of truth (see step 2 below).
-      if (
-        game.status !== "in_progress" &&
-        !game.status.startsWith("turn_")
-      ) {
+      // of truth (see step 3 below).
+      if (game.status !== "in_progress" && !game.status.startsWith("turn_")) {
         throw Object.assign(
           new Error(`Cannot act on game in status '${game.status}'.`),
           { _httpStatus: 409 },
@@ -125,10 +120,6 @@ export async function POST(req: Request) {
       }
 
       // 2. Verify the caller is a real participant AND it is their turn.
-      //    The legacy status-based check (status === 'turn_player1' /
-      //    'turn_player2') is kept as a fallback so a freshly-joined game
-      //    that has not yet been processed by the new column still works,
-      //    but `current_turn` is the source of truth from now on.
       const callerSlot: "player1" | "player2" | null =
         game.player1Id === userId
           ? "player1"
@@ -157,7 +148,50 @@ export async function POST(req: Request) {
         );
       }
 
-      // 3. Insert the action row (server-authoritative record of every
+      // 3. Rebuild the board from the moves the server already accepted, then
+      //    rule on the incoming one. This is the same rulebook the board runs,
+      //    so a legal move is never refused and an impossible one is never
+      //    recorded.
+      const storedRows = await tx
+        .select({
+          userId: hexDuelActions.userId,
+          actionType: hexDuelActions.actionType,
+          sourceKey: hexDuelActions.sourceKey,
+          targetKey: hexDuelActions.targetKey,
+          troopCount: hexDuelActions.troopCount,
+        })
+        .from(hexDuelActions)
+        .where(eq(hexDuelActions.gameId, gameId))
+        .orderBy(asc(hexDuelActions.id));
+
+      const seats = { player1Id: game.player1Id, player2Id: game.player2Id };
+      const replayed = replayHexDuel(seats, storedRows as StoredHexDuelAction[]);
+
+      const move = {
+        type: actionType as HexDuelMoveType,
+        sourceKey,
+        targetKey,
+        troopCount,
+      };
+      // Annotated rather than inferred: `strict` is off in this project, where a
+      // discriminated union is not narrowed by `if (!x.ok)` (same note as
+      // src/lib/tokens/pvpPot.ts).
+      const check: { ok: boolean; code?: string; error?: string } = checkHexDuelMove(
+        replayed.state,
+        callerSlot,
+        move,
+      );
+      if (!check.ok) {
+        // Turn / game-state problems are conflicts; an impossible move is a
+        // bad request. Either way the client is told why.
+        const status = check.code === "NOT_YOUR_TURN" || check.code === "GAME_OVER" ? 409 : 400;
+        throw Object.assign(new Error(check.error), {
+          _httpStatus: status,
+          _code: check.code,
+        });
+      }
+
+      // 4. Insert the action row (server-authoritative record of every
       //    move; the polling endpoint reads from here).
       const [action] = await tx
         .insert(hexDuelActions)
@@ -171,7 +205,7 @@ export async function POST(req: Request) {
         })
         .returning({ id: hexDuelActions.id, createdAt: hexDuelActions.createdAt });
 
-      // 4. Update the game row: `endTurn` / `skipRound` flips the turn;
+      // 5. Update the game row: `endTurn` / `skipRound` flips the turn;
       //    intermediate moves (attack / displace) keep the turn on the
       //    caller so the same player can do multiple actions in a row
       //    before yielding. `last_action_seq` is always advanced so the
@@ -182,6 +216,13 @@ export async function POST(req: Request) {
       const nextTurn: "player1" | "player2" =
         callerSlot === "player1" ? "player2" : "player1";
 
+      // 6. The SERVER's winner: applying the accepted move to the server's own
+      //    board is what decides a match — a capital capture, and nothing else.
+      //    `winner` is only written while it is still `pending`, so the first
+      //    deciding move owns the result and no later write can flip it.
+      const nextState = applyRecordedMove(replayed.state, callerSlot, move);
+      const decidedWinner = nextState.winner;
+
       await tx
         .update(hexDuelGames)
         .set({
@@ -191,13 +232,20 @@ export async function POST(req: Request) {
           // spectate endpoints that filter by status continue to work
           // without needing to read `current_turn` for filtering.
           status: flipsTurn ? `turn_${nextTurn}` : `turn_${callerSlot}`,
+          ...(decidedWinner && game.winner === "pending"
+            ? { winner: decidedWinner }
+            : {}),
         })
         .where(eq(hexDuelGames.id, gameId));
 
-      return { id: action.id, createdAt: action.createdAt };
+      return {
+        id: action.id,
+        createdAt: action.createdAt,
+        winner: decidedWinner,
+      };
     });
 
-    return NextResponse.json({ success: true, action: result });
+    return NextResponse.json({ success: true, action: { id: result.id, createdAt: result.createdAt }, winner: result.winner });
   } catch (error: any) {
     const httpStatus: number =
       typeof error?._httpStatus === "number" ? error._httpStatus : 500;
@@ -223,7 +271,7 @@ export async function POST(req: Request) {
       stackTrace: error?.stack,
       endpoint: "/api/hex-duel/multiplayer/action",
       game: "Hex Duel",
-      metadata: { operation: "submit_action", gameId, actionType },
+      metadata: { operation: "submit_action", gameId, actionType, code: error?._code ?? null },
     });
     return NextResponse.json(
       { success: false, error: httpStatus >= 500 ? "Server error" : error?.message || "Action failed" },

@@ -58,7 +58,10 @@ export async function GET() {
         rounds: state?.rounds ?? [],
         gameOver: state?.gameOver ?? false,
         winner: state?.winner ?? null,
-        payout: game.wager * 2,
+        // A vs-AI duel moves no coins (`/pick` and `/end` skip every payout
+        // when `game.isAi`), so there is no prize to advertise. This used to
+        // report `wager * 2` — a 0%-edge pot the ledger never paid.
+        payout: 0,
       },
     });
   } catch (error: any) {

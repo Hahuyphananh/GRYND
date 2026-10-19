@@ -25,6 +25,7 @@ import {
   leaveEndReplayRoom,
 } from "../lib/precision/multiplayer";
 import { SOCKET_NAMESPACE } from "../lib/precision/constants";
+import { PVP_WINNER_SHARE } from "../lib/games/economy";
 import { getReplaySecondsLeft, makeInitialEndPopupState } from "../lib/precision/utils";
 import type {
   PrecisionEndPopupState,
@@ -151,7 +152,10 @@ export function usePrecisionEndPopup({
       makeInitialEndPopupState(result, "completed", initialPayout, opponentName, {
         winnerName,
         finalScore: state.score ?? null,
-        prizeMultiplier: 1.9,
+        // The shared pot multiplier (2 × the 90% winner share = 1.8× at the
+        // 10% rake), NOT a hand-written number: the popup's "Prize" line must
+        // quote the same edge the server settles on.
+        prizeMultiplier: 2 * PVP_WINNER_SHARE,
         wager: state.wager,
       })
     );

@@ -568,25 +568,50 @@ test("Chess escrows both seats at join and pays the act the server derived", () 
   assert.doesNotMatch(end, /const winnerPayout = 0;/);
 });
 
-// Pool Masters and Hex Duel are deliberately NOT staked: their match winner is
-// declared by the CLIENT (pool pushes `gameState.winner` through
-// `/api/pool/update-state`; `/api/hex-duel/multiplayer/end` reads `winner` off
-// the request body). Attaching a coin stake to a client-declared result would
-// be a coin mint, so both keep settlement on server-derived endings only until
-// their result moves to the server.
-test("Pool and Hex Duel stay unstaked while their winner is client-declared", () => {
+// POOL MASTERS is deliberately NOT staked: its match winner is declared by the
+// CLIENT — pool pushes `gameState.winner` through `/api/pool/update-state`, and
+// the shots themselves are simulated in the browser (`/api/pool/submit-shot` is
+// a no-op echo), so there is no server-side board to rule on. Attaching a coin
+// stake to a client-declared result would be a coin mint, so it keeps
+// settlement on server-derived endings only until its result moves server-side.
+// POOL WAS; it is staked now, for the same reason Hex Duel is: its result moved
+// to the server. `/api/pool/submit-shot` replays the stroke from the row's own
+// rack with the game's physics and rulebook and writes the winner itself, so no
+// request body can name one. The full contract lives in
+// tests/pool-stakes.test.mjs.
+test("Pool Masters is staked now that the server plays its shots", () => {
+  const shot = fs.readFileSync("src/app/api/pool/submit-shot/route.ts", "utf8");
+  // The winner comes from the replay, and the pot is paid inside the same
+  // transaction that decided the match.
+  assert.match(shot, /applyPoolShot\(/);
+  assert.match(shot, /payPvpPot\(\{/);
+  assert.doesNotMatch(shot, /body\.winner|state\.winner ===/, "a shot request must not name a winner");
+
+  // Both seats are funded when the lobby is claimed.
+  const poolJoin = fs.readFileSync("src/lib/pool/lobbyJoin.ts", "utf8");
+  assert.match(poolJoin, /await escrowMatchWagers\(\{/);
+  assert.match(poolJoin, /gameKey: "pool"/);
+
+  // A resignation pays the pot too; the resigning seat can only give it away.
   const poolResign = fs.readFileSync("src/app/api/pool/resign/route.ts", "utf8");
+  assert.match(poolResign, /payPvpPot\(\{/);
+});
+
+// HEX DUEL WAS; it is staked now. Its result moved to the server: the action
+// endpoint replays the moves it accepted through the shared rulebook and writes
+// the winner itself, so the finish request no longer names one. The full
+// contract lives in tests/hex-duel-stakes.test.mjs — this pins the part that
+// used to make the two games twins.
+test("Hex Duel is staked now that the server derives its winner", () => {
   const hexEnd = fs.readFileSync("src/app/api/hex-duel/multiplayer/end/route.ts", "utf8");
-  // Neither pays a pot nor escrows one.
-  for (const [file, src] of [
-    ["src/app/api/pool/resign/route.ts", poolResign],
-    ["src/app/api/hex-duel/multiplayer/end/route.ts", hexEnd],
-  ]) {
-    assert.doesNotMatch(src, /payPvpPot|settlePayout\(/, `${file} must not move a pot`);
-    assert.doesNotMatch(src, /escrowMatchWagers/, `${file} must not escrow`);
-  }
-  // The client-declared winner is still the reason — pin it so the day it moves
-  // server-side is the day this test has to change.
-  assert.match(hexEnd, /winner = typeof body\.winner === "string" \? body\.winner : null;/);
-  assert.match(hexEnd, /if \(winner !== "player1" && winner !== "player2"\)/);
+  // The winner the route settles on comes from the server's own replay, and the
+  // request body cannot name one.
+  assert.match(hexEnd, /hexDuelSettledWinner\(/);
+  assert.match(hexEnd, /settleHexDuelMatch\(/);
+  assert.doesNotMatch(hexEnd, /body\.winner/, "the finish request must not name a winner");
+
+  // And both seats are funded when the second one joins.
+  const hexJoin = fs.readFileSync("src/app/api/hex-duel/multiplayer/join/route.ts", "utf8");
+  assert.match(hexJoin, /await escrowMatchWagers\(\{/);
+  assert.match(hexJoin, /gameKey: "hex-duel"/);
 });

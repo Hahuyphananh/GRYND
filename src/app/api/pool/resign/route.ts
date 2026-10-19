@@ -8,6 +8,8 @@ import { applyRatingResult } from "../../../../lib/rating";
 import { applyTrophyResult } from "../../../../lib/trophyStore";
 import { logError } from "../../../../lib/logError";
 import { normalizeStake } from "../../../../lib/games/stakes";
+import { PVP_RAKE_PCT } from "../../../../lib/games/economy";
+import { payPvpPot } from "../../../../lib/tokens/pvpPot";
 import { isGuestId } from "../../../../lib/guestIdentity";
 
 export async function POST(req: Request) {
@@ -69,13 +71,11 @@ export async function POST(req: Request) {
         : match.player1Id;
 
     const winnerSeat = isPlayer1 ? 2 : 1;
-    // STAKES ARE RETIRED (src/lib/games/stakes.js): the match carried no
-    // stake, so a resign still settles (status, Elo, trophies) but pays out
-    // nothing — the payout and house fee below are 0.
     const wager = normalizeStake(match.wager ?? 0);
-    // STAKES ARE RETIRED: no pot, no rake and no payout to move.
-    const houseFee = 0;
-    const payout = 0;
+    // The pot, at the platform's shared rake: 2 × stake minus 10%
+    // (`PVP_RAKE_PCT`). A free match carries stake 0 and moves nothing.
+    const houseFee = Math.round(wager * 2 * PVP_RAKE_PCT);
+    let payout = 0;
 
     // Update the match
     const gameState = (match.gameState as Record<string, unknown>) || {};
@@ -95,11 +95,30 @@ export async function POST(req: Request) {
           status: "finished",
           winnerId: String(winnerId),
           gameState: updatedGameState,
-          prizePaid: payout,
+          prizePaid: 0,
           houseFee,
           endedAt: new Date(),
         })
         .where(eq(poolMatches.id, String(matchId)));
+
+      // Pay the winner out of the escrow both seats paid at join. The ledger
+      // refuses a payout with no funding debit and refuses a second payout for
+      // the same match, so a retried resign cannot mint or duplicate coins.
+      if (!isAi && wager > 0 && winnerId && winnerId !== "AI") {
+        payout = await payPvpPot({
+          tx,
+          gameKey: "pool",
+          matchId,
+          winnerClerkId: String(winnerId),
+          stake: wager,
+        });
+        if (payout > 0) {
+          await tx
+            .update(poolMatches)
+            .set({ prizePaid: Math.round(payout) })
+            .where(eq(poolMatches.id, String(matchId)));
+        }
+      }
     });
 
     // Track leaderboard stats for both players. A guest seat never moves a

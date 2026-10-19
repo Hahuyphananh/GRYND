@@ -3,7 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../db";
 import { poolLobbies } from "../../../../db/schema";
-import { normalizeStake } from "../../../../lib/games/stakes";
+import { requireStake } from "../../../../lib/games/stakes";
 
 export async function POST(req: Request) {
   try {
@@ -17,16 +17,23 @@ export async function POST(req: Request) {
         { status: 401 },
       );
     const { wager } = await req.json().catch(() => ({}));
-    // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open.
-    // The requested wager is normalized to 0, so the lobby (and the match it
-    // becomes) carries no stake and no range check can reject free play.
-    const stake = normalizeStake(wager);
+    // A public Pool lobby is a staked match, so the stake is REQUIRED and must
+    // be legal for the game (`requireStake`). It is stored on the lobby row, not
+    // charged here: a lobby waiting for an opponent costs nothing. The JOINING
+    // transaction escrows BOTH seats at this amount (`src/lib/pool/lobbyJoin`).
+    const stake = requireStake(wager, "pool");
+    if (!stake.ok) {
+      return NextResponse.json(
+        { ok: false, message: stake.error, code: stake.code },
+        { status: stake.status },
+      );
+    }
     const [row] = await db
       .insert(poolLobbies)
       .values({
         id: crypto.randomUUID(),
         hostUserId: userId,
-        wager: stake,
+        wager: stake.stake,
         gameMode: "pvp",
         status: "waiting",
       })

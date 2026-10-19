@@ -77,7 +77,7 @@
     "verify:legal-dates": "node scripts/verify-legal-dates.mjs",
     "verify:legal-pages": "node qa/terms-page-check.mjs",
     "verify:a11y": "node scripts/axe-scan.mjs",
-    "test:hex-duel": "node --import tsx --test tests/hex-troop-count.test.mjs tests/hex-duel-turn-layout.test.mjs",
+    "test:hex-duel": "node --import tsx --test tests/hex-troop-count.test.mjs tests/hex-duel-turn-layout.test.mjs tests/hex-duel-stakes.test.mjs",
     "verify:hex-troop-popup": "node qa/hex-troop-popup-check.mjs",
     "verify:hex-turn": "node qa/hex-duel-turn-check.mjs",
     "verify:google-analytics": "node qa/google-analytics-check.mjs",
@@ -156,7 +156,8 @@
     "test:guides": "node --import tsx --test tests/guides.test.mjs",
     "test:sitemap": "node --import tsx --test tests/sitemap.test.mjs",
     "test:tower-arena": "node --import tsx --test tests/tower-arena-engine.test.mjs tests/tower-arena-turns.test.mjs tests/tower-arena-settlement.test.mjs tests/tower-arena-realtime.test.mjs tests/tower-arena-qa.test.mjs tests/countdown-start-liveness.test.mjs",
-    "loadtest:read-mix": "npx --yes artillery@2.0.34 run load-test/scenarios/read-mix.yml"
+    "loadtest:read-mix": "npx --yes artillery@2.0.34 run load-test/scenarios/read-mix.yml",
+    "test:pool-stakes": "node --import tsx --test tests/pool-stakes.test.mjs tests/house-edge.test.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.2",

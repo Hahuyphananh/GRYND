@@ -6,16 +6,27 @@ import Link from "next/link";
 import NavigationBar from "../../../../components/navigation-bar";
 import AsyncState from "../../../../components/states/AsyncState";
 import { SkeletonRows } from "../../../../components/skeletons/Skeleton";
+import { CoinWagerPicker, formatTokens } from "../../../../components/lobby/PvpLobby";
 import { useHexAudio } from "../../../../lib/hexAudio";
+import { WAGER_BY_KEY } from "../../../../lib/defaultWagers";
+import { PVP_WINNER_SHARE } from "../../../../lib/games/economy";
 import { IconEye } from "@tabler/icons-react";
+
+// Coin PvP: the player picks the stake each lobby opens at and the server
+// escrows BOTH seats when an opponent joins; the winner takes 2 × stake × 90%
+// (the platform's shared 10% rake). Practice vs the bot stays free.
+const DEFAULT_STAKE = Number(WAGER_BY_KEY["hex-duel"]) || 10;
+const POT_MULTIPLIER = 2 * PVP_WINNER_SHARE;
 
 export default function HexDuelMultiplayerPage() {
   const { isSignedIn } = useUser();
   const [games, setGames] = useState<any[]>([]);
   const [liveGames, setLiveGames] = useState<any[]>([]);
   const [spectatorCounts, setSpectatorCounts] = useState<Record<number, number>>({});
-  // STAKES ARE RETIRED (src/lib/games/stakes.js): a game is free to create
-  // and join, so there is no stake or balance to track on this lobby.
+  // The stake the next lobby opens at. The server RE-validates it and escrows
+  // both seats on match-up, so this is a request, never a decision.
+  const [stake, setStake] = useState<number>(DEFAULT_STAKE);
+  const [balance, setBalance] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Kept separate from `error`: `error` reports a failed create/join action,
@@ -64,6 +75,11 @@ export default function HexDuelMultiplayerPage() {
       audio.playPush();
       return;
     }
+    if (!(stake >= 1)) {
+      setError("Choose a stake of at least 1 coin.");
+      audio.playPush();
+      return;
+    }
     setActionLoading(true);
     setError(null);
     try {
@@ -71,7 +87,7 @@ export default function HexDuelMultiplayerPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ wager: 0 }),
+        body: JSON.stringify({ wager: stake }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
@@ -80,6 +96,9 @@ export default function HexDuelMultiplayerPage() {
         return;
       }
       audio.playCapture();
+      if (data?.newBalance !== undefined && data.newBalance !== null) {
+        setBalance(Number(data.newBalance));
+      }
       if (data?.gameId) router.push(`/casino/hex-duel?gameId=${data.gameId}&host=1`);
     } catch {
       setError("Network error. Please try again");
@@ -112,6 +131,9 @@ export default function HexDuelMultiplayerPage() {
         return;
       }
       audio.playCapture();
+      if (data?.newBalance !== undefined && data.newBalance !== null) {
+        setBalance(Number(data.newBalance));
+      }
       if (data?.gameId) router.push(`/casino/hex-duel?gameId=${data.gameId}&host=0`);
     } catch {
       setError("Network error. Please try again");
@@ -139,10 +161,10 @@ export default function HexDuelMultiplayerPage() {
           </Link>
         </div>
 
-        {/* Stakes are retired — nothing has to be put up to play. */}
+        {/* Coin PvP: both stakes are escrowed the moment an opponent joins. */}
         <div className="mb-4 text-center">
-          <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-300">
-            Free play · no tokens at stake
+          <span className="rounded-full border border-amber-400/40 bg-amber-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-amber-300">
+            Coin match · winner takes the pot
           </span>
         </div>
 
@@ -159,11 +181,20 @@ export default function HexDuelMultiplayerPage() {
           </div>
         )}
 
-        {/* Stakes are retired — there is no stake to pick; create a game. */}
+        {/* The stake the lobby opens at. The server re-validates it and escrows
+            BOTH seats when an opponent joins. */}
+        <div className="mb-3 rounded-xl border border-amber-700/40 bg-black/30 p-3">
+          <CoinWagerPicker
+            value={stake}
+            onChange={setStake}
+            balance={balance}
+            label="Stake per seat"
+          />
+        </div>
         <div className="mb-6 flex flex-wrap items-end gap-3">
           <button
             onClick={handleCreate}
-            disabled={actionLoading}
+            disabled={actionLoading || !(stake >= 1)}
             className="rounded-lg border border-cyan-400/40 px-4 py-1.5 text-[11px] font-medium hover:bg-cyan-500/20 transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
           >
             {actionLoading ? (
@@ -172,7 +203,7 @@ export default function HexDuelMultiplayerPage() {
                 Creating...
               </>
             ) : (
-              "Create Game"
+              `Create Game · ${formatTokens(stake)} coins`
             )}
           </button>
 
@@ -187,6 +218,12 @@ export default function HexDuelMultiplayerPage() {
             ↻ Refresh
           </button>
         </div>
+
+        <p className="mb-4 text-center text-[11px] text-slate-500">
+          Both seats are escrowed the moment an opponent joins, and the winner
+          takes <b>{POT_MULTIPLIER}× their stake</b> (the house keeps 10%). A
+          lobby nobody joins costs nothing.
+        </p>
 
         <h2 className="mb-2 text-xs uppercase text-slate-500 tracking-widest">Available Games</h2>
         {/* The shared AsyncState owns skeleton / offline / error / stale / empty. */}
@@ -207,7 +244,10 @@ export default function HexDuelMultiplayerPage() {
           {games.map((g) => (
             <div key={g.id} className="rounded-lg border border-white/10 p-2.5 flex justify-between items-center">
               <span className="text-[12px] text-slate-300">
-                {g.hostName || "Player"} · Free play
+                {g.hostName || "Player"} ·{' '}
+                {Number(g.wagerAmount) > 0
+                  ? `${formatTokens(g.wagerAmount)} coins`
+                  : "Free play"}
               </span>
               <button
                 onClick={() => handleJoin(g.id)}
@@ -230,7 +270,10 @@ export default function HexDuelMultiplayerPage() {
             <div key={g.id} className="rounded-lg border border-white/10 p-2.5 flex justify-between items-center">
               <div className="flex items-center gap-2">
                 <span className="text-[12px] text-slate-300">
-                  #{g.id} · {g.hostName || "Player"} vs Opponent · Free play
+                  #{g.id} · {g.hostName || "Player"} vs Opponent ·{' '}
+                  {Number(g.wagerAmount) > 0
+                    ? `${formatTokens(g.wagerAmount)} coins`
+                    : "Free play"}
                 </span>
                 {spectatorCounts[g.id] > 0 && (
                   <span className="text-[10px] text-purple-400 bg-purple-500/10 px-1.5 py-0.5 rounded-full">

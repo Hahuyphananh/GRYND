@@ -589,14 +589,15 @@ export async function GET(req: NextRequest) {
     //  Mines Duel — only finished matches count. Maps the
     // server-side `result` enum ('player1' | 'player2' | 'draw')
     // plus `winner_id` (null on draw) to a UI-friendly
-    // won/lost/draw string. The 80/20 split means a winner's
-    // payout is `stake * 1.9` and a loser's payout is 0; a draw
+    // won/lost/draw string. The shared pot (2 × stake × 90% =
+    // 1.8× the winner's stake at the 10% rake) means a winner's
+    // payout is `stake * 1.8` and a loser's payout is 0; a draw
     // refunds both stakes (payout = stake, tokenDiff = 0). Named
     // `outcome` instead of `result` to avoid shadowing the server
     // row's `result` field in this scope (matches the style of
     // the dice/pool/fourInARow formatters which don't shadow).
     // Memory Grid — same shape as Mines Duel: winner's payout is
-    // `stake * 1.9`, a loser's is 0, and a draw refunds both stakes
+    // `stake * 1.8`, a loser's is 0, and a draw refunds both stakes
     // (payout = stake, tokenDiff = 0).
     const memoryGridFormatted = memoryGridRows
       .map((g) => {
@@ -655,7 +656,7 @@ export async function GET(req: NextRequest) {
       .filter(Boolean);
 
     // Lane Rush Duel PvP matches — same shape as Mines Duel: the
-    // winner's payout is `stake * 1.9`, a loser's is 0, and a draw
+    // winner's payout is `stake * 1.8`, a loser's is 0, and a draw
     // refunds both stakes (payout = stake, tokenDiff = 0).
     const laneRushDuelFormatted = laneRushDuelRows
       .map((g) => {
@@ -741,7 +742,7 @@ export async function GET(req: NextRequest) {
       })
       .filter(Boolean);
 
-    // Keno Duel PvP matches — winner's payout is `stake * 1.9` and a
+    // Keno Duel PvP matches — winner's payout is `stake * 1.8` and a
     // loser's is 0; a draw refunds both stakes (payout = stake,
     // tokenDiff = 0). Mirrors the minesPvpFormatted shape.
     // Tic-Tac-Toe Duel — finished matches only. Like Mini Golf and Speed Typing

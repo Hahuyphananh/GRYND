@@ -2985,8 +2985,37 @@ io.on("connection", (socket) => {
       });
       scheduleDisconnectGraceTimer(`hexDuel:${gid}:${socket.data.userId}`, async () => {
         if (hasLiveSocketForUser(socket.data.userId, roomId)) return false;
-        // Grace expired — the opponent now wins (client declares it
-        // via the existing end-game flow). Emission is terminal.
+        // Grace expired — the seat that left LOSES the match. Settle it through
+        // the internal endpoint first: the abandoned seat forfeits its own
+        // match (its Clerk token is what authorises the forfeit), so a staked
+        // pot is still paid out even though the client that left can no longer
+        // report anything. The connection itself is only told after that — the
+        // opponent's win and its payout therefore arrive together.
+        try {
+          const baseUrl =
+            process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
+          const res = await fetch(
+            `${baseUrl}/api/hex-duel/multiplayer/disconnect-forfeit`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                gameId: gid,
+                token: socket.data.clerkToken,
+              }),
+            },
+          );
+          const payload = await res.json().catch(() => null);
+          // A definitive answer (no seat, already settled) stops the retry
+          // loop; anything else (5xx, network, missing token) is transient.
+          if (!(payload && payload.success === true)) return true;
+        } catch (err) {
+          console.warn(
+            "[hex-duel] disconnect forfeit failed:",
+            err && err.message ? err.message : err,
+          );
+          return true; // transient — retry
+        }
         io.to(roomId).emit("hexDuel:opponent:disconnected", {
           gameId: roomId,
           userId: socket.data.userId,
