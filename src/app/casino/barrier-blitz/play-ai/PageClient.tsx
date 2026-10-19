@@ -32,6 +32,11 @@ import {
 import NavigationBar from "../../../../components/navigation-bar";
 import FrameAvatar from "../../../../components/FrameAvatar";
 import GameSessionHost from "../../../../components/GameSessionHost";
+import {
+  PracticePauseChip,
+  PracticePauseOverlay,
+} from "../../../../components/game/PracticePause";
+import { usePracticePause } from "../../../../hooks/usePracticePause";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import AiDifficultyPicker from "../../../../components/lobby/AiDifficultyPicker";
 import BarricadeBoard from "../../../../components/barricade/BarricadeBoard";
@@ -108,8 +113,18 @@ export default function BarricadePracticePage() {
   const resultSoundedRef = useRef<number | null>(null);
 
   const matchOver = isMatchFinished(state);
+  // Client-only practice board: pause stops the bot's scheduled turn locally.
+  // The shared chip/overlay keep the control identical to every other vs-AI
+  // page.
+  const practicePause = usePracticePause({
+    game: "barrier-blitz",
+    matchId: "local",
+    enabled: !matchOver,
+    local: true,
+  });
+  const paused = practicePause.paused;
   const myTurn = !matchOver && state.turn === HUMAN_SEAT;
-  const canPlay = myTurn && !aiThinking;
+  const canPlay = myTurn && !aiThinking && !paused;
 
   // The engine's move menu for the seat that owns the turn (the human's, unless
   // the bot is answering).
@@ -139,7 +154,7 @@ export default function BarricadePracticePage() {
   // player can see whose turn it was. The epoch guard drops a stale timer after
   // a restart.
   useEffect(() => {
-    if (matchOver || state.turn !== AI_SEAT) return undefined;
+    if (matchOver || paused || state.turn !== AI_SEAT) return undefined;
     setAiThinking(true);
     const epoch = epochRef.current;
     const handle = setTimeout(() => {
@@ -167,7 +182,7 @@ export default function BarricadePracticePage() {
       }
     }, AI_THINK_DELAY_MS);
     return () => clearTimeout(handle);
-  }, [state, matchOver, difficulty, resetGame]);
+  }, [state, matchOver, difficulty, resetGame, paused]);
 
   // ── Result cues and the session tally ─────────────────────────────────
   useEffect(() => {
@@ -415,6 +430,17 @@ export default function BarricadePracticePage() {
             {seatChip(AI_SEAT, `Bot · ${difficulty}`, aiWalls, state.turn === AI_SEAT && !matchOver)}
           </div>
 
+          {practicePause.canPause && (
+            <div className="mb-2 flex justify-center">
+              <PracticePauseChip
+                paused={paused}
+                busy={practicePause.busy}
+                onToggle={() => void practicePause.toggle()}
+                testId="barricade-pause"
+              />
+            </div>
+          )}
+
           <p
             className="barricade-status"
             role="status"
@@ -500,6 +526,13 @@ export default function BarricadePracticePage() {
           </AnimatePresence>
         </GameSessionHost>
       </div>
+
+      <PracticePauseOverlay
+        paused={paused}
+        busy={practicePause.busy}
+        onResume={() => void practicePause.toggle()}
+        testId="barricade-pause-overlay"
+      />
     </div>
   );
 }

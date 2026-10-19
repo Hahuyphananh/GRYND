@@ -69,6 +69,7 @@
     "test:chess-ai-difficulty-schema": "node --import tsx --test tests/chess-ai-difficulty-schema.test.mjs",
     "test:chess-ai-seats": "node --import tsx --test tests/chess-ai-seats.test.mjs",
     "test:chess-ai-turn": "node --import tsx --test tests/chess-ai-turn.test.mjs",
+    "test:practice-pause": "node --import tsx --test tests/practice-pause-coverage.test.mjs",
     "test:memory-grid": "node --import tsx --test tests/memory-grid-engine.test.mjs tests/memory-grid-forfeit.test.mjs",
     "test:reports": "node --import tsx --test tests/report-submit.test.mjs",
     "test:moderation": "node --import tsx --test tests/username-moderation.test.mjs tests/reviews-moderation.test.mjs tests/moderation-enforcement.test.mjs tests/moderation-rename.test.mjs",

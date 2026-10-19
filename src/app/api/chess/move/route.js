@@ -13,6 +13,7 @@ import { applyTrophyResult } from "../../../../lib/trophyStore";
 import { markDailyRewardWin } from "../../../../lib/dailyRewardWin";
 import { payPvpPot } from "../../../../lib/tokens/pvpPot";
 import { refundMatchWagers } from "../../../../lib/tokens/wager";
+import { isPracticePaused } from "../../../../lib/practicePause";
 
 async function getUserAliases(clerkId) {
   const aliases = new Set([String(clerkId)]);
@@ -69,6 +70,15 @@ export async function POST(req) {
       return NextResponse.json(
         { error: "Game is not active" },
         { status: 400 },
+      );
+    }
+
+    // A free-play pause freezes both sides: the player cannot keep moving behind
+    // the overlay, and the bot cannot answer. PvP is never pausable.
+    if (game.isAiGame && (await isPracticePaused("chess", normalizedGameId))) {
+      return NextResponse.json(
+        { error: "Match is paused", paused: true },
+        { status: 409 },
       );
     }
 

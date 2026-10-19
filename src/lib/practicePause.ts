@@ -32,10 +32,11 @@ import {
   PRACTICE_PAUSE_GAMES,
   isPracticePauseGame,
   type PracticePauseGame,
+  type ServerPracticePauseGame,
 } from "./practicePauseKeys";
 
 export { PRACTICE_PAUSE_GAMES, isPracticePauseGame };
-export type { PracticePauseGame };
+export type { PracticePauseGame, ServerPracticePauseGame };
 
 type ShiftFn = (
   tx: any,
@@ -246,7 +247,7 @@ const shiftSudoku: ShiftFn = async (tx, row, matchId, deltaMs) => {
 
 const noShift: ShiftFn = async () => {};
 
-const GAMES: Record<PracticePauseGame, GameConfig> = {
+const GAMES: Record<ServerPracticePauseGame, GameConfig> = {
   chess: {
     table: "chess_games",
     idColumn: "id",
@@ -392,7 +393,7 @@ function rowOf(result: any): Record<string, any> | null {
   return result?.rows?.[0] ?? null;
 }
 
-async function loadPauseRow(tx: any, game: PracticePauseGame, matchId: string) {
+async function loadPauseRow(tx: any, game: ServerPracticePauseGame, matchId: string) {
   const result = await tx.execute(sql`
     select paused_at from practice_pauses
     where game = ${game} and match_id = ${matchId}
@@ -403,7 +404,7 @@ async function loadPauseRow(tx: any, game: PracticePauseGame, matchId: string) {
 
 /** Cheap read used by a game store to no-op its poll/advance while paused. */
 export async function isPracticePaused(
-  game: PracticePauseGame,
+  game: ServerPracticePauseGame,
   matchId: string,
 ): Promise<boolean> {
   try {
@@ -425,7 +426,7 @@ export async function getPracticePause({
   matchId,
   userId,
 }: {
-  game: PracticePauseGame;
+  game: ServerPracticePauseGame;
   matchId: string;
   userId: string;
 }): Promise<PracticePauseState | { error: string; status: number }> {
@@ -466,7 +467,7 @@ export async function setPracticePause({
   userId,
   paused,
 }: {
-  game: PracticePauseGame;
+  game: ServerPracticePauseGame;
   matchId: string;
   userId: string;
   paused: boolean;

@@ -16,6 +16,11 @@ import { MIN_STAKE } from "../../../lib/games/stakes";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import ReportModal from "../../../components/ReportModal";
 import PvpResultScreen from "../../../components/result/PvpResultScreen";
+import {
+  PracticePauseChip,
+  PracticePauseOverlay,
+} from "../../../components/game/PracticePause";
+import { usePracticePause } from "../../../hooks/usePracticePause";
 import EmotePicker from "../../../components/game/EmotePicker";
 import useGameEmotes from "../../../hooks/useGameEmotes";
 import { useSocket } from "../../../context/SocketProvider";
@@ -244,6 +249,17 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   );
 
   const gameActive = Boolean(gameId && interactiveState);
+  // The vs-AI duel is a client-side practice session: pause freezes the board
+  // locally (the bot only answers a submitted pick, so nothing runs behind the
+  // overlay). The row is abandoned on navigation exactly as before.
+  const practicePause = usePracticePause({
+    game: "odds",
+    matchId: gameId ?? "local",
+    enabled: gameActive && !gameOver,
+    local: true,
+  });
+  const paused = practicePause.paused;
+  const pausedRef = practicePause.pausedRef;
   // Record the session into "Recently played" (and the lobby's "Most
   // Played" counter) when the real game starts.
   useRecordPlayedGame("odds", gameActive);
@@ -380,6 +396,7 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   const submitAction = useCallback(
     async (value: number, isPrediction: boolean) => {
       if (!gameId || !interactiveState || isSubmitting || gameOver) return;
+      if (pausedRef.current) return;
       autoPickTriggeredRef.current = true; // prevent double-trigger
       setIsSubmitting(true);
       setError("");
@@ -455,7 +472,7 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
       }
     }
     },
-    [gameId, interactiveState, isSubmitting, gameOver],
+    [gameId, interactiveState, isSubmitting, gameOver, pausedRef],
   );
 
   const handlePick = useCallback(
@@ -483,7 +500,7 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
 
   // Autopick: auto-submit a random number when a new round starts and autopick is ON
   useEffect(() => {
-    if (!interactiveState || gameOver || isSubmitting) return;
+    if (!interactiveState || gameOver || isSubmitting || paused) return;
     if (!autoPick) return;
     if (autoPickTriggeredRef.current) return;
     autoPickTriggeredRef.current = true;
@@ -495,7 +512,7 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
       );
     }, 600);
     return () => clearTimeout(t);
-  }, [interactiveState, autoPick, gameOver, isSubmitting]);
+  }, [interactiveState, autoPick, gameOver, isSubmitting, paused]);
 
   const handleSubmitPick = () => {
     if (!interactiveState || isSubmitting || gameOver) return;
@@ -578,6 +595,16 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   const userWon = gameOver && finalWinner === "player1";  const userDrew = gameOver && finalWinner === "";
   return (
     <div>
+      {practicePause.canPause && (
+        <div className="mb-3 flex justify-end">
+          <PracticePauseChip
+            paused={paused}
+            busy={practicePause.busy}
+            onToggle={() => void practicePause.toggle()}
+            testId="odds-pause"
+          />
+        </div>
+      )}
       {resuming && (
         // Branded skeleton instead of a bare "Loading..." line.
         <SkeletonRows rows={3} className="mx-auto max-w-md py-4" label="Loading game" />
@@ -877,6 +904,13 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
       )}
       </>
       )}
+
+      <PracticePauseOverlay
+        paused={paused}
+        busy={practicePause.busy}
+        onResume={() => void practicePause.toggle()}
+        testId="odds-pause-overlay"
+      />
     </div>
   );
 }

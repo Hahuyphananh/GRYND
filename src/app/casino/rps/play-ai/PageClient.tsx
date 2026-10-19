@@ -27,6 +27,11 @@ import { motion, AnimatePresence } from "framer-motion";
 // active-player presence, driven by the game's REAL lifecycle
 // (autoStart/autoStop) — never by page load.
 import GameSessionHost from "../../../../components/GameSessionHost";
+import {
+  PracticePauseChip,
+  PracticePauseOverlay,
+} from "../../../../components/game/PracticePause";
+import { usePracticePause } from "../../../../hooks/usePracticePause";
 
 
 import NavigationBar from "../../../../components/navigation-bar";
@@ -163,6 +168,16 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
   const [aiThinking, setAiThinking] = useState(false);
 
   const matchOver = phase === "matchOver";
+  // Fully client-side practice board: pause freezes the reveal locally, so the
+  // AI's delayed throw waits for resume instead of resolving behind the overlay.
+  const practicePause = usePracticePause({
+    game: "rps",
+    matchId: "local",
+    enabled: !matchOver,
+    local: true,
+  });
+  const paused = practicePause.paused;
+  const pausedRef = practicePause.pausedRef;
   const wonMatch = myWins >= ROUNDS_TO_WIN;
 
   // Tutorial (first-match) framing, only when launched from the welcome flow.
@@ -173,7 +188,7 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
   const tutorialActive = tutorial.mode === "active";
 
   const play = async (choice: Choice) => {
-    if (phase !== "picking" || aiThinking) return;
+    if (phase !== "picking" || aiThinking || pausedRef.current) return;
 
     setPlayerChoice(choice);
     setPhase("revealing");
@@ -183,6 +198,11 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
 
     // Small "thinking" delay so the reveal feels like a real opponent.
     await new Promise((r) => setTimeout(r, 550 + Math.random() * 350));
+    // A pause during the throw holds the result until the player resumes — no
+    // round is revealed behind the frozen overlay.
+    while (pausedRef.current) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
 
     const ai = getAIChoice(history, aiDifficulty);
     const result = getResult(choice, ai);
@@ -404,6 +424,15 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
           Rock Paper Scissors
         </h1>
 
+        {practicePause.canPause && (
+          <PracticePauseChip
+            paused={paused}
+            busy={practicePause.busy}
+            onToggle={() => void practicePause.toggle()}
+            testId="rps-pause"
+          />
+        )}
+
         {/* Round tracker — blue won / red lost */}
         <div className="w-full max-w-md rounded-2xl border border-cyan-700/30 bg-black/30 px-4 py-3 backdrop-blur-xl">
           <div className="mb-2 flex items-center justify-center gap-5 text-xs font-semibold text-[#a8f4ff]">
@@ -570,6 +599,12 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
       </motion.main>
       </div>
       </GameSessionHost>
+      <PracticePauseOverlay
+        paused={paused}
+        busy={practicePause.busy}
+        onResume={() => void practicePause.toggle()}
+        testId="rps-pause-overlay"
+      />
       <Footer />
     </div>
   );

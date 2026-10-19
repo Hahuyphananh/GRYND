@@ -10,6 +10,7 @@ import { CHESS_AI_PLAYER_ID, chessSeatDisplayName } from "../../../../lib/chessA
 import { applyRatingResult } from "../../../../lib/rating";
 import { applyTrophyResult } from "../../../../lib/trophyStore";
 import { markDailyRewardWin } from "../../../../lib/dailyRewardWin";
+import { isPracticePaused } from "../../../../lib/practicePause";
 import { payPvpPot } from "../../../../lib/tokens/pvpPot";
 
 async function getUserAliases(clerkId) {
@@ -253,8 +254,15 @@ export async function GET(req) {
       .where(eq(chessMoves.gameId, gameId))
       .orderBy(asc(chessMoves.id));
 
+    // A paused free-play match must not settle a clock timeout while nobody is
+    // at the board. The resume shifts `started_at`/move timestamps forward, so
+    // the frozen clock returns exactly where it stopped.
+    const paused = game.isAiGame
+      ? await isPracticePaused("chess", gameId)
+      : false;
+
     let clocks = computeClocks(game, moves);
-    game = await settleTimeoutIfNeeded(game, clocks);
+    if (!paused) game = await settleTimeoutIfNeeded(game, clocks);
     clocks = computeClocks(game, moves);    const lastMove = moves[moves.length - 1] || null;
     const [whiteName, blackName] = await Promise.all([
       resolveDisplayName(game.playerWhiteId),

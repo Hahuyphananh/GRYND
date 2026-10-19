@@ -44,6 +44,7 @@ import {
   advanceAiTurn,
   parseAiTurnRequest,
 } from "../../../../lib/chessAiTurn";
+import { isPracticePaused } from "../../../../lib/practicePause";
 
 async function getUserAliases(clerkId) {
   const aliases = new Set([String(clerkId)]);
@@ -99,6 +100,16 @@ export async function POST(req) {
       return NextResponse.json({ error: parsed.error }, { status: 400 });
     }
     const { gameId } = parsed;
+
+    // A paused free-play game must not advance its bot. The client stops asking,
+    // but a request that was already in flight (or a second tab) is refused here
+    // so the pause row really is the boundary.
+    if (await isPracticePaused("chess", gameId)) {
+      return NextResponse.json(
+        { error: "Match is paused", paused: true },
+        { status: 409 },
+      );
+    }
 
     const userAliases = await getUserAliases(userId);
 

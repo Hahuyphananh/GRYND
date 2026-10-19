@@ -9,6 +9,11 @@ import { AnimatePresence, motion } from "framer-motion";
 // active-player presence, driven by the game's REAL lifecycle
 // (autoStart/autoStop) — never by page load.
 import GameSessionHost from "../../../../components/GameSessionHost";
+import {
+  PracticePauseChip,
+  PracticePauseOverlay,
+} from "../../../../components/game/PracticePause";
+import { usePracticePause } from "../../../../hooks/usePracticePause";
 
 import NavigationBar from "../../../../components/navigation-bar";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
@@ -418,6 +423,22 @@ export default function ChessAIPageInner() {
   // behind it rather than raced against it.
   const humanMoveInFlightRef = useRef<Promise<void> | null>(null);
 
+  // Free-play pause. A server-backed game is frozen through the shared
+  // practice-pauses row (the same control every other vs-AI page uses); a bare
+  // practice board with no row freezes locally. On resume the server re-reads
+  // the position so the board can never keep a move the freeze swallowed.
+  const practicePause = usePracticePause({
+    game: "chess",
+    matchId: gameId ?? "local",
+    enabled: !gameOver,
+    local: !serverMode,
+    onResume: () => {
+      if (serverMode) void resyncFromServer();
+    },
+  });
+  const paused = practicePause.paused;
+  const pausedRef = practicePause.pausedRef;
+
   const endGameCalled = useRef(false);
   const initCompleteRef = useRef(false);
   const prevFenRef = useRef("");
@@ -433,7 +454,7 @@ export default function ChessAIPageInner() {
   const aiClockKey = playerColor === "white" ? "player2" : "player1";
 
   const { p1TimeLeft, p2TimeLeft, setActivePlayer } = useChessClock({
-    isActive: !gameOver,
+    isActive: !gameOver && !paused,
     player1Time: timerMs,
     player2Time: timerMs,
     onPlayer1Expire: () => handleTimeout(playerClockKey === "player1"),
@@ -742,7 +763,7 @@ export default function ChessAIPageInner() {
    */
   async function requestAiTurn() {
     if (!serverMode || aiTurnInFlightRef.current) return;
-    if (gameOver) return;
+    if (gameOver || pausedRef.current) return;
 
     // Only the server decides whose turn it is; this is just a request filter so
     // the page does not ask on every render.
@@ -759,6 +780,7 @@ export default function ChessAIPageInner() {
       // crossing, which would otherwise be read as "the human has not moved".
       const pendingHumanMove = humanMoveInFlightRef.current;
       if (pendingHumanMove) await pendingHumanMove;
+      if (pausedRef.current) return;
 
       const res = await fetch("/api/chess/ai-move", {
         method: "POST",
@@ -782,6 +804,10 @@ export default function ChessAIPageInner() {
         setServerError("The AI's move could not be read — please try again.");
         return;
       }
+      // A pause may have landed while the response was in flight. The row is
+      // authoritative, so leave it to the resume read instead of applying a
+      // move under the frozen overlay.
+      if (pausedRef.current) return;
       adoptAiTurnState(state, { appendMove: true });
     } catch {
       await resyncFromServer();
@@ -1005,7 +1031,7 @@ export default function ChessAIPageInner() {
 
   // ── AI effect ──
   useEffect(() => {
-    if (!game || game.isGameOver()) return;
+    if (!game || game.isGameOver() || paused) return;
     if (game.turn() !== aiColor) {
       // It's the player's turn — ensure player's clock is ticking
       if (initCompleteRef.current) {
@@ -1021,7 +1047,7 @@ export default function ChessAIPageInner() {
     const t = setTimeout(() => makeAIMMove(new Chess(game.fen())), 200);
     aiTimeoutRef.current = t;
     return () => clearTimeout(t);
-  }, [game, aiColor, aiLevel]);
+  }, [game, aiColor, aiLevel, paused]);
 
   // ── Show hint ──
   function showHint() {
@@ -1504,6 +1530,16 @@ export default function ChessAIPageInner() {
           <p className="text-white/70 mt-3">
             AI Battle • Free to Play
           </p>
+          {practicePause.canPause && (
+            <div className="mt-3 flex justify-center">
+              <PracticePauseChip
+                paused={paused}
+                busy={practicePause.busy}
+                onToggle={() => void practicePause.toggle()}
+                testId="chess-pause"
+              />
+            </div>
+          )}
         </div>
 
         {/* MAIN */}
@@ -1815,6 +1851,13 @@ export default function ChessAIPageInner() {
         </div>
       </div>
       </GameSessionHost>
+
+      <PracticePauseOverlay
+        paused={paused}
+        busy={practicePause.busy}
+        onResume={() => void practicePause.toggle()}
+        testId="chess-pause-overlay"
+      />
     </div>
   );
 }

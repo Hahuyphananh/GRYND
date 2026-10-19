@@ -552,7 +552,10 @@ test("an unjoined PvP seat still reads Waiting..., and a legacy AI row still rea
 });
 
 test("game-state uses the shared seat label for BOTH seats", () => {
-  assert.match(GAME_STATE, /import \{ chessSeatDisplayName \} from "\.\.\/\.\.\/\.\.\/\.\.\/lib\/chessAiSeat";/);
+  assert.match(
+    GAME_STATE,
+    /import \{[^}]*\bchessSeatDisplayName\b[^}]*\} from "\.\.\/\.\.\/\.\.\/\.\.\/lib\/chessAiSeat";/,
+  );
   assert.match(GAME_STATE, /whitePlayerName: chessSeatDisplayName\(game\.playerWhiteId, whiteName, \{/);
   assert.match(GAME_STATE, /blackPlayerName: chessSeatDisplayName\(game\.playerBlackId, blackName, \{/);
   // The old hardcoded black-only bot label is gone — it would have mislabelled

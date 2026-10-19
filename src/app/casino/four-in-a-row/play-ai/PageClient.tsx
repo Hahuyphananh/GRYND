@@ -42,6 +42,11 @@ import { cosmeticEffectClass } from "../../../../lib/profileCosmetics";
 import useMySeatIdentity from "../../../../hooks/useMySeatIdentity";
 import GameSessionHost from "../../../../components/GameSessionHost";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
+import {
+  PracticePauseChip,
+  PracticePauseOverlay,
+} from "../../../../components/game/PracticePause";
+import { usePracticePause } from "../../../../hooks/usePracticePause";
 import { reportPracticeWin } from "../../../../lib/practiceWinClient";
 
 
@@ -296,6 +301,18 @@ export default function FourInARowVsAiPage() {
   // The hovered playable column drives ONE column rail + ONE landing-cell
   // preview (the human's own disc, faded). Nothing animates its own cell.
   const [hoverCol, setHoverCol] = useState<number | null>(null);
+  // Free-play pause. This board is client-only (no match row), so the freeze is
+  // local: the overlay stops the player and the bot's scheduled timeout is held
+  // until resume. The shared chip/overlay keep it identical to every other
+  // vs-AI page.
+  const practicePause = usePracticePause({
+    game: "four-in-a-row",
+    matchId: "local",
+    enabled: status === "playing",
+    local: true,
+  });
+  const paused = practicePause.paused;
+  const pausedRef = practicePause.pausedRef;
   const moveLockRef = useRef(false);
   const animSeqRef = useRef(0);
   // Incremented on every New Game reset; deferred setTimeout callbacks
@@ -420,8 +437,14 @@ export default function FourInARowVsAiPage() {
       setAiThinking(true);
 
       const epoch = gameEpochRef.current;
-      window.setTimeout(() => {
+      const runAiTurn = () => {
         if (gameEpochRef.current !== epoch) {
+          return;
+        }
+        // Pause freezes the bot before it computes anything. Re-check instead
+        // of rescheduling on resume: a reset already made the epoch stale.
+        if (pausedRef.current) {
+          window.setTimeout(runAiTurn, 150);
           return;
         }
         const col = pickAiMove(boardState, aiDifficulty);
@@ -441,14 +464,20 @@ export default function FourInARowVsAiPage() {
           setAiThinking(false);
           moveLockRef.current = false;
         }, DROP_DURATION_MS);
-      }, AI_THINK_DELAY_MS);
+      };
+      window.setTimeout(runAiTurn, AI_THINK_DELAY_MS);
     },
-    [placeDisc, finalizeMoveOutcome],
+    [aiDifficulty, placeDisc, finalizeMoveOutcome, pausedRef],
   );
 
   const handleHumanMove = useCallback(
     (col: number) => {
-      if (status !== "playing" || aiThinking || moveLockRef.current) return;
+      if (
+        status !== "playing" ||
+        aiThinking ||
+        moveLockRef.current ||
+        pausedRef.current
+      ) return;
       if (countPieces(board) % 2 !== 0) return; // not human's turn
       const row = getDropRow(board, col);
       if (row < 0) return;
@@ -475,7 +504,7 @@ export default function FourInARowVsAiPage() {
         }
       }, DROP_DURATION_MS);
     },
-    [board, aiThinking, status, placeDisc, finalizeMoveOutcome, scheduleAiTurn],
+    [board, aiThinking, status, placeDisc, finalizeMoveOutcome, scheduleAiTurn, pausedRef],
   );
 
   const resetGame = useCallback(() => {
@@ -500,7 +529,7 @@ export default function FourInARowVsAiPage() {
     return "Your move";
   }, [status, aiThinking]);
 
-  const canPlay = status === "playing" && !aiThinking;
+  const canPlay = status === "playing" && !aiThinking && !paused;
 
   const isPlayableCol = (col: number) => getDropRow(board, col) >= 0;
 
@@ -680,7 +709,15 @@ export default function FourInARowVsAiPage() {
               <span className="text-xs text-white/70">AI</span>
             </div>
           </div>
-          <div className="text-right">
+          <div className="flex flex-col items-end gap-1.5 text-right">
+            {practicePause.canPause && (
+              <PracticePauseChip
+                paused={paused}
+                busy={practicePause.busy}
+                onToggle={() => void practicePause.toggle()}
+                testId="fiar-pause"
+              />
+            )}
             <p className="text-[10px] uppercase tracking-wider text-white/50">
               Status
             </p>
@@ -1042,6 +1079,13 @@ export default function FourInARowVsAiPage() {
           {resultScreen}
         </GameSessionHost>
       </div>
+
+      <PracticePauseOverlay
+        paused={paused}
+        busy={practicePause.busy}
+        onResume={() => void practicePause.toggle()}
+        testId="fiar-pause-overlay"
+      />
 
       {/* The falling-disc motion is a framer-motion drop + Towers-style trail
           (see measureDropDistance / TRAIL_FRAMES above) — the old single-disc
