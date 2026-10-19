@@ -27,6 +27,11 @@ import useGameEmotes from "../../../../../hooks/useGameEmotes";
 import ReportModal from "../../../../../components/ReportModal";
 import PvpResultScreen from "../../../../../components/result/PvpResultScreen";
 import FrameAvatar from "../../../../../components/FrameAvatar";
+import {
+  PracticePauseChip,
+  PracticePauseOverlay,
+} from "../../../../../components/game/PracticePause";
+import { usePracticePause } from "../../../../../hooks/usePracticePause";
 import { playVictory, playDefeat, playCardPlace, playBuzz } from "../../../../../lib/gameAudio";
 import {
   useMatchSync,
@@ -372,6 +377,17 @@ export default function Page() {
   // locks the angle, phase 2 dragging charges power and release fires.
   const [aimLocked, setAimLocked] = useState(false);
   const [started, setStarted] = useState(aiMode);
+
+  // Free-play pause. Pool's bot is client-scheduled, so a paused game stops
+  // both the AI timer and the AI-mode read; no server clock is running.
+  const practicePause = usePracticePause({
+    game: "pool",
+    matchId: activeMatchId,
+    enabled: aiMode && Boolean(activeMatchId) && started && !winner,
+  });
+  const paused = practicePause.paused;
+  const pausedRef = useRef(false);
+  pausedRef.current = paused;
   // Record the session into "Recently played" (and the lobby's "Most
   // Played" counter) when the match actually starts. The rack is
   // initialized on mount, so gate on `started`, not `balls`.
@@ -604,10 +620,6 @@ export default function Page() {
       resigningRef.current = false;
       if (mountedRef.current) setResigning(false);
     }
-  };
-
-  const handleReturnToLobby = () => {
-    router.push("/casino/pool-masters");
   };
 
   const handleRematch = async () => {
@@ -1260,7 +1272,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
   }, [socket, aiMode, activeMatchId]);
 
   useEffect(() => {
-    if (!(aiMode && turn === 2 && canShoot) || winner) {
+    if (paused || !(aiMode && turn === 2 && canShoot) || winner) {
       aiShotLock.current = false;
       // Cancel any pending AI timer when it's not the AI's turn
       if (aiTimerRef.current) {
@@ -1293,12 +1305,12 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
       aiShotLock.current = false;
       setShowOpponentVisor(false);
     }, 1200);
-  }, [aiMode, turn, canShoot, winner, oppTeam, openTable, aiDifficulty]);
+  }, [paused, aiMode, turn, canShoot, winner, oppTeam, openTable, aiDifficulty]);
 
   const syncMatch = async () => {
     // Skip polling when the local player just fired a shot — prevents stale DB
     // state from reverting local changes before pushPoolState completes
-    if (pendingActionRef.current) return;
+    if (pausedRef.current || pendingActionRef.current) return;
     try {
       const res = await fetch(`/api/pool/get-match?matchId=${activeMatchId}`, {
         cache: "no-store",
@@ -1554,6 +1566,14 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
         {started && !winner && (
           <div className="mt-3 flex flex-col items-center gap-2">
             <div className="flex justify-center">
+              {aiMode && (
+                <PracticePauseChip
+                  paused={paused}
+                  busy={practicePause.busy}
+                  onToggle={() => void practicePause.toggle()}
+                  className="mr-2 rounded-lg border border-amber-400/40 bg-black/40 px-4 py-1.5 text-sm font-semibold text-amber-200 transition hover:bg-amber-400/10 disabled:cursor-wait disabled:opacity-50"
+                />
+              )}
               {!showResignConfirm ? (
                 <button
                   onClick={() => setShowResignConfirm(true)}
@@ -1633,7 +1653,6 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
           label: aiMode ? "RUN IT BACK" : "Find New Match",
           onClick: handleRematch,
         }}
-        onReturnToLobby={handleReturnToLobby}
       />
     );
   };
@@ -2154,6 +2173,13 @@ ${!canShoot ? "pointer-events-none" : ""}`}
 
         {/* Post-match result screen — shared PvpResultScreen (UX plan P3-3). */}
         {renderResult()}
+        {aiMode && (
+          <PracticePauseOverlay
+            paused={paused}
+            busy={practicePause.busy}
+            onResume={() => void practicePause.toggle()}
+          />
+        )}
 {/* Report Modal */}
       <ReportModal
         isOpen={showReportModal}

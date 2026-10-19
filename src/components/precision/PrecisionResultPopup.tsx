@@ -28,7 +28,6 @@ import { useTranslation } from "../../hooks/useTranslation";
 interface PrecisionResultPopupProps {
   popup: PrecisionEndPopupState | null;
   onReplay: () => void;
-  onReturnToLobby: () => void;
   replayRequested: boolean;
   opponentReplayRequested: boolean;
   returnChosen: boolean;
@@ -44,7 +43,6 @@ interface PrecisionResultPopupProps {
 function PrecisionResultPopupImpl({
   popup,
   onReplay,
-  onReturnToLobby,
   replayRequested,
   opponentReplayRequested,
   returnChosen,
@@ -147,7 +145,6 @@ function PrecisionResultPopupImpl({
           : t("games.precision.replay_button"),
         onClick: onReplay,
       }}
-      onReturnToLobby={onReturnToLobby}
     />
   );
 }

@@ -35,6 +35,8 @@ export type PrecisionLookup = "pending" | "found" | "missing";
 export interface UsePrecisionMatchStateOptions {
   matchId: string;
   socket: RealtimeSocket | null;
+  /** A paused practice match freezes: no read may apply a due transition. */
+  paused?: boolean;
   /** Fired after a snapshot carrying a freshly decided round was applied. */
   onRoundResult?: () => void;
   /** Fired after a snapshot that flipped a seat's Ready flag was applied. */
@@ -61,6 +63,7 @@ export interface UsePrecisionMatchStateResult {
 export function usePrecisionMatchState({
   matchId,
   socket,
+  paused = false,
   onRoundResult,
   onReadySnapshot,
 }: UsePrecisionMatchStateOptions): UsePrecisionMatchStateResult {
@@ -136,6 +139,7 @@ export function usePrecisionMatchState({
       // changes — polling would just burn a request every tick. The
       // end-popup's auto-return effect navigates away once the replay window
       // expires, so there's no UX benefit to continued polling.
+      if (paused) return;
       if (stateRef.current?.phase === "finished") return;
       const sentAtDeviceMs = Date.now();
       const res = await fetch(`/api/precision/get-match?matchId=${encodeURIComponent(matchId)}`, {
@@ -173,7 +177,7 @@ export function usePrecisionMatchState({
     } catch {
       // Network blip — try again next tick.
     }
-  }, [matchId, applySnapshot]);
+  }, [matchId, applySnapshot, paused]);
 
   // ONE authoritative read on mount — then the socket is the live path.
   useEffect(() => {
@@ -184,7 +188,7 @@ export function usePrecisionMatchState({
   // never on a timer. A finished match stops syncing entirely (the canonical
   // snapshot can no longer change, and the end-popup returns the player to the
   // lobby). `refreshState` also self-guards on `phase === "finished"`.
-  useMatchSync(refreshState, socket, state?.phase !== "finished");
+  useMatchSync(refreshState, socket, state?.phase !== "finished" && !paused);
 
   // ── Realtime room ────────────────────────────────────────────────────
   useEffect(() => {

@@ -217,7 +217,7 @@ test("mines: the practice bot is kept moving while the player watches", () => {
   const start = minesPage.indexOf("Practice bot heartbeat");
   assert.ok(start > 0, "the page must carry a bot-heartbeat block");
   const body = minesPage.slice(start, start + 1600);
-  assert.ok(body.includes("usePracticeBotHeartbeat(botStillPlaying, fetchStatus)"));
+  assert.ok(body.includes("usePracticeBotHeartbeat(botStillPlaying && !paused, fetchStatus)"));
   assert.ok(
     body.includes("isAi && isActive && !match?.opponentLocked && !match?.opponentCompleted"),
     "it runs only while a practice bot still has a board to play",
@@ -257,7 +257,7 @@ test("speed typing: the practice bot is kept racing while the player reads", () 
   ]) {
     assert.ok(body.includes(clause), `the gate must include \`${clause}\``);
   }
-  assert.ok(body.includes("usePracticeBotHeartbeat(botStillRacing, () => load({ silent: true }))"));
+  assert.ok(body.includes("usePracticeBotHeartbeat(botStillRacing && !paused, () => load({ silent: true }))"));
 
   // The read it beats with is the page's own snapshot loader, and the store's
   // read path is what advances the bot.
@@ -285,7 +285,7 @@ test("sudoku duel: the practice bot is kept playing while the player thinks", ()
     body.includes("Boolean(match?.isAi) && phase === \"racing\" && !terminal && !match?.opponent?.completed"),
     "it runs only while a practice bot still has a board to play",
   );
-  assert.ok(body.includes("usePracticeBotHeartbeat(botStillPlaying, load)"));
+  assert.ok(body.includes("usePracticeBotHeartbeat(botStillPlaying && !paused, load)"));
 
   const store = read("src/lib/sudoku-duel/serverStore.ts");
   const fetchStart = store.indexOf("export async function fetchMatch(");

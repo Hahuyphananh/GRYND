@@ -644,12 +644,6 @@ export default function BarricadeMatchPage() {
                 >
                   {statusLabel(status)}
                 </span>
-                <button
-                  onClick={() => router.push(LOBBY_PATH)}
-                  className="rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold hover:bg-white/20"
-                >
-                  Lobby
-                </button>
               </div>
             </div>
 
@@ -900,11 +894,6 @@ export default function BarricadeMatchPage() {
                 value: `${row.playerId === match?.player1Id ? "Blue" : "Purple"} — ${loggedActionLabel(row, viewerSeat)}`,
               })),
             ]}
-            playAgain={{
-              label: "New match",
-              onClick: () => router.push(LOBBY_PATH),
-            }}
-            onReturnToLobby={() => router.push("/casino")}
           />
 
           {/* ── Report ──────────────────────────────────────────────── */}

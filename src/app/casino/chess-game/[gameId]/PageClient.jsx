@@ -1367,14 +1367,6 @@ export default function ChessGamePage() {
                 <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report Player</span>
               </button>
             )}
-
-            {/* RETURN */}
-            <button
-              onClick={() => router.push("/casino/chess")}
-              className="mt-4 w-full bg-cyan-400 text-black font-bold py-3 rounded-xl hover:scale-[1.02] transition"
-            >
-              Return to Lobby
-            </button>
           </div>
     </>
   );
@@ -1425,8 +1417,6 @@ export default function ChessGamePage() {
           { label: "Game ID", value: String(gameId) },
           { label: "Winner", value: isDraw ? "Draw" : iWon ? "You" : oppName },
         ]}
-        playAgain={{ label: "RUN IT BACK", onClick: () => router.push("/casino/chess") }}
-        onReturnToLobby={() => router.push("/casino")}
         onDismiss={() => setShowResultPopup(false)}
         dismissLabel="View Match Results"
       />

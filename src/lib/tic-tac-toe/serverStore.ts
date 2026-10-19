@@ -36,6 +36,7 @@ import { ticTacToeMatches, ticTacToeMoves, users } from "../../db/schema";
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
 import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
+import { isPracticePaused } from "../practicePause";
 import { PVP_WINNER_SHARE } from "../games/economy";
 import {
   escrowMatchWagers,
@@ -675,6 +676,11 @@ export async function move({
   cellIndex: unknown;
   expectedVersion?: unknown;
 }): Promise<MoveResult> {
+  // Free-play pause: a paused match accepts no moves (the overlay blocks the
+  // click already, this is the server-side backstop).
+  if (await isPracticePaused("tic-tac-toe", matchId)) {
+    return { error: "Match is paused", status: 409 } as const;
+  }
   try {
     return await db.transaction(async (tx) => {
       const [match] = await tx

@@ -26,6 +26,11 @@ import MatchWaiting from "../../../../../components/lobby/MatchWaiting";
 import ReportModal from "../../../../../components/ReportModal";
 import PvpResultScreen from "../../../../../components/result/PvpResultScreen";
 import FrameAvatar from "../../../../../components/FrameAvatar";
+import {
+  PracticePauseChip,
+  PracticePauseOverlay,
+} from "../../../../../components/game/PracticePause";
+import { usePracticePause } from "../../../../../hooks/usePracticePause";
 import { cosmeticEffectClass } from "../../../../../lib/profileCosmetics";
 // The stake picker, the rules modal, the vs-AI button and the open-lobby list
 // all live on the LOBBY now (src/app/casino/hex-duel/PageClient.tsx). A match
@@ -721,6 +726,18 @@ export default function HexDuelPage() {
   );
   const [aiThinking, setAIThinking] = useState(false);
   const [aiAction, setAIAction] = useState<AIAction | null>(null);
+
+  // Free-play pause. Hex Duel's `/game/ai` board is a local bot: there is no
+  // server row to freeze, so stopping this page's AI loop is the whole pause.
+  const practicePause = usePracticePause({
+    game: "hex-duel",
+    matchId: isAiMatch ? "ai" : null,
+    enabled: isAiMatch && validMatchRoute,
+    local: true,
+  });
+  const paused = practicePause.paused;
+  const pausedRef = useRef(false);
+  pausedRef.current = paused;
 
   // ── Wager state ────────────────────────────────────────────────────
   // The route IS the mode: a match page never asks the player what kind of
@@ -1644,7 +1661,7 @@ export default function HexDuelPage() {
   // Make ONE AI decision and execute it. Returns when the move is queued.
   // setAiMoveTick triggers a cascade via the useEffect dep.
   const makeAIMove = useCallback(async () => {
-    if (!aiEnabledRef.current || isGameOverRef.current || gameMode === "idle") return;
+    if (pausedRef.current || !aiEnabledRef.current || isGameOverRef.current || gameMode === "idle") return;
 
     const snap = aiSnapshotRef.current;
 
@@ -1699,7 +1716,7 @@ export default function HexDuelPage() {
   // Fires when currentTurn or aiMoveTick changes. Each tick triggers
   // one AI move. The loop continues until AP depletes or game ends.
   useEffect(() => {
-    if (!aiEnabled || currentTurn !== "player2" || isGameOverRef.current || gameMode === "idle") {
+    if (paused || !aiEnabled || currentTurn !== "player2" || isGameOverRef.current || gameMode === "idle") {
       setAIThinking(false);
       aiCancelledRef.current = true;
       return;
@@ -1732,7 +1749,7 @@ export default function HexDuelPage() {
     run();
 
     return () => { aiCancelledRef.current = true; };
-  }, [currentTurn, aiMoveTick, aiEnabled, gameMode, makeAIMove]);
+  }, [paused, currentTurn, aiMoveTick, aiEnabled, gameMode, makeAIMove]);
 
   // ── Chess clock derived values for StatusBar ──────────────────────
   const activeClockPlayer = !aiThinking ? currentTurn : null;
@@ -2108,10 +2125,10 @@ export default function HexDuelPage() {
     }
   }, [skipRound, gameMode, sendMultiplayerAction, recordMultiplayerAction, multiplayerGameId, currentTurn, isLocalTurn]);
 
-  // Every exit from a match — Play Again, Return to Lobby, a forfeit the
-  // player confirmed, a spectator leaving — goes back through the LOBBY,
-  // which is where the next game is created. The local reset below only
-  // makes the unmount clean.
+  // The waiting-table cancel, a spectator leaving, and the opponent-gone
+  // path all close the match here. A live player's exit is Resign, which
+  // settles the match instead of navigating away. The local reset below
+  // only makes the unmount clean.
   const handleRestart = useCallback(() => {
     resetGame(); setGameMode("idle"); setWager(0); setMultiplayerGameId(null);
     router.push("/casino/hex-duel");
@@ -2503,7 +2520,7 @@ export default function HexDuelPage() {
               { label: "Opponent", occupied: false },
             ]}
             onCancel={handleRestart}
-            cancelLabel="Cancel & Return to Lobby"
+            cancelLabel="Cancel match"
           />
         )}
         <main className="min-h-screen bg-gradient-to-br from-[#010510] via-[#031634] to-[#030916] p-4 pt-20 text-white">
@@ -2537,7 +2554,7 @@ export default function HexDuelPage() {
                     The other player left before the game started.
                   </p>
                   <p className="text-xs text-slate-500 animate-pulse">
-                    Returning to lobby...
+                    Closing the match...
                   </p>
                 </>
               ) : (
@@ -2558,7 +2575,7 @@ export default function HexDuelPage() {
                     onClick={handleRestart}
                     className="mt-8 text-xs text-slate-500 hover:text-slate-300 transition underline underline-offset-4"
                   >
-                    Cancel &amp; Return to Lobby
+                    Cancel match
                   </button>
                 </>
               )}
@@ -2887,17 +2904,16 @@ export default function HexDuelPage() {
               <p className="mt-2 flex items-center justify-center gap-1.5 text-[10px] font-medium text-purple-400/70"><IconDeviceGamepad2 size={12} /> Play-for-Fun mode. No real tokens</p>
             )}
 
-            {/* Lobby + History links.
-                The lobby is a SEPARATE page now, so a player who arrived here
-                from it needs a way back that is not a forfeit — Resign ends
-                the match, this does not. */}
+            {/* History only. A live match has no lobby exit — the way out is
+                Resign, and the result screen offers a rematch. */}
             <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-              <button
-                onClick={() => router.push("/casino/hex-duel")}
-                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-[11px] font-medium border border-white/10 text-slate-400 hover:text-white hover:border-white/20 hover:bg-white/5 transition-all duration-200"
-              >
-                <span className="inline-flex items-center gap-1.5"><IconArrowLeft size={14} /> Hex Duel Lobby</span>
-              </button>
+              {isAiMatch && (
+                <PracticePauseChip
+                  paused={paused}
+                  busy={practicePause.busy}
+                  onToggle={() => void practicePause.toggle()}
+                />
+              )}
               {isSignedIn && (
                 <button
                   onClick={() => router.push("/casino/hex-duel/history")}
@@ -3011,7 +3027,7 @@ export default function HexDuelPage() {
           {/* ── Forfeit button ──────────────────────────────────────── */}
           {showGame && !isGameOver && (
             <div className="mt-6 text-center">                <button onClick={() => { if (isSpectator) handleRestart(); else setShowResignConfirm(true); }} className="text-xs text-slate-500 hover:text-slate-300 transition underline underline-offset-4">
-                {gameMode === "multiplayer" ? "Resign &amp; Return to Lobby" : "Forfeit &amp; Return to Lobby"}
+                {isSpectator ? "Leave match" : "Resign"}
               </button>
               {gameMode === "multiplayer" && !isSpectator && (
                 <button
@@ -3115,8 +3131,6 @@ export default function HexDuelPage() {
                 { label: localPlayerWon ? "Moves" : "Their Moves", value: String(winnerMoves) },
                 { label: localPlayerWon ? "Territory" : "Their Territory", value: String(winnerTerritory) },
               ]}
-              playAgain={localPlayerWon ? { onClick: handleRestart } : null}
-              onReturnToLobby={handleRestart}
             />
           );
         })()}
@@ -3144,6 +3158,13 @@ export default function HexDuelPage() {
           reportedPlayerName={isPlayer1 ? "Player 2" : "Player 1"}
           gameType="Hex Duel"
         />
+        {isAiMatch && (
+          <PracticePauseOverlay
+            paused={paused}
+            busy={practicePause.busy}
+            onResume={() => void practicePause.toggle()}
+          />
+        )}
       </main>
     </>
   );

@@ -28,6 +28,11 @@ import {
   playCardDraw,
 } from "../../../../../lib/gameAudio";
 import GameSessionHost from "../../../../../components/GameSessionHost";
+import {
+  PracticePauseChip,
+  PracticePauseOverlay,
+} from "../../../../../components/game/PracticePause";
+import { usePracticePause } from "../../../../../hooks/usePracticePause";
 
 import {
   IconRobot,
@@ -81,6 +86,17 @@ export default function UnoGamePage() {
   const [gameOver, setGameOver] = useState(false);
   const [waitingForOpponent, setWaitingForOpponent] = useState(false);
   const waitingPollRef = useRef(null);
+
+  // Free-play pause. The AI turn is client-driven, so a paused game simply
+  // stops invoking it; resume wakes it again through the effect below.
+  const practicePause = usePracticePause({
+    game: "uno",
+    matchId: game?.id ?? gameId,
+    enabled: gameMode === "ai" && Boolean(game?.id) && !gameOver,
+  });
+  const paused = practicePause.paused;
+  const pausedRef = useRef(false);
+  pausedRef.current = paused;
   /** Stop the online-match wait (socket listeners + recovery sync), if any. */
   const stopWaitingForOpponent = () => {
     const teardown = waitingPollRef.current;
@@ -126,20 +142,6 @@ export default function UnoGamePage() {
       bet_amount: betAmount,
       game_id: game?.id,
     });
-  };
-  const closeToUnoLobby = () => {
-    setReturnChosen(true);
-    if (socket && game?.id && gameMode === "online") {
-      socket.emit("room_event", {
-        roomId: `uno:end:${game.id}`,
-        event: "uno:end:return",
-        payload: {
-          gameId: game.id,
-          clientId: replayClientIdRef.current,
-        },
-      });
-    }
-    returnToLobby();
   };
   const requestReplay = () => {
     if (!endPopup || returnChosen) return;
@@ -283,6 +285,7 @@ export default function UnoGamePage() {
     setLoading(false);
   };
   const handleAITurn = async (gameId) => {
+    if (pausedRef.current) return;
     try {
       const res = await fetch("/api/uno/ai-turn", {
         method: "POST",
@@ -309,6 +312,7 @@ export default function UnoGamePage() {
     }
   };
   const sendPlayCard = async (card, chosenColor = null) => {
+    if (pausedRef.current) return;
     setLoading(true);
     if ((card.color === "wild" || card.color === "black") && !chosenColor) {
       setPendingCard(card);
@@ -395,7 +399,7 @@ export default function UnoGamePage() {
     setLoading(false);
   };
   const playCard = async (card) => {
-    if (!isPlayerTurn || loading || historyIndex !== null) return;
+    if (pausedRef.current || !isPlayerTurn || loading || historyIndex !== null) return;
     await sendPlayCard(card);
   };
   // Wait for the opponent's join — EVENT-DRIVEN, no poll. The waiter joins the
@@ -566,6 +570,15 @@ export default function UnoGamePage() {
       socket.emit("leave_room", { roomId });
     };
   }, [socket, game?.id, gameMode]);
+  // Resume-safe AI turn: if the pause landed while the bot held the turn, the
+  // post-move timer returned early. Re-arm once the overlay lifts.
+  useEffect(() => {
+    if (paused || gameMode !== "ai" || isPlayerTurn || !game?.id || gameOver) return undefined;
+    const id = setTimeout(() => handleAITurn(game.id), 700);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paused, gameMode, isPlayerTurn, game?.id, gameOver]);
+
   useEffect(() => {
     if (!gameId) return;
     let cancelled = false;
@@ -673,7 +686,7 @@ export default function UnoGamePage() {
     setIsResigning(false);
   };
   const drawCard = async () => {
-    if (!isPlayerTurn || loading || historyIndex !== null) return;
+    if (pausedRef.current || !isPlayerTurn || loading || historyIndex !== null) return;
     setLoading(true);
     const res = await fetch("/api/uno/draw-card", {
       method: "POST",
@@ -934,12 +947,6 @@ export default function UnoGamePage() {
                     : gameMode === "online"
                       ? "Replay"
                       : "RUN IT BACK"}
-                </button>
-                <button
-                  onClick={closeToUnoLobby}
-                  className="rounded-xl border border-cyan-300/70 bg-cyan-400 px-4 py-3 font-black text-[#031026] shadow-[0_0_18px_rgba(34,211,238,0.35)]"
-                >
-                  Return to Lobby
                 </button>
               </motion.div>
               {gameMode === "online" && (
@@ -1229,6 +1236,13 @@ export default function UnoGamePage() {
         >
           {t("neonFlush.drawCard")}
         </button>
+        {gameMode === "ai" && game && !gameOver && (
+          <PracticePauseChip
+            paused={paused}
+            busy={practicePause.busy}
+            onToggle={() => void practicePause.toggle()}
+          />
+        )}
         {game && !gameOver && (
           <button
             onClick={resignGame}
@@ -1244,12 +1258,6 @@ export default function UnoGamePage() {
             )}
           </button>
         )}
-        <button
-          onClick={returnToLobby}
-          className="rounded-xl border-2 border-[#FFD700]/70 bg-[#FFD700]/15 px-5 py-2.5 font-black uppercase tracking-wider text-[#FFE066] shadow-[0_0_14px_rgba(255,215,0,0.3)] transition-all hover:bg-[#FFD700]/25"
-        >
-          {t("neonFlush.lobby")}
-        </button>
       </div>
       {message && (
         <p className="mt-3 text-center text-sm font-semibold text-yellow-300">{message}</p>
@@ -1332,6 +1340,13 @@ export default function UnoGamePage() {
       >
         {normalView}
       </GameSessionHost>
+      {gameMode === "ai" && game && !gameOver && (
+        <PracticePauseOverlay
+          paused={paused}
+          busy={practicePause.busy}
+          onResume={() => void practicePause.toggle()}
+        />
+      )}
       <Footer />
     </div>
   );

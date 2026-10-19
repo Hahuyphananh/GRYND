@@ -41,12 +41,15 @@ the real match statistics only.
 
 Notes:
 - Buttons are guarded internally — a double tap can't fire two actions.
-- `secondaryAction` is the single generic "extra action" slot (rendered between
-  Rematch and Return to Lobby). Pass `{ label, href }` for an internal route —
-  rendered through `next/link`, so it prefetches — or `{ label, onClick }` for an
-  in-page action; omit it to hide the button. It is deliberately game-agnostic
-  (the panel never learns which game, or where, it points), so any result screen
-  can reuse it.
+- `onReturnToLobby` is for practice / AI screens only. **PvP match pages must
+  not pass it**: once inside a multiplayer match there is no lobby exit button,
+  and the live-match way out is Resign. `tests/pvp-match-shell.test.mjs` pins
+  that rule across every PvP page.
+- `secondaryAction` is the single generic "extra action" slot. Pass
+  `{ label, href }` for an internal route — rendered through `next/link`, so it
+  prefetches — or `{ label, onClick }` for an in-page action; omit it to hide the
+  button. It is deliberately game-agnostic (the panel never learns which game,
+  or where, it points), so any result screen can reuse it.
 - There is no `tokenDelta` prop: the token row was removed platform-wide.
   A game that still computes a payout locally must not pass it here.
 - Win plays confetti (skipped under `prefers-reduced-motion`).

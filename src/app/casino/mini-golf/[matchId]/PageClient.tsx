@@ -47,6 +47,11 @@ import NavigationBar from "../../../../components/navigation-bar";
 import MatchLoading from "../../../../components/game/MatchLoading";
 import GameSessionHost from "../../../../components/GameSessionHost";
 import {
+  PracticePauseChip,
+  PracticePauseOverlay,
+} from "../../../../components/game/PracticePause";
+import { usePracticePause } from "../../../../hooks/usePracticePause";
+import {
   MINI_GOLF_MATCH_UPDATED,
   miniGolfMatchRoom,
 } from "../../../../lib/mini-golf/rooms";
@@ -310,6 +315,7 @@ export default function MiniGolfMatchPage() {
   // interstitial and the hand-off was never seen. Defer it until the board is
   // free instead, then flush once (see `flushPendingRefresh`).
   const refresh = useCallback(() => {
+    if (pausedRef.current) return;
     if (animRef.current || overlayRef.current) {
       pendingRefreshRef.current = true;
       return;
@@ -319,6 +325,17 @@ export default function MiniGolfMatchPage() {
     abortRef.current = controller;
     void fetchSnapshot(controller.signal);
   }, [fetchSnapshot]);
+
+  // Free-play pause. The bot's whole turn is resolved by the GET, so a paused
+  // match must stop reading (and stop its poll) to freeze it.
+  const practicePause = usePracticePause({
+    game: "mini-golf",
+    matchId,
+    enabled: Boolean(match?.isAi) && match?.status === "playing",
+  });
+  const paused = practicePause.paused;
+  const pausedRef = useRef(false);
+  pausedRef.current = paused;
 
   // Run the deferred refresh once nothing owns the board. Safe to call from
   // every settle point: a still-busy board (a queued rollout just started, or
@@ -331,6 +348,7 @@ export default function MiniGolfMatchPage() {
   }, [refresh]);
 
   useEffect(() => {
+    if (paused) return undefined;
     if (!matchId) return undefined;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -367,7 +385,7 @@ export default function MiniGolfMatchPage() {
       document.removeEventListener("visibilitychange", onVisibilityChange);
       abortRef.current?.abort();
     };
-  }, [matchId, refresh]);
+  }, [matchId, refresh, paused]);
 
   // ── Realtime sync ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -1138,6 +1156,14 @@ export default function MiniGolfMatchPage() {
                   />
                   {myTurnLabel}
                 </span>
+                {match.isAi && (
+                  <PracticePauseChip
+                    paused={paused}
+                    busy={practicePause.busy}
+                    onToggle={() => void practicePause.toggle()}
+                    className="inline-flex items-center gap-1 rounded-lg border border-amber-400/40 bg-black/40 px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-200 transition hover:bg-amber-400/10 disabled:cursor-wait disabled:opacity-50"
+                  />
+                )}
                 {match.status === "playing" && (
                   <button
                     data-testid="resign-button"
@@ -1148,12 +1174,6 @@ export default function MiniGolfMatchPage() {
                     <span>Resign</span>
                   </button>
                 )}
-                <button
-                  onClick={() => router.push("/casino/mini-golf")}
-                  className="rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold hover:bg-white/20"
-                >
-                  Lobby
-                </button>
               </div>
             </div>
 
@@ -1656,8 +1676,6 @@ export default function MiniGolfMatchPage() {
                   value: `${score.player1} — ${score.player2}`,
                 })),
               ]}
-              playAgain={{ label: "Play again", onClick: () => router.push("/casino/mini-golf") }}
-              onReturnToLobby={() => router.push("/casino")}
             />
           )}
 
@@ -1687,6 +1705,13 @@ export default function MiniGolfMatchPage() {
           />
         </div>
       </GameSessionHost>
+      {match.isAi && (
+        <PracticePauseOverlay
+          paused={paused}
+          busy={practicePause.busy}
+          onResume={() => void practicePause.toggle()}
+        />
+      )}
     </>
   );
 }

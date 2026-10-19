@@ -52,5 +52,6 @@ runs out of room far sooner.
 - Turn order and elimination are server-authoritative; the client only animates
   and renders.
 - Tower Arena integrates Creator Mode: pressing **Stop & Save** while recording
-  pauses the match so the creator can review the clip, and the recording result
-  panel offers a **Go back to lobby** button.
+  pauses the match so the creator can review the clip. A live match has no
+  lobby exit — players leave through **Resign**, and eliminated players become
+  spectators.

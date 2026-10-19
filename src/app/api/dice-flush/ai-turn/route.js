@@ -3,6 +3,7 @@ import { calculateScore, rollDice } from "../../../../../game-engine/diceFlushEn
 import { appendAction, assertRoomSeat, db, eq, errorStatus, loadRoom, nextTurn, resolveExpiredTurn, settleIfEnded, validateMove, diceFlushRooms } from "../_lib";
 import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { chooseAiOption, coerceAiDifficulty } from "../../../../lib/aiDifficulty";
+import { isPracticePaused } from "../../../../lib/practicePause";
 
 const ALL_CATEGORIES = ["ones","twos","threes","fours","fives","sixes","threeOfKind","fourOfKind","fullHouse","smallStraight","largeStraight","fiveKind"];
 
@@ -24,6 +25,9 @@ export async function POST(req) {
     const userId = gate.playerId;
     const { roomId } = await req.json();
     if (!roomId) return NextResponse.json({ success: false, error: "roomId required" }, { status: 400 });
+    if (await isPracticePaused("dice-flush", String(roomId))) {
+      return NextResponse.json({ success: true, paused: true });
+    }
 
     const result = await db.transaction(async (tx) => {
       const room = await loadRoom(roomId, tx);

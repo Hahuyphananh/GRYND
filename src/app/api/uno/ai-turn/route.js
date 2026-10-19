@@ -11,6 +11,7 @@ import { eq } from "drizzle-orm";
 import { isUnoSeat, unoCallerToken } from "../../../../lib/unoSeat";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
 import { aiMistakeRate, coerceAiDifficulty } from "../../../../lib/aiDifficulty";
+import { isPracticePaused } from "../../../../lib/practicePause";
 
 function safeParse(data) {
   if (!data) return [];
@@ -149,6 +150,11 @@ export async function POST(req) {
         JSON.stringify({ success: false, error: "Game not found" }),
         { status: 404 },
       );
+    if (await isPracticePaused("uno", String(gameId))) {
+      return new Response(JSON.stringify({ success: true, paused: true }), {
+        status: 200,
+      });
+    }
 
     // Only a signed-in caller has a `users` row to resolve to a seat token;
     // a guest's token is the guest id itself.

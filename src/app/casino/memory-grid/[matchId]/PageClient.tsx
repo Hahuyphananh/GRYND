@@ -88,6 +88,11 @@ import { viewerOutcome, type ViewerOutcome } from "../../../../lib/results/viewe
 import {
   useMatchSync,
 } from "../../../../hooks/useMatchSync";
+import { usePracticePause } from "../../../../hooks/usePracticePause";
+import {
+  PracticePauseChip,
+  PracticePauseOverlay,
+} from "../../../../components/game/PracticePause";
 import {
   playVictory,
   playDefeat,
@@ -469,7 +474,17 @@ export default function MemoryGridMatchPage({
   // 2.5s memorize window undiscovered.
   // Event-driven sync: MEMORY_GRID_MATCH_UPDATED is the fast path; this
   // reconciles ONCE on socket reconnect and on tab focus — never on a timer.
-  useMatchSync(fetchStatus, socket, Number.isFinite(matchId));
+  // ── Practice pause (vs AI only) ────────────────────────────────────────
+  const practicePause = usePracticePause({
+    game: "memory-grid",
+    matchId,
+    enabled: Boolean(match?.isAi) && match?.status !== MATCH_STATUS.FINISHED,
+    onResume: fetchStatus,
+  });
+  const paused = practicePause.paused;
+  const pausedRef = practicePause.pausedRef;
+
+  useMatchSync(fetchStatus, socket, Number.isFinite(matchId) && !paused);
 
   // ── Socket: join the per-match room for instant updates ───────────
   useEffect(() => {
@@ -703,7 +718,7 @@ export default function MemoryGridMatchPage({
   // ── Reconstruct submission ────────────────────────────────────────
   const submitPicks = useCallback(
     async (picks: number[]) => {
-      if (submitting) return;
+      if (submitting || pausedRef.current) return;
       setSubmitting(true);
       try {
         const res = await fetch(
@@ -761,7 +776,7 @@ export default function MemoryGridMatchPage({
   // The server remains authoritative and the endpoint is idempotent;
   // polling is still the recovery path if this request fails.
   useEffect(() => {
-    if (!match?.isAi || !playing || !isReconstruct || viewerSubmitted) return;
+    if (!match?.isAi || !playing || !isReconstruct || viewerSubmitted || paused) return;
     const key = `${match.id}:${match.roundNumber}`;
     if (aiTriggerRef.current === key) return;
     aiTriggerRef.current = key;
@@ -771,14 +786,14 @@ export default function MemoryGridMatchPage({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
     }).then(() => fetchStatus()).catch(() => {});
-  }, [fetchStatus, isReconstruct, match?.id, match?.isAi, match?.roundNumber, playing, viewerSubmitted]);
+  }, [fetchStatus, isReconstruct, match?.id, match?.isAi, match?.roundNumber, playing, viewerSubmitted, paused]);
 
   // ── Tile interaction ──────────────────────────────────────────────
   // The viewer can tap only while reconstructing AND hasn't already
   // submitted (their seat locks the moment they submit — grid frozen,
   // no further changes).
   const canPick =
-    playing && isReconstruct && !viewerSubmitted && !submitting && !isFinished;
+    playing && isReconstruct && !viewerSubmitted && !submitting && !isFinished && !paused;
 
   // Toggle-only selection: tapping a blank tile flips it to reveal
   // the logo and selects it; tapping it again flips it back and
@@ -1015,12 +1030,6 @@ export default function MemoryGridMatchPage({
           <IconAlertTriangle className="mx-auto mb-3 h-8 w-8 text-red-400" />
           <h2 className="mb-2 text-lg font-bold">Match unavailable</h2>
           <p className="mb-4 text-sm text-white/70">{error}</p>
-          <button
-            onClick={() => router.push("/casino/memory-grid")}
-            className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-black hover:bg-amber-400"
-          >
-            Back to Lobby
-          </button>
         </div>
       </div>
     );
@@ -1159,8 +1168,6 @@ export default function MemoryGridMatchPage({
             </div>
           ) : null
         }
-        playAgain={{ label: "RUN IT BACK", onClick: () => router.push("/casino/memory-grid") }}
-        onReturnToLobby={() => router.push("/casino")}
         onDismiss={() => setShowResult(false)}
         dismissLabel="View Match Results"
       />
@@ -1261,6 +1268,14 @@ export default function MemoryGridMatchPage({
                 </>
               )}
             </span>
+            {practicePause.canPause && (
+              <PracticePauseChip
+                paused={paused}
+                busy={practicePause.busy}
+                onToggle={() => void practicePause.toggle()}
+                testId="memory-grid-pause"
+              />
+            )}
             {!isFinished && (
               <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-bold text-white/60">
                 {gridSize}×{gridSize} · stake{" "}
@@ -1613,6 +1628,13 @@ export default function MemoryGridMatchPage({
           phone frame. */}
       {renderResult()}
       </GameSessionHost>
+
+      <PracticePauseOverlay
+        paused={paused}
+        busy={practicePause.busy}
+        onResume={() => void practicePause.toggle()}
+        testId="memory-grid-pause-overlay"
+      />
 
       <Footer />
       </div>

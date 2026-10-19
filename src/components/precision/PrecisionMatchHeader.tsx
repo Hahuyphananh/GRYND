@@ -22,7 +22,6 @@ export interface PrecisionMatchHeaderProps {
   /** True once a real human opponent seat exists to report. */
   canReport: boolean;
   onReport: () => void;
-  onLeave: () => void;
   onResign: () => void;
 }
 
@@ -31,7 +30,6 @@ export function PrecisionMatchHeader({
   state,
   canReport,
   onReport,
-  onLeave,
   onResign,
 }: PrecisionMatchHeaderProps) {
   const { t } = useTranslation();
@@ -65,9 +63,6 @@ export function PrecisionMatchHeader({
             </span>
           </button>
         )}
-        <button onClick={onLeave} className="rounded bg-[#f5ff3b] px-4 py-2 font-bold text-black">
-          {t("games.precision.lobby_button")}
-        </button>
         {state?.phase === "active" && (
           <button
             onClick={onResign}

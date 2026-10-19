@@ -1422,7 +1422,13 @@
       "when": 1800000065000,
       "tag": "0221_reset_user_balances",
       "breakpoints": true
+    },
+    {
+      "idx": 203,
+      "version": "7",
+      "when": 1800000066000,
+      "tag": "0222_practice_pauses",
+      "breakpoints": true
     }
   ]
 }
-

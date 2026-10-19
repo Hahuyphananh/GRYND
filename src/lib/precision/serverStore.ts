@@ -29,6 +29,7 @@ import { and, asc, eq, inArray, isNotNull, lt, ne, or } from "drizzle-orm";
 import { db } from "../../db/client";
 import { precisionLobbies, precisionMatches } from "../../db/schema";
 import { coerceAiDifficulty } from "../aiDifficulty";
+import { isPracticePaused } from "../practicePause";
 import { escrowMatchWagers, refundMatchWagers } from "../tokens/wager";
 import {
   foldPersistedSample,
@@ -421,7 +422,7 @@ interface RoundResolutionResult {
 function applyDueTransitions(
   write: MatchWrite,
   now: number,
-  options: { isAiGame: boolean; aiDifficulty?: unknown },
+  options: { isAiGame: boolean; aiDifficulty?: unknown; paused?: boolean },
 ): DueTransitionResult {
   const outcome: DueTransitionResult = {
     changed: false,
@@ -432,6 +433,10 @@ function applyDueTransitions(
     matchFinished: false,
     nextRoundArmed: false,
   };
+
+  // A paused practice match is frozen in place: its countdown does not end and
+  // its bot does not stop. Resume shifts the stored instants forward instead.
+  if (options.paused) return outcome;
 
   if (isArmedRoundDue(write.state, now)) {
     const target =
@@ -625,9 +630,12 @@ export async function readMatch(
 
   const now = Date.now();
   const write = toWrite(row, now);
+  const paused =
+    row.isAiGame && (await isPracticePaused("precision", matchId));
   const outcome = applyDueTransitions(write, now, {
     isAiGame: row.isAiGame,
     aiDifficulty: row.aiDifficulty,
+    paused,
   });
   if (outcome.changed && options.persist !== false) {
     await persistMatch(db, matchId, write);
@@ -753,11 +761,14 @@ export async function resolveDueTransitions(matchId: string): Promise<PrecisionD
 
     const now = Date.now();
     const write = toWrite(row, now);
+    const paused =
+      row.isAiGame && (await isPracticePaused("precision", matchId));
 
     const outcome = applyDueTransitions(write, now, {
-    isAiGame: row.isAiGame,
-    aiDifficulty: row.aiDifficulty,
-  });
+      isAiGame: row.isAiGame,
+      aiDifficulty: row.aiDifficulty,
+      paused,
+    });
     if (outcome.changed) await persistMatch(tx, matchId, write);
 
     return {
@@ -770,7 +781,7 @@ export async function resolveDueTransitions(matchId: string): Promise<PrecisionD
       roundWinnerSeat: outcome.roundWinnerSeat,
       matchFinished: outcome.matchFinished,
       nextRoundArmed: outcome.nextRoundArmed,
-      nextDueAtMs: nextDueAtMsOf(write, row.isAiGame),
+      nextDueAtMs: paused ? null : nextDueAtMsOf(write, row.isAiGame),
     };
   });
 }
@@ -1258,6 +1269,12 @@ export async function recordRoundStop(
     if (!row) return stopResult(null, { error: "Match not found." });
 
     const write = toWrite(row, stopInstantMs);
+    // A paused practice match accepts no stops: the round it is showing is
+    // frozen, and grading a click made while the overlay was up would measure
+    // it against a clock the player could not see running.
+    if (row.isAiGame && (await isPracticePaused("precision", matchId))) {
+      return stopResult(write.state, { error: "Practice match is paused" });
+    }
     // The bot's stop may already be due (or the round may still be arming
     // because its countdown expired while no client was polling), so apply
     // the due transitions BEFORE validating the human's packet.

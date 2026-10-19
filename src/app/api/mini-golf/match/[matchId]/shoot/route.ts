@@ -22,6 +22,7 @@ import {
   shoot,
 } from "../../../../../../lib/mini-golf/serverStore";
 import { broadcastMatchUpdate } from "../../../../../../lib/mini-golf/rooms";
+import { isPracticePaused } from "../../../../../../lib/practicePause";
 
 export async function POST(
   req: Request,
@@ -43,6 +44,13 @@ export async function POST(
     return NextResponse.json(
       { success: false, error: "Invalid matchId" },
       { status: 400 },
+    );
+  }
+
+  if (await isPracticePaused("mini-golf", matchId)) {
+    return NextResponse.json(
+      { success: false, error: "Match is paused" },
+      { status: 409 },
     );
   }
 

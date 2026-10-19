@@ -1694,12 +1694,6 @@ export default function TowerArenaMatchPage() {
         <div className="mx-auto mt-16 max-w-md rounded-2xl border border-red-800 bg-black/40 p-8 text-center">
           <h1 className="text-2xl font-black text-red-300">Match unavailable</h1>
           <p className="mt-2 text-sm text-white/60">{error}</p>
-          <button
-            onClick={() => router.replace("/casino/tower-arena")}
-            className="mt-6 rounded-lg bg-cyan-500 px-4 py-2 text-sm font-bold text-black"
-          >
-            Back to Lobby
-          </button>
         </div>
       </div>
     );
@@ -1911,7 +1905,6 @@ export default function TowerArenaMatchPage() {
             ))}
           </div>
         }
-        playAgain={{ onClick: () => router.replace("/casino/tower-arena") }}
         onDismiss={() => setResultPopupDismissed(true)}
         dismissLabel="View Results"
       />
@@ -2076,11 +2069,9 @@ export default function TowerArenaMatchPage() {
   );
 
   // Out-of-the-running spectators: a player eliminated mid-match (ceiling
-  // breach or resignation) stays in the game as a spectator — no auto-kick,
-  // no auto-redirect — until they click Return to Lobby. Active players who
-  // want out still use Resign.
+  // breach or resignation) stays in the game as a spectator. There is no
+  // lobby exit from a live match; active players who want out use Resign.
   const iAmEliminated = Boolean(isActive && me?.status === "eliminated");
-  const backToLobby = () => router.replace("/casino/tower-arena");
 
   // Right: leaderboard + resign / return-to-lobby.
   const leaderboardNode = (
@@ -2124,17 +2115,9 @@ export default function TowerArenaMatchPage() {
       </div>
 
       {iAmEliminated ? (
-        <>
-          <button
-            onClick={backToLobby}
-            className="mt-4 w-full rounded-lg border border-cyan-400/60 bg-cyan-500/20 px-4 py-2.5 text-xs font-black uppercase tracking-wider text-cyan-100 shadow-[0_0_16px_rgba(0,229,255,0.15)] transition hover:bg-cyan-500/30"
-          >
-            Return to Lobby
-          </button>
-          <p className="mt-2 text-center text-[10px] text-white/45">
-            You're out — watch the rest of the game or head back to the lobby.
-          </p>
-        </>
+        <p className="mt-4 text-center text-[10px] text-white/45">
+          You're out — spectating the rest of the match.
+        </p>
       ) : (
         <>
           <button
@@ -2186,12 +2169,9 @@ export default function TowerArenaMatchPage() {
           {activePlayers.length} / {match?.maxPlayers} in game
         </span>
         {iAmEliminated ? (
-          <button
-            onClick={backToLobby}
-            className="shrink-0 rounded-lg border border-cyan-400/60 bg-cyan-500/20 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-cyan-100 transition hover:bg-cyan-500/30"
-          >
-            Return
-          </button>
+          <span className="shrink-0 text-[10px] font-black uppercase tracking-wider text-cyan-200/70">
+            Spectating
+          </span>
         ) : (
           <button
             onClick={resign}
@@ -2280,7 +2260,6 @@ export default function TowerArenaMatchPage() {
               match={match}
               players={players}
               meUserId={me?.userId}
-              onBack={() => router.replace("/casino/tower-arena")}
             />
           ) : (
             pageBody
@@ -2340,7 +2319,6 @@ export default function TowerArenaMatchPage() {
                   ))}
                 </div>
               }
-              playAgain={{ onClick: () => router.replace("/casino/tower-arena") }}
               onDismiss={() => setResignResult(null)}
               dismissLabel="Watch game"
             />
@@ -2529,7 +2507,7 @@ function PlacementControls(props: any) {
 
 // ── Results view ───────────────────────────────────────────────────────
 
-function ResultsView({ match, players, meUserId, onBack }: any) {
+function ResultsView({ match, players, meUserId }: any) {
   const ranked = (match?.finalRankings || []).slice().sort((a: any, b: any) => a.placement - b.placement);
   return (
     <div className="min-h-screen bg-[#050512] px-3 pb-24 pt-20 text-white sm:px-6">
@@ -2589,9 +2567,6 @@ function ResultsView({ match, players, meUserId, onBack }: any) {
             <span className="text-white/60">
               Prize pool <span className="font-bold text-cyan-300">{Number(match?.prizePool || 0).toLocaleString()}</span>
             </span>
-            <button onClick={onBack} className="rounded-lg bg-cyan-500 px-5 py-2 font-bold text-black transition hover:brightness-110">
-              Back to Lobby
-            </button>
           </div>
         </div>
       </div>

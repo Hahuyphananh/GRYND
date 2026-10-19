@@ -63,6 +63,7 @@ import { escrowMatchWagers } from "../tokens/wager";
 import { payPvpPot, refundPvpPot } from "../tokens/pvpPot";
 import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
 import { coerceAiDifficulty } from "../aiDifficulty";
+import { isPracticePaused } from "../practicePause";
 import { aiSeatRaceAt } from "./ai";
 import { coerceDeviceClass, deviceClassColumnValue, pickLobbyFor } from "./deviceClass";
 import { PASSAGE_VERSION, passageForRow, selectPassageForSeed } from "./passages";
@@ -502,6 +503,12 @@ export async function fetchMatch({
 
   // The 403 above is the gate: only a participant ever reaches the view that
   // carries the passage text.
+  //
+  // A paused practice race is a read-only snapshot: no bot progression, no
+  // deadline verdict. Resume shifts `go_at` forward before the next read.
+  if (match.isAi && (await isPracticePaused("speed-typing", matchId))) {
+    return { match, dto: matchViewFor({ match, viewerId: userId }) } as const;
+  }
   //
   // For a practice race the bot is advanced to NOW first, so every poll shows
   // its live progress — and one read past the bot's own finish instant resolves

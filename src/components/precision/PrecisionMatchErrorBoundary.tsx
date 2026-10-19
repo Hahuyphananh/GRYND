@@ -44,10 +44,6 @@ export default class PrecisionMatchErrorBoundary extends React.Component<
     if (typeof window !== "undefined") window.location.reload();
   };
 
-  private handleLobby = () => {
-    if (typeof window !== "undefined") window.location.assign("/casino/precision");
-  };
-
   render() {
     if (!this.state.hasError) return this.props.children;
 
@@ -60,22 +56,15 @@ export default class PrecisionMatchErrorBoundary extends React.Component<
           </h1>
           <p className="mt-2 text-sm text-red-100/90">
             The board stopped rendering. Your match state is safe on the server —
-            reload to reconnect, or head back to the lobby.
+            reload to reconnect.
           </p>
-          <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
+          <div className="mt-5 flex justify-center">
             <button
               type="button"
               onClick={this.handleRetry}
               className="rounded-xl bg-[#f5ff3b] px-5 py-2.5 font-black text-black transition hover:brightness-110"
             >
               Reload
-            </button>
-            <button
-              type="button"
-              onClick={this.handleLobby}
-              className="rounded-xl border border-white/20 bg-white/5 px-5 py-2.5 font-bold text-white transition hover:bg-white/10"
-            >
-              Back to lobby
             </button>
           </div>
         </div>

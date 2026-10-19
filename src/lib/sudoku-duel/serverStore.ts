@@ -58,6 +58,7 @@ import {
   VARIANT_VERSION,
 } from "./constants";
 import { coerceAiDifficulty } from "../aiDifficulty";
+import { isPracticePaused } from "../practicePause";
 import { aiMoveDelayMs, planAiMoves } from "./ai";
 import { coerceSudokuDifficulty, generatePuzzle } from "./generator";
 import {
@@ -882,6 +883,13 @@ export async function fetchMatch({
     return err("Not a participant of this match", 403);
   }
 
+  if (
+    match.isAi &&
+    (await isPracticePaused("sudoku-duel", matchId))
+  ) {
+    return err("Practice match is paused", 409);
+  }
+
   // For a practice match the bot is advanced to NOW first, so every poll shows
   // its live board progress (and finalizes the match the instant it solves the
   // puzzle). A human row is untouched by this step.
@@ -1100,6 +1108,12 @@ export async function submitMove({
       }
       if (TERMINAL_STATUSES.includes(match.status)) {
         return err("Match is no longer active", 409);
+      }
+      if (
+        match.isAi &&
+        (await isPracticePaused("sudoku-duel", matchId))
+      ) {
+        return err("Practice match is paused", 409);
       }
 
       // Timing is decided from the server's clock against server-written

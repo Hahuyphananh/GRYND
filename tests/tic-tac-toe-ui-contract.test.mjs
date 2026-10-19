@@ -226,7 +226,7 @@ test("authority: the lattice is rendered from the snapshot, never from local sta
   // request is in flight" and "the match is over".
   assert.match(
     page,
-    /const boardUnlocked =\s*Boolean\(match\) &&\s*!finished &&\s*!cancelled &&\s*!submitting &&\s*Boolean\(match\?\.viewerCanMove\)/,
+    /const boardUnlocked =\s*Boolean\(match\) &&\s*!finished &&\s*!cancelled &&\s*!paused &&\s*!submitting &&\s*Boolean\(match\?\.viewerCanMove\)/,
   );
   assert.match(page, /viewerCanMove=\{boardUnlocked\}/);
   // The board itself re-checks the cell before offering it.
@@ -877,12 +877,11 @@ test("lifecycle: forfeit and cancel reuse the existing shared conventions", () =
   assert.match(page, /data-testid="confirm-forfeit"/);
   assert.match(page, /onCancel=\{canCancelLobby \? cancelLobby : null\}/);
   assert.match(page, /const canCancelLobby = match\?\.status === "waiting" && viewerSeat === "player1"/);
-  // The result screen's own CTAs, exactly as every other game drives them.
-  assert.match(
-    page,
-    /playAgain=\{\{\s*label: "Play again",\s*onClick: \(\) => router\.push\("\/casino\/tic-tac-toe"\),\s*\}\}/,
-  );
-  assert.match(page, /onReturnToLobby=\{\(\) => router\.push\("\/casino"\)\}/);
+  // A live match has no lobby exit — the result screen offers no play-again
+  // or return-to-lobby CTA, and the forfeit button is the way out.
+  assert.doesNotMatch(page, /playAgain=/);
+  assert.doesNotMatch(page, /onReturnToLobby/);
+  assert.match(page, /data-testid="forfeit-button"/);
 });
 
 test("economy: the lobby owns the stake, and the match page only shows the server's figures", () => {

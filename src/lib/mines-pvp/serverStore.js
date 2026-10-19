@@ -46,6 +46,7 @@ import { sendSystemNotificationEmail } from "../emails/system";
 import { mirrorMinesQueued, mirrorMinesTransition } from "./canonicalLifecycle";
 import { guestSeatSummary, isGuestId } from "../guestIdentity";
 import { coerceAiDifficulty } from "../aiDifficulty";
+import { isPracticePaused } from "../practicePause";
 import {
   AI_PICK_DELAY_MS,
   GRID_CELLS,
@@ -566,6 +567,9 @@ export async function pickTile({ userId, matchId, cellIndex }) {
     if (!PICKABLE_STATES.has(match.status)) {
       return { error: "Match is not active", status: 400 };
     }
+    if (isFreeAiMatch(match) && (await isPracticePaused("mines-pvp", matchId))) {
+      return { error: "Practice match is paused", status: 409 };
+    }
     if (isMatchExpired(match)) {
       return { error: "Match timer has expired", status: 400 };
     }
@@ -598,6 +602,9 @@ export async function flagTile({ userId, matchId, cellIndex }) {
     if (!isParticipant(match, userId)) return { error: "Forbidden", status: 403 };
     if (!PICKABLE_STATES.has(match.status)) {
       return { error: "Match is not active", status: 400 };
+    }
+    if (isFreeAiMatch(match) && (await isPracticePaused("mines-pvp", matchId))) {
+      return { error: "Practice match is paused", status: 409 };
     }
     if (isMatchExpired(match)) {
       return { error: "Match timer has expired", status: 400 };
@@ -633,6 +640,9 @@ export async function unflagTile({ userId, matchId, cellIndex }) {
     if (!isParticipant(match, userId)) return { error: "Forbidden", status: 403 };
     if (!PICKABLE_STATES.has(match.status)) {
       return { error: "Match is not active", status: 400 };
+    }
+    if (isFreeAiMatch(match) && (await isPracticePaused("mines-pvp", matchId))) {
+      return { error: "Practice match is paused", status: 409 };
     }
     if (isMatchExpired(match)) {
       return { error: "Match timer has expired", status: 400 };
@@ -1111,6 +1121,9 @@ export async function playAiTurn({ userId, matchId }) {
     if (TERMINAL_STATES.has(match.status)) {
       return { match, justResolved: false, alreadyPlayed: true };
     }
+    if (await isPracticePaused("mines-pvp", matchId)) {
+      return { match, justResolved: false, alreadyPlayed: true };
+    }
     if (match.status === MATCH_STATUS.WAITING || match.status === MATCH_STATUS.READY) {
       return { error: "Match has not started yet", status: 400 };
     }
@@ -1130,6 +1143,12 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
     let match = await fetchMatchForUpdate(tx, matchId);
     if (!match) return { error: "Match not found", status: 404 };
     if (!isParticipant(match, userId)) return { error: "Forbidden", status: 403 };
+
+    // A paused practice match is frozen: the ready banner does not expire,
+    // the 180s timer does not run and the bot does not move.
+    if (isFreeAiMatch(match) && (await isPracticePaused("mines-pvp", matchId))) {
+      return { match: scrubMatchForViewer(match), advanced: false, paused: true };
+    }
 
     const before = phaseSignature(match);
 

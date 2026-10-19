@@ -61,6 +61,7 @@ import { applyLeaderboardCounters } from "../leaderboardCounters";
 import { laneRushDuelMatches, users } from "../../db/schema";
 import { sendSystemNotificationEmail } from "../emails/system";
 import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
+import { isPracticePaused } from "../practicePause";
 import { randomHex } from "../laneRunner";
 import {
   BOT_ACTION_INTERVAL_MS,
@@ -450,6 +451,9 @@ export async function botAct({ matchId, requesterId, actionId }) {
     if (!PICKABLE_STATES.has(match.status)) {
       return { error: "Match is not active", status: 400 };
     }
+    if (await isPracticePaused("lane-rush-duel", matchId)) {
+      return { match, paused: true };
+    }
 
     // Idempotency: one client wake-up (identified by `actionId`) must
     // resolve exactly one bot action, even if the request is retried
@@ -649,6 +653,9 @@ export async function act({ userId, matchId, action, row, tile, actionId }) {
     }
     if (!PICKABLE_STATES.has(match.status)) {
       return { error: "Match is not active", status: 400 };
+    }
+    if (isBotMatch(match) && (await isPracticePaused("lane-rush-duel", matchId))) {
+      return { error: "Practice match is paused", status: 409 };
     }
 
     // Idempotency: a retried POST (network hiccup, double tap, second
@@ -1072,6 +1079,12 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
     if (!match) return { error: "Match not found", status: 404 };
     if (!isParticipant(match, userId)) {
       return { error: "Forbidden", status: 403 };
+    }
+
+    // A paused practice match is frozen: the ready window does not end, the
+    // 15s turn window does not expire and the bot does not act.
+    if (isBotMatch(match) && (await isPracticePaused("lane-rush-duel", matchId))) {
+      return { match: scrubMatchForViewer(match, userId), advanced: false, paused: true };
     }
 
     // The row's state BEFORE the auto-advance steps below. There is no

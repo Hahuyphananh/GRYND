@@ -41,6 +41,11 @@ import {
 // active-player presence, driven by the game's REAL lifecycle
 // (autoStart/autoStop) — never by page load.
 import GameSessionHost from "../../../components/GameSessionHost";
+import {
+  PracticePauseChip,
+  PracticePauseOverlay,
+} from "../../../components/game/PracticePause";
+import { usePracticePause } from "../../../hooks/usePracticePause";
 
 
 
@@ -480,6 +485,18 @@ export default function DiceFlushPage() {
   // server enforces the actual auto-bank. Disabled in AI mode entirely:
   // practice matches are untimed, so no countdown and no auto-bank call.
   const isAiMode = Boolean(opponent?.isAI);
+
+  // Free-play pause. Practice is untimed, so freezing the AI turn effect is
+  // the whole server-side pause; no clock needs to be shifted.
+  const practicePause = usePracticePause({
+    game: "dice-flush",
+    matchId: roomId,
+    enabled: isAiMode && Boolean(roomId) && game?.state === "playing",
+  });
+  const paused = practicePause.paused;
+  const pausedRef = useRef(false);
+  pausedRef.current = paused;
+
   // Client clocks drift from the server; anchor the countdown to the
   // server's clock (measured skew from each state poll, same pattern as
   // keno-pvp) so both players see the same time.
@@ -676,7 +693,7 @@ export default function DiceFlushPage() {
 
   // ── AI turn animation ───────────────────────────────────────────
   const runAiTurnAnimation = async (rId: string) => {
-    if (aiUnmountedRef.current) return;
+    if (aiUnmountedRef.current || pausedRef.current) return;
     setAiAnimating(true);
     setAiRollSteps([]);
     
@@ -731,14 +748,14 @@ export default function DiceFlushPage() {
 
   // Detect AI turn on game load (for polling/socket catch-up)
   useEffect(() => {
-    if (!game || !roomId || aiAnimating || aiTurnScheduledRef.current) return;
+    if (paused || !game || !roomId || aiAnimating || aiTurnScheduledRef.current) return;
     if (game.state !== "playing") return;
     const aiPlayer = game.players.find(p => p.isAI && p.userId === game.currentTurn);
     if (aiPlayer && !you?.isAI) {
       aiTurnScheduledRef.current = true;
       runAiTurnAnimation(roomId);
     }
-  }, [game?.currentTurn, game?.turnNumber]);
+  }, [paused, game?.currentTurn, game?.turnNumber]);
 
   const createGame = async () => { setLoading(true); try { const res = await fetch("/api/dice-flush/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wager }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable to create room"); if (d.viewerId) setViewerId(d.viewerId); setRoomId(d.roomId); setGame(d.state); if (socket) socket.emit("join_room", { roomId: d.roomId });} finally { setLoading(false); } };
   // Free play vs AI — no stake is ever sent. The match is created with a 0
@@ -753,7 +770,7 @@ export default function DiceFlushPage() {
   const playAction = async (url: string, payload: Record<string, unknown>) => {
     // Guard against a second tap while the first action is still in flight —
     // the buttons used to stay live, so a double-tap fired two moves.
-    if (!roomId || !isYourTurn || actionPending) return;
+    if (pausedRef.current || !roomId || !isYourTurn || actionPending) return;
     setActionPending(true);
     try {
       if (url.endsWith("/roll")) { playTick(); setTimeout(() => playTick(), 90); setTimeout(() => playTick(), 180); }
@@ -1007,6 +1024,14 @@ export default function DiceFlushPage() {
             <span className="rounded-full bg-[#00e5ff]/10 px-2 py-0.5 text-xs font-bold text-[#00e5ff]">Sheet {sharedFilled}/12</span>
           </div>
           <div className="flex items-center gap-2">
+            {isAiMode && (
+              <PracticePauseChip
+                paused={paused}
+                busy={practicePause.busy}
+                onToggle={() => void practicePause.toggle()}
+                className="rounded-lg border border-amber-400/40 bg-black/40 px-3 py-1 text-xs font-bold uppercase tracking-wider text-amber-200 transition hover:bg-amber-400/10 disabled:cursor-wait disabled:opacity-50"
+              />
+            )}
             {opponent && !opponent.isAI && (<button onClick={() => setShowReportModal(true)} className="rounded-lg bg-red-500/10 border border-red-500/30 px-3 py-1 text-xs font-bold text-red-400 hover:bg-red-500/20 transition"><span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report</span></button>)}
             <button onClick={resign} className="rounded-lg bg-red-600/80 px-3 py-1 text-xs font-bold text-white hover:bg-red-600 transition">Resign</button>
           </div>
@@ -1438,7 +1463,6 @@ export default function DiceFlushPage() {
               { label: "Opponent Score", value: String(gameOverScores.theirs) },
             ]}
             details={roomId ? [{ label: "Room ID", value: roomId }] : []}
-            onReturnToLobby={resetToLobby}
           />
         )}
       </div>)}
@@ -1465,6 +1489,13 @@ export default function DiceFlushPage() {
         reportedPlayerName={opponent?.name || "Opponent"}
         gameType="Dice Flush"
       />
+      {isAiMode && (
+        <PracticePauseOverlay
+          paused={paused}
+          busy={practicePause.busy}
+          onResume={() => void practicePause.toggle()}
+        />
+      )}
       <Footer />
       </div>
     </>

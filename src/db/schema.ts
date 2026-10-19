@@ -4214,3 +4214,37 @@ export const privateRoomMembers = pgTable(
     ),
   }),
 );
+
+// ── Free-play pause (human vs AI only) ──────────────────────────────────
+//
+// One row per paused vs-AI match. `paused_at` is the instant the human
+// pressed Pause; resuming subtracts that window from the game's own clock
+// (started_at / go_at / deadlines), so a pause never costs a turn or lets
+// the server-side bot bank progress while nobody is watching.
+//
+// A generic table keeps the feature out of every game table (no 19-column
+// migration) and lets one API route serve every game. The `game` value is
+// the game key, never a client-supplied table name. PvP rows are refused by
+// the service, so this can never silently pause a paid match.
+export const practicePauses = pgTable(
+  "practice_pauses",
+  {
+    id: serial("id").primaryKey(),
+    game: varchar("game", { length: 32 }).notNull(),
+    // Matches are uuid / serial / text across the catalogue, so the reference
+    // is stored as text and compared per game.
+    matchId: varchar("match_id", { length: 64 }).notNull(),
+    // Clerk id or guest id of the human who paused it.
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    pausedAt: timestamp("paused_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    matchUnique: uniqueIndex("practice_pauses_game_match_unique").on(
+      table.game,
+      table.matchId,
+    ),
+    gameIdx: index("practice_pauses_game_idx").on(table.game, table.pausedAt),
+  }),
+);

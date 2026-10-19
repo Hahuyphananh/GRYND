@@ -89,7 +89,9 @@ test("ui: a finished player's WPM freezes at their own finish instant, never dec
 test("ui: rematch and return-to-queue reuse the existing platform patterns", () => {
   // The shared result screen's own CTAs, exactly as every other game drives them.
   assert.match(page, /playAgain=\{\{ label: "RACE AGAIN", onClick: requeue \}\}/);
-  assert.match(page, /onReturnToLobby=\{\(\) => router\.push\("\/casino\/speed-typing"\)\}/);
+  assert.doesNotMatch(page, /onReturnToLobby/);
+  assert.doesNotMatch(page, /Return to the Speed Typing lobby/);
+  assert.match(page, /data-testid="speed-typing-resign"/);
   // "Race again" re-enters the ONE matchmaking path — it does not invent a
   // second queue.
   const requeue = page.slice(page.indexOf("const requeue"), page.indexOf("// ── Result"));
@@ -295,7 +297,7 @@ test("realtime: the page joins the match room, re-joins on connect, and listens"
   // and on tab focus, and stops entirely once the race is finished.
   assert.match(
     page,
-    /useMatchSync\(\(\) => load\(\{ silent: true \}\), socket, Boolean\(match\) && !finished\)/,
+    /useMatchSync\(\(\) => load\(\{ silent: true \}\), socket, Boolean\(match\) && !finished && !paused\)/,
   );
   assert.match(page, /import \{[\s\S]{0,120}useMatchSync,[\s\S]{0,120}\} from "\.\.\/\.\.\/\.\.\/\.\.\/hooks\/useMatchSync"/);
   // No recurring poll may remain on this page (no interval at all).

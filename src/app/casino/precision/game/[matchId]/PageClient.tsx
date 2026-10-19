@@ -62,6 +62,11 @@ import { usePrecisionRoundClock } from "../../../../../hooks/usePrecisionRoundCl
 import { usePrecisionRoundReveal } from "../../../../../hooks/usePrecisionRoundReveal";
 import { usePrecisionEndPopup } from "../../../../../hooks/usePrecisionEndPopup";
 import { useDeadlineRead } from "../../../../../hooks/useDeadlineRead";
+import { usePracticePause } from "../../../../../hooks/usePracticePause";
+import {
+  PracticePauseChip,
+  PracticePauseOverlay,
+} from "../../../../../components/game/PracticePause";
 import { precisionDueRead } from "../../../../../lib/deadlineRead";
 import { serverClockNow } from "../../../../../lib/precision/roundClock";
 import {
@@ -221,6 +226,19 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
       onReadySnapshot: handleReadySnapshot,
     });
 
+  // ── Practice pause (vs AI only) ────────────────────────────────────────
+  // The server freezes every due transition for a paused practice match and
+  // shifts the round's own instants forward on resume, so the round the player
+  // returns to resumes at the exact elapsed they left it at.
+  const practicePause = usePracticePause({
+    game: "precision",
+    matchId,
+    enabled: Boolean(state?.isAiGame) && state?.phase !== "finished",
+    onResume: refreshState,
+  });
+  const paused = practicePause.paused;
+  const pausedRef = practicePause.pausedRef;
+
   // The offset the countdown read times itself with, read through a ref so its
   // callback stays stable while polls refine the estimate.
   const serverClockOffsetRef = useRef(serverClockOffsetMs);
@@ -248,7 +266,7 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
   // cleared as soon as the round leaves `active`, at which point the arming
   // countdown (or nothing) drives the reader again.
   const reconciling = stopReconcileAtMs !== null;
-  useDeadlineRead(stopReconcileAtMs ?? precisionDueRead(state), refreshState, {
+  useDeadlineRead(paused ? null : (stopReconcileAtMs ?? precisionDueRead(state)), refreshState, {
     serverNow: () => serverClockNow(Date.now(), serverClockOffsetRef.current),
     // Only the reconcile window narrows its retry budget: it is waiting on an
     // event (a packet landing, or the broadcast that accompanies it), not on a
@@ -303,7 +321,6 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
     opponentReplayRequested,
     returnChosen,
     requestReplay,
-    requestReturn,
   } = usePrecisionEndPopup({
     matchId,
     socket,
@@ -531,7 +548,7 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
   //     The `roundResultEvent` listener clears `selfStopPending` and
   //     updates the snapshot.
   const handleStopClick = useCallback(() => {
-    if (!matchId) return;
+    if (!matchId || pausedRef.current) return;
     if (stopSubmitting || selfStopPending) return;
     // Race-proof single-click lock. Synchronously set BEFORE any other
     // work so a second click that lands in the same React batch hits
@@ -666,14 +683,6 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
     t,
   ]);
 
-  const handleReturnToLobby = useCallback(() => {
-    requestReturn();
-    // A finished match is a no-op server-side, but a player can also reach
-    // this handler while still waiting, so route the same cleanup through it.
-    void leaveGame(matchId).catch(() => {});
-    router.push("/casino/precision");
-  }, [requestReturn, matchId, router]);
-
   // ── Close-the-tab cleanup while still waiting for an opponent ────────
   // A waiting lobby has no realtime room, so the socket-disconnect grace
   // timer can't reach it: without this, closing the tab left the lobby in the
@@ -701,13 +710,23 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
   // The game content is split into reusable nodes so the page composes
   // cleanly. No game logic or state is touched, only layout.
 
-  const headerNode = (
+  const headerNode = practicePause.canPause ? (
+    <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+      <PracticePauseChip
+        paused={paused}
+        busy={practicePause.busy}
+        onToggle={() => void practicePause.toggle()}
+        testId="precision-pause"
+      />
+    </div>
+  ) : null;
+
+  const matchHeaderNode = (
     <PrecisionMatchHeader
       matchId={matchId}
       state={state}
       canReport={canReport}
       onReport={() => setShowReportModal(true)}
-      onLeave={handleLeave}
       onResign={handleResign}
     />
   );
@@ -747,6 +766,7 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
   const normalView = (
     <div className="mx-auto mt-4 max-w-6xl rounded-2xl border border-cyan-500/40 bg-black/30 p-4 sm:mt-8 sm:p-5">
       {headerNode}
+      {matchHeaderNode}
       {statusNode}
       {bodyNode}
     </div>
@@ -787,7 +807,6 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
         <PrecisionResultPopup
           popup={endPopup}
           onReplay={requestReplay}
-          onReturnToLobby={handleReturnToLobby}
           replayRequested={replayRequested}
           opponentReplayRequested={opponentReplayRequested}
           returnChosen={returnChosen}
@@ -804,6 +823,13 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
           }
         />
       </GameSessionHost>
+
+      <PracticePauseOverlay
+        paused={paused}
+        busy={practicePause.busy}
+        onResume={() => void practicePause.toggle()}
+        testId="precision-pause-overlay"
+      />
 
       {/* Report modal */}
       <ReportModal

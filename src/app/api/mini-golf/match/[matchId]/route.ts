@@ -11,6 +11,7 @@ import { NextResponse } from "next/server";
 import { requirePracticePlayer } from "../../../../../lib/auth/guestSession";
 import { logError } from "../../../../../lib/logError";
 import { getSeatIdentity } from "../../../../../lib/seatIdentity";
+import { isPracticePaused } from "../../../../../lib/practicePause";
 import {
   advanceAiTurns,
   fetchMatch,
@@ -79,7 +80,7 @@ export async function GET(
     // un-advanced snapshot and the next poll retries.
     let match = result.match;
     let dto = result.dto;
-    if (match.isAi) {
+    if (match.isAi && !(await isPracticePaused("mini-golf", matchId))) {
       try {
         const advanced = await advanceAiTurns({ userId, matchId });
         if (!("error" in advanced) && advanced.match) {

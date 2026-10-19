@@ -749,7 +749,6 @@ export default function ConnectFourGamePage() {
           </div>
         }
         playAgain={{ label: "Replay", onClick: () => respondReplay("replay") }}
-        onReturnToLobby={() => respondReplay("quit")}
       />
     );
   }
@@ -836,7 +835,6 @@ export default function ConnectFourGamePage() {
 
       if (data.resolved === "quit") {
         setReplayMessage(data.reason || "Replay was not accepted.");
-        setTimeout(() => router.push("/casino/four-in-a-row"), 900);
         return;
       }
 
@@ -868,19 +866,15 @@ export default function ConnectFourGamePage() {
         game.hostReplayDecision === "replay" ||
         game.guestReplayDecision === "replay"
       ) {
-        setReplayMessage(
-          "Replay was refused or expired. Returning to lobby...",
-        );
+        setReplayMessage("Replay was refused or expired.");
       }
-      const timeoutId = setTimeout(
-        () => router.push("/casino/four-in-a-row"),
-        900,
-      );
-      return () => clearTimeout(timeoutId);
+      // No auto-exit: the match page stays put, and the players choose a
+      // rematch from the result panel.
+      return undefined;
     }
 
     return undefined;
-  }, [game, replayCountdown, router]);
+  }, [game, replayCountdown]);
 
   // The drop animation is decorative: with reduced motion, or before the board
   // can be measured, the disc simply appears in its cell (no fall, no trail).
@@ -1296,12 +1290,6 @@ export default function ConnectFourGamePage() {
               </div>
             )}
           </div>
-          <button
-            onClick={() => router.push("/casino/four-in-a-row")}
-            className="rounded-sm border border-cyan-400/30 bg-cyan-500/10 px-4 py-2 text-cyan-200 transition-colors hover:bg-cyan-500/20"
-          >
-            Back to Lobby
-          </button>
         </div>
 
         <div className="grid lg:grid-cols-[minmax(0,1fr)_320px] gap-4">
@@ -1499,15 +1487,6 @@ export default function ConnectFourGamePage() {
                   </button>
                 )}
               </>
-            )}
-
-            {(game?.status === "finished" || game?.status === "cancelled") && (
-              <button
-                onClick={() => router.push("/casino/four-in-a-row")}
-                className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 font-bold hover-lift"
-              >
-                Return to Lobby
-              </button>
             )}
           </div>
         </div>

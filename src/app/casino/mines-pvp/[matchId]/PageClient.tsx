@@ -58,6 +58,11 @@ import {
   useMatchSync,
 } from "../../../../hooks/useMatchSync";
 import { usePracticeBotHeartbeat } from "../../../../hooks/usePracticeBotHeartbeat";
+import { usePracticePause } from "../../../../hooks/usePracticePause";
+import {
+  PracticePauseChip,
+  PracticePauseOverlay,
+} from "../../../../components/game/PracticePause";
 import { minesPvpDueRead } from "../../../../lib/deadlineRead";
 import { useDeadlineRead } from "../../../../hooks/useDeadlineRead";
 import { useServerClockEstimate } from "../../../../hooks/useServerClockEstimate";
@@ -503,7 +508,17 @@ export default function MinesPvpMatchPage({
 
   // Event-driven sync: the MATCH_UPDATED socket push is the fast path; this
   // reconciles ONCE on socket reconnect and on tab focus — never on a timer.
-  useMatchSync(fetchStatus, socket, Boolean(isValidMatchId));
+  // ── Practice pause (vs AI only) ────────────────────────────────────────
+  const practicePause = usePracticePause({
+    game: "mines-pvp",
+    matchId,
+    enabled: Boolean(match?.isAi) && match?.status !== MATCH_STATUS.FINISHED,
+    onResume: fetchStatus,
+  });
+  const paused = practicePause.paused;
+  const pausedRef = practicePause.pausedRef;
+
+  useMatchSync(fetchStatus, socket, Boolean(isValidMatchId) && !paused);
 
   // …and each stamped deadline still needs ITS one read. This route is the only
   // caller of `fetchMatchWithAutoResolve`, whose first step is "Ready banner
@@ -515,7 +530,7 @@ export default function MinesPvpMatchPage({
   // fires ON the stamped instant rather than a skew-covering slack past it — the
   // banner running out IS the read. It answers null until the sample lands, and
   // the hook then keeps its full slack rather than trusting the device clock.
-  useDeadlineRead(minesPvpDueRead(match), fetchStatus, {
+  useDeadlineRead(paused ? null : minesPvpDueRead(match), fetchStatus, {
     serverNow: serverNowEstimate,
   });
 
@@ -600,7 +615,7 @@ export default function MinesPvpMatchPage({
   // has nothing left to play), and the tab is visible.
   const botStillPlaying =
     isAi && isActive && !match?.opponentLocked && !match?.opponentCompleted;
-  usePracticeBotHeartbeat(botStillPlaying, fetchStatus);
+  usePracticeBotHeartbeat(botStillPlaying && !paused, fetchStatus);
 
   const myRevealMap = useMemo(() => {
     const map = new Map<number, OwnReveal>();
@@ -832,7 +847,7 @@ export default function MinesPvpMatchPage({
     [busy, match, matchId, posthog, socket, fetchStatus],
   );
 
-  const boardLocked = !isActive || Boolean(match?.myLocked) || timeLeft <= 0;
+  const boardLocked = paused || !isActive || Boolean(match?.myLocked) || timeLeft <= 0;
 
   const handleCellClick = useCallback(
     (cellIndex: number) => {
@@ -1105,8 +1120,6 @@ export default function MinesPvpMatchPage({
             ? [{ label: "Cleared in", value: formatClock(completedInSeconds) }]
             : []),
         ]}
-        playAgain={{ onClick: () => router.push("/casino/mines-pvp") }}
-        onReturnToLobby={() => router.push("/casino")}
       />
     );
   }
@@ -1133,12 +1146,6 @@ export default function MinesPvpMatchPage({
             <AlertIcon className="w-5 h-5 text-red-300" />
             <span className="font-semibold">{error || "Match not found."}</span>
           </div>
-          <button
-            onClick={() => router.push("/casino/mines-pvp")}
-            className="mt-4 px-4 py-2 rounded-lg bg-cyan-400 text-[#001933] hover:bg-cyan-300 text-sm font-bold"
-          >
-            Back to lobby
-          </button>
         </div>
         <Footer />
       </div>
@@ -1154,12 +1161,6 @@ export default function MinesPvpMatchPage({
             <AlertIcon className="w-5 h-5 text-red-300" />
             <span className="font-semibold">You are not a participant in this match.</span>
           </div>
-          <button
-            onClick={() => router.push("/casino/mines-pvp")}
-            className="mt-4 px-4 py-2 rounded-lg bg-cyan-400 text-[#001933] hover:bg-cyan-300 text-sm font-bold"
-          >
-            Back to lobby
-          </button>
         </div>
         <Footer />
       </div>
@@ -1384,6 +1385,17 @@ export default function MinesPvpMatchPage({
       </div>
     ) : null;
 
+  const pauseNode = practicePause.canPause ? (
+    <div className="mt-3 flex justify-center">
+      <PracticePauseChip
+        paused={paused}
+        busy={practicePause.busy}
+        onToggle={() => void practicePause.toggle()}
+        testId="mines-pvp-pause"
+      />
+    </div>
+  ) : null;
+
   const resignNode =
     isActive && !match.myLocked ? (
       <div className="flex justify-center">
@@ -1507,6 +1519,7 @@ export default function MinesPvpMatchPage({
             gameLabel="mines-duel"
           >
             {titleNode}
+            {pauseNode}
             {/* Desktop puts the seats, clock, status and controls in a
                 right-hand rail BESIDE the board, which is what frees the
                 height the square board grows into
@@ -1539,6 +1552,13 @@ export default function MinesPvpMatchPage({
 
           <Footer />
         </div>
+
+        <PracticePauseOverlay
+          paused={paused}
+          busy={practicePause.busy}
+          onResume={() => void practicePause.toggle()}
+          testId="mines-pvp-pause-overlay"
+        />
 
         <ReportModal
           isOpen={showReportModal}

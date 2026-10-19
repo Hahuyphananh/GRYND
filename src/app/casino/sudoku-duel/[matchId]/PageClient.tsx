@@ -71,6 +71,10 @@ import {
   useMatchSync,
 } from "../../../../hooks/useMatchSync";
 import { usePracticeBotHeartbeat } from "../../../../hooks/usePracticeBotHeartbeat";
+import { usePracticePause } from "../../../../hooks/usePracticePause";
+import PracticePause, {
+  PracticePauseOverlay,
+} from "../../../../components/game/PracticePause";
 import {
   SUDOKU_DUEL_EVENTS,
   sudokuDuelMatchRoom,
@@ -411,7 +415,21 @@ export default function SudokuDuelMatchPage() {
   // Event-driven sync: MATCH_UPDATED is the fast path; this reconciles ONCE on
   // socket reconnect and on tab focus — never on a timer. A finished match
   // (`terminal`) stops syncing entirely.
-  useMatchSync(load, socket, Boolean(matchId) && Boolean(match) && !terminal);
+  // ── Practice pause (vs AI only) ────────────────────────────────────────
+  const {
+    canPause,
+    paused,
+    pausedRef,
+    busy: pauseBusy,
+    togglePause,
+  } = usePracticePause({
+    game: "sudoku-duel",
+    matchId,
+    enabled: Boolean(match?.isAi) && !terminal,
+    onResume: load,
+  });
+
+  useMatchSync(load, socket, Boolean(matchId) && Boolean(match) && !terminal && !paused);
 
   // ── Practice bot heartbeat ─────────────────────────────────────────────
   // The bot's board is advanced on READ (`advanceAiMatch`) at a pace derived
@@ -422,14 +440,14 @@ export default function SudokuDuelMatchPage() {
   // pure event-driven path.
   const botStillPlaying =
     Boolean(match?.isAi) && phase === "racing" && !terminal && !match?.opponent?.completed;
-  usePracticeBotHeartbeat(botStillPlaying, load);
+  usePracticeBotHeartbeat(botStillPlaying && !paused, load);
 
   // When the local inactivity clock says the forfeit is due, the server still
   // owns the verdict — ask it, and let it resolve. Nothing is decided here.
   useEffect(() => {
-    if (!expired || terminal) return;
+    if (!expired || terminal || paused) return;
     void load();
-  }, [expired, terminal, load]);
+  }, [expired, terminal, load, paused]);
 
   // ── Realtime sync ──────────────────────────────────────────────────────
   const mySeatKey = seat ?? null;
@@ -484,7 +502,7 @@ export default function SudokuDuelMatchPage() {
   const sendAction = useCallback(
     async (action: SudokuAction) => {
       const current = matchRef.current;
-      if (!matchId || !current) return;
+      if (!matchId || !current || pausedRef.current) return;
       const expectedPly = Number(current.view?.ply ?? 0);
 
       inFlightRef.current = true;
@@ -535,6 +553,7 @@ export default function SudokuDuelMatchPage() {
   );
 
   const canPlayNow =
+    !paused &&
     phase === "racing" && !expired && !pending && !myCompleted;
 
   // ── Interaction (selection is local; the VALUE never is) ───────────────
@@ -1042,6 +1061,14 @@ export default function SudokuDuelMatchPage() {
                           <IconSwords size={15} className="text-amber-300" aria-hidden="true" />
                           {statusLine}
                         </span>
+                        {canPause && (
+                          <PracticePause
+                            paused={paused}
+                            busy={pauseBusy}
+                            onToggle={togglePause}
+                            testId="sudoku-pause"
+                          />
+                        )}
                         {!terminal && status === "playing" && !expired && (
                           <button
                             type="button"
@@ -1128,13 +1155,6 @@ export default function SudokuDuelMatchPage() {
               <p className="mt-2 text-xs text-white/60">
                 Nothing was rated. Find another opponent whenever you are ready.
               </p>
-              <button
-                type="button"
-                onClick={() => router.push("/casino/sudoku-duel")}
-                className="mt-4 inline-flex items-center justify-center rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-bold text-amber-200 transition hover:bg-amber-500/20"
-              >
-                Back to the Sudoku Duel lobby
-              </button>
             </div>
           )}
 
@@ -1293,7 +1313,13 @@ export default function SudokuDuelMatchPage() {
         ]}
         playAgain={{ label: "REMATCH", onClick: requeue }}
         secondaryAction={{ label: "Back to games", href: "/casino" }}
-        onReturnToLobby={() => router.push("/casino/sudoku-duel")}
+      />
+
+      <PracticePauseOverlay
+        paused={paused}
+        busy={pauseBusy}
+        onResume={togglePause}
+        testId="sudoku-pause-overlay"
       />
     </GameSessionHost>
   );

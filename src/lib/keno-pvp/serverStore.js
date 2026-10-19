@@ -41,6 +41,7 @@ import { applyTrophyResult } from "../trophyStore";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
 import { getFrameDecorations } from "../cosmetics";
 import { guestSeatSummary, isGuestId } from "../guestIdentity";
+import { isPracticePaused } from "../practicePause";
 import {
   glows,
   kenoPvpMatches,
@@ -1054,6 +1055,9 @@ export async function claimTile({ userId, matchId, tile }) {
     if (!LIVE_STATES.has(match.status)) {
       return { error: "Match is not live", status: 400 };
     }
+    if (isFreeAiMatch(match) && (await isPracticePaused("keno-pvp", matchId))) {
+      return { error: "Practice match is paused", status: 409 };
+    }
     if (!hasLiveTile(match)) {
       // The run has not lit a tile yet (or is between tiles) — the caller
       // simply retries on the next poll.
@@ -1212,6 +1216,9 @@ export async function playAiTurn({ userId, matchId }) {
     if (!isFreeAiMatch(match) || match.player1Id !== userId) {
       return { error: "Forbidden", status: 403 };
     }
+    if (await isPracticePaused("keno-pvp", matchId)) {
+      return { match, actions: 0, paused: true };
+    }
     return await playAiTurnInTransaction(tx, match);
   });
 }
@@ -1231,6 +1238,12 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
     if (!match) return { error: "Match not found", status: 404 };
     if (!isParticipant(match, userId)) {
       return { error: "Forbidden", status: 403 };
+    }
+
+    // A paused practice match is frozen: the ready banner does not expire, the
+    // tile window does not run out and the bot does not tap.
+    if (isFreeAiMatch(match) && (await isPracticePaused("keno-pvp", matchId))) {
+      return { match: scrubMatchForViewer(match, userId), paused: true };
     }
 
     let current = match;

@@ -51,6 +51,7 @@ import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
 import { getFrameDecorations } from "../cosmetics";
+import { isPracticePaused } from "../practicePause";
 import { guestSeatSummary, isGuestId } from "../guestIdentity";
 import {
   memoryGridMatches,
@@ -302,6 +303,9 @@ export async function playAiTurn({ userId, matchId }) {
     if (!match) return { error: "Match not found", status: 404 };
     if (!isFreeAiMatch(match) || match.player1Id !== userId) {
       return { error: "Forbidden", status: 403 };
+    }
+    if (await isPracticePaused("memory-grid", matchId)) {
+      return { error: "Practice match is paused", status: 409 };
     }
     return await playAiTurnInTransaction(tx, match);
   });
@@ -964,6 +968,9 @@ export async function submitReconstruction({ userId, matchId, picks }) {
     if (!isParticipant(match, userId)) {
       return { error: "Forbidden", status: 403 };
     }
+    if (isFreeAiMatch(match) && (await isPracticePaused("memory-grid", matchId))) {
+      return { error: "Practice match is paused", status: 409 };
+    }
     if (!SUBMIT_STATES.has(match.status)) {
       return { error: "Match is not awaiting a reconstruction", status: 400 };
     }
@@ -1358,6 +1365,12 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
     if (!match) return { error: "Match not found", status: 404 };
     if (!isParticipant(match, userId)) {
       return { error: "Forbidden", status: 403 };
+    }
+
+    // A paused practice match is a frozen snapshot: no phase deadline runs,
+    // the bot does not act, and the AFK auto-lock never fires.
+    if (isFreeAiMatch(match) && (await isPracticePaused("memory-grid", matchId))) {
+      return { match, advanced: false, paused: true };
     }
 
     // The row's phase BEFORE the auto-advance steps below. There is no

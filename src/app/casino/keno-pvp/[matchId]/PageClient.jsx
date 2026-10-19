@@ -69,6 +69,11 @@ import { withReducedMotion } from "../../../../lib/animations";
 import {
   useMatchSync,
 } from "../../../../hooks/useMatchSync";
+import { usePracticePause } from "../../../../hooks/usePracticePause";
+import {
+  PracticePauseChip,
+  PracticePauseOverlay,
+} from "../../../../components/game/PracticePause";
 import { kenoPvpDueRead } from "../../../../lib/deadlineRead";
 import { useDeadlineRead } from "../../../../hooks/useDeadlineRead";
 import {
@@ -505,7 +510,17 @@ export default function KenoPvpMatchPage({ params }) {
   // healthy and tightens if it drops, and it stops while the tab is hidden.
   // Tile pacing comes from the server deadline + the local 100ms clock, never
   // from the poll rate.
-  useMatchSync(fetchStatus, socket, Boolean(matchId));
+  // ── Practice pause (vs AI only) ────────────────────────────────────────
+  const practicePause = usePracticePause({
+    game: "keno-pvp",
+    matchId,
+    enabled: Boolean(match?.isAi) && !isFinished,
+    onResume: fetchStatus,
+  });
+  const paused = practicePause.paused;
+  const pausedRef = practicePause.pausedRef;
+
+  useMatchSync(fetchStatus, socket, Boolean(matchId) && !paused);
 
   // …plus the ONE read the ready banner needs. The tile window is nudged just
   // below, but the ready banner is a separate instant (it only becomes the first
@@ -517,7 +532,7 @@ export default function KenoPvpMatchPage({ params }) {
   // the same offset the tile nudge below already times itself with. Without it
   // the first tile still arrived, just a fixed ~400ms after the countdown ended
   // (the reported "the countdown hits 0 and the game doesn't start").
-  useDeadlineRead(kenoPvpDueRead(match), fetchStatus, {
+  useDeadlineRead(paused ? null : kenoPvpDueRead(match), fetchStatus, {
     serverNow: () => Date.now() + clockOffset,
   });
 
@@ -561,7 +576,7 @@ export default function KenoPvpMatchPage({ params }) {
   // this viewer is the human seat, with a live tile on the board — a
   // human-vs-human duel keeps its single 5s poll.
   useEffect(() => {
-    if (!matchId || !match?.isAi || !match?.viewerIsPlayer1) return undefined;
+    if (!matchId || !match?.isAi || !match?.viewerIsPlayer1 || paused) return undefined;
     if (!match?.viewerCanClaim) return undefined;
 
     let cancelled = false;
@@ -600,6 +615,7 @@ export default function KenoPvpMatchPage({ params }) {
     match?.liveTile,
     match?.liveTileIndex,
     fetchStatus,
+    paused,
   ]);
 
   // Socket live-update: refresh instantly on opponent actions.
@@ -770,7 +786,7 @@ export default function KenoPvpMatchPage({ params }) {
 
   const doClaim = useCallback(
     async (tileNumber) => {
-      if (!matchId) return;
+      if (!matchId || pausedRef.current) return;
       if (tileNumber !== Number(match?.liveTile)) return;
       if (claimingRef.current) return;
       const deadline = match?.liveDeadline
@@ -839,6 +855,26 @@ export default function KenoPvpMatchPage({ params }) {
     router.push("/casino/keno");
   }, [leaving, router]);
 
+  // Resign a live match. The disconnect-forfeit store call is the same
+  // settlement path the realtime server uses, so the opponent wins and the
+  // pot is paid exactly once; then the status poll paints the result screen.
+  const resignMatch = useCallback(async () => {
+    if (!matchId || leaving) return;
+    setLeaving(true);
+    try {
+      await fetch(`/api/keno-pvp/match/${matchId}/resign`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
+      await fetchStatus();
+    } catch {
+      // Poll reconciles on the next tick.
+    } finally {
+      setLeaving(false);
+    }
+  }, [matchId, leaving, fetchStatus]);
+
   const cancelMatch = useCallback(async () => {
     if (!matchId) return;
     try {
@@ -873,12 +909,6 @@ export default function KenoPvpMatchPage({ params }) {
       <div className="min-h-screen bg-[#001933] text-white flex items-center justify-center">
         <div className="text-center space-y-4">
           <p className="text-lg">{error || "Match not found"}</p>
-          <button
-            onClick={goToLobby}
-            className="px-5 py-2 rounded-lg bg-[#00e5ff] text-[#001933] font-bold"
-          >
-            Back to Keno Lobby
-          </button>
         </div>
       </div>
     );
@@ -1205,15 +1235,26 @@ export default function KenoPvpMatchPage({ params }) {
     </div>
   );
 
+  const pauseNode = practicePause.canPause ? (
+    <div className="mt-2 flex justify-center">
+      <PracticePauseChip
+        paused={paused}
+        busy={practicePause.busy}
+        onToggle={() => void practicePause.toggle()}
+        testId="keno-pvp-pause"
+      />
+    </div>
+  ) : null;
+
   const leaveNode =
     !isFinished && !isCancelled && !isWaiting ? (
       <div className="flex justify-center">
         <button
-          onClick={goToLobby}
+          onClick={resignMatch}
           disabled={leaving}
-          className="px-4 py-2 rounded-lg text-xs text-white/50 border border-white/15 hover:text-white hover:border-white/40 transition disabled:opacity-50"
+          className="px-4 py-2 rounded-lg text-xs text-red-300 border border-red-400/30 bg-red-500/10 hover:text-red-200 hover:border-red-400/50 transition disabled:opacity-50"
         >
-          {leaving ? "Leaving…" : "Leave match (forfeit)"}
+          {leaving ? "Resigning…" : "Resign"}
         </button>
       </div>
     ) : null;
@@ -1291,15 +1332,10 @@ export default function KenoPvpMatchPage({ params }) {
                       <p className="text-sm text-white/60 mb-6">
                         Your stake was refunded.
                       </p>
-                      <button
-                        onClick={goToLobby}
-                        className="px-5 py-2 rounded-lg bg-[#00e5ff] text-[#001933] font-bold"
-                      >
-                        Back to Keno Lobby
-                      </button>
                     </div>
                   )}
 
+                  {pauseNode}
                   {leaveNode && <div className="mt-4">{leaveNode}</div>}
 
                   <Footer />
@@ -1322,11 +1358,17 @@ export default function KenoPvpMatchPage({ params }) {
               oppLives={oppLives}
               myTiles={myTiles}
               oppTiles={oppTiles}
-              onLobby={goToLobby}
             />
           )}
         </GameSessionHost>
       </div>
+
+      <PracticePauseOverlay
+        paused={paused}
+        busy={practicePause.busy}
+        onResume={() => void practicePause.toggle()}
+        testId="keno-pvp-pause-overlay"
+      />
     </>
   );
 }
@@ -1471,9 +1513,7 @@ function ResultModal({
   oppLives,
   myTiles,
   oppTiles,
-  onLobby,
 }) {
-  const router = useRouter();
   const result = match.result;
   const iWon = result === me;
   const drew = result === "draw";
@@ -1549,8 +1589,6 @@ function ResultModal({
           })}
         </div>
       }
-      playAgain={{ label: "RUN IT BACK", onClick: onLobby }}
-      onReturnToLobby={() => router.push("/casino")}
     />
   );
 }

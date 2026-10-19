@@ -40,7 +40,13 @@ import Footer from "../../../../components/Footer";
 import { useSocket } from "../../../../context/SocketProvider";
 import {
   useMatchSync,
-} from "../../../../hooks/useMatchSync";import {
+} from "../../../../hooks/useMatchSync";
+import { usePracticePause } from "../../../../hooks/usePracticePause";
+import {
+  PracticePauseChip,
+  PracticePauseOverlay,
+} from "../../../../components/game/PracticePause";
+import {
   laneRushDueRead
 } from "../../../../lib/deadlineRead";
 // The platform's ONE seat-based verdict (src/lib/results/viewerOutcome.ts).
@@ -68,7 +74,6 @@ import {
 } from "../../../../lib/gameAudio";
 import {
   IconClock,
-  IconArrowLeft,
   IconFlag,
   IconTrophy,
   IconX,
@@ -880,7 +885,17 @@ export default function LaneRushDuelMatchPage({ params }) {
   // reconcile/safety net. It relaxes while the socket is healthy, tightens if
   // it drops, and stops while the tab is hidden. Pacing comes from server state
   // + the local 250ms clock, never from the poll rate.
-  useMatchSync(fetchStatus, socket, Boolean(matchId));
+  // ── Practice pause (vs AI only) ────────────────────────────────────────
+  const practicePause = usePracticePause({
+    game: "lane-rush-duel",
+    matchId,
+    enabled: match?.player2Id === "AI_BOT",
+    onResume: fetchStatus,
+  });
+  const paused = practicePause.paused;
+  const pausedRef = practicePause.pausedRef;
+
+  useMatchSync(fetchStatus, socket, Boolean(matchId) && !paused);
 
   // …plus the ONE read the ready window needs. `roundDeadline` covers two
   // instants in this game — the ready window, then the 15s tile window — and the
@@ -891,7 +906,7 @@ export default function LaneRushDuelMatchPage({ params }) {
   // `serverNow` hands the read the page's own estimate of the server clock, so
   // the ready countdown reaching 0 is what FIRES it rather than a slack added on
   // top — the same offset the tile-window nudge below already times itself with.
-  useDeadlineRead(laneRushDueRead(match), fetchStatus, {
+  useDeadlineRead(paused ? null : laneRushDueRead(match), fetchStatus, {
     serverNow: deadlineServerNow,
   });
 
@@ -1037,7 +1052,7 @@ export default function LaneRushDuelMatchPage({ params }) {
   const oppRow = Number(match?.oppRow) || 0;
   const myFlagsLeft = Number(match?.myFlagsLeft) || 0;
   const flagsPerPlayer = Number(match?.flagsPerPlayer) || 2;
-  const isMyTurn = Boolean(match?.isViewerTurn);
+  const isMyTurn = Boolean(match?.isViewerTurn) && !paused;
 
   const brokenSet = useMemo(() => flagKeySet(match?.broken), [match?.broken]);
   const myFlagSet = useMemo(() => flagKeySet(match?.myFlags), [match?.myFlags]);
@@ -1498,8 +1513,6 @@ export default function LaneRushDuelMatchPage({ params }) {
             value: String(brokenSet.size),
           },
         ],
-        playAgain: { onClick: () => router.push("/casino/lane-runner") },
-        onReturnToLobby: () => router.push("/casino"),
       }
     : null;
   const matchEndPopup = resultScreenProps ? (
@@ -1943,6 +1956,16 @@ export default function LaneRushDuelMatchPage({ params }) {
           {resigning ? "Resigning…" : "Resign match"}
         </button>
       )}
+      {practicePause.canPause && !finished && (
+        <div className="flex justify-center">
+          <PracticePauseChip
+            paused={paused}
+            busy={practicePause.busy}
+            onToggle={() => void practicePause.toggle()}
+            testId="lane-runner-pause"
+          />
+        </div>
+      )}
       {isBotMatch && !finished && (
         <p className="text-center text-[10px] text-white/40">
           Practice match — no stake.
@@ -2058,13 +2081,6 @@ export default function LaneRushDuelMatchPage({ params }) {
         <div className="mx-auto mt-4 max-w-2xl px-3 sm:px-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <button
-                onClick={() => router.push("/casino/lane-runner")}
-                className="rounded-lg border border-white/15 bg-black/30 p-2 text-white/70 transition hover:border-cyan-300/40 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
-                aria-label="Back to lobby"
-              >
-                <IconArrowLeft size={18} />
-              </button>
               <div>
                 <h1 className="text-xl font-black text-cyan-100 sm:text-2xl">
                   Lane Rush Duel
@@ -2113,12 +2129,6 @@ export default function LaneRushDuelMatchPage({ params }) {
               <p className="text-lg font-black text-red-200">
                 This lobby was cancelled
               </p>
-              <button
-                onClick={() => router.push("/casino/lane-runner")}
-                className="mt-4 rounded-xl bg-cyan-400 px-5 py-2 text-sm font-bold text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200"
-              >
-                Back to Lobby
-              </button>
             </div>
           )}
 
@@ -2192,18 +2202,19 @@ export default function LaneRushDuelMatchPage({ params }) {
                   Retry
                 </button>
               )}
-              <button
-                onClick={() => router.push("/casino/lane-runner")}
-                className="mt-4 rounded-xl bg-cyan-400 px-5 py-2 text-sm font-bold text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200"
-              >
-                Back to Lobby
-              </button>
             </div>
           )}
 
           <Footer />
         </div>
       </div>
+
+      <PracticePauseOverlay
+        paused={paused}
+        busy={practicePause.busy}
+        onResume={() => void practicePause.toggle()}
+        testId="lane-runner-pause-overlay"
+      />
     </>
   );
 }

@@ -428,8 +428,6 @@ export default function RPSPvpGamePage() {
             </div>
           ) : null
         }
-        playAgain={{ label: "RUN IT BACK", onClick: () => router.push("/casino/rps") }}
-        onReturnToLobby={() => router.push("/casino")}
       />
     );
   }
@@ -442,12 +440,6 @@ export default function RPSPvpGamePage() {
           <div className="max-w-md rounded-2xl border border-red-500/30 bg-red-950/20 p-6 text-center">
             <h2 className="mb-2 text-lg font-bold">Match unavailable</h2>
             <p className="mb-4 text-sm text-white/70">{failed}</p>
-            <button
-              onClick={() => router.push("/casino/rps")}
-              className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-black hover:bg-amber-400"
-            >
-              Back to Lobby
-            </button>
           </div>
         </div>
         <Footer />

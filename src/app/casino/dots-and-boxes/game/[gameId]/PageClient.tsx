@@ -17,6 +17,11 @@ import DotsAndBoxesBoard from "../../../../../components/DotsAndBoxesBoard";
 import ReportModal from "../../../../../components/ReportModal";
 import MatchWaiting from "../../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../../components/result/PvpResultScreen";
+import {
+  PracticePauseChip,
+  PracticePauseOverlay,
+} from "../../../../../components/game/PracticePause";
+import { usePracticePause } from "../../../../../hooks/usePracticePause";
 import DotsAndBoxesLegend, {
   SeatMark,
 } from "../../../../../components/DotsAndBoxesLegend";
@@ -136,11 +141,25 @@ const prefersReducedMotion = useReducedMotion();
     [gameId, t],
   );
 
+  // Free-play pause: a vs-AI match stops polling and stops waking the bot.
+  const practicePause = usePracticePause({
+    game: "dots-and-boxes",
+    matchId: gameId,
+    enabled: Boolean(game?.isAiGame) && game?.status === "in_progress",
+    onResume: fetchState,
+  });
+  const paused = practicePause.paused;
+  const pausedRef = useRef(false);
+  useEffect(() => {
+    pausedRef.current = paused;
+  }, [paused]);
+
   // ─── Polling with adaptive interval + abort ───────────────────────
   // - 1.5s while in_progress, 5s once finished/cancelled (so we still
   //   pick up any late payout writes but don't burn CPU).
   // - Cancel stale fetches when a new one fires.
   useEffect(() => {
+    if (paused) return undefined;
     let cancelled = false;
     let intervalId: ReturnType<typeof setTimeout> | null = null;
 
@@ -167,7 +186,7 @@ const prefersReducedMotion = useReducedMotion();
     };
     // game?.status is included so the interval adapts when the match ends.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchState, game?.status]);
+  }, [fetchState, game?.status, paused]);
 
   // ─── Visual countdown — server is source of truth, this just renders
   useEffect(() => {
@@ -182,6 +201,7 @@ const prefersReducedMotion = useReducedMotion();
     if (!socket) return;
     const roomId = `dots-and-boxes:${gameId}`;
     const refresh = () => {
+      if (pausedRef.current) return;
       abortRef.current?.abort();
       const ac = new AbortController();
       abortRef.current = ac;
@@ -204,7 +224,7 @@ const prefersReducedMotion = useReducedMotion();
   // ─── AI opponent progression ───────────────────────────────────────
   const aiFiredForEdges = useRef<number | null>(null);
   useEffect(() => {
-    if (!game?.isAiGame || game.status !== "in_progress" || gameState?.currentTurn !== "guest") return;
+    if (paused || !game?.isAiGame || game.status !== "in_progress" || gameState?.currentTurn !== "guest") return;
     const edgeCount = Array.isArray(gameState.edges) ? gameState.edges.length : 0;
     if (aiFiredForEdges.current === edgeCount) return;
     const timer = setTimeout(async () => {
@@ -219,7 +239,7 @@ const prefersReducedMotion = useReducedMotion();
       await fetchState();
     }, 900);
     return () => clearTimeout(timer);
-  }, [game?.isAiGame, game?.status, gameState?.currentTurn, gameState?.edges?.length, gameId, fetchState]);
+  }, [paused, game?.isAiGame, game?.status, gameState?.currentTurn, gameState?.edges?.length, gameId, fetchState]);
   const edgesKey = useMemo(() => {
     if (!gameState || !Array.isArray(gameState.edges)) return "";
     // Hash content order doesn't matter; canonicalize so equal sets
@@ -593,8 +613,6 @@ const prefersReducedMotion = useReducedMotion();
           { label: "Game ID", value: String(gameId) },
           { label: "Winner", value: isDraw ? "Draw" : playerWon ? "You" : opponentName },
         ]}
-        playAgain={{ label: "RUN IT BACK", onClick: () => router.push("/casino/dots-and-boxes") }}
-        onReturnToLobby={() => router.push("/casino")}
       />
     );
   }
@@ -794,12 +812,6 @@ const prefersReducedMotion = useReducedMotion();
               {t("games.dots_and_boxes.match_title", { gameId })}
             </h1>
           </div>
-          <button
-            onClick={() => router.push("/casino/dots-and-boxes")}
-            className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 hover-lift"
-          >
-            {t("games.dots_and_boxes.back_to_lobby")}
-          </button>
         </div>
 
         <div className="grid lg:grid-cols-[1fr_320px] gap-6">
@@ -907,6 +919,14 @@ const prefersReducedMotion = useReducedMotion();
               <span className="text-sm font-semibold text-white">
                 {statusText}
               </span>
+              {isAiGame && (
+                <PracticePauseChip
+                  paused={paused}
+                  busy={practicePause.busy}
+                  onToggle={() => void practicePause.toggle()}
+                  className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-amber-400/40 bg-black/40 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-amber-200 transition hover:bg-amber-400/10 disabled:cursor-wait disabled:opacity-50"
+                />
+              )}
             </div>
 
             <div className="mb-3 flex items-center gap-2">
@@ -1073,17 +1093,6 @@ const prefersReducedMotion = useReducedMotion();
               </button>
             ) : null}
 
-            <button
-              onClick={() => router.push("/casino/dots-and-boxes")}
-              className={`w-full py-2 rounded-lg font-bold hover-lift ${
-                isFinished
-                  ? "bg-amber-600 hover:bg-amber-500"
-                  : "bg-white/10 hover:bg-white/20"
-              }`}
-            >
-              {isFinished ? t("games.dots_and_boxes.return_to_lobby") : t("games.dots_and_boxes.back_to_lobby")}
-            </button>
-
             {/* Emotes */}
             <div className="mt-3 flex justify-center">
               <EmotePicker
@@ -1224,20 +1233,6 @@ const prefersReducedMotion = useReducedMotion();
               >
                 {t("games.dots_and_boxes.result_cancelled_body")}
               </motion.p>
-              <motion.div
-                initial={{ y: 12, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.7, duration: 0.3 }}
-                className="mt-4"
-              >
-                <button
-                  onClick={() => router.push("/casino/dots-and-boxes")}
-                  autoFocus
-                  className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-[#08133a] font-extrabold transition shadow-[0_0_18px_rgba(245,158,11,0.45)]"
-                >
-                  {t("games.dots_and_boxes.return_to_lobby")}
-                </button>
-              </motion.div>
             </motion.div>
           </motion.div>
         )}
@@ -1272,6 +1267,13 @@ const prefersReducedMotion = useReducedMotion();
           recording; compact styling keeps it sized for the phone frame. */}
       {renderResult()}
       </GameSessionHost>
+      {isAiGame && (
+        <PracticePauseOverlay
+          paused={paused}
+          busy={practicePause.busy}
+          onResume={() => void practicePause.toggle()}
+        />
+      )}
     </>
   );
 }

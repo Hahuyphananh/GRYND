@@ -42,6 +42,11 @@ import GameSessionHost from "../../../../components/GameSessionHost";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import SeatAvatar from "../../../../components/game/SeatAvatar";
+import {
+  PracticePauseChip,
+  PracticePauseOverlay,
+} from "../../../../components/game/PracticePause";
+import { usePracticePause } from "../../../../hooks/usePracticePause";
 import { useSocket } from "../../../../context/SocketProvider";
 import {
   useMatchSync,
@@ -304,6 +309,7 @@ export default function SpeedTypingMatchPage() {
   const [leaving, setLeaving] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [requeueing, setRequeueing] = useState(false);
+  const [resigning, setResigning] = useState(false);
 
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const caretRef = useRef<HTMLSpanElement | null>(null);
@@ -342,6 +348,21 @@ export default function SpeedTypingMatchPage() {
     },
     [matchId, snapshotUrl],
   );
+
+  // Free-play pause. The race clock is a server instant (`goAt`); pausing stops
+  // this page's clock/reads and resume shifts that instant forward server-side.
+  const practicePause = usePracticePause({
+    game: "speed-typing",
+    matchId,
+    enabled: Boolean(match?.isAi) && !TERMINAL.has(match?.status ?? ""),
+    onResume: () => {
+      setNow(Date.now());
+      void load({ silent: true });
+    },
+  });
+  const paused = practicePause.paused;
+  const pausedRef = useRef(false);
+  pausedRef.current = paused;
 
   useEffect(() => {
     loadedRef.current = false;
@@ -455,10 +476,11 @@ export default function SpeedTypingMatchPage() {
   }, []);
 
   useEffect(() => {
+    if (paused) return undefined;
     if (phase !== "countdown" && phase !== "racing" && phase !== "complete") return undefined;
     const id = window.setInterval(() => setNow(Date.now()), 200);
     return () => window.clearInterval(id);
-  }, [phase]);
+  }, [phase, paused]);
 
   // ── A new race starts from a clean buffer ────────────────────────────────
   useEffect(() => {
@@ -472,7 +494,7 @@ export default function SpeedTypingMatchPage() {
   // ── Sending: the ONLY thing this page ever tells the server ──────────────
   const pushBuffer = useCallback(
     async (buffer: string) => {
-      if (!matchId) return;
+      if (pausedRef.current || !matchId) return;
       const complete = passage.length > 0 && buffer === passage;
       if (complete && finishSentRef.current) return;
       if (complete) finishSentRef.current = true;
@@ -566,7 +588,7 @@ export default function SpeedTypingMatchPage() {
   // Event-driven sync: MATCH_UPDATED is the fast path; this reconciles ONCE on
   // socket reconnect and on tab focus — never on a timer. A finished race stops
   // syncing entirely.
-  useMatchSync(() => load({ silent: true }), socket, Boolean(match) && !finished);
+  useMatchSync(() => load({ silent: true }), socket, Boolean(match) && !finished && !paused);
 
   // …plus the race limit itself, which is a stored instant like any other: the
   // verdict is graded by `resolveRaceIfDue` on the READ path, and both seats
@@ -576,7 +598,9 @@ export default function SpeedTypingMatchPage() {
   // stops as soon as the bot finishes, which is exactly when a race whose human
   // walked away would never be graded.
   useDeadlineRead(
-    speedTypingDueRead({ deadlineMs: race?.deadlineMs, goAtMs, finished, resolved }),
+    paused
+      ? null
+      : speedTypingDueRead({ deadlineMs: race?.deadlineMs, goAtMs, finished, resolved }),
     () => load({ silent: true }),
     // The limit is a SERVER instant, so the read is timed on the server's clock
     // where this page has one — the race is graded at the instant it is due
@@ -600,7 +624,7 @@ export default function SpeedTypingMatchPage() {
     goAtMs != null &&
     now >= goAtMs &&
     race?.opponent?.finished !== true;
-  usePracticeBotHeartbeat(botStillRacing, () => load({ silent: true }));
+  usePracticeBotHeartbeat(botStillRacing && !paused, () => load({ silent: true }));
 
   // ── Focus: the keyboard is the whole game ────────────────────────────────
   useEffect(() => {
@@ -623,6 +647,7 @@ export default function SpeedTypingMatchPage() {
   }, [typedChars.length, phase]);
 
   const onChange = useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    if (pausedRef.current) return;
     // Newlines cannot appear in a passage; strip them rather than let the buffer
     // drift out of alignment with the text on screen.
     setTyped(event.target.value.replace(/[\r\n]+/g, " "));
@@ -658,6 +683,22 @@ export default function SpeedTypingMatchPage() {
     setLeaving(true);
     router.push("/casino/speed-typing");
   }, [router]);
+
+  const resignRace = useCallback(async () => {
+    if (resigning || !matchId || opponentIsAi) return;
+    setResigning(true);
+    try {
+      await fetch(`/api/speed-typing/match/${matchId}/resign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      await load({ silent: true });
+    } catch {
+      // The next snapshot reconciles.
+    } finally {
+      setResigning(false);
+    }
+  }, [resigning, matchId, opponentIsAi, load]);
 
   const requeue = useCallback(async () => {
     if (requeueing) return;
@@ -808,6 +849,25 @@ export default function SpeedTypingMatchPage() {
                     >
                       {formatClock(remainingMs)}
                     </span>
+                    {opponentIsAi && (
+                      <PracticePauseChip
+                        paused={paused}
+                        busy={practicePause.busy}
+                        onToggle={() => void practicePause.toggle()}
+                        className="rounded-lg border border-amber-400/40 bg-black/40 px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-200 transition hover:bg-amber-400/10 disabled:cursor-wait disabled:opacity-50"
+                      />
+                    )}
+                    {phase === "racing" && !opponentIsAi && (
+                      <button
+                        type="button"
+                        data-testid="speed-typing-resign"
+                        onClick={resignRace}
+                        disabled={resigning}
+                        className="rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-[11px] font-bold text-red-300 transition hover:bg-red-500/20 disabled:opacity-50"
+                      >
+                        {resigning ? "Resigning…" : "Resign"}
+                      </button>
+                    )}
                   </div>
 
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -911,13 +971,6 @@ export default function SpeedTypingMatchPage() {
                   <p className="mt-2 text-xs text-white/60">
                     Nothing was rated. Find another opponent whenever you are ready.
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => router.push("/casino/speed-typing")}
-                    className="mt-4 inline-flex items-center justify-center rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-bold text-amber-200 transition hover:bg-amber-500/20"
-                  >
-                    Back to the Speed Typing lobby
-                  </button>
                 </div>
               )}
 
@@ -982,8 +1035,14 @@ export default function SpeedTypingMatchPage() {
             : []),
         ]}
         playAgain={{ label: "RACE AGAIN", onClick: requeue }}
-        onReturnToLobby={() => router.push("/casino/speed-typing")}
       />
+      {opponentIsAi && (
+        <PracticePauseOverlay
+          paused={paused}
+          busy={practicePause.busy}
+          onResume={() => void practicePause.toggle()}
+        />
+      )}
     </GameSessionHost>
   );
 }

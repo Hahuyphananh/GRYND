@@ -71,6 +71,10 @@ import {
   useMatchSync,
 } from "../../../../hooks/useMatchSync";
 import { usePracticeBotHeartbeat } from "../../../../hooks/usePracticeBotHeartbeat";
+import { usePracticePause } from "../../../../hooks/usePracticePause";
+import PracticePause, {
+  PracticePauseOverlay,
+} from "../../../../components/game/PracticePause";
 import {
   SOLITAIRE_DUEL_EVENTS,
   solitaireDuelMatchRoom,
@@ -430,13 +434,28 @@ export default function SolitaireDuelMatchPage() {
     return "racing" as const;
   }, [match, loadError, terminal, status, countdownMs]);
 
+  // ── Practice pause (vs AI only) ────────────────────────────────────────
+  const {
+    canPause,
+    paused,
+    pausedRef,
+    busy: pauseBusy,
+    togglePause,
+  } = usePracticePause({
+    game: "solitaire-duel",
+    matchId,
+    enabled: Boolean(match?.isAi) && !terminal,
+    onResume: () => loadRef.current(),
+  });
+
   // ── Clock (only while a clock is on screen) ────────────────────────────
   useEffect(() => {
+    if (paused) return undefined;
     if (phase !== "countdown" && phase !== "racing") return undefined;
     setNow(Date.now());
     const id = window.setInterval(() => setNow(Date.now()), 200);
     return () => window.clearInterval(id);
-  }, [phase]);
+  }, [phase, paused]);
 
   // A short "GO" flash on the countdown → racing edge, so the moment moves
   // unlock is explicit without blocking play (it is pointer-events-none).
@@ -458,7 +477,7 @@ export default function SolitaireDuelMatchPage() {
   // Event-driven sync: MATCH_UPDATED is the fast path; this reconciles ONCE on
   // socket reconnect and on tab focus — never on a timer. A finished match
   // (`terminal`) stops syncing entirely.
-  useMatchSync(load, socket, Boolean(matchId) && Boolean(match) && !terminal);
+  useMatchSync(load, socket, Boolean(matchId) && Boolean(match) && !terminal && !paused);
 
   // ── Practice bot heartbeat ─────────────────────────────────────────────
   // The one place this page must still read on a timer. `useMatchSync` above is
@@ -469,14 +488,14 @@ export default function SolitaireDuelMatchPage() {
   // the full reasoning and the cadence; it is gated on a bot opponent with a
   // LIVE race, so a human duel keeps the purely event-driven path.
   const opponentIsBot = Boolean(match?.isAi);
-  usePracticeBotHeartbeat(opponentIsBot && racing, () => loadRef.current());
+  usePracticeBotHeartbeat(opponentIsBot && racing && !paused, () => loadRef.current());
 
   // When the local inactivity clock says the forfeit is due, the server still
   // owns the verdict — ask it, and let it resolve. Nothing is decided here.
   useEffect(() => {
-    if (!expired || terminal) return;
+    if (!expired || terminal || paused) return;
     void load();
-  }, [expired, terminal, load]);
+  }, [expired, terminal, load, paused]);
 
   // ── Realtime sync ──────────────────────────────────────────────────────
   const mySeatKey = seat ?? null;
@@ -534,7 +553,7 @@ export default function SolitaireDuelMatchPage() {
   const sendMove = useCallback(
     async (move: SolitaireMove) => {
       const current = matchRef.current;
-      if (!matchId || !current) return;
+      if (!matchId || !current || pausedRef.current) return;
       const expectedPly = Number(current.view?.ply ?? 0);
 
       inFlightRef.current = true;
@@ -584,11 +603,11 @@ export default function SolitaireDuelMatchPage() {
     sendMoveRef.current = (move: SolitaireMove) => void sendMove(move);
   }, [sendMove]);
 
-  const canPlayNow = phase === "racing" && !expired && !pending;
+  const canPlayNow = phase === "racing" && !expired && !pending && !paused;
 
   const onMove = useCallback(
     (move: SolitaireMove) => {
-      if (phase !== "racing" || expired) return;
+      if (phase !== "racing" || expired || pausedRef.current) return;
       if (inFlightRef.current) {
         // A stock cycle is the one action worth queuing: it is the only move a
         // player makes in rapid succession, and each one is applied in order.
@@ -1011,6 +1030,14 @@ export default function SolitaireDuelMatchPage() {
                           {restarting ? "Dealing…" : "New deal"}
                         </button>
                       )}
+                      {canPause && (
+                        <PracticePause
+                          paused={paused}
+                          busy={pauseBusy}
+                          onToggle={togglePause}
+                          testId="solitaire-pause"
+                        />
+                      )}
                       {!terminal && status === "playing" && !expired && (
                         <button
                           type="button"
@@ -1227,7 +1254,13 @@ export default function SolitaireDuelMatchPage() {
         ]}
         playAgain={{ label: isPractice ? "NEW DEAL" : "REMATCH", onClick: requeue }}
         secondaryAction={{ label: "Back to games", href: "/casino" }}
-        onReturnToLobby={() => router.push("/casino/solitaire-duel")}
+      />
+
+      <PracticePauseOverlay
+        paused={paused}
+        busy={pauseBusy}
+        onResume={togglePause}
+        testId="solitaire-pause-overlay"
       />
     </GameSessionHost>
   );

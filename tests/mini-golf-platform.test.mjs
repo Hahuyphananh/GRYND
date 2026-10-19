@@ -145,12 +145,13 @@ test("result: Mini Golf hands over to the shared result screen with its key", ()
   assert.match(src, /gameKey="mini-golf"/);
 });
 
-test("result: the shared screen routes back to Games and the rematch lobby", () => {
+test("result: a match page offers no way back to the lobby", () => {
   const src = strip(read(MATCH_PAGE));
-  // Play again → the Mini Golf lobby (same game, new match)…
-  assert.match(src, /playAgain=\{\{ label: "Play again", onClick: \(\) => router\.push\("\/casino\/mini-golf"\) \}\}/);
-  // …and return to the Games hub.
-  assert.match(src, /onReturnToLobby=\{\(\) => router\.push\("\/casino"\)\}/);
+  assert.doesNotMatch(src, /playAgain=/);
+  assert.doesNotMatch(src, /onReturnToLobby/);
+  assert.doesNotMatch(src, /Return to Lobby/);
+  // The way out of a live match is still Resign.
+  assert.match(src, /data-testid="resign-button"/);
 });
 
 test("result: Mini Golf appears in the per-game leaderboard picker", async () => {

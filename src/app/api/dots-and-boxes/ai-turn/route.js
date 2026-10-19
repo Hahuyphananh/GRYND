@@ -7,6 +7,7 @@ import { dotsAndBoxesGames } from "../../../../db/schema";
 import { BOXES, determineResult, drawEdge, ensureState, getLegalEdges, isGameOver } from "../../../../lib/dotsAndBoxesEngine";
 import { DOTS_AND_BOXES_AI_ID, isDotsAndBoxesAiGame, nextMoveDeadline, settleDotsAndBoxesGame } from "../../../../lib/dotsAndBoxesServer";
 import { coerceAiDifficulty } from "../../../../lib/aiDifficulty";
+import { isPracticePaused } from "../../../../lib/practicePause";
 
 /** The four edge keys that bound box (r, c). */
 function boxSideKeys(r, c) {
@@ -102,6 +103,9 @@ export async function POST(req) {
     const body = await req.json().catch(() => ({}));
     const gameId = Number(body?.gameId);
     if (!Number.isInteger(gameId) || gameId <= 0) return NextResponse.json({ success: false, error: "Invalid gameId" }, { status: 400 });
+    if (await isPracticePaused("dots-and-boxes", String(gameId))) {
+      return NextResponse.json({ success: true, paused: true, skipped: true }, { status: 200 });
+    }
 
     const result = await db.transaction(async (tx) => {
       const [game] = await tx.select().from(dotsAndBoxesGames).where(eq(dotsAndBoxesGames.id, gameId)).for("update");

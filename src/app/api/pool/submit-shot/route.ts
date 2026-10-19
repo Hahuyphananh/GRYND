@@ -12,6 +12,7 @@ import {
   readPoolServerState,
 } from "../../../../lib/pool/rack";
 import { applyPoolShot, normalizeShotInput } from "../../../../lib/pool/shoot";
+import { isPracticePaused } from "../../../../lib/practicePause";
 
 /**
  * POST /api/pool/submit-shot — THE SHOT, AS THE SERVER PLAYS IT.
@@ -48,6 +49,12 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { ok: false, error: "bad_request" },
         { status: 400 },
+      );
+    }
+    if (await isPracticePaused("pool", matchId)) {
+      return NextResponse.json(
+        { ok: false, error: "match_paused" },
+        { status: 409 },
       );
     }
 

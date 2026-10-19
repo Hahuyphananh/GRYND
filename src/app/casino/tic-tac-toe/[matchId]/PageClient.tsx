@@ -56,6 +56,11 @@ import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import ReportModal from "../../../../components/ReportModal";
 import GameSessionHost from "../../../../components/GameSessionHost";
 import {
+  PracticePauseChip,
+  PracticePauseOverlay,
+} from "../../../../components/game/PracticePause";
+import { usePracticePause } from "../../../../hooks/usePracticePause";
+import {
   TIC_TAC_TOE_MATCH_UPDATED,
   TIC_TAC_TOE_READY,
   ticTacToeMatchRoom,
@@ -200,7 +205,24 @@ export default function TicTacToeMatchPage() {
     void fetchSnapshot(controller.signal);
   }, [fetchSnapshot]);
 
+  // Free-play pause: a vs-AI match can be frozen without keeping the bot or
+  // this page's safety-net poll running. PvP is untouched.
+  const practicePause = usePracticePause({
+    game: "tic-tac-toe",
+    matchId,
+    enabled: Boolean(match?.isAi) && match?.status === "playing",
+    onResume: refresh,
+  });
+  const paused = practicePause.paused;
+  const pausedRef = useRef(false);
   useEffect(() => {
+    pausedRef.current = paused;
+  }, [paused]);
+
+  useEffect(() => {
+    // A paused free-play match issues no reads: the server has no bot work to
+    // advance and the human cannot act under the overlay.
+    if (paused) return undefined;
     if (!matchId) return undefined;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -237,7 +259,7 @@ export default function TicTacToeMatchPage() {
       document.removeEventListener("visibilitychange", onVisibilityChange);
       abortRef.current?.abort();
     };
-  }, [matchId, refresh]);
+  }, [matchId, refresh, paused]);
 
   // ── Realtime sync ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -323,6 +345,7 @@ export default function TicTacToeMatchPage() {
     Boolean(match) &&
     !finished &&
     !cancelled &&
+    !paused &&
     !submitting &&
     Boolean(match?.viewerCanMove);
 
@@ -372,7 +395,7 @@ export default function TicTacToeMatchPage() {
   const submitMove = useCallback(
     async (boardIndex: number, cellIndex: number) => {
       const current = matchRef.current;
-      if (!current || submitting) return;
+      if (!current || submitting || pausedRef.current) return;
       // Re-checked against the snapshot the viewer is looking at: the target
       // board must be one the SERVER offers (the required destination, or any
       // open board once that destination has resolved) and the cell empty.
@@ -568,18 +591,19 @@ export default function TicTacToeMatchPage() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                {match.isAi && (
+                  <PracticePauseChip
+                    paused={paused}
+                    busy={practicePause.busy}
+                    onToggle={() => void practicePause.toggle()}
+                  />
+                )}
                 <span
                   data-testid="match-status"
                   className="rounded-full border border-amber-400/40 bg-amber-500/10 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-amber-200"
                 >
                   {statusLabel(match.status)}
                 </span>
-                <button
-                  onClick={() => router.push("/casino/tic-tac-toe")}
-                  className="rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold hover:bg-white/20"
-                >
-                  Lobby
-                </button>
               </div>
             </div>
 
@@ -903,13 +927,6 @@ export default function TicTacToeMatchPage() {
               <p className="mt-2 text-xs text-white/60">
                 Nothing was rated. Find another opponent whenever you are ready.
               </p>
-              <button
-                type="button"
-                onClick={() => router.push("/casino/tic-tac-toe")}
-                className="mt-4 inline-flex items-center justify-center rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-bold text-amber-200 transition hover:bg-amber-500/20"
-              >
-                Back to the Ultimate Tic-Tac-Toe lobby
-              </button>
             </div>
           )}
 
@@ -1015,11 +1032,6 @@ export default function TicTacToeMatchPage() {
                 )}, ${moveCellLabel(mv.cellIndex)}`,
               })),
             ]}
-            playAgain={{
-              label: "Play again",
-              onClick: () => router.push("/casino/tic-tac-toe"),
-            }}
-            onReturnToLobby={() => router.push("/casino")}
           />
 
           {/* ── Report ─────────────────────────────────────────────── */}
@@ -1048,6 +1060,13 @@ export default function TicTacToeMatchPage() {
           />
         </div>
       </GameSessionHost>
+      {match.isAi && (
+        <PracticePauseOverlay
+          paused={paused}
+          busy={practicePause.busy}
+          onResume={() => void practicePause.toggle()}
+        />
+      )}
     </>
   );
 }
