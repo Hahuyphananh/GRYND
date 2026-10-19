@@ -9,18 +9,28 @@
 // credit, so the request shapes, the refusals and the balance notification must
 // not be re-implemented per surface.
 //
-// The SERVER owns the whole reward: the curated 7-day curve, whether today was
-// claimed, and whether the player has won a rated online match today (the gate
+// The SERVER owns the whole reward: the curated 14-day curve, whether today was
+// claimed, and whether the player has won a match today, online or vs the AI (the gate
 // that unlocks the claim). This hook never computes an amount and never credits
 // anything; it reads the status `/api/rewards/daily` reports and asks the
 // server to claim.
 //
 // A read only fires once the Clerk session is known — a signed-out visitor has
 // no reward, and firing an authenticated read first would just be a wasted 401.
+//
+// The status is also re-read when a win is announced (see
+// src/lib/practiceWinClient.ts), when a bfcache restore brings the page back
+// without remounting React, and when the tab regains visibility/focus. A win
+// that happened on another page or in another tab must unlock the claim here
+// without a reload.
 
 import { useCallback, useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { notifyCoinBalanceChanged } from "./useCoinBalance";
+import {
+  DAILY_REWARD_WIN_EVENT,
+  DAILY_REWARD_WIN_STORAGE_KEY,
+} from "../lib/practiceWinClient";
 
 export type DailyRewardStatus = {
   claimable: boolean;
@@ -102,6 +112,42 @@ export function useDailyReward(): UseDailyReward {
       return;
     }
     void load();
+  }, [isLoaded, isSignedIn, load]);
+
+  // A win is recorded away from this surface — on the game page, or in another
+  // tab — so this hook listens for the announcement instead of guessing. The
+  // `pageshow` branch is the one a reload-based solution misses: a browser
+  // back/forward restore reuses the existing React tree, so without a re-read
+  // the widget would keep the status it fetched before the win.
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+
+    const refresh = () => {
+      void load();
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === DAILY_REWARD_WIN_STORAGE_KEY) refresh();
+    };
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) refresh();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+
+    window.addEventListener(DAILY_REWARD_WIN_EVENT, refresh);
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("pageshow", onPageShow);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      window.removeEventListener(DAILY_REWARD_WIN_EVENT, refresh);
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("pageshow", onPageShow);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [isLoaded, isSignedIn, load]);
 
   const claim = useCallback(async () => {

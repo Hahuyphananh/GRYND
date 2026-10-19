@@ -349,10 +349,11 @@ test("store: the game key is a literal at every writer call site", () => {
   assert.equal(callSites, literals.length);
 });
 
-test("store: an isAi match and an unjoined lobby are excluded from settlement", () => {
+test("store: an isAi match is excluded from rated settlement but still stamps the daily reward", () => {
   const src = strip(read(STORE));
   const settle = src.slice(src.indexOf("async function settleMatch("));
-  assert.match(settle, /if \(match\.isAi\) return;/);
+  assert.match(settle, /if \(match\.isAi\) \{/);
+  assert.match(settle, /markDailyRewardWin\(tx, winnerId\)/);
   assert.match(settle, /if \(!match\.player2Id\) return;/);
   // A draw is journaled with result "draw" and moves no win counter.
   assert.match(settle, /result: "draw"/);

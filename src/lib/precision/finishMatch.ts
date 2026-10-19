@@ -43,9 +43,15 @@ import { users } from "../../db/schema";
 import { PVP_WINNER_SHARE } from "../games/economy";
 import { settlePayout } from "../tokens/wager";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
+import { markDailyRewardWin } from "../dailyRewardWin";
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
-import { claimPayout, readMatch, releasePayoutClaim } from "./serverStore";
+import {
+  claimPayout,
+  PRECISION_AI_USER_ID,
+  readMatch,
+  releasePayoutClaim,
+} from "./serverStore";
 import { normalizeStake } from "../games/stakes";
 import type { PlayerSeat } from "./types";
 
@@ -209,7 +215,11 @@ export async function processMatchFinishedPayout(
   // wagered stats, leaderboards, or payout records.
   if (match.isAiGame) {
     // Nothing to claim: no balance, no stat, no leaderboard row moves, so
-    // repeating this call is harmless.
+    // repeating this call is harmless. The win still unlocks the daily
+    // reward, and the bot seat has no `users` row, so only a human win lands.
+    if (winnerPlayer.userId && winnerPlayer.userId !== PRECISION_AI_USER_ID) {
+      await markDailyRewardWin(db, winnerPlayer.userId);
+    }
     return {
       success: true,
       alreadyProcessed: false,

@@ -162,7 +162,8 @@
     "test:pool-stakes": "node --import tsx --test tests/pool-stakes.test.mjs tests/house-edge.test.mjs",
     "verify:joiner-first-fiar": "node qa/joiner-first-fiar-check.mjs",
     "verify:joiner-first-hex": "node qa/joiner-first-hex-check.mjs",
-    "verify:joiner-first-dnb": "node qa/joiner-first-dnb-check.mjs"
+    "verify:joiner-first-dnb": "node qa/joiner-first-dnb-check.mjs",
+    "verify:ai-win-daily-reward": "node qa/ai-win-daily-reward-check.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.2",

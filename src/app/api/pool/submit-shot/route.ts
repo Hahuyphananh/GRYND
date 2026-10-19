@@ -4,6 +4,7 @@ import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { db } from "../../../../db";
 import { poolMatches, poolShots } from "../../../../db/schema";
 import { PVP_RAKE_PCT } from "../../../../lib/games/economy";
+import { markDailyRewardWin } from "../../../../lib/dailyRewardWin";
 import { payPvpPot, pvpPotPayout } from "../../../../lib/tokens/pvpPot";
 import { logError } from "../../../../lib/logError";
 import {
@@ -157,6 +158,13 @@ export async function POST(req: Request) {
       if (next.winner) {
         const winnerClerkId =
           next.winner === 1 ? match.player1Id : match.player2Id;
+
+        // The server decided this win, so it unlocks the daily reward. An AI
+        // win has no `users` row, so it stamps nothing.
+        if (winnerClerkId && winnerClerkId !== AI_SEAT_ID) {
+          await markDailyRewardWin(tx, winnerClerkId);
+        }
+
         const payable =
           !isAiMatch &&
           Number(match.wager) > 0 &&

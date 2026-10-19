@@ -21,6 +21,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { playVictory, playDefeat, playTick, playGoodReveal, playBuzz } from "../../../../lib/gameAudio";
+import { reportPracticeWin } from "../../../../lib/practiceWinClient";
 import { motion, AnimatePresence } from "framer-motion";
 // Page-level session host: records "recently played" and beats
 // active-player presence, driven by the game's REAL lifecycle
@@ -195,6 +196,14 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
 
     if (result === "win") setMyWins((w) => w + 1);
     else if (result === "lose") setAiWins((w) => w + 1);
+
+    // The winning point is the terminal result — the "See Result" button only
+    // reveals it. Report here so a player who closes the tab on the winning
+    // round still gets credit, and so the daily-reward widget can refresh
+    // immediately instead of waiting for the result screen.
+    if (result === "win" && myWins + 1 >= ROUNDS_TO_WIN) {
+      void reportPracticeWin("rps");
+    }
 
     setHistory((h) => [
       ...h,

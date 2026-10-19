@@ -50,6 +50,7 @@ import {
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
+import { markDailyRewardWin } from "../dailyRewardWin";
 import { getFrameDecorations } from "../cosmetics";
 import { isPracticePaused } from "../practicePause";
 import { guestSeatSummary, isGuestId } from "../guestIdentity";
@@ -556,6 +557,12 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
     // The leaver's escrowed stake is paid to the opponent; a failed coin move
     // rolls the settlement back rather than settling unpaid.
     if (updated) await settleEscrow(tx, finalRow, escrow);
+
+    // A practice win still unlocks the daily reward. The AI holds player2,
+    // so only a player1 win belongs to the human.
+    if (updated && isAi && winnerUserId === match.player1Id) {
+      await markDailyRewardWin(tx, winnerUserId);
+    }
 
     // Best-effort stat side-effect (failures don't roll the match),
     // mirroring resolveMatch / keno-pvp forfeit.
@@ -1267,6 +1274,12 @@ async function resolveMatch(tx, match) {
   // A failed coin move must roll the settlement back (and stay retryable)
   // rather than settle a paid match without paying it.
   await settleEscrow(tx, finalRow, escrow);
+
+  // Free practice still unlocks the daily reward for the human winner (the AI
+  // holds player2).
+  if (isAi && winnerId && winnerId === match.player1Id) {
+    await markDailyRewardWin(tx, winnerId);
+  }
 
   // Best-effort stat side-effects (failures don't roll the match).
   // Draws are skipped — no winner/loser to bump.

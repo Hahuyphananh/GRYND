@@ -66,6 +66,7 @@ import {
   playBarricadeWall,
   playBarricadeWin,
 } from "../../../../lib/barricadeAudio";
+import { reportPracticeWin } from "../../../../lib/practiceWinClient";
 
 /** The human always holds the first seat (and therefore the first move). */
 const HUMAN_SEAT: Seat = "player1";
@@ -176,6 +177,10 @@ export default function BarricadePracticePage() {
     if (state.winner === HUMAN_SEAT) {
       playBarricadeWin();
       setScore((current) => ({ ...current, wins: current.wins + 1 }));
+      // Practice is client-only, so this terminal win is what unlocks today's
+      // daily reward. Fires once per finished match (guarded by
+      // `resultSoundedRef` above).
+      void reportPracticeWin("barrier-blitz");
     } else {
       playBarricadeLoss();
       setScore((current) => ({ ...current, losses: current.losses + 1 }));

@@ -2,7 +2,7 @@
  * daily-reward.test.mjs
  *
  * The daily login reward is a curated token payout gated on having won a rated
- * online match today, and the zero-balance rescue is the "one last game" floor
+ * match today (online or vs the AI), and the zero-balance rescue is the "one last game" floor
  * beneath it. Both are free coin faucets, so their bounds have to be pinned: too
  * low and they are pointless, too much and they replace playing.
  *
@@ -35,6 +35,12 @@ import {
   isWinGateSatisfied,
   utcDateKey,
 } from "../src/lib/tokens/dailyReward.ts";
+import { markDailyRewardWin, utcWinDay } from "../src/lib/dailyRewardWin.ts";
+import {
+  isClientSettledPracticeGame,
+  isPracticeSessionToday,
+  markClientPracticeWin,
+} from "../src/lib/practiceWin.ts";
 import {
   daysBetween,
   projectDailyStreakDay,
@@ -425,11 +431,135 @@ test("the rescue is idempotent per UTC day through its own ledger key", () => {
   assert.match(src, /referenceId = `\$\{utcDayKey\(now\)\}:\$\{clerkId\}`/);
 });
 
+test("the shared win marker writes the UTC day and ignores a missing winner", async () => {
+  const writes = [];
+  const tx = {
+    update() {
+      return {
+        set(values) {
+          writes.push(values);
+          return this;
+        },
+        where() {
+          return this;
+        },
+        async returning() {
+          return [{ id: 1 }];
+        },
+      };
+    },
+  };
+
+  assert.equal(await markDailyRewardWin(tx, "user_winner"), true);
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].lastWonGameDate, utcWinDay());
+
+  // A missing id is a no-op: a bot seat / guest has no account to stamp.
+  assert.equal(await markDailyRewardWin(tx, null), false);
+  assert.equal(writes.length, 1);
+});
+
+test("a server-settled vs-AI win also stamps the daily-reward marker", () => {
+  // The marker is the one gate the reward reads, so every authoritative
+  // practice settlement marks the human winner through the shared helper. The
+  // bot seat has no users row, so the helper's UPDATE is a no-op for a bot win.
+  const helper = read("src/lib/dailyRewardWin.ts");
+  assert.match(helper, /lastWonGameDate: utcWinDay\(\)/);
+  assert.match(helper, /eq\(users\.clerkId, String\(clerkId\)\)/);
+
+  const practiceSettlements = [
+    "src/lib/tic-tac-toe/serverStore.ts",
+    "src/lib/dotsAndBoxesServer.js",
+    "src/app/api/dice-flush/_lib.js",
+    "src/app/api/chess/move/route.js",
+    "src/app/api/chess/game-state/route.js",
+    "src/app/api/hex-duel/end-game/route.ts",
+    "src/lib/keno-pvp/serverStore.js",
+    "src/lib/lane-rush-duel/serverStore.js",
+    "src/lib/memory-grid/serverStore.js",
+    "src/lib/mines-pvp/serverStore.js",
+    "src/lib/mini-golf/serverStore.ts",
+    "src/app/api/pool/submit-shot/route.ts",
+    "src/lib/precision/finishMatch.ts",
+    "src/lib/solitaire-duel/serverStore.ts",
+    "src/lib/speed-typing/serverStore.ts",
+    "src/lib/sudoku-duel/serverStore.ts",
+    "src/app/api/uno/determine-winner/route.js",
+    "src/app/api/odds/ai/end/route.ts",
+    "src/lib/tower-arena/serverStore.ts",
+  ];
+  for (const file of practiceSettlements) {
+    assert.match(read(file), /markDailyRewardWin\(/, `${file} must stamp a practice win`);
+  }
+});
+
+test("a client-settled practice report is allowlisted and needs today's session", async () => {
+  // The browser is the authority for these modes, so the endpoint's own
+  // guards are the only thing between a stray POST and the reward: an unknown
+  // game key and a missing session must both be refused before any marker is
+  // written.
+  assert.equal(isClientSettledPracticeGame("four-in-a-row"), true);
+  assert.equal(isClientSettledPracticeGame("rps"), true);
+  assert.equal(isClientSettledPracticeGame("barrier-blitz"), true);
+  assert.equal(isClientSettledPracticeGame("chess"), false);
+  assert.equal(isClientSettledPracticeGame(null), false);
+
+  const today = "2026-10-19";
+  assert.equal(isPracticeSessionToday(today, today), true);
+  assert.equal(isPracticeSessionToday(new Date(`${today}T23:00:00Z`), today), true);
+  assert.equal(isPracticeSessionToday("2026-10-18", today), false);
+  assert.equal(isPracticeSessionToday(null, today), false);
+
+  // These two refusals return before the DB proxy is touched, so they are
+  // safe to exercise without a database.
+  assert.deepEqual(await markClientPracticeWin(null, "rps"), {
+    ok: false,
+    status: 401,
+    error: "Not authenticated",
+  });
+  assert.deepEqual(await markClientPracticeWin("user_1", "chess"), {
+    ok: false,
+    status: 400,
+    error: "Unknown practice game",
+  });
+});
+
+test("a client-settled practice win reports the same daily-reward marker", () => {
+  // Four-in-a-Row, RPS and Barrier Blitz have no server match row, so their
+  // browser result is the only settlement signal. The report path must still
+  // go through the ONE marker helper, and the endpoint must refuse an unknown
+  // game or a day on which no practice session was started.
+  const helper = read("src/lib/practiceWin.ts");
+  assert.match(
+    helper,
+    /CLIENT_SETTLED_PRACTICE_GAMES = \[[\s\S]*"four-in-a-row"[\s\S]*"rps"[\s\S]*"barrier-blitz"/,
+  );
+  assert.match(helper, /markDailyRewardWin\(db, clerkId\)/);
+  assert.match(helper, /if \(!isClientSettledPracticeGame\(game\)\)/);
+  assert.match(helper, /isPracticeSessionToday\(user\.lastPlayed, today\)/);
+
+  const route = read("src/app/api/practice/win/route.ts");
+  assert.match(route, /await auth\(\)/);
+  assert.match(route, /markClientPracticeWin\(clerkId, body\?\.game\)/);
+
+  const client = read("src/lib/practiceWinClient.ts");
+  assert.match(client, /fetch\("\/api\/practice\/win"/);
+  assert.match(client, /notifyDailyRewardWin\(\)/);
+
+  for (const page of [
+    "src/app/casino/four-in-a-row/play-ai/PageClient.tsx",
+    "src/app/casino/rps/play-ai/PageClient.tsx",
+    "src/app/casino/barrier-blitz/play-ai/PageClient.tsx",
+  ]) {
+    assert.match(read(page), /reportPracticeWin\("/, `${page} must report its terminal win`);
+  }
+});
+
 test("the win-gate marker is stamped by the authoritative rating writer", () => {
   const rating = read("src/lib/rating.js");
   // Only a rated online match reaches this writer, and the winner is derived
-  // server-side, so the marker is a real win — never a started-and-resigned
-  // practice match. A draw must not unlock the daily reward.
+  // server-side, so the marker is a real win. A draw must not unlock the daily
+  // reward. Vs-AI practice wins stamp through the shared helper tested above.
   assert.match(rating, /SET last_won_game_date = \$\{new Date\(\)\.toISOString\(\)\.slice\(0, 10\)\}/);
   assert.match(rating, /if \(!isDraw\) \{/);
 
@@ -441,10 +571,10 @@ test("the win-gate marker is stamped by the authoritative rating writer", () => 
   assert.match(counters, /const utcDay = new Date\(\)\.toISOString\(\)\.slice\(0, 10\)/);
 });
 
-test("the reward reads exactly the marker the rating writer writes", () => {
+test("the reward reads exactly the marker the settlement writers write", () => {
   const reward = read("src/lib/tokens/dailyReward.ts");
   assert.match(reward, /isWinGateSatisfied\(user\.lastWon, today\)/);
-  assert.match(reward, /Win an online match to unlock/);
+  assert.match(reward, /Win a match to unlock/);
   const schema = read("src/db/schema.ts");
   assert.match(schema, /lastWonGameDate: date\("last_won_game_date"\)/);
 });

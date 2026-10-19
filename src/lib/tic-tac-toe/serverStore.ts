@@ -37,6 +37,7 @@ import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
 import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
 import { isPracticePaused } from "../practicePause";
+import { markDailyRewardWin } from "../dailyRewardWin";
 import { PVP_WINNER_SHARE } from "../games/economy";
 import {
   escrowMatchWagers,
@@ -1140,8 +1141,20 @@ async function settleMatch(
   outcome: { result: string; winnerSeat: Seat | null },
 ) {
   // Free vs-AI matches must never affect rating, trophies or win counters —
-  // and they are never escrowed, so they never move coins either.
-  if (match.isAi) return;
+  // and they are never escrowed, so they never move coins either. A human win
+  // still unlocks the daily reward, which is the one progression signal free
+  // play is allowed to move.
+  if (match.isAi) {
+    const winnerId = outcome.winnerSeat
+      ? outcome.winnerSeat === "player1"
+        ? match.player1Id
+        : match.player2Id
+      : null;
+    if (outcome.result !== RESULT.TIE && winnerId && winnerId !== TIC_TAC_TOE_AI_PLAYER_ID) {
+      await markDailyRewardWin(tx, winnerId);
+    }
+    return;
+  }
   if (!match.player2Id) return;
 
   const matchId = String(match.id);

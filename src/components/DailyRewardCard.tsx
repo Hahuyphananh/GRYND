@@ -9,7 +9,7 @@
 //
 // A thin, honest view over `/api/rewards/daily`. The server owns the whole
 // reward: the curated 14-day curve, whether today has been claimed, and whether
-// the player has won an online match today (the gate that unlocks the
+// the player has won a match today, online or vs the AI (the gate that unlocks the
 // claim). This component never computes an amount and never credits anything; it
 // renders the
 // status the server reports and opens the board, which asks the server to claim.
@@ -23,8 +23,8 @@
 //
 // The three states a player can be in, in the order they meet them:
 //
-//   * `winGateSatisfied === false` — locked. The reward requires one online
-//     win today; the card says so and links to the games, which is the only
+//   * `winGateSatisfied === false` — locked. The reward requires one win
+//     today; the card says so and links to the games, which is the only
 //     action that unlocks it.
 //   * `claimable` — the button, which opens the board.
 //   * neither — claimed today; the card says come back tomorrow.
@@ -96,7 +96,7 @@ export default function DailyRewardCard() {
       ) : (
         <>
           <p className="mb-4 max-w-3xl text-sm leading-relaxed text-[#c9f7ff]/80">
-            Win one online match each day and today&apos;s coins are yours. The board climbs for
+            Win one match each day — online or vs the AI — and today&apos;s coins are yours. The board climbs for
             14 days, and missing a day starts the streak over at day 1.
           </p>
 
@@ -115,7 +115,7 @@ export default function DailyRewardCard() {
                 className="inline-flex items-center gap-1.5 rounded-lg border border-[#ff4fd8]/40 bg-[#ff4fd8]/10 px-3 py-2 text-sm font-semibold text-[#ff4fd8]"
                 data-testid="daily-reward-locked"
               >
-                <IconLock size={15} aria-hidden="true" /> Win an online match to unlock today&apos;s
+                <IconLock size={15} aria-hidden="true" /> Win a match to unlock today&apos;s
                 reward
               </span>
               <Link

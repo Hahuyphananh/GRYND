@@ -4,6 +4,7 @@ import { db } from "../../../../db/client";
 import { users, unoGames } from "../../../../db/schema";
 import { and, eq } from "drizzle-orm";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
+import { markDailyRewardWin } from "../../../../lib/dailyRewardWin";
 import { isUnoSeat, unoCallerToken } from "../../../../lib/unoSeat";
 import { payPvpPot } from "../../../../lib/tokens/pvpPot";
 
@@ -276,6 +277,12 @@ export async function POST(req) {
     // The AI free-play path doesn't move real tokens, so leaderboard
     // counters would inflate `total_wagered`/`total_won` with phantom
     // stats. The classic multiplayer path below still counts wins/losses.
+
+    // A practice win unlocks the daily reward. A guest has no `users` row, so
+    // the stamp is a harmless no-op for them.
+    if (result === "win" && !gate.isGuest) {
+      await markDailyRewardWin(db, playerId);
+    }
 
     return NextResponse.json({
       success: true,

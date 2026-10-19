@@ -6,6 +6,7 @@ import { eq, sql } from "drizzle-orm";
 import { CacheKeys } from "../../../../lib/redis/keys";
 import { cacheDelete, cacheGet } from "../../../../lib/redis/cache";
 import { normalizeStake } from "../../../../lib/games/stakes";
+import { markDailyRewardWin } from "../../../../lib/dailyRewardWin";
 import { PVP_WINNER_SHARE } from "../../../../lib/games/economy";
 
 // The shared PvP pot multiplier: 2 stakes × the 90% winner share = 1.8× at the
@@ -172,6 +173,11 @@ export async function POST(req: Request) {
 
     // ── Fun mode / AI mode: only record history, skip all balance changes ─────
     if (funMode) {
+      // The AI session token above proves this is a vs-AI match, and the bot
+      // has no `users` row, so only a human win stamps the daily reward.
+      if (winner === "player1" && isAiGame === true) {
+        await markDailyRewardWin(db, clerkId);
+      }
       db.insert(hexDuelGames)
         .values({
           player1Id: clerkId,

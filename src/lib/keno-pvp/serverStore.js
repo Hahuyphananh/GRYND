@@ -39,6 +39,7 @@ import {
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
+import { markDailyRewardWin } from "../dailyRewardWin";
 import { getFrameDecorations } from "../cosmetics";
 import { guestSeatSummary, isGuestId } from "../guestIdentity";
 import { isPracticePaused } from "../practicePause";
@@ -884,6 +885,11 @@ async function settleMatch(tx, match, { result, reason = "resolved" } = {}) {
   // A failed coin move must roll the settlement back (and stay retryable)
   // rather than settle a paid match without paying it.
   await settleEscrow(tx, finalRow, escrow);
+
+  if (isAi && winnerId && winnerId === match.player1Id) {
+    // The AI holds player2, so only a player1 win belongs to the human.
+    await markDailyRewardWin(tx, winnerId);
+  }
 
   if (!isAi) {
     await recordPvPResult(tx, finalRow, winnerId, finalResult).catch(() => {});

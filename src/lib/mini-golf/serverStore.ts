@@ -25,6 +25,7 @@ import { db } from "../../db/client";
 import { miniGolfMatches, miniGolfShots, users } from "../../db/schema";
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
+import { markDailyRewardWin } from "../dailyRewardWin";
 import { escrowMatchWagers } from "../tokens/wager";
 import { payPvpPot, refundPvpPot } from "../tokens/pvpPot";
 import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
@@ -995,8 +996,20 @@ async function settleMatch(
   match: MatchRow,
   outcome: { result: string; winnerSeat: Seat | null },
 ) {
-  // Free vs-AI matches must never affect rating, trophies or win counters.
-  if (match.isAi) return;
+  // Free vs-AI matches must never affect rating, trophies or win counters —
+  // but a human win still unlocks the daily reward.
+  if (match.isAi) {
+    const winnerId = outcome.winnerSeat
+      ? outcome.winnerSeat === "player1"
+        ? match.player1Id
+        : match.player2Id
+      : null;
+    // The AI holds player2, so only a player1 win belongs to the human.
+    if (outcome.result !== RESULT.TIE && outcome.winnerSeat === "player1" && winnerId) {
+      await markDailyRewardWin(tx, winnerId);
+    }
+    return;
+  }
   if (!match.player2Id) return;
 
   const matchId = String(match.id);

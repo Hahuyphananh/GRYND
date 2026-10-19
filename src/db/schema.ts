@@ -305,10 +305,12 @@ export const users = pgTable("users", {
   // /api/game-plays for signed-in players. Retained as a general activity
   // marker; the daily login reward no longer uses it (it gates on a win).
   lastPlayedGameDate: date("last_played_game_date"),
-  // The UTC day the player last WON a rated online match, stamped by the
-  // authoritative rating writer (src/lib/rating.js). The daily login reward is
-  // gated on this being today, so starting a match and resigning — or playing
-  // the AI — cannot unlock it. See src/lib/tokens/dailyReward.ts.
+  // The UTC day the player last WON a match, stamped by the authoritative
+  // settlement writers: the rating writer (src/lib/rating.js) for online wins,
+  // the PvP counter writer for modes outside Elo, and src/lib/dailyRewardWin.ts
+  // for server-settled vs-AI practice wins. The daily login reward is gated on
+  // this being today, so merely starting a match and resigning cannot unlock
+  // it. See src/lib/tokens/dailyReward.ts.
   lastWonGameDate: date("last_won_game_date"),
   pvpWins: integer("pvp_wins").default(0).notNull(),
   weeklyWagered: bigint("weekly_wagered", { mode: "number" }).default(0).notNull(),

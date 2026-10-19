@@ -6,6 +6,7 @@ import { autoBankIfExpired, checkGameEnd, holdDice, nextTurn, rollDice, validate
 import { applyLeaderboardCounters } from "../../../lib/leaderboardCounters";
 import { applyRatingResult } from "../../../lib/rating";
 import { applyTrophyResult } from "../../../lib/trophyStore";
+import { markDailyRewardWin } from "../../../lib/dailyRewardWin";
 import { normalizeStake } from "../../../lib/games/stakes";
 import { payPvpPot } from "../../../lib/tokens/pvpPot";
 import { escrowMatchWagers } from "../../../lib/tokens/wager";
@@ -162,6 +163,15 @@ export async function settleIfEnded(tx, roomRow, state) {
     // A concurrent transaction already settled — return the finished state
     // but signal that this transaction did not perform the settlement.
     return { state, ended: true, winnerId: ended.winnerId, payout: 0, totals: ended.totals, alreadySettled: true };
+  }
+
+  // A free-play win still unlocks the daily reward. Only a human seat may
+  // stamp it — a bot win has no `users` row.
+  if (isAiMatch && ended.winnerId) {
+    const winnerSeat = state.players?.find((p) => p.userId === ended.winnerId);
+    if (winnerSeat && !winnerSeat.isAI) {
+      await markDailyRewardWin(tx, ended.winnerId);
+    }
   }
 
   // Record the SKILL leaderboards (wins/losses/win_rate/streaks) for a real

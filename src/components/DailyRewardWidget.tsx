@@ -7,11 +7,11 @@
 //
 // ── Why a second surface ────────────────────────────────────────────────────
 //
-// The reward is gated on playing a game today (see lib/tokens/dailyReward.ts),
-// so the one place it must be visible is where a player decides what to play
-// next: the home page and the games hub. /rewards remains the full explanation;
-// this widget is the actionable summary, and it points at /games when the gate
-// is what stands in the way.
+// The reward is gated on winning a match today, online or vs the AI (see
+// lib/tokens/dailyReward.ts), so the one place it must be visible is where a
+// player decides what to play next: the home page and the games hub. /rewards
+// remains the full explanation; this widget is the actionable summary, and it
+// points at /games when the gate is what stands in the way.
 //
 // ── One source of truth ─────────────────────────────────────────────────────
 //
@@ -110,7 +110,7 @@ export default function DailyRewardWidget() {
               <div className="space-y-1.5">
                 <p className="flex items-start gap-1.5 text-xs font-semibold text-[#ff4fd8]">
                   <IconLock size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
-                  Win an online match to unlock today&apos;s reward
+                  Win a match to unlock today&apos;s reward
                 </p>
                 <Link
                   href="/games"

@@ -4,6 +4,7 @@ import { requirePracticePlayer } from "../../../../../lib/auth/guestSession";
 import { db } from "../../../../../db/client";
 import { oddsGames } from "../../../../../db/schema";
 import { eq } from "drizzle-orm";
+import { markDailyRewardWin } from "../../../../../lib/dailyRewardWin";
 import {
   initInteractiveOddsGame,
   type InteractiveOddsState,
@@ -82,7 +83,11 @@ export async function POST(req: Request) {
       // pipeline entirely so beating the AI no longer records a phantom
       // loss (payout 0) in user_stats. Real PvP games settle via
       // /api/odds/pvp/* instead. This route is AI-only, and AI results
-      // deliberately do NOT touch the leaderboards.
+      // deliberately do NOT touch the leaderboards — but a human win does
+      // unlock the daily reward.
+      if (player1Won) {
+        await markDailyRewardWin(tx, userId);
+      }
 
       return { winner, player1Won, payout: recordedPayout };
     });

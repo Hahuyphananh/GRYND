@@ -52,6 +52,7 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import { fireConfetti, withReducedMotion } from "../../lib/animations";
+import { notifyDailyRewardWin } from "../../lib/practiceWinClient";
 import FrameAvatar from "../FrameAvatar";
 
 const CONFETTI_COLORS = ["#00e5ff", "#f5ff3b", "#ff4fd8", "#a855f7", "#34d399"];
@@ -206,6 +207,17 @@ export default function PvpResultScreen({
       clearTimeout(t2);
     };
   }, [open, outcome, shouldReduce]);
+
+  // A win against the AI can unlock today's daily reward. Announce it so any
+  // daily-reward surface mounted on this origin re-reads its status without a
+  // page reload. The delay lets the authoritative write land first: server-
+  // settled practice stamps inside its settlement transaction, while the
+  // client-settled boards POST /api/practice/win from their own result path.
+  useEffect(() => {
+    if (!open || outcome !== "win" || !opponent?.isAi) return;
+    const timer = setTimeout(() => notifyDailyRewardWin(), 900);
+    return () => clearTimeout(timer);
+  }, [open, outcome, opponent?.isAi]);
 
   // One action per screen: once Play Again / Rematch / Lobby is picked,
   // disable the buttons so a double-tap can't create two matches.

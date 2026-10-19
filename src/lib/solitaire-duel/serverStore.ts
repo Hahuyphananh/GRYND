@@ -34,6 +34,7 @@ import { applyRatingResult } from "../rating";
 import { escrowMatchWagers } from "../tokens/wager";
 import { payPvpPot, refundPvpPot } from "../tokens/pvpPot";
 import { applyTrophyResult } from "../trophyStore";
+import { markDailyRewardWin } from "../dailyRewardWin";
 import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
 import { coerceAiDifficulty } from "../aiDifficulty";
 import { isPracticePaused } from "../practicePause";
@@ -1629,8 +1630,16 @@ async function settleSolitaireDuelMatch(
   match: MatchRow,
   outcome: RaceOutcome,
 ) {
-  // Free vs-AI matches must never affect rating, trophies or win counters.
-  if (match.isAi) return;
+  // Free vs-AI matches must never affect rating, trophies or win counters —
+  // but a human win still unlocks the daily reward.
+  if (match.isAi) {
+    // The AI holds player2 in a practice match, so only a player1 win belongs
+    // to the human and may unlock the daily reward.
+    if (outcome.result === RESULT.PLAYER1 && match.player1Id) {
+      await markDailyRewardWin(tx, match.player1Id);
+    }
+    return;
+  }
   if (!match.player2Id) return;
 
   const matchId = String(match.id);

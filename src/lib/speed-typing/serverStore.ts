@@ -59,6 +59,7 @@ import { db } from "../../db/client";
 import { speedTypingMatches, users } from "../../db/schema";
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
+import { markDailyRewardWin } from "../dailyRewardWin";
 import { escrowMatchWagers } from "../tokens/wager";
 import { payPvpPot, refundPvpPot } from "../tokens/pvpPot";
 import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
@@ -1321,7 +1322,16 @@ async function settleFinishedRace(
   match: MatchRow,
   outcome: { winnerSeat: SeatKey | null },
 ) {
-  if (match.isAi) return { rated: false, trophied: false };
+  if (match.isAi) {
+    // A practice win still unlocks the daily reward; the bot seat has no
+    // `users` row, so a bot win is a no-op.
+    // The AI holds player2, so only a player1 win belongs to the human.
+    if (outcome.winnerSeat === SEAT.PLAYER1) {
+      const winnerId = userIdForSeat(match, outcome.winnerSeat);
+      if (winnerId) await markDailyRewardWin(tx, winnerId);
+    }
+    return { rated: false, trophied: false };
+  }
   if (!match.player2Id) return { rated: false, trophied: false };
 
   // A dead heat has no winner, so the seats are named by POSITION instead: the

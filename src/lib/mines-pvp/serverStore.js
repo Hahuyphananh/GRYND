@@ -35,6 +35,7 @@ import {
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
+import { markDailyRewardWin } from "../dailyRewardWin";
 import { getFrameDecorations } from "../cosmetics";
 import {
   glows,
@@ -1009,6 +1010,12 @@ async function resolveMatch(tx, match, { winnerId = null, reason } = {}) {
   // A failed coin move must roll the settlement back rather than settle a
   // paid match without paying it.
   await settleEscrow(tx, finalRow, escrow);
+
+  // Practice wins unlock the daily reward too. The AI holds player2, so only
+  // a player1 win belongs to the human.
+  if (isAi && winnerId && winnerId === match.player1Id) {
+    await markDailyRewardWin(tx, winnerId);
+  }
 
   // Best-effort stat side-effects (failures don't roll the match). Skipped
   // for AI matches and for draws.

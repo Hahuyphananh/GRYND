@@ -188,7 +188,7 @@ export default function DailyRewardBoard({ open, onClose, reward }: Props) {
               <IconGift size={20} aria-hidden="true" /> Daily Reward
             </h2>
             <p className="mt-1 text-xs leading-relaxed text-[#c9f7ff]/75 sm:text-sm">
-              Log in and win one online match each day. The streak climbs for 14 days — miss a day
+              Log in and win one match each day — online or vs the AI. The streak climbs for 14 days — miss a day
               and it starts again at day 1.
             </p>
           </div>
@@ -246,7 +246,7 @@ export default function DailyRewardBoard({ open, onClose, reward }: Props) {
                     className="inline-flex items-center gap-1.5 rounded-lg border border-[#ff4fd8]/40 bg-[#ff4fd8]/10 px-3 py-2 text-sm font-semibold text-[#ff4fd8]"
                     data-testid="daily-reward-locked"
                   >
-                    <IconLock size={15} aria-hidden="true" /> Win an online match to unlock
+                    <IconLock size={15} aria-hidden="true" /> Win a match to unlock
                     today&apos;s reward
                   </span>
                   <Link

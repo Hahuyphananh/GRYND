@@ -66,6 +66,7 @@ import {
   type TowerArenaPlacement,
 } from "./payout";
 import { applyPlacementTrophies } from "../trophyStore";
+import { markDailyRewardWin } from "../dailyRewardWin";
 import {
   towerArenaStarted,
   towerArenaBlockPlaced,
@@ -1161,6 +1162,13 @@ async function finishMatchTx(tx: any, match: any, players: any[]) {
     .returning();
 
   if (!updated) return { match, alreadyFinished: true };
+
+  // A server-decided win unlocks the daily reward whether the opponent was a
+  // human or the practice bot (the bot has no `users` row, so it stamps
+  // nothing).
+  if (winner && !winner.isAi && winner.userId) {
+    await markDailyRewardWin(tx, winner.userId);
+  }
 
   // Pay the winner from the escrowed pot — once per match (the active→finished
   // guard above), capped by the shared wallet ceiling. A failure rolls the

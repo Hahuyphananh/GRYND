@@ -1,18 +1,19 @@
 // src/lib/tokens/dailyReward.ts
 //
 // The daily login reward — a small, curated token payout for coming back each
-// day, gated on having WON an online match today.
+// day, gated on having WON a match today (online or vs the AI).
 //
 // ── Why there is a gate ─────────────────────────────────────────────────────
 //
 // A logged-in claim that pays out for nothing is just a faucet with extra
 // steps: a player could open the app, claim, close it. So a claim requires
 // `users.lastWonGameDate` to be today — the marker written by the authoritative
-// settlement writers when an online match settles in the player's favour (the
-// rating writer in src/lib/rating.js, plus the PvP leaderboard counter writer
-// for modes that settle outside Elo). Starting a game is not enough: a
-// player could open a practice match against the AI and resign immediately.
-// The win itself is the price of the reward.
+// settlement writers when a match settles in the player's favour (the rating
+// writer in src/lib/rating.js, the PvP leaderboard counter writer for modes
+// that settle outside Elo, and src/lib/dailyRewardWin.ts for server-settled
+// vs-AI practice matches). Starting a game is not enough: a player could open
+// a practice match against the AI and resign immediately. The win itself is
+// the price of the reward.
 //
 // ── How much ────────────────────────────────────────────────────────────────
 //
@@ -155,8 +156,9 @@ export function dailyRewardFitsInWallet(reward: number, balance: number): boolea
 }
 
 /**
- * Whether today's reward is unlocked: the player must have won an online match
- * today (the `last_won_game_date` marker). Compared as `YYYY-MM-DD` strings so
+ * Whether today's reward is unlocked: the player must have won a match today —
+ * online or vs the AI (the `last_won_game_date` marker). Compared as
+ * `YYYY-MM-DD` strings so
  * a stored DATE and a JS Date can never disagree about the day.
  */
 export function isWinGateSatisfied(
@@ -174,7 +176,7 @@ export function isWinGateSatisfied(
 export type DailyRewardStatus = {
   /** True when today's reward has not been claimed yet. */
   claimable: boolean;
-  /** True when the player has won an online match today (the claim gate). */
+  /** True when the player has won a match today (online or vs AI). */
   winGateSatisfied: boolean;
   /** Today's streak day, the index into the reward curve. */
   streakDay: number;
@@ -316,7 +318,7 @@ export async function claimDailyReward(
     if (!isWinGateSatisfied(user.lastWon, today)) {
       return {
         ok: false as const,
-        error: "Win an online match to unlock today's reward",
+        error: "Win a match to unlock today's reward",
         status: 403,
       };
     }

@@ -399,7 +399,7 @@ test("the widget renders each reward state, and nothing when signed out", { skip
     status: { ...STATUS, claimable: false, winGateSatisfied: false },
   });
   const locked = render();
-  assert.match(locked, /Win an online match to unlock today&#x27;s reward/);
+  assert.match(locked, /Win a match to unlock today&#x27;s reward/);
   assert.match(locked, /href="\/games"/);
   assert.doesNotMatch(locked, /daily-reward-widget-claim/);
 
@@ -512,6 +512,35 @@ test("the one claim button is withheld when the wallet is full", () => {
   assert.match(board, /data-testid="daily-reward-wallet-full"/);
   // The server-side refusal stays as the backstop for a stale status read.
   assert.match(read("src/lib/tokens/dailyReward.ts"), /if \(credit < reward\)/);
+});
+
+test("the widget re-reads immediately when an AI or practice win is announced", () => {
+  // The win happens on the game page (or in another tab), not on the surface
+  // that renders the widget. The hook therefore listens for an announcement and
+  // for the two browser events a reload-based refresh would miss: a bfcache
+  // restore (`pageshow` with `persisted`) and the tab regaining focus.
+  const hook = read(HOOK);
+  assert.match(hook, /DAILY_REWARD_WIN_EVENT/);
+  assert.match(hook, /addEventListener\(DAILY_REWARD_WIN_EVENT, refresh\)/);
+  assert.match(hook, /removeEventListener\(DAILY_REWARD_WIN_EVENT, refresh\)/);
+  assert.match(hook, /addEventListener\("storage", onStorage\)/);
+  assert.match(hook, /event\.key === DAILY_REWARD_WIN_STORAGE_KEY/);
+  assert.match(hook, /addEventListener\("pageshow", onPageShow\)/);
+  assert.match(hook, /event\.persisted/);
+  assert.match(hook, /addEventListener\("focus", refresh\)/);
+
+  // The shared result screen announces a win against the AI; the client-only
+  // pages announce their own result after POSTing it.
+  const result = read("src/components/result/PvpResultScreen.jsx");
+  assert.match(result, /import \{ notifyDailyRewardWin \}/);
+  assert.match(result, /outcome !== "win" \|\| !opponent\?\.isAi/);
+  assert.match(result, /notifyDailyRewardWin\(\)/);
+
+  const client = read("src/lib/practiceWinClient.ts");
+  assert.match(client, /export const DAILY_REWARD_WIN_EVENT/);
+  assert.match(client, /export const DAILY_REWARD_WIN_STORAGE_KEY/);
+  assert.match(client, /window\.dispatchEvent\(new Event\(DAILY_REWARD_WIN_EVENT\)\)/);
+  assert.match(client, /window\.localStorage\.setItem/);
 });
 
 test("an unread wallet shows a dash, never a fabricated zero", () => {

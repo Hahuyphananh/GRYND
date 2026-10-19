@@ -42,6 +42,7 @@ import { cosmeticEffectClass } from "../../../../lib/profileCosmetics";
 import useMySeatIdentity from "../../../../hooks/useMySeatIdentity";
 import GameSessionHost from "../../../../components/GameSessionHost";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
+import { reportPracticeWin } from "../../../../lib/practiceWinClient";
 
 
 const HUMAN_PLAYER = 1 as const;
@@ -372,8 +373,15 @@ export default function FourInARowVsAiPage() {
         const resultKey = `four-in-a-row-${result}-${animSeqRef.current}`;
         if (resultSoundedRef.current !== resultKey) {
           resultSoundedRef.current = resultKey;
-          if (result === "won") playFiarWin();
-          else playFiarLoss();
+          if (result === "won") {
+            playFiarWin();
+            // This board has no match row, so the terminal win is reported to
+            // the shared marker here (once per finished game) — which is what
+            // unlocks today's daily reward.
+            void reportPracticeWin("four-in-a-row");
+          } else {
+            playFiarLoss();
+          }
         }
         setStatus(result);
         setScore((s) => ({

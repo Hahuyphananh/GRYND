@@ -10,6 +10,7 @@ import { chessGames, chessMoves, users } from "../../../../db/schema";
 import { toStoredUci } from "../../../../lib/chessMoveUci";
 import { applyRatingResult } from "../../../../lib/rating";
 import { applyTrophyResult } from "../../../../lib/trophyStore";
+import { markDailyRewardWin } from "../../../../lib/dailyRewardWin";
 import { payPvpPot } from "../../../../lib/tokens/pvpPot";
 import { refundMatchWagers } from "../../../../lib/tokens/wager";
 
@@ -136,6 +137,12 @@ export async function POST(req) {
             endedAt: new Date(),
           })
           .where(eq(chessGames.id, normalizedGameId));
+
+        // A checkmate is a win for the mover whether the opponent was a human
+        // or the practice bot, so it unlocks the daily reward too.
+        if (!isDraw && winnerId) {
+          await markDailyRewardWin(tx, winnerId);
+        }
 
         // The winner banks the pot out of the escrow both seats funded at join.
         // It runs inside the transaction that claimed the terminal write (the

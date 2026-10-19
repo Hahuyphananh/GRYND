@@ -6,9 +6,10 @@ import { db } from "../../../../db/client";
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 import { chessGames, chessMoves, users } from "../../../../db/schema";
-import { chessSeatDisplayName } from "../../../../lib/chessAiSeat";
+import { CHESS_AI_PLAYER_ID, chessSeatDisplayName } from "../../../../lib/chessAiSeat";
 import { applyRatingResult } from "../../../../lib/rating";
 import { applyTrophyResult } from "../../../../lib/trophyStore";
+import { markDailyRewardWin } from "../../../../lib/dailyRewardWin";
 import { payPvpPot } from "../../../../lib/tokens/pvpPot";
 
 async function getUserAliases(clerkId) {
@@ -141,6 +142,13 @@ async function settleTimeoutIfNeeded(game, clocks) {
       .where(
         and(eq(chessGames.id, game.id), eq(chessGames.status, "in_progress")),
       );
+
+    // A clock timeout is a server-decided win. It unlocks the daily reward
+    // even in a practice game; the bot id has no `users` row, so a human
+    // running out of time stamps nothing.
+    if (lockedWinnerId && lockedWinnerId !== CHESS_AI_PLAYER_ID) {
+      await markDailyRewardWin(tx, lockedWinnerId);
+    }
 
     // The winner banks the pot. An AI game was never escrowed and pays nothing.
     const stake = Number(lockedGame.betAmount) || 0;

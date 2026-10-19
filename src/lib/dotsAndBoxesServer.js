@@ -4,6 +4,7 @@ import { dotsAndBoxesGames } from "../db/schema";
 import { applyLeaderboardCounters } from "./leaderboardCounters";
 import { applyRatingResult } from "./rating";
 import { applyTrophyResult } from "./trophyStore";
+import { markDailyRewardWin } from "./dailyRewardWin";
 import { PVP_RAKE_PCT } from "./games/economy";
 import { refundWager, settlePayout } from "./tokens/wager";
 import {
@@ -117,6 +118,15 @@ export async function settleDotsAndBoxesGame(gameId, winnerClerkId, result) {
           moveDeadlineAt: null,
         })
         .where(eq(dotsAndBoxesGames.id, gameId));
+      // A practice win still unlocks the daily reward; the bot id has no
+      // `users` row, so a bot win is a no-op.
+      if (
+        result !== "draw" &&
+        winnerClerkId &&
+        winnerClerkId !== DOTS_AND_BOXES_AI_ID
+      ) {
+        await markDailyRewardWin(tx, winnerClerkId);
+      }
       return;
     }
 

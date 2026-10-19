@@ -58,6 +58,7 @@ import {
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
+import { markDailyRewardWin } from "../dailyRewardWin";
 import { laneRushDuelMatches, users } from "../../db/schema";
 import { sendSystemNotificationEmail } from "../emails/system";
 import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
@@ -985,6 +986,12 @@ async function settle(tx, match, { result, action, reason }) {
   // A failed coin move must roll the settlement back rather than settle a
   // paid match without paying it.
   await settleEscrow(tx, finalRow, escrow);
+
+  // A practice win still unlocks the daily reward (the bot id has no `users`
+  // row, so a bot win is a no-op).
+  if (result !== RESULT.DRAW && isBotMatch(finalRow) && winnerId === match.player1Id) {
+    await markDailyRewardWin(tx, winnerId);
+  }
 
   // Practice (bot) matches are zero-stake and never feed the
   // leaderboards — no stats, no wins to farm.
