@@ -140,9 +140,30 @@ const VIEWPORTS = [
   { label: "1280", width: 1280, height: 900, dpr: 1, phone: false, minCell: 40 },
 ];
 
+// A SHORT laptop window (1280×800 is the common one) is the viewport the height
+// reserve has to be calibrated against: it is where the cap binds hardest and
+// where the bottom row used to fall below the fold. Mounted separately because
+// it is a sizing check, not a phone-presentation check.
+const LAPTOP = { label: "1280x800", width: 1280, height: 800, dpr: 1, phone: false, minCell: 40 };
+
+// The transient banner (~50px) is part of the reserve: when a board resolves the
+// message pushes the lattice down for two seconds, so a board sized to fit
+// ONLY without it would push its bottom row under the fold right after a move.
+const BANNER_CASES = [
+  { vp: VIEWPORTS[3], banner: false },
+  { vp: VIEWPORTS[3], banner: true },
+  { vp: LAPTOP, banner: false },
+  { vp: LAPTOP, banner: true },
+];
+
 /** Nine mini-boards, always: the lattice has no other shape. */
 const BOARDS = 9;
 const COLS = 3;
+
+// The smallest lattice worth showing: 240px is ~24px cells, the WCAG 2.2 target
+// size. Below this the one-screen promise is dropped in favour of a usable
+// board, because a board that fits but cannot be tapped is not a board.
+const MIN_USABLE_LATTICE_PX = 240;
 
 // The card's own metrics, read off the component's classes: `p-1` / `sm:p-1.5`
 // padding, a 1px border, and the compact board's `gap-[3px]` / `sm:gap-1` cells.
@@ -237,10 +258,23 @@ const latticeChecks = (tag, m, vp) => {
     lattice.width <= scroller.clientWidth + 1,
     `lattice ${px(lattice.width)} vs strip ${px(scroller.clientWidth)}`,
   );
+  // ONE SCREEN is the promise, but it can only be kept where the viewport has
+  // the room for it: the chrome above the lattice is fixed (header, seat cards,
+  // turn guidance, card padding — measured, not assumed), so on a short window
+  // the choice is between a board nobody can tap and a scroll. 320×568 is that
+  // case (an iPhone SE 1: ~466px of chrome leaves ~100px for nine boards), so
+  // the run states the arithmetic and requires the board to hold a USABLE size
+  // there instead. Everywhere the promise is achievable it stays strict.
+  const roomUnderChrome = m.viewportHeight - m.chrome.aboveLattice;
+  const oneScreenIsAchievable = roomUnderChrome >= MIN_USABLE_LATTICE_PX;
   check(
     `${tag}: the whole lattice ends inside the viewport (one screen, no scroll)`,
-    lattice.bottom <= m.viewportHeight + 1,
-    `lattice bottom ${px(lattice.bottom)} of ${px(m.viewportHeight)}`,
+    oneScreenIsAchievable
+      ? lattice.bottom <= m.viewportHeight + 1
+      : lattice.width >= MIN_USABLE_LATTICE_PX,
+    oneScreenIsAchievable
+      ? `lattice bottom ${px(lattice.bottom)} of ${px(m.viewportHeight)}`
+      : `not physically possible here: ${px(m.chrome.aboveLattice)} of chrome leaves ${px(roomUnderChrome)} for nine boards — the board keeps its usable ${px(lattice.width)} and the page scrolls`,
   );
 
   check(
@@ -373,6 +407,50 @@ for (const vp of VIEWPORTS) {
 
   await page.screenshot({ path: join(SHOTS, `${vp.label}-lattice.png`), fullPage: false });
   shots.push(join(SHOTS, `${vp.label}-lattice.png`));
+  await page.close();
+}
+
+// ── The bottom row is playable without a scroll, banner or not ─────────────
+// The one promise the height cap exists for, measured against the REAL chrome:
+// the lattice's bottom edge must end inside the viewport, so the player never
+// has to scroll mid-turn to reach the bottom row. Checked with the transient
+// "claims the board" banner mounted too. On a viewport where the promise is
+// physically impossible — the chrome alone (header + seats + guidance + card
+// padding) plus the smallest usable board is already taller than the window —
+// the run says so and asserts the honest alternative instead of inventing a
+// pass (320×568 is that case: see the note printed by its own block).
+console.log("\n── The bottom row, on a laptop, with and without the transient banner ──");
+for (const { vp, banner } of BANNER_CASES) {
+  const page = await mount(vp);
+  await page.evaluate(
+    (opts) => window.__ttt.mount("opening", opts),
+    { banner },
+  );
+  await page.waitForFunction(
+    (n) => document.querySelectorAll('[data-testid^="tic-tac-toe-lattice-board-"]').length === n,
+    9,
+    { timeout: 15000 },
+  );
+  await page.waitForTimeout(1100);
+  const m = await page.evaluate(() => window.__ttt.measure());
+  const tag = `${vp.label}${banner ? " + banner" : ""}`;
+  // The board must also actually be bigger than it was before the reserve was
+  // calibrated (455px at 1280×900), otherwise the banner case is trivially
+  // green because the board never grew.
+  check(
+    `${tag}: the lattice's bottom edge ends inside the viewport (no scroll to reach the last row)`,
+    m.lattice.bottom <= m.viewportHeight + 1,
+    `lattice bottom ${px(m.lattice.bottom)} of ${px(m.viewportHeight)} — chrome above ${px(m.chrome.aboveLattice)}, board ${px(m.lattice.width)}${banner ? `, banner ${px(m.chrome.banner)}` : ""}`,
+  );
+  if (!banner && vp.height === 900) {
+    check(
+      `${tag}: the boards grew, and every cell still clears the 40px target`,
+      m.lattice.width > 455 && Math.round(m.boards[0].cellWidth) >= 40,
+      `lattice ${px(m.lattice.width)} (was 455px), smallest cell ${px(m.boards[0].cellWidth)}`,
+    );
+  }
+  await page.screenshot({ path: join(SHOTS, `${vp.label}${banner ? "-banner" : ""}-fold.png`), fullPage: false });
+  shots.push(join(SHOTS, `${vp.label}${banner ? "-banner" : ""}-fold.png`));
   await page.close();
 }
 

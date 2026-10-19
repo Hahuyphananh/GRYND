@@ -215,8 +215,19 @@ test("board: a resolved mini-board is covered by a huge outcome overlay", () => 
 });
 
 test("board: the lattice is capped by the room left on screen, not by the column alone", () => {
+  // The reserve is 420px, not the 445px it used to be: the QA harness now
+  // mounts the shipped page's OWN chrome above and below the lattice (header,
+  // seat cards, turn guidance, controls box — qa/tic-tac-toe-mega-mobile-harness.jsx),
+  // so the reserve could be calibrated against a measurement instead of a guess
+  // — 363px above the lattice on a desktop column, plus the controls box below.
+  // The 25px that frees up is what makes the boards slightly bigger (480px and ~45px
+  // cells at 1280×900, up from 455px and 40px), and it still leaves room for the
+  // transient "claims the board" banner. Verified in a real browser by
+  // `npm run verify:tic-tac-toe-mobile`, which asserts the lattice's bottom edge
+  // stays inside the viewport at 1280×900 AND 1280×800, with and without that
+  // banner — the bottom row must never need a scroll.
   assert.ok(
-    MEGA.includes('maxWidth: "min(calc(100% - 20px), max(300px, calc(100svh - 445px)))"'),
+    MEGA.includes('maxWidth: "min(calc(100% - 20px), max(300px, calc(100svh - 420px)))"'),
     "the lattice must shrink with the viewport height and inset slightly from the column so the bottom row stays on screen",
   );
   // The floor keeps it from being crushed on a very short window.

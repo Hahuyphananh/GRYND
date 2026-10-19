@@ -129,7 +129,47 @@ const SCENARIOS = {
 
 let root = null;
 
-function App({ scenario }) {
+// ── The VERTICAL chrome the shipped page puts above and below the lattice ───
+// Reproduced here for the same reason the width chain is: the lattice's size is
+// capped by "the room left under the page chrome", so a harness that omits the
+// chrome cannot measure whether the bottom row is still on screen. Every class
+// string below is copied from the shipped match page
+// (src/app/casino/tic-tac-toe/[matchId]/PageClient.tsx):
+//
+//   header row (title + subtitle + status chip / Lobby)  … mb-2
+//   board card's own padding                             … p-2 sm:p-3
+//   seat cards (two, the active one ringed)              … mb-2 grid grid-cols-2 gap-2
+//   turn guidance (ONE instruction + progress)           … mb-2 … px-3 py-1.5
+//   [optional] the transient "X claims the board!" banner … mb-3 … px-3 py-2
+//   … the lattice …
+//   controls box (the server subtitle + Forfeit)         … mt-3 … p-3
+//   [optional] the load-error line                       … mt-2
+//
+// The two optional rows are the worst case the height reserve has to cover: a
+// board that just resolved (the banner shows for BOARD_EVENT_MS) and a failed
+// refresh (the error line stays). Both are mountable on their own so the check
+// can measure the reserve against them rather than guessing.
+const SeatCard = ({ mark, name, moves, active }) => (
+  <div
+    className={`rounded-xl border p-1.5 transition sm:p-2 ${
+      active
+        ? "border-amber-400/60 bg-amber-500/10 ring-1 ring-amber-300/40"
+        : "border-white/10 bg-white/5"
+    }`}
+  >
+    <div className="flex items-center gap-2">
+      <span className="relative inline-flex h-6 w-6 shrink-0 rounded-full border border-white/15 bg-white/10" />
+      <div className="min-w-0">
+        <p className="truncate text-xs font-bold">{name}</p>
+        <p className="text-[10px] uppercase tracking-wider text-white/45">
+          {mark} · {moves} moves
+        </p>
+      </div>
+    </div>
+  </div>
+);
+
+function App({ scenario, banner = false, loadError = false }) {
   const props = SCENARIOS[scenario] ?? SCENARIOS.opening;
   return (
     <div
@@ -137,8 +177,64 @@ function App({ scenario }) {
       className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#0d1226] via-[#080d1c] to-[#04060f] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8"
     >
       <div className="mx-auto max-w-6xl">
+        <div
+          data-testid="ttt-harness-header"
+          className="mb-2 flex flex-wrap items-center justify-between gap-2"
+        >
+          <div>
+            <h1 className="flex items-center gap-2 text-xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-300 to-yellow-200 sm:text-2xl">
+              <span aria-hidden="true" className="inline-block h-6 w-6 shrink-0 rounded bg-amber-400/60" />
+              Ultimate Tic-Tac-Toe
+            </h1>
+            <p className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-amber-200/70">
+              <span>Nine mini-boards · three in a line claims one</span>
+              <span className="rounded-full border border-emerald-400/40 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold tracking-wider text-emerald-200">
+                10 coins · rated 1v1
+              </span>
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="rounded-full border border-amber-400/40 bg-amber-500/10 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-amber-200">
+              Playing
+            </span>
+            <button
+              type="button"
+              className="rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold"
+            >
+              Lobby
+            </button>
+          </div>
+        </div>
+
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="rounded-2xl border border-amber-500/20 bg-black/40 p-3 shadow-[0_0_30px_rgba(251,191,36,0.10)] sm:p-4">
+          <div className="rounded-2xl border border-amber-500/20 bg-black/40 p-2 shadow-[0_0_30px_rgba(251,191,36,0.10)] sm:p-3">
+            <div data-testid="ttt-harness-seats" className="mb-2 grid grid-cols-2 gap-2">
+              <SeatCard mark="X" name="You" moves={4} active />
+              <SeatCard mark="O" name="Opponent" moves={3} active={false} />
+            </div>
+
+            <div
+              data-testid="ttt-harness-turn"
+              className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-xl border border-amber-400/50 bg-amber-500/10 px-3 py-1.5"
+            >
+              <span className="inline-flex min-w-0 items-center gap-2">
+                <span aria-hidden="true" className="inline-block h-2.5 w-2.5 shrink-0 rounded-full animate-pulse bg-amber-400" />
+                <span className="truncate text-sm font-bold text-amber-100">
+                  Play any board — X to move
+                </span>
+              </span>
+              <span className="text-[11px] tabular-nums text-white/40">7 of 81 cells</span>
+            </div>
+
+            {banner && (
+              <div
+                data-testid="ttt-harness-banner"
+                className="mb-3 rounded-xl border border-emerald-400/50 bg-emerald-500/15 px-3 py-2 text-center text-sm font-bold text-emerald-100"
+              >
+                X claims the top-left board!
+              </div>
+            )}
+
             <div className="relative">
               <MegaBoard
                 boards={props.boards}
@@ -157,6 +253,29 @@ function App({ scenario }) {
                   window.__ttt.plays.push([boardIndex, cellIndex]);
                 }}
               />
+            </div>
+
+            <div
+              data-testid="ttt-harness-controls"
+              className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[11px] leading-relaxed text-white/45">
+                  The cell you play sends your opponent to that same board. Every
+                  click is checked by the server.
+                </p>
+                <button
+                  type="button"
+                  className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-bold text-red-300"
+                >
+                  Forfeit
+                </button>
+              </div>
+              {loadError && (
+                <p className="mt-2 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-200">
+                  Could not refresh the match.
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -199,11 +318,11 @@ window.__ttt = {
 
   scenario: "opening",
 
-  mount(scenario = "opening") {
+  mount(scenario = "opening", { banner = false, loadError = false } = {}) {
     window.__ttt.plays = [];
     window.__ttt.scenario = scenario;
     if (!root) root = createRoot(document.getElementById("root"));
-    root.render(<App scenario={scenario} />);
+    root.render(<App scenario={scenario} banner={banner} loadError={loadError} />);
   },
 
   measure() {
@@ -254,6 +373,30 @@ window.__ttt = {
             clientWidth: scroller.clientWidth,
           }
         : null,
+      // The measured chrome: what sits above the lattice, what sits below it,
+      // and the lattice's own top edge — the three numbers the height reserve
+      // is trying to budget for.
+      chrome: (() => {
+        const pick = (sel) => box(document.querySelector(sel));
+        const header = pick('[data-testid="ttt-harness-header"]');
+        const seats = pick('[data-testid="ttt-harness-seats"]');
+        const turn = pick('[data-testid="ttt-harness-turn"]');
+        const banner = pick('[data-testid="ttt-harness-banner"]');
+        const controls = pick('[data-testid="ttt-harness-controls"]');
+        return {
+          // Everything from the top of the page down to the lattice's first px.
+          aboveLattice: lattice ? layoutBox(lattice).top : null,
+          header: header ? header.height : 0,
+          seats: seats ? seats.height : 0,
+          turn: turn ? turn.height : 0,
+          banner: banner ? banner.height : 0,
+          belowLattice: controls
+            ? controls.height + Math.max(0, layoutBox(controls).top - (lattice ? layoutBox(lattice).bottom : 0))
+            : 0,
+          pagePaddingTop: pageStyle ? pageStyle.paddingTop : null,
+          pagePaddingBottom: pageStyle ? pageStyle.paddingBottom : null,
+        };
+      })(),
       boards: cards.map((card) => {
         const cell = card.querySelector('[data-testid^="tic-tac-toe-cell-"]');
         // The card's header row: "Board {n}" then the control badge — the two
