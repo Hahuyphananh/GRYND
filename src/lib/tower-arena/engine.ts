@@ -9,7 +9,7 @@
 //   • the board is HALF the width it was when a shared table of up to six
 //     players built the tower, so the stack fills the line and collapses far
 //     sooner — see GRID_WIDTH;
-//   • the shared pool is sized for exactly two players, so a cycle offers two
+//   • the shared pool is sized for exactly two players, so a cycle offers four
 //     pieces of every shape (SEATS_PER_SHAPE_PER_CYCLE).
 
 export const SEATS = 2;
@@ -340,10 +340,10 @@ export interface ResourcePiece {
 
 /**
  * How many pieces of each shape one cycle of the shared pool offers PER SEAT.
- * Two seats × one piece each = two of every shape, which is the piece budget
- * the shared pool has always used for a 1v1 tower.
+ * Two seats × two pieces each = four of every shape, the doubled starting
+ * budget the shared pool uses for a 1v1 tower.
  */
-export const PIECES_PER_SHAPE_PER_SEAT = 1;
+export const PIECES_PER_SHAPE_PER_SEAT = 2;
 
 function poolComposition(): BlockShape[] {
   const perShape = Math.max(1, PIECES_PER_SHAPE_PER_SEAT) * SEATS;
