@@ -65,7 +65,7 @@ const ROUTES = [
   { game: "Four-In-A-Row", path: "/games/four-in-a-row" },
   { game: "Four-In-A-Row vs AI", path: "/games/four-in-a-row/play-ai" },
   { game: "Hex Duel", path: "/games/hex-duel" },
-  { game: "Hex Duel multiplayer", path: "/games/hex-duel/multiplayer" },
+  { game: "Hex Duel lobby", path: "/games/hex-duel/play" },
   { game: "Hex Duel history", path: "/games/hex-duel/history" },
   { game: "Keno", path: "/games/keno" },
   { game: "Keno PvP", path: "/games/keno-pvp" },

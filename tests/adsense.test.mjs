@@ -79,7 +79,7 @@ const ALLOWED = [
   "src/app/casino/chess/page.jsx",
   "src/app/casino/dots-and-boxes/page.tsx",
   "src/app/casino/four-in-a-row/page.tsx",
-  "src/app/casino/hex-duel/multiplayer/page.tsx",
+  "src/app/casino/hex-duel/page.tsx",
   "src/app/casino/lane-runner/page.jsx",
   "src/app/casino/memory-grid/page.tsx",
   "src/app/casino/mines-pvp/page.tsx",

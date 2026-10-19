@@ -1,7 +1,8 @@
 // qa/hex-duel-turn-harness.jsx
 //
 // Integration harness for the Hex Duel turn-transition polish. It mounts the
-// REAL `src/app/casino/hex-duel/PageClient.tsx` (only the noisy siblings are
+// REAL `src/app/casino/hex-duel/game/[matchId]/PageClient.tsx` (only the noisy
+// siblings are
 // stubbed by qa/hex-duel-turn-check.mjs: Clerk, the router, analytics, the
 // socket, the nav bar, the emotes/presence/recording hooks, the audio module
 // and the first-visit rules) and plays a real FOR-FUN match, which is the
@@ -22,7 +23,7 @@
 
 import React from "react";
 import { createRoot } from "react-dom/client";
-import HexDuelPage from "../src/app/casino/hex-duel/PageClient";
+import HexDuelPage from "../src/app/casino/hex-duel/game/[matchId]/PageClient";
 import HexBoard from "../src/components/HexBoard";
 
 const state = {

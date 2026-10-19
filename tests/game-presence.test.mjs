@@ -807,7 +807,7 @@ test("a spectator on a live game is never counted as playing", () => {
 
   // And the fifth spectator surface (hex-duel, which never mounted the host).
   assert.match(
-    source("src/app/casino/hex-duel/PageClient.tsx"),
+    source("src/app/casino/hex-duel/game/[matchId]/PageClient.tsx"),
     /useActiveGamePresence\("hex-duel", showGame && !isSpectator/
   );
 
@@ -827,7 +827,7 @@ test("each direct integration stops counting when its game reaches a final state
     /useActiveGamePresence\("pool-masters", started && balls\.length > 0, \{\s*terminal: Boolean\(winner\),/s
   );
   assert.match(
-    source("src/app/casino/hex-duel/PageClient.tsx"),
+    source("src/app/casino/hex-duel/game/[matchId]/PageClient.tsx"),
     /terminal: isGameOverEffective,/
   );
   const odds = source("src/app/casino/odds/PageClient.tsx");

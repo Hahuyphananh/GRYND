@@ -79,7 +79,7 @@ test("useVisiblePoll is kept, not blindly deleted, for non-match callers", () =>
 /** Single-page PvP games whose poll lives INSIDE an effect, so they use the
  * imperative `startMatchSync` twin instead of the hook. */
 const IMPERATIVE_PAGES = [
-  "src/app/casino/hex-duel/PageClient.tsx",
+  "src/app/casino/hex-duel/game/[matchId]/PageClient.tsx",
   "src/app/casino/odds/PageClient.tsx",
 ];
 

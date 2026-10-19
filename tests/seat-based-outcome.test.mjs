@@ -271,7 +271,7 @@ const MINES_PAGE = "src/app/casino/mines-pvp/[matchId]/PageClient.tsx";
 const LANE_PAGE = "src/app/casino/lane-runner/[matchId]/PageClient.jsx";
 const GOLF_PAGE = "src/app/casino/mini-golf/[matchId]/PageClient.tsx";
 const CHESS_PAGE = "src/app/casino/chess-game/[gameId]/PageClient.jsx";
-const HEX_PAGE = "src/app/casino/hex-duel/PageClient.tsx";
+const HEX_PAGE = "src/app/casino/hex-duel/game/[matchId]/PageClient.tsx";
 
 /** The comparison this whole change exists to remove. */
 const CLERK_VERDICT = /(winnerId|winnerClerkId)\s*===?\s*user\?\.id/;
@@ -346,8 +346,10 @@ test("authority: chess reads its side from the server's viewerRole, not the URL"
 
 test("authority: hex-duel reads its side from the server's amHost, not the URL", () => {
   const hex = code(HEX_PAGE);
-  // `?host=1` is the pre-load hint…
-  assert.match(hex, /setIsPlayer1\(hostParam === "1"\)/);
+  // `?host=1` is the pre-load hint (parsed from the route the lobby opened —
+  // the match page no longer creates games, so there is no `hostParam` to
+  // compare; the same query flag now arrives as `isHostRoute`)…
+  assert.match(hex, /useState<boolean>\(\(\) => isHostRoute \|\| isAiMatch\)/);
   // …and the status route's `amHost` (computed from the verified session)
   // overrides it.
   assert.match(hex, /typeof data\.game\?\.amHost === "boolean"/);

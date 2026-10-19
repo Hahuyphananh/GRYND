@@ -1,11 +1,19 @@
 import type { Metadata } from "next";
 import PageClient from "./PageClient";
+import AdSenseScript from "../../../components/AdSenseScript";
+import MonetagScript from "../../../components/MonetagScript";
 import { ogImageUrl } from "../../../lib/ogImages";
 
 const title = "Hex Duel | GRYND";
 const description = "Play Hex Duel on GRYND. Strategic hex-grid territory conquest. Capture tiles, outmaneuver your opponent and dominate the board.";
 const image = ogImageUrl("/images/og-banner.png");
 
+// The Hex Duel LOBBY. This page creates games; the board is its own route
+// (`/casino/hex-duel/game/<gameId>` for a staked duel, `/game/ai` for free
+// practice). Splitting them is why the lobby can carry the shared casino chrome
+// — stake picker, vs-AI button, open-table list, How to Play — instead of a
+// create-game popup sitting on top of a live board.
+//
 // This page is the AUTHENTICATED game application, served at
 // /games/<slug>/play (next.config.js rewrites that path to this /casino/<slug>
 // route; bare /casino/<slug> 308-redirects to the public landing page).
@@ -37,7 +45,12 @@ export const metadata: Metadata = {
   },
 };
 
-
 export default function Page() {
-  return <PageClient />;
+  return (
+    <>
+      <AdSenseScript />
+      <MonetagScript />
+      <PageClient />
+    </>
+  );
 }

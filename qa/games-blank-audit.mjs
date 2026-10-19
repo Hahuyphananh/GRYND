@@ -89,7 +89,7 @@ const ROUTES = [
   { game: "Four-In-A-Row", path: "/games/four-in-a-row" },
   { game: "Four-In-A-Row vs AI", path: "/games/four-in-a-row/play-ai" },
   { game: "Hex Duel", path: "/games/hex-duel" },
-  { game: "Hex Duel multiplayer", path: "/games/hex-duel/multiplayer" },
+  { game: "Hex Duel lobby", path: "/games/hex-duel/play" },
   { game: "Hex Duel history", path: "/games/hex-duel/history" },
   { game: "Keno", path: "/games/keno" },
   { game: "Lane Runner", path: "/games/lane-runner" },
@@ -152,7 +152,7 @@ const CREATE_ROUTES = [
   { game: "Lane Runner create", hub: "/casino/lane-runner", path: "/casino/lane-runner/1" },
   { game: "RPS create", hub: "/casino/rps", path: "/casino/rps/game/1" },
   { game: "Keno PvP create", hub: "/casino/keno", path: "/casino/keno-pvp/1" },
-  { game: "Hex Duel create", hub: "/casino/hex-duel", path: "/casino/hex-duel?gameId=1&host=1" },
+  { game: "Hex Duel create", hub: "/casino/hex-duel", path: "/casino/hex-duel/game/1?host=1" },
 ];
 
 // ── Verdict thresholds ─────────────────────────────────────────────────────

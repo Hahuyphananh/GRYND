@@ -242,7 +242,7 @@ export const EXCLUDED_FROM_SITEMAP: Record<string, string> = {
   "/casino/four-in-a-row/play-ai": "free AI practice board — a playable route, not a search surface",
   "/casino/barrier-blitz/play-ai":
     "free AI practice board — a playable route with no unique content; the indexable page for the game is /games/barrier-blitz",
-  "/casino/hex-duel/multiplayer": "live matchmaking surface — nothing for a crawler to index",
+  "/casino/hex-duel": "live matchmaking lobby — nothing for a crawler to index",
   "/casino/hex-duel/history": "per-player match history — user-specific data, never a landing page",
   "/casino/lane-runner/history": "per-player match history — user-specific data, never a landing page",
   "/casino/precision/test": "single-player timing sandbox with no unique content",

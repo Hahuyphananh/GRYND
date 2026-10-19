@@ -80,6 +80,7 @@
     "test:hex-duel": "node --import tsx --test tests/hex-troop-count.test.mjs tests/hex-duel-turn-layout.test.mjs tests/hex-duel-stakes.test.mjs",
     "verify:hex-troop-popup": "node qa/hex-troop-popup-check.mjs",
     "verify:hex-turn": "node qa/hex-duel-turn-check.mjs",
+    "verify:hex-lobby": "node qa/hex-duel-lobby-check.mjs",
     "verify:google-analytics": "node qa/google-analytics-check.mjs",
     "test:analytics": "node --test tests/google-analytics.test.mjs",
     "test:adsense": "node --import tsx --test tests/adsense.test.mjs tests/ad-model.test.mjs",

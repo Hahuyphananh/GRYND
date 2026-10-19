@@ -270,7 +270,7 @@ test("a lost connection forfeits its own match through the internal route", () =
 });
 
 test("the clock is reported by the seat whose own clock ran out", () => {
-  const page = read("src/app/casino/hex-duel/PageClient.tsx");
+  const page = read("src/app/casino/hex-duel/game/[matchId]/PageClient.tsx");
   assert.match(page, /expiredPlayer === mySeat/, "a seat may only report its own timeout");
   assert.match(page, /reason: "timeout"/);
   assert.match(page, /reason: "resign"/);

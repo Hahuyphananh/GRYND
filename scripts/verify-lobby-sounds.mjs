@@ -25,7 +25,7 @@ const BASE = "http://localhost:3000";
 const PAGES = [
   "/casino/blackjack",
   "/casino/chess",
-  "/casino/hex-duel/multiplayer",
+  "/casino/hex-duel",
 ];
 
 const browser = await puppeteer.launch({

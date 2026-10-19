@@ -36,7 +36,7 @@ import { dirname, join } from "node:path";
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (p) => readFileSync(join(here, "..", p), "utf8");
 
-const PAGE = read("src/app/casino/hex-duel/PageClient.tsx");
+const PAGE = read("src/app/casino/hex-duel/game/[matchId]/PageClient.tsx");
 const TILE = read("src/components/HexTile.tsx");
 const COUNTER = read("src/components/HexTroopCount.tsx");
 
@@ -188,7 +188,9 @@ test("the tile troop number is the rolling counter", () => {
 });
 
 test("the player card's troop total uses the same counter", () => {
-  has(PAGE, 'import HexTroopCount from "../../../components/HexTroopCount";');
+  // The match page lives at casino/hex-duel/game/[matchId]/ now, one level
+  // deeper than the lobby, so the specifier carries one more `../`.
+  has(PAGE, 'import HexTroopCount from "../../../../../components/HexTroopCount";');
   has(TROOP_BAR, "<HexTroopCount");
   has(TROOP_BAR, "value={troops}");
 });

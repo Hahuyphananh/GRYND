@@ -190,6 +190,17 @@ const nextConfig = {
         destination: "/games/barrier-blitz/:path*",
         permanent: true,
       },
+      // Hex Duel's matchmaking page was folded into the game's own lobby: one
+      // page now creates a table, starts a practice match and lists open
+      // games, and the board lives at /casino/hex-duel/game/<id>. The old
+      // /multiplayer URL was linked from the hub and from the retired page
+      // itself, so it redirects (config-level 308, not a page-level soft
+      // redirect a crawler would re-fetch forever).
+      {
+        source: "/casino/hex-duel/multiplayer",
+        destination: "/casino/hex-duel",
+        permanent: true,
+      },
       // Legacy yahtzee URLs (both old and new prefix) land on Barrier Blitz —
       // the game that replaced it in the catalogue.
       {

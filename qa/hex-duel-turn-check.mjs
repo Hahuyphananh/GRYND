@@ -47,9 +47,15 @@ mkdirSync(REPORTS, { recursive: true });
 const STUBS = {
   "next/navigation": `
     export const useRouter = () => ({ push(){}, replace(){}, back(){}, refresh(){}, prefetch(){} });
-    export const usePathname = () => "/casino/hex-duel";
-    export const useSearchParams = () => new URLSearchParams();
-    export default { useRouter, usePathname, useSearchParams };
+    export const usePathname = () => "/casino/hex-duel/game/ai";
+    // The match page reads its mode from the ROUTE: /game/ai is free
+    // practice, which is the mode this harness plays (the reported bug was
+    // for-fun). An empty route stub would make the page (correctly) redirect
+    // to the lobby and mount no board at all. (No backticks in here: this is
+    // a template literal.)
+    export const useParams = () => ({ matchId: "ai" });
+    export const useSearchParams = () => new URLSearchParams("difficulty=normal");
+    export default { useRouter, usePathname, useParams, useSearchParams };
   `,
   "next/image": `
     import React from "react";
@@ -328,23 +334,10 @@ console.log("\n=== PHASE 1 — turn end keeps the board still ===\n");
 
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 await page.goto(fileUrl);
-await page.waitForSelector('[role="switch"]');
-await page.getByRole("switch").click(); // Play for Fun
-if (process.env.HEX_DEBUG) {
-  console.log(
-    "buttons after toggle:",
-    await page.evaluate(() =>
-      [...document.querySelectorAll("button")].map((b) => ({
-        text: (b.textContent || "").replace(/\s+/g, " ").trim().slice(0, 40),
-        role: b.getAttribute("role"),
-        disabled: b.disabled,
-        visible: getComputedStyle(b).visibility,
-      })),
-    ),
-  );
-}
-await page.getByRole("button", { name: /free play vs ai/i }).click({ timeout: 5000 });
-await page.waitForSelector("[data-hex-board]", { timeout: 8000 });
+// The match page no longer opens a create-game popup: the LOBBY creates the
+// match and this route plays it. The stubs route the page at /game/ai, so a
+// free practice match is already mounted on arrival — no toggle to flip.
+await page.waitForSelector("[data-hex-board]", { timeout: 15000 });
 await sleep(300);
 
 const mounted = await page.evaluate(() => ({
