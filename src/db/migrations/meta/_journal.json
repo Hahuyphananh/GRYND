@@ -1415,6 +1415,13 @@
       "when": 1800000064000,
       "tag": "0220_daily_reward_win_gate",
       "breakpoints": true
+    },
+    {
+      "idx": 202,
+      "version": "7",
+      "when": 1800000065000,
+      "tag": "0221_reset_user_balances",
+      "breakpoints": true
     }
   ]
 }
