@@ -8,11 +8,11 @@
 //   • Hex Duel      — join route + quick queue write currentTurn: "player2"
 //   • Four in a Row — ready transition + rematch write currentTurn: "guest"
 //   • Dots & Boxes  — the join writes a guest-first opening gameState
+//   • Chess         — the join swaps the seat columns so the joiner is White
+//                     (White still moves first; it just belongs to the joiner)
 //
 // Games with their own opening rule are deliberately excluded:
 //
-//   • Chess keeps White-first and the host is White (the row schema has no
-//     seat-independent colour column to roll).
 //   • Mini-Golf alternates the tee by hole, so no seat owns the opening hole.
 //   • Tic-Tac-Toe, Uno, Pool Masters, Tower Arena and Dice Flush already roll
 //     the opening seat/colour.
@@ -72,6 +72,19 @@ test("Dots & Boxes: joining writes a guest-first opening position", () => {
   // Practice still starts with the human (host).
   const ai = read("src/app/api/dots-and-boxes/create-ai/route.js");
   assert.match(ai, /gameState: createInitialState\(\)/);
+});
+
+test("Chess: joining swaps the seats so the joiner is White and moves first", () => {
+  const join = read("src/app/api/chess/join-game/route.js");
+  const quickQueue = read("src/lib/quickQueueChess.ts");
+
+  assert.match(join, /playerWhiteId: userId/);
+  assert.match(join, /playerBlackId: game\.playerWhiteId/);
+  assert.doesNotMatch(join, /playerBlackId: userId/);
+
+  assert.match(quickQueue, /playerWhiteId: userId/);
+  assert.match(quickQueue, /playerBlackId: open\.playerWhiteId/);
+  assert.doesNotMatch(quickQueue, /playerBlackId: userId/);
 });
 
 test("Barrier Blitz keeps the original purple-first constant", () => {

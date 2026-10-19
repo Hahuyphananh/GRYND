@@ -10,7 +10,10 @@ export async function createOrJoinChessDestination({ userId, betAmount = 10, tim
   return db.transaction(async (tx) => {
     const [open] = await tx.select().from(chessGames).where(and(eq(chessGames.status, "waiting"), isNull(chessGames.playerBlackId), eq(chessGames.isAiGame, false), eq(chessGames.betAmount, stake.toFixed(2)))).for("update").limit(1);
     if (open && open.playerWhiteId !== userId) {
-      const [matched] = await tx.update(chessGames).set({ playerBlackId: userId, status: "in_progress", startedAt: new Date() }).where(and(eq(chessGames.id, open.id), eq(chessGames.status, "waiting"), isNull(chessGames.playerBlackId))).returning();
+      // Same rule as /api/chess/join-game: the joining seat takes White so the
+      // match opens with the joiner. The seat columns are the only colour
+      // storage, so swapping them is the whole change.
+      const [matched] = await tx.update(chessGames).set({ playerWhiteId: userId, playerBlackId: open.playerWhiteId, status: "in_progress", startedAt: new Date() }).where(and(eq(chessGames.id, open.id), eq(chessGames.status, "waiting"), isNull(chessGames.playerBlackId))).returning();
       if (!matched) return { error: "Game is no longer available", status: 409 };
       return { match: matched, joined: true };
     }

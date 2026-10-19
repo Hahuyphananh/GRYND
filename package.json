@@ -159,7 +159,10 @@
     "test:sitemap": "node --import tsx --test tests/sitemap.test.mjs",
     "test:tower-arena": "node --import tsx --test tests/tower-arena-engine.test.mjs tests/tower-arena-turns.test.mjs tests/tower-arena-settlement.test.mjs tests/tower-arena-realtime.test.mjs tests/tower-arena-qa.test.mjs tests/countdown-start-liveness.test.mjs",
     "loadtest:read-mix": "npx --yes artillery@2.0.34 run load-test/scenarios/read-mix.yml",
-    "test:pool-stakes": "node --import tsx --test tests/pool-stakes.test.mjs tests/house-edge.test.mjs"
+    "test:pool-stakes": "node --import tsx --test tests/pool-stakes.test.mjs tests/house-edge.test.mjs",
+    "verify:joiner-first-fiar": "node qa/joiner-first-fiar-check.mjs",
+    "verify:joiner-first-hex": "node qa/joiner-first-hex-check.mjs",
+    "verify:joiner-first-dnb": "node qa/joiner-first-dnb-check.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.2",

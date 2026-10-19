@@ -24,6 +24,11 @@ window.fetch = (url, init) => {
   const href = String(url);
   if (href.includes("/api/four-in-a-row/play-move")) {
     window.__heldMoves += 1;
+    try {
+      window.__lastMoveBody = JSON.parse(init?.body || "{}");
+    } catch {
+      window.__lastMoveBody = null;
+    }
     return new Promise((resolve) => {
       window.__releaseMove = () =>
         resolve(

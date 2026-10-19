@@ -267,7 +267,7 @@ export default function ChessLobby() {
       );
 
       router.push(
-        `/casino/chess-game/${gameId}?color=black&timer=${targetGame?.timerMode || "5min"}`,
+        `/casino/chess-game/${gameId}?color=white&timer=${targetGame?.timerMode || "5min"}`,
       );
     } catch (error) {
       console.error("Failed to join chess game", error);

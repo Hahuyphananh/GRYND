@@ -77,10 +77,17 @@ export async function POST(req) {
         );
       }
 
+      // The JOINER takes White. Chess still opens with White, but the product
+      // rule for every seat-based PvP game is that the joining seat moves
+      // first (Barrier Blitz's purple-first rule). Swapping the two seat
+      // columns at the moment the table fills is enough: every reader
+      // (game-state, move, settlement, clocks) derives colour from these
+      // columns, so no extra "opening seat" column is needed.
       const [updatedGame] = await tx
         .update(chessGames)
         .set({
-          playerBlackId: userId,
+          playerWhiteId: userId,
+          playerBlackId: game.playerWhiteId,
           status: "in_progress",
           startedAt: new Date(),
         })

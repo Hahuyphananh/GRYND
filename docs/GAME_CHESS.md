@@ -5,6 +5,7 @@ Chess on GRYND is classic chess played against the GRYND AI (5 difficulty levels
 ## How a match works
 
 1. **Mode** — play vs the AI (choose a difficulty level) or create/join a PvP match with a stake.
+   - In PvP the **joining seat takes White**, so the joiner makes the opening move (matching Barrier Blitz's joiner-first rule). The host plays Black. In AI games you pick White or Black yourself.
 2. **Standard chess rules** — all pieces move exactly as in FIDE chess; the game is fully governed by the chess.js rules engine.
    - Legal moves only, castling, en passant, promotion (with a promotion picker).
    - **Check and checkmate** end the game; stalemate and draws resolve normally.
