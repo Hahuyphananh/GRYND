@@ -43,9 +43,14 @@ test("Hex Duel: the spectator payload reads the authoritative turn, not the lega
   assert.match(spectate, /game\.currentTurn \?\?/);
 });
 
-test("Hex Duel: the AI engine keeps its player1 opening", () => {
-  const rules = read("src/lib/hex-duel/rules.ts");
-  assert.match(rules, /currentTurn: "player1"/);
+test("Hex Duel: the local engine opens on the server's seat", async () => {
+  const { makeInitialCore } = await import("../src/lib/hex-duel/rules.ts");
+  assert.equal(makeInitialCore().currentTurn, "player1", "AI/local default is unchanged");
+  assert.equal(makeInitialCore("player2").currentTurn, "player2");
+
+  const page = read("src/app/casino/hex-duel/game/[matchId]/PageClient.tsx");
+  assert.match(page, /const openingTurn: DuelPlayer = isAiMatch \? "player1" : "player2";/);
+  assert.match(page, /useHexDuel\(openingTurn\)/);
 });
 
 test("Four in a Row: a fresh match and a rematch both open with the guest", () => {

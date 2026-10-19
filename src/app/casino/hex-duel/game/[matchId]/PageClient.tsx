@@ -675,6 +675,12 @@ export default function HexDuelPage() {
   const { socket } = useSocket();
   const posthog = usePostHog();
 
+  // The local engine must open on the same seat the server wrote. Online PvP
+  // opens with the joining seat (player2); the AI route keeps player1 so the
+  // human moves first. Without this the client would paint player1's turn while
+  // the server accepts only player2, which looks like a dead board.
+  const openingTurn: DuelPlayer = isAiMatch ? "player1" : "player2";
+
   const {
     grid, currentTurn, currentAP, maxAP,
     capturedTiles, capitals, tileTroops,
@@ -686,7 +692,7 @@ export default function HexDuelPage() {
     handleAttack, handleDisplace, applyRemoteAction,
     endTurn, skipRound, resetGame,
     buildSyncSnapshot, applySyncSnapshot,
-  } = useHexDuel();
+  } = useHexDuel(openingTurn);
 
   // ── Remaining from old type (stubs kept as empty) ──
   const selectedUnit = null as DuelPlayer | null;

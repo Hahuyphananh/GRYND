@@ -143,7 +143,7 @@ export function otherPlayer(p: DuelPlayer): DuelPlayer {
 }
 
 /** The starting position: both capitals held, 5 troops each, player1 to move. */
-export function makeInitialCore(): CoreState {
+export function makeInitialCore(startingTurn: DuelPlayer = "player1"): CoreState {
   return {
     capturedTiles: {
       [P1_CAP_KEY]: "player1",
@@ -153,7 +153,7 @@ export function makeInitialCore(): CoreState {
       [P1_CAP_KEY]: INITIAL_TROOPS,
       [P2_CAP_KEY]: INITIAL_TROOPS,
     },
-    currentTurn: "player1",
+    currentTurn: startingTurn,
     currentAP: MAX_AP,
     winner: null,
     recentlyCaptured: [],

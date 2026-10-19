@@ -109,15 +109,17 @@ function createBlankGrid(): HexTileData[][] {
 
 // ── Hook ────────────────────────────────────────────────────────────────────
 
-export function useHexDuel() {
+export function useHexDuel(startingTurn: DuelPlayer = "player1") {
   // Capitals: fixed for the whole game — passed as the third reducer arg.
   const capitals = useRef<Record<string, DuelPlayer>>(HEX_DUEL_CAPITALS).current;
 
   // Core game state managed by reducer — guarantees atomic, fresh reads.
+  // `startingTurn` is fixed for the hook's lifetime: online PvP opens with the
+  // joining seat (player2), while practice keeps the engine's player1 opening.
   const [state, dispatch] = useReducer(
     (s: CoreState, a: ReducerAction) => coreReducer(s, a, capitals),
     undefined,
-    makeInitialCore,
+    () => makeInitialCore(startingTurn),
   );
 
   // Action log is a separate concern (display only). Kept outside the
