@@ -97,7 +97,9 @@ export async function POST(req) {
           betAmount: updated.betAmount,
           timerSeconds: updated.timerSeconds || 60,
           status: "in_progress",
-          currentTurn: "host",
+          // A rematch follows the same opening rule as a fresh match: the
+          // joining seat (guest) starts.
+          currentTurn: "guest",
           startedAt: new Date(),
           moveDeadlineAt: new Date(
             Date.now() + Number(updated.timerSeconds || 60) * 1000,

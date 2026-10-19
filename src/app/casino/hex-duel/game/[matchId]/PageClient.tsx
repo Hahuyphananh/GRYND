@@ -32,6 +32,7 @@ import { cosmeticEffectClass } from "../../../../../lib/profileCosmetics";
 // page only plays the match the route names, so it needs the shared waiting
 // takeover and the difficulty vocabulary — nothing that creates a game.
 import { coerceAiDifficulty, readStoredAiDifficulty } from "../../../../../lib/aiDifficulty";
+import { seatIdentityFrom, viewerSeatsFor } from "../../../../../lib/hex-duel/seats";
 import {
   IconDeviceGamepad2,
   IconArrowLeft,
@@ -1209,8 +1210,8 @@ export default function HexDuelPage() {
   // Auto-start game once both players are ready
   useEffect(() => {
     if (gameMode === "multiplayer" && multiplayerGameId && opponentReady && multiplayerJoinedRef.current) {
-      // Both players connected — start the game
-      // The engine starts with currentTurn="player1" and player1 goes first
+      // Both players connected. The join route already wrote the opening
+      // turn: the joining seat (player2) starts every PvP match.
     }
   }, [gameMode, multiplayerGameId, opponentReady]);
 
@@ -2026,23 +2027,21 @@ export default function HexDuelPage() {
         }
 
         if (data.game) {
-          if (data.game.player1Name) setPlayer1Name(data.game.player1Name);
-          if (data.game.player2Name) setOpponentName(data.game.player2Name);
-          if (data.game.player1IconKey) setPlayer1IconKey(data.game.player1IconKey);
-          if (data.game.player1NameColor) setPlayer1NameColor(data.game.player1NameColor);
-          if (data.game.player1ProfileFrame) setPlayer1ProfileFrame(data.game.player1ProfileFrame);
-          if (data.game.player2ProfileFrame)
-            setOpponentProfileFrame(
-              isPlayer1 ? data.game.player2ProfileFrame : data.game.player1ProfileFrame,
-            );
-          if (data.game.player2IconKey) {
-            const oppKey = isPlayer1 ? data.game.player2IconKey : data.game.player1IconKey;
-            if (oppKey) setOpponentIconKey(oppKey);
-          }
-          if (data.game.player2NameColor) {
-            const oppColor = isPlayer1 ? data.game.player2NameColor : data.game.player1NameColor;
-            if (oppColor) setOpponentNameColor(oppColor);
-          }
+          // Spectators follow seat 1, participants follow their own seat. The
+          // payload names seats ABSOLUTELY, so resolve each side once here and
+          // never conditionally re-map a field (which is how the guest's avatar
+          // used to land on the opponent card).
+          const seats = viewerSeatsFor({ isSpectator, isPlayer1 });
+          const local = seatIdentityFrom(data.game, seats.local);
+          const opponent = seatIdentityFrom(data.game, seats.opponent);
+          if (local.name) setPlayer1Name(local.name);
+          if (local.iconKey) setPlayer1IconKey(local.iconKey);
+          if (local.nameColor) setPlayer1NameColor(local.nameColor);
+          if (local.profileFrame) setPlayer1ProfileFrame(local.profileFrame);
+          if (opponent.name) setOpponentName(opponent.name);
+          if (opponent.iconKey) setOpponentIconKey(opponent.iconKey);
+          if (opponent.nameColor) setOpponentNameColor(opponent.nameColor);
+          if (opponent.profileFrame) setOpponentProfileFrame(opponent.profileFrame);
         }
 
         const actions = data.actions || [];
@@ -2073,7 +2072,7 @@ export default function HexDuelPage() {
       cancelled = true;
       stopPoll();
     };
-  }, [isSpectator, multiplayerGameId, effectiveWinner, enqueueRemoteAction]);
+  }, [isSpectator, isPlayer1, multiplayerGameId, effectiveWinner, enqueueRemoteAction]);
 
   // Update initial turn state on server when game starts
   useEffect(() => {
@@ -2376,7 +2375,9 @@ export default function HexDuelPage() {
   // borders, and the HexBoard legend labeled "You" with cyan. Now it
   // mirrors the actual slot, so the visual perspective reflects the
   // engine slot the local user occupies.
-  const localPlayerIsP1 = gameMode !== "multiplayer" || isPlayer1;
+  // A spectator's local card follows seat 1, so it must use player1's stats and
+  // colour as well — otherwise the card's name and its accent disagree.
+  const localPlayerIsP1 = gameMode !== "multiplayer" || isSpectator || isPlayer1;
   const localDuelPlayer: DuelPlayer = localPlayerIsP1 ? "player1" : "player2";
   const opponentDuelPlayer: DuelPlayer = localPlayerIsP1 ? "player2" : "player1";
   const localColor = localDuelPlayer === "player1" ? "#22d3ee" : "#ef4444";
@@ -2439,12 +2440,15 @@ export default function HexDuelPage() {
   const opponentLabel = aiEnabled ? "AI" : gameMode === "multiplayer" ? (opponentName || "Opponent") : "Player 2";
   // Per-seat identity for the player cards. In multiplayer the viewer
   // is seat 1 or 2; spectator view follows seat 1. AI seat stays null.
-  const localIconKey = isSpectator || isPlayer1 ? player1IconKey : opponentIconKey;
-  const localNameColor = isSpectator || isPlayer1 ? player1NameColor : opponentNameColor;
-  const localProfileFrame = isSpectator || isPlayer1 ? player1ProfileFrame : opponentProfileFrame;
-  const oppIconKey = aiEnabled ? null : gameMode === "multiplayer" ? (isPlayer1 ? opponentIconKey : player1IconKey) : null;
-  const oppNameColor = aiEnabled ? null : gameMode === "multiplayer" ? (isPlayer1 ? opponentNameColor : player1NameColor) : null;
-  const oppProfileFrame = aiEnabled ? null : gameMode === "multiplayer" ? (isPlayer1 ? opponentProfileFrame : player1ProfileFrame) : null;
+  // `player1*` holds the LOCAL seat's identity and `opponent*` the other seat,
+  // as resolved by `viewerSeatsFor` in the effects above. Do not re-map them by
+  // `isPlayer1` here — that double-mapping is what swapped a guest's cosmetics.
+  const localIconKey = player1IconKey;
+  const localNameColor = player1NameColor;
+  const localProfileFrame = player1ProfileFrame;
+  const oppIconKey = aiEnabled ? null : gameMode === "multiplayer" ? opponentIconKey : null;
+  const oppNameColor = aiEnabled ? null : gameMode === "multiplayer" ? opponentNameColor : null;
+  const oppProfileFrame = aiEnabled ? null : gameMode === "multiplayer" ? opponentProfileFrame : null;
 
   // Fetch opponent name via status API when multiplayer game becomes ready
   useEffect(() => {
@@ -2453,26 +2457,24 @@ export default function HexDuelPage() {
       .then(r => r.json())
       .then(d => {
         if (d?.success && d.game) {
-          const oppName = isPlayer1 ? d.game.player2Name : d.game.player1Name;
-          if (oppName) setOpponentName(oppName);
-          const oppId = isPlayer1 ? d.game.player2Id : d.game.player1Id;
-          if (oppId) setOpponentClerkId(oppId);
-          const oppKey = isPlayer1 ? d.game.player2IconKey : d.game.player1IconKey;
-          if (oppKey) setOpponentIconKey(oppKey);
-          const oppColor = isPlayer1 ? d.game.player2NameColor : d.game.player1NameColor;
-          if (oppColor) setOpponentNameColor(oppColor);
-          const oppFrame = isPlayer1 ? d.game.player2ProfileFrame : d.game.player1ProfileFrame;
-          if (oppFrame) setOpponentProfileFrame(oppFrame);
-          const myKey = isPlayer1 ? d.game.player1IconKey : d.game.player2IconKey;
-          if (myKey) setPlayer1IconKey(myKey);
-          const myColor = isPlayer1 ? d.game.player1NameColor : d.game.player2NameColor;
-          if (myColor) setPlayer1NameColor(myColor);
-          const myFrame = isPlayer1 ? d.game.player1ProfileFrame : d.game.player2ProfileFrame;
-          if (myFrame) setPlayer1ProfileFrame(myFrame);
+          const seats = viewerSeatsFor({ isSpectator, isPlayer1 });
+          const local = seatIdentityFrom(d.game, seats.local);
+          const opponent = seatIdentityFrom(d.game, seats.opponent);
+          if (local.name) setPlayer1Name(local.name);
+          if (local.iconKey) setPlayer1IconKey(local.iconKey);
+          if (local.nameColor) setPlayer1NameColor(local.nameColor);
+          if (local.profileFrame) setPlayer1ProfileFrame(local.profileFrame);
+          if (opponent.name) setOpponentName(opponent.name);
+          if (opponent.iconKey) setOpponentIconKey(opponent.iconKey);
+          if (opponent.nameColor) setOpponentNameColor(opponent.nameColor);
+          if (opponent.profileFrame) setOpponentProfileFrame(opponent.profileFrame);
+          const opponentId =
+            seats.opponent === "player1" ? d.game.player1Id : d.game.player2Id;
+          if (opponentId) setOpponentClerkId(opponentId);
         }
       })
       .catch(() => {});
-  }, [gameMode, multiplayerGameId, opponentReady, isPlayer1]);
+  }, [gameMode, multiplayerGameId, opponentReady, isSpectator, isPlayer1]);
 
   // ── Waiting for opponent UI ───────────────────────────────────────
   if (gameMode === "multiplayer" && multiplayerGameId && !opponentReady) {

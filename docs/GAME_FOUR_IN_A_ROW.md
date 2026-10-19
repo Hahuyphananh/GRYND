@@ -4,7 +4,7 @@ Four in a Row is the classic **connect-4** duel: drop coloured discs into a 6×7
 
 ## How a match works
 
-1. **Mode** — play the AI (free practice) or a staked PvP match.
+1. **Mode** — play the AI (free practice) or a staked PvP match. In PvP the **joining seat (guest)** opens, matching Barrier Blitz's purple-first rule.
 2. **Turn play** — on your turn, drop a disc into one of the 7 columns; it falls to the lowest free cell in that column.
 3. **Win** — the first player to connect **4 discs in a line** (row, column, or diagonal) wins the round and takes the pot.
 4. **Draw** — if the board fills with no four-in-a-row, the match is a draw and both stakes are refunded in full.

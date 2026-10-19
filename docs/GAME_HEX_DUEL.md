@@ -16,7 +16,7 @@ The lobby creates games; the match route only plays the game the URL names. Anyo
 
 ## How a match works
 
-1. **Setup** — each player starts with a **capital** tile and initial troops on a hex grid (a single shared board; no fog-of-war between the two players beyond your opponent's unit counts).
+1. **Setup** — each player starts with a **capital** tile and initial troops on a hex grid (a single shared board; no fog-of-war between the two players beyond your opponent's unit counts). In a staked PvP match the **joining seat (player2)** opens; AI games keep the human (player1) opening. Both players see the same board orientation — only the player cards and accent colours follow the viewer's seat.
 2. **AP budget** — each turn you have a limited pool of **action points (max 3 per turn)** to spend on actions:
 
    | Action | AP cost |

@@ -4,7 +4,7 @@ Dots & Boxes is the classic pencil-and-paper territory game: players take turns 
 
 ## How a match works
 
-1. **Mode** — play the AI or a staked PvP match.
+1. **Mode** — play the AI or a staked PvP match. In PvP the **joining seat (guest)** opens, matching Barrier Blitz's purple-first rule.
 2. **Turn play** — on your turn, place **one edge** between two adjacent dots (horizontal or vertical).
    - Edges are validated server-side (bounds, not already drawn, correct turn).
 3. **Claiming boxes** — after placing an edge, every box whose **4th side** you just completed is claimed by you and scores +1.

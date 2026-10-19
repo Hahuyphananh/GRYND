@@ -106,6 +106,7 @@ export async function GET(req: Request) {
           player1Id: hexDuelGames.player1Id,
           player2Id: hexDuelGames.player2Id,
           wagerAmount: hexDuelGames.wagerAmount,
+          currentTurn: hexDuelGames.currentTurn,
           player1Name: users.name,
         })
         .from(hexDuelGames)
@@ -144,7 +145,13 @@ export async function GET(req: Request) {
       player2Name = p2?.name || null;
     }
 
-    const currentTurn = game.status === "turn_player1" ? "player1" : game.status === "turn_player2" ? "player2" : "player1";
+    // The column is authoritative; the legacy status string is only a fallback
+    // for rows written before migration 0054. A fresh PvP row opens with the
+    // joining seat (player2), so an in-progress row with no column value uses
+    // that same default instead of the old player1 one.
+    const currentTurn =
+      game.currentTurn ??
+      (game.status === "turn_player1" ? "player1" : "player2");
 
     // Fetch ALL actions (not filtered by userId since spectator is not a player).
     // Wrapped in `withSingleRetryForReadOnly` — this is the

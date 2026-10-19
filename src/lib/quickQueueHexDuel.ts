@@ -21,7 +21,7 @@ export async function createOrJoinHexDuelDestination({ userId, wager = 10 }: { u
   return db.transaction(async (tx) => {
     const [open] = await tx.select().from(hexDuelGames).where(and(eq(hexDuelGames.status, "waiting"), isNull(hexDuelGames.player2Id), not(eq(hexDuelGames.player1Id, userId)), eq(hexDuelGames.wagerAmount, amount.toFixed(2)))).orderBy(asc(hexDuelGames.createdAt)).for("update").limit(1);
     if (open) {
-      const [matched] = await tx.update(hexDuelGames).set({ player2Id: userId, status: "in_progress", currentTurn: "player1", lastActionSeq: 0, startedAt: new Date() }).where(and(eq(hexDuelGames.id, open.id), eq(hexDuelGames.status, "waiting"), isNull(hexDuelGames.player2Id))).returning();
+      const [matched] = await tx.update(hexDuelGames).set({ player2Id: userId, status: "in_progress", currentTurn: "player2", lastActionSeq: 0, startedAt: new Date() }).where(and(eq(hexDuelGames.id, open.id), eq(hexDuelGames.status, "waiting"), isNull(hexDuelGames.player2Id))).returning();
       if (!matched) return { error: "Game is no longer available", status: 409 };
 
       // Annotated rather than inferred: `strict` is off in this project, where a

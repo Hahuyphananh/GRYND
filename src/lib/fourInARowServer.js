@@ -259,7 +259,8 @@ export async function advanceReadyIfNeeded(game) {
       .update(fourInARowGames)
       .set({
         status: "in_progress",
-        currentTurn: "host",
+        // The joining seat opens, matching Barrier Blitz's purple-first rule.
+        currentTurn: "guest",
         startedAt: new Date(),
         moveDeadlineAt: nextMoveDeadline(getGameMoveSeconds(locked)),
         readyDeadlineAt: null,

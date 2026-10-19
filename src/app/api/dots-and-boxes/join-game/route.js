@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { dotsAndBoxesGames } from "../../../../db/schema";
 import { READY_WINDOW_MS } from "../../../../lib/dotsAndBoxesServer";
+import { createInitialState } from "../../../../lib/dotsAndBoxesEngine";
 import { escrowMatchWagers } from "../../../../lib/tokens/wager";
 import { normalizeStake } from "../../../../lib/games/stakes";
 
@@ -84,6 +85,10 @@ export async function POST(req) {
         .update(dotsAndBoxesGames)
         .set({
           guestClerkId: userId,
+          // The joining seat opens, matching Barrier Blitz's purple-first
+          // rule. The engine's own default is host-first, which is still what
+          // a practice match (create-ai) and its tests use.
+          gameState: { ...createInitialState(), currentTurn: "guest" },
           // Both players present — enter the brief "Match found!" ready
           // window; advanceReadyIfNeeded flips to in_progress (and sets
           // the first move deadline) once readyDeadlineAt passes.

@@ -64,11 +64,12 @@ export async function POST(req: Request) {
         .set({
           player2Id: userId,
           status: "in_progress",
-          // Server-authoritative initial turn. Migration 0054 added this
-          // column; player1 always plays first to match the legacy
-          // frontend default and the `/multiplayer/status` GET fallback
-          // (status `in_progress` → currentTurn `player1`).
-          currentTurn: "player1",
+          // Server-authoritative initial turn. The joining seat (player2)
+          // opens every PvP match, matching Barrier Blitz's purple-first rule;
+          // AI games keep the engine's player1 opening because they never pass
+          // through this route. `currentTurn` is the source of truth, not the
+          // legacy `status` string.
+          currentTurn: "player2",
           // Re-initialize the action cursor so an action sequence id > 0
           // is the polling hint on the first poll. The very first poll
           // after join returns no rows (afterId 0 → all rows with

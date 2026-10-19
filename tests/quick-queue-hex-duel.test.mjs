@@ -12,10 +12,11 @@ const ui = fs.readFileSync("src/components/lobby/PlatformQuickQueue.jsx", "utf8"
 test("Hex Duel adapter preserves native player, turn, and action cursor state", () => {
   assert.match(adapter, /hexDuelGames/);
   assert.match(adapter, /player2Id/);
-  assert.match(adapter, /currentTurn: "player1"/);
+  // The joining seat opens every PvP match (Barrier Blitz's purple-first rule).
+  assert.match(adapter, /currentTurn: "player2"/);
   assert.match(adapter, /lastActionSeq: 0/);
   assert.match(createRoute, /status: "waiting"/);
-  assert.match(joinRoute, /currentTurn: "player1"/);
+  assert.match(joinRoute, /currentTurn: "player2"/);
 });
 
 test("Hex Duel is registered without modifying native multiplayer routes", () => {
