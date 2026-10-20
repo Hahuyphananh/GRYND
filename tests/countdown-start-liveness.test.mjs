@@ -551,7 +551,32 @@ test("Mines Duel exposes the ready instant its board must read", () => {
 
 // ── 5. The read is still the thing that advances each match ──────────────
 
-test("Tower Arena's read still starts the match and resolves a turn window", () => {
+test("Tower Arena starts the instant the last player readies up — no start countdown", () => {
+  const store = stripComments(read("src/lib/tower-arena/serverStore.ts"));
+  const page = stripComments(read("src/app/casino/tower-arena/game/[matchId]/PageClient.tsx"));
+
+  // The READY toggle starts the match in its OWN transaction: the last player
+  // to ready up is the one who opens the first placement window.
+  assert.match(
+    store,
+    /export async function toggleTowerArenaReady\([\s\S]*?const started = await startMatchTx\(tx, matchId\);/,
+    "the last READY must start the match itself",
+  );
+  // …and nothing may park a lobby in the removed 10s countdown any more.
+  assert.ok(!store.includes("READY_COUNTDOWN_MS"), "the start countdown constant is gone");
+  assert.ok(
+    !/\.set\(\{ phase: "countdown"/.test(store),
+    "no code path may open a countdown phase",
+  );
+  // The waiting room renders no start countdown at all.
+  assert.ok(
+    !page.includes('match?.phase === "countdown"'),
+    "the waiting room no longer waits on a countdown",
+  );
+  assert.ok(!page.includes("Game starts in"), "the start-countdown banner is gone");
+});
+
+test("Tower Arena's read still starts a ready lobby and resolves a turn window", () => {
   const route = stripComments(read("src/app/api/tower-arena/get-match/route.ts"));
   const store = stripComments(read("src/lib/tower-arena/serverStore.ts"));
 
@@ -559,8 +584,8 @@ test("Tower Arena's read still starts the match and resolves a turn window", () 
   assert.match(store, /export async function advanceMatchOnPoll\(matchId: string, userId\?: string\)/);
   assert.match(
     store,
-    /if \(match\.turnDeadline && new Date\(match\.turnDeadline\)\.getTime\(\) > now\) return \{ match \};[\s\S]{0,400}?const started = await startMatchTx\(tx, match\.id\);/,
-    "an elapsed countdown must start the match on the read",
+    /if \(match\.phase === "ready" \|\| match\.phase === "countdown"\) \{[\s\S]{0,600}?const started = await startMatchTx\(tx, match\.id\);/,
+    "a full, all-ready lobby must start the match on the read — there is no countdown to wait out",
   );
   assert.match(
     store,

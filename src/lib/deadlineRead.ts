@@ -129,12 +129,14 @@ export interface TowerArenaReadSource {
 }
 
 /**
- * Tower Arena: the start countdown in any mode, plus an ACTIVE placement turn's
- * own window.
+ * Tower Arena: a legacy start countdown, plus an ACTIVE placement turn's own
+ * window.
  *
- *   * `countdown` — the 10s start countdown. The read is what starts the match
- *     (`startMatchTx`), and it is also what broadcasts the start, so the other
- *     seat follows without a timer of its own.
+ *   * `countdown` — the start countdown is RETIRED: the last READY starts the
+ *     match in the same transaction (`toggleTowerArenaReady` → `startMatchTx`),
+ *     so no new row is ever parked there. The branch stays only so a row left in
+ *     that phase by an older deployment still gets its read — which now starts
+ *     the match instead of waiting out the clock.
  *   * an ACTIVE `placement` turn — whoever holds it. A vs-AI match is untimed
  *     for the HUMAN (their deadline is null), but a BOT's turn carries its
  *     short think window (`BOT_THINK_MS`), and the store's bot backstop —

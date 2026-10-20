@@ -1106,9 +1106,10 @@ export default function TowerArenaMatchPage() {
   // and nothing on the server wakes at either instant, so a deadline nobody
   // read past simply ran out:
   //
-  //   • the pre-game countdown — both players sat on a finished countdown, the
-  //     first block never came, and the match only started if someone happened
-  //     to refocus the tab. That hit vs-AI and PvP alike.
+  //   • the ready gate — a full, all-ready lobby only left the gate on a read,
+  //     so the first block never came unless someone refocused the tab. (The
+  //     ready toggle now starts the match itself; the read stays as the backstop
+  //     for a lost relay.)
   //   • an online turn window — a player who let their window expire was never
   //     timed out for anyone, so the duel stalled mid-match.
   //
@@ -1127,8 +1128,8 @@ export default function TowerArenaMatchPage() {
   // there rather than re-derived per page.
   // `serverNow` is the page's own estimate of the server's clock, so the read
   // fires ON the stamped instant rather than a skew-covering slack past it — the
-  // countdown ending IS the read. It answers null until the sample lands, and
-  // the hook then keeps its full slack rather than trusting the device clock.
+  // window's end IS the read. It answers null until the sample lands, and the
+  // hook then keeps its full slack rather than trusting the device clock.
   useDeadlineRead(towerArenaDueRead(match), () => loadRef.current(), {
     serverNow: serverNowEstimate,
   });
@@ -1332,8 +1333,8 @@ export default function TowerArenaMatchPage() {
     }
   };
 
-  // Ready gate — toggle READY (click again to unready). The server decides
-  // when every player is ready and opens the 10s start countdown.
+  // Ready gate — toggle READY (click again to unready). The server starts the
+  // match in the same request that makes the last player ready.
   const toggleReady = async () => {
     if (readyBusy) return;
     setReadyBusy(true);
@@ -1703,20 +1704,13 @@ export default function TowerArenaMatchPage() {
 
   // ── Waiting room / ready gate ─────────────────────────────────────
   // The match does NOT auto-start when the lobby fills. Every player must
-  // click READY (bots are always ready); once everyone is ready a 10-second
-  // countdown runs before the placement-only game begins.
+  // click READY (bots are always ready); the placement-only game begins the
+  // instant the last player readies up — there is no start countdown.
   if (!isActive && !isFinished && match?.status === "waiting") {
     const activeCount = players.filter((p) => p.status === "active").length;
     const isLobbyFull = activeCount >= (match?.maxPlayers ?? 0);
-    const isCountdown = match?.phase === "countdown";
     const isReadyPhase = match?.phase === "ready";
     const iAmReady = Boolean(me?.ready);
-    // Derived from the server deadline so the very first paint is already
-    // accurate (the `countdown` hook re-renders us each tick anyway).
-    const countdownSeconds =
-      isCountdown && match?.turnDeadline
-        ? Math.max(0, Math.ceil((new Date(match.turnDeadline).getTime() - Date.now()) / 1000))
-        : null;
     return (
       <div className="min-h-screen bg-[#050512] px-3 pb-24 pt-20 text-white sm:px-6">
         <NavigationBar currentPath="/casino" />
@@ -1770,16 +1764,6 @@ export default function TowerArenaMatchPage() {
               })}
             </div>
 
-            {/* Start countdown */}
-            {isCountdown && countdownSeconds !== null && (
-              <div className="mt-6 flex flex-col items-center rounded-xl border border-amber-500/40 bg-amber-950/30 px-6 py-4">
-                <p className="text-xs font-black uppercase tracking-widest text-amber-300">Game starts in</p>
-                <p className="mt-1 font-mono text-6xl font-black tabular-nums text-amber-300 drop-shadow-[0_0_20px_rgba(245,255,59,0.4)]">
-                  {countdownSeconds}
-                </p>
-              </div>
-            )}
-
             <div className="mt-6 text-center">
               <span className="text-2xl font-black text-cyan-300">{activeCount} / {match?.maxPlayers}</span>
               <span className="ml-2 text-xs uppercase tracking-widest text-white/50">
@@ -1807,11 +1791,9 @@ export default function TowerArenaMatchPage() {
             <p className="mt-4 text-center text-xs text-white/50">
               {!isLobbyFull
                 ? `Waiting for ${(match?.maxPlayers ?? 0) - activeCount} more player${(match?.maxPlayers ?? 0) - activeCount === 1 ? "" : "s"} to join…`
-                : isCountdown
-                  ? "Both players ready — get set!"
-                  : isReadyPhase
-                    ? "Your opponent is here. Click READY to start — the match begins with a 10-second countdown once both players are ready."
-                    : "Waiting for an opponent to join…"}
+                : isReadyPhase
+                  ? "Your opponent is here. Click READY to start — the match begins the moment you are both ready."
+                  : "Waiting for an opponent to join…"}
             </p>
 
             {/* Ready / unready toggle (humans only) */}
@@ -1827,12 +1809,9 @@ export default function TowerArenaMatchPage() {
                       : "bg-emerald-500 text-black hover:brightness-110"
                   }`}
                 >
-                  {readyBusy ? "…" : iAmReady ? (isCountdown ? "Not Ready — cancel" : "Not Ready") : "Ready"}
+                  {readyBusy ? "…" : iAmReady ? "Not Ready" : "Ready"}
                 </button>
-                {isCountdown && iAmReady && (
-                  <p className="text-[11px] text-white/45">Click again to cancel the start.</p>
-                )}
-                {match?.isAi && !isCountdown && (
+                {match?.isAi && (
                   <p className="text-[11px] text-white/45">Bots are always ready — click Ready when you’re set.</p>
                 )}
               </div>

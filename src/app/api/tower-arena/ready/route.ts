@@ -15,8 +15,9 @@ export async function POST(req: Request) {
       {
         ok: !res.error,
         ready: Boolean(res.ready),
-        countdownStarted: Boolean(res.countdownStarted),
-        countdownCancelled: Boolean(res.countdownCancelled),
+        // The last READY starts the match in the same transaction — there is no
+        // start countdown, so `started` is the transition callers care about.
+        started: Boolean(res.started),
         error: res.error,
       },
       { status: res.status || (res.error ? 400 : 200) },

@@ -106,11 +106,9 @@ export {
 } from "./turnResolver";
 
 // Pre-game ready gate: once every player has clicked READY (AI seats are
-// always ready) the match enters a 10-second start countdown before play
-// begins. The deadline is stored in `turnDeadline` while `status` stays
-// "waiting" (phase "countdown"), then `advanceMatchOnPoll` flips the
-// match to active (reserve phase + fresh resource pool).
-export const READY_COUNTDOWN_MS = 10_000;
+// always ready) the match starts IMMEDIATELY — there is no start countdown.
+// `toggleTowerArenaReady` runs `startMatchTx` inside the same transaction, so
+// the first placement window opens the moment the last player readies up.
 
 export const TOWER_ARENA_LOCK_NAMESPACE = 90_131; // arbitrary game namespace
 
@@ -489,7 +487,7 @@ async function createLobbyTx(tx: any, userId: string, wager: number) {
 /**
  * Free-play human-vs-AI match. No tokens move; ONE bot seat is added but the
  * match does NOT start yet — the human lands in the ready room and clicks
- * READY (bots are always ready), which opens the 10s start countdown. Uses
+ * READY (bots are always ready), which starts the match immediately. Uses
  * the placement-only stacker (bots place via playAiTurn).
  */
 export async function createAiTowerArenaMatch({
@@ -619,7 +617,7 @@ async function joinLobbyTx(tx: any, match: any, userId: string) {
   let becameReady = false;
   if (nextSeat >= SEATS) {
     // Lobby is full — do NOT auto-start. Move to the ready gate so every
-    // player clicks READY; the match starts after the 10s countdown.
+    // player clicks READY; the match starts the moment they all have.
     const [u] = await tx
       .update(towerArenaMatches)
       .set({ phase: "ready" })
@@ -638,14 +636,10 @@ async function joinLobbyTx(tx: any, match: any, userId: string) {
   }
 
   // Defensive: if the filled lobby somehow already has every player ready
-  // (e.g. an AI bot seat was added), open the start countdown immediately.
+  // (e.g. an AI bot seat was added), start the match right here.
   const after = await fetchPlayers(tx, match.id);
   if (becameReady && isReadyGateMet(after)) {
-    await tx
-      .update(towerArenaMatches)
-      .set({ phase: "countdown", turnDeadline: new Date(Date.now() + READY_COUNTDOWN_MS) })
-      .where(and(eq(towerArenaMatches.id, match.id), eq(towerArenaMatches.status, "waiting")));
-    updated = await fetchMatchForUpdate(tx, match.id);
+    return { match: await startMatchTx(tx, match.id), joined: true, started: true, player };
   }
 
   return { match: updated, joined: true, started: false, player };
@@ -654,11 +648,10 @@ async function joinLobbyTx(tx: any, match: any, userId: string) {
 // ── Ready gate ─────────────────────────────────────────────────────────
 //
 // Every ACTIVE player must click READY before the match may start; clicking
-// again unreadies (which cancels a running countdown). Once the lobby is
-// full and every player is ready, the match enters a 10-second start
-// countdown (status stays "waiting", phase "countdown", deadline in
-// `turnDeadline`); `advanceMatchOnPoll` flips it to active when the
-// deadline passes. AI seats are always ready.
+// again unreadies (which holds the start). Once the lobby is full and every
+// player is ready, the match starts IMMEDIATELY — `startMatchTx` runs inside
+// this same transaction, so there is no start countdown to sit through. AI
+// seats are always ready.
 
 export async function toggleTowerArenaReady({
   userId,
@@ -686,23 +679,40 @@ export async function toggleTowerArenaReady({
       .where(and(eq(towerArenaPlayers.matchId, matchId), eq(towerArenaPlayers.userId, userId)));
 
     const after = await fetchPlayers(tx, matchId);
+    const playerCount = after.length;
+
+    if (nextReady && isReadyGateMet(after) && playerCount >= SEATS) {
+      // Everyone (incl. the just-readied player) is ready and the lobby is
+      // full → the match starts RIGHT NOW. `startMatchTx` opens placement and
+      // broadcasts STATE + TURN_STARTED into the match room, so the other seat
+      // follows without waiting on a countdown (there no longer is one).
+      const started = await startMatchTx(tx, matchId);
+      const startedPhase = started?.phase ?? "placement";
+      void relayTowerArenaLobbyUpdate(matchId, {
+        event: "started",
+        wager: match.wager,
+        maxPlayers: match.maxPlayers,
+        playerCount,
+        ready: nextReady,
+        phase: startedPhase,
+      });
+      return {
+        ok: true,
+        ready: nextReady,
+        started: true,
+        phase: startedPhase,
+        playerCount,
+      };
+    }
+
+    // Not everyone is ready yet — hold in the ready gate. Unreadying also pulls
+    // a legacy row out of the removed `countdown` phase, where a stale deadline
+    // could otherwise start the match behind the player's back.
     let phase = match.phase;
     let deadline = match.turnDeadline;
-    let countdownStarted = false;
-    let countdownCancelled = false;
-    if (nextReady && isReadyGateMet(after) && after.length >= SEATS) {
-      // Everyone (incl. the just-readied player) is ready and the lobby is
-      // full → begin the 10-second start countdown.
-      phase = "countdown";
-      deadline = new Date(Date.now() + READY_COUNTDOWN_MS);
-      countdownStarted = true;
-    } else if (!nextReady && phase === "countdown") {
-      // A player unreadied mid-countdown → abort the start.
+    if (!nextReady && playerCount >= SEATS) {
       phase = "ready";
       deadline = null;
-      countdownCancelled = true;
-    } else if (!nextReady && phase !== "countdown" && after.length >= SEATS) {
-      phase = "ready";
     }
 
     if (phase !== match.phase || deadline !== match.turnDeadline) {
@@ -712,29 +722,20 @@ export async function toggleTowerArenaReady({
         .where(eq(towerArenaMatches.id, matchId));
     }
 
-    const playerCount = after.length;
     // Instant refresh for every seat in the lobby (and the public grid).
     void relayTowerArenaLobbyUpdate(matchId, {
-      event: countdownStarted ? "countdown" : countdownCancelled ? "countdown-cancelled" : nextReady ? "ready" : "unready",
+      event: nextReady ? "ready" : "unready",
       wager: match.wager,
       maxPlayers: match.maxPlayers,
       playerCount,
       ready: nextReady,
       phase,
     });
-    if (countdownStarted) {
-      void broadcastTowerArenaMatchEvent(match.id, TOWER_ARENA_EVENTS.STATE, {
-        status: "waiting",
-        phase: "countdown",
-        turnDeadline: deadline ? new Date(deadline).toISOString() : null,
-      });
-    }
 
     return {
       ok: true,
       ready: nextReady,
-      countdownStarted,
-      countdownCancelled,
+      started: false,
       phase,
       playerCount,
     };
@@ -1348,8 +1349,8 @@ export async function removeParticipant({
       });
       const others = await fetchPlayers(tx, matchId);
       await tx.delete(towerArenaPlayers).where(eq(towerArenaPlayers.id, p.id));
-      // Leaving a ready / counting-down lobby reopens it (and cancels any
-      // pending start countdown) — the remaining players can't start short.
+      // Leaving a ready lobby reopens it (a legacy row parked in the removed
+      // `countdown` phase is pulled back too) — nobody can start short.
       if (match.phase === "ready" || match.phase === "countdown") {
         await tx
           .update(towerArenaMatches)
@@ -1501,12 +1502,21 @@ export async function advanceMatchOnPoll(matchId: string, userId?: string) {
     if (!match) return { error: "Match not found", status: 404 };
     const now = Date.now();
 
-    // Pre-game (status still "waiting"): ready gate + 10s start countdown.
+    // Pre-game (status still "waiting"): the ready gate. The ready toggle
+    // starts the match itself, so this is only a backstop for a race or a lost
+    // relay that left a full, all-ready lobby parked here — without it the
+    // game could deadlock. A legacy row still sitting in the removed
+    // `countdown` phase starts here too, instead of waiting out its clock.
     if (match.status === "waiting") {
-      if (match.phase === "countdown") {
+      if (match.phase === "ready" || match.phase === "countdown") {
         const players = await fetchPlayers(tx, matchId);
-        // Someone unreadied / left mid-countdown → abort the start.
-        if (!isReadyGateMet(players)) {
+        const wasCountdown = match.phase === "countdown";
+        if (isReadyGateMet(players) && players.length >= SEATS) {
+          const started = await startMatchTx(tx, match.id);
+          return { match: started, started: true };
+        }
+        if (wasCountdown) {
+          // Someone unreadied / left → back to the ready gate.
           await tx
             .update(towerArenaMatches)
             .set({ phase: "ready", turnDeadline: null })
@@ -1518,43 +1528,13 @@ export async function advanceMatchOnPoll(matchId: string, userId?: string) {
               ),
             );
           void relayTowerArenaLobbyUpdate(match.id, {
-            event: "countdown-cancelled",
+            event: "unready",
             wager: match.wager,
             maxPlayers: match.maxPlayers,
             playerCount: players.length,
             phase: "ready",
           });
-          return { match: await fetchMatchForUpdate(tx, matchId), countdownCancelled: true };
-        }
-        if (match.turnDeadline && new Date(match.turnDeadline).getTime() > now) return { match };
-        // Countdown finished → the match really starts (reserve phase + pool).
-        const started = await startMatchTx(tx, match.id);
-        return { match: started, started: true };
-      }
-      if (match.phase === "ready") {
-        // Defensive: the ready toggle usually opens the countdown, but if a
-        // race or a lost relay left a full+all-ready lobby stuck in "ready",
-        // start the countdown here so the game can never deadlock.
-        const players = await fetchPlayers(tx, matchId);
-        if (isReadyGateMet(players) && players.length >= SEATS) {
-          await tx
-            .update(towerArenaMatches)
-            .set({ phase: "countdown", turnDeadline: new Date(Date.now() + READY_COUNTDOWN_MS) })
-            .where(
-              and(
-                eq(towerArenaMatches.id, match.id),
-                eq(towerArenaMatches.status, "waiting"),
-                eq(towerArenaMatches.phase, "ready"),
-              ),
-            );
-          void relayTowerArenaLobbyUpdate(match.id, {
-            event: "countdown",
-            wager: match.wager,
-            maxPlayers: match.maxPlayers,
-            playerCount: players.length,
-            phase: "countdown",
-          });
-          return { match: await fetchMatchForUpdate(tx, matchId), countdownStarted: true };
+          return { match: await fetchMatchForUpdate(tx, matchId) };
         }
       }
       return { match };
@@ -1833,8 +1813,8 @@ export async function listOpenTowerArenaMatches({
 
   return matches
     .filter((m) => !excludeMyOpenLobby || !excludeMyOpenLobby.has(m.id))
-    // A full lobby sitting in the ready gate / start countdown has no open
-    // seats, so it must not appear as a joinable row in the public grid.
+    // A full lobby sitting in the ready gate has no open seats, so it must not
+    // appear as a joinable row in the public grid.
     .filter((m) => (countByMatch.get(m.id) ?? 0) < m.maxPlayers)
     .map((m) => {
       const cfg = computePotPrize({ wager: m.wager });
