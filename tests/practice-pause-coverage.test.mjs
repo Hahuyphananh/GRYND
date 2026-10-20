@@ -70,7 +70,7 @@ const VS_AI_PAGES = {
   },
   "src/app/casino/hex-duel/game/[matchId]/PageClient.tsx": { game: "hex-duel", local: true },
   "src/app/casino/rps/play-ai/PageClient.tsx": { game: "rps", local: true },
-  "src/app/casino/odds/PageClient.tsx": { game: "odds", local: true },
+  "src/app/casino/odds/game/[matchId]/PageClient.tsx": { game: "odds", local: true },
 };
 
 test("keys: server-backed and client-only practice games are separated", () => {
@@ -173,7 +173,7 @@ test("client-only boards freeze their own AI loop while paused", () => {
   assert.match(rps, /phase !== "picking" \|\| aiThinking \|\| pausedRef\.current/);
 
   // Odds: no pick (manual or autopick) is accepted under the overlay.
-  const odds = code("src/app/casino/odds/PageClient.tsx");
+  const odds = code("src/app/casino/odds/game/[matchId]/PageClient.tsx");
   assert.match(odds, /if \(pausedRef\.current\) return;/);
   assert.match(odds, /if \(!interactiveState \|\| gameOver \|\| isSubmitting \|\| paused\) return;/);
 });

@@ -23,8 +23,8 @@ const lobby = fs.readFileSync(LOBBY, "utf8");
  * Tower Arena and Odds already used `wager` for their entry).
  *
  * `sharedPicker` is true when the lobby hands the stake to the shared
- * `<PvpLobby wager={{ … }} />` control; Odds renders its own cards and embeds
- * the exported `<CoinWagerPicker />` directly instead.
+ * `<PvpLobby wager={{ … }} />` control. Every coin lobby mounts that shared
+ * chrome now (the per-table boards live on their own match routes).
  */
 const COIN_LOBBIES = [
   { file: "src/app/casino/keno/PageClient.jsx", stakeVar: "stake", sharedPicker: true },
@@ -38,7 +38,7 @@ const COIN_LOBBIES = [
   { file: "src/app/casino/tower-arena/PageClient.tsx", stakeVar: "wager", sharedPicker: true },
   { file: "src/app/casino/precision/PageClient.tsx", stakeVar: "wager", sharedPicker: true },
   { file: "src/app/casino/tic-tac-toe/PageClient.tsx", stakeVar: "stake", sharedPicker: true },
-  { file: "src/app/casino/odds/PageClient.tsx", stakeVar: "wager", sharedPicker: false },
+  { file: "src/app/casino/odds/PageClient.tsx", stakeVar: "stake", sharedPicker: true },
 ];
 
 /** The PvP entry points that OPEN a table, and the stake field each one takes. */

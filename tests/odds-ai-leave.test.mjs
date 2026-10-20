@@ -5,7 +5,7 @@
 // A vs-AI duel is only alive while the page is open. These tests pin the two
 // halves of that rule:
 //
-//   1. The client (`src/app/casino/odds/PageClient.tsx`)
+//   1. The client (`src/app/casino/odds/game/[matchId]/PageClient.tsx`)
 //        * leaves the active duel on `pagehide` / `beforeunload` via
 //          `sendBeacon` (a logout, refresh or closed tab), and on unmount
 //          (an in-app navigation);
@@ -24,7 +24,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 
-const CLIENT = "src/app/casino/odds/PageClient.tsx";
+const CLIENT = "src/app/casino/odds/game/[matchId]/PageClient.tsx";
 const ROUTE = "src/app/api/odds/ai/leave/route.ts";
 
 const source = (relPath) =>

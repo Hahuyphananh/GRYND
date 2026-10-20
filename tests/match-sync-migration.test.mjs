@@ -80,7 +80,7 @@ test("useVisiblePoll is kept, not blindly deleted, for non-match callers", () =>
  * imperative `startMatchSync` twin instead of the hook. */
 const IMPERATIVE_PAGES = [
   "src/app/casino/hex-duel/game/[matchId]/PageClient.tsx",
-  "src/app/casino/odds/PageClient.tsx",
+  "src/app/casino/odds/game/[matchId]/PageClient.tsx",
 ];
 
 for (const file of IMPERATIVE_PAGES) {

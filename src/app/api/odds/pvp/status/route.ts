@@ -9,7 +9,7 @@ import type { PvPInteractiveOddsState } from "../../../../../lib/odds";
 import { getSeatIdentity } from "../../../../../lib/seatIdentity";
 import { oddsPvpPayout } from "../../../../../lib/odds-pvp/serverStore";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const gate = await requireAgeVerifiedUser();
     if (gate.response) return gate.response;
@@ -25,19 +25,68 @@ export async function GET() {
     }
 
 
-    // Find the user's most recent active interactive PvP game
-    const [game] = await db
-      .select()
-      .from(oddsGames)
-      .where(
-        and(
-          or(eq(oddsGames.player1Id, userId), eq(oddsGames.player2Id, userId)),
-          eq(oddsGames.status, "playing"),
-          eq(oddsGames.isAi, false),
-        ),
-      )
-      .orderBy(desc(oddsGames.createdAt))
-      .limit(1);
+    // TWO ways in:
+    //
+    //   GET ?gameId=<id>  ONE match, by id. This is what the MATCH page reads
+    //                     (`/casino/odds/game/<id>`), including the waiting
+    //                     host whose second seat is still open — the lobby
+    //                     only creates, so the board has to be able to load
+    //                     the exact game its URL names.
+    //   GET (no param)    the legacy "my most recent live duel" read.
+    //
+    // Either way the viewer must be a participant: the payload carries a
+    // per-viewer sanitized state, and a stranger must not be able to pull the
+    // other seat's view.
+    const requestedId = Number(new URL(req.url).searchParams.get("gameId"));
+    const byId = Number.isInteger(requestedId) && requestedId > 0;
+
+    let game: any = null;
+    if (byId) {
+      const [row] = await db
+        .select()
+        .from(oddsGames)
+        .where(eq(oddsGames.id, requestedId));
+      if (!row) {
+        return NextResponse.json(
+          { success: false, error: "Match not found" },
+          { status: 404 },
+        );
+      }
+      if (row.player1Id !== userId && row.player2Id !== userId) {
+        return NextResponse.json(
+          { success: false, error: "Not part of this match" },
+          { status: 403 },
+        );
+      }
+      if (row.isAi) {
+        return NextResponse.json(
+          { success: false, error: "Not a PvP match" },
+          { status: 400 },
+        );
+      }
+      if (row.status === "cancelled") {
+        return NextResponse.json(
+          { success: false, error: "This lobby was cancelled" },
+          { status: 410 },
+        );
+      }
+      game = row;
+    } else {
+      // Find the user's most recent active interactive PvP game
+      const [row] = await db
+        .select()
+        .from(oddsGames)
+        .where(
+          and(
+            or(eq(oddsGames.player1Id, userId), eq(oddsGames.player2Id, userId)),
+            eq(oddsGames.status, "playing"),
+            eq(oddsGames.isAi, false),
+          ),
+        )
+        .orderBy(desc(oddsGames.createdAt))
+        .limit(1);
+      game = row ?? null;
+    }
 
     if (!game) {
       return NextResponse.json({
@@ -48,7 +97,14 @@ export async function GET() {
 
     const isPlayer1 = game.player1Id === userId;
     const opponentId = isPlayer1 ? game.player2Id : game.player1Id;
-    const state = game.gameState as PvPInteractiveOddsState | null;
+    // A table whose second seat is still open has a gameState row from the
+    // moment it was created, but no duel: the match page must render its
+    // WAITING card for it, so the state is only handed out once both seats are
+    // in. `status` is what the client keys off.
+    const waitingForOpponent = game.status === "waiting" || !game.player2Id;
+    const state = waitingForOpponent
+      ? null
+      : (game.gameState as PvPInteractiveOddsState | null);
 
     // Full seat identity (real username + official icon + equipped name
     // color) for both seats — one shared query. The AI seat (never in
@@ -72,6 +128,8 @@ export async function GET() {
       data: {
         active: true,
         gameId: game.id,
+        // waiting | playing | finished — the match page's stage.
+        status: game.status,
         wager: game.wager,
         isPlayer1,
         opponentId,

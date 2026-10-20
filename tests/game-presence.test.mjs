@@ -830,7 +830,7 @@ test("each direct integration stops counting when its game reaches a final state
     source("src/app/casino/hex-duel/game/[matchId]/PageClient.tsx"),
     /terminal: isGameOverEffective,/
   );
-  const odds = source("src/app/casino/odds/PageClient.tsx");
+  const odds = source("src/app/casino/odds/game/[matchId]/PageClient.tsx");
   assert.equal((odds.match(/terminal: gameOver/g) ?? []).length, 2, "AI duel + PvP duel");
 });
 
