@@ -4,9 +4,16 @@
 //
 // Single source of truth for the platform-wide numbers behind the balanced
 // coin economy. Coins behave like an energy currency: a small starting
-// balance, a strictly bounded daily top-up, tight per-bet caps and hard
-// ceilings on a single win and on a wallet — so no account can ever reach
-// millions by playing.
+// balance, a strictly bounded daily top-up, tight per-bet caps and a hard
+// ceiling on what a single win may pay.
+//
+// There is deliberately NO ceiling on a wallet BALANCE. A balance may grow past
+// any round number and every legitimate credit is paid in full; what is bounded
+// is what one match can add (`GLOBAL_MAX_BET` / `HIGH_VARIANCE_MAX_BET` bound the
+// stake, `MAX_WIN_PER_MATCH` bounds the payout). `users.balance` is
+// NUMERIC(30, 2) — ~10^28 with two decimals — which is orders of magnitude
+// beyond what those caps and the faucets can produce, so no schema widening is
+// needed and credits never clamp against the current balance.
 //
 //   * STARTING_COINS            — the balance a new account opens with.
 //   * DAILY_ENERGY_GRANT        — the most a player is topped up in one UTC
@@ -23,7 +30,6 @@
 //                                 out, regardless of wager or multiplier.
 //   * HOUSE_RTP                 — return-to-player ceiling for house/PvE
 //                                 games (the house keeps at least 1 − RTP).
-//   * WALLET_HARD_CAP           — balance ceiling no credit may cross.
 //   * DAILY_REWARD_CYCLE        — the curated 14-day login-reward curve.
 //   * ZERO_BALANCE_RESCUE       — the one-last-game top-up for an empty wallet.
 //   * PVP_RAKE_PCT              — every 1v1 match takes 10% of the pot
@@ -78,13 +84,6 @@ export const MAX_WIN_PER_MATCH = 1_000;
  * PvP is zero-sum minus `PVP_RAKE_PCT` and is not governed by this.
  */
 export const HOUSE_RTP = 0.9;
-
-/**
- * Balance ceiling no credit may cross (tokens). `creditUserBalance` / the
- * settlement payout path must clamp a credit so `balance` never exceeds this,
- * which is the final guarantee that an account cannot reach millions.
- */
-export const WALLET_HARD_CAP = 100_000;
 
 /**
  * The daily login reward paid for each day of a 14-day cycle (tokens), indexed

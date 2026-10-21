@@ -1172,8 +1172,8 @@ async function finishMatchTx(tx: any, match: any, players: any[]) {
   }
 
   // Pay the winner from the escrowed pot — once per match (the active→finished
-  // guard above), capped by the shared wallet ceiling. A failure rolls the
-  // settlement back rather than finishing a paid match unpaid.
+  // guard above), capped by the shared per-match payout ceiling. A failure rolls
+  // the settlement back rather than finishing a paid match unpaid.
   if (isPaid && winner && !winner.isAi && winner.userId) {
     await settlePayout({
       clerkId: winner.userId,

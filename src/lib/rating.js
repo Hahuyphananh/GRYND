@@ -51,6 +51,7 @@
 import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
+import { recordSettledMatch } from "./quests/settle";
 import {
   STARTING_RATING,
   OVERALL_MIN_GAMES,
@@ -937,6 +938,33 @@ export async function applyRatingResult({
          ${computed.loser.k})
       ON CONFLICT (user_id, game_key, match_id) DO NOTHING
     `);
+
+    // ── 7c. Quest progress ───────────────────────────────────────────
+    // This writer is the single settlement doorway for every two-seat game, and
+    // it only runs when BOTH competitors resolved to real `users` rows, so a
+    // quest seat built here always has a human opponent. It records the match
+    // for each side (win/loss, or draw for both) inside the SAME transaction
+    // that rated it: the quest journal's per-participant unique key makes a
+    // replay a no-op, and a rollback of this transaction rolls the progress
+    // back with it. Quest state is progression only — it never pays coins,
+    // moves Elo, trophies, wagers or leaderboard counters.
+    await recordSettledMatch({
+      tx: txc,
+      gameKey: key,
+      matchId: eventId,
+      seats: [
+        {
+          userId: Number(winnerRow.id),
+          opponentUserId: Number(loserRow.id),
+          outcome: isDraw ? "draw" : "win",
+        },
+        {
+          userId: Number(loserRow.id),
+          opponentUserId: Number(winnerRow.id),
+          outcome: isDraw ? "draw" : "loss",
+        },
+      ],
+    });
 
     // ── 7b. Mark the winner's daily-reward gate ──────────────────────
     // The daily login reward requires a WIN today, so it reads this marker

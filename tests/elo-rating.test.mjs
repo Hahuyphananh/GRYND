@@ -245,6 +245,24 @@ function makeFakeDb({ users = [], seededEvents = [], seededIdentities = [] } = {
         return { rows: [], rowCount: user ? 1 : 0 };
       }
 
+      // ── quest bridge: seat accounts ─────────────────────────────
+      // The bridge first confirms the seat ids are real accounts. Every id a
+      // rating settlement passes here came from `users`, so echo them back.
+      if (/^SELECT id FROM users/i.test(sql)) {
+        return { rows: params.map((id) => ({ id })) };
+      }
+
+      // ── quest settlement journal ────────────────────────────────
+      // The shared writer also hands the settled match to the quest bridge in
+      // this same transaction. These tests are about Elo, and the fake has no
+      // quest slots, so it answers the journal insert the way a database would
+      // for a match that was ALREADY counted: no new participant rows, so the
+      // bridge stops before touching a slot. (tests/quests-settlement.test.mjs
+      // is where the quest side of that write is exercised for real.)
+      if (/^INSERT INTO quest_match_events/i.test(sql)) {
+        return { rows: [] };
+      }
+
       throw new Error(`FakeDb: unrecognised statement -> ${sql}`);
     },
   };

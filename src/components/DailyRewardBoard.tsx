@@ -256,18 +256,6 @@ export default function DailyRewardBoard({ open, onClose, reward }: Props) {
                     Choose a game
                   </Link>
                 </div>
-              ) : status.claimable && status.walletFull ? (
-                // The ONE claim button lives here, so it must carry the same
-                // verdict the card and the widget show: an at-ceiling wallet
-                // cannot take the credit, and the server would refuse it.
-                <span
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#ff4fd8]/40 bg-[#ff4fd8]/10 px-3 py-2 text-sm font-semibold text-[#ff4fd8]"
-                  data-testid="daily-reward-wallet-full"
-                >
-                  <IconLock size={15} aria-hidden="true" /> Wallet full (
-                  {formatCoins(status.walletCap)} coin limit) — spend some coins to claim
-                  today&apos;s {formatCoins(status.reward)} coins.
-                </span>
               ) : status.claimable ? (
                 <button
                   type="button"

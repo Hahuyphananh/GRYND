@@ -428,10 +428,9 @@ test("the widget renders each reward state, and nothing when signed out", { skip
   assert.doesNotMatch(failed, /Claim /);
 });
 
-test("a full wallet is shown BEFORE the claim is pressed", { skip: SKIP_REASON }, async (t) => {
-  // The reported follow-up: a player at the wallet ceiling only found out after
-  // pressing Claim — the server refused and nothing happened. Both surfaces now
-  // carry the verdict up front.
+test("a wallet above the old ceiling still gets the claim", { skip: SKIP_REASON }, async (t) => {
+  // The 100,000 ceiling is gone: a balance far above it is offered the claim
+  // exactly like an empty wallet, and no "wallet full" state exists to show.
   const world = resetWorld();
 
   t.mock.module("../src/hooks/useDailyReward.ts", {
@@ -453,7 +452,7 @@ test("a full wallet is shown BEFORE the claim is pressed", { skip: SKIP_REASON }
     "../src/components/DailyRewardCard.tsx"
   );
 
-  const AT_CEILING = {
+  const BIG_WALLET = {
     claimable: true,
     winGateSatisfied: true,
     streakDay: 2,
@@ -462,56 +461,35 @@ test("a full wallet is shown BEFORE the claim is pressed", { skip: SKIP_REASON }
     reward: 35,
     today: "2026-10-17",
     cycle: [30, 35, 45, 50, 60, 70, 80, 90, 105, 120, 135, 155, 175, 200],
-    balance: 100000,
-    walletFull: true,
-    walletCap: 100000,
+    balance: 250_000,
   };
 
-  Object.assign(world, { status: AT_CEILING });
+  Object.assign(world, { status: BIG_WALLET });
 
-  // `formatCoins` follows the RUNNER's locale, so the thousands separator is
-  // matched separator-agnostically (fr-FR renders 100 000 with a space).
-  const COIN_LIMIT = /100[\s,.\u00A0\u202F]?000 coin limit/;
-
-  // The widget names the reason, the ceiling and what is waiting for them.
+  // The widget offers the claim — the same CTA a broke wallet gets.
   const widget = renderToStaticMarkup(React.createElement(DailyRewardWidget));
-  assert.match(widget, /data-testid="daily-reward-widget-wallet-full"/);
-  assert.match(widget, /Wallet full/);
-  assert.match(widget, COIN_LIMIT);
-  assert.match(widget, /35/);
-  // …and does NOT offer the claim: that CTA is what led nowhere before.
-  assert.doesNotMatch(widget, /Claim day 2/);
+  assert.match(widget, /Claim day 2\s*—\s*35 coins/);
+  assert.doesNotMatch(widget, /Wallet full/);
+  assert.doesNotMatch(widget, /daily-reward-widget-wallet-full/);
 
-  // The /rewards card says the same thing in its claim slot.
+  // The /rewards card does too.
   const card = renderToStaticMarkup(React.createElement(DailyRewardCard));
-  assert.match(card, /data-testid="daily-reward-wallet-full"/);
-  assert.match(card, /Wallet full/);
-  assert.match(card, COIN_LIMIT);
-  assert.doesNotMatch(card, /Daily reward &#x2014; day 2/);
-
-  // With room again, both surfaces go back to offering the claim.
-  Object.assign(world, {
-    status: { ...AT_CEILING, walletFull: false, balance: 500 },
-  });
-  const refilledWidget = renderToStaticMarkup(React.createElement(DailyRewardWidget));
-  assert.match(refilledWidget, /Claim day 2\s*—\s*35 coins/);
-  assert.doesNotMatch(refilledWidget, /Wallet full/);
-  const refilledCard = renderToStaticMarkup(React.createElement(DailyRewardCard));
-  assert.doesNotMatch(refilledCard, /Wallet full/);
-  assert.match(refilledCard, /day 2 \(35 coins\)/);
+  assert.match(card, /day 2 \(35 coins\)/);
+  assert.doesNotMatch(card, /Wallet full/);
+  assert.doesNotMatch(card, /daily-reward-wallet-full/);
 });
 
-test("the one claim button is withheld when the wallet is full", () => {
-  // The board owns the only claim button in the app, so the verdict has to gate
-  // it too — the card and the widget merely open the board.
+test("nothing withholds the claim for a wallet size any more", () => {
+  // The board owns the only claim button, and it must be reachable at any
+  // balance: there is no wallet verdict left to gate it on.
   const board = read(BOARD);
-  const gate = board.indexOf("status.claimable && status.walletFull");
-  const claimButton = board.indexOf('data-testid="daily-reward-claim"');
-  assert.ok(gate > 0, "the board must read the wallet verdict");
-  assert.ok(gate < claimButton, "the wallet-full branch must precede the claim button");
-  assert.match(board, /data-testid="daily-reward-wallet-full"/);
-  // The server-side refusal stays as the backstop for a stale status read.
-  assert.match(read("src/lib/tokens/dailyReward.ts"), /if \(credit < reward\)/);
+  assert.doesNotMatch(board, /walletFull|walletCap/);
+  assert.ok(!board.includes("daily-reward-wallet-full"));
+  assert.ok(board.indexOf('data-testid="daily-reward-claim"') > 0);
+  // Nor is there a server-side refusal to fall back to.
+  const src = read("src/lib/tokens/dailyReward.ts");
+  assert.doesNotMatch(src, /walletFull|walletCap|WALLET_HARD_CAP/);
+  assert.ok(!src.includes("if (credit < reward)"));
 });
 
 test("the widget re-reads immediately when an AI or practice win is announced", () => {

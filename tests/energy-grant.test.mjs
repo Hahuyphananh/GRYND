@@ -20,7 +20,6 @@ import {
 import {
   DAILY_ENERGY_GRANT,
   ENERGY_GRANT_FLOOR,
-  WALLET_HARD_CAP,
 } from "../src/lib/games/economy.ts";
 
 test("the grant tops a low balance up to the floor", () => {
@@ -34,7 +33,9 @@ test("the grant never fires at or above the floor", () => {
     ENERGY_GRANT_FLOOR,
     ENERGY_GRANT_FLOOR + 1,
     5_000,
-    WALLET_HARD_CAP,
+    // Far past the old 100,000 wallet ceiling: the floor rule is unchanged and
+    // still grants nothing, with no ceiling to compare against.
+    250_000,
   ]) {
     assert.equal(energyGrantAmount(balance), 0, `balance ${balance}`);
   }
@@ -81,8 +82,10 @@ test("the grant records one ledger row per day and locks the player row", () => 
   // The reference id is day + player, so retries in one day are no-ops.
   assert.match(src, /referenceId = `\$\{utcDayKey\(now\)\}:\$\{clerkId\}`/);
   assert.match(src, /ledgerRowExists|existing\.length > 0/);
-  // Atomic, guarded credit and the wallet ceiling.
+  // Atomic, guarded credit — and no wallet ceiling: the grant is paid in full
+  // (its own floor/shortfall rule is the only bound).
   assert.match(src, /sql`\$\{users\.balance\} \+ \$\{credit\}`/);
-  assert.match(src, /WALLET_HARD_CAP/);
+  assert.match(src, /const credit = amount;/);
+  assert.doesNotMatch(src, /WALLET_HARD_CAP/);
   assert.match(src, /\.for\("update"\)/);
 });

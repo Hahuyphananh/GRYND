@@ -2,8 +2,9 @@
  * wager-escrow.test.mjs
  *
  * The coin escrow rules (src/lib/tokens/wager.ts): a payout can never exceed
- * MAX_WIN_PER_MATCH or push a balance past WALLET_HARD_CAP, and every move is
- * keyed so it can only be applied once per match.
+ * MAX_WIN_PER_MATCH (there is no wallet ceiling, so a balance plays no part in
+ * it), a refund returns the stake in full, and every move is keyed so it can
+ * only be applied once per match.
  *
  * Run:  node --import tsx --test tests/wager-escrow.test.mjs
  */
@@ -19,29 +20,53 @@ import {
   PAYOUT_REFERENCE,
   REFUND_REFERENCE,
 } from "../src/lib/tokens/wager.ts";
-import { MAX_WIN_PER_MATCH, WALLET_HARD_CAP } from "../src/lib/games/economy.ts";
+import { MAX_WIN_PER_MATCH } from "../src/lib/games/economy.ts";
 
 const SRC = "src/lib/tokens/wager.ts";
 const src = fs.readFileSync(SRC, "utf8");
 
 test("a payout is capped by the per-match ceiling", () => {
-  assert.equal(capPayout(500, 0), 500);
-  assert.equal(capPayout(MAX_WIN_PER_MATCH, 0), MAX_WIN_PER_MATCH);
-  assert.equal(capPayout(MAX_WIN_PER_MATCH + 1, 0), MAX_WIN_PER_MATCH);
-  assert.equal(capPayout(1_000_000, 0), MAX_WIN_PER_MATCH);
+  assert.equal(capPayout(500), 500);
+  assert.equal(capPayout(MAX_WIN_PER_MATCH), MAX_WIN_PER_MATCH);
+  assert.equal(capPayout(MAX_WIN_PER_MATCH + 1), MAX_WIN_PER_MATCH);
+  assert.equal(capPayout(1_000_000), MAX_WIN_PER_MATCH);
 });
 
-test("a payout is capped by the wallet headroom", () => {
-  assert.equal(capPayout(500, WALLET_HARD_CAP), 0);
-  assert.equal(capPayout(500, WALLET_HARD_CAP - 100), 100);
-  assert.equal(capPayout(500, WALLET_HARD_CAP - 1), 1);
-  // A balance already at/above the cap can never be credited further.
-  assert.equal(capPayout(500, WALLET_HARD_CAP + 5_000), 0);
+test("a payout no longer depends on the wallet's balance", () => {
+  // The headroom clamp is gone: a player holding far more than the old 100,000
+  // ceiling still receives a legitimate payout, up to MAX_WIN_PER_MATCH.
+  assert.equal(capPayout(MAX_WIN_PER_MATCH), MAX_WIN_PER_MATCH);
+  // No call site may pass a balance in again (the second argument is what
+  // turned a big balance into a reduced or refused payout).
+  assert.doesNotMatch(src, /capPayout\([^)]*,[^)]*\)/);
+  assert.ok(!src.includes("WALLET_HARD_CAP"), "the wallet ceiling must be gone");
+});
+
+test("a wallet past 100,000 needs no schema or number change", () => {
+  const schema = fs.readFileSync("src/db/schema.ts", "utf8");
+  // NUMERIC(30,2) holds ~10^28 with two decimals, so a balance above the old
+  // ceiling is stored exactly and no widening migration is required.
+  assert.match(schema, /balance: numeric\("balance", \{ precision: 30, scale: 2 \}\)/);
+  // Credits are whole coins added to a 2-decimal numeric; JS numbers stay exact
+  // far beyond anything the caps can produce.
+  const big = 250_000; // above the retired ceiling
+  assert.equal(big + capPayout(MAX_WIN_PER_MATCH), 251_000);
+  assert.equal(Number((big + 0.5).toFixed(2)), 250_000.5);
+  assert.ok(Number.isSafeInteger(big + capPayout(MAX_WIN_PER_MATCH)));
+});
+
+test("a refunded stake comes back in full", () => {
+  // A refund is the player's own coins returning, not a win: it is paid in
+  // full (the matching debit row is required, so it can never mint) and is not
+  // clipped by the per-match payout ceiling either.
+  const refund = src.slice(src.indexOf("export async function refundWager"));
+  assert.match(refund, /const credit = requested;/);
+  assert.doesNotMatch(refund, /capPayout/);
 });
 
 test("capPayout rejects non-payments", () => {
   for (const amount of [0, -1, -500, NaN, Infinity, null, undefined, "abc"]) {
-    assert.equal(capPayout(amount, 0), 0, `capPayout(${String(amount)})`);
+    assert.equal(capPayout(amount), 0, `capPayout(${String(amount)})`);
   }
 });
 

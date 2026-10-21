@@ -227,8 +227,6 @@ function statusBody() {
     today: TODAY,
     cycle: CYCLE,
     balance: world.balance,
-    walletFull: false,
-    walletCap: 100000,
   };
 }
 

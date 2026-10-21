@@ -2,6 +2,7 @@
 import {
   pgTable,
   serial,
+  bigserial,
   varchar,
   integer,
   numeric,
@@ -687,6 +688,96 @@ export const userStats = pgTable("user_stats", {
   weeklyGameStreak: integer("weekly_game_streak").notNull().default(0),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+// ── QUESTS ──────────────────────────────────────────────────────────────────
+// Per-player, per-period quest slots (daily + weekly). Revives the shape from
+// 0132_user_quests.sql, which was never journaled and was absent from this file
+// for the whole retired stretch — see migration 0225_quests.sql, which is the
+// authority and is safe whether or not the legacy table survived.
+//
+//   * (user_id, period_type, period_key, slot) is the deterministic identity:
+//     slot+quest come from planQuests() in src/lib/quests/definitions.ts, so a
+//     retry re-derives the SAME slots and inserts nothing new.
+//   * `meta` holds { definitionId, games }: `games` is the set of canonical game
+//     ids already counted for a "different games" quest.
+//   * `reward` is virtual coins only, and `completed_at` freezes completion so a
+//     later definition change can never un-complete a finished quest.
+// Progress is advanced ONLY by a settled, server-verified human-vs-human match
+// (see src/lib/quests/progress.ts) — never by AI, practice, lobbies or cancels.
+export const userQuests = pgTable(
+  "user_quests",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    periodType: varchar("period_type", { length: 10 }).notNull(),
+    periodKey: varchar("period_key", { length: 12 }).notNull(),
+    slot: integer("slot").notNull(),
+    questType: varchar("quest_type", { length: 20 }).notNull(),
+    gameKey: varchar("game_key", { length: 30 }),
+    // numeric(14,2) matches 0132 so a legacy table needs no type conversion;
+    // `mode: "number"` keeps the read/write side as plain quest counts.
+    target: numeric("target", { precision: 14, scale: 2, mode: "number" }).notNull(),
+    reward: integer("reward").notNull(),
+    progress: numeric("progress", { precision: 14, scale: 2, mode: "number" })
+      .notNull()
+      .default(0),
+    claimed: boolean("claimed").notNull().default(false),
+    meta: jsonb("meta").notNull().default({}),
+    completedAt: timestamp("completed_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    slotUnique: unique("user_quests_user_period_slot_unique").on(
+      table.userId,
+      table.periodType,
+      table.periodKey,
+      table.slot,
+    ),
+    periodIdx: index("idx_user_quests_user_period").on(
+      table.userId,
+      table.periodType,
+      table.periodKey,
+    ),
+  }),
+);
+
+// The DURABLE "this match counted for this player" journal (migration 0226).
+//
+// Written inside the SAME settlement transaction that finishes the match, next
+// to the quest progress update, so a retried or racing terminal event cannot
+// count a match twice. `userId`/`opponentUserId` reference real accounts — an AI
+// or bot seat has no `users` row and therefore cannot be journaled at all,
+// which is what makes "a human opponent" a schema-level fact rather than a
+// client claim. See src/lib/quests/settle.ts.
+export const questMatchEvents = pgTable(
+  "quest_match_events",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    gameKey: varchar("game_key", { length: 30 }).notNull(),
+    matchId: varchar("match_id", { length: 128 }).notNull(),
+    opponentUserId: integer("opponent_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    outcome: varchar("outcome", { length: 8 }).notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    matchUnique: unique("quest_match_events_user_game_match_unique").on(
+      table.userId,
+      table.gameKey,
+      table.matchId,
+    ),
+    matchIdx: index("idx_quest_match_events_match").on(
+      table.gameKey,
+      table.matchId,
+    ),
+  }),
+);
 
 export const specialTitles = pgTable("special_titles", {
   id: serial("id").primaryKey(),

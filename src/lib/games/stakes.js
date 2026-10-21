@@ -6,10 +6,10 @@
 //
 // Coins are the energy currency. A brand-new account opens with
 // `STARTING_COINS`, a bounded daily grant tops a low balance back up to
-// `ENERGY_GRANT_FLOOR`, a single wager is capped by the game's class, a single
-// match can pay out at most `MAX_WIN_PER_MATCH`, and no credit may push a
-// balance past `WALLET_HARD_CAP` (all in src/lib/games/economy.ts). Together
-// those are what stop an account from reaching millions by playing.
+// `ENERGY_GRANT_FLOOR`, a single wager is capped by the game's class, and a
+// single match can pay out at most `MAX_WIN_PER_MATCH` (all in
+// src/lib/games/economy.ts). Together those bound what one match can add —
+// there is no ceiling on a wallet's total balance.
 //
 // A wager of 0 is LEGAL and means "no stake" — a practice / bot / free match.
 // Any positive wager must be a whole number inside `[MIN_STAKE,

@@ -53,6 +53,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { identityHashForEmail } from "./rating";
+import { recordSettledMatch } from "./quests/settle";
 import {
   OVERALL_TROPHIES_LABEL,
   OVERALL_TROPHY_MIN_GAMES,
@@ -949,6 +950,39 @@ export async function applyPlacementTrophies({
         : userIds[String(winnerClerkId)] ?? null,
   });
   if (!settled.applied) return settled;
+
+  // ── Quest progress (multi-seat tables) ───────────────────────────
+  // This is the shared settlement doorway for tables that have no Elo —
+  // Tower Arena settles here — so the quest seats are built from the SAME
+  // authoritative finishing order the trophies were just applied from, inside
+  // the same transaction. Only seats that resolved to a real `users` row are in
+  // `results`, so a bot / AI seat can never count; a seat whose opponent cannot
+  // be named is dropped by the quest bridge rather than guessed at.
+  const userIdByClerk = new Map(
+    settled.results.map((result) => [String(result.clerkId), Number(result.userId)]),
+  );
+  const opponentClerkFor = (clerkId) => {
+    if (String(clerkId) === String(winnerClerkId)) {
+      // The seat this player beat, as recorded by the shared journal.
+      return order.slice(1).find((other) => String(other) !== String(clerkId)) ?? null;
+    }
+    return winnerClerkId;
+  };
+  await recordSettledMatch({
+    tx,
+    gameKey: key,
+    matchId: eventId,
+    seats: settled.results.map((result) => ({
+      userId: Number(result.userId),
+      opponentUserId:
+        userIdByClerk.get(String(opponentClerkFor(result.clerkId))) ?? null,
+      outcome: result.isWin
+        ? "win"
+        : result.outcome === "draw"
+          ? "draw"
+          : "loss",
+    })),
+  });
 
   const byClerk = new Map(settled.results.map((r) => [String(r.clerkId), r]));
   const winnerResult = byClerk.get(String(winnerClerkId));

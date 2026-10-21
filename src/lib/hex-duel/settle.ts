@@ -17,6 +17,7 @@
 
 import { eq, sql } from "drizzle-orm";
 import { hexDuelGames, users } from "../../db/schema";
+import { recordSettledMatch } from "../quests/settle";
 import { payPvpPot } from "../tokens/pvpPot";
 import type { DuelPlayer } from "./rules";
 import { hexDuelClerkInSeat } from "./authority";
@@ -129,6 +130,40 @@ export async function settleHexDuelMatch({
         .set({ payout: payout.toFixed(2) })
         .where(eq(hexDuelGames.id, game.id));
     }
+  }
+
+  // ── Quest progress ──────────────────────────────────────────────────
+  // All three endings (server replay, resignation, disconnect forfeit) come
+  // through this one function, inside the caller's settlement transaction, and
+  // every route only ever loads a NON-AI match whose seats are authenticated
+  // clerk ids. Resolve those seats to their account rows and hand the result to
+  // the shared quest bridge: one journal row per participant, written with the
+  // match, so a replayed finish or a second route racing it cannot count twice.
+  // The bridge drops any seat it cannot resolve and pays nothing — it only
+  // moves quest progress.
+  if (winnerClerkId && loserClerkId) {
+    const seatRows: any = await tx.execute(sql`
+      SELECT id, clerk_id AS "clerkId"
+        FROM users
+       WHERE clerk_id IN (${winnerClerkId}, ${loserClerkId})
+    `);
+    const userIdByClerk = new Map(
+      ((seatRows.rows ?? seatRows) as any[]).map((row) => [
+        String(row.clerkId),
+        Number(row.id),
+      ]),
+    );
+    const winnerUserId = userIdByClerk.get(String(winnerClerkId)) ?? null;
+    const loserUserId = userIdByClerk.get(String(loserClerkId)) ?? null;
+    await recordSettledMatch({
+      tx,
+      gameKey: "hex-duel",
+      matchId: String(game.id),
+      seats: [
+        { userId: winnerUserId, opponentUserId: loserUserId, outcome: "win" },
+        { userId: loserUserId, opponentUserId: winnerUserId, outcome: "loss" },
+      ],
+    });
   }
 
   return { payout, stake, winnerClerkId, callerWon, endedAt };

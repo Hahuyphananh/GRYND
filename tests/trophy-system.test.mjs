@@ -221,6 +221,23 @@ function makeFakeDb({ users = [], seededEvents = [], seededIdentities = [] } = {
         return { rows: [], rowCount: 2 };
       }
 
+      // ── quest bridge: seat accounts ─────────────────────────────
+      // The bridge confirms the seat ids are real accounts first. Every seat
+      // reaching the trophy writer was resolved from `users`, so echo them.
+      if (/^SELECT id FROM users/i.test(sql)) {
+        return { rows: params.map((id) => ({ id })) };
+      }
+
+      // ── quest settlement journal ────────────────────────────────
+      // The multi-seat writer also hands the settled table to the quest bridge
+      // in this same transaction. Trophy tests don't model quest slots, so the
+      // fake answers the journal insert the way a database would for an
+      // already-counted match (no new participant rows) and the bridge stops
+      // there. tests/quests-settlement.test.mjs covers the quest write itself.
+      if (/^INSERT INTO quest_match_events/i.test(sql)) {
+        return { rows: [] };
+      }
+
       throw new Error(`FakeDb: unrecognised statement -> ${sql}`);
     },
   };

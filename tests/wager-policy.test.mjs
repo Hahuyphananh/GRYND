@@ -36,7 +36,6 @@ import {
   MAX_WIN_PER_MATCH,
   PVP_RAKE_PCT,
   STARTING_COINS,
-  WALLET_HARD_CAP,
 } from "../src/lib/games/economy.ts";
 
 // ════════════════════════════════════════════════════════════════════════
@@ -53,7 +52,7 @@ test("wagering is enabled and a match may move coins", () => {
 });
 
 // ════════════════════════════════════════════════════════════════════════
-// 2. The balanced economy — no account can reach millions
+// 2. The balanced economy — one MATCH is bounded, a wallet is not
 // ════════════════════════════════════════════════════════════════════════
 
 test("the economy constants are balanced and bounded", () => {
@@ -64,23 +63,27 @@ test("the economy constants are balanced and bounded", () => {
   assert.equal(HIGH_VARIANCE_MAX_BET, 25);
   assert.equal(MAX_WIN_PER_MATCH, 1_000);
   assert.equal(HOUSE_RTP, 0.9);
-  assert.equal(WALLET_HARD_CAP, 100_000);
   assert.equal(PVP_RAKE_PCT, 0.1);
 });
 
-test("the balanced economy cannot mint millions", () => {
+test("what one match can add is bounded even though the wallet is not", () => {
   // A day's grant never exceeds the floor the player is refilled to, so it
   // cannot be farmed above it.
   assert.ok(DAILY_ENERGY_GRANT <= ENERGY_GRANT_FLOOR);
-  // A wager never exceeds the wallet a player can actually hold, and a single
-  // win is capped well below the wallet ceiling.
-  assert.ok(GLOBAL_MAX_BET <= WALLET_HARD_CAP);
-  assert.ok(MAX_WIN_PER_MATCH <= WALLET_HARD_CAP);
-  // The final guarantee: the wallet ceiling is the hard bound, and it is two
-  // orders of magnitude below "millions".
-  assert.ok(WALLET_HARD_CAP < 1_000_000);
+  // The bet is capped and the payout is capped on top of it, so no single
+  // result can add an unbounded amount — that is what replaced the wallet cap.
+  assert.ok(GLOBAL_MAX_BET <= MAX_WIN_PER_MATCH);
+  assert.ok(MAX_WIN_PER_MATCH <= 1_000);
   // The house never pays out more than it takes.
   assert.ok(HOUSE_RTP < 1);
+});
+
+test("there is no wallet ceiling in the economy constants", () => {
+  // The 100,000 ceiling is gone for good: a balance may exceed it and every
+  // legitimate credit is still paid. Re-adding the constant must fail here.
+  const economy = fs.readFileSync("src/lib/games/economy.ts", "utf8");
+  assert.doesNotMatch(economy, /WALLET_HARD_CAP/);
+  assert.doesNotMatch(economy, /wallet (hard )?(cap|ceiling)/i);
 });
 
 // ════════════════════════════════════════════════════════════════════════

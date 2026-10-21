@@ -26,7 +26,6 @@ import { tokenTransactions, users } from "../../db/schema";
 import {
   DAILY_ENERGY_GRANT,
   ENERGY_GRANT_FLOOR,
-  WALLET_HARD_CAP,
   ZERO_BALANCE_RESCUE,
 } from "../games/economy";
 
@@ -111,8 +110,10 @@ export async function claimEnergyGrant(
       .limit(1);
     if (existing.length > 0) return { ok: true, granted: 0, balance };
 
-    // Same wallet ceiling as every other credit.
-    const credit = Math.min(amount, Math.max(0, WALLET_HARD_CAP - balance));
+    // Paid in full. There is no wallet ceiling, and the amount is already
+    // bounded by the floor/shortfall rule above, so no clamp on the current
+    // balance is needed (or wanted).
+    const credit = amount;
 
     let newBalance = balance;
     if (credit > 0) {
@@ -127,7 +128,8 @@ export async function claimEnergyGrant(
       newBalance = Number(updated.balance);
     }
 
-    // Written even for a capped-to-0 credit so the day is still marked.
+    // The ledger row is written in the same transaction as the credit, so the
+    // day can never be marked without the coins (or the coins without the day).
     await tx.insert(tokenTransactions).values({
       clerkId,
       type: "reward",
@@ -181,8 +183,10 @@ export async function claimZeroBalanceRescue(
       .limit(1);
     if (existing.length > 0) return { ok: true, granted: 0, balance };
 
-    // Same wallet ceiling as every other credit.
-    const credit = Math.min(amount, Math.max(0, WALLET_HARD_CAP - balance));
+    // Paid in full. There is no wallet ceiling, and the amount is already
+    // bounded by the floor/shortfall rule above, so no clamp on the current
+    // balance is needed (or wanted).
+    const credit = amount;
 
     let newBalance = balance;
     if (credit > 0) {
@@ -197,7 +201,8 @@ export async function claimZeroBalanceRescue(
       newBalance = Number(updated.balance);
     }
 
-    // Written even for a capped-to-0 credit so the day is still marked.
+    // The ledger row is written in the same transaction as the credit, so the
+    // day can never be marked without the coins (or the coins without the day).
     await tx.insert(tokenTransactions).values({
       clerkId,
       type: "reward",

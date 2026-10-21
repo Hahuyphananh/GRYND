@@ -6,6 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 import { markDailyRewardWin } from "../../../../lib/dailyRewardWin";
 import { isUnoSeat, unoCallerToken } from "../../../../lib/unoSeat";
+import { recordSettledMatch } from "../../../../lib/quests/settle";
 import { payPvpPot } from "../../../../lib/tokens/pvpPot";
 
 function safeParse(value, fallback = []) {
@@ -161,6 +162,32 @@ export async function POST(req) {
             .set({ payout: payout.toFixed(2) })
             .where(eq(unoGames.id, gameId));
         }
+
+        // Quest progress — UNO has no Elo/trophy writer (it is not on a rated
+        // ladder), so it is the one online game that has to reach the quest
+        // bridge from its own settle path. This runs INSIDE the same
+        // transaction that claimed the terminal write, and only in the
+        // multiplayer branch: the winner came from the server's own hands, and
+        // both seats are real accounts (a guest can never hold an online seat),
+        // so the match is a completed human-vs-human result. The AI branch
+        // below never reaches here, which is what keeps practice out.
+        await recordSettledMatch({
+          tx,
+          gameKey: "uno",
+          matchId: String(gameId),
+          seats: [
+            {
+              userId: game.userId,
+              opponentUserId: game.player2Id,
+              outcome: winner === "player1" ? "win" : "loss",
+            },
+            {
+              userId: game.player2Id,
+              opponentUserId: game.userId,
+              outcome: winner === "player2" ? "win" : "loss",
+            },
+          ],
+        });
 
         return true;
       });

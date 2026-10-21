@@ -1443,6 +1443,20 @@
       "when": 1800000068000,
       "tag": "0224_lane_rush_resolving_status",
       "breakpoints": true
+    },
+    {
+      "idx": 206,
+      "version": "7",
+      "when": 1800000069000,
+      "tag": "0225_quests",
+      "breakpoints": true
+    },
+    {
+      "idx": 207,
+      "version": "7",
+      "when": 1800000070000,
+      "tag": "0226_quest_match_events",
+      "breakpoints": true
     }
   ]
 }

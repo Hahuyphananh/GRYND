@@ -11,8 +11,7 @@
 //   * debitWager    — take the wager on entry (never lets a balance go
 //                     negative, never takes the same match's wager twice).
 //   * settlePayout  — pay a winner on settle, capped by MAX_WIN_PER_MATCH and
-//                     by the WALLET_HARD_CAP headroom, never paid twice for the
-//                     same match.
+//                     never paid twice for the same match.
 //   * refundWager   — give a wager back when a match is voided / never starts.
 //
 // The terminal moves are mutually exclusive per match: a payout requires the
@@ -34,7 +33,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { tokenTransactions, users } from "../../db/schema";
-import { MAX_WIN_PER_MATCH, WALLET_HARD_CAP } from "../games/economy";
+import { MAX_WIN_PER_MATCH } from "../games/economy";
 
 /**
  * The executor is either the shared `db` or a transaction (`tx`) created by
@@ -61,14 +60,15 @@ export function wagerLedgerKey(matchId: unknown, clerkId: string): string {
 
 /**
  * The most a single payout may credit: the requested amount, floored at
- * `MAX_WIN_PER_MATCH` and at the room left under `WALLET_HARD_CAP`. Pure, so
- * the ceiling is unit-testable without a database.
+ * `MAX_WIN_PER_MATCH`. The player's current balance plays no part — there is no
+ * wallet ceiling, so a wallet already holding more than any round number still
+ * receives a legitimate payout in full. Pure, so the ceiling is unit-testable
+ * without a database.
  */
-export function capPayout(amount: number, balance: number): number {
+export function capPayout(amount: number): number {
   const requested = Number(amount);
   if (!Number.isFinite(requested) || requested <= 0) return 0;
-  const room = Math.max(0, WALLET_HARD_CAP - Math.max(0, Number(balance) || 0));
-  return Math.max(0, Math.min(requested, MAX_WIN_PER_MATCH, room));
+  return Math.min(requested, MAX_WIN_PER_MATCH);
 }
 
 /** Has this exact move for this match already been written? */
@@ -299,8 +299,8 @@ export async function debitWager({
 
 /**
  * Pay a winner for a settled match. The credit is capped by
- * `MAX_WIN_PER_MATCH` and by the wallet ceiling (see `capPayout`), and the move
- * is written once per match however many times settlement is retried.
+ * `MAX_WIN_PER_MATCH` only (see `capPayout`), and the move is written once per
+ * match however many times settlement is retried.
  */
 export async function settlePayout({
   clerkId,
@@ -344,7 +344,7 @@ export async function settlePayout({
     return { ok: true, balance, applied: false };
   }
 
-  const credit = capPayout(requested, balance);
+  const credit = capPayout(requested);
   let newBalance = balance;
   if (credit > 0) {
     const [updated] = await tx
@@ -363,8 +363,8 @@ export async function settlePayout({
     newBalance = Number(updated.balance);
   }
 
-  // Written even for a capped-to-0 payout so a retry is recognised: the row is
-  // the idempotency key, not the amount.
+  // Written even for a 0-amount payout so a retry is recognised: the row is the
+  // idempotency key, not the amount.
   await writeLedger(tx, {
     clerkId,
     type: "reward",
@@ -379,7 +379,8 @@ export async function settlePayout({
 
 /**
  * Give a wager back — a cancelled lobby, a voided match, or the losing side of
- * a match that never started. Capped by the wallet ceiling like any credit.
+ * a match that never started. Always the full stake: it is the player's own
+ * coins coming back, not a win.
  */
 export async function refundWager({
   clerkId,
@@ -423,7 +424,10 @@ export async function refundWager({
     return { ok: true, balance, applied: false };
   }
 
-  const credit = capPayout(requested, balance);
+  // A refund returns coins the player already had (the matching debit row is
+  // required above), so it is paid in full: `MAX_WIN_PER_MATCH` bounds winnings,
+  // never a stake coming back.
+  const credit = requested;
   let newBalance = balance;
   if (credit > 0) {
     const [updated] = await tx

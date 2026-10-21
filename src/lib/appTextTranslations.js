@@ -1,5 +1,67 @@
 export const APP_TEXT_TRANSLATIONS = {
   en: {
+    quests: {
+      title: "Quests",
+      available: "{amount} coins available",
+      requiresHumanPvp:
+        "Quest progress counts only completed matches against real players. Practice, AI and bot games never count.",
+      claimedNow: "You claimed {amount} coins.",
+      loading: "Loading your quests…",
+      signIn: "Sign in",
+      signedOutHint: "to see your daily and weekly quests.",
+      loadError: "We couldn't load your quests.",
+      retry: "Try again",
+      empty: "No quests in this period yet — check back after your next match.",
+      dailyTitle: "Daily quests",
+      dailyResets: "Resets at midnight UTC",
+      weeklyTitle: "Weekly quests",
+      weeklyResets: "Resets Monday at midnight UTC",
+      progressLabel: "Progress",
+      progressOf: "{progress} / {target}",
+      progressBarLabel: "Progress for {title}",
+      claimed: "Claimed",
+      claim: "Claim {reward} coins",
+      claiming: "Claiming…",
+      inProgress: "In progress",
+      defs: {
+        "daily-first-match": {
+          title: "First match",
+          description: "Play 1 match against a real player.",
+        },
+        "daily-three-matches": {
+          title: "Warmed up",
+          description: "Play 3 matches against real players.",
+        },
+        "daily-two-wins": {
+          title: "Winning form",
+          description: "Win 2 matches against real players.",
+        },
+        "daily-two-games": {
+          title: "Change it up",
+          description: "Play human-vs-human matches in 2 different games.",
+        },
+        "daily-three-games": {
+          title: "Tour the lobby",
+          description: "Play human-vs-human matches in 3 different games.",
+        },
+        "weekly-fifteen-matches": {
+          title: "Weekly regular",
+          description: "Play 15 matches against real players this week.",
+        },
+        "weekly-eight-wins": {
+          title: "Weekly champion",
+          description: "Win 8 matches against real players this week.",
+        },
+        "weekly-four-games": {
+          title: "Weekly sampler",
+          description: "Play human-vs-human matches in 4 different games this week.",
+        },
+        "weekly-five-games": {
+          title: "Weekly explorer",
+          description: "Play human-vs-human matches in 5 different games this week.",
+        },
+      },
+    },
     states: {
       emptyTitle: "Nothing here yet",
       emptyDescription: "Once you start playing, your activity will show up here.",
@@ -1713,6 +1775,68 @@ export const APP_TEXT_TRANSLATIONS = {
     },
   },
   fr: {
+    quests: {
+      title: "Quêtes",
+      available: "{amount} pièces à réclamer",
+      requiresHumanPvp:
+        "La progression des quêtes ne compte que les matchs terminés contre de vrais joueurs. Les parties contre l'IA ou le bot d'entraînement ne comptent jamais.",
+      claimedNow: "Vous avez réclamé {amount} pièces.",
+      loading: "Chargement de vos quêtes…",
+      signIn: "Connectez-vous",
+      signedOutHint: "pour voir vos quêtes quotidiennes et hebdomadaires.",
+      loadError: "Impossible de charger vos quêtes.",
+      retry: "Réessayer",
+      empty: "Aucune quête pour cette période pour le moment — revenez après votre prochain match.",
+      dailyTitle: "Quêtes quotidiennes",
+      dailyResets: "Réinitialisation à minuit UTC",
+      weeklyTitle: "Quêtes hebdomadaires",
+      weeklyResets: "Réinitialisation le lundi à minuit UTC",
+      progressLabel: "Progression",
+      progressOf: "{progress} / {target}",
+      progressBarLabel: "Progression de {title}",
+      claimed: "Réclamée",
+      claim: "Réclamer {reward} pièces",
+      claiming: "Réclamation…",
+      inProgress: "En cours",
+      defs: {
+        "daily-first-match": {
+          title: "Premier match",
+          description: "Jouez 1 match contre un vrai joueur.",
+        },
+        "daily-three-matches": {
+          title: "Échauffement",
+          description: "Jouez 3 matchs contre de vrais joueurs.",
+        },
+        "daily-two-wins": {
+          title: "En forme",
+          description: "Gagnez 2 matchs contre de vrais joueurs.",
+        },
+        "daily-two-games": {
+          title: "Changez de jeu",
+          description: "Jouez des matchs entre joueurs dans 2 jeux différents.",
+        },
+        "daily-three-games": {
+          title: "Tour du hall",
+          description: "Jouez des matchs entre joueurs dans 3 jeux différents.",
+        },
+        "weekly-fifteen-matches": {
+          title: "Habitué de la semaine",
+          description: "Jouez 15 matchs contre de vrais joueurs cette semaine.",
+        },
+        "weekly-eight-wins": {
+          title: "Champion de la semaine",
+          description: "Gagnez 8 matchs contre de vrais joueurs cette semaine.",
+        },
+        "weekly-four-games": {
+          title: "Échantillonneur",
+          description: "Jouez des matchs entre joueurs dans 4 jeux différents cette semaine.",
+        },
+        "weekly-five-games": {
+          title: "Explorateur",
+          description: "Jouez des matchs entre joueurs dans 5 jeux différents cette semaine.",
+        },
+      },
+    },
     states: {
       emptyTitle: "Rien à afficher pour le moment",
       emptyDescription: "Dès que vous commencerez à jouer, votre activité apparaîtra ici.",
@@ -3178,6 +3302,68 @@ export const APP_TEXT_TRANSLATIONS = {
     },
   },
   es: {
+    quests: {
+      title: "Misiones",
+      available: "{amount} monedas disponibles",
+      requiresHumanPvp:
+        "El progreso de las misiones solo cuenta partidas completadas contra jugadores reales. Las partidas contra la IA o el bot de práctica nunca cuentan.",
+      claimedNow: "Has reclamado {amount} monedas.",
+      loading: "Cargando tus misiones…",
+      signIn: "Inicia sesión",
+      signedOutHint: "para ver tus misiones diarias y semanales.",
+      loadError: "No pudimos cargar tus misiones.",
+      retry: "Reintentar",
+      empty: "Todavía no hay misiones en este periodo — vuelve después de tu próxima partida.",
+      dailyTitle: "Misiones diarias",
+      dailyResets: "Se reinicia a medianoche UTC",
+      weeklyTitle: "Misiones semanales",
+      weeklyResets: "Se reinicia el lunes a medianoche UTC",
+      progressLabel: "Progreso",
+      progressOf: "{progress} / {target}",
+      progressBarLabel: "Progreso de {title}",
+      claimed: "Reclamada",
+      claim: "Reclamar {reward} monedas",
+      claiming: "Reclamando…",
+      inProgress: "En curso",
+      defs: {
+        "daily-first-match": {
+          title: "Primera partida",
+          description: "Juega 1 partida contra un jugador real.",
+        },
+        "daily-three-matches": {
+          title: "Calentando",
+          description: "Juega 3 partidas contra jugadores reales.",
+        },
+        "daily-two-wins": {
+          title: "En racha",
+          description: "Gana 2 partidas contra jugadores reales.",
+        },
+        "daily-two-games": {
+          title: "Cambia de juego",
+          description: "Juega partidas entre jugadores en 2 juegos distintos.",
+        },
+        "daily-three-games": {
+          title: "Recorre la sala",
+          description: "Juega partidas entre jugadores en 3 juegos distintos.",
+        },
+        "weekly-fifteen-matches": {
+          title: "Habitual",
+          description: "Juega 15 partidas contra jugadores reales esta semana.",
+        },
+        "weekly-eight-wins": {
+          title: "Campeón semanal",
+          description: "Gana 8 partidas contra jugadores reales esta semana.",
+        },
+        "weekly-four-games": {
+          title: "Muestrario semanal",
+          description: "Juega partidas entre jugadores en 4 juegos distintos esta semana.",
+        },
+        "weekly-five-games": {
+          title: "Explorador semanal",
+          description: "Juega partidas entre jugadores en 5 juegos distintos esta semana.",
+        },
+      },
+    },
     states: {
       emptyTitle: "Aún no hay nada aquí",
       emptyDescription: "Cuando empieces a jugar, tu actividad aparecerá aquí.",
