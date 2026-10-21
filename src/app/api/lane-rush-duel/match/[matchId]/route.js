@@ -1,30 +1,29 @@
 // src/app/api/lane-rush-duel/match/[matchId]/route.js
 //
-// GET — fetch current match state with auto-resolve behaviour. The
-// server store handles these auto-advance paths inside
-// `fetchMatchWithAutoResolve` (all on the SERVER clock):
-//   1. a playable match with no turn owner → seed the opening turn.
-//   2. `ready` deadline elapsed → advance to the active state.
-//   3. the current player's 15s choice window elapsed → end that
-//      attempt (back to Row 1) and hand the turn to the opponent.
+// GET — fetch the current match, healing the lifecycle on read.
 //
-// Visibility model:
-//   • Both players cross the SAME shared bridge (10 rows, exactly one
-//     bad tile per row). During play the layout's hidden bad tiles are
-//     NOT sent: `bridge` is the client view only (geometry + the tiles
-//     that are already broken + the commitment hash), so each player
-//     can verify fairness after the match without seeing the solution
-//     early. `myRow` / `oppRow` are each seat's progress and
-//     `myFlags` / `oppFlags` are the public memory flags (2 each).
-//   • Turn ownership is server-side: `currentTurnUserId` + `isViewerTurn`
-//     tell the client whose 15s choice window is live (`roundDeadline`).
-//   • Once `finished`: full reveal — the bridge layout, the server
-//     seed, and the full action history.
+// RACE (state version 1) is dispatched to `fetchRaceMatchWithAutoResolve`,
+// which on the SERVER clock:
+//   1. closes the `ready` banner and opens the first planning window;
+//   2. resolves a fully-locked or expired planning round exactly once;
+//   3. returns the authoritative view (scores, cars, resources, action
+//      points, deadline, last result), hiding the opponent's current plan.
+//
+// LEGACY BRIDGE (state version 0) keeps its preserved transitions in
+// `fetchMatchWithAutoResolve` and its old payload shape, but the live match
+// page renders such a row as a retired board instead of racing controls.
 
 import { NextResponse } from "next/server";
 import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerified";
-import { fetchMatchWithAutoResolve } from "../../../../../lib/lane-rush-duel/serverStore";
+import {
+  fetchMatch,
+  fetchMatchWithAutoResolve,
+} from "../../../../../lib/lane-rush-duel/serverStore";
 import { broadcastMatchUpdate } from "../../../../../lib/lane-rush-duel/rooms";
+import {
+  fetchRaceMatchWithAutoResolve,
+  isRaceMatch,
+} from "../../../../../lib/lane-rush/raceStore";
 import { getSeatIdentity } from "../../../../../lib/seatIdentity";
 import {
   BRIDGE_FLAGS_PER_PLAYER,
@@ -134,6 +133,47 @@ export async function GET(req, { params }) {
   }
 
   try {
+    const existingRow = await fetchMatch(matchId);
+
+    // ── Racing game (gameStateVersion 1) ─────────────────────────────
+    // The read heals the lifecycle (ready → planning) and resolves an expired
+    // or fully-locked round BEFORE returning the state, so a reconnect always
+    // recovers the authoritative phase, deadline, scores, resources, cars and
+    // last result. Nothing is kept in process memory.
+    if (existingRow && isRaceMatch(existingRow)) {
+      const race = await fetchRaceMatchWithAutoResolve(userId, matchId);
+      if (race.error) {
+        return NextResponse.json(
+          { success: false, error: race.error, code: race.code },
+          { status: race.status || 400 },
+        );
+      }
+
+      const identity = await getSeatIdentity(
+        race.match.player1Id,
+        race.match.player2Id,
+      );
+
+      if (race.advanced || race.resolved) {
+        broadcastMatchUpdate(matchId, {
+          status: race.match.status,
+          action: race.resolved ? "race-resolved" : "planning-started",
+          round: race.match.round ?? null,
+          resolvedRound: race.resolvedRound ?? null,
+        });
+      }
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          match: {
+            ...race.match,
+            ...identityFields(identity),
+          },
+        },
+      });
+    }
+
     const result = await fetchMatchWithAutoResolve(userId, matchId);
     if (result.error) {
       return NextResponse.json(

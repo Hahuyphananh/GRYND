@@ -711,7 +711,7 @@ export const APP_TEXT_TRANSLATIONS = {
           "Cancel or forfeit this game? Tokens will be refunded or opponent credited.",
       },
       lane_runner_desc:
-        "Race a rival up the same tower — every safe pick either of you makes narrows the odds. Pick safe tiles to climb, or hold to bank your score before the bad tile finds you.",
+        "Build a garage and race a rival on the same oval — deploy cars to the Safe, Sprint or Risk lane each round and reach 1,000 points first.",
       pool_masters_desc: "Compete in a strategic game of pool. Sink the 8-ball to win!",
       pool_masters_name: "Pool Masters",
       chess_name: "Chess",
@@ -2419,7 +2419,7 @@ export const APP_TEXT_TRANSLATIONS = {
           "Annuler ou abandonner cette partie ? Les jetons seront remboursés ou crédités à l'adversaire.",
       },
       lane_runner_desc:
-        "Grimpez votre propre tour contre un rival. Choisissez des tuiles sûres pour monter, ou verrouillez votre score avant que la mauvaise tuile ne vous trouve.",
+        "Construisez votre garage et affrontez un rival sur le même ovale : déployez vos voitures sur les pistes Sûre, Sprint ou Risque et atteignez 1 000 points en premier.",
       chess_name: "Échecs",
       rps_name: "Roche-Papier-Ciseaux",
       pool_masters_name: "Maîtres du Billard",
@@ -3884,7 +3884,7 @@ export const APP_TEXT_TRANSLATIONS = {
           "¿Cancelar o abandonar esta partida? Las fichas se reembolsarán o se acreditarán al oponente.",
       },
       lane_runner_desc:
-        "Corre tu propia torre contra un rival: elige casillas seguras para subir, o bloquea tu puntuación antes de que la casilla mala te encuentre.",
+        "Construye tu garaje y compite contra un rival en el mismo óvalo: despliega tus coches en las pistas Segura, Sprint o Riesgo y llega primero a 1.000 puntos.",
       chess_name: "Ajedrez",
       rps_name: "Piedra-Papel-Tijeras",
       pool_masters_name: "Maestros del Billar",

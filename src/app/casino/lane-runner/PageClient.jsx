@@ -2,19 +2,18 @@
 
 // src/app/casino/lane-runner/page.jsx
 //
-// LOBBY page for the "Lane Rush Duel" match system (the PvP
-// replacement for the old solo tower game). The game logic lives in
-// `src/lib/lane-rush-duel/*`; this page is a thin client.
+// LOBBY page for "Lane Rush" — the simultaneous-planning oval race.
+// The race engine lives in `src/lib/lane-rush/*`; the legacy
+// glass-bridge transitions stay in `src/lib/lane-rush-duel/*` for
+// historical rows. This page is a thin client.
 //
 // Flow:
 //   1. Pick a stake (preset chips or custom).
-//   2. Pick a difficulty (host-only — the joiner inherits whatever
-//      the host chose when they created the lobby).
-//   3. Hit Play → POST /api/lane-rush-duel/create-or-join
+//   2. Hit Play → POST /api/lane-rush-duel/create-or-join
 //        • matches on stake equality (server-authoritative)
 //        • escrow stake on success
-//        • provably-fair towers generated at match creation
-//   4. Redirect to /casino/lane-runner/[matchId]
+//        • every new match is created as a race (state version 1)
+//   3. Redirect to /casino/lane-runner/[matchId]
 //
 // The page chrome (balance strip → stake picker + Play → escrow
 // note → Open Lobbies list) is the shared PvpLobby component in the
@@ -35,30 +34,7 @@ import {
 import { DIFFICULTIES } from "../../../lib/lane-rush-duel/constants";
 import { MIN_STAKE } from "../../../lib/games/stakes";
 import { startVisibleInterval } from "../../../hooks/useVisiblePoll";
-import { IconShieldCheck } from "@tabler/icons-react";
-
-function TowerIcon({ className = "" }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
-      <path d="M5 3 L8 21" />
-      <path d="M19 3 L16 21" />
-      <path d="M5 3 H19" />
-      <path d="M8 21 H16" />
-      <path d="M8 9 H16" />
-      <path d="M7.5 15 H16.5" />
-    </svg>
-  );
-}
+import { IconRoute, IconShieldCheck } from "@tabler/icons-react";
 
 export default function LaneRushDuelLobbyPage() {
   const { isSignedIn, user } = useUser();
@@ -176,8 +152,9 @@ export default function LaneRushDuelLobbyPage() {
   );
 
   // Test vs Bot — zero-stake practice match against the server-side
-  // bot. Same rules, no money: the bot crosses the same shared bridge,
-  // avoiding tiles it has watched break (and spending its flags on hard).
+  // bot. Same racing rules, no money: the bot submits an ordinary
+  // validated plan and only its route-risk appetite changes with the
+  // chosen difficulty.
   const createBotMatch = useCallback(
     async (chosenDifficulty) => {
       setBusy(true);
@@ -299,64 +276,61 @@ export default function LaneRushDuelLobbyPage() {
   return (
     <PvpLobbyPage
       wager={{ value: stake, onChange: setStake, balance: coinBalance }}
-      title="Lane Rush Duel"
+      title="Lane Rush"
       subtitle={
         <>
-          You and your opponent cross the <b>same glass bridge</b> — one
-          provably-fair layout, <b>10 rows with exactly one bad tile
-          each</b>. On your turn pick a tile on your row: a{" "}
-          <b className="text-emerald-300">safe</b> tile carries you on and
-          you pick again, a <b className="text-rose-300">bad</b> one breaks
-          that tile for good and sends you back to row 1. Mark tiles you
-          have landed on with <b className="text-amber-300">memory flags</b>{" "}
-          (2 each, both players see them). You get 15 seconds per choice.{" "}
-          <b>First across row 10 wins</b> — 1.8× your stake, house takes
-          0.2×.
+          You and your opponent plan in secret on the <b>same oval circuit</b>.{" "}
+          Each round is a <b>60-second planning window</b> with 2 action
+          points: deploy up to four cars to the <b>Safe</b>, <b>Sprint</b> or{" "}
+          <b>Risk</b> lane, then buy, merge or repair in the garage. The
+          server races both grids at once — a finished car scores tier
+          points × the lane multiplier, a DNF scores nothing and leaves the
+          car damaged. <b>First to 1,000 points wins</b> — 1.8× your stake,
+          house takes 0.2×.
         </>
       }
       icon={
-        <TowerIcon className="h-9 w-9 flex-shrink-0 text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)] sm:h-10 sm:w-10" />
+        <IconRoute className="h-9 w-9 flex-shrink-0 text-cyan-300 drop-shadow-[0_0_12px_rgba(34,211,238,0.55)] sm:h-10 sm:w-10" />
       }
       rulesKey="lane-runner"
       rules={{
         title: "How to Play",
         sections: [
           {
-            heading: "Cross the same bridge",
+            heading: "Plan in secret",
             body: (
               <>
-                Both players cross the <b>same bridge</b> — one
-                provably-fair layout, same difficulty. It has{" "}
-                <b>10 rows</b> and <b>exactly one bad tile per row</b>.
-                Whoever crosses row 10 first wins.
+                Every round opens a <b>60-second planning window</b> and
+                grants <b>2 action points</b>. Both seats plan at the same
+                time, and the opponent&apos;s route choices stay hidden until
+                the race resolves. Lock in when you are ready — or the server
+                finalizes whatever you had deployed.
               </>
             ),
           },
           {
-            heading: "Pick your tile",
+            heading: "Build the garage",
             body: (
               <>
-                On your turn you pick a tile on the row you are standing
-                on, with <b>15 seconds</b> to decide. A{" "}
-                <b className="text-emerald-300">safe</b> tile carries you
-                one row further and it stays your turn — you pick again
-                with a fresh 15 seconds. A{" "}
-                <b className="text-rose-300">bad</b> tile ends your
-                attempt: it <b>stays broken</b> for the rest of the match
-                and you start again from row 1. Let the clock run out and
-                your attempt ends the same way.
+                You start with <b>two Tier 1 cars</b> and <b>4 Scrap</b>. Buy
+                a Tier 1 car for 2 Scrap + 1 AP, merge two undamaged cars of
+                the same tier into the next tier for 1 AP, or repair a damaged
+                car for 1 Scrap + 1 AP. You can own up to eight cars and race
+                up to four.
               </>
             ),
           },
           {
-            heading: "Remember with flags",
+            heading: "Pick a lane",
             body: (
               <>
-                Each match gives you <b>2 memory flags</b>. You can flag
-                only a tile you <b>personally landed on safely</b>, and
-                flags are <b>public</b> — both players see them. A flag
-                can never be moved or removed. Placing one costs you
-                nothing and never ends your turn.
+                <b className="text-emerald-300">Safe</b> pays 1.0× with a 5%
+                DNF and +1 Scrap. <b className="text-sky-300">Sprint</b> pays
+                1.5× with a 15% DNF and +1 Fuel.{" "}
+                <b className="text-rose-300">Risk</b> pays 2.2× with a 30%
+                DNF and +1 Tech. A finished car scores its tier base points ×
+                the lane multiplier; a DNF scores nothing and comes back
+                damaged.
               </>
             ),
           },
@@ -364,18 +338,21 @@ export default function LaneRushDuelLobbyPage() {
             heading: "Win the pot",
             body: (
               <>
-                The first player to <b>cross row 10 wins</b> the match
-                instantly. 1.8× your stake, house takes 0.2×.
+                Points are cumulative and the <b>first seat to 1,000</b>
+                wins. If both cross it in the same round, the higher total
+                wins; an exact tie is a draw and both stakes are refunded.
+                The winner takes 1.8× their stake, the house takes 0.2×.
               </>
             ),
           },
           {
-            heading: "Provably fair",
+            heading: "Server-authoritative",
             body: (
               <>
-                Every row hides one bad tile. The bridge derives from
-                one shared server seed (hash shown before the match) +
-                the host&apos;s client seed, both revealed after.
+                The server rolls every race outcome with its own random
+                values and applies the round exactly once inside a row-locked
+                transaction. The client never decides a DNF, a score or the
+                winner — it only replays the round the server confirmed.
               </>
             ),
           },
@@ -426,12 +403,6 @@ export default function LaneRushDuelLobbyPage() {
               <CoinIcon className="h-3.5 w-3.5 text-yellow-300" />
             </span>
           </span>
-          <span>
-            Difficulty:{" "}
-            <span className="font-semibold text-cyan-300">
-              {DIFFICULTIES[m.difficulty]?.label || m.difficulty}
-            </span>
-          </span>
         </span>
       )}
       onJoin={(l) => {
@@ -454,9 +425,9 @@ export default function LaneRushDuelLobbyPage() {
           {/* Difficulty picker — host-only at create time */}
           <div>
             <label className="text-[10px] font-semibold uppercase tracking-wider text-white/60">
-              Difficulty{" "}
+              Bot risk{" "}
               <span className="font-normal normal-case tracking-normal text-cyan-300/70">
-                (host)
+                (practice only)
               </span>
             </label>
             <div className="mt-1 flex flex-wrap gap-1">
@@ -476,8 +447,8 @@ export default function LaneRushDuelLobbyPage() {
               ))}
             </div>
             <p className="mt-1 text-[9px] leading-tight text-white/40">
-              {DIFFICULTIES[difficulty]?.width} tiles per row · 10 rows,
-              one bad tile each · 2 memory flags each. Joiners inherit.
+              Only the practice bot uses this — it changes how much route
+              risk the bot takes. PvP opponents plan for themselves.
             </p>
           </div>
         </div>
@@ -487,18 +458,15 @@ export default function LaneRushDuelLobbyPage() {
         <div className="mt-6 rounded-lg border border-amber-800/30 bg-amber-950/20 p-3 text-xs leading-relaxed text-amber-200/80">
           <p className="mb-1 flex items-start gap-1.5 font-bold text-amber-300">
             <IconShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-300" />
-            Skill duel.
+            Skill race.
           </p>
           <p>
-            You and your rival cross the {" "}
-            <b>same 10-row bridge</b>, one bad tile hidden in every
-            row. A safe tile keeps your turn; a bad tile breaks for
-            good and sends you back to Row 1. Spend your two{" "}
-            <b>memory flags</b> to remember the tiles you survived.
-            First to cross row 10 wins. The bridge is{" "}
-            <b>provably fair</b>: both players derive it from one
-            shared server seed (hash shown before the match) + the
-            match's client seed, revealed after.
+            Every round you spend two <b>action points</b> on the garage and{" "}
+            <b>deploy up to four cars</b> to lanes with different risk and
+            reward. Merging two cars upgrades a tier, so the biggest totals
+            come from planning several rounds ahead. Both grids race at once
+            on the server&apos;s rolls, the first seat to <b>1,000 points</b>{" "}
+            wins, and a damaged car sits out until you repair it.
           </p>
         </div>
       }

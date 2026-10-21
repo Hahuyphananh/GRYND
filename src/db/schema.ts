@@ -2240,6 +2240,10 @@ export const laneRushDuelStatusEnum = pgEnum("lane_rush_duel_status", [
   "active",
   "p1_turn",
   "p2_turn",
+  // Race resolution is an explicit lifecycle state: the marker is committed
+  // first, then the result is applied in one transaction (see
+  // src/lib/lane-rush/raceStore.ts). A crashed resolver is resumable.
+  "resolving",
   "finished",
   "cancelled",
 ]);
@@ -2793,6 +2797,17 @@ export const laneRushDuelMatches = pgTable(
     p2Flags: jsonb("p2_flags")
       .notNull()
       .default(sql`'[]'::jsonb`),
+    // ── LANE RUSH RACE STATE (the strategic racing game) ───────────
+    // The reworked game is a versioned JSONB state machine: seats, cars,
+    // resources, deployed routes and round results (see
+    // src/lib/lane-rush/engine.ts). `gameStateVersion` 0 is the LEGACY
+    // glass-bridge row — the engine's readState() refuses it, so an
+    // unfinished old match is never interpreted as a race. New matches
+    // write version 1.
+    gameStateVersion: integer("game_state_version").notNull().default(0),
+    gameState: jsonb("game_state")
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     // Chronological action history: [{ userId, seat, action:
     // "jump"|"flag", row, tile, outcome, autoPicked, at }]
     actions: jsonb("actions")

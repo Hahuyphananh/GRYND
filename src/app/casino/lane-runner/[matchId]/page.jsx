@@ -5,8 +5,8 @@ export async function generateMetadata({ params }) {
   const shortId = matchId.length > 10 ? matchId.slice(0, 8) : matchId;
   return {
     robots: { index: false, follow: false },
-    title: `Lane Rush Duel Match #${shortId} | GRYND`,
-    description: `Live Lane Rush Duel match #${shortId} on GRYND. Both players cross the same 10-row bridge — beat your opponent to claim the pot.`,
+    title: `Lane Rush Match #${shortId} | GRYND`,
+    description: `Live Lane Rush race #${shortId} on GRYND. Both players plan a secret grid, then race the same oval — first to 1,000 points takes the match.`,
   };
 }
 

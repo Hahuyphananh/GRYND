@@ -225,7 +225,7 @@ export const GUIDES: readonly Guide[] = [
         bullets: [
           "Precision is the purest test: you stop closest to a target, so the whole game is a judgement about when to commit, not how fast you can click. Practising calm, single, deliberate stops beats spamming inputs.",
           "In Rock-Paper-Scissors, a round resolves on one click in a best-of-seven series. There is no reaction window to speak of; the skill is reading the opponent's pattern, so speed is irrelevant and misreading your own tempo is the real risk.",
-          "Lane Rush Duel rewards a template you can trust: knowing which move you will make before the situation arrives is what turns a choice reaction into a simple one.",
+          "Lane Rush is planning under a clock: the 60-second window rewards having your deploy, merge and repair choices worked out before the round opens, so the time goes into confirming the plan rather than discovering it.",
           "Mini Golf is timing under a physics model — your control is the power meter, and consistency at a familiar power setting beats trying to react to a perfect line.",
         ],
       },

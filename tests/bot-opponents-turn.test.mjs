@@ -151,20 +151,22 @@ test("every bot whose turn is gated by the server has a client ask that clears t
     "a redundant ask stays success-shaped so the client can just re-ask",
   );
 
-  // Lane Rush Duel — the bot is paced server-side, so ONE ask per state is not
-  // enough: a wake-up that lands inside the throttle applies nothing (and still
-  // answers success), and a safe tile KEEPS the bot's turn. The page therefore
-  // has to keep waking it on the shared interval — a single latched ask leaves
-  // the bot frozen until its 15s window times out and resets it to row 1,
-  // which is the "the AI does not play" bug.
+  // Lane Rush — the racing bot plans a whole round in ONE server call and
+  // locks in immediately. The page still has to keep asking until the payload
+  // shows that lock-in, because a wake-up that lands inside the server's
+  // throttle applies nothing (and still answers success). It stops the moment
+  // the bot has locked, the round resolved, or practice is paused.
   const lanePage = read("src/app/casino/lane-runner/[matchId]/PageClient.jsx");
   const laneStore = read("src/lib/lane-rush-duel/serverStore.js");
   const laneConstants = read("src/lib/lane-rush-duel/constants.js");
   assert.ok(laneConstants.includes("export const BOT_ACTION_INTERVAL_MS"));
   assert.ok(laneStore.includes("BOT_ACTION_INTERVAL_MS"), "the throttle lives on the server");
-  const laneStart = lanePage.indexOf("Test vs Bot: keep waking the bot while IT owns the turn");
+  const laneStart = lanePage.indexOf("Practice bot: wake it until it has locked in");
   assert.ok(laneStart > 0);
-  const laneBody = lanePage.slice(laneStart, laneStart + 3400);
+  const laneBody = lanePage.slice(
+    laneStart,
+    lanePage.indexOf("── Presentation cues", laneStart),
+  );
   assert.ok(laneBody.includes('`/api/lane-rush-duel/match/${matchId}/ai-turn`'));
 
   // The page paces itself off the SHARED constant (never a private copy), so
@@ -181,16 +183,20 @@ test("every bot whose turn is gated by the server has a client ask that clears t
     laneBody.includes("await fetchStatus()"),
     "every answer resyncs, so the next ask decides from the real board",
   );
-  // It stops the moment the bot no longer owns the turn (its own fall, a
-  // timeout, the duel ending) — read from the LIVE payload, not the closure.
+  // It stops the moment the bot has locked (or the round is over) — read from
+  // the LIVE payload, not the closure that started the loop.
   assert.ok(
-    laneBody.includes('if (live.currentTurnUserId !== "AI_BOT") return;') &&
+    laneBody.includes("if (live.oppLocked) return;") &&
       laneBody.includes("matchRef.current"),
-    "the loop re-checks turn ownership against the newest payload",
+    "the loop re-checks the bot's lock against the newest payload",
   );
-  // One action per state: the ask is deduped on (match, turn, action count).
   assert.ok(
-    laneBody.includes("`${matchId}:bot:${live.currentTurnUserId}:${actionCount}`"),
+    lanePage.includes("planning && !oppLocked"),
+    "nothing wakes the bot outside a planning phase it has not locked",
+  );
+  // One PLAN per round: the ask is deduped on (match, round).
+  assert.ok(
+    laneBody.includes("`${matchId}:bot:${live.round}`"),
     "each ask carries the idempotency key the server dedupes on",
   );
   assert.ok(

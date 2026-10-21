@@ -7,7 +7,7 @@ import MonetagScript from "../../../components/MonetagScript";
 // than deep-merging it, so every field the card needs is restated here.
 // See scripts/audit-social-metadata.mjs.
 const title = "Lane Rush Duel | GRYND";
-const description = "Play Lane Rush Duel on GRYND. Race a rival across the same 10-row bridge — every row hides one bad tile. A safe step keeps your turn; one wrong step sends you back to Row 1. First across wins.";
+const description = "Play Lane Rush on GRYND. Two seats build a garage and race the same oval: deploy up to four cars to the Safe, Sprint or Risk lane each round, then the server races both grids at once. First to 1,000 points wins.";
 const image = ogImageUrl("/images/og/lane-runner.jpg");
 
 // This page is the AUTHENTICATED game application, served at

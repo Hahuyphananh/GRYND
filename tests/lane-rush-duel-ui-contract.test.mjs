@@ -1,7 +1,17 @@
 /**
- * Lane Rush Duel — UI + server contract tests (shared-bridge era).
+ * Lane Rush — UI + server contract tests.
  *
- * These lock in the contracts the pure bridge engine can't express:
+ * The MATCH PAGE is now the oval race, so the client assertions below pin the
+ * racing contract: the plan API, the lock-in control, the fleet panel, the
+ * server-only result playback, and the complete removal of the bridge
+ * presentation from the active gameplay UI.
+ *
+ * The server half still covers the PRESERVED legacy glass-bridge store: an
+ * unfinished legacy row must keep playing by its original rules even though
+ * new matches never render it. Those contracts stay valid and untouched.
+ *
+ * Historically these locked in the contracts the pure bridge engine can't
+ * express:
  *   * the client reconciles only the newest status response, retries an
  *     action once (safe because the server dedupes on `actionId`), cleans
  *     up its timers/listeners and never offers a removed mechanic;
@@ -27,6 +37,10 @@ import fs from "node:fs";
 // Normalise CRLF so multi-line structural assertions work on any OS.
 const read = (p) => fs.readFileSync(p, "utf8").replace(/\r\n/g, "\n");
 const page = read("src/app/casino/lane-runner/[matchId]/PageClient.jsx");
+const matchPage = read("src/app/casino/lane-runner/[matchId]/page.jsx");
+const oval = read("src/components/lane-rush/OvalTrack.jsx");
+const ovalMath = read("src/components/lane-rush/ovalGeometry.js");
+const garage = read("src/components/lane-rush/RaceGarage.jsx");
 const store = read("src/lib/lane-rush-duel/serverStore.js");
 const actRoute = read("src/app/api/lane-rush-duel/match/[matchId]/act/route.js");
 const matchRoute = read("src/app/api/lane-rush-duel/match/[matchId]/route.js");
@@ -38,166 +52,153 @@ const aiRoute = read("src/app/api/lane-rush-duel/match/[matchId]/ai-turn/route.j
 // Client: shared-bridge integration + state-sync safety
 // ════════════════════════════════════════════════════════════════════
 
-test("the client renders the shared bridge and gates picks by the server turn", () => {
-  assert.ok(page.includes("match?.isViewerTurn"), "turn comes from the server");
-  assert.ok(page.includes('doAction("jump"'), "a tile choice is a jump");
-  assert.ok(page.includes('doAction("flag"'), "a memory flag is a flag action");
-  assert.ok(page.includes("flaggableSet"), "flags are gated to landed-safe tiles");
-  assert.ok(page.includes("brokenSet"), "broken tiles come from the server");
+test("the match page is the race: it reads the racing view and never a bridge field", () => {
+  assert.ok(page.includes("match?.lifecycle"), "the phase comes from the server");
+  assert.ok(page.includes("match?.myCars"), "the garage comes from the server");
+  assert.ok(page.includes("match?.myResources"), "the economy comes from the server");
+  assert.ok(page.includes("match?.planningDeadline"), "the deadline comes from the server");
+  assert.ok(page.includes("lastResult"), "the resolved round comes from the server");
+  // The retired bridge presentation is gone from the active gameplay UI.
+  for (const dead of [
+    "isViewerTurn",
+    "bridgeRows",
+    "myRow",
+    "oppRow",
+    "myFlags",
+    "oppFlags",
+    "brokenSet",
+    "flaggableSet",
+    "flagMode",
+    "JumpOverlay",
+    "GlassBreak",
+    "pendingBreakKey",
+    "doAction(\"jump\"",
+    "doAction(\"flag\"",
+  ]) {
+    assert.ok(!page.includes(dead), `the bridge mechanic "${dead}" must be gone`);
+  }
+  // A preserved legacy row is not rendered as a race board either: it gets an
+  // explicit notice instead of racing controls over a bridge payload.
+  assert.ok(page.includes('const legacyMatch = Boolean(match && match.mode !== "race")'));
+  assert.ok(page.includes("This match used the retired bridge board"));
+  assert.ok(!page.includes("bridgeRows"), "the bridge fields are never read");
+  // …and the bridge-era route/page identity is preserved.
+  assert.ok(page.includes('/api/lane-rush-duel/match/'), "the match routes stay");
+  assert.ok(page.includes('currentPath="/casino/lane-runner"'), "the route is unchanged");
+  assert.ok(matchPage.includes("Lane Rush Match #"), "metadata names the race");
+  assert.ok(!matchPage.includes("10-row bridge"), "metadata no longer describes the bridge");
 });
 
-test("the jump animation is presentation-only and server-driven", () => {
-  assert.ok(
-    page.includes('data-testid="lane-runner-jump"'),
-    "the jump overlay exists",
-  );
-  assert.ok(page.includes("function JumpOverlay("), "it is a dedicated overlay");
-  // The outcome it plays comes from the SERVER's resolved action history…
-  assert.ok(page.includes("outcome: a.outcome"));
-  // …and a log/shatter is never the thing that advances a row or hands over
-  // the turn: the client never writes match state from an animation callback.
-  assert.ok(!page.includes("onAnimationComplete={() => setMatch"));
-  assert.ok(!page.includes("onAnimationComplete={() => setJump"));
-  // The overlay can never intercept a click.
-  assert.ok(
-    page.includes("pointer-events-none absolute inset-0 z-30"),
-    "the overlay never blocks the board",
-  );
-  // Reduced motion removes the decorative animation entirely.
-  assert.ok(page.includes("!shouldReduce"));
+test("planning submits validated engine actions through the idempotent plan API", () => {
+  assert.ok(page.includes("/api/lane-rush-duel/match/${matchId}/act"));
+  for (const field of ["actionId", "round:", "stateVersion:", "actions,"]) {
+    assert.ok(page.includes(field), `the plan body carries ${field}`);
+  }
+  // One request in flight per seat, and a retry is safe (server-deduped).
+  assert.ok(page.includes("if (actingRef.current) return false;"));
+  assert.ok(page.includes("res = await send();"));
+  assert.ok(page.includes("// One retry — safe because the server dedupes on `actionId`."));
+  // Every control is an authoritative action, not local state.
+  for (const action of [
+    'type: "deploy"',
+    'type: "recall"',
+    'type: "setRoute"',
+    'type: "buy"',
+    'type: "merge"',
+    'type: "repair"',
+    'type: "workshopRecovery"',
+    'type: "lockIn"',
+  ]) {
+    assert.ok(page.includes(action), `the page sends ${action}`);
+  }
 });
 
-test("the memory-flag UI is prominent, public and gated to personal landings", () => {
-  // The remaining budget is shown in the HUD…
+test("the board is one oval with route lanes, seat colours and tier-sized dots", () => {
+  assert.ok(page.includes("<OvalTrack"), "the match page renders the oval");
   assert.ok(
-    page.includes('data-testid="lane-runner-flags-left"'),
-    "the HUD shows the remaining flags",
+    oval.includes('viewBox={`0 0 ${TRACK_VIEWBOX.width} ${TRACK_VIEWBOX.height}`}'),
+    "the board is scalable SVG geometry",
   );
-  assert.ok(page.includes("flagsLeft}/{flagsTotal} left"), "…as `n/2 left`");
-  // …and a flag is only OFFERED right after this seat personally landed safe.
-  assert.ok(
-    page.includes('data-testid="lane-runner-flag-prompt"'),
-    "a post-landing flag prompt exists",
-  );
-  assert.ok(
-    page.includes('a.outcome !== "safe" && a.outcome !== "won"'),
-    "the offer is derived from the server's own safe/won landings",
-  );
-  assert.ok(
-    page.includes("myFlagsLeft > 0") && page.includes("!myFlagSet.has("),
-    "the offer respects the budget and never repeats a tile",
-  );
-  // An untested tile can never be flagged from the client either.
-  assert.ok(
-    page.includes("if (!flaggableSet.has(k)) return;"),
-    "flag mode refuses any tile this seat never landed on",
-  );
-  // The flag is a first-class board object, not a corner badge: a large,
-  // glowing flag centred on the tile so it can actually be seen on the board.
-  assert.ok(
-    page.includes(
-      "pointer-events-none absolute inset-0 z-20 flex items-center justify-center gap-0.5",
-    ),
-    "the flag is centred on the tile",
-  );
-  assert.ok(
-    page.includes("text-rose-300 drop-shadow-[0_0_5px_rgba(251,113,133,0.95)]") &&
-      page.includes("text-amber-300 drop-shadow-[0_0_5px_rgba(251,191,36,0.95)]"),
-    "both seats' flags are drawn large and glowing",
-  );
-  assert.ok(
-    page.includes('myFlag || oppFlag ? "opacity-45" : ""'),
-    "the tile number stays readable, dimmed under a flag",
-  );
-  // The server stays authoritative — the client only asks.
-  assert.ok(
-    page.includes('doAction("flag"'),
-    "placing a flag is a server action, not local state",
-  );
+  assert.ok(oval.includes("LANE_ORDER.map"), "one band per route lane");
+  assert.ok(oval.includes("finishSegments.map"), "a start/finish marking exists");
+  assert.ok(oval.includes("directionChevrons()"), "the direction of travel is drawn");
+  assert.ok(oval.includes("pointOnLane("), "dots follow the mathematical ellipse");
+  assert.ok(oval.includes("pointOnRivalRing("), "a route-hidden rival grid has its own ring");
+  assert.ok(oval.includes("dotRadius(car.tier)"), "dot size encodes the tier");
+  assert.ok(ovalMath.includes("player1: Object.freeze({"), "seat colours live in the geometry module");
+  assert.ok(ovalMath.includes('dot: "#38bdf8"'), "Player 1 is blue");
+  assert.ok(ovalMath.includes('dot: "#fb7185"'), "Player 2 is red");
+  assert.ok(ovalMath.includes('1: 7, 2: 9, 3: 11, 4: 13'), "tier radii are distinct");
+  assert.ok(!oval.includes("<img"), "no image asset is used");
+  assert.ok(!oval.includes("next/image"), "no generated car illustrations are imported");
 });
 
-test("bridge tiles are square glass panels with sharp edges", () => {
-  assert.ok(
-    page.includes("h-12 w-12 shrink-0 overflow-hidden rounded-none border-2"),
-    "every tile is a square, sharp-edged panel",
-  );
-  assert.ok(page.includes("sm:h-14 sm:w-14"), "…that scales up on desktop");
-  assert.ok(
-    !page.includes("h-11 flex-1 overflow-hidden rounded-xl"),
-    "the old rounded, stretched tile is gone",
-  );
-  assert.ok(
-    !page.includes("flex flex-1 items-center gap-1.5"),
-    "tiles are no longer stretched to fill the row",
-  );
+test("the oval is responsive and keeps the whole track on small screens", () => {
+  assert.ok(oval.includes('className="block h-auto w-full select-none"'), "the board scales to its column");
+  assert.ok(oval.includes("preserveAspectRatio") === false, "the viewBox handles the aspect ratio");
+  // The two-column desktop layout collapses to one column on small screens.
+  assert.ok(page.includes("grid gap-3 lg:grid-cols-[minmax(0,1fr)_23rem]"));
+  assert.ok(page.includes("sm:grid-cols-2"), "seat cards and garage cards adapt");
 });
 
-test("a breaking tile cracks like glass, on the beat of the impact", () => {
-  assert.ok(page.includes("playGlassBreak"), "the glass-break cue is wired in");
-  assert.ok(page.includes("playBreakAtImpact()"), "your own fall plays it");
-  assert.ok(
-    page.includes("playBreakAtImpact(true)"),
-    "the opponent's fall plays it too, mixed down",
-  );
-  // Scheduled to the impact, never fired on the state change.
-  assert.ok(
-    page.includes("setTimeout(fire, GLASS_BREAK_IMPACT_MS)"),
-    "the crack is delayed to the moment the glass gives way",
-  );
-  // A timeout breaks no tile, so it must keep the plain buzz.
-  assert.ok(
-    page.includes("A timeout breaks no tile"),
-    "a timeout is not a glass break",
-  );
-  // The cue is synthesised (this module ships no audio files): a filtered
-  // noise crack plus ringing partials, randomised so repeats never loop.
-  assert.ok(
-    audio.includes("export function playGlassBreak("),
-    "playGlassBreak exists in the shared audio module",
-  );
-  assert.ok(
-    audio.includes('highpass') && audio.includes("partials"),
-    "it is a noise crack over scattered shard partials",
-  );
+test("animations are presentation-only and replay the SERVER's resolved round", () => {
+  // The board's one source of moving cars is the confirmed result projection…
+  assert.ok(page.includes("lastResult={playbackResult}"), "the board replays only a confirmed round");
+  assert.ok(page.includes("setPlaybackResult(latest)"), "a new round starts the replay");
+  assert.ok(page.includes("seenRoundRef.current === null"), "the first payload seeds a baseline");
+  assert.ok(page.includes("seenRoundRef.current = latestRound;"), "each round plays once");
+  assert.ok(oval.includes("buildRacePlayback(lastResult)"), "the projection lives in the track");
+  assert.ok(ovalMath.includes("export function buildRacePlayback("), "and is pure");
+  // It never rolls, scores or decides anything client-side.
+  assert.ok(!page.includes("Math.random"), "the client never draws a roll");
+  assert.ok(!oval.includes("Math.random"), "the board never draws a roll");
+  assert.ok(!page.includes("setMatch((cur)"), "no animation writes match state");
+  assert.ok(!page.includes("onAnimationComplete={() => setMatch"), "no animation callback awards points");
+  // Scores animate to the already-confirmed value.
+  assert.ok(page.includes("function useConfirmedScore(value, enabled)"));
+  assert.ok(page.includes("previousRef.current = target;"), "the confirmed value is the endpoint");
+  // Reduced motion pins every dot instead of animating it.
+  assert.ok(oval.includes("useReducedMotion"));
+  assert.ok(oval.includes("enabled: !reduced"));
+  assert.ok(garage.includes("useReducedMotion"));
 });
 
-test("the glass breaks on impact, not when the fall starts", () => {
-  assert.ok(page.includes("function GlassBreak("), "a dedicated break effect exists");
-  assert.ok(
-    page.includes("<GlassBreak tileRect={tileRect} delay={0.5} />"),
-    "the shatter is delayed to the moment the token lands",
-  );
-  assert.ok(
-    page.includes("pendingBreakKey"),
-    "a freshly broken tile only flips to shattered as the impact lands",
-  );
-  // The failed tile also keeps a permanent shattered look.
-  assert.ok(page.includes("bg-white/55"), "the static crack web is drawn");
+test("the gameplay interface exposes every planning control with a disabled reason", () => {
+  assert.ok(page.includes('data-testid="lane-runner-lock"'), "Lock in plan exists");
+  assert.ok(page.includes("Lock in plan"), "…labelled plainly");
+  assert.ok(page.includes("Rival {oppLocked ? \"locked\" : \"open\"}"), "opponent lock status is shown");
+  assert.ok(page.includes('data-testid="lane-runner-clock"'), "the 60s countdown is visible");
+  assert.ok(page.includes('<PlanningClock secondsLeft={secondsLeft} />'));
+  assert.ok(page.includes('data-testid="lane-runner-resign"'), "a resign control exists");
+  assert.ok(page.includes('data-testid="lane-runner-phase"'), "the round phase is visible");
+  assert.ok(page.includes("First to {WIN_SCORE.toLocaleString()}"), "the victory target is visible");
+  // The fleet panel owns deploy / recall / route / buy / merge / repair.
+  assert.ok(page.includes("<RaceGarage"), "the garage is a first-class panel");
+  assert.ok(garage.includes('data-testid="lane-runner-buy"'));
+  assert.ok(garage.includes('data-testid="lane-runner-merge"'));
+  assert.ok(garage.includes("Return to garage"), "a deployed car can be recalled");
+  assert.ok(garage.includes("Repair {REPAIR_COST.scrap} Scrap"), "repair is offered with its cost");
+  assert.ok(garage.includes("RouteChips"), "route selection is per car");
+  assert.ok(garage.includes("actionPoints"), "remaining action points are shown");
+  assert.ok(garage.includes("Damaged") && garage.includes("Available"), "car status is explicit");
+  assert.ok(garage.includes("Free workshop recovery"), "the soft-lock escape hatch is offered");
+  // Disabled controls explain themselves rather than silently doing nothing.
+  assert.ok(garage.includes("disabledReason") && garage.includes("title={disabled ? disabledReason"));
+  assert.ok(garage.includes("buyReason") && garage.includes("mergeReason"));
 });
 
-test("the bridge renders top-first, so the summit is row 10 — never row 1", () => {
-  // Rows are rendered top-first: the LAST index (row 10) sits at the top of
-  // the screen, with the start platform below it.
-  assert.ok(
-    page.includes(
-      "Array.from({ length: bridgeRows }, (_, row) => row).reverse()",
-    ),
-    "rows render top-first",
-  );
-  assert.ok(page.includes("Summit · cross row {bridgeRows} to win"));
-  assert.ok(page.includes("Start · row 1"));
-  // The goal emphasis therefore belongs to `bridgeRows - 1`.
-  assert.ok(page.includes("const isGoal = row === bridgeRows - 1;"));
-  assert.ok(
-    !page.includes("const isGoal = row === 0;"),
-    "row 1 (the start) must never be highlighted as the summit",
-  );
-  // …and a winning jump leaves the bridge upward, off the top row.
-  assert.ok(page.includes("to = { x: from.x, y: from.y - 34 };"));
-  assert.ok(
-    !page.includes("const top = anchorFor(0);"),
-    "a win must not swoop back down toward row 1",
-  );
+test("win, loss and draw are presented from the server's seat-based verdict", () => {
+  assert.ok(page.includes("viewerOutcome({"));
+  assert.ok(page.includes("viewerSeat: mySeat,"));
+  assert.ok(page.includes('<PvpResultScreen open {...resultScreenProps} />'));
+  assert.ok(page.includes("Tie-break: you led on total points"), "the tie-break is explained");
+  assert.ok(page.includes("Tie-break: your rival led on total points"));
+  assert.ok(page.includes("exact dead heat"), "an exact draw is named");
+  assert.ok(page.includes("Resignation"), "a resignation is named");
+  assert.ok(page.includes("sides: ["), "both finals scores are shown");
+  // The lobby CTA is a game link, never the forbidden "Return to Lobby" exit.
+  assert.ok(page.includes('secondaryAction: { label: "Back to Lane Rush"'));
+  assert.ok(!page.includes("onReturnToLobby"));
 });
 
 test("the client never offers a removed mechanic", () => {
@@ -213,6 +214,9 @@ test("the client never offers a removed mechanic", () => {
   ]) {
     assert.ok(!page.includes(dead), `removed mechanic "${dead}" must not appear in the UI`);
   }
+  // The legacy bridge engine still ships for unfinished rows, so its glass-break
+  // cue stays in the shared audio module.
+  assert.ok(audio.includes("export function playGlassBreak("));
 });
 
 test("an API failure can't leave the duel silently frozen", () => {

@@ -1429,6 +1429,20 @@
       "when": 1800000066000,
       "tag": "0222_practice_pauses",
       "breakpoints": true
+    },
+    {
+      "idx": 204,
+      "version": "7",
+      "when": 1800000067000,
+      "tag": "0223_lane_rush_race_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 205,
+      "version": "7",
+      "when": 1800000068000,
+      "tag": "0224_lane_rush_resolving_status",
+      "breakpoints": true
     }
   ]
 }

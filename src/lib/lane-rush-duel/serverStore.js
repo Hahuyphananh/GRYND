@@ -96,6 +96,12 @@ import {
   seatForUserId,
 } from "./constants";
 import { getServerSeedHash } from "../laneRunner";
+import { createInitialState } from "../lane-rush/engine";
+import {
+  LANE_RUSH_STATE_VERSION,
+  PLANNING_MS,
+  PLANNING_SECONDS,
+} from "../lane-rush/rules";
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -261,6 +267,12 @@ async function createWaitingMatch(tx, userId, stakeAmount, difficulty) {
   const serverSeedHash = getServerSeedHash(serverSeed);
   const clientSeed = randomHex(16);
 
+  // The reworked game's versioned race state. A waiting row already carries
+  // it, so the first status read after joining has a complete state to show;
+  // the planning clock is restamped when the ready banner closes (see
+  // `advanceRaceToPlanning` in ../lane-rush/raceStore).
+  const gameState = createInitialState({ now: Date.now() });
+
   const [match] = await tx
     .insert(laneRushDuelMatches)
     .values({
@@ -271,7 +283,9 @@ async function createWaitingMatch(tx, userId, stakeAmount, difficulty) {
       serverSeed,
       serverSeedHash,
       p1ClientSeed: clientSeed,
-      roundTimerSeconds: BRIDGE_TILE_CHOICE_SECONDS,
+      roundTimerSeconds: PLANNING_SECONDS,
+      gameStateVersion: LANE_RUSH_STATE_VERSION,
+      gameState,
       startedAt: null,
     })
     .returning();
@@ -354,7 +368,8 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
       // the client's.)
       currentTurnUserId: null,
       roundDeadline: readyDeadline,
-      roundTimerSeconds: BRIDGE_TILE_CHOICE_SECONDS,
+      roundTimerSeconds: PLANNING_SECONDS,
+      gameStateVersion: LANE_RUSH_STATE_VERSION,
       startedAt: new Date(),
     })
     .where(
@@ -393,6 +408,10 @@ async function createBotMatch(tx, userId, difficulty) {
   // match still starts.
   const firstPlayerId = Math.random() < 0.5 ? userId : BOT_USER_ID;
 
+  // A practice match starts straight in PLANNING (there is no opponent to
+  // wait for): a full 60s window and a complete race state.
+  const gameState = createInitialState({ now: Date.now() });
+
   const [match] = await tx
     .insert(laneRushDuelMatches)
     .values({
@@ -407,8 +426,10 @@ async function createBotMatch(tx, userId, difficulty) {
       p2ClientSeed: clientSeed,
       firstPlayerId,
       currentTurnUserId: firstPlayerId,
-      roundDeadline: nextTurnDeadline(),
-      roundTimerSeconds: BRIDGE_TILE_CHOICE_SECONDS,
+      roundDeadline: new Date(Date.now() + PLANNING_MS),
+      roundTimerSeconds: PLANNING_SECONDS,
+      gameStateVersion: LANE_RUSH_STATE_VERSION,
+      gameState,
       startedAt: new Date(),
     })
     .returning();
@@ -941,6 +962,16 @@ async function resolveMatch(tx, match, { loserId, reason, action }) {
 }
 
 // ── Settlement (shared by all resolution paths) ───────────────────────
+// The bridge game and the reworked racing game share this ONE settlement
+// path: escrow validation, the 80/20 payout, refunds on a draw, the queue
+// mirror, the daily-reward gate, and the stats/Elo/trophy/leaderboard
+// pipeline. The race store calls `settleLaneRushMatch` below instead of
+// reimplementing any of it, so a match can never be paid twice or through a
+// second, divergent payout path.
+export async function settleLaneRushMatch(tx, match, options) {
+  return await settle(tx, match, options);
+}
+
 async function settle(tx, match, { result, action, reason }) {
   const winnerId =
     result === RESULT.PLAYER1

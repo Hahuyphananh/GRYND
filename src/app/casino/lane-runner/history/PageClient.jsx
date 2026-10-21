@@ -2,7 +2,7 @@
 
 // src/app/casino/lane-runner/history/page.jsx
 //
-// Match history for Lane Rush Duel — every finished match (PvP and
+// Match history for Lane Rush — every finished match (PvP and
 // Test vs Bot practice), viewer-perspective, paginated. Mirrors the
 // hex-duel history page layout.
 
@@ -13,6 +13,7 @@ import NavigationBar from "../../../../components/navigation-bar";
 import AsyncState from "../../../../components/states/AsyncState";
 import { SkeletonRows } from "../../../../components/skeletons/Skeleton";
 import { useApiResource } from "../../../../hooks/useApiResource";
+import { WIN_SCORE } from "../../../../lib/lane-rush/rules";
 import {
   IconNotebook,
   IconTrophy,
@@ -88,7 +89,7 @@ export default function LaneRushDuelHistoryPage() {
             className="bg-clip-text text-3xl font-black text-transparent bg-gradient-to-r from-cyan-300 via-cyan-400 to-fuchsia-400 sm:text-4xl"
             style={{ filter: "drop-shadow(0 0 12px rgba(34,211,238,0.3))" }}
           >
-            LANE RUSH DUEL: Match History
+            LANE RUSH: Match History
           </h1>
           <p className="mt-1 text-sm uppercase tracking-[0.15em] text-slate-400">
             {total} match{total !== 1 ? "es" : ""} played
@@ -235,38 +236,67 @@ export default function LaneRushDuelHistoryPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-center">
-                          {/* Bridge outcome: rows crossed per seat (10 = crossed
-                              the whole bridge) plus how many tiles the match
-                              left broken. */}
-                          <span className="inline-flex items-center gap-1 text-xs text-slate-300">
-                            <span
-                              className={`rounded bg-cyan-500/15 px-1.5 py-0.5 font-bold text-cyan-300${
-                                g.myRow >= 10 ? " ring-1 ring-amber-300/50" : ""
-                              }`}
-                              title={`You: ${g.myRow}/10 rows`}
-                            >
-                              {Number(g.myRow) || 0}/10
+                          {g.mode === "race" ? (
+                            /* Racing outcome: the confirmed cumulative points for
+                               both seats. The race has no rows or broken tiles,
+                               so the legacy progress chips would read 0/10. */
+                            <span className="inline-flex items-center gap-1 text-xs text-slate-300">
+                              <span
+                                className={`rounded bg-cyan-500/15 px-1.5 py-0.5 font-bold text-cyan-300${
+                                  (Number(g.myPoints) || 0) >= WIN_SCORE
+                                    ? " ring-1 ring-amber-300/50"
+                                    : ""
+                                }`}
+                                title={`You: ${Number(g.myPoints) || 0} points`}
+                              >
+                                {Number(g.myPoints) || 0}
+                              </span>
+                              <span className="text-slate-600">–</span>
+                              <span
+                                className={`rounded bg-rose-500/15 px-1.5 py-0.5 font-bold text-rose-300${
+                                  (Number(g.oppPoints) || 0) >= WIN_SCORE
+                                    ? " ring-1 ring-amber-300/50"
+                                    : ""
+                                }`}
+                                title={`Opponent: ${Number(g.oppPoints) || 0} points`}
+                              >
+                                {Number(g.oppPoints) || 0}
+                              </span>
                             </span>
-                            {Number(g.brokenCount) > 0 && (
-                              <>
-                                <IconFlag size={11} className="text-white/30" />
-                                <span
-                                  className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-300"
-                                  title={`${g.brokenCount} tile(s) broken`}
-                                >
-                                  {g.brokenCount} broken
-                                </span>
-                              </>
-                            )}
-                            <span
-                              className={`rounded bg-rose-500/15 px-1.5 py-0.5 font-bold text-rose-300${
-                                g.oppRow >= 10 ? " ring-1 ring-amber-300/50" : ""
-                              }`}
-                              title={`Opponent: ${g.oppRow}/10 rows`}
-                            >
-                              {Number(g.oppRow) || 0}/10
+                          ) : (
+                            /* Legacy bridge outcome: rows crossed per seat (10 =
+                               crossed the whole bridge) plus how many tiles the
+                               match left broken. */
+                            <span className="inline-flex items-center gap-1 text-xs text-slate-300">
+                              <span
+                                className={`rounded bg-cyan-500/15 px-1.5 py-0.5 font-bold text-cyan-300${
+                                  g.myRow >= 10 ? " ring-1 ring-amber-300/50" : ""
+                                }`}
+                                title={`You: ${g.myRow}/10 rows`}
+                              >
+                                {Number(g.myRow) || 0}/10
+                              </span>
+                              {Number(g.brokenCount) > 0 && (
+                                <>
+                                  <IconFlag size={11} className="text-white/30" />
+                                  <span
+                                    className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-300"
+                                    title={`${g.brokenCount} tile(s) broken`}
+                                  >
+                                    {g.brokenCount} broken
+                                  </span>
+                                </>
+                              )}
+                              <span
+                                className={`rounded bg-rose-500/15 px-1.5 py-0.5 font-bold text-rose-300${
+                                  g.oppRow >= 10 ? " ring-1 ring-amber-300/50" : ""
+                                }`}
+                                title={`Opponent: ${g.oppRow}/10 rows`}
+                              >
+                                {Number(g.oppRow) || 0}/10
+                              </span>
                             </span>
-                          </span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-center">
                           {g.isBot ? (

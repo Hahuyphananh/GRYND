@@ -1,25 +1,29 @@
 // src/app/api/lane-rush-duel/match/[matchId]/act/route.js
 //
-// POST — a player action on the shared bridge:
-//   * TILE SELECTION — `action: "jump"` (or the legacy alias `"pick"`) with the
-//     `row` the player is standing on and the `tile` they chose; or
-//   * MEMORY FLAG — `action: "flag"` with the `row`/`tile` of a tile THIS player
-//     personally landed on safely (max 2 per match, public, append-only, and it
-//     never consumes the turn).
-// The server store validates the action inside one row-locked transaction and
-// applies it through the single authoritative transition.
+// POST — a player action:
+//   * RACE (state version 1) — `{ actionId, round, stateVersion, actions }`,
+//     where `actions` is a validated planning sequence (deploy / recall /
+//     setRoute / buy / merge / repair / workshopRecovery / lockIn). The race
+//     store applies the whole plan inside one row-locked transaction.
+//   * LEGACY BRIDGE (state version 0) — `action: "jump"` (or `"pick"`) with the
+//     `row`/`tile`, or `action: "flag"` for a tile this player landed on
+//     safely. Preserved only for unfinished historical rows.
 //
 // The client stamps every action with:
 //   * `actionId` — a unique id, so a retried POST is an idempotent
-//     no-op instead of a second resolution (double advance / double
-//     fall) — and
-//   * `row` — the row the click was rendered against, so a stale click
-//     is rejected instead of resolving on a row the player never saw.
+//     no-op instead of a second resolution — and
+//   * `round` (race) or `row` (legacy) — what the control was rendered
+//     against, so a stale request is rejected instead of resolving on
+//     state the player never saw.
 
 import { NextResponse } from "next/server";
 import { requireAgeVerifiedUser } from "../../../../../../lib/auth/requireAgeVerified";
-import { act } from "../../../../../../lib/lane-rush-duel/serverStore";
+import { act, fetchMatch } from "../../../../../../lib/lane-rush-duel/serverStore";
 import { broadcastMatchUpdate } from "../../../../../../lib/lane-rush-duel/rooms";
+import {
+  isRaceMatch,
+  submitRacePlan,
+} from "../../../../../../lib/lane-rush/raceStore";
 
 export async function POST(req, { params }) {
   const gate = await requireAgeVerifiedUser();
@@ -53,6 +57,105 @@ export async function POST(req, { params }) {
   const actionId = body?.actionId ?? null;
 
   try {
+    const existingRow = await fetchMatch(matchId);
+    if (!existingRow) {
+      return NextResponse.json(
+        { success: false, error: "Match not found" },
+        { status: 404 },
+      );
+    }
+
+    // ── Racing game (gameStateVersion 1) ─────────────────────────────
+    // The request carries `actions: [...]` (optionally ending in a lock-in),
+    // never a score, roll, DNF or opponent plan. The rows are dispatched by
+    // version, so an unfinished legacy bridge match keeps using the old
+    // turn/tile transition below.
+    if (isRaceMatch(existingRow)) {
+      if (
+        existingRow.player1Id !== userId &&
+        existingRow.player2Id !== userId
+      ) {
+        return NextResponse.json(
+          { success: false, error: "Forbidden", code: "forbidden" },
+          { status: 403 },
+        );
+      }
+
+      if (typeof body?.action === "string") {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "This match uses racing actions, not bridge tiles",
+            code: "legacy_action",
+          },
+          { status: 400 },
+        );
+      }
+
+      const submitted = Array.isArray(body?.actions)
+        ? body.actions
+        : body?.action && typeof body.action === "object"
+          ? [body.action]
+          : [];
+      const plan = await submitRacePlan({
+        userId,
+        matchId,
+        actionId,
+        actions: submitted,
+        expectedRound: body?.round ?? body?.expectedRound,
+        expectedStateVersion: body?.stateVersion ?? body?.expectedStateVersion,
+      });
+
+      if (plan.error) {
+        // An expired plan may still have resolved the round; tell both seats.
+        if (plan.resolved) {
+          broadcastMatchUpdate(matchId, {
+            status: plan.resolution?.finished ? "finished" : "active",
+            action: "race-resolved",
+            resolvedRound: plan.resolution?.round ?? null,
+          });
+        }
+        return NextResponse.json(
+          {
+            success: false,
+            error: plan.error,
+            code: plan.code,
+            resolved: Boolean(plan.resolved),
+          },
+          { status: plan.status || 400 },
+        );
+      }
+
+      const round =
+        plan.match?.gameState?.round ?? plan.state?.round ?? null;
+      if (!plan.duplicate) {
+        broadcastMatchUpdate(matchId, {
+          status: plan.match?.status ?? "active",
+          action: "plan",
+          round,
+          resolved: Boolean(plan.resolved),
+          resolvedRound: plan.resolution?.round ?? null,
+          finished: plan.resolution?.finished === true,
+        });
+      }
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          status: plan.match?.status ?? "active",
+          duplicate: Boolean(plan.duplicate),
+          round,
+          stateVersion: 1,
+          locked: Boolean(plan.locked),
+          resolved: Boolean(plan.resolved),
+          resolvedRound: plan.resolution?.round ?? null,
+          finished: plan.resolution?.finished === true,
+          result: plan.match?.result ?? null,
+          winnerId: plan.match?.winnerId ?? null,
+        },
+      });
+    }
+
     const result = await act({ userId, matchId, action, row, tile, actionId });
 
     if (result.error) {

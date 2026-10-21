@@ -4,8 +4,8 @@
 //   1. Look for an open match with matching stake (different host).
 //   2. If found → join it (deduct stake, transition to `ready` with
 //      a 3-second banner, server rolls the first-player turn order).
-//   3. Otherwise → create a fresh waiting match (deduct stake, lock
-//      in the host's difficulty + provably-fair shared bridge).
+//   3. Otherwise → create a fresh waiting match (deduct stake, stamp the
+//      host's difficulty and game state version 1 = racing).
 //
 // `difficulty` is REQUIRED at create time and IGNORED at join time —
 // the joiner just consumes whatever difficulty the host picked.
@@ -29,6 +29,10 @@ function normaliseMatch(match) {
     stakeAmount: Number(match.stakeAmount),
     difficulty: match.difficulty,
     status: match.status,
+    // New matches are the reworked racing game (version 1). Legacy bridge
+    // rows keep version 0 and stay on the old transition path.
+    gameStateVersion: Number(match.gameStateVersion) || 0,
+    mode: Number(match.gameStateVersion) === 1 ? "race" : "duel",
     firstPlayerId: match.firstPlayerId,
     currentTurnUserId: match.currentTurnUserId,
     roundDeadline: match.roundDeadline,

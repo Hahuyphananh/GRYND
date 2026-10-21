@@ -69,6 +69,9 @@ export const MATCH_STATUS = Object.freeze({
   ACTIVE: "active",
   P1_TURN: "p1_turn",
   P2_TURN: "p2_turn",
+  // The reworked racing game's explicit resolution state (see
+  // src/lib/lane-rush/raceStore.ts). Legacy bridge rows never use it.
+  RESOLVING: "resolving",
   FINISHED: "finished",
   CANCELLED: "cancelled",
 });
@@ -77,6 +80,7 @@ export const MATCH_STATUS = Object.freeze({
 export const ACTIVE_STATES = new Set([
   MATCH_STATUS.READY,
   MATCH_STATUS.ACTIVE,
+  MATCH_STATUS.RESOLVING,
   MATCH_STATUS.P1_TURN,
   MATCH_STATUS.P2_TURN,
 ]);
@@ -153,10 +157,11 @@ export function decideOutcome({ loserId, player1Id, player2Id }) {
 }
 
 // ── Payout calculator ─────────────────────────────────────────────
-// { stake, winnerNet, loserNet, houseFee, prizePaid }
-//   DRAW:    both refunded. winnerNet = loserNet = null, fees = 0.
+// { stake, winnerNet, loserNet, houseFee, prizePaid, refundEach }
+//   DRAW:    both refunded. winnerNet = loserNet = null, fees = 0,
+//            refundEach = stake (what `settleEscrow` gives back to each seat).
 //   PLAYER1: player1 gets (stake + 0.8*stake); player2 loses stake;
-//            house rake = 0.2*stake. prizePaid = 1.8*stake.
+//            house rake = 0.2*stake. prizePaid = 1.8*stake; refundEach = null.
 export function computePayout({ stakeAmount, result }) {
   const stake = Number(stakeAmount);
   if (!Number.isFinite(stake) || stake < 0) {
@@ -176,6 +181,11 @@ export function computePayout({ stakeAmount, result }) {
       loserNet: null,
       houseFee: round2(0),
       prizePaid: round2(0),
+      // Each seat gets its own stake back. `settleEscrow` refunds exactly this
+      // field; without it a draw would refund `Number(undefined)` (NaN) and
+      // pay nobody — the draw path is shared by the bridge game and the
+      // racing game, so both rely on it.
+      refundEach: round2(stake),
     };
   }
   const winnerPrize = round2(stake * WINNER_RATIO);
@@ -186,6 +196,8 @@ export function computePayout({ stakeAmount, result }) {
     loserNet: round2(-stake),
     houseFee,
     prizePaid: round2(stake + winnerPrize),
+    // No refund on a decided match.
+    refundEach: null,
   };
 }
 

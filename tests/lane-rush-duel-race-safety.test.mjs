@@ -239,8 +239,9 @@ test("resolving the SAME click twice is deterministic — so a duplicate can onl
     actRoute.includes("// action landed on the first attempt, so nothing changed and there"),
     "a duplicate broadcasts nothing",
   );
-  // The client also refuses to send a second click while one is in flight.
-  assert.ok(page.includes("if (actingRef.current) return;"));
+  // The racing client also refuses a second plan while one is in flight, and
+  // every plan carries the same unique id the store dedupes on.
+  assert.ok(page.includes("if (actingRef.current) return false;"));
   assert.ok(page.includes("const actionId = `${matchId}:${mySeat}:${Date.now()}:${(actionIdRef.current += 1)}`;"));
 });
 
@@ -424,16 +425,20 @@ test("reconnecting after a failed jump shows the reset from server state and rep
   assert.ok(jumpBody.includes("currentTurnUserId: turn.turnUserId,"));
   assert.ok(jumpBody.includes("roundDeadline: nextTurnDeadline(),"));
 
-  // The client treats the FIRST snapshot as a baseline, so a fresh mount (a
-  // reconnect) neither replays the jump animation nor the audio cue.
+  // The racing client treats the FIRST snapshot as a baseline, so a fresh
+  // mount (a reconnect) neither replays a resolved round nor its audio cue.
   assert.ok(page.includes("if (mySeenKeyRef.current === null) {"));
   assert.ok(page.includes("if (oppSeenKeyRef.current === null) {"));
   assert.ok(
     page.includes('history is the baseline, never "news"'),
     "re-delivery of the same action is not news",
   );
-  assert.ok(page.includes("mySeenKeyRef.current = myActionKey;"));
-  assert.ok(page.includes("oppSeenKeyRef.current = oppActionKey;"));
+  assert.ok(page.includes("mySeenKeyRef.current = myRoundKey;"));
+  assert.ok(page.includes("oppSeenKeyRef.current = oppRoundKey;"));
+  // The same rule covers the oval animation: only a NEWER server round may
+  // replay, so a refresh shows the standings without replaying the race.
+  assert.ok(page.includes("seenRoundRef.current === null"));
+  assert.ok(page.includes("latestRound <= seenRoundRef.current"));
 });
 
 // ════════════════════════════════════════════════════════════════════

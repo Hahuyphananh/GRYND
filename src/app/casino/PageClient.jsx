@@ -458,13 +458,13 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
     },
 
     {
-      name: "Lane Rush Duel",
+      name: "Lane Rush",
       href: "/games/lane-runner",
       leaderboardKey: "lane-runner",
       recencyKey: "lane-rush-duel",
       playsKey: "lane-rush-duel",
       image: GAME_CARD_ART["lane-runner"],
-      // Gentler hover zoom so the twin towers stay fully visible.
+      // Gentler hover zoom so the full oval stays visible.
       imageClassName: "group-hover:scale-[1.03]",
       descriptionKey: "games.lane_runner_desc",
       pvpMode: "1v1",

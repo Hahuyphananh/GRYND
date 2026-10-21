@@ -1,12 +1,14 @@
 // src/app/api/lane-rush-duel/history/route.js
 //
 // GET — paginated match history for the current user. Returns
-// FINISHED Lane Rush Duel matches (both PvP and Test vs Bot
-// practice), each in viewer perspective:
-//   * `viewerIsPlayer1` plus the shared-bridge outcome: `myRow` /
-//     `oppRow` (rows crossed, 10 = crossed the whole bridge),
-//     `brokenCount` (tiles broken for the rest of the match) and each
-//     seat's public memory flags
+// FINISHED Lane Rush matches (both PvP and practice vs the bot), each in
+// viewer perspective:
+//   * `mode`: "race" for the current game, "duel" for a preserved
+//     glass-bridge row (game_state_version 0)
+//   * race rows: `myPoints` / `oppPoints` (confirmed cumulative score)
+//   * legacy rows: `myRow` / `oppRow` (rows crossed, 10 = crossed the whole
+//     bridge), `brokenCount` and each seat's public memory flags — rendered
+//     by the same history page without crashing on the old schema
 //   * `result`: "win" | "loss" | "draw" (viewer-relative — the
 //     stored `result` column is seat-absolute 'player1'|'player2')
 //   * `payout`: prizePaid on a win, stakeAmount on a draw (refund),
@@ -100,6 +102,15 @@ export async function GET(req) {
       const brokenCount = Array.isArray(row.broken) ? row.broken.length : 0;
       const myFlags = (viewerIsPlayer1 ? row.p1Flags : row.p2Flags) || [];
       const oppFlags = (viewerIsPlayer1 ? row.p2Flags : row.p1Flags) || [];
+      // New rows are the racing game; their scores are stamped per round on
+      // the integer columns. Legacy bridge rows keep the row-crossing fields.
+      const isRace = Number(row.gameStateVersion) === 1;
+      const myPoints = isRace
+        ? Number(viewerIsPlayer1 ? row.p1Points : row.p2Points) || 0
+        : 0;
+      const oppPoints = isRace
+        ? Number(viewerIsPlayer1 ? row.p2Points : row.p1Points) || 0
+        : 0;
 
       const isDraw = row.result === "draw" || !row.winnerId;
       const isWin = !isDraw && row.winnerId === clerkId;
@@ -119,6 +130,10 @@ export async function GET(req) {
         prizePaid: prize,
         payout: isWin ? prize : isDraw ? stake : 0,
         viewerIsPlayer1,
+        mode: isRace ? "race" : "duel",
+        gameStateVersion: Number(row.gameStateVersion) || 0,
+        myPoints,
+        oppPoints,
         myRow,
         oppRow,
         brokenCount,

@@ -8,8 +8,12 @@
 
 import { NextResponse } from "next/server";
 import { requireAgeVerifiedUser } from "../../../../../../lib/auth/requireAgeVerified";
-import { resignMatch } from "../../../../../../lib/lane-rush-duel/serverStore";
+import { fetchMatch, resignMatch } from "../../../../../../lib/lane-rush-duel/serverStore";
 import { broadcastMatchUpdate } from "../../../../../../lib/lane-rush-duel/rooms";
+import {
+  isRaceMatch,
+  resignRaceMatch,
+} from "../../../../../../lib/lane-rush/raceStore";
 
 export async function POST(req, { params }) {
   const gate = await requireAgeVerifiedUser();
@@ -26,6 +30,38 @@ export async function POST(req, { params }) {
   }
 
   try {
+    const existingRow = await fetchMatch(matchId);
+    if (!existingRow) {
+      return NextResponse.json(
+        { success: false, error: "Match not found" },
+        { status: 404 },
+      );
+    }
+
+    // Racing rows settle through their own store (which still calls the ONE
+    // shared settlement path), so the final game state and the winner agree.
+    if (isRaceMatch(existingRow)) {
+      const race = await resignRaceMatch({ userId, matchId });
+      if (race.error) {
+        return NextResponse.json(
+          { success: false, error: race.error, code: race.code },
+          { status: race.status || 400 },
+        );
+      }
+      broadcastMatchUpdate(matchId, {
+        status: race.match?.status,
+        resigned: true,
+      });
+      return NextResponse.json({
+        success: true,
+        data: {
+          matchId,
+          status: race.match?.status,
+          resigned: true,
+        },
+      });
+    }
+
     const result = await resignMatch({ userId, matchId });
     if (result.error) {
       return NextResponse.json(

@@ -96,6 +96,7 @@
     "verify:keno-survival": "node qa/keno-survival-check.mjs",
     "test:odds": "node --import tsx --test tests/odds-engine.test.mjs",
     "test:lane-rush-duel": "node --import tsx --test tests/lane-rush-bridge.test.mjs tests/lane-rush-duel-ui-contract.test.mjs tests/lane-rush-duel-race-safety.test.mjs",
+    "test:lane-rush": "node --import tsx --test tests/lane-rush-engine.test.mjs tests/lane-rush-race-lifecycle.test.mjs tests/lane-rush-oval-track.test.mjs tests/lane-rush-history.test.mjs",
     "verify:lane-rush-opponent": "node qa/lane-rush-opponent-check.mjs",
     "test:dots-and-boxes-ai": "node --import tsx --test tests/dots-and-boxes-ai.test.mjs",
     "verify:dnb-board": "node qa/dnb-board-check.mjs",
