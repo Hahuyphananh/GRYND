@@ -597,6 +597,7 @@ const prefersReducedMotion = useReducedMotion();
         outcome={outcome}
         headline={headline}
         gameName="Dots & Boxes"
+        onReturnToLobby={isAiGame ? () => router.push("/casino/dots-and-boxes") : null}
         opponent={{
           name: opponentName,
           iconKey: opponentIconKey || null,

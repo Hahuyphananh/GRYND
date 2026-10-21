@@ -20,7 +20,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
-  IconArrowLeft,
   IconHelpCircle,
   IconPlayerPlay,
   IconRefresh,
@@ -353,14 +352,6 @@ export default function BarricadePracticePage() {
           onClick={() => resetGame()}
         >
           <IconRefresh size={16} aria-hidden="true" /> Restart
-        </button>
-        <button
-          type="button"
-          className="barricade-secondary-button"
-          data-testid="barricade-lobby"
-          onClick={() => router.push(LOBBY_PATH)}
-        >
-          <IconArrowLeft size={16} aria-hidden="true" /> Back to lobby
         </button>
         {/* Practice stays entirely client-side; the online duel lives on its
             own route and decides everything server-side. */}

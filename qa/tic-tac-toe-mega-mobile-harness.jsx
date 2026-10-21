@@ -138,8 +138,9 @@ let root = null;
 //
 //   header row (title + subtitle + status chip / Lobby)  … mb-2
 //   board card's own padding                             … p-2 sm:p-3
-//   seat cards (two, the active one ringed)              … mb-2 grid grid-cols-2 gap-2
-//   turn guidance (ONE instruction + progress)           … mb-2 … px-3 py-1.5
+//   board card on desktop                                … lg:grid lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-2
+//   seat cards (two, the active one ringed)              … mb-2 … grid grid-cols-2 gap-2 lg:mb-0
+//   turn guidance (ONE instruction + progress)           … px-3 py-1.5 lg:mb-0
 //   [optional] the transient "X claims the board!" banner … mb-3 … px-3 py-2
 //   … the lattice …                                   (rules hidden on desktop)
 //   sidebar: controls box (the server subtitle + Forfeit) … p-3
@@ -149,9 +150,11 @@ let root = null;
 // board that just resolved (the banner shows for BOARD_EVENT_MS) and a failed
 // refresh (the error line stays). Both are mountable on their own so the check
 // can measure the reserve against them rather than guessing.
+// On desktop the card is a two-column grid (seats | guidance), so the seat card
+// drops its second line to keep that shared row one line tall.
 const SeatCard = ({ mark, name, moves, active }) => (
   <div
-    className={`rounded-xl border p-1.5 transition sm:p-2 ${
+    className={`rounded-xl border p-1.5 transition sm:p-2 lg:p-1.5 ${
       active
         ? "border-amber-400/60 bg-amber-500/10 ring-1 ring-amber-300/40"
         : "border-white/10 bg-white/5"
@@ -161,7 +164,7 @@ const SeatCard = ({ mark, name, moves, active }) => (
       <span className="relative inline-flex h-6 w-6 shrink-0 rounded-full border border-white/15 bg-white/10" />
       <div className="min-w-0">
         <p className="truncate text-xs font-bold">{name}</p>
-        <p className="text-[10px] uppercase tracking-wider text-white/45">
+        <p className="text-[10px] uppercase tracking-wider text-white/45 lg:hidden">
           {mark} · {moves} moves
         </p>
       </div>
@@ -169,7 +172,7 @@ const SeatCard = ({ mark, name, moves, active }) => (
   </div>
 );
 
-function App({ scenario, banner = false, loadError = false }) {
+function App({ scenario, banner = false, loadError = false, destinationRow = false }) {
   const props = SCENARIOS[scenario] ?? SCENARIOS.opening;
   return (
     <div
@@ -209,16 +212,16 @@ function App({ scenario, banner = false, loadError = false }) {
         <div className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-rows-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_320px]">
           <div
             data-testid="ttt-harness-card"
-            className="rounded-2xl border border-amber-500/20 bg-black/40 p-2 shadow-[0_0_30px_rgba(251,191,36,0.10)] sm:p-3"
+            className="rounded-2xl border border-amber-500/20 bg-black/40 p-2 shadow-[0_0_30px_rgba(251,191,36,0.10)] sm:p-3 lg:grid lg:grid-cols-[300px_minmax(0,1fr)] lg:content-start lg:gap-2"
           >
-            <div data-testid="ttt-harness-seats" className="mb-2 grid grid-cols-2 gap-2">
+            <div data-testid="ttt-harness-seats" className="mb-2 grid grid-cols-2 gap-2 lg:mb-0">
               <SeatCard mark="X" name="You" moves={4} active />
               <SeatCard mark="O" name="Opponent" moves={3} active={false} />
             </div>
 
             <div
               data-testid="ttt-harness-turn"
-              className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-xl border border-amber-400/50 bg-amber-500/10 px-3 py-1.5"
+              className="mb-2 flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-xl border border-amber-400/50 bg-amber-500/10 px-3 py-1.5 lg:mb-0"
             >
               <span className="inline-flex min-w-0 items-center gap-2">
                 <span aria-hidden="true" className="inline-block h-2.5 w-2.5 shrink-0 rounded-full animate-pulse bg-amber-400" />
@@ -232,13 +235,13 @@ function App({ scenario, banner = false, loadError = false }) {
             {banner && (
               <div
                 data-testid="ttt-harness-banner"
-                className="mb-3 rounded-xl border border-emerald-400/50 bg-emerald-500/15 px-3 py-2 text-center text-sm font-bold text-emerald-100 lg:fixed lg:inset-x-0 lg:top-20 lg:z-[60] lg:mx-auto lg:mb-0 lg:max-w-md"
+                className="mb-3 rounded-xl border border-emerald-400/50 bg-emerald-500/15 px-3 py-2 text-center text-sm font-bold text-emerald-100 lg:fixed lg:inset-x-0 lg:top-20 lg:z-[60] lg:mx-auto lg:mb-0 lg:col-span-2 lg:max-w-md"
               >
                 X claims the top-left board!
               </div>
             )}
 
-            <div className="relative">
+            <div className="relative lg:col-span-2">
               <MegaBoard
                 boards={props.boards}
                 winningBoards={props.winningBoards}
@@ -246,6 +249,7 @@ function App({ scenario, banner = false, loadError = false }) {
                 nextBoard={props.nextBoard}
                 playableBoards={props.playableBoards}
                 status={props.status}
+                destinationRow={destinationRow}
                 viewerSeat="player1"
                 viewerCanMove={props.viewerCanMove}
                 busy={false}
@@ -327,11 +331,13 @@ window.__ttt = {
 
   scenario: "opening",
 
-  mount(scenario = "opening", { banner = false, loadError = false } = {}) {
+  mount(scenario = "opening", { banner = false, loadError = false, destinationRow = false } = {}) {
     window.__ttt.plays = [];
     window.__ttt.scenario = scenario;
     if (!root) root = createRoot(document.getElementById("root"));
-    root.render(<App scenario={scenario} banner={banner} loadError={loadError} />);
+    root.render(
+      <App scenario={scenario} banner={banner} loadError={loadError} destinationRow={destinationRow} />,
+    );
   },
 
   measure() {

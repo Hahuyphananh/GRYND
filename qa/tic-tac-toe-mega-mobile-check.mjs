@@ -30,8 +30,8 @@
 //   8. the opening snapshot communicates FREE CHOICE (no required board);
 //   9. a tap on a shrunken board still reports the right (boardIndex, cellIndex);
 //  10. desktop is one screen: the page does not scroll, the match card ends
-//      inside the viewport, and the lattice grew (500px at 1280×900, 400px at
-//      1280×800, up from 480px / 380px);
+//      inside the viewport, and the lattice is as big as the fold allows
+//      (592px at 1280×900, 492px at 1280×800, up from 500px / 400px);
 //  11. no console / page errors.
 //
 // Screenshots land in qa/reports/tic-tac-toe-mobile/.
@@ -353,14 +353,15 @@ const latticeChecks = (tag, m, vp) => {
     boards.map((b) => `#${b.slot}:${b.playableCells}`).join(" "),
   );
 
-  // The opening snapshot has no required destination, so the lattice must SAY
-  // that any open board may be played — never leave it to inference.
+  // The shipped match page states the destination (and the progress) in its own
+  // turn bar, so MegaBoard is mounted here WITHOUT its duplicate row — that is
+  // the shipped geometry, and the ~36px it frees is board size. The "free choice
+  // in words" requirement is asserted where the row is drawn instead: see the
+  // opening-snapshot check in the states section.
   check(
-    `${tag}: free choice is stated in words`,
-    m.destination?.freeChoice === "true" &&
-      m.destination?.required === "" &&
-      /any open board/i.test(m.destination?.text ?? ""),
-    `${m.destination?.required || "-"} / ${m.destination?.text?.slice(0, 60)}`,
+    `${tag}: the lattice leaves the destination to the page's turn bar (no duplicate row)`,
+    m.destination === null,
+    m.destination ? `row still drawn: "${m.destination.text?.slice(0, 40)}"` : "row omitted",
   );
 
   return { smallest };
@@ -466,7 +467,10 @@ for (const { vp, banner } of BANNER_CASES) {
   );
   // Every board the check was previously capped at: the reserve used to be
   // 420px, so the same viewport now has to produce a bigger lattice.
-  const wasWidth = vp.height - 420;
+  // The reserve was 400px before the chrome compaction (seats + guidance merged
+  // onto one desktop row, and MegaBoard's duplicated destination row removed),
+  // so the same viewport has to produce a bigger lattice than that.
+  const wasWidth = vp.height - 400;
   if (!banner) {
     // At 900px the 40px desktop target still holds; a 1280×800 window has less
     // height to give, so its floor is the 32px it already cleared before.
@@ -501,7 +505,10 @@ await desktop.close();
 // the terminal line are what the interface has to SAY. Each scenario mounts the
 // real MegaBoard with a server-produced snapshot.
 const renderScenario = async (page, name) => {
-  await page.evaluate((scenario) => window.__ttt.mount(scenario), name);
+  // The scenarios are about what the component SAYS, so they mount it with its
+  // own destination row on — the match page hides that row because its turn bar
+  // already says the same thing (the geometry mounts above keep it off).
+  await page.evaluate((scenario) => window.__ttt.mount(scenario, { destinationRow: true }), name);
   await page.waitForFunction(
     (n) => document.querySelectorAll('[data-testid^="tic-tac-toe-lattice-board-"]').length === n,
     BOARDS,
@@ -602,6 +609,17 @@ const renderScenario = async (page, name) => {
 
 const scenarioPage = await mount(VIEWPORTS[0]);
 console.log("\n── Turn guidance, board states and keyboard play ─────────────────");
+
+// 0. The opening snapshot has no required destination, so the lattice must SAY
+// that any open board may be played — never leave it to inference.
+const openingState = await renderScenario(scenarioPage, "opening");
+check(
+  "states: the opening position states free choice in words",
+  openingState.destination?.freeChoice === "true" &&
+    openingState.destination?.required === "" &&
+    /any open board/i.test(openingState.destination?.text ?? ""),
+  `${openingState.destination?.required || "-"} / ${openingState.destination?.text?.slice(0, 60)}`,
+);
 
 // 1. The forced destination: ONE board, said in words.
 const requiredState = await renderScenario(scenarioPage, "required");

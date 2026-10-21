@@ -1009,6 +1009,7 @@ export default function SpeedTypingMatchPage() {
           isAi: opponentIsAi,
         }}
         gameName="Speed Typing"
+        onReturnToLobby={opponentIsAi ? () => router.push("/casino/speed-typing") : null}
         gameKey="speed-typing"
         durationSeconds={durationSeconds}
         sides={[

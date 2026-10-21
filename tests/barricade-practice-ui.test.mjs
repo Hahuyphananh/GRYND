@@ -176,7 +176,6 @@ test("barricade ui: every required affordance has a stable hook", () => {
     "barricade-notice",
     "barricade-hint",
     "barricade-restart",
-    "barricade-lobby",
     "barricade-result",
     "barricade-rules",
     "barricade-goal-mine",

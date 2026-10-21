@@ -77,6 +77,18 @@ export type MegaBoardProps = {
   playableBoards?: unknown;
   /** The server's row status, so a terminal match says so. */
   status?: unknown;
+  /**
+   * Whether to draw the destination / progress row above the lattice.
+   *
+   * On the match page that row is a duplicate: the page's own turn bar already
+   * states the required board in words (`moveInstruction`) and the progress
+   * (`progress.label`), from the same server snapshot. It is therefore turned
+   * off there, and the ~36px it was spending goes to the nine boards instead —
+   * on a laptop the lattice is capped by height, so that is board size.
+   * Defaults to true so the component stands on its own (and so the layout
+   * audit, which mounts the lattice alone, still sees it).
+   */
+  destinationRow?: boolean;
   /** The seat the server says the viewer occupies. */
   viewerSeat: Seat | null;
   /** The server's `viewerCanMove` flag — the only thing that unlocks a cell. */
@@ -297,6 +309,7 @@ function MegaBoard({
   pending = null,
   focusedBoard = null,
   highlightSlot = null,
+  destinationRow = true,
   onFocusBoard,
   onPlay,
   className = "",
@@ -348,7 +361,7 @@ function MegaBoard({
       className={className}
     >
       {/* ── The live destination, and how far the match has gone ─────────── */}
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+      {destinationRow && <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <p
           data-testid="lattice-destination"
           data-required={required ?? ""}
@@ -380,7 +393,7 @@ function MegaBoard({
         <span data-testid="lattice-progress" className="text-[11px] tabular-nums text-white/40">
           {progress.label}
         </span>
-      </div>
+      </div>}
 
       {/* ── The lattice win ──────────────────────────────────────────────── */}
       <AnimatePresence>
@@ -421,21 +434,23 @@ function MegaBoard({
           so a slight inset keeps every cell reachable without shrinking them
           below the tap target.
 
-          The 400px height reserve is MEASURED, not guessed, and it now covers a
+          The 308px height reserve is MEASURED, not guessed, and it covers a
           fixed-height desktop page: the match card is the only thing under the
-          page chrome, so the reserve is the room above the lattice (290px) plus
-          the lattice's own fixed overhead (three card headers + gaps + frame
-          padding, 73px) plus the card/page padding and a small safety margin.
-          The controls moved to the sidebar and the rules strip is desktop-
-          hidden, which is what frees the board to grow while the card ends
-          inside the viewport — no page scroll at 1280×800 or 1440×900. The
-          transient "X claims the board!" toast is fixed-position on desktop, so
-          it no longer eats 50px of board height for two seconds. */}
+          page chrome, so the reserve is the room above the lattice (202px —
+          header, the seats/guidance row and the card's top padding) plus the
+          lattice's own fixed overhead (three card headers + gaps + frame
+          padding, 73px) plus the card and page bottom padding (28px) plus a
+          5px safety margin. It was 400px until the seats and the turn guidance
+          were merged onto one desktop row and this component stopped repeating
+          the match page's destination/progress line: those two bands were the
+          only reason the nine boards could not use the width the column had
+          spare. The transient "X claims the board!" toast is fixed-position on
+          desktop, so it never eats board height. */}
       <div className="overflow-x-auto pb-1">
         <div
           className="mega-lattice relative mx-auto w-full"
           data-cols={LATTICE_COLUMNS}
-          style={{ maxWidth: "min(calc(100% - 20px), max(300px, calc(100svh - 400px)))" }}
+          style={{ maxWidth: "min(calc(100% - 20px), max(300px, calc(100svh - 308px)))" }}
         >
           {/* The large board's own frame: it is what makes nine separate boards
               read as ONE 3x3 game, and it carries the winning line. */}

@@ -877,10 +877,15 @@ test("lifecycle: forfeit and cancel reuse the existing shared conventions", () =
   assert.match(page, /data-testid="confirm-forfeit"/);
   assert.match(page, /onCancel=\{canCancelLobby \? cancelLobby : null\}/);
   assert.match(page, /const canCancelLobby = match\?\.status === "waiting" && viewerSeat === "player1"/);
-  // A live match has no lobby exit — the result screen offers no play-again
-  // or return-to-lobby CTA, and the forfeit button is the way out.
+  // A live match has no lobby exit: the result screen offers no play-again CTA
+  // and its return-to-lobby CTA is PRACTICE-ONLY (gated on the match's AI flag),
+  // so the forfeit button stays the way out of a rated duel.
   assert.doesNotMatch(page, /playAgain=/);
-  assert.doesNotMatch(page, /onReturnToLobby/);
+  assert.match(
+    page,
+    /onReturnToLobby=\{Boolean\(match\.isAi\) \? \(\) => router\.push\("\/casino\/tic-tac-toe"\) : null\}/,
+    "the practice popup carries the lobby exit, and only practice",
+  );
   assert.match(page, /data-testid="forfeit-button"/);
 });
 

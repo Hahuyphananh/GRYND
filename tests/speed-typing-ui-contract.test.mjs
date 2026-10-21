@@ -89,7 +89,12 @@ test("ui: a finished player's WPM freezes at their own finish instant, never dec
 test("ui: rematch and return-to-queue reuse the existing platform patterns", () => {
   // The shared result screen's own CTAs, exactly as every other game drives them.
   assert.match(page, /playAgain=\{\{ label: "RACE AGAIN", onClick: requeue \}\}/);
-  assert.doesNotMatch(page, /onReturnToLobby/);
+  // The lobby CTA is PRACTICE-ONLY: a ranked race keeps "Race again" as its one
+  // re-entry and its way out is Resign, while a bot race returns to the lobby.
+  assert.match(
+    page,
+    /onReturnToLobby=\{opponentIsAi \? \(\) => router\.push\("\/casino\/speed-typing"\) : null\}/,
+  );
   assert.doesNotMatch(page, /Return to the Speed Typing lobby/);
   assert.match(page, /data-testid="speed-typing-resign"/);
   // "Race again" re-enters the ONE matchmaking path — it does not invent a

@@ -949,18 +949,14 @@ export default function FourInARowVsAiPage() {
             {score.draws}D
           </span>
         </div>
+        {/* The lobby exit lives in the RESULT POPUP, not here: one exit, and it
+            appears when the match ends. */}
         <div className="flex gap-2">
           <button
             onClick={resetGame}
             className="rounded-sm border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-white/20"
           >
             New Game
-          </button>
-          <button
-            onClick={() => router.push("/casino/four-in-a-row")}
-            className="rounded-sm border border-cyan-400/30 bg-cyan-500/15 px-4 py-2.5 text-sm font-bold text-cyan-200 transition-colors hover:bg-cyan-500/30"
-          >
-            Back to Lobby
           </button>
         </div>
         <p className="text-center text-[10px] text-white/30">

@@ -183,6 +183,9 @@ function AIOddsGame({
   difficulty: AiDifficulty;
 }) {
   const PICK_TIMER_SECONDS = 15;
+  // The result popup's practice-only lobby exit (a live PvP match never
+  // passes one): AIOddsGame is its own route, so it navigates itself.
+  const router = useRouter();
 
   // The vs-AI match is FREE PLAY: there is no stake to track and none is sent
   // to /api/odds/ai/start (see startGame below), so the HUD, the result screen
@@ -843,6 +846,7 @@ function AIOddsGame({
             userLabel="You"
             oppLabel="AI"
             onPlayAgain={handlePlayAgain}
+            onReturnToLobby={() => router.push("/casino/odds")}
           />
         )}
       </div>
@@ -1986,6 +1990,7 @@ function OddsGameDisplay({
   userLabel,
   oppLabel,
   onPlayAgain,
+  onReturnToLobby = null,
   oppIconKey,
   oppProfileFrame,
   oppNameColor,
@@ -1999,6 +2004,9 @@ function OddsGameDisplay({
   userLabel: string;
   oppLabel: string;
   onPlayAgain: () => void;
+  /** Practice/AI only: the popup's way back to the Odds lobby. A live PvP
+   *  match passes nothing, so the result panel keeps its resign-only exit. */
+  onReturnToLobby?: (() => void) | null;
   oppIconKey?: string | null;
   oppProfileFrame?: unknown;
   oppNameColor?: string | null;
@@ -2228,6 +2236,7 @@ function OddsGameDisplay({
           open
           outcome={userWon ? "win" : userDrew ? "draw" : "loss"}
           gameName="Odds"
+          onReturnToLobby={onReturnToLobby}
           headline={
             userWon
               ? "You called it right"

@@ -609,9 +609,21 @@ export default function TicTacToeMatchPage() {
 
             <div className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-rows-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_320px]">
               {/* ── Board column ───────────────────────────────────── */}
-              <div className="rounded-2xl border border-amber-500/20 bg-black/40 p-2 shadow-[0_0_30px_rgba(251,191,36,0.10)] sm:p-3">
+              {/* `lg:content-start`: a grid whose rows are stretched (the card is
+                  as tall as the column) would hand the spare height to the
+                  auto rows — which grows the seats row and shrinks nothing the
+                  lattice can use. The rows stay their natural height; the
+                  lattice takes the space. */}
+              <div className="rounded-2xl border border-amber-500/20 bg-black/40 p-2 shadow-[0_0_30px_rgba(251,191,36,0.10)] sm:p-3 lg:grid lg:grid-cols-[300px_minmax(0,1fr)] lg:content-start lg:gap-2">
+                {/* Seats + guidance share ONE row on desktop: the card becomes a
+                    two-column grid there (seats | guidance) and stays block flow
+                    on a phone, so nothing stacks differently. Both used to be
+                    stacked bands, and every pixel of that stacking came out of
+                    the lattice — on a laptop the nine boards are capped by
+                    HEIGHT, so the two bands were costing board size. Side by
+                    side they say the same things in ~38px instead of ~99px. */}
                 {/* Seat cards: who is who, and which mark they hold. */}
-                <div className="mb-2 grid grid-cols-2 gap-2">
+                <div className="mb-2 grid grid-cols-2 gap-2 lg:mb-0">
                   {(["player1", "player2"] as Seat[]).map((seat) => {
                     const identity =
                       seat === "player1" ? match.players?.player1 : match.players?.player2;
@@ -632,7 +644,7 @@ export default function TicTacToeMatchPage() {
                         key={seat}
                         data-testid={`seat-${seat}`}
                         data-active={isActive ? "true" : "false"}
-                        className={`rounded-xl border p-1.5 transition sm:p-2 ${
+                        className={`rounded-xl border p-1.5 transition sm:p-2 lg:p-1.5 ${
                           isActive
                             ? "border-amber-400/60 bg-amber-500/10 ring-1 ring-amber-300/40"
                             : "border-white/10 bg-white/5"
@@ -664,7 +676,10 @@ export default function TicTacToeMatchPage() {
                               {name}
                               {isViewer && <span className="ml-1 text-amber-300">· you</span>}
                             </p>
-                            <p className="text-[10px] uppercase tracking-wider text-white/45">
+                            {/* Desktop drops the second line to keep the row
+                                one line tall; the sidebar's Match panel still
+                                reports the moves played. */}
+                            <p className="text-[10px] uppercase tracking-wider text-white/45 lg:hidden">
                               {mark} · {moveCount} {moveCount === 1 ? "move" : "moves"}
                             </p>
                           </div>
@@ -683,7 +698,7 @@ export default function TicTacToeMatchPage() {
                     has gone. */}
                 <div
                   data-testid="turn-status"
-                  className={`mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-xl border px-3 py-1.5 ${
+                  className={`mb-2 flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-xl border px-3 py-1.5 lg:mb-0 ${
                     boardUnlocked
                       ? "border-amber-400/50 bg-amber-500/10"
                       : "border-white/10 bg-white/5"
@@ -731,7 +746,7 @@ export default function TicTacToeMatchPage() {
                       // pushing the lattice down: a finished mini-board must not
                       // resize the board mid-match (it is also what lets the
                       // lattice keep the full height budget).
-                      className={`mb-3 rounded-xl border px-3 py-2 text-center text-sm font-bold lg:fixed lg:inset-x-0 lg:top-20 lg:z-[60] lg:mx-auto lg:mb-0 lg:max-w-md lg:shadow-[0_18px_40px_-24px_rgba(0,0,0,0.9)] ${
+                      className={`mb-3 rounded-xl border px-3 py-2 text-center text-sm font-bold lg:fixed lg:inset-x-0 lg:top-20 lg:z-[60] lg:mx-auto lg:mb-0 lg:col-span-2 lg:max-w-md lg:shadow-[0_18px_40px_-24px_rgba(0,0,0,0.9)] ${
                         boardEvent.control === "draw"
                           ? "border-white/20 bg-white/10 text-white/80"
                           : "border-emerald-400/50 bg-emerald-500/15 text-emerald-100"
@@ -747,7 +762,7 @@ export default function TicTacToeMatchPage() {
                 </AnimatePresence>
 
                 {/* The lattice: nine boards, all mounted from the first move. */}
-                <div className="relative">
+                <div className="relative lg:col-span-2">
                   <MegaBoard
                     boards={match.boards}
                     winningBoards={match.winningBoards}
@@ -755,6 +770,7 @@ export default function TicTacToeMatchPage() {
                     nextBoard={match.nextBoard}
                     playableBoards={match.playableBoards}
                     status={match.status}
+                    destinationRow={false}
                     viewerSeat={viewerSeat}
                     viewerCanMove={boardUnlocked}
                     busy={submitting}
@@ -992,6 +1008,7 @@ export default function TicTacToeMatchPage() {
               ply: match.ply,
             })}
             gameName="Ultimate Tic-Tac-Toe"
+            onReturnToLobby={Boolean(match.isAi) ? () => router.push("/casino/tic-tac-toe") : null}
             gameKey="tic-tac-toe"
             durationSeconds={durationSeconds(match.startedAt, match.endedAt)}
             opponent={{

@@ -1222,6 +1222,7 @@ export default function SolitaireDuelMatchPage() {
           profileFrame: opponentIdentity?.profileFrame ?? null,
         }}
         gameName="Solitaire Duel"
+        onReturnToLobby={Boolean(match?.isAi) ? () => router.push("/casino/solitaire-duel") : null}
         gameKey="solitaire-duel"
         durationSeconds={resultDuration}
         sides={[

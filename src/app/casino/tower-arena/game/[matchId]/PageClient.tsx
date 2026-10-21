@@ -1849,6 +1849,9 @@ export default function TowerArenaMatchPage() {
         headline={`${ordinal(myFinalResult.placement)} place`}
         subline={myFinalResult.isAi ? "Practice match vs GRYND AI." : undefined}
         gameName="Tower Arena"
+        onReturnToLobby={
+          myFinalResult.isAi ? () => router.push("/casino/tower-arena") : null
+        }
         opponent={
           rival
             ? {
@@ -2263,6 +2266,9 @@ export default function TowerArenaMatchPage() {
               }
               subline={resignResult.isAi ? "Practice match vs GRYND AI." : undefined}
               gameName="Tower Arena"
+              onReturnToLobby={
+                resignResult.isAi ? () => router.push("/casino/tower-arena") : null
+              }
               opponent={
                 rival
                   ? {

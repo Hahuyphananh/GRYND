@@ -3120,6 +3120,7 @@ export default function HexDuelPage() {
               open
               outcome={localPlayerWon ? "win" : "loss"}
               gameName="Hex Duel"
+              onReturnToLobby={aiEnabled ? () => router.push("/casino/hex-duel") : null}
               headline={localPlayerWon ? "Capital conquered!" : "Defeat!"}
               subline={localPlayerWon ? undefined : `${opponentLabel} conquered your capital!`}
               opponent={{

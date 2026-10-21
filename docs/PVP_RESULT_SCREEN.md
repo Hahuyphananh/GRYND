@@ -41,10 +41,17 @@ the real match statistics only.
 
 Notes:
 - Buttons are guarded internally — a double tap can't fire two actions.
-- `onReturnToLobby` is for practice / AI screens only. **PvP match pages must
-  not pass it**: once inside a multiplayer match there is no lobby exit button,
-  and the live-match way out is Resign. `tests/pvp-match-shell.test.mjs` pins
-  that rule across every PvP page.
+- `onReturnToLobby` is for practice / AI screens only, and it is the ONE place
+  the lobby exit lives: a game page no longer draws its own "Back to lobby"
+  button. Every match page that can host an AI match passes it **gated on the
+  game's own practice flag** (`match.isAi ? () => router.push(LOBBY) : null`),
+  so a live PvP match still has no lobby exit — the way out is Resign.
+  `tests/pvp-match-shell.test.mjs` pins both halves across every PvP page.
+- Games whose popup is a ROUND popup (Precision's per-round reveal, Memory
+  Grid's round summary, Keno / Dice Flush / Odds round panels) never carry the
+  lobby CTA on the round; only the shared match-end panel does. Precision's
+  match-end panel is the exception that passes none at all — its replay window
+  returns to the lobby on its own.
 - `secondaryAction` is the single generic "extra action" slot. Pass
   `{ label, href }` for an internal route — rendered through `next/link`, so it
   prefetches — or `{ label, onClick }` for an in-page action; omit it to hide the

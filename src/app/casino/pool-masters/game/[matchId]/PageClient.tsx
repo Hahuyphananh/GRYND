@@ -1636,6 +1636,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
         headline={headline}
         subline={subline}
         gameName="Pool Masters"
+        onReturnToLobby={aiMode ? () => router.push("/casino/pool-masters") : null}
         opponent={{
           name: oppName,
           iconKey: oppIconKey || null,

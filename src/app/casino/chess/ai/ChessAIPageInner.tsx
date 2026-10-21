@@ -1840,13 +1840,8 @@ export default function ChessAIPageInner() {
               {gameOver ? "Game Over" : "Resign"}
             </button>
 
-            {/* RETURN */}
-            <button
-              onClick={() => router.push("/casino/chess")}
-              className="mt-4 w-full bg-cyan-400 text-black font-bold py-3 rounded-xl hover:scale-[1.02] transition"
-            >
-              Return to Lobby
-            </button>
+            {/* The lobby exit lives in the RESULT POPUP (practice only), not on
+                the live board: one exit, and it appears when the match ends. */}
           </div>
         </div>
       </div>

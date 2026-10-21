@@ -215,15 +215,17 @@ test("board: a resolved mini-board is covered by a huge outcome overlay", () => 
 });
 
 test("board: the lattice is capped by the room left on screen, not by the column alone", () => {
-  // The reserve is 400px: the desktop match page is exactly one viewport tall
-  // and no longer scrolls, the controls moved to the sidebar and the rules strip
-  // is desktop-hidden. That frees room for a bigger lattice (500px and ~47px
-  // cells at 1280×900, up from 480px and 43px). Verified in a real browser by
+  // The reserve is 308px: the desktop match page is exactly one viewport tall
+  // and never scrolls, the controls live in the sidebar and the rules strip is
+  // desktop-hidden. The seats and the turn guidance now share ONE row and the
+  // lattice no longer repeats the page's destination line, which is what took
+  // the reserve down from 400px — the lattice is 592px with ~55px cells at
+  // 1280×900 (was 500px / 47px). Verified in a real browser by
   // `npm run verify:tic-tac-toe-mobile`, which asserts the lattice's bottom edge
   // stays inside the viewport at 1280×900 AND 1280×800, with and without the
   // transient banner — the bottom row must never need a scroll.
   assert.ok(
-    MEGA.includes('maxWidth: "min(calc(100% - 20px), max(300px, calc(100svh - 400px)))"'),
+    MEGA.includes('maxWidth: "min(calc(100% - 20px), max(300px, calc(100svh - 308px)))"'),
     "the lattice must shrink with the viewport height and inset slightly from the column so the bottom row stays on screen",
   );
   // The floor keeps it from being crushed on a very short window.
@@ -237,5 +239,11 @@ test("match page: the chrome above the lattice is compact, and nothing was remov
   assert.ok(page.includes('data-testid={`seat-${seat}`}'));
   assert.ok(page.includes('data-testid="turn-status"'));
   assert.ok(page.includes('data-testid="board-event"'));
-  assert.ok(page.includes('className="mb-2 grid grid-cols-2 gap-2"'));
+  // Desktop puts the seats and the guidance on ONE row (both bands used to be
+  // stacked, and every pixel of that stacking came out of the lattice).
+  assert.ok(page.includes('className="mb-2 grid grid-cols-2 gap-2 lg:mb-0"'));
+  assert.ok(page.includes("lg:grid-cols-[300px_minmax(0,1fr)]"));
+  // The lattice stops repeating the page's destination/progress line.
+  assert.ok(page.includes("destinationRow={false}"));
+  assert.ok(MEGA.includes("destinationRow = true"), "the lattice still draws the row on its own");
 });

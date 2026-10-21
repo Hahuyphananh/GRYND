@@ -145,11 +145,16 @@ test("result: Mini Golf hands over to the shared result screen with its key", ()
   assert.match(src, /gameKey="mini-golf"/);
 });
 
-test("result: a match page offers no way back to the lobby", () => {
+test("result: only a PRACTICE match offers the way back to the lobby", () => {
   const src = strip(read(MATCH_PAGE));
   assert.doesNotMatch(src, /playAgain=/);
-  assert.doesNotMatch(src, /onReturnToLobby/);
   assert.doesNotMatch(src, /Return to Lobby/);
+  // The shared panel's lobby CTA is practice-only: it is gated on the match's
+  // own AI flag, so a live PvP match still has no way out but Resign.
+  assert.match(
+    src,
+    /onReturnToLobby=\{\s*Boolean\(match\?\.isAi\)\s*\?[^}]*router\.push\("\/casino\/mini-golf"\)[^}]*\}/,
+  );
   // The way out of a live match is still Resign.
   assert.match(src, /data-testid="resign-button"/);
 });
