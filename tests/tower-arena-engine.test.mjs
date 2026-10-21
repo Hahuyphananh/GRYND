@@ -456,9 +456,9 @@ test("buildResourcePool is deterministic and sized for exactly two seats", () =>
   const a1 = buildResourcePool("m1:cycle:1");
   const a2 = buildResourcePool("m1:cycle:1");
   assert.deepEqual(a1, a2, "same nonce → same pool");
-  // SEATS × PIECES_PER_SHAPE_PER_SEAT = 4 pieces of every shape.
+  // SEATS × PIECES_PER_SHAPE_PER_SEAT = 6 pieces of every shape.
   const perShape = SEATS * PIECES_PER_SHAPE_PER_SEAT;
-  assert.equal(a1.length, BLOCK_SHAPES.length * perShape, "pool covers every shape four times");
+  assert.equal(a1.length, BLOCK_SHAPES.length * perShape, `pool covers every shape ${perShape} times`);
   for (const shape of BLOCK_SHAPES) {
     assert.equal(
       a1.filter((p) => p.shape === shape).length,

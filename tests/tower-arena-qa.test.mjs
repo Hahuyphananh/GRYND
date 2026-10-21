@@ -300,8 +300,8 @@ test("balance: every strategy — even maximally safe play — is bounded by the
     `safe play finished within the ${budget}-placement ceiling budget (got ${turns})`,
   );
   assert.ok(doomedEntry, "the match ended because the board ran out of room");
-  // Wall clock stays inside a relaxed band (turns × 60s window). The doubled
-  // per-cycle block budget (four of every shape) lets safe play run longer
+  // Wall clock stays inside a relaxed band (turns × 60s window). The bumped
+  // per-cycle block budget (six of every shape) lets safe play run longer
   // before the ceiling decides it, so the band is 60 minutes.
   assert.ok(((turns * TP_MS) / 60000) <= 60, `wall-clock bounded (${((turns * TP_MS) / 60000).toFixed(2)}min)`);
 });

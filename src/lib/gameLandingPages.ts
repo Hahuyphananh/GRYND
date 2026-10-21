@@ -541,7 +541,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
       "Each block is one unit tall. Seven shapes are in play: I, L, T, square, short, long and big.",
       "A piece falls onto the highest support below its footprint. There is no overhang allowance and no sliding, so the piece lands exactly where you choose.",
       "The only losing placement is one that crosses the ceiling — there is no other way to lose a piece.",
-      "The piece pool is sized for exactly two players, so each cycle offers four pieces of every shape.",
+      "The piece pool is sized for exactly two players, so each cycle offers six pieces of every shape.",
     ],
     scoring: [
       "You win by surviving. The first player who cannot place a piece without crossing the ceiling loses the match.",
@@ -550,7 +550,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     ],
     strategy: [
       "Keep the surface flat. Isolated towers are what kill you, because they leave the next wide piece with nowhere supported to land.",
-      "Think two pieces ahead. The pool offers every shape four times per cycle, so a shape you cannot place now is a shape that is coming back.",
+      "Think two pieces ahead. The pool offers every shape six times per cycle, so a shape you cannot place now is a shape that is coming back.",
       "Never bury the last usable column. If your placement closes the only lane a big piece could sit on, you have made your own next turn impossible.",
       "Spend the awkward shapes first. Placing the L and T pieces early, while there is still flat ground for them, is far easier than placing them onto an uneven stack later.",
       "Read the ceiling constantly. Knowing how many rows are left turns 'where can this piece go' into 'where can this piece go without ending my match'.",
@@ -568,7 +568,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
       },
       {
         q: "Does each player get the same pieces?",
-        a: "The pool is sized for two players and offers four pieces of every shape per cycle, so the sequence is shared rather than dealt separately.",
+        a: "The pool is sized for two players and offers six pieces of every shape per cycle, so the sequence is shared rather than dealt separately.",
       },
       {
         q: "Is it free to play?",

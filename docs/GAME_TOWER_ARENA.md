@@ -20,7 +20,7 @@ runs out of room far sooner.
      visible **hard ceiling** above it.
    - Blocks spawn above the ceiling and fall with gravity onto the highest
      support below their footprint.
-   - The shared pool is sized for exactly two seats, so a cycle offers **four
+   - The shared pool is sized for exactly two seats, so a cycle offers **six
      pieces of every shape**.
 3. **Losing** — the **only** losing placement is one whose top crosses the
    ceiling: the tower keeps everything below it and the player who dropped is
