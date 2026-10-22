@@ -136,6 +136,47 @@ for (const file of MATCH_PAGES) {
   });
 }
 
+test("every useSocket() call site destructures the context value, not the socket", () => {
+  // `useSocket()` returns the CONTEXT VALUE — `{ socket, userId }` — because a
+  // page sometimes needs the identity too (PlatformQuickQueue). Binding the
+  // whole value (`const socket = useSocket()`) therefore hands the page an
+  // object with no `.on`/`.emit`, and the first effect throws
+  // `socket?.on is not a function`. Optional chaining does not save it: the
+  // value is non-null, only the method is missing. That is exactly how the Lane
+  // Rush match page started showing the route error boundary ("This screen hit
+  // a problem") for every visitor, so the shape is asserted at the call site
+  // rather than trusted from the type.
+  const offenders = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) {
+        if (entry.name === "node_modules" || entry.name === ".next") continue;
+        walk(full);
+        continue;
+      }
+      if (!/\.(ts|tsx|js|jsx)$/.test(entry.name)) continue;
+      const source = stripComments(read(full));
+      if (full.endsWith("SocketProvider.tsx")) continue; // the hook's own definition
+      for (const line of source.split("\n")) {
+        if (!line.includes("useSocket()")) continue;
+        if (/const\s*\{[^}]*\bsocket\b[^}]*\}\s*=\s*useSocket\(\)/.test(line)) continue;
+        offenders.push(`${full}: ${line.trim()}`);
+      }
+    }
+  };
+  walk("src");
+  assert.deepEqual(
+    offenders,
+    [],
+    `useSocket() returns { socket, userId } — destructure it:\n${offenders.join("\n")}`,
+  );
+  // The hook's contract itself, so this test and the provider cannot drift.
+  const provider = read("src/context/SocketProvider.tsx");
+  assert.match(provider, /type SocketContextValue = \{\s*socket:/);
+  assert.match(provider, /return useContext\(SocketContext\)/);
+});
+
 test("each migrated page still re-joins its socket room so it can receive pushes", () => {
   // Some pages re-join via an explicit `connect` handler; all of them must at
   // least join the room on mount. A page that neither joins nor re-joins would

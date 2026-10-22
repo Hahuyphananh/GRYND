@@ -277,7 +277,12 @@ export default function LaneRushMatchPage({ params }) {
   const resolvedParams = use(params);
   const matchId = resolvedParams?.matchId;
   const router = useRouter();
-  const socket = useSocket();
+  // useSocket() returns the CONTEXT VALUE ({ socket, userId }), not a socket.
+  // Binding the whole value here made every `socket.on/emit` a TypeError on the
+  // first effect, which the route error boundary turned into "This screen hit a
+  // problem" for every visitor to a Lane Rush match. Every other page
+  // destructures; this one is now the same contract.
+  const { socket } = useSocket();
   const posthog = usePostHog();
   const { user } = useUser();
   const shouldReduce = useReducedMotion();

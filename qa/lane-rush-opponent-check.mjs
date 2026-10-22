@@ -75,8 +75,12 @@ const STUBS = {
     export default { createHash, randomBytes };
     export { createHash, randomBytes };
   `,
+  // The REAL provider hands back the context value (`{ socket, userId }`), never
+  // the socket itself. Mirroring that shape is what lets this harness catch a
+  // page that binds the whole value: the stub used to return the socket, so
+  // `const socket = useSocket()` looked healthy here and only threw in the app.
   "context/SocketProvider": `
-    export const useSocket = () => window.__lr.socket;
+    export const useSocket = () => ({ socket: window.__lr?.socket ?? null, userId: "user_1" });
     export const SocketProvider = ({ children }) => children;
     export default { useSocket, SocketProvider };
   `,
