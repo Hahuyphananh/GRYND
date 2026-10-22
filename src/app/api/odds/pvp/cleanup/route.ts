@@ -4,17 +4,22 @@ import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerifi
 import { db } from "../../../../../db/client";
 import { oddsGames } from "../../../../../db/schema";
 import { eq, and } from "drizzle-orm";
-import type { PvPInteractiveOddsState } from "../../../../../lib/odds";
+import {
+  ROUND_TIMEOUT_MS,
+  currentRoundOf,
+  isCurrentOddsState,
+} from "../../../../../lib/odds";
+import type { OddsGameState } from "../../../../../lib/odds";
 import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
 import { applyRatingResult } from "../../../../../lib/rating";
 import { applyTrophyResult } from "../../../../../lib/trophyStore";
 import {
   payOddsPvpWinner,
-  refundOddsPvpStakes,
+  voidUnsupportedOddsMatch,
 } from "../../../../../lib/odds-pvp/serverStore";
 
-/** Maximum time (ms) a player can stay inactive before being auto-forfeited */
-const TIMEOUT_MS = 120_000;
+/** The same window the pick route honours, so the sweep can never disagree. */
+const TIMEOUT_MS = ROUND_TIMEOUT_MS;
 
 export async function POST(req: Request) {
   try {
@@ -35,27 +40,41 @@ export async function POST(req: Request) {
     let forfeited = 0;
 
     for (const game of games) {
-      const state = game.gameState as PvPInteractiveOddsState | null;
-      if (!state || state.gameOver) continue;
+      // ── Retired rules: cannot be played, must not stay escrowed ──
+      if (!isCurrentOddsState(game.gameState)) {
+        await db.transaction(async (tx: any) => {
+          const [locked] = await tx
+            .select()
+            .from(oddsGames)
+            .where(eq(oddsGames.id, game.id))
+            .for("update");
+          if (!locked || locked.status !== "playing") return;
+          if (isCurrentOddsState(locked.gameState)) return;
+          await voidUnsupportedOddsMatch({
+            tx,
+            gameId: locked.id,
+            wager: locked.wager,
+            clerkIds: [locked.player1Id, locked.player2Id],
+          });
+        });
+        forfeited++;
+        continue;
+      }
+
+      const state = game.gameState as OddsGameState;
+      if (state.gameOver) continue;
 
       const now = Date.now();
       const roundAge = state.roundStartedAt ? now - state.roundStartedAt : 0;
       if (roundAge <= TIMEOUT_MS) continue;
 
-      // Game has been inactive too long — determine who to forfeit.
-      // Phase-aware: in "pick" a player must lock in their number, in
-      // "predict" they must submit their prediction.
-      const p1Done =
-        state.phase === "predict"
-          ? state.player1Prediction !== null
-          : state.player1Pick !== null;
-      const p2Done =
-        state.phase === "predict"
-          ? state.player2Prediction !== null
-          : state.player2Pick !== null;
+      // One submission per seat per round, so "done" is simply "predicted".
+      const live = currentRoundOf(state);
+      const p1Done = live.player1Prediction !== null;
+      const p2Done = live.player2Prediction !== null;
 
-      // Only forfeit when exactly one player hasn't completed their part
-      // of the current phase (the inactive one)
+      // Only forfeit when exactly one player hasn't submitted (the inactive
+      // one). If both are done the round should have resolved already.
       if (p1Done && !p2Done) {
         // Player 2 timed out
         await forfeitPlayer(game.id, game.player2Id!, game.player1Id, game.wager, "player1");
@@ -66,13 +85,12 @@ export async function POST(req: Request) {
         forfeited++;
       } else if (!p1Done && !p2Done) {
         // Both inactive — game abandoned. Cancel it (refund both).
-        // Only trigger if the game has been idle for more than 2x timeout
+        // Only trigger if the round has been idle for more than 2x timeout
         if (roundAge > TIMEOUT_MS * 2) {
           await cancelAbandonedGame(game.id, game.player1Id, game.player2Id!, game.wager);
           forfeited++;
         }
       }
-      // If both done (should have been resolved), skip
     }
 
     return NextResponse.json({
@@ -104,7 +122,7 @@ async function forfeitPlayer(
 
     if (!game || game.status !== "playing") return;
 
-    // Persist the game-over state so polls/refetches reflect the end.
+    // Persist the game-over state so refetches reflect the end.
     const forfeitedState = game.gameState
       ? { ...(game.gameState as any), gameOver: true, winner }
       : undefined;
@@ -183,25 +201,15 @@ async function cancelAbandonedGame(
       : undefined;
 
     // Nobody won, so neither stake is won: both go back to the seats that
-    // paid them (a stake is never left stranded in the ledger).
-    await refundOddsPvpStakes({
+    // paid them (a stake is never left stranded in the ledger), and the row is
+    // closed in the same write.
+    await voidUnsupportedOddsMatch({
       tx,
       gameId,
-      clerkIds: [player1Id, player2Id],
       wager,
+      clerkIds: [player1Id, player2Id],
+      previousState: cancelledState,
+      result: "cancelled",
     });
-
-    // Mark game as cancelled
-    await tx
-      .update(oddsGames)
-      .set({
-        status: "finished",
-        winner: null,
-        result: "cancelled",
-        payout: 0,
-        ...(cancelledState ? { gameState: cancelledState } : {}),
-        endedAt: new Date(),
-      })
-      .where(eq(oddsGames.id, gameId));
   });
 }

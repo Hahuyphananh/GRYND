@@ -265,37 +265,39 @@ export default function OddsLobbyPage() {
   }, [aiDifficulty, posthog, router]);
 
   // Rules copy for the shared How-to-Play modal. Every number comes from the
-  // rulebook (6 rounds, the range halving) rather than being restated from
-  // memory, so the lobby cannot drift from the game.
+  // rulebook (5 rounds, one target per round, width-based scoring) rather than
+  // being restated from memory, so the lobby cannot drift from the game.
   const rules = useMemo(
     () => ({
       title: "How to Play Odds",
       sections: [
         {
-          heading: "Two-phase prediction duel",
+          heading: "One shared target",
           body: (
             <>
-              Each round you <b>pick a hidden number</b>, then{" "}
-              <b>predict your opponent&apos;s number</b>. Both picks stay hidden
-              until the reveal.
+              Each round the server picks one secret number from 1–100 and gives
+              both players the <b>same clue</b>. You each make <b>one call</b> —
+              an exact number or a range — and neither call is revealed until
+              both are in.
             </>
           ),
         },
         {
-          heading: "Band scoring",
+          heading: "Width-based scoring",
           body: (
             <>
-              The closer your predictions, the more points you score. Hitting
-              the exact band pays the most.
+              An exact hit pays <b>100</b>. A range that contains the target
+              pays <b>100 ÷ its width</b> (1–100 pays just 1). A call that
+              misses the target pays nothing.
             </>
           ),
         },
         {
-          heading: "Shrinking range",
+          heading: "Five rounds of clues",
           body: (
             <>
-              The number range <b>halves each round</b> over 6 rounds. Later
-              rounds are higher-stakes.
+              A match is <b>5 rounds</b> and the number is always 1–100 — what
+              tightens is the clue, which narrows round by round.
             </>
           ),
         },
@@ -319,7 +321,7 @@ export default function OddsLobbyPage() {
   return (
     <PvpLobbyPage
       title="Odds"
-      subtitle="A ranked 1v1 prediction duel: lock a hidden number, read your opponent's, and score each round as the range halves from 100 to 3. Or practise against the bot for free."
+      subtitle="A ranked 1v1 prediction duel: one secret number each round, the same clue for both, and one call in 1–100 that pays more the narrower it is. Or practise against the bot for free."
       icon={
         <IconDice className="h-9 w-9 flex-shrink-0 text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)] sm:h-10 sm:w-10" />
       }
@@ -368,9 +370,9 @@ export default function OddsLobbyPage() {
             value={aiDifficulty}
             onChange={setAiDifficulty}
             hint={{
-              easy: "The bot guesses at random and almost never reads your habit.",
-              normal: "The bot mixes guesses with the occasional read on your pattern.",
-              hard: "The bot studies your picks and predicts your number most rounds.",
+              easy: "The bot calls wide ranges and misses more often than not.",
+              normal: "The bot plays a solid 20-wide window and lands it most rounds.",
+              hard: "The bot plays tight 10-wide windows — and sometimes calls it exactly.",
             }}
           />
         </div>

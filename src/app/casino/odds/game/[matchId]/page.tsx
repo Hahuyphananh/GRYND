@@ -21,8 +21,8 @@ export async function generateMetadata({
         : `Odds Match #${shortId} | GRYND`,
     description:
       matchId === "ai"
-        ? "Free Odds practice against the bot on GRYND. Lock a hidden number, then read the bot's as the range halves every round."
-        : `Live Odds match #${shortId} on GRYND — lock a hidden number, read your opponent's and take the pot.`,
+        ? "Free Odds practice against the bot on GRYND. Five rounds, one secret number each, the same clue for both seats — call it with a number or a range."
+        : `Live Odds match #${shortId} on GRYND — one secret number a round, the same clue for both, and the tighter call takes the pot.`,
   };
 }
 

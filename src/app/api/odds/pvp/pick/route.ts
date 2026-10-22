@@ -1,3 +1,15 @@
+// src/app/api/odds/pvp/pick/route.ts
+//
+// ONE submission per round, for a staked Odds duel.
+//
+// Body: { gameId, exact } | { gameId, min, max }  (or the same object under
+// `prediction`).
+//
+// The route owns everything the client must not: the row lock, the timeout
+// forfeit, the duplicate-submission guard, range validation, round resolution
+// and settlement. The round's TARGET never leaves the server except through
+// `viewForPlayer`, and only once the round has resolved.
+
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerified";
@@ -5,22 +17,22 @@ import { db } from "../../../../../db/client";
 import { oddsGames } from "../../../../../db/schema";
 import { eq } from "drizzle-orm";
 import {
-  resolvePvPRound,
-  submitPick,
+  ROUND_TIMEOUT_MS,
+  currentRoundOf,
+  isCurrentOddsState,
+  parsePrediction,
+  resolveRound,
   submitPrediction,
   viewForPlayer,
 } from "../../../../../lib/odds";
-import type { PvPInteractiveOddsState } from "../../../../../lib/odds";
+import type { OddsGameState } from "../../../../../lib/odds";
 import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
 import { applyRatingResult } from "../../../../../lib/rating";
 import { applyTrophyResult } from "../../../../../lib/trophyStore";
 import {
   payOddsPvpWinner,
-  refundOddsPvpStakes,
+  voidUnsupportedOddsMatch,
 } from "../../../../../lib/odds-pvp/serverStore";
-
-/** Maximum time (ms) a player can stay inactive before being auto-forfeited */
-const TIMEOUT_MS = 120_000;
 
 export async function POST(req: Request) {
   try {
@@ -37,17 +49,39 @@ export async function POST(req: Request) {
       );
     }
 
-
     const body = await req.json();
     const gameId = Number(body.gameId);
-    const playerNumber =
-      body.playerNumber == null ? undefined : Number(body.playerNumber);
-    const prediction =
-      body.prediction == null ? undefined : Number(body.prediction);
 
     if (!Number.isFinite(gameId) || gameId <= 0) {
       return NextResponse.json({ error: "Invalid game ID" }, { status: 400 });
     }
+
+    // A CLAIM is not a call: it asks the route to settle a round the caller
+    // already submitted, once the opponent has gone quiet. It carries no
+    // prediction at all, so it can never overwrite a pending call — and it is
+    // only honoured after the timeout branch below agrees the round is due.
+    const claimOnly = body?.claim === true;
+
+    // Validate the prediction BEFORE taking a row lock: a malformed request
+    // must not block the match row for everyone else.
+    const parsed = claimOnly
+      ? null
+      : parsePrediction(
+          body?.prediction && typeof body.prediction === "object"
+            ? body.prediction
+            : { exact: body?.exact, min: body?.min, max: body?.max },
+        );
+    // `in` rather than `!parsed.ok`: `strict` is off in this project, so the
+    // boolean discriminant is widened and truthiness does not narrow the union.
+    if (parsed && "error" in parsed) {
+      return NextResponse.json(
+        { success: false, error: parsed.error },
+        { status: 400 },
+      );
+    }
+    // `in` again rather than the boolean discriminant — see the note above.
+    const prediction =
+      parsed && !("error" in parsed) ? parsed.prediction : null;
 
     const result = await db.transaction(async (tx: any) => {
       const [game] = await tx
@@ -57,8 +91,7 @@ export async function POST(req: Request) {
         .for("update");
 
       if (!game) throw new Error("Game not found");
-      if (game.status !== "playing")
-        throw new Error("Game is not active");
+      if (game.status !== "playing") throw new Error("Game is not active");
       if (game.isAi) throw new Error("Use AI pick endpoint for AI games");
 
       const isPlayer1 = game.player1Id === userId;
@@ -66,38 +99,71 @@ export async function POST(req: Request) {
       if (!isPlayer1 && !isPlayer2)
         throw new Error("You are not part of this game");
 
-      const state = game.gameState as PvPInteractiveOddsState;
-      if (!state || state.gameOver) throw new Error("Game is already over");
+      // A match written by the RETIRED rules (pick a hidden number, predict the
+      // opponent's, shrinking range) has no target and cannot be played under
+      // this engine. Void it and give both stakes back inside this transaction
+      // so no wager is ever stranded — `refundMatchWagers` and the ledger's
+      // terminal-move guards make the void idempotent and mutually exclusive
+      // with a payout.
+      if (!isCurrentOddsState(game.gameState)) {
+        const refunded = await voidUnsupportedOddsMatch({
+          tx,
+          gameId,
+          wager: game.wager,
+          clerkIds: [game.player1Id, game.player2Id],
+        });
+        return {
+          voided: true as const,
+          refunded,
+          view: null,
+          round: null,
+          winner: null,
+          payout: 0,
+          gameOver: true,
+          resolved: true,
+        };
+      }
 
-      // ── Timeout check: auto-forfeit an opponent who finished their
-      // part of the phase long ago and went away ──
+      const state = game.gameState as OddsGameState;
+      if (state.gameOver) throw new Error("Game is already over");
+
+      const live = currentRoundOf(state);
+
+      // ── Timeout: the caller locked in, the opponent never did, and the round
+      // has been open longer than the timeout. The seat that actually CALLED
+      // the round banks the pot from the escrow both seats paid at join, inside
+      // this transaction. The row lock above makes this the single settlement.
+      //
+      // The direction is the whole point. `mineSubmitted && !opponentSubmitted`
+      // is a claim. The mirror case — I never submitted, my opponent did — is
+      // the seat that ran out the clock, so handing it the pot here would let a
+      // player who ignored the round steal a staked match by asking late. That
+      // request falls through to the duplicate/late-pick refusal below instead.
       const now = Date.now();
       const roundAge = state.roundStartedAt ? now - state.roundStartedAt : 0;
-      const oppDone =
-        state.phase === "predict"
-          ? isPlayer1
-            ? state.player2Prediction !== null
-            : state.player1Prediction !== null
-          : isPlayer1
-            ? state.player2Pick !== null
-            : state.player1Pick !== null;
+      const mineSubmitted = isPlayer1
+        ? live.player1Prediction !== null
+        : live.player2Prediction !== null;
+      const opponentSubmitted = isPlayer1
+        ? live.player2Prediction !== null
+        : live.player1Prediction !== null;
 
-      if (roundAge > TIMEOUT_MS && oppDone) {
+      if (roundAge > ROUND_TIMEOUT_MS && mineSubmitted && !opponentSubmitted) {
         const forfeiterId = isPlayer1 ? game.player2Id : game.player1Id;
         const winnerId = userId;
-        // The opponent timed out: the caller banks the pot from the escrow both
-        // seats paid at join, inside this transaction (the row lock above makes
-        // it the single settlement of the match).
         const payout = await payOddsPvpWinner({
           tx,
           gameId,
           winnerId,
           wager: game.wager,
         });
-        const winner: "player1" | "player2" = isPlayer1 ? "player1" : "player2";
-        // Persist the game-over state so the opponent's polls/socket
-        // refetches reflect the match ending (not just the submitter).
-        const forfeitedState: PvPInteractiveOddsState = {
+        const winner: "player1" | "player2" = isPlayer1
+          ? "player1"
+          : "player2";
+
+        // Persist the game-over state so the opponent's refetch reflects the
+        // match ending (not just the submitter).
+        const forfeitedState: OddsGameState = {
           ...state,
           gameOver: true,
           winner,
@@ -144,123 +210,73 @@ export async function POST(req: Request) {
         }).catch(() => {});
 
         return {
-          resolved: true,
-          phase: forfeitedState.phase,
-          gameState: viewForPlayer(forfeitedState, isPlayer1),
+          voided: false as const,
+          refunded: 0,
+          view: viewForPlayer(forfeitedState, isPlayer1),
           round: null,
-          payout,
           winner,
+          payout,
+          gameOver: true,
+          resolved: true,
         };
       }
 
-      // Prevent double-submitting — once locked in, it cannot change.
-      const myDone =
-        state.phase === "predict"
-          ? isPlayer1
-            ? state.player1Prediction !== null
-            : state.player2Prediction !== null
-          : isPlayer1
-            ? state.player1Pick !== null
-            : state.player2Pick !== null;
-      if (myDone)
+      // A claim the timeout branch did not accept (the opponent is still on
+      // the clock) is refused here rather than being stored as a call.
+      if (claimOnly) {
+        throw Object.assign(
+          new Error("Your opponent is still on the clock — nothing to claim yet"),
+          { status: 400 },
+        );
+      }
+
+      // ── Duplicate submission: locked in is locked in ──
+      if (mineSubmitted)
         throw Object.assign(
           new Error("You already submitted for this round"),
           { status: 400 },
         );
 
-      const invalid = (v: number | undefined) =>
-        v === undefined || !Number.isFinite(v) || !Number.isInteger(v);
-
-      // ── Phase 1: lock in your own number ──
-      if (state.phase === "pick") {
-        if (prediction !== undefined)
-          throw Object.assign(
-            new Error("Lock in your number before predicting"),
-            { status: 400 },
-          );
-        if (invalid(playerNumber))
-          throw Object.assign(
-            new Error("Number must be a whole number"),
-            { status: 400 },
-          );
-        if (playerNumber! < 1 || playerNumber! > state.currentMax)
-          throw Object.assign(
-            new Error(`Number must be between 1 and ${state.currentMax}`),
-            { status: 400 },
-          );
-
-        const { updatedState } = submitPick(
-          state,
-          isPlayer1 ? "player1" : "player2",
-          playerNumber!,
-        );
-
-        // Save regardless — the opponent's number stays hidden (null)
-        // until they submit theirs too.
-        await tx
-          .update(oddsGames)
-          .set({ gameState: updatedState })
-          .where(eq(oddsGames.id, gameId));
-
-        return {
-          resolved: false,
-          phase: updatedState.phase,
-          gameState: viewForPlayer(updatedState, isPlayer1),
-          round: null,
-          payout: 0,
-          winner: null,
-        };
+      if (!prediction) {
+        throw Object.assign(new Error("A prediction is required"), {
+          status: 400,
+        });
       }
 
-      // ── Phase 2: predict the opponent's number ──
-      if (playerNumber !== undefined)
-        throw Object.assign(
-          new Error("Your number is locked in. Submit a prediction"),
-          { status: 400 },
-        );
-      if (invalid(prediction))
-        throw Object.assign(
-          new Error("Prediction must be a whole number"),
-          { status: 400 },
-        );
-      if (prediction! < 1 || prediction! > state.currentMax)
-        throw Object.assign(
-          new Error(`Prediction must be between 1 and ${state.currentMax}`),
-          { status: 400 },
-        );
-
-      const { updatedState: afterPred, phaseComplete } = submitPrediction(
+      const submitted = submitPrediction(
         state,
         isPlayer1 ? "player1" : "player2",
-        prediction!,
+        prediction,
       );
 
-      if (!phaseComplete) {
-        // Both predictions in → round advances only then; otherwise the
-        // opponent's prediction stays hidden and we just save.
+      // Opponent has not submitted yet — save my locked-in prediction and hide
+      // theirs. Nothing resolves, so the target stays secret.
+      if (!submitted.roundComplete) {
         await tx
           .update(oddsGames)
-          .set({ gameState: afterPred })
+          .set({ gameState: submitted.updatedState })
           .where(eq(oddsGames.id, gameId));
 
         return {
-          resolved: false,
-          phase: afterPred.phase,
-          gameState: viewForPlayer(afterPred, isPlayer1),
+          voided: false as const,
+          refunded: 0,
+          view: viewForPlayer(submitted.updatedState, isPlayer1),
           round: null,
-          payout: 0,
           winner: null,
+          payout: 0,
+          gameOver: false,
+          resolved: false,
         };
       }
 
-      // Both predictions in — resolve the round (accuracy scoring)
-      const pickResult = resolvePvPRound(afterPred);
-      // The winner comes from the SERVER-SIDE engine above (never a client
-      // value), so the pot follows the same decision the scoreboard shows.
+      // Both predictions in — score the round on the SERVER against the one
+      // target. The winner below comes from that same resolver, never a client
+      // value, so the pot always follows the scoreboard.
+      const { round, updatedState } = resolveRound(submitted.updatedState);
       let payout = 0;
 
-      if (pickResult.updatedState.gameOver) {
-        const winner = pickResult.updatedState.winner; // null = draw
+      if (updatedState.gameOver) {
+        const winner = updatedState.winner; // null = draw
         const player1Won = winner === "player1";
         const winnerId = player1Won ? game.player1Id : game.player2Id;
 
@@ -278,7 +294,7 @@ export async function POST(req: Request) {
               winner,
               result: player1Won ? "player1_won" : "player2_won",
               payout,
-              gameState: pickResult.updatedState,
+              gameState: updatedState,
               endedAt: new Date(),
             })
             .where(eq(oddsGames.id, gameId));
@@ -297,15 +313,15 @@ export async function POST(req: Request) {
             outcome: "loss",
           }).catch(() => {});
 
-          // Per-game Elo — the round winner comes from the server-side Odds
-          // engine (pickResult.updatedState.winner), never a client value.
+          // Per-game Elo — the match winner comes from the server-side Odds
+          // engine (updatedState.winner), never a client value.
           applyRatingResult({
             gameKey: "odds-pvp",
             matchId: String(gameId),
             winnerClerkId: winnerId!,
             loserClerkId: loserId!,
           }).catch(() => {});
-          // Per-game trophies — the same authoritative round-win (+30 / −30).
+          // Per-game trophies — the same authoritative result (+30 / −30).
           applyTrophyResult({
             gameKey: "odds-pvp",
             matchId: String(gameId),
@@ -313,27 +329,20 @@ export async function POST(req: Request) {
             loserClerkId: loserId!,
           }).catch(() => {});
         } else {
-          // Exact tie after all rounds — no winner, so neither stake is won:
-          // the whole escrow is VOIDED back to both seats. Without this the two
-          // stakes would sit in the ledger forever (the payout path pays
-          // nothing when there is no winner).
-          await refundOddsPvpStakes({
+          // Exact tie after all five rounds — no winner, so neither stake is
+          // won: the whole escrow is VOIDED back to both seats. Without this
+          // the two stakes would sit in the ledger forever (the payout path
+          // pays nothing when there is no winner).
+          // One terminal write: the helper refunds both seats and records the
+          // draw (winner null, payout 0) on this same idempotent path.
+          await voidUnsupportedOddsMatch({
             tx,
             gameId,
-            clerkIds: [game.player1Id, game.player2Id],
             wager: game.wager,
+            clerkIds: [game.player1Id, game.player2Id],
+            previousState: updatedState,
+            result: "draw",
           });
-          await tx
-            .update(oddsGames)
-            .set({
-              status: "finished",
-              winner: null,
-              result: "draw",
-              payout: 0,
-              gameState: pickResult.updatedState,
-              endedAt: new Date(),
-            })
-            .where(eq(oddsGames.id, gameId));
 
           // Per-game Elo — an exact tie after every round is a DRAW: both
           // ratings move by K × (0.5 − expected), so neither side is punished
@@ -348,28 +357,33 @@ export async function POST(req: Request) {
         }
 
         return {
-          resolved: true,
-          phase: pickResult.updatedState.phase,
-          gameState: viewForPlayer(pickResult.updatedState, isPlayer1),
-          round: pickResult.round,
-          payout: winner ? payout : 0,
+          voided: false as const,
+          refunded: 0,
+          view: viewForPlayer(updatedState, isPlayer1),
+          round,
           winner,
+          payout: winner ? payout : 0,
+          gameOver: true,
+          resolved: true,
         };
       }
 
-      // Round resolved but game continues
+      // Round resolved, match continues — the next round is already open with
+      // a fresh target and clue.
       await tx
         .update(oddsGames)
-        .set({ gameState: pickResult.updatedState })
+        .set({ gameState: updatedState })
         .where(eq(oddsGames.id, gameId));
 
       return {
-        resolved: true,
-        phase: pickResult.updatedState.phase,
-        gameState: viewForPlayer(pickResult.updatedState, isPlayer1),
-        round: pickResult.round,
-        payout: 0,
+        voided: false as const,
+        refunded: 0,
+        gameState: viewForPlayer(updatedState, isPlayer1),
+        round,
         winner: null,
+        payout: 0,
+        gameOver: false,
+        resolved: true,
       };
     });
 
@@ -377,11 +391,12 @@ export async function POST(req: Request) {
       success: true,
       data: {
         resolved: result.resolved,
-        phase: result.phase,
         round: result.round,
-        gameState: result.gameState,
+        gameState: result.view,
         winner: result.winner,
         payout: result.payout,
+        gameOver: result.gameOver,
+        voided: result.voided,
       },
     });
   } catch (error: any) {

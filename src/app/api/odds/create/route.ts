@@ -5,7 +5,7 @@ import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified"
 import { db } from "../../../../db/client";
 import { oddsGames } from "../../../../db/schema";
 import { eq, and } from "drizzle-orm";
-import { initPvPOddsGame } from "../../../../lib/odds";
+import { initPvPOddsGame, viewForPlayer } from "../../../../lib/odds";
 
 export async function POST(req: Request) {
   try {
@@ -68,7 +68,10 @@ export async function POST(req: Request) {
         gameId: newGame.id,
         wager: newGame.wager,
         isAi: false,
-        gameState: newGame.gameState,
+        // Sanitized like every other read: the live round's target is null
+        // until both seats have called. (The state is re-seeded on join, so
+        // nobody can hold an early look at the numbers actually played.)
+        gameState: viewForPlayer(gameState, true),
         status: newGame.status,
         winner: newGame.winner,
         result: newGame.result,

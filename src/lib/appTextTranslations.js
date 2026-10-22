@@ -481,7 +481,7 @@ export const APP_TEXT_TRANSLATIONS = {
       tower_arena_desc: "Competitive head-to-head tower survival. Place blocks, avoid the collapse, and be the last one standing.",
       yahtzee_desc: "Server-authoritative Yahtzee with PvP wagering or instant AI battles.",
       dice_flush_desc: "Roll five dice, lock in combos, and outscore your rival in this strategic dice showdown.",
-      odds_desc: "Each player picks a hidden number, then predicts the opponent's. Closest predictions earn points. Range shrinks 100 → 50 → 25 → 12 → 6 → 3.",
+      odds_desc: "One secret number a round and the same clue for both players. Call it with a range or an exact guess — narrower pays more. Five rounds, 1–100 throughout.",
       odds_name: "Odds",
       precision_name: "Precision",
       precision_desc:
@@ -2255,7 +2255,7 @@ export const APP_TEXT_TRANSLATIONS = {
         "Yahtzee autoritaire côté serveur avec mises JcJ ou affrontements IA instantanés.",
       dice_flush_desc:
         "Lancez cinq dés, verrouillez vos combinaisons, et surpassez votre rival dans ce jeu de dés stratégique.",
-      odds_desc: "Chaque joueur choisit un nombre secret, puis prédit celui de l'adversaire. Les prédictions les plus proches rapportent des points. Plage : 100 → 50 → 25 → 12 → 6 → 3.",
+      odds_desc: "Un nombre secret par manche et le même indice pour les deux joueurs. Annoncez une plage ou un nombre exact : plus c'est étroit, plus ça rapporte. Cinq manches, de 1 à 100.",
       odds_name: "Cotes",
       precision_name: "Precision",
       precision_desc:
@@ -3782,7 +3782,7 @@ export const APP_TEXT_TRANSLATIONS = {
         "Yahtzee autoritativo del servidor con apuestas JcJ o partidas instantáneas contra IA.",
       dice_flush_desc:
         "Lanza cinco dados, bloquea combinaciones y supera a tu rival en este estratégico duelo de dados.",
-      odds_desc: "Cada jugador elige un número oculto y luego predice el del oponente: las predicciones más cercanas suman puntos. Rango: 100 → 50 → 25 → 12 → 6 → 3.",
+      odds_desc: "Un número secreto por ronda y la misma pista para ambos. Llámalo con un rango o un número exacto: cuanto más estrecho, más paga. Cinco rondas, del 1 al 100.",
       odds_name: "Probabilidades",
       precision_name: "Precision",
       precision_desc:

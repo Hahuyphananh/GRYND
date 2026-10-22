@@ -4,7 +4,8 @@ import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified"
 import { db } from "../../../../db/client";
 import { oddsGames } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
-import { viewForPlayer } from "../../../../lib/odds";
+import { isCurrentOddsState, viewForPlayer } from "../../../../lib/odds";
+import type { OddsGameState } from "../../../../lib/odds";
 
 export async function GET(req: Request) {
   try {
@@ -50,6 +51,19 @@ export async function GET(req: Request) {
       );
     }
 
+    // A row from the retired rules has no target: it cannot be projected for a
+    // player. The PvP status route closes such a match and refunds it; this
+    // read only refuses to describe it.
+    if (game.gameState && !isCurrentOddsState(game.gameState)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "This match uses retired rules and can no longer be played",
+        },
+        { status: 409 },
+      );
+    }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -57,7 +71,7 @@ export async function GET(req: Request) {
         status: game.status,
         player2Id: game.player2Id,
         gameState: game.gameState
-          ? viewForPlayer(game.gameState as any, isPlayer1)
+          ? viewForPlayer(game.gameState as OddsGameState, isPlayer1)
           : game.gameState,
         winner: game.winner,
         result: game.result,

@@ -4,7 +4,10 @@ import { requirePracticePlayer } from "../../../../../lib/auth/guestSession";
 import { db } from "../../../../../db/client";
 import { oddsGames, users } from "../../../../../db/schema";
 import { eq, sql, and } from "drizzle-orm";
-import { initInteractiveOddsGame } from "../../../../../lib/odds";
+import {
+  initInteractiveOddsGame,
+  viewForPlayer,
+} from "../../../../../lib/odds";
 import { coerceAiDifficulty } from "../../../../../lib/aiDifficulty";
 import { normalizeStake } from "../../../../../lib/games/stakes";
 
@@ -61,7 +64,12 @@ export async function POST(req: Request) {
       data: {
         gameId: result.game.id,
         wager: result.game.wager,
-        gameState: result.gameState,
+        // The SANITIZED projection, like every other Odds read: the raw state
+        // carries round 1's secret target, and handing it to the browser would
+        // put the answer in the client before the player has ever called it.
+        // Practice is free, but the board must not be able to see the number
+        // it is supposed to be guessing at.
+        gameState: viewForPlayer(result.gameState, true),
       },
     });
   } catch (error: any) {

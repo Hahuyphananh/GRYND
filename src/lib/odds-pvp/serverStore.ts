@@ -16,6 +16,8 @@
 // a seat that has no funding debit row — so a legacy unmounted row can never
 // mint coins.
 
+import { eq } from "drizzle-orm";
+import { oddsGames } from "../../db/schema";
 import { PVP_WINNER_SHARE } from "../games/economy";
 import { refundMatchWagers, settlePayout } from "../tokens/wager";
 
@@ -85,4 +87,56 @@ export async function refundOddsPvpStakes({
     tx,
   });
   return refunded.refunded;
+}
+
+/**
+ * Close a match that cannot produce a winner, in ONE terminal write.
+ *
+ * Two cases use it:
+ *
+ *   1. a row still carrying the RETIRED rules (no target in its `game_state`),
+ *      which the current engine cannot resolve — refunding is the only honest
+ *      end, and leaving it `playing` would strand both stakes;
+ *   2. an exact tie after all five rounds (`result: "draw"`), where neither
+ *      seat may be paid.
+ *
+ * The refund runs FIRST inside the caller's transaction, then the terminal row
+ * is written with `winner: null`, `payout: 0`. Both halves are idempotent, and
+ * the ledger's terminal-move guards make this mutually exclusive with a payout
+ * on the same match: a stake can be returned or paid, never both.
+ *
+ * The state handed in is persisted verbatim (a tombstone for the audit trail),
+ * so history stays inspectable.
+ */
+export async function voidUnsupportedOddsMatch({
+  tx,
+  gameId,
+  wager,
+  clerkIds,
+  previousState,
+  result = "cancelled",
+}: {
+  tx: any;
+  gameId: number | string;
+  wager: unknown;
+  clerkIds: (string | null | undefined)[];
+  /** State to persist on the terminal row (defaults to leaving it untouched). */
+  previousState?: unknown;
+  result?: "cancelled" | "draw";
+}): Promise<number> {
+  const refunded = await refundOddsPvpStakes({ tx, gameId, clerkIds, wager });
+
+  await tx
+    .update(oddsGames)
+    .set({
+      status: "finished",
+      winner: null,
+      result,
+      payout: 0,
+      ...(previousState !== undefined ? { gameState: previousState } : {}),
+      endedAt: new Date(),
+    })
+    .where(eq(oddsGames.id, Number(gameId)));
+
+  return refunded;
 }

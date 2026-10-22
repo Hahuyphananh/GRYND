@@ -4,7 +4,7 @@ import { requirePracticePlayer } from "../../../../../lib/auth/guestSession";
 import { db } from "../../../../../db/client";
 import { oddsGames } from "../../../../../db/schema";
 import { eq, and, desc } from "drizzle-orm";
-import { viewForPlayer } from "../../../../../lib/odds";
+import { isCurrentOddsState, viewForPlayer } from "../../../../../lib/odds";
 import type { InteractiveOddsState } from "../../../../../lib/odds";
 
 export async function GET() {
@@ -46,16 +46,40 @@ export async function GET() {
 
     const state = game.gameState as InteractiveOddsState;
 
-    // The player is always player1 in AI mode — hide the AI's
-    // current-round number until the reveal.
+    // A practice row from the retired rules cannot be projected or resumed.
+    // It is reported as active with NO state, which is exactly the signal the
+    // match page already uses to abandon a leftover duel: it calls
+    // `/api/odds/ai/leave` and mints a fresh session.
+    if (!isCurrentOddsState(state)) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          active: true,
+          gameId: game.id,
+          wager: game.wager,
+          retired: true,
+          gameState: null,
+          rounds: [],
+          gameOver: false,
+          winner: null,
+          payout: 0,
+        },
+      });
+    }
+
+    // The player is always player1 in AI mode — the projection hides the AI's
+    // pending prediction (and the live round's target) until the reveal. The
+    // `rounds` list is read from that same projection: handing out
+    // `state.rounds` here would leak the live target.
+    const view = viewForPlayer(state, true);
     return NextResponse.json({
       success: true,
       data: {
         active: true,
         gameId: game.id,
         wager: game.wager,
-        gameState: state ? viewForPlayer(state, true) : state,
-        rounds: state?.rounds ?? [],
+        gameState: view,
+        rounds: view.rounds,
         gameOver: state?.gameOver ?? false,
         winner: state?.winner ?? null,
         // A vs-AI duel moves no coins (`/pick` and `/end` skip every payout

@@ -402,8 +402,14 @@ test("Odds escrows both seats at join and settles every ending through one helpe
   assert.match(forfeit, /await payOddsPvpWinner\(\{/);
   assert.match(cleanup, /await payOddsPvpWinner\(\{/);
   // A tie and an abandoned game are VOIDED: both stakes back, never stranded.
-  assert.match(pick, /await refundOddsPvpStakes\(\{/);
-  assert.match(cleanup, /await refundOddsPvpStakes\(\{/);
+  // The refund is reached through the ONE void helper (which calls
+  // refundOddsPvpStakes and writes the terminal row in the same transaction),
+  // so a refund and a payout can never both happen on one match.
+  assert.match(store, /refundOddsPvpStakes\(\{ tx, gameId, clerkIds, wager \}\)/);
+  assert.match(pick, /await voidUnsupportedOddsMatch\(\{/);
+  assert.match(pick, /result: "draw"/);
+  assert.match(cleanup, /await voidUnsupportedOddsMatch\(\{/);
+  assert.doesNotMatch(pick, /await refundOddsPvpStakes\(\{/);
   // No dead `payout = 0` left on a settlement path.
   assert.doesNotMatch(pick, /const payout = 0;/);
   assert.doesNotMatch(forfeit, /const payout = 0;/);

@@ -83,7 +83,7 @@ game's shipped description:
 | Pool Masters | pvp, skill, strategy | aiming + table planning |
 | HEX DUEL | pvp, strategy, skill, competitive | territory conquest on the ladder |
 | Barricade | pvp, strategy, skill, competitive | pawn-and-barricade positional duel on the ladder |
-| Odds | pvp, strategy, skill | hidden numbers, shrinking range |
+| Odds | pvp, strategy, skill | one shared hidden target, tightening clue, range calls |
 | Precision | pvp, skill, fast_paced, competitive | reaction-timing staked duel |
 | Dots & Boxes | pvp, strategy, skill | pencil-and-paper planning |
 | Mini Golf | pvp, skill, casual | turn-based physics putting — aiming/power are the game; best-of-5, instantly readable |

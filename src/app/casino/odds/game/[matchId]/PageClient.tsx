@@ -17,6 +17,11 @@ import { usePracticePause } from "../../../../../hooks/usePracticePause";
 import EmotePicker from "../../../../../components/game/EmotePicker";
 import useGameEmotes from "../../../../../hooks/useGameEmotes";
 import { useSocket } from "../../../../../context/SocketProvider";
+import PredictionPanel from "../../../../../components/odds/PredictionPanel";
+import TargetReveal from "../../../../../components/odds/TargetReveal";
+import AnimatedScore from "../../../../../components/odds/AnimatedScore";
+import { CLUE_SECONDS, motionSeconds } from "../../../../../components/odds/oddsMotion";
+import { useReducedMotionSafe } from "../../../../../components/odds/useReducedMotionSafe";
 import { useOddsAudio } from "../../../../../lib/oddsAudio";
 import { SkeletonRows } from "../../../../../components/skeletons/Skeleton";
 import {
@@ -44,20 +49,22 @@ import {
 } from "../../../../../lib/aiDifficulty";
 import { startMatchSync } from "../../../../../hooks/useMatchSync";
 import {
-  TOTAL_ROUNDS,
-  type InteractiveOddsState as InteractiveOddsStateType,
+  ROUND_TIMEOUT_MS,
+  TARGET_MAX,
+  TARGET_MIN,
+  describePrediction,
   type OddsPlayerView,
-  type OddsRound,
-  type PvPInteractiveOddsState,
+  type OddsPrediction,
+  type OddsRoundView,
 } from "../../../../../lib/odds";
 
-type GameRound = OddsRound;
+/** A round as the CLIENT may see it: the target is null until it resolves. */
+type GameRound = OddsRoundView;
 
 type GameState = {
   rounds: GameRound[];
   currentRound: number;
   totalRounds: number;
-  currentMax: number;
   winner: string; // "player1" | "player2" | "" (draw)
   result: string;
   payout: number;
@@ -65,7 +72,20 @@ type GameState = {
   p2Score: number;
 };
 
-type PvPInteractiveState = PvPInteractiveOddsState;
+/**
+ * The per-viewer state the server hands out (`viewForPlayer`). Both entry
+ * points store THIS shape — never the raw engine state, which carries the live
+ * round's target.
+ */
+type BoardState = OddsPlayerView;
+
+/** A random legal call, used by autopick and by a timed-out PvP round. */
+function randomPrediction(): OddsPrediction {
+  return {
+    kind: "exact",
+    value: TARGET_MIN + Math.floor(Math.random() * (TARGET_MAX - TARGET_MIN + 1)),
+  };
+}
 
 // The lobby's own tokens (amber + cyan on the dark purple-to-navy gradient),
 // reused for the two cards this page still owns: the waiting-for-opponent card
@@ -182,10 +202,12 @@ function AIOddsGame({
   audio: ReturnType<typeof useOddsAudio>;
   difficulty: AiDifficulty;
 }) {
-  const PICK_TIMER_SECONDS = 15;
   // The result popup's practice-only lobby exit (a live PvP match never
   // passes one): AIOddsGame is its own route, so it navigates itself.
   const router = useRouter();
+  // Every odds animation below is decoration around server state; with
+  // reduced motion each one collapses to its settled frame.
+  const reduce = useReducedMotionSafe();
 
   // The vs-AI match is FREE PLAY: there is no stake to track and none is sent
   // to /api/odds/ai/start (see startGame below), so the HUD, the result screen
@@ -195,20 +217,19 @@ function AIOddsGame({
   // shared default-wager control.
   const [loading, setLoading] = useState(false);
   const [gameId, setGameId] = useState<number | null>(null);
-  const [interactiveState, setInteractiveState] = useState<InteractiveOddsStateType | null>(null);
+  const [interactiveState, setInteractiveState] = useState<BoardState | null>(null);
   const posthog = usePostHog();
   const [roundHistory, setRoundHistory] = useState<GameRound[]>([]);
-  const [pickValue, setPickValue] = useState("");
-  const [predictValue, setPredictValue] = useState("");
+  // The call the player has built in the panel — the single source of truth
+  // for the wheel, the inputs, the preset and the preview.
+  const [prediction, setPrediction] = useState<OddsPrediction | null>(null);
   const [autoPick, setAutoPick] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(PICK_TIMER_SECONDS);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [gameOver, setGameOver] = useState(false);
   const [finalWinner, setFinalWinner] = useState<"player1" | "player2" | "">("player1");
   const [finalResult, setFinalResult] = useState<"player1_won" | "player2_won" | "draw">("player1_won");
   const [finalPayout, setFinalPayout] = useState(0);
-  const [timeUp, setTimeUp] = useState(false);
   const [resuming, setResuming] = useState(true);
   // The tier the bot plays at for this session. The LOBBY picks it (and stores
   // it per device); this route only receives it.
@@ -235,7 +256,7 @@ function AIOddsGame({
   useActiveGamePresence("odds", gameActive && !gameOver, { terminal: gameOver });
 
   // Wrap handlePick in a ref so timer/autopick effects can call it without stale closures
-  const submitActionRef = useRef<(value: number, isPrediction: boolean) => void>(() => {});
+  const submitActionRef = useRef<(prediction: OddsPrediction) => void>(() => {});
   const mountedRef = useRef(true);
   const autoPickTriggeredRef = useRef(false);
   const gameOverRef = useRef(false);
@@ -330,9 +351,7 @@ function AIOddsGame({
     setGameId(null);
     setInteractiveState(null);
     setRoundHistory([]);
-    setPickValue("");
-    setPredictValue("");
-    setTimeLeft(PICK_TIMER_SECONDS);
+    setPrediction(null);
     setGameOver(false);
     setFinalPayout(0);
 
@@ -371,7 +390,7 @@ function AIOddsGame({
   }, [resuming, gameId, loading]);
 
   const submitAction = useCallback(
-    async (value: number, isPrediction: boolean) => {
+    async (prediction: OddsPrediction) => {
       if (!gameId || !interactiveState || isSubmitting || gameOver) return;
       if (pausedRef.current) return;
       autoPickTriggeredRef.current = true; // prevent double-trigger
@@ -382,25 +401,20 @@ function AIOddsGame({
         const res = await fetch("/api/odds/ai/pick", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(
-            isPrediction
-              ? { gameId, prediction: value }
-              : { gameId, playerNumber: value },
-          ),
+          body: JSON.stringify({ gameId, prediction }),
         });
         const data = await res.json();
         if (!data.success) throw new Error(data.error);
 
         if (!mountedRef.current) return;
 
-        const updatedState = data.data.updatedState;
-
-        // A resolved round (both predictions in) comes back with the
-        // round data; a phase transition (number locked in) does not.
-        if (data.data.round) {
-          setRoundHistory((prev) => [...prev, data.data.round]);
-        }
+        // The server scores my call against the round's secret target and
+        // hands back the SANITIZED view. The bot only answers once I submit,
+        // so a single request always closes the round.
+        const updatedState = data.data.updatedState as BoardState;
         setInteractiveState(updatedState);
+        // Only RESOLVED rounds are history; the live one is still on the board.
+        setRoundHistory(updatedState.rounds.filter((round) => round.resolved));
 
         if (data.data.gameStatus === "finished") {
         const winner: "player1" | "player2" | "" = updatedState.winner ?? "";
@@ -441,9 +455,7 @@ function AIOddsGame({
       if (mountedRef.current) {
         setIsSubmitting(false);
         if (!gameOverRef.current) {
-          setTimeLeft(PICK_TIMER_SECONDS);
-          setTimeUp(false);
-          setPickValue("");
+          setPrediction(null);
           autoPickTriggeredRef.current = false;
         }
       }
@@ -452,89 +464,28 @@ function AIOddsGame({
     [gameId, interactiveState, isSubmitting, gameOver, pausedRef],
   );
 
-  const handlePick = useCallback(
-    (number: number) => submitAction(number, false),
-    [submitAction],
-  );
-  const handlePredict = useCallback(
-    (prediction: number) => submitAction(prediction, true),
-    [submitAction],
-  );
-
   // Keep ref in sync
   useEffect(() => {
     submitActionRef.current = submitAction;
   }, [submitAction]);
 
-  // Timer countdown — removed in the vs-AI free-play mode: the player can
-  // take as long as they want, so there is no expiry auto-pick, no urgent
-  // beeps, and no countdown chip. (The PvP game keeps its 15s pick timer.)
-  const timerUrgentPlayed = useRef(false);
-  useEffect(() => {
-    setTimeUp(false);
-    return;
-  }, [interactiveState?.currentRound]);
-
-  // Autopick: auto-submit a random number when a new round starts and autopick is ON
+  // Autopick: fire a random legal call shortly after a new round opens. Vs-AI
+  // play is untimed, so this is a convenience, never a timeout.
   useEffect(() => {
     if (!interactiveState || gameOver || isSubmitting || paused) return;
     if (!autoPick) return;
     if (autoPickTriggeredRef.current) return;
     autoPickTriggeredRef.current = true;
-    const range = interactiveState.currentMax;
     const t = setTimeout(() => {
-      submitActionRef.current(
-        Math.floor(Math.random() * range) + 1,
-        interactiveState.phase === "predict",
-      );
+      submitActionRef.current(randomPrediction());
     }, 600);
     return () => clearTimeout(t);
   }, [interactiveState, autoPick, gameOver, isSubmitting, paused]);
 
-  const handleSubmitPick = () => {
+  const handleSubmitGuess = () => {
     if (!interactiveState || isSubmitting || gameOver) return;
-    const num = parseInt(pickValue, 10);
-    const range = interactiveState.currentMax;
-    if (isNaN(num) || num < 1 || num > range) return;
-    handlePick(num);
-  };
-
-  const handleSubmitPredict = () => {
-    if (!interactiveState || isSubmitting || gameOver) return;
-    const pred = parseInt(predictValue, 10);
-    const range = interactiveState.currentMax;
-    if (isNaN(pred) || pred < 1 || pred > range) return;
-    handlePredict(pred);
-  };
-
-  // Digit-only input constrained to the current 1..range (returns the
-  // new value string, or the previous value when invalid).
-  const handlePickInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    const range = interactiveState?.currentMax ?? 100;
-    if (val === "" || /^\d+$/.test(val)) {
-      const num = parseInt(val, 10);
-      if (val === "" || (num >= 1 && num <= range)) {
-        setPickValue(val);
-      }
-    }
-  };
-
-  const handlePredictInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    const range = interactiveState?.currentMax ?? 100;
-    if (val === "" || /^\d+$/.test(val)) {
-      const num = parseInt(val, 10);
-      if (val === "" || (num >= 1 && num <= range)) {
-        setPredictValue(val);
-      }
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key !== "Enter") return;
-    if (interactiveState?.phase === "predict") handleSubmitPredict();
-    else handleSubmitPick();
+    if (!prediction) return;
+    submitAction(prediction);
   };
 
   // Build a synthetic GameState for the display component
@@ -544,7 +495,6 @@ function AIOddsGame({
       rounds: roundHistory,
       currentRound: interactiveState.currentRound,
       totalRounds: interactiveState.totalRounds,
-      currentMax: interactiveState.currentMax,
       winner: gameOver ? finalWinner : "",
       result: gameOver ? finalResult : "player1_won",
       // Free play: there is no stake, so there is no pending payout to show
@@ -560,19 +510,20 @@ function AIOddsGame({
     setGameId(null);
     setInteractiveState(null);
     setRoundHistory([]);
-    setPickValue("");
-    setPredictValue("");
+    setPrediction(null);
     setGameOver(false);
     setFinalPayout(0);
     setError("");
-    setTimeLeft(PICK_TIMER_SECONDS);
     // Let the auto-start effect mint the next duel (this route owns no lobby
     // card to return to).
     startedRef.current = false;
   };
 
-  const range = interactiveState?.currentMax ?? 100;
-  const userWon = gameOver && finalWinner === "player1";  const userDrew = gameOver && finalWinner === "";
+  const liveRound = interactiveState
+    ? interactiveState.rounds[interactiveState.currentRound - 1]
+    : null;
+  const userWon = gameOver && finalWinner === "player1";
+  const userDrew = gameOver && finalWinner === "";
   return (
     <div>
       {practicePause.canPause && (
@@ -620,11 +571,17 @@ function AIOddsGame({
           thing you came to do is never below the reference log. */}
       <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <div className="order-1 space-y-3 lg:order-2">
-      {gameId && interactiveState && !gameOver && interactiveState.phase === "pick" && (
-        <div className="odds-hud odds-chamfer odds-hud--amber overflow-hidden">
+      {gameId && interactiveState && !gameOver && !interactiveState.mySubmitted && (
+        <motion.div
+          key={`call-${interactiveState.currentRound}`}
+          initial={reduce ? false : { opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: motionSeconds(reduce, 0.24), ease: "easeOut" }}
+          className="odds-hud odds-chamfer odds-hud--amber overflow-hidden"
+        >
           <div className="flex items-center justify-between gap-2 border-b border-[#f5ff3b]/20 bg-black/35 px-3 py-2">
             <span className="odds-label flex items-center gap-2 text-[#f5ff3b]">
-              <IconTarget size={12} /> phase 1 // pick
+              <IconCrystalBall size={12} /> call the number
             </span>
             <span className="odds-label text-white/35">
               round {interactiveState.currentRound}/{interactiveState.totalRounds}
@@ -632,8 +589,10 @@ function AIOddsGame({
           </div>
 
           <div className="odds-board-bg p-3 sm:p-4">
-            <p className="odds-label text-white/45">
-              lock a number · hidden from the AI · window 1–{range}
+            <p className="odds-label mt-3 text-white/35">the clue · same for both seats</p>
+            <ClueReveal clue={liveRound?.clue} round={interactiveState.currentRound} />
+            <p className="odds-label mt-3 text-white/45">
+              one call · a number, or a range like 40-50 · narrower pays more
             </p>
 
             <PickHistoryStrip
@@ -644,32 +603,21 @@ function AIOddsGame({
               className="mt-3"
             />
 
-            {/* Vs-AI mode is untimed — the pick countdown is PvP-only. */}
+            {/* Vs-AI mode is untimed — there is no countdown to run out. */}
 
-            {timeUp && isSubmitting && (
-              <p className="odds-label mt-3 animate-pulse text-amber-300">
-                <span className="inline-flex items-center gap-1"><IconAlarm size={13} /> time's up · locking in
-                </span>
-              </p>
-            )}
-
-            {/* Number input + Lock In */}
-            <label htmlFor="odds-ai-pick" className="sr-only">Your number 1–{range}</label>
-            <input
-              id="odds-ai-pick"
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              className="odds-input odds-chamfer mt-3 w-full p-3.5 text-center text-3xl placeholder-white/20"
-              placeholder={`1–${range}`}
-              value={pickValue}
-              onChange={handlePickInputChange}
-              onKeyDown={handleKeyDown}
+            {/* One submission per round: pick it on the wheel, type it, or
+                take a preset — every surface writes the same call. */}
+            <PredictionPanel
+              className="mt-3"
+              clue={liveRound?.clue ?? null}
+              value={prediction}
+              onChange={setPrediction}
+              onSubmit={handleSubmitGuess}
               disabled={isSubmitting || autoPick}
             />
             <button
-              onClick={handleSubmitPick}
-              disabled={isSubmitting || autoPick || pickValue === ""}
+              onClick={handleSubmitGuess}
+              disabled={isSubmitting || autoPick || prediction === null}
               className="odds-chamfer odds-label mt-2 w-full bg-[#f5ff3b] px-6 py-3.5 text-black transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30"
             >
               {isSubmitting ? "locking in…" : "lock in"}
@@ -696,8 +644,8 @@ function AIOddsGame({
                   onClick={() => {
                     setAutoPick(!autoPick);
                     if (!autoPick) {
-                      // Turning autopick ON: clear any manual input
-                      setPickValue("");
+                      // Turning autopick ON: clear any half-built call
+                      setPrediction(null);
                     }
                   }}
                 >
@@ -715,121 +663,9 @@ function AIOddsGame({
               <p className="odds-label mt-3 text-center text-red-400">{error}</p>
             )}
           </div>
-        </div>
+        </motion.div>
       )}
 
-      {gameId && interactiveState && !gameOver && interactiveState.phase === "predict" && (
-        <div className="odds-hud odds-chamfer odds-hud--magenta overflow-hidden">
-          <div className="flex items-center justify-between gap-2 border-b border-fuchsia-400/20 bg-black/35 px-3 py-2">
-            <span className="odds-label flex items-center gap-2 text-fuchsia-300">
-              <IconCrystalBall size={12} /> phase 2 // predict
-            </span>
-            <span className="odds-label text-white/35">
-              round {interactiveState.currentRound}/{interactiveState.totalRounds}
-            </span>
-          </div>
-
-          <div className="odds-board-bg p-3 sm:p-4">
-            <p className="odds-label text-white/45">
-              read their number · window 1–{range} · hidden until reveal
-            </p>
-
-            <PickHistoryStrip
-              rounds={roundHistory}
-              isPlayer1={true}
-              userLabel="You"
-              oppLabel="AI"
-              className="mt-3"
-            />
-
-            {/* Timer — a readout plus a bar that drains, so the pressure is
-                visible without reading the number. */}
-            <div className="mt-3 flex items-center gap-3">
-              <span
-                className={`odds-readout flex shrink-0 items-center gap-1.5 border px-2.5 py-1 text-lg ${
-                  timeLeft <= 5
-                    ? "animate-pulse border-red-500/50 text-red-400"
-                    : "border-cyan-400/25 text-cyan-200/80"
-                }`}
-              >
-                <IconClock size={16} /> {timeLeft}s
-              </span>
-              <div className="h-1 min-w-0 flex-1 bg-white/10">
-                <div
-                  className={`h-full transition-[width] duration-1000 ease-linear ${
-                    timeLeft <= 5 ? "bg-red-500" : "bg-cyan-400"
-                  }`}
-                  style={{ width: `${Math.max(0, Math.min(100, (timeLeft / 15) * 100))}%` }}
-                />
-              </div>
-            </div>
-
-            {/* Time's up indicator */}
-            {timeUp && isSubmitting && (
-              <p className="odds-label mt-3 animate-pulse text-amber-300">
-                <span className="inline-flex items-center gap-1"><IconAlarm size={13} /> time's up · locking in
-                </span>
-              </p>
-            )}
-
-            {/* Prediction input + Lock In */}
-            <label htmlFor="odds-ai-prediction" className="sr-only">Your prediction 1–{range}</label>
-            <input
-              id="odds-ai-prediction"
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              className="odds-input odds-chamfer mt-3 w-full p-3.5 text-center text-3xl placeholder-white/20"
-              placeholder={`1–${range}`}
-              value={predictValue}
-              onChange={handlePredictInputChange}
-              onKeyDown={handleKeyDown}
-              disabled={isSubmitting || autoPick}
-            />
-            <button
-              onClick={handleSubmitPredict}
-              disabled={isSubmitting || autoPick || predictValue === ""}
-              className="odds-chamfer odds-label mt-2 w-full bg-fuchsia-400 px-6 py-3.5 text-black transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30"
-            >
-              {isSubmitting ? "locking in…" : "lock in"}
-            </button>
-
-            {/* Sound + Autopick toggles */}
-            <div className="mt-3 flex items-center justify-center gap-4 border-t border-white/5 pt-3">
-              <button
-                onClick={() => audio.setEnabled(!audio.enabled)}
-                className={`rounded-full border px-3 py-1 text-sm transition ${
-                  audio.enabled
-                    ? "border-white/10 text-white/60 hover:text-white"
-                    : "border-red-400/40 text-red-400/60"
-                }`}
-                title={audio.enabled ? "Sounds on" : "Sounds off"}
-              >
-                {audio.enabled ? <IconVolume size={16} /> : <IconVolumeOff size={16} />}
-              </button>
-              <label className="flex cursor-pointer select-none items-center gap-2">
-                <div
-                  className={`relative h-6 w-12 rounded-full transition-colors ${
-                    autoPick ? "bg-fuchsia-400" : "bg-white/20"
-                  }`}
-                  onClick={() => setAutoPick(!autoPick)}
-                >
-                  <div
-                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
-                      autoPick ? "translate-x-6" : "translate-x-0.5"
-                    }`}
-                  />
-                </div>
-                <span className="odds-label text-white/55">autopick</span>
-              </label>
-            </div>
-
-            {error && (
-              <p className="odds-label mt-3 text-center text-red-400">{error}</p>
-            )}
-          </div>
-        </div>
-      )}
 
       </div>
 
@@ -882,6 +718,7 @@ function PvPOddsGame({ audio, matchId }: { audio: ReturnType<typeof useOddsAudio
   const PICK_TIMER_SECONDS = 15;
   const router = useRouter();
   const { socket } = useSocket();
+  const reduce = useReducedMotionSafe();
 
   // ── Match state ──
   // The game id is the ROUTE's. Opening, joining and browsing tables is the
@@ -916,10 +753,11 @@ function PvPOddsGame({ audio, matchId }: { audio: ReturnType<typeof useOddsAudio
   const [isPlayer1, setIsPlayer1] = useState(true);
 
   // ── Game state ──
-  const [interactiveState, setInteractiveState] = useState<PvPInteractiveState | null>(null);
+  const [interactiveState, setInteractiveState] = useState<BoardState | null>(null);
   const [roundHistory, setRoundHistory] = useState<GameRound[]>([]);
-  const [pickValue, setPickValue] = useState("");
-  const [predictValue, setPredictValue] = useState("");
+  // The call built in the panel — the single source of truth for every
+  // selector surface (wheel, inputs, preset, preview).
+  const [prediction, setPrediction] = useState<OddsPrediction | null>(null);
   const [timeLeft, setTimeLeft] = useState(PICK_TIMER_SECONDS);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [waitingForOpponent, setWaitingForOpponent] = useState(false);
@@ -953,7 +791,7 @@ function PvPOddsGame({ audio, matchId }: { audio: ReturnType<typeof useOddsAudio
   useActiveGamePresence("odds", matchLive, { terminal: gameOver });
 
   // Refs for timer/autopick
-  const submitActionRef = useRef<(value: number, isPrediction: boolean) => void>(() => {});
+  const submitActionRef = useRef<(prediction: OddsPrediction) => void>(() => {});
   const mountedRef = useRef(true);
   const gameOverRef = useRef(false);
   const isPlayer1Ref = useRef(true);
@@ -961,10 +799,9 @@ function PvPOddsGame({ audio, matchId }: { audio: ReturnType<typeof useOddsAudio
   gameOverRef.current = gameOver;
   isPlayer1Ref.current = isPlayer1;
   wagerLockedRef.current = wagerLocked;
-  // Track round count to avoid clearing pickValue on every poll/socket event
+  // Track round count so a NEW ROUND clears the input, while a poll/socket
+  // push of the same round leaves what the player is typing alone.
   const roundCountRef = useRef(0);
-  // Track phase to clear inputs when moving pick → predict
-  const phaseRef = useRef<"pick" | "predict">("pick");
 
   useEffect(() => {
     mountedRef.current = true;
@@ -981,42 +818,26 @@ function PvPOddsGame({ audio, matchId }: { audio: ReturnType<typeof useOddsAudio
       const myIsPlayer1 = isPlayer1Ref.current;
 
       setInteractiveState(st);
-      setRoundHistory(st.rounds ?? []);
+      // Only RESOLVED rounds are history — the live round still carries a
+      // withheld target, so it must not be counted as revealed.
+      setRoundHistory((st.rounds ?? []).filter((round) => round.resolved));
       // A live state means both seats are in: the waiting screen is done.
       setMatchStage((current) => (current === "missing" ? current : "playing"));
 
-      // Waiting = I've submitted my part of the current phase but the
-      // opponent hasn't completed theirs yet. The server sanitizes each
-      // player's view, so the opponent's submissions are replaced with
-      // opponentPicked/opponentPredicted flags.
-      const myPickSet = myIsPlayer1
-        ? st.player1Pick !== null
-        : st.player2Pick !== null;
-      const myPredSet = myIsPlayer1
-        ? st.player1Prediction !== null
-        : st.player2Prediction !== null;
+      // Waiting = I've locked in for this round and the opponent hasn't.
+      // The server sanitizes each player's view, so the peer's pending call is
+      // never in here — only the `mySubmitted` / `opponentSubmitted` flags.
       setWaitingForOpponent(
-        !st.gameOver &&
-          ((st.phase === "pick" && myPickSet && !st.opponentPicked) ||
-            (st.phase === "predict" && myPredSet && !st.opponentPredicted)),
+        !st.gameOver && st.mySubmitted && !st.opponentSubmitted,
       );
 
-      // Reset the phase timer only on round/phase transitions — NOT on
-      // every poll, otherwise the countdown would never actually elapse
-      // (polls arrive every 3s) and the per-phase timeout could never fire.
-      const newRoundCount = (st.rounds ?? []).length;
+      // Reset the round clock only on a NEW ROUND — NOT on every poll,
+      // otherwise the countdown would never actually elapse (pushes arrive
+      // every few seconds) and the timeout could never fire.
+      const newRoundCount = st.currentRound;
       if (newRoundCount !== roundCountRef.current) {
         roundCountRef.current = newRoundCount;
-        setPickValue("");
-        setPredictValue("");
-        setTimeLeft(PICK_TIMER_SECONDS);
-        setTimeUp(false);
-      }
-      // Clear inputs when moving between phases (number → prediction)
-      if (st.phase !== phaseRef.current) {
-        phaseRef.current = st.phase;
-        setPickValue("");
-        setPredictValue("");
+        setPrediction(null);
         setTimeLeft(PICK_TIMER_SECONDS);
         setTimeUp(false);
       }
@@ -1223,30 +1044,28 @@ function PvPOddsGame({ audio, matchId }: { audio: ReturnType<typeof useOddsAudio
     router.push("/casino/odds");
   };
 
-  // ── Pick / Predict handling ──
+  // ── One submission per round ──
   const submitAction = useCallback(
-    async (value: number, isPrediction: boolean) => {
+    async (prediction: OddsPrediction) => {
       if (!myGameId || !interactiveState || isSubmitting || gameOver) return;
       setIsSubmitting(true);
       setError("");
       audio.playPick();
       try {
+        // The server resolves the round the moment BOTH seats are in, so this
+        // one request can also close the match (and settle the pot).
         const res = await fetch("/api/odds/pvp/pick", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(
-            isPrediction
-              ? { gameId: myGameId, prediction: value }
-              : { gameId: myGameId, playerNumber: value },
-          ),
+          body: JSON.stringify({ gameId: myGameId, prediction }),
         });
         const data = await res.json();
         if (!data.success) throw new Error(data.error);
 
         if (!mountedRef.current) return;
 
-        // applyStateFromServer derives the waiting state from the
-        // sanitized view + opponentPicked/opponentPredicted flags.
+        // applyStateFromServer derives the waiting state from the sanitized
+        // view's mySubmitted/opponentSubmitted flags.
         applyStateFromServer({
           gameState: data.data.gameState,
           payout: data.data.payout,
@@ -1274,10 +1093,13 @@ function PvPOddsGame({ audio, matchId }: { audio: ReturnType<typeof useOddsAudio
         if (mountedRef.current) {
           setIsSubmitting(false);
           if (!gameOverRef.current) {
+            // The clock restarts so a failed lock-in cannot instantly re-fire
+            // the timeout submit. The CALL itself is deliberately kept: a
+            // transport error must not throw away the player's call, and while
+            // the round waits on the opponent that same call is what the
+            // claim below is about. A new round clears it (applyStateFromServer).
             setTimeLeft(PICK_TIMER_SECONDS);
             setTimeUp(false);
-            if (isPrediction) setPredictValue("");
-            else setPickValue("");
           }
         }
       }
@@ -1293,21 +1115,54 @@ function PvPOddsGame({ audio, matchId }: { audio: ReturnType<typeof useOddsAudio
     ],
   );
 
-  const handlePick = useCallback(
-    (number: number) => submitAction(number, false),
-    [submitAction],
-  );
-  const handlePredict = useCallback(
-    (prediction: number) => submitAction(prediction, true),
-    [submitAction],
-  );
+  /**
+   * The opponent is idle past the round timeout, so the seat that called the
+   * round may bank it.
+   *
+   * This sends NO prediction — only the claim — so it can never be stored as a
+   * late call, and it can never be read as "I changed my mind". The server
+   * decides: if the round is not actually due it refuses and nothing moves.
+   */
+  const claimRound = useCallback(async () => {
+    if (!myGameId || isSubmitting) return;
+    setIsSubmitting(true);
+    setError("");
+    try {
+      const res = await fetch("/api/odds/pvp/pick", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId: myGameId, claim: true }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      if (!mountedRef.current) return;
+      applyStateFromServer({
+        gameState: data.data.gameState,
+        payout: data.data.payout,
+        wager: wagerLocked ?? 0,
+      });
+      if (socket) {
+        socket.emit("room_event", {
+          roomId: `odds_${myGameId}`,
+          event: "odds:state_changed",
+          payload: {},
+        });
+      }
+    } catch (err: any) {
+      if (mountedRef.current) setError(err.message);
+    } finally {
+      if (mountedRef.current) setIsSubmitting(false);
+    }
+  }, [myGameId, isSubmitting, socket, wagerLocked, applyStateFromServer]);
 
   // Keep ref in sync
   useEffect(() => {
     submitActionRef.current = submitAction;
   }, [submitAction]);
 
-  // Timer
+  // Round clock. When it expires the client makes a legal call FOR the player
+  // (a random exact guess) so the round can still resolve; the server decides
+  // whether the round or the match is over.
   const timerUrgentPlayed = useRef(false);
   useEffect(() => {
     if (!interactiveState || gameOver || isSubmitting || waitingForOpponent)
@@ -1315,11 +1170,7 @@ function PvPOddsGame({ audio, matchId }: { audio: ReturnType<typeof useOddsAudio
     if (timeLeft <= 0) {
       setTimeUp(true);
       timerUrgentPlayed.current = false;
-      const range = interactiveState.currentMax;
-      submitActionRef.current(
-        Math.floor(Math.random() * range) + 1,
-        interactiveState.phase === "predict",
-      );
+      submitActionRef.current(randomPrediction());
       return;
     }
     setTimeUp(false);
@@ -1332,48 +1183,30 @@ function PvPOddsGame({ audio, matchId }: { audio: ReturnType<typeof useOddsAudio
     return () => clearInterval(timer);
   }, [timeLeft, interactiveState, gameOver, isSubmitting, waitingForOpponent, audio.playTimerUrgent]);
 
-  const handleSubmitPick = () => {
+  // ── Opponent-idle clock ────────────────────────────────────────────────
+  // While I am locked in, the only thing standing between me and a banked
+  // round is the opponent's silence. The deadline is the SERVER's round start
+  // (it is what the route measures), so this is a countdown to a rule the
+  // server enforces — not a timer that can decide anything on its own.
+  const roundStartedAt = interactiveState?.roundStartedAt ?? 0;
+  const [idleClock, setIdleClock] = useState(0);
+  useEffect(() => {
+    if (!waitingForOpponent || !roundStartedAt) return undefined;
+    setIdleClock(Date.now());
+    const tick = setInterval(() => setIdleClock(Date.now()), 1000);
+    return () => clearInterval(tick);
+  }, [waitingForOpponent, roundStartedAt]);
+  const idleForMs = roundStartedAt ? Math.max(0, idleClock - roundStartedAt) : 0;
+  const claimDue = waitingForOpponent && idleForMs >= ROUND_TIMEOUT_MS;
+  const claimInSeconds = Math.max(
+    0,
+    Math.ceil((ROUND_TIMEOUT_MS - idleForMs) / 1000),
+  );
+
+  const handleSubmitGuess = () => {
     if (!interactiveState || isSubmitting || gameOver) return;
-    const num = parseInt(pickValue, 10);
-    const range = interactiveState.currentMax;
-    if (isNaN(num) || num < 1 || num > range) return;
-    handlePick(num);
-  };
-
-  const handleSubmitPredict = () => {
-    if (!interactiveState || isSubmitting || gameOver) return;
-    const pred = parseInt(predictValue, 10);
-    const range = interactiveState.currentMax;
-    if (isNaN(pred) || pred < 1 || pred > range) return;
-    handlePredict(pred);
-  };
-
-  const handlePickInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    if (val === "" || /^\d+$/.test(val)) {
-      const range = interactiveState?.currentMax ?? 100;
-      const num = parseInt(val, 10);
-      if (val === "" || (num >= 1 && num <= range)) {
-        setPickValue(val);
-      }
-    }
-  };
-
-  const handlePredictInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    if (val === "" || /^\d+$/.test(val)) {
-      const range = interactiveState?.currentMax ?? 100;
-      const num = parseInt(val, 10);
-      if (val === "" || (num >= 1 && num <= range)) {
-        setPredictValue(val);
-      }
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key !== "Enter") return;
-    if (interactiveState?.phase === "predict") handleSubmitPredict();
-    else handleSubmitPick();
+    if (!prediction) return;
+    submitAction(prediction);
   };
 
   // ── Display helpers ──
@@ -1383,7 +1216,6 @@ function PvPOddsGame({ audio, matchId }: { audio: ReturnType<typeof useOddsAudio
       rounds: roundHistory,
       currentRound: interactiveState.currentRound,
       totalRounds: interactiveState.totalRounds,
-      currentMax: interactiveState.currentMax,
       winner: gameOver ? finalWinner : "",
       result: gameOver ? finalResult : "player1_won",
       payout: finalPayout,
@@ -1405,34 +1237,18 @@ function PvPOddsGame({ audio, matchId }: { audio: ReturnType<typeof useOddsAudio
     ((isPlayer1 && finalWinner === "player1") ||
       (!isPlayer1 && finalWinner === "player2"));
   const userDrew = gameOver && finalWinner === "";
-  const range = interactiveState?.currentMax ?? 100;
-  const phase = interactiveState?.phase ?? "pick";
-  const myPickSet =
-    !gameOver &&
-    interactiveState &&
-    ((isPlayer1 && interactiveState.player1Pick !== null) ||
-      (!isPlayer1 && interactiveState.player2Pick !== null));
-  const myPredSet =
-    !gameOver &&
-    interactiveState &&
-    ((isPlayer1 && interactiveState.player1Prediction !== null) ||
-      (!isPlayer1 && interactiveState.player2Prediction !== null));
   // Shortcuts
   const gameId = myGameId;
+  const liveRound = interactiveState
+    ? interactiveState.rounds[interactiveState.currentRound - 1]
+    : null;
 
-  const showPickUI =
-    gameId &&
-    interactiveState &&
-    !gameOver &&
-    phase === "pick" &&
-    !myPickSet &&
-    !waitingForOpponent;
+  // The input card shows until I have locked in for this round.
   const showPredictUI =
     gameId &&
     interactiveState &&
     !gameOver &&
-    phase === "predict" &&
-    !myPredSet &&
+    !interactiveState.mySubmitted &&
     !waitingForOpponent;
 
   // ── Render ──
@@ -1481,8 +1297,8 @@ function PvPOddsGame({ audio, matchId }: { audio: ReturnType<typeof useOddsAudio
       {matchStage === "waiting" && (
         <div className={`${LOBBY_CARD} px-4 py-8 text-center`}>
           <motion.div
-            animate={{ scale: [1, 1.06, 1] }}
-            transition={{ repeat: Infinity, duration: 2 }}
+            animate={reduce ? undefined : { scale: [1, 1.06, 1] }}
+            transition={reduce ? undefined : { repeat: Infinity, duration: 2 }}
             className="mb-4 flex justify-center"
           >
             <IconDice size={34} className="text-amber-300 drop-shadow-[0_0_16px_rgba(251,191,36,0.5)]" />
@@ -1515,20 +1331,29 @@ function PvPOddsGame({ audio, matchId }: { audio: ReturnType<typeof useOddsAudio
       <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <div className="order-1 space-y-3 lg:order-2">
 
-      {/* PLAYING: Pick Your Number card (inline so the game board stays visible) */}
-      {showPickUI && (
-        <div className="odds-hud odds-chamfer odds-hud--amber odds-board-bg p-3 sm:p-4">
+      {/* PLAYING: the one submission of this round (inline so the board stays visible) */}
+      {showPredictUI && (
+        <motion.div
+          key={`call-${interactiveState.currentRound}`}
+          initial={reduce ? false : { opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: motionSeconds(reduce, 0.24), ease: "easeOut" }}
+          className="odds-hud odds-chamfer odds-hud--amber odds-board-bg p-3 sm:p-4"
+        >
           <div className="flex items-center justify-between gap-2 border-b border-[#f5ff3b]/20 pb-2">
             <span className="odds-label flex items-center gap-2 text-[#f5ff3b]">
-              <IconTarget size={12} /> phase 1 // pick
+              <IconCrystalBall size={12} /> call the number
             </span>
             <span className="odds-label text-white/35">
               round {interactiveState.currentRound}/{interactiveState.totalRounds}
             </span>
           </div>
 
+          <p className="odds-label mt-3 text-white/35">the clue · same for both seats</p>
+          <ClueReveal clue={liveRound?.clue} round={interactiveState.currentRound} />
+
           <p className="odds-label mt-3 text-white/45">
-            lock a number · hidden until both players commit · window 1–{range}
+            one call · a number, or a range like 40-50 · hidden until the reveal
           </p>
 
           <PickHistoryStrip
@@ -1545,7 +1370,7 @@ function PvPOddsGame({ audio, matchId }: { audio: ReturnType<typeof useOddsAudio
             <span
               className={`odds-readout flex shrink-0 items-center gap-1.5 border px-2.5 py-1 text-lg ${
                 timeLeft <= 5
-                  ? "animate-pulse border-red-500/50 text-red-400"
+                  ? "animate-pulse border-red-500/50 text-red-400 motion-reduce:animate-none"
                   : "border-cyan-400/25 text-cyan-200/80"
               }`}
             >
@@ -1563,29 +1388,24 @@ function PvPOddsGame({ audio, matchId }: { audio: ReturnType<typeof useOddsAudio
 
           {/* Time's up indicator */}
           {timeUp && isSubmitting && (
-            <p className="odds-label mt-3 animate-pulse text-amber-300">
+            <p className="odds-label mt-3 animate-pulse text-amber-300 motion-reduce:animate-none">
               <span className="inline-flex items-center gap-1"><IconAlarm size={13} /> time's up · locking in
               </span>
             </p>
           )}
 
-          {/* Number input + Lock In */}
-          <label htmlFor="odds-pvp-pick" className="sr-only">Your number 1–{range}</label>
-          <input
-            id="odds-pvp-pick"
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            className="odds-input odds-chamfer mt-3 w-full p-3.5 text-center text-3xl placeholder-white/20"
-            placeholder={`1–${range}`}
-            value={pickValue}
-            onChange={handlePickInputChange}
-            onKeyDown={handleKeyDown}
+          {/* The call: wheel, manual entry, presets and the live preview. */}
+          <PredictionPanel
+            className="mt-3"
+            clue={liveRound?.clue ?? null}
+            value={prediction}
+            onChange={setPrediction}
+            onSubmit={handleSubmitGuess}
             disabled={isSubmitting}
           />
           <button
-            onClick={handleSubmitPick}
-            disabled={isSubmitting || pickValue === ""}
+            onClick={handleSubmitGuess}
+            disabled={isSubmitting || prediction === null}
             className="odds-chamfer odds-label mt-2 w-full bg-[#f5ff3b] px-6 py-3.5 text-black transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30"
           >
             {isSubmitting ? "locking in…" : "lock in"}
@@ -1651,163 +1471,45 @@ function PvPOddsGame({ audio, matchId }: { audio: ReturnType<typeof useOddsAudio
                 </div>
               </div>
             )}
-        </div>
+        </motion.div>
       )}
 
-      {/* PREDICT OPPONENT card (inline so the game board stays visible) */}
-      {showPredictUI && (
-        <div className="odds-hud odds-chamfer odds-hud--magenta odds-board-bg p-3 sm:p-4">
-          <div className="flex items-center justify-between gap-2 border-b border-fuchsia-400/20 pb-2">
-            <span className="odds-label flex items-center gap-2 text-fuchsia-300">
-              <IconCrystalBall size={12} /> phase 2 // predict
-            </span>
-            <span className="odds-label text-white/35">
-              round {interactiveState.currentRound}/{interactiveState.totalRounds}
-            </span>
-          </div>
 
-          <p className="odds-label mt-3 text-white/45">
-            read their number · hidden until the reveal · window 1–{range}
-          </p>
-
-          <PickHistoryStrip
-            rounds={roundHistory}
-            isPlayer1={isPlayer1}
-            userLabel={myName}
-            oppLabel={opponentName}
-            className="mt-3"
-          />
-
-          {/* Timer */}
-          <div className="mt-3 flex items-center gap-3">
-            <span
-              className={`odds-readout flex shrink-0 items-center gap-1.5 border px-2.5 py-1 text-lg ${
-                timeLeft <= 5
-                  ? "animate-pulse border-red-500/50 text-red-400"
-                  : "border-cyan-400/25 text-cyan-200/80"
-              }`}
-            >
-              <IconClock size={16} /> {timeLeft}s
-            </span>
-            <div className="h-1 min-w-0 flex-1 bg-white/10">
-              <div
-                className={`h-full transition-[width] duration-1000 ease-linear ${
-                  timeLeft <= 5 ? "bg-red-500" : "bg-fuchsia-400"
-                }`}
-                style={{ width: `${Math.max(0, Math.min(100, (timeLeft / 15) * 100))}%` }}
-              />
-            </div>
-          </div>
-
-          {/* Time's up indicator */}
-          {timeUp && isSubmitting && (
-            <p className="odds-label mt-3 animate-pulse text-amber-300">
-              <span className="inline-flex items-center gap-1"><IconAlarm size={13} /> time's up · locking in
-              </span>
-            </p>
-          )}
-
-          {/* Prediction input + Lock In */}
-          <label htmlFor="odds-pvp-prediction" className="sr-only">Your prediction 1–{range}</label>
-          <input
-            id="odds-pvp-prediction"
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            className="odds-input odds-chamfer mt-3 w-full p-3.5 text-center text-3xl placeholder-white/20"
-            placeholder={`1–${range}`}
-            value={predictValue}
-            onChange={handlePredictInputChange}
-            onKeyDown={handleKeyDown}
-            disabled={isSubmitting}
-          />
-          <button
-            onClick={handleSubmitPredict}
-            disabled={isSubmitting || predictValue === ""}
-            className="odds-chamfer odds-label mt-2 w-full bg-fuchsia-400 px-6 py-3.5 text-black transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30"
-          >
-            {isSubmitting ? "locking in…" : "lock in"}
-          </button>
-
-            {/* Emotes */}
-            <div className="mt-4 flex justify-center">
-              <EmotePicker
-                compact
-                incomingEmote={incomingEmote}
-                myEmote={myEmote}
-                onSend={(emote) => sendEmote(emote)}
-              />
-            </div>
-
-            {error && (
-              <p className="mt-3 text-center text-sm text-red-400">{error}</p>
-            )}
-
-            {/* Sound toggle + Forfeit */}
-            <div className="mt-4 flex items-center justify-center gap-3">
-              <button
-                onClick={() => audio.setEnabled(!audio.enabled)}
-                className={`rounded-full border px-3 py-1 text-sm transition ${
-                  audio.enabled
-                    ? "border-white/10 text-white/60 hover:text-white"
-                    : "border-red-400/40 text-red-400/60"
-                }`}
-                title={audio.enabled ? "Sounds on" : "Sounds off"}
-              >
-                {audio.enabled ? <IconVolume size={16} /> : <IconVolumeOff size={16} />}
-              </button>
-              <button
-                onClick={() => setShowForfeitConfirm(true)}
-                className="rounded-full border border-red-400/30 px-3 py-1 text-sm text-red-400/70 hover:bg-red-500/10 hover:text-red-300 transition"
-                title="Forfeit game"
-              >
-                <span className="inline-flex items-center gap-1"><IconFlag size={14} /> Forfeit</span>
-              </button>
-            </div>
-
-            {/* Forfeit confirmation */}
-            {showForfeitConfirm && (
-              <div className="mt-3 rounded-lg border border-red-400/30 bg-red-900/10 p-3 text-center">
-                <p className="text-sm text-red-300 mb-2">
-                  Forfeit? Your opponent will win the pot.
-                </p>
-                <div className="flex items-center justify-center gap-3">
-                  <button
-                    onClick={handleForfeit}
-                    disabled={forfeiting}
-                    className="rounded-lg bg-red-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-red-500 transition disabled:opacity-50"
-                  >
-                    {forfeiting ? "Forfeiting..." : "Yes, Forfeit"}
-                  </button>
-                  <button
-                    onClick={() => setShowForfeitConfirm(false)}
-                    disabled={forfeiting}
-                    className="rounded-lg border border-white/20 px-4 py-1.5 text-sm text-white/60 hover:text-white transition"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
-        </div>
-      )}
-
-      {/* WAITING FOR OPPONENT — the pick/predict card hides once you've
-          locked in; a compact banner shows while the opponent catches up */}
+      {/* WAITING FOR OPPONENT — the call card hides once you've locked in;
+          a compact banner shows while the opponent catches up */}
       {interactiveState && !gameOver && waitingForOpponent && (
         <div className="odds-hud odds-chamfer odds-board-bg p-4 text-center">
           <p className="odds-label flex items-center justify-center gap-1.5 text-[#f5ff3b]">
-            <IconHourglass size={13} />{" "}
-            {interactiveState.phase === "predict"
-              ? "waiting for opponent to predict"
-              : "waiting for opponent to pick"}
+            <IconHourglass size={13} /> waiting for opponent to call
           </p>
           <p className="odds-label mt-2 text-white/40">
             round {interactiveState.currentRound}/{interactiveState.totalRounds} ·{" "}
-            {interactiveState.phase === "predict"
-              ? "your prediction is locked"
-              : "your number is locked"}
+            your call is locked
           </p>
+
+          {/* The round timeout, made reachable: once the opponent has been
+              silent for the whole window the seat that called the round may
+              bank it. The button sends the claim only — never a call. */}
+          {claimDue ? (
+            <button
+              type="button"
+              onClick={() => void claimRound()}
+              disabled={isSubmitting}
+              className="odds-chamfer odds-label mt-3 w-full bg-[#f5ff3b] px-4 py-2.5 text-black transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {isSubmitting
+                ? "claiming…"
+                : "opponent idle · claim the round"}
+            </button>
+          ) : (
+            <p className="odds-label mt-2 text-white/25">
+              claim unlocks in {claimInSeconds}s if they stay idle
+            </p>
+          )}
+
+          {error && (
+            <p className="odds-label mt-2 text-red-400">{error}</p>
+          )}
 
           {/* Forfeit from waiting state */}
           <div className="mt-3 flex justify-center">
@@ -1907,14 +1609,15 @@ function PvPOddsGame({ audio, matchId }: { audio: ReturnType<typeof useOddsAudio
   );
 }
 
-// ─── Pick History Strip ────────────────────────────────────────────────────
-// Compact per-round summary of each player's PICKED numbers so players can
-// spot the opponent's tendencies themselves. Shows raw numbers only — no
-// pattern detection or hints are computed or surfaced.
+// ─── Call History Strip ──────────────────────────────────────────────────
+// Compact per-round summary of each player's CALL (an exact number or a range)
+// on the rounds already resolved, so players can read their opponent's habits
+// themselves. Only revealed rounds are shown — the live round's calls stay
+// hidden until both seats are in.
 //
 // Two single-line readouts, not two wrapping clouds of chips: this strip sits
 // above the input on every round, so every pixel of its height is a pixel the
-// player has to scroll past. Each line scrolls sideways once six rounds stop
+// player has to scroll past. Each line scrolls sideways once five rounds stop
 // fitting.
 function PickHistoryStrip({
   rounds,
@@ -1929,13 +1632,16 @@ function PickHistoryStrip({
   oppLabel: string;
   className?: string;
 }) {
-  if (rounds.length === 0) return null;
+  // Only resolved rounds are public: the live round's target and calls are
+  // still secret, so it never appears here.
+  const revealed = rounds.filter((round) => round.resolved);
+  if (revealed.length === 0) return null;
   const userPoss = userLabel === "You" ? "Your" : `${userLabel}'s`;
 
   const line = (
     label: string,
     tone: "cyan" | "amber",
-    valueOf: (round: GameRound) => number,
+    valueOf: (round: GameRound) => string,
   ) => (
     <div className="flex items-center gap-2">
       <span
@@ -1946,7 +1652,7 @@ function PickHistoryStrip({
         {label}
       </span>
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto pb-0.5">
-        {rounds.map((round, index) => (
+        {revealed.map((round, index) => (
           <span
             key={`${tone}-${index}`}
             className={`odds-readout flex shrink-0 items-center gap-1 border px-1.5 py-0.5 text-[11px] ${
@@ -1966,16 +1672,45 @@ function PickHistoryStrip({
   return (
     <div className={`space-y-1 text-left ${className}`}>
       {line(
-        `${oppLabel} picks`,
+        `${oppLabel} calls`,
         "cyan",
-        (round) => (isPlayer1 ? round.player2Number : round.player1Number),
+        (round) => describePrediction(isPlayer1 ? round.player2Prediction : round.player1Prediction),
       )}
       {line(
-        `${userPoss} picks`,
+        `${userPoss} calls`,
         "amber",
-        (round) => (isPlayer1 ? round.player1Number : round.player2Number),
+        (round) => describePrediction(isPlayer1 ? round.player1Prediction : round.player2Prediction),
       )}
     </div>
+  );
+}
+
+// ─── Clue Reveal ───────────────────────────────────────────────────────────
+/**
+ * The round's clue, fading in when it changes.
+ *
+ * Keyed by round, so the animation runs once per round and cannot replay on a
+ * poll, a re-render or a reconnect. The text is the server's; the motion is
+ * only how it arrives.
+ */
+function ClueReveal({
+  clue,
+  round,
+}: {
+  clue: string | null | undefined;
+  round: number;
+}) {
+  const reduce = useReducedMotionSafe();
+  return (
+    <motion.p
+      key={`clue-${round}`}
+      initial={reduce ? false : { opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: motionSeconds(reduce, CLUE_SECONDS), ease: "easeOut" }}
+      className="mt-1 text-sm leading-relaxed text-white/75"
+    >
+      {clue ?? "—"}
+    </motion.p>
   );
 }
 
@@ -2011,6 +1746,7 @@ function OddsGameDisplay({
   oppProfileFrame?: unknown;
   oppNameColor?: string | null;
 }) {
+  const reduce = useReducedMotionSafe();
   const myPts = isPlayer1 ? gameState.p1Score : gameState.p2Score;
   const oppPts = isPlayer1 ? gameState.p2Score : gameState.p1Score;
 
@@ -2049,64 +1785,51 @@ function OddsGameDisplay({
 
   const latestRound =
     revealedRounds > 0 ? gameState.rounds[revealedRounds - 1] : null;
+  // Both seats call the SAME target, so a round's breakdown is a comparison of
+  // two calls against one revealed number — no "off by" arithmetic any more.
   const breakdown =
     latestRound && {
-      myPred: isPlayer1 ? latestRound.player1Prediction : latestRound.player2Prediction,
-      oppActual: isPlayer1 ? latestRound.player2Number : latestRound.player1Number,
-      myActual: isPlayer1 ? latestRound.player1Number : latestRound.player2Number,
-      oppPred: isPlayer1 ? latestRound.player2Prediction : latestRound.player1Prediction,
-      myDiff: Math.abs(
-        (isPlayer1 ? latestRound.player1Prediction : latestRound.player2Prediction) -
-          (isPlayer1 ? latestRound.player2Number : latestRound.player1Number),
+      target: latestRound.target,
+      myPred: describePrediction(
+        isPlayer1 ? latestRound.player1Prediction : latestRound.player2Prediction,
       ),
-      oppDiff: Math.abs(
-        (isPlayer1 ? latestRound.player2Prediction : latestRound.player1Prediction) -
-          (isPlayer1 ? latestRound.player1Number : latestRound.player2Number),
+      oppPred: describePrediction(
+        isPlayer1 ? latestRound.player2Prediction : latestRound.player1Prediction,
       ),
+      // The raw call, not its label: the reveal draws the band from these
+      // numbers. Null only if the round somehow resolved without a call.
+      myCall: (isPlayer1
+        ? latestRound.player1Prediction
+        : latestRound.player2Prediction) ?? null,
       myPts: isPlayer1 ? latestRound.player1Score : latestRound.player2Score,
       oppPts: isPlayer1 ? latestRound.player2Score : latestRound.player1Score,
     };
 
   return (
     <div className="space-y-3">
-      {/* Board readout: the two scores plus the live telemetry every HUD
-          readout needs (which round, how wide the window still is). The range
-          bar collapses as the window halves, so the shrinking range — the
-          game's whole tension curve — is visible at a glance. */}
+      {/* Board readout: the two cumulative scores plus the round counter. The
+          domain is fixed at 1–100 for all five rounds, so there is no shrinking
+          window to show — the clue is what tightens. */}
       <div className="odds-hud odds-chamfer odds-board-bg p-2.5">
         <div className="flex items-center justify-between gap-2 px-1">
           <span className="odds-label text-cyan-300/70">
             round {gameState.currentRound}/{gameState.totalRounds}
           </span>
-          <span className="odds-label text-white/35">window 1–{gameState.currentMax}</span>
+          <span className="odds-label text-white/35">target 1–100</span>
         </div>
         <div className="mt-2 grid grid-cols-2 gap-2">
           <div className="odds-hud odds-chamfer odds-hud--amber px-3 py-2">
             <p className="odds-label truncate text-[#f5ff3b]/70">{userLabel}</p>
             <p className="odds-readout mt-1 text-3xl text-[#f5ff3b] drop-shadow-[0_0_14px_rgba(245,255,59,0.45)]">
-              {myPts}
+              <AnimatedScore value={myPts} />
             </p>
           </div>
           <div className="odds-hud odds-chamfer px-3 py-2">
             <p className="odds-label truncate text-cyan-300/70">{oppLabel}</p>
             <p className="odds-readout mt-1 text-3xl text-cyan-200 drop-shadow-[0_0_14px_rgba(0,229,255,0.4)]">
-              {oppPts}
+              <AnimatedScore value={oppPts} />
             </p>
           </div>
-        </div>
-        <div className="mt-2 flex items-center gap-2 px-1">
-          <span className="odds-label shrink-0 text-white/30">range</span>
-          <div className="h-1 min-w-0 flex-1 bg-white/10">
-            <div
-              className="odds-range-bar"
-              style={{
-                width: `${Math.max(2, Math.min(100, (gameState.currentMax / 100) * 100))}%`,
-              }}
-            />
-          </div>
-          <span className="odds-readout shrink-0 text-[10px] text-white/40">
-            {Math.round((gameState.currentMax / 100) * 100)}%
-          </span>
         </div>
       </div>
 
@@ -2122,23 +1845,31 @@ function OddsGameDisplay({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.25 }}
+            transition={{ duration: motionSeconds(reduce, 0.25) }}
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
           >
             <motion.div
-              initial={{ opacity: 0, scale: 0.8, y: 30 }}
+              initial={reduce ? false : { opacity: 0, scale: 0.8, y: 30 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.8, y: 30 }}
-              transition={{ type: "spring", stiffness: 260, damping: 22, delay: 0.1 }}
-              className="odds-hud odds-chamfer odds-hud--amber odds-board-bg w-full max-w-md p-5 text-center"
+              exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.8, y: 30 }}
+              transition={
+                reduce
+                  ? { duration: 0 }
+                  : { type: "spring", stiffness: 260, damping: 22, delay: 0.1 }
+              }
+              className="odds-hud odds-chamfer odds-hud--amber odds-board-bg max-h-[92vh] w-full max-w-md overflow-y-auto p-5 text-center"
             >
               <p className="odds-label text-[#f5ff3b]/70">
                 round {revealedRounds} result
               </p>
               <motion.p
-                initial={{ scale: 0 }}
+                initial={reduce ? false : { scale: 0 }}
                 animate={{ scale: 1 }}
-                transition={{ type: "spring", stiffness: 300, damping: 15, delay: 0.2 }}
+                transition={
+                  reduce
+                    ? { duration: 0 }
+                    : { type: "spring", stiffness: 300, damping: 15, delay: 0.2 }
+                }
                 className="text-5xl mt-3"
               >
                 {breakdown.myPts > breakdown.oppPts
@@ -2157,46 +1888,48 @@ function OddsGameDisplay({
                 }`}
               >
                 {breakdown.myPts > breakdown.oppPts
-                  ? "You read them best!"
+                  ? "You called it!"
                   : breakdown.oppPts > breakdown.myPts
-                    ? `${oppLabel} read you best`
+                    ? `${oppLabel} called it`
                     : "It's a tie!"}
               </h3>
+              {/* The target is already resolved server-side by the time this
+                  popup exists, so the ring has nothing to invent: the marker
+                  lands on the segment the server named and the hit/miss
+                  label comes from the points the server awarded. */}
+              <TargetReveal
+                key={`reveal-${revealedRounds}`}
+                target={breakdown.target}
+                prediction={breakdown.myCall}
+                points={breakdown.myPts}
+                className="mt-2"
+              />
               <p className="odds-label mt-2 text-white/40">
-                window 1–{latestRound?.max} · {userLabel} +{breakdown.myPts} ·{" "}
-                {oppLabel} +{breakdown.oppPts}
+                {userLabel} +{breakdown.myPts} · {oppLabel} +{breakdown.oppPts}
               </p>
 
               <div className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
                 <div className="odds-hud odds-chamfer odds-hud--amber p-3">
-                  <p className="odds-label text-[#f5ff3b]/70">{userPoss} read</p>
+                  <p className="odds-label text-[#f5ff3b]/70">{userPoss} call</p>
                   <div className="mt-1.5 flex items-center justify-between">
-                    <span className="text-[11px] text-white/45">prediction</span>
+                    <span className="text-[11px] text-white/45">your call</span>
                     <span className="odds-readout text-white">{breakdown.myPred}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] text-white/45">their number</span>
-                    <span className="odds-readout text-white">{breakdown.oppActual}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] text-white/45">off by</span>
-                    <span className="odds-readout text-white">{breakdown.myDiff}</span>
+                    <span className="text-[11px] text-white/45">target</span>
+                    <span className="odds-readout text-white">{breakdown.target ?? "—"}</span>
                   </div>
                   <p className="odds-readout mt-1.5 text-right text-[#f5ff3b]">+{breakdown.myPts}</p>
                 </div>
                 <div className="odds-hud odds-chamfer p-3">
-                  <p className="odds-label text-cyan-300/70">{oppPoss} read</p>
+                  <p className="odds-label text-cyan-300/70">{oppPoss} call</p>
                   <div className="mt-1.5 flex items-center justify-between">
-                    <span className="text-[11px] text-white/45">prediction</span>
+                    <span className="text-[11px] text-white/45">their call</span>
                     <span className="odds-readout text-white">{breakdown.oppPred}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] text-white/45">your number</span>
-                    <span className="odds-readout text-white">{breakdown.myActual}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] text-white/45">off by</span>
-                    <span className="odds-readout text-white">{breakdown.oppDiff}</span>
+                    <span className="text-[11px] text-white/45">target</span>
+                    <span className="odds-readout text-white">{breakdown.target ?? "—"}</span>
                   </div>
                   <p className="odds-readout mt-1.5 text-right text-cyan-200">+{breakdown.oppPts}</p>
                 </div>
@@ -2291,11 +2024,13 @@ function RoundLog({
 }) {
   // Newest first. `index` stays the original round index, so "visible" is
   // decided by the caller's own revealed count, exactly as before.
+  const reduce = useReducedMotionSafe();
   const ordered = rounds.map((round, index) => ({ round, index })).reverse();
-  // Seven columns: round, the four numbers, the points pair, and the verdict.
-  // One line per round, so a round costs ~2rem of height instead of ~15rem.
+  // Six columns: round, both calls, the revealed target, the points pair, and
+  // the verdict. One line per round, so a round costs ~2rem of height instead
+  // of ~15rem.
   const grid =
-    "grid grid-cols-[1.6rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_3rem_2.4rem] items-center gap-1.5";
+    "grid grid-cols-[1.6rem_minmax(0,1.1fr)_minmax(0,1.1fr)_2.2rem_3rem_2.4rem] items-center gap-1.5";
 
   return (
     <div className="odds-hud odds-chamfer overflow-hidden">
@@ -2317,10 +2052,9 @@ function RoundLog({
           {/* Column headers, so the four numbers never need a legend. */}
           <div className={`${grid} border-b border-white/5 px-3 py-1.5`}>
             <span className="odds-label text-white/25">rnd</span>
-            <span className="odds-label text-[#f5ff3b]/60">your pick</span>
-            <span className="odds-label text-cyan-300/60">{oppLabel} pick</span>
-            <span className="odds-label text-fuchsia-300/60">your pred</span>
-            <span className="odds-label text-fuchsia-300/45">{oppLabel} pred</span>
+            <span className="odds-label text-[#f5ff3b]/60">your call</span>
+            <span className="odds-label text-cyan-300/60">{oppLabel} call</span>
+            <span className="odds-label text-fuchsia-300/50">tgt</span>
             <span className="odds-label text-right text-white/25">pts</span>
             <span className="odds-label text-right text-white/25">out</span>
           </div>
@@ -2329,10 +2063,14 @@ function RoundLog({
             const visible = index < revealedRounds;
             const myPts = isPlayer1 ? round.player1Score : round.player2Score;
             const oppPts = isPlayer1 ? round.player2Score : round.player1Score;
+            // Both seats are scored against the SAME target, so the round
+            // verdict is simply the higher score (null = nobody scored more).
             const roundWon =
-              round.roundWinner === "draw"
+              myPts === null || oppPts === null
                 ? null
-                : round.roundWinner === (isPlayer1 ? "player1" : "player2");
+                : myPts === oppPts
+                  ? null
+                  : myPts > oppPts;
             const outcome = !visible
               ? "—"
               : roundWon === null
@@ -2351,9 +2089,9 @@ function RoundLog({
             return (
               <motion.div
                 key={index}
-                initial={{ opacity: 0, x: -6 }}
+                initial={reduce ? false : { opacity: 0, x: -6 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.3, delay: visible ? 0.05 : 0 }}
+                transition={{ duration: motionSeconds(reduce, 0.3), delay: reduce ? 0 : visible ? 0.05 : 0 }}
                 className={`${grid} border-b border-white/5 px-3 py-2 last:border-b-0`}
               >
                 <span className="odds-label text-white/35">R{index + 1}</span>
@@ -2361,20 +2099,21 @@ function RoundLog({
                 {visible ? (
                   <>
                     <span className="odds-readout text-center text-sm text-[#f5ff3b]">
-                      {isPlayer1 ? round.player1Number : round.player2Number}
+                      {describePrediction(
+                        isPlayer1 ? round.player1Prediction : round.player2Prediction,
+                      )}
                     </span>
                     <span className="odds-readout text-center text-sm text-cyan-200">
-                      {isPlayer1 ? round.player2Number : round.player1Number}
+                      {describePrediction(
+                        isPlayer1 ? round.player2Prediction : round.player1Prediction,
+                      )}
                     </span>
                     <span className="odds-readout text-center text-sm text-fuchsia-300">
-                      {isPlayer1 ? round.player1Prediction : round.player2Prediction}
-                    </span>
-                    <span className="odds-readout text-center text-sm text-fuchsia-300/70">
-                      {isPlayer1 ? round.player2Prediction : round.player1Prediction}
+                      {round.target ?? "—"}
                     </span>
                   </>
                 ) : (
-                  <span className="odds-label col-span-4 text-white/20">
+                  <span className="odds-label col-span-3 text-white/20">
                     locked · awaiting reveal
                   </span>
                 )}

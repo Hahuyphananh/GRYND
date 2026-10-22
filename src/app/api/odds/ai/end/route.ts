@@ -47,11 +47,18 @@ export async function POST(req: Request) {
 
       const state = game.gameState as InteractiveOddsState | null;
 
-      // Determine winner: if state has a winner, use it; otherwise resolve via timeout/default
-      let winner: "player1" | "player2";
+      // Determine the result: a finished five-round match carries its own
+      // verdict (null = exact tie → a draw, not a loss); a match ended early
+      // with no verdict is an abandonment, which the caller forfeits.
+      let winner: "player1" | "player2" | null;
       let player1Won: boolean;
+      let drew = false;
 
-      if (state?.winner) {
+      if (state?.gameOver) {
+        winner = state.winner ?? null;
+        player1Won = winner === "player1";
+        drew = winner === null;
+      } else if (state?.winner) {
         winner = state.winner;
         player1Won = winner === "player1";
       } else {
@@ -72,7 +79,7 @@ export async function POST(req: Request) {
         .set({
           status: "finished",
           winner,
-          result: player1Won ? "won" : "lost",
+          result: player1Won ? "won" : drew ? "draw" : "lost",
           payout: recordedPayout,
           gameState: finalState,
           endedAt: new Date(),

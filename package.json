@@ -95,7 +95,7 @@
     "verify:mute-toggle": "node scripts/verify-mute-toggle.mjs",
     "test:keno-pvp": "node --import tsx --test tests/keno-pvp-engine.test.mjs tests/keno-pvp-ai.test.mjs tests/keno-pvp-survival.test.mjs",
     "verify:keno-survival": "node qa/keno-survival-check.mjs",
-    "test:odds": "node --import tsx --test tests/odds-engine.test.mjs",
+    "test:odds": "node --import tsx --test tests/odds-engine.test.mjs tests/odds-ring.test.mjs tests/odds-motion.test.mjs tests/odds-selector-render.test.mjs tests/odds-reveal-render.test.mjs tests/odds-ai-leave.test.mjs tests/odds-integration.test.mjs",
     "test:lane-rush-duel": "node --import tsx --test tests/lane-rush-bridge.test.mjs tests/lane-rush-duel-ui-contract.test.mjs tests/lane-rush-duel-race-safety.test.mjs",
     "test:lane-rush": "node --import tsx --test tests/lane-rush-engine.test.mjs tests/lane-rush-race-lifecycle.test.mjs tests/lane-rush-oval-track.test.mjs tests/lane-rush-history.test.mjs",
     "verify:lane-rush-opponent": "node qa/lane-rush-opponent-check.mjs",

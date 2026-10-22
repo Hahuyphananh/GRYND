@@ -2102,7 +2102,7 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   100% { background-position: 0 100%; }
 }
 
-/* Bounded round log: the fix for "the board is too long". Six rounds scroll
+/* Bounded round log: the fix for "the board is too long". Five rounds scroll
    inside a fixed-height instrument window instead of stacking. */
 .odds-log {
   max-height: 15rem;

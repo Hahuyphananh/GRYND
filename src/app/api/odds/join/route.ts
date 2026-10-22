@@ -4,7 +4,7 @@ import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified"
 import { db } from "../../../../db/client";
 import { oddsGames } from "../../../../db/schema";
 import { eq, and, isNull } from "drizzle-orm";
-import { initPvPOddsGame } from "../../../../lib/odds";
+import { initPvPOddsGame, viewForPlayer } from "../../../../lib/odds";
 import { escrowMatchWagers } from "../../../../lib/tokens/wager";
 import { normalizeStake } from "../../../../lib/games/stakes";
 
@@ -106,7 +106,10 @@ export async function POST(req: Request) {
         gameId: result.updated.id,
         wager: result.updated.wager,
         player1Id: result.updated.player1Id,
-        gameState: result.gameState,
+        // The JOINER's projection: the raw state carries round 1's secret
+        // target, and handing it to a client would let the joiner read the
+        // answer before ever submitting.
+        gameState: viewForPlayer(result.gameState, false),
         winner: result.gameState.winner,
         result: result.updated.result,
         payout: result.updated.payout,

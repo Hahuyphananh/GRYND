@@ -1,3 +1,19 @@
+// src/app/api/odds/ai/pick/route.ts
+//
+// ONE submission per round, for a free practice duel.
+//
+// Body: { gameId, exact } | { gameId, min, max }  (or the same object under
+// `prediction`).
+//
+// The human's prediction is validated here, the bot answers with its own
+// prediction for the SAME target (its accuracy is capped by tier — see
+// `botPrediction`), and the round resolves immediately through the shared
+// resolver. AI and PvP therefore score with the identical function; there is
+// no "closest number" path left.
+//
+// Practice is free play: nothing is deducted, nothing is paid out, and no
+// leaderboard/Elo/trophy row is written.
+
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { requirePracticePlayer } from "../../../../../lib/auth/guestSession";
@@ -5,11 +21,12 @@ import { db } from "../../../../../db/client";
 import { oddsGames } from "../../../../../db/schema";
 import { eq } from "drizzle-orm";
 import {
-  submitAIPick,
+  isCurrentOddsState,
+  parsePrediction,
   submitAIPrediction,
   viewForPlayer,
 } from "../../../../../lib/odds";
-import type { InteractiveOddsState } from "../../../../../lib/odds";
+import type { OddsGameState } from "../../../../../lib/odds";
 
 export async function POST(req: Request) {
   try {
@@ -22,10 +39,6 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const gameId = Number(body.gameId);
-    const playerNumber =
-      body.playerNumber == null ? undefined : Number(body.playerNumber);
-    const prediction =
-      body.prediction == null ? undefined : Number(body.prediction);
 
     if (!Number.isFinite(gameId) || gameId <= 0) {
       return NextResponse.json({ error: "Invalid game ID" }, { status: 400 });
@@ -38,6 +51,23 @@ export async function POST(req: Request) {
       );
     }
 
+    // Validate before the row lock — a malformed prediction must not hold the
+    // match row while it is rejected.
+    const parsed = parsePrediction(
+      body?.prediction && typeof body.prediction === "object"
+        ? body.prediction
+        : { exact: body?.exact, min: body?.min, max: body?.max },
+    );
+    // `in` rather than `!parsed.ok`: `strict` is off in this project, so the
+    // boolean discriminant is widened and truthiness does not narrow the union.
+    if ("error" in parsed) {
+      return NextResponse.json(
+        { success: false, error: parsed.error },
+        { status: 400 },
+      );
+    }
+    const prediction = parsed.prediction;
+
     const result = await db.transaction(async (tx: any) => {
       const [game] = await tx
         .select()
@@ -47,72 +77,35 @@ export async function POST(req: Request) {
 
       if (!game) throw new Error("Game not found");
       if (game.player1Id !== userId) throw new Error("Not your game");
+      if (!game.isAi) throw new Error("Use PvP endpoints for multiplayer games");
       if (game.status !== "playing") throw new Error("Game is not active");
 
-      const state = game.gameState as InteractiveOddsState;
-      if (!state || state.gameOver) throw new Error("Game is already over");
-
-      const invalid = (v: number | undefined) =>
-        v === undefined || !Number.isFinite(v) || !Number.isInteger(v);
-
-      // ── Phase 1: lock in the player's number ──
-      if (state.phase === "pick") {
-        if (prediction !== undefined)
-          throw Object.assign(
-            new Error("Lock in your number before predicting"),
-            { status: 400 },
-          );
-        if (invalid(playerNumber))
-          throw Object.assign(new Error("Number must be a whole number"), { status: 400 });
-        if (playerNumber! < 1 || playerNumber! > state.currentMax)
-          throw Object.assign(
-            new Error(`Number must be between 1 and ${state.currentMax}`),
-            { status: 400 },
-          );
-
-        // The AI locks in its own hidden number immediately; only the
-        // sanitized view (AI's number nulled) goes back to the client.
-        const { updatedState } = submitAIPick(
-          state,
-          playerNumber!,
-          game.aiDifficulty,
-        );
+      // A row from the retired rules cannot be played by this engine. Practice
+      // moves no coins, so abandoning it is enough — the page then starts a
+      // fresh duel.
+      if (!isCurrentOddsState(game.gameState)) {
         await tx
           .update(oddsGames)
-          .set({ gameState: updatedState })
+          .set({ status: "cancelled", endedAt: new Date() })
           .where(eq(oddsGames.id, gameId));
-
-        return {
-          round: null,
-          updatedState: viewForPlayer(updatedState, true),
-          gameStatus: "playing" as const,
-          player1Won: false,
-          payout: 0,
-        };
+        throw Object.assign(
+          new Error("That practice session used retired rules — start a new one"),
+          { status: 409 },
+        );
       }
 
-      // ── Phase 2: player predicts the AI's number ──
-      if (playerNumber !== undefined)
-        throw Object.assign(
-          new Error("Your number is locked in. Submit a prediction"),
-          { status: 400 },
-        );
-      if (invalid(prediction))
-        throw Object.assign(new Error("Prediction must be a whole number"), { status: 400 });
-      if (prediction! < 1 || prediction! > state.currentMax)
-        throw Object.assign(
-          new Error(`Prediction must be between 1 and ${state.currentMax}`),
-          { status: 400 },
-        );
+      const state = game.gameState as OddsGameState;
+      if (state.gameOver) throw new Error("Game is already over");
 
-      const { round, updatedState: resolved } = submitAIPrediction(
+      const { round, updatedState } = submitAIPrediction(
         state,
-        prediction!,
+        prediction,
         game.aiDifficulty,
       );
-      if (resolved.gameOver) {
-        const player1Won = resolved.winner === "player1";
-        const drew = resolved.winner === null;
+
+      if (updatedState.gameOver) {
+        const player1Won = updatedState.winner === "player1";
+        const drew = updatedState.winner === null;
 
         // STAKES ARE RETIRED: AI games are free play, so nothing is paid out.
         const recordedPayout = 0;
@@ -121,59 +114,56 @@ export async function POST(req: Request) {
           .update(oddsGames)
           .set({
             status: "finished",
-            winner: resolved.winner,
+            winner: updatedState.winner,
             result: player1Won ? "won" : drew ? "draw" : "lost",
             payout: recordedPayout,
-            gameState: resolved,
+            gameState: updatedState,
             endedAt: new Date(),
           })
           .where(eq(oddsGames.id, gameId));
 
         return {
           round,
-          updatedState: viewForPlayer(resolved, true),
+          // Named `view`, not `updatedState`: what leaves this handler is
+          // always a per-viewer projection, never the engine's raw state.
+          view: viewForPlayer(updatedState, true),
           gameStatus: "finished" as const,
           player1Won,
           payout: recordedPayout,
-          wager: game.wager,
-          isAi: game.isAi,
         };
       }
 
-      // Game continues — just update the gameState
       await tx
         .update(oddsGames)
-        .set({ gameState: resolved })
+        .set({ gameState: updatedState })
         .where(eq(oddsGames.id, gameId));
 
       return {
         round,
-        updatedState: viewForPlayer(resolved, true),
+        view: viewForPlayer(updatedState, true),
         gameStatus: "playing" as const,
         player1Won: false,
         payout: 0,
       };
     });
 
-    // Track leaderboard OUTSIDE the transaction to avoid deadlocks.
-    // AI games are free play (wager never deducted) — skip the stats
-    // pipeline so beating the AI no longer records a phantom loss
-    // (payout 0) in user_stats.
-    // AI results deliberately do NOT touch the leaderboards.
+    // AI results deliberately do NOT touch the leaderboards, user_stats or the
+    // rating/trophy journals — practice moves no coins.
 
     return NextResponse.json({
       success: true,
       data: {
         round: result.round,
-        playerNumber,
-        updatedState: result.updatedState,
+        prediction,
+        updatedState: result.view,
         gameStatus: result.gameStatus,
-        winner: result.updatedState.winner,
+        winner: result.view.winner,
         payout: result.payout,
       },
     });
   } catch (error: any) {
-    const status = error?.status === 400 ? 400 : 500;
+    const status =
+      error?.status === 400 ? 400 : error?.status === 409 ? 409 : 500;
     return NextResponse.json(
       { success: false, error: error.message || "Failed to process pick" },
       { status },
