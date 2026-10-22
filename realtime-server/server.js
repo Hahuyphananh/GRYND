@@ -1459,6 +1459,50 @@ io.on("connection", (socket) => {
     logThrottled("barricade:leave", "[barricade] participant left: matchId=", matchId, "userId=", userId);
   }
 
+  // ── Dominoes room-participant tracking ──────────────────────────
+  // Same pattern as barricade / solitaire-duel / tic-tac-toe so a
+  // `dominoes:ready` poke can only come from a tracked participant of that match,
+  // and so disconnect handling can forfeit an abandoned duel to the seat still
+  // present (or cancel an empty lobby). Keyed by matchId (a uuid).
+  //
+  // This literal is deliberately restated rather than imported: this server is
+  // plain CommonJS and cannot load the TypeScript vocabulary in
+  // src/lib/dominoes/rooms.ts. A test pins the two to the same string.
+  const DOMINOES_MATCH_ROOM_PREFIX = "dominoes:match:";
+  if (!global.__dominoesRoomParticipants) {
+    global.__dominoesRoomParticipants = new Map();
+  }
+  const dominoesRoomParticipants = global.__dominoesRoomParticipants;
+
+  function trackDominoesJoin(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(DOMINOES_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(DOMINOES_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    if (!dominoesRoomParticipants.has(matchId)) {
+      dominoesRoomParticipants.set(matchId, new Set());
+    }
+    dominoesRoomParticipants.get(matchId).add(userId);
+    // A (re)joining socket means the player is present again — cancel any pending
+    // disconnect forfeit timer for this match, so a refresh or a reconnect can
+    // never cost a rated round.
+    cancelDisconnectGraceTimer(`dominoes:${matchId}:${userId}`);
+    logThrottled("dominoes:join", "[dominoes] participant joined: matchId=", matchId, "userId=", userId);
+  }
+  function trackDominoesLeave(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(DOMINOES_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(DOMINOES_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    const set = dominoesRoomParticipants.get(matchId);
+    if (!set) return;
+    set.delete(userId);
+    if (set.size === 0) dominoesRoomParticipants.delete(matchId);
+    logThrottled("dominoes:leave", "[dominoes] participant left: matchId=", matchId, "userId=", userId);
+  }
+
   // ── Crash Arena room-participant tracking ───────────────────────
   // Mirrors the plinko/precision tracking pattern so the
   // `crashArena:updated` handler below can reject events from
@@ -1519,6 +1563,7 @@ io.on("connection", (socket) => {
     trackSolitaireDuelJoin(String(roomId), socket.data.userId);
     trackSudokuDuelJoin(String(roomId), socket.data.userId);
     trackBarricadeJoin(String(roomId), socket.data.userId);
+    trackDominoesJoin(String(roomId), socket.data.userId);
   });
 
   // ── Admin notifications room join ──────────────────────────────────
@@ -1590,6 +1635,7 @@ io.on("connection", (socket) => {
     trackSolitaireDuelLeave(String(roomId), socket.data.userId);
     trackSudokuDuelLeave(String(roomId), socket.data.userId);
     trackBarricadeLeave(String(roomId), socket.data.userId);
+    trackDominoesLeave(String(roomId), socket.data.userId);
   });
 
   // The first round is armed by an HTTP ready call, and this broadcast is the
@@ -2345,6 +2391,31 @@ io.on("connection", (socket) => {
     });
   });
 
+  socket.on("dominoes:ready", ({ matchId } = {}) => {
+    if (!matchId) return;
+    const matchIdStr = String(matchId);
+    // matchId is a uuid — keep the character set tight so a malformed id can
+    // never build a surprising room name.
+    if (!/^[0-9a-fA-F-]{1,64}$/.test(matchIdStr)) return;
+    const participants = dominoesRoomParticipants.get(matchIdStr);
+    if (!participants || !participants.has(socket.data.userId)) {
+      logThrottled(
+        "dominoes:rejectReady",
+        "[dominoes] rejecting ready from non-participant: matchId=",
+        matchIdStr,
+        "userId=",
+        socket.data.userId,
+      );
+      return;
+    }
+    const roomId = `${DOMINOES_MATCH_ROOM_PREFIX}${matchIdStr}`;
+    socket.to(roomId).emit("lobby:updated", {
+      matchId: matchIdStr,
+      userId: socket.data.userId,
+      sentAt: new Date().toISOString(),
+    });
+  });
+
   // ── Crash Arena: table update ─────────────────────────────────
   // The client emits `crashArena:updated` after a successful API
   // mutation (start-round, fold, crash/settle, join, leave) so
@@ -2873,6 +2944,45 @@ io.on("connection", (socket) => {
         } catch (err) {
           console.warn(
             "[barricade] disconnect forfeit failed:",
+            err && err.message ? err.message : err,
+          );
+          return true; // transient — retry
+        }
+      });
+    }
+
+    // For Dominoes: same pattern as Barricade — a duel abandoned past the grace
+    // window is forfeited to the seat still present (or an empty lobby is
+    // cancelled) via /api/dominoes/disconnect-forfeit. A reconnect inside the
+    // window cancels the timer (see trackDominoesJoin), so a refresh can never
+    // cost a round. The route re-verifies this socket's Clerk token before it
+    // acts, so this can only ever resolve the token owner's OWN match.
+    const dominoesMatchesForUser = [];
+    for (const [mid, set] of dominoesRoomParticipants.entries()) {
+      if (set.has(socket.data.userId)) dominoesMatchesForUser.push(mid);
+    }
+    for (const mid of dominoesMatchesForUser) {
+      const roomId = `${DOMINOES_MATCH_ROOM_PREFIX}${mid}`;
+      if (hasLiveSocketForUser(socket.data.userId, roomId)) continue;
+      const set = dominoesRoomParticipants.get(mid);
+      if (set) {
+        set.delete(socket.data.userId);
+        if (set.size === 0) dominoesRoomParticipants.delete(mid);
+      }
+      scheduleDisconnectGraceTimer(`dominoes:${mid}:${socket.data.userId}`, async () => {
+        if (hasLiveSocketForUser(socket.data.userId, roomId)) return false;
+        try {
+          const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
+          const res = await fetch(`${baseUrl}/api/dominoes/disconnect-forfeit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ matchId: mid, token: socket.data.clerkToken }),
+          });
+          const payload = await res.json().catch(() => null);
+          return !(payload && payload.success === true);
+        } catch (err) {
+          console.warn(
+            "[dominoes] disconnect forfeit failed:",
             err && err.message ? err.message : err,
           );
           return true; // transient — retry

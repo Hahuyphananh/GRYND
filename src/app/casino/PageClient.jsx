@@ -589,6 +589,20 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       // these `popular: true` entries.
       popular: true,
     },
+    {
+      // Dominoes carries ONE id everywhere — the lobby key, the public page
+      // slug, the rating/trophy key and the presence id are all `dominoes` —
+      // and it is the newest game in the catalogue. It is free to play: there
+      // is no stake column on a Dominoes match and no wager to pick here.
+      name: "Dominoes",
+      href: "/games/dominoes",
+      leaderboardKey: "dominoes",
+      playsKey: "dominoes",
+      image: GAME_CARD_ART["dominoes"],
+      descriptionKey: "games.dominoes_desc",
+      nameKey: "games.dominoes_name",
+      pvpMode: "1v1",
+    },
   ];
 
   // "For You": the engine ranks canonical game ids (leaderboardKey), so map
@@ -619,8 +633,10 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
   );
 
   const newestOrder = [
-    // Newest first: Barricade shipped last, so it leads the recency list (and
+    // Newest first: Dominoes shipped last, so it leads the recency list (and
     // takes the last "NEW" badge slot from the game it displaced).
+    "dominoes",
+    // Barricade was the game before it.
     "barricade",
     "tic-tac-toe",
     "speed-typing",

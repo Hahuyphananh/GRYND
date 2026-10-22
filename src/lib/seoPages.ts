@@ -43,6 +43,7 @@ import type { MetadataRoute } from "next";
 import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
 import {
   barricadeMatches,
+  dominoesMatches,
   chessGames,
   dotsAndBoxesGames,
   fourInARowGames,
@@ -97,6 +98,7 @@ export type SeoPage = {
 const GAME_FRESHNESS: Record<string, { table: AnyPgTable; column: AnyPgColumn }> = {
   "mines-pvp": { table: minesGames, column: minesGames.createdAt },
   barricade: { table: barricadeMatches, column: barricadeMatches.createdAt },
+  dominoes: { table: dominoesMatches, column: dominoesMatches.createdAt },
   keno: { table: kenoPvpMatches, column: kenoPvpMatches.createdAt },
   rps: { table: rpsPvpGames, column: rpsPvpGames.createdAt },
   chess: { table: chessGames, column: chessGames.createdAt },

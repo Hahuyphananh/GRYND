@@ -110,8 +110,9 @@ test("discovery: the catalog and the lobby agree on Barricade's position", () =>
   );
   // New games are APPENDED to the end of the lobby, so Barricade sits after the
   // titles that shipped before it — asserted relatively, so a newer card does
-  // not falsify the append-at-the-end rule.
-  assert.equal(lobbyIds[lobbyIds.length - 1], KEY, "Barricade is appended last");
+  // not falsify the append-at-the-end rule. (Dominoes shipped after it and holds
+  // the last slot now.)
+  assert.equal(lobbyIds[lobbyIds.length - 2], KEY, "Barricade is second-last, after the older titles");
   assert.ok(lobbyIds.indexOf(KEY) > lobbyIds.indexOf("sudoku-duel"));
 });
 
@@ -133,8 +134,18 @@ test("discovery: the lobby card links to the game, records plays and is 1v1", ()
     /"barrier-blitz": barricadeArt,/,
   );
   assert.ok(fs.existsSync("src/images/barricade-card.svg"), "the card art must exist");
-  // The "Newest" sort is newest-first, and Barricade is the newest game.
-  assert.match(src, /const newestOrder = \[\n\s*(?:\/\/[^\n]*\n\s*)*"barricade",/);
+  // The "Newest" sort is newest-first. Barricade was the newest game until
+  // Dominoes shipped, so it sits at the second slot — asserted by POSITION, not
+  // by "it is the head", which the next game to ship would falsify.
+  const orderBlock = src.slice(src.indexOf("const newestOrder = ["));
+  const newestKeys = [...orderBlock.slice(0, orderBlock.indexOf("];")).matchAll(/"([a-z0-9-]+)"/g)].map(
+    (m) => m[1],
+  );
+  assert.equal(newestKeys[1], KEY, "Barricade is the second-newest game in the catalogue");
+  assert.ok(
+    newestKeys.indexOf(KEY) < newestKeys.indexOf("sudoku-duel"),
+    "newest-first: Barricade must sit above the games that shipped before it",
+  );
 });
 
 test("discovery: the card copy exists in all three locales", () => {

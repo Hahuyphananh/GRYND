@@ -52,6 +52,7 @@ const RATED_GAMES_FALLBACK = [
   { key: "solitaire-duel", label: "Solitaire Duel" },
   { key: "sudoku-duel", label: "Sudoku Duel" },
   { key: "barricade", label: "Barrier Blitz" },
+  { key: "dominoes", label: "Dominoes" },
 ];
 
 // Game-result categories the weekly/all-time boards rank by. Alongside the

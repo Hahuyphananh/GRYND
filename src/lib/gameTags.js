@@ -226,6 +226,19 @@ export const GAME_CATALOG = [
     href: "/games/barrier-blitz",
     tags: ["pvp", "strategy", "skill", "competitive"],
   },
+
+  // Dominoes is a 1v1 block-dominoes duel over ONE shared chain: reading which
+  // end to feed, counting the tiles still out and blocking the opponent is the
+  // whole game (strategy), but the seven tiles you are dealt and the order of
+  // the face-down pile are chance — so it is tagged `chance`, never `skill`.
+  // It is a rated ladder duel (`competitive`; the id is registered in
+  // RATED_GAMES) with a fifteen-second turn window, and it is the one game here
+  // whose rules most players already know, so it is also `casual`.
+  {
+    id: "dominoes",
+    href: "/games/dominoes",
+    tags: ["pvp", "strategy", "chance", "casual", "competitive"],
+  },
 ];
 
 /** The default (featured) order — exactly the lobby's order. Returned for any

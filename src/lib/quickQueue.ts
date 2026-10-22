@@ -19,6 +19,11 @@ export const QUICK_QUEUE_GAME_KEYS = [
   // returns the SAME waiting-lobby id for both paired seats, and it is unstaked,
   // so the queue's normalized stake is never passed to it.
   "barricade",
+  // Dominoes is the same shape: its store's `createOrJoin` seats the first
+  // caller in a waiting lobby and hands the second caller THAT SAME row, and it
+  // is free to play — a Dominoes match has no stake column at all, so the
+  // queue's normalized stake is never passed to it.
+  "dominoes",
 ] as const;
 
 export type QuickQueueGameKey = (typeof QUICK_QUEUE_GAME_KEYS)[number];

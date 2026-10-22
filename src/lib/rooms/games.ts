@@ -14,6 +14,10 @@
 //   * Pool Masters  — createPoolMatchForPair  (src/lib/pool/lobbyJoin.ts)
 //   * Precision     — createPrecisionMatchForPair (src/lib/precision/matchmaking.ts)
 //   * Tower Arena   — createTowerArenaMatchForPair (src/lib/tower-arena/serverStore.ts)
+//   * Dominoes      — createDominoesMatchForPair (src/lib/dominoes/serverStore.ts)
+//                    (opens the same waiting row + join path its public lobby
+//                    uses, in one transaction, so the deal/clock/settlement are
+//                    the public ones — and free play only, like Pool Masters.)
 //
 // PRIVATE MEANS UNOBSERVABLE: every adapter creates AND claims its lobby inside
 // ONE transaction, so the public queue/listing (which selects `status =
@@ -27,6 +31,7 @@
 // …) pair the caller with ANY waiting row and have no such primitive, so they
 // cannot host a room without a per-game rewrite — see docs/PRIVATE_ROOMS.md §1.
 
+import { createDominoesMatchForPair } from "../dominoes/serverStore";
 import { createPoolMatchForPair } from "../pool/lobbyJoin";
 import { createPrecisionMatchForPair } from "../precision/matchmaking";
 import { createTowerArenaMatchForPair } from "../tower-arena/serverStore";
@@ -58,6 +63,10 @@ export function matchUrlFor(gameKey: string, matchId: string): string {
       return `/casino/pool-masters/game/${matchId}`;
     case "tower-arena":
       return `/casino/tower-arena/game/${matchId}`;
+    case "dominoes":
+      // The canonical public match URL — the same one the lobby navigates to
+      // and the same one `/games/:slug/:path+` rewrites to the match page.
+      return `/games/dominoes/${matchId}`;
     default:
       // Unreachable: `getRoomGame` gated every room before this point. Returning
       // null rather than a guessed URL keeps a bad room from sending players to
@@ -166,6 +175,34 @@ export async function createPairMatch({
       }
       const matchId = String(result.match.id);
       return { ok: true, matchId, matchUrl: matchUrlFor(game.key, matchId) };
+    }
+
+    case "dominoes": {
+      // No stake is passed: the catalog caps Dominoes at 0 and its store takes
+      // no stake argument at all, so a staked room is refused by
+      // resolveRoomSettings before this case is reached.
+      const result = await createDominoesMatchForPair({
+        hostUserId,
+        opponentUserId,
+      });
+      // Read the failure through a widened view: the store returns a
+      // boolean-discriminated union, which this repo's `strict: false` cannot
+      // narrow (the same note the other cases carry). The values are the
+      // store's own.
+      if (!result.ok) {
+        const failed = result as { status?: number; message?: string };
+        return {
+          ok: false,
+          status: failed.status || 500,
+          message: failed.message || "Unable to create the match",
+        };
+      }
+      const created = result as { matchId: string };
+      return {
+        ok: true,
+        matchId: created.matchId,
+        matchUrl: matchUrlFor(game.key, created.matchId),
+      };
     }
 
     default:

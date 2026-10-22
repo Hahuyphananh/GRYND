@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
+  <defs>
+    <linearGradient id="dom-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0d1226" />
+      <stop offset="100%" stop-color="#04060f" />
+    </linearGradient>
+    <radialGradient id="dom-halo" cx="50%" cy="44%" r="62%">
+      <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.24" />
+      <stop offset="58%" stop-color="#34d399" stop-opacity="0.14" />
+      <stop offset="100%" stop-color="#04060f" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="dom-tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fdfcf6" />
+      <stop offset="100%" stop-color="#ddd8c8" />
+    </linearGradient>
+  </defs>
+
+  <rect width="400" height="300" fill="url(#dom-bg)" />
+  <rect width="400" height="300" fill="url(#dom-halo)" />
+
+  <!-- The face-down pile: what a blocked player draws from -->
+  <g>
+    <rect x="26" y="52" width="34" height="56" rx="5" fill="#1b2240" stroke="#333d68" />
+    <rect x="34" y="44" width="34" height="56" rx="5" fill="#202948" stroke="#3a4574" />
+    <rect x="42" y="36" width="34" height="56" rx="5" fill="#26315a" stroke="#46528a" />
+    <circle cx="59" cy="64" r="4" fill="#7dd3fc" opacity="0.7" />
+  </g>
+
+  <!-- The shared chain, laid left-to-right on the table -->
+  <!-- tile 1: 4 | 6 -->
+  <g>
+    <rect x="96" y="140" width="88" height="46" rx="7" fill="url(#dom-tile)" stroke="#9a937f" />
+    <line x1="140" y1="145" x2="140" y2="181" stroke="#9a937f" stroke-width="2" />
+    <g fill="#1e293b">
+      <circle cx="110" cy="150" r="4" />
+      <circle cx="130" cy="150" r="4" />
+      <circle cx="110" cy="176" r="4" />
+      <circle cx="130" cy="176" r="4" />
+      <circle cx="150" cy="150" r="4" />
+      <circle cx="170" cy="150" r="4" />
+      <circle cx="150" cy="163" r="4" />
+      <circle cx="170" cy="163" r="4" />
+      <circle cx="150" cy="176" r="4" />
+      <circle cx="170" cy="176" r="4" />
+    </g>
+  </g>
+
+  <!-- tile 2: 6 | 3 -->
+  <g>
+    <rect x="184" y="116" width="88" height="46" rx="7" fill="url(#dom-tile)" stroke="#9a937f" />
+    <line x1="228" y1="121" x2="228" y2="157" stroke="#9a937f" stroke-width="2" />
+    <g fill="#1e293b">
+      <circle cx="198" cy="126" r="4" />
+      <circle cx="218" cy="126" r="4" />
+      <circle cx="198" cy="139" r="4" />
+      <circle cx="218" cy="139" r="4" />
+      <circle cx="198" cy="152" r="4" />
+      <circle cx="218" cy="152" r="4" />
+      <circle cx="238" cy="126" r="4" />
+      <circle cx="256" cy="139" r="4" />
+      <circle cx="238" cy="152" r="4" />
+    </g>
+  </g>
+
+  <!-- tile 3: 3 | 3 -->
+  <g>
+    <rect x="272" y="92" width="88" height="46" rx="7" fill="url(#dom-tile)" stroke="#9a937f" />
+    <line x1="316" y1="97" x2="316" y2="133" stroke="#9a937f" stroke-width="2" />
+    <g fill="#1e293b">
+      <circle cx="287" cy="102" r="4" />
+      <circle cx="305" cy="115" r="4" />
+      <circle cx="287" cy="128" r="4" />
+      <circle cx="327" cy="102" r="4" />
+      <circle cx="345" cy="115" r="4" />
+      <circle cx="327" cy="128" r="4" />
+    </g>
+  </g>
+
+  <!-- The two OPEN ENDS, called out as the values a play must match -->
+  <g font-family="ui-sans-serif, system-ui, sans-serif" font-weight="700" font-size="16">
+    <circle cx="84" cy="163" r="14" fill="#0b1226" stroke="#22d3ee" stroke-width="2" />
+    <text x="84" y="169" fill="#7dd3fc" text-anchor="middle">4</text>
+    <circle cx="376" cy="115" r="14" fill="#0b1226" stroke="#34d399" stroke-width="2" />
+    <text x="376" y="121" fill="#6ee7b7" text-anchor="middle">3</text>
+  </g>
+
+  <!-- The turn window: fifteen seconds, stamped by the server -->
+  <g>
+    <circle cx="40" cy="126" r="16" fill="none" stroke="#2b3560" stroke-width="4" />
+    <circle cx="40" cy="126" r="16" fill="none" stroke="#f59e0b" stroke-width="4"
+      stroke-linecap="round" stroke-dasharray="70 31" transform="rotate(-90 40 126)">
+      <animate attributeName="stroke-dasharray" values="70 31;30 71;70 31" dur="8s" repeatCount="indefinite" />
+    </circle>
+  </g>
+
+  <!-- Two seats, and the seven tiles each player holds -->
+  <g>
+    <rect x="96" y="212" width="208" height="34" rx="17" fill="#171f3c" stroke="#2b3560" />
+    <circle cx="120" cy="229" r="10" fill="#22d3ee" />
+    <circle cx="280" cy="229" r="10" fill="#34d399" />
+    <g fill="#22d3ee">
+      <rect x="140" y="226" width="8" height="7" rx="2" />
+      <rect x="151" y="226" width="8" height="7" rx="2" />
+      <rect x="162" y="226" width="8" height="7" rx="2" />
+      <rect x="173" y="226" width="8" height="7" rx="2" />
+    </g>
+    <g fill="#34d399">
+      <rect x="227" y="226" width="8" height="7" rx="2" />
+      <rect x="238" y="226" width="8" height="7" rx="2" />
+      <rect x="249" y="226" width="8" height="7" rx="2" />
+      <rect x="260" y="226" width="8" height="7" rx="2" />
+    </g>
+    <rect x="196" y="226" width="18" height="7" rx="3" fill="#4a5687" />
+  </g>
+</svg>

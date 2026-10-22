@@ -121,6 +121,12 @@ export const GAME_LABEL_TO_GAME_ID = {
   // rating/trophy key and its presence key are the SAME string (unlike the
   // older games whose lobby id differs from their rating key).
   barricade: "barricade",
+  // Dominoes is registered the same way: its lobby and its match page both
+  // report the label `dominoes`, which IS the canonical id (the lobby key, the
+  // public page slug, the rating/trophy key and the presence key are one
+  // string). It has no practice board, so there is no `dominoes-ai` label to
+  // collapse.
+  dominoes: "dominoes",
 
   // ── alternate labels on the same game (AI / other play surface) ────
   "chess-ai": "chess",

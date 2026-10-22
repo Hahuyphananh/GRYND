@@ -4356,3 +4356,120 @@ export const practicePauses = pgTable(
     gameIdx: index("practice_pauses_game_idx").on(table.game, table.pausedAt),
   }),
 );
+
+// ── Dominoes ───────────────────────────────────────────────────────────
+//
+// The online 1v1 block-dominoes match. Server-authoritative like every other
+// duel: the row is the truth and the API routes are thin wrappers.
+//
+// ── WHY THE HIDDEN STATE IS SPLIT OUT ──────────────────────────────────
+//
+// A dominoes match has PUBLIC state (the chain, its two open values, whose
+// turn it is, the result) and SECRET state (each seat's hand, and the order of
+// the face-down pile). Keeping them in separate columns rather than one
+// `game_state` blob means a client projection cannot leak a hand by forgetting
+// to delete a field: `match_to_dto` reads `p1_hand`/`p2_hand`/`draw_pile` only
+// for the viewer's own seat, and every broadcast/response is built from the
+// DTO. The store reassembles the engine's `DominoesState` from these four
+// columns on read.
+//
+// ── NO WAGER COLUMNS, DELIBERATELY ─────────────────────────────────────
+//
+// Dominoes is an unstaked duel: there is no stake, escrow, pot, rake or payout
+// column here, and no currency path in its routes. The absence IS the policy.
+//
+// ── THE DEAL IS MINTED AT JOIN, NOT AT LOBBY CREATION ──────────────────
+//
+// `game_state` is NULL while the row is an open lobby and the three secret
+// columns are empty, because a deal created before an opponent exists would
+// hand the hosting player a preview of their own tiles — cancel and re-open
+// until the hand is good. The shuffle happens inside the transaction that
+// seats the second player, so `started_at` and the first deadline are stamped
+// from the same instant.
+//
+// `ply` is the optimistic-concurrency version the move route echoes back as
+// `expectedVersion`, and it is also the turn number the append-only move log
+// is keyed by (unique per match).
+export const dominoesMatches = pgTable(
+  "dominoes_matches",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    player1Id: varchar("player1_id", { length: 255 }).notNull(),
+    // Nullable so a `waiting` row doubles as the open lobby.
+    player2Id: varchar("player2_id", { length: 255 }),
+    /** waiting | playing | finished | cancelled (MATCH_STATUS in src/lib/dominoes). */
+    status: varchar("status", { length: 20 }).notNull().default("waiting"),
+    /** Accepted actions so far — the optimistic-concurrency version. */
+    ply: integer("ply").notNull().default(0),
+    /** The seat on turn, as a Clerk id; NULL while the lobby is open or terminal. */
+    currentTurnUserId: varchar("current_turn_user_id", { length: 255 }),
+    /**
+     * The absolute instant this turn expires, stamped from the SERVER clock.
+     * `withTimezone` on purpose: this window is 15 seconds, so a zone-less
+     * column whose value depends on the DB session's timezone is not good
+     * enough (unlike the display timestamps below).
+     */
+    turnDeadlineAt: timestamp("turn_deadline_at", { withTimezone: true }),
+    /** PUBLIC engine state (DominoesState minus both hands and the pile). */
+    gameState: jsonb("game_state"),
+    /** SECRET: player1's tiles. Never projected to player2, never broadcast. */
+    p1Hand: jsonb("p1_hand")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    /** SECRET: player2's tiles. */
+    p2Hand: jsonb("p2_hand")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    /** SECRET: the face-down pile, in shuffled order. The next draw is index 0. */
+    drawPile: jsonb("draw_pile")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    winnerId: varchar("winner_id", { length: 255 }),
+    /** player1 | player2 | draw (RESULT in src/lib/dominoes/constants.ts). */
+    result: varchar("result", { length: 20 }),
+    /** emptied-hand | blocked-pips | resigned | abandoned (END_REASONS). */
+    resultReason: varchar("result_reason", { length: 32 }),
+    startedAt: timestamp("started_at"),
+    endedAt: timestamp("ended_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    statusIdx: index("dominoes_matches_status_idx").on(table.status, table.createdAt),
+    player1Idx: index("dominoes_matches_player1_idx").on(table.player1Id, table.createdAt),
+    player2Idx: index("dominoes_matches_player2_idx").on(table.player2Id, table.createdAt),
+  }),
+);
+
+// The append-only log of accepted actions, including the clock's own.
+//
+// `ply` is the turn number that was OPEN when the action was taken, and
+// (match_id, ply) is unique — the storage-level backstop that makes "one
+// persisted action per turn" impossible to violate even if a future code path
+// forgets the version check. `timed_out` distinguishes the clock's action from
+// a player's, so a replay/history view can mark it.
+export const dominoesMoves = pgTable(
+  "dominoes_moves",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    matchId: uuid("match_id")
+      .notNull()
+      .references(() => dominoesMatches.id, { onDelete: "cascade" }),
+    ply: integer("ply").notNull(),
+    playerId: varchar("player_id", { length: 255 }).notNull(),
+    /** play | draw | pass — the engine's own action vocabulary. */
+    action: varchar("action", { length: 12 }).notNull(),
+    /** The tile id ("6-3") for a play, NULL for a draw or a pass. */
+    tile: varchar("tile", { length: 8 }),
+    /** left | right for a play, NULL otherwise. */
+    chainEnd: varchar("chain_end", { length: 5 }),
+    /** True when the server's turn clock produced this action, not the player. */
+    timedOut: boolean("timed_out").notNull().default(false),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    matchIdx: index("dominoes_moves_match_idx").on(table.matchId, table.ply),
+    // Anti-replay: one persisted action per turn number per match.
+    plyIdx: unique("dominoes_moves_ply_unique").on(table.matchId, table.ply),
+  }),
+);

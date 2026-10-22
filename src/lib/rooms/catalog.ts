@@ -9,12 +9,13 @@
 // imports nothing but the pure wager policy. The server-side implementation of
 // each game lives in src/lib/rooms/games.ts, keyed by the SAME keys.
 //
-// WHY THE STAKE IS THE ONLY SETTING: Pool Masters, Precision and Tower Arena
-// take exactly one room-level rule from a player — the coins on the line — and
-// the platform already has ONE wager policy (`maxStakeFor` / `validateWager` in
-// src/lib/games/stakes.js). A room therefore re-exposes that policy rather than
-// inventing a second one, and a game whose lobby flow cannot escrow a stake
-// (Pool Masters) declares `maxStake: 0`, i.e. free play only.
+// WHY THE STAKE IS THE ONLY SETTING: Pool Masters, Precision, Tower Arena and
+// Dominoes take exactly one room-level rule from a player — the coins on the
+// line — and the platform already has ONE wager policy (`maxStakeFor` /
+// `validateWager` in src/lib/games/stakes.js). A room therefore re-exposes that
+// policy rather than inventing a second one, and a game whose lobby flow cannot
+// escrow a stake (Pool Masters, Dominoes) declares `maxStake: 0`, i.e. free
+// play only.
 //
 // ADDING A GAME: it needs a "seat these two named players" primitive in ITS OWN
 // store first (see docs/PRIVATE_ROOMS.md §1), an adapter in src/lib/rooms/games.ts,
@@ -24,7 +25,7 @@
 import { maxStakeFor } from "../games/stakes";
 
 /** Canonical keys of the games that support rooms today. */
-export type RoomGameKey = "precision" | "pool" | "tower-arena";
+export type RoomGameKey = "precision" | "pool" | "tower-arena" | "dominoes";
 
 export interface RoomGameDef {
   key: RoomGameKey;
@@ -50,7 +51,12 @@ function cap(key: RoomGameKey): number {
   const global = Number(maxStakeFor(key)) || 0;
   // Pool Masters' join-lobby flow never escrows, so a staked table there would
   // be a match that cannot settle a wager. Free only.
-  if (key === "pool") return 0;
+  //
+  // Dominoes is the same case for a stronger reason: its match table has NO
+  // stake/escrow/pot column at all (src/db/migrations/0227_dominoes.sql), by
+  // design. A staked Dominoes room would therefore be a match that structurally
+  // cannot settle a wager, so the ceiling pins it to free play.
+  if (key === "pool" || key === "dominoes") return 0;
   return global;
 }
 
@@ -58,6 +64,10 @@ export const ROOM_GAMES: readonly RoomGameDef[] = Object.freeze([
   { key: "precision", label: "Precision", mode: "pvp", seats: 2, maxStake: cap("precision") },
   { key: "pool", label: "Pool Masters", mode: "pvp", seats: 2, maxStake: cap("pool") },
   { key: "tower-arena", label: "Tower Arena", mode: "pvp", seats: 2, maxStake: cap("tower-arena") },
+  // Dominoes joins the room architecture on the SAME authoritative store as its
+  // public lobby, via `createDominoesMatchForPair` (src/lib/dominoes/serverStore).
+  // Free play only — see `cap`.
+  { key: "dominoes", label: "Dominoes", mode: "pvp", seats: 2, maxStake: cap("dominoes") },
 ]);
 
 /** Every supported key, for server-side membership tests. */

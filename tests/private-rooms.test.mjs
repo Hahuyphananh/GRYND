@@ -124,7 +124,12 @@ function guest(inviteStatus = "accepted") {
 // ── The catalog: which games may host a room at all ────────────────────────
 
 test("only the games with a seat-this-pair primitive are offered", () => {
-  assert.deepEqual([...ROOM_GAME_KEYS].sort(), ["pool", "precision", "tower-arena"]);
+  assert.deepEqual([...ROOM_GAME_KEYS].sort(), [
+    "dominoes",
+    "pool",
+    "precision",
+    "tower-arena",
+  ]);
   for (const game of ROOM_GAMES) {
     assert.equal(game.seats, 2, `${game.key} must be a two-seat duel`);
     assert.equal(game.mode, "pvp");
@@ -156,16 +161,20 @@ test("create-or-join games are NOT offered (they cannot seat a named pair)", () 
 });
 
 test("every offered game's room ceiling comes from the platform wager policy", () => {
+  // A game whose lobby flow carries no escrow pins the ceiling to 0 instead of
+  // taking the platform maximum: a staked room there could never settle a wager.
+  const FREE_ONLY = new Set(["pool", "dominoes"]);
   for (const game of ROOM_GAMES) {
     assert.equal(
       game.maxStake,
-      game.key === "pool" ? 0 : maxStakeFor(game.key),
+      FREE_ONLY.has(game.key) ? 0 : maxStakeFor(game.key),
       `${game.key} room ceiling must not invent its own bounds`,
     );
   }
-  // Pool Masters' join-lobby flow carries no escrow, so a staked room there
-  // could never settle a wager.
+  // Pool Masters' join-lobby flow carries no escrow, and Dominoes' match table
+  // has no stake column at all.
   assert.equal(getRoomGame("pool").maxStake, 0);
+  assert.equal(getRoomGame("dominoes").maxStake, 0);
   assert.ok(getRoomGame("precision").maxStake > 0);
   assert.ok(getRoomGame("tower-arena").maxStake > 0);
 });
@@ -251,6 +260,19 @@ test("a staked room is capped by the game's own ceiling", () => {
     const over = resolveRoomSettings(game.key, { stake: game.maxStake + 1 });
     assert.equal(over.ok, false, `${game.key} must refuse a stake above its ceiling`);
   }
+});
+
+test("Dominoes rooms are free-play only, refused server-side", () => {
+  // `validateWager` accepts a positive stake for any known game, so the room
+  // ceiling is what stops an unstaked game being staked. A Dominoes match row
+  // has no stake/escrow column; a staked room would be unsettleable.
+  assert.equal(resolveRoomSettings("dominoes", { stake: 10 }).ok, false);
+  assert.match(resolveRoomSettings("dominoes", { stake: 10 }).message, /free-play only/i);
+  const free = resolveRoomSettings("dominoes", {});
+  assert.equal(free.ok, true);
+  assert.equal(free.settings.stake, 0);
+  // …and a challenge (always free) is legal for it.
+  assert.equal(resolveRoomSettings("dominoes", challengeSettings()).ok, true);
 });
 
 test("Pool Masters rooms are free-play only, refused server-side", () => {

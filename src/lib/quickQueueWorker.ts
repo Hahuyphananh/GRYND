@@ -23,6 +23,7 @@ import { createOrJoin as createOrJoinMiniGolfMatch } from "./mini-golf/serverSto
 import { createOrJoin as createOrJoinSpeedTypingMatch } from "./speed-typing/serverStore";
 import { createOrJoin as createOrJoinTicTacToeMatch } from "./tic-tac-toe/serverStore";
 import { createOrJoin as createOrJoinBarricadeMatch } from "./barricade/serverStore";
+import { createOrJoin as createOrJoinDominoesMatch } from "./dominoes/serverStore";
 
 export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
   return db.transaction(async (tx) => {
@@ -137,6 +138,12 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
       // SAME lobby, so both paired players land on one match id — escrowed at
       // the queue's stake the moment the second seat fills.
       "barricade": (userId) => createOrJoinBarricadeMatch({ userId, stake: sourceStake }),
+      // Dominoes is lobby-style on the same terms — both paired seats land on one
+      // match id — but it takes NO stake: the game is free, its store has no
+      // stake parameter, and a match row has no stake column. The second seat is
+      // seated by the same `createOrJoin` (see the generic fallback below), so
+      // both halves of the pair arrive at the same authority.
+      "dominoes": (userId) => createOrJoinDominoesMatch({ userId }),
     }[pair.candidate.gameKey];
     if (createMatch) {
       let result: any;

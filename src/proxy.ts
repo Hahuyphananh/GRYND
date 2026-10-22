@@ -80,6 +80,12 @@ const GAME_ROUTE_PATTERNS = [
   // is played against the local bot — so a signed-out visitor must be able to
   // read it rather than be bounced to /sign-in.
   "/casino/barrier-blitz(.*)",
+  // Dominoes' online table (lobby at /casino/dominoes, match at
+  // /casino/dominoes/<id>). The lobby is public to READ — its Play action sends a
+  // signed-out visitor to sign-in — so the whole subtree is classified as a game
+  // route like every other one. There is no free-practice route yet, so nothing
+  // here is playable without an account.
+  "/casino/dominoes(.*)",
   // /games/* mirrors of the /casino/* routes.
   "/games/uno(.*)",
   "/games/neon-flush(.*)",
@@ -104,6 +110,7 @@ const GAME_ROUTE_PATTERNS = [
   "/games/solitaire-duel(.*)",
   "/games/sudoku-duel(.*)",
   "/games/barrier-blitz(.*)",
+  "/games/dominoes(.*)",
 ] as const;
 
 const isPublicRoute = createRouteMatcher([

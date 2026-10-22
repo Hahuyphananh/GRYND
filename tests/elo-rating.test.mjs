@@ -1088,6 +1088,7 @@ test("RATED_GAMES: the registry is the audited 1v1/server-authoritative set", ()
     "solitaire-duel",
     "sudoku-duel",
     "barricade",
+    "dominoes",
   ]);
   assert.equal(isRatedGame("chess"), true);
   // The formerly-excluded games are now REGISTERED, so every listed game is a
@@ -1116,6 +1117,12 @@ test("RATED_GAMES: the registry is the audited 1v1/server-authoritative set", ()
   // The KEY is the internal id (and stays `barricade`); the LABEL is what
   // players read, and the game was renamed Barrier Blitz.
   assert.equal(getRatingGameLabel("barricade"), "Barrier Blitz");
+  // Dominoes settles from its own server-authoritative position (the deal, both
+  // hands and the chain live in the server's row), and a blocked round on equal
+  // pips is a real draw, so it is ratable on exactly the same terms.
+  assert.equal(isRatedGame("dominoes"), true);
+  assert.equal(normalizeRatingGameKey("dominoes"), "dominoes");
+  assert.equal(getRatingGameLabel("dominoes"), "Dominoes");
   assert.equal(normalizeRatingGameKey("speed-typing"), "speed-typing");
   assert.equal(getRatingGameLabel("speed-typing"), "Speed Typing");
   assert.equal(isRatedGame("hex-duel"), true);
@@ -1492,6 +1499,10 @@ const WIRING = [
   // (a verified completion under an adjusted-time comparison, or most cells at
   // the deadline).
   ["sudoku-duel", "src/lib/sudoku-duel/serverStore.ts"],
+  // Dominoes derives its winner server-side from the authoritative chain, hands
+  // and pile (src/lib/dominoes), including a blocked round on equal pips, which
+  // settles as a draw through the SAME shared writer.
+  ["dominoes", "src/lib/dominoes/serverStore.ts"],
 ];
 
 for (const [gameKey, file] of WIRING) {

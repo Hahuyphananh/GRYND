@@ -317,19 +317,25 @@ test("combination: chance + fun puts the casual lucky game on top", () => {
     game_types: ["luck_chance"],
     motivation: ["fun"],
   }).recommendations;
-  // Keno is the only game tagged both chance and casual: 10 + 3 = 13.
+  // Two games are tagged both chance and casual — Keno and Dominoes — so both
+  // take the full gameType + motivation weight and tie on score. The tie is
+  // broken by the featured (catalog) order, where Keno comes first.
   assert.equal(ranked[0].id, "keno");
-  assert.equal(
-    ranked[0].score,
-    RECOMMENDATION_WEIGHTS.gameType + RECOMMENDATION_WEIGHTS.motivation
-  );
+  assert.equal(ranked[1].id, "dominoes");
+  for (const game of ranked.slice(0, 2)) {
+    assert.equal(
+      game.score,
+      RECOMMENDATION_WEIGHTS.gameType + RECOMMENDATION_WEIGHTS.motivation,
+      `${game.id} is both chance and casual, so it takes both weights`
+    );
+  }
   // Then the remaining chance games, in featured order, ahead of casual-only.
   // Dice Flush (id "yahtzee") held a slot here before it was retired in the
   // Dice Flush → Barricade cutover and removed from GAME_CATALOG, which moves
   // Mini Golf up into the block.
   assert.deepEqual(
-    ranked.slice(1, 6).map((g) => g.id),
-    ["mines-pvp", "memory-grid", "uno", "rps", "mini-golf"]
+    ranked.slice(2, 6).map((g) => g.id),
+    ["mines-pvp", "memory-grid", "uno", "rps"]
   );
 });
 

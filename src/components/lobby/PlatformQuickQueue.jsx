@@ -23,6 +23,7 @@ export const QUICK_QUEUE_GAME_OPTIONS = [
   ["speed-typing", "Speed Typing"],
   ["tic-tac-toe", "Ultimate Tic-Tac-Toe"],
   ["barricade", "Barrier Blitz"],
+  ["dominoes", "Dominoes"],
 ];
 
 const EMPTY_READINESS_BODY = Object.freeze({});
@@ -47,6 +48,9 @@ const GAME_ROUTES = {
   // A queued Barrier Blitz pair lands on the created match's own view, exactly
   // like every other lobby-style destination above.
   barricade: "/casino/barrier-blitz",
+  // A queued Dominoes pair lands on the created match's own view, exactly like
+  // the other lobby-style destinations above.
+  dominoes: "/casino/dominoes",
 };
 
 export function quickQueueGameRoute(gameKey, matchId) {

@@ -179,6 +179,28 @@ export const RATED_GAMES = Object.freeze([
   // game with no server match row at all — so AI games can never move Elo or
   // trophies.
   "barricade",
+  // Dominoes is server-authoritative end to end: the deal, both hands, the pile,
+  // the chain and every accepted action live in the server's own row
+  // (src/lib/dominoes), the shared rules engine derives the result from that
+  // position (`applyAction` / `applyTimeout`), and the ONLY player-authored
+  // input is an action ADDRESS plus an expectedVersion. So the result is fully
+  // server-derivable and the game is ratable on the same terms as Barricade and
+  // Tic-Tac-Toe — including a blocked round on equal pips, which is a real
+  // DRAW (`result: "draw"`) exactly as in Tic-Tac-Toe.
+  //
+  // The key is the game's ONE id: its lobby `leaderboardKey`, its public page
+  // slug, its presence label, its Quick Queue key and the key
+  // src/lib/dominoes/serverStore.ts settles with are all `dominoes`, so the
+  // ladder, the trophy board and the lobby all name it identically. Registering
+  // it HERE is what makes that settlement take effect (trophies reuse this list
+  // as TROPHY_GAMES, so there is no second registry to keep in sync).
+  //
+  // Only completed online human-vs-human matches reach the writer: the store
+  // settles inside the row-locked transaction that claimed the match, its
+  // `settleMatch` bails out when there is no second seat, a cancelled lobby
+  // never calls it at all, and Dominoes has no practice/bot mode — so an
+  // abandoned, cancelled or non-existent match can never move Elo or trophies.
+  "dominoes",
 ]);
 
 /** Display labels for the rating boards (mirrors the lobby names). */
@@ -204,6 +226,7 @@ export const RATING_GAME_LABELS = Object.freeze({
   "solitaire-duel": "Solitaire Duel",
   "sudoku-duel": "Sudoku Duel",
   "barricade": "Barrier Blitz",
+  dominoes: "Dominoes",
 });
 
 /** True when a game key is eligible for Elo. */

@@ -53,9 +53,18 @@ Two families, and they are not interchangeable:
    primitive, so a private room would mean adding one to each store (and its
    game-state initialisation) — a substantial, per-game rewrite.
 2. **Explicit lobby + atomic claim** — `pool` (Pool Masters), `precision`,
-   `tower-arena`. Each has a `create-lobby` / `join-lobby` pair whose join is one
-   conditional `UPDATE … WHERE status = 'waiting'` (or a row-locked transaction),
-   so "seat this specific player" already exists as a primitive.
+   `tower-arena`, `dominoes`. Each has a `create-lobby` / `join-lobby` pair whose
+   join is one conditional `UPDATE … WHERE status = 'waiting'` (or a row-locked
+   transaction), so "seat this specific player" already exists as a primitive.
+
+   Dominoes started in family 1 and moved here when
+   `createDominoesMatchForPair()` was added
+   (`src/lib/dominoes/serverStore.ts`). It is family 2 in the only sense that
+   matters: it opens the SAME waiting row its public lobby opens and seats the
+   second player with the SAME join helper, inside one transaction — so the deal
+   (minted at join), the starting seat, the first deadline, the move log and the
+   settlement are the public ones, and `status = 'waiting'` is never visible to
+   another session. The public `createOrJoin` is untouched.
 
 Chess (`create-game` / `join-game`) is closest to family 2 but its waiting rows
 are also listed by `/api/chess/available-games` and claimable by anyone: a
@@ -79,6 +88,7 @@ staked game. Deferred (see §5).
 | `precision` | Precision | PvP duel | stake | `createMatchForPairing({players: [host, guest]})` creates the match for a **named pair** — no lobby row, nothing to snipe. |
 | `pool` | Pool Masters | PvP duel | stake | The claim + `pool_matches` insert used by `/api/pool/join-lobby` is extracted into `src/lib/pool/lobbyJoin.ts` and reused, so the room creates the same match the public flow creates. |
 | `tower-arena` | Tower Arena | PvP duel | stake | New `createTowerArenaMatchForPair()` runs the store's own `createLobbyTx` + `joinLobbyTx` in ONE transaction: seat 1 = creator, seat 2 = opponent, and the match is created already started. |
+| `dominoes` | Dominoes | PvP duel | **free only** | `createDominoesMatchForPair()` opens the store's own waiting row (`createWaitingMatch`) and seats the invited player with the store's own `joinExistingMatch` in ONE transaction, under the same advisory lock as public matchmaking. The table has no stake/escrow column at all, so the catalog caps it at 0 and a staked Dominoes room is refused server-side. |
 
 Each adapter calls the game's own store — no game state is re-implemented, and
 no public lobby row is created, so nothing about the public matchmaking flow

@@ -698,6 +698,68 @@ export const GUIDES: readonly Guide[] = [
     gameSlugs: ["mines-pvp", "chess", "speed-typing"],
     relatedGuides: ["building-competitive-habits", "how-to-practice-competitive-games"],
   },
+  {
+    slug: "dominoes-strategy",
+    title: "Dominoes Strategy: How to Win a Blocked Round",
+    metaDescription:
+      "How to win online block dominoes: reading both open ends, counting the 28 tiles, when a draw is free, and why the pips in your hand decide a blocked round.",
+    h1: "Dominoes strategy: how to win a blocked round",
+    summary:
+      "Block dominoes looks like a matching game and plays like a counting one. Everybody can put a tile on a matching end; the players who win are the ones who know which end to feed, how many tiles are still face down, and what their own hand is worth if nobody can move again. This guide covers those three things in the order they matter.",
+    sections: [
+      {
+        heading: "Start by counting what is not in your hand",
+        paragraphs: [
+          "A double-six set is 28 unique tiles. Seven go to you, seven to your opponent, and the other fourteen sit face down as the pile. That is the whole hidden-information problem of the game, and it is smaller than it looks: after a few turns you can account for most of the set by adding the chain and your own hand.",
+          "The practical version is to track suits rather than individual tiles. If every 4 in the set has been played or is in your hand, then a 4 on an open end is a dead end for your opponent — a place they cannot answer. Spotting that early is worth more than any single clever placement.",
+        ],
+      },
+      {
+        heading: "Two open ends mean two decisions, not one",
+        paragraphs: [
+          "The chain exposes a value at each end, and a tile only has to match one of them. When a tile fits both ends you are choosing the orientation as well as the placement: the half that faces the chain becomes hidden, and the other half becomes the new open value for your opponent.",
+          "So ask what you are leaving behind. Putting a 2 next to a 2 and exposing a 6 hands your opponent a common value to match; exposing a value you know is nearly exhausted hands them a problem. The same tile played on the other end is a different move, which is why the engine lets you choose.",
+        ],
+      },
+      {
+        heading: "A draw does not cost you your turn",
+        paragraphs: [
+          "If nothing in your hand matches either open end, you draw one tile from the pile and keep the turn. You do not pass, and you do not hand the initiative over — you draw again if the new tile still does not fit. That makes drawing a genuinely free action, and it means a hand full of awkward tiles is a temporary problem rather than a lost turn.",
+          "The rule has a hard edge, though: if you hold a playable tile you must play it. You cannot draw to improve a hand that can already move, and you cannot skip a tile you dislike. Passing only becomes legal once the pile is empty, which is the point at which the game stops being about matching and starts being about arithmetic.",
+        ],
+      },
+      {
+        heading: "Play to block, not just to match",
+        paragraphs: [
+          "The round ends in one of two ways: somebody empties their hand, or neither player can move and the pile is empty. Most beginners play only for the first ending and are surprised by the second. If you can see that the pile is nearly gone and your opponent is struggling, steering towards a block is a legitimate plan — especially if your remaining tiles are cheap.",
+          "Blocking is about keeping the ends on values your opponent cannot answer while you still hold an exit. A double is useful here: it is awkward to place, but it lets you change an end's value without consuming a rare tile, and a double left in your hand at the end is expensive in pips.",
+        ],
+      },
+      {
+        heading: "Learn the pip count, because it decides draws",
+        paragraphs: [
+          "When the round blocks, the player with fewer pips left in hand wins, and equal pips is a draw. Pips are simply the numbers on your remaining tiles added up, with a double counting both halves — so a 6-6 is twelve points of liability and a 0-0 is none.",
+          "This changes how you should think about high tiles. A 6-5 is a powerful tile while the chain is open and a liability the moment it closes. If you sense a block coming, spend your expensive tiles while you still can and hold the cheap, flexible ones; a 0 or a 1 that matches nothing is worth more at the end than a 6 you never got to play.",
+        ],
+      },
+      {
+        heading: "Use the fifteen seconds deliberately",
+        paragraphs: [
+          "Every turn in an online GRYND match runs on a fifteen-second window, and when it expires the server acts for you: it draws a tile if the pile has any, and passes if it does not. You are never punished with a forfeit, but you are punished with a move you did not choose, which in a close blocked round is the same thing.",
+          "The fix is to decide before your turn arrives. While your opponent is thinking, work out your two best plays and the ends they would use. Fifteen seconds is plenty of time to choose between prepared options and barely enough to start thinking.",
+        ],
+      },
+      {
+        heading: "What a rated Dominoes match actually counts",
+        paragraphs: [
+          "Online Dominoes on GRYND is a free, server-authoritative one-on-one duel: no stake, no entry fee and no payout. Completed human-versus-human matches settle a per-game rating and trophies from the server's own final position, and a blocked round on equal pips settles as a draw rather than a win for either side.",
+          "That last detail is worth internalising. A draw is a real result here, so defending a losing pip count into a block is a legitimate way to salvage a rating, and it is the reason the arithmetic in the previous section matters as much as the matching.",
+        ],
+      },
+    ],
+    gameSlugs: ["dominoes"],
+    relatedGuides: ["reading-your-opponent", "speed-versus-accuracy"],
+  },
 ];
 
 /** Slugs that have a public guide page, in catalog order. */

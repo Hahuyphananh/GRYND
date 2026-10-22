@@ -1542,6 +1542,85 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     ],
     related: ["tic-tac-toe", "chess", "dots-and-boxes", "four-in-a-row"],
   },
+
+  {
+    slug: "dominoes",
+    name: "Dominoes",
+    headline: "Dominoes — Free 1v1 Block Dominoes Online",
+    category: "Classic Strategy",
+    leaderboardKey: "dominoes",
+    ogImage: "/images/og-banner.png",
+    shortDescription:
+      "A free, rated 1v1 block-dominoes duel. Seven tiles each, one shared chain and fifteen seconds a turn — match either open end, draw when nothing fits, and empty your hand first.",
+    // There is no Dominoes bot: every match is a real opponent, so the landing
+    // page advertises the online table rather than a practice board.
+    aiPractice: false,
+    introduction: [
+      "Dominoes on GRYND is one-on-one block dominoes played with a standard double-six set: seven tiles each, the remaining fourteen face down as the pile, and one shared chain both players build on.",
+      "It is competitive because the information that decides the game is available to both seats the whole time — how many tiles your opponent still holds, which two values the chain is open to, and whether the pile can still save you. The deal, the legality of every play, whose turn it is and the result are all computed server-side from the server's own position.",
+    ],
+    howToPlay: [
+      "Sign in, open the lobby and press Find a Match. You are seated against a live opponent, and a table you open stays listed until somebody joins it.",
+      "Both players are dealt seven tiles from a shuffled double-six set. The other fourteen tiles form a face-down pile, and the opponent's tiles are never shown — only how many are left.",
+      "The highest double in either hand starts the round; with no doubles, the hand holding the highest pip total starts. The opener may lay any tile from their hand, and the chain then has two open ends.",
+      "On your turn, play a tile whose number matches one of the two open values, and choose which end of the chain it goes on. A tile that matches nothing cannot be played.",
+      "If nothing in your hand fits and the pile is not empty, draw one tile and keep the turn: a drawn tile may be played immediately, and if it still does not fit you draw again.",
+      "When the pile is empty and nothing fits, you pass and your opponent continues. Each turn is fifteen seconds — when the clock runs out the server draws or passes for you, and a late move is refused.",
+    ],
+    rules: [
+      "Every player holds seven tiles and the pile holds fourteen. Neither hand is ever revealed: the client is given your own tiles, the opponent's count and the pile's count, and nothing else.",
+      "A play must match one of the two open values at the ends of the chain. Doubles are laid crosswise across the chain and open both of their halves to the same number.",
+      "A tile is only attachable to an end when one of its halves equals that end's open value. Where the tile has two different halves, the matching one is the half that meets the chain and the other half becomes the new open value.",
+      "Drawing is only legal when you hold no playable tile. You may not draw to improve your hand, and you may not pass a tile you could have played.",
+      "Passing is only legal when the pile is empty and no tile in your hand matches either open end.",
+      "The server validates every action against its own stored position and requires the version you were shown, so a double submit, a stale tab or a replayed turn is refused rather than applied twice.",
+      "A disconnect resolves as it does in every duel here: a player who does not come back forfeits the match to the opponent. There is no Dominoes practice mode, and nothing hidden is ever sent to a client.",
+    ],
+    scoring: [
+      "There is no running score. A round has one winner: the first player to play their last tile.",
+      "If the round is blocked — the pile is empty and neither player can move — the player holding fewer pips on their remaining tiles wins.",
+      "A blocked round with identical pip totals on both sides is a genuine draw: it is recorded as a draw and moves neither player's win or loss count.",
+      "Resigning, or leaving and not returning, awards the match to the opponent, exactly like a played-out win.",
+      "A ranked online result moves your Dominoes Elo and your Dominoes trophy ladder, and the account win and loss counters. Nothing else is awarded.",
+    ],
+    strategy: [
+      "Count the chain, not your hand. The two open values tell you which of your tiles are dead weight, so the useful question every turn is which end your opponent can still answer.",
+      "Play the tile you can only play now. A tile that matches the current end may never be playable again once the chain has moved on, so feed the ends that are about to close rather than the ones that stay open.",
+      "Doubles are positional. A double leaves five tiles in your hand instead of six and seals you into whichever value it carries, so spend a double early if the chain is likely to leave it behind.",
+      "Draws are a resource for both seats. Because you only draw when you cannot play, your draw pile count is evidence: a long draw tells the opponent your hand is weak in those values, so expect them to close those ends.",
+      "Track the pile. Once it is nearly gone, holding a flexible tile matters more than shedding quickly, because a blocked round is decided by pip totals and low tiles win those.",
+      "Use the clock deliberately. Fifteen seconds is enough for a considered play but not for counting the whole set twice, so settle on a simple heuristic for pip totals before the clock forces the server to act for you.",
+    ],
+    competitive:
+      "Dominoes tests hand management, probability reading and nerve. The rules take a minute to learn, but deciding which end to feed, when to draw and which tile to keep is a skill that keeps improving — and a ranked online result moves your own Dominoes Elo and trophy ladder rather than anything else.",
+    faq: [
+      {
+        q: "Can I draw whenever I want to?",
+        a: "No. Drawing is only legal when you hold no tile matching either open end. If you do hold a playable tile you must play it, and the server refuses a draw that was not forced.",
+      },
+      {
+        q: "What happens if neither player can move?",
+        a: "Once the pile is empty and both seats are stuck, the round is blocked. The player holding fewer pips on their remaining tiles wins, and identical totals make it a draw.",
+      },
+      {
+        q: "What is the turn clock?",
+        a: "Fifteen seconds per turn. The deadline is stamped by the server, and when it passes the server draws one tile if the pile allows and otherwise passes — so an abandoned turn never stalls the match.",
+      },
+      {
+        q: "Does Dominoes have its own rating?",
+        a: "Yes. Ratings are per-game and independent, so a completed online Dominoes match moves this game's own Elo ladder and trophy board and no other game's.",
+      },
+      {
+        q: "Is there a bot I can practise against?",
+        a: "Not yet. Online Dominoes is played against a real opponent only, so every match you see counts as a genuine 1v1 game rather than a practice board.",
+      },
+      {
+        q: "Is it free to play?",
+        a: "Yes. Nothing is wagered, there is no entry cost of any kind, and a ranked result is rewarded with rating and trophies rather than anything of value.",
+      },
+    ],
+    related: ["barrier-blitz", "tic-tac-toe", "dots-and-boxes", "four-in-a-row"],
+  },
 ];
 
 /** Slugs that have a public landing page, in catalog order. */
