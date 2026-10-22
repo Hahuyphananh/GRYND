@@ -29,6 +29,7 @@ import StickyMobileCta from "../components/StickyMobileCta";
 import UpgradeProButton from "../components/UpgradeProButton";
 import GryndProWidget from "../components/GryndProWidget";
 import DailyRewardWidget from "../components/DailyRewardWidget";
+import QuestWidget from "../components/QuestWidget";
 import AsyncState from "../components/states/AsyncState";
 import { SkeletonRows } from "../components/skeletons/Skeleton";
 import { useApiResource } from "../hooks/useApiResource";
@@ -227,6 +228,12 @@ function MainComponent({ adSlot = null, popularGames = [], explainerSlot = null 
           summary, and it is the surface that tells a player the claim needs a
           game played today. Signed-out visitors render nothing. */}
       <DailyRewardWidget />
+
+      {/* Quests — the opposite corner (top-left from `md` up, inline beside the
+          daily reward below it). It opens the whole daily + weekly board in a
+          popup, so a claim never costs a navigation. Signed out renders
+          nothing, like the reward. */}
+      <QuestWidget />
 
       <motion.section
         initial={fadeInVariant.initial}

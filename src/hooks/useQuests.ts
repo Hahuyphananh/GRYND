@@ -30,6 +30,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { notifyCoinBalanceChanged } from "./useCoinBalance";
+import { useTranslation } from "./useTranslation";
 
 export type QuestView = {
   id?: number;
@@ -81,7 +82,18 @@ export type UseQuests = {
   claim: (questId: number) => Promise<number>;
 };
 
-export function useQuests(): UseQuests {
+export type UseQuestsOptions = {
+  /**
+   * Re-read on focus / visibility / bfcache restore. On by default — a page the
+   * player returns to should show the progress the match they just played
+   * produced. The navbar's quest badge turns it OFF: it mounts on every page, so
+   * a page mount is already a fresh read and a board read per alt-tab is not
+   * worth it there (a claim announces itself through the balance event instead).
+   */
+  autoRefresh?: boolean;
+};
+
+export function useQuests({ autoRefresh = true }: UseQuestsOptions = {}): UseQuests {
   const { isLoaded, isSignedIn } = useUser();
   const [board, setBoard] = useState<QuestBoardState | null>(null);
   const [loading, setLoading] = useState(true);
@@ -138,6 +150,7 @@ export function useQuests(): UseQuests {
   // A match settled on another page is what moves progress, so a return to this
   // tab (or a bfcache restore) re-reads instead of showing a stale board.
   useEffect(() => {
+    if (!autoRefresh) return undefined;
     if (!isLoaded || !isSignedIn) return;
 
     const refresh = () => {
@@ -158,7 +171,7 @@ export function useQuests(): UseQuests {
       window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [isLoaded, isSignedIn, load]);
+  }, [autoRefresh, isLoaded, isSignedIn, load]);
 
   const claim = useCallback(
     async (questId: number): Promise<number> => {
@@ -214,4 +227,23 @@ export function useQuests(): UseQuests {
     load,
     claim,
   };
+}
+
+/**
+ * Localised quest copy, with the server's own text as the fallback: a quest the
+ * catalog ships before its locale strings land still reads correctly instead of
+ * showing a raw key.
+ *
+ *   const localise = useQuestText();
+ *   localise(`quests.defs.${quest.definitionId}.title`, quest.title);
+ */
+export function useQuestText() {
+  const { t } = useTranslation();
+  return useCallback(
+    (key: string, fallback: string): string => {
+      const value = t(key);
+      return !value || value === key ? fallback : String(value);
+    },
+    [t],
+  );
 }

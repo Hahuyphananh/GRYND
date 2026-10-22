@@ -792,11 +792,16 @@ test("the journal table is unique per (user, game, match) and keyed to accounts"
   assert.match(schema, /unique\("quest_match_events_user_game_match_unique"\)/);
 
   const journal = JSON.parse(read("src/db/migrations/meta/_journal.json"));
-  const entry = journal.entries.find(
+  const entries = journal.entries.filter(
     (item) => item.tag === "0226_quest_match_events",
   );
-  assert.ok(entry, "the migration must be journaled");
-  assert.equal(entry.idx, journal.entries.length - 1);
+  assert.equal(entries.length, 1, "the migration must be journaled exactly once");
+  const [entry] = entries;
+  // Position, not "newest": this migration stops being the last one the moment
+  // another legitimately lands after it (Dominoes' 0227 did), and drizzle only
+  // requires idx to be the array position. migration-journal-guard.test.mjs
+  // holds that invariant for the whole chain.
+  assert.equal(entry.idx, journal.entries.indexOf(entry));
   assert.ok(
     fs.existsSync(path.join("src/db/migrations", `${entry.tag}.sql`)),
     "the journal entry must resolve to a real file",

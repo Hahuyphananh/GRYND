@@ -35,6 +35,7 @@
     "test:daily-rewards": "node --import tsx --test tests/daily-reward.test.mjs tests/energy-grant.test.mjs",
     "test:daily-reward-widget": "node --import tsx --test --experimental-test-module-mocks tests/daily-reward-widget.test.mjs",
     "verify:daily-reward-claim": "node qa/daily-reward-claim-check.mjs",
+    "verify:quest-widget": "node qa/quest-widget-check.mjs",
     "test:nav-glow": "node --import tsx --test tests/nav-glow.test.mjs",
     "verify:nav-glow": "node qa/nav-glow-check.mjs",
     "test:onboarding": "node --import tsx --test tests/onboarding-questionnaire.test.mjs tests/onboarding-flow.test.mjs tests/onboarding-preferences.test.mjs tests/game-recommendations.test.mjs",

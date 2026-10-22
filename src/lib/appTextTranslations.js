@@ -23,6 +23,13 @@ export const APP_TEXT_TRANSLATIONS = {
       claim: "Claim {reward} coins",
       claiming: "Claiming…",
       inProgress: "In progress",
+      viewAll: "View all quests",
+      badgeLabel: "{count} quests to claim",
+      nextUp: "Next: {title}",
+      doneOf: "{done} / {total} done",
+      allDone:
+        "Every quest for this period is claimed — the next set arrives after the reset.",
+      close: "Close quests",
       defs: {
         "daily-first-match": {
           title: "First match",
@@ -1968,6 +1975,13 @@ export const APP_TEXT_TRANSLATIONS = {
       claim: "Réclamer {reward} pièces",
       claiming: "Réclamation…",
       inProgress: "En cours",
+      viewAll: "Voir toutes les quêtes",
+      badgeLabel: "{count} quêtes à réclamer",
+      nextUp: "Suivante : {title}",
+      doneOf: "{done} / {total} terminées",
+      allDone:
+        "Toutes les quêtes de la période sont réclamées — les suivantes arrivent après la réinitialisation.",
+      close: "Fermer les quêtes",
       defs: {
         "daily-first-match": {
           title: "Premier match",
@@ -3658,6 +3672,13 @@ export const APP_TEXT_TRANSLATIONS = {
       claim: "Reclamar {reward} monedas",
       claiming: "Reclamando…",
       inProgress: "En curso",
+      viewAll: "Ver todas las misiones",
+      badgeLabel: "{count} misiones por reclamar",
+      nextUp: "Siguiente: {title}",
+      doneOf: "{done} / {total} completadas",
+      allDone:
+        "Todas las misiones de este periodo están reclamadas — las nuevas llegan tras el reinicio.",
+      close: "Cerrar misiones",
       defs: {
         "daily-first-match": {
           title: "Primera partida",

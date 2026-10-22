@@ -1,8 +1,8 @@
 // tests/rewards-quests-ui.test.mjs
 //
-// The /rewards quest experience: the page wiring, the component's states, the
-// client hook's request shapes, the two API routes and the claim's server-side
-// guarantees.
+// The quest experience: the /rewards page wiring, the component's states, the
+// client hook's request shapes, the two API routes, the claim's server-side
+// guarantees, and the corner widget + popup the home page and games hub mount.
 //
 // These are the assertions a browser check cannot make: the ABSENCE of a
 // client-supplied amount, the order of the claim checks, the fact that the
@@ -321,4 +321,158 @@ test("the daily reward keeps its own route and its own claim path", () => {
   const card = read("src/components/DailyRewardCard.tsx");
   assert.match(card, /useDailyReward/);
   assert.match(card, /\/rewards\/daily/);
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// 8. The corner quest widget (home page + games hub) and its popup
+// ════════════════════════════════════════════════════════════════════════
+
+const WIDGET = "src/components/QuestWidget.tsx";
+const POPUP = "src/components/QuestPopup.tsx";
+
+for (const page of ["src/app/PageClient.jsx", "src/app/casino/PageClient.jsx"]) {
+  test(`${page} mounts the quest widget beside the daily reward`, () => {
+    const source = read(page);
+    assert.match(
+      source,
+      /import QuestWidget from "[\.\/]+components\/QuestWidget"/,
+      "the widget must be mounted from the shared component",
+    );
+    const daily = source.indexOf("<DailyRewardWidget />");
+    const quests = source.indexOf("<QuestWidget />");
+    assert.ok(daily > -1, "the daily reward still renders");
+    assert.ok(quests > daily, "the quest widget renders beside it, not instead of it");
+  });
+}
+
+test("the widget is the top-left twin of the daily reward, inline on phones", () => {
+  const widget = read(WIDGET);
+  // Pinned left (fixed only from `md` up, below the fixed navbar), never right.
+  assert.match(widget, /md:fixed md:left-4 md:top-\[104px\] md:z-30/);
+  assert.doesNotMatch(widget, /md:right-4/);
+  assert.match(widget, /mt-3 px-4 md:mt-0 md:px-0/);
+  assert.match(widget, /data-testid="quest-widget"/);
+});
+
+test("the widget summarises the server board and never claims on its own", () => {
+  const widget = read(WIDGET);
+  // One read path: the shared hook, the same one /rewards uses.
+  assert.match(widget, /import \{ useQuests \} from "\.\.\/hooks\/useQuests"/);
+  assert.match(widget, /const quests = useQuests\(\)/);
+  assert.doesNotMatch(widget, /fetch\(/, "the widget must not fetch behind the hook's back");
+  // Progress, targets, completion and claimability are the server's numbers.
+  assert.match(widget, /quest\.claimable \? sum \+ \(Number\(quest\.reward\) \|\| 0\)/);
+  assert.match(widget, /quest\.completed/);
+  assert.match(widget, /formatCoins\(nextQuest\.progress\)/);
+  assert.match(widget, /formatCoins\(nextQuest\.target\)/);
+  assert.doesNotMatch(widget, /progress \+=|reward =|claimed = true/);
+  // It opens the board; the only claim button lives in the popup.
+  assert.match(widget, /data-testid="quest-widget-open"/);
+  assert.match(widget, /<QuestPopup open=\{open\} onClose=\{\(\) => setOpen\(false\)\} quests=\{quests\} \/>/);
+  assert.doesNotMatch(widget, /void claim\(/);
+  // A signed-out visitor gets no corner at all.
+  assert.match(widget, /if \(!isLoaded \|\| !isSignedIn\) return null;/);
+});
+
+test("the popup lists both periods with the shared progress and one claim path", () => {
+  const popup = read(POPUP);
+  assert.match(popup, /renderSection\(\s*"daily"/);
+  assert.match(popup, /renderSection\(\s*\n?\s*"weekly"/);
+  assert.match(popup, /t\("quests\.dailyTitle"\)/);
+  assert.match(popup, /t\("quests\.weeklyTitle"\)/);
+  // Every card carries the server's progress and an accessible bar.
+  assert.match(popup, /data-testid={`quest-widget-progress-\$\{id\}`}/);
+  assert.match(popup, /role="progressbar"/);
+  assert.match(popup, /aria-valuenow=\{percent\}/);
+  assert.match(popup, /t\("quests\.progressOf", \{/);
+  // A claim button ONLY for a server-confirmed claimable quest, and it sends
+  // nothing but the quest id (the hook owns the request).
+  assert.match(popup, /quest\.claimed \? \(/);
+  assert.match(popup, /quest\.claimable \? \(/);
+  assert.match(popup, /void claim\(id\)/);
+  assert.match(popup, /disabled=\{claiming\}/);
+  assert.doesNotMatch(popup, /fetch\(/);
+  // The same shared state, handed down — a claim updates the widget's counter.
+  assert.match(popup, /quests: UseQuests/);
+});
+
+test("the popup is a real dialog: portalled, escapable, focus managed", () => {
+  const popup = read(POPUP);
+  assert.match(popup, /import \{ createPortal \} from "react-dom"/);
+  assert.match(popup, /createPortal\(/);
+  assert.match(popup, /document\.body,/);
+  assert.match(popup, /role="dialog"/);
+  assert.match(popup, /aria-modal="true"/);
+  assert.match(popup, /event\.key === "Escape"/);
+  assert.match(popup, /document\.body\.style\.overflow = "hidden"/);
+  assert.match(popup, /previous\.focus\(\)/);
+  // The honest states are rendered as themselves.
+  assert.match(popup, /data-testid="quest-widget-loading"/);
+  assert.match(popup, /data-testid="quest-widget-error"/);
+  assert.match(popup, /data-testid="quest-widget-empty"/);
+  assert.match(popup, /data-testid="quest-widget-retry"/);
+  // Quest text is translated, with the server's copy as the fallback.
+  assert.match(popup, /useQuestText\(\)/);
+  assert.match(popup, /quests\.defs\.\$\{quest\.definitionId\}\.title/);
+});
+
+test("the games hub nav link carries a badge while quests are claimable", () => {
+  const nav = read("src/components/navigation-bar.jsx");
+  assert.match(nav, /import QuestNavBadge from "\.\/QuestNavBadge"/);
+  // Both nav surfaces: the desktop row and the mobile menu.
+  const mounts = nav.split("<QuestNavBadge />").length - 1;
+  assert.equal(mounts, 2, "the badge must be in the desktop row and the mobile menu");
+  // It hangs off the /games entry, not every link.
+  assert.equal(
+    nav.split('path === "/games" ? (').length - 1,
+    2,
+    "the badge must gate on the Games hub path in both lists",
+  );
+
+  const badge = read("src/components/QuestNavBadge.tsx");
+  // Same read as the board: the server's `claimable` flag decides.
+  assert.match(badge, /import \{ useQuests \} from "\.\.\/hooks\/useQuests"/);
+  assert.match(badge, /quest\.claimable/);
+  assert.match(badge, /if \(claimable === 0\) return null;/);
+  // A signed-out visitor gets nothing.
+  assert.match(badge, /if \(!isLoaded \|\| !isSignedIn \|\| !board\) return null;/);
+  // It never fetches or credits on its own.
+  assert.doesNotMatch(badge, /fetch\(|credited|progress \+=/);
+  // The nav mounts on every page, so this instance opts out of the per-focus
+  // re-read and refreshes on the shared balance event (a claim announces it).
+  assert.match(badge, /useQuests\(\{ autoRefresh: false \}\)/);
+  assert.match(badge, /window\.addEventListener\(COIN_BALANCE_EVENT, refresh\)/);
+  assert.match(badge, /data-testid="quest-nav-badge"/);
+  assert.match(badge, /t\("quests\.badgeLabel", \{ count: claimable \}\)/);
+});
+
+test("the nav badge's label is translated and interpolated everywhere", () => {
+  for (const lang of ["en", "fr", "es"]) {
+    const label = APP_TEXT_TRANSLATIONS[lang]?.quests?.badgeLabel;
+    assert.equal(typeof label, "string", `${lang}.quests.badgeLabel`);
+    assert.match(label, /\{count\}/, `${lang}.quests.badgeLabel needs {count}`);
+  }
+});
+
+test("the widget's own copy exists in all three locales", () => {
+  const required = ["viewAll", "nextUp", "doneOf", "allDone", "close"];
+  for (const lang of ["en", "fr", "es"]) {
+    const quests = APP_TEXT_TRANSLATIONS[lang]?.quests;
+    assert.ok(quests, `${lang} must carry quests.*`);
+    for (const key of required) {
+      assert.equal(typeof quests[key], "string", `${lang}.quests.${key}`);
+      assert.ok(quests[key].length > 0, `${lang}.quests.${key} must not be empty`);
+    }
+    assert.match(quests.nextUp, /\{title\}/, `${lang}.quests.nextUp needs {title}`);
+    assert.match(quests.doneOf, /\{done\}/, `${lang}.quests.doneOf needs {done}`);
+    assert.match(quests.doneOf, /\{total\}/, `${lang}.quests.doneOf needs {total}`);
+  }
+  // The UI actually uses them, so a rename would fail here rather than on screen.
+  const widget = read(WIDGET);
+  const popup = read(POPUP);
+  assert.match(widget, /t\("quests\.viewAll"\)/);
+  assert.match(widget, /t\("quests\.nextUp", \{/);
+  assert.match(widget, /t\("quests\.doneOf", \{ done, total: all\.length \}\)/);
+  assert.match(widget, /t\("quests\.allDone"\)/);
+  assert.match(popup, /t\("quests\.close"\)/);
 });

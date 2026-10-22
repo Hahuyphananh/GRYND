@@ -13,6 +13,7 @@ import UpgradeProButton from "../../components/UpgradeProButton";
 import { IconClock, IconSparkles } from "@tabler/icons-react";
 import StickyMobileCta from "../../components/StickyMobileCta";
 import DailyRewardWidget from "../../components/DailyRewardWidget";
+import QuestWidget from "../../components/QuestWidget";
 
 
 import { clearPlayedGames, getPlayedGames } from "../../lib/recentlyPlayed";
@@ -822,6 +823,12 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
           because the reward is gated on playing a game today, and this is the
           page where a player picks one. Signed-out visitors render nothing. */}
       <DailyRewardWidget />
+
+      {/* Quests — the same corner widget the home page carries, on the opposite
+          side (top-left from `md` up, inline beside the daily reward below it).
+          The hub is where a player picks the next match, and quest progress only
+          moves on a settled human-vs-human one, so the reminder belongs here. */}
+      <QuestWidget />
 
       <div className="mx-auto max-w-7xl px-3 py-6 sm:px-4 sm:py-12">
         <section className="mb-8 space-y-3 text-center">

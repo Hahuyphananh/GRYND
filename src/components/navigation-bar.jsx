@@ -10,6 +10,7 @@ import { fadeUp, hoverScale, withReducedMotion, stagger } from "../lib/animation
 import { UIPro01NavShell, UIPro02NavItem } from "./uipro";
 import useInstallPWA from "../hooks/useInstallPWA";
 import AdminBadge from "./AdminBadge";
+import QuestNavBadge from "./QuestNavBadge";
 import { IconCoins, IconDeviceMobile, IconFlame, IconGift, IconMenu, IconSettings, IconStar, IconTrophy, IconX } from "@tabler/icons-react";
 import FrameAvatar from "./FrameAvatar";
 import { cosmeticEffectClass } from "../lib/profileCosmetics";
@@ -498,6 +499,12 @@ function NavigationBar({ currentPath = "" }) {
                       <span className="inline-flex items-center gap-1.5">
                         {NAV_ICONS[path]} {t(NAV_TRANSLATION_KEYS[path])}
                       </span>
+                    ) : path === "/games" ? (
+                      // The hub link is where a player picks what to play next,
+                      // so it is the one nav entry that flags claimable quests.
+                      <span className="inline-flex items-center gap-1.5">
+                        {t(NAV_TRANSLATION_KEYS[path])} <QuestNavBadge />
+                      </span>
                     ) : (
                       t(NAV_TRANSLATION_KEYS[path])
                     )}
@@ -767,6 +774,10 @@ function NavigationBar({ currentPath = "" }) {
                     {NAV_ICONS[path] ? (
                       <span className="inline-flex items-center gap-1.5">
                         {NAV_ICONS[path]} {t(NAV_TRANSLATION_KEYS[path])}
+                      </span>
+                    ) : path === "/games" ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        {t(NAV_TRANSLATION_KEYS[path])} <QuestNavBadge />
                       </span>
                     ) : (
                       t(NAV_TRANSLATION_KEYS[path])
