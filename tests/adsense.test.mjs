@@ -9,8 +9,9 @@
 //
 //   1. every match page (the `[matchId]` / `game/[gameId]` / `table/[tableId]`
 //      routes) — an ad next to a wager in progress is an intrusion; and
-//   2. the games whose lobby and board are ONE page (Dice Flush and Odds
-//      today), where there is no lobby route to scope to that isn't the board.
+//   2. the games whose lobby and board are ONE page (Dice Flush, Odds, Keno
+//      and the Neon Flush reskins today), where there is no lobby route to
+//      scope to that isn't the board.
 //
 // The page list is asserted as an exact SET against what the app actually
 // renders, so a new page that picks the loader up — or a protected page that
@@ -77,6 +78,9 @@ const ALLOWED = [
   // like every other match page).
   "src/app/casino/barrier-blitz/page.tsx",
   "src/app/casino/chess/page.jsx",
+  // Dominoes' lobby is its own route and its board lives at
+  // /casino/dominoes/[matchId], which stays ad-free like every other match page.
+  "src/app/casino/dominoes/page.tsx",
   "src/app/casino/dots-and-boxes/page.tsx",
   "src/app/casino/four-in-a-row/page.tsx",
   "src/app/casino/hex-duel/page.tsx",

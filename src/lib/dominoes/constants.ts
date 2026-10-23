@@ -148,6 +148,18 @@ export const END_REASONS = {
 export const DOMINOES_LOCK_NAMESPACE = 0x444f4d4e & 0x7fffffff; // "DOMN"
 
 /**
+ * The synthetic id that occupies the second seat of a FREE PRACTICE match.
+ *
+ * A bot is not an account: it has no `users` row, so it can never be rated,
+ * never appear on a leaderboard, never receive the daily reward and can never
+ * be found by `getSeatIdentity` (which queries `users`). It is a stable string
+ * — not a UUID and not a Clerk id — so nothing that expects a real player can
+ * mistake it for one. `is_ai` on the row is what declares the seat a bot; this
+ * id is what the move log and the projection record.
+ */
+export const DOMINOES_AI_PLAYER_ID = "dominoes_ai_bot";
+
+/**
  * How long the seat on turn has to act. The store stamps an absolute instant
  * (`turn_deadline_at`) from the SERVER clock and resolves an expired turn with
  * `applyTimeout`; a client countdown is decoration, never evidence.

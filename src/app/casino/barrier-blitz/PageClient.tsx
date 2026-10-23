@@ -55,7 +55,7 @@
 // /casino/barrier-blitz/play-ai and stays free.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMatchRouter } from "../../../hooks/useMatchRouter";
 import { useUser } from "@clerk/nextjs";
 import { usePostHog } from "posthog-js/react";
 import { IconRobot, IconWall } from "@tabler/icons-react";
@@ -97,7 +97,7 @@ type LobbyRow = {
 export default function BarrierBlitzLobbyPage() {
   const { isSignedIn, user } = useUser();
   const { socket } = useSocket();
-  const router = useRouter();
+  const router = useMatchRouter();
   const posthog = usePostHog();
 
   // Coin wager: the player picks the stake the lobby opens at, and the server

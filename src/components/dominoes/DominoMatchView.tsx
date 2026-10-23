@@ -84,6 +84,9 @@ export type DominoSnapshot = {
   winnerId?: string | null;
   resultReason?: string | null;
   players?: { player1?: SeatIdentity; player2?: SeatIdentity } | null;
+  /** True for a free practice match: the opponent seat is the bot. */
+  isAi?: boolean;
+  aiDifficulty?: string | null;
 };
 
 export type DominoMatchViewProps = {
@@ -137,8 +140,12 @@ export default function DominoMatchView({
   const players = snapshot.players ?? null;
   const viewerIdentity = viewerSeat ? (players?.[viewerSeat] ?? null) : null;
   const opponentIdentity = opponentSeat ? (players?.[opponentSeat] ?? null) : null;
-  const opponentName =
-    opponentIdentity?.name || (opponentSeat ? seatLabel(opponentSeat, viewerSeat) : "Opponent");
+  // A bot seat has no identity (no `users` row), so it is named by the match's
+  // own `isAi` flag rather than by a missing name.
+  const opponentIsAi = Boolean(snapshot.isAi);
+  const opponentName = opponentIsAi
+    ? t("games.dominoes.ai_opponent")
+    : opponentIdentity?.name || (opponentSeat ? seatLabel(opponentSeat, viewerSeat) : "Opponent");
 
   const chain = Array.isArray(snapshot.chain) ? snapshot.chain : [];
   const chainEmpty = chain.length === 0;
@@ -180,7 +187,7 @@ export default function DominoMatchView({
             iconKey={opponentIdentity?.iconKey ?? null}
             profileFrame={opponentIdentity?.profileFrame ?? null}
             name={opponentName}
-            isAi={false}
+            isAi={opponentIsAi}
             isGuest={Boolean(opponentIdentity?.isGuest)}
             size="h-9 w-9"
           />

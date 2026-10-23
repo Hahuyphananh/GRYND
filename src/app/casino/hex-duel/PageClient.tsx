@@ -22,7 +22,7 @@
 // a match settles from the server's replay of the accepted moves.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMatchRouter } from "../../../hooks/useMatchRouter";
 import { useUser } from "@clerk/nextjs";
 import { usePostHog } from "posthog-js/react";
 import { IconEye, IconHexagon } from "@tabler/icons-react";
@@ -66,7 +66,7 @@ function stakeLabel(value: unknown): string {
 }
 
 export default function HexDuelLobbyPage() {
-  const router = useRouter();
+  const router = useMatchRouter();
   const { user } = useUser();
   const posthog = usePostHog();
   const coinBalance = useCoinBalance();

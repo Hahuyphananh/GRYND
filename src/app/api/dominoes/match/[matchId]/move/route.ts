@@ -15,6 +15,10 @@
 // inside the store's row-locked transaction, so the server decides every
 // consequence, including whether drawing or passing is legal at all.
 //
+// Free practice vs the bot goes through this same route: the store resolves the
+// caller's seat from the row, so a guest can only ever act in its own match, and
+// the bot's answers are applied server-side inside the same transaction.
+//
 // `expectedVersion` is REQUIRED here (the match's `ply`): a draw keeps the turn,
 // so an unversioned retried draw would silently consume a second tile. A
 // double-submit, a retried request or a stale tab is a 409, and a request that
@@ -22,7 +26,7 @@
 // advanced in the same transaction.
 
 import { NextResponse } from "next/server";
-import { requireAgeVerifiedUser } from "../../../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../../../lib/auth/guestSession";
 import { logError } from "../../../../../../lib/logError";
 import {
   isMatchId,
@@ -35,9 +39,9 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ matchId: string }> },
 ) {
-  const gate = await requireAgeVerifiedUser();
+  const gate = await requirePracticePlayer();
   if (gate.response) return gate.response;
-  const userId = gate.userId;
+  const userId = gate.playerId;
   if (!userId) {
     return NextResponse.json(
       { success: false, error: "Unauthenticated" },

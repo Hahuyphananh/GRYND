@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMatchRouter } from "../../../hooks/useMatchRouter";
 import { useUser } from "@clerk/nextjs";
 import { usePostHog } from "posthog-js/react";
 import { useSocket } from "../../../context/SocketProvider";
@@ -22,7 +22,7 @@ import {
 export default function DotsAndBoxesLobbyPage() {
   const { isSignedIn, user } = useUser();
   const { socket } = useSocket();
-  const router = useRouter();
+  const router = useMatchRouter();
   const posthog = usePostHog();
   const { t } = useTranslation();
 

@@ -20,7 +20,7 @@
 // blackjack layout / farkle color scheme.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMatchRouter } from "../../../hooks/useMatchRouter";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
 import PvpLobbyPage, { CoinIcon } from "../../../components/lobby/PvpLobby";
@@ -38,7 +38,7 @@ import { IconRoute, IconShieldCheck } from "@tabler/icons-react";
 
 export default function LaneRushDuelLobbyPage() {
   const { isSignedIn, user } = useUser();
-  const router = useRouter();
+  const router = useMatchRouter();
   const posthog = usePostHog();
   const { socket } = useSocket();
 

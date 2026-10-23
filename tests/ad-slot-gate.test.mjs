@@ -85,6 +85,20 @@ test(
       "../src/components/MonetagScript.tsx"
     );
 
+    /**
+     * A loader returns [<AdCodeMarker />, <script … />] — the marker flags the
+     * document so a lobby's ad code cannot follow the player into a match. The
+     * assertions below are about the SCRIPT it ships, plus that marker.
+     */
+    const loaderChildren = (element) =>
+      Array.isArray(element?.props?.children)
+        ? element.props.children
+        : [element?.props?.children];
+    const shippedScript = (element) =>
+      loaderChildren(element).find((child) => child?.type === "script");
+    const shippedMarker = (element) =>
+      loaderChildren(element).find((child) => child?.type?.name === "AdCodeMarker");
+
     // ── 1. Free viewer, configured unit → the ad block and the loader ──────
     const slot = await AdSlot({ placement: "home" });
     assert.ok(slot, "a free viewer with a configured unit must get a slot");
@@ -95,15 +109,21 @@ test(
     assert.equal(unit.props.slotId, REAL_SLOT);
     assert.equal(unit.props.placement, "home");
 
-    const tag = await AdSenseScript();
-    assert.ok(tag, "a free viewer must get the AdSense loader");
+    const adsenseResult = await AdSenseScript();
+    assert.ok(adsenseResult, "a free viewer must get the AdSense loader");
+    assert.ok(shippedMarker(adsenseResult), "the loader must flag the document");
+    const tag = shippedScript(adsenseResult);
+    assert.ok(tag, "the loader must ship Google's script");
     assert.ok(
       String(tag.props.src).includes(`client=${PUBLISHER}`),
       "the loader must use the configured publisher",
     );
 
-    const monetagTag = await MonetagScript();
-    assert.ok(monetagTag, "a free viewer must get the Monetag tag");
+    const monetagResult = await MonetagScript();
+    assert.ok(monetagResult, "a free viewer must get the Monetag tag");
+    assert.ok(shippedMarker(monetagResult), "the tag must flag the document");
+    const monetagTag = shippedScript(monetagResult);
+    assert.ok(monetagTag, "the tag must ship Monetag's script");
     assert.equal(monetagTag.props.src, MONETAG_TAG_SRC);
     assert.equal(monetagTag.props["data-zone"], REAL_MONETAG_ZONE);
     assert.equal(monetagTag.props["data-cfasync"], "false");

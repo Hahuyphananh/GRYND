@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMatchRouter } from "../../../hooks/useMatchRouter";
 import { WAGER_BY_KEY } from "../../../lib/defaultWagers";
 import { PVP_WINNER_SHARE } from "../../../lib/games/economy";
 import PvpLobbyPage, { formatTokens } from "../../../components/lobby/PvpLobby";
@@ -74,7 +74,7 @@ async function postPoolJson(
 }
 
 export default function PoolLobbyPage() {
-  const router = useRouter();
+  const router = useMatchRouter();
   const [lobbies, setLobbies] = useState<any[]>([]);
   // False once the first list response lands, so the empty state never
   // flashes before the request resolves.

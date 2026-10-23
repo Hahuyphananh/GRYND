@@ -36,21 +36,29 @@
 //
 // ── FREE PRACTICE ─────────────────────────────────────────────────────────
 //
-// There is none yet: this step ships the ONLINE table only. A signed-out visitor
-// gets the shared "sign in to play" action (the lobby is public to READ, which is
-// why /casino/dominoes is in `GAME_ROUTE_PATTERNS` in src/proxy.ts).
+// "Play vs AI" opens an unrated practice match against the built-in bot through
+// POST /api/dominoes/create-ai. The bot occupies player2 from creation, so the
+// practice row is never listed in the open-lobby pool, and a signed-out visitor
+// can play it (the route mints a guest identity; every follow-up route
+// authorises by seat). Online play keeps the account + age gate.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMatchRouter } from "../../../hooks/useMatchRouter";
 import { useUser } from "@clerk/nextjs";
 import { usePostHog } from "posthog-js/react";
 
 import PvpLobbyPage from "../../../components/lobby/PvpLobby";
 import MatchWaiting from "../../../components/lobby/MatchWaiting";
+import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import { useSocket } from "../../../context/SocketProvider";
 import { useTranslation } from "../../../hooks/useTranslation";
 import { useSocketAwarePoll, useVisiblePoll } from "../../../hooks/useVisiblePoll";
 import { MATCH_STATUS } from "../../../lib/dominoes/constants";
+import {
+  readStoredAiDifficulty,
+  storeAiDifficulty,
+  type AiDifficulty,
+} from "../../../lib/aiDifficulty";
 import {
   DOMINOES_LOBBY_ROOM,
   DOMINOES_MATCH_UPDATED,
@@ -86,10 +94,16 @@ export default function DominoesLobbyPage() {
   const { isSignedIn, user } = useUser();
   const { socket } = useSocket();
   const GAME_NAME = t(GAME_NAME_KEY);
-  const router = useRouter();
+  const router = useMatchRouter();
   const posthog = usePostHog();
 
   const [busy, setBusy] = useState(false);
+  // Practice: the tier is a device preference, remembered per game by the shared
+  // picker and sent with the create-AI request.
+  const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
+    readStoredAiDifficulty("dominoes"),
+  );
+  const [aiBusy, setAiBusy] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lobbies, setLobbies] = useState<LobbyRow[]>([]);
@@ -253,6 +267,42 @@ export default function DominoesLobbyPage() {
     [cancelling, pokeLobby, fetchLobbies],
   );
 
+  /**
+   * Start a free, UNRATED practice match against the bot.
+   *
+   * The server owns everything: it deals, seats the bot on player2, picks the
+   * opening seat from the tiles and plays the bot's first turn if it won the
+   * bid. The page only navigates to the id it is given.
+   */
+  const playAi = useCallback(async () => {
+    if (aiBusy) return;
+    setAiBusy(true);
+    setError(null);
+    try {
+      storeAiDifficulty("dominoes", aiDifficulty);
+      const res = await fetch("/api/dominoes/create-ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ difficulty: aiDifficulty }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        setError(data?.error || t("games.dominoes.error_find"));
+        return;
+      }
+      posthog?.capture("dominoes_match_started", {
+        mode: "ai",
+        difficulty: aiDifficulty,
+      });
+      router.push(matchPath(data.data.matchId));
+    } catch {
+      setError(t("games.dominoes.error_find"));
+    } finally {
+      setAiBusy(false);
+    }
+  }, [aiBusy, aiDifficulty, matchPath, posthog, router, t]);
+
   const myName =
     user?.username || user?.firstName || user?.fullName || t("games.dominoes.you");
 
@@ -308,6 +358,15 @@ export default function DominoesLobbyPage() {
         playLabel={t("games.dominoes.find_match")}
         playBusyLabel={t("games.dominoes.searching")}
         canPlay={Boolean(isSignedIn)}
+        // Free practice stays open to a signed-out visitor: the create-AI route
+        // mints a guest seat, and the match view authorises by seat.
+        vsAi={{
+          label: "Play vs AI. Free practice",
+          badge: "Free",
+          disabled: false,
+          busy: aiBusy,
+          onClick: playAi,
+        }}
         myOpenId={myOpenId}
         // Resuming an open lobby lands on the SAME matchmaking screen as creating
         // one: the lobby is still waiting for somebody, so the board is not where
@@ -333,6 +392,18 @@ export default function DominoesLobbyPage() {
         joinLabel={t("games.dominoes.join")}
         onRefresh={fetchLobbies}
         error={error}
+        children={
+          <AiDifficultyPicker
+            gameKey="dominoes"
+            value={aiDifficulty}
+            onChange={setAiDifficulty}
+            hint={{
+              easy: "The bot often settles for a worse tile, so a beginner can beat it.",
+              normal: "The bot sheds its heavy tiles and keeps the ones that still fit most of the time.",
+              hard: "The bot almost never slips: it counts pips, keeps its options open and blocks when it can.",
+            }}
+          />
+        }
       />
 
       {/* The matchmaking takeover, held open for as long as the server says the

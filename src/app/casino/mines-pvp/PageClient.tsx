@@ -22,7 +22,7 @@
 // blackjack layout / farkle color scheme.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMatchRouter } from "../../../hooks/useMatchRouter";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
 import PvpLobbyPage, { CoinIcon } from "../../../components/lobby/PvpLobby";
@@ -100,7 +100,7 @@ function ShieldCheckIcon({ className = "" }: { className?: string }) {
 
 export default function MinesPvpLobbyPage() {
   const { isSignedIn, user } = useUser();
-  const router = useRouter();
+  const router = useMatchRouter();
   const posthog = usePostHog();
   const { socket } = useSocket();
 

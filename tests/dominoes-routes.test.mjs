@@ -30,6 +30,7 @@ import { join } from "node:path";
 
 import { dominoesMatches, dominoesMoves } from "../src/db/schema.ts";
 import {
+  DOMINOES_AI_PLAYER_ID,
   END_REASONS,
   MATCH_STATUS,
   RESULT,
@@ -50,6 +51,7 @@ const MALLORY = "user_mallory";
 /** Routes, by the name the surface test uses. */
 const R = {
   createOrJoin: "src/app/api/dominoes/create-or-join/route.ts",
+  createAi: "src/app/api/dominoes/create-ai/route.ts",
   available: "src/app/api/dominoes/available/route.ts",
   match: "src/app/api/dominoes/match/[matchId]/route.ts",
   move: "src/app/api/dominoes/match/[matchId]/move/route.ts",
@@ -57,6 +59,13 @@ const R = {
   cancel: "src/app/api/dominoes/match/[matchId]/cancel/route.ts",
   disconnect: "src/app/api/dominoes/disconnect-forfeit/route.ts",
 };
+
+/**
+ * The FREE-PRACTICE routes: they accept a signed-out guest (and the account gate
+ * instead, for a signed-in caller), because a vs-AI match is free and unrated.
+ * Every other route stays on the age-verified account gate.
+ */
+const PRACTICE_ROUTES = new Set(["createAi", "match", "move", "forfeit"]);
 
 /* -------------------------------------------------------------------------- *
  * The fake database
@@ -213,6 +222,36 @@ function installMocks(t) {
   session.userId = ALICE;
   session.gate = "ok";
 
+  // The practice routes go through the shared guest gate, which reads Clerk
+  // itself. Delegated to the same session mock so a test can drive
+  // signed-out / under-age / signed-in without a browser cookie jar.
+  t.mock.module("../src/lib/auth/guestSession.ts", {
+    namedExports: {
+      requirePracticePlayer: async () => {
+        if (session.gate === "blocked") {
+          return {
+            response: Response.json(
+              { success: false, error: "Age verification required" },
+              { status: 403 },
+            ),
+            playerId: null,
+            isGuest: false,
+          };
+        }
+        if (session.gate === "signed-out") {
+          return {
+            response: Response.json(
+              { success: false, error: "Unauthorized" },
+              { status: 401 },
+            ),
+            playerId: null,
+            isGuest: false,
+          };
+        }
+        return { response: null, playerId: session.userId, isGuest: false };
+      },
+    },
+  });
   t.mock.module("../src/lib/auth/requireAgeVerified.ts", {
     namedExports: {
       requireAgeVerifiedUser: async () => {
@@ -448,9 +487,24 @@ test("surface: the route list is exactly the audited one, and every route is gat
       assert.doesNotMatch(src, /requireAgeVerifiedUser\(/);
       continue;
     }
+    if (PRACTICE_ROUTES.has(name)) {
+      // Free practice accepts a guest; the store authorises by SEAT, so a guest
+      // can only ever read or act in its own match.
+      assert.match(
+        src,
+        /requirePracticePlayer/,
+        `${name} must accept a guest practice player`,
+      );
+      assert.doesNotMatch(
+        src,
+        /requireAgeVerifiedUser/,
+        `${name} must not keep the account-only age gate`,
+      );
+      continue;
+    }
     assert.match(src, /requireAgeVerifiedUser\(\)/, `${name} must be session-gated`);
-    // Online Dominoes has no guest seat: free practice is the offline board, not
-    // a place in the ranked lobby.
+    // Matchmaking stays account-only: a guest may practise against the bot, but
+    // never takes a seat in the ranked lobby.
     assert.doesNotMatch(
       src,
       /requirePracticePlayer/,
@@ -501,6 +555,7 @@ test("surface: an unauthenticated or under-age caller is stopped before any read
 
   for (const call of [
     () => createOrJoin({ gate: "signed-out" }),
+    () => invoke(R.createAi, { gate: "signed-out" }),
     () => play({ action: { type: "draw" }, expectedVersion: 0 }, { gate: "signed-out" }),
     () => forfeit({ gate: "blocked" }),
     () => cancel({ gate: "blocked" }),
@@ -1051,4 +1106,71 @@ test("POST disconnect-forfeit: it is token-gated, id-checked and closed without 
 
   if (previousKey === undefined) delete process.env.CLERK_SECRET_KEY;
   else process.env.CLERK_SECRET_KEY = previousKey;
+});
+
+/* -------------------------------------------------------------------------- *
+ * Free practice vs the bot: the REAL entry route and the bot's inline turn
+ * -------------------------------------------------------------------------- */
+
+/** The simplest legal action for the viewer, straight off the server's projection. */
+function firstLegalAction(dto) {
+  const hand = Array.isArray(dto.hand) ? dto.hand : [];
+  const chain = Array.isArray(dto.chain) ? dto.chain : [];
+  const open = dto.openEnds ?? { left: null, right: null };
+  if (chain.length === 0) {
+    return { type: "play", tile: hand[0], end: "left" };
+  }
+  for (const tile of hand) {
+    const [a, b] = String(tile).split("-").map(Number);
+    if (a === open.left || b === open.left) return { type: "play", tile, end: "left" };
+    if (a === open.right || b === open.right) return { type: "play", tile, end: "right" };
+  }
+  return Number(dto.drawPileCount) > 0 ? { type: "draw" } : { type: "pass" };
+}
+
+test("POST create-ai: seats the bot, and the bot answers inside the human's turn", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+
+  const created = await invoke(R.createAi, { body: { difficulty: "hard" } });
+  assert.equal(created.status, 200);
+  assert.equal(created.json.success, true);
+  assert.equal(created.json.data.practice, true);
+  assert.equal(created.json.data.aiDifficulty, "hard");
+
+  // The row is a live practice match: both seats filled, never an open lobby.
+  const row = liveMatch(fake);
+  assert.equal(row.player1Id, ALICE);
+  assert.equal(row.player2Id, DOMINOES_AI_PLAYER_ID);
+  assert.equal(row.isAi, true);
+  assert.equal(row.aiDifficulty, "hard");
+  assert.equal(row.status, MATCH_STATUS.PLAYING);
+  assert.ok(row.turnDeadlineAt instanceof Date);
+
+  const matchId = created.json.data.matchId;
+  const read = await getMatch({ matchId });
+  assert.equal(read.status, 200);
+  assert.equal(read.json.data.isAi, true);
+  assert.equal(read.json.data.viewerSeat, "player1");
+
+  // If the bot won the opening bid its turn is ALREADY played: created inline.
+  const dto = read.json.data;
+  if (Number(dto.ply) > 0) assert.equal(dto.isViewerTurn, true);
+
+  const before = Number(dto.ply);
+  const action = firstLegalAction(dto);
+  const moved = await play({ action, expectedVersion: dto.version }, { matchId });
+  assert.equal(moved.status, 200);
+
+  if (action.type === "play" && !moved.json.data.matchCompleted) {
+    // The bot answered in the same transaction, so the turn is the human's again
+    // and the version advanced by more than the human's own action.
+    assert.equal(moved.json.data.match.isViewerTurn, true);
+    assert.ok(Number(moved.json.data.match.ply) >= before + 2);
+  }
+
+  const botRows = moveLog(fake).filter((m) => m.playerId === DOMINOES_AI_PLAYER_ID);
+  assert.ok(botRows.length >= 1, "the bot's actions are logged like a human's");
+  // Practice is unrated: no rating or trophy writer was ever called.
+  assert.equal(writers.rating.length, 0);
+  assert.equal(writers.trophy.length, 0);
 });

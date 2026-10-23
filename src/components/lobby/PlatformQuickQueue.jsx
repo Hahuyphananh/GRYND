@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSocket } from "../../context/SocketProvider";
-import { useRouter } from "next/navigation";
+import { useMatchRouter } from "../../hooks/useMatchRouter";
 import { QuickQueueStatus } from "./QuickQueueStatus";
 
 export const QUICK_QUEUE_GAME_OPTIONS = [
@@ -84,7 +84,7 @@ export function usePlatformQuickQueue(options = {}) {
   const [notification, setNotification] = useState(null);
   const [statusRefreshKey, setStatusRefreshKey] = useState(0);
   const { socket, userId } = useSocket();
-  const router = useRouter();
+  const router = useMatchRouter();
 
   const refresh = useCallback(async () => {
     try {

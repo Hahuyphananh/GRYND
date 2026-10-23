@@ -46,7 +46,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { useUser } from "@clerk/nextjs";
 import { IconAlertTriangle } from "@tabler/icons-react";
 
 import { useSocket } from "../../../../context/SocketProvider";
@@ -116,15 +115,13 @@ export default function DominoesMatchPage() {
   const params = useParams<{ matchId: string }>();
   const router = useRouter();
   const { socket } = useSocket();
-  const { user, isLoaded: identityLoaded } = useUser();
   const shouldReduce = useReducedMotion();
 
   const matchId = params?.matchId;
   const apiMatch = `/api/dominoes/match/${matchId}`;
-  // The route itself is public (every game's is), but the snapshot is behind the
-  // age-verified account gate — so a signed-out tab is told to sign in instead of
-  // hammering an account-gated endpoint.
-  const signedOut = identityLoaded && !user;
+  // No sign-in gate on this page: the match routes accept a GUEST practice
+  // player (the store authorises by seat), and a signed-out tab with no guest
+  // cookie gets the route's own 401, which renders as a normal load error.
 
   const [match, setMatch] = useState<Snapshot | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -166,10 +163,6 @@ export default function DominoesMatchPage() {
   const fetchSnapshot = useCallback(
     async (signal?: AbortSignal) => {
       if (!matchId) return;
-      if (signedOut) {
-        setLoadError(t("games.dominoes.error_sign_in"));
-        return;
-      }
       try {
         const res = await fetch(apiMatch, { cache: "no-store", signal });
         if (signal?.aborted) return;
@@ -197,7 +190,7 @@ export default function DominoesMatchPage() {
         // the next push / reconnect reads again.
       }
     },
-    [apiMatch, matchId, signedOut, t],
+    [apiMatch, matchId, t],
   );
 
   const refresh = useCallback(() => {
@@ -396,7 +389,11 @@ export default function DominoesMatchPage() {
 
   const opponentSeat = match?.opponentSeat ?? null;
   const opponentIdentity = opponentSeat ? (match?.players?.[opponentSeat] ?? null) : null;
-  const opponentName = opponentIdentity?.name || t("games.dominoes.opponent");
+  // A practice opponent is the bot, named as such — it has no `users` row, so the
+  // seat-identity resolver returns null for it.
+  const opponentName = match?.isAi
+    ? t("games.dominoes.ai_opponent")
+    : opponentIdentity?.name || t("games.dominoes.opponent");
 
   const moves = useMemo<MoveRow[]>(
     () => (Array.isArray(match?.moves) ? (match?.moves as MoveRow[]) : []),

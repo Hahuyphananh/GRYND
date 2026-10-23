@@ -16,7 +16,7 @@
 // 10%). Practice against the bot stays free.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMatchRouter } from "../../../hooks/useMatchRouter";
 import { useUser } from "@clerk/nextjs";
 import { usePostHog } from "posthog-js/react";
 import { IconGolf } from "@tabler/icons-react";
@@ -37,7 +37,7 @@ type LobbyRow = {
 export default function MiniGolfLobbyPage() {
   const { isSignedIn, user } = useUser();
   const { socket } = useSocket();
-  const router = useRouter();
+  const router = useMatchRouter();
   const posthog = usePostHog();
 
   // Coin wager: the player picks the stake the lobby opens at, and the server

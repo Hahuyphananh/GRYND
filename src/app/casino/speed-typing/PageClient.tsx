@@ -23,7 +23,7 @@
 // the SNAPSHOT's verdict. Nothing on either screen decides a result.
 
 import { useCallback, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMatchRouter } from "../../../hooks/useMatchRouter";
 import { useUser } from "@clerk/nextjs";
 import { IconKeyboardShow } from "@tabler/icons-react";
 import PvpLobbyPage from "../../../components/lobby/PvpLobby";
@@ -35,7 +35,7 @@ import {
 
 export default function SpeedTypingLobbyPage() {
   const { isSignedIn } = useUser();
-  const router = useRouter();
+  const router = useMatchRouter();
 
   // Coin wager: the player picks the stake the lobby opens at, and the server
   // escrows BOTH seats when an opponent joins. vs-AI practice stays free.

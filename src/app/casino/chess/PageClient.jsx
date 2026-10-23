@@ -1,5 +1,5 @@
 "use client";
-import { useRouter } from "next/navigation";
+import { useMatchRouter } from "../../../hooks/useMatchRouter";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
 import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
@@ -33,7 +33,7 @@ const TIMER_OPTIONS = [
 ];
 
 export default function ChessLobby() {
-  const router = useRouter();
+  const router = useMatchRouter();
   const { socket } = useSocket();
 
   const [showBetPopup, setShowBetPopup] = useState(false);

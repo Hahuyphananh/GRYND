@@ -27,6 +27,10 @@ import fs from "node:fs";
 import { join, relative, sep } from "node:path";
 
 import {
+  isMatchHref,
+  resolveMatchNavigation,
+} from "../src/lib/matchNavigation.ts";
+import {
   AD_PLACEMENT_ENV,
   DEFAULT_ADSENSE_PUBLISHER_ID,
   DEFAULT_MONETAG_ZONE,
@@ -55,6 +59,8 @@ const UNIT = read("src/components/AdUnit.tsx");
 const LOADER = read("src/components/AdSenseScript.tsx");
 const MONETAG = read("src/components/MonetagScript.tsx");
 const PROXY = read("src/proxy.ts");
+const MARKER = read("src/components/AdCodeMarker.tsx");
+const MATCH_ROUTER = read("src/hooks/useMatchRouter.ts");
 
 /** Every page file under src/app, repo-relative POSIX. */
 function allPages(dir = "src/app") {
@@ -167,24 +173,52 @@ test("every ad slot or loader sits on a non-game browsing page", () => {
 });
 
 test("no ad capability exists inside gameplay", () => {
-  // Match/board routes are dynamic routes; nothing there may carry a slot or
-  // even a loader — EITHER provider's loader (the rule is about gameplay, not
-  // about one vendor).
+  /** A gameplay page may carry NO ad surface at all — not a slot, not either
+   * provider's loader (the rule is about gameplay, not about one vendor). */
+  const assertAdFree = (page, why) => {
+    const source = read(page);
+    assert.ok(!/<AdSlot\s/.test(source), `${page} ${why} — no ad slot`);
+    assert.ok(!/AdSenseScript/.test(source), `${page} ${why} — no ad loader`);
+    assert.ok(!/MonetagScript/.test(source), `${page} ${why} — no Monetag loader`);
+  };
+
+  // 1. Any per-entity route (`[matchId]`, `game/[gameId]`, `table/[tableId]`,
+  //    `[tableAmount]` …) is a match or a match sub-page.
   for (const page of allPages()) {
     if (!/\[[^\]]+\]/.test(page)) continue;
-    const source = read(page);
-    assert.ok(!/<AdSlot\s/.test(source), `${page} is a match route and must have no ad slot`);
-    assert.ok(!/AdSenseScript/.test(source), `${page} is a match route and must have no ad loader`);
-    assert.ok(!/MonetagScript/.test(source), `${page} is a match route and must have no Monetag loader`);
+    assertAdFree(page, "is a match route");
   }
 
-  // Games whose lobby and board share one route stay entirely ad-free.
+  // 2. Structurally, every /casino page BELOW a game's lobby is gameplay too.
+  //    The lobby is exactly /casino/<slug>; `/casino/<slug>/ai`,
+  //    `/casino/<slug>/play-ai`, `/casino/<slug>/test` and
+  //    `/casino/<slug>/<tableAmount>` are STATIC routes, so the dynamic-segment
+  //    rule above cannot see them. Classifying by route depth instead of by a
+  //    hand-kept list means a new game (or a new practice/AI route for an
+  //    existing one) is covered the moment it is added — the matchmaking board
+  //    must never sit on the same page as an ad tag.
+  const deeperGamePages = allPages().filter((page) => {
+    const route = page
+      .replace(/^src\/app\//, "")
+      .replace(/\/page\.(jsx?|tsx?)$/, "");
+    if (!route.startsWith("casino/")) return false;
+    // "casino" (the hub) and "casino/<slug>" (a lobby) are browsing surfaces;
+    // anything deeper belongs to the game itself.
+    return route.split("/").length > 2;
+  });
+  assert.ok(
+    deeperGamePages.length >= 15,
+    `expected the gameplay route tree (found ${deeperGamePages.length}) — a route walk that finds nothing proves nothing`,
+  );
+  for (const page of deeperGamePages) {
+    assertAdFree(page, "is a gameplay route (below the lobby)");
+  }
+
+  // 3. Games whose lobby and board share the lobby URL are one page, not two:
+  //    there is no ad-free place to put a tag, so they carry none at all.
   for (const page of allPages()) {
     if (!/dice-flush|odds|keno|neon-flush/.test(page)) continue;
-    const source = read(page);
-    assert.ok(!/<AdSlot\s/.test(source), `${page} plays on its lobby URL — no ad slot`);
-    assert.ok(!/AdSenseScript/.test(source), `${page} plays on its lobby URL — no ad loader`);
-    assert.ok(!/MonetagScript/.test(source), `${page} plays on its lobby URL — no Monetag loader`);
+    assertAdFree(page, "plays on its lobby URL");
   }
 });
 
@@ -398,4 +432,148 @@ test("the network's worker file is served from the root under a safe name", () =
   assert.match(worker, /self\.options/, "the file must be the network's own worker");
   assert.match(worker, /importScripts\(/, "…which pulls the network's worker script");
   assert.match(worker, /"zoneId"/, "…and is bound to a zone");
+});
+
+// ── Ad code must not survive into gameplay ──────────────────────────────────
+// The loaders' behaviour is DOCUMENT-global (Monetag installs a popunder click
+// handler and can keep a vignette / in-page-push node on screen; the AdSense
+// loader is what Auto Ads hook into), and a Next client-side navigation never
+// unloads the document. A match page's own HTML is ad-free — these tests make
+// sure nothing a LOBBY loaded follows the player onto the board.
+
+test("only a match URL is classified as gameplay", () => {
+  const browsing = [
+    "",
+    "/",
+    "/games",
+    "/casino",
+    "/profil",
+    "/classement",
+    "/games/chess",
+    "/games/chess/play",
+    "/games/chess/play?auto=1",
+    "/casino/chess",
+    "/casino/chess/",
+  ];
+  for (const href of browsing) {
+    assert.equal(isMatchHref(href), false, `${href} is a browsing/lobby URL`);
+  }
+
+  const gameplay = [
+    "/casino/chess/ai",
+    "/casino/chess/ai?gameId=1&difficulty=2",
+    "/casino/chess/100",
+    "/casino/four-in-a-row/game/abc",
+    "/casino/four-in-a-row/play-ai",
+    "/casino/precision/test",
+    "/casino/hex-duel/history",
+    "/casino/keno-pvp/abc",
+    "/games/chess/ai",
+    "/games/chess/play-ai",
+    "/games/four-in-a-row/game/abc",
+  ];
+  for (const href of gameplay) {
+    assert.equal(isMatchHref(href), true, `${href} is gameplay`);
+  }
+});
+
+test("a match is a document navigation only while the document has ad code", () => {
+  assert.equal(resolveMatchNavigation("/casino/chess/ai", true), "document");
+  assert.equal(resolveMatchNavigation("/casino/chess/ai", false), "client");
+  // Ad code in the document must never turn a lobby into a full reload.
+  assert.equal(resolveMatchNavigation("/casino/chess", true), "client");
+  assert.equal(resolveMatchNavigation("/games/chess/play", true), "client");
+});
+
+test("both ad loaders flag the document, so the flag cannot drift from the tags", () => {
+  for (const [name, source] of Object.entries({
+    AdSenseScript: LOADER,
+    MonetagScript: MONETAG,
+  })) {
+    assert.match(
+      source,
+      /import AdCodeMarker from "\.\/AdCodeMarker";/,
+      `${name} must render the marker — a tag without the flag would ride into a match`,
+    );
+    assert.match(source, /<AdCodeMarker \/>/, `${name} must actually render it`);
+  }
+  assert.match(MARKER, /"use client"/);
+  assert.match(MARKER, /markAdCodeLoaded\(\)/);
+});
+
+test("every lobby enters a match through the ad-aware router", () => {
+  // Every game's lobby client (a PageClient directly under src/app/casino/
+  // <game>) — found from the tree, so a new game is covered automatically.
+  const lobbyClients = fs
+    .readdirSync("src/app/casino", { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .flatMap((entry) =>
+      ["PageClient.tsx", "PageClient.jsx"].map((name) =>
+        join("src/app/casino", entry.name, name).split(sep).join("/"),
+      ),
+    )
+    .filter(exists)
+    .sort();
+  assert.ok(lobbyClients.length >= 20, `expected every casino lobby client (found ${lobbyClients.length})`);
+
+  for (const file of lobbyClients) {
+    const source = read(file);
+    assert.ok(
+      !/import \{[^}]*\buseRouter\b[^}]*\} from "next\/navigation"/.test(source),
+      `${file} must use useMatchRouter — next/navigation's router would keep the lobby's ad code alive over the board`,
+    );
+    if (/router\.(push|replace)\(/.test(source)) {
+      assert.match(
+        source,
+        /import \{ useMatchRouter \} from "\.\.\/\.\.\/\.\.\/hooks\/useMatchRouter";/,
+        `${file} navigates, so it must import the match router`,
+      );
+      assert.match(source, /const router = useMatchRouter\(\);/);
+    }
+  }
+
+  // The shared lobby chrome's Quick Queue can land a player straight in a
+  // match from the lobby it is mounted on.
+  const quickQueue = read("src/components/lobby/PlatformQuickQueue.jsx");
+  assert.match(
+    quickQueue,
+    /import \{ useMatchRouter \} from "\.\.\/\.\.\/hooks\/useMatchRouter";/,
+  );
+  assert.match(quickQueue, /const router = useMatchRouter\(\);/);
+  assert.match(quickQueue, /router\.push\(route\)/);
+});
+
+test("the match router leaves the document only for a match", () => {
+  const source = code(MATCH_ROUTER);
+  assert.match(source, /resolveMatchNavigation\(href, hasAdCodeLoaded\(\)\)/);
+  assert.match(source, /window\.location\.assign\(href\)/);
+  assert.match(source, /window\.location\.replace\(href\)/);
+  // …and everything else stays a client-side navigation.
+  assert.match(source, /router\.push\(href, options\)/);
+  assert.match(source, /router\.replace\(href, options\)/);
+  assert.ok(
+    !/localStorage|sessionStorage|document\.cookie/.test(source),
+    "the decision is about this document's ad code, not stored client state",
+  );
+});
+
+test("link-based match entries also leave an ad-carrying document", () => {
+  // A private room's "Open the match" is a <Link> on the profile — a client
+  // navigation that would otherwise keep the profile's ad code alive.
+  const guard = code(read("src/components/MatchEntryGuard.tsx"));
+  assert.match(guard, /"use client"/);
+  assert.match(guard, /isMatchHref\(/, "the guard must use the same URL classifier");
+  assert.match(guard, /hasAdCodeLoaded\(\)/, "…and only act in an ad-carrying document");
+  assert.match(
+    guard,
+    /addEventListener\("click", onClick, true\)/,
+    "the guard must run in the capture phase, before Next's <Link> handler",
+  );
+  assert.match(guard, /event\.preventDefault\(\)/);
+  assert.match(guard, /window\.location\.assign\(anchor\.href\)/);
+  assert.match(
+    read("src/app/layout.tsx"),
+    /<MatchEntryGuard \/>/,
+    "the guard must be mounted once, globally",
+  );
 });

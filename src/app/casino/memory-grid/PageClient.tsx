@@ -20,7 +20,7 @@
 // PvP skill games.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMatchRouter } from "../../../hooks/useMatchRouter";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
 import FrameAvatar from "../../../components/FrameAvatar";
@@ -83,7 +83,7 @@ function MemoryGridIcon({ className = "" }: { className?: string }) {
 
 export default function MemoryGridLobbyPage() {
   const { isSignedIn, user } = useUser();
-  const router = useRouter();
+  const router = useMatchRouter();
   const posthog = usePostHog();
   const { socket } = useSocket();
 

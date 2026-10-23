@@ -98,8 +98,12 @@ import { db } from "../../db/client";
 import { dominoesMatches, dominoesMoves, users } from "../../db/schema";
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
+import { markDailyRewardWin } from "../dailyRewardWin";
+import { coerceAiDifficulty } from "../aiDifficulty";
+import { chooseAiAction } from "./ai";
 import {
   ACTION_TYPES,
+  DOMINOES_AI_PLAYER_ID,
   DOMINOES_LOCK_NAMESPACE,
   END_REASONS,
   MATCH_STATUS,
@@ -348,6 +352,12 @@ export function matchToDto(match: MatchRow, viewerId: string | null) {
     // Counts only — never the tiles themselves.
     opponentTileCount,
     drawPileCount: state ? state.drawPile.length : 0,
+    // ── Practice ────────────────────────────────────────────────────────
+    // A bot seat is declared on the row, so the view never has to guess from
+    // an id. It also never appears in the open-lobby pool: the second seat is
+    // occupied from creation.
+    isAi: Boolean(match.isAi),
+    aiDifficulty: match.aiDifficulty ?? null,
     // ── The public result ───────────────────────────────────────────────
     result: match.result ?? null,
     winnerId: match.winnerId ?? null,
@@ -611,9 +621,9 @@ export async function createDominoesMatchForPair({
  * unhandled rejection. `dealMatch` uses Web Crypto by default and derives the
  * starting seat from the hands, so nothing here chooses who opens.
  */
-function dealMatchSafely(): DominoesState | null {
+function dealMatchSafely(random?: () => number): DominoesState | null {
   try {
-    return dealMatch();
+    return random ? dealMatch(random) : dealMatch();
   } catch (error) {
     console.error(
       "[dominoes] deal failed:",
@@ -621,6 +631,146 @@ function dealMatchSafely(): DominoesState | null {
     );
     return null;
   }
+}
+
+/**
+ * PRACTICE — seat the caller against the Dominoes bot.
+ *
+ * One row, both seats occupied from creation: the bot is a NAMED id on
+ * `player2_id`, never a queue entry, so `listOpenMatches` can never offer it to
+ * a stranger and the public matchmaker can never pair two humans into it.
+ *
+ * UNRATED: the row is `is_ai`, so settlement skips ratings, trophies and the W/L
+ * counters (see `settleMatch`). The daily reward still unlocks on a human win,
+ * which is the one progression signal free practice is allowed to move.
+ *
+ * The deal is the SAME engine deal the public match uses, so the opening seat
+ * is decided by the tiles, not by the caller — and if the bot won the opening
+ * bid, its turn is played inside this transaction. The caller therefore never
+ * receives a practice row that is waiting on the bot.
+ */
+export type AiMatchResult =
+  | { match: MatchRow; state: DominoesState }
+  | StoreError;
+
+export async function createAiMatch({
+  userId,
+  difficulty,
+  nowMs = Date.now(),
+  random = Math.random,
+}: {
+  userId: string;
+  difficulty?: unknown;
+  nowMs?: number;
+  random?: () => number;
+}): Promise<AiMatchResult> {
+  if (!userId) return { error: "Not signed in", status: 401 } as const;
+
+  const tier = coerceAiDifficulty(difficulty);
+  const state = dealMatchSafely(random);
+  if (!state) {
+    return { error: "Unable to deal the match", status: 500 } as const;
+  }
+
+  const seats: Seats = {
+    player1Id: userId,
+    player2Id: DOMINOES_AI_PLAYER_ID,
+  };
+  const now = new Date(nowMs);
+
+  return await db.transaction(async (tx) => {
+    const [match] = await tx
+      .insert(dominoesMatches)
+      .values({
+        player1Id: seats.player1Id,
+        player2Id: seats.player2Id,
+        status: MATCH_STATUS.PLAYING,
+        ply: state.ply,
+        ...stateColumns(state),
+        currentTurnUserId: userIdForSeat(seats, state.turn),
+        turnDeadlineAt: new Date(nowMs + TURN_WINDOW_MS),
+        isAi: true,
+        aiDifficulty: tier,
+        createdAt: now,
+        startedAt: now,
+        updatedAt: now,
+      })
+      .returning();
+
+    // The bot may have won the opening bid. Play it now, in the same
+    // transaction, so the returned row is never "waiting on the bot".
+    const afterBot = await playAiTurns(tx, match, state);
+    if (afterBot === state) return { match, state } as const;
+
+    const finished = afterBot.status === MATCH_STATUS.FINISHED;
+    const [updated] = await tx
+      .update(dominoesMatches)
+      .set({
+        ...stateColumns(afterBot),
+        ply: afterBot.ply,
+        status: finished ? MATCH_STATUS.FINISHED : MATCH_STATUS.PLAYING,
+        currentTurnUserId: finished ? null : userIdForSeat(seats, afterBot.turn),
+        turnDeadlineAt: finished ? null : new Date(nowMs + TURN_WINDOW_MS),
+        updatedAt: new Date(nowMs),
+        ...(finished ? terminalColumns(afterBot, seats, now) : {}),
+      })
+      .where(eq(dominoesMatches.id, match.id))
+      .returning();
+
+    if (finished) {
+      await settleMatch(tx, updated ?? match, {
+        result: updated?.result ?? afterBot.winner ?? RESULT.DRAW,
+        reason: updated?.resultReason ?? afterBot.outcome?.reason ?? null,
+      });
+    }
+
+    return { match: updated ?? match, state: afterBot } as const;
+  });
+}
+
+/**
+ * Play the bot's turns from `state` until it is the human's turn again or the
+ * match is decided, logging each accepted action like a human move.
+ *
+ * Runs INSIDE the caller's transaction, so a practice turn can never be skipped
+ * by a client that forgets to poll: the snapshot the caller gets back already
+ * contains the bot's answer. A draw keeps the bot on turn (the engine's rule),
+ * which is why this is a loop — the guard only exists so a future engine change
+ * cannot spin here forever.
+ */
+async function playAiTurns(
+  tx: any,
+  match: MatchRow,
+  state: DominoesState,
+): Promise<DominoesState> {
+  const aiSeat = seatForUser(seatsFromRow(match), DOMINOES_AI_PLAYER_ID);
+  if (!aiSeat) return state;
+
+  let current = state;
+  let guard = 0;
+  while (
+    current.status === MATCH_STATUS.PLAYING &&
+    current.turn === aiSeat &&
+    guard < 64
+  ) {
+    guard += 1;
+    const action = chooseAiAction({
+      state: current,
+      seat: aiSeat,
+      difficulty: match.aiDifficulty,
+    });
+    if (!action) break;
+
+    const next = applyAction(current, aiSeat, action);
+    await tx.insert(dominoesMoves).values({
+      matchId: match.id,
+      ply: current.ply,
+      playerId: DOMINOES_AI_PLAYER_ID,
+      ...logValuesFrom(next, false),
+    });
+    current = next;
+  }
+  return current;
 }
 
 /* -------------------------------------------------------------------------- *
@@ -763,18 +913,26 @@ async function resolveDueTurn(
     throw error;
   }
 
-  const finished = timedOutState.status === MATCH_STATUS.FINISHED;
+  // In practice a timeout can hand the turn to the bot (a pass advances the
+  // turn); it answers here, in the same transaction, exactly as it does after a
+  // human action.
+  const afterBot =
+    match.isAi && timedOutState.status === MATCH_STATUS.PLAYING
+      ? await playAiTurns(tx, match, timedOutState)
+      : timedOutState;
+
+  const finished = afterBot.status === MATCH_STATUS.FINISHED;
   const now = new Date(nowMs);
   const [updated] = await tx
     .update(dominoesMatches)
     .set({
-      ...stateColumns(timedOutState),
-      ply: timedOutState.ply,
+      ...stateColumns(afterBot),
+      ply: afterBot.ply,
       status: finished ? MATCH_STATUS.FINISHED : MATCH_STATUS.PLAYING,
-      currentTurnUserId: finished ? null : userIdForSeat(seats, timedOutState.turn),
+      currentTurnUserId: finished ? null : userIdForSeat(seats, afterBot.turn),
       turnDeadlineAt: finished ? null : new Date(nowMs + TURN_WINDOW_MS),
       updatedAt: now,
-      ...(finished ? terminalColumns(timedOutState, seats, now) : {}),
+      ...(finished ? terminalColumns(afterBot, seats, now) : {}),
     })
     // The claim: only the transaction that still sees this ply may resolve it.
     .where(
@@ -982,20 +1140,28 @@ export async function move({
         ...logValuesFrom(next, false),
       });
 
-      const finished = next.status === MATCH_STATUS.FINISHED;
+      // Free practice: the bot answers INSIDE this same transaction, so its turn
+      // can never be skipped by a client that forgets to poll, and the snapshot
+      // the caller gets back already reflects it.
+      const finalState =
+        match.isAi && next.status === MATCH_STATUS.PLAYING
+          ? await playAiTurns(tx, match, next)
+          : next;
+
+      const finished = finalState.status === MATCH_STATUS.FINISHED;
       const now = new Date(nowMs);
       const [updated] = await tx
         .update(dominoesMatches)
         .set({
-          ...stateColumns(next),
-          ply: next.ply,
+          ...stateColumns(finalState),
+          ply: finalState.ply,
           status: finished ? MATCH_STATUS.FINISHED : MATCH_STATUS.PLAYING,
-          currentTurnUserId: finished ? null : userIdForSeat(seats, next.turn),
+          currentTurnUserId: finished ? null : userIdForSeat(seats, finalState.turn),
           // Every accepted action starts a fresh window for whoever is next —
           // including a draw, which keeps the same seat on turn.
           turnDeadlineAt: finished ? null : new Date(nowMs + TURN_WINDOW_MS),
           updatedAt: now,
-          ...(finished ? terminalColumns(next, seats, now) : {}),
+          ...(finished ? terminalColumns(finalState, seats, now) : {}),
         })
         // Belt-and-braces version guard: with the row lock this can only fail
         // if a future code path writes the row without locking it.
@@ -1020,10 +1186,10 @@ export async function move({
 
       return {
         match: updated,
-        state: next,
+        state: finalState,
         ply: match.ply,
         matchCompleted: finished,
-        winnerSeat: next.winner,
+        winnerSeat: finalState.winner,
         result: updated.result ?? null,
         reason: updated.resultReason ?? null,
       } as const;
@@ -1310,6 +1476,26 @@ async function settleMatch(
 ): Promise<void> {
   // Both seats must be real accounts: a lobby with no opponent never settles.
   if (!match.player2Id) return;
+
+  // PRACTICE IS UNRATED. A bot seat is not an account, so ratings, trophies and
+  // the W/L counters stay untouched; a human win still unlocks the daily reward.
+  if (match.isAi) {
+    const winnerId =
+      outcome.result === RESULT.PLAYER1
+        ? match.player1Id
+        : outcome.result === RESULT.PLAYER2
+          ? match.player2Id
+          : null;
+    if (
+      outcome.result !== RESULT.DRAW &&
+      winnerId &&
+      winnerId !== DOMINOES_AI_PLAYER_ID
+    ) {
+      await markDailyRewardWin(tx, winnerId).catch(() => {});
+    }
+    return;
+  }
+
   const player1 = match.player1Id;
   const player2 = match.player2Id;
   if (String(player1) === String(player2)) return;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMatchRouter } from "../../../hooks/useMatchRouter";
 import { useUser } from "@clerk/nextjs";
 import { usePostHog } from "posthog-js/react";
 import { useSocket } from "../../../context/SocketProvider";
@@ -30,7 +30,7 @@ export default function FourInARowLobbyPage() {
   // is open to everyone.
   useUser();
   const { socket } = useSocket();
-  const router = useRouter();
+  const router = useMatchRouter();
   const posthog = usePostHog();
 
   // Coin wager: the player picks the stake the lobby is opened at, and the

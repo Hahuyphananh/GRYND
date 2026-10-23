@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMatchRouter } from "../../../hooks/useMatchRouter";
 import { usePostHog } from "posthog-js/react";
 import { useSocket } from "../../../context/SocketProvider";
 import PvpLobbyPage from "../../../components/lobby/PvpLobby";
@@ -35,7 +35,7 @@ export default function UnoLobbyPage() {
   const [error, setError] = useState(null);
   const [myOpenGameId, setMyOpenGameId] = useState(null);
   const [cancelling, setCancelling] = useState(false);
-  const router = useRouter();
+  const router = useMatchRouter();
   const posthog = usePostHog();
   const { socket } = useSocket();
 

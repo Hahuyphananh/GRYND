@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useMatchRouter } from "../../../hooks/useMatchRouter";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
 import PvpLobbyPage from "../../../components/lobby/PvpLobby";
@@ -41,7 +41,7 @@ import {
 } from "../../../lib/aiDifficulty";
 
 export default function PrecisionLobbyPage() {
-  const router = useRouter();
+  const router = useMatchRouter();
   const posthog = usePostHog();
   const { socket } = useSocket();
   const { t } = useTranslation();

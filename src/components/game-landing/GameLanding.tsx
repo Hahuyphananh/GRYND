@@ -1,6 +1,7 @@
 import Link from "next/link";
 import NavigationBar from "../navigation-bar";
 import Footer from "../Footer";
+import GryndProWidget from "../GryndProWidget";
 import JsonLd from "../seo/JsonLd";
 import { gameLandingPath, gamePlayPath, type GameLandingPage } from "../../lib/gameLandingPages";
 import { buildGameStructuredData } from "../../lib/gameJsonLd";
@@ -302,6 +303,13 @@ export default function GameLanding({
           </section>
         </div>
       </div>
+
+      {/* GRYND PRO widget — the same fixed bottom-right card the home page
+          mounts, in the same corner of every game landing page. This page is
+          browsing content, not gameplay: the Play CTA is still the only route
+          into a match, and the widget renders nothing for a signed-out visitor
+          or an active member beyond their status card. */}
+      <GryndProWidget />
 
       <Footer />
     </div>

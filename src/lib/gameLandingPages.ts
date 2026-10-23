@@ -1552,9 +1552,9 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     ogImage: "/images/og-banner.png",
     shortDescription:
       "A free, rated 1v1 block-dominoes duel. Seven tiles each, one shared chain and fifteen seconds a turn — match either open end, draw when nothing fits, and empty your hand first.",
-    // There is no Dominoes bot: every match is a real opponent, so the landing
-    // page advertises the online table rather than a practice board.
-    aiPractice: false,
+    // The lobby offers a free, unrated practice match against the built-in bot
+    // alongside the ranked online table.
+    aiPractice: true,
     introduction: [
       "Dominoes on GRYND is one-on-one block dominoes played with a standard double-six set: seven tiles each, the remaining fourteen face down as the pile, and one shared chain both players build on.",
       "It is competitive because the information that decides the game is available to both seats the whole time — how many tiles your opponent still holds, which two values the chain is open to, and whether the pile can still save you. The deal, the legality of every play, whose turn it is and the result are all computed server-side from the server's own position.",

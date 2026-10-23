@@ -10,8 +10,9 @@
 // there is nothing to redact and nothing a future field could accidentally
 // publish.
 //
-// A non-participant gets a 403: online Dominoes has no spectator mode, which is
-// also what keeps the hidden hands hidden.
+// A non-participant gets a 403: Dominoes has no spectator mode, which is also
+// what keeps the hidden hands hidden. A GUEST practice player is allowed in —
+// the seat check is the authorisation, and a guest holds only its own seat.
 //
 // THIS READ CAN ADVANCE THE CLOCK. An elapsed turn is resolved inside the
 // store's row-locked read (`applyTimeout`: draw one tile if the pile allows,
@@ -25,7 +26,7 @@
 // the hand and the pile are exactly what they were.
 
 import { NextResponse } from "next/server";
-import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../../lib/auth/guestSession";
 import { logError } from "../../../../../lib/logError";
 import { getSeatIdentity } from "../../../../../lib/seatIdentity";
 import {
@@ -39,9 +40,9 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ matchId: string }> },
 ) {
-  const gate = await requireAgeVerifiedUser();
+  const gate = await requirePracticePlayer();
   if (gate.response) return gate.response;
-  const userId = gate.userId;
+  const userId = gate.playerId;
   if (!userId) {
     return NextResponse.json(
       { success: false, error: "Unauthenticated" },

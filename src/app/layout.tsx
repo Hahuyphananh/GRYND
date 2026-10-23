@@ -12,6 +12,7 @@ import DisableInspect from "../components/DisableInspect";
 import CsrfFetchGuard from "../components/CsrfFetchGuard";
 import HostCanonicalizer from "../components/HostCanonicalizer";
 import SplashScreen from "../components/SplashScreen";
+import MatchEntryGuard from "../components/MatchEntryGuard";
 import { ToastProvider } from "../components/toast/ToastProvider";
 import { ogImageUrl, SITE_URL } from "../lib/ogImages";
 
@@ -203,6 +204,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
         {/* SPLASH SCREEN MUST GO HERE */}
         <SplashScreen />
+
+        {/* Match entries that happen by clicking a link (a private room's
+            "Open the match" on the profile, for one) must also leave a document
+            that has loaded ad code behind. Programmatic match navigation is
+            handled by hooks/useMatchRouter. Renders nothing. */}
+        <MatchEntryGuard />
 
         <Providers>
           {/* Global branded toast system (UX plan P0-1) — wraps everything

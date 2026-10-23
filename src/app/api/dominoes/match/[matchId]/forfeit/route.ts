@@ -8,9 +8,12 @@
 // and a seat can never resign on the opponent's behalf. The position is left
 // exactly as the engine last wrote it — resigning does not draw or play a tile —
 // and the clock is cleared, so a resigned match can never time out afterwards.
+//
+// Accepts a GUEST practice player (the seat check below is what keeps it safe):
+// resigning a vs-AI match is free and unrated, so it needs no account.
 
 import { NextResponse } from "next/server";
-import { requireAgeVerifiedUser } from "../../../../../../lib/auth/requireAgeVerified";
+import { requirePracticePlayer } from "../../../../../../lib/auth/guestSession";
 import { logError } from "../../../../../../lib/logError";
 import {
   forfeitMatch,
@@ -23,9 +26,9 @@ export async function POST(
   _req: Request,
   { params }: { params: Promise<{ matchId: string }> },
 ) {
-  const gate = await requireAgeVerifiedUser();
+  const gate = await requirePracticePlayer();
   if (gate.response) return gate.response;
-  const userId = gate.userId;
+  const userId = gate.playerId;
   if (!userId) {
     return NextResponse.json(
       { success: false, error: "Unauthenticated" },

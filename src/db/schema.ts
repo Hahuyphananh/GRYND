@@ -4397,6 +4397,13 @@ export const dominoesMatches = pgTable(
     player1Id: varchar("player1_id", { length: 255 }).notNull(),
     // Nullable so a `waiting` row doubles as the open lobby.
     player2Id: varchar("player2_id", { length: 255 }),
+    /**
+     * True when the second seat is the built-in bot (free, unrated practice).
+     * Such a row is never listed as an open lobby and never settles a rating.
+     */
+    isAi: boolean("is_ai").notNull().default(false),
+    /** easy | normal | hard — the tier the bot was started at (null on PvP). */
+    aiDifficulty: varchar("ai_difficulty", { length: 16 }),
     /** waiting | playing | finished | cancelled (MATCH_STATUS in src/lib/dominoes). */
     status: varchar("status", { length: 20 }).notNull().default("waiting"),
     /** Accepted actions so far — the optimistic-concurrency version. */

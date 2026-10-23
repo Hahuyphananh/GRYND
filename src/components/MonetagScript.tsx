@@ -79,6 +79,7 @@
  * scripts into <head>, deduplicated, so rendering it here lands it where the
  * provider expects while keeping it off the match pages.
  */
+import AdCodeMarker from "./AdCodeMarker";
 import { MONETAG_TAG_SRC, monetagEnabled, monetagZoneId } from "../lib/ads";
 import { isAdFreeViewer } from "../lib/adEntitlement";
 
@@ -94,12 +95,19 @@ export default async function MonetagScript() {
   if (await isAdFreeViewer()) return null;
 
   return (
-    <script
-      id="monetag-multitag"
-      async
-      data-cfasync="false"
-      data-zone={zone}
-      src={MONETAG_TAG_SRC}
-    />
+    <>
+      {/* Flags this document as ad-carrying, so the next match entry is a
+          document navigation and the tag's document-global formats (popunder,
+          vignette, in-page push) cannot follow the player onto a board
+          (lib/matchNavigation.ts). */}
+      <AdCodeMarker />
+      <script
+        id="monetag-multitag"
+        async
+        data-cfasync="false"
+        data-zone={zone}
+        src={MONETAG_TAG_SRC}
+      />
+    </>
   );
 }

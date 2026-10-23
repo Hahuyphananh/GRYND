@@ -32,7 +32,7 @@
 // 10%). Practice against the bot stays free.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMatchRouter } from "../../../hooks/useMatchRouter";
 import { useUser } from "@clerk/nextjs";
 import { IconGridDots } from "@tabler/icons-react";
 import PvpLobbyPage from "../../../components/lobby/PvpLobby";
@@ -67,7 +67,7 @@ type LobbyRow = {
 export default function SudokuDuelLobbyPage() {
   const { isSignedIn } = useUser();
   const { socket } = useSocket();
-  const router = useRouter();
+  const router = useMatchRouter();
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

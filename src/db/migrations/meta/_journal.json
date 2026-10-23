@@ -1464,6 +1464,13 @@
       "when": 1800000071000,
       "tag": "0227_dominoes",
       "breakpoints": true
+    },
+    {
+      "idx": 209,
+      "version": "7",
+      "when": 1800000072000,
+      "tag": "0228_dominoes_ai",
+      "breakpoints": true
     }
   ]
 }

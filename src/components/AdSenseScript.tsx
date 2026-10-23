@@ -58,6 +58,7 @@
  * into <head>, deduplicated, so rendering it here lands it where Google
  * expects while still keeping it off the match pages.
  */
+import AdCodeMarker from "./AdCodeMarker";
 import { adsEnabled, adsensePublisherId, normalizePublisherId } from "../lib/ads";
 import { isAdFreeViewer } from "../lib/adEntitlement";
 
@@ -72,11 +73,17 @@ export default async function AdSenseScript() {
   if (await isAdFreeViewer()) return null;
 
   return (
-    <script
-      id="adsbygoogle-init"
-      async
-      crossOrigin="anonymous"
-      src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${client}`}
-    />
+    <>
+      {/* Flags this document as ad-carrying, so the next match entry is a
+          document navigation and this loader cannot follow the player onto a
+          board (lib/matchNavigation.ts). */}
+      <AdCodeMarker />
+      <script
+        id="adsbygoogle-init"
+        async
+        crossOrigin="anonymous"
+        src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${client}`}
+      />
+    </>
   );
 }

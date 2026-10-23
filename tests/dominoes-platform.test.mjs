@@ -278,8 +278,9 @@ test("landing: /games/dominoes exists with full content and its own leaderboard 
   assert.equal(gameLandingPath(SLUG), "/games/dominoes");
   // The landing page's Play CTA is the derived lobby URL every game uses.
   assert.equal(gamePlayPath(SLUG), "/games/dominoes/play");
-  // There is no Dominoes bot, so the page must NOT advertise a practice board.
-  assert.equal(game.aiPractice, false);
+  // The lobby ships a free, unrated practice board against the bot, so the
+  // landing page advertises it.
+  assert.equal(game.aiPractice, true);
   assert.ok(game.faq.length >= 3);
   assert.ok(game.related.length >= 3);
   for (const related of game.related) {
@@ -327,7 +328,8 @@ test("presence: the canvas tag resolves to the canonical id", () => {
   assert.equal(resolveGameId("  DOMINOES  "), KEY, "labels are normalized");
   assert.equal(isPresenceGame(KEY), true);
   assert.equal(isCanonicalGameId(KEY), true);
-  // There is no Dominoes practice board, so there is no second label to collapse.
+  // Practice is the SAME game: the bot seat lives on the match row, so there is
+  // no second presence label to collapse.
   assert.equal(resolveGameId("dominoes-ai"), null);
   assert.match(strip(read("src/lib/gamePresence.js")), /^\s*dominoes: "dominoes",/m);
 });
@@ -423,7 +425,10 @@ test("matchmaking: Dominoes is a Quick Queue destination and route", () => {
 
 test("authority: the only client-authored move input is an action + expectedVersion", () => {
   const route = code(MOVE_ROUTE);
-  assert.match(route, /requireAgeVerifiedUser/);
+  // Free practice shares this route with the ranked table, so the gate is the
+  // shared practice gate (a guest is a seat; the store still authorises by seat).
+  assert.match(route, /requirePracticePlayer/);
+  assert.doesNotMatch(route, /requireAgeVerifiedUser/);
   assert.match(route, /action: body\?\.action/);
   assert.match(route, /expectedVersion: body\?\.expectedVersion/);
   // No client-supplied hand, chain, turn, winner or result is read.
@@ -462,8 +467,9 @@ test("authority: the store settles exactly once, through the shared writers", ()
   assert.match(store, /set\(\{ gamesLost: sql`\$\{users\.gamesLost\} \+ 1` \}\)/);
   // Every terminal path claims the row with a conditional write before it
   // settles: the ply-conditional action write, the clock resolution, the
-  // resignation and the disconnect forfeit.
-  assert.equal((store.match(/await settleMatch\(/g) ?? []).length, 4);
+  // resignation, the disconnect forfeit and a practice match whose opening
+  // bot turn ends it.
+  assert.equal((store.match(/await settleMatch\(/g) ?? []).length, 5);
   assert.ok((store.match(/if \(!updated\) \{/g) ?? []).length >= 3);
 });
 
@@ -499,8 +505,10 @@ test("settlement: only completed, eligible matches can be rated", () => {
   assert.ok(cancelBody.length > 0);
   assert.doesNotMatch(cancelBody, /settleMatch\(/);
   assert.match(cancelBody, /status: MATCH_STATUS\.CANCELLED/);
-  // There is no practice/AI seat to rate: the game has no bot at all.
-  assert.doesNotMatch(store, /isAi|is_ai|vsBot/);
+  // Practice is UNRATED: the bot seat is never rated, never counted and never
+  // trophied, and a human practice win unlocks the daily reward instead.
+  assert.match(store, /if \(match\.isAi\)/);
+  assert.match(store, /markDailyRewardWin\(tx, winnerId\)/);
   assert.equal(exists("src/app/casino/dominoes/play-ai"), false);
   // And the writers only accept a registered key, which the registry provides.
   assert.equal(isRatedGame(KEY), true);

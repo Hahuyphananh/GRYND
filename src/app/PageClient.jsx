@@ -732,7 +732,8 @@ function MainComponent({ adSlot = null, popularGames = [], explainerSlot = null 
 
       {/* GRYND PRO widget — replaces the old Daily Reward claim button in
           this corner. Free accounts see the membership pitch; PRO members
-          see a small status card. Home page only (never inside gameplay). */}
+          see a small status card. Also mounted by the game landing pages
+          (components/game-landing/GameLanding.tsx); never inside gameplay. */}
       <GryndProWidget />
 
       {/* ── Terms & Conditions Modal ── */}
