@@ -36,6 +36,18 @@ import { getStripe } from "../stripe";
  */
 export const MANAGED_PAYMENTS_TAX_CODE = "txcd_10103100";
 
+/**
+ * The currency every one-time token package is priced AND charged in.
+ *
+ * ONE constant, used by every price this module creates and by the Shop's
+ * display resolver (src/lib/coinPurchases.ts) — so the number a customer reads
+ * and the amount Stripe charges are always expressed in the same currency.
+ * Changing it only affects NEWLY created prices; a price already bound in
+ * Stripe keeps its own currency until `ensurePackageStripe` re-resolves it (it
+ * compares amounts, not currencies — verify any such change in the Dashboard).
+ */
+export const PACKAGE_CURRENCY = "usd" as const;
+
 export type PackagePriceBundle = {
   id: number;
   key: string;
@@ -111,7 +123,7 @@ async function resolveActivePriceId(
   // No active price at the target amount — create one.
   const price = await getStripe().prices.create({
     unit_amount: targetCents,
-    currency: "usd",
+    currency: PACKAGE_CURRENCY,
     product: productId,
     metadata: { packageKey, rebalanced: "true" },
   });
@@ -173,7 +185,7 @@ export async function ensurePackageStripe(
       tax_code: MANAGED_PAYMENTS_TAX_CODE,
       default_price_data: {
         unit_amount: pkg.priceCents,
-        currency: "usd",
+        currency: PACKAGE_CURRENCY,
       },
       metadata: { packageKey: pkg.key },
     });
@@ -233,6 +245,55 @@ export async function resolvePackagePriceCents(pkg: PackagePriceBundle): Promise
     }
   }
   return pkg.priceCents ?? 0;
+}
+
+/**
+ * The exact amount and currency a bound Stripe Price will charge.
+ */
+export type PackageCharge = {
+  /** ISO currency of the price (lowercase, as Stripe returns it). */
+  currency: string;
+  /** Unit amount in the currency's minor units. */
+  amountCents: number;
+};
+
+export type VerifiedPackagePrice =
+  | { ok: true; amountCents: number; currency: string }
+  | { ok: false; reason: string };
+
+/**
+ * Confirm a price id really charges the catalog amount in the catalog currency
+ * BEFORE a Checkout Session is created against it.
+ *
+ * `ensurePackageStripe` resolves a price at the catalog amount, but the binding
+ * can still be stale (a price edited in the Dashboard, a test-mode id after a
+ * key switch, a product whose price was replaced by hand). The customer must
+ * never be charged a different amount or currency than the Shop displayed, so
+ * a mismatch REFUSES the checkout instead of silently selling it.
+ */
+export async function verifyPackagePrice(
+  priceId: string,
+  expected: PackageCharge
+): Promise<VerifiedPackagePrice> {
+  if (!priceId.startsWith("price_")) {
+    return { ok: false, reason: "not a Stripe price id" };
+  }
+  try {
+    const price = await getStripe().prices.retrieve(priceId);
+    if (price.active === false) return { ok: false, reason: "price is not active" };
+    if (price.type !== "one_time") return { ok: false, reason: "price is not one-time" };
+    const amount = Number(price.unit_amount);
+    if (!Number.isFinite(amount)) return { ok: false, reason: "price has no unit amount" };
+    if (amount !== expected.amountCents) return { ok: false, reason: "amount mismatch" };
+    const currency = String(price.currency || "").toLowerCase();
+    if (currency !== expected.currency.toLowerCase()) {
+      return { ok: false, reason: "currency mismatch" };
+    }
+    return { ok: true, amountCents: amount, currency };
+  } catch {
+    // Fail closed: an unreadable price cannot be charged safely.
+    return { ok: false, reason: "price could not be read" };
+  }
 }
 
 /** Ensure a real Stripe Product + Price exists for every enabled package. */

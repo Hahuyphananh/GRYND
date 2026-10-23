@@ -49,9 +49,10 @@ export const CHECKOUT_BRAND = {
  */
 export function getCheckoutBranding(
   baseUrl: string,
+  displayName: string = CHECKOUT_BRAND.displayName,
 ): Stripe.Checkout.SessionCreateParams.BrandingSettings {
   const branding: Stripe.Checkout.SessionCreateParams.BrandingSettings = {
-    display_name: CHECKOUT_BRAND.displayName,
+    display_name: displayName,
     background_color: CHECKOUT_BRAND.backgroundColor,
     button_color: CHECKOUT_BRAND.buttonColor,
     border_style: CHECKOUT_BRAND.borderStyle,
@@ -110,19 +111,32 @@ function isBrandingRetryable(err: unknown): boolean {
  *
  * A non-branding failure is rethrown from whichever attempt hit it, so the
  * route still reports real Stripe problems honestly.
+ *
+ * `options` is optional and purely additive:
+ *   * `requestOptions` is passed through to every attempt unchanged — this is
+ *     how a caller supplies a Stripe idempotency key (a retry must never open
+ *     a second session),
+ *   * `displayName` overrides the page title for a surface that is not the PRO
+ *     membership (the coin shop says "GRYND Coins"), so the branded page never
+ *     mislabels what is being bought.
  */
 export async function createBrandedCheckoutSession(
   stripe: Stripe,
   params: Stripe.Checkout.SessionCreateParams,
   baseUrl: string,
+  options?: { requestOptions?: Stripe.RequestOptions; displayName?: string },
 ): Promise<Stripe.Checkout.Session> {
-  const branding = getCheckoutBranding(baseUrl);
+  const branding = getCheckoutBranding(baseUrl, options?.displayName);
+  const requestOptions = options?.requestOptions;
 
   try {
-    return await stripe.checkout.sessions.create({
-      ...params,
-      branding_settings: branding,
-    });
+    return await stripe.checkout.sessions.create(
+      {
+        ...params,
+        branding_settings: branding,
+      },
+      requestOptions,
+    );
   } catch (err) {
     if (!isBrandingRetryable(err)) throw err;
     console.error("[stripe/checkout] Branding with icon rejected, retrying:", err);
@@ -134,14 +148,17 @@ export async function createBrandedCheckoutSession(
   delete withoutIcon.icon;
 
   try {
-    return await stripe.checkout.sessions.create({
-      ...params,
-      branding_settings: withoutIcon,
-    });
+    return await stripe.checkout.sessions.create(
+      {
+        ...params,
+        branding_settings: withoutIcon,
+      },
+      requestOptions,
+    );
   } catch (err) {
     if (!isBrandingRetryable(err)) throw err;
     console.error("[stripe/checkout] Branding rejected entirely, using Stripe's defaults:", err);
   }
 
-  return stripe.checkout.sessions.create(params);
+  return stripe.checkout.sessions.create(params, requestOptions);
 }

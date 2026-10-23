@@ -1,15 +1,21 @@
 // src/app/api/stripe/webhook/route.ts
 //
-// POST — Stripe webhook for GRYND PRO membership lifecycle.
+// POST — Stripe webhook for GRYND PRO membership AND one-time coin purchases.
 //
-// NO TOKENS ARE EVER GRANTED HERE. GRYND has no token currency, and
-// membership buys ad-free/analytics/support perks only. Paid invoices are
-// acknowledged and audited, never credited — there is no balance write and no
-// token-transaction write anywhere in this file.
+// MEMBERSHIP GRANTS NO COINS. GRYND PRO buys ad-free/perk benefits only; a paid
+// invoice is acknowledged and audited, never credited.
+//
+// ONE-TIME COIN PURCHASES ARE CREDITED HERE, and only here. A paid Checkout
+// Session in `mode: "payment"` is handed to src/lib/tokens/coinFulfillment.ts,
+// which verifies it against our own `stripe_checkout_sessions` ledger row and
+// credits the existing wallet inside one transaction. No success page, client
+// poll or /api/stripe/session-status call can grant coins.
 //
 // Handled events:
-//   * `checkout.session.completed` (mode=subscription) records the new
-//     subscription row from our own checkout metadata.
+//   * `checkout.session.completed` / `checkout.session.async_payment_succeeded`:
+//     mode=subscription records the new subscription row from our own checkout
+//     metadata; mode=payment fulfils the coin purchase (see above). An unpaid
+//     session only updates the ledger row's status and grants nothing.
 //   * `customer.subscription.created/updated` sync the subscription row's
 //     status + billing period; `customer.subscription.deleted` records the
 //     cancellation (which drops the user back to the `free` state, since
@@ -18,8 +24,13 @@
 //     renewed; nothing is credited.
 //   * `invoice.payment_failed` flags the subscription `past_due`, which still
 //     counts as active while Stripe retries, then `deleted` cancels it.
-//   * `checkout.session.async_payment_*` keep the checkout ledger row's status
-//     in sync for the Shop's return-to-site polling.
+//   * `checkout.session.async_payment_failed` keeps the checkout ledger row's
+//     status in sync (and grants nothing).
+//   * `charge.refunded` / `charge.dispute.created` are AUDITED ONLY (see the
+//     REFUNDS AND DISPUTES note at the end of this file): a refunded purchase
+//     is not auto-reversed, because clawing coins back can drive a spent wallet
+//     negative. The audit entry + the PaymentIntent id recorded on the
+//     fulfilled session row are the reconciliation trail.
 //
 // Signature is verified with the Stripe SDK; the secret lives in
 // STRIPE_WEBHOOK_SECRET. A bad/missing signature is rejected before any state
@@ -36,6 +47,7 @@ import {
 import { eq } from "drizzle-orm";
 import { getStripe, getStripeWebhookSecret } from "../../../../lib/stripe";
 import { resolveBillingIntervalForPriceId } from "../../../../lib/stripe/subscriptions";
+import { fulfillCoinCheckoutSession } from "../../../../lib/tokens/coinFulfillment";
 import { isProBillingInterval } from "../../../../lib/proBilling";
 import { auditLog } from "../../../../lib/security/auditLog";
 import { logError } from "../../../../lib/logError";
@@ -50,7 +62,15 @@ type StripeSession = {
   payment_intent?: string | null;
   customer?: string | null;
   subscription?: string | null;
-  metadata?: { clerkId?: string; packageKey?: string; planKey?: string };
+  /** What Stripe actually charged, used to reconcile a one-time purchase. */
+  amount_total?: number | null;
+  currency?: string | null;
+  metadata?: {
+    clerkId?: string;
+    packageKey?: string;
+    planKey?: string;
+    coins?: string;
+  };
 };
 
 type StripeSubscriptionObject = {
@@ -111,9 +131,33 @@ export async function POST(req: Request) {
           await recordSubscriptionFromCheckout(session);
           break;
         }
-        // Token top-up packs no longer exist, so a non-subscription checkout
-        // session can never grant anything. Acknowledge + audit it.
-        auditLog("stripe_checkout_session_ignored", { sessionId: session.id });
+
+        // One-time coin purchase. The ledger row, the paid amount, the
+        // currency, the package and the coin award are all re-verified inside
+        // coinFulfillment — a payload alone never decides a credit. An unpaid
+        // session has already been short-circuited above, and the fulfilment
+        // path independently refuses anything that is not `paid`.
+        const outcome = await fulfillCoinCheckoutSession(session);
+        if (outcome.status === "credited") {
+          auditLog("stripe_coin_purchase_credited", {
+            sessionId: session.id,
+            userId: outcome.clerkId ?? null,
+            packageKey: outcome.packageKey ?? null,
+            coins: outcome.coins ?? 0,
+            amountCents: outcome.amountCents ?? null,
+            currency: outcome.currency ?? null,
+          });
+        } else {
+          // Unknown session, already-fulfilled replay, unpaid/uncertain payment
+          // or a payload/ledger disagreement. Nothing moved; the entry is the
+          // trail an operator needs.
+          auditLog("stripe_coin_purchase_not_credited", {
+            sessionId: session.id,
+            status: outcome.status,
+            reason: outcome.reason ?? null,
+            eventType: event.type,
+          });
+        }
         break;
       }
       case "checkout.session.async_payment_failed": {
@@ -160,6 +204,43 @@ export async function POST(req: Request) {
         await recordSubscription({ ...sub, status: "canceled" });
         auditLog("stripe_subscription_canceled", {
           subscriptionId: sub.id,
+        });
+        break;
+      }
+      case "charge.refunded": {
+        // AUDIT ONLY — deliberately no balance change. See REFUNDS AND
+        // DISPUTES below.
+        const charge = event.data.object as unknown as {
+          id?: string;
+          payment_intent?: string | null;
+          amount_refunded?: number | null;
+          currency?: string | null;
+        };
+        auditLog("stripe_charge_refunded", {
+          chargeId: charge.id ?? null,
+          paymentIntentId: charge.payment_intent ?? null,
+          amountRefundedCents: charge.amount_refunded ?? null,
+          currency: charge.currency ?? null,
+          action: "manual_coin_reconciliation_required",
+        });
+        break;
+      }
+      case "charge.dispute.created": {
+        // AUDIT ONLY — a dispute must never silently reverse (or re-add) coins.
+        const dispute = event.data.object as unknown as {
+          id?: string;
+          payment_intent?: string | null;
+          amount?: number | null;
+          currency?: string | null;
+          status?: string | null;
+        };
+        auditLog("stripe_charge_dispute_opened", {
+          disputeId: dispute.id ?? null,
+          paymentIntentId: dispute.payment_intent ?? null,
+          amountCents: dispute.amount ?? null,
+          currency: dispute.currency ?? null,
+          status: dispute.status ?? null,
+          action: "manual_coin_reconciliation_required",
         });
         break;
       }
@@ -266,3 +347,29 @@ async function recordSubscriptionFromCheckout(session: StripeSession) {
   await recordSubscription(sub);
 }
 
+// ── REFUNDS AND DISPUTES (required follow-up) ──────────────────────────────
+//
+// Automated reversal is OUT OF SCOPE for this implementation, and the reason is
+// a safety one: a purchased pack may already be staked or lost, so debiting the
+// coins on `charge.refunded` could drive a wallet negative — which the wager
+// layer explicitly forbids (`debitWager` refuses to go below zero, and there is
+// no negative-balance path). Reversing a refund by force would either break
+// that invariant or silently mint debt.
+//
+// So refunds/disputes are AUDITED, never applied. What IS recorded for
+// reconciliation:
+//   * `stripe_charge_refunded` / `stripe_charge_dispute_opened` audit entries
+//     with the charge/dispute id, the PaymentIntent id, the amount and the
+//     currency (no card data, no secrets),
+//   * the fulfilled `stripe_checkout_sessions` row now carries
+//     `payment_intent_id` + `customer_id`, and its `token_amount`/
+//     `amount_cents`/`currency` are the snapshot of what was sold,
+//   * exactly one `token_transactions` row of type `purchase` with
+//     `reference_type = 'stripe-checkout-session'` and the session id.
+//
+// Operator follow-up (manual, by design): join the PaymentIntent id to the
+// session row, confirm the purchase still stands, then decide whether to
+// record a compensating entry. Note that `token_transactions` has no
+// `adjustment` type today, and no unique constraint on
+// `(reference_type, reference_id)` — adding either is a schema change that was
+// deliberately NOT made here.

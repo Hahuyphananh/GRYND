@@ -9,6 +9,7 @@ import Footer from "../../components/Footer";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import DailyRewardCard from "../../components/DailyRewardCard";
 import QuestBoard from "../../components/QuestBoard";
+import CoinShopOffers from "../../components/CoinShopOffers";
 import { useCoinBalance } from "../../hooks/useCoinBalance";
 
 /**
@@ -32,6 +33,14 @@ import { useCoinBalance } from "../../hooks/useCoinBalance";
  * creates, derives or writes a balance — it only displays the number that
  * system already returns. A signed-out visitor, or a read that has not resolved
  * yet, gets an honest loading / sign-in state rather than a fabricated "0".
+ *
+ * ── Optional coin packs ──────────────────────────────────────────────────
+ *
+ * `CoinShopOffers` is the only paid surface that may ever appear here. It is
+ * server-gated (COIN_PURCHASES_ENABLED) and renders NOTHING by default — not
+ * even a placeholder — and while payment fulfilment is unimplemented it shows
+ * the resolved offers with no active purchase action. Every amount and price
+ * it displays is resolved server-side from `token_packages`.
  *
  * ── What is deliberately NOT here ────────────────────────────────────────
  *
@@ -158,6 +167,15 @@ export default function RewardsPage() {
         {/* ── Coin balance (from the existing coin system) ───────────── */}
         <motion.div {...rise(0.05)}>
           <CoinBalanceCard />
+        </motion.div>
+
+        {/* ── Optional coin packs ─────────────────────────────────────
+            Renders nothing unless the deployment explicitly enables coin
+            purchases (server flag) AND the catalog resolves offers. The
+            component owns the whole surface, so this page still holds no
+            button, no click handler and no price of its own. */}
+        <motion.div className="mb-10" {...rise(0.07)}>
+          <CoinShopOffers />
         </motion.div>
 
         {/* ── Daily Reward — unchanged ───────────────────────────────── */}
