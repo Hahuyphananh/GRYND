@@ -26,11 +26,13 @@
 //     counts as active while Stripe retries, then `deleted` cancels it.
 //   * `checkout.session.async_payment_failed` keeps the checkout ledger row's
 //     status in sync (and grants nothing).
-//   * `charge.refunded` / `charge.dispute.created` are AUDITED ONLY (see the
-//     REFUNDS AND DISPUTES note at the end of this file): a refunded purchase
-//     is not auto-reversed, because clawing coins back can drive a spent wallet
-//     negative. The audit entry + the PaymentIntent id recorded on the
-//     fulfilled session row are the reconciliation trail.
+//   * `charge.refunded` REVERSES the purchase: the coins are taken back in
+//     proportion to the amount refunded, idempotently per order, and never
+//     below zero (src/lib/tokens/coinRefunds.ts). A wallet that cannot cover
+//     the reversal is left untouched and flagged in the audit entry.
+//   * `charge.dispute.created` is AUDITED ONLY (see the REFUNDS AND DISPUTES
+//     note at the end of this file): a chargeback's outcome is not final when it
+//     opens, so no balance move is made automatically.
 //
 // Signature is verified with the Stripe SDK; the secret lives in
 // STRIPE_WEBHOOK_SECRET. A bad/missing signature is rejected before any state
@@ -48,6 +50,7 @@ import { eq } from "drizzle-orm";
 import { getStripe, getStripeWebhookSecret } from "../../../../lib/stripe";
 import { resolveBillingIntervalForPriceId } from "../../../../lib/stripe/subscriptions";
 import { fulfillCoinCheckoutSession } from "../../../../lib/tokens/coinFulfillment";
+import { revokeCoinsForRefund } from "../../../../lib/tokens/coinRefunds";
 import { isProBillingInterval } from "../../../../lib/proBilling";
 import { auditLog } from "../../../../lib/security/auditLog";
 import { logError } from "../../../../lib/logError";
@@ -208,20 +211,32 @@ export async function POST(req: Request) {
         break;
       }
       case "charge.refunded": {
-        // AUDIT ONLY — deliberately no balance change. See REFUNDS AND
-        // DISPUTES below.
+        // Money went back: take the matching coins back too. The reversal is
+        // proportional to the refunded amount, idempotent per order, and never
+        // drives a wallet negative (see src/lib/tokens/coinRefunds.ts).
         const charge = event.data.object as unknown as {
           id?: string;
           payment_intent?: string | null;
+          amount?: number | null;
           amount_refunded?: number | null;
           currency?: string | null;
+          refunded?: boolean | null;
         };
+        const reversal = await revokeCoinsForRefund(charge);
         auditLog("stripe_charge_refunded", {
           chargeId: charge.id ?? null,
           paymentIntentId: charge.payment_intent ?? null,
           amountRefundedCents: charge.amount_refunded ?? null,
           currency: charge.currency ?? null,
-          action: "manual_coin_reconciliation_required",
+          status: reversal.status,
+          revokedCoins: reversal.coins ?? 0,
+          userId: reversal.clerkId ?? null,
+          packageKey: reversal.packageKey ?? null,
+          reason: reversal.reason ?? null,
+          action:
+            reversal.status === "revoked"
+              ? "coins_revoked"
+              : "manual_coin_reconciliation_required",
         });
         break;
       }
@@ -347,29 +362,30 @@ async function recordSubscriptionFromCheckout(session: StripeSession) {
   await recordSubscription(sub);
 }
 
-// ── REFUNDS AND DISPUTES (required follow-up) ──────────────────────────────
+// ── REFUNDS AND DISPUTES ───────────────────────────────────────────────────
 //
-// Automated reversal is OUT OF SCOPE for this implementation, and the reason is
-// a safety one: a purchased pack may already be staked or lost, so debiting the
-// coins on `charge.refunded` could drive a wallet negative — which the wager
-// layer explicitly forbids (`debitWager` refuses to go below zero, and there is
-// no negative-balance path). Reversing a refund by force would either break
-// that invariant or silently mint debt.
+// REFUNDS ARE REVERSED (`charge.refunded` → src/lib/tokens/coinRefunds.ts).
+// The reversal is proportional to the refunded amount, counted from the
+// `refund` rows already written against the order, so it is idempotent and a
+// sequence of partial refunds clears exactly one order. The debit is
+// conditional on the wallet still holding the coins, so `balance >= 0` (the
+// invariant the wager layer depends on) is never broken: a spent wallet keeps
+// what it cannot cover, and the audit entry records the shortfall for manual
+// reconciliation.
 //
-// So refunds/disputes are AUDITED, never applied. What IS recorded for
-// reconciliation:
-//   * `stripe_charge_refunded` / `stripe_charge_dispute_opened` audit entries
-//     with the charge/dispute id, the PaymentIntent id, the amount and the
-//     currency (no card data, no secrets),
-//   * the fulfilled `stripe_checkout_sessions` row now carries
-//     `payment_intent_id` + `customer_id`, and its `token_amount`/
-//     `amount_cents`/`currency` are the snapshot of what was sold,
-//   * exactly one `token_transactions` row of type `purchase` with
-//     `reference_type = 'stripe-checkout-session'` and the session id.
+// DISPUTES ARE AUDITED ONLY (`charge.dispute.created`). A chargeback is not
+// final when it opens — the merchant often wins it — so reversing on open would
+// need `charge.dispute.closed` to put the coins back, and that event is not
+// subscribed today. Until it is, a dispute is a signal to an operator, not a
+// balance move.
 //
-// Operator follow-up (manual, by design): join the PaymentIntent id to the
-// session row, confirm the purchase still stands, then decide whether to
-// record a compensating entry. Note that `token_transactions` has no
-// `adjustment` type today, and no unique constraint on
-// `(reference_type, reference_id)` — adding either is a schema change that was
-// deliberately NOT made here.
+// The reconciliation trail for either case:
+//   * `stripe_charge_refunded` (with `status`/`revokedCoins`) and
+//     `stripe_charge_dispute_opened` audit entries with the charge/dispute id,
+//     the PaymentIntent id, the amount and the currency (no card data),
+//   * the fulfilled `stripe_checkout_sessions` row carries `payment_intent_id`
+//     + `customer_id`, and its `token_amount`/`amount_cents`/`currency` are the
+//     snapshot of what was sold,
+//   * one `token_transactions` row of type `purchase` and, per refund, one of
+//     type `refund`, both with `reference_type = 'stripe-checkout-session'` and
+//     the session id.

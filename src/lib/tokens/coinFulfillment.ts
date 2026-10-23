@@ -32,9 +32,10 @@
 //   not at all — there is no partial credit.
 //
 // WHAT IT DELIBERATELY DOES NOT DO
-//   No wallet ceiling is introduced, no wager limit, escrow or payout cap is
-//   touched, and no refund/dispute reversal is automated (see the webhook's
-//   refund/dispute audit events and the follow-up note there).
+//   No wallet ceiling is introduced and no wager limit, escrow or payout cap is
+//   touched. Refund reversal lives in its own module (src/lib/tokens/
+//   coinRefunds.ts) and never runs from here; disputes stay audit-only in the
+//   webhook.
 
 import { and, eq } from "drizzle-orm";
 import { db } from "../../db/client";

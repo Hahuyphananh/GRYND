@@ -35,6 +35,7 @@
     "test:coin-checkout": "node --import tsx --test tests/coin-checkout.test.mjs",
     "test:coin-fulfilment": "node --import tsx --test tests/coin-fulfilment.test.mjs",
     "test:coin-shop": "node --import tsx --test tests/coin-shop-ui.test.mjs",
+    "test:coin-refunds": "node --import tsx --test tests/coin-refunds.test.mjs",
     "test:quests": "node --import tsx --test tests/quests.test.mjs tests/quests-settlement.test.mjs tests/quests-claim.test.mjs",
     "test:daily-rewards": "node --import tsx --test tests/daily-reward.test.mjs tests/energy-grant.test.mjs",
     "test:daily-reward-widget": "node --import tsx --test --experimental-test-module-mocks tests/daily-reward-widget.test.mjs",
