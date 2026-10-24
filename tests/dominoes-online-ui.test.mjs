@@ -208,6 +208,15 @@ function tagWith(html, testid) {
 
 const isDisabled = (html, testid) => /(\sdisabled=""|\sdisabled=)/.test(tagWith(html, testid) ?? "");
 
+/** The element's INNER html (what it renders), for "which icon and value" checks. */
+function innerWith(html, testid) {
+  const at = html.indexOf(`data-testid="${testid}"`);
+  if (at === -1) return null;
+  const from = html.indexOf(">", at) + 1;
+  const to = html.indexOf("</span>", at);
+  return html.slice(from, to);
+}
+
 /* -------------------------------------------------------------------------- *
  * 1. Both seats, and nothing that is not theirs
  * -------------------------------------------------------------------------- */
@@ -416,11 +425,15 @@ test("dominoes ui: a refusal is shown without corrupting the board", { skip: SKI
   assert.ok(html.includes('data-tile="6-5"'));
 });
 
-test("dominoes ui: a dropped live link says so and pauses the controls", { skip: SKIP_REASON }, () => {
+test("dominoes ui: a dropped live link is announced but never blocks a move", { skip: SKIP_REASON }, () => {
   const html = renderView({ reconnecting: true, selected: "6-3" });
   assert.match(html, /data-testid="dominoes-reconnect"/);
-  assert.match(html, /Reconnecting/);
-  assert.equal(isDisabled(html, "dominoes-play-left"), true);
+  assert.match(html, /Live updates paused/);
+  // The socket only says "something changed, re-read": every read and every
+  // action is HTTP, so losing it costs freshness, not the ability to play. A
+  // board that froze here was the bug that made a match look deactivated.
+  assert.equal(isDisabled(html, "dominoes-play-left"), false);
+  assert.equal(isDisabled(html, "dominoes-hand-tile"), false);
 });
 
 test("dominoes ui: the board is a real control surface, not a picture", { skip: SKIP_REASON }, () => {
@@ -439,14 +452,66 @@ test("dominoes ui: the board is a real control surface, not a picture", { skip: 
   assert.match(chainTile, /role="img"/);
   assert.match(chainTile, /aria-label="6–5"/);
 
-  // The two open values are printed at the ends.
-  assert.match(html, /data-testid="dominoes-open-left"[^>]*>◀ 6/);
-  assert.match(html, /data-testid="dominoes-open-right"[^>]*>5 ▶/);
+  // The two open values are printed at the ends, with an ICON (not a text arrow)
+  // pointing at the direction each one opens — the same Tabler icons the rest of
+  // the app uses.
+  const leftChip = innerWith(html, "dominoes-open-left");
+  const rightChip = innerWith(html, "dominoes-open-right");
+  assert.match(leftChip, /tabler-icon-arrow-left/);
+  assert.equal(leftChip.trimEnd().endsWith("6"), true, "the left chip prints its open value");
+  assert.match(rightChip, /tabler-icon-arrow-right/);
+  assert.equal(rightChip.trimStart().startsWith("5"), true, "the right chip prints its open value");
+  // No emoji/text arrows anywhere on the board: the direction cues are icons.
+  assert.equal(/[◀▶←→]/.test(html), false, "the board must use icons, not arrow glyphs");
 
   // The rules are a disclosure, so they can be read mid-match.
   assert.match(html, /<details[^>]*data-testid="dominoes-rules"/);
   assert.match(html, /How to play Dominoes/);
   assert.match(html, /15 seconds a turn/);
+});
+
+test("dominoes ui: the chain says which end the last tile went on", { skip: SKIP_REASON }, () => {
+  const right = renderView({
+    snapshot: snapshotFor("player1", {
+      chain: [
+        { id: "6-5", end: "left", left: 6, right: 5, isDouble: false, seat: "player2" },
+        { id: "5-0", end: "right", left: 5, right: 0, isDouble: false, seat: "player1" },
+      ],
+      openEnds: { left: 6, right: 0 },
+    }),
+  });
+  // The marker's whole element: from its own test id to the tile that follows
+  // it (its body nests a span, so "up to the next </span>" would cut the icon).
+  const markerSlice = (html) => {
+    const start = html.indexOf('data-testid="dominoes-last-marker"');
+    assert.notEqual(start, -1, "the last play must be marked");
+    const end = html.indexOf('data-testid="dominoes-chain-tile"', start);
+    return html.slice(start, end);
+  };
+
+  const marker = tagWith(right, "dominoes-last-marker");
+  assert.match(marker, /data-end="right"/);
+  assert.match(marker, /aria-label="Last tile played, on the right"/);
+  assert.match(markerSlice(right), /tabler-icon-arrow-right/);
+  assert.match(markerSlice(right), />right</);
+
+  const left = renderView({
+    snapshot: snapshotFor("player1", {
+      chain: [
+        { id: "6-5", end: "left", left: 6, right: 5, isDouble: false, seat: "player2" },
+        { id: "6-6", end: "left", left: 6, right: 6, isDouble: false, seat: "player1" },
+      ],
+      openEnds: { left: 6, right: 5 },
+    }),
+  });
+  assert.match(tagWith(left, "dominoes-last-marker") ?? "", /data-end="left"/);
+  assert.match(left, /aria-label="Last tile played, on the left"/);
+  assert.match(markerSlice(left), /tabler-icon-arrow-left/);
+  assert.match(markerSlice(left), />left</);
+
+  // The opening tile opens the line rather than choosing a side, so a one-tile
+  // chain carries no marker.
+  assert.equal(tagWith(renderView({}), "dominoes-last-marker"), null);
 });
 
 test("dominoes ui: the chain renders the engine's order and marks a double", () => {
@@ -808,21 +873,38 @@ test("dominoes online: the lobby and match URLs are the ones that resolve", () =
  * 8. Responsive + reduced motion (the CSS contract)
  * -------------------------------------------------------------------------- */
 
-test("dominoes css: the chain wraps and scrolls instead of shrinking", () => {
+test("dominoes css: the chain grows as one line and the board scrolls along it", () => {
   const chain = css.slice(css.indexOf(".dominoes-chain {"), css.indexOf(".dominoes-chain-slot"));
-  assert.match(chain, /flex-wrap:\s*wrap/);
-  assert.match(chain, /overflow-y:\s*auto/);
-  assert.match(chain, /max-height:\s*min\(34vh, 320px\)/);
-  // Tile size is one variable, clamped so a phone still shows readable halves.
-  assert.match(css, /\.dominoes-board \{[\s\S]*?--dm-half:\s*clamp\(/);
+  // A real table does not reflow a line of dominoes into a block of rows: the
+  // row stays a row, keeps its size and extends in both directions.
+  assert.match(chain, /flex-wrap:\s*nowrap/);
+  assert.match(chain, /overflow-x:\s*auto/);
+  assert.equal(/max-height:\s*min\(34vh/.test(chain), false, "the line is no longer boxed in");
+  assert.match(chain, /min-height:\s*clamp\(/, "the board has a table-sized floor");
+  // Tile size is one variable, clamped so a phone still shows readable halves —
+  // and it is bigger than the first board shipped with.
+  const board = css.slice(css.indexOf(".dominoes-board {"), css.indexOf(".dominoes-layout {"));
+  assert.match(board, /--dm-half:\s*clamp\(24px,/);
   // The hand scales itself up from the same variable.
   assert.match(css, /\.dominoes-hand \{[\s\S]*?--dm-half:\s*clamp\(/);
+});
+
+test("dominoes css: the controls sit in a right-hand sidebar, the hand under the board", () => {
+  // Two columns: board first, controls second.
+  const layout = css.slice(css.indexOf(".dominoes-layout {"), css.indexOf(".dominoes-seat {"));
+  assert.match(layout, /grid-template-columns:\s*minmax\(0, 1fr\) 264px/);
+  // …and it stacks on a phone, so the sidebar never squeezes the board.
+  assert.match(layout, /@media \(max-width: 900px\)[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\);/);
+  // The board and the hand are one column, so the tiles stay under the table.
+  const main = css.slice(css.indexOf(".dominoes-main {"), css.indexOf(".dominoes-sidebar {"));
+  assert.match(main, /flex-direction:\s*column/);
 });
 
 test("dominoes css: tap targets, small screens and reduced motion", () => {
   // Every actionable control is at least 44px tall and ignores double-tap zoom.
   const action = css.slice(css.indexOf(".dominoes-action-button {"), css.indexOf(".dominoes-action-value"));
-  assert.match(action, /min-height:\s*44px/);
+  const height = Number(/min-height:\s*(\d+)px/.exec(action)?.[1] ?? 0);
+  assert.ok(height >= 44, `the action target is ${height}px tall, below the 44px minimum`);
   assert.match(action, /touch-action:\s*manipulation/);
   // A narrow-phone block exists, and it lets the end buttons take a full row each.
   assert.match(css, /@media \(max-width: 420px\) \{/);

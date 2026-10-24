@@ -3,7 +3,13 @@ import NavigationBar from "../navigation-bar";
 import Footer from "../Footer";
 import GryndProWidget from "../GryndProWidget";
 import JsonLd from "../seo/JsonLd";
-import { gameLandingPath, gamePlayPath, type GameLandingPage } from "../../lib/gameLandingPages";
+import PracticeMatchButton from "./PracticeMatchButton";
+import {
+  gameLandingPath,
+  gameMatchPath,
+  gamePlayPath,
+  type GameLandingPage,
+} from "../../lib/gameLandingPages";
 import { buildGameStructuredData } from "../../lib/gameJsonLd";
 import { guidePath, guidesForGame } from "../../lib/guides";
 
@@ -112,6 +118,16 @@ export default function GameLanding({
                 <path d="M5 12h14M12 5l7 7-7 7" />
               </svg>
             </Link>
+            {/* Practice, when this game's catalogue entry declares a route that
+                can start one. It is a second way into a real match, and the only
+                one that needs no account: the route seats a guest. */}
+            {game.practiceApi ? (
+              <PracticeMatchButton
+                apiPath={game.practiceApi}
+                label={`Play the bot — free ${game.name} practice`}
+                matchHref={(matchId) => gameMatchPath(game.slug, matchId)}
+              />
+            ) : null}
             <Link
               href="/games"
               className="inline-flex items-center justify-center rounded-lg border border-[#00e5ff]/35 px-5 py-3 text-sm font-semibold text-[#9dd8ff] transition hover:bg-[#00e5ff]/10 hover:text-[#d8fbff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
@@ -121,9 +137,11 @@ export default function GameLanding({
           </div>
 
           <p className="mt-3 text-xs text-[#9dd8ff]/80">
-            {game.aiPractice
-              ? `Free to play. Sign in to play a ranked match against another player, or try a free practice match against the bot.`
-              : "Free to play. Sign in to play a ranked match against another player."}
+            {game.practiceApi
+              ? "Free to play. The practice button above starts a real match against the bot with no account at all; a ranked match against another player needs a signed-in one."
+              : game.aiPractice
+                ? `Free to play. Sign in to play a ranked match against another player, or try a free practice match against the bot.`
+                : "Free to play. Sign in to play a ranked match against another player."}
           </p>
         </header>
 

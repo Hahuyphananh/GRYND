@@ -2515,20 +2515,59 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 }
 
 /* ── Dominoes (online 1v1 table) ─────────────────────────────────────────
-   The table is: opponent card, turn banner + 15s clock, the shared chain with
-   the draw pile beside it, then the viewer's own hand and its three actions.
+   TWO COLUMNS. On the left is the BOARD — the opponent card, the turn banner and
+   its 15-second clock, the shared chain that grows like a real table, the draw
+   pile, and the viewer's own hand underneath it. On the right is the ACTION
+   sidebar: the open ends, the selected tile and the three controls, which stay
+   in one place however long the chain gets.
 
-   SIZING IS THE WHOLE DESIGN PROBLEM. A chain can hold all 28 tiles, and on a
-   phone there is no width for that, so the line WRAPS and the container scrolls
-   vertically instead of shrinking the tiles below a readable/tappable size. Every
-   tile is one CSS variable wide, so the hand can be larger than the chain (it is
-   what you tap) without the two drifting apart. */
+   SIZING IS THE WHOLE DESIGN PROBLEM. A chain can hold all 28 tiles, so the line
+   is never squeezed to fit: it keeps growing and the board scrolls along it, with
+   the newest tile brought into view. Every tile is one CSS variable wide, so the
+   hand can be larger than the chain (it is what you tap) without the two drifting
+   apart, and the halves never drop below a value a phone can read. */
 .dominoes-board {
-  --dm-half: clamp(19px, 5.6vw, 27px);
-  --dm-gap: clamp(5px, 1.4vw, 9px);
+  --dm-half: clamp(24px, 6.2vw, 34px);
+  --dm-gap: clamp(4px, 1vw, 8px);
+  display: block;
+}
+
+/* The board and its sidebar. The sidebar is a fixed column so a growing hand can
+   never push the controls around, and it is sticky so they stay reachable while
+   the page scrolls. */
+.dominoes-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 264px;
+  align-items: start;
+  gap: 12px;
+}
+
+.dominoes-main {
   display: flex;
+  min-width: 0;
   flex-direction: column;
   gap: 10px;
+}
+
+.dominoes-sidebar {
+  position: sticky;
+  top: 76px;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Under ~900px the sidebar stacks UNDER the board (the hand stays directly under
+   the table, so the tiles are still where the thumb expects them). */
+@media (max-width: 900px) {
+  .dominoes-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dominoes-sidebar {
+    position: static;
+  }
 }
 
 /* ── Seat cards ─────────────────────────────────────────────────────── */
@@ -2681,54 +2720,106 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   gap: 8px;
 }
 
+/* THE TABLE — a felt board the line grows across. It is tall enough to read as a
+   playing surface, and it grows DOWNWARDS only as far as its contents need; the
+   chain itself extends sideways. */
 .dominoes-chain-wrap {
+  position: relative;
   min-width: 0;
-  border: 1px solid rgba(124, 239, 255, 0.16);
-  border-radius: 14px;
-  background: linear-gradient(160deg, rgba(4, 22, 43, 0.85), rgba(2, 12, 26, 0.95));
-  box-shadow: inset 0 0 40px rgba(0, 229, 255, 0.05);
+  border: 1px solid rgba(124, 239, 255, 0.18);
+  border-radius: 16px;
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(0, 229, 255, 0.1), transparent 60%),
+    linear-gradient(160deg, rgba(6, 34, 58, 0.95), rgba(2, 12, 26, 0.98));
+  box-shadow: inset 0 0 60px rgba(0, 229, 255, 0.07);
 }
 
-/* The line wraps, and scrolls once it outgrows its share of the screen. The
-   max-height is deliberately viewport-relative: on a short phone in landscape the
-   hand must stay reachable. */
+/* ONE CONTINUOUS LINE. Tiles are never wrapped into a block of rows and never
+   shrunk: the row grows in both directions, centred while it fits and starting at
+   the left edge once it does not, and the board scrolls horizontally along it.
+   `min-height` is what makes the board read as a table before the first tile. */
 .dominoes-chain {
   display: flex;
-  flex-wrap: wrap;
-  align-content: flex-start;
+  flex-wrap: nowrap;
   align-items: center;
-  justify-content: center;
+  justify-content: safe center;
   gap: var(--dm-gap);
-  max-height: min(34vh, 320px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 10px;
+  min-height: clamp(148px, 28vh, 250px);
+  /* The generous top padding is the last-play marker's room: the badge sits
+     just above the newest tile, and the padding box is where the board clips. */
+  padding: 26px 12px 14px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
   scrollbar-width: thin;
+  scroll-padding-inline: 44px;
 }
 
 .dominoes-chain-slot {
+  position: relative;
   display: inline-flex;
+  flex: 0 0 auto;
+}
+
+/* "LAST ON THE LEFT/RIGHT" — a small badge above the newest tile, naming the
+   end the last play was attached to. It floats, so it never widens the line and
+   never shifts a tile. */
+.dominoes-last-marker {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  border-radius: 999px;
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  background: rgba(4, 18, 34, 0.95);
+  padding: 1px 7px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fde68a;
+  pointer-events: none;
 }
 
 .dominoes-chain-empty {
-  margin: 0;
+  margin: 0 auto;
   padding: 18px 10px;
   text-align: center;
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.5);
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
 }
 
-/* The two open values, printed at the physical ends of the line so "which ends
-   can I attach to" is answered even when the far end has wrapped away. */
+/* The two open values, printed at the physical ends of the line. They are STICKY
+   to the two edges of the board, so a long chain can scroll underneath them and
+   "which ends can I attach to" is still answered on screen. */
 .dominoes-end-chip {
-  border-radius: 8px;
-  border: 1px solid rgba(124, 239, 255, 0.35);
-  background: rgba(0, 229, 255, 0.1);
-  padding: 2px 7px;
-  font-size: 11px;
+  position: sticky;
+  z-index: 1;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  border-radius: 9px;
+  border: 1px solid rgba(124, 239, 255, 0.4);
+  background: rgba(2, 22, 38, 0.94);
+  padding: 4px 9px;
+  font-size: 13px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   color: #a5f3fc;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+.dominoes-end-chip.is-left {
+  left: 6px;
+}
+
+.dominoes-end-chip.is-right {
+  right: 6px;
 }
 
 .dominoes-end-chip:empty {
@@ -2796,11 +2887,11 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   align-items: stretch;
   gap: 0;
   /* The chain and the hand share one variable; the hand scales it up below. */
-  border: 1px solid rgba(165, 243, 252, 0.28);
-  border-radius: 6px;
-  background: linear-gradient(170deg, #f8fafc, #dbeafe);
+  border: 1px solid rgba(165, 243, 252, 0.34);
+  border-radius: 7px;
+  background: linear-gradient(170deg, #ffffff, #dbeafe);
   color: #0b1226;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 5px 12px rgba(0, 0, 0, 0.45);
   overflow: hidden;
   contain: layout paint;
 }
@@ -2808,17 +2899,21 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 .dominoes-tile-half {
   display: flex;
   width: var(--dm-half);
+  /* A half is SQUARE, so a tile is 2:1 — the proportion a real domino has. The
+     height used to come from the numeral's line box, which made every tile a
+     thin strip and the values hard to place. */
+  height: var(--dm-half);
   align-items: center;
   justify-content: center;
-  font-size: calc(var(--dm-half) * 0.62);
-  font-weight: 800;
+  font-size: calc(var(--dm-half) * 0.66);
+  font-weight: 900;
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
 
 .dominoes-tile-divider {
-  width: 1px;
-  background: rgba(11, 18, 38, 0.45);
+  width: 2px;
+  background: rgba(11, 18, 38, 0.5);
 }
 
 /* A double carries both halves the same; the accent bar is what marks it, so a
@@ -2887,13 +2982,13 @@ button.dominoes-tile:disabled {
 
 /* ── The viewer's hand ──────────────────────────────────────────────── */
 .dominoes-hand {
-  --dm-half: clamp(24px, 7.4vw, 33px);
+  --dm-half: clamp(30px, 8.2vw, 42px);
   display: flex;
   flex-direction: column;
   gap: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 14px;
-  background: rgba(0, 0, 0, 0.32);
+  background: rgba(0, 0, 0, 0.34);
   padding: 10px;
 }
 
@@ -2928,7 +3023,7 @@ button.dominoes-tile:disabled {
 .dominoes-hand-tiles {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 7px;
 }
 
 .dominoes-hand-empty {
@@ -2937,29 +3032,105 @@ button.dominoes-tile:disabled {
   color: rgba(255, 255, 255, 0.55);
 }
 
+/* ── The action sidebar ────────────────────────────────────────────────── */
+.dominoes-side-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid rgba(124, 239, 255, 0.2);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(6, 30, 52, 0.9), rgba(2, 10, 22, 0.94));
+  padding: 12px;
+}
+
+.dominoes-side-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(165, 243, 252, 0.85);
+}
+
+/* The two open values, right above the buttons that attach to them. */
+.dominoes-side-ends {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.dominoes-side-end {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-radius: 9px;
+  border: 1px solid rgba(124, 239, 255, 0.35);
+  background: rgba(0, 229, 255, 0.1);
+  padding: 5px 8px;
+  font-size: 16px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: #e0feff;
+}
+
+.dominoes-side-end-arrow {
+  flex: 0 0 auto;
+  color: rgba(165, 243, 252, 0.8);
+}
+
+/* What is currently selected — so the buttons below always have a subject. */
+.dominoes-side-selected {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 8px;
+  border-radius: 10px;
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 6px 8px;
+}
+
+.dominoes-side-selected .dominoes-tile {
+  --dm-half: 22px;
+  flex: 0 0 auto;
+}
+
+.dominoes-side-selected-label {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.65);
+}
+
 .dominoes-controls {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 8px;
 }
 
 .dominoes-action-button {
   display: inline-flex;
-  min-height: 44px;
-  flex: 1 1 120px;
+  min-height: 46px;
+  flex: 1 1 100%;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  border-radius: 10px;
-  border: 1px solid rgba(124, 239, 255, 0.45);
-  background: rgba(0, 229, 255, 0.14);
-  padding: 10px 12px;
-  font-size: 12px;
+  gap: 7px;
+  border-radius: 11px;
+  border: 1px solid rgba(124, 239, 255, 0.5);
+  background: rgba(0, 229, 255, 0.16);
+  padding: 11px 12px;
+  font-size: 13px;
   font-weight: 800;
   letter-spacing: 0.04em;
-  color: #cffafe;
+  color: #e5feff;
   touch-action: manipulation;
   transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.dominoes-action-arrow {
+  flex: 0 0 auto;
+  opacity: 0.85;
 }
 
 .dominoes-action-button:hover:not(:disabled) {
@@ -2978,6 +3149,9 @@ button.dominoes-tile:disabled {
 
 .dominoes-action-button.is-open {
   flex-basis: 100%;
+  border-color: rgba(251, 191, 36, 0.55);
+  background: rgba(251, 191, 36, 0.18);
+  color: #fef3c7;
 }
 
 .dominoes-action-button.is-secondary {
@@ -3015,13 +3189,6 @@ button.dominoes-tile:disabled {
   color: #fca5a5;
 }
 
-.dominoes-footer {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 8px;
-}
-
 .dominoes-secondary-button {
   display: inline-flex;
   min-height: 44px;
@@ -3030,7 +3197,7 @@ button.dominoes-tile:disabled {
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   background: rgba(255, 255, 255, 0.06);
-  padding: 8px 14px;
+  padding: 9px 14px;
   font-size: 12px;
   font-weight: 700;
   color: rgba(255, 255, 255, 0.85);
@@ -3044,7 +3211,6 @@ button.dominoes-tile:disabled {
 
 .dominoes-rules {
   min-width: 0;
-  flex: 1 1 240px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
   background: rgba(0, 0, 0, 0.22);
@@ -3078,24 +3244,22 @@ button.dominoes-tile:disabled {
   color: rgba(255, 255, 255, 0.6);
 }
 
-/* Narrow phones: the end buttons keep a full row each so neither label wraps
-   into two lines, and the chain gives back vertical space to the hand. */
+/* Narrow phones: the buttons keep a full row each so neither label wraps into
+   two lines, and the table keeps enough height to read as a board without
+   pushing the hand below the fold. The tiles stay readable: the value is the
+   thing you match on. */
 @media (max-width: 420px) {
   .dominoes-board {
-    --dm-half: clamp(17px, 5.2vw, 22px);
+    --dm-half: clamp(22px, 6vw, 28px);
   }
 
   .dominoes-chain {
-    max-height: min(30vh, 240px);
+    min-height: clamp(118px, 24vh, 190px);
     padding: 8px;
   }
 
   .dominoes-action-button {
     flex-basis: 100%;
-  }
-
-  .dominoes-footer {
-    flex-direction: column;
   }
 
   .dominoes-rules {

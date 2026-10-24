@@ -233,12 +233,19 @@ test("a landing page carries breadcrumbs, a hub link and related games", () => {
   assert.match(src, /Browse all games/);
   // Related games, resolved through the catalogue path helper.
   assert.match(src, /href=\{gameLandingPath\(entry\.slug\)\}/);
-  // Exactly one way into gameplay, and it is the rewritten play URL.
+  // Two links into gameplay, both the rewritten play URL (the hero and the
+  // closing CTA). The one other entry the page offers — the practice button —
+  // is a POST to the game's own practice route, not an href.
   assert.match(src, /const playHref = gamePlayPath\(game\.slug\);/);
   assert.equal(
     [...src.matchAll(/href=\{playHref\}/g)].length,
     2,
-    "the hero and the closing CTA are the only routes into gameplay",
+    "the hero and the closing CTA are the only linked routes into gameplay",
+  );
+  assert.doesNotMatch(
+    src,
+    /href=\{gameMatchPath/,
+    "a match URL must never be a static href on the landing page",
   );
 });
 

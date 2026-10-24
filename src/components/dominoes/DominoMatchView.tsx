@@ -11,20 +11,22 @@
 // tests/dominoes-online-ui.test.mjs, which renders it once per seat and asserts
 // the opponent's tiles are nowhere in the markup).
 //
-// ── WHAT IS ON SCREEN, AND WHY ────────────────────────────────────────────
+// ── WHAT IS ON SCREEN, AND WHERE ──────────────────────────────────────────
 //
-//   opponent seat   name/avatar + TILE COUNT only. The count is public in
-//                   dominoes (you can see how many tiles a player holds); the
-//                   tiles themselves are not, and never reach the client.
-//   turn banner     the server's `isViewerTurn`, plus the 15-second window drawn
-//                   from `turnDeadlineAt`. The countdown is decoration: the
-//                   server refuses a late action and resolves the turn itself.
-//   the chain       both open values, the played tiles in order (see
-//                   DominoChain for wrapping/scrolling).
-//   the draw pile   a stack and its COUNT. The pile's contents are secret and
-//                   are not in the payload.
-//   the viewer's hand + the three actions (play on an end, draw, pass).
-//   the rules panel a `<details>` disclosure — no modal, no interruption.
+// The table is a two-column layout: the BOARD (left) and the ACTIONS (right).
+//
+//   board      opponent seat (name/avatar + TILE COUNT only), the turn banner
+//              and the 15-second window, the shared chain and its two open
+//              values, the draw pile, and — underneath the table, where a
+//              player's own tiles belong — the viewer's hand.
+//   sidebar    the open ends, the selected tile, and the three actions (play on
+//              an end, draw, pass), plus resign and the rules. It is pinned in
+//              its own column so the controls never move as the chain grows or
+//              the hand shrinks; on a narrow screen it stacks under the board.
+//
+// The opponent's tiles are not in the payload at all, so there is nothing here
+// that could render them; the count is public (in dominoes you can see how many
+// tiles a player holds).
 //
 // ── STATES ────────────────────────────────────────────────────────────────
 //
@@ -32,9 +34,15 @@
 // disabled / victory / defeat / draw. The terminal ones are the page's result
 // screen; here the board simply stops offering controls (`data-live="false"`)
 // and keeps the final position on screen.
+//
+// A DROPPED LIVE LINK DOES NOT DISABLE THE BOARD. Every read and every action
+// goes over HTTP and the socket only says "something changed, re-read" (see the
+// match page), so losing it costs freshness, never the ability to play: the
+// notice appears and the controls stay live.
 
 import { useId } from "react";
 
+import DominoActions from "./DominoActions";
 import DominoChain, { type ChainTileLike } from "./DominoChain";
 import DominoHand from "./DominoHand";
 import SeatAvatar from "../game/SeatAvatar";
@@ -103,7 +111,7 @@ export type DominoMatchViewProps = {
   pending?: boolean;
   /** The server's last refusal, or a local explanation. */
   notice?: string | null;
-  /** The socket is down: the board still renders, actions are paused. */
+  /** The socket is down: live updates pause, the board and its controls do not. */
   reconnecting?: boolean;
 };
 
@@ -152,6 +160,7 @@ export default function DominoMatchView({
   const hand = Array.isArray(snapshot.hand) ? snapshot.hand : [];
   const opponentTileCount = Number(snapshot.opponentTileCount ?? 0) || 0;
   const drawPileCount = Number(snapshot.drawPileCount ?? 0) || 0;
+  const openEnds = snapshot.openEnds ?? null;
 
   // The countdown only exists while the server says a turn is running: a
   // decided match has no clock, and the store clears it.
@@ -176,186 +185,212 @@ export default function DominoMatchView({
         {t("games.dominoes.board_title")}
       </h2>
 
-      {/* ── Opponent seat: a name, an avatar, and a COUNT ────────────────── */}
-      <div
-        className={`dominoes-seat ${isLive && !isViewerTurn ? "is-active" : ""}`}
-        data-testid="dominoes-seat-opponent"
-        data-active={isLive && !isViewerTurn ? "true" : "false"}
-      >
-        <span className="dominoes-seat-avatar">
-          <SeatAvatar
-            iconKey={opponentIdentity?.iconKey ?? null}
-            profileFrame={opponentIdentity?.profileFrame ?? null}
-            name={opponentName}
-            isAi={opponentIsAi}
-            isGuest={Boolean(opponentIdentity?.isGuest)}
-            size="h-9 w-9"
-          />
-        </span>
-        <span className="dominoes-seat-body">
-          <span className="dominoes-seat-name">{opponentName}</span>
-          <span className="dominoes-seat-meta" data-testid="dominoes-opponent-count">
-            {t(
-              opponentTileCount === 1
-                ? "games.dominoes.tiles_left_one"
-                : "games.dominoes.tiles_left",
-              { count: opponentTileCount },
-            )}
-          </span>
-        </span>
-        {isLive && !isViewerTurn ? (
-          <span className="dominoes-turn-badge" data-testid="dominoes-opponent-turn-badge">
-            {t("games.dominoes.to_move")}
-          </span>
-        ) : null}
-      </div>
-
-      {/* ── Turn banner + clock ──────────────────────────────────────────── */}
-      <div className="dominoes-banner">
-        <p className="dominoes-status" role="status" aria-live="polite" data-testid="dominoes-status">
-          {t(
-            `games.dominoes.turn_${
-              status === "waiting"
-                ? "waiting"
-                : status === "cancelled"
-                  ? "cancelled"
-                  : status === "finished"
-                    ? "finished"
-                    : !viewerSeat
-                      ? "loading"
-                      : isViewerTurn
-                        ? "yours"
-                        : "theirs"
-            }`,
-            { name: opponentName },
-          )}
-        </p>
-        <span className="dominoes-lifecycle" data-testid="dominoes-lifecycle">
-          {t(
-            `games.dominoes.status_${
-              status === "waiting" ||
-              status === "playing" ||
-              status === "finished" ||
-              status === "cancelled"
-                ? status
-                : "loading"
-            }`,
-          )}
-        </span>
-      </div>
-
-      {showClock ? (
-        <div
-          className={`dominoes-clock ${clock.expired ? "is-expired" : ""}`}
-          data-testid="dominoes-clock"
-        >
-          <span
-            className="dominoes-clock-value"
-            data-testid="dominoes-countdown"
-            // `role="timer"` is a live region by default; the seconds must NOT be
-            // announced every tick, so the label is read on demand and the
-            // visible value stays a plain text node.
-            role="timer"
-            aria-live="off"
-            aria-label={
-              clock.expired
-                ? t("games.dominoes.clock_aria_expired")
-                : t("games.dominoes.clock_aria", { seconds: clock.seconds })
-            }
+      <div className="dominoes-layout">
+        {/* ══ THE BOARD ══════════════════════════════════════════════════ */}
+        <div className="dominoes-main">
+          {/* ── Opponent seat: a name, an avatar, and a COUNT ────────────── */}
+          <div
+            className={`dominoes-seat ${isLive && !isViewerTurn ? "is-active" : ""}`}
+            data-testid="dominoes-seat-opponent"
+            data-active={isLive && !isViewerTurn ? "true" : "false"}
           >
-            {clock.expired
-              ? t("games.dominoes.time_up")
-              : t("games.dominoes.countdown_seconds", { seconds: clock.seconds })}
-          </span>
-          <span className="dominoes-clock-track" aria-hidden="true">
-            <span className="dominoes-clock-fill" style={{ width: `${clockPercent}%` }} />
-          </span>
-        </div>
-      ) : null}
+            <span className="dominoes-seat-avatar">
+              <SeatAvatar
+                iconKey={opponentIdentity?.iconKey ?? null}
+                profileFrame={opponentIdentity?.profileFrame ?? null}
+                name={opponentName}
+                isAi={opponentIsAi}
+                isGuest={Boolean(opponentIdentity?.isGuest)}
+                size="h-9 w-9"
+              />
+            </span>
+            <span className="dominoes-seat-body">
+              <span className="dominoes-seat-name">{opponentName}</span>
+              <span className="dominoes-seat-meta" data-testid="dominoes-opponent-count">
+                {t(
+                  opponentTileCount === 1
+                    ? "games.dominoes.tiles_left_one"
+                    : "games.dominoes.tiles_left",
+                  { count: opponentTileCount },
+                )}
+              </span>
+            </span>
+            {isLive && !isViewerTurn ? (
+              <span className="dominoes-turn-badge" data-testid="dominoes-opponent-turn-badge">
+                {t("games.dominoes.to_move")}
+              </span>
+            ) : null}
+          </div>
 
-      {reconnecting ? (
-        <p className="dominoes-reconnect" role="status" aria-live="polite" data-testid="dominoes-reconnect">
-          {t("games.dominoes.reconnecting")}
-        </p>
-      ) : null}
-
-      {/* ── The shared chain ─────────────────────────────────────────────── */}
-      <div className="dominoes-table">
-        <DominoChain chain={chain} openEnds={snapshot.openEnds ?? null} isLive={isLive} />
-
-        <div className="dominoes-pile" data-testid="dominoes-pile">
-          <span className="dominoes-pile-stack" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-          </span>
-          <span className="dominoes-pile-body">
-            <span className="dominoes-pile-title">{t("games.dominoes.draw_pile")}</span>
-            <span className="dominoes-pile-count" data-testid="dominoes-pile-count">
+          {/* ── Turn banner + clock ──────────────────────────────────────── */}
+          <div className="dominoes-banner">
+            <p
+              className="dominoes-status"
+              role="status"
+              aria-live="polite"
+              data-testid="dominoes-status"
+            >
               {t(
-                drawPileCount === 1
-                  ? "games.dominoes.tiles_count_one"
-                  : "games.dominoes.tiles_count",
-                { count: drawPileCount },
+                `games.dominoes.turn_${
+                  status === "waiting"
+                    ? "waiting"
+                    : status === "cancelled"
+                      ? "cancelled"
+                      : status === "finished"
+                        ? "finished"
+                        : !viewerSeat
+                          ? "loading"
+                          : isViewerTurn
+                            ? "yours"
+                            : "theirs"
+                }`,
+                { name: opponentName },
+              )}
+            </p>
+            <span className="dominoes-lifecycle" data-testid="dominoes-lifecycle">
+              {t(
+                `games.dominoes.status_${
+                  status === "waiting" ||
+                  status === "playing" ||
+                  status === "finished" ||
+                  status === "cancelled"
+                    ? status
+                    : "loading"
+                }`,
               )}
             </span>
-          </span>
+          </div>
+
+          {showClock ? (
+            <div
+              className={`dominoes-clock ${clock.expired ? "is-expired" : ""}`}
+              data-testid="dominoes-clock"
+            >
+              <span
+                className="dominoes-clock-value"
+                data-testid="dominoes-countdown"
+                // `role="timer"` is a live region by default; the seconds must NOT be
+                // announced every tick, so the label is read on demand and the
+                // visible value stays a plain text node.
+                role="timer"
+                aria-live="off"
+                aria-label={
+                  clock.expired
+                    ? t("games.dominoes.clock_aria_expired")
+                    : t("games.dominoes.clock_aria", { seconds: clock.seconds })
+                }
+              >
+                {clock.expired
+                  ? t("games.dominoes.time_up")
+                  : t("games.dominoes.countdown_seconds", { seconds: clock.seconds })}
+              </span>
+              <span className="dominoes-clock-track" aria-hidden="true">
+                <span className="dominoes-clock-fill" style={{ width: `${clockPercent}%` }} />
+              </span>
+            </div>
+          ) : null}
+
+          {reconnecting ? (
+            <p
+              className="dominoes-reconnect"
+              role="status"
+              aria-live="polite"
+              data-testid="dominoes-reconnect"
+            >
+              {t("games.dominoes.reconnecting")}
+            </p>
+          ) : null}
+
+          {/* ── The shared chain, which grows like a real table ──────────── */}
+          <div className="dominoes-table">
+            <DominoChain chain={chain} openEnds={openEnds} isLive={isLive} />
+
+            <div className="dominoes-pile" data-testid="dominoes-pile">
+              <span className="dominoes-pile-stack" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+              </span>
+              <span className="dominoes-pile-body">
+                <span className="dominoes-pile-title">{t("games.dominoes.draw_pile")}</span>
+                <span className="dominoes-pile-count" data-testid="dominoes-pile-count">
+                  {t(
+                    drawPileCount === 1
+                      ? "games.dominoes.tiles_count_one"
+                      : "games.dominoes.tiles_count",
+                    { count: drawPileCount },
+                  )}
+                </span>
+              </span>
+            </div>
+          </div>
+
+          {/* ── The viewer's own tiles, UNDER the table ──────────────────── */}
+          <DominoHand
+            hand={hand}
+            selected={selected}
+            onSelect={onSelect}
+            openEnds={openEnds}
+            chainEmpty={chainEmpty}
+            isViewerTurn={isViewerTurn}
+            isLive={isLive}
+            pending={pending}
+          />
         </div>
-      </div>
 
-      {/* ── The viewer's hand and the three actions ──────────────────────── */}
-      <DominoHand
-        hand={hand}
-        selected={selected}
-        onSelect={onSelect}
-        onPlay={onPlay}
-        onDraw={onDraw}
-        onPass={onPass}
-        openEnds={snapshot.openEnds ?? null}
-        chainEmpty={chainEmpty}
-        drawPileCount={drawPileCount}
-        isViewerTurn={isViewerTurn}
-        isLive={isLive}
-        pending={pending || reconnecting}
-      />
+        {/* ══ THE ACTIONS — a sidebar on the right ═══════════════════════ */}
+        <aside className="dominoes-sidebar">
+          <DominoActions
+            hand={hand}
+            selected={selected}
+            onPlay={onPlay}
+            onDraw={onDraw}
+            onPass={onPass}
+            openEnds={openEnds}
+            chainEmpty={chainEmpty}
+            drawPileCount={drawPileCount}
+            isViewerTurn={isViewerTurn}
+            isLive={isLive}
+            pending={pending}
+          />
 
-      <p
-        className={`dominoes-notice ${notice ? "is-visible" : ""}`}
-        role="status"
-        aria-live="polite"
-        data-testid="dominoes-notice"
-      >
-        {notice ?? ""}
-      </p>
-
-      <div className="dominoes-footer">
-        {isLive ? (
-          <button
-            type="button"
-            className="dominoes-secondary-button"
-            data-testid="dominoes-resign"
-            disabled={pending}
-            onClick={() => onResign?.()}
+          <p
+            className={`dominoes-notice ${notice ? "is-visible" : ""}`}
+            role="status"
+            aria-live="polite"
+            data-testid="dominoes-notice"
           >
-            {t("games.dominoes.resign")}
-          </button>
-        ) : null}
+            {notice ?? ""}
+          </p>
 
-        {/* Rules, in place. A disclosure instead of a modal: a player can read it
-            mid-match without dismissing anything. */}
-        <details className="dominoes-rules" data-testid="dominoes-rules">
-          <summary className="dominoes-rules-summary">
-            {t("games.dominoes.rules_summary")}
-          </summary>
-          <ul className="dominoes-rules-list">
-            <li>{t("games.dominoes.board_rule_match")}</li>
-            <li>{t("games.dominoes.board_rule_doubles")}</li>
-            <li>{t("games.dominoes.board_rule_draw")}</li>
-            <li>{t("games.dominoes.board_rule_pass")}</li>
-            <li>{t("games.dominoes.board_rule_win")}</li>
-            <li>{t("games.dominoes.board_rule_clock")}</li>
-          </ul>
-        </details>
+          {isLive ? (
+            <button
+              type="button"
+              className="dominoes-secondary-button"
+              data-testid="dominoes-resign"
+              disabled={pending}
+              onClick={() => onResign?.()}
+            >
+              {t("games.dominoes.resign")}
+            </button>
+          ) : null}
+
+          {/* Rules, in place. A disclosure instead of a modal: a player can read
+              it mid-match without dismissing anything. */}
+          <details className="dominoes-rules" data-testid="dominoes-rules">
+            <summary className="dominoes-rules-summary">
+              {t("games.dominoes.rules_summary")}
+            </summary>
+            <ul className="dominoes-rules-list">
+              <li>{t("games.dominoes.board_rule_match")}</li>
+              <li>{t("games.dominoes.board_rule_doubles")}</li>
+              <li>{t("games.dominoes.board_rule_draw")}</li>
+              <li>{t("games.dominoes.board_rule_pass")}</li>
+              <li>{t("games.dominoes.board_rule_win")}</li>
+              <li>{t("games.dominoes.board_rule_clock")}</li>
+            </ul>
+          </details>
+        </aside>
       </div>
     </div>
   );

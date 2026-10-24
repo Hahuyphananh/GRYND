@@ -192,6 +192,7 @@ test("localisation: every string the screens use is a key in all three locales",
     "src/components/dominoes/DominoMatchView.tsx",
     "src/components/dominoes/DominoHand.tsx",
     "src/components/dominoes/DominoChain.tsx",
+    "src/components/dominoes/DominoActions.tsx",
   ];
   const used = new Set();
   for (const file of SCREENS) {

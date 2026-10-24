@@ -23,7 +23,10 @@
  *      lobby must be noindex. Two indexable pages for one game is the bug this
  *      split exists to prevent.
  *   4. AUTH IS NOT WEAKENED. Nothing here may put the landing content behind
- *      Clerk, and nothing may let a signed-out visitor start a match.
+ *      Clerk, and nothing may let a signed-out visitor start a RANKED match.
+ *      The one exception is a game's own FREE PRACTICE route (declared as
+ *      `practiceApi` in the catalogue, checked below): practice seats a guest
+ *      by design, and it is unrated.
  *
  * Run:  npm run test:game-landing
  */
@@ -39,6 +42,7 @@ import {
   GAME_LANDING_PAGES,
   GAME_LANDING_SLUGS,
   gameLandingPath,
+  gameMatchPath,
   gamePlayPath,
 } from "../src/lib/gameLandingPages.ts";
 import { PUBLIC_SEO_PATHS } from "../src/lib/seoPages.ts";
@@ -375,13 +379,36 @@ test("auth: the landing page is public content with no Clerk dependency", () => 
   }
 });
 
-test("auth: the Play CTA is the only route into gameplay", () => {
+test("auth: the landing page enters gameplay only through declared entry points", () => {
   const component = read("src/components/game-landing/GameLanding.tsx");
   assert.match(component, /const playHref = gamePlayPath\(game\.slug\)/);
   // Both CTAs (hero + closing band) must use it.
   const used = [...component.matchAll(/href=\{playHref\}/g)].length;
   assert.ok(used >= 2, `expected the hero and closing CTAs to use playHref, found ${used}`);
   assert.doesNotMatch(component, /href="\/casino\//, "the landing page must not link into the app namespace");
+
+  // The one other entry is a FREE PRACTICE match, and it exists only for a game
+  // whose catalogue entry declares the route: the page never invents an
+  // endpoint, and the button follows the id the route answers with.
+  assert.match(component, /\{game\.practiceApi \? \(/);
+  assert.match(component, /<PracticeMatchButton/);
+  assert.match(component, /apiPath=\{game\.practiceApi\}/);
+  assert.match(component, /matchHref=\{\(matchId\) => gameMatchPath\(game\.slug, matchId\)\}/);
+  for (const game of GAME_LANDING_PAGES) {
+    if (!game.practiceApi) continue;
+    assert.equal(typeof game.practiceApi, "string");
+    assert.match(game.practiceApi, /^\/api\//, `${game.slug}: a practice route must be an API route`);
+    // A declared endpoint must be a real route in this repo, not a dead link.
+    const route = `src/app${game.practiceApi}/route.ts`;
+    assert.ok(existsSync(route), `${game.slug}: ${route} does not exist`);
+    // The board URL the button follows is the game's own match URL.
+    assert.equal(gameMatchPath(game.slug, "abc"), `/games/${game.slug}/abc`);
+  }
+  // …and the button posts an EMPTY body: it cannot choose a deal, a seat or a
+  // difficulty on the game's behalf.
+  const button = read("src/components/game-landing/PracticeMatchButton.tsx");
+  assert.match(button, /body: JSON\.stringify\(\{\}\)/);
+  assert.doesNotMatch(button, /@clerk\/nextjs/);
 });
 
 test("auth: the proxy still gates gameplay and still age-checks signed-in players", () => {

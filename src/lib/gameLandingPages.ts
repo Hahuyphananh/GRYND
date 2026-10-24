@@ -85,6 +85,21 @@ export type GameLandingPage = {
   shortDescription: string;
   /** Does the lobby offer an unrated practice match against the bot? */
   aiPractice: boolean;
+  /**
+   * The POST endpoint that starts an unrated practice match, when the game has
+   * one that a landing page may call DIRECTLY.
+   *
+   * Setting it renders the practice button beside the hero's Play CTA, so a
+   * visitor can be in a real match against the bot without going through the
+   * lobby at all. The route mints a guest seat for a signed-out visitor (each
+   * game's own practice entry route does that) and answers with the id of the
+   * match it created; the page then navigates to that match's own URL.
+   *
+   * Deliberately per game rather than derived: the endpoint shape is the game's
+   * own contract, and a game whose lobby has practice but no public entry route
+   * must not get a button that 404s.
+   */
+  practiceApi?: string;
   /** Opening explanation: what the game is, and why it is competitive. */
   introduction: string[];
   /** The actual mechanics, in the order a player meets them. */
@@ -1553,8 +1568,10 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     shortDescription:
       "A free, rated 1v1 block-dominoes duel. Seven tiles each, one shared chain and fifteen seconds a turn — match either open end, draw when nothing fits, and empty your hand first.",
     // The lobby offers a free, unrated practice match against the built-in bot
-    // alongside the ranked online table.
+    // alongside the ranked online table — and, because the practice route needs
+    // nothing but a seat, this landing page can start one directly.
     aiPractice: true,
+    practiceApi: "/api/dominoes/create-ai",
     introduction: [
       "Dominoes on GRYND is one-on-one block dominoes played with a standard double-six set: seven tiles each, the remaining fourteen face down as the pile, and one shared chain both players build on.",
       "It is competitive because the information that decides the game is available to both seats the whole time — how many tiles your opponent still holds, which two values the chain is open to, and whether the pile can still save you. The deal, the legality of every play, whose turn it is and the result are all computed server-side from the server's own position.",
@@ -1574,7 +1591,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
       "Drawing is only legal when you hold no playable tile. You may not draw to improve your hand, and you may not pass a tile you could have played.",
       "Passing is only legal when the pile is empty and no tile in your hand matches either open end.",
       "The server validates every action against its own stored position and requires the version you were shown, so a double submit, a stale tab or a replayed turn is refused rather than applied twice.",
-      "A disconnect resolves as it does in every duel here: a player who does not come back forfeits the match to the opponent. There is no Dominoes practice mode, and nothing hidden is ever sent to a client.",
+      "A disconnect resolves as it does in every duel here: a player who does not come back forfeits the match to the opponent. Practice games against the bot are unrated — they never move your Elo or your trophies — and nothing hidden is ever sent to a client.",
     ],
     scoring: [
       "There is no running score. A round has one winner: the first player to play their last tile.",
@@ -1612,7 +1629,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
       },
       {
         q: "Is there a bot I can practise against?",
-        a: "Not yet. Online Dominoes is played against a real opponent only, so every match you see counts as a genuine 1v1 game rather than a practice board.",
+        a: "Yes. A free practice match against the built-in bot starts straight from the button at the top of this page, and needs no account. Practice games are unrated: they move neither your Elo nor your trophies, so only a match against another player counts on the ladder.",
       },
       {
         q: "Is it free to play?",
@@ -1634,6 +1651,18 @@ export const GAME_LANDING_BY_SLUG: Readonly<Record<string, GameLandingPage>> = O
 /** The public landing-page path for a slug. */
 export function gameLandingPath(slug: string): string {
   return `/games/${slug}`;
+}
+
+/**
+ * The path of ONE match of a game — `/games/<slug>/<matchId>`.
+ *
+ * next.config.js rewrites `/games/:slug/:path+` to `/casino/:slug/:path+`, so
+ * this is the same URL a lobby navigates to when it seats a player (and the one
+ * a started practice match is followed to). Built here for the same reason the
+ * other two paths are: one place decides what a game URL looks like.
+ */
+export function gameMatchPath(slug: string, matchId: string): string {
+  return `/games/${slug}/${matchId}`;
 }
 
 /**

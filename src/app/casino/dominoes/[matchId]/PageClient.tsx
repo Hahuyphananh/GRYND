@@ -226,11 +226,16 @@ export default function DominoesMatchPage() {
     const onUpdate = () => refresh();
     socket.on(DOMINOES_MATCH_UPDATED, onUpdate);
 
+    // `linkDown` is ONLY set by an actual disconnect. It used to be seeded from
+    // `socket.connected` at mount time, which is false for the second or two a
+    // fresh handshake takes — and the board treated it as "reconnecting", so a
+    // match could open with every control frozen. A missing live link is anyway
+    // only a loss of freshness (every read and action is HTTP), never a reason
+    // to stop the player playing.
     const onConnect = () => setLinkDown(false);
     const onDisconnect = () => setLinkDown(true);
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
-    setLinkDown(socket.connected === false);
 
     return () => {
       socket.off("connect", join);

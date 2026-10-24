@@ -9,12 +9,21 @@
 // open ends are — the board decides what to offer and the server decides what is
 // accepted.
 //
+// ── FACING ────────────────────────────────────────────────────────────────
+//
+// A tile id is canonical (`"6-3"`, high half first), but a tile ON THE CHAIN has
+// a facing: the engine resolved which half touches the chain on each side
+// (`ChainTile.left` / `.right`). Drawing the canonical id there made adjacent
+// tiles look mismatched — `6-3` next to an open 3 read as "6 | 3 | 3" — so the
+// chain passes `left`/`right` and the tile renders them in that order. The id
+// itself is untouched (`data-tile` stays canonical): only the picture turns.
+//
 // VALUES, NOT PIPS. A real domino shows pips, but a pip grid needs ~9 dots per
 // half and, at the size a fourteen-tile chain forces on a phone, six dots stop
 // being countable. The numeral is legible at every size in the clamp, it is what
 // a screen reader announces, and it survives a high-contrast or zoomed display.
 // The halves are still drawn apart by the divider, and a double is marked so it
-// reads crosswise-in-spirit without rotating out of the chain's line.
+// reads as special without rotating out of the chain's line.
 //
 // ACCESSIBILITY: interactive tiles are real `<button>`s, so they are focusable,
 // announce as buttons, and activate with Enter/Space (and tap, since touch fires
@@ -29,6 +38,14 @@ export type DominoTileOrientation = "horizontal" | "vertical";
 export type DominoTileProps = {
   /** Canonical tile id (`"6-3"`). Anything malformed renders as given. */
   tile: string;
+  /**
+   * The value facing the LEFT-hand side of the line, as the engine resolved it.
+   * When both halves are given the tile is drawn in that facing; a hand tile has
+   * no facing and keeps the canonical order.
+   */
+  left?: number | null;
+  /** The value facing the RIGHT-hand side of the line. */
+  right?: number | null;
   orientation?: DominoTileOrientation;
   /** The viewer's currently selected tile (hand only). */
   selected?: boolean;
@@ -59,6 +76,8 @@ function halves(tile: string): [string, string] | null {
 
 export default function DominoTile({
   tile,
+  left = null,
+  right = null,
   orientation = "horizontal",
   selected = false,
   playable = false,
@@ -73,9 +92,13 @@ export default function DominoTile({
   testId,
 }: DominoTileProps) {
   const parts = halves(tile);
-  const high = parts ? parts[0] : String(tile ?? "");
-  const low = parts ? parts[1] : "";
-  const isDouble = Boolean(parts) && high === low;
+  // A facing is only used when BOTH halves are real values, so a partial
+  // projection still draws the tile instead of half of one.
+  const facing =
+    typeof left === "number" && typeof right === "number" ? [String(left), String(right)] : null;
+  const high = facing ? facing[0] : parts ? parts[0] : String(tile ?? "");
+  const low = facing ? facing[1] : parts ? parts[1] : "";
+  const isDouble = Boolean(parts) && parts![0] === parts![1];
   const accessibleName = label ?? (parts ? `${high} ${low}` : String(tile ?? "tile"));
 
   const classes = [
