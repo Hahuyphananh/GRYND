@@ -86,6 +86,12 @@ const GAME_ROUTE_PATTERNS = [
   // route like every other one. There is no free-practice route yet, so nothing
   // here is playable without an account.
   "/casino/dominoes(.*)",
+  // Hillstrike's online lobby (/casino/hillstrike), its per-match view
+  // (/casino/hillstrike/<id>) and its free-practice board
+  // (/casino/hillstrike/play-ai). The lobby is public to READ — its Play action
+  // sends a signed-out visitor to sign-in — while the practice board is entirely
+  // client-side and needs no account at all.
+  "/casino/hillstrike(.*)",
   // /games/* mirrors of the /casino/* routes.
   "/games/uno(.*)",
   "/games/neon-flush(.*)",
@@ -111,6 +117,7 @@ const GAME_ROUTE_PATTERNS = [
   "/games/sudoku-duel(.*)",
   "/games/barrier-blitz(.*)",
   "/games/dominoes(.*)",
+  "/games/hillstrike(.*)",
 ] as const;
 
 const isPublicRoute = createRouteMatcher([

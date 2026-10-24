@@ -1471,6 +1471,13 @@
       "when": 1800000072000,
       "tag": "0228_dominoes_ai",
       "breakpoints": true
+    },
+    {
+      "idx": 210,
+      "version": "7",
+      "when": 1800000073000,
+      "tag": "0229_hillstrike_pvp",
+      "breakpoints": true
     }
   ]
 }

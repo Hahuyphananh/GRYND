@@ -14,6 +14,7 @@ import { IconClock, IconSparkles } from "@tabler/icons-react";
 import StickyMobileCta from "../../components/StickyMobileCta";
 import DailyRewardWidget from "../../components/DailyRewardWidget";
 import QuestWidget from "../../components/QuestWidget";
+import GryndProWidget from "../../components/GryndProWidget";
 
 
 import { clearPlayedGames, getPlayedGames } from "../../lib/recentlyPlayed";
@@ -604,6 +605,20 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       nameKey: "games.dominoes_name",
       pvpMode: "1v1",
     },
+    {
+      // Hillstrike carries ONE id everywhere — the lobby key, the public page
+      // slug, the rating/trophy key and the presence id are all `hillstrike` —
+      // and it is the newest game in the catalogue. It is free to play: a
+      // Hillstrike match has no stake column and no wager to pick here.
+      name: "Hillstrike",
+      href: "/games/hillstrike",
+      leaderboardKey: "hillstrike",
+      playsKey: "hillstrike",
+      image: GAME_CARD_ART["hillstrike"],
+      descriptionKey: "games.hillstrike_desc",
+      nameKey: "games.hillstrike_name",
+      pvpMode: "1v1",
+    },
   ];
 
   // "For You": the engine ranks canonical game ids (leaderboardKey), so map
@@ -634,10 +649,12 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
   );
 
   const newestOrder = [
-    // Newest first: Dominoes shipped last, so it leads the recency list (and
+    // Newest first: Hillstrike shipped last, so it leads the recency list (and
     // takes the last "NEW" badge slot from the game it displaced).
+    "hillstrike",
+    // Dominoes was the game before it.
     "dominoes",
-    // Barricade was the game before it.
+    // Barricade was the game before that.
     "barricade",
     "tic-tac-toe",
     "speed-typing",
@@ -1260,6 +1277,11 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
           animation-delay: calc(0.08s * var(--i));
         }
       `}</style>
+      {/* GRYND PRO widget — the same fixed bottom-right card the home page and
+          the game landing pages mount. The hub is a browsing surface, not an
+          active match, so it belongs here too; it renders nothing for a
+          signed-out visitor and only a status card for an active member. */}
+      <GryndProWidget />
       {adSlot}
       <Footer />
       <StickyMobileCta playHref="/casino/mines-pvp" />

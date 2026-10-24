@@ -1638,6 +1638,92 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     ],
     related: ["barrier-blitz", "tic-tac-toe", "dots-and-boxes", "four-in-a-row"],
   },
+
+  {
+    slug: "hillstrike",
+    name: "Hillstrike",
+    headline: "Hillstrike — Free 1v1 Artillery Duel",
+    category: "Physics Duel",
+    leaderboardKey: "hillstrike",
+    ogImage: "/images/og-banner.png",
+    shortDescription:
+      "A free, rated 1v1 artillery duel on a mirrored battlefield. Three lives each, a drawn opening seat and two-shot volleys — every shot is resolved by the server, and a direct hit costs exactly one life.",
+    // The practice board is the SAME engine running in the browser against the
+    // built-in bot, at /games/hillstrike/play-ai. It has no public POST entry
+    // route (there is no match row to create), so unlike Dominoes this page
+    // links to the board rather than starting a match through an API.
+    aiPractice: true,
+    introduction: [
+      "Hillstrike is a one-on-one artillery duel. Two seats sit on opposite ends of ONE shared battlefield, each with three lives, and take turns firing a single projectile at the other launcher by choosing an angle and a power.",
+      "It is competitive because nothing about a shot is hidden or lucky: the same battlefield is generated for both seats, every shot is simulated by the same deterministic physics on the server, and the only thing that decides the match is how well each player reads the arc, the ground and the collapsing tower in front of them.",
+    ],
+    howToPlay: [
+      "Sign in, open the lobby and press Find a Match to be seated against a live opponent. A free practice board against the bot is available without an account.",
+      "One seat is drawn from the stored battlefield seed and fires the OPENING shot: a single shot. The other seat answers with two, and from then on the seats alternate two-shot volleys.",
+      "Aim by dragging: the direction sets the launch angle and the pull distance sets the power. Power is a whole number from 0 to 100 — low power is a short lob, full power is a flat, fast shot.",
+      "Fire, then watch the server's resolved trajectory. A direct hit on the enemy launcher removes exactly one life; a shot that lands on terrain or on the enemy tower deforms the ground and damages blocks instead.",
+      "Keep firing your remaining shot in the volley, then hand over. The first seat to take three direct hits loses, and the match ends the instant the third one lands.",
+    ],
+    rules: [
+      "Strictly 1v1 on one shared battlefield. Each seat starts with three lives, and the projectile has exactly one set of parameters — neither seat gets a different gun.",
+      "The battlefield is generated from a seed stored on the match and is mirror-symmetric about the centre, so both seats stand on identical ground with identical towers. The only asymmetry in a match is who won the opening-seat draw.",
+      "The opening seat fires one shot; the opponent answers with two; every later turn is a two-shot volley. A volley continues after a hit — connecting on the first shot does not take the second away.",
+      "A DIRECT hit on a player removes exactly one life. Structural damage and terrain deformation never remove a life, however much of the tower they bring down.",
+      "The match ends IMMEDIATELY when a player reaches zero lives: the winner is the seat that fired, any remaining shot in that volley is forfeited, and no further shot is accepted. There is no draw.",
+      "Only the defender is a valid target: a shot that falls back onto its own launcher can never cost the shooter a life.",
+      "Every shot is simulated server-side from the angle and power alone, at a fixed step, and the stored trajectory is what both clients animate. The client is never asked for — and never believed about — a position, a hit, a life, a terrain height or a winner.",
+      "A shot is accepted only from the seat on turn, with the match version the player was shown, so a double submit, a stale tab or a replayed request is refused rather than applied twice.",
+      "Resigning, or leaving and not returning, awards the match to the opponent. A match against the bot is unrated and never recorded as a ranked result.",
+    ],
+    scoring: [
+      "There is no running score. Lives are the whole tally: three each, and a direct hit is worth exactly one of them.",
+      "The player who takes three direct hits loses. The last shot is the match, and the winner finishes with one, two or three of their own lives still intact.",
+      "Structural damage is positional, not a score: craters change the ground and collapsed blocks clear a line, but neither is worth a life and neither decides the match on its own.",
+      "Resigning, or leaving and not returning, awards the match to the opponent exactly like a played-out win.",
+      "A ranked online result moves your Hillstrike Elo and your Hillstrike trophy ladder, and the account win and loss counters. Nothing else is awarded.",
+    ],
+    strategy: [
+      "Learn the arc before you spend a volley. A lob at moderate power hangs long enough to read, and the first shot of a match is the cheapest place to measure the gravity in front of you.",
+      "Two shots a turn is a real budget. The first shot can clear a tower block or crater a ridge, and the second can use the line it opened — a volley planned as a pair beats two hopeful direct attempts.",
+      "Direct hits are the only thing that ends the match, so a shot that damages the tower but cannot reach the launcher is a setup, not a result. Ask what the NEXT shot can do before you take this one.",
+      "Power changes the crater as well as the range: a fast shot bites deeper and wider, so a flat full-power shot is also the best way to carve away the ground under a defender.",
+      "Watch the tower fall. Unsupported blocks collapse after a hit, which can bury a launcher or open a lane, and both seats see the same structure.",
+      "Use your last life differently. With two lives gone, a low-percentage direct attempt is usually better than a safe structural shot that cannot end the match.",
+    ],
+    competitive:
+      "Hillstrike tests trajectory judgement under a turn budget: reading an arc from two numbers, pricing a structural shot against a direct one, and staying accurate when a single hit decides whether the match continues.",
+    faq: [
+      {
+        q: "How do lives work in Hillstrike?",
+        a: "Each seat starts with three. Only a direct projectile contact with a player removes a life, and it removes exactly one. Terrain craters, damaged blocks and a collapsed tower never cost a life.",
+      },
+      {
+        q: "Why did my opponent get two shots when I only had one?",
+        a: "That is the agreed opening. The seat drawn from the battlefield seed fires a single opening shot, the other seat answers with two, and from then on both seats alternate two-shot volleys.",
+      },
+      {
+        q: "Can a shot be cheated by the client?",
+        a: "No. The request carries only an angle and a power — there is no field for a position, a hit, a life or a winner — and the server simulates the shot from its own stored battlefield and stores the resolved trajectory for both clients to replay.",
+      },
+      {
+        q: "Does the match end the moment a player runs out of lives?",
+        a: "Yes. The third direct hit finishes the match immediately, even if the shooter still had a shot left in the volley, and no further shot is accepted.",
+      },
+      {
+        q: "Is every battlefield the same?",
+        a: "Every match draws a new seed, so the terrain and tower layout change. The layout is mirror-symmetric though, which means both seats always start on identical ground with identical structures.",
+      },
+      {
+        q: "Does the AI practice board affect my rating?",
+        a: "No. Practice runs entirely in your browser against the bot with no match row at all, so it cannot change your Elo, your trophies or your win record. Only a completed online 1v1 match does that.",
+      },
+      {
+        q: "Is it free to play?",
+        a: "Yes. Nothing is wagered, there is no entry cost of any kind, and a ranked result is rewarded with rating and trophies rather than anything of value.",
+      },
+    ],
+    related: ["barrier-blitz", "pool-masters", "tic-tac-toe", "chess"],
+  },
 ];
 
 /** Slugs that have a public landing page, in catalog order. */

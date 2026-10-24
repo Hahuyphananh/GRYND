@@ -1459,6 +1459,49 @@ io.on("connection", (socket) => {
     logThrottled("barricade:leave", "[barricade] participant left: matchId=", matchId, "userId=", userId);
   }
 
+  // ── Hillstrike room-participant tracking ────────────────────────
+  // Same pattern as barricade / dominoes / tic-tac-toe so a `hillstrike:ready`
+  // poke can only come from a tracked participant of that match, and so
+  // disconnect handling can forfeit an abandoned duel to the opponent (or cancel
+  // an empty lobby). Keyed by matchId (a uuid).
+  //
+  // This literal is deliberately restated rather than imported: this server is
+  // plain CommonJS and cannot load the TypeScript vocabulary in
+  // src/lib/hillstrike/rooms.ts. A test pins the two to the same string.
+  const HILLSTRIKE_MATCH_ROOM_PREFIX = "hillstrike:match:";
+  if (!global.__hillstrikeRoomParticipants) {
+    global.__hillstrikeRoomParticipants = new Map();
+  }
+  const hillstrikeRoomParticipants = global.__hillstrikeRoomParticipants;
+
+  function trackHillstrikeJoin(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(HILLSTRIKE_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(HILLSTRIKE_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    if (!hillstrikeRoomParticipants.has(matchId)) {
+      hillstrikeRoomParticipants.set(matchId, new Set());
+    }
+    hillstrikeRoomParticipants.get(matchId).add(userId);
+    // A (re)joining socket means the player is present again — cancel any
+    // pending disconnect forfeit timer for this match.
+    cancelDisconnectGraceTimer(`hillstrike:${matchId}:${userId}`);
+    logThrottled("hillstrike:join", "[hillstrike] participant joined: matchId=", matchId, "userId=", userId);
+  }
+  function trackHillstrikeLeave(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(HILLSTRIKE_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(HILLSTRIKE_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    const set = hillstrikeRoomParticipants.get(matchId);
+    if (!set) return;
+    set.delete(userId);
+    if (set.size === 0) hillstrikeRoomParticipants.delete(matchId);
+    logThrottled("hillstrike:leave", "[hillstrike] participant left: matchId=", matchId, "userId=", userId);
+  }
+
   // ── Dominoes room-participant tracking ──────────────────────────
   // Same pattern as barricade / solitaire-duel / tic-tac-toe so a
   // `dominoes:ready` poke can only come from a tracked participant of that match,
@@ -1563,6 +1606,7 @@ io.on("connection", (socket) => {
     trackSolitaireDuelJoin(String(roomId), socket.data.userId);
     trackSudokuDuelJoin(String(roomId), socket.data.userId);
     trackBarricadeJoin(String(roomId), socket.data.userId);
+    trackHillstrikeJoin(String(roomId), socket.data.userId);
     trackDominoesJoin(String(roomId), socket.data.userId);
   });
 
@@ -1635,6 +1679,7 @@ io.on("connection", (socket) => {
     trackSolitaireDuelLeave(String(roomId), socket.data.userId);
     trackSudokuDuelLeave(String(roomId), socket.data.userId);
     trackBarricadeLeave(String(roomId), socket.data.userId);
+    trackHillstrikeLeave(String(roomId), socket.data.userId);
     trackDominoesLeave(String(roomId), socket.data.userId);
   });
 
@@ -2391,6 +2436,31 @@ io.on("connection", (socket) => {
     });
   });
 
+  socket.on("hillstrike:ready", ({ matchId } = {}) => {
+    if (!matchId) return;
+    const matchIdStr = String(matchId);
+    // matchId is a uuid — keep the character set tight so a malformed id can
+    // never build a surprising room name.
+    if (!/^[0-9a-fA-F-]{1,64}$/.test(matchIdStr)) return;
+    const participants = hillstrikeRoomParticipants.get(matchIdStr);
+    if (!participants || !participants.has(socket.data.userId)) {
+      logThrottled(
+        "hillstrike:rejectReady",
+        "[hillstrike] rejecting ready from non-participant: matchId=",
+        matchIdStr,
+        "userId=",
+        socket.data.userId,
+      );
+      return;
+    }
+    const roomId = `${HILLSTRIKE_MATCH_ROOM_PREFIX}${matchIdStr}`;
+    socket.to(roomId).emit("lobby:updated", {
+      matchId: matchIdStr,
+      userId: socket.data.userId,
+      sentAt: new Date().toISOString(),
+    });
+  });
+
   socket.on("dominoes:ready", ({ matchId } = {}) => {
     if (!matchId) return;
     const matchIdStr = String(matchId);
@@ -2944,6 +3014,44 @@ io.on("connection", (socket) => {
         } catch (err) {
           console.warn(
             "[barricade] disconnect forfeit failed:",
+            err && err.message ? err.message : err,
+          );
+          return true; // transient — retry
+        }
+      });
+    }
+
+    // For Hillstrike: same pattern as Barricade — a duel abandoned past the
+    // grace window is forfeited to the seat still present (or an empty lobby is
+    // cancelled) via /api/hillstrike/disconnect-forfeit. A reconnect inside the
+    // window cancels the timer (see trackHillstrikeJoin), so a refresh can never
+    // cost a rated duel.
+    const hillstrikeMatchesForUser = [];
+    for (const [mid, set] of hillstrikeRoomParticipants.entries()) {
+      if (set.has(socket.data.userId)) hillstrikeMatchesForUser.push(mid);
+    }
+    for (const mid of hillstrikeMatchesForUser) {
+      const roomId = `${HILLSTRIKE_MATCH_ROOM_PREFIX}${mid}`;
+      if (hasLiveSocketForUser(socket.data.userId, roomId)) continue;
+      const set = hillstrikeRoomParticipants.get(mid);
+      if (set) {
+        set.delete(socket.data.userId);
+        if (set.size === 0) hillstrikeRoomParticipants.delete(mid);
+      }
+      scheduleDisconnectGraceTimer(`hillstrike:${mid}:${socket.data.userId}`, async () => {
+        if (hasLiveSocketForUser(socket.data.userId, roomId)) return false;
+        try {
+          const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
+          const res = await fetch(`${baseUrl}/api/hillstrike/disconnect-forfeit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ matchId: mid, token: socket.data.clerkToken }),
+          });
+          const payload = await res.json().catch(() => null);
+          return !(payload && payload.success === true);
+        } catch (err) {
+          console.warn(
+            "[hillstrike] disconnect forfeit failed:",
             err && err.message ? err.message : err,
           );
           return true; // transient — retry

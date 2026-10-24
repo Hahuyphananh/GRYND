@@ -239,6 +239,23 @@ export const GAME_CATALOG = [
     href: "/games/dominoes",
     tags: ["pvp", "strategy", "chance", "casual", "competitive"],
   },
+
+  // Hillstrike is a 1v1 artillery duel on one shared, seeded battlefield: each
+  // seat has three lives and every shot is resolved by the shared engine from
+  // nothing but `{ angleDeg, power }`. Reading the arc, using the collapse of a
+  // tower and choosing between a direct hit and structural damage is
+  // a plan (strategy) executed by aiming ability (skill), and nothing is drawn
+  // during play — the battlefield is generated once from a stored seed and is
+  // identical for both seats — so it is never `chance`. It is a rated ladder
+  // duel (`competitive`; the id is registered in RATED_GAMES). A drag-aim
+  // interface is quick to pick up, but the match is a planned duel rather than
+  // a pick-up game, so it is not tagged `casual`, and each shot resolves over
+  // seconds rather than in a click, so it is not `fast_paced`.
+  {
+    id: "hillstrike",
+    href: "/games/hillstrike",
+    tags: ["pvp", "strategy", "skill", "competitive"],
+  },
 ];
 
 /** The default (featured) order — exactly the lobby's order. Returned for any

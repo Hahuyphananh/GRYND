@@ -24,6 +24,7 @@ export const QUICK_QUEUE_GAME_OPTIONS = [
   ["tic-tac-toe", "Ultimate Tic-Tac-Toe"],
   ["barricade", "Barrier Blitz"],
   ["dominoes", "Dominoes"],
+  ["hillstrike", "Hillstrike"],
 ];
 
 const EMPTY_READINESS_BODY = Object.freeze({});
@@ -51,6 +52,9 @@ const GAME_ROUTES = {
   // A queued Dominoes pair lands on the created match's own view, exactly like
   // the other lobby-style destinations above.
   dominoes: "/casino/dominoes",
+  // A queued Hillstrike pair lands on the created match's own view, exactly
+  // like the other lobby-style destinations above.
+  hillstrike: "/casino/hillstrike",
 };
 
 export function quickQueueGameRoute(gameKey, matchId) {

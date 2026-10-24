@@ -17,6 +17,7 @@ import {
   uniqueIndex,
   uuid,
   bigint,
+  doublePrecision,
   primaryKey,
   unique,
 } from "drizzle-orm/pg-core";
@@ -3892,6 +3893,119 @@ export const barricadeMoves = pgTable(
     matchIdx: index("barricade_moves_match_idx").on(table.matchId, table.ply),
     // Anti-replay: one persisted action per turn number per match.
     plyIdx: unique("barricade_moves_ply_unique").on(table.matchId, table.ply),
+  })
+);
+
+// HILLSTRIKE — the 1v1 artillery duel, played online.
+// ==============================================================================
+// `game_state` is the ONE authoritative position: the frozen `HillstrikeState`
+// produced by the pure engine in src/lib/hillstrike/rules.ts (`applyShot`).
+// Hillstrike is perfect information — both players' positions, lives, the
+// terrain and both towers are public — so nothing has to be hidden from either
+// seat, and the whole state can travel to both clients unchanged.
+//
+// `seed` + `field_version` reproduce the layout; `initial_battlefield` keeps the
+// ground that was ACTUALLY dealt, so a stored match still replays correctly if
+// the generator is retuned later. `ply` is the accepted-SHOT count and the
+// optimistic-concurrency version (`expectedVersion`).
+//
+// A client may only submit `{ angleDeg, power }` plus that version: the shot's
+// trajectory, collisions, damage, lives, terrain, the winner and the completion
+// flag are all resolved by the server's engine inside one row-locked
+// transaction, and the unique (match_id, action_index) index on
+// `hillstrike_shots` makes a replayed action a storage-level impossibility.
+//
+// There is deliberately NO stake/prize/house-fee column: online Hillstrike is
+// unstaked (settlement moves Elo, trophies and account W/L only), and the free
+// practice board lives entirely in the browser with no match row at all.
+//
+// Player ids are plain Clerk-id strings with no FK to `users`, matching every
+// other PvP table.
+export const hillstrikeMatches = pgTable(
+  "hillstrike_matches",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    player1Id: varchar("player1_id", { length: 255 }).notNull(),
+    // Nullable so a `waiting` row doubles as the open lobby.
+    player2Id: varchar("player2_id", { length: 255 }),
+    winnerId: varchar("winner_id", { length: 255 }),
+    // Derived from `game_state.turn` on every accepted shot.
+    currentTurnUserId: varchar("current_turn_user_id", { length: 255 }),
+    // Accepted shots so far. This IS the optimistic-concurrency version the shot
+    // route checks (`expectedVersion`), and the action index the next shot claims.
+    ply: integer("ply").notNull().default(0),
+    /** waiting | playing | finished | cancelled — the shared house vocabulary
+     *  (`MATCH_STATUS` in src/lib/hillstrike/constants.ts). The second seat
+     *  joining takes the match straight to `playing`. */
+    status: varchar("status", { length: 20 }).notNull().default("waiting"),
+    // The battlefield seed drawn once, server-side, at lobby creation.
+    seed: bigint("seed", { mode: "number" }).notNull(),
+    // The generator/physics version the match was created under.
+    fieldVersion: integer("field_version").notNull(),
+    // 'player1' | 'player2' — the seat drawn to fire the opening shot.
+    openingSeat: varchar("opening_seat", { length: 8 }).notNull(),
+    // The generated layout, kept so a stored match replays against the ground the
+    // players actually saw.
+    initialBattlefield: jsonb("initial_battlefield").notNull(),
+    // The authoritative HillstrikeState (see src/lib/hillstrike/rules.ts).
+    gameState: jsonb("game_state").notNull(),
+    // 'player1' | 'player2' — the winning SEAT. Null until the match settles.
+    result: varchar("result", { length: 20 }),
+    // How it ended: lives-exhausted | resigned | abandoned
+    // (END_REASONS in src/lib/hillstrike/constants.ts). Null while it is live.
+    resultReason: varchar("result_reason", { length: 24 }),
+    startedAt: timestamp("started_at"),
+    endedAt: timestamp("ended_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    statusIdx: index("hillstrike_matches_status_idx").on(table.status, table.createdAt),
+    player1Idx: index("hillstrike_matches_player1_idx").on(table.player1Id, table.createdAt),
+    player2Idx: index("hillstrike_matches_player2_idx").on(table.player2Id, table.createdAt),
+  })
+);
+
+// Append-only shot log: the authoritative replay record, one row per accepted
+// shot, holding the exact aiming input the server validated plus the outcome the
+// server's engine resolved. It never stores a board, a life count, a turn owner
+// or a winner: those are read off `game_state`, so a duplicated column could only
+// drift. The unique (match_id, action_index) index is the anti-replay backstop.
+export const hillstrikeShots = pgTable(
+  "hillstrike_shots",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    matchId: uuid("match_id")
+      .notNull()
+      .references(() => hillstrikeMatches.id, { onDelete: "cascade" }),
+    // The action index (== the match's `ply`) this shot consumed.
+    actionIndex: integer("action_index").notNull(),
+    playerId: varchar("player_id", { length: 255 }).notNull(),
+    // The seat the server resolved the shooter to.
+    seat: varchar("seat", { length: 8 }).notNull(),
+    // The whole player-authored input: a direction and a power.
+    angleDeg: doublePrecision("angle_deg").notNull(),
+    power: integer("power").notNull(),
+    // Where the projectile stopped and what it met (IMPACT_KINDS).
+    impactKind: varchar("impact_kind", { length: 16 }).notNull(),
+    impactX: doublePrecision("impact_x").notNull(),
+    impactY: doublePrecision("impact_y").notNull(),
+    // The seat hit, for `player`; NULL otherwise.
+    targetSeat: varchar("target_seat", { length: 8 }),
+    livesLost: integer("lives_lost").notNull().default(0),
+    // The resolved outcome: impact, lives after, turn/volley counters and any
+    // terminal status. Compact on purpose — the trajectory itself is already on
+    // `game_state.lastShot`, which is what both clients animate.
+    outcome: jsonb("outcome").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    matchIdx: index("hillstrike_shots_match_idx").on(table.matchId, table.actionIndex),
+    // Anti-replay: one persisted shot per action index per match.
+    actionIdx: unique("hillstrike_shots_action_unique").on(
+      table.matchId,
+      table.actionIndex,
+    ),
   })
 );
 

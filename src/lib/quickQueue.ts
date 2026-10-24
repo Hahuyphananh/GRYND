@@ -24,6 +24,11 @@ export const QUICK_QUEUE_GAME_KEYS = [
   // is free to play — a Dominoes match has no stake column at all, so the
   // queue's normalized stake is never passed to it.
   "dominoes",
+  // Hillstrike is the same shape again: its store's `createOrJoin` seats the
+  // first caller in a waiting lobby and hands the second caller THAT SAME row,
+  // and it is free to play — a Hillstrike match has no stake column at all, so
+  // the queue's normalized stake is never passed to it.
+  "hillstrike",
 ] as const;
 
 export type QuickQueueGameKey = (typeof QUICK_QUEUE_GAME_KEYS)[number];

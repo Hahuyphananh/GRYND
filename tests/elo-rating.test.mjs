@@ -1089,6 +1089,10 @@ test("RATED_GAMES: the registry is the audited 1v1/server-authoritative set", ()
     "sudoku-duel",
     "barricade",
     "dominoes",
+    // Hillstrike settles from its own server-resolved state (the shared engine’s
+    // `winner`, inside the transaction that claimed the match), so it joins the
+    // rated set on the same terms as the other turn-based duels.
+    "hillstrike",
   ]);
   assert.equal(isRatedGame("chess"), true);
   // The formerly-excluded games are now REGISTERED, so every listed game is a

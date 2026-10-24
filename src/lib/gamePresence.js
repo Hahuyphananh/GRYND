@@ -127,6 +127,11 @@ export const GAME_LABEL_TO_GAME_ID = {
   // string). It has no practice board, so there is no `dominoes-ai` label to
   // collapse.
   dominoes: "dominoes",
+  // Hillstrike is registered the same way: its lobby and its match page both
+  // report the label `hillstrike`, which IS the canonical id (the lobby key, the
+  // public page slug, the rating/trophy key and the presence key are one
+  // string).
+  hillstrike: "hillstrike",
 
   // ── alternate labels on the same game (AI / other play surface) ────
   "chess-ai": "chess",

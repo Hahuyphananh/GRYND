@@ -48,6 +48,7 @@ import {
   dotsAndBoxesGames,
   fourInARowGames,
   hexDuelGames,
+  hillstrikeMatches,
   kenoPvpMatches,
   laneRunnerGames,
   memoryGridMatches,
@@ -99,6 +100,7 @@ const GAME_FRESHNESS: Record<string, { table: AnyPgTable; column: AnyPgColumn }>
   "mines-pvp": { table: minesGames, column: minesGames.createdAt },
   barricade: { table: barricadeMatches, column: barricadeMatches.createdAt },
   dominoes: { table: dominoesMatches, column: dominoesMatches.createdAt },
+  hillstrike: { table: hillstrikeMatches, column: hillstrikeMatches.createdAt },
   keno: { table: kenoPvpMatches, column: kenoPvpMatches.createdAt },
   rps: { table: rpsPvpGames, column: rpsPvpGames.createdAt },
   chess: { table: chessGames, column: chessGames.createdAt },
@@ -244,6 +246,8 @@ export const EXCLUDED_FROM_SITEMAP: Record<string, string> = {
   "/casino/four-in-a-row/play-ai": "free AI practice board — a playable route, not a search surface",
   "/casino/barrier-blitz/play-ai":
     "free AI practice board — a playable route with no unique content; the indexable page for the game is /games/barrier-blitz",
+  "/casino/hillstrike/play-ai":
+    "free AI practice board — a playable route with no unique content; the indexable page for the game is /games/hillstrike",
   "/casino/hex-duel": "live matchmaking lobby — nothing for a crawler to index",
   "/casino/hex-duel/history": "per-player match history — user-specific data, never a landing page",
   "/casino/lane-runner/history": "per-player match history — user-specific data, never a landing page",

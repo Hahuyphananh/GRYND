@@ -1,0 +1,66 @@
+{
+  "generatedAt": "2026-10-24T19:51:55.203Z",
+  "seeds": 204,
+  "tiers": [
+    {
+      "tier": "normal",
+      "matches": 408,
+      "unfinished": 0,
+      "brokenStates": 0,
+      "seatWins": {
+        "player1": 204,
+        "player2": 204
+      },
+      "seatWinRate": {
+        "player1": {
+          "p": 0.5,
+          "low": 0.4517095814650323,
+          "high": 0.5482904185349676
+        },
+        "player2": {
+          "p": 0.5,
+          "low": 0.4517095814650323,
+          "high": 0.5482904185349676
+        }
+      },
+      "openerWins": 406,
+      "openerWinRate": {
+        "p": 0.9950980392156863,
+        "low": 0.9823049671441398,
+        "high": 0.9986547027872125
+      },
+      "firstShotHits": 386,
+      "firstShotHitRate": {
+        "p": 0.946078431372549,
+        "low": 0.9197101515385653,
+        "high": 0.9641247985976035
+      },
+      "hitRate": 0.9156079854809437,
+      "meanShots": 5.401960784313726,
+      "minShots": 5,
+      "maxShots": 15,
+      "pairs": {
+        "count": 204,
+        "openerConsistent": 203,
+        "seatConsistent": 0,
+        "split": 1
+      }
+    }
+  ],
+  "deterministic": true,
+  "layouts": {
+    "seeds": 204,
+    "generated": 204,
+    "rejectedCount": 0,
+    "rejectionRate": 0,
+    "invalidCount": 0,
+    "asymmetricCount": 0,
+    "playableBothCount": 204,
+    "playableRate": 1,
+    "playableOne": [],
+    "playableNone": [],
+    "rejected": [],
+    "invalid": []
+  },
+  "failures": []
+}

@@ -282,15 +282,20 @@ test("config: a ranked win is +30, a loss −30, a draw 0", () => {
   // Trophies are UNBOUNDED — there is no per-game max or overall-max cap.
   assert.equal(TROPHY_CONFIG.max, undefined);
   assert.equal(TROPHY_CONFIG.overallMax, undefined);
-  // 22 rated keys — TROPHY_GAMES IS RATED_GAMES, so the count is derived.
-  assert.equal(TROPHY_CONFIG.gameCount, 22);
+  // 23 rated keys — TROPHY_GAMES IS RATED_GAMES, so the count is derived.
+  assert.equal(TROPHY_CONFIG.gameCount, 23);
   assert.equal(TROPHY_CONFIG.gameCount, RATED_GAMES.length);
   assert.deepEqual([...TROPHY_OUTCOMES], ["win", "loss", "draw"]);
 });
 
 test("registry: trophies use EXACTLY the Elo game set (no drift)", () => {
   assert.deepEqual([...TROPHY_GAMES], [...RATED_GAMES]);
-  assert.equal(TROPHY_GAMES.length, 22);
+  assert.equal(TROPHY_GAMES.length, 23);
+  // Hillstrike is registered on the same one-list rule, and its label comes
+  // from the Elo registry's label map (no second list to keep in sync).
+  assert.equal(isTrophyGame("hillstrike"), true);
+  assert.equal(normalizeTrophyGameKey("hillstrike"), "hillstrike");
+  assert.equal(getTrophyGameLabel("hillstrike"), "Hillstrike");
   assert.equal(TROPHY_GAMES.length, RATED_GAMES.length);
   assert.equal(isTrophyGame("mini-golf"), true);
   // Speed Typing is a rated 1v1 duel, so it is a trophy game by the same rule
@@ -1469,6 +1474,10 @@ const WIRING = [
   // which is a real draw — is derived by the shared rules engine and settles
   // through the same original 1v1 writer.
   ["dominoes", "src/lib/dominoes/serverStore.ts"],
+  // Hillstrike is a 1v1 turn-based artillery duel whose battlefield, projectile
+  // and every life live in the server's own row: the shared engine resolves the
+  // shot and its `winner`, so it uses the same original 1v1 writer.
+  ["hillstrike", "src/lib/hillstrike/serverStore.ts"],
 ];
 
 for (const [gameKey, file, writer = "applyTrophyResult"] of WIRING) {

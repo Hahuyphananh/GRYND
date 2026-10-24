@@ -43,6 +43,7 @@ import solitaireDuelArt from "../../images/solitaire-duel-card.svg";
 import sudokuDuelArt from "../../images/sudoku-duel-card.svg";
 import barricadeArt from "../../images/barricade-card.svg";
 import dominoesArt from "../../images/dominoes-card.svg";
+import hillstrikeArt from "../../images/hillstrike-card.svg";
 import towerArenaArt from "../../images/towersimage.jpg";
 import minesPvpArt from "../../images/minesimage.png";
 import memoryGridArt from "../../images/memorygridimage.png";
@@ -70,4 +71,5 @@ export const GAME_CARD_ART = {
   uno: unoArt,
   "barrier-blitz": barricadeArt,
   dominoes: dominoesArt,
+  hillstrike: hillstrikeArt,
 };

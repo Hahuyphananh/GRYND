@@ -81,6 +81,9 @@ const ALLOWED = [
   // Dominoes' lobby is its own route and its board lives at
   // /casino/dominoes/[matchId], which stays ad-free like every other match page.
   "src/app/casino/dominoes/page.tsx",
+  // Hillstrike's lobby is its own route and its board lives at
+  // /casino/hillstrike/[matchId], which stays ad-free like every other match page.
+  "src/app/casino/hillstrike/page.tsx",
   "src/app/casino/dots-and-boxes/page.tsx",
   "src/app/casino/four-in-a-row/page.tsx",
   "src/app/casino/hex-duel/page.tsx",

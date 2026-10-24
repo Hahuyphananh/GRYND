@@ -201,6 +201,27 @@ export const RATED_GAMES = Object.freeze([
   // never calls it at all, and Dominoes has no practice/bot mode — so an
   // abandoned, cancelled or non-existent match can never move Elo or trophies.
   "dominoes",
+  // Hillstrike is server-authoritative end to end: the battlefield seed, the
+  // generated layout, the projectile, every collision and every life live in the
+  // server's own row (src/lib/hillstrike), the shared engine resolves a shot
+  // (`applyShot`) from nothing but `{ angleDeg, power }`, and the result is the
+  // engine's own `winner` — the client never simulates an outcome it is believed
+  // on. So the result is fully server-derivable and the game is ratable on the
+  // same terms as Barricade and Tic-Tac-Toe.
+  //
+  // The key is the game's ONE id: the lobby, the API routes, the realtime room
+  // and the key src/lib/hillstrike/serverStore.ts settles with are all
+  // `hillstrike`. Registering it HERE is what makes that settlement take effect
+  // (trophies reuse this list as TROPHY_GAMES, so there is no second registry to
+  // keep in sync).
+  //
+  // Only completed online human-vs-human matches reach the writer: the store
+  // settles inside the row-locked transaction that claimed the match, its
+  // `settleMatch` bails out when there is no second seat, a cancelled lobby never
+  // calls it, and free practice against the bot (src/lib/hillstrike/ai.ts) is a
+  // browser-only game with no match row — so AI games can never move Elo or
+  // trophies.
+  "hillstrike",
 ]);
 
 /** Display labels for the rating boards (mirrors the lobby names). */
@@ -227,6 +248,7 @@ export const RATING_GAME_LABELS = Object.freeze({
   "sudoku-duel": "Sudoku Duel",
   "barricade": "Barrier Blitz",
   dominoes: "Dominoes",
+  hillstrike: "Hillstrike",
 });
 
 /** True when a game key is eligible for Elo. */

@@ -24,6 +24,7 @@ import { createOrJoin as createOrJoinSpeedTypingMatch } from "./speed-typing/ser
 import { createOrJoin as createOrJoinTicTacToeMatch } from "./tic-tac-toe/serverStore";
 import { createOrJoin as createOrJoinBarricadeMatch } from "./barricade/serverStore";
 import { createOrJoin as createOrJoinDominoesMatch } from "./dominoes/serverStore";
+import { createOrJoin as createOrJoinHillstrikeMatch } from "./hillstrike/serverStore";
 
 export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
   return db.transaction(async (tx) => {
@@ -144,6 +145,12 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
       // seated by the same `createOrJoin` (see the generic fallback below), so
       // both halves of the pair arrive at the same authority.
       "dominoes": (userId) => createOrJoinDominoesMatch({ userId }),
+      // Hillstrike is lobby-style on the same terms as Dominoes — both paired
+      // seats land on one match id — and it is free, so it takes no stake: its
+      // store has no stake parameter and a match row has no stake column. The
+      // second seat is seated by the same `createOrJoin` (see the generic
+      // fallback below), so both halves of the pair arrive at the same authority.
+      "hillstrike": (userId) => createOrJoinHillstrikeMatch({ userId }),
     }[pair.candidate.gameKey];
     if (createMatch) {
       let result: any;

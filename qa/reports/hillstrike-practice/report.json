@@ -1,0 +1,411 @@
+{
+  "base": "http://localhost:3210",
+  "route": "/casino/hillstrike/play-ai",
+  "seed": 424242,
+  "ranAt": "2026-10-24T19:50:47.653Z",
+  "passed": 80,
+  "failed": 0,
+  "problems": [],
+  "results": [
+    {
+      "name": "desktop: the practice route responds",
+      "passed": true,
+      "detail": "status=200"
+    },
+    {
+      "name": "desktop: both gunners start on three lives",
+      "passed": true,
+      "detail": "lives={\"player1\":3,\"player2\":3} pips=3/3"
+    },
+    {
+      "name": "desktop: the pinned layout is the engine's own battlefield",
+      "passed": true,
+      "detail": "seed=424242 blocks=18/18"
+    },
+    {
+      "name": "desktop: the canvas is painted (terrain, towers and both gunners)",
+      "passed": true,
+      "detail": "colours=180"
+    },
+    {
+      "name": "desktop: the opening shot belongs to the opening seat alone",
+      "passed": true,
+      "detail": "turn=player1 opening=player1 shots=1"
+    },
+    {
+      "name": "desktop: Clear releases the aim and re-disables Fire",
+      "passed": true,
+      "detail": "aim=40° · 70% cleared=—"
+    },
+    {
+      "name": "shot 1: the volley counter is the engine's (1 shot(s) left)",
+      "passed": true,
+      "detail": "turnIndex=0 lastSeat=none shots=1"
+    },
+    {
+      "name": "shot 1: a trajectory preview is shown before firing",
+      "passed": true,
+      "detail": "impact=block steps=17 fire-disabled=false"
+    },
+    {
+      "name": "shot 1: the aim comes from the drag (angle/power read back)",
+      "passed": true,
+      "detail": "8° · 100%"
+    },
+    {
+      "name": "shot 1: the shot resolves completely before the next one is accepted",
+      "passed": true,
+      "detail": "resolving seen=true still=false"
+    },
+    {
+      "name": "shot 1: the projectile is drawn in flight (two frames differ)",
+      "passed": true,
+      "detail": "sum 237639 → 238236"
+    },
+    {
+      "name": "shot 1: the board changes after the impact",
+      "passed": true,
+      "detail": "sum 237238 → 238236"
+    },
+    {
+      "name": "shot 1: input is disabled while the shot resolves (mid-flight probe)",
+      "passed": true,
+      "detail": "resolving=true interactive=false"
+    },
+    {
+      "name": "shot 1: the accepted shot is the human's and the engine recorded it",
+      "passed": true,
+      "detail": "seat=player1 impact=block target=none"
+    },
+    {
+      "name": "shot 1: structural/ground damage costs no life",
+      "passed": true,
+      "detail": "livesLost=0 lives {\"player1\":3,\"player2\":3}"
+    },
+    {
+      "name": "shot 1: the impact changed the battlefield (blocks, cracks or ground)",
+      "passed": true,
+      "detail": "blocks 18→18 cracked 0→5 terrain 154628→154694"
+    },
+    {
+      "name": "shot 1: the turn passes by the engine's volley rule",
+      "passed": true,
+      "detail": "turn=player2 shotsRemaining=2"
+    },
+    {
+      "name": "shot 2: the volley counter is the engine's (2 shot(s) left)",
+      "passed": true,
+      "detail": "turnIndex=3 lastSeat=player2 shots=2"
+    },
+    {
+      "name": "shot 2: a trajectory preview is shown before firing",
+      "passed": true,
+      "detail": "impact=block steps=17 fire-disabled=false"
+    },
+    {
+      "name": "shot 2: the aim comes from the drag (angle/power read back)",
+      "passed": true,
+      "detail": "8° · 100%"
+    },
+    {
+      "name": "shot 2: the shot resolves completely before the next one is accepted",
+      "passed": true,
+      "detail": "resolving seen=true still=false"
+    },
+    {
+      "name": "shot 2: the projectile is drawn in flight (two frames differ)",
+      "passed": true,
+      "detail": "sum 236051 → 236759"
+    },
+    {
+      "name": "shot 2: the board changes after the impact",
+      "passed": true,
+      "detail": "sum 235814 → 236759"
+    },
+    {
+      "name": "shot 2: input is disabled while the shot resolves (mid-flight probe)",
+      "passed": true,
+      "detail": "resolving=true interactive=false"
+    },
+    {
+      "name": "shot 2: the accepted shot is the human's and the engine recorded it",
+      "passed": true,
+      "detail": "seat=player1 impact=block target=none"
+    },
+    {
+      "name": "shot 2: structural/ground damage costs no life",
+      "passed": true,
+      "detail": "livesLost=0 lives {\"player1\":3,\"player2\":3}"
+    },
+    {
+      "name": "shot 2: the impact changed the battlefield (blocks, cracks or ground)",
+      "passed": true,
+      "detail": "blocks 16→13 cracked 9→6 terrain 154835→154840"
+    },
+    {
+      "name": "shot 2: the turn passes by the engine's volley rule",
+      "passed": true,
+      "detail": "turn=player1 shotsRemaining=1"
+    },
+    {
+      "name": "shot 3: the volley counter is the engine's (1 shot(s) left)",
+      "passed": true,
+      "detail": "turnIndex=4 lastSeat=player1 shots=1"
+    },
+    {
+      "name": "shot 3: a trajectory preview is shown before firing",
+      "passed": true,
+      "detail": "impact=player steps=25 fire-disabled=false"
+    },
+    {
+      "name": "shot 3: the aim comes from the drag (angle/power read back)",
+      "passed": true,
+      "detail": "28° · 97%"
+    },
+    {
+      "name": "shot 3: the shot resolves completely before the next one is accepted",
+      "passed": true,
+      "detail": "resolving seen=true still=false"
+    },
+    {
+      "name": "shot 3: the projectile is drawn in flight (two frames differ)",
+      "passed": true,
+      "detail": "sum 236102 → 236370"
+    },
+    {
+      "name": "shot 3: the board changes after the impact",
+      "passed": true,
+      "detail": "sum 236324 → 236370"
+    },
+    {
+      "name": "shot 3: input is disabled while the shot resolves (mid-flight probe)",
+      "passed": true,
+      "detail": "resolving=true interactive=false"
+    },
+    {
+      "name": "shot 3: the accepted shot is the human's and the engine recorded it",
+      "passed": true,
+      "detail": "seat=player1 impact=player target=player2"
+    },
+    {
+      "name": "shot 3: a direct hit costs exactly one life",
+      "passed": true,
+      "detail": "livesLost=1 bot 3→2"
+    },
+    {
+      "name": "shot 3: the impact changed the battlefield (blocks, cracks or ground)",
+      "passed": true,
+      "detail": "blocks 13→13 cracked 6→6 terrain 154840→154840"
+    },
+    {
+      "name": "shot 3: the turn passes by the engine's volley rule",
+      "passed": true,
+      "detail": "turn=player2 shotsRemaining=2"
+    },
+    {
+      "name": "shot 4: the volley counter is the engine's (2 shot(s) left)",
+      "passed": true,
+      "detail": "turnIndex=7 lastSeat=player2 shots=2"
+    },
+    {
+      "name": "shot 4: a trajectory preview is shown before firing",
+      "passed": true,
+      "detail": "impact=player steps=25 fire-disabled=false"
+    },
+    {
+      "name": "shot 4: the aim comes from the drag (angle/power read back)",
+      "passed": true,
+      "detail": "28° · 97%"
+    },
+    {
+      "name": "shot 4: the shot resolves completely before the next one is accepted",
+      "passed": true,
+      "detail": "resolving seen=true still=false"
+    },
+    {
+      "name": "shot 4: the projectile is drawn in flight (two frames differ)",
+      "passed": true,
+      "detail": "sum 233572 → 233862"
+    },
+    {
+      "name": "shot 4: the board changes after the impact",
+      "passed": true,
+      "detail": "sum 233811 → 233862"
+    },
+    {
+      "name": "shot 4: input is disabled while the shot resolves (mid-flight probe)",
+      "passed": true,
+      "detail": "resolving=true interactive=false"
+    },
+    {
+      "name": "shot 4: the accepted shot is the human's and the engine recorded it",
+      "passed": true,
+      "detail": "seat=player1 impact=player target=player2"
+    },
+    {
+      "name": "shot 4: a direct hit costs exactly one life",
+      "passed": true,
+      "detail": "livesLost=1 bot 2→1"
+    },
+    {
+      "name": "shot 4: the impact changed the battlefield (blocks, cracks or ground)",
+      "passed": true,
+      "detail": "blocks 9→9 cracked 5→5 terrain 154907→154907"
+    },
+    {
+      "name": "shot 4: the turn passes by the engine's volley rule",
+      "passed": true,
+      "detail": "turn=player1 shotsRemaining=1"
+    },
+    {
+      "name": "shot 5: the volley counter is the engine's (1 shot(s) left)",
+      "passed": true,
+      "detail": "turnIndex=8 lastSeat=player1 shots=1"
+    },
+    {
+      "name": "shot 5: a trajectory preview is shown before firing",
+      "passed": true,
+      "detail": "impact=player steps=25 fire-disabled=false"
+    },
+    {
+      "name": "shot 5: the aim comes from the drag (angle/power read back)",
+      "passed": true,
+      "detail": "28° · 97%"
+    },
+    {
+      "name": "shot 5: the shot resolves completely before the next one is accepted",
+      "passed": true,
+      "detail": "resolving seen=true still=false"
+    },
+    {
+      "name": "shot 5: the projectile is drawn in flight (two frames differ)",
+      "passed": true,
+      "detail": "sum 233132 → 233329"
+    },
+    {
+      "name": "shot 5: the board changes after the impact",
+      "passed": true,
+      "detail": "sum 233345 → 233329"
+    },
+    {
+      "name": "shot 5: input is disabled while the shot resolves (mid-flight probe)",
+      "passed": true,
+      "detail": "resolving=true interactive=false"
+    },
+    {
+      "name": "shot 5: the accepted shot is the human's and the engine recorded it",
+      "passed": true,
+      "detail": "seat=player1 impact=player target=player2"
+    },
+    {
+      "name": "shot 5: a direct hit costs exactly one life",
+      "passed": true,
+      "detail": "livesLost=1 bot 1→0"
+    },
+    {
+      "name": "shot 5: the impact changed the battlefield (blocks, cracks or ground)",
+      "passed": true,
+      "detail": "blocks 9→9 cracked 5→5 terrain 154907→154907"
+    },
+    {
+      "name": "match: at least one direct hit landed (a life was really taken)",
+      "passed": true,
+      "detail": "shots=4"
+    },
+    {
+      "name": "match: a tower was damaged or felled without costing a life",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "match: the ground was deformed by an impact",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "match: the bot's turn refuses the human's input",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "match: the match finished inside the action budget",
+      "passed": true,
+      "detail": "status=finished after 4 shots"
+    },
+    {
+      "name": "match: the loser has zero lives and the engine names a winner",
+      "passed": true,
+      "detail": "lives={\"player1\":3,\"player2\":0} winner=player1"
+    },
+    {
+      "name": "match: the result screen reports a win or a defeat",
+      "passed": true,
+      "detail": "dialog=\"Match result — WIN\""
+    },
+    {
+      "name": "result: New layout deals a brand-new battlefield",
+      "passed": true,
+      "detail": "status=playing seed 424242→1824324193 blocks=18"
+    },
+    {
+      "name": "restart: the in-match button resets a live match",
+      "passed": true,
+      "detail": "status=playing seed 1824324193→2745346015"
+    },
+    {
+      "name": "desktop: no JS errors",
+      "passed": true,
+      "detail": "6 expected HTTP failure(s)"
+    },
+    {
+      "name": "phone-390: nothing overflows sideways",
+      "passed": true,
+      "detail": "doc=390 viewport=390 board=12…378"
+    },
+    {
+      "name": "phone-390: the board and its controls are usable",
+      "passed": true,
+      "detail": "board=206px hud=true fire=true"
+    },
+    {
+      "name": "phone-390: a drag aims and previews on a phone",
+      "passed": true,
+      "detail": "impact=block aim=8° · 100%"
+    },
+    {
+      "name": "phone-390: the shot resolves on a phone",
+      "passed": true,
+      "detail": "shots searched=4 turnIndex=1 status=playing"
+    },
+    {
+      "name": "phone-390: no JS errors",
+      "passed": true,
+      "detail": "3 expected HTTP failure(s)"
+    },
+    {
+      "name": "phone-320: nothing overflows sideways",
+      "passed": true,
+      "detail": "doc=320 viewport=320 board=12…308"
+    },
+    {
+      "name": "phone-320: the board and its controls are usable",
+      "passed": true,
+      "detail": "board=167px hud=true fire=true"
+    },
+    {
+      "name": "phone-320: a drag aims and previews on a phone",
+      "passed": true,
+      "detail": "impact=block aim=8° · 100%"
+    },
+    {
+      "name": "phone-320: the shot resolves on a phone",
+      "passed": true,
+      "detail": "shots searched=4 turnIndex=1 status=playing"
+    },
+    {
+      "name": "phone-320: no JS errors",
+      "passed": true,
+      "detail": "3 expected HTTP failure(s)"
+    }
+  ]
+}
