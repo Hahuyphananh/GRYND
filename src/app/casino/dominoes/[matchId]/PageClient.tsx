@@ -52,6 +52,7 @@ import { useSocket } from "../../../../context/SocketProvider";
 import { useTranslation } from "../../../../hooks/useTranslation";
 import { useMatchSync } from "../../../../hooks/useMatchSync";
 import { useTurnCountdown } from "../../../../hooks/useTurnCountdown";
+import { useDominoSounds } from "../../../../hooks/useDominoSounds";
 import { useDeadlineRead } from "../../../../hooks/useDeadlineRead";
 import MatchLoading from "../../../../components/game/MatchLoading";
 import GameSessionHost from "../../../../components/GameSessionHost";
@@ -134,6 +135,10 @@ export default function DominoesMatchPage() {
   // True only after a live socket drops, so a deployment with no realtime server
   // never renders a permanent "Reconnecting…" banner.
   const [linkDown, setLinkDown] = useState(false);
+
+  // A tile landing, a draw or a pass — for either seat — is audible. The hook
+  // watches the authoritative snapshot, so a refused move makes no sound.
+  useDominoSounds(match);
 
   const abortRef = useRef<AbortController | null>(null);
   const matchRef = useRef<Snapshot | null>(null);

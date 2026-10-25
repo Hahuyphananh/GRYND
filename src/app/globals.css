@@ -2720,9 +2720,10 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   gap: 8px;
 }
 
-/* THE TABLE — a felt board the line grows across. It is tall enough to read as a
-   playing surface, and it grows DOWNWARDS only as far as its contents need; the
-   chain itself extends sideways. */
+/* THE TABLE — a felt board the chain is laid out on.
+   The chain no longer runs off one long row: it follows a real table path, so the
+   board is a 2D surface that GROWS in both directions and the viewport scrolls
+   over it. */
 .dominoes-chain-wrap {
   position: relative;
   min-width: 0;
@@ -2734,40 +2735,64 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   box-shadow: inset 0 0 60px rgba(0, 229, 255, 0.07);
 }
 
-/* ONE CONTINUOUS LINE. Tiles are never wrapped into a block of rows and never
-   shrunk: the row grows in both directions, centred while it fits and starting at
-   the left edge once it does not, and the board scrolls horizontally along it.
-   `min-height` is what makes the board read as a table before the first tile. */
+/* The board itself: the open-value chips are pinned to ITS corners, while the
+   surface inside scrolls under them. */
 .dominoes-chain {
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  justify-content: safe center;
-  gap: var(--dm-gap);
-  min-height: clamp(148px, 28vh, 250px);
-  /* The generous top padding is the last-play marker's room: the badge sits
-     just above the newest tile, and the padding box is where the board clips. */
-  padding: 26px 12px 14px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  overscroll-behavior-x: contain;
-  scrollbar-width: thin;
-  scroll-padding-inline: 44px;
-}
-
-.dominoes-chain-slot {
   position: relative;
-  display: inline-flex;
-  flex: 0 0 auto;
+  min-width: 0;
+  border-radius: 14px;
 }
 
-/* "LAST ON THE LEFT/RIGHT" — a small badge above the newest tile, naming the
-   end the last play was attached to. It floats, so it never widens the line and
-   never shifts a tile. */
+/* The scroll viewport. Both axes, because the table snakes as it grows. */
+.dominoes-chain-scroller {
+  /* Flex (one child, auto margins) centres a small table in both axes and lets a
+     large one scroll, which block layout cannot do vertically. */
+  display: flex;
+  min-height: clamp(170px, 30vh, 280px);
+  max-height: min(54vh, 480px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  /* The top padding is the newest tile's badge's room: it floats above the felt,
+     so the scroll box has to leave space for it. */
+  padding: 42px 18px 18px;
+  scroll-padding: 52px;
+}
+
+/* ONE ROW PER LAYOUT ROW, NOT A REFLOWED BLOCK: every tile is absolutely placed
+   in half-tile cells by `src/lib/dominoes/layout.ts`, so the surface is exactly as
+   large as the table the chain has grown into. Its size arrives inline as
+   `calc(var(--dm-half) * cells)`. */
+.dominoes-chain-surface {
+  position: relative;
+  flex: 0 0 auto;
+  margin: auto;
+}
+
+/* A slot is a square centred on its tile: the tile rotates inside it (a
+   crosswise double, or a run turning), and the badge above it stays upright. */
+.dominoes-chain-slot {
+  position: absolute;
+  display: block;
+}
+
+.dominoes-chain-tile-box {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: flex;
+  transform-origin: center;
+}
+
+/* "LAST ON THE LEFT/RIGHT" — a small badge above the newest tile, naming the end
+   the last play was attached to. It floats, so it never shifts a tile. */
 .dominoes-last-marker {
   position: absolute;
-  bottom: calc(100% + 4px);
+  z-index: 2;
   left: 50%;
+  /* Just above the tile: the slot is two cells tall, the tile one, so 50% is the
+     tile's centre line and 0.62 cells is its top edge plus a hair of clearance. */
+  bottom: calc(50% + var(--dm-half) * 0.62);
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -2786,21 +2811,24 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 }
 
 .dominoes-chain-empty {
-  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  min-height: clamp(170px, 30vh, 280px);
   padding: 18px 10px;
   text-align: center;
   font-size: 13px;
   color: rgba(255, 255, 255, 0.6);
 }
 
-/* The two open values, printed at the physical ends of the line. They are STICKY
-   to the two edges of the board, so a long chain can scroll underneath them and
-   "which ends can I attach to" is still answered on screen. */
+/* The two open values, printed at the corners of the BOARD. They do not scroll
+   with the felt, so a long or snaking chain can never hide which ends are
+   playable. */
 .dominoes-end-chip {
-  position: sticky;
-  z-index: 1;
+  position: absolute;
+  z-index: 3;
   display: inline-flex;
-  flex: 0 0 auto;
   align-items: center;
   gap: 4px;
   border-radius: 9px;
@@ -2812,14 +2840,17 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   font-variant-numeric: tabular-nums;
   color: #a5f3fc;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
 }
 
 .dominoes-end-chip.is-left {
-  left: 6px;
+  left: 8px;
+  top: 6px;
 }
 
 .dominoes-end-chip.is-right {
-  right: 6px;
+  right: 8px;
+  top: 6px;
 }
 
 .dominoes-end-chip:empty {
@@ -2962,22 +2993,41 @@ button.dominoes-tile:disabled {
   transform: none;
 }
 
-/* A freshly played tile fades in. The ONLY game animation on the table, and it
-   is removed entirely under reduced motion. */
+/* A freshly played tile DROPS onto the felt — yours or the opponent's, since it
+   is the newest tile of the chain either way. It arrives a touch large and
+   presses down into place, which reads as a tile being set down rather than one
+   appearing; the overshoot is what makes it feel like wood on wood.
+
+   The transform lives on the tile itself, NOT on the slot around it: the slot
+   carries the rotation (a crosswise double, or a run turning), so a dropped tile
+   falls the same way whichever way it is lying. One animation, removed entirely
+   under reduced motion. */
 .dominoes-tile.is-new {
-  animation: dominoes-tile-in 0.22s ease-out both;
+  animation: dominoes-tile-in 0.26s cubic-bezier(0.22, 1.18, 0.4, 1) both;
 }
 
 @keyframes dominoes-tile-in {
-  from {
+  0% {
     opacity: 0;
-    transform: scale(0.88);
+    transform: scale(1.22);
   }
 
-  to {
+  62% {
+    opacity: 1;
+    transform: scale(0.96);
+  }
+
+  100% {
     opacity: 1;
     transform: scale(1);
   }
+}
+
+/* …and once it has landed it stays marked, so a player who looks away for a
+   moment still sees where the last tile was played. A ring, not a glow: it must
+   not compete with the selected tile in the hand. */
+.dominoes-chain-tile-box.is-latest .dominoes-tile {
+  box-shadow: 0 5px 12px rgba(0, 0, 0, 0.45), 0 0 0 2px rgba(251, 191, 36, 0.55);
 }
 
 /* ── The viewer's hand ──────────────────────────────────────────────── */
@@ -3209,6 +3259,17 @@ button.dominoes-tile:disabled {
   cursor: not-allowed;
 }
 
+/* The sound toggle: an icon plus a word, so it reads as a switch rather than a
+   command (it is a sticky preference, not a one-off action). */
+.dominoes-sound-button {
+  gap: 6px;
+  font-weight: 600;
+}
+
+.dominoes-sound-button[aria-pressed="false"] {
+  color: rgba(255, 255, 255, 0.55);
+}
+
 .dominoes-rules {
   min-width: 0;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -3253,9 +3314,10 @@ button.dominoes-tile:disabled {
     --dm-half: clamp(22px, 6vw, 28px);
   }
 
-  .dominoes-chain {
-    min-height: clamp(118px, 24vh, 190px);
-    padding: 8px;
+  .dominoes-chain-scroller {
+    min-height: clamp(136px, 26vh, 210px);
+    max-height: min(46vh, 360px);
+    padding: 36px 12px 14px;
   }
 
   .dominoes-action-button {
@@ -3277,9 +3339,13 @@ button.dominoes-tile:disabled {
   }
 
   /* Placement still has to be visible — the tile simply arrives instead of
-     growing in. No transform, no fade, no motion. */
+     dropping in. No transform, no fade, no motion. */
   .dominoes-tile.is-new {
     animation: none;
+  }
+
+  .dominoes-chain-tile-box.is-latest .dominoes-tile {
+    box-shadow: 0 5px 12px rgba(0, 0, 0, 0.45);
   }
 
   button.dominoes-tile.is-playable:hover,

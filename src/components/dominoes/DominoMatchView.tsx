@@ -40,7 +40,8 @@
 // match page), so losing it costs freshness, never the ability to play: the
 // notice appears and the controls stay live.
 
-import { useId } from "react";
+import { useEffect, useId, useState } from "react";
+import { IconVolume, IconVolumeOff } from "@tabler/icons-react";
 
 import DominoActions from "./DominoActions";
 import DominoChain, { type ChainTileLike } from "./DominoChain";
@@ -53,6 +54,7 @@ import {
   seatLabel,
   type OpenEnds,
 } from "../../lib/dominoes/ui";
+import { isDominoSoundMuted, setDominoSoundMuted } from "../../lib/dominoes/sound";
 
 /**
  * LOCALISATION NOTE: every player-facing string on this board is a key under
@@ -130,6 +132,12 @@ export default function DominoMatchView({
 }: DominoMatchViewProps) {
   const headingId = useId();
   const { t } = useTranslation();
+  // The table's sound is a device preference, read after mount so the server and
+  // the first client render agree (localStorage does not exist on the server).
+  const [soundOn, setSoundOn] = useState(true);
+  useEffect(() => {
+    setSoundOn(!isDominoSoundMuted());
+  }, []);
 
   if (!snapshot) {
     return (
@@ -362,6 +370,26 @@ export default function DominoMatchView({
           >
             {notice ?? ""}
           </p>
+
+          <button
+            type="button"
+            className="dominoes-secondary-button dominoes-sound-button"
+            data-testid="dominoes-sound"
+            aria-pressed={soundOn}
+            aria-label={t("games.dominoes.sound_toggle_aria")}
+            onClick={() => {
+              const next = !soundOn;
+              setSoundOn(next);
+              setDominoSoundMuted(!next);
+            }}
+          >
+            {soundOn ? (
+              <IconVolume size={14} aria-hidden="true" />
+            ) : (
+              <IconVolumeOff size={14} aria-hidden="true" />
+            )}
+            {t(soundOn ? "games.dominoes.sound_on" : "games.dominoes.sound_off")}
+          </button>
 
           {isLive ? (
             <button

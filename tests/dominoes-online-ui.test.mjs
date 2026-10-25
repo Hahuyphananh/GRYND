@@ -530,6 +530,56 @@ test("dominoes ui: the chain renders the engine's order and marks a double", () 
   assert.deepEqual(ids, ["6-5", "5-5", "5-0"], "the line is the engine's own array order");
   assert.match(html, /is-double/);
   assert.match(html, /data-chain-length="3"/);
+
+  // The table's geometry is the layout's, and it says so on every slot.
+  const slots = [
+    ...html.matchAll(
+      /data-rotation="(\d+)"\s+data-direction="([a-z]+)"\s+data-double="(true|false)"/g,
+    ),
+  ].map((match) => ({
+    rotation: Number(match[1]),
+    direction: match[2],
+    isDouble: match[3] === "true",
+  }));
+  assert.equal(slots.length, 3, "one slot per tile, in the engine's order");
+  assert.equal(slots[1].isDouble, true);
+  assert.equal(slots[1].rotation % 180, 90, "a double is drawn crosswise");
+  assert.notEqual(
+    slots[2].direction,
+    slots[1].direction,
+    "the tile after a double runs perpendicular to the run that led in",
+  );
+});
+
+test("dominoes ui: the table expands as the chain grows", () => {
+  const one = renderToStaticMarkup(
+    React.createElement(DominoChain, {
+      chain: [{ id: "6-5", end: "left", left: 6, right: 5, seat: "player1" }],
+      openEnds: { left: 6, right: 5 },
+    }),
+  );
+  const many = renderToStaticMarkup(
+    React.createElement(DominoChain, {
+      chain: [
+        { id: "6-5", end: "left", left: 6, right: 5, seat: "player1" },
+        { id: "5-5", end: "right", left: 5, right: 5, isDouble: true, seat: "player2" },
+        { id: "5-0", end: "right", left: 5, right: 0, seat: "player1" },
+        { id: "0-0", end: "right", left: 0, right: 0, isDouble: true, seat: "player2" },
+        { id: "0-3", end: "right", left: 0, right: 3, seat: "player1" },
+      ],
+      openEnds: { left: 6, right: 3 },
+    }),
+  );
+  const cols = (html) => Number(/data-cols="([\d.]+)"/.exec(html)?.[1] ?? 0);
+  const rows = (html) => Number(/data-rows="([\d.]+)"/.exec(html)?.[1] ?? 0);
+  // The board is measured in half-tile cells and grows with the table...
+  assert.ok(cols(many) > cols(one), "a longer chain needs a wider board");
+  assert.ok(rows(many) >= rows(one));
+  assert.ok(rows(many) > 1, "a double turns the table, which makes it taller");
+  // ...and the surface is sized from those cells, not from a fixed pixel width.
+  assert.match(many, /style="[^"]*width:\s*calc\(var\(--dm-half\) \* [\d.]+\)/);
+  assert.match(many, /height:\s*calc\(var\(--dm-half\) \* [\d.]+\)/);
+  assert.match(many, /data-testid="dominoes-chain-surface"/);
 });
 
 /* -------------------------------------------------------------------------- *
@@ -873,20 +923,60 @@ test("dominoes online: the lobby and match URLs are the ones that resolve", () =
  * 8. Responsive + reduced motion (the CSS contract)
  * -------------------------------------------------------------------------- */
 
-test("dominoes css: the chain grows as one line and the board scrolls along it", () => {
-  const chain = css.slice(css.indexOf(".dominoes-chain {"), css.indexOf(".dominoes-chain-slot"));
-  // A real table does not reflow a line of dominoes into a block of rows: the
-  // row stays a row, keeps its size and extends in both directions.
-  assert.match(chain, /flex-wrap:\s*nowrap/);
-  assert.match(chain, /overflow-x:\s*auto/);
-  assert.equal(/max-height:\s*min\(34vh/.test(chain), false, "the line is no longer boxed in");
-  assert.match(chain, /min-height:\s*clamp\(/, "the board has a table-sized floor");
-  // Tile size is one variable, clamped so a phone still shows readable halves —
-  // and it is bigger than the first board shipped with.
+test("dominoes css: the chain is a 2D table that scrolls as it snakes", () => {
+  const table = css.slice(css.indexOf(".dominoes-chain {"), css.indexOf(".dominoes-pile {"));
+  // Both axes: a real table path turns, so the board is not a single row.
+  assert.match(table, /\.dominoes-chain-scroller \{[\s\S]*?overflow:\s*auto/);
+  assert.match(table, /overscroll-behavior:\s*contain/);
+  assert.equal(/flex-wrap:/.test(table), false, "tiles are placed, not wrapped into a row");
+  // The felt is a positioned surface with one absolutely-placed slot per tile,
+  // and the tile rotates inside its slot so the badge above it stays upright.
+  assert.match(table, /\.dominoes-chain-surface \{\s*position:\s*relative;/);
+  assert.match(table, /\.dominoes-chain-slot \{\s*position:\s*absolute;/);
+  assert.match(
+    table,
+    /\.dominoes-chain-tile-box \{[\s\S]*?transform-origin:\s*center/,
+    "the tile turns around its own centre",
+  );
+  // The open values are pinned to the BOARD corners, not scrolled away with the
+  // felt (`position: absolute` inside the chain, not inside the surface).
+  assert.match(table, /\.dominoes-end-chip \{[\s\S]*?position:\s*absolute/);
+  assert.match(table, /\.dominoes-end-chip\.is-left \{[\s\S]*?left:\s*8px/);
+  // The board keeps a table-sized floor and a ceiling, so it never grows the page
+  // without bound.
+  assert.match(table, /min-height:\s*clamp\(/);
+  assert.match(table, /max-height:\s*min\(/);
+  // Tile size is one variable, clamped so a phone still shows readable halves.
   const board = css.slice(css.indexOf(".dominoes-board {"), css.indexOf(".dominoes-layout {"));
   assert.match(board, /--dm-half:\s*clamp\(24px,/);
   // The hand scales itself up from the same variable.
   assert.match(css, /\.dominoes-hand \{[\s\S]*?--dm-half:\s*clamp\(/);
+});
+
+test("dominoes ui: a move is audible, and the sound can be switched off", { skip: SKIP_REASON }, () => {
+  const view = renderView({});
+  // The board owns the switch, so a player never has to leave it to mute a table.
+  const toggle = tagWith(view, "dominoes-sound");
+  assert.match(toggle, /aria-pressed="(true|false)"/, "it is a sticky switch, not a command");
+  assert.match(toggle, /aria-label="Table sounds"/);
+  assert.match(view, /Sound (on|off)/);
+  assert.match(view, /tabler-icon-volume/);
+  // Sound follows the SERVER's verdict: the match page plays it from the
+  // snapshot advancing, not from a click, so a refused move is silent.
+  assert.match(pageCode, /useDominoSounds\(match\)/);
+  const hook = read("src/hooks/useDominoSounds.ts");
+  assert.match(hook, /playDominoSound\("place"\)/);
+  assert.match(hook, /current\.ply <= before\.ply/, "a poll with no move is silent");
+  // Audio is only allowed after a gesture, and a move arrives from the server, so
+  // the first tap or key press arms the table.
+  assert.match(hook, /unlockDominoSound\(\)/);
+  // The sounds are synthesised, never shipped as assets, and never break a move.
+  const sound = read("src/lib/dominoes/sound.ts");
+  assert.match(sound, /createOscillator|createBufferSource|createBuffer/);
+  assert.match(sound, /isDominoSoundMuted/);
+  assert.match(sound, /export function unlockDominoSound\(\)/);
+  assert.match(sound, /try \{[\s\S]*catch \{/);
+  assert.doesNotMatch(sound, /\.mp3|\.wav|\.ogg/);
 });
 
 test("dominoes css: the controls sit in a right-hand sidebar, the hand under the board", () => {
