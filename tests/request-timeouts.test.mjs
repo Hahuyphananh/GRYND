@@ -30,6 +30,54 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+// ── 0. Event-loop discipline (why every await below goes through settlesWithin)
+//
+// No assertion in this file may depend on some OTHER handle to keep Node's
+// event loop alive while it is awaiting. The deadline the code under test
+// installs is `AbortSignal.timeout()`, and that timer is UNREF'D: it cannot hold
+// the loop open on its own.
+//
+//   $ node -e 'await new Promise(r => AbortSignal.timeout(300).addEventListener("abort", r))'
+//   Warning: Detected unsettled top-level await ...   (exits 13)
+//
+// So a test that awaits a promise which only settles when that signal aborts is
+// left pending with a loop that is free to drain. node:test reacts to that by
+// cancelling the test — "Promise resolution is still pending but the event loop
+// has already resolved" — and cancels every test after it in the file. That is
+// exactly how one such await in the rate-limit test took the health and
+// source-audit tests down with it: the cancellation was collateral, not those
+// tests' own failure.
+//
+// `settlesWithin` closes that hole twice over:
+//   - it races the promise against a plain REF'D `setTimeout`, so the loop is
+//     held for exactly as long as the assertion legitimately needs and the
+//     deadline under test can actually fire;
+//   - if the promise still has not settled, the test FAILS with a named error
+//     instead of hanging or being cancelled, so a missing deadline in the
+//     source under test is reported as the regression it is.
+function settlesWithin(promise, ms, label) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(
+        new Error(
+          `${label}: still pending after ${ms}ms — the deadline under test never released the caller`,
+        ),
+      );
+    }, ms);
+
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
 // ── 1. The cache cannot hang a caller ─────────────────────────────────────
 
 // A `fetch` that behaves like a blackholed host: it never resolves on its own,
@@ -72,7 +120,11 @@ test("cache: a blackholed Redis releases the caller instead of hanging", async (
     );
 
     const startedAt = Date.now();
-    const value = await cacheGet("grynd:test:hung");
+    const value = await settlesWithin(
+      cacheGet("grynd:test:hung"),
+      REDIS_TIMEOUT_MS + 2_000,
+      "cacheGet against a blackholed cache",
+    );
     const elapsed = Date.now() - startedAt;
 
     assert.equal(value, null, "a hung cache reads as a miss, never as a throw");
@@ -94,7 +146,11 @@ test("cache: a blackholed Redis releases the caller instead of hanging", async (
 
     // And the wrapper releases callers even if a transport ignores the signal.
     const directStartedAt = Date.now();
-    const direct = await withRedis(() => new Promise(() => {}));
+    const direct = await settlesWithin(
+      withRedis(() => new Promise(() => {})),
+      REDIS_TIMEOUT_MS + 2_000,
+      "withRedis given a transport that never settles",
+    );
     assert.equal(direct, null);
     assert.ok(
       Date.now() - directStartedAt < REDIS_TIMEOUT_MS + 2_000,
@@ -126,7 +182,11 @@ test("rate limit: a blackholed Redis falls back to the in-memory limiter", async
     const key = `POST:/api/test:ip:blackholed-${Date.now()}`;
 
     const startedAt = Date.now();
-    const first = await consumeRateLimit(key, config);
+    const first = await settlesWithin(
+      consumeRateLimit(key, config),
+      4_000,
+      "consumeRateLimit against a blackholed Redis",
+    );
     const elapsed = Date.now() - startedAt;
 
     assert.ok(
@@ -136,16 +196,30 @@ test("rate limit: a blackholed Redis falls back to the in-memory limiter", async
     assert.equal(first.allowed, true, "the first call is under the limit");
     assert.equal(first.limit, config.max);
 
+    assert.ok(calls.length >= 1, "the remote limiter should have attempted a fetch");
     for (const call of calls) {
       assert.ok(
         call.signal instanceof AbortSignal,
         "the remote limiter's fetch must carry an AbortSignal",
       );
+      assert.equal(
+        call.signal.aborted,
+        true,
+        "the shared deadline must have fired, not merely been attached",
+      );
     }
 
     // The fallback is not a bypass: the in-memory limiter still counts.
-    const second = await consumeRateLimit(key, config);
-    const third = await consumeRateLimit(key, config);
+    const second = await settlesWithin(
+      consumeRateLimit(key, config),
+      4_000,
+      "consumeRateLimit (second call)",
+    );
+    const third = await settlesWithin(
+      consumeRateLimit(key, config),
+      4_000,
+      "consumeRateLimit (third call)",
+    );
     assert.equal(second.allowed, true);
     assert.equal(third.allowed, false, "the limit is still enforced without Redis");
   } finally {
@@ -173,7 +247,10 @@ test("health: reports a stuck dependency instead of hanging the request", async 
   const { GET } = await import("../src/app/api/health/route.ts");
 
   const startedAt = Date.now();
-  const response = await GET();
+  // The route bounds each dependency with `withTimeout`, whose timer is ref'd,
+  // so this await already holds the loop. The outer deadline keeps it honest:
+  // if a check stops being bounded, this fails by name instead of hanging.
+  const response = await settlesWithin(GET(), 15_000, "GET /api/health");
   const elapsed = Date.now() - startedAt;
 
   assert.ok(
