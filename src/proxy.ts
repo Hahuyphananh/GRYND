@@ -9,6 +9,7 @@ import { auditLog } from "./lib/security/auditLog";
 import { isAdmin } from "./lib/auth/isAdmin";
 import { isMaintenanceMode } from "./lib/security/maintenance";
 import { withTimeout } from "./lib/security/withTimeout";
+import { internalizeMiddlewareSelfRewrite } from "./lib/security/middlewareSelfRewrite";
 import { hasRecentMfa } from "./lib/auth/requireMfa";
 import {
   ADMIN_MFA_COOKIE,
@@ -889,7 +890,13 @@ export default async function proxy(req: NextRequest, event: NextFetchEvent) {
   }
 
   try {
-    return await clerkProtectedMiddleware(req, event);
+    const response = await clerkProtectedMiddleware(req, event);
+    // Clerk rewrites to the request's OWN url to hand its `x-clerk-auth-*`
+    // headers to the render. On the Node runtime Next would proxy that absolute
+    // url to this same server and loop until the 30s proxy timeout, so the
+    // rewrite is made internal again (see lib/security/middlewareSelfRewrite).
+    if (response) internalizeMiddlewareSelfRewrite(response.headers, req.url);
+    return response;
   } catch (error) {
     console.error(
       "[middleware] Clerk middleware invocation failed; returning safe response.",
