@@ -34,9 +34,14 @@ import {
   IMPACT_KINDS,
   MATCH_STATUS,
   MAX_HP,
+  MOVE_STEP,
 } from "../src/lib/hillstrike/constants.ts";
 import { simulateShot } from "../src/lib/hillstrike/physics.ts";
-import { applyAction, createInitialState } from "../src/lib/hillstrike/rules.ts";
+import {
+  applyAction,
+  buildPlacementFor,
+  createInitialState,
+} from "../src/lib/hillstrike/rules.ts";
 
 const MODULE_MOCKING_AVAILABLE = typeof mock?.module === "function";
 const SKIP_REASON = MODULE_MOCKING_AVAILABLE
@@ -740,13 +745,17 @@ test("POST shot: a drive and a build are the same route, and both reach the boar
   assert.equal(drove.json.data.action.type, "move");
   assert.equal(
     drove.json.data.match.gameState.battlefield.players.player1.x,
-    tankBefore.x + 60,
+    tankBefore.x + MOVE_STEP,
     "the server moved the tank, not the client",
   );
   assert.equal(drove.json.data.match.hp.player1, MAX_HP, "a drive costs no HP");
 
   // Alice's single opening action is spent, so the build is Bob's to make.
-  const built = await fire({ action: { type: "build" }, expectedVersion: 1 }, { as: BOB });
+  const placement = buildPlacementFor(drove.json.data.match.gameState, "player2");
+  const built = await fire(
+    { action: { type: "build", x: placement.x, y: placement.y }, expectedVersion: 1 },
+    { as: BOB },
+  );
   assert.equal(built.status, 200);
   assert.equal(built.json.data.action.type, "build");
   const blocks = built.json.data.match.gameState.battlefield.blocks;

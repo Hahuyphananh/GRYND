@@ -27,14 +27,19 @@
  *       2. block       (lowest block id wins an exact tie)
  *       3. terrain
  *   • range: the shell records how far it actually FLEW, and that distance
- *     drives `powerScaleForDistance` — the further it travelled, the less
- *     explosive it is. The scaled speed sets the crater and structural blast
- *     sizes, and `damageForDistance` turns the same number into the HP a direct
- *     hit takes (applied in ./rules)
+ *     drives `powerScaleForDistance` — the further it travelled, the LESS HP it
+ *     takes from a tank (`damageForDistance`, applied in ./rules). That is the
+ *     ONLY thing distance changes: the crater and the structural blast are a
+ *     fixed size, because a shell that lands is a shell that lands
+ *   • structures: a block reached by a shell is destroyed outright (blocks
+ *     carry one point of integrity). A block impact also blasts every other
+ *     block inside `BLOCK_BLAST_RADIUS`, carves a shallow crater and runs the
+ *     bounded collapse
+ *   • base roofs (`kind: "roof"`) are INDESTRUCTIBLE: a shell that meets one
+ *     stops there and does nothing at all — no block damage, no crater, no
+ *     collapse — and a roof never collapses or falls
  *   • damage: a direct player contact costs HP (in ./rules); a block or terrain
- *     contact never does. Block/terrain contacts carve a bounded, integer
- *     crater and damage blocks inside a bounded blast radius, then run a
- *     bounded structural collapse
+ *     contact never does
  *   • limits: `maxTicks`, `substepMaxPx`, `MAX_SUBSTEPS_PER_TICK`,
  *     `TERRAIN_CARVE_BUDGET`, `MAX_COLLAPSE_PASSES`, `MAX_COLLAPSE_MOVES`,
  *     `MAX_PATH_POINTS`. Nothing here recurses.
@@ -47,16 +52,12 @@
 
 import { clamp, dedupePath, type Vec2 } from "../physics2d/kinematics";
 import {
-  BLOCK_BLAST_MAX_RADIUS,
-  BLOCK_BLAST_MIN_RADIUS,
+  BLOCK_BLAST_RADIUS,
+  BLOCK_CRATER_FACTOR,
   BATTLEFIELD_HEIGHT,
   BATTLEFIELD_WIDTH,
-  CRATER_DEPTH_PER_SPEED,
-  CRATER_MAX_DEPTH,
-  CRATER_MAX_RADIUS,
-  CRATER_MIN_DEPTH,
-  CRATER_MIN_RADIUS,
-  CRATER_RADIUS_PER_SPEED,
+  CRATER_DEPTH,
+  CRATER_RADIUS,
   DEFAULT_MAX_PULL,
   IMPACT_KINDS,
   MAX_COLLAPSE_MOVES,
@@ -75,7 +76,6 @@ import {
   SEATS,
   SHOT_POWER_FALLOFF_DISTANCE,
   SHOT_POWER_MIN_SCALE,
-  STRUCTURE_CRATER_FACTOR,
   SUPPORT_TOLERANCE,
   TERRAIN_CARVE_BUDGET,
   TERRAIN_COLUMNS,
@@ -90,6 +90,7 @@ import type {
   Impact,
   ImpactKind,
   Player,
+  PowerUp,
   ProjectileSpec,
   Seat,
   ShotEvent,
@@ -127,6 +128,10 @@ export function createProjectileSpec(): ProjectileSpec {
  * `SHOT_POWER_FALLOFF_DISTANCE`, and it never drops below that floor: a shot
  * still hurts at the far end of the map, just less. Distances shorter than the
  * falloff distance interpolate, so the curve has no cliff.
+ *
+ * This is a HP-damage curve ONLY. It no longer sizes a crater, a structural
+ * blast or a block break — those are fixed, so a long shot still levels the
+ * cover it lands on.
  */
 export function powerScaleForDistance(distance: number): number {
   const travelled = Number.isFinite(distance) ? Math.max(0, distance) : 0;
@@ -137,12 +142,16 @@ export function powerScaleForDistance(distance: number): number {
 /**
  * The HP a direct hit takes, from the distance the shell flew.
  *
- * One number, derived from the SAME falloff that sizes the explosion, so "the
- * further it goes the weaker it is" is a single rule rather than three that can
- * disagree. Always at least 1: a direct hit on a tank always costs something.
+ * THE only distance-sensitive quantity in the game. Always at least 1: a direct
+ * hit on a tank always costs something, however far the shell came.
  */
 export function damageForDistance(distance: number): number {
   return Math.max(1, Math.round(HIT_DAMAGE_MAX * powerScaleForDistance(distance)));
+}
+
+/** A block's kind, defaulting a legacy (v2) row to cover. */
+function blockKind(block: TowerBlock): "cover" | "roof" {
+  return block.kind === "roof" ? "roof" : "cover";
 }
 
 /**
@@ -580,26 +589,29 @@ function carveTerrain(
   };
 }
 
-/** Blocks inside the blast radius lose one integrity; zero-integrity blocks die. */
+/**
+ * Blocks inside the blast radius lose one integrity; zero-integrity blocks die.
+ *
+ * The radius is FIXED (× the caller's blast scale, which is 2 only for the
+ * `double-blast` pickup), so a shell's range can never make it gentler on cover.
+ * A base roof is skipped entirely: it is scenery that cannot be broken.
+ */
 function damageBlocks(
   blocks: TowerBlock[],
   x: number,
   y: number,
   tick: number,
-  speed: number,
+  blastScale: number,
   events: ShotEvent[],
 ): TowerBlock[] {
-  const radius = clamp(
-    Math.round(
-      BLOCK_BLAST_MIN_RADIUS +
-        (speed / MAX_LAUNCH_SPEED) * (BLOCK_BLAST_MAX_RADIUS - BLOCK_BLAST_MIN_RADIUS),
-    ),
-    BLOCK_BLAST_MIN_RADIUS,
-    BLOCK_BLAST_MAX_RADIUS,
-  );
+  const radius = BLOCK_BLAST_RADIUS * blastScale;
 
   const survivors: TowerBlock[] = [];
   for (const block of [...blocks].sort((a, b) => a.id - b.id)) {
+    if (blockKind(block) === "roof") {
+      survivors.push(block);
+      continue;
+    }
     const nearestX = clamp(x, block.x, block.x + block.size);
     const nearestY = clamp(y, block.y, block.y + block.size);
     if (Math.hypot(x - nearestX, y - nearestY) > radius) {
@@ -673,6 +685,7 @@ function isSupported(
 interface MutableBlock {
   id: number;
   seat: Seat;
+  kind: "cover" | "roof";
   x: number;
   y: number;
   size: number;
@@ -696,6 +709,8 @@ function resolveCollapse(
 ): TowerBlock[] {
   // The simulation works on its own mutable copies: the incoming battlefield is
   // never touched, and the returned array is the settled result.
+  // Base roofs are anchored: they are never moved by a pass and never removed
+  // as rubble, so a football-sized crater under a base cannot drop its ceiling.
   const working: MutableBlock[] = blocks.map((block) => ({ ...block }));
   let moves = 0;
 
@@ -703,6 +718,7 @@ function resolveCollapse(
     let changed = false;
     for (const block of [...working].sort((a, b) => a.id - b.id)) {
       if (moves >= MAX_COLLAPSE_MOVES) break;
+      if (blockKind(block) === "roof") continue;
       const bottom = block.y + block.size;
       const support = nearestSupport(block, working, terrain);
       if (!Number.isFinite(support) || support - bottom <= SUPPORT_TOLERANCE) continue;
@@ -726,7 +742,7 @@ function resolveCollapse(
 
   const settled: TowerBlock[] = [];
   for (const block of [...working].sort((a, b) => a.id - b.id)) {
-    if (isSupported(block, working, terrain)) {
+    if (blockKind(block) === "roof" || isSupported(block, working, terrain)) {
       settled.push(block);
       continue;
     }
@@ -752,6 +768,12 @@ export interface SimulateShotParams {
   readonly shot: ShotInput;
   /** Defaults to `createProjectileSpec()`; a match always passes its own. */
   readonly projectile?: ProjectileSpec;
+  /**
+   * Blast multiplier for this shell: 1 normally, 2 while `double-blast` is armed
+   * (see ./rules). It scales the CRATER and the block blast, never the HP damage
+   * and never with distance.
+   */
+  readonly blastScale?: number;
 }
 
 /**
@@ -802,6 +824,10 @@ export function simulateShot(params: SimulateShotParams): ShotSimulation {
   const spec = assertProjectileSpec(
     params.projectile === undefined ? createProjectileSpec() : params.projectile,
   );
+  const blastScale = params.blastScale === undefined ? 1 : params.blastScale;
+  if (typeof blastScale !== "number" || !Number.isFinite(blastScale) || blastScale < 1) {
+    throw new TypeError("hillstrike physics: blastScale must be a finite number >= 1");
+  }
 
   const terrain = [...battlefield.terrain];
   // Ascending id is the documented tie-break when two blocks are reached at the
@@ -843,6 +869,9 @@ export function simulateShot(params: SimulateShotParams): ShotSimulation {
   rawPath.push({ x, y });
 
   let impact: Impact | null = null;
+  // Which block was actually struck, so an indestructible base roof can absorb
+  // the shell without any crater or structural damage at all.
+  let struckBlockId: number | null = null;
   let lastTick = 0;
   // World units actually flown. This is the ONE range measurement the rules use:
   // every damage/explosion figure is derived from it, never from the aim.
@@ -881,12 +910,14 @@ export function simulateShot(params: SimulateShotParams): ShotSimulation {
         travelled += Math.hypot(contact.x - x0, contact.y - y0);
         x = contact.x;
         y = contact.y;
+        struckBlockId = contact.blockId;
         impact = {
           tick,
           x,
           y,
           kind: contact.kind,
           target: contact.kind === IMPACT_KINDS.PLAYER ? contact.target : null,
+          blockId: contact.blockId,
         };
         break;
       }
@@ -895,7 +926,14 @@ export function simulateShot(params: SimulateShotParams): ShotSimulation {
       x = x1;
       y = y1;
       if (x < 0 || x > BATTLEFIELD_WIDTH || y > BATTLEFIELD_HEIGHT) {
-        impact = { tick, x, y, kind: IMPACT_KINDS.OUT_OF_BOUNDS, target: null };
+        impact = {
+          tick,
+          x,
+          y,
+          kind: IMPACT_KINDS.OUT_OF_BOUNDS,
+          target: null,
+          blockId: null,
+        };
       }
     }
 
@@ -910,6 +948,7 @@ export function simulateShot(params: SimulateShotParams): ShotSimulation {
       y,
       kind: IMPACT_KINDS.TIMEOUT,
       target: null,
+      blockId: null,
     };
   }
 
@@ -920,14 +959,14 @@ export function simulateShot(params: SimulateShotParams): ShotSimulation {
     y: impact.y,
     kind: impact.kind,
     target: impact.target,
+    blockId: impact.blockId,
   });
   rawPath.push({ x: impact.x, y: impact.y });
 
-  // The shell's remaining power, from the distance it flew. The impact speed is
-  // scaled by it, so a long lob explodes like a short, weak shot even when it
-  // arrives fast — one falloff drives both the explosion and the HP damage.
+  // The shell's remaining power, from the distance it flew. This is a HP-damage
+  // figure ONLY: it no longer sizes the blast, so a shot that crossed the whole
+  // map still levels the block it lands on.
   const powerScale = powerScaleForDistance(travelled);
-  const impactSpeed = Math.hypot(vx, vy) * powerScale;
 
   if (impact.kind === IMPACT_KINDS.PLAYER) {
     // A direct player hit costs HP in ./rules and changes nothing else: no
@@ -946,43 +985,43 @@ export function simulateShot(params: SimulateShotParams): ShotSimulation {
     impact.kind === IMPACT_KINDS.BLOCK ||
     impact.kind === IMPACT_KINDS.TERRAIN
   ) {
-    const depth = clamp(
-      Math.round(CRATER_MIN_DEPTH + impactSpeed * CRATER_DEPTH_PER_SPEED),
-      CRATER_MIN_DEPTH,
-      CRATER_MAX_DEPTH,
-    );
-    const radius = clamp(
-      Math.round(CRATER_MIN_RADIUS + impactSpeed * CRATER_RADIUS_PER_SPEED),
-      CRATER_MIN_RADIUS,
-      CRATER_MAX_RADIUS,
-    );
-    const craterDepth =
-      impact.kind === IMPACT_KINDS.BLOCK
-        ? Math.max(1, Math.round(depth * STRUCTURE_CRATER_FACTOR))
-        : depth;
+    const struck = struckBlockId === null ? null : blocks.find((b) => b.id === struckBlockId) ?? null;
+    if (struck && blockKind(struck) === "roof") {
+      // An indestructible base roof swallows the shell: no block damage, no
+      // crater, no collapse. This is the whole point of the roof.
+    } else {
+      const depth = CRATER_DEPTH * blastScale;
+      const radius = CRATER_RADIUS * blastScale;
+      const craterDepth =
+        impact.kind === IMPACT_KINDS.BLOCK
+          ? Math.max(1, Math.round(depth * BLOCK_CRATER_FACTOR))
+          : depth;
 
-    blocks = damageBlocks(blocks, impact.x, impact.y, impact.tick, impactSpeed, events);
+      // Fixed size, whatever the range: the hit block has one integrity, so it
+      // breaks outright, and every block inside the blast does too.
+      blocks = damageBlocks(blocks, impact.x, impact.y, impact.tick, blastScale, events);
 
-    const carved = carveTerrain(
-      terrain,
-      impact.x,
-      impact.y,
-      impact.tick,
-      craterDepth,
-      radius,
-    );
-    if (carved.event) events.push(carved.event);
+      const carved = carveTerrain(
+        terrain,
+        impact.x,
+        impact.y,
+        impact.tick,
+        craterDepth,
+        radius,
+      );
+      if (carved.event) events.push(carved.event);
 
-    // Ground moved: everyone standing on it follows the surface. This NEVER
-    // costs HP — only a direct player contact does.
-    for (const seat of SEATS) {
-      players[seat] = {
-        ...players[seat],
-        y: terrain[clampColumn(players[seat].x)],
-      };
+      // Ground moved: everyone standing on it follows the surface. This NEVER
+      // costs HP — only a direct player contact does.
+      for (const seat of SEATS) {
+        players[seat] = {
+          ...players[seat],
+          y: terrain[clampColumn(players[seat].x)],
+        };
+      }
+
+      blocks = resolveCollapse(terrain, blocks, impact.tick, events);
     }
-
-    blocks = resolveCollapse(terrain, blocks, impact.tick, events);
   }
 
   events.push({ type: "settled", tick: impact.tick, x: impact.x, y: impact.y });

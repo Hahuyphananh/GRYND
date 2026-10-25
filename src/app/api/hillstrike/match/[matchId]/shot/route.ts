@@ -6,12 +6,16 @@
 //
 //   { action: { type: "shoot", angleDeg, power }, expectedVersion }
 //   { action: { type: "move", direction: "forward" | "back" }, expectedVersion }
-//   { action: { type: "build" }, expectedVersion }
+//   { action: { type: "build", x, y }, expectedVersion }
+//
+// A build names the TILE the player picked; the engine snaps it to the cover
+// grid, refuses anything off the builder's own half (or unsupported, or already
+// occupied) and derives the block itself.
 //
 // Everything else a client might send — a trajectory, an impact, a hit, a damage
-// amount, an HP total, a position, a block, a terrain height, a tower layout,
-// whose turn it is, a winner, a result, a completion flag — is IGNORED: no such
-// field is read here or in the store. The action is validated by the shared rules
+// amount, an HP total, a block id, a terrain height, a tower layout, whose turn
+// it is, a winner, a result, a completion flag — is IGNORED: no such field is
+// read here or in the store. The action is validated by the shared rules
 // engine (`validateAction`), resolved by `applyAction`/`simulateShot` inside the
 // store's row-locked transaction, and the resulting authoritative state is what
 // both clients render. The server never trusts client-side physics.

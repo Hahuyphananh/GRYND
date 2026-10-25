@@ -19,6 +19,7 @@ import assert from "node:assert/strict";
 import {
   ACTION_TYPES,
   ACTIONS_PER_TURN,
+  BATTLEFIELD_WIDTH,
   BLOCK_MAX_INTEGRITY,
   HIT_DAMAGE_MAX,
   IMPACT_KINDS,
@@ -41,6 +42,7 @@ import { createBattlefield, validateBattlefield } from "../src/lib/hillstrike/ge
 import { aimFromDrag, createProjectileSpec, simulateShot } from "../src/lib/hillstrike/physics.ts";
 import {
   applyAction,
+  buildPlacementFor,
   createInitialState,
   hpOf,
   isHillstrikeRuleError,
@@ -114,10 +116,14 @@ const blockShot = (state, seat) => findShot(state, seat, IMPACT_KINDS.BLOCK);
  * miss a player produces with the wrong power.
  */
 function outOfBoundsShot(state, seat) {
-  const arc = seat === "player1" ? [20, 80] : [100, 160];
-  for (let angle = arc[0]; angle <= arc[1]; angle += 1) {
-    const shot = { angleDeg: angle, power: 100 };
-    if (simulate(state, seat, shot).impact.kind === IMPACT_KINDS.OUT_OF_BOUNDS) return shot;
+  // The doubled map is wide, so the escape line differs per seed and per
+  // battlefield: scan the whole circle, hardest shots first, and take the first
+  // line that leaves the field without meeting anything.
+  for (const power of [100, 95, 90]) {
+    for (let angle = 0; angle < 360; angle += 1) {
+      const shot = { angleDeg: angle, power };
+      if (simulate(state, seat, shot).impact.kind === IMPACT_KINDS.OUT_OF_BOUNDS) return shot;
+    }
   }
   throw new Error(`no out-of-bounds line for ${seat} on seed ${state.seed}`);
 }
@@ -319,7 +325,14 @@ test("actions: build-then-fire is a legal two-action turn, and the block is real
   let state = createInitialState({ seed: 424242, openingSeat: "player1" });
   state = applyAction(state, "player1", shoot(outOfBoundsShot(state, "player1"))).state;
 
-  const built = applyAction(state, "player2", { type: ACTION_TYPES.BUILD }).state;
+  // A build names the tile it wants; the engine derives the block itself.
+  const placement = buildPlacementFor(state, "player2");
+  assert.ok(placement, "player2 has somewhere legal to build");
+  const built = applyAction(state, "player2", {
+    type: ACTION_TYPES.BUILD,
+    x: placement.x,
+    y: placement.y,
+  }).state;
   const added = built.battlefield.blocks.length - state.battlefield.blocks.length;
   assert.equal(added, 1, "a build places exactly one block");
   assert.equal(built.turn, "player2");
@@ -331,6 +344,7 @@ test("actions: build-then-fire is a legal two-action turn, and the block is real
   );
   assert.ok(block, "the record names the block");
   assert.equal(block.seat, "player2");
+  assert.equal(block.kind, "cover");
   assert.equal(block.integrity, BLOCK_MAX_INTEGRITY);
   assert.equal(block.size, STRUCTURE_BLOCK_SIZE);
   assert.ok(block.x + block.size < built.battlefield.players.player2.x, "cover faces the enemy");
@@ -458,22 +472,42 @@ test("boundary: malformed payloads are refused with a specific code, state untou
   assert.equal(applyAction(state, seat, padded).state.hp.player2, MAX_HP);
 });
 
-test("boundary: a build cannot be used to smuggle a position or a block", () => {
+test("boundary: a build cannot be used to smuggle a block, only to name a tile", () => {
   const state = createInitialState({ seed: 42, openingSeat: "player1" });
-  const smuggled = {
-    type: "build",
-    x: 640,
-    y: 100,
-    blockId: 999,
-    seat: "player1",
-    size: 26,
-    integrity: 5,
-  };
-  const plain = applyAction(state, "player1", { type: "build" }).state;
-  const padded = applyAction(state, "player1", smuggled).state;
+  const placement = buildPlacementFor(state, "player1");
+  assert.ok(placement);
 
-  assert.deepEqual(padded.battlefield.blocks, plain.battlefield.blocks);
-  assert.deepEqual(padded.lastAction, plain.lastAction);
+  const clean = { type: "build", x: placement.x, y: placement.y };
+  // Everything else a client might attach is ignored: the block's id, size,
+  // integrity, kind and owner are all derived by the engine.
+  const padded = {
+    ...clean,
+    blockId: 999,
+    seat: "player2",
+    size: 999,
+    integrity: 5,
+    kind: "roof",
+  };
+  const plain = applyAction(state, "player1", clean).state;
+  const smuggled = applyAction(state, "player1", padded).state;
+
+  assert.deepEqual(smuggled.battlefield.blocks, plain.battlefield.blocks);
+  assert.deepEqual(smuggled.lastAction, plain.lastAction);
+  assert.notEqual(plain.lastAction.blockId, 999);
+  const block = plain.battlefield.blocks.find((entry) => entry.id === plain.lastAction.blockId);
+  assert.equal(block.seat, "player1", "the owner is the actor, never the payload");
+  assert.equal(block.kind, "cover");
+  assert.equal(block.size, STRUCTURE_BLOCK_SIZE);
+  assert.equal(block.integrity, BLOCK_MAX_INTEGRITY);
+
+  // The tile IS validated: the opponent's half is refused outright.
+  const acrossTheLine = tryApplyAction(state, "player1", {
+    type: "build",
+    x: BATTLEFIELD_WIDTH / 2,
+    y: placement.y,
+  });
+  assert.equal(acrossTheLine.ok, false);
+  assert.equal(acrossTheLine.code, REJECTION.BUILD_OPPONENT_HALF);
 });
 
 test("boundary: duplicate and stale actions cannot double-apply or replay a cached outcome", () => {
@@ -514,14 +548,16 @@ test("boundary: duplicate and stale actions cannot double-apply or replay a cach
   staleState = applyAction(staleState, "player2", shoot(outOfBoundsShot(staleState, "player2"))).state;
   assert.equal(staleState.turn, "player1");
 
-  const towerShot = shoot(blockShot(staleState, "player1"));
-  const staleOutcome = simulate(staleState, "player1", towerShot).impact;
-  assert.equal(staleOutcome.kind, IMPACT_KINDS.BLOCK);
+  // Distance no longer weakens a crater, so a ground shot always changes the
+  // battlefield the next resolution sees.
+  const groundShot = shoot({ angleDeg: 12, power: 100 });
+  const staleOutcome = simulate(staleState, "player1", groundShot).impact;
+  assert.equal(staleOutcome.kind, IMPACT_KINDS.TERRAIN);
 
-  const blocksBefore = staleState.battlefield.blocks.length;
-  let cleared = applyAction(staleState, "player1", towerShot).state;
-  cleared = applyAction(cleared, "player1", towerShot).state; // the turn's second action
-  assert.ok(cleared.battlefield.blocks.length < blocksBefore, "the tower really lost blocks");
+  const terrainBefore = staleState.battlefield.terrain;
+  let cleared = applyAction(staleState, "player1", groundShot).state;
+  cleared = applyAction(cleared, "player1", groundShot).state; // the turn's second action
+  assert.notDeepEqual(cleared.battlefield.terrain, terrainBefore, "the ground really changed");
 
   let guard = 0;
   while (cleared.status === MATCH_STATUS.PLAYING && cleared.turn !== "player1" && guard < 6) {
@@ -531,8 +567,8 @@ test("boundary: duplicate and stale actions cannot double-apply or replay a cach
   }
   assert.equal(cleared.turn, "player1");
 
-  const revalidated = simulate(cleared, "player1", towerShot).impact;
-  const appliedNow = applyAction(cleared, "player1", towerShot).state.lastAction.impact;
+  const revalidated = simulate(cleared, "player1", groundShot).impact;
+  const appliedNow = applyAction(cleared, "player1", groundShot).state.lastAction.impact;
   assert.deepEqual(appliedNow, revalidated, "the shot resolves against the live battlefield");
   assert.notDeepEqual(
     { x: appliedNow.x, y: appliedNow.y, kind: appliedNow.kind },

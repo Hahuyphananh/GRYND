@@ -76,7 +76,8 @@ import {
 } from "../../../../lib/hillstrike/rooms";
 import { MAX_HP, TICK_MS } from "../../../../lib/hillstrike/constants";
 import { simulateShot } from "../../../../lib/hillstrike/physics";
-import { hpOf } from "../../../../lib/hillstrike/rules";
+import { hpOf, resolveBuildPlacement } from "../../../../lib/hillstrike/rules";
+import type { Vec2 } from "../../../../lib/physics2d/kinematics";
 import {
   durationSeconds,
   hpFor,
@@ -138,6 +139,9 @@ export default function HillstrikeMatchPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [aim, setAim] = useState<ShotInput | null>(null);
+  // True while the viewer is choosing WHERE a cover block goes. The click adapts
+  // the world point, the engine validates it, the server decides.
+  const [placingBlock, setPlacingBlock] = useState(false);
   const [animation, setAnimation] = useState<HillstrikeAnimation | null>(null);
   const [resolving, setResolving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -163,6 +167,7 @@ export default function HillstrikeMatchPage() {
     setMatch(null);
     setLoadError(null);
     setAim(null);
+    setPlacingBlock(false);
     setAnimation(null);
     setResolving(false);
     setSubmitting(false);
@@ -384,6 +389,7 @@ export default function HillstrikeMatchPage() {
 
       setSubmitting(true);
       setNotice(null);
+      setPlacingBlock(false);
       try {
         const res = await fetch(`${apiMatch}/shot`, {
           method: "POST",
@@ -428,10 +434,31 @@ export default function HillstrikeMatchPage() {
     [sendAction],
   );
 
+  /**
+   * Build is a MODE: the button arms placement and the battlefield click spends
+   * the action. Pressing Build again cancels without spending anything.
+   */
   const build = useCallback(() => {
+    if (!canPlay) return;
     setAim(null);
-    void sendAction({ type: "build" });
-  }, [sendAction]);
+    setNotice(null);
+    setPlacingBlock((placing) => !placing);
+  }, [canPlay]);
+
+  /** Send the tile the player clicked, or explain why the engine refuses it. */
+  const placeBlock = useCallback(
+    (point: Vec2) => {
+      if (!state || !viewerSeat || !canPlay) return;
+      const verdict = resolveBuildPlacement(state, viewerSeat, point.x, point.y);
+      if (!verdict.ok) {
+        setNotice((verdict as Extract<typeof verdict, { ok: false }>).message);
+        return;
+      }
+      const placement = (verdict as Extract<typeof verdict, { ok: true }>).placement;
+      void sendAction({ type: "build", x: placement.x, y: placement.y });
+    },
+    [canPlay, sendAction, state, viewerSeat],
+  );
 
   const forfeit = useCallback(async () => {
     if (!match || forfeiting) return;
@@ -607,6 +634,8 @@ export default function HillstrikeMatchPage() {
                     animation={animation}
                     interactive={canPlay}
                     resolving={resolving || submitting}
+                    placingBlock={placingBlock}
+                    onPlaceBlock={placeBlock}
                     opponentLabel={opponentName}
                     onAim={(shot) => {
                       if (!canPlay) return;
@@ -645,11 +674,13 @@ export default function HillstrikeMatchPage() {
                     </div>
 
                     <p className="mt-1 text-[11px] leading-relaxed text-white/55">
-                      {canPlay
-                        ? "Three actions: fire, drive (closer or farther) or build cover. Drag to aim, then Fire."
-                        : matchOver
-                          ? "Match over."
-                          : "Wait for your turn."}
+                      {placingBlock
+                        ? "Placement mode: click any free tile on YOUR half of the map. The block must rest on the ground or on another block."
+                        : canPlay
+                          ? "Three actions: fire, drive (closer or farther) or place cover. Drag to aim, then Fire."
+                          : matchOver
+                            ? "Match over."
+                            : "Wait for your turn."}
                     </p>
 
                     <div className="mt-3 flex flex-col gap-2">
@@ -679,13 +710,22 @@ export default function HillstrikeMatchPage() {
                         <button
                           type="button"
                           data-testid="hillstrike-build"
+                          data-placing={placingBlock ? "1" : "0"}
                           onClick={build}
                           disabled={!canPlay}
-                          title="Place one block of cover in front of your tank"
-                          className="inline-flex items-center justify-center gap-1 rounded-lg border border-emerald-400/40 bg-emerald-500/10 px-2 py-2 text-[11px] font-bold text-emerald-200 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                          title={
+                            placingBlock
+                              ? "Cancel placement, back to aiming"
+                              : "Place a cover block anywhere on your own half of the map"
+                          }
+                          className={`inline-flex items-center justify-center gap-1 rounded-lg border px-2 py-2 text-[11px] font-bold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                            placingBlock
+                              ? "border-emerald-300 bg-emerald-400/25 text-emerald-100"
+                              : "border-emerald-400/40 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20"
+                          }`}
                         >
                           <IconShieldPlus size={14} aria-hidden="true" />
-                          Build
+                          {placingBlock ? "Cancel" : "Build"}
                         </button>
                         <button
                           type="button"

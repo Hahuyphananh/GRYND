@@ -41,7 +41,6 @@ import {
 import {
   MAX_HP,
   MOVE_RANGE,
-  STRUCTURE_BLOCK_SIZE,
   TICK_MS,
 } from "../../../../lib/hillstrike/constants";
 import { simulateShot } from "../../../../lib/hillstrike/physics";
@@ -49,8 +48,10 @@ import {
   applyAction,
   createInitialState,
   hpOf,
+  resolveBuildPlacement,
   validateAction,
 } from "../../../../lib/hillstrike/rules";
+import type { Vec2 } from "../../../../lib/physics2d/kinematics";
 import { readStoredAiDifficulty, type AiDifficulty } from "../../../../lib/aiDifficulty";
 import type {
   ActionVerdict,
@@ -108,6 +109,8 @@ export default function HillstrikePracticePage() {
 
   const [difficulty, setDifficulty] = useState<AiDifficulty>("normal");
   const [aim, setAim] = useState<ShotInput | null>(null);
+  // True while the player is choosing WHERE a cover block goes.
+  const [placingBlock, setPlacingBlock] = useState(false);
   const [animation, setAnimation] = useState<HillstrikeAnimation | null>(null);
   const [resolving, setResolving] = useState(false);
   const [aiThinking, setAiThinking] = useState(false);
@@ -134,6 +137,7 @@ export default function HillstrikePracticePage() {
       busyRef.current = false;
       countedMatchRef.current = null;
       setAim(null);
+      setPlacingBlock(false);
       setAnimation(null);
       setResolving(false);
       setAiThinking(false);
@@ -219,6 +223,7 @@ export default function HillstrikePracticePage() {
       busyRef.current = true;
       setNotice(null);
       setAim(null);
+      setPlacingBlock(false);
 
       const flightMs = record.type === "shoot" ? flightDuration(record.impact.tick) : 0;
       setAnimation({
@@ -259,9 +264,39 @@ export default function HillstrikePracticePage() {
     [playAction],
   );
 
+  /**
+   * Build is a MODE, not an instant action: pressing it arms placement, and the
+   * click on the battlefield is what spends the action. Pressing it again backs
+   * out without spending anything.
+   */
   const build = useCallback(() => {
-    playAction(HUMAN_SEAT, { type: "build" });
-  }, [playAction]);
+    if (!canPlay) return;
+    setAim(null);
+    setNotice(null);
+    setPlacingBlock((placing) => !placing);
+  }, [canPlay]);
+
+  /** Place the block the player clicked, or explain why that tile is refused. */
+  const placeBlock = useCallback(
+    (point: Vec2) => {
+      const current = matchRef.current;
+      if (!current || !canPlay) return;
+      const verdict = resolveBuildPlacement(current, HUMAN_SEAT, point.x, point.y);
+      if (!verdict.ok) {
+        setNotice(
+          (verdict as Extract<typeof verdict, { ok: false }>).message,
+        );
+        return;
+      }
+      const placement = (verdict as Extract<typeof verdict, { ok: true }>).placement;
+      playAction(HUMAN_SEAT, {
+        type: "build",
+        x: placement.x,
+        y: placement.y,
+      });
+    },
+    [canPlay, playAction],
+  );
 
   // The bot answers on its own turn, after a short beat so its shot reads as a
   // turn rather than as the board moving by itself. It plans with the SAME
@@ -355,6 +390,8 @@ export default function HillstrikePracticePage() {
             animation={animation}
             interactive={canPlay}
             resolving={resolving}
+            placingBlock={placingBlock}
+            onPlaceBlock={placeBlock}
             onAim={(shot) => {
               if (!canPlay) return;
               setAim(shot);
@@ -373,6 +410,7 @@ export default function HillstrikePracticePage() {
             difficulty={difficulty}
             aim={aim}
             canPlay={canPlay}
+            placing={placingBlock}
             resolving={resolving}
             aiThinking={aiThinking}
             notice={notice}
@@ -406,20 +444,29 @@ export default function HillstrikePracticePage() {
             </li>
             <li>
               <strong>Drive</strong> closer or farther — up to {MOVE_RANGE} units from your spawn. The
-              longer a shell flies, the weaker it hits and the smaller it explodes, so closing the
-              range is how you buy damage.
+              longer a shell flies, the weaker it hits, so closing the range is how you buy damage.
             </li>
             <li>
-              <strong>Build</strong> drops one block of cover in front of your hull. It soaks a shot
-              aimed at you, but a block is only {STRUCTURE_BLOCK_SIZE} units tall — a lob can still
-              drop behind it.
+              <strong>Build</strong> arms placement mode: click any free tile on <em>your</em> half of
+              the map, and the block drops there. It must rest on the ground or on another block.
+              Cover breaks in one hit, however far the shell flew.
             </li>
             <li>
-              A direct hit costs HP in proportion to the flight distance (up to 34 HP at point
-              blank, about 21 at the opening range). Towers and craters never cost HP.
+              Your base has an <strong>indestructible roof</strong>, so you cannot be lobbed on from
+              above at spawn — but the roof stays at spawn, and the hills around it are high. Drive
+              out to fight.
+            </li>
+            <li>
+              The middle holds <strong>power-ups</strong>: double damage next shot, double blast next
+              shot, or HP back. Drive over one to take it — and the spot deals it again a few
+              actions later, so the middle is worth fighting over all match.
+            </li>
+            <li>
+              A direct hit costs HP in proportion to the flight distance (up to 50 at point blank,
+              about 16 across the whole map). Ground and cover never cost HP.
             </li>
             <li>{MAX_HP} HP each — the first tank knocked out to 0 loses immediately.</li>
-            <li>Every match deals a new, mirrored layout: both seats always face identical ground and towers.</li>
+            <li>Every match deals a new, mirrored layout: both seats always face identical ground, roofs and pickups.</li>
           </ol>
         </details>
       </div>

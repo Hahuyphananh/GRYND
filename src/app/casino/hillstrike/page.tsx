@@ -6,7 +6,7 @@ import { ogImageUrl } from "../../../lib/ogImages";
 
 const title = "Hillstrike | GRYND";
 const description =
-  "Play Hillstrike on GRYND — a free 1v1 artillery duel. 100 HP tanks, three actions per turn, mirrored battlefields, and every shot resolved by the server. No tokens at stake.";
+  "Play Hillstrike on GRYND — a free 1v1 artillery duel. 100 HP tanks, roofed bases, power-ups in the middle of a wide mirrored map, and every shot resolved by the server. No tokens at stake.";
 const image = ogImageUrl("/images/og-banner.png");
 
 // This page is the AUTHENTICATED lobby, served at /games/hillstrike/play

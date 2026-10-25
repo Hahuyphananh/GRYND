@@ -41,9 +41,16 @@ import {
   MATCH_STATUS,
   MAX_HP,
   ACTIONS_PER_TURN,
+  MOVE_RANGE,
+  MOVE_STEP,
 } from "../src/lib/hillstrike/constants.ts";
 import { simulateShot } from "../src/lib/hillstrike/physics.ts";
-import { applyAction, createInitialState } from "../src/lib/hillstrike/rules.ts";
+import {
+  applyAction,
+  buildPlacementFor,
+  createInitialState,
+  spawnXFor,
+} from "../src/lib/hillstrike/rules.ts";
 
 const MODULE_MOCKING_AVAILABLE = typeof mock?.module === "function";
 const SKIP_REASON = MODULE_MOCKING_AVAILABLE
@@ -463,7 +470,7 @@ test("submitAction: a drive is persisted as an action with no aim and no impact"
     action: { type: "move", direction: "forward" },
   });
 
-  assert.equal(result.state.battlefield.players.player1.x, before.x + 60);
+  assert.equal(result.state.battlefield.players.player1.x, before.x + MOVE_STEP);
   assert.equal(result.state.turn, "player2", "a drive spends the opening action");
   assert.equal(result.state.lastAction.type, "move");
 
@@ -482,12 +489,15 @@ test("submitAction: a build is persisted with the block it placed", { skip: SKIP
   const store = await loadStore();
   const row = seedMatch(fake);
   const blocksBefore = row.gameState.battlefield.blocks.length;
+  // A build names the tile; the store sends it through the engine unchanged.
+  const placement = buildPlacementFor(row.gameState, "player1");
+  assert.ok(placement, "player1 has a legal tile to build on");
 
   const result = await store.submitAction({
     userId: ALICE,
     matchId: MATCH_ID,
     expectedVersion: 0,
-    action: { type: "build" },
+    action: { type: "build", x: placement.x, y: placement.y },
   });
 
   assert.equal(result.state.battlefield.blocks.length, blocksBefore + 1);
@@ -497,6 +507,9 @@ test("submitAction: a build is persisted with the block it placed", { skip: SKIP
   );
   assert.ok(block, "the placed block is on the board");
   assert.equal(block.seat, "player1");
+  assert.equal(block.kind, "cover");
+  assert.equal(block.x, placement.x);
+  assert.equal(block.y, placement.y);
 
   const [logged] = shotLog(fake);
   assert.equal(logged.action, "build");
@@ -519,8 +532,10 @@ test("submitAction: a drive or a build the engine refuses is a clean 409", { ski
         ...row.gameState.battlefield.players,
         player1: {
           ...row.gameState.battlefield.players.player1,
-          x: 96 + 120,
-          y: row.gameState.battlefield.players.player1.y,
+          x: spawnXFor("player1") + MOVE_RANGE,
+          y: row.gameState.battlefield.terrain[
+            Math.floor((spawnXFor("player1") + MOVE_RANGE) / 5)
+          ],
         },
       },
     },

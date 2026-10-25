@@ -109,7 +109,7 @@ test("hillstrike online: the only gameplay request is one action plus a version"
   for (const shape of [
     'sendAction({ type: "shoot", ...aim })',
     'sendAction({ type: "move", direction })',
-    'sendAction({ type: "build" })',
+    'sendAction({ type: "build", x: placement.x, y: placement.y })',
   ]) {
     assert.ok(pageCode.includes(shape), `the view must send ${shape}`);
   }
@@ -458,7 +458,7 @@ test("ui: a logged action is described from the server's own row", () => {
   );
   // A drive and a build have no aim, so they are named for what they were.
   assert.equal(loggedShotLabel({ action: "move" }), "drove the tank");
-  assert.equal(loggedShotLabel({ action: "build" }), "built a shield block");
+  assert.equal(loggedShotLabel({ action: "build" }), "placed a cover block");
   // v1 (lives) rows still read as a hit rather than as an unaimed shot.
   assert.equal(
     loggedShotLabel({ angleDeg: 45, power: 88, impactKind: "player", livesLost: 1 }),

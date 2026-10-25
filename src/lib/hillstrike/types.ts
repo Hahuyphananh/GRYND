@@ -60,12 +60,17 @@ export interface MoveInput {
 /**
  * The three actions a turn can spend. Each is plain data and each is validated
  * by ./rules from the state the server already holds — an action never carries a
- * position, a block, a hit or a damage figure.
+ * hit or a damage figure.
+ *
+ * `build` DOES carry a position: the player picks the tile. It is the only
+ * positional action in the game, and ./rules validates it against the state
+ * (own half, free space, support underneath), so the caller still cannot
+ * describe an outcome — only where it would like a block to go.
  */
 export type HillstrikeAction =
   | { readonly type: "shoot"; readonly angleDeg: number; readonly power: number }
   | { readonly type: "move"; readonly direction: MoveDirection }
-  | { readonly type: "build" };
+  | { readonly type: "build"; readonly x: number; readonly y: number };
 
 /** One action as the ENGINE accepts it (already narrowed and type-tagged). */
 export type ActionType = HillstrikeAction["type"];
@@ -94,8 +99,15 @@ export interface Player {
 }
 
 /**
- * One damageable tower block: an axis-aligned square whose `(x, y)` is its
- * TOP-LEFT corner and whose `integrity` is how many blast hits it survives.
+ * One damageable block. `kind: "roof"` is a base ceiling: it is drawn and
+ * collides like a block but is INDESTRUCTIBLE and never collapses, which is what
+ * makes "sit in your base" safe from above but useless for winning.
+ */
+export type BlockKind = "cover" | "roof";
+
+/**
+ * One block: an axis-aligned square whose `(x, y)` is its TOP-LEFT corner and
+ * whose `integrity` is how many blast hits it survives.
  */
 export interface TowerBlock {
   readonly id: number;
@@ -104,12 +116,50 @@ export interface TowerBlock {
   readonly y: number;
   readonly size: number;
   readonly integrity: number;
+  readonly kind: BlockKind;
+}
+
+/** The three pickups the middle of the map deals. */
+export type PowerUpKind = "double-damage" | "double-blast" | "heal";
+
+/**
+ * One pickup, resting on the terrain at `(x, y)` where `y` is its CENTRE.
+ *
+ * A tank collects it by driving within `POWERUP_RADIUS` of that centre, so a
+ * buff always costs an action in the open.
+ */
+export interface PowerUp {
+  readonly id: number;
+  readonly kind: PowerUpKind;
+  readonly x: number;
+  readonly y: number;
+}
+
+/**
+ * A collected pickup's return ticket: where it comes back, and on which action.
+ *
+ * `atTurn` is a `turnIndex` (one action = one tick), so the schedule is part of
+ * the deterministic state: the same actions always bring the same middle back.
+ */
+export interface PickupRespawn {
+  readonly id: number;
+  readonly kind: PowerUpKind;
+  readonly x: number;
+  readonly y: number;
+  readonly atTurn: number;
+}
+
+/** A seat's armed buffs. Each weapon buff is spent by the NEXT shot fired. */
+export interface Buffs {
+  readonly doubleDamage: boolean;
+  readonly doubleBlast: boolean;
 }
 
 /**
  * The battlefield. `terrain` holds one surface y per column (column `c` spans
- * `x ∈ [c·5, (c+1)·5)`), so the ground is a polyline and the whole map is two
- * arrays plus at most `MAX_STRUCTURE_BLOCKS` blocks.
+ * `x ∈ [c·5, (c+1)·5)`), so the ground is a polyline; `blocks` holds the base
+ * roofs plus whatever cover the seats have built, and `pickups` the middle's
+ * buffs.
  */
 export interface Battlefield {
   readonly version: number;
@@ -118,6 +168,13 @@ export interface Battlefield {
   readonly height: number;
   readonly terrain: readonly number[];
   readonly blocks: readonly TowerBlock[];
+  readonly pickups: readonly PowerUp[];
+  /**
+   * Collected pickups waiting to come back. Optional because a battlefield
+   * written before the respawn timer existed has none — and because an old match
+   * must still replay exactly as it was played.
+   */
+  readonly respawns?: readonly PickupRespawn[];
   readonly players: Readonly<Record<Seat, Player>>;
 }
 
@@ -129,6 +186,8 @@ export interface Impact {
   readonly kind: ImpactKind;
   /** The seat that was hit, for `kind: "player"`; otherwise null. */
   readonly target: Seat | null;
+  /** The block that was struck, for `kind: "block"`; otherwise null. */
+  readonly blockId: number | null;
 }
 
 /** The client-facing animation record of one accepted shot. */
@@ -149,6 +208,7 @@ export type ShotEvent =
       readonly y: number;
       readonly kind: ImpactKind;
       readonly target: Seat | null;
+      readonly blockId: number | null;
     }
   | {
       readonly type: "block-damaged";
@@ -189,6 +249,23 @@ export type ShotEvent =
       readonly seat: Seat;
       readonly x: number;
       readonly y: number;
+    }
+  | {
+      readonly type: "pickup-collected";
+      readonly tick: number;
+      readonly seat: Seat;
+      readonly pickupId: number;
+      readonly kind: PowerUpKind;
+      readonly x: number;
+      readonly y: number;
+    }
+  | {
+      readonly type: "healed";
+      readonly tick: number;
+      readonly seat: Seat;
+      /** The healed seat's HP AFTER the pickup. */
+      readonly hp: number;
+      readonly amount: number;
     }
   | {
       readonly type: "hp-lost";
@@ -244,6 +321,8 @@ export interface ShotRecord {
   /** Total flight distance, and the power scale it left the shell with. */
   readonly distance: number;
   readonly powerScale: number;
+  /** The buffs this shot spent (both consumed by firing, hit or miss). */
+  readonly buffs: Buffs;
 }
 
 /** One drive, as recorded on the state and in match history. */
@@ -259,7 +338,7 @@ export interface MoveRecord {
   readonly events: readonly ShotEvent[];
 }
 
-/** One shield block placed, as recorded on the state and in match history. */
+/** One placement, as recorded on the state and in match history. */
 export interface BuildRecord {
   readonly type: "build";
   readonly seat: Seat;
@@ -300,6 +379,8 @@ export interface HillstrikeState {
   /** True until the opening seat's single opening shot has been fired. */
   readonly openingShotPending: boolean;
   readonly hp: Readonly<Record<Seat, number>>;
+  /** Buffs the ACTIVE shot would spend. Both are cleared the moment one fires. */
+  readonly buffs: Readonly<Record<Seat, Buffs>>;
   readonly battlefield: Battlefield;
   readonly projectile: ProjectileSpec;
   readonly winner: Seat | null;

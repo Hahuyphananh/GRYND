@@ -28,18 +28,24 @@
 import { clamp } from "../physics2d/kinematics";
 import { hashSeed, mulberry32 } from "../physics2d/deterministic";
 import {
+  BASE_ROOF_BLOCKS,
+  BASE_ROOF_CLEARANCE,
   BATTLEFIELD_HEIGHT,
   BATTLEFIELD_WIDTH,
   BLOCK_MAX_INTEGRITY,
   FIELD_VERSION,
   LAUNCHER_INSET_X,
+  MAX_POWERUP_RESPAWNS,
+  MAX_POWERUPS,
   MAX_STRUCTURE_BLOCKS,
   MAX_STRUCTURE_BLOCKS_PER_SEAT,
   MIN_PLAYER_SEPARATION,
+  POWERUP_HEAL_X,
+  POWERUP_INSET_X,
+  POWERUP_KINDS,
   SEATS,
+  SPAWN_SURFACE_Y,
   STRUCTURE_BLOCK_SIZE,
-  STRUCTURE_CENTRE_INSET_X,
-  STRUCTURE_ROW_WIDTHS,
   TERRAIN_COLUMNS,
   TERRAIN_COLUMN_WIDTH,
   TERRAIN_MAX_STEP,
@@ -50,7 +56,11 @@ import {
 import type {
   Battlefield,
   BattlefieldVerdict,
+  BlockKind,
+  PickupRespawn,
   Player,
+  PowerUp,
+  PowerUpKind,
   Seat,
   TowerBlock,
 } from "./types";
@@ -61,8 +71,26 @@ const HALF_COLUMNS = TERRAIN_COLUMNS / 2;
 /** Control points per half, including both ends. */
 const PROFILE_KEYS = 9;
 
-/** Largest drift between two neighbouring profile control points. */
-const PROFILE_KEY_DRIFT = 70;
+/**
+ * The climb from the spawn shelf to the centre mound, per profile key.
+ *
+ * Always UPWARD (a key can never drift back toward the spawn), so every layout
+ * has the same shape: a low roofed base in a valley and a high middle to fight
+ * over. The jitter only decides how steep and how tall.
+ */
+const PROFILE_CLIMB_MIN = 14;
+const PROFILE_CLIMB_SPAN = 58;
+
+/** How far a pickup's centre floats above the ground it rests on. */
+const PICKUP_LIFT = 14;
+
+/** The three power-up lanes, measured from the centre (mirror-symmetric). */
+const POWERUP_LANES: ReadonlyArray<{ kind: PowerUpKind; offsetX: number }> = [
+  { kind: POWERUP_KINDS.DOUBLE_DAMAGE, offsetX: -POWERUP_INSET_X },
+  { kind: POWERUP_KINDS.DOUBLE_BLAST, offsetX: -POWERUP_INSET_X * 2 },
+  { kind: POWERUP_KINDS.DOUBLE_DAMAGE, offsetX: POWERUP_INSET_X },
+  { kind: POWERUP_KINDS.DOUBLE_BLAST, offsetX: POWERUP_INSET_X * 2 },
+];
 
 /** The seed space: the same 32-bit unsigned range `randomInt` can draw from. */
 const MAX_SEED = 0xffffffff;
@@ -139,22 +167,24 @@ export function openingSeatFor(seed: number): Seat {
     : "player2";
 }
 
-/** A mirrored, flat-ended, step-bounded half profile, as integer heights. */
+/**
+ * A mirrored half profile that climbs from the spawn shelf to the centre.
+ *
+ * The spawn end is pinned to `SPAWN_SURFACE_Y` (the LOW ground) and every later
+ * key rises, so the middle of the map is always higher than either base. That is
+ * the terrain half of "you cannot win from your base": to bring a gun to bear on
+ * the far hill — or to reach a power-up — a tank has to climb into the open.
+ */
 function buildHalfProfile(rand: () => number): number[] {
-  const keys: number[] = [
-    clamp(
-      Math.round(470 + (rand() * 2 - 1) * 30),
-      TERRAIN_MIN_SURFACE_Y,
-      TERRAIN_MAX_SURFACE_Y,
-    ),
-  ];
+  const keys: number[] = [SPAWN_SURFACE_Y];
   for (let index = 1; index < PROFILE_KEYS; index++) {
-    const drift = (rand() * 2 - 1) * PROFILE_KEY_DRIFT;
+    const climb =
+      PROFILE_CLIMB_MIN + rand() * PROFILE_CLIMB_SPAN;
     keys.push(
       clamp(
-        Math.round(keys[index - 1] + drift),
+        Math.round(keys[index - 1] - climb),
         TERRAIN_MIN_SURFACE_Y,
-        TERRAIN_MAX_SURFACE_Y,
+        SPAWN_SURFACE_Y,
       ),
     );
   }
@@ -171,10 +201,11 @@ function buildHalfProfile(rand: () => number): number[] {
     );
   }
 
-  // Both launchers stand on the same flat shelf: the first columns are pinned
-  // to the profile's opening height before the step clamp runs.
+  // Both launchers stand on the same flat shelf at the bottom of the valley: the
+  // first columns are pinned to the profile's opening height before the step
+  // clamp runs.
   for (let column = 0; column < TERRAIN_PLATEAU_COLUMNS; column++) {
-    half[column] = keys[0];
+    half[column] = SPAWN_SURFACE_Y;
   }
 
   // Bound the slope. The forward pass alone keeps every step ≤ TERRAIN_MAX_STEP
@@ -189,55 +220,68 @@ function buildHalfProfile(rand: () => number): number[] {
   return half;
 }
 
-/**
- * Level the ground under a tower footprint.
- *
- * Each tower stands on a flat plinth: every column in the widest row's span is
- * set to the HIGHEST ground in that span (filling, never digging). Without this
- * a half-buried base block could not be hit from the side, and a block's
- * "supported by the ground" test would disagree with what the player sees.
- * The two plinth heights are equal by mirror symmetry.
- */
-function levelTowerFootprint(terrain: number[], centreX: number): void {
-  const widestRow = STRUCTURE_ROW_WIDTHS[0] * STRUCTURE_BLOCK_SIZE;
-  const left = centreX - widestRow / 2;
-  const surface = groundYUnder(terrain, left, widestRow);
-  const from = columnIndexAt(left);
-  const to = columnIndexAt(left + widestRow - 1e-9);
-  for (let column = from; column <= to; column++) terrain[column] = surface;
+/** The x a seat's tank spawns on (its roof is centred over it). */
+function spawnXForSeat(seat: Seat): number {
+  return seat === "player1" ? LAUNCHER_INSET_X : BATTLEFIELD_WIDTH - LAUNCHER_INSET_X;
 }
 
 /**
- * Build one seat's tower: a stepped pyramid, widest row at the bottom, resting
- * on the level plinth under its footprint. Deterministic integer geometry —
- * no rotation, no jitter, nothing to disagree about.
+ * Build one seat's BASE ROOF: an indestructible ceiling over the spawn.
+ *
+ * It is `BASE_ROOF_BLOCKS` wide, centred on the spawn column, with its underside
+ * `BASE_ROOF_CLEARANCE` above the flat shelf. A tank can fire out from under it
+ * along a shallow arc, but a steep drop onto the spawn meets the roof — so nobody
+ * gets sniped inside their own base, and nobody can stay there and snipe either
+ * (the roof is fixed, so leaving the base means leaving its cover).
  */
-function buildTower(terrain: readonly number[], seat: Seat, nextId: number): TowerBlock[] {
-  const centreX =
-    seat === "player1"
-      ? STRUCTURE_CENTRE_INSET_X
-      : BATTLEFIELD_WIDTH - STRUCTURE_CENTRE_INSET_X;
-  const widestRow = STRUCTURE_ROW_WIDTHS[0] * STRUCTURE_BLOCK_SIZE;
-  const groundY = groundYUnder(terrain, centreX - widestRow / 2, widestRow);
+function buildBaseRoof(terrain: readonly number[], seat: Seat, nextId: number): TowerBlock[] {
+  const size = STRUCTURE_BLOCK_SIZE;
+  const span = BASE_ROOF_BLOCKS * size;
+  const centreX = spawnXForSeat(seat);
+  const left = Math.round(centreX - span / 2);
+  const groundY = groundYUnder(terrain, left, span);
+  const bottom = groundY - BASE_ROOF_CLEARANCE;
 
   const blocks: TowerBlock[] = [];
   let id = nextId;
-  for (let row = 0; row < STRUCTURE_ROW_WIDTHS.length; row++) {
-    const width = STRUCTURE_ROW_WIDTHS[row];
-    const rowBottom = groundY - row * STRUCTURE_BLOCK_SIZE;
-    const left = Math.round(centreX - (width * STRUCTURE_BLOCK_SIZE) / 2);
-    for (let column = 0; column < width; column++) {
-      blocks.push({
-        id: id++,
-        seat,
-        x: left + column * STRUCTURE_BLOCK_SIZE,
-        y: rowBottom - STRUCTURE_BLOCK_SIZE,
-        size: STRUCTURE_BLOCK_SIZE,
-        integrity: BLOCK_MAX_INTEGRITY,
-      });
-    }
+  for (let column = 0; column < BASE_ROOF_BLOCKS; column++) {
+    blocks.push({
+      id: id++,
+      seat,
+      kind: "roof",
+      x: left + column * size,
+      y: bottom - size,
+      size,
+      integrity: BLOCK_MAX_INTEGRITY,
+    });
   }
   return blocks;
+}
+
+/**
+ * The middle's power-ups: a heal on the centre mound, and a mirrored pair of each
+ * weapon buff either side of it. Deterministic from the terrain, so the same seed
+ * always deals the same middle.
+ */
+function createPowerUps(terrain: readonly number[]): PowerUp[] {
+  const pickups: PowerUp[] = [];
+  let id = 1;
+  for (const lane of POWERUP_LANES) {
+    const x = Math.round(POWERUP_HEAL_X + lane.offsetX);
+    pickups.push({
+      id: id++,
+      kind: lane.kind,
+      x,
+      y: surfaceYAt(terrain, x) - PICKUP_LIFT,
+    });
+  }
+  pickups.push({
+    id: id++,
+    kind: POWERUP_KINDS.HEAL,
+    x: Math.round(POWERUP_HEAL_X),
+    y: surfaceYAt(terrain, POWERUP_HEAL_X) - PICKUP_LIFT,
+  });
+  return pickups;
 }
 
 /**
@@ -253,11 +297,6 @@ export function createBattlefield(seed: number): Battlefield {
   const half = buildHalfProfile(rand);
   const terrain = [...half, ...[...half].reverse()];
 
-  // Level each tower's plinth BEFORE any block is placed on it, so the ground
-  // a block rests on is exactly the ground the player sees.
-  levelTowerFootprint(terrain, STRUCTURE_CENTRE_INSET_X);
-  levelTowerFootprint(terrain, BATTLEFIELD_WIDTH - STRUCTURE_CENTRE_INSET_X);
-
   const player1X = LAUNCHER_INSET_X;
   const player2X = BATTLEFIELD_WIDTH - LAUNCHER_INSET_X;
   const players: Record<Seat, Player> = {
@@ -265,8 +304,8 @@ export function createBattlefield(seed: number): Battlefield {
     player2: { seat: "player2", x: player2X, y: surfaceYAt(terrain, player2X) },
   };
 
-  const player1Blocks = buildTower(terrain, "player1", 1);
-  const player2Blocks = buildTower(terrain, "player2", player1Blocks.length + 1);
+  const player1Roof = buildBaseRoof(terrain, "player1", 1);
+  const player2Roof = buildBaseRoof(terrain, "player2", player1Roof.length + 1);
 
   const battlefield: Battlefield = {
     version: FIELD_VERSION,
@@ -274,7 +313,9 @@ export function createBattlefield(seed: number): Battlefield {
     width: BATTLEFIELD_WIDTH,
     height: BATTLEFIELD_HEIGHT,
     terrain,
-    blocks: [...player1Blocks, ...player2Blocks],
+    blocks: [...player1Roof, ...player2Roof],
+    pickups: createPowerUps(terrain),
+    respawns: [],
     players,
   };
 
@@ -408,6 +449,7 @@ export function validateBattlefield(battlefield: unknown): BattlefieldVerdict {
   }
   const ids = new Set<number>();
   const perSeat: Record<Seat, number> = { player1: 0, player2: 0 };
+  const roofPerSeat: Record<Seat, number> = { player1: 0, player2: 0 };
   for (const block of blocks as Partial<TowerBlock>[]) {
     if (!block || typeof block !== "object") {
       return { ok: false, code: "invalid-blocks", message: "every block must be an object" };
@@ -419,7 +461,14 @@ export function validateBattlefield(battlefield: unknown): BattlefieldVerdict {
     if (!isValidSeat(block.seat)) {
       return { ok: false, code: "invalid-blocks", message: `block ${block.id} has an invalid seat` };
     }
-    perSeat[block.seat] += 1;
+    // A v2 row has no `kind`: it is cover, which is what it was.
+    const kind: BlockKind | undefined =
+      block.kind === undefined ? "cover" : block.kind;
+    if (kind !== "cover" && kind !== "roof") {
+      return { ok: false, code: "invalid-blocks", message: `block ${block.id} has an invalid kind` };
+    }
+    if (kind === "roof") roofPerSeat[block.seat] += 1;
+    else perSeat[block.seat] += 1;
     if (!isFiniteInteger(block.size) || block.size !== STRUCTURE_BLOCK_SIZE) {
       return { ok: false, code: "invalid-blocks", message: `block ${block.id} has an invalid size` };
     }
@@ -450,7 +499,14 @@ export function validateBattlefield(battlefield: unknown): BattlefieldVerdict {
       return {
         ok: false,
         code: "invalid-blocks",
-        message: `seat ${seat} has more than ${MAX_STRUCTURE_BLOCKS_PER_SEAT} blocks`,
+        message: `seat ${seat} has more than ${MAX_STRUCTURE_BLOCKS_PER_SEAT} cover blocks`,
+      };
+    }
+    if (roofPerSeat[seat] > BASE_ROOF_BLOCKS) {
+      return {
+        ok: false,
+        code: "invalid-blocks",
+        message: `seat ${seat} has more than ${BASE_ROOF_BLOCKS} base roof blocks`,
       };
     }
   }
@@ -458,6 +514,102 @@ export function validateBattlefield(battlefield: unknown): BattlefieldVerdict {
     for (let b = a + 1; b < blocks.length; b++) {
       if (blocksOverlap(blocks[a] as TowerBlock, blocks[b] as TowerBlock)) {
         return { ok: false, code: "invalid-blocks", message: "blocks must not overlap" };
+      }
+    }
+  }
+
+  // Pickups are optional so a battlefield written before v3 still loads (it has
+  // none); when present they must be a well-formed, bounded list.
+  const pickups = (field as { pickups?: unknown }).pickups;
+  if (pickups !== undefined) {
+    if (!Array.isArray(pickups) || pickups.length > MAX_POWERUPS) {
+      return {
+        ok: false,
+        code: "invalid-pickups",
+        message: `battlefield.pickups must be an array of at most ${MAX_POWERUPS} pickups`,
+      };
+    }
+    const pickupIds = new Set<number>();
+    for (const pickup of pickups as Partial<PowerUp>[]) {
+      if (!pickup || typeof pickup !== "object") {
+        return { ok: false, code: "invalid-pickups", message: "every pickup must be an object" };
+      }
+      if (
+        !isFiniteInteger(pickup.id) ||
+        pickup.id < 1 ||
+        pickupIds.has(pickup.id)
+      ) {
+        return {
+          ok: false,
+          code: "invalid-pickups",
+          message: "pickup ids must be unique positive integers",
+        };
+      }
+      pickupIds.add(pickup.id);
+      if (
+        pickup.kind !== POWERUP_KINDS.DOUBLE_DAMAGE &&
+        pickup.kind !== POWERUP_KINDS.DOUBLE_BLAST &&
+        pickup.kind !== POWERUP_KINDS.HEAL
+      ) {
+        return { ok: false, code: "invalid-pickups", message: `pickup ${pickup.id} has an invalid kind` };
+      }
+      if (
+        !isFiniteInteger(pickup.x) ||
+        !isFiniteInteger(pickup.y) ||
+        pickup.x < 0 ||
+        pickup.y < 0 ||
+        pickup.x > BATTLEFIELD_WIDTH ||
+        pickup.y > BATTLEFIELD_HEIGHT
+      ) {
+        return { ok: false, code: "invalid-pickups", message: `pickup ${pickup.id} is outside the battlefield` };
+      }
+    }
+
+    // Waiting respawns are optional too (a state written before the timer has
+    // none). A ticket points at a pickup that is NOT currently on the field, so
+    // its id may not collide with a live one.
+    const respawns = (field as { respawns?: unknown }).respawns;
+    if (respawns !== undefined) {
+      if (!Array.isArray(respawns) || respawns.length > MAX_POWERUP_RESPAWNS) {
+        return {
+          ok: false,
+          code: "invalid-pickups",
+          message: `battlefield.respawns must be an array of at most ${MAX_POWERUP_RESPAWNS} tickets`,
+        };
+      }
+      const seen = new Set<number>();
+      for (const ticket of respawns as Partial<PickupRespawn>[]) {
+        if (!ticket || typeof ticket !== "object") {
+          return { ok: false, code: "invalid-pickups", message: "every respawn must be an object" };
+        }
+        if (!isFiniteInteger(ticket.id) || ticket.id < 1 || pickupIds.has(ticket.id) || seen.has(ticket.id)) {
+          return {
+            ok: false,
+            code: "invalid-pickups",
+            message: "respawn ids must be unique, positive and not already on the field",
+          };
+        }
+        seen.add(ticket.id);
+        if (
+          ticket.kind !== POWERUP_KINDS.DOUBLE_DAMAGE &&
+          ticket.kind !== POWERUP_KINDS.DOUBLE_BLAST &&
+          ticket.kind !== POWERUP_KINDS.HEAL
+        ) {
+          return { ok: false, code: "invalid-pickups", message: `respawn ${ticket.id} has an invalid kind` };
+        }
+        if (
+          !isFiniteInteger(ticket.x) ||
+          !isFiniteInteger(ticket.y) ||
+          ticket.x < 0 ||
+          ticket.y < 0 ||
+          ticket.x > BATTLEFIELD_WIDTH ||
+          ticket.y > BATTLEFIELD_HEIGHT
+        ) {
+          return { ok: false, code: "invalid-pickups", message: `respawn ${ticket.id} is outside the battlefield` };
+        }
+        if (!isFiniteInteger(ticket.atTurn) || ticket.atTurn < 0) {
+          return { ok: false, code: "invalid-pickups", message: `respawn ${ticket.id} has an invalid turn` };
+        }
       }
     }
   }

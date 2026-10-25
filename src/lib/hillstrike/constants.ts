@@ -2,11 +2,12 @@
  * Hillstrike — every rule number, tuning value and magic string the PURE engine
  * can emit.
  *
- * Hillstrike is a skill-based 1v1 artillery duel: two players sit on opposite
- * hills of one shared battlefield and each drives a TANK with a pool of HIT
- * POINTS. A direct hit costs HP in proportion to how far the shell flew, and a
- * turn offers three actions — fire, drive closer/farther, or drop a shield
- * block — so the duel is about the trade between range, damage and cover.
+ * Hillstrike is a skill-based 1v1 artillery duel: two players start in ROOFED
+ * BASES at the bottom of opposite hills and each drives a TANK with a pool of
+ * HIT POINTS. A direct hit costs HP in proportion to how far the shell flew, and
+ * a turn offers three actions — fire, drive closer/farther, or place a cover
+ * block on your own half — so the duel is about leaving the safety of the base
+ * to climb, grab the middle's power-ups and trade range for damage.
  *
  * This module and `./rules` / `./physics` / `./generation` are the single source
  * of truth for those rules; a store, a bot or a board UI is expected to derive
@@ -48,13 +49,19 @@
  * seed, so a live match still replays with the rules it was created under.
  */
 /**
- * v2 — taller cover walls, HP and the three-action turn. Bumped so a match dealt
- * under v1 (three lives, low towers) still replays with the layout it was dealt.
+ * v3 — twice the map, higher hills, roofed bases, one-hit cover blocks, free
+ * placement on your own half and middle power-ups. Bumped so a match dealt under
+ * v1 (three lives, low towers) or v2 (cover walls, no roofs) still replays with
+ * the layout it was dealt.
  */
-export const FIELD_VERSION = 2;
+export const FIELD_VERSION = 3;
 
-/** Playable width, in world units (1 unit = 1 px at 1× render scale). */
-export const BATTLEFIELD_WIDTH = 1280;
+/**
+ * Playable width, in world units (1 unit = 1 px at 1× render scale).
+ * Twice the v2 width: the duel is now about the climb to the middle, not about
+ * lobbing across a short valley.
+ */
+export const BATTLEFIELD_WIDTH = 2560;
 
 /** Playable height, in world units. */
 export const BATTLEFIELD_HEIGHT = 720;
@@ -72,10 +79,20 @@ export const TERRAIN_COLUMN_WIDTH = 5;
 export const TERRAIN_COLUMNS = BATTLEFIELD_WIDTH / TERRAIN_COLUMN_WIDTH; // 256
 
 /** Highest a hill may rise (smallest surface y). */
-export const TERRAIN_MIN_SURFACE_Y = 300;
+export const TERRAIN_MIN_SURFACE_Y = 120;
 
 /** Deepest a valley may sink (largest surface y). It leaves room for a crater. */
 export const TERRAIN_MAX_SURFACE_Y = 660;
+
+/**
+ * The surface height of a spawn shelf.
+ *
+ * Both bases sit in the LOW ground at the foot of the map's central massif, so
+ * the only way to see (and reach) the middle is to drive UP the hill. Together
+ * with the indestructible roof over each spawn, that is what pushes a camper out
+ * of its base instead of letting it lob from perfect cover forever.
+ */
+export const SPAWN_SURFACE_Y = 620;
 
 /** Maximum |Δy| between adjacent columns in a generated battlefield. */
 export const TERRAIN_MAX_STEP = 6;
@@ -95,16 +112,15 @@ export const TERRAIN_CARVE_BUDGET = 320;
  * tanks), not against the map width. With this curve the scale is simply
  * `1 - flightDistance / 2000`:
  *
- *   point-blank brawl     ≈ 660 flight   → 67% power → 34 damage → 3 hits
- *   driven 120 units in   ≈ 1060 flight  → 47% power → 24 damage
- *   the opening exchange  ≈ 1180 flight  → 41% power → 21 damage → 5 hits
- *   a full-map lob       ≥ 1400 flight   → 30% power → 15 damage → 7 hits
+ *   point-blank brawl    ≈ 660 flight   → 76% power → 38 damage → 3 hits
+ *   a climb to the middle ≈ 1400 flight → 50% power → 25 damage
+ *   across the whole map ≈ 2500 flight  → 32% power → 16 damage → 7 hits
  *
  * So the range dial is worth roughly a hit across a whole duel: closing it buys
  * damage, giving it up denies the same to the opponent, and the same scale
  * shrinks the explosion (see ./physics), so a long shot craters less too.
  */
-export const SHOT_POWER_FALLOFF_DISTANCE = 1400;
+export const SHOT_POWER_FALLOFF_DISTANCE = 2800;
 export const SHOT_POWER_MIN_SCALE = 0.3;
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -121,14 +137,13 @@ export const SEATS = ["player1", "player2"] as const;
  * bands land on clearly different hit counts (see the table on
  * SHOT_POWER_FALLOFF_DISTANCE):
  *
- *   point blank (≈660 flight)    → 34 damage → 3 hits
- *   the opening exchange (≈1180) → 21 damage → 5 hits
- *   a full-map lob (≥1400)       → 15 damage → 7 hits
+ *   point blank (≈660 flight)    → 38 damage → 3 hits
+ *   a mid-map exchange (≈1400)   → 25 damage → 4 hits
+ *   across the whole map (≥2500) → 16 damage → 7 hits
  *
- * A duel therefore runs three to seven direct hits — long enough for cover and
- * drives to matter, short enough that one good turn moves the bar visibly. A
- * direct hit is also the rarest way to point a shot at a tank: the walls eat
- * most lines, which is what the HP bar is sized against.
+ * A duel therefore runs three to seven direct hits — long enough for the climb,
+ * cover and the power-ups to matter, short enough that one good turn moves the
+ * bar visibly.
  */
 export const MAX_HP = 100;
 
@@ -149,30 +164,41 @@ export const MIN_PLAYER_SEPARATION = 400;
 export const STRUCTURE_BLOCK_SIZE = 26;
 
 /**
- * Blocks per seat at generation, widest row first (bottom → top).
+ * A base roof: the indestructible ceiling over each tank's SPAWN.
  *
- * Four rows of 26-unit blocks stand 104 units tall — 33% taller than the v1
- * wall — so each tank's cover is a real obstacle: flat shots hit stone, and
- * opening a firing lane means knocking it down. It is also the wall a player
- * hides behind, which is what gives the shield block something to extend.
+ * It replaces the v2 cover wall. There is no wall in front of a tank any more —
+ * nothing blocks a flat shot — but nothing can be dropped in from above onto a
+ * tank that has not left its base either, so "sit at spawn and lob" is no longer
+ * a winning plan. The roof is FIXED at the starting position: driving out from
+ * under it is how a player earns the map, and the only cover out there is what
+ * they build themselves.
  */
-export const STRUCTURE_ROW_WIDTHS = [5, 4, 3, 2] as const;
+export const BASE_ROOF_BLOCKS = 3;
+/**
+ * Height of the roof's underside above the spawn shelf. 130 units clears the
+ * tank (about 40 units tall) with room to fire a shallow lob out from under it,
+ * while still stopping a steep drop from above.
+ */
+export const BASE_ROOF_CLEARANCE = 130;
 
 /**
  * Hard cap on blocks per seat / per battlefield (a deserialised state may lie).
  *
- * 14 blocks are dealt, so the per-seat cap leaves room for eight shield blocks
- * placed over the course of a match without ever letting the board grow into an
- * unreachable maze.
+ * The cap counts COVER blocks only — a base roof is scenery, not build budget —
+ * and leaves room for a dozen placed blocks per seat on the doubled map without
+ * ever letting the board grow into an unreachable maze.
  */
-export const MAX_STRUCTURE_BLOCKS_PER_SEAT = 22;
-export const MAX_STRUCTURE_BLOCKS = 44;
+export const MAX_STRUCTURE_BLOCKS_PER_SEAT = 12;
+export const MAX_STRUCTURE_BLOCKS = 40;
 
-/** How many blast hits a block survives. */
-export const BLOCK_MAX_INTEGRITY = 2;
-
-/** Horizontal distance from the battlefield edge to a tower's centre. */
-export const STRUCTURE_CENTRE_INSET_X = 380;
+/**
+ * How many blast hits a block survives.
+ *
+ * ONE: a projectile that reaches a cover block destroys it outright, however far
+ * it flew. Distance is a dial for HP damage on tanks, never for structures or
+ * ground — a shell is a shell when it lands.
+ */
+export const BLOCK_MAX_INTEGRITY = 1;
 
 /** How far a block may move in one collapse pass before it counts as detached. */
 export const SUPPORT_TOLERANCE = 0.75;
@@ -218,23 +244,23 @@ export const MOVE_DIRECTIONS = {
  * How far one drive action moves a tank, and how far it may ever travel from its
  * spawn.
  *
- * 60 units per drive, capped at 120 from the spawn: a tank can never reach its
- * own cover wall (its base starts ~220 units ahead of a spawn), so there is
- * always room to lob over the wall it is hiding behind. Closing the whole 120
- * units shortens a shot's flight by about 10%, which is worth a point or two of
- * damage — and opening it does the same to the opponent's next shot.
+ * 120 units per drive, capped at 1180 from the spawn — the leash reaches the
+ * middle of the doubled map, which is where the power-ups are. Climbing out of
+ * the base is therefore a real commitment of turns: closing the range buys HP
+ * damage, and the middle is the only place to get a buff.
  */
-export const MOVE_STEP = 60;
-export const MOVE_RANGE = 120;
+export const MOVE_STEP = 120;
+export const MOVE_RANGE = 1180;
 
 /** Closest a tank may ever stand to a battlefield edge. */
 export const MOVE_EDGE_MARGIN = 24;
 
 /**
- * Gap between a tank's hull and a shield block it builds in front of itself.
- * Kept at the hull radius so the block never overlaps the tank that placed it.
+ * A build is a PLACEMENT, not a default: the caller supplies a world point and
+ * the engine snaps it to this grid. Kept equal to the block size so a block is
+ * always exactly one tile.
  */
-export const BUILD_BLOCK_GAP = 3;
+export const BUILD_GRID = 26;
 
 /** Canonical angle range: [0, 360). 90° is straight up (see the header). */
 export const ANGLE_MIN = 0;
@@ -244,9 +270,15 @@ export const ANGLE_MAX = 360;
 export const POWER_MIN = 0;
 export const POWER_MAX = 100;
 
-/** Muzzle speed (world units per tick) at power 0 and power 100. */
-export const MIN_LAUNCH_SPEED = 4;
-export const MAX_LAUNCH_SPEED = 26;
+/**
+ * Muzzle speed (world units per tick) at power 0 and power 100.
+ *
+ * Raised with the map: range grows with v²/g, and the doubled battlefield needs
+ * a full-power lob to reach the far hill (`MAX_LAUNCH_SPEED² / gravity` ≈ 3200
+ * units of range against a 2560-unit map).
+ */
+export const MIN_LAUNCH_SPEED = 6;
+export const MAX_LAUNCH_SPEED = 40;
 
 /** Pull distance (px) that maps to 100% power in `aimFromDrag`. */
 export const DEFAULT_MAX_PULL = 150;
@@ -289,32 +321,87 @@ export const PATH_DEDUPE_TOLERANCE = 0.75;
 /**
  * A direct hit's damage at FULL power (see `damageForDistance` in ./physics).
  *
- * Scaled by the SAME distance falloff that shrinks the explosion, so a shot that
- * flew across the whole map both craters less and hits for less. 50 at full
- * power is what makes the range table on SHOT_POWER_FALLOFF_DISTANCE land on
- * 44 / 31 / 28 / 18 — three hits at point blank, six at the far end of the map.
+ * THE only thing flight distance changes. One number, `damageForDistance`, so a
+ * shot across the whole map still hurts — just for less. 50 at full power is what
+ * makes the range table on SHOT_POWER_FALLOFF_DISTANCE land on 38 / 25 / 16.
  */
 export const HIT_DAMAGE_MAX = 50;
 
 /**
- * Blast tuning. A faster shot leaves a wider crater and a bigger structural
- * blast, so power is a real trade-off rather than a pure range dial. The impact
- * speed used here is the DISTANCE-SCALED speed (see ./physics), so a long lob
- * explodes small even when it arrives fast. Every value is an integer after
- * rounding, so the damage pass is deterministic.
+ * Blast tuning — FIXED, deliberately independent of distance.
+ *
+ * A shell that lands carves the same crater and cracks the same radius whatever
+ * the range: distance is a dial for HP damage on tanks and for nothing else. The
+ * only thing that scales a blast is the `double-blast` power-up.
  */
-export const CRATER_MIN_DEPTH = 8;
-export const CRATER_MAX_DEPTH = 30;
-export const CRATER_MIN_RADIUS = 12;
-export const CRATER_MAX_RADIUS = 26;
-export const CRATER_DEPTH_PER_SPEED = 0.8;
-export const CRATER_RADIUS_PER_SPEED = 0.7;
+export const CRATER_DEPTH = 26;
+export const CRATER_RADIUS = 30;
+/** A block impact carves this fraction of a terrain crater's depth. */
+export const BLOCK_CRATER_FACTOR = 0.5;
+/** Blocks within this radius of a blast lose their integrity (and break). */
+export const BLOCK_BLAST_RADIUS = 30;
 
-/** A structure impact craters at this fraction of a terrain impact's depth. */
-export const STRUCTURE_CRATER_FACTOR = 0.5;
+// ──────────────────────────────────────────────────────────────────────────
+// Power-ups (middle of the map)
+// ──────────────────────────────────────────────────────────────────────────
 
-export const BLOCK_BLAST_MIN_RADIUS = 22;
-export const BLOCK_BLAST_MAX_RADIUS = 34;
+/**
+ * The three pickups that make the middle worth the climb. A tank collects one by
+ * DRIVING onto it, so a buff always costs turn tempo in the open.
+ */
+export const POWERUP_KINDS = {
+  DOUBLE_DAMAGE: "double-damage",
+  DOUBLE_BLAST: "double-blast",
+  HEAL: "heal",
+} as const;
+
+/** How close a tank must drive to a pickup to collect it (centre distance). */
+export const POWERUP_RADIUS = 26;
+
+/** HP a `heal` pickup restores, capped at MAX_HP. */
+export const POWERUP_HEAL_AMOUNT = 35;
+
+/** `double-damage` multiplies the NEXT shot's HP damage. */
+export const POWERUP_DAMAGE_MULTIPLIER = 2;
+
+/** `double-blast` multiplies the NEXT shot's crater and structural blast. */
+export const POWERUP_BLAST_MULTIPLIER = 2;
+
+/**
+ * Where the pickups sit: a heal exactly on the centre mound and a mirrored pair
+ * of each weapon buff around it. The layout is mirror-symmetric, so neither seat
+ * has a shorter run at any buff.
+ */
+export const POWERUP_INSET_X = 220;
+export const POWERUP_HEAL_X = BATTLEFIELD_WIDTH / 2;
+
+/**
+ * How long a collected pickup stays away, in ACTIONS (one action = one tick of
+ * `turnIndex`). Eight actions is about two full turns each: long enough that a
+ * buff is a real prize, short enough that the middle is worth contesting for the
+ * whole match instead of being picked clean in the first round.
+ */
+export const POWERUP_RESPAWN_TURNS = 8;
+
+/** Hard cap on pickups a battlefield may deal (a deserialised state may lie). */
+export const MAX_POWERUPS = 5;
+
+/** Hard cap on the waiting-respawn list (same reason; it can never exceed 5). */
+export const MAX_POWERUP_RESPAWNS = MAX_POWERUPS;
+
+/**
+ * How far the hard tier will walk toward a power-up at all: beyond this it takes
+ * a shot instead, because a lane it cannot reach this match is not worth an
+ * action.
+ */
+export const POWERUP_CHASE_DRIVES = 8;
+
+/**
+ * Inside this range the walk becomes a SPRINT (both actions of the turn), so a
+ * lane it has already walked to is actually taken instead of being abandoned one
+ * step short when the match ends.
+ */
+export const POWERUP_SPRINT_DRIVES = 2;
 
 /**
  * Collapse limits. A collapse is resolved by repeated support passes, never by
@@ -381,6 +468,7 @@ export const REJECTION = {
   INVALID_SEAT: "invalid-seat",
   INVALID_ACTION: "invalid-action",
   INVALID_SHOT: "invalid-shot",
+  INVALID_BUILD: "invalid-build",
   MOVE_BLOCKED: "move-blocked",
   NO_ACTION_REMAINING: "no-action-remaining",
   MATCH_NOT_PLAYING: "match-not-playing",
@@ -390,5 +478,9 @@ export const REJECTION = {
   POWER_INVALID: "power-invalid",
   INVALID_DIRECTION: "invalid-direction",
   NO_BUILD_SPACE: "no-build-space",
+  BUILD_OPPONENT_HALF: "build-opponent-half",
+  BUILD_OUT_OF_BOUNDS: "build-out-of-bounds",
+  BUILD_OVERLAP: "build-overlap",
+  BUILD_UNSUPPORTED: "build-unsupported",
   BLOCK_LIMIT: "block-limit",
 } as const;

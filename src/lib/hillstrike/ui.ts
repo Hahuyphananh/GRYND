@@ -220,7 +220,7 @@ export function loggedShotLabel(entry: {
 }): string {
   const kindAction = String(entry?.action ?? "shoot");
   if (kindAction === "move") return "drove the tank";
-  if (kindAction === "build") return "built a shield block";
+  if (kindAction === "build") return "placed a cover block";
 
   const angle = Number(entry?.angleDeg);
   const power = Number(entry?.power);

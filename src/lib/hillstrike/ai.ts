@@ -30,7 +30,10 @@
  * 5. SPEND THE ACTION WELL when a shot is not: if no line even reaches the
  *    enemy, the bot drives forward (or, when it is hurt, builds cover) instead
  *    of throwing the action away; with two actions in hand it will also drive
- *    first and shoot second rather than take a bare crater in the open.
+ *    first and shoot second rather than take a bare crater in the open. On the
+ *    HARD tier an unarmed bot also walks to the nearest middle power-up before
+ *    it fires again, so the middle is contested for the whole match instead of
+ *    the bot camping the spawn it was given.
  * 6. SLIP through the ONE shared tier policy (`chooseAiOption`), which is what
  *    makes a weak tier beatable rather than merely short-sighted. The slip only
  *    applies to the aim — a drive or a build is always the deliberate choice.
@@ -49,7 +52,11 @@ import {
   IMPACT_KINDS,
   MATCH_STATUS,
   MAX_HP,
+  MOVE_STEP,
   POWER_MAX,
+  POWERUP_CHASE_DRIVES,
+  POWERUP_KINDS,
+  POWERUP_SPRINT_DRIVES,
   SEATS,
 } from "./constants";
 import {
@@ -60,6 +67,7 @@ import {
 } from "./physics";
 import {
   applyAction,
+  buffsOf,
   buildPlacementFor,
   hpOf,
   moveTargetFor,
@@ -69,6 +77,7 @@ import type {
   HillstrikeAction,
   HillstrikeState,
   Impact,
+  PowerUp,
   Seat,
   ShotInput,
 } from "./types";
@@ -79,7 +88,7 @@ export const HILLSTRIKE_TIER_HINTS: Record<AiDifficulty, string> = {
     "Fires a quick, coarse lob — it often misjudges the arc, and rarely finds a shielded gunner.",
   normal:
     "Solves the arc on a fine grid, breaks the cover in front of you, and only sometimes picks a worse line.",
-  hard: "Sweeps the whole aim space, breaks your tower down deliberately, resolves its best lines and almost never slips.",
+  hard: "Sweeps the whole aim space, breaks your cover down deliberately, and takes the middle power-ups whenever a shell is not the better action.",
 };
 
 /**
@@ -102,6 +111,7 @@ export const AI_PUBLIC_STATE_KEYS = Object.freeze([
   "actionsRemaining",
   "openingShotPending",
   "hp",
+  "buffs",
   "battlefield",
   "projectile",
   "winner",
@@ -240,6 +250,8 @@ const SCORE = Object.freeze({
   MATCH_WIN: 100_000,
   BLOCK_HIT: 2_500,
   GROUND_HIT: 1_200,
+  /** A shell stopped by an indestructible base roof: no structural progress. */
+  ROOF_HIT: 700,
   MISS: -6_000,
   SELF_HIT: -20_000,
   CLOSENESS_MAX: 600,
@@ -280,6 +292,10 @@ export function scoreAiShot({
   const verdict = validateAction(state, seat, { type: ACTION_TYPES.SHOOT, ...shot });
   if (!verdict.ok) return null;
 
+  // Plan with the buffs the shot would actually spend, so a lethal line is a
+  // lethal line and a doubled crater is scored as the doubled crater it is.
+  const armed = buffsOf(state, seat);
+
   let simulation;
   try {
     simulation = simulateShot({
@@ -287,6 +303,7 @@ export function scoreAiShot({
       shooterSeat: seat,
       shot,
       projectile: state.projectile,
+      blastScale: armed.doubleBlast ? 2 : 1,
     });
   } catch {
     return null;
@@ -330,9 +347,13 @@ export function scoreAiShot({
   let damage = 0;
   if (impact.kind === IMPACT_KINDS.PLAYER) {
     if (impact.target === defender) {
-      // The damage is decided by the engine from the flight distance, not by
-      // the impact; the bot only reads it to know whether this line is lethal.
-      damage = Math.min(defenderHp, damageForDistance(simulation.distance));
+      // The damage is decided by the engine from the flight distance (doubled
+      // while `double-damage` is armed), not by the impact; the bot only reads
+      // it to know whether this line is lethal.
+      damage = Math.min(
+        defenderHp,
+        Math.round(damageForDistance(simulation.distance) * (armed.doubleDamage ? 2 : 1)),
+      );
       lethal = damage >= defenderHp;
       base = SCORE.DIRECT_HIT + (lethal ? SCORE.MATCH_WIN : 0);
     } else {
@@ -340,9 +361,22 @@ export function scoreAiShot({
       base = SCORE.SELF_HIT;
     }
   } else if (impact.kind === IMPACT_KINDS.BLOCK) {
-    // Breaking the tower in front of the defender is the structural attack: it
-    // opens the line for the next shot, and closer is strictly better.
-    base = SCORE.BLOCK_HIT;
+    // Breaking the ENEMY's cover is the structural attack: it opens a line for
+    // the next shot. Meeting your OWN roof or cover is not an attack at all — a
+    // roof is indestructible, so a bot that scored that as "a block hit" would
+    // happily fire into its own ceiling forever instead of climbing out.
+    // A ROOF is indestructible, so hitting one makes no structural progress at
+    // all: it is scored below a crater, which is what makes the bot climb out of
+    // its own base instead of shelling the enemy's ceiling forever.
+    const struck = impact.blockId === null ? null : owner.get(impact.blockId);
+    const struckRoof =
+      impact.blockId !== null &&
+      state.battlefield.blocks.some(
+        (block) => block.id === impact.blockId && block.kind === "roof",
+      );
+    if (struckRoof) base = SCORE.ROOF_HIT;
+    else if (struck === seat) base = SCORE.SELF_HIT;
+    else base = SCORE.BLOCK_HIT;
   } else if (impact.kind === IMPACT_KINDS.TERRAIN) {
     base = SCORE.GROUND_HIT;
   } else {
@@ -443,6 +477,131 @@ export function isLegalAiAction(
 }
 
 /**
+ * The build action the bot would place: the nearest legal column in front of its
+ * own hull, or `null` when its arc is full.
+ */
+function aiBuildAction(
+  state: HillstrikeState,
+  seat: Seat,
+): HillstrikeAction | null {
+  const placement = buildPlacementFor(state, seat);
+  if (!placement) return null;
+  return { type: ACTION_TYPES.BUILD, x: placement.x, y: placement.y };
+}
+
+/**
+ * The nearest pickup worth a drive, or `null`.
+ *
+ * A heal on a full bar is not worth an action, and a buff the bot is already
+ * carrying cannot be stacked — the engine would only re-arm what is armed — so
+ * those are skipped rather than chased. Ties go to the lower id, keeping the
+ * choice deterministic.
+ */
+function aiPickupTarget(
+  state: HillstrikeState,
+  seat: Seat,
+): { pickup: PowerUp; distance: number } | null {
+  const player = state.battlefield.players[seat];
+  if (!player) return null;
+  const pickups = Array.isArray(state.battlefield.pickups) ? state.battlefield.pickups : [];
+  if (pickups.length === 0) return null;
+
+  const armed = buffsOf(state, seat);
+  const hp = hpOf(state, seat);
+  let best: { pickup: PowerUp; distance: number } | null = null;
+  for (const pickup of pickups) {
+    if (pickup.kind === POWERUP_KINDS.HEAL && hp >= MAX_HP) continue;
+    if (pickup.kind === POWERUP_KINDS.DOUBLE_DAMAGE && armed.doubleDamage) continue;
+    if (pickup.kind === POWERUP_KINDS.DOUBLE_BLAST && armed.doubleBlast) continue;
+    const distance = Math.abs(pickup.x - player.x);
+    const better =
+      !best ||
+      distance < best.distance ||
+      (distance === best.distance && pickup.id < best.pickup.id);
+    if (better) best = { pickup, distance };
+  }
+  return best;
+}
+
+/** The one-step drive that closes on a pickup, when the engine accepts it. */
+function driveToPickup(
+  state: HillstrikeState,
+  seat: Seat,
+  pickup: PowerUp,
+): HillstrikeAction | null {
+  const player = state.battlefield.players[seat];
+  if (!player) return null;
+  const forwardSign = seat === "player1" ? 1 : -1;
+  const direction = Math.sign(pickup.x - player.x) === forwardSign ? "forward" : "back";
+  const action: HillstrikeAction = { type: ACTION_TYPES.MOVE, direction };
+  return isLegalAiAction(state, seat, action) ? action : null;
+}
+
+/**
+ * A drive toward the nearest middle power-up.
+ *
+ * The middle is the only source of a buff, so a bot that ignores it would lose
+ * the trade the whole map is built around. It only ever asks for a legal drive.
+ */
+function aiPickupDrive(
+  state: HillstrikeState,
+  seat: Seat,
+): HillstrikeAction | null {
+  const target = aiPickupTarget(state, seat);
+  return target ? driveToPickup(state, seat, target.pickup) : null;
+}
+
+/**
+ * The hard tier's middle play: an unarmed bot takes the power-ups.
+ *
+ * Sitting in the spawn and trading shells is exactly what the roofs and the hills
+ * were added to stop being the whole game: the buff lanes are what a match is
+ * won on, and a bot that never contests them teaches the wrong lesson. So while
+ * it is ARMED its shot is worth more than a drive and it fires; the moment the
+ * buff is spent it will walk to the nearest lane it can actually reach.
+ *
+ * A walk replaces a shell, so it is only taken when that shell is not buying
+ * anything: the bot is behind on HP (the buff is the comeback), its best line
+ * is not a direct hit, or the lane is a short detour. Measured over fifteen
+ * seeds, an unconditional walk cost more damage than the buff returned and made
+ * hard lose to normal, which is the whole reason for the condition.
+ *
+ * It never trades a knockout for a drive (the caller checks `lethal` first), it
+ * refuses a chase longer than `POWERUP_CHASE_DRIVES`, and it never leaves a heal
+ * behind while it is hurt.
+ */
+function aiMiddlePlay(
+  state: HillstrikeState,
+  seat: Seat,
+  best: AiShotScore | null,
+): HillstrikeAction | null {
+  if (!best || best.lethal) return null;
+  const armed = buffsOf(state, seat);
+  // A buff in hand is spent by a shot, not stacked by another drive.
+  if (armed.doubleDamage || armed.doubleBlast) return null;
+
+  const target = aiPickupTarget(state, seat);
+  if (!target) return null;
+  if (target.distance > POWERUP_CHASE_DRIVES * MOVE_STEP) return null;
+
+  // A lane is worth walking to when the shot it replaces is not buying anything:
+  // the bot is behind on HP (the buff is the comeback), its best line is not a
+  // direct hit, or the lane is close enough to be a detour. Ahead AND hitting, it
+  // keeps firing — a walk there would hand the lead straight back.
+  const nearby = target.distance <= POWERUP_SPRINT_DRIVES * MOVE_STEP;
+  const behind = hpOf(state, seat) <= hpOf(state, otherSeat(seat));
+  const shotIsPoor = best.impact.kind !== IMPACT_KINDS.PLAYER;
+  if (!nearby && !behind && !shotIsPoor) return null;
+
+  // A long approach costs NO damage: only the first action of a two-action turn
+  // is spent on it, so the second still fires. The LAST few steps are a SPRINT
+  // (both actions of the turn), so a lane it has already walked to is actually
+  // taken instead of being abandoned one step short when the match ends.
+  if (!nearby && Number(state.actionsRemaining) < 2) return null;
+  return driveToPickup(state, seat, target.pickup);
+}
+
+/**
  * The non-shoot action the bot would rather spend the action on, or `null`.
  *
  * Two situations make a shot the wrong choice:
@@ -459,13 +618,20 @@ function preferPositioning(
 ): HillstrikeAction | null {
   const hurt = hpOf(state, seat) <= LOW_HP_FRACTION * MAX_HP;
   const forward: HillstrikeAction = { type: ACTION_TYPES.MOVE, direction: "forward" };
-  const build: HillstrikeAction = { type: ACTION_TYPES.BUILD };
+  const build = aiBuildAction(state, seat);
+  const pickupDrive = aiPickupDrive(state, seat);
 
-  const uselessShot = !best || best.impact.kind === IMPACT_KINDS.OUT_OF_BOUNDS;
+  // A miss, a shot into your own base roof, or a bare crater scores below a
+  // plain ground hit: the action is worth more as a drive out of the base.
+  const uselessShot =
+    !best ||
+    best.impact.kind === IMPACT_KINDS.OUT_OF_BOUNDS ||
+    best.score < SCORE.GROUND_HIT;
   if (uselessShot) {
-    if (hurt && buildPlacementFor(state, seat) && isLegalAiAction(state, seat, build)) {
+    if (hurt && build && isLegalAiAction(state, seat, build)) {
       return build;
     }
+    if (pickupDrive) return pickupDrive;
     if (isLegalAiAction(state, seat, forward)) return forward;
     return null;
   }
@@ -477,6 +643,9 @@ function preferPositioning(
   if (actionsLeft >= 2 && groundOnly && !hurt && isLegalAiAction(state, seat, forward)) {
     return forward;
   }
+
+  // A mediocre line with plenty of turns left: go and take the middle instead.
+  if (actionsLeft >= 2 && groundOnly && pickupDrive) return pickupDrive;
   return null;
 }
 
@@ -539,6 +708,12 @@ export function chooseAiAction({
 
   // A knockout line is never passed up for a drive or a build.
   if (!best?.lethal) {
+    // Hard plays the map: an unarmed hard bot takes the middle before it takes
+    // another spawn-to-spawn shell. Weaker tiers keep their simple plan.
+    if (difficulty === "hard") {
+      const middle = aiMiddlePlay(state, seat, best);
+      if (middle) return middle;
+    }
     const positioning = preferPositioning(state, seat, best);
     if (positioning) return positioning;
   }

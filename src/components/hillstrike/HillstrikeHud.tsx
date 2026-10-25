@@ -21,8 +21,8 @@ import {
 } from "@tabler/icons-react";
 
 import type { AiDifficulty } from "../../lib/aiDifficulty";
-import { MAX_HP, MOVE_RANGE, STRUCTURE_BLOCK_SIZE } from "../../lib/hillstrike/constants";
-import { hpOf } from "../../lib/hillstrike/rules";
+import { MAX_HP, MOVE_RANGE } from "../../lib/hillstrike/constants";
+import { buffsOf, hpOf } from "../../lib/hillstrike/rules";
 import type {
   HillstrikeState,
   MoveDirection,
@@ -38,6 +38,8 @@ export type HillstrikeHudProps = {
   aim: ShotInput | null;
   /** True when the viewer may act right now. */
   canPlay: boolean;
+  /** True while the viewer is choosing the tile for a cover block. */
+  placing: boolean;
   resolving: boolean;
   aiThinking: boolean;
   notice: string | null;
@@ -80,6 +82,7 @@ export default function HillstrikeHud({
   difficulty,
   aim,
   canPlay,
+  placing,
   resolving,
   aiThinking,
   notice,
@@ -93,6 +96,7 @@ export default function HillstrikeHud({
   const finished = state.status === "finished";
   const yourTurn = state.turn === viewerSeat && !finished;
   const actionsLeft = Math.max(0, Number(state.actionsRemaining) || 0);
+  const buffs = buffsOf(state, viewerSeat);
 
   const statusText = finished
     ? state.winner === viewerSeat
@@ -180,12 +184,29 @@ export default function HillstrikeHud({
         </div>
 
         <p className="mt-1 text-[11px] leading-relaxed text-white/55">
-          {canPlay
-            ? "Three actions: fire, drive (closer or farther) or build cover. Drag on the battlefield to aim."
-            : finished
-              ? "Match over."
-              : "Wait for your turn."}
+          {placing
+            ? "Placement mode: click any free tile on YOUR half of the map. The block must rest on the ground or on another block."
+            : canPlay
+              ? "Three actions: fire, drive (closer or farther) or place cover. Drag on the battlefield to aim, or press Build to choose a tile."
+              : finished
+                ? "Match over."
+                : "Wait for your turn."}
         </p>
+
+        {(buffs.doubleDamage || buffs.doubleBlast) && (
+          <div className="mt-2 flex flex-wrap gap-1.5" data-testid="hillstrike-buffs">
+            {buffs.doubleDamage && (
+              <span className="rounded-full border border-red-400/50 bg-red-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-red-200">
+                Double damage · next shot
+              </span>
+            )}
+            {buffs.doubleBlast && (
+              <span className="rounded-full border border-amber-400/50 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-200">
+                Double blast · next shot
+              </span>
+            )}
+          </div>
+        )}
 
         <div className="mt-3 flex flex-col gap-2">
           <button
@@ -214,13 +235,22 @@ export default function HillstrikeHud({
             <button
               type="button"
               data-testid="hillstrike-build"
+              data-placing={placing ? "1" : "0"}
               onClick={onBuild}
               disabled={!canPlay}
-              title={`Build one ${STRUCTURE_BLOCK_SIZE}-unit shield block in front of your tank`}
-              className="inline-flex items-center justify-center gap-1 rounded-lg border border-emerald-400/40 bg-emerald-500/10 px-2 py-2 text-[11px] font-bold text-emerald-200 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+              title={
+                placing
+                  ? "Cancel placement, back to aiming"
+                  : "Place a cover block anywhere on your own half of the map"
+              }
+              className={`inline-flex items-center justify-center gap-1 rounded-lg border px-2 py-2 text-[11px] font-bold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                placing
+                  ? "border-emerald-300 bg-emerald-400/25 text-emerald-100"
+                  : "border-emerald-400/40 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20"
+              }`}
             >
               <IconShieldPlus size={14} aria-hidden="true" />
-              Build
+              {placing ? "Cancel" : "Build"}
             </button>
             <button
               type="button"
@@ -236,9 +266,9 @@ export default function HillstrikeHud({
           </div>
 
           <p className="text-center text-[10px] leading-relaxed text-white/40">
-            Drives move you up to {MOVE_RANGE} units from your spawn. A shield
-            block absorbs shots aimed at your hull — but it is only{" "}
-            {STRUCTURE_BLOCK_SIZE} units tall, so a lob can still drop behind it.
+            Drives move you up to {MOVE_RANGE} units from your spawn — far enough
+            to climb out and reach the middle's power-ups. Your base roof is
+            indestructible but fixed: staying under it wins nothing.
           </p>
 
           <button

@@ -39,17 +39,29 @@ import {
   DEFAULT_MAX_PULL,
   MAX_HP,
   PLAYER_RADIUS,
+  POWERUP_KINDS,
+  POWERUP_RADIUS,
+  POWERUP_RESPAWN_TURNS,
+  STRUCTURE_BLOCK_SIZE,
   TERRAIN_COLUMN_WIDTH,
   TERRAIN_COLUMNS,
 } from "../../lib/hillstrike/constants";
 import { aimFromDrag, directionVector } from "../../lib/hillstrike/physics";
-import { hpOf } from "../../lib/hillstrike/rules";
+import {
+  buffsOf,
+  hpOf,
+  resolveBuildPlacement,
+  respawnsOf,
+} from "../../lib/hillstrike/rules";
 import type { Vec2 } from "../../lib/physics2d/kinematics";
 import type {
   ActionRecord,
   Battlefield,
   HillstrikeState,
   Impact,
+  PickupRespawn,
+  PowerUp,
+  PowerUpKind,
   Seat,
   ShotEvent,
   ShotInput,
@@ -79,9 +91,16 @@ export type HillstrikeBattlefieldProps = {
   /** True only while the viewer owns the turn and nothing is resolving. */
   interactive: boolean;
   resolving: boolean;
+  /**
+   * Build placement mode. While true a click PLACES a cover block instead of
+   * starting a drag, and the canvas previews the tile the engine would accept.
+   */
+  placingBlock?: boolean;
   onAim: (shot: ShotInput | null) => void;
   onLock: (shot: ShotInput) => void;
   onClear: () => void;
+  /** The world point the player clicked while in placement mode. */
+  onPlaceBlock?: (point: Vec2) => void;
   className?: string;
   /**
    * What the canvas calls the OTHER seat while it is aiming. Free practice says
@@ -181,9 +200,11 @@ export default function HillstrikeBattlefield({
   animation,
   interactive,
   resolving,
+  placingBlock = false,
   onAim,
   onLock,
   onClear,
+  onPlaceBlock,
   className = "",
   opponentLabel = "the bot",
 }: HillstrikeBattlefieldProps) {
@@ -195,6 +216,10 @@ export default function HillstrikeBattlefield({
     startY: number;
   } | null>(null);
   const [dragging, setDragging] = useState(false);
+  // The world point under the cursor while placing a block (null otherwise).
+  const [hoverPoint, setHoverPoint] = useState<Vec2 | null>(null);
+  const hoverRef = useRef<Vec2 | null>(null);
+  hoverRef.current = hoverPoint;
 
   // The draw loop reads the latest props through a ref, so a rAF frame never
   // renders a stale battlefield while a shot is animating.
@@ -205,8 +230,19 @@ export default function HillstrikeBattlefield({
     aim,
     animation,
     interactive,
+    placingBlock,
+    hoverPoint,
   });
-  propsRef.current = { state, viewerSeat, preview, aim, animation, interactive };
+  propsRef.current = {
+    state,
+    viewerSeat,
+    preview,
+    aim,
+    animation,
+    interactive,
+    placingBlock,
+    hoverPoint,
+  };
 
   const drawRef = useRef<() => void>(() => {});
   // Layout is read once per resize, never per animation frame.
@@ -245,6 +281,8 @@ export default function HillstrikeBattlefield({
       aim: currentAim,
       animation: currentAnimation,
       interactive: currentInteractive,
+      placingBlock: currentPlacing,
+      hoverPoint: currentHover,
     } = propsRef.current;
 
     const elapsed = currentAnimation
@@ -312,7 +350,23 @@ export default function HillstrikeBattlefield({
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // ── Towers ────────────────────────────────────────────────────────────
+    // ── Power-ups on the middle's ground ──────────────────────────────────
+    // Pure presentation: the engine owns which pickup is where and whether it
+    // has been collected (a collected one is simply no longer in the field).
+    for (const pickup of field.pickups ?? []) {
+      drawPickup(ctx, pickup);
+    }
+    // A collected pickup's empty spot: a faint ring that fills as its respawn
+    // comes due, so the middle visibly regenerates instead of just reappearing.
+    for (const ticket of respawnsOf(state.battlefield)) {
+      drawRespawnRing(
+        ctx,
+        ticket,
+        Math.max(0, Number(ticket.atTurn) - Number(state.turnIndex)),
+      );
+    }
+
+    // ── Cover blocks and base roofs ───────────────────────────────────────
     const collapseById = new Map<number, Extract<ShotEvent, { type: "collapse" }>>();
     if (currentAnimation && settling && currentAnimation.action.type === "shoot") {
       for (const event of currentAnimation.action.events) {
@@ -380,6 +434,13 @@ export default function HillstrikeBattlefield({
     // ── Aim preview (the engine's own resolution of the locked/current aim) ─
     if (currentPreview && currentAim && !flying) {
       drawPreview(ctx, currentPreview, currentAim, viewer);
+    }
+
+    // ── Build placement ghost ─────────────────────────────────────────────
+    // The tile the ENGINE would accept for the point under the cursor. The
+    // component only previews it; the action is still validated on the server.
+    if (currentPlacing && currentHover && !flying) {
+      drawBuildGhost(ctx, current, viewer, currentHover);
     }
 
     // ── Projectile flight ─────────────────────────────────────────────────
@@ -490,17 +551,50 @@ export default function HillstrikeBattlefield({
     y: event.clientY,
   });
 
+  /** Client coordinates → world units, using exactly the draw transform. */
+  const clientToWorld = (event: ReactPointerEvent<HTMLDivElement>): Vec2 | null => {
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return null;
+    const size = sizeRef.current;
+    if (!size.cssWidth || !size.cssHeight) return null;
+    const scale = Math.min(
+      size.cssWidth / BATTLEFIELD_WIDTH,
+      size.cssHeight / BATTLEFIELD_HEIGHT,
+    );
+    if (!(scale > 0)) return null;
+    const rect = wrapper.getBoundingClientRect();
+    const offsetX = (size.cssWidth - BATTLEFIELD_WIDTH * scale) / 2;
+    const offsetY = (size.cssHeight - BATTLEFIELD_HEIGHT * scale) / 2;
+    return {
+      x: (event.clientX - rect.left - offsetX) / scale,
+      y: (event.clientY - rect.top - offsetY) / scale,
+    };
+  };
+
+  // Leaving placement mode drops the ghost.
+  useEffect(() => {
+    if (!placingBlock) setHoverPoint(null);
+  }, [placingBlock]);
+
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!interactive) return;
     if (event.button !== undefined && event.button !== 0) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     const point = pointFor(event);
     dragRef.current = { pointerId: event.pointerId, startX: point.x, startY: point.y };
+    if (placingBlock) {
+      setHoverPoint(clientToWorld(event));
+      return;
+    }
     setDragging(true);
     onClear();
   };
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (placingBlock) {
+      setHoverPoint(clientToWorld(event));
+      return;
+    }
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     const point = pointFor(event);
@@ -518,6 +612,19 @@ export default function HillstrikeBattlefield({
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     dragRef.current = null;
+
+    if (placingBlock) {
+      const world = clientToWorld(event);
+      setHoverPoint(world);
+      if (cancelled || !world) return;
+      const point = pointFor(event);
+      const moved = Math.hypot(point.x - drag.startX, point.y - drag.startY);
+      // A CLICK places the block; dragging across the board in placement mode
+      // must not fire a stray placement.
+      if (moved <= 8) onPlaceBlock?.(world);
+      return;
+    }
+
     setDragging(false);
     if (cancelled) {
       onClear();
@@ -584,6 +691,33 @@ export default function HillstrikeBattlefield({
       data-last-block-id={lastAction?.type === "build" ? lastAction.blockId : ""}
       data-interactive={interactive ? "1" : "0"}
       data-dragging={dragging ? "1" : "0"}
+      data-placing={placingBlock ? "1" : "0"}
+      data-pickups={state.battlefield.pickups?.length ?? 0}
+      data-respawns={respawnsOf(state.battlefield).length}
+      data-next-respawn={
+        respawnsOf(state.battlefield).length > 0
+          ? String(
+              Math.max(
+                0,
+                Math.min(
+                  ...respawnsOf(state.battlefield).map(
+                    (ticket) => Number(ticket.atTurn) - Number(state.turnIndex),
+                  ),
+                ),
+              ),
+            )
+          : ""
+      }
+      data-buffs-you={
+        (buffsOf(state, viewerSeat).doubleDamage ? "damage " : "") +
+        (buffsOf(state, viewerSeat).doubleBlast ? "blast" : "")
+      }
+      data-roof-blocks={
+        state.battlefield.blocks.reduce(
+          (count, block) => count + (block.kind === "roof" ? 1 : 0),
+          0,
+        )
+      }
       className={`relative w-full touch-none select-none overflow-hidden rounded-2xl border border-cyan-400/25 bg-[#04101f] shadow-[0_0_30px_rgba(34,211,238,0.12)] ${
         interactive ? "cursor-crosshair" : "cursor-default"
       } ${className}`}
@@ -597,11 +731,16 @@ export default function HillstrikeBattlefield({
         ref={canvasRef}
         className="block h-full w-full"
         role="img"
-        aria-label={`Hillstrike battlefield. ${activeName} to fire. Drag away from your target to aim, then press Fire.`}
+        aria-label={
+          placingBlock
+            ? `Hillstrike battlefield. Placing a block: click a tile on ${activeName === "You" ? "your" : "the active player's"} half of the map.`
+            : `Hillstrike battlefield. ${activeName} to fire. Drag away from your target to aim, then press Fire.`
+        }
+        onPointerLeave={() => setHoverPoint(null)}
       />
       {interactive && (
         <span className="pointer-events-none absolute left-1/2 top-2 -translate-x-1/2 rounded-full border border-cyan-400/40 bg-black/55 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-200">
-          Drag to aim
+          {placingBlock ? "Click a tile to place · your half only" : "Drag to aim"}
         </span>
       )}
     </div>
@@ -614,6 +753,26 @@ function drawBlock(
   ctx: CanvasRenderingContext2D,
   block: TowerBlock & { y: number },
 ): void {
+  // A base roof is scenery, not cover: steel plating with hazard stripes, so a
+  // player can tell at a glance that this ceiling is not going to break.
+  if (block.kind === "roof") {
+    ctx.save();
+    roundedRect(ctx, block.x + 1, block.y + 1, block.size - 2, block.size - 2, 3);
+    ctx.fillStyle = "#334155";
+    ctx.fill();
+    ctx.strokeStyle = "#cbd5e1";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(block.x + 3, block.y + block.size - 4);
+    ctx.lineTo(block.x + block.size - 4, block.y + 3);
+    ctx.strokeStyle = "rgba(250, 204, 21, 0.75)";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
   const color = SEAT_COLOR[block.seat] ?? "#94a3b8";
   ctx.save();
   roundedRect(ctx, block.x + 1, block.y + 1, block.size - 2, block.size - 2, 5);
@@ -641,6 +800,134 @@ function drawBlock(
     ctx.lineWidth = 2;
     ctx.stroke();
   }
+  ctx.restore();
+}
+
+const PICKUP_COLOR: Record<PowerUpKind, string> = {
+  heal: "#4ade80",
+  "double-damage": "#f87171",
+  "double-blast": "#fbbf24",
+};
+
+/**
+ * The empty spot of a collected pickup, and how many actions until it is back.
+ *
+ * Presentation only: the ENGINE owns the schedule (`respawns[i].atTurn`); this
+ * just makes the countdown legible, so a player can see the middle is a resource
+ * that keeps coming rather than a one-off.
+ */
+function drawRespawnRing(
+  ctx: CanvasRenderingContext2D,
+  ticket: PickupRespawn,
+  wait: number,
+): void {
+  const colour = PICKUP_COLOR[ticket.kind] ?? "#e2e8f0";
+  const ready = Math.max(0, Math.min(1, 1 - wait / Math.max(1, POWERUP_RESPAWN_TURNS)));
+  const radius = POWERUP_RADIUS * 0.8;
+
+  ctx.save();
+  ctx.globalAlpha = 0.16 + 0.34 * ready;
+  ctx.strokeStyle = colour;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 5]);
+  ctx.beginPath();
+  ctx.arc(ticket.x, ticket.y, radius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // The countdown itself: a clockwise arc that closes as the pickup comes due.
+  ctx.globalAlpha = 0.5;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.arc(ticket.x, ticket.y, radius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ready);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** A middle power-up: a glowing ring with its effect's glyph inside. */
+function drawPickup(ctx: CanvasRenderingContext2D, pickup: PowerUp): void {
+  const color = PICKUP_COLOR[pickup.kind] ?? "#e2e8f0";
+  const radius = POWERUP_RADIUS;
+  ctx.save();
+
+  const glow = ctx.createRadialGradient(pickup.x, pickup.y, 2, pickup.x, pickup.y, radius * 1.7);
+  glow.addColorStop(0, color);
+  glow.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.globalAlpha = 0.28;
+  ctx.beginPath();
+  ctx.arc(pickup.x, pickup.y, radius * 1.7, 0, Math.PI * 2);
+  ctx.fillStyle = glow;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  ctx.beginPath();
+  ctx.arc(pickup.x, pickup.y, radius, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(3, 10, 20, 0.82)";
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.lineCap = "round";
+  if (pickup.kind === POWERUP_KINDS.HEAL) {
+    // A cross.
+    ctx.beginPath();
+    ctx.moveTo(pickup.x - 6, pickup.y);
+    ctx.lineTo(pickup.x + 6, pickup.y);
+    ctx.moveTo(pickup.x, pickup.y - 6);
+    ctx.lineTo(pickup.x, pickup.y + 6);
+    ctx.stroke();
+  } else if (pickup.kind === POWERUP_KINDS.DOUBLE_DAMAGE) {
+    // Two chevrons: "more of the same, doubled".
+    for (const offset of [-4, 2]) {
+      ctx.beginPath();
+      ctx.moveTo(pickup.x - 6, pickup.y + offset + 4);
+      ctx.lineTo(pickup.x, pickup.y + offset - 2);
+      ctx.lineTo(pickup.x + 6, pickup.y + offset + 4);
+      ctx.stroke();
+    }
+  } else {
+    // A burst.
+    for (let spoke = 0; spoke < 8; spoke++) {
+      const angle = (spoke / 8) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(pickup.x + Math.cos(angle) * 3, pickup.y + Math.sin(angle) * 3);
+      ctx.lineTo(pickup.x + Math.cos(angle) * 8, pickup.y + Math.sin(angle) * 8);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+/**
+ * The build ghost: the tile the ENGINE would accept for the point under the
+ * cursor (green when legal, red when not). The engine's own resolver draws it, so
+ * the preview can never promise a placement the server would refuse.
+ */
+function drawBuildGhost(
+  ctx: CanvasRenderingContext2D,
+  state: HillstrikeState,
+  seat: Seat,
+  point: Vec2,
+): void {
+  const size = STRUCTURE_BLOCK_SIZE;
+  const verdict = resolveBuildPlacement(state, seat, point.x, point.y);
+  const snappedX = Math.round(point.x / size) * size;
+  const y = verdict.ok
+    ? (verdict as Extract<typeof verdict, { ok: true }>).placement.y
+    : Math.round(point.y / size) * size - size / 2;
+
+  ctx.save();
+  ctx.globalAlpha = 0.72;
+  ctx.fillStyle = verdict.ok ? "rgba(74, 222, 128, 0.22)" : "rgba(248, 113, 113, 0.18)";
+  ctx.strokeStyle = verdict.ok ? "#4ade80" : "#f87171";
+  ctx.lineWidth = 2.5;
+  ctx.setLineDash([7, 5]);
+  roundedRect(ctx, snappedX + 1, y + 1, size - 2, size - 2, 4);
+  ctx.fill();
+  ctx.stroke();
   ctx.restore();
 }
 

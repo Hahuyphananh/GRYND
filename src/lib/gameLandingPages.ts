@@ -1647,28 +1647,30 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     leaderboardKey: "hillstrike",
     ogImage: "/images/og-banner.png",
     shortDescription:
-      "A free, rated 1v1 tank-artillery duel on a mirrored battlefield. 100 HP each, a drawn opening seat and turns of three actions — fire, drive or build cover — resolved by the server, with damage falling off over flight distance.",
+      "A free, rated 1v1 tank-artillery duel on a wide, mirrored battlefield. 100 HP each under an indestructible base roof, a drawn opening seat and turns of two actions — fire, drive or place cover anywhere on your own half — with damage falling off over flight distance and power-ups waiting in the middle.",
     // The practice board is the SAME engine running in the browser against the
     // built-in bot, at /games/hillstrike/play-ai. It has no public POST entry
     // route (there is no match row to create), so unlike Dominoes this page
     // links to the board rather than starting a match through an API.
     aiPractice: true,
     introduction: [
-      "Hillstrike is a one-on-one artillery duel with tanks. Two seats sit on opposite ends of ONE shared battlefield, each with 100 HP, and take turns spending actions: set an angle and a power and fire, drive the tank closer or farther, or drop a shield block in front of the hull.",
-      "It is competitive because nothing about a shot is hidden or lucky: the same battlefield is generated for both seats, every shot is simulated by the same deterministic physics on the server, and the only thing that decides the match is how well each player reads the arc, the ground and the collapsing tower in front of them.",
+      "Hillstrike is a one-on-one artillery duel with tanks. Two seats sit at opposite ends of ONE wide battlefield, each with 100 HP under an indestructible roof covering its starting position, and take turns spending actions: set an angle and a power and fire, drive the tank closer or farther up the hills, or place a cover block anywhere on your own half.",
+      "It is competitive because nothing about a shot is hidden or lucky: the same battlefield is generated for both seats, every shot is simulated by the same deterministic physics on the server, and the only thing that decides the match is how well each player reads the arc, the ground and the cover the other seat has built.",
     ],
     howToPlay: [
       "Sign in, open the lobby and press Find a Match to be seated against a live opponent. A free practice board against the bot is available without an account.",
       "One seat is drawn from the stored battlefield seed and takes the OPENING action: a single one. The other seat answers with two, and from then on the seats alternate two-action turns. An action is any of the three — a shot, a drive or a build.",
       "Aim by dragging: the direction sets the launch angle and the pull distance sets the power. Power is a whole number from 0 to 100 — low power is a short lob, full power is a flat, fast shot.",
-      "Fire, then watch the server's resolved trajectory. A direct hit on the enemy tank takes HP in proportion to how far the shell flew — a point-blank hit costs about a third of a tank, a full-map lob about half that. A shot that lands on terrain or on a tower deforms the ground and damages blocks instead.",
-      "Spend your remaining actions — a second shot, a drive to shorten the next one, or a block of cover — then hand over. The tank that reaches 0 HP loses, and the match ends the instant it does.",
+      "Fire, then watch the server's resolved trajectory. A direct hit on the enemy tank takes HP in proportion to how far the shell flew — a point-blank hit costs about a third of a tank, a full-map lob about half that. Anything else the shell touches — ground or a cover block, however far it flew — is destroyed on the spot.",
+      "Spend your remaining actions — a second shot, a drive up the hill, or a cover block — then hand over. Drive over the power-ups in the middle for a double-damage shot, a double-size explosion or a heal. The tank that reaches 0 HP loses, and the match ends the instant it does.",
     ],
     rules: [
       "Strictly 1v1 on one shared battlefield. Each tank starts with 100 HP, and the projectile has exactly one set of parameters — neither seat gets a different gun.",
-      "The battlefield is generated from a seed stored on the match and is mirror-symmetric about the centre, so both seats stand on identical ground with identical towers. The only asymmetry in a match is who won the opening-seat draw.",
+      "The battlefield is generated from a seed stored on the match and is mirror-symmetric about the centre, so both seats stand on identical ground, identical base roofs and identical power-ups. The only asymmetry in a match is who won the opening-seat draw.",
       "The opening seat takes one action; the opponent answers with two; every later turn is two actions. An action is a shot, a drive (forward or back) or a build. A turn continues after a hit — connecting on the first action does not take the second away.",
-      "A DIRECT hit on a tank costs HP in proportion to the distance the shell actually flew, so closing the range is worth damage and giving it up denies the same to the opponent. Structural damage and terrain deformation never cost HP.",
+      "A DIRECT hit on a tank costs HP in proportion to the distance the shell actually flew, so closing the range is worth damage and giving it up denies the same to the opponent. Hitting ground or a block never costs HP — the obstacle is simply gone, at any range.",
+      "Each seat spawns under a roof that no shot can break, so the opening position cannot be sniped from above. The roof only covers the spawn: the hills climb away from it, so an enemy who stays home never gets a look at the other tank.",
+      "A build places a cover block on any free tile of your OWN half; the enemy's half is off limits. Blocks and ground are destroyed by a single hit, so cover buys you a shot, not a fort.",
       "The match ends IMMEDIATELY when a tank reaches 0 HP: the winner is the seat that fired, and no further action is accepted. There is no draw.",
       "Only the defender is a valid target: a shot that falls back onto its own tank can never cost the shooter HP.",
       "Every shot is simulated server-side from the angle and power alone, at a fixed step, and the stored trajectory is what both clients animate. The client is never asked for — and never believed about — a position, a hit, an HP total, a placed block, a terrain height or a winner; a drive and a build are derived from the stored position just as the shot is.",
@@ -1678,24 +1680,25 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     scoring: [
       "There is no running score. HP is the whole tally: 100 each, and every direct hit takes a distance-scaled bite out of it.",
       "The tank that reaches 0 HP loses. The winner can finish anywhere from a sliver of HP to a full bar.",
-      "Structural damage is positional, not a score: craters change the ground, collapsed blocks clear a line, and a built block soaks a shot, but none of it is worth HP on its own.",
+      "Power-ups are one-shot and renewable: whoever drives over one takes it, and the spot deals it again a few actions later, so the middle is worth contesting all match. Double damage applies to the next shot that lands on a tank; double blast widens the next crater; the heal returns HP up to the maximum.",
+      "Structural damage is positional, not a score: craters change the ground, a hit block is gone, and a placed block soaks a shot, but none of it is worth HP on its own.",
       "Resigning, or leaving and not returning, awards the match to the opponent exactly like a played-out win.",
       "A ranked online result moves your Hillstrike Elo and your Hillstrike trophy ladder, and the account win and loss counters. Nothing else is awarded.",
     ],
     strategy: [
       "Learn the arc before you spend a volley. A lob at moderate power hangs long enough to read, and the first shot of a match is the cheapest place to measure the gravity in front of you.",
-      "Two actions a turn is a real budget. The first can clear a tower block, crater a ridge or drive you into range, and the second can use what the first bought — a turn planned as a pair beats two hopeful direct attempts.",
-      "Direct hits are the only thing that ends the match, so a shot that damages the tower but cannot reach the launcher is a setup, not a result. Ask what the NEXT shot can do before you take this one.",
+      "Two actions a turn is a real budget. The first can clear a block, crater a ridge or drive you into range, and the second can use what the first bought — a turn planned as a pair beats two hopeful direct attempts.",
+      "Direct hits are the only thing that ends the match, so a shot that clears cover but cannot reach the launcher is a setup, not a result. Ask what the NEXT shot can do before you take this one.",
       "Power changes the crater as well as the range: a fast shot bites deeper and wider, so a flat full-power shot is also the best way to carve away the ground under a defender.",
-      "Watch the tower fall. Unsupported blocks collapse after a hit, which can bury a launcher or open a lane, and both seats see the same structure.",
-      "Play the HP bar. When you are one hit from elimination, a low-percentage direct attempt is usually better than a safe structural shot that cannot end the match; when you are ahead, a drive away and a block in front of your hull are worth more than a hopeful lob.",
+      "Watch the hills and the middle. The start roof kills a flat line over the top of the map, so the damage lives on the slopes — and the power-ups sit in the middle, which is the ground you have to take to be able to reach the other tank.",
+      "Play the HP bar. When you are one hit from elimination, a low-percentage direct attempt is usually better than a safe shot that cannot end the match; when you are ahead, a drive back under cover and a block on your half are worth more than a hopeful lob.",
     ],
     competitive:
       "Hillstrike tests trajectory judgement and range management under an action budget: reading an arc from two numbers, deciding whether a turn's second action is better spent on a shot, a drive or cover, and staying accurate when the HP bar is nearly empty.",
     faq: [
       {
         q: "How does damage work in Hillstrike?",
-        a: "Every tank starts with 100 HP. Only a direct projectile contact with a tank takes HP off, and how much it takes depends on how far the shell flew: about 34 at point-blank range, about 21 across the opening gap. Terrain craters, damaged blocks and a collapsed tower never cost HP.",
+        a: "Every tank starts with 100 HP. Only a direct projectile contact with a tank takes HP off, and how much it takes depends on how far the shell flew: about 34 at point-blank range, about 21 across the opening gap. Hitting ground or a cover block never costs HP — the obstacle is destroyed instantly, whatever the range.",
       },
       {
         q: "Why did my opponent get two actions when I only had one?",
@@ -1711,7 +1714,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
       },
       {
         q: "Is every battlefield the same?",
-        a: "Every match draws a new seed, so the terrain and tower layout change. The layout is mirror-symmetric though, which means both seats always start on identical ground with identical structures.",
+        a: "Every match draws a new seed, so the terrain, the base roofs and the middle power-ups change. The layout is mirror-symmetric though, which means both seats always start on identical ground with identical cover.",
       },
       {
         q: "Does the AI practice board affect my rating?",

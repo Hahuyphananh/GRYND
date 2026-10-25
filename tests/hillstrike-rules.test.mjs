@@ -29,6 +29,9 @@ const {
   hpOf,
   moveTargetFor,
   buildPlacementFor,
+  resolveBuildPlacement,
+  isOwnHalf,
+  buffsOf,
   blockCountFor,
   spawnXFor,
 } = await import("../src/lib/hillstrike/rules.ts");
@@ -40,6 +43,7 @@ const {
   openingSeatFor,
   validateBattlefield,
   surfaceYAt,
+  groundYUnder,
 } = await import("../src/lib/hillstrike/generation.ts");
 const {
   FIELD_VERSION,
@@ -48,9 +52,15 @@ const {
   ACTIONS_PER_TURN,
   MOVE_STEP,
   MOVE_RANGE,
+  MOVE_EDGE_MARGIN,
+  PLAYER_RADIUS,
+  BASE_ROOF_BLOCKS,
   BLOCK_MAX_INTEGRITY,
   HIT_DAMAGE_MAX,
+  POWERUP_HEAL_AMOUNT,
+  POWERUP_RESPAWN_TURNS,
   STRUCTURE_BLOCK_SIZE,
+  BATTLEFIELD_WIDTH,
 } = await import("../src/lib/hillstrike/constants.ts");
 
 const SEED = 12345;
@@ -131,27 +141,70 @@ test("a new match has the agreed shape", () => {
   assert.equal(Object.isFrozen(state.hp), true);
 });
 
-test("each seat starts behind a four-row tower", () => {
+test("each seat starts under an indestructible roof, with no wall in front", () => {
   const state = createInitialState({ seed: SEED });
-  const owners = { player1: 0, player2: 0 };
-  const tops = { player1: Infinity, player2: Infinity };
-  const bases = { player1: -Infinity, player2: -Infinity };
-  for (const block of state.battlefield.blocks) {
-    owners[block.seat] += 1;
-    tops[block.seat] = Math.min(tops[block.seat], block.y);
-    bases[block.seat] = Math.max(bases[block.seat], block.y + block.size);
-  }
 
-  assert.equal(owners.player1, 14, "the 5-4-3-2 pyramid deals 14 blocks");
-  assert.equal(owners.player2, 14);
-
-  // Four rows of 26-unit blocks: tall enough that flat shots hit stone.
   for (const seat of ["player1", "player2"]) {
-    assert.equal(
-      bases[seat] - tops[seat],
-      4 * STRUCTURE_BLOCK_SIZE,
-      `${seat} wall is four rows tall`,
-    );
+    const own = state.battlefield.blocks.filter((block) => block.seat === seat);
+    assert.equal(own.length, BASE_ROOF_BLOCKS, `${seat} gets a ${BASE_ROOF_BLOCKS}-block roof`);
+    assert.ok(own.every((block) => block.kind === "roof"));
+
+    const spawn = state.battlefield.players[seat];
+    const left = Math.min(...own.map((block) => block.x));
+    const right = Math.max(...own.map((block) => block.x + block.size));
+    // The roof is a CEILING over the spawn, and it is the same height all across.
+    assert.ok(own.every((block) => block.y === own[0].y), "the roof is flat");
+    assert.ok(own[0].y + own[0].size < spawn.y, "the roof is above the tank");
+    assert.ok(left <= spawn.x && spawn.x <= right, `${seat}'s roof covers its spawn`);
+
+    // No WALL in front: nothing between the tank and the enemy that reaches down
+    // to hull height. The roof is overhead, which is the whole redesign.
+    const hullTop = spawn.y - 60;
+    const wallInFront = state.battlefield.blocks.filter((block) => {
+      const ahead = seat === "player1"
+        ? block.x >= spawn.x + PLAYER_RADIUS
+        : block.x + block.size <= spawn.x - PLAYER_RADIUS;
+      return ahead && block.y + block.size > hullTop;
+    });
+    assert.deepEqual(wallInFront, [], `${seat} starts with no wall in front`);
+  }
+});
+
+test("the base roof swallows a shot: it is indestructible and changes nothing", () => {
+  const state = createInitialState({ seed: SEED, openingSeat: "player1" });
+  const straightUp = { angleDeg: 90, power: 100 };
+  const simulation = simulateShot({
+    battlefield: state.battlefield,
+    shooterSeat: "player1",
+    shot: straightUp,
+    projectile: state.projectile,
+  });
+
+  assert.equal(simulation.impact.kind, "block");
+  const roof = state.battlefield.blocks.find((block) => block.id === simulation.impact.blockId);
+  assert.ok(roof, "the impact names the block it met");
+  assert.equal(roof.kind, "roof");
+  assert.deepEqual(simulation.battlefield.blocks, state.battlefield.blocks, "no block breaks");
+  assert.deepEqual(simulation.battlefield.terrain, state.battlefield.terrain, "no crater is carved");
+});
+
+test("the middle deals a mirrored set of power-ups on the ground", () => {
+  const state = createInitialState({ seed: SEED });
+  const pickups = state.battlefield.pickups;
+  assert.ok(pickups.length >= 3, "the middle deals at least three pickups");
+  assert.ok(pickups.some((pickup) => pickup.kind === "heal"));
+  assert.ok(pickups.some((pickup) => pickup.kind === "double-damage"));
+  assert.ok(pickups.some((pickup) => pickup.kind === "double-blast"));
+
+  const centre = BATTLEFIELD_WIDTH / 2;
+  for (const pickup of pickups) {
+    const mirrored = pickups.find((other) => other.kind === pickup.kind && other.x === 2 * centre - pickup.x);
+    if (pickup.x !== centre) {
+      assert.ok(mirrored, `${pickup.kind} at ${pickup.x} must have a mirror`);
+    }
+    const surface = surfaceYAt(state.battlefield.terrain, pickup.x);
+    assert.ok(pickup.y < surface, `${pickup.kind} floats above its ground`);
+    assert.ok(surface - pickup.y <= 30, `${pickup.kind} sits on the ground, not in the air`);
   }
 });
 
@@ -279,9 +332,10 @@ test("a direct hit takes HP from the distance the shell flew, and only the victi
   assert.deepEqual(clone(state), before, "the input state is untouched");
 });
 
-test("a longer shot hits for less and explodes smaller", () => {
-  // The falloff is one published function; a shell that flies further keeps less
-  // power, and that single number drives both damage and blast size.
+test("a longer shot hits a tank for less, and distance changes nothing else", () => {
+  // The falloff is one published function and it applies to ONE quantity: the HP
+  // a direct hit takes. Crater size and block breaking are fixed (see the physics
+  // suite), so this is no longer a blast curve.
   const near = 400;
   const mid = 1000;
   const far = 1450;
@@ -294,7 +348,7 @@ test("a longer shot hits for less and explodes smaller", () => {
   // Floors and ceilings: a hit always hurts, and never exceeds the maximum.
   assert.equal(damageForDistance(0), HIT_DAMAGE_MAX);
   assert.ok(damageForDistance(100000) >= 1);
-  assert.equal(powerScaleForDistance(100000), powerScaleForDistance(2000));
+  assert.equal(powerScaleForDistance(100000), powerScaleForDistance(5000), "the floor holds");
 });
 
 test("the opening seat's turn ends after a hit, because it is only one action", () => {
@@ -428,9 +482,12 @@ test("a tank can drive back as well as forward, and never past its leash", () =>
   while (validateAction(state, "player1", { type: "move", direction: "back" }).ok) {
     state = applyAction(state, "player1", { type: "move", direction: "back" }).state;
   }
+  // The leash reaches the middle of the doubled map, so backing up runs into the
+  // FIELD edge before it runs out of range: no drive may ever leave the map.
   const back = state.battlefield.players.player1;
-  assert.equal(back.x, spawnXFor("player1") - MOVE_RANGE);
+  assert.equal(back.x, MOVE_EDGE_MARGIN + PLAYER_RADIUS);
   assert.equal(back.y, surfaceYAt(state.battlefield.terrain, back.x));
+  assert.ok(spawnXFor("player1") - MOVE_RANGE < back.x, "the map clamps the leash");
 });
 
 test("player2 drives toward the left, mirroring player1", () => {
@@ -441,38 +498,41 @@ test("player2 drives toward the left, mirroring player1", () => {
   assert.equal(next.battlefield.players.player2.x, start.x - MOVE_STEP);
 });
 
-test("a build drops exactly one block in front of the tank, on the ground", () => {
+test("a build places one block at the tile the player chose, on their own half", () => {
   const base = createInitialState({ seed: SEED, openingSeat: "player1" });
   const before = blockCountFor(base, "player1");
-  const placement = buildPlacementFor(base, "player1");
+  const tankX = base.battlefield.players.player1.x;
+  const size = STRUCTURE_BLOCK_SIZE;
+  // Two clear tiles ahead of the hull, resting on the ground.
+  const requestX = tankX + 3 * size;
+  const requestY = surfaceYAt(base.battlefield.terrain, requestX) - size;
 
-  assert.ok(placement, "there is room to build from the spawn");
-  assert.equal(placement.size, STRUCTURE_BLOCK_SIZE);
-  assert.equal(
-    placement.y,
-    // Resting on the highest ground under its footprint.
-    surfaceYAt(base.battlefield.terrain, placement.x + 1) - STRUCTURE_BLOCK_SIZE <=
-      placement.y + 1
-      ? placement.y
-      : placement.y,
-  );
+  const verdict = resolveBuildPlacement(base, "player1", requestX, requestY);
+  assert.equal(verdict.ok, true, "that tile is free, supported and on our half");
+  const placement = verdict.placement;
+  assert.equal(placement.size, size);
+  assert.equal(isOwnHalf("player1", placement.x, size), true);
 
-  const { state: next, events } = applyAction(base, "player1", { type: "build" });
+  const { state: next, events } = applyAction(base, "player1", {
+    type: "build",
+    x: requestX,
+    y: requestY,
+  });
 
   assert.equal(blockCountFor(next, "player1"), before + 1);
   assert.equal(next.battlefield.blocks.length, base.battlefield.blocks.length + 1);
   assert.deepEqual(next.hp, base.hp, "a build costs no HP");
   assert.deepEqual(next.battlefield.players, base.battlefield.players);
 
-  const block = next.lastAction;
-  assert.equal(block.type, "build");
-  const built = next.battlefield.blocks.find((candidate) => candidate.id === block.blockId);
+  const record = next.lastAction;
+  assert.equal(record.type, "build");
+  const built = next.battlefield.blocks.find((candidate) => candidate.id === record.blockId);
   assert.ok(built, "the record names the block that was placed");
   assert.equal(built.seat, "player1");
+  assert.equal(built.kind, "cover", "a built block is breakable cover, not scenery");
   assert.equal(built.integrity, BLOCK_MAX_INTEGRITY);
   assert.equal(built.x, placement.x);
   assert.equal(built.y, placement.y);
-  assert.ok(built.x > base.battlefield.players.player1.x, "cover goes up toward the enemy");
   assert.ok(events.some((event) => event.type === "block-built"));
 
   // No block may ever overlap another, and the build cannot stack on the tank.
@@ -487,18 +547,91 @@ test("a build drops exactly one block in front of the tank, on the ground", () =
   assert.deepEqual(validateBattlefield(next.battlefield), { ok: true });
 });
 
-test("a build follows the tank, so cover always covers the hull", () => {
-  let state = withActions(createInitialState({ seed: SEED, openingSeat: "player1" }), 50);
-  state = applyAction(state, "player1", { type: "move", direction: "forward" }).state;
-  const tankX = state.battlefield.players.player1.x;
+test("a build may be placed anywhere on the builder's half, and never on the enemy's", () => {
+  const base = createInitialState({ seed: SEED, openingSeat: "player1" });
+  const size = STRUCTURE_BLOCK_SIZE;
+  const half = BATTLEFIELD_WIDTH / 2;
 
-  const placement = buildPlacementFor(state, "player1");
-  assert.ok(placement);
-  assert.ok(placement.x > tankX, "the block is in front of the new position");
-  assert.ok(
-    placement.x - (tankX + 13) < STRUCTURE_BLOCK_SIZE,
-    "and immediately in front of it",
+  // Anywhere on OUR half: far behind the tank and on the centre line.
+  for (const requestX of [size, 400, half - size]) {
+    const requestY = surfaceYAt(base.battlefield.terrain, requestX) - size;
+    const verdict = resolveBuildPlacement(base, "player1", requestX, requestY);
+    assert.equal(verdict.ok, true, `x=${requestX} is on our half`);
+  }
+
+  // Anything on the OPPONENT's half is refused, whatever the tile.
+  for (const requestX of [half, half + 200, BATTLEFIELD_WIDTH - size]) {
+    const verdict = validateAction(base, "player1", { type: "build", x: requestX, y: 400 });
+    assert.equal(verdict.ok, false);
+    assert.equal(verdict.code, "build-opponent-half");
+  }
+  // ... and mirrored for the other seat.
+  const asPlayer2 = { ...base, turn: "player2", openingSeat: "player2" };
+  assert.equal(
+    validateAction(asPlayer2, "player2", { type: "build", x: 400, y: 400 }).code,
+    "build-opponent-half",
   );
+});
+
+test("a build snaps to the nearest support: ground, or a block already there", () => {
+  const base = createInitialState({ seed: SEED, openingSeat: "player1" });
+  const size = STRUCTURE_BLOCK_SIZE;
+  const requestX = base.battlefield.players.player1.x + 4 * size;
+  // The support is the HIGHEST ground under the block's footprint, not the height
+  // of its left edge.
+  const ground = groundYUnder(base.battlefield.terrain, requestX, size);
+
+  // A click high in the air still lands on the ground: a cover block cannot float.
+  const midAir = resolveBuildPlacement(base, "player1", requestX, ground - 300);
+  assert.equal(midAir.ok, true);
+  // The engine snaps the COLUMN too, so the support is measured on the tile it
+  // actually chose.
+  assert.equal(
+    midAir.placement.y + size,
+    groundYUnder(base.battlefield.terrain, midAir.placement.x, size),
+    "the block rests on the ground",
+  );
+
+  // Its top is now a support: a second request in the same column stacks on it.
+  const first = midAir.placement;
+  const withFirst = {
+    ...base,
+    battlefield: {
+      ...base.battlefield,
+      blocks: [
+        ...base.battlefield.blocks,
+        {
+          id: 8000,
+          seat: "player1",
+          kind: "cover",
+          x: first.x,
+          y: first.y,
+          size,
+          integrity: 1,
+        },
+      ],
+    },
+  };
+  const stacked = resolveBuildPlacement(withFirst, "player1", requestX, ground - 300);
+  assert.equal(stacked.ok, true);
+  assert.equal(stacked.placement.y + size, first.y, "the second block sits on the first");
+
+  // The ground tile a tank is standing on cannot also hold a block. Staged out in
+  // the open, away from the base roof, so the ground really is the only support
+  // in that column.
+  let open = withActions(base, 99);
+  for (let step = 0; step < 3; step++) {
+    open = applyAction({ ...open, turn: "player1" }, "player1", {
+      type: "move",
+      direction: "forward",
+    }).state;
+  }
+  const tank = open.battlefield.players.player1;
+  const tankTileX = Math.round((tank.x - size / 2) / size) * size;
+  const tankTileY = groundYUnder(open.battlefield.terrain, tankTileX, size) - size;
+  const onTank = resolveBuildPlacement(open, "player1", tankTileX, tankTileY);
+  assert.equal(onTank.ok, false);
+  assert.equal(onTank.code, "build-overlap");
 });
 
 test("a build is refused once the seat's block allowance is spent", () => {
@@ -521,7 +654,11 @@ test("a build is refused once the seat's block allowance is spent", () => {
     battlefield: { ...base.battlefield, blocks: [...base.battlefield.blocks, ...filler] },
   };
 
-  const verdict = validateAction(crowded, "player1", { type: "build" });
+  const verdict = validateAction(crowded, "player1", {
+    type: "build",
+    x: 200,
+    y: 100,
+  });
   assert.equal(verdict.ok, false);
   assert.equal(verdict.code, "block-limit");
 });
@@ -619,8 +756,9 @@ test("the same state and action always resolve identically", () => {
   const driveB = applyAction(state, "player1", { type: "move", direction: "forward" });
   assert.deepEqual(clone(driveA.state), clone(driveB.state));
 
-  const buildA = applyAction(state, "player1", { type: "build" });
-  const buildB = applyAction(state, "player1", { type: "build" });
+  const buildShot = { type: "build", x: 200, y: 400 };
+  const buildA = applyAction(state, "player1", buildShot);
+  const buildB = applyAction(state, "player1", buildShot);
   assert.deepEqual(clone(buildA.state), clone(buildB.state));
 });
 
@@ -671,6 +809,215 @@ test("a match records the action it accepted, enough to animate it", () => {
   const lastPoint = record.path[record.path.length - 1];
   assert.equal(lastPoint.x, record.impact.x, "the path ends at the recorded impact");
   assert.equal(lastPoint.y, record.impact.y);
+});
+
+test("driving over a heal pickup restores HP and removes the pickup", () => {
+  const base = createInitialState({ seed: SEED, openingSeat: "player1" });
+  const target = moveTargetFor(base, "player1", "forward");
+  assert.ok(target);
+  const staged = {
+    ...base,
+    hp: { player1: 40, player2: MAX_HP },
+    battlefield: {
+      ...base.battlefield,
+      pickups: [
+        {
+          id: 77,
+          kind: "heal",
+          x: target.x,
+          y: target.y - PLAYER_RADIUS,
+        },
+      ],
+    },
+  };
+
+  const { state: next, events } = applyAction(staged, "player1", {
+    type: "move",
+    direction: "forward",
+  });
+
+  assert.equal(next.hp.player1, 40 + POWERUP_HEAL_AMOUNT);
+  assert.equal(next.hp.player2, MAX_HP, "only the collector is healed");
+  assert.deepEqual(next.battlefield.pickups, [], "the pickup is spent");
+  assert.ok(events.some((event) => event.type === "pickup-collected"));
+  const healed = events.find((event) => event.type === "healed");
+  assert.equal(healed.amount, POWERUP_HEAL_AMOUNT);
+  assert.equal(healed.hp, next.hp.player1);
+});
+
+test("a collected pickup comes back after its respawn timer, so the middle is never swept", () => {
+  const base = createInitialState({ seed: SEED, openingSeat: "player1" });
+  const target = moveTargetFor(base, "player1", "forward");
+  assert.ok(target);
+  const collectedTurn = base.turnIndex;
+  const staged = {
+    ...base,
+    battlefield: {
+      ...base.battlefield,
+      pickups: [
+        { id: 77, kind: "double-damage", x: target.x, y: target.y - PLAYER_RADIUS },
+      ],
+      respawns: [],
+    },
+  };
+
+  const { state: collected } = applyAction(staged, "player1", {
+    type: "move",
+    direction: "forward",
+  });
+  assert.deepEqual(collected.battlefield.pickups, [], "the pickup is spent on collection");
+  assert.equal(collected.battlefield.respawns.length, 1, "and a respawn ticket is stamped");
+  const ticket = collected.battlefield.respawns[0];
+  assert.equal(ticket.id, 77, "the same pickup returns");
+  assert.equal(ticket.kind, "double-damage", "with the same kind");
+  assert.equal(ticket.x, target.x, "at the same spot");
+  assert.equal(
+    ticket.atTurn,
+    Number(collectedTurn) + POWERUP_RESPAWN_TURNS,
+    "the timer is measured in actions from the collection",
+  );
+
+  // Burn actions (a nudge back and forth) until the ticket comes due.
+  let state = collected;
+  let sawBack = false;
+  for (let guard = 0; guard < POWERUP_RESPAWN_TURNS + 4 && !sawBack; guard++) {
+    const seat = state.turn;
+    const before = Number(state.turnIndex);
+    const drive = { type: "move", direction: "backward" };
+    const action = validateAction(state, seat, drive).ok ? drive : SAFE_SHOT;
+    state = applyAction(state, seat, action).state;
+    const back = state.battlefield.pickups.some((pickup) => pickup.id === 77);
+    if (back) {
+      sawBack = true;
+      assert.equal(
+        Number(state.turnIndex),
+        ticket.atTurn,
+        "it returns exactly when the ticket comes due, not later",
+      );
+      assert.equal(state.battlefield.respawns.length, 0, "and the ticket is cleared");
+      assert.ok(Number(state.turnIndex) > before);
+    } else {
+      assert.ok(
+        state.battlefield.respawns.some((other) => other.id === 77),
+        "while it is away the ticket is the only record of it",
+      );
+    }
+  }
+  assert.ok(sawBack, "the pickup comes back inside its timer");
+});
+
+test("a pickup buried under a built block waits for the block to break", () => {
+  const base = createInitialState({ seed: SEED, openingSeat: "player1" });
+  const size = STRUCTURE_BLOCK_SIZE;
+  const spotX = Math.round((base.battlefield.players.player1.x + 3 * size) / size) * size;
+  const spotY = surfaceYAt(base.battlefield.terrain, spotX) - PLAYER_RADIUS;
+  const block = {
+    id: 4242,
+    seat: "player1",
+    kind: "cover",
+    x: spotX,
+    y: Math.round(spotY / size) * size - size,
+    size,
+    integrity: 1,
+  };
+
+  const staged = {
+    ...base,
+    battlefield: {
+      ...base.battlefield,
+      blocks: [...base.battlefield.blocks, block],
+      pickups: [],
+      respawns: [{ id: 88, kind: "heal", x: spotX, y: spotY, atTurn: 0 }],
+    },
+  };
+
+  const { state: stillBlocked } = applyAction(staged, "player1", SAFE_SHOT);
+  assert.deepEqual(
+    stillBlocked.battlefield.pickups,
+    [],
+    "a pickup is never dropped inside a block",
+  );
+  assert.equal(stillBlocked.battlefield.respawns.length, 1, "the ticket keeps waiting");
+  assert.ok(
+    stillBlocked.battlefield.respawns[0].atTurn > staged.battlefield.respawns[0].atTurn,
+    "and is retried on the next action",
+  );
+
+  // Break the block: the very next action deals the pickup again.
+  const cleared = {
+    ...stillBlocked,
+    battlefield: {
+      ...stillBlocked.battlefield,
+      blocks: stillBlocked.battlefield.blocks.filter((other) => other.id !== block.id),
+    },
+  };
+  const { state: returned } = applyAction(cleared, cleared.turn, SAFE_SHOT);
+  assert.deepEqual(
+    returned.battlefield.pickups.map((pickup) => pickup.id),
+    [88],
+    "with the spot free the middle deals it again",
+  );
+  assert.deepEqual(returned.battlefield.respawns, [], "and the ticket is spent");
+});
+
+test("double damage doubles the next shot and is spent by firing, hit or miss", () => {
+  const state = createInitialState({ seed: SEED, openingSeat: "player1" });
+  const shot = openingHit(state);
+  const plain = applyAction(state, "player1", shot).state;
+  assert.ok(plain.lastAction.damage > 0, "the baseline shot connects");
+
+  const armed = {
+    ...state,
+    buffs: { ...state.buffs, player1: { doubleDamage: true, doubleBlast: false } },
+  };
+  const doubled = applyAction(armed, "player1", shot).state;
+  assert.equal(
+    doubled.lastAction.damage,
+    Math.min(MAX_HP, plain.lastAction.damage * 2),
+    "double damage doubles the HP the same shot takes",
+  );
+  assert.equal(doubled.lastAction.buffs.doubleDamage, true, "the record shows what was spent");
+  assert.deepEqual(
+    buffsOf(doubled, "player1"),
+    { doubleDamage: false, doubleBlast: false },
+    "firing spends the buff",
+  );
+  assert.deepEqual(plain.lastAction.buffs, { doubleDamage: false, doubleBlast: false });
+
+  // A shot that hits nothing still spends it.
+  const missed = applyAction(armed, "player1", { type: "shoot", angleDeg: 90, power: 0 }).state;
+  assert.deepEqual(buffsOf(missed, "player1"), { doubleDamage: false, doubleBlast: false });
+  assert.equal(missed.hp.player2, MAX_HP);
+});
+
+test("double blast widens the crater without changing tank damage", () => {
+  const state = createInitialState({ seed: SEED, openingSeat: "player1" });
+  // A low, hard shot ploughs into the ground in front of the tank.
+  const groundShot = { type: "shoot", angleDeg: 12, power: 100 };
+  const plain = applyAction(state, "player1", groundShot).state;
+  assert.equal(plain.lastAction.impact.kind, "terrain", "the reference shot hits ground");
+
+  const armed = {
+    ...state,
+    buffs: { ...state.buffs, player1: { doubleDamage: false, doubleBlast: true } },
+  };
+  const doubled = applyAction(armed, "player1", groundShot).state;
+  assert.equal(doubled.lastAction.impact.kind, "terrain");
+
+  const carve = (next) => {
+    let total = 0;
+    for (let column = 0; column < next.battlefield.terrain.length; column++) {
+      total += next.battlefield.terrain[column] - state.battlefield.terrain[column];
+    }
+    return total;
+  };
+  assert.ok(carve(plain) > 0, "a ground hit carves something");
+  assert.ok(
+    carve(doubled) > carve(plain),
+    `double blast must carve more (${carve(doubled)} vs ${carve(plain)})`,
+  );
+  assert.equal(doubled.lastAction.damage, 0, "a crater never costs HP");
+  assert.deepEqual(buffsOf(doubled, "player1"), { doubleDamage: false, doubleBlast: false });
 });
 
 test("a legacy lives state is read as full HP instead of NaN", () => {

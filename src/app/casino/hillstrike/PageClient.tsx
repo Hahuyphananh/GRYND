@@ -252,8 +252,8 @@ export default function HillstrikeLobbyPage() {
           body: (
             <>
               Drag away from your target to set <b>direction and power</b>, then
-              fire. The projectile flies a real arc: it can be stopped by a tower,
-              buried in a crater, or fly clean out of bounds.
+              fire. The projectile flies a real arc: it can be stopped by a built
+              block, clipped by a hill, or fly clean out of bounds.
             </>
           ),
         },
@@ -264,8 +264,8 @@ export default function HillstrikeLobbyPage() {
               A randomly drawn opening seat takes <b>one</b> action; the other
               answers with <b>two</b>. From then on the seats alternate{" "}
               <b>two-action turns</b>, and each action is one of three things:{" "}
-              <b>fire</b>, <b>drive</b> closer or farther, or <b>build</b> one
-              block of cover in front of your hull.
+              <b>fire</b>, <b>drive</b> closer or farther, or <b>build</b> a block
+              of cover anywhere on your own half.
             </>
           ),
         },
@@ -280,9 +280,12 @@ export default function HillstrikeLobbyPage() {
               and driving away is how you give it up.
               <br />
               <br />
-              Towers and craters never cost HP by themselves — but a tower stops
-              a shell, so knocking one down is how the next hit lands. The first
-              tank knocked out to 0 HP loses immediately. Whose turn it is, where
+              Ground and blocks never cost HP by themselves — a shell breaks
+              whatever it touches, at any range, so cover buys one shot. Each
+              spawn sits under an indestructible roof, and the map climbs away
+              from it, so neither tank can be sniped from its own corner: the
+              slopes and the middle power-ups are what a win is made of. The
+              first tank knocked out to 0 HP loses immediately. Whose turn it is, where
               the shell landed, the damage, both HP pools and the winner are all
               resolved <b>server-side</b> by the shared engine, so a stale tab can
               never invent a hit. Online matches are free and rated; practice

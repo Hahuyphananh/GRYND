@@ -34,13 +34,19 @@ import {
 } from "../src/lib/hillstrike/ai.ts";
 import {
   ACTION_TYPES,
+  BATTLEFIELD_WIDTH,
   HIT_DAMAGE_MAX,
   IMPACT_KINDS,
+  LAUNCHER_INSET_X,
   MATCH_STATUS,
   MAX_HP,
+  MOVE_STEP,
   POWER_MAX,
+  POWERUP_CHASE_DRIVES,
+  STRUCTURE_BLOCK_SIZE,
 } from "../src/lib/hillstrike/constants.ts";
 import { createProjectileSpec, simulateShot } from "../src/lib/hillstrike/physics.ts";
+import { surfaceYAt } from "../src/lib/hillstrike/generation.ts";
 import { applyAction, createInitialState, hpOf, validateAction } from "../src/lib/hillstrike/rules.ts";
 import { AI_DIFFICULTIES, coerceAiDifficulty } from "../src/lib/aiDifficulty.ts";
 
@@ -61,6 +67,40 @@ function stateWithBotToPlay(seed, { openingSeat = HUMAN_SEAT } = {}) {
   return fresh;
 }
 
+/**
+ * A position where BOTH tanks have driven out from under their base roofs.
+ *
+ * From the spawn the only line the engine can offer is into the player's own
+ * indestructible ceiling — that is the point of the roof — so positions where the
+ * bot is expected to SHOOT have to be staged the way a real match gets there: by
+ * driving. Filler actions are straight-up minimum-power shots, which the roof
+ * absorbs without changing the battlefield at all.
+ */
+function stateInTheOpen(seed, { drives = 3, projectile } = {}) {
+  let state = createInitialState({ seed, openingSeat: HUMAN_SEAT, projectile });
+  const travelled = (seat) => {
+    const spawn =
+      seat === HUMAN_SEAT ? LAUNCHER_INSET_X : BATTLEFIELD_WIDTH - LAUNCHER_INSET_X;
+    return Math.abs(state.battlefield.players[seat].x - spawn);
+  };
+  const atQuota = (seat) => travelled(seat) >= drives * MOVE_STEP;
+
+  for (let guard = 0; guard < 200; guard++) {
+    if (atQuota(HUMAN_SEAT) && atQuota(AI_SEAT) && state.turn === AI_SEAT) {
+      return state;
+    }
+    const actor = state.turn;
+    const canDrive =
+      !atQuota(actor) &&
+      validateAction(state, actor, { type: "move", direction: "forward" }).ok;
+    const action = canDrive
+      ? { type: "move", direction: "forward" }
+      : { type: "shoot", angleDeg: 90, power: 0 };
+    state = applyAction(state, actor, action).state;
+  }
+  throw new Error(`could not stage an open position for seed ${seed}`);
+}
+
 /** Resolve a shot exactly as the match would, and report what it hit. */
 function resolve(state, seat, shot) {
   return simulateShot({
@@ -69,6 +109,14 @@ function resolve(state, seat, shot) {
     shot,
     projectile: state.projectile,
   }).impact;
+}
+
+/** The same board with the middle emptied, for tests that are about AIM alone. */
+function withoutPickups(state) {
+  return {
+    ...state,
+    battlefield: { ...state.battlefield, pickups: [], respawns: [] },
+  };
 }
 
 /** `random` that never slips: 1 is above every tier's mistake rate. */
@@ -96,7 +144,17 @@ test("hillstrike ai: the bot returns one action, and nothing but an action", () 
         assert.deepEqual(Object.keys(action).sort(), ["direction", "type"]);
         assert.ok(["forward", "back"].includes(action.direction));
       } else {
-        assert.deepEqual(Object.keys(action), ["type"]);
+        // A build names the tile it wants; the engine still derives everything
+        // else about the block it will place.
+        assert.deepEqual(Object.keys(action).sort(), ["type", "x", "y"]);
+        assert.equal(Number.isInteger(action.x), true);
+        assert.equal(Number.isInteger(action.y), true);
+        assert.ok(
+          AI_SEAT === "player1"
+            ? action.x + STRUCTURE_BLOCK_SIZE <= BATTLEFIELD_WIDTH / 2
+            : action.x >= BATTLEFIELD_WIDTH / 2,
+          "the bot builds on its own half",
+        );
       }
 
       // Whatever it picked, the engine must accept it.
@@ -107,7 +165,9 @@ test("hillstrike ai: the bot returns one action, and nothing but an action", () 
 
 test("hillstrike ai: difficulty changes the AIM, never the projectile or the physics", () => {
   const seed = 987654;
-  const state = stateWithBotToPlay(seed);
+  // No pickups: this test is about the SHOT a tier picks, not about hard's
+  // middle play (which has its own tests below).
+  const state = withoutPickups(stateInTheOpen(seed));
 
   for (const difficulty of AI_DIFFICULTIES) {
     const action = chooseAiAction({ state, seat: AI_SEAT, difficulty, random: neverSlips });
@@ -146,7 +206,7 @@ test("hillstrike ai: a stronger tier lands at least as many direct hits across s
   let harder = 0;
   let easier = 0;
   for (const seed of seeds) {
-    const state = stateWithBotToPlay(seed);
+    const state = withoutPickups(stateInTheOpen(seed));
     const easy = chooseAiAction({ state, seat: AI_SEAT, difficulty: "easy", random: neverSlips });
     const hard = chooseAiAction({ state, seat: AI_SEAT, difficulty: "hard", random: neverSlips });
     // Only seeds where both tiers chose to fire say anything about aiming; a
@@ -164,7 +224,7 @@ test("hillstrike ai: a stronger tier lands at least as many direct hits across s
 });
 
 test("hillstrike ai: the bot is deterministic for a given random stream", () => {
-  const state = stateWithBotToPlay(424242);
+  const state = stateInTheOpen(424242);
 
   for (const difficulty of AI_DIFFICULTIES) {
     const once = chooseAiAction({ state, seat: AI_SEAT, difficulty, random: neverSlips });
@@ -342,28 +402,66 @@ test("hillstrike ai: tie-breaking is a total order, so a plan never wobbles", ()
   assert.ok(compareAiScores(x, z) < 0);
 });
 
-test("hillstrike ai: a direct hit outranks breaking cover, which outranks bare ground", () => {
-  const state = stateWithBotToPlay(424242);
+test("hillstrike ai: a direct hit outranks enemy cover, which outranks ground, which outranks a roof", () => {
+  // One BREAKABLE cover block is staged on the human's half, in the bot's arc:
+  // a fresh board only carries the indestructible base roofs, and the whole
+  // point of this ladder is to separate "cover worth breaking" from "scenery
+  // that cannot be broken".
+  const base = stateInTheOpen(424242);
+  const human = base.battlefield.players[HUMAN_SEAT];
+  const size = STRUCTURE_BLOCK_SIZE;
+  const coverX = Math.round((human.x - 3 * size) / size) * size;
+  const coverY =
+    surfaceYAt(base.battlefield.terrain, coverX) - size;
+  const state = {
+    ...base,
+    battlefield: {
+      ...base.battlefield,
+      blocks: [
+        ...base.battlefield.blocks,
+        {
+          id: 9001,
+          seat: HUMAN_SEAT,
+          kind: "cover",
+          x: coverX,
+          y: coverY,
+          size,
+          integrity: 1,
+        },
+      ],
+    },
+  };
+
   const scores = aiAimGrid("hard", AI_SEAT)
     .map((shot) => scoreAiShot({ state, seat: AI_SEAT, shot }))
     .filter(Boolean);
+  const blockKind = new Map(state.battlefield.blocks.map((block) => [block.id, block.kind]));
 
   const direct = scores.filter((entry) => entry.impact.kind === IMPACT_KINDS.PLAYER);
-  const blocks = scores.filter((entry) => entry.impact.kind === IMPACT_KINDS.BLOCK);
+  const cover = scores.filter(
+    (entry) => entry.impact.kind === IMPACT_KINDS.BLOCK && blockKind.get(entry.impact.blockId) === "cover",
+  );
+  const roof = scores.filter(
+    (entry) => entry.impact.kind === IMPACT_KINDS.BLOCK && blockKind.get(entry.impact.blockId) === "roof",
+  );
   const ground = scores.filter((entry) => entry.impact.kind === IMPACT_KINDS.TERRAIN);
-  assert.ok(direct.length > 0 && blocks.length > 0 && ground.length > 0, "all three are reachable");
+  assert.ok(
+    direct.length > 0 && cover.length > 0 && roof.length > 0 && ground.length > 0,
+    `all four are reachable (direct ${direct.length}, cover ${cover.length}, roof ${roof.length}, ground ${ground.length})`,
+  );
 
   const best = (list) => list.map((entry) => entry.score).reduce((x, y) => Math.max(x, y));
   const worst = (list) => list.map((entry) => entry.score).reduce((x, y) => Math.min(x, y));
-  assert.ok(worst(direct) > best(blocks), "a direct hit always beats a structural hit");
-  assert.ok(worst(blocks) > best(ground), "breaking cover always beats an open crater");
+  assert.ok(worst(direct) > best(cover), "a direct hit always beats a structural hit");
+  assert.ok(worst(cover) > best(ground), "breaking cover always beats an open crater");
+  assert.ok(best(ground) > best(roof), "a roof cannot be broken, so it is never worth a shell");
 
-  const byDistance = [...blocks].sort((x, y) => compareAiScores(x, y));
+  const byDistance = [...cover].sort((x, y) => compareAiScores(x, y));
   assert.ok(byDistance[0].distance <= byDistance[byDistance.length - 1].distance + 1e-6);
 });
 
 test("hillstrike ai: HP decides how much a knockout shot and its own cover are worth", () => {
-  const state = stateWithBotToPlay(424242);
+  const state = stateInTheOpen(424242);
   const hit = aiAimGrid("hard", AI_SEAT)
     .map((shot) => scoreAiShot({ state, seat: AI_SEAT, shot }))
     .find((entry) => entry && entry.impact.kind === IMPACT_KINDS.PLAYER);
@@ -384,20 +482,164 @@ test("hillstrike ai: HP decides how much a knockout shot and its own cover are w
   assert.ok(nearlyOut.score > healthy.score, "a knockout is worth more than a damaging hit");
 
   // A shot that fells the bot's own cover is scored down harder the closer the
-  // bot is to being knocked out.
+  // bot is to being knocked out. The bot's own breakable cover is staged in its
+  // own half, in front of its hull.
+  const own = state.battlefield.players[AI_SEAT];
+  const size = STRUCTURE_BLOCK_SIZE;
+  const ownX = Math.round((own.x - 2 * size) / size) * size;
+  const withOwnCover = {
+    ...state,
+    battlefield: {
+      ...state.battlefield,
+      blocks: [
+        ...state.battlefield.blocks,
+        {
+          id: 9002,
+          seat: AI_SEAT,
+          kind: "cover",
+          x: ownX,
+          y: surfaceYAt(state.battlefield.terrain, ownX) - size,
+          size,
+          integrity: 1,
+        },
+      ],
+    },
+  };
   const ownHit = aiAimGrid("hard", AI_SEAT)
-    .map((shot) => scoreAiShot({ state, seat: AI_SEAT, shot }))
+    .map((shot) => scoreAiShot({ state: withOwnCover, seat: AI_SEAT, shot }))
     .filter(Boolean)
     .find((entry) => entry.ownBlocksLost > 0);
-  if (ownHit) {
-    const scoreWith = (ownHp) =>
-      scoreAiShot({
-        state: { ...state, hp: { player1: hpOf(state, HUMAN_SEAT), player2: ownHp } },
-        seat: AI_SEAT,
-        shot: ownHit.shot,
-      }).score;
-    assert.ok(scoreWith(10) < scoreWith(MAX_HP), "low HP makes losing cover worse");
+  assert.ok(ownHit, "the bot can hit its own cover from this position");
+  const scoreWith = (ownHp) =>
+    scoreAiShot({
+      state: {
+        ...withOwnCover,
+        hp: { player1: hpOf(state, HUMAN_SEAT), player2: ownHp },
+      },
+      seat: AI_SEAT,
+      shot: ownHit.shot,
+    }).score;
+  assert.ok(scoreWith(10) < scoreWith(MAX_HP), "low HP makes losing cover worse");
+});
+
+/* -------------------------------------------------------------------------- *
+ * The middle: hard plays the map, not just its spawn
+ * -------------------------------------------------------------------------- */
+
+/**
+ * The bot's turn with BOTH actions in hand.
+ *
+ * A long walk only ever spends the first action of a turn (so the second still
+ * fires), which means the staged position has to be the start of a turn, not the
+ * middle of one — `stateInTheOpen` can land on either. Filler shots are fired
+ * straight up at zero power, which the base roof absorbs without changing the
+ * battlefield at all.
+ */
+function botOpener(state) {
+  for (
+    let guard = 0;
+    guard < 4 && (state.turn !== AI_SEAT || Number(state.actionsRemaining) < 2);
+    guard++
+  ) {
+    state = applyAction(state, state.turn, { type: "shoot", angleDeg: 90, power: 0 }).state;
   }
+  return state;
+}
+
+/** The same, from a fresh staged position. */
+const stateWithBotOpener = (seed, options) => botOpener(stateInTheOpen(seed, options));
+
+/** The pickup nearest the bot, and the one-action drive that closes on it. */
+function nearestPickup(state, seat) {
+  const player = state.battlefield.players[seat];
+  const pickups = state.battlefield.pickups ?? [];
+  return [...pickups].sort(
+    (a, b) => Math.abs(a.x - player.x) - Math.abs(b.x - player.x) || a.id - b.id,
+  )[0];
+}
+
+test("hillstrike ai: hard walks to the middle when a shell is not the better action", () => {
+  const base = stateWithBotOpener(424242);
+  const target = nearestPickup(base, AI_SEAT);
+  assert.ok(target, "the board deals pickups");
+  const bot = base.battlefield.players[AI_SEAT];
+  assert.ok(
+    Math.abs(target.x - bot.x) <= POWERUP_CHASE_DRIVES * MOVE_STEP,
+    "the nearest lane is inside the chase budget",
+  );
+
+  // Behind on HP: the buff is the comeback, so the drive beats another shell.
+  const behind = {
+    ...base,
+    hp: { ...base.hp, [AI_SEAT]: 40, [HUMAN_SEAT]: MAX_HP },
+  };
+  const hard = chooseAiAction({ state: behind, seat: AI_SEAT, difficulty: "hard", random: neverSlips });
+  assert.equal(hard.type, ACTION_TYPES.MOVE, "hard walks to the power-up");
+  assert.equal(
+    hard.direction,
+    Math.sign(target.x - bot.x) === -1 ? "forward" : "back",
+    "and walks TOWARD the pickup, not away from it",
+  );
+  assert.deepEqual(validateAction(behind, AI_SEAT, hard), { ok: true });
+
+  // Ahead on HP with a direct hit on the board, the shell is the better action:
+  // a walk there would hand the lead back (measured, not assumed).
+  const ahead = {
+    ...stateWithBotOpener(424242, { drives: 2 }),
+    hp: { player1: 60, player2: MAX_HP },
+  };
+  const trade = chooseAiAction({ state: ahead, seat: AI_SEAT, difficulty: "hard", random: neverSlips });
+  assert.equal(trade.type, ACTION_TYPES.SHOOT, "ahead and hitting, hard keeps firing");
+  assert.equal(
+    resolve(ahead, AI_SEAT, trade).kind,
+    IMPACT_KINDS.PLAYER,
+    "the shell it keeps is a direct hit, so the walk really was the worse action",
+  );
+
+  // (The weaker tiers never take the middle at all: they shoot whenever they have
+  // a line, which the aim test above pins for every tier.)
+});
+
+test("hillstrike ai: hard spends a buff it already carries, then goes back for the next", () => {
+  const state = stateInTheOpen(424242);
+  const armed = {
+    ...state,
+    buffs: { ...state.buffs, [AI_SEAT]: { doubleDamage: true, doubleBlast: false } },
+  };
+  const armedAction = chooseAiAction({
+    state: armed,
+    seat: AI_SEAT,
+    difficulty: "hard",
+    random: neverSlips,
+  });
+  assert.equal(
+    armedAction.type,
+    ACTION_TYPES.SHOOT,
+    "a buff in hand is spent on a shot, never stacked by another drive",
+  );
+});
+
+test("hillstrike ai: hard never trades a knockout for a power-up", () => {
+  const state = stateInTheOpen(424242);
+  const oneHit = { ...state, hp: { ...state.hp, [HUMAN_SEAT]: 1 } };
+  const action = chooseAiAction({
+    state: oneHit,
+    seat: AI_SEAT,
+    difficulty: "hard",
+    random: neverSlips,
+  });
+  assert.equal(action.type, ACTION_TYPES.SHOOT, "the kill is taken while it is on the board");
+  assert.equal(
+    resolve(oneHit, AI_SEAT, action).kind,
+    IMPACT_KINDS.PLAYER,
+    "and it is a real direct hit, not a hopeful lob",
+  );
+});
+
+test("hillstrike ai: hard does not chase a lane it cannot reach this match", () => {
+  const state = withoutPickups(stateInTheOpen(424242));
+  const action = chooseAiAction({ state, seat: AI_SEAT, difficulty: "hard", random: neverSlips });
+  assert.equal(action.type, ACTION_TYPES.SHOOT, "with nothing to collect it keeps firing");
 });
 
 test("hillstrike ai: it plans with the match's projectile, never a private one", () => {
@@ -407,20 +649,10 @@ test("hillstrike ai: it plans with the match's projectile, never a private one",
     launchSpeedMax: 11,
   });
   const seed = 424242;
-  const state = createInitialState({ seed, openingSeat: HUMAN_SEAT, projectile: slow });
-  const botState = applyAction(state, HUMAN_SEAT, {
-    type: ACTION_TYPES.SHOOT,
-    angleDeg: 45,
-    power: 100,
-  }).state;
+  const botState = stateInTheOpen(seed, { projectile: slow });
   assert.deepEqual(botState.projectile, slow, "the match carries its own spec");
 
-  const fastState = createInitialState({ seed, openingSeat: HUMAN_SEAT });
-  const fastBotState = applyAction(fastState, HUMAN_SEAT, {
-    type: ACTION_TYPES.SHOOT,
-    angleDeg: 45,
-    power: 100,
-  }).state;
+  const fastBotState = stateInTheOpen(seed);
 
   const slowAction = chooseAiAction({ state: botState, seat: AI_SEAT, difficulty: "normal", random: neverSlips });
   const fastAction = chooseAiAction({ state: fastBotState, seat: AI_SEAT, difficulty: "normal", random: neverSlips });

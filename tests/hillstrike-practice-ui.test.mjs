@@ -212,8 +212,12 @@ test("hillstrike practice: HP, turns and action limits come from the constants",
   );
   assert.equal(/100\s*(hp|HP)/.test(hudCode), false, "no hard-coded HP total");
   assert.ok(
-    hudCode.includes("STRUCTURE_BLOCK_SIZE"),
-    "the build button describes the block it places from the engine's size",
+    hudCode.includes("MOVE_RANGE"),
+    "the drive copy is written from the engine's leash, never a hard-coded one",
+  );
+  assert.ok(
+    hudCode.includes("buffsOf(state, viewerSeat)"),
+    "the HUD shows the buffs the engine says are active",
   );
   assert.equal(
     /ACTIONS_PER_TURN|actionsRemaining\s*[-+*/]/.test(pageCode),
@@ -261,6 +265,16 @@ test("hillstrike practice: one canvas, drawn fluidly on every screen", () => {
   assert.ok(
     fieldCode.includes('className="block h-full w-full"'),
     "the canvas fills its fluid wrapper",
+  );
+  // The middle's respawn timer is drawn from the engine's own schedule, so a
+  // collected pickup reads as "coming back" instead of vanishing.
+  assert.ok(
+    fieldCode.includes("respawnsOf(state.battlefield)"),
+    "the board reads the engine's respawn tickets",
+  );
+  assert.ok(
+    fieldCode.includes("ticket.atTurn") && fieldCode.includes("drawRespawnRing"),
+    "and renders the countdown for each waiting pickup",
   );
   // No fixed board size anywhere (that is what breaks phones).
   assert.equal(/\bwidth=\{\d{3,}\}/.test(fieldCode), false, "no fixed canvas width");
