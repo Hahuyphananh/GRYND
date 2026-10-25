@@ -30,12 +30,29 @@ function getRemoteRedisConfig() {
   };
 }
 
+/**
+ * Deadline for the whole remote rate-limit round trip.
+ *
+ * These are plain `fetch` calls to Upstash's REST API, and Node's fetch has no
+ * timeout. An unreachable (blackholed) Upstash host therefore used to hang the
+ * request that awaited it — every `/api/*` call, since rate limiting runs
+ * before any handler — with no response bytes and no log line. One deadline for
+ * the whole sequence (normally three calls) keeps the fallback to the in-memory
+ * limiter fast instead of letting each call wait out its own timeout.
+ */
+const REMOTE_LIMIT_TIMEOUT_MS = 1_000;
+
 async function consumeRemoteRateLimit(
   key: string,
   config: LimitConfig,
 ): Promise<LimitResult | null> {
   const redis = getRemoteRedisConfig();
   if (!redis) return null;
+
+  // Shared by all the calls below: the first abort rejects the in-flight fetch
+  // and any later call on an expired signal, which `consumeRateLimit` catches
+  // and answers from the in-memory limiter.
+  const signal = AbortSignal.timeout(REMOTE_LIMIT_TIMEOUT_MS);
 
   const encodedKey = encodeURIComponent(`ratelimit:${key}`);
   const ttlSeconds = Math.max(Math.ceil(config.windowMs / 1000), 1);
@@ -47,6 +64,7 @@ async function consumeRemoteRateLimit(
   const incrRes = await fetch(`${redis.url}/incr/${encodedKey}`, {
     headers,
     cache: "no-store",
+    signal,
   });
   if (!incrRes.ok) return null;
 
@@ -58,12 +76,14 @@ async function consumeRemoteRateLimit(
     await fetch(`${redis.url}/expire/${encodedKey}/${ttlSeconds}`, {
       headers,
       cache: "no-store",
+      signal,
     });
   }
 
   const ttlRes = await fetch(`${redis.url}/ttl/${encodedKey}`, {
     headers,
     cache: "no-store",
+    signal,
   });
   const ttlJson = ttlRes.ok ? await ttlRes.json() : null;
   const ttl = Number(ttlJson?.result ?? ttlSeconds);

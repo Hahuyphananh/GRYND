@@ -166,6 +166,7 @@
     "test:bot-turns": "node --import tsx --test tests/bot-opponents-turn.test.mjs",
     "test:game-routes": "node --import tsx --test tests/game-route-public.test.mjs",
     "test:game-landing": "node --import tsx --test tests/game-landing-pages.test.mjs",
+    "test:request-timeouts": "node --import tsx --test --experimental-test-module-mocks tests/request-timeouts.test.mjs",
     "test:structured-data": "node --import tsx --test tests/game-structured-data.test.mjs",
     "test:internal-linking": "node --import tsx --test tests/internal-linking.test.mjs",
     "test:guides": "node --import tsx --test tests/guides.test.mjs",
