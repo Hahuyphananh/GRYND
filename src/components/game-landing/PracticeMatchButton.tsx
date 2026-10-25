@@ -42,8 +42,16 @@ export type PracticeMatchButtonProps = {
   apiPath: string;
   /** The visible label, e.g. "Play the bot". */
   label: string;
-  /** Builds the board URL for the match the route just created. */
-  matchHref: (matchId: string) => string;
+  /**
+   * The game's match URL PREFIX, e.g. `/games/dominoes/` (see
+   * `gameMatchPathPrefix`); the id the route answers with is appended.
+   *
+   * A STRING, not a `(matchId) => string` builder, because this component is
+   * rendered by a server component: functions are not serialisable across the
+   * server/client boundary, and React throws as soon as one is passed — which
+   * took the whole landing page down behind the route error boundary.
+   */
+  matchHrefBase: string;
 };
 
 const FAILED = "Unable to start a practice match. Please try again.";
@@ -51,7 +59,7 @@ const FAILED = "Unable to start a practice match. Please try again.";
 export default function PracticeMatchButton({
   apiPath,
   label,
-  matchHref,
+  matchHrefBase,
 }: PracticeMatchButtonProps) {
   const router = useMatchRouter();
   const [busy, setBusy] = useState(false);
@@ -78,12 +86,12 @@ export default function PracticeMatchButton({
         return;
       }
       // Deliberately left busy: this document is on its way to the board.
-      router.push(matchHref(matchId));
+      router.push(`${matchHrefBase}${matchId}`);
     } catch {
       setError(FAILED);
       setBusy(false);
     }
-  }, [apiPath, busy, matchHref, router]);
+  }, [apiPath, busy, matchHrefBase, router]);
 
   return (
     <span className="inline-flex flex-col items-start gap-1">

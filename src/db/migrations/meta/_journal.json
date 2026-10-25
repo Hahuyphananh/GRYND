@@ -1478,6 +1478,13 @@
       "when": 1800000073000,
       "tag": "0229_hillstrike_pvp",
       "breakpoints": true
+    },
+    {
+      "idx": 211,
+      "version": "7",
+      "when": 1800000074000,
+      "tag": "0230_hillstrike_hp_actions",
+      "breakpoints": true
     }
   ]
 }

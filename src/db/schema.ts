@@ -3899,14 +3899,14 @@ export const barricadeMoves = pgTable(
 // HILLSTRIKE — the 1v1 artillery duel, played online.
 // ==============================================================================
 // `game_state` is the ONE authoritative position: the frozen `HillstrikeState`
-// produced by the pure engine in src/lib/hillstrike/rules.ts (`applyShot`).
-// Hillstrike is perfect information — both players' positions, lives, the
-// terrain and both towers are public — so nothing has to be hidden from either
-// seat, and the whole state can travel to both clients unchanged.
+// produced by the pure engine in src/lib/hillstrike/rules.ts (`applyAction`).
+// Hillstrike is perfect information — both players' positions, both HP pools,
+// the terrain and both towers are public — so nothing has to be hidden from
+// either seat, and the whole state can travel to both clients unchanged.
 //
 // `seed` + `field_version` reproduce the layout; `initial_battlefield` keeps the
 // ground that was ACTUALLY dealt, so a stored match still replays correctly if
-// the generator is retuned later. `ply` is the accepted-SHOT count and the
+// the generator is retuned later. `ply` is the accepted-ACTION count and the
 // optimistic-concurrency version (`expectedVersion`).
 //
 // A client may only submit `{ angleDeg, power }` plus that version: the shot's
@@ -3978,24 +3978,30 @@ export const hillstrikeShots = pgTable(
     matchId: uuid("match_id")
       .notNull()
       .references(() => hillstrikeMatches.id, { onDelete: "cascade" }),
-    // The action index (== the match's `ply`) this shot consumed.
+    // The action index (== the match's `ply`) this action consumed.
     actionIndex: integer("action_index").notNull(),
     playerId: varchar("player_id", { length: 255 }).notNull(),
-    // The seat the server resolved the shooter to.
+    // The seat the server resolved the actor to.
     seat: varchar("seat", { length: 8 }).notNull(),
-    // The whole player-authored input: a direction and a power.
-    angleDeg: doublePrecision("angle_deg").notNull(),
-    power: integer("power").notNull(),
+    // shoot | move | build (ACTION_TYPES in src/lib/hillstrike/constants.ts).
+    action: varchar("action", { length: 8 }).notNull().default("shoot"),
+    // The player-authored aim — only a `shoot` has one; a drive or a build is
+    // null here rather than a zero that would read as a real shot.
+    angleDeg: doublePrecision("angle_deg"),
+    power: integer("power"),
     // Where the projectile stopped and what it met (IMPACT_KINDS).
-    impactKind: varchar("impact_kind", { length: 16 }).notNull(),
-    impactX: doublePrecision("impact_x").notNull(),
-    impactY: doublePrecision("impact_y").notNull(),
+    impactKind: varchar("impact_kind", { length: 16 }),
+    impactX: doublePrecision("impact_x"),
+    impactY: doublePrecision("impact_y"),
     // The seat hit, for `player`; NULL otherwise.
     targetSeat: varchar("target_seat", { length: 8 }),
+    // HP taken off the opponent by a `shoot`; 0 for a drive or a build.
+    damage: integer("damage").notNull().default(0),
+    // v1 (lives rules) rows only. New matches always write 0.
     livesLost: integer("lives_lost").notNull().default(0),
-    // The resolved outcome: impact, lives after, turn/volley counters and any
+    // The resolved outcome: impact, damage, HP after, turn counters and any
     // terminal status. Compact on purpose — the trajectory itself is already on
-    // `game_state.lastShot`, which is what both clients animate.
+    // `game_state.lastAction`, which is what both clients animate.
     outcome: jsonb("outcome").notNull(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },

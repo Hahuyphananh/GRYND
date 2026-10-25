@@ -7,7 +7,7 @@
  * and a battlefield component unchanged.
  *
  * SECRET STATE: there is none. Hillstrike is perfect information — terrain,
- * both towers, both lives and the volley counters are public — so a snapshot
+ * both towers, both HP pools and the volley counters are public — so a snapshot
  * projection only has to decide what the VIEWER is (which seat, whose turn),
  * never what to hide.
  */
@@ -17,6 +17,7 @@ import type {
   END_REASONS,
   IMPACT_KINDS,
   MATCH_STATUS,
+  MOVE_DIRECTIONS,
   REJECTION,
   SEATS,
 } from "./constants";
@@ -36,6 +37,10 @@ export type ImpactKind = (typeof IMPACT_KINDS)[keyof typeof IMPACT_KINDS];
 /** Machine-readable rejection code. */
 export type RejectionCode = (typeof REJECTION)[keyof typeof REJECTION];
 
+/** Which way a drive goes. */
+export type MoveDirection =
+  (typeof MOVE_DIRECTIONS)[keyof typeof MOVE_DIRECTIONS];
+
 /**
  * A shot as a caller may submit it: a direction and a power, and nothing else.
  *
@@ -46,6 +51,24 @@ export interface ShotInput {
   readonly angleDeg: number;
   readonly power: number;
 }
+
+/** A drive: close the range (`forward`) or open it (`back`). */
+export interface MoveInput {
+  readonly direction: MoveDirection;
+}
+
+/**
+ * The three actions a turn can spend. Each is plain data and each is validated
+ * by ./rules from the state the server already holds — an action never carries a
+ * position, a block, a hit or a damage figure.
+ */
+export type HillstrikeAction =
+  | { readonly type: "shoot"; readonly angleDeg: number; readonly power: number }
+  | { readonly type: "move"; readonly direction: MoveDirection }
+  | { readonly type: "build" };
+
+/** One action as the ENGINE accepts it (already narrowed and type-tagged). */
+export type ActionType = HillstrikeAction["type"];
 
 /**
  * The ONE projectile specification, snapshotted into the match state so a
@@ -168,10 +191,31 @@ export type ShotEvent =
       readonly y: number;
     }
   | {
-      readonly type: "life-lost";
+      readonly type: "hp-lost";
       readonly tick: number;
       readonly seat: Seat;
-      readonly lives: number;
+      /** The victim's HP AFTER the hit. */
+      readonly hp: number;
+      /** How much this hit took, after the distance falloff. */
+      readonly damage: number;
+    }
+  | {
+      readonly type: "moved";
+      readonly tick: number;
+      readonly seat: Seat;
+      readonly direction: MoveDirection;
+      readonly fromX: number;
+      readonly fromY: number;
+      readonly x: number;
+      readonly y: number;
+    }
+  | {
+      readonly type: "block-built";
+      readonly tick: number;
+      readonly seat: Seat;
+      readonly blockId: number;
+      readonly x: number;
+      readonly y: number;
     }
   | {
       readonly type: "match-ended";
@@ -186,22 +230,58 @@ export type ShotEvent =
       readonly y: number;
     };
 
-/** One accepted shot, as recorded on the state and in match history. */
+/** One resolved shell, as recorded on the state and in match history. */
 export interface ShotRecord {
+  readonly type: "shoot";
   readonly seat: Seat;
   readonly turnIndex: number;
   readonly shot: ShotInput;
   readonly impact: Impact;
   readonly path: readonly Vec2[];
   readonly events: readonly ShotEvent[];
-  readonly livesLost: number;
+  /** HP taken off the opponent by this shell (0 when it hit cover/ground). */
+  readonly damage: number;
+  /** Total flight distance, and the power scale it left the shell with. */
+  readonly distance: number;
+  readonly powerScale: number;
 }
+
+/** One drive, as recorded on the state and in match history. */
+export interface MoveRecord {
+  readonly type: "move";
+  readonly seat: Seat;
+  readonly turnIndex: number;
+  readonly direction: MoveDirection;
+  readonly fromX: number;
+  readonly fromY: number;
+  readonly toX: number;
+  readonly toY: number;
+  readonly events: readonly ShotEvent[];
+}
+
+/** One shield block placed, as recorded on the state and in match history. */
+export interface BuildRecord {
+  readonly type: "build";
+  readonly seat: Seat;
+  readonly turnIndex: number;
+  readonly blockId: number;
+  readonly x: number;
+  readonly y: number;
+  readonly events: readonly ShotEvent[];
+}
+
+/**
+ * Whatever the last accepted action resolved to. Discriminated on `type`, so a
+ * client animates a shell only when there is one and just re-reads the board for
+ * a drive or a build.
+ */
+export type ActionRecord = ShotRecord | MoveRecord | BuildRecord;
 
 /**
  * The whole match, as pure data.
  *
  * When `status` is not `playing` the match accepts nothing further: `turn` and
- * `shotsRemaining` are then informational only, and `winner` /
+ * `actionsRemaining` are then informational only, and `winner` /
  * `terminationReason` are the truth.
  */
 export interface HillstrikeState {
@@ -209,26 +289,26 @@ export interface HillstrikeState {
   readonly fieldVersion: number;
   /** The battlefield seed — the battlefield is reproducible from it forever. */
   readonly seed: number;
-  /** The randomly drawn seat that fired the opening shot. */
+  /** The randomly drawn seat that took the opening action. */
   readonly openingSeat: Seat;
-  /** The ACTIVE seat (the seat allowed to shoot right now). */
+  /** The ACTIVE seat (the seat allowed to act right now). */
   readonly turn: Seat;
-  /** Accepted shots so far. Doubles as the match's version/ply. */
+  /** Accepted actions so far. Doubles as the match's version/ply. */
   readonly turnIndex: number;
-  /** Shots the ACTIVE seat may still fire in the current volley (1 or 2). */
-  readonly shotsRemaining: number;
+  /** Actions the ACTIVE seat may still spend in this turn (1 or 2). */
+  readonly actionsRemaining: number;
   /** True until the opening seat's single opening shot has been fired. */
   readonly openingShotPending: boolean;
-  readonly lives: Readonly<Record<Seat, number>>;
+  readonly hp: Readonly<Record<Seat, number>>;
   readonly battlefield: Battlefield;
   readonly projectile: ProjectileSpec;
   readonly winner: Seat | null;
   readonly terminationReason: EndReason | null;
-  readonly lastShot: ShotRecord | null;
+  readonly lastAction: ActionRecord | null;
 }
 
-/** Why a specific shot is or is not legal. */
-export type ShotVerdict =
+/** Why a specific action is or is not legal. */
+export type ActionVerdict =
   | { readonly ok: true }
   | { readonly ok: false; readonly code: RejectionCode; readonly message: string };
 
@@ -244,13 +324,17 @@ export interface ShotSimulation {
   readonly events: readonly ShotEvent[];
   readonly battlefield: Battlefield;
   readonly ticks: number;
+  /** World units the shell actually flew, launch point → impact. */
+  readonly distance: number;
+  /** The power it had left (1 = full, `SHOT_POWER_MIN_SCALE` = floor). */
+  readonly powerScale: number;
 }
 
-/** What `applyShot` returns: the next authoritative state plus animation data. */
-export interface ApplyShotResult {
+/** What `applyAction` returns: the next authoritative state plus animation data. */
+export interface ApplyActionResult {
   readonly state: HillstrikeState;
   readonly events: readonly ShotEvent[];
 }
 
-/** One seat's lives, for callers that only need the number. */
-export type Lives = Readonly<Record<Seat, number>>;
+/** One seat's hit points, for callers that only need the map. */
+export type Hp = Readonly<Record<Seat, number>>;

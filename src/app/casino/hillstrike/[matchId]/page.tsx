@@ -14,7 +14,7 @@ export async function generateMetadata({
   return {
     robots: { index: false, follow: false },
     title: `Hillstrike Match #${shortId} | GRYND`,
-    description: `Live Hillstrike duel #${shortId} on GRYND — a free 1v1 artillery match with three lives each.`,
+    description: `Live Hillstrike duel #${shortId} on GRYND — a free 1v1 artillery match with 100 HP tanks and three actions per turn.`,
   };
 }
 

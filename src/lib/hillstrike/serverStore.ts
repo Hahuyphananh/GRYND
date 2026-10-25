@@ -6,15 +6,16 @@
 //
 // ── TRUST BOUNDARY ───────────────────────────────────────────────────────
 //
-// The ONLY player-authored values that reach this module are the AIM INPUT
-// (`{ angleDeg, power }`) and the optimistic-concurrency token
-// `expectedVersion`. The trajectory, the collision point and kind, the crater,
-// both towers, both lives, whose turn it is, the shots remaining in the volley,
-// the winner and the match result are ALL computed from the server's own
-// authoritative state by the shared engine (`validateShot` → `applyShot` →
-// `simulateShot`). A client cannot submit a board, a hit, a damage amount, a
-// life count, a terrain height, a winner, a result or a completion flag — no
-// such field is ever read.
+// The ONLY player-authored values that reach this module are the ACTION
+// (`{ type: "shoot", angleDeg, power }`, `{ type: "move", direction }` or
+// `{ type: "build" }`) and the optimistic-concurrency token `expectedVersion`.
+// The trajectory, the collision point and kind, the crater, both towers, both
+// HP pools, whose turn it is, the actions remaining in the turn, the placed
+// block, the winner and the match result are ALL computed from the server's own
+// authoritative state by the shared engine (`validateAction` → `applyAction` →
+// `simulateShot`). A client cannot submit a board, a hit, a damage amount, an HP
+// total, a position, a block, a terrain height, a winner, a result or a
+// completion flag — no such field is ever read.
 //
 // ── CONCURRENCY ──────────────────────────────────────────────────────────
 //
@@ -64,8 +65,14 @@ import {
   MATCH_STATUS,
   REJECTION,
 } from "./constants";
-import { applyShot, createInitialState, otherSeat, validateShot } from "./rules";
-import type { HillstrikeState, Seat, ShotInput, ShotRecord } from "./types";
+import {
+  applyAction,
+  createInitialState,
+  hpMapOf,
+  otherSeat,
+  validateAction,
+} from "./rules";
+import type { ActionRecord, HillstrikeAction, HillstrikeState, Seat } from "./types";
 
 /** The two seats of a row: `player2Id` is null while the row is an open lobby. */
 export type Seats = { player1Id: string; player2Id: string | null };
@@ -80,7 +87,7 @@ type MatchRow = typeof hillstrikeMatches.$inferSelect;
  * where narrowing that union on its boolean literal discriminant does not work —
  * so the store reads the verdict through this widened shape instead.
  */
-type ShotVerdictWide = {
+type ActionVerdictWide = {
   ok: boolean;
   code?: string;
   message?: string;
@@ -185,8 +192,8 @@ export function statusForState(state: HillstrikeState): string {
  * Client-facing snapshot for `viewerId`.
  *
  * Hillstrike is perfect information, so the whole position is published — both
- * positions, both lives, the terrain, both towers, the volley counters and the
- * last resolved shot (which is what a client animates). Nothing here is
+ * positions, both HP pools, the terrain, both towers, the action counters and the
+ * last resolved action (which is what a client animates). Nothing here is
  * client-authoritative: every field is read off the row the engine wrote.
  */
 export function matchToDto(match: MatchRow, viewerId: string | null) {
@@ -216,9 +223,9 @@ export function matchToDto(match: MatchRow, viewerId: string | null) {
     turn: state.turn,
     turnUserId: activeUserId,
     turnIndex: state.turnIndex,
-    shotsRemaining: state.shotsRemaining,
+    actionsRemaining: state.actionsRemaining,
     openingShotPending: state.openingShotPending,
-    lives: state.lives,
+    hp: hpMapOf(state),
     // Viewer projection: whose seat the caller holds and whether it is theirs to
     // play. Derived on the server so the client never has to decide it.
     viewerSeat,
@@ -426,19 +433,21 @@ export async function fetchMatch({
   return { match, dto: matchToDto(match, userId) } as const;
 }
 
-/** The append-only shot log for a match, oldest first. */
+/** The append-only action log for a match, oldest first. */
 export async function fetchMatchShots(matchId: string) {
   return await db
     .select({
       actionIndex: hillstrikeShots.actionIndex,
       playerId: hillstrikeShots.playerId,
       seat: hillstrikeShots.seat,
+      action: hillstrikeShots.action,
       angleDeg: hillstrikeShots.angleDeg,
       power: hillstrikeShots.power,
       impactKind: hillstrikeShots.impactKind,
       impactX: hillstrikeShots.impactX,
       impactY: hillstrikeShots.impactY,
       targetSeat: hillstrikeShots.targetSeat,
+      damage: hillstrikeShots.damage,
       livesLost: hillstrikeShots.livesLost,
       createdAt: hillstrikeShots.createdAt,
     })
@@ -447,15 +456,15 @@ export async function fetchMatchShots(matchId: string) {
     .orderBy(sql`${hillstrikeShots.actionIndex} ASC`);
 }
 
-// ── The shot (the only gameplay mutation) ────────────────────────────────
+// ── The action (the only gameplay mutation) ─────────────────────────────
 
-export type ShotResult =
+export type ActionResult =
   | {
       match: MatchRow;
       state: HillstrikeState;
-      /** The server-resolved shot, exactly as recorded on the state. */
-      shot: ShotRecord;
-      /** The action index (the ply) this shot consumed. */
+      /** The server-resolved action, exactly as recorded on the state. */
+      action: ActionRecord;
+      /** The action index (the ply) this action consumed. */
       actionIndex: number;
       matchCompleted: boolean;
       winnerSeat: Seat | null;
@@ -466,14 +475,16 @@ export type ShotResult =
 /**
  * Rejection code → HTTP status.
  *
- * Shape/bounds errors are 400 (the client sent something that is not a shot);
- * everything the engine refuses about the POSITION or the turn is a 409 (the
- * caller's view is stale).
+ * Shape/bounds errors are 400 (the client sent something that is not an action
+ * the rules know); everything the engine refuses about the POSITION or the turn
+ * is a 409 (the caller's view is stale).
  */
 function statusForRejection(code: string): number {
   switch (code) {
+    case REJECTION.INVALID_ACTION:
     case REJECTION.INVALID_SHOT:
     case REJECTION.INVALID_SEAT:
+    case REJECTION.INVALID_DIRECTION:
     case REJECTION.ANGLE_INVALID:
     case REJECTION.POWER_INVALID:
       return 400;
@@ -483,9 +494,10 @@ function statusForRejection(code: string): number {
 }
 
 /**
- * Fire one shot.
+ * Take one action — fire, drive or build.
  *
- * The request carries ONLY the aim plus `expectedVersion`. Rejections, in order:
+ * The request carries ONLY the action plus `expectedVersion`. Rejections, in
+ * order:
  *
  *   404 match not found
  *   403 caller holds no seat                (before status: never leak status)
@@ -494,25 +506,25 @@ function statusForRejection(code: string): number {
  *   400 a missing / unusable `expectedVersion`
  *   409 stale `expectedVersion` (double submit / stale tab)
  *   409 it is not the caller's turn
- *   409 no shots left in this volley
- *   400 malformed aim (angle not in [0, 360), power not an integer 0…100)
- *   409 the engine refuses the shot
+ *   409 no actions left in this turn
+ *   400 malformed action (unknown type, angle/power out of range, bad direction)
+ *   409 the engine refuses the action (no room to drive, no room to build)
  *
- * `validateShot` then `applyShot` run inside the same row-locked transaction as
- * the write, so nothing about the shot's outcome is trusted from the request and
- * no two requests can consume the same action index.
+ * `validateAction` then `applyAction` run inside the same row-locked transaction
+ * as the write, so nothing about the outcome is trusted from the request and no
+ * two requests can consume the same action index.
  */
-export async function submitShot({
+export async function submitAction({
   userId,
   matchId,
-  shot,
+  action,
   expectedVersion,
 }: {
   userId: string;
   matchId: string;
-  shot: unknown;
+  action: unknown;
   expectedVersion: unknown;
-}): Promise<ShotResult> {
+}): Promise<ActionResult> {
   try {
     return await db.transaction(async (tx) => {
       const [match] = await tx
@@ -559,32 +571,33 @@ export async function submitShot({
       }
       if (expectedVersion !== match.ply) {
         return {
-          error: "Stale match state — this shot was resolved against an older position",
+          error: "Stale match state — this action was resolved against an older position",
           status: 409,
         } as const;
       }
 
       const state = stateOf(match);
 
-      // The engine's own verdict: seat, lifecycle, turn, volley budget, and the
-      // aim's shape. A malformed aim is refused, never repaired.
-      const verdict = validateShot(state, seat, shot) as ShotVerdictWide;
+      // The engine's own verdict: seat, lifecycle, turn, action budget, and the
+      // action's own shape. A malformed action is refused, never repaired.
+      const verdict = validateAction(state, seat, action) as ActionVerdictWide;
       if (!verdict.ok) {
-        const code = verdict.code ?? REJECTION.INVALID_SHOT;
+        const code = verdict.code ?? REJECTION.INVALID_ACTION;
         return {
-          error: verdict.message ?? "That shot is not legal here",
+          error: verdict.message ?? "That action is not legal here",
           status: statusForRejection(code),
           code,
         } as StoreError;
       }
 
-      // The engine resolves the whole shot (trajectory, collision, crater,
-      // collapse, life). It re-validates internally, so the verdict above and
-      // this call can never disagree.
-      const applied = applyShot(state, seat, shot as ShotInput);
+      // The engine resolves the whole action (trajectory, collision, crater,
+      // collapse, HP, drive, block). It re-validates internally, so the verdict
+      // above and this call can never disagree.
+      const applied = applyAction(state, seat, action as HillstrikeAction);
       const next = applied.state;
-      const record = next.lastShot as ShotRecord;
+      const record = next.lastAction as ActionRecord;
       const actionIndex = state.turnIndex;
+      const shot = record.type === "shoot" ? record : null;
 
       // Append-only log: the exact aim the server validated plus the outcome it
       // resolved. The unique (match_id, action_index) index rejects a duplicate
@@ -594,22 +607,29 @@ export async function submitShot({
         actionIndex,
         playerId: userId,
         seat,
-        angleDeg: record.shot.angleDeg,
-        power: record.shot.power,
-        impactKind: record.impact.kind,
-        impactX: record.impact.x,
-        impactY: record.impact.y,
-        targetSeat: record.impact.target,
-        livesLost: record.livesLost,
+        action: record.type,
+        // Only a shot has an aim and an impact; a drive or a build leaves them
+        // null rather than inventing a zero that would read as a real shot.
+        angleDeg: shot ? shot.shot.angleDeg : null,
+        power: shot ? shot.shot.power : null,
+        impactKind: shot ? shot.impact.kind : null,
+        impactX: shot ? shot.impact.x : null,
+        impactY: shot ? shot.impact.y : null,
+        targetSeat: shot ? shot.impact.target : null,
+        damage: shot ? shot.damage : 0,
+        // v1 rows carried lives here; it is kept in step for a reader that still
+        // counts them, and is 0 for every action under the HP rules.
+        livesLost: 0,
         outcome: {
-          impact: record.impact,
-          livesLost: record.livesLost,
-          lives: next.lives,
+          action: record.type,
+          impact: shot ? shot.impact : null,
+          damage: shot ? shot.damage : 0,
+          hp: next.hp,
           status: next.status,
           winner: next.winner,
           terminationReason: next.terminationReason,
           turn: next.turn,
-          shotsRemaining: next.shotsRemaining,
+          actionsRemaining: next.actionsRemaining,
           openingShotPending: next.openingShotPending,
           turnIndex: next.turnIndex,
         },
@@ -629,7 +649,7 @@ export async function submitShot({
       if (finished) {
         updates.result = winnerSeat;
         updates.winnerId = winnerSeat ? userIdForSeat(seats, winnerSeat) : null;
-        updates.resultReason = next.terminationReason ?? END_REASONS.LIVES_EXHAUSTED;
+        updates.resultReason = next.terminationReason ?? END_REASONS.HP_DEPLETED;
         updates.endedAt = new Date();
       }
 
@@ -653,14 +673,14 @@ export async function submitShot({
       if (finished) {
         await settleMatch(tx, match, {
           result: winnerSeat,
-          reason: next.terminationReason ?? END_REASONS.LIVES_EXHAUSTED,
+          reason: next.terminationReason ?? END_REASONS.HP_DEPLETED,
         });
       }
 
       return {
         match: updated,
         state: next,
-        shot: record,
+        action: record,
         actionIndex,
         matchCompleted: finished,
         winnerSeat,
@@ -671,7 +691,7 @@ export async function submitShot({
     // A replayed action index lost the race and was rejected by the unique
     // index. The transaction has already rolled back, so report a clean 409.
     if (isUniqueViolation(error)) {
-      return { error: "That shot was already recorded", status: 409 } as const;
+      return { error: "That action was already recorded", status: 409 } as const;
     }
     throw error;
   }
@@ -938,8 +958,8 @@ export type SettlementOutcome = {
  * seat is an open lobby, not a result, and returns above.
  *
  * Hillstrike cannot draw — the engine's only terminal reason is
- * `lives-exhausted`, and a resignation or a disconnect forfeit names a winner —
- * so there is no draw branch here.
+ * `hp-depleted`, and a resignation or a disconnect forfeit names a winner — so
+ * there is no draw branch here.
  */
 async function settleMatch(
   tx: any,

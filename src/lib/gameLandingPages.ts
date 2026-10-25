@@ -1647,67 +1647,67 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     leaderboardKey: "hillstrike",
     ogImage: "/images/og-banner.png",
     shortDescription:
-      "A free, rated 1v1 artillery duel on a mirrored battlefield. Three lives each, a drawn opening seat and two-shot volleys — every shot is resolved by the server, and a direct hit costs exactly one life.",
+      "A free, rated 1v1 tank-artillery duel on a mirrored battlefield. 100 HP each, a drawn opening seat and turns of three actions — fire, drive or build cover — resolved by the server, with damage falling off over flight distance.",
     // The practice board is the SAME engine running in the browser against the
     // built-in bot, at /games/hillstrike/play-ai. It has no public POST entry
     // route (there is no match row to create), so unlike Dominoes this page
     // links to the board rather than starting a match through an API.
     aiPractice: true,
     introduction: [
-      "Hillstrike is a one-on-one artillery duel. Two seats sit on opposite ends of ONE shared battlefield, each with three lives, and take turns firing a single projectile at the other launcher by choosing an angle and a power.",
+      "Hillstrike is a one-on-one artillery duel with tanks. Two seats sit on opposite ends of ONE shared battlefield, each with 100 HP, and take turns spending actions: set an angle and a power and fire, drive the tank closer or farther, or drop a shield block in front of the hull.",
       "It is competitive because nothing about a shot is hidden or lucky: the same battlefield is generated for both seats, every shot is simulated by the same deterministic physics on the server, and the only thing that decides the match is how well each player reads the arc, the ground and the collapsing tower in front of them.",
     ],
     howToPlay: [
       "Sign in, open the lobby and press Find a Match to be seated against a live opponent. A free practice board against the bot is available without an account.",
-      "One seat is drawn from the stored battlefield seed and fires the OPENING shot: a single shot. The other seat answers with two, and from then on the seats alternate two-shot volleys.",
+      "One seat is drawn from the stored battlefield seed and takes the OPENING action: a single one. The other seat answers with two, and from then on the seats alternate two-action turns. An action is any of the three — a shot, a drive or a build.",
       "Aim by dragging: the direction sets the launch angle and the pull distance sets the power. Power is a whole number from 0 to 100 — low power is a short lob, full power is a flat, fast shot.",
-      "Fire, then watch the server's resolved trajectory. A direct hit on the enemy launcher removes exactly one life; a shot that lands on terrain or on the enemy tower deforms the ground and damages blocks instead.",
-      "Keep firing your remaining shot in the volley, then hand over. The first seat to take three direct hits loses, and the match ends the instant the third one lands.",
+      "Fire, then watch the server's resolved trajectory. A direct hit on the enemy tank takes HP in proportion to how far the shell flew — a point-blank hit costs about a third of a tank, a full-map lob about half that. A shot that lands on terrain or on a tower deforms the ground and damages blocks instead.",
+      "Spend your remaining actions — a second shot, a drive to shorten the next one, or a block of cover — then hand over. The tank that reaches 0 HP loses, and the match ends the instant it does.",
     ],
     rules: [
-      "Strictly 1v1 on one shared battlefield. Each seat starts with three lives, and the projectile has exactly one set of parameters — neither seat gets a different gun.",
+      "Strictly 1v1 on one shared battlefield. Each tank starts with 100 HP, and the projectile has exactly one set of parameters — neither seat gets a different gun.",
       "The battlefield is generated from a seed stored on the match and is mirror-symmetric about the centre, so both seats stand on identical ground with identical towers. The only asymmetry in a match is who won the opening-seat draw.",
-      "The opening seat fires one shot; the opponent answers with two; every later turn is a two-shot volley. A volley continues after a hit — connecting on the first shot does not take the second away.",
-      "A DIRECT hit on a player removes exactly one life. Structural damage and terrain deformation never remove a life, however much of the tower they bring down.",
-      "The match ends IMMEDIATELY when a player reaches zero lives: the winner is the seat that fired, any remaining shot in that volley is forfeited, and no further shot is accepted. There is no draw.",
-      "Only the defender is a valid target: a shot that falls back onto its own launcher can never cost the shooter a life.",
-      "Every shot is simulated server-side from the angle and power alone, at a fixed step, and the stored trajectory is what both clients animate. The client is never asked for — and never believed about — a position, a hit, a life, a terrain height or a winner.",
+      "The opening seat takes one action; the opponent answers with two; every later turn is two actions. An action is a shot, a drive (forward or back) or a build. A turn continues after a hit — connecting on the first action does not take the second away.",
+      "A DIRECT hit on a tank costs HP in proportion to the distance the shell actually flew, so closing the range is worth damage and giving it up denies the same to the opponent. Structural damage and terrain deformation never cost HP.",
+      "The match ends IMMEDIATELY when a tank reaches 0 HP: the winner is the seat that fired, and no further action is accepted. There is no draw.",
+      "Only the defender is a valid target: a shot that falls back onto its own tank can never cost the shooter HP.",
+      "Every shot is simulated server-side from the angle and power alone, at a fixed step, and the stored trajectory is what both clients animate. The client is never asked for — and never believed about — a position, a hit, an HP total, a placed block, a terrain height or a winner; a drive and a build are derived from the stored position just as the shot is.",
       "A shot is accepted only from the seat on turn, with the match version the player was shown, so a double submit, a stale tab or a replayed request is refused rather than applied twice.",
       "Resigning, or leaving and not returning, awards the match to the opponent. A match against the bot is unrated and never recorded as a ranked result.",
     ],
     scoring: [
-      "There is no running score. Lives are the whole tally: three each, and a direct hit is worth exactly one of them.",
-      "The player who takes three direct hits loses. The last shot is the match, and the winner finishes with one, two or three of their own lives still intact.",
-      "Structural damage is positional, not a score: craters change the ground and collapsed blocks clear a line, but neither is worth a life and neither decides the match on its own.",
+      "There is no running score. HP is the whole tally: 100 each, and every direct hit takes a distance-scaled bite out of it.",
+      "The tank that reaches 0 HP loses. The winner can finish anywhere from a sliver of HP to a full bar.",
+      "Structural damage is positional, not a score: craters change the ground, collapsed blocks clear a line, and a built block soaks a shot, but none of it is worth HP on its own.",
       "Resigning, or leaving and not returning, awards the match to the opponent exactly like a played-out win.",
       "A ranked online result moves your Hillstrike Elo and your Hillstrike trophy ladder, and the account win and loss counters. Nothing else is awarded.",
     ],
     strategy: [
       "Learn the arc before you spend a volley. A lob at moderate power hangs long enough to read, and the first shot of a match is the cheapest place to measure the gravity in front of you.",
-      "Two shots a turn is a real budget. The first shot can clear a tower block or crater a ridge, and the second can use the line it opened — a volley planned as a pair beats two hopeful direct attempts.",
+      "Two actions a turn is a real budget. The first can clear a tower block, crater a ridge or drive you into range, and the second can use what the first bought — a turn planned as a pair beats two hopeful direct attempts.",
       "Direct hits are the only thing that ends the match, so a shot that damages the tower but cannot reach the launcher is a setup, not a result. Ask what the NEXT shot can do before you take this one.",
       "Power changes the crater as well as the range: a fast shot bites deeper and wider, so a flat full-power shot is also the best way to carve away the ground under a defender.",
       "Watch the tower fall. Unsupported blocks collapse after a hit, which can bury a launcher or open a lane, and both seats see the same structure.",
-      "Use your last life differently. With two lives gone, a low-percentage direct attempt is usually better than a safe structural shot that cannot end the match.",
+      "Play the HP bar. When you are one hit from elimination, a low-percentage direct attempt is usually better than a safe structural shot that cannot end the match; when you are ahead, a drive away and a block in front of your hull are worth more than a hopeful lob.",
     ],
     competitive:
-      "Hillstrike tests trajectory judgement under a turn budget: reading an arc from two numbers, pricing a structural shot against a direct one, and staying accurate when a single hit decides whether the match continues.",
+      "Hillstrike tests trajectory judgement and range management under an action budget: reading an arc from two numbers, deciding whether a turn's second action is better spent on a shot, a drive or cover, and staying accurate when the HP bar is nearly empty.",
     faq: [
       {
-        q: "How do lives work in Hillstrike?",
-        a: "Each seat starts with three. Only a direct projectile contact with a player removes a life, and it removes exactly one. Terrain craters, damaged blocks and a collapsed tower never cost a life.",
+        q: "How does damage work in Hillstrike?",
+        a: "Every tank starts with 100 HP. Only a direct projectile contact with a tank takes HP off, and how much it takes depends on how far the shell flew: about 34 at point-blank range, about 21 across the opening gap. Terrain craters, damaged blocks and a collapsed tower never cost HP.",
       },
       {
-        q: "Why did my opponent get two shots when I only had one?",
-        a: "That is the agreed opening. The seat drawn from the battlefield seed fires a single opening shot, the other seat answers with two, and from then on both seats alternate two-shot volleys.",
+        q: "Why did my opponent get two actions when I only had one?",
+        a: "That is the agreed opening. The seat drawn from the battlefield seed takes a single opening action, the other seat answers with two, and from then on both seats alternate two-action turns. An action can be a shot, a drive or a build.",
       },
       {
         q: "Can a shot be cheated by the client?",
-        a: "No. The request carries only an angle and a power — there is no field for a position, a hit, a life or a winner — and the server simulates the shot from its own stored battlefield and stores the resolved trajectory for both clients to replay.",
+        a: "No. The request carries one action — an angle and a power, a drive direction, or a build — plus the match version the player was shown. There is no field for a position, a hit, an HP total or a winner, and the server resolves the action from its own stored battlefield and stores the trajectory for both clients to replay.",
       },
       {
-        q: "Does the match end the moment a player runs out of lives?",
-        a: "Yes. The third direct hit finishes the match immediately, even if the shooter still had a shot left in the volley, and no further shot is accepted.",
+        q: "Does the match end the moment a tank reaches 0 HP?",
+        a: "Yes. The hit that empties the bar finishes the match immediately, even if the attacker still had an action left in the turn, and no further action is accepted.",
       },
       {
         q: "Is every battlefield the same?",
@@ -1740,6 +1740,19 @@ export function gameLandingPath(slug: string): string {
 }
 
 /**
+ * The prefix of a game's match URLs — `/games/<slug>/`.
+ *
+ * This exists as a SEPARATE string because a server component may not hand a
+ * function down to a client component: a function prop is not serialisable
+ * across the server/client boundary and React throws on it. The practice button
+ * is client-side (it POSTs and follows the id), so it receives this prefix and
+ * appends the id itself.
+ */
+export function gameMatchPathPrefix(slug: string): string {
+  return `/games/${slug}/`;
+}
+
+/**
  * The path of ONE match of a game — `/games/<slug>/<matchId>`.
  *
  * next.config.js rewrites `/games/:slug/:path+` to `/casino/:slug/:path+`, so
@@ -1748,7 +1761,7 @@ export function gameLandingPath(slug: string): string {
  * other two paths are: one place decides what a game URL looks like.
  */
 export function gameMatchPath(slug: string, matchId: string): string {
-  return `/games/${slug}/${matchId}`;
+  return `${gameMatchPathPrefix(slug)}${matchId}`;
 }
 
 /**

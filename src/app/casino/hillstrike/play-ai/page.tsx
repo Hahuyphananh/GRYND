@@ -10,7 +10,7 @@ import PageClient from "./PageClient";
 export const metadata: Metadata = {
   title: "Hillstrike vs AI | GRYND",
   description:
-    "Play Hillstrike free against the GRYND AI. Drag to set your angle and power, read the arc, smash the tower and knock three lives off the enemy gunner before you run out of your own.",
+    "Play Hillstrike free against the GRYND AI. Drag to set your angle and power, read the arc, drive in for more damage, build cover, and knock the enemy tank from 100 HP to zero before it does the same to you.",
 };
 
 export default function Page() {

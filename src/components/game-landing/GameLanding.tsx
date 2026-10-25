@@ -6,7 +6,7 @@ import JsonLd from "../seo/JsonLd";
 import PracticeMatchButton from "./PracticeMatchButton";
 import {
   gameLandingPath,
-  gameMatchPath,
+  gameMatchPathPrefix,
   gamePlayPath,
   type GameLandingPage,
 } from "../../lib/gameLandingPages";
@@ -121,11 +121,14 @@ export default function GameLanding({
             {/* Practice, when this game's catalogue entry declares a route that
                 can start one. It is a second way into a real match, and the only
                 one that needs no account: the route seats a guest. */}
+            {/* The button builds the board URL from a STRING prefix: this is a
+                server component, and a function prop cannot cross into the
+                client component. */}
             {game.practiceApi ? (
               <PracticeMatchButton
                 apiPath={game.practiceApi}
                 label={`Play the bot — free ${game.name} practice`}
-                matchHref={(matchId) => gameMatchPath(game.slug, matchId)}
+                matchHrefBase={gameMatchPathPrefix(game.slug)}
               />
             ) : null}
             <Link

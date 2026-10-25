@@ -240,11 +240,12 @@ export const GAME_CATALOG = [
     tags: ["pvp", "strategy", "chance", "casual", "competitive"],
   },
 
-  // Hillstrike is a 1v1 artillery duel on one shared, seeded battlefield: each
-  // seat has three lives and every shot is resolved by the shared engine from
-  // nothing but `{ angleDeg, power }`. Reading the arc, using the collapse of a
-  // tower and choosing between a direct hit and structural damage is
-  // a plan (strategy) executed by aiming ability (skill), and nothing is drawn
+  // Hillstrike is a 1v1 tank-artillery duel on one shared, seeded battlefield:
+  // each tank has 100 HP and every action — a shot, a drive or a build — is
+  // resolved by the shared engine from the stored position. Reading the arc,
+  // trading a turn's actions between damage, range and cover, and using the
+  // collapse of a tower is a plan (strategy) executed by aiming ability (skill),
+  // and nothing is drawn
   // during play — the battlefield is generated once from a stored seed and is
   // identical for both seats — so it is never `chance`. It is a rated ladder
   // duel (`competitive`; the id is registered in RATED_GAMES). A drag-aim

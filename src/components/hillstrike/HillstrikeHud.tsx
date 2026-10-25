@@ -2,23 +2,33 @@
 
 // src/components/hillstrike/HillstrikeHud.tsx
 //
-// The Hillstrike HUD: both seats' LIVES, whose turn it is, how many shots the
-// active seat still has in this volley, and the Fire / Restart controls.
+// The Hillstrike HUD: both tanks' HP, whose turn it is, how many actions the
+// active seat still has, and the three action controls (Fire / Drive / Build)
+// plus Restart.
 //
-// It reads the engine's state and nothing else — `lives`, `turn`,
-// `shotsRemaining` and `status` are the authoritative values, so the HUD cannot
-// disagree with the board. It never decides anything: Fire hands the current
-// aim back to the page, which applies it through the engine.
+// It reads the engine's state and nothing else — `hp`, `turn`,
+// `actionsRemaining` and `status` are the authoritative values, so the HUD
+// cannot disagree with the board. It never decides anything: every button hands
+// the intent back to the page, which applies it through the engine.
 
 import {
+  IconArrowLeft,
+  IconArrowRight,
   IconBolt,
   IconRefresh,
+  IconShieldPlus,
   IconTarget,
 } from "@tabler/icons-react";
 
 import type { AiDifficulty } from "../../lib/aiDifficulty";
-import { LIVES_PER_PLAYER } from "../../lib/hillstrike/constants";
-import type { HillstrikeState, Seat, ShotInput } from "../../lib/hillstrike/types";
+import { MAX_HP, MOVE_RANGE, STRUCTURE_BLOCK_SIZE } from "../../lib/hillstrike/constants";
+import { hpOf } from "../../lib/hillstrike/rules";
+import type {
+  HillstrikeState,
+  MoveDirection,
+  Seat,
+  ShotInput,
+} from "../../lib/hillstrike/types";
 
 export type HillstrikeHudProps = {
   state: HillstrikeState;
@@ -26,7 +36,7 @@ export type HillstrikeHudProps = {
   aiSeat: Seat;
   difficulty: AiDifficulty;
   aim: ShotInput | null;
-  /** True when the viewer may aim and fire right now. */
+  /** True when the viewer may act right now. */
   canPlay: boolean;
   resolving: boolean;
   aiThinking: boolean;
@@ -34,23 +44,33 @@ export type HillstrikeHudProps = {
   session: { wins: number; losses: number };
   onFire: () => void;
   onClearAim: () => void;
+  onMove: (direction: MoveDirection) => void;
+  onBuild: () => void;
   onRestart: () => void;
 };
 
-const LIFE_TOTAL = LIVES_PER_PLAYER;
-
-function livesPips(lives: number) {
-  return Array.from({ length: LIFE_TOTAL }, (_, index) => (
-    <span
-      key={index}
-      aria-hidden="true"
-      className={`h-2.5 w-2.5 rounded-full border ${
-        index < lives
-          ? "border-[#f5ff3b] bg-[#f5ff3b] shadow-[0_0_6px_rgba(245,255,59,0.7)]"
-          : "border-white/25 bg-transparent"
-      }`}
-    />
-  ));
+/** The HP bar, one per tank: a thin rail plus the number. */
+function hpBar(hp: number, testId: string) {
+  const ratio = Math.max(0, Math.min(1, hp / MAX_HP));
+  const tone = ratio > 0.5 ? "bg-emerald-400" : ratio > 0.25 ? "bg-amber-400" : "bg-red-400";
+  return (
+    <div className="mt-1.5">
+      <div
+        className="h-2 w-full overflow-hidden rounded-full border border-white/15 bg-black/60"
+        data-testid={testId}
+        role="meter"
+        aria-valuemin={0}
+        aria-valuemax={MAX_HP}
+        aria-valuenow={Math.max(0, Math.round(hp))}
+        aria-label={`${Math.max(0, Math.round(hp))} of ${MAX_HP} HP`}
+      >
+        <div
+          className={`h-full rounded-full transition-[width] duration-300 ${tone}`}
+          style={{ width: `${(ratio * 100).toFixed(1)}%` }}
+        />
+      </div>
+    </div>
+  );
 }
 
 export default function HillstrikeHud({
@@ -66,27 +86,29 @@ export default function HillstrikeHud({
   session,
   onFire,
   onClearAim,
+  onMove,
+  onBuild,
   onRestart,
 }: HillstrikeHudProps) {
   const finished = state.status === "finished";
   const yourTurn = state.turn === viewerSeat && !finished;
-  const activeShots = state.shotsRemaining;
+  const actionsLeft = Math.max(0, Number(state.actionsRemaining) || 0);
 
   const statusText = finished
     ? state.winner === viewerSeat
       ? "You won the match."
       : "The bot won this one — run it back."
     : resolving
-      ? "Shot in flight…"
+      ? "Resolving your action…"
       : yourTurn
-        ? `Your turn — ${activeShots} shot${activeShots === 1 ? "" : "s"} left in this volley.`
+        ? `Your turn — ${actionsLeft} action${actionsLeft === 1 ? "" : "s"} left.`
         : aiThinking
           ? "The bot is picking a line…"
-          : "The bot is aiming…";
+          : "The bot is taking its turn…";
 
   const seatCard = (seat: Seat, name: string, testId: string) => {
     const active = state.turn === seat && !finished;
-    const shots = active ? Math.max(0, activeShots) : 0;
+    const hp = hpOf(state, seat);
     return (
       <div
         data-testid={testId}
@@ -100,27 +122,28 @@ export default function HillstrikeHud({
           <p className="truncate text-xs font-bold uppercase tracking-wider text-white/80">
             {name}
           </p>
-          <div
-            className="flex items-center gap-1"
-            data-testid={`${testId}-lives`}
-            aria-label={`${state.lives[seat]} lives`}
+          <span
+            className="font-mono text-sm font-bold text-white"
+            data-testid={`${testId}-hp`}
           >
-            {livesPips(state.lives[seat])}
-          </div>
+            {Math.max(0, Math.round(hp))}
+            <span className="text-[10px] font-semibold text-white/45">/{MAX_HP}</span>
+          </span>
         </div>
-        <p className="mt-0.5 text-[11px] text-white/55">
-          {active
-            ? `${activeShots} shot${activeShots === 1 ? "" : "s"} left this volley`
-            : `${state.lives[seat]} ${state.lives[seat] === 1 ? "life" : "lives"} left`}
-        </p>
-        <div className="mt-1 flex h-1.5 items-center gap-1">
-          {Array.from({ length: shots }, (_, index) => (
+        {hpBar(hp, `${testId}-hp-bar`)}
+        <div className="mt-1 flex items-center gap-1">
+          {Array.from({ length: Math.max(actionsLeft, 0) }, (_, index) => (
             <span
               key={index}
               aria-hidden="true"
-              className="h-1.5 w-4 rounded-full bg-[#00e5ff]"
+              className={`h-1.5 w-4 rounded-full ${
+                active ? "bg-[#00e5ff]" : "bg-white/15"
+              }`}
             />
           ))}
+          <span className="ml-auto text-[11px] text-white/45">
+            {active ? `${actionsLeft} action${actionsLeft === 1 ? "" : "s"}` : "waiting"}
+          </span>
         </div>
       </div>
     );
@@ -158,31 +181,74 @@ export default function HillstrikeHud({
 
         <p className="mt-1 text-[11px] leading-relaxed text-white/55">
           {canPlay
-            ? "Drag away from your target on the battlefield to set angle and power, then Fire."
+            ? "Three actions: fire, drive (closer or farther) or build cover. Drag on the battlefield to aim."
             : finished
               ? "Match over."
               : "Wait for your turn."}
         </p>
 
-        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+        <div className="mt-3 flex flex-col gap-2">
           <button
             type="button"
             data-testid="hillstrike-fire"
             onClick={onFire}
             disabled={!aim || !canPlay}
-            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border-b-4 border-[#0087a8] bg-[#00e5ff] px-4 py-2.5 text-sm font-extrabold text-[#001a2e] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg border-b-4 border-[#0087a8] bg-[#00e5ff] px-4 py-2.5 text-sm font-extrabold text-[#001a2e] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <IconBolt size={16} aria-hidden="true" />
             Fire
           </button>
+
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              data-testid="hillstrike-move-back"
+              onClick={() => onMove("back")}
+              disabled={!canPlay}
+              title="Drive away from the enemy: less damage, harder to reach"
+              className="inline-flex items-center justify-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-2 text-[11px] font-bold text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <IconArrowLeft size={14} aria-hidden="true" />
+              Drive back
+            </button>
+            <button
+              type="button"
+              data-testid="hillstrike-build"
+              onClick={onBuild}
+              disabled={!canPlay}
+              title={`Build one ${STRUCTURE_BLOCK_SIZE}-unit shield block in front of your tank`}
+              className="inline-flex items-center justify-center gap-1 rounded-lg border border-emerald-400/40 bg-emerald-500/10 px-2 py-2 text-[11px] font-bold text-emerald-200 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <IconShieldPlus size={14} aria-hidden="true" />
+              Build
+            </button>
+            <button
+              type="button"
+              data-testid="hillstrike-move-forward"
+              onClick={() => onMove("forward")}
+              disabled={!canPlay}
+              title="Drive toward the enemy: a shorter shot hits harder"
+              className="inline-flex items-center justify-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-2 text-[11px] font-bold text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Drive up
+              <IconArrowRight size={14} aria-hidden="true" />
+            </button>
+          </div>
+
+          <p className="text-center text-[10px] leading-relaxed text-white/40">
+            Drives move you up to {MOVE_RANGE} units from your spawn. A shield
+            block absorbs shots aimed at your hull — but it is only{" "}
+            {STRUCTURE_BLOCK_SIZE} units tall, so a lob can still drop behind it.
+          </p>
+
           <button
             type="button"
             data-testid="hillstrike-clear"
             onClick={onClearAim}
             disabled={!aim}
-            className="rounded-lg border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-white/70 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Clear
+            Clear aim
           </button>
         </div>
       </div>
@@ -208,10 +274,7 @@ export default function HillstrikeHud({
           <IconRefresh size={14} aria-hidden="true" />
           Restart · new layout
         </button>
-        <span
-          className="text-[11px] text-white/50"
-          data-testid="hillstrike-session"
-        >
+        <span className="text-[11px] text-white/50" data-testid="hillstrike-session">
           Session: {session.wins}W · {session.losses}L
         </span>
       </div>

@@ -7,10 +7,10 @@
 //
 // ── TRUST BOUNDARY ────────────────────────────────────────────────────────
 // This component owns NO rule. It draws `state.battlefield` (terrain columns,
-// tower blocks, both players), the engine's own preview path, and the
-// authoritative trajectory returned with the accepted shot. It never decides a
-// collision, a life, a turn or a winner — a drag is reported upward as
-// `{ angleDeg, power }` and the page applies it through `applyShot`.
+// tower blocks, both tanks), the engine's own preview path, and the
+// authoritative trajectory returned with the accepted action. It never decides a
+// collision, HP, a turn or a winner — a drag is reported upward as
+// `{ angleDeg, power }` and the page applies it through `applyAction`.
 //
 // ── THE GESTURE ───────────────────────────────────────────────────────────
 // Slingshot: press anywhere on the battlefield, drag away from where you want
@@ -20,13 +20,15 @@
 // Fire button enables); a tap clears it.
 //
 // ── THE ANIMATION ─────────────────────────────────────────────────────────
-// A shot is animated from the trajectory the engine resolved:
-//   flight  → the projectile travels the recorded `path`;
-//   settle  → the post-impact battlefield is drawn, with collapse events
-//             tweened, the crater already applied, an impact ring and, for a
-//             direct hit, a red flash and a "-1" on the victim.
-// The page updates the authoritative state when the flight ends, so lives and
-// the turn change at the moment the projectile lands.
+// An action is animated from what the engine resolved:
+//   shoot  → flight: the projectile travels the recorded `path`; settle: the
+//            post-impact battlefield is drawn, with collapse events tweened,
+//            the crater already applied, an impact ring and, for a direct hit,
+//            a red flash and the HP it took;
+//   move   → the tank rolls from its old spot to its new one;
+//   build  → the new shield block drops into place.
+// The page updates the authoritative state when the flight ends, so HP and the
+// turn change at the moment the projectile lands.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
@@ -35,25 +37,27 @@ import {
   BATTLEFIELD_HEIGHT,
   BATTLEFIELD_WIDTH,
   DEFAULT_MAX_PULL,
+  MAX_HP,
   PLAYER_RADIUS,
   TERRAIN_COLUMN_WIDTH,
   TERRAIN_COLUMNS,
 } from "../../lib/hillstrike/constants";
 import { aimFromDrag, directionVector } from "../../lib/hillstrike/physics";
+import { hpOf } from "../../lib/hillstrike/rules";
 import type { Vec2 } from "../../lib/physics2d/kinematics";
 import type {
+  ActionRecord,
   Battlefield,
   HillstrikeState,
   Impact,
   Seat,
   ShotEvent,
   ShotInput,
-  ShotRecord,
   TowerBlock,
 } from "../../lib/hillstrike/types";
 
 export type HillstrikeAnimation = {
-  readonly shot: ShotRecord;
+  readonly action: ActionRecord;
   readonly from: Battlefield;
   readonly to: Battlefield;
   readonly startedAt: number;
@@ -310,34 +314,62 @@ export default function HillstrikeBattlefield({
 
     // ── Towers ────────────────────────────────────────────────────────────
     const collapseById = new Map<number, Extract<ShotEvent, { type: "collapse" }>>();
-    if (currentAnimation && settling) {
-      for (const event of currentAnimation.shot.events) {
+    if (currentAnimation && settling && currentAnimation.action.type === "shoot") {
+      for (const event of currentAnimation.action.events) {
         if (event.type === "collapse") collapseById.set(event.blockId, event);
       }
     }
     const tween = easeOut(settleT);
+    // A freshly built block drops in: it is drawn small and opaque until the
+    // settle tween finishes, so placing cover reads as an action, not a jump.
+    const builtBlockId =
+      currentAnimation?.action.type === "build" && settling
+        ? currentAnimation.action.blockId
+        : null;
 
     for (const block of field.blocks) {
       const collapse = collapseById.get(block.id);
       const y = collapse ? collapse.fromY + (collapse.y - collapse.fromY) * tween : block.y;
+      if (block.id === builtBlockId) {
+        const grow = 1 - tween;
+        ctx.save();
+        ctx.translate(block.x + block.size / 2, block.y + block.size / 2);
+        ctx.scale(1 - grow * 0.45, 1 - grow * 0.45);
+        ctx.globalAlpha = 1 - grow * 0.25;
+        drawBlock(ctx, { ...block, x: -block.size / 2, y: -block.size / 2 });
+        ctx.restore();
+        continue;
+      }
       drawBlock(ctx, { ...block, y });
     }
 
-    // ── Players ───────────────────────────────────────────────────────────
+    // ── Tanks ─────────────────────────────────────────────────────────────
     for (const seat of ["player1", "player2"] as const) {
       const player = field.players[seat];
       const isActive = current.turn === seat && current.status === "playing";
+      // A drive rolls the tank from its old spot to its new one over the settle
+      // window, so the two seats see the same relocation the server resolved.
+      let tankX = player.x;
+      if (
+        currentAnimation?.action.type === "move" &&
+        currentAnimation.action.seat === seat &&
+        settling
+      ) {
+        const { fromX, toX } = currentAnimation.action;
+        tankX = fromX + (toX - fromX) * tween;
+      }
       const displayAim =
         seat === viewer && currentAim
           ? currentAim
           : isActive
-            ? { angleDeg: seat === "player1" ? 45 : 135, power: 0 }
+            ? { angleDeg: seat === "player1" ? 8 : 172, power: 0 }
             : null;
       drawPlayer(ctx, {
-        x: player.x,
+        x: tankX,
         y: player.y,
         seat,
-        lives: current.lives[seat],
+        hp: hpOf(current, seat),
+        maxHp: MAX_HP,
         active: isActive,
         label: seat === viewer ? "YOU" : "AI",
         aim: displayAim,
@@ -351,9 +383,9 @@ export default function HillstrikeBattlefield({
     }
 
     // ── Projectile flight ─────────────────────────────────────────────────
-    if (flying && currentAnimation) {
+    if (flying && currentAnimation && currentAnimation.action.type === "shoot") {
       const t = Math.max(0, Math.min(1, elapsed / currentAnimation.flightMs));
-      const path = currentAnimation.shot.path;
+      const path = currentAnimation.action.path;
       const trail = trailAlong(path, t, 10);
       trail.forEach((point, index) => {
         const alpha = ((trail.length - index) / trail.length) * 0.5;
@@ -378,8 +410,8 @@ export default function HillstrikeBattlefield({
     }
 
     // ── Impact feedback ───────────────────────────────────────────────────
-    if (currentAnimation && (settling || settleT >= 1)) {
-      const impact = currentAnimation.shot.impact;
+    if (currentAnimation?.action.type === "shoot" && (settling || settleT >= 1)) {
+      const impact = currentAnimation.action.impact;
       const ringT = settling ? easeOut(settleT) : 1;
       if (settling) {
         ctx.beginPath();
@@ -388,11 +420,19 @@ export default function HillstrikeBattlefield({
         ctx.lineWidth = 4;
         ctx.stroke();
       }
-      if (currentAnimation.shot.livesLost > 0 && impact.target) {
+      if (currentAnimation.action.damage > 0 && impact.target) {
         const victim = current.battlefield.players[impact.target];
         const flash = settling ? 1 - settleT : 0;
         ctx.beginPath();
-        ctx.arc(victim.x, victim.y, PLAYER_RADIUS + 18 + ringT * 22, 0, Math.PI * 2);
+        ctx.ellipse(
+          victim.x,
+          victim.y - PLAYER_RADIUS,
+          PLAYER_RADIUS + 18 + ringT * 22,
+          PLAYER_RADIUS + 12 + ringT * 16,
+          0,
+          0,
+          Math.PI * 2,
+        );
         ctx.strokeStyle = `rgba(248, 113, 113, ${flash})`;
         ctx.lineWidth = 5;
         ctx.stroke();
@@ -400,7 +440,7 @@ export default function HillstrikeBattlefield({
         ctx.fillStyle = "#fecaca";
         ctx.font = `900 ${worldToCssFont(30)}`;
         ctx.textAlign = "center";
-        ctx.fillText("-1", victim.x, victim.y - 46 - ringT * 26);
+        ctx.fillText(`-${currentAnimation.action.damage}`, victim.x, victim.y - 52 - ringT * 26);
         ctx.globalAlpha = 1;
       }
     }
@@ -497,6 +537,10 @@ export default function HillstrikeBattlefield({
 
   const activeName = state.turn === viewerSeat ? "You" : opponentLabel;
   const opponentSeat: Seat = viewerSeat === "player1" ? "player2" : "player1";
+  // Test/probe surface: the last action flattened into data attributes so a
+  // browser test can assert the server's outcome without decoding the state.
+  const lastAction = state.lastAction;
+  const lastShot = lastAction?.type === "shoot" ? lastAction : null;
 
   return (
     <div
@@ -516,11 +560,11 @@ export default function HillstrikeBattlefield({
         )
       }
       data-terrain-signature={terrainSignature(state.battlefield.terrain)}
-      data-lives-you={state.lives[viewerSeat]}
-      data-lives-ai={state.lives[opponentSeat]}
-      data-lives-player1={state.lives.player1}
-      data-lives-player2={state.lives.player2}
-      data-shots-remaining={state.shotsRemaining}
+      data-hp-you={hpOf(state, viewerSeat)}
+      data-hp-ai={hpOf(state, opponentSeat)}
+      data-hp-player1={hpOf(state, "player1")}
+      data-hp-player2={hpOf(state, "player2")}
+      data-actions-remaining={state.actionsRemaining}
       data-winner={state.winner ?? ""}
       data-aim-angle={aim ? aim.angleDeg.toFixed(1) : ""}
       data-aim-power={aim ? String(aim.power) : ""}
@@ -528,13 +572,16 @@ export default function HillstrikeBattlefield({
       data-preview-x={preview ? Math.round(preview.impact.x) : ""}
       data-preview-y={preview ? Math.round(preview.impact.y) : ""}
       data-preview-steps={preview ? String(preview.path.length) : ""}
-      data-last-seat={state.lastShot?.seat ?? ""}
-      data-last-impact={state.lastShot?.impact.kind ?? ""}
-      data-last-impact-x={state.lastShot ? Math.round(state.lastShot.impact.x) : ""}
-      data-last-impact-y={state.lastShot ? Math.round(state.lastShot.impact.y) : ""}
-      data-last-target={state.lastShot?.impact.target ?? ""}
-      data-last-lives-lost={state.lastShot ? String(state.lastShot.livesLost) : ""}
-      data-last-steps={state.lastShot ? String(state.lastShot.path.length) : ""}
+      data-last-action={lastAction?.type ?? ""}
+      data-last-seat={lastAction?.seat ?? ""}
+      data-last-impact={lastShot?.impact.kind ?? ""}
+      data-last-impact-x={lastShot ? Math.round(lastShot.impact.x) : ""}
+      data-last-impact-y={lastShot ? Math.round(lastShot.impact.y) : ""}
+      data-last-target={lastShot?.impact.target ?? ""}
+      data-last-damage={lastShot ? String(lastShot.damage) : ""}
+      data-last-steps={lastShot ? String(lastShot.path.length) : ""}
+      data-last-move-x={lastAction?.type === "move" ? Math.round(lastAction.toX) : ""}
+      data-last-block-id={lastAction?.type === "build" ? lastAction.blockId : ""}
       data-interactive={interactive ? "1" : "0"}
       data-dragging={dragging ? "1" : "0"}
       className={`relative w-full touch-none select-none overflow-hidden rounded-2xl border border-cyan-400/25 bg-[#04101f] shadow-[0_0_30px_rgba(34,211,238,0.12)] ${
@@ -597,13 +644,24 @@ function drawBlock(
   ctx.restore();
 }
 
+/**
+ * One TANK, in side view, standing on its own tracks at `(x, y)`.
+ *
+ * Geometry is fixed world units, so it scales with the board exactly like a
+ * block does: rubber tracks with road wheels on the ground, a hull above them,
+ * a turret on the hull with the barrel laid along the current aim (or pointed at
+ * the enemy when the tank is idle), and an HP bar floating over the turret.
+ * Nothing here reads a rule — `hp` is the server's number, the aim is the
+ * viewer's pending input.
+ */
 function drawPlayer(
   ctx: CanvasRenderingContext2D,
   {
     x,
     y,
     seat,
-    lives,
+    hp,
+    maxHp,
     active,
     label,
     aim,
@@ -612,7 +670,8 @@ function drawPlayer(
     x: number;
     y: number;
     seat: Seat;
-    lives: number;
+    hp: number;
+    maxHp: number;
     active: boolean;
     label: string;
     aim: ShotInput | null;
@@ -620,87 +679,172 @@ function drawPlayer(
   },
 ): void {
   const color = SEAT_COLOR[seat];
+  const dark = SEAT_DARK[seat];
   const facing = seat === "player1" ? 1 : -1;
+  const safeMax = Math.max(1, maxHp);
+  const ratio = Math.max(0, Math.min(1, hp / safeMax));
+
+  // ── Geometry, bottom-up (all in world units) ──────────────────────────
+  const trackHeight = 9;
+  const trackWidth = 36;
+  const trackTop = y - trackHeight;
+  const hullHeight = 8;
+  const hullTop = trackTop - hullHeight;
+  const hullWidth = 28;
+  const turretWidth = 17;
+  const turretHeight = 10;
+  const turretTop = hullTop - turretHeight + 2;
+  const turretCentreY = turretTop + turretHeight / 2;
+
   ctx.save();
 
-  // Barrel first, so the body sits on top of its root.
-  if (aim) {
-    const direction = directionVector(aim.angleDeg);
-    const length = 30 + (charge / 100) * 12;
-    ctx.beginPath();
-    ctx.moveTo(x, y - 6);
-    ctx.lineTo(x + direction.x * length, y - 6 + direction.y * length);
-    ctx.strokeStyle = OUTLINE;
-    ctx.lineWidth = 9;
-    ctx.lineCap = "round";
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(x, y - 6);
-    ctx.lineTo(x + direction.x * length, y - 6 + direction.y * length);
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 5;
-    ctx.lineCap = "round";
-    ctx.stroke();
-  }
-
-  // Stance shadow.
+  // Shadow on the ground, so the tank sits on the terrain instead of floating.
   ctx.beginPath();
-  ctx.ellipse(x, y + 2, PLAYER_RADIUS + 5, 5, 0, 0, Math.PI * 2);
+  ctx.ellipse(x, y + 1.5, trackWidth / 2 + 3, 4, 0, 0, Math.PI * 2);
   ctx.fillStyle = "rgba(0,0,0,0.45)";
   ctx.fill();
 
-  // Body.
+  // ── Barrel, drawn first so the turret caps its root ──────────────────
+  if (aim) {
+    const direction = directionVector(aim.angleDeg);
+    const length = 21 + (charge / 100) * 9;
+    const tipX = x + direction.x * length;
+    const tipY = turretCentreY + direction.y * length;
+    ctx.beginPath();
+    ctx.moveTo(x, turretCentreY);
+    ctx.lineTo(tipX, tipY);
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = 7.5;
+    ctx.lineCap = "round";
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x, turretCentreY);
+    ctx.lineTo(tipX, tipY);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    // Muzzle brake.
+    ctx.beginPath();
+    ctx.arc(tipX, tipY, 3.1, 0, Math.PI * 2);
+    ctx.fillStyle = OUTLINE;
+    ctx.fill();
+  }
+
+  // ── Tracks ────────────────────────────────────────────────────────────
+  roundedRect(ctx, x - trackWidth / 2, trackTop, trackWidth, trackHeight, 4);
+  ctx.fillStyle = "#0a1220";
+  ctx.fill();
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Road wheels + tread notches: the details that read as "tank", not "disc".
+  const wheelCount = 4;
+  const wheelRadius = 2.4;
+  for (let index = 0; index < wheelCount; index++) {
+    const wheelX = x - trackWidth / 2 + 6 + index * ((trackWidth - 12) / (wheelCount - 1));
+    ctx.beginPath();
+    ctx.arc(wheelX, trackTop + trackHeight / 2, wheelRadius, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,255,255,0.45)";
+    ctx.fill();
+  }
+  ctx.strokeStyle = "rgba(255,255,255,0.18)";
+  ctx.lineWidth = 1.2;
+  for (let notch = 0; notch < trackWidth; notch += 5) {
+    const notchX = x - trackWidth / 2 + notch + 2;
+    ctx.beginPath();
+    ctx.moveTo(notchX, y - 2.5);
+    ctx.lineTo(notchX, y);
+    ctx.stroke();
+  }
+
+  // ── Hull ──────────────────────────────────────────────────────────────
+  const hullGradient = ctx.createLinearGradient(0, hullTop, 0, hullTop + hullHeight);
+  hullGradient.addColorStop(0, color);
+  hullGradient.addColorStop(1, dark);
+  roundedRect(ctx, x - hullWidth / 2, hullTop, hullWidth, hullHeight, 2.5);
+  ctx.fillStyle = hullGradient;
+  ctx.fill();
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Sloped front plate, on the enemy-facing side.
   ctx.beginPath();
-  ctx.arc(x, y - 4, PLAYER_RADIUS, 0, Math.PI * 2);
+  ctx.moveTo(x + facing * (hullWidth / 2), hullTop);
+  ctx.lineTo(x + facing * (hullWidth / 2 - 4), hullTop + hullHeight - 1);
+  ctx.strokeStyle = "rgba(255,255,255,0.5)";
+  ctx.lineWidth = 1.6;
+  ctx.stroke();
+
+  // ── Turret ────────────────────────────────────────────────────────────
+  const turretX = x - turretWidth / 2 + facing * 1;
+  roundedRect(ctx, turretX, turretTop, turretWidth, turretHeight, 4);
   ctx.fillStyle = color;
   ctx.fill();
   ctx.strokeStyle = OUTLINE;
-  ctx.lineWidth = 3;
+  ctx.lineWidth = 2;
   ctx.stroke();
 
-  // A small helmet arc, so the two players read as gunners, not discs.
+  // Hatch, offset toward the rear of the turret.
   ctx.beginPath();
-  ctx.arc(x, y - 6, PLAYER_RADIUS - 3, Math.PI * 1.15, Math.PI * 1.85);
-  ctx.strokeStyle = "rgba(255,255,255,0.85)";
-  ctx.lineWidth = 2.4;
-  ctx.stroke();
+  ctx.arc(x - facing * 3.5, turretTop + 3.2, 2.3, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(255,255,255,0.55)";
+  ctx.fill();
 
-  // An active marker ring.
+  // ── Active marker: a dashed ring around the tracks ────────────────────
   if (active) {
     ctx.beginPath();
-    ctx.arc(x, y - 4, PLAYER_RADIUS + 6, 0, Math.PI * 2);
+    ctx.ellipse(x, y - 3, trackWidth / 2 + 7, 9, 0, 0, Math.PI * 2);
     ctx.strokeStyle = "rgba(245, 255, 59, 0.9)";
-    ctx.lineWidth = 2.4;
+    ctx.lineWidth = 2.2;
     ctx.setLineDash([6, 5]);
     ctx.stroke();
     ctx.setLineDash([]);
   }
 
-  // Lives: filled pips for remaining, hollow for lost.
-  const pipStart = x - 14;
-  for (let index = 0; index < 3; index++) {
-    const px = pipStart + index * 14;
-    const py = y - 42;
-    ctx.beginPath();
-    ctx.arc(px, py, 4.5, 0, Math.PI * 2);
-    if (index < lives) {
-      ctx.fillStyle = "#f5ff3b";
-      ctx.fill();
-      ctx.strokeStyle = OUTLINE;
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-    } else {
-      ctx.strokeStyle = "rgba(255,255,255,0.35)";
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-    }
+  // ── HP bar, floating over the turret ──────────────────────────────────
+  const barWidth = 38;
+  const barHeight = 5;
+  const barX = x - barWidth / 2;
+  const barY = turretTop - 16;
+  roundedRect(ctx, barX, barY, barWidth, barHeight, 2.5);
+  ctx.fillStyle = "rgba(3, 10, 20, 0.85)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.3)";
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+  if (ratio > 0) {
+    const fill = ratio > 0.5 ? "#4ade80" : ratio > 0.25 ? "#facc15" : "#f87171";
+    roundedRect(
+      ctx,
+      barX + 1,
+      barY + 1,
+      Math.max(1.5, (barWidth - 2) * ratio),
+      barHeight - 2,
+      1.5,
+    );
+    ctx.fillStyle = fill;
+    ctx.fill();
   }
 
-  // Label, on the side away from the enemy so it never sits under a shot line.
+  // HP number, right above the bar, with a dark halo so it reads on any sky.
+  ctx.font = `800 ${worldToCssFont(11)}`;
+  ctx.textAlign = "center";
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "rgba(3, 10, 20, 0.9)";
+  ctx.strokeText(`${Math.max(0, Math.round(hp))} HP`, x, barY - 4);
   ctx.fillStyle = INK;
-  ctx.font = `800 ${worldToCssFont(14)}`;
+  ctx.fillText(`${Math.max(0, Math.round(hp))} HP`, x, barY - 4);
+
+  // Label, on the side away from the enemy so it never sits under a shot line.
+  ctx.font = `800 ${worldToCssFont(13)}`;
   ctx.textAlign = facing > 0 ? "left" : "right";
-  ctx.fillText(label, x + facing * (PLAYER_RADIUS + 8), y + 4);
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "rgba(3, 10, 20, 0.9)";
+  ctx.strokeText(label, x + facing * (trackWidth / 2 + 6), y - 6);
+  ctx.fillStyle = INK;
+  ctx.fillText(label, x + facing * (trackWidth / 2 + 6), y - 6);
   ctx.restore();
 }
 

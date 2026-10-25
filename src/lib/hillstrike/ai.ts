@@ -2,48 +2,76 @@
  * Hillstrike — the practice bot.
  *
  * ── WHAT THE DIFFICULTY CHANGES ────────────────────────────────────────────
- * ONLY the bot's aiming decision: how wide a grid of angles/powers it searches,
- * how finely it refines the best one, how many of its best lines it resolves
- * through the full state transition before committing, and how often the shared
- * skill policy makes it pick a worse line than the best it found.
+ * ONLY the bot's decision: how wide a grid of angles/powers it searches, how
+ * finely it refines the best one, how many of its best lines it resolves through
+ * the full state transition before committing, and how often the shared skill
+ * policy makes it pick a worse line than the best it found.
  *
  * It deliberately does NOT touch:
  *   • the projectile (both seats fire the same spec — see ./constants),
  *   • the physics (it plans with the SAME `simulateShot` the match uses),
- *   • damage, lives, terrain, collapse or the volley rules (all ./rules),
+ *   • damage, HP, terrain, collapse, drives or the turn rules (all ./rules),
  *   • anything hidden: Hillstrike is perfect information, and the bot reads only
  *     the public match state a human's board renders (see AI_PUBLIC_STATE_KEYS).
  * It never receives extra damage, a stronger projectile or a private sim.
  *
- * ── HOW IT AIMS ────────────────────────────────────────────────────────────
+ * ── HOW IT DECIDES ─────────────────────────────────────────────────────────
  * 1. BUILD a deterministic grid of legal shots for its seat's forward arc.
- * 2. VALIDATE each with the engine's own `validateShot` — a candidate the match
- *    would refuse is not an option, ever.
+ * 2. VALIDATE each with the engine's own `validateAction` — a candidate the
+ *    match would refuse is not an option, ever.
  * 3. SIMULATE each with the engine's `simulateShot`, scoring the result it
  *    resolved: a direct hit on the defender, else a structural hit close to the
  *    defender (breaking cover is how a shielded player becomes hittable), else
  *    ground. Distance to the defender breaks ties toward the useful line.
- * 4. RESOLVE the top few through `applyShot` — the same state transition a human
- *    press of Fire runs — so the bot can see the real outcome: a killing shot is
- *    a won match, and a shot that fells its OWN tower is scored down, badly when
- *    the bot is down to its last life and needs its cover.
- * 5. RANK with an explicit, total tie-break order (score, then distance, then
- *    angle, then power), so two runs over the same state can never differ.
+ * 4. RESOLVE the top few through `applyAction` — the same state transition a
+ *    human press of Fire runs — so the bot can see the real outcome: a knockout
+ *    is a won match, and a shot that fells its OWN cover while it is low on HP
+ *    is scored down, badly, because that cover is what keeps it alive.
+ * 5. SPEND THE ACTION WELL when a shot is not: if no line even reaches the
+ *    enemy, the bot drives forward (or, when it is hurt, builds cover) instead
+ *    of throwing the action away; with two actions in hand it will also drive
+ *    first and shoot second rather than take a bare crater in the open.
  * 6. SLIP through the ONE shared tier policy (`chooseAiOption`), which is what
- *    makes a weak tier beatable rather than merely short-sighted.
+ *    makes a weak tier beatable rather than merely short-sighted. The slip only
+ *    applies to the aim — a drive or a build is always the deliberate choice.
  *
  * ── COST ───────────────────────────────────────────────────────────────────
  * Bounded by construction: at most 21 / 70 / 190 grid simulations, plus (hard
- * only) ≤ 63 refinement simulations, plus at most `topK` full shot resolutions.
- * `aiCandidateBudget(difficulty)` states the ceiling, and the whole plan is
- * synchronous work in the tens of milliseconds.
+ * only) ≤ 63 refinement simulations, plus at most `topK` full shot resolutions,
+ * plus at most one probe each for the move/build actions. `aiCandidateBudget`
+ * states the ceiling, and the whole plan is synchronous work in the tens of
+ * milliseconds.
  */
 
 import { chooseAiOption, type AiDifficulty } from "../aiDifficulty";
-import { IMPACT_KINDS, MATCH_STATUS, POWER_MAX, SEATS } from "./constants";
-import { normalizeShot, otherSeat, simulateShot } from "./physics";
-import { applyShot, validateShot } from "./rules";
-import type { HillstrikeState, Impact, Seat, ShotInput } from "./types";
+import {
+  ACTION_TYPES,
+  IMPACT_KINDS,
+  MATCH_STATUS,
+  MAX_HP,
+  POWER_MAX,
+  SEATS,
+} from "./constants";
+import {
+  damageForDistance,
+  normalizeShot,
+  otherSeat,
+  simulateShot,
+} from "./physics";
+import {
+  applyAction,
+  buildPlacementFor,
+  hpOf,
+  moveTargetFor,
+  validateAction,
+} from "./rules";
+import type {
+  HillstrikeAction,
+  HillstrikeState,
+  Impact,
+  Seat,
+  ShotInput,
+} from "./types";
 
 /** One line per tier, shown under the shared difficulty picker. */
 export const HILLSTRIKE_TIER_HINTS: Record<AiDifficulty, string> = {
@@ -59,8 +87,8 @@ export const HILLSTRIKE_TIER_HINTS: Record<AiDifficulty, string> = {
  *
  * Hillstrike is perfect information: every field below is one a human's board
  * renders or a client is sent (terrain, both towers, both standing positions,
- * both lives, the volley counters, the turn, the recorded last shot). There is
- * deliberately NO hidden field, and this list is the complete state surface —
+ * both HP pools, the volley counters, the turn, the recorded last action). There
+ * is deliberately NO hidden field, and this list is the complete state surface —
  * the bot test fails if the bot ever reads a key that is not declared here, so a
  * future hidden field (a concealed aim, a private modifier) cannot be used by it.
  */
@@ -71,14 +99,14 @@ export const AI_PUBLIC_STATE_KEYS = Object.freeze([
   "openingSeat",
   "turn",
   "turnIndex",
-  "shotsRemaining",
+  "actionsRemaining",
   "openingShotPending",
-  "lives",
+  "hp",
   "battlefield",
   "projectile",
   "winner",
   "terminationReason",
-  "lastShot",
+  "lastAction",
 ] as const);
 
 export interface HillstrikeAiPlan {
@@ -167,13 +195,14 @@ export function aiAimGrid(difficulty: AiDifficulty, seat: Seat): ShotInput[] {
 
 /**
  * The most candidate simulations one plan can ever run: the grid, the
- * refinement window (only the tiers that refine) and the top-K re-resolutions.
+ * refinement window (only the tiers that refine), the top-K re-resolutions and
+ * the single probe of each non-shoot action.
  */
 export function aiCandidateBudget(difficulty: AiDifficulty): number {
   const plan = planFor(difficulty);
   const grid = aiAimGrid(difficulty, "player1").length;
   const refinement = plan.refine ? refinementGridCount("player1") : 0;
-  return grid + refinement + plan.topK;
+  return grid + refinement + plan.topK + 2;
 }
 
 /** How many shots a refinement window can produce, measured mid-arc. */
@@ -192,15 +221,17 @@ export interface AiShotScore {
   /** Distance from the impact to the defender's body. */
   readonly distance: number;
   readonly score: number;
-  /** True when this shot would remove the defender's last life. */
+  /** True when this shot would take the defender's last HP. */
   readonly lethal: boolean;
+  /** HP this shot would take off the defender, from the flight distance. */
+  readonly damage: number;
   readonly enemyBlocksLost: number;
   readonly ownBlocksLost: number;
 }
 
 /**
  * Scoring weights. They are relative preferences, not damage: the engine decides
- * what a hit does, this table only decides which already-legal shot the bot
+ * what a hit does, this table only decides which already-legal action the bot
  * prefers. A direct hit always beats breaking cover; breaking cover always beats
  * a bare crater in the open.
  */
@@ -216,10 +247,13 @@ const SCORE = Object.freeze({
   ENEMY_BLOCK_DAMAGED: 70,
   OWN_BLOCK_DESTROYED: -120,
   OWN_BLOCK_DAMAGED: -40,
-  /** Felling your own cover while on your last life is close to losing. */
-  OWN_BLOCK_DESTROYED_LAST_LIFE: -900,
-  OWN_BLOCK_DAMAGED_LAST_LIFE: -300,
+  /** Felling your own cover while nearly dead is close to losing. */
+  OWN_BLOCK_DESTROYED_LOW_HP: -900,
+  OWN_BLOCK_DAMAGED_LOW_HP: -300,
 });
+
+/** Below this fraction of `MAX_HP` the bot starts valuing its cover. */
+const LOW_HP_FRACTION = 0.5;
 
 /** Block seat lookup for one battlefield (ids are stable within a match). */
 function seatsById(state: HillstrikeState): Map<number, Seat> {
@@ -243,7 +277,7 @@ export function scoreAiShot({
   seat: Seat;
   shot: ShotInput;
 }): AiShotScore | null {
-  const verdict = validateShot(state, seat, shot);
+  const verdict = validateAction(state, seat, { type: ACTION_TYPES.SHOOT, ...shot });
   if (!verdict.ok) return null;
 
   let simulation;
@@ -260,6 +294,7 @@ export function scoreAiShot({
 
   const defender = otherSeat(seat);
   const defenderPlayer = state.battlefield.players[defender];
+  const defenderHp = hpOf(state, defender);
   const impact = simulation.impact;
   const distance = Math.hypot(impact.x - defenderPlayer.x, impact.y - defenderPlayer.y);
   const closeness = Math.max(0, SCORE.CLOSENESS_MAX - distance);
@@ -280,21 +315,25 @@ export function scoreAiShot({
     else if (blockSeat === seat) ownBlocksDamaged += 1;
   }
 
-  const lastLife = state.lives[seat] <= 1;
+  const lowHp = hpOf(state, seat) <= LOW_HP_FRACTION * MAX_HP;
   const ownDamage =
     ownBlocksLost *
-      (lastLife ? SCORE.OWN_BLOCK_DESTROYED_LAST_LIFE : SCORE.OWN_BLOCK_DESTROYED) +
+      (lowHp ? SCORE.OWN_BLOCK_DESTROYED_LOW_HP : SCORE.OWN_BLOCK_DESTROYED) +
     ownBlocksDamaged *
-      (lastLife ? SCORE.OWN_BLOCK_DAMAGED_LAST_LIFE : SCORE.OWN_BLOCK_DAMAGED);
+      (lowHp ? SCORE.OWN_BLOCK_DAMAGED_LOW_HP : SCORE.OWN_BLOCK_DAMAGED);
   const enemyDamage =
     enemyBlocksLost * SCORE.ENEMY_BLOCK_DESTROYED +
     enemyBlocksDamaged * SCORE.ENEMY_BLOCK_DAMAGED;
 
   let base: number;
   let lethal = false;
+  let damage = 0;
   if (impact.kind === IMPACT_KINDS.PLAYER) {
     if (impact.target === defender) {
-      lethal = state.lives[defender] <= 1;
+      // The damage is decided by the engine from the flight distance, not by
+      // the impact; the bot only reads it to know whether this line is lethal.
+      damage = Math.min(defenderHp, damageForDistance(simulation.distance));
+      lethal = damage >= defenderHp;
       base = SCORE.DIRECT_HIT + (lethal ? SCORE.MATCH_WIN : 0);
     } else {
       // Hitting yourself is never a plan.
@@ -316,6 +355,7 @@ export function scoreAiShot({
     distance,
     score: base + closeness + ownDamage + enemyDamage,
     lethal,
+    damage,
     enemyBlocksLost,
     ownBlocksLost,
   };
@@ -360,15 +400,18 @@ function refinementGrid(best: ShotInput, seat: Seat): ShotInput[] {
 /**
  * Resolve one already-scored line through the REAL state transition.
  *
- * `applyShot` is the same call a human's press of Fire makes, so the bot sees
- * exactly what the match would do: the lives after the shot, a finished match,
- * the collapsed tower. The adjustment is deliberately small — it can confirm or
- * veto a line, never invent physics.
+ * `applyAction` is the same call a human's press of Fire makes, so the bot sees
+ * exactly what the match would do: the HP after the shot, a finished match, the
+ * collapsed tower. The adjustment is deliberately small — it can confirm or veto
+ * a line, never invent physics.
  */
 function applyTransition(state: HillstrikeState, seat: Seat, scored: AiShotScore): AiShotScore {
   let next;
   try {
-    next = applyShot(state, seat, scored.shot).state;
+    next = applyAction(state, seat, {
+      type: ACTION_TYPES.SHOOT,
+      ...scored.shot,
+    }).state;
   } catch {
     return { ...scored, score: scored.score + SCORE.MISS };
   }
@@ -380,17 +423,64 @@ function applyTransition(state: HillstrikeState, seat: Seat, scored: AiShotScore
       lethal: won || scored.lethal,
     };
   }
-  // A shot that left the defender on fewer lives than we predicted is better
-  // than the raw impact suggested; the reverse is impossible, but be explicit.
-  const predicted = scored.lethal ? 1 : 0;
-  const actual = state.lives[otherSeat(seat)] - next.lives[otherSeat(seat)];
+  // A shot that left the defender lower than predicted is better than the raw
+  // impact suggested; the reverse is impossible, but be explicit.
+  const predicted = scored.lethal ? scored.damage : 0;
+  const actual = hpOf(state, otherSeat(seat)) - hpOf(next, otherSeat(seat));
   if (actual !== predicted) {
-    return { ...scored, score: scored.score + (actual - predicted) * SCORE.DIRECT_HIT };
+    return { ...scored, score: scored.score + (actual - predicted) * 40 };
   }
   return scored;
 }
 
-export interface ChooseAiShotParams {
+/** True when the engine would accept `action` for this seat right now. */
+export function isLegalAiAction(
+  state: HillstrikeState,
+  seat: Seat,
+  action: HillstrikeAction,
+): boolean {
+  return validateAction(state, seat, action).ok;
+}
+
+/**
+ * The non-shoot action the bot would rather spend the action on, or `null`.
+ *
+ * Two situations make a shot the wrong choice:
+ *   • no line reaches anything useful (the bot is walled off or out of arc), so
+ *     driving forward is strictly better than a wasted shell — and while it is
+ *     hurt, throwing up cover is better still;
+ *   • the shot is only a crater in the open and the bot still has a second
+ *     action, so closing the range first buys real damage on the follow-up.
+ */
+function preferPositioning(
+  state: HillstrikeState,
+  seat: Seat,
+  best: AiShotScore | null,
+): HillstrikeAction | null {
+  const hurt = hpOf(state, seat) <= LOW_HP_FRACTION * MAX_HP;
+  const forward: HillstrikeAction = { type: ACTION_TYPES.MOVE, direction: "forward" };
+  const build: HillstrikeAction = { type: ACTION_TYPES.BUILD };
+
+  const uselessShot = !best || best.impact.kind === IMPACT_KINDS.OUT_OF_BOUNDS;
+  if (uselessShot) {
+    if (hurt && buildPlacementFor(state, seat) && isLegalAiAction(state, seat, build)) {
+      return build;
+    }
+    if (isLegalAiAction(state, seat, forward)) return forward;
+    return null;
+  }
+
+  // A bare crater while a second action is still in hand: drive first, then fire.
+  const actionsLeft = Number(state.actionsRemaining);
+  const groundOnly =
+    best.impact.kind === IMPACT_KINDS.TERRAIN && best.score < SCORE.GROUND_HIT + SCORE.CLOSENESS_MAX;
+  if (actionsLeft >= 2 && groundOnly && !hurt && isLegalAiAction(state, seat, forward)) {
+    return forward;
+  }
+  return null;
+}
+
+export interface ChooseAiActionParams {
   readonly state: HillstrikeState;
   readonly seat: Seat;
   readonly difficulty: AiDifficulty;
@@ -399,17 +489,17 @@ export interface ChooseAiShotParams {
 }
 
 /**
- * Choose the bot's shot for the given state.
+ * Choose the bot's action for the given state.
  *
  * Throws when the state is terminal or it is not `seat`'s turn — the caller is
  * expected to ask only when the bot owns the turn, exactly like a client would.
  */
-export function chooseAiShot({
+export function chooseAiAction({
   state,
   seat,
   difficulty,
   random = Math.random,
-}: ChooseAiShotParams): ShotInput {
+}: ChooseAiActionParams): HillstrikeAction {
   if (!state || typeof state !== "object") {
     throw new TypeError("hillstrike ai: state is required");
   }
@@ -430,13 +520,8 @@ export function chooseAiShot({
     if (candidate) scored.push(candidate);
   }
 
-  if (scored.length === 0) {
-    // Nothing the engine accepts (should not happen): a straight lob.
-    return normalizeShot({ angleDeg: seat === "player1" ? 45 : 135, power: 60 });
-  }
-
   // Bounded local refinement around the best coarse line (hard only).
-  if (plan.refine) {
+  if (plan.refine && scored.length > 0) {
     const best = scored.reduce((a, b) => (compareAiScores(b, a) < 0 ? b : a));
     for (const shot of refinementGrid(best.shot, seat)) {
       const candidate = scoreAiShot({ state, seat, shot });
@@ -446,8 +531,25 @@ export function chooseAiShot({
 
   // Resolve only the best few through the real transition, then rank for real.
   const ranking = scored.sort(compareAiScores);
-  const resolved = ranking.slice(0, plan.topK).map((candidate) => applyTransition(state, seat, candidate));
+  const resolved = ranking
+    .slice(0, plan.topK)
+    .map((candidate) => applyTransition(state, seat, candidate));
   resolved.sort(compareAiScores);
+  const best = resolved[0] ?? null;
+
+  // A knockout line is never passed up for a drive or a build.
+  if (!best?.lethal) {
+    const positioning = preferPositioning(state, seat, best);
+    if (positioning) return positioning;
+  }
+
+  if (!best) {
+    // Nothing the engine accepts (should not happen): a straight lob.
+    return {
+      type: ACTION_TYPES.SHOOT,
+      ...normalizeShot({ angleDeg: seat === "player1" ? 45 : 135, power: 60 }),
+    };
+  }
 
   // The ONE shared tier policy: weaker tiers deliberately pick a worse option,
   // which is what makes them beatable. Scores are not ratio-comparable (a miss is
@@ -460,6 +562,8 @@ export function chooseAiShot({
     0,
   );
 
-  if (!chosen) return normalizeShot(resolved[0]?.shot ?? ranking[0].shot);
-  return normalizeShot(chosen.shot);
+  return {
+    type: ACTION_TYPES.SHOOT,
+    ...normalizeShot((chosen ?? best).shot),
+  };
 }

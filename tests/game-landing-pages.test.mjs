@@ -43,6 +43,7 @@ import {
   GAME_LANDING_SLUGS,
   gameLandingPath,
   gameMatchPath,
+  gameMatchPathPrefix,
   gamePlayPath,
 } from "../src/lib/gameLandingPages.ts";
 import { PUBLIC_SEO_PATHS } from "../src/lib/seoPages.ts";
@@ -393,7 +394,16 @@ test("auth: the landing page enters gameplay only through declared entry points"
   assert.match(component, /\{game\.practiceApi \? \(/);
   assert.match(component, /<PracticeMatchButton/);
   assert.match(component, /apiPath=\{game\.practiceApi\}/);
-  assert.match(component, /matchHref=\{\(matchId\) => gameMatchPath\(game\.slug, matchId\)\}/);
+  // The board URL is handed over as a STRING PREFIX, never as a match-id
+  // callback: the button is a client component and the page is a server one, so
+  // a function prop is not serialisable and takes the whole page down ("Functions
+  // cannot be passed directly to Client Components").
+  assert.match(component, /matchHrefBase=\{gameMatchPathPrefix\(game\.slug\)\}/);
+  assert.doesNotMatch(
+    component,
+    /matchHref=\{/, // the old function-prop spelling must not come back
+    "the landing page must not pass a match-id function to a client component",
+  );
   for (const game of GAME_LANDING_PAGES) {
     if (!game.practiceApi) continue;
     assert.equal(typeof game.practiceApi, "string");
@@ -403,6 +413,8 @@ test("auth: the landing page enters gameplay only through declared entry points"
     assert.ok(existsSync(route), `${game.slug}: ${route} does not exist`);
     // The board URL the button follows is the game's own match URL.
     assert.equal(gameMatchPath(game.slug, "abc"), `/games/${game.slug}/abc`);
+    // …and the prefix it is handed is that same URL minus the id.
+    assert.equal(gameMatchPathPrefix(game.slug), `/games/${game.slug}/`);
   }
   // …and the button posts an EMPTY body: it cannot choose a deal, a seat or a
   // difficulty on the game's behalf.

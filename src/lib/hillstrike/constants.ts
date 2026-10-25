@@ -3,11 +3,14 @@
  * can emit.
  *
  * Hillstrike is a skill-based 1v1 artillery duel: two players sit on opposite
- * hills of one shared battlefield, each with three lives, and a hit is decided
- * by drag-aimed direction and power alone. This module and `./rules` /
- * `./physics` / `./generation` are the single source of truth for those rules;
- * a store, a bot or a board UI is expected to derive from them rather than
- * re-implement them.
+ * hills of one shared battlefield and each drives a TANK with a pool of HIT
+ * POINTS. A direct hit costs HP in proportion to how far the shell flew, and a
+ * turn offers three actions — fire, drive closer/farther, or drop a shield
+ * block — so the duel is about the trade between range, damage and cover.
+ *
+ * This module and `./rules` / `./physics` / `./generation` are the single source
+ * of truth for those rules; a store, a bot or a board UI is expected to derive
+ * from them rather than re-implement them.
  *
  * ── COORDINATES ────────────────────────────────────────────────────────────
  * `x` grows to the right, `y` grows DOWN (screen convention), so y = 0 is the
@@ -27,9 +30,12 @@
  * instead of re-deriving the outcome.
  *
  * ── TRUST BOUNDARY ─────────────────────────────────────────────────────────
- * A caller supplies exactly two numbers — `{ angleDeg, power }` — and nothing
- * else. There is no field for a position, a hit, a life, a terrain height, a
- * structure or a winner, and the engine reads none of those from input.
+ * A caller supplies an ACTION and nothing else: an aim (`{ angleDeg, power }`),
+ * a drive direction (`{ direction }`) or an empty build request. There is no
+ * field for a position, a hit, an HP total, a terrain height, a structure or a
+ * winner, and the engine reads none of those from input. Every consequence —
+ * the new standing position, the block that was placed, the damage — is derived
+ * here from the state the server already holds.
  */
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -41,7 +47,11 @@
  * the shape of a match. Stored on the match row, and mixed into the generator
  * seed, so a live match still replays with the rules it was created under.
  */
-export const FIELD_VERSION = 1;
+/**
+ * v2 — taller cover walls, HP and the three-action turn. Bumped so a match dealt
+ * under v1 (three lives, low towers) still replays with the layout it was dealt.
+ */
+export const FIELD_VERSION = 2;
 
 /** Playable width, in world units (1 unit = 1 px at 1× render scale). */
 export const BATTLEFIELD_WIDTH = 1280;
@@ -76,15 +86,51 @@ export const TERRAIN_PLATEAU_COLUMNS = 24;
 /** Total height units one shot may ever remove from the terrain. */
 export const TERRAIN_CARVE_BUDGET = 320;
 
+/**
+ * Distance (world units of actual FLIGHT — the arc, not the straight line) at
+ * which a shell has lost all the power it can lose, and the fraction it keeps.
+ *
+ * This is the game's central trade, and the numbers below are measured against
+ * real trajectories (a lob flies far further than the straight line between the
+ * tanks), not against the map width. With this curve the scale is simply
+ * `1 - flightDistance / 2000`:
+ *
+ *   point-blank brawl     ≈ 660 flight   → 67% power → 34 damage → 3 hits
+ *   driven 120 units in   ≈ 1060 flight  → 47% power → 24 damage
+ *   the opening exchange  ≈ 1180 flight  → 41% power → 21 damage → 5 hits
+ *   a full-map lob       ≥ 1400 flight   → 30% power → 15 damage → 7 hits
+ *
+ * So the range dial is worth roughly a hit across a whole duel: closing it buys
+ * damage, giving it up denies the same to the opponent, and the same scale
+ * shrinks the explosion (see ./physics), so a long shot craters less too.
+ */
+export const SHOT_POWER_FALLOFF_DISTANCE = 1400;
+export const SHOT_POWER_MIN_SCALE = 0.3;
+
 // ──────────────────────────────────────────────────────────────────────────
-// Players / lives
+// Players / hit points
 // ──────────────────────────────────────────────────────────────────────────
 
 /** The two seats. A seat is derived from the match, never from a request. */
 export const SEATS = ["player1", "player2"] as const;
 
-/** Lives each player starts with. A direct hit removes exactly one. */
-export const LIVES_PER_PLAYER = 3;
+/**
+ * Hit points each tank starts with.
+ *
+ * 100 is chosen so damage reads as a percentage at a glance, and so the range
+ * bands land on clearly different hit counts (see the table on
+ * SHOT_POWER_FALLOFF_DISTANCE):
+ *
+ *   point blank (≈660 flight)    → 34 damage → 3 hits
+ *   the opening exchange (≈1180) → 21 damage → 5 hits
+ *   a full-map lob (≥1400)       → 15 damage → 7 hits
+ *
+ * A duel therefore runs three to seven direct hits — long enough for cover and
+ * drives to matter, short enough that one good turn moves the bar visibly. A
+ * direct hit is also the rarest way to point a shot at a tank: the walls eat
+ * most lines, which is what the HP bar is sized against.
+ */
+export const MAX_HP = 100;
 
 /** Player hit radius (the projectile radius is added on top). */
 export const PLAYER_RADIUS = 13;
@@ -102,18 +148,31 @@ export const MIN_PLAYER_SEPARATION = 400;
 /** A tower block is a square of this many world units. */
 export const STRUCTURE_BLOCK_SIZE = 26;
 
-/** Blocks per seat at generation, widest row first (bottom → top). */
-export const STRUCTURE_ROW_WIDTHS = [4, 3, 2] as const;
+/**
+ * Blocks per seat at generation, widest row first (bottom → top).
+ *
+ * Four rows of 26-unit blocks stand 104 units tall — 33% taller than the v1
+ * wall — so each tank's cover is a real obstacle: flat shots hit stone, and
+ * opening a firing lane means knocking it down. It is also the wall a player
+ * hides behind, which is what gives the shield block something to extend.
+ */
+export const STRUCTURE_ROW_WIDTHS = [5, 4, 3, 2] as const;
 
-/** Hard cap on blocks per seat / per battlefield (a deserialised state may lie). */
-export const MAX_STRUCTURE_BLOCKS_PER_SEAT = 12;
-export const MAX_STRUCTURE_BLOCKS = 24;
+/**
+ * Hard cap on blocks per seat / per battlefield (a deserialised state may lie).
+ *
+ * 14 blocks are dealt, so the per-seat cap leaves room for eight shield blocks
+ * placed over the course of a match without ever letting the board grow into an
+ * unreachable maze.
+ */
+export const MAX_STRUCTURE_BLOCKS_PER_SEAT = 22;
+export const MAX_STRUCTURE_BLOCKS = 44;
 
 /** How many blast hits a block survives. */
 export const BLOCK_MAX_INTEGRITY = 2;
 
 /** Horizontal distance from the battlefield edge to a tower's centre. */
-export const STRUCTURE_CENTRE_INSET_X = 346;
+export const STRUCTURE_CENTRE_INSET_X = 380;
 
 /** How far a block may move in one collapse pass before it counts as detached. */
 export const SUPPORT_TOLERANCE = 0.75;
@@ -123,11 +182,59 @@ export const SUPPORT_TOLERANCE = 0.75;
 // ──────────────────────────────────────────────────────────────────────────
 
 /**
- * The agreed opening: the randomly drawn opening seat fires ONE shot, the other
- * seat answers with TWO, and from then on the seats alternate two-shot volleys.
+ * The agreed opening: the randomly drawn opening seat takes ONE action, the
+ * other seat answers with TWO, and from then on the seats alternate two-action
+ * volleys.
+ *
+ * An ACTION is any of the three below — firing, driving or building — so a
+ * two-action volley is "drive into range, then fire", or "build cover, then
+ * fire", not necessarily two shells.
  */
-export const OPENING_SHOTS = 1;
-export const SHOTS_PER_VOLLEY = 2;
+export const OPENING_ACTIONS = 1;
+export const ACTIONS_PER_TURN = 2;
+
+/**
+ * The opening seat's single action, and the two actions every later turn gets
+ * (see the comment above). Kept as named aliases because a reader of ./rules
+ * meets the volley counter far more often than a raw number.
+ */
+export const OPENING_SHOTS = OPENING_ACTIONS;
+export const SHOTS_PER_VOLLEY = ACTIONS_PER_TURN;
+
+/** The three things a turn can spend an action on. */
+export const ACTION_TYPES = {
+  SHOOT: "shoot",
+  MOVE: "move",
+  BUILD: "build",
+} as const;
+
+/** Which way a drive goes: `forward` closes the range, `back` opens it. */
+export const MOVE_DIRECTIONS = {
+  FORWARD: "forward",
+  BACK: "back",
+} as const;
+
+/**
+ * How far one drive action moves a tank, and how far it may ever travel from its
+ * spawn.
+ *
+ * 60 units per drive, capped at 120 from the spawn: a tank can never reach its
+ * own cover wall (its base starts ~220 units ahead of a spawn), so there is
+ * always room to lob over the wall it is hiding behind. Closing the whole 120
+ * units shortens a shot's flight by about 10%, which is worth a point or two of
+ * damage — and opening it does the same to the opponent's next shot.
+ */
+export const MOVE_STEP = 60;
+export const MOVE_RANGE = 120;
+
+/** Closest a tank may ever stand to a battlefield edge. */
+export const MOVE_EDGE_MARGIN = 24;
+
+/**
+ * Gap between a tank's hull and a shield block it builds in front of itself.
+ * Kept at the hull radius so the block never overlaps the tank that placed it.
+ */
+export const BUILD_BLOCK_GAP = 3;
 
 /** Canonical angle range: [0, 360). 90° is straight up (see the header). */
 export const ANGLE_MIN = 0;
@@ -180,9 +287,21 @@ export const PATH_DEDUPE_TOLERANCE = 0.75;
 // ──────────────────────────────────────────────────────────────────────────
 
 /**
+ * A direct hit's damage at FULL power (see `damageForDistance` in ./physics).
+ *
+ * Scaled by the SAME distance falloff that shrinks the explosion, so a shot that
+ * flew across the whole map both craters less and hits for less. 50 at full
+ * power is what makes the range table on SHOT_POWER_FALLOFF_DISTANCE land on
+ * 44 / 31 / 28 / 18 — three hits at point blank, six at the far end of the map.
+ */
+export const HIT_DAMAGE_MAX = 50;
+
+/**
  * Blast tuning. A faster shot leaves a wider crater and a bigger structural
- * blast, so power is a real trade-off rather than a pure range dial. Every
- * value is an integer after rounding, so the damage pass is deterministic.
+ * blast, so power is a real trade-off rather than a pure range dial. The impact
+ * speed used here is the DISTANCE-SCALED speed (see ./physics), so a long lob
+ * explodes small even when it arrives fast. Every value is an integer after
+ * rounding, so the damage pass is deterministic.
  */
 export const CRATER_MIN_DEPTH = 8;
 export const CRATER_MAX_DEPTH = 30;
@@ -219,11 +338,16 @@ export const MATCH_STATUS = {
 } as const;
 
 /**
- * Why a match ended. The ENGINE only ever produces LIVES_EXHAUSTED; the other
- * three are store-level terminal states (a resignation, a lost turn clock and
- * a disconnect) declared here so the whole app shares one vocabulary.
+ * Why a match ended. The ENGINE only ever produces HP_DEPLETED; the other three
+ * are store-level terminal states (a resignation, a lost turn clock and a
+ * disconnect) declared here so the whole app shares one vocabulary.
+ *
+ * LIVES_EXHAUSTED is the v1 spelling, kept because it is already written into
+ * stored rows' `result_reason`; readers accept both, writers emit HP_DEPLETED.
  */
 export const END_REASONS = {
+  HP_DEPLETED: "hp-depleted",
+  /** @deprecated v1 rows only — new matches never write this. */
   LIVES_EXHAUSTED: "lives-exhausted",
   RESIGNED: "resigned",
   TIMED_OUT: "timed-out",
@@ -255,10 +379,16 @@ export const IMPACT_KINDS = {
 export const REJECTION = {
   INVALID_STATE: "invalid-state",
   INVALID_SEAT: "invalid-seat",
+  INVALID_ACTION: "invalid-action",
   INVALID_SHOT: "invalid-shot",
+  MOVE_BLOCKED: "move-blocked",
+  NO_ACTION_REMAINING: "no-action-remaining",
   MATCH_NOT_PLAYING: "match-not-playing",
   NOT_YOUR_TURN: "not-your-turn",
   NO_SHOTS_REMAINING: "no-shots-remaining",
   ANGLE_INVALID: "angle-invalid",
   POWER_INVALID: "power-invalid",
+  INVALID_DIRECTION: "invalid-direction",
+  NO_BUILD_SPACE: "no-build-space",
+  BLOCK_LIMIT: "block-limit",
 } as const;

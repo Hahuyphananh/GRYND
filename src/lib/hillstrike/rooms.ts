@@ -30,7 +30,7 @@
 // ── Trust boundary ────────────────────────────────────────────────
 //
 //   Broadcast payloads carry ONLY what the client needs to decide "should I
-//   refetch?" (status, version, turn, lives, result). The position and every
+//   refetch?" (status, version, turn, hp, result). The position and every
 //   outcome are always re-read from the authoritative snapshot; nothing here is a
 //   client-authoritative input, and the client→server poke carries nothing but
 //   the match id.

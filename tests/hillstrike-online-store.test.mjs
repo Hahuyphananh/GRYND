@@ -3,13 +3,14 @@
  *
  * THE ONLINE HILLSTRIKE MATCH STORE, driven for real.
  *
- * The model under test, in one line: a client may only ever say WHERE IT AIMED
- * (`{ angleDeg, power }`) and WHICH VERSION it was looking at. The trajectory,
- * the impact and its kind, the crater, both towers, both lives, whose turn it is,
- * the shots left in the volley, the winner and the match result are all derived by
- * the SERVER from its own row through the shared engine. So most of what these
- * tests do is try to make the store believe something a client is not allowed to
- * decide — and watch it ignore the claim and resolve the truth anyway.
+ * The model under test, in one line: a client may only ever say WHAT IT DID (one
+ * of the engine's three actions — shoot, drive or build) and WHICH VERSION it was
+ * looking at. The trajectory, the impact and its kind, the crater, both towers,
+ * both HP pools, whose turn it is, the actions left in the turn, the block that
+ * was placed, the winner and the match result are all derived by the SERVER from
+ * its own row through the shared engine. So most of what these tests do is try to
+ * make the store believe something a client is not allowed to decide — and watch
+ * it ignore the claim and resolve the truth anyway.
  *
  * ── THE FAKE ─────────────────────────────────────────────────────────────
  *
@@ -37,12 +38,12 @@ import { hillstrikeMatches, hillstrikeShots } from "../src/db/schema.ts";
 import {
   END_REASONS,
   IMPACT_KINDS,
-  LIVES_PER_PLAYER,
   MATCH_STATUS,
-  SHOTS_PER_VOLLEY,
+  MAX_HP,
+  ACTIONS_PER_TURN,
 } from "../src/lib/hillstrike/constants.ts";
 import { simulateShot } from "../src/lib/hillstrike/physics.ts";
-import { applyShot, createInitialState } from "../src/lib/hillstrike/rules.ts";
+import { applyAction, createInitialState } from "../src/lib/hillstrike/rules.ts";
 
 const MODULE_MOCKING_AVAILABLE = typeof mock?.module === "function";
 const SKIP_REASON = MODULE_MOCKING_AVAILABLE
@@ -56,6 +57,8 @@ const MALLORY = "user_mallory";
 const SEED = 424242;
 
 const other = (seat) => (seat === "player1" ? "player2" : "player1");
+/** The request shape the store accepts: an ACTION, never bare input fields. */
+const shoot = (shot) => ({ type: "shoot", ...shot });
 
 // ── Engine helpers (the same search the engine suites use) ────────────────
 
@@ -82,8 +85,25 @@ function findShot(state, seat, kind, { target = null } = {}) {
   throw new Error(`no ${kind} shot for ${seat} on seed ${state.seed}`);
 }
 
-const hitShot = (state, seat) =>
-  findShot(state, seat, IMPACT_KINDS.PLAYER, { target: other(seat) });
+/**
+ * A direct hit on the other tank. The cover walls are tall, so the opening hit
+ * window is narrow: this is a fine sweep at the high power bands.
+ */
+function hitShot(state, seat) {
+  for (let power = 100; power >= 55; power -= 5) {
+    for (let angle = 0; angle < 180; angle += 0.5) {
+      const shot = { angleDeg: angle, power };
+      const simulation = simulate(state, seat, shot);
+      if (
+        simulation.impact.kind === IMPACT_KINDS.PLAYER &&
+        simulation.impact.target === other(seat)
+      ) {
+        return shot;
+      }
+    }
+  }
+  throw new Error(`no direct hit for ${seat} on seed ${state.seed} (ply ${state.turnIndex})`);
+}
 
 function outOfBoundsShot(state, seat) {
   const arc = seat === "player1" ? [20, 80] : [100, 160];
@@ -169,7 +189,20 @@ function createFakeDb() {
         endedAt: null,
       },
     ],
-    [hillstrikeShots, { targetSeat: null, livesLost: 0 }],
+    [
+      hillstrikeShots,
+      {
+        action: "shoot",
+        angleDeg: null,
+        power: null,
+        impactKind: null,
+        impactX: null,
+        impactY: null,
+        targetSeat: null,
+        damage: 0,
+        livesLost: 0,
+      },
+    ],
   ]);
 
   const insert = (table) => ({
@@ -307,10 +340,10 @@ function seedMatch(fake, overrides = {}) {
 const liveMatch = (fake) => fake.rowsOf(hillstrikeMatches)[0];
 const shotLog = (fake) => fake.rowsOf(hillstrikeShots);
 
-/** The opening position after `shots` ([seat, shot] pairs) have resolved. */
-function stateAfter(shots, seed = SEED) {
-  return shots.reduce(
-    (state, [seat, shot]) => applyShot(state, seat, shot).state,
+/** The opening position after `actions` ([seat, action] pairs) have resolved. */
+function stateAfter(actions, seed = SEED) {
+  return actions.reduce(
+    (state, [seat, action]) => applyAction(state, seat, action).state,
     createInitialState({ seed, openingSeat: "player1" }),
   );
 }
@@ -318,26 +351,26 @@ function stateAfter(shots, seed = SEED) {
 /** A row seeded directly from an engine state built by the test. */
 const rowFromState = (state, overrides = {}) => matchRow({ gameState: state, ...overrides });
 
-// ── Trust boundary: the aim is the whole request ──────────────────────────
+// ── Trust boundary: the action is the whole request ───────────────────────
 
-test("submitShot: only the aim and the version are read", { skip: SKIP_REASON }, async (t) => {
+test("submitAction: only the action and the version are read", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   const store = await loadStore();
   const row = seedMatch(fake);
   const state = row.gameState;
   const shot = hitShot(state, "player1");
-  const expected = applyShot(state, "player1", shot).state;
+  const expected = applyAction(state, "player1", shoot(shot)).state;
 
-  // Everything a client might try to claim rides along with the aim. None of it
-  // is read: the engine's own resolution is what gets stored.
-  const result = await store.submitShot({
+  // Everything a client might try to claim rides along with the action. None of
+  // it is read: the engine's own resolution is what gets stored.
+  const result = await store.submitAction({
     userId: ALICE,
     matchId: MATCH_ID,
     expectedVersion: 0,
-    shot: {
-      ...shot,
+    action: {
+      ...shoot(shot),
       damage: 99,
-      livesLost: 3,
+      hp: { player2: 0 },
       target: "player2",
       winner: "player1",
       impact: { kind: "player", target: "player2", x: 0, y: 0, tick: 1 },
@@ -345,27 +378,28 @@ test("submitShot: only the aim and the version are read", { skip: SKIP_REASON },
     },
   });
 
-  assert.equal(result.state.lives.player2, LIVES_PER_PLAYER - 1);
-  assert.equal(result.state.lives.player1, LIVES_PER_PLAYER);
+  assert.equal(result.state.hp.player2, MAX_HP - result.state.lastAction.damage);
+  assert.ok(result.state.hp.player2 < MAX_HP);
+  assert.equal(result.state.hp.player1, MAX_HP);
   assert.equal(result.matchCompleted, false, "the forged completion flag is ignored");
   assert.equal(result.winnerSeat, null);
   assert.deepEqual(result.match.gameState, expected, "the engine's state is what is stored");
   assert.equal(result.match.status, MATCH_STATUS.PLAYING);
   assert.equal(row.ply, 1);
-  assert.equal(row.currentTurnUserId, BOB, "the opening one-shot volley hands over");
+  assert.equal(row.currentTurnUserId, BOB, "the opening single-action turn hands over");
 });
 
-test("submitShot: an accepted shot is logged with its aim and resolved outcome", { skip: SKIP_REASON }, async (t) => {
+test("submitAction: an accepted shot is logged with its aim and resolved outcome", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   const store = await loadStore();
   const row = seedMatch(fake);
   const shot = outOfBoundsShot(row.gameState, "player1");
 
-  const result = await store.submitShot({
+  const result = await store.submitAction({
     userId: ALICE,
     matchId: MATCH_ID,
     expectedVersion: 0,
-    shot,
+    action: shoot(shot),
   });
 
   assert.equal(result.actionIndex, 0);
@@ -374,60 +408,155 @@ test("submitShot: an accepted shot is logged with its aim and resolved outcome",
   assert.equal(logged.actionIndex, 0);
   assert.equal(logged.playerId, ALICE);
   assert.equal(logged.seat, "player1");
+  assert.equal(logged.action, "shoot");
   assert.equal(logged.angleDeg, shot.angleDeg);
   assert.equal(logged.power, shot.power);
   assert.equal(logged.impactKind, IMPACT_KINDS.OUT_OF_BOUNDS);
-  assert.equal(logged.livesLost, 0);
+  assert.equal(logged.damage, 0);
   assert.equal(logged.targetSeat, null);
+  assert.equal(logged.outcome.action, "shoot");
+  assert.equal(logged.outcome.hp.player2, MAX_HP);
   assert.equal(logged.outcome.turn, "player2");
   assert.equal(logged.outcome.status, MATCH_STATUS.PLAYING);
-  // The trajectory is not duplicated into the log: `game_state.lastShot` holds it.
+  // The trajectory is not duplicated into the log: `game_state.lastAction` holds it.
   assert.equal(Object.hasOwn(logged, "path"), false);
 });
 
-test("submitShot: a hit inside a two-shot volley keeps the turn", { skip: SKIP_REASON }, async (t) => {
+test("submitAction: a hit inside a two-action turn keeps the turn", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   const store = await loadStore();
 
-  // The opening seat fires one shot out of bounds; Bob then owns a two-shot volley.
+  // The opening seat fires one shot out of bounds; Bob then owns a two-action turn.
   const opening = outOfBoundsShot(createInitialState({ seed: SEED, openingSeat: "player1" }), "player1");
-  const state = stateAfter([["player1", opening]]);
-  const row = seedMatch(fake, rowFromState(state));
+  const state = stateAfter([["player1", shoot(opening)]]);
+  seedMatch(fake, rowFromState(state));
 
   const shot = hitShot(state, "player2");
-  const result = await store.submitShot({
+  const result = await store.submitAction({
     userId: BOB,
     matchId: MATCH_ID,
     expectedVersion: state.turnIndex,
-    shot,
+    action: shoot(shot),
   });
 
-  assert.equal(result.state.lives.player1, LIVES_PER_PLAYER - 1);
-  assert.equal(result.state.lives.player2, LIVES_PER_PLAYER);
-  assert.equal(result.state.turn, "player2", "a connecting shot does not end the volley");
-  assert.equal(result.state.shotsRemaining, 1);
+  assert.ok(result.state.hp.player1 < MAX_HP);
+  assert.equal(result.state.hp.player2, MAX_HP);
+  assert.equal(result.state.turn, "player2", "a connecting shot does not end the turn");
+  assert.equal(result.state.actionsRemaining, 1);
   assert.equal(result.match.currentTurnUserId, BOB);
   assert.equal(result.matchCompleted, false);
   assert.equal(writers.rating.length, 0);
 });
 
-// ── Termination and settlement ────────────────────────────────────────────
+// ── Drives and builds through the store ───────────────────────────────────
 
-test("submitShot: zero lives ends the match and settles exactly once", { skip: SKIP_REASON }, async (t) => {
+test("submitAction: a drive is persisted as an action with no aim and no impact", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   const store = await loadStore();
+  const row = seedMatch(fake);
+  const before = row.gameState.battlefield.players.player1;
 
-  // Bob has one life left, Alice to move.
-  const base = createInitialState({ seed: SEED, openingSeat: "player1" });
-  const state = { ...base, lives: { player1: 3, player2: 1 } };
-  const row = seedMatch(fake, rowFromState(state));
-
-  const shot = hitShot(state, "player1");
-  const result = await store.submitShot({
+  const result = await store.submitAction({
     userId: ALICE,
     matchId: MATCH_ID,
     expectedVersion: 0,
-    shot,
+    action: { type: "move", direction: "forward" },
+  });
+
+  assert.equal(result.state.battlefield.players.player1.x, before.x + 60);
+  assert.equal(result.state.turn, "player2", "a drive spends the opening action");
+  assert.equal(result.state.lastAction.type, "move");
+
+  const [logged] = shotLog(fake);
+  assert.equal(logged.action, "move");
+  assert.equal(logged.angleDeg, null, "a drive has no aim");
+  assert.equal(logged.power, null);
+  assert.equal(logged.impactKind, null, "a drive has no impact");
+  assert.equal(logged.damage, 0);
+  assert.equal(logged.outcome.action, "move");
+  assert.equal(logged.outcome.hp.player1, MAX_HP);
+});
+
+test("submitAction: a build is persisted with the block it placed", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  const row = seedMatch(fake);
+  const blocksBefore = row.gameState.battlefield.blocks.length;
+
+  const result = await store.submitAction({
+    userId: ALICE,
+    matchId: MATCH_ID,
+    expectedVersion: 0,
+    action: { type: "build" },
+  });
+
+  assert.equal(result.state.battlefield.blocks.length, blocksBefore + 1);
+  assert.equal(result.state.lastAction.type, "build");
+  const block = result.state.battlefield.blocks.find(
+    (candidate) => candidate.id === result.state.lastAction.blockId,
+  );
+  assert.ok(block, "the placed block is on the board");
+  assert.equal(block.seat, "player1");
+
+  const [logged] = shotLog(fake);
+  assert.equal(logged.action, "build");
+  assert.equal(logged.angleDeg, null);
+  assert.equal(logged.impactKind, null);
+  assert.equal(logged.damage, 0);
+});
+
+test("submitAction: a drive or a build the engine refuses is a clean 409", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  const row = seedMatch(fake);
+
+  // A tank at its forward leash: the engine refuses, so the store refuses.
+  const state = {
+    ...row.gameState,
+    battlefield: {
+      ...row.gameState.battlefield,
+      players: {
+        ...row.gameState.battlefield.players,
+        player1: {
+          ...row.gameState.battlefield.players.player1,
+          x: 96 + 120,
+          y: row.gameState.battlefield.players.player1.y,
+        },
+      },
+    },
+  };
+  fake.reset();
+  seedMatch(fake, rowFromState(state));
+
+  const result = await store.submitAction({
+    userId: ALICE,
+    matchId: MATCH_ID,
+    expectedVersion: 0,
+    action: { type: "move", direction: "forward" },
+  });
+
+  assert.equal(result.status, 409);
+  assert.equal(result.code, "move-blocked");
+  assert.equal(shotLog(fake).length, 0);
+});
+
+// ── Termination and settlement ────────────────────────────────────────────
+
+test("submitAction: zero HP ends the match and settles exactly once", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+
+  // Bob is one hit from elimination, Alice to move.
+  const base = createInitialState({ seed: SEED, openingSeat: "player1" });
+  const state = { ...base, hp: { player1: MAX_HP, player2: 1 } };
+  const row = seedMatch(fake, rowFromState(state));
+
+  const shot = hitShot(state, "player1");
+  const result = await store.submitAction({
+    userId: ALICE,
+    matchId: MATCH_ID,
+    expectedVersion: 0,
+    action: shoot(shot),
   });
 
   assert.equal(result.matchCompleted, true);
@@ -436,10 +565,11 @@ test("submitShot: zero lives ends the match and settles exactly once", { skip: S
   assert.equal(row.status, MATCH_STATUS.FINISHED);
   assert.equal(row.result, "player1");
   assert.equal(row.winnerId, ALICE);
-  assert.equal(row.resultReason, END_REASONS.LIVES_EXHAUSTED);
+  assert.equal(row.resultReason, END_REASONS.HP_DEPLETED);
   assert.ok(row.endedAt instanceof Date);
   // The engine's own terminal state is what was persisted.
   assert.equal(row.gameState.winner, "player1");
+  assert.equal(row.gameState.hp.player2, 0);
 
   // Progression: one W, one L, one rating event, one trophy event.
   assert.equal(writers.rating.length, 1);
@@ -449,12 +579,12 @@ test("submitShot: zero lives ends the match and settles exactly once", { skip: S
   assert.equal(writers.rating[0].loserClerkId, BOB);
   assert.equal(writers.trophy[0].gameKey, "hillstrike");
 
-  // A second shot, and a resignation, are both refused; nothing settles twice.
-  const late = await store.submitShot({
+  // A second action, and a resignation, are both refused; nothing settles twice.
+  const late = await store.submitAction({
     userId: BOB,
     matchId: MATCH_ID,
     expectedVersion: result.match.ply,
-    shot: { angleDeg: 150, power: 60 },
+    action: shoot({ angleDeg: 150, power: 60 }),
   });
   assert.equal(late.status, 409);
   const lateForfeit = await store.forfeitMatch({ userId: BOB, matchId: MATCH_ID });
@@ -463,17 +593,17 @@ test("submitShot: zero lives ends the match and settles exactly once", { skip: S
   assert.equal(shotLog(fake).length, 1);
 });
 
-test("submitShot: a replayed action index loses the race as a clean 409", { skip: SKIP_REASON }, async (t) => {
+test("submitAction: a replayed action index loses the race as a clean 409", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   const store = await loadStore();
   const row = seedMatch(fake);
   fake.state.failInserts.add(hillstrikeShots);
 
-  const result = await store.submitShot({
+  const result = await store.submitAction({
     userId: ALICE,
     matchId: MATCH_ID,
     expectedVersion: 0,
-    shot: outOfBoundsShot(row.gameState, "player1"),
+    action: shoot(outOfBoundsShot(row.gameState, "player1")),
   });
 
   assert.equal(result.status, 409);
@@ -482,19 +612,19 @@ test("submitShot: a replayed action index loses the race as a clean 409", { skip
   assert.equal(row.gameState.turn, "player1");
 });
 
-test("submitShot: two submissions in flight cannot both be accepted", { skip: SKIP_REASON }, async (t) => {
+test("submitAction: two submissions in flight cannot both be accepted", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   const store = await loadStore();
   const row = seedMatch(fake);
-  const shot = outOfBoundsShot(row.gameState, "player1");
+  const action = shoot(outOfBoundsShot(row.gameState, "player1"));
 
   const [first, second] = await Promise.all([
-    store.submitShot({ userId: ALICE, matchId: MATCH_ID, expectedVersion: 0, shot }),
-    store.submitShot({ userId: ALICE, matchId: MATCH_ID, expectedVersion: 0, shot }),
+    store.submitAction({ userId: ALICE, matchId: MATCH_ID, expectedVersion: 0, action }),
+    store.submitAction({ userId: ALICE, matchId: MATCH_ID, expectedVersion: 0, action }),
   ]);
 
   const statuses = [first.status ?? 200, second.status ?? 200].sort();
-  assert.deepEqual(statuses, [200, 409], "exactly one shot is accepted");
+  assert.deepEqual(statuses, [200, 409], "exactly one action is accepted");
   assert.equal(row.ply, 1);
   assert.equal(shotLog(fake).length, 1);
   assert.equal(fake.state.maxConcurrent, 1, "the row lock serialises the two requests");
@@ -502,26 +632,26 @@ test("submitShot: two submissions in flight cannot both be accepted", { skip: SK
 
 // ── Authorization and lifecycle ───────────────────────────────────────────
 
-test("submitShot: authorization, lifecycle and turn are checked in order", { skip: SKIP_REASON }, async (t) => {
+test("submitAction: authorization, lifecycle and turn are checked in order", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   const store = await loadStore();
   const row = seedMatch(fake);
-  const shot = { angleDeg: 45, power: 60 };
+  const action = shoot({ angleDeg: 45, power: 60 });
 
-  const stranger = await store.submitShot({
+  const stranger = await store.submitAction({
     userId: MALLORY,
     matchId: MATCH_ID,
     expectedVersion: 0,
-    shot,
+    action,
   });
   assert.equal(stranger.status, 403);
   assert.equal(fake.state.writes.length, 0, "a 403 must not write anything");
 
-  const outOfTurn = await store.submitShot({
+  const outOfTurn = await store.submitAction({
     userId: BOB,
     matchId: MATCH_ID,
     expectedVersion: 0,
-    shot,
+    action,
   });
   assert.equal(outOfTurn.status, 409);
   assert.match(outOfTurn.error, /not your turn/i);
@@ -533,11 +663,11 @@ test("submitShot: authorization, lifecycle and turn are checked in order", { ski
     status: MATCH_STATUS.WAITING,
     player2Id: null,
   });
-  const lobby = await store.submitShot({
+  const lobby = await store.submitAction({
     userId: ALICE,
     matchId: MATCH_ID,
     expectedVersion: 0,
-    shot,
+    action,
   });
   assert.equal(lobby.status, 409);
   assert.match(lobby.error, /waiting for an opponent/i);
@@ -546,27 +676,27 @@ test("submitShot: authorization, lifecycle and turn are checked in order", { ski
   // A settled match refuses even the seat that would otherwise be on turn.
   fake.reset();
   seedMatch(fake, { status: MATCH_STATUS.FINISHED, result: "player1", winnerId: ALICE });
-  const finished = await store.submitShot({
+  const finished = await store.submitAction({
     userId: ALICE,
     matchId: MATCH_ID,
     expectedVersion: 0,
-    shot,
+    action,
   });
   assert.equal(finished.status, 409);
   assert.match(finished.error, /no longer active/i);
 
   // A missing row is a 404, not an empty match.
   fake.reset();
-  const missing = await store.submitShot({
+  const missing = await store.submitAction({
     userId: ALICE,
     matchId: "11111111-1111-4111-8111-111111111111",
     expectedVersion: 0,
-    shot,
+    action,
   });
   assert.equal(missing.status, 404);
 });
 
-test("submitShot: malformed aims are refused, never repaired", { skip: SKIP_REASON }, async (t) => {
+test("submitAction: malformed actions are refused, never repaired", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   const store = await loadStore();
   const row = seedMatch(fake);
@@ -575,51 +705,55 @@ test("submitShot: malformed aims are refused, never repaired", { skip: SKIP_REAS
     undefined,
     null,
     {},
-    { angleDeg: 400, power: 60 },
-    { angleDeg: -1, power: 60 },
-    { angleDeg: 45, power: 70.5 },
-    { angleDeg: 45, power: "70" },
-    { angleDeg: "45", power: 60 },
-    { angleDeg: Number.NaN, power: 60 },
-    { angleDeg: 45, power: 101 },
+    { angleDeg: 45, power: 60 },
+    { type: "jump" },
+    { type: "shoot", angleDeg: 400, power: 60 },
+    { type: "shoot", angleDeg: -1, power: 60 },
+    { type: "shoot", angleDeg: 45, power: 70.5 },
+    { type: "shoot", angleDeg: 45, power: "70" },
+    { type: "shoot", angleDeg: "45", power: 60 },
+    { type: "shoot", angleDeg: Number.NaN, power: 60 },
+    { type: "shoot", angleDeg: 45, power: 101 },
+    { type: "move" },
+    { type: "move", direction: "up" },
   ];
 
-  for (const shot of malformed) {
-    const result = await store.submitShot({
+  for (const action of malformed) {
+    const result = await store.submitAction({
       userId: ALICE,
       matchId: MATCH_ID,
       expectedVersion: 0,
-      shot,
+      action,
     });
-    assert.equal(result.status, 400, `${JSON.stringify(shot)} must be a 400`);
+    assert.equal(result.status, 400, `${JSON.stringify(action)} must be a 400`);
     assert.equal(result.match, undefined);
   }
   assert.equal(row.ply, 0);
   assert.equal(shotLog(fake).length, 0);
 });
 
-test("submitShot: the version is required, and a stale one cannot consume a shot", { skip: SKIP_REASON }, async (t) => {
+test("submitAction: the version is required, and a stale one cannot consume an action", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   const store = await loadStore();
   const row = seedMatch(fake);
-  const shot = { angleDeg: 45, power: 60 };
+  const action = shoot({ angleDeg: 45, power: 60 });
 
   for (const expectedVersion of [undefined, null, "zero", 0.5, true]) {
-    const result = await store.submitShot({
+    const result = await store.submitAction({
       userId: ALICE,
       matchId: MATCH_ID,
       expectedVersion,
-      shot,
+      action,
     });
     assert.equal(result.status, 400, `version ${String(expectedVersion)} must be a 400`);
   }
 
   for (const expectedVersion of [1, 2, -1]) {
-    const result = await store.submitShot({
+    const result = await store.submitAction({
       userId: ALICE,
       matchId: MATCH_ID,
       expectedVersion,
-      shot,
+      action,
     });
     assert.equal(result.status, 409, `version ${expectedVersion} must be a 409`);
     assert.match(result.error, /stale/i);
@@ -631,28 +765,28 @@ test("submitShot: the version is required, and a stale one cannot consume a shot
 
 // ── Replayability ─────────────────────────────────────────────────────────
 
-test("replay: the stored row reproduces the engine from its own seed and shots", { skip: SKIP_REASON }, async (t) => {
+test("replay: the stored row reproduces the engine from its own seed and actions", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   const store = await loadStore();
   const row = seedMatch(fake);
 
-  const firstShot = outOfBoundsShot(row.gameState, "player1");
-  await store.submitShot({
+  const first = shoot(outOfBoundsShot(row.gameState, "player1"));
+  await store.submitAction({
     userId: ALICE,
     matchId: MATCH_ID,
     expectedVersion: 0,
-    shot: firstShot,
+    action: first,
   });
-  const second = hitShot(row.gameState, "player2");
-  await store.submitShot({
+  const second = shoot(hitShot(row.gameState, "player2"));
+  await store.submitAction({
     userId: BOB,
     matchId: MATCH_ID,
     expectedVersion: 1,
-    shot: second,
+    action: second,
   });
 
   const replay = stateAfter([
-    ["player1", firstShot],
+    ["player1", first],
     ["player2", second],
   ]);
   assert.equal(Number(row.seed), SEED);
@@ -662,6 +796,8 @@ test("replay: the stored row reproduces the engine from its own seed and shots",
     createInitialState({ seed: Number(row.seed), openingSeat: "player1" }).battlefield,
     "the seed reproduces the layout that was dealt",
   );
+  assert.equal(shotLog(fake).length, 2);
+  assert.equal(shotLog(fake)[1].damage, replay.lastAction.damage);
 });
 
 // ── Matchmaking ───────────────────────────────────────────────────────────
@@ -686,6 +822,7 @@ test("createOrJoin: one lobby, one advisory lock, and a server-drawn seed", { sk
   assert.ok(Number(stored.seed) >= 0 && Number(stored.seed) <= 0xffffffff);
   assert.equal(stored.openingSeat, stored.gameState.openingSeat);
   assert.equal(stored.gameState.turn, stored.openingSeat);
+  assert.deepEqual(stored.gameState.hp, { player1: MAX_HP, player2: MAX_HP });
   assert.deepEqual(
     stored.gameState.battlefield,
     createInitialState({ seed: Number(stored.seed), openingSeat: stored.openingSeat })
@@ -730,13 +867,13 @@ test("fetchMatch: only a participant can read, and the whole position is public"
   assert.equal(asAlice.dto.isViewerTurn, true);
   assert.equal(asAlice.dto.version, 0);
   assert.equal(asAlice.dto.turnIndex, 0);
-  assert.equal(asAlice.dto.shotsRemaining, 1, "the opening volley is one shot");
+  assert.equal(asAlice.dto.actionsRemaining, 1, "the opening turn is one action");
   assert.equal(asAlice.dto.openingShotPending, true);
   assert.equal(asAlice.dto.seed, SEED);
   assert.equal(asAlice.dto.openingSeat, "player1");
-  assert.deepEqual(asAlice.dto.lives, { player1: 3, player2: 3 });
+  assert.deepEqual(asAlice.dto.hp, { player1: MAX_HP, player2: MAX_HP });
   assert.equal(asAlice.dto.result, null);
-  // Perfect information: the opponent's lives and tower are part of the snapshot.
+  // Perfect information: the opponent's HP and tower are part of the snapshot.
   assert.equal(asAlice.dto.gameState.battlefield.blocks.length > 0, true);
 
   const asBob = await store.fetchMatch({ userId: BOB, matchId: MATCH_ID });
@@ -777,7 +914,7 @@ test("forfeit: resigning awards the opponent the win and leaves the position alo
   assert.equal(result.match.result, "player2");
   assert.equal(result.match.winnerId, BOB);
   assert.equal(result.match.resultReason, END_REASONS.RESIGNED);
-  // Resigning ends the match; it never fabricates a final shot.
+  // Resigning ends the match; it never fabricates a final action.
   assert.equal(JSON.stringify(result.match.gameState), positionBefore);
   assert.equal(shotLog(fake).length, 0);
   assert.equal(writers.rating.length, 1);
@@ -901,11 +1038,11 @@ test("persistence: the store never writes a stake, pot or prize", { skip: SKIP_R
   const fake = installMocks(t);
   const store = await loadStore();
   const row = seedMatch(fake);
-  await store.submitShot({
+  await store.submitAction({
     userId: ALICE,
     matchId: MATCH_ID,
     expectedVersion: 0,
-    shot: outOfBoundsShot(row.gameState, "player1"),
+    action: shoot(outOfBoundsShot(row.gameState, "player1")),
   });
 
   const writtenKeys = new Set();
@@ -923,4 +1060,8 @@ test("persistence: the store never writes a stake, pot or prize", { skip: SKIP_R
   ]) {
     assert.equal(writtenKeys.has(banned), false, `${banned} must never be written`);
   }
+  // And the log records the HP rules, not the retired life counter.
+  assert.equal(shotLog(fake).length, 1);
+  assert.equal(shotLog(fake)[0].action, "shoot");
+  assert.ok(ACTIONS_PER_TURN > 0);
 });

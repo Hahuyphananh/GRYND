@@ -187,11 +187,16 @@ test("public page: the landing entry is a real catalogue entry for this game", (
   assert.equal(gameLandingPath(KEY), "/games/hillstrike");
   assert.equal(gamePlayPath(KEY), "/games/hillstrike/play");
   assert.ok(GAME_LANDING_SLUGS.includes(KEY));
-  // The landing copy must describe the rules the engine actually enforces.
+  // The landing copy must describe the rules the engine actually enforces: HP,
+  // the three-action turn, and a server-resolved shot.
   const copy = [...page.introduction, ...page.howToPlay, ...page.rules].join(" ");
-  assert.match(copy, /three lives/i);
+  assert.match(copy, /\b100 HP\b/);
   assert.match(copy, /direct hit/i);
-  assert.match(copy, /opening shot|single shot/i);
+  assert.match(copy, /opening action|single opening action/i);
+  assert.match(copy, /\bdrive\b/i, "the landing copy explains driving");
+  assert.match(copy, /\bbuild\b/i, "the landing copy explains building cover");
+  assert.doesNotMatch(copy, /\blives\b/i, "the three-lives rules are retired");
+  assert.doesNotMatch(copy, /\blife\b/i, "the three-lives rules are retired");
   // Wagering is retired: nothing may claim a stake is at play.
   assert.doesNotMatch(copy, /\bwagered\b(?!.*\bno\b)/i);
 });

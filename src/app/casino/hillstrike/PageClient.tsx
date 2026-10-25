@@ -16,7 +16,7 @@
 // ── WHAT THIS PAGE DECIDES ────────────────────────────────────────────────
 //
 // Nothing about a match. It asks the server to seat the caller and navigates to
-// the id it is given. The battlefield, whose turn it is, both lives and the
+// the id it is given. The battlefield, whose turn it is, both HP pools and the
 // result are all rendered from the authoritative snapshot in the match view.
 //
 // ── FIND A MATCH DOES NOT DROP YOU ON AN EMPTY BOARD ──────────────────────
@@ -237,13 +237,13 @@ export default function HillstrikeLobbyPage() {
       title: "How to Play Hillstrike",
       sections: [
         {
-          heading: "Two hills, three lives",
+          heading: "Two hills, 100 HP each",
           body: (
             <>
-              You and your opponent stand on opposite hills of one battlefield
-              with <b>three lives each</b>. Every match deals a fresh layout, and
-              the two halves are <b>mirror images</b> — neither seat gets better
-              ground or stronger cover.
+              You and your opponent drive one tank each on opposite hills of one
+              battlefield, with <b>100 HP</b> apiece. Every match deals a fresh
+              layout, and the two halves are <b>mirror images</b> — neither seat
+              gets better ground or stronger cover.
             </>
           ),
         },
@@ -258,31 +258,36 @@ export default function HillstrikeLobbyPage() {
           ),
         },
         {
-          heading: "One shot, then two",
+          heading: "Three actions per turn",
           body: (
             <>
-              A randomly drawn opening seat fires <b>one</b> shot; the other
+              A randomly drawn opening seat takes <b>one</b> action; the other
               answers with <b>two</b>. From then on the seats alternate{" "}
-              <b>two-shot volleys</b>, so a miss is a whole turn of ground given
-              away.
+              <b>two-action turns</b>, and each action is one of three things:{" "}
+              <b>fire</b>, <b>drive</b> closer or farther, or <b>build</b> one
+              block of cover in front of your hull.
             </>
           ),
         },
         {
-          heading: "Only a direct hit costs a life",
+          heading: "Range costs power",
           body: (
             <>
-              A direct hit on a player removes <b>exactly one life</b>. Breaking
-              towers and blasting craters never do — but they change the map, and
-              taking away somebody&apos;s cover is how the next hit lands. The
-              first player to run out of lives loses immediately.
+              A shell loses power the longer it flies: the explosion shrinks and
+              the HP a direct hit takes drops with it — up to <b>34 HP</b> at
+              point-blank range, about <b>21</b> across the opening gap, and about
+              <b>15</b> from a full-map lob. Driving forward is how you buy damage,
+              and driving away is how you give it up.
               <br />
               <br />
-              Whose turn it is, where the projectile landed, the damage, the lives
-              and the winner are all resolved <b>server-side</b> by the shared
-              engine, so a stale tab can never invent a hit. Online matches are
-              free and rated; practice against the bot at{" "}
-              <b>/casino/hillstrike/play-ai</b> is free and unrated.
+              Towers and craters never cost HP by themselves — but a tower stops
+              a shell, so knocking one down is how the next hit lands. The first
+              tank knocked out to 0 HP loses immediately. Whose turn it is, where
+              the shell landed, the damage, both HP pools and the winner are all
+              resolved <b>server-side</b> by the shared engine, so a stale tab can
+              never invent a hit. Online matches are free and rated; practice
+              against the bot at <b>/casino/hillstrike/play-ai</b> is free and
+              unrated.
             </>
           ),
         },
@@ -295,7 +300,7 @@ export default function HillstrikeLobbyPage() {
     <>
       <PvpLobbyPage
         title={GAME_NAME}
-        subtitle="A free 1v1 artillery duel: three lives each, mirrored battlefields, and every shot resolved by the server."
+        subtitle="A free 1v1 artillery duel: 100 HP tanks, three actions per turn, mirrored battlefields, and every shot resolved by the server."
         icon={
           <IconTargetArrow className="h-9 w-9 flex-shrink-0 text-cyan-300 drop-shadow-[0_0_12px_rgba(34,211,238,0.55)] sm:h-10 sm:w-10" />
         }
@@ -328,7 +333,7 @@ export default function HillstrikeLobbyPage() {
         lobbyMeta={(row: LobbyRow) => (
           <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
             <span>Host: {String(row.player1Id).slice(0, 12)}…</span>
-            <span>1v1 · three lives each</span>
+            <span>1v1 · 100 HP each</span>
             <span className="text-emerald-300">Free</span>
           </span>
         )}

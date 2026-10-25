@@ -11,13 +11,13 @@
  * asserted, not a re-implementation of them.
  *
  * `globalThis.io` is captured so the broadcast payloads can be audited too: a push
- * is an invalidation hint, so a trajectory, an impact, a board or a life claim
+ * is an invalidation hint, so a trajectory, an impact, a board or an HP claim
  * appearing on the wire would be a leak even though it never reaches a response
  * body.
  *
  * The one thing this suite adds over the store suite is the TRANSPORT contract:
- * what the client is allowed to send (an aim and a version, nothing else) and
- * what the server is allowed to believe (only those two fields).
+ * what the client is allowed to send (one engine action and a version, nothing
+ * else) and what the server is allowed to believe (only those fields).
  *
  * Run:  node --import tsx --test --experimental-test-module-mocks tests/hillstrike-routes.test.mjs
  */
@@ -33,9 +33,10 @@ import {
   END_REASONS,
   IMPACT_KINDS,
   MATCH_STATUS,
+  MAX_HP,
 } from "../src/lib/hillstrike/constants.ts";
 import { simulateShot } from "../src/lib/hillstrike/physics.ts";
-import { applyShot, createInitialState } from "../src/lib/hillstrike/rules.ts";
+import { applyAction, createInitialState } from "../src/lib/hillstrike/rules.ts";
 
 const MODULE_MOCKING_AVAILABLE = typeof mock?.module === "function";
 const SKIP_REASON = MODULE_MOCKING_AVAILABLE
@@ -49,6 +50,8 @@ const MALLORY = "user_mallory";
 const SEED = 424242;
 
 const other = (seat) => (seat === "player1" ? "player2" : "player1");
+/** The request shape the routes accept: an ACTION, never bare input fields. */
+const shoot = (shot) => ({ type: "shoot", ...shot });
 
 /** Routes, by the name these tests use. */
 const R = {
@@ -74,22 +77,25 @@ function simulate(state, seat, shot) {
   });
 }
 
-function findShot(state, seat, kind, { target = null } = {}) {
-  const arc = seat === "player1" ? [4, 86] : [94, 176];
-  for (let angle = arc[0]; angle <= arc[1]; angle += 1) {
-    for (let power = 30; power <= 100; power += 2) {
+/**
+ * A direct hit on the other tank. The cover walls are tall, so the opening hit
+ * window is narrow: this is a fine sweep at the high power bands.
+ */
+function hitShot(state, seat) {
+  for (let power = 100; power >= 55; power -= 5) {
+    for (let angle = 0; angle < 180; angle += 0.5) {
       const shot = { angleDeg: angle, power };
       const simulation = simulate(state, seat, shot);
-      if (simulation.impact.kind !== kind) continue;
-      if (target && simulation.impact.target !== target) continue;
-      return shot;
+      if (
+        simulation.impact.kind === IMPACT_KINDS.PLAYER &&
+        simulation.impact.target === other(seat)
+      ) {
+        return shot;
+      }
     }
   }
-  throw new Error(`no ${kind} shot for ${seat}`);
+  throw new Error(`no direct hit for ${seat} on seed ${state.seed} (ply ${state.turnIndex})`);
 }
-
-const hitShot = (state, seat) =>
-  findShot(state, seat, IMPACT_KINDS.PLAYER, { target: other(seat) });
 
 function outOfBoundsShot(state, seat) {
   const arc = seat === "player1" ? [20, 80] : [100, 160];
@@ -176,7 +182,7 @@ function createFakeDb() {
         endedAt: null,
       },
     ],
-    [hillstrikeShots, { targetSeat: null, livesLost: 0 }],
+    [hillstrikeShots, { action: "shoot", targetSeat: null, damage: 0, livesLost: 0 }],
   ]);
 
   const insert = (table) => ({
@@ -444,8 +450,8 @@ test("surface: the route list is exactly the audited one, and every route is gat
     );
   }
   const store = readFileSync("src/lib/hillstrike/serverStore.ts", "utf8");
-  assert.match(store, /validateShot\(/, "the store validates with the engine");
-  assert.match(store, /applyShot\(/, "the store resolves with the engine");
+  assert.match(store, /validateAction\(/, "the store validates with the engine");
+  assert.match(store, /applyAction\(/, "the store resolves with the engine");
   assert.doesNotMatch(
     store,
     /simulateShot\(|createBattlefield\(/,
@@ -453,12 +459,14 @@ test("surface: the route list is exactly the audited one, and every route is gat
   );
 });
 
-test("surface: migration 0229 is the next number, idempotent, unique and money-free", { skip: SKIP_REASON }, () => {
+test("surface: migrations 0229/0230 are the newest, idempotent, unique and money-free", { skip: SKIP_REASON }, () => {
   const migrations = readdirSync("src/db/migrations").filter((name) => name.endsWith(".sql"));
   const numbers = migrations.map((name) => Number(name.slice(0, 4))).sort((a, b) => a - b);
   const mine = migrations.find((name) => name.startsWith("0229_"));
   assert.ok(mine, "0229 must be the Hillstrike migration");
-  assert.equal(Math.max(...numbers), 229, "0229 is the next available number");
+  const hpMigration = migrations.find((name) => name.startsWith("0230_"));
+  assert.ok(hpMigration, "0230 must be the HP / three-action migration");
+  assert.equal(Math.max(...numbers), 230, "0230 is the newest migration");
 
   const sql = readFileSync(`src/db/migrations/${mine}`, "utf8");
   const body = sql
@@ -491,6 +499,12 @@ test("surface: migration 0229 is the next number, idempotent, unique and money-f
     schema.indexOf("// SOLITAIRE DUEL"),
   );
   for (const column of [
+    "action:",
+    "damage:",
+  ]) {
+    assert.match(block, new RegExp(`\\b${column}`), `the shots table must declare ${column}`);
+  }
+  for (const column of [
     "player1Id",
     "player2Id",
     "winnerId",
@@ -510,6 +524,22 @@ test("surface: migration 0229 is the next number, idempotent, unique and money-f
     assert.match(block, new RegExp(`\\b${column}:`), `schema must declare ${column}`);
   }
   assert.match(block, /unique\("hillstrike_shots_action_unique"\)/);
+
+  // 0230 teaches the log the three actions and makes an aim optional, because a
+  // drive and a build have none.
+  const alter = readFileSync(`src/db/migrations/${hpMigration}`, "utf8");
+  assert.match(
+    alter,
+    /ADD COLUMN IF NOT EXISTS "action" varchar\(8\) DEFAULT 'shoot' NOT NULL/,
+  );
+  assert.match(alter, /ADD COLUMN IF NOT EXISTS "damage" integer DEFAULT 0 NOT NULL/);
+  for (const column of ["angle_deg", "power", "impact_kind", "impact_x", "impact_y"]) {
+    assert.match(
+      alter,
+      new RegExp(`ALTER COLUMN "${column}" DROP NOT NULL`),
+      `${column} must be nullable so a drive or a build is not recorded as a shot`,
+    );
+  }
 });
 
 test("surface: an unauthenticated or under-age caller is stopped before any read", { skip: SKIP_REASON }, async (t) => {
@@ -524,7 +554,7 @@ test("surface: an unauthenticated or under-age caller is stopped before any read
 
   for (const call of [
     () => createOrJoin({ gate: "signed-out" }),
-    () => fire({ shot: { angleDeg: 45, power: 60 }, expectedVersion: 0 }, { gate: "signed-out" }),
+    () => fire({ action: shoot({ angleDeg: 45, power: 60 }), expectedVersion: 0 }, { gate: "signed-out" }),
     () => forfeit({ gate: "blocked" }),
     () => cancel({ gate: "blocked" }),
     () => available({ gate: "signed-out" }),
@@ -539,7 +569,7 @@ test("surface: a malformed matchId is a 400, never a Postgres uuid cast", { skip
   const bad = "not-a-uuid";
   for (const call of [
     () => getMatch({ matchId: bad }),
-    () => fire({ shot: { angleDeg: 45, power: 60 }, expectedVersion: 0 }, { matchId: bad }),
+    () => fire({ action: shoot({ angleDeg: 45, power: 60 }), expectedVersion: 0 }, { matchId: bad }),
     () => forfeit({ matchId: bad }),
     () => cancel({ matchId: bad }),
     () => disconnect({ matchId: bad, token: "good_token" }),
@@ -565,11 +595,12 @@ test("GET match: each seat gets the same public position and its own projection"
   assert.equal(a.opponentSeat, "player2");
   assert.equal(a.isViewerTurn, true);
   assert.equal(a.version, 0);
-  assert.equal(a.shotsRemaining, 1);
+  assert.equal(a.actionsRemaining, 1, "the opening turn is a single action");
   assert.equal(a.openingShotPending, true);
   assert.equal(a.seed, SEED);
   assert.equal(a.openingSeat, "player1");
-  assert.deepEqual(a.lives, { player1: 3, player2: 3 });
+  assert.equal(a.turn, "player1");
+  assert.deepEqual(a.hp, { player1: MAX_HP, player2: MAX_HP });
   // Perfect information: the whole battlefield is public to both seats.
   assert.ok(a.gameState.battlefield.terrain.length > 0);
   assert.ok(a.gameState.battlefield.blocks.length > 0);
@@ -587,12 +618,12 @@ test("GET match: each seat gets the same public position and its own projection"
   assert.equal(fake.state.writes.length, 0);
 });
 
-test("GET match: the shot log is the server's own resolved record", { skip: SKIP_REASON }, async (t) => {
+test("GET match: the action log is the server's own resolved record", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   const row = seedMatch(fake);
   const shot = hitShot(row.gameState, "player1");
 
-  const fired = await fire({ shot, expectedVersion: 0 }, { as: ALICE });
+  const fired = await fire({ action: shoot(shot), expectedVersion: 0 }, { as: ALICE });
   assert.equal(fired.status, 200);
 
   const read = await getMatch({ as: BOB });
@@ -600,27 +631,30 @@ test("GET match: the shot log is the server's own resolved record", { skip: SKIP
   const [logged] = read.json.data.shots;
   assert.equal(logged.actionIndex, 0);
   assert.equal(logged.seat, "player1");
+  assert.equal(logged.action, "shoot");
   assert.equal(logged.angleDeg, shot.angleDeg);
   assert.equal(logged.power, shot.power);
   assert.equal(logged.impactKind, IMPACT_KINDS.PLAYER);
-  assert.equal(logged.livesLost, 1);
-  // The log's rows never carry the trajectory — it lives on `gameState.lastShot`.
+  assert.ok(logged.damage > 0, "a direct hit records the HP it took off");
+  assert.equal(logged.targetSeat, "player2");
+  // The log's rows never carry the trajectory — it lives on `gameState.lastAction`.
   assert.equal(Object.hasOwn(logged, "path"), false);
-  assert.ok(read.json.data.gameState.lastShot.path.length > 0);
+  assert.ok(read.json.data.gameState.lastAction.path.length > 0);
+  assert.equal(read.json.data.hp.player2, MAX_HP - logged.damage);
 });
 
 /* -------------------------------------------------------------------------- *
  * 2. The shot route
  * -------------------------------------------------------------------------- */
 
-test("POST shot: the body carries an aim and a version, and the server decides the rest", { skip: SKIP_REASON }, async (t) => {
+test("POST shot: the body carries an action and a version, and the server decides the rest", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   const row = seedMatch(fake);
   const state = row.gameState;
   const shot = hitShot(state, "player1");
-  const expected = applyShot(state, "player1", shot).state;
+  const expected = applyAction(state, "player1", shoot(shot)).state;
 
-  const result = await fire({ shot, expectedVersion: 0 }, { as: ALICE });
+  const result = await fire({ action: shoot(shot), expectedVersion: 0 }, { as: ALICE });
   assert.equal(result.status, 200);
   assert.equal(result.json.success, true);
 
@@ -629,10 +663,13 @@ test("POST shot: the body carries an aim and a version, and the server decides t
   assert.equal(data.actionIndex, 0);
   assert.deepEqual(data.match.gameState, expected, "the engine's resolution is returned");
   assert.equal(data.match.version, 1);
-  assert.equal(data.match.lives.player2, 2);
-  // The shot the client animates is the SERVER's, including its trajectory.
-  assert.deepEqual(data.shot.impact, expected.lastShot.impact);
-  assert.deepEqual(data.shot.path, expected.lastShot.path);
+  assert.equal(data.match.hp.player1, MAX_HP, "the shooter's HP is untouched");
+  assert.equal(data.match.hp.player2, MAX_HP - data.action.damage);
+  assert.ok(data.action.damage > 0);
+  // The action the client animates is the SERVER's, including its trajectory.
+  assert.equal(data.action.type, "shoot");
+  assert.deepEqual(data.action.impact, expected.lastAction.impact);
+  assert.deepEqual(data.action.path, expected.lastAction.path);
 
   // The push is an invalidation hint: no board, no trajectory, no impact.
   assert.equal(broadcasts.length, 1);
@@ -655,21 +692,24 @@ test("POST shot: forged outcome fields are ignored, not honoured", { skip: SKIP_
   // client claims alongside it.
   const first = seedMatch(fake);
   const clean = outOfBoundsShot(first.gameState, "player1");
-  const plain = await fire({ shot: clean, expectedVersion: 0 }, { as: ALICE });
+  const plain = await fire({ action: shoot(clean), expectedVersion: 0 }, { as: ALICE });
   assert.equal(plain.status, 200);
 
   fake.reset();
   seedMatch(fake);
   const forged = await fire(
     {
-      shot: {
-        ...clean,
+      action: {
+        ...shoot(clean),
         damage: 99,
-        livesLost: 3,
-        target: "player2",
+        hp: { player1: MAX_HP, player2: 0 },
+        lives: { player1: 3, player2: 0 },
+        targetSeat: "player2",
         winner: "player1",
+        winnerId: ALICE,
         terrain: [],
         blocks: [],
+        blockId: "forged-block",
         matchCompleted: true,
       },
       expectedVersion: 0,
@@ -678,37 +718,94 @@ test("POST shot: forged outcome fields are ignored, not honoured", { skip: SKIP_
   );
   assert.equal(forged.status, 200);
 
-  assert.deepEqual(forged.json.data.shot.impact, plain.json.data.shot.impact);
+  assert.deepEqual(forged.json.data.action.impact, plain.json.data.action.impact);
   assert.deepEqual(forged.json.data.match.gameState, plain.json.data.match.gameState);
   assert.equal(forged.json.data.matchCompleted, false);
-  assert.equal(forged.json.data.match.lives.player2, 3);
+  assert.deepEqual(forged.json.data.match.hp, { player1: MAX_HP, player2: MAX_HP });
   assert.equal(forged.json.data.match.gameState.winner, null);
+  assert.equal(forged.json.data.match.gameState.hp.player2, MAX_HP);
+});
+
+test("POST shot: a drive and a build are the same route, and both reach the board", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const row = seedMatch(fake);
+  const tankBefore = row.gameState.battlefield.players.player1;
+  const blocksBefore = row.gameState.battlefield.blocks.length;
+
+  const drove = await fire(
+    { action: { type: "move", direction: "forward" }, expectedVersion: 0 },
+    { as: ALICE },
+  );
+  assert.equal(drove.status, 200);
+  assert.equal(drove.json.data.action.type, "move");
+  assert.equal(
+    drove.json.data.match.gameState.battlefield.players.player1.x,
+    tankBefore.x + 60,
+    "the server moved the tank, not the client",
+  );
+  assert.equal(drove.json.data.match.hp.player1, MAX_HP, "a drive costs no HP");
+
+  // Alice's single opening action is spent, so the build is Bob's to make.
+  const built = await fire({ action: { type: "build" }, expectedVersion: 1 }, { as: BOB });
+  assert.equal(built.status, 200);
+  assert.equal(built.json.data.action.type, "build");
+  const blocks = built.json.data.match.gameState.battlefield.blocks;
+  assert.equal(blocks.length, blocksBefore + 1);
+  assert.ok(blocks.some((block) => block.id === built.json.data.action.blockId));
+
+  // The log has one row per action, each named for what it was.
+  assert.deepEqual(
+    shotLog(fake).map((entry) => entry.action),
+    ["move", "build"],
+  );
+  for (const entry of shotLog(fake)) {
+    assert.equal(entry.damage, 0);
+    assert.equal(entry.angleDeg, null, "only a shot has an aim");
+    assert.equal(entry.impactKind, null);
+  }
+  assert.equal(liveMatch(fake).ply, 2);
+});
+
+test("POST shot: the v1 bare-aim body still means exactly one shoot action", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const row = seedMatch(fake);
+  const shot = outOfBoundsShot(row.gameState, "player1");
+
+  const legacy = await fire({ shot, expectedVersion: 0 }, { as: ALICE });
+  assert.equal(legacy.status, 200);
+  assert.equal(legacy.json.data.action.type, "shoot", "an old tab fires a shot, nothing else");
+  assert.equal(shotLog(fake)[0].action, "shoot");
+  assert.equal(shotLog(fake)[0].angleDeg, shot.angleDeg);
 });
 
 test("POST shot: refusals are specific and write nothing", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   const row = seedMatch(fake);
-  const legal = { angleDeg: 45, power: 60 };
+  const legal = shoot({ angleDeg: 45, power: 60 });
 
-  const outOfTurn = await fire({ shot: legal, expectedVersion: 0 }, { as: BOB });
+  const outOfTurn = await fire({ action: legal, expectedVersion: 0 }, { as: BOB });
   assert.equal(outOfTurn.status, 409);
   assert.match(outOfTurn.json.error, /not your turn/i);
 
-  for (const shot of [
+  for (const action of [
     undefined,
     {},
-    { angleDeg: 400, power: 60 },
-    { angleDeg: 45, power: 70.5 },
-    { angleDeg: 45, power: "70" },
+    { type: "shoot" },
+    { type: "jump" },
+    { type: "shoot", angleDeg: 400, power: 60 },
+    { type: "shoot", angleDeg: 45, power: 70.5 },
+    { type: "shoot", angleDeg: 45, power: "70" },
+    { type: "move" },
+    { type: "move", direction: "up" },
   ]) {
-    const result = await fire({ shot, expectedVersion: 0 }, { as: ALICE });
-    assert.equal(result.status, 400, `${JSON.stringify(shot)} must be a 400`);
+    const result = await fire({ action, expectedVersion: 0 }, { as: ALICE });
+    assert.equal(result.status, 400, `${JSON.stringify(action)} must be a 400`);
   }
 
-  const missingVersion = await fire({ shot: legal }, { as: ALICE });
+  const missingVersion = await fire({ action: legal }, { as: ALICE });
   assert.equal(missingVersion.status, 400);
 
-  const stale = await fire({ shot: legal, expectedVersion: 4 }, { as: ALICE });
+  const stale = await fire({ action: legal, expectedVersion: 4 }, { as: ALICE });
   assert.equal(stale.status, 409);
 
   const garbage = await fire("{not json", { as: ALICE });
@@ -722,15 +819,16 @@ test("POST shot: refusals are specific and write nothing", { skip: SKIP_REASON }
 test("POST shot: a killed match settles once, through the route, and then refuses", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   const base = createInitialState({ seed: SEED, openingSeat: "player1" });
-  const state = { ...base, lives: { player1: 3, player2: 1 } };
+  const state = { ...base, hp: { player1: MAX_HP, player2: 1 } };
   const row = seedMatch(fake, { gameState: state });
   const shot = hitShot(state, "player1");
 
-  const result = await fire({ shot, expectedVersion: 0 }, { as: ALICE });
+  const result = await fire({ action: shoot(shot), expectedVersion: 0 }, { as: ALICE });
   assert.equal(result.status, 200);
   assert.equal(result.json.data.matchCompleted, true);
   assert.equal(result.json.data.result, "player1");
-  assert.equal(result.json.data.resultReason, END_REASONS.LIVES_EXHAUSTED);
+  assert.equal(result.json.data.resultReason, END_REASONS.HP_DEPLETED);
+  assert.equal(result.json.data.match.hp.player2, 0);
   assert.equal(liveMatch(fake).status, MATCH_STATUS.FINISHED);
   assert.equal(liveMatch(fake).winnerId, ALICE);
 
@@ -739,7 +837,7 @@ test("POST shot: a killed match settles once, through the route, and then refuse
   assert.equal(writers.rating[0].gameKey, "hillstrike");
   assert.equal(writers.rating[0].matchId, MATCH_ID);
 
-  const late = await fire({ shot, expectedVersion: 1 }, { as: BOB });
+  const late = await fire({ action: shoot(shot), expectedVersion: 1 }, { as: BOB });
   assert.equal(late.status, 409);
   const lateForfeit = await forfeit({ as: BOB });
   assert.equal(lateForfeit.status, 409);
@@ -754,8 +852,8 @@ test("POST shot: a replayed shot loses as a 409, and concurrent sends accept one
   const shot = outOfBoundsShot(row.gameState, "player1");
 
   const [first, second] = await Promise.all([
-    fire({ shot, expectedVersion: 0 }, { as: ALICE }),
-    fire({ shot, expectedVersion: 0 }, { as: ALICE }),
+    fire({ action: shoot(shot), expectedVersion: 0 }, { as: ALICE }),
+    fire({ action: shoot(shot), expectedVersion: 0 }, { as: ALICE }),
   ]);
   assert.deepEqual([first.status, second.status].sort(), [200, 409]);
   assert.equal(shotLog(fake).length, 1);
@@ -767,7 +865,10 @@ test("POST shot: a replayed shot loses as a 409, and concurrent sends accept one
   const replayRow = seedMatch(fake);
   fake.state.failInserts.add(hillstrikeShots);
   const replayed = await fire(
-    { shot: outOfBoundsShot(replayRow.gameState, "player1"), expectedVersion: 0 },
+    {
+      action: shoot(outOfBoundsShot(replayRow.gameState, "player1")),
+      expectedVersion: 0,
+    },
     { as: ALICE },
   );
   assert.equal(replayed.status, 409);
@@ -801,7 +902,7 @@ test("POST create-or-join: an empty body is enough, and the server seats both pl
   const opener = liveMatch(fake).gameState.turn;
   const opened = await fire(
     {
-      shot: outOfBoundsShot(liveMatch(fake).gameState, opener),
+      action: shoot(outOfBoundsShot(liveMatch(fake).gameState, opener)),
       expectedVersion: 0,
     },
     { as: opener === "player1" ? ALICE : BOB },

@@ -21,15 +21,20 @@
  *   • a shot ENDS at its first contact — no bouncing, no second impact, so the
  *     outcome is one bounded resolution rather than a chaotic chain
  *   • only the DEFENDER is a collision target: a shot that falls back onto its
- *     own launcher can never cost the shooter a life
+ *     own tank can never cost the shooter HP
  *   • contact priority, when several are reached on the same substep:
  *       1. player      (a defender in front of a wall is hit)
  *       2. block       (lowest block id wins an exact tie)
  *       3. terrain
- *   • damage: a player contact removes exactly one life (in ./rules); a block
- *     or terrain contact never does. Block/terrain contacts carve a bounded,
- *     integer crater and damage blocks inside a bounded blast radius, then run
- *     a bounded structural collapse
+ *   • range: the shell records how far it actually FLEW, and that distance
+ *     drives `powerScaleForDistance` — the further it travelled, the less
+ *     explosive it is. The scaled speed sets the crater and structural blast
+ *     sizes, and `damageForDistance` turns the same number into the HP a direct
+ *     hit takes (applied in ./rules)
+ *   • damage: a direct player contact costs HP (in ./rules); a block or terrain
+ *     contact never does. Block/terrain contacts carve a bounded, integer
+ *     crater and damage blocks inside a bounded blast radius, then run a
+ *     bounded structural collapse
  *   • limits: `maxTicks`, `substepMaxPx`, `MAX_SUBSTEPS_PER_TICK`,
  *     `TERRAIN_CARVE_BUDGET`, `MAX_COLLAPSE_PASSES`, `MAX_COLLAPSE_MOVES`,
  *     `MAX_PATH_POINTS`. Nothing here recurses.
@@ -62,11 +67,14 @@ import {
   MIN_LAUNCH_SPEED,
   MIN_PULL,
   PATH_DEDUPE_TOLERANCE,
+  HIT_DAMAGE_MAX,
   PLAYER_RADIUS,
   POWER_MAX,
   POWER_MIN,
   PROJECTILE,
   SEATS,
+  SHOT_POWER_FALLOFF_DISTANCE,
+  SHOT_POWER_MIN_SCALE,
   STRUCTURE_CRATER_FACTOR,
   SUPPORT_TOLERANCE,
   TERRAIN_CARVE_BUDGET,
@@ -111,6 +119,31 @@ export function createProjectileSpec(): ProjectileSpec {
 // ──────────────────────────────────────────────────────────────────────────
 // Aim input
 // ──────────────────────────────────────────────────────────────────────────
+
+/**
+ * How much power a shell has left after flying `distance` world units.
+ *
+ * Linear from 1 at the muzzle to `SHOT_POWER_MIN_SCALE` at
+ * `SHOT_POWER_FALLOFF_DISTANCE`, and it never drops below that floor: a shot
+ * still hurts at the far end of the map, just less. Distances shorter than the
+ * falloff distance interpolate, so the curve has no cliff.
+ */
+export function powerScaleForDistance(distance: number): number {
+  const travelled = Number.isFinite(distance) ? Math.max(0, distance) : 0;
+  const ratio = clamp(travelled / SHOT_POWER_FALLOFF_DISTANCE, 0, 1);
+  return 1 - (1 - SHOT_POWER_MIN_SCALE) * ratio;
+}
+
+/**
+ * The HP a direct hit takes, from the distance the shell flew.
+ *
+ * One number, derived from the SAME falloff that sizes the explosion, so "the
+ * further it goes the weaker it is" is a single rule rather than three that can
+ * disagree. Always at least 1: a direct hit on a tank always costs something.
+ */
+export function damageForDistance(distance: number): number {
+  return Math.max(1, Math.round(HIT_DAMAGE_MAX * powerScaleForDistance(distance)));
+}
 
 /**
  * Unit launch direction for an angle in degrees: 0° → right (+x), 90° → UP
@@ -748,7 +781,7 @@ function capPath(points: Vec2[], impact: Vec2): Vec2[] {
  *
  * The battlefield is NOT mutated: the post-impact terrain, blocks and player
  * positions come back in `simulation.battlefield`, and the caller (./rules)
- * decides what a life or a finished match means.
+ * decides what HP or a finished match means.
  */
 export function simulateShot(params: SimulateShotParams): ShotSimulation {
   if (!params || typeof params !== "object") {
@@ -811,6 +844,9 @@ export function simulateShot(params: SimulateShotParams): ShotSimulation {
 
   let impact: Impact | null = null;
   let lastTick = 0;
+  // World units actually flown. This is the ONE range measurement the rules use:
+  // every damage/explosion figure is derived from it, never from the aim.
+  let travelled = 0;
 
   for (let tick = 1; tick <= spec.maxTicks && !impact; tick++) {
     lastTick = tick;
@@ -842,6 +878,7 @@ export function simulateShot(params: SimulateShotParams): ShotSimulation {
       });
 
       if (contact) {
+        travelled += Math.hypot(contact.x - x0, contact.y - y0);
         x = contact.x;
         y = contact.y;
         impact = {
@@ -854,6 +891,7 @@ export function simulateShot(params: SimulateShotParams): ShotSimulation {
         break;
       }
 
+      travelled += Math.hypot(x1 - x0, y1 - y0);
       x = x1;
       y = y1;
       if (x < 0 || x > BATTLEFIELD_WIDTH || y > BATTLEFIELD_HEIGHT) {
@@ -885,12 +923,16 @@ export function simulateShot(params: SimulateShotParams): ShotSimulation {
   });
   rawPath.push({ x: impact.x, y: impact.y });
 
-  const impactSpeed = Math.hypot(vx, vy);
+  // The shell's remaining power, from the distance it flew. The impact speed is
+  // scaled by it, so a long lob explodes like a short, weak shot even when it
+  // arrives fast — one falloff drives both the explosion and the HP damage.
+  const powerScale = powerScaleForDistance(travelled);
+  const impactSpeed = Math.hypot(vx, vy) * powerScale;
 
   if (impact.kind === IMPACT_KINDS.PLAYER) {
-    // A direct player hit removes exactly one life in ./rules and changes
-    // nothing else: no crater, no structural damage, so a life can never be
-    // lost as a side effect of terrain.
+    // A direct player hit costs HP in ./rules and changes nothing else: no
+    // crater, no structural damage, so HP can never be lost as a side effect of
+    // terrain.
     if (impact.target) {
       events.push({
         type: "player-hit",
@@ -932,7 +974,7 @@ export function simulateShot(params: SimulateShotParams): ShotSimulation {
     if (carved.event) events.push(carved.event);
 
     // Ground moved: everyone standing on it follows the surface. This NEVER
-    // costs a life — only a direct player contact does.
+    // costs HP — only a direct player contact does.
     for (const seat of SEATS) {
       players[seat] = {
         ...players[seat],
@@ -958,6 +1000,8 @@ export function simulateShot(params: SimulateShotParams): ShotSimulation {
       players,
     },
     ticks: lastTick,
+    distance: travelled,
+    powerScale,
   };
 }
 

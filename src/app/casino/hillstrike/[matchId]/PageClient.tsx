@@ -6,22 +6,25 @@
 //
 // ── AUTHORITY ─────────────────────────────────────────────────────────────
 //
-// The server owns the battlefield. The ONLY thing this page ever sends is an AIM
-// plus the version it was shown:
+// The server owns the battlefield. The ONLY thing this page ever sends is an
+// ACTION plus the version it was shown:
 //
-//   { shot: { angleDeg, power }, expectedVersion }
+//   { action: { type: "shoot", angleDeg, power }, expectedVersion }
+//   { action: { type: "move", direction }, expectedVersion }
+//   { action: { type: "build" }, expectedVersion }
 //
-// No trajectory, no impact, no hit, no damage, no life count, no terrain, no
-// tower layout, no turn owner, no winner and no completion flag is ever sent —
-// and none is ever derived locally as truth. What the player sees is the server's
-// `gameState`, the server's `isViewerTurn`, the server's `shotsRemaining` and the
-// server's `result` / `winnerId` / `resultReason` for the result screen.
+// No trajectory, no impact, no hit, no damage, no HP total, no position, no
+// block, no terrain, no tower layout, no turn owner, no winner and no completion
+// flag is ever sent — and none is ever derived locally as truth. What the player
+// sees is the server's `gameState`, the server's `isViewerTurn`, the server's
+// `actionsRemaining` and the server's `result` / `winnerId` / `resultReason` for
+// the result screen.
 //
 // The engine is used here for ONE thing: the dotted aiming preview, which runs
 // the same `simulateShot` the server runs so a drag shows where the shot would
 // land. That preview is an affordance, never a result: the animation of an
-// accepted shot is the trajectory the SERVER resolved and returned, and the
-// lives/turn/volley changes are the server's too.
+// accepted action is what the SERVER resolved and returned, and the HP / turn
+// changes are the server's too.
 //
 // Optimism is limited to FEEDBACK: the aim is cleared on submit and the board
 // waits for the authoritative snapshot. The view is never allowed to drift from
@@ -47,9 +50,12 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useUser } from "@clerk/nextjs";
 import {
   IconAlertTriangle,
+  IconArrowLeft,
+  IconArrowRight,
   IconBolt,
   IconDoorExit,
   IconFlag,
+  IconShieldPlus,
   IconTargetArrow,
 } from "@tabler/icons-react";
 
@@ -68,14 +74,15 @@ import {
   HILLSTRIKE_READY,
   hillstrikeMatchRoom,
 } from "../../../../lib/hillstrike/rooms";
-import { LIVES_PER_PLAYER, TICK_MS } from "../../../../lib/hillstrike/constants";
+import { MAX_HP, TICK_MS } from "../../../../lib/hillstrike/constants";
 import { simulateShot } from "../../../../lib/hillstrike/physics";
+import { hpOf } from "../../../../lib/hillstrike/rules";
 import {
   durationSeconds,
+  hpFor,
+  hpLabel,
   isIncomingSnapshotStale,
   isTerminalStatus,
-  livesFor,
-  livesLabel,
   loggedShotLabel,
   outcomeFor,
   resultReasonLabel,
@@ -86,7 +93,9 @@ import {
   turnLabel,
 } from "../../../../lib/hillstrike/ui";
 import type {
+  HillstrikeAction,
   HillstrikeState,
+  MoveDirection,
   Seat,
   ShotInput,
 } from "../../../../lib/hillstrike/types";
@@ -103,18 +112,18 @@ function flightDuration(impactTick: number): number {
   return Math.max(220, Math.min(1400, Math.round(impactTick * TICK_MS)));
 }
 
-function livesPips(lives: number) {
-  return Array.from({ length: LIVES_PER_PLAYER }, (_, index) => (
-    <span
-      key={index}
-      aria-hidden="true"
-      className={`h-2.5 w-2.5 rounded-full border ${
-        index < lives
-          ? "border-[#f5ff3b] bg-[#f5ff3b] shadow-[0_0_6px_rgba(245,255,59,0.7)]"
-          : "border-white/25 bg-transparent"
-      }`}
-    />
-  ));
+/** One tank's HP as a rail, the same shape the board draws over the turret. */
+function hpRail(hp: number) {
+  const ratio = Math.max(0, Math.min(1, hp / MAX_HP));
+  const tone = ratio > 0.5 ? "bg-emerald-400" : ratio > 0.25 ? "bg-amber-400" : "bg-red-400";
+  return (
+    <div className="h-2 w-full overflow-hidden rounded-full border border-white/15 bg-black/60">
+      <div
+        className={`h-full rounded-full transition-[width] duration-300 ${tone}`}
+        style={{ width: `${(ratio * 100).toFixed(1)}%` }}
+      />
+    </div>
+  );
 }
 
 export default function HillstrikeMatchPage() {
@@ -180,13 +189,16 @@ export default function HillstrikeMatchPage() {
         previous &&
         Number(snapshot?.version) > Number(previous?.version) &&
         previousState &&
-        nextState?.lastShot;
+        nextState?.lastAction;
 
-      if (advanced && nextState?.lastShot) {
-        const flightMs = flightDuration(nextState.lastShot.impact.tick);
+      if (advanced && nextState?.lastAction) {
+        const record = nextState.lastAction;
+        // Only a shot has a flight to wait for; a drive and a build settle
+        // immediately so the board never stalls on an empty trajectory.
+        const flightMs = record.type === "shoot" ? flightDuration(record.impact.tick) : 0;
         setResolving(true);
         setAnimation({
-          shot: nextState.lastShot,
+          action: record,
           from: previousState.battlefield,
           to: nextState.battlefield,
           startedAt: performance.now(),
@@ -321,8 +333,8 @@ export default function HillstrikeMatchPage() {
     (opponentSeat ? seatLabel(opponentSeat, viewerSeat) : "Opponent");
   const opponentId = opponentSeat === "player1" ? match?.player1Id : match?.player2Id;
 
-  const viewerLives = livesFor(state?.lives, viewerSeat);
-  const opponentLives = livesFor(state?.lives, opponentSeat);
+  const viewerHp = state && viewerSeat ? hpOf(state, viewerSeat) : 0;
+  const opponentHp = state && opponentSeat ? hpOf(state, opponentSeat) : 0;
 
   const outcome = outcomeFor({
     result: match?.result,
@@ -356,49 +368,70 @@ export default function HillstrikeMatchPage() {
     isViewerTurn,
     viewerSeat,
     opponentName,
-    shotsRemaining: match?.shotsRemaining,
+    actionsRemaining: match?.actionsRemaining,
     openingShotPending: match?.openingShotPending,
   });
 
   // ── Actions ───────────────────────────────────────────────────────────
-  const fire = useCallback(async () => {
-    const current = matchRef.current;
-    if (!current || !aim || submitting) return;
-    if (String(current.status) !== "playing" || !current.isViewerTurn) {
-      setNotice("It is not your turn.");
-      return;
-    }
-
-    setSubmitting(true);
-    setNotice(null);
-    try {
-      const res = await fetch(`${apiMatch}/shot`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        // The whole request. No trajectory, no damage, no winner.
-        body: JSON.stringify({ shot: aim, expectedVersion: current.version }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok || !data?.success) {
-        // Rejected (stale tab, wrong turn, a refused aim, a replayed shot) —
-        // explain it and resync rather than guessing.
-        setNotice(data?.error || "That shot was rejected.");
-        setAim(null);
-        refresh();
+  const sendAction = useCallback(
+    async (action: HillstrikeAction) => {
+      const current = matchRef.current;
+      if (!current || submitting) return;
+      if (String(current.status) !== "playing" || !current.isViewerTurn) {
+        setNotice("It is not your turn.");
         return;
       }
-      adopt(data.data.match);
-      // A bare invalidation nudge: the opponent refetches, and nothing about the
-      // match is carried in it.
-      socket?.emit(HILLSTRIKE_READY, { matchId });
-      refresh();
-    } catch {
-      setNotice("The shot could not be sent — retrying.");
-      refresh();
-    } finally {
-      setSubmitting(false);
-    }
-  }, [adopt, aim, apiMatch, matchId, refresh, socket, submitting]);
+
+      setSubmitting(true);
+      setNotice(null);
+      try {
+        const res = await fetch(`${apiMatch}/shot`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          // The whole request. No trajectory, no damage, no HP, no winner.
+          body: JSON.stringify({ action, expectedVersion: current.version }),
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data?.success) {
+          // Rejected (stale tab, wrong turn, a refused action, a replay) —
+          // explain it and resync rather than guessing.
+          setNotice(data?.error || "That action was rejected.");
+          setAim(null);
+          refresh();
+          return;
+        }
+        adopt(data.data.match);
+        // A bare invalidation nudge: the opponent refetches, and nothing about
+        // the match is carried in it.
+        socket?.emit(HILLSTRIKE_READY, { matchId });
+        refresh();
+      } catch {
+        setNotice("The action could not be sent — retrying.");
+        refresh();
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [adopt, apiMatch, matchId, refresh, socket, submitting],
+  );
+
+  const fire = useCallback(() => {
+    if (!aim) return;
+    void sendAction({ type: "shoot", ...aim });
+  }, [aim, sendAction]);
+
+  const drive = useCallback(
+    (direction: MoveDirection) => {
+      setAim(null);
+      void sendAction({ type: "move", direction });
+    },
+    [sendAction],
+  );
+
+  const build = useCallback(() => {
+    setAim(null);
+    void sendAction({ type: "build" });
+  }, [sendAction]);
 
   const forfeit = useCallback(async () => {
     if (!match || forfeiting) return;
@@ -458,14 +491,14 @@ export default function HillstrikeMatchPage() {
     const isViewer = seat === viewerSeat;
     const active = Boolean(state) && state?.turn === seat && !matchOver;
     const name = identity?.name || seatLabel(seat, viewerSeat);
-    const lives = livesFor(state?.lives, seat);
-    const remaining = active ? Math.max(0, Number(match?.shotsRemaining) || 0) : 0;
+    const hp = state ? hpOf(state, seat) : 0;
+    const remaining = active ? Math.max(0, Number(match?.actionsRemaining) || 0) : 0;
     return (
       <div
         key={seat}
         data-testid={`hillstrike-seat-${isViewer ? "viewer" : "opponent"}`}
         data-active={active ? "true" : "false"}
-        data-lives={lives}
+        data-hp={hp}
         className={`rounded-xl border p-2.5 transition-colors ${
           active
             ? "border-[#f5ff3b]/60 bg-[#f5ff3b]/10 shadow-[0_0_16px_rgba(245,255,59,0.18)]"
@@ -477,18 +510,20 @@ export default function HillstrikeMatchPage() {
             {name}
             {isViewer ? <span className="ml-1 text-cyan-300">· you</span> : null}
           </p>
-          <div className="flex items-center gap-1" aria-label={livesLabel(lives)}>
-            {livesPips(lives)}
-          </div>
+          <span className="font-mono text-xs font-bold text-white/85">
+            {hpLabel(hp)}
+          </span>
         </div>
-        <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-white/55">
+        <div className="mt-1.5">{hpRail(hp)}</div>
+        <p className="mt-1 flex items-center gap-1.5 text-[11px] text-white/55">
           <span
             aria-hidden="true"
             className="inline-block h-2 w-2 rounded-full"
             style={{ backgroundColor: seatColor(seat) }}
           />
-          {livesLabel(lives)}
-          {active ? ` · ${remaining} shot${remaining === 1 ? "" : "s"} this volley` : ""}
+          {active
+            ? `${remaining} action${remaining === 1 ? "" : "s"} left this turn`
+            : "waiting"}
         </p>
       </div>
     );
@@ -533,7 +568,7 @@ export default function HillstrikeMatchPage() {
                   Hillstrike
                 </h1>
                 <p className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-widest text-white/55">
-                  <span>1v1 · three lives each</span>
+                  <span>1v1 · {MAX_HP} HP each</span>
                   <span className="rounded-full border border-emerald-400/40 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold tracking-wider text-emerald-200">
                     Free &amp; rated
                   </span>
@@ -611,13 +646,13 @@ export default function HillstrikeMatchPage() {
 
                     <p className="mt-1 text-[11px] leading-relaxed text-white/55">
                       {canPlay
-                        ? "Drag away from your target on the battlefield to set angle and power, then Fire."
+                        ? "Three actions: fire, drive (closer or farther) or build cover. Drag to aim, then Fire."
                         : matchOver
                           ? "Match over."
                           : "Wait for your turn."}
                     </p>
 
-                    <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                    <div className="mt-3 flex flex-col gap-2">
                       <button
                         type="button"
                         data-testid="hillstrike-fire"
@@ -626,16 +661,53 @@ export default function HillstrikeMatchPage() {
                         className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border-b-4 border-[#0087a8] bg-[#00e5ff] px-4 py-2.5 text-sm font-extrabold text-[#001a2e] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         <IconBolt size={16} aria-hidden="true" />
-                        {submitting ? "Firing…" : "Fire"}
+                        {submitting ? "Resolving…" : "Fire"}
                       </button>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <button
+                          type="button"
+                          data-testid="hillstrike-move-back"
+                          onClick={() => drive("back")}
+                          disabled={!canPlay}
+                          title="Drive away from your opponent"
+                          className="inline-flex items-center justify-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-2 text-[11px] font-bold text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <IconArrowLeft size={14} aria-hidden="true" />
+                          Drive back
+                        </button>
+                        <button
+                          type="button"
+                          data-testid="hillstrike-build"
+                          onClick={build}
+                          disabled={!canPlay}
+                          title="Place one block of cover in front of your tank"
+                          className="inline-flex items-center justify-center gap-1 rounded-lg border border-emerald-400/40 bg-emerald-500/10 px-2 py-2 text-[11px] font-bold text-emerald-200 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <IconShieldPlus size={14} aria-hidden="true" />
+                          Build
+                        </button>
+                        <button
+                          type="button"
+                          data-testid="hillstrike-move-forward"
+                          onClick={() => drive("forward")}
+                          disabled={!canPlay}
+                          title="Drive toward your opponent — a shorter shot hits harder"
+                          className="inline-flex items-center justify-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-2 text-[11px] font-bold text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          Drive up
+                          <IconArrowRight size={14} aria-hidden="true" />
+                        </button>
+                      </div>
+
                       <button
                         type="button"
                         data-testid="hillstrike-clear"
                         onClick={() => setAim(null)}
                         disabled={!aim}
-                        className="rounded-lg border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-white/70 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
                       >
-                        Clear
+                        Clear aim
                       </button>
                     </div>
 
@@ -687,7 +759,7 @@ export default function HillstrikeMatchPage() {
                     data-testid="hillstrike-shot-log"
                   >
                     <h2 className="mb-2 text-xs font-bold uppercase tracking-wider text-white/60">
-                      Shots played
+                      Actions played
                     </h2>
                     {shots.length === 0 ? (
                       <p className="text-xs text-white/45">No shots yet.</p>
@@ -788,9 +860,9 @@ export default function HillstrikeMatchPage() {
             }}
             summary={[
               { label: "Result", value: outcome === "win" ? "Win" : "Loss" },
-              { label: "Shots fired", value: String(Number(match?.version) || 0) },
-              { label: "Your lives", value: String(viewerLives) },
-              { label: "Opponent's lives", value: String(opponentLives) },
+              { label: "Actions taken", value: String(Number(match?.version) || 0) },
+              { label: "Your HP", value: String(viewerHp) },
+              { label: "Opponent's HP", value: String(opponentHp) },
             ]}
             details={[
               { label: "Match ID", value: String(matchId) },

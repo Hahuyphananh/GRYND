@@ -25,18 +25,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { chooseAiShot } from "../src/lib/hillstrike/ai.ts";
+import { chooseAiAction } from "../src/lib/hillstrike/ai.ts";
 import {
+  ACTION_TYPES,
+  ACTIONS_PER_TURN,
   IMPACT_KINDS,
-  LIVES_PER_PLAYER,
   MATCH_STATUS,
-  SHOTS_PER_VOLLEY,
+  MAX_HP,
+  OPENING_ACTIONS,
   STRUCTURE_BLOCK_SIZE,
   TERRAIN_COLUMNS,
 } from "../src/lib/hillstrike/constants.ts";
 import { createBattlefield, validateBattlefield } from "../src/lib/hillstrike/generation.ts";
 import { simulateShot } from "../src/lib/hillstrike/physics.ts";
-import { applyShot, createInitialState } from "../src/lib/hillstrike/rules.ts";
+import { applyAction, createInitialState } from "../src/lib/hillstrike/rules.ts";
 
 const SEATS = ["player1", "player2"];
 const other = (seat) => (seat === "player1" ? "player2" : "player1");
@@ -73,8 +75,10 @@ function playableSeats(state) {
     return impact.kind === IMPACT_KINDS.PLAYER && impact.target === other(seat);
   };
 
-  for (let angle = 4; angle <= 86 && seats.size < 2; angle += 2) {
-    for (let power = 20; power <= 100; power += 4) {
+  // A fine sweep: the cover walls make the direct-hit window narrow, and a
+  // coarse grid would report "unplayable" for a layout that is merely hard.
+  for (let angle = 4; angle <= 86 && seats.size < 2; angle += 1) {
+    for (let power = 20; power <= 100; power += 5) {
       if (!seats.has("player1") && hits("player1", angle, power)) seats.add("player1");
       if (!seats.has("player2") && hits("player2", 180 - angle, power)) seats.add("player2");
       if (seats.size === 2) break;
@@ -178,30 +182,40 @@ test("fairness: every seed generates a valid, mirrored, playable layout", () => 
  * Returns the outcome and the per-shot invariants this match observed, so the
  * aggregate can be asserted as a total rather than a sample.
  */
-function playMatch({ seed, openingSeat, tier = TIER, maxShots = 60 }) {
+function playMatch({ seed, openingSeat, tier = TIER, maxActions = 90 }) {
   let state = createInitialState({ seed, openingSeat });
   const timeline = [];
-  let shots = 0;
+  let actions = 0;
   let firstShotHit = false;
-  let volleyViolations = 0;
+  let turnViolations = 0;
 
-  while (state.status === MATCH_STATUS.PLAYING && shots < maxShots) {
-    const shooter = state.turn;
-    const before = { turn: state.turn, shots: state.shotsRemaining, index: state.turnIndex };
-    const shot = chooseAiShot({ state, seat: shooter, difficulty: tier, random: NO_SLIPS });
-    const applied = applyShot(state, shooter, shot);
+  while (state.status === MATCH_STATUS.PLAYING && actions < maxActions) {
+    const actor = state.turn;
+    const before = {
+      turn: state.turn,
+      actions: state.actionsRemaining,
+      index: state.turnIndex,
+    };
+    const action = chooseAiAction({ state, seat: actor, difficulty: tier, random: NO_SLIPS });
+    const applied = applyAction(state, actor, action);
 
     // Every transition must be legal for the seat that owned the turn, and the
-    // volley counter must only ever be the opening single or a two-shot volley.
-    if (![1, SHOTS_PER_VOLLEY].includes(state.shotsRemaining)) volleyViolations += 1;
-    if (applied.state.turnIndex !== state.turnIndex + 1) volleyViolations += 1;
+    // action counter must only ever be the opening single or a two-action turn.
+    if (![OPENING_ACTIONS, ACTIONS_PER_TURN].includes(state.actionsRemaining)) {
+      turnViolations += 1;
+    }
+    if (applied.state.turnIndex !== state.turnIndex + 1) turnViolations += 1;
 
     const next = applied.state;
-    timeline.push({ ...before, impact: next.lastShot.impact.kind, lives: next.lives });
-    if (shots === 0 && next.lastShot.impact.kind === IMPACT_KINDS.PLAYER) firstShotHit = true;
+    const kind =
+      next.lastAction.type === ACTION_TYPES.SHOOT
+        ? next.lastAction.impact.kind
+        : next.lastAction.type;
+    timeline.push({ ...before, impact: kind, hp: next.hp });
+    if (actions === 0 && kind === IMPACT_KINDS.PLAYER) firstShotHit = true;
     assert.equal(validateBattlefield(next.battlefield).ok, true, "every state stays valid");
     state = next;
-    shots += 1;
+    actions += 1;
   }
 
   return {
@@ -209,15 +223,15 @@ function playMatch({ seed, openingSeat, tier = TIER, maxShots = 60 }) {
     openingSeat,
     winner: state.winner,
     finished: state.status === MATCH_STATUS.FINISHED,
-    shots,
+    actions,
     firstShotHit,
-    volleyViolations,
-    lives: state.lives,
+    turnViolations,
+    hp: state.hp,
     timeline,
   };
 }
 
-test("fairness: 48 full matches terminate, stay valid and respect every volley rule", () => {
+test("fairness: 48 full matches terminate, stay valid and respect every turn rule", () => {
   const matches = [];
   for (const seed of MATCH_SEEDS) {
     for (const openingSeat of SEATS) {
@@ -228,21 +242,21 @@ test("fairness: 48 full matches terminate, stay valid and respect every volley r
   for (const match of matches) {
     assert.equal(match.finished, true, `seed ${match.seed} (opened by ${match.openingSeat}) never ended`);
     assert.ok(SEATS.includes(match.winner), "somebody must win");
-    assert.equal(match.lives[other(match.winner)], 0, "the loser is out of lives");
-    assert.ok(match.lives[match.winner] > 0, "the winner still has a life");
-    assert.equal(match.volleyViolations, 0, `seed ${match.seed}: volley/turn invariant broken`);
-    assert.ok(match.shots <= 40, `seed ${match.seed} took ${match.shots} shots`);
+    assert.equal(match.hp[other(match.winner)], 0, "the loser is out of HP");
+    assert.ok(match.hp[match.winner] > 0, "the winner still has HP");
+    assert.equal(match.turnViolations, 0, `seed ${match.seed}: turn invariant broken`);
+    assert.ok(match.actions <= 70, `seed ${match.seed} took ${match.actions} actions`);
 
-    // The opening shot is one, then pairs: check the timeline shape directly.
+    // The opening turn is one action, then pairs: check the shape directly.
     const timeline = match.timeline;
-    assert.equal(timeline[0].shots, 1);
+    assert.equal(timeline[0].actions, OPENING_ACTIONS);
     assert.equal(timeline[0].turn, match.openingSeat);
     if (timeline[1]) {
       assert.equal(timeline[1].turn, other(match.openingSeat), "the answer comes in twos");
-      assert.equal(timeline[1].shots, SHOTS_PER_VOLLEY);
+      assert.equal(timeline[1].actions, ACTIONS_PER_TURN);
     }
 
-    // A match can only end on a hit: the last shot must have connected.
+    // A match can only end on a hit: the last action must have connected.
     const last = timeline[timeline.length - 1];
     assert.equal(last.impact, IMPACT_KINDS.PLAYER, "no match ends on a miss");
   }
@@ -257,7 +271,7 @@ test("fairness: 48 full matches terminate, stay valid and respect every volley r
     if (match.firstShotHit) firstShotHits += 1;
   }
   const mean = (values) => values.reduce((sum, value) => sum + value, 0) / values.length;
-  const lengths = matches.map((match) => match.shots);
+  const lengths = matches.map((match) => match.actions);
 
   // Accounting only: every match produced exactly one winner and one opener.
   assert.equal(bySeat.player1 + bySeat.player2, matches.length, "every win is accounted for");
@@ -268,8 +282,8 @@ test("fairness: 48 full matches terminate, stay valid and respect every volley r
       `  seat wins        player1 ${bySeat.player1} · player2 ${bySeat.player2}\n` +
       `  opening-seat wins ${openerWins}/${matches.length} ` +
       `(${((openerWins / matches.length) * 100).toFixed(1)}%)\n` +
-      `  opening-shot hits ${firstShotHits}/${matches.length}\n` +
-      `  match length     mean ${mean(lengths).toFixed(2)} shots, min ${Math.min(...lengths)}, max ${Math.max(...lengths)}`,
+      `  opening-action hits ${firstShotHits}/${matches.length}\n` +
+      `  match length     mean ${mean(lengths).toFixed(2)} actions, min ${Math.min(...lengths)}, max ${Math.max(...lengths)}`,
   );
 });
 
@@ -285,8 +299,8 @@ test("fairness: the sweep is reproducible, seed by seed and seat by seat", () =>
   // valid matches — the win rates above are the measurement.
   const swapped = playMatch({ seed, openingSeat: "player2" });
   assert.equal(swapped.finished, true);
-  assert.equal(swapped.lives[other(swapped.winner)], 0);
-  assert.ok(swapped.shots >= 3, "a match is at least three shots long");
-  assert.ok(LIVES_PER_PLAYER === 3);
+  assert.equal(swapped.hp[other(swapped.winner)], 0);
+  assert.ok(swapped.actions >= 3, "a match is at least three actions long");
+  assert.ok(MAX_HP === 100);
   assert.ok(STRUCTURE_BLOCK_SIZE > 0);
 });

@@ -7,12 +7,13 @@
 //
 // ── WHY THIS IS NOT THE RULES ENGINE ────────────────────────────────────
 //
-// Trajectories, collisions, damage, lives, the volley order and victory all live
-// in `./physics` and `./rules`, and they are executed by the server store.
-// Nothing here may re-derive any of them: every function below is a formatter or
-// a small guard over values the server already decided (the seat, the turn, the
-// lives, the winner, the reason, the version). That is what keeps a stale tab
-// from being able to argue with the server about whose turn it is or who won.
+// Trajectories, collisions, damage, HP, the action order and victory all live in
+// `./physics` and `./rules`, and they are executed by the server store. Nothing
+// here may re-derive any of them: every function below is a formatter or a small
+// guard over values the server already decided (the seat, the turn, both HP
+// pools, the actions left, the winner, the reason, the version). That is what
+// keeps a stale tab from being able to argue with the server about whose turn it
+// is or who won.
 //
 // Like the engine, this module imports nothing from React/HTTP/DB, so the client
 // bundle can share it with a Node test.
@@ -80,14 +81,14 @@ export function turnLabel({
   isViewerTurn,
   viewerSeat,
   opponentName,
-  shotsRemaining,
+  actionsRemaining,
   openingShotPending,
 }: {
   status?: unknown;
   isViewerTurn?: boolean;
   viewerSeat?: Seat | null;
   opponentName?: string | null;
-  shotsRemaining?: unknown;
+  actionsRemaining?: unknown;
   openingShotPending?: unknown;
 }): string {
   const state = String(status ?? "");
@@ -96,23 +97,23 @@ export function turnLabel({
   if (state === MATCH_STATUS.FINISHED) return "Match complete.";
   if (!viewerSeat) return "Loading the match…";
 
-  const shots = Math.max(0, Number(shotsRemaining) || 0);
-  const volley = `${shots} shot${shots === 1 ? "" : "s"} left`;
+  const actions = Math.max(0, Number(actionsRemaining) || 0);
+  const remaining = `${actions} action${actions === 1 ? "" : "s"} left`;
   if (isViewerTurn) {
     return openingShotPending
-      ? `Your turn — the opening shot is a single shot.`
-      : `Your turn — ${volley} in this volley.`;
+      ? `Your turn — the opening turn is a single action.`
+      : `Your turn — ${remaining} in this turn.`;
   }
-  return `${opponentName || "Your opponent"} is aiming…`;
+  return `${opponentName || "Your opponent"} is taking their turn…`;
 }
 
-/** A seat's remaining lives, from the server's `lives` map. */
-export function livesFor(
-  lives: Record<string, unknown> | null | undefined,
+/** A seat's remaining HP, from the server's `hp` map. */
+export function hpFor(
+  hp: Record<string, unknown> | null | undefined,
   seat: Seat | null | undefined,
 ): number {
-  if (!seat || !lives) return 0;
-  const value = Number(lives[seat]);
+  if (!seat || !hp) return 0;
+  const value = Number(hp[seat]);
   return Number.isFinite(value) ? value : 0;
 }
 
@@ -177,7 +178,7 @@ export function durationSeconds(startedAt: unknown, endedAt: unknown): number | 
 
 /**
  * Why the match ended, as a sentence. The server records the reason; the client
- * only names it (the engine itself can only ever produce `lives-exhausted`).
+ * only names it (the engine itself can only ever produce `hp-depleted`).
  */
 export function resultReasonLabel(
   reason: unknown,
@@ -194,6 +195,11 @@ export function resultReasonLabel(
         : "You left the match and did not return — it was awarded to your opponent.";
     case "timed-out":
       return "The match ran out of time.";
+    case "hp-depleted":
+      return outcome === "win"
+        ? "You knocked out your opponent's tank."
+        : "Your tank was knocked out.";
+    // v1 (three-lives) rows only.
     case "lives-exhausted":
       return outcome === "win"
         ? "You knocked out every one of your opponent's lives."
@@ -203,21 +209,32 @@ export function resultReasonLabel(
   }
 }
 
-/** One logged shot (`hillstrike_shots` row) as human copy. */
+/** One logged action (`hillstrike_shots` row) as human copy. */
 export function loggedShotLabel(entry: {
+  action?: unknown;
   angleDeg?: unknown;
   power?: unknown;
   impactKind?: unknown;
+  damage?: unknown;
   livesLost?: unknown;
 }): string {
+  const kindAction = String(entry?.action ?? "shoot");
+  if (kindAction === "move") return "drove the tank";
+  if (kindAction === "build") return "built a shield block";
+
   const angle = Number(entry?.angleDeg);
   const power = Number(entry?.power);
   const aim =
-    Number.isFinite(angle) && Number.isFinite(power)
+    entry?.angleDeg !== null &&
+    entry?.power !== null &&
+    Number.isFinite(angle) &&
+    Number.isFinite(power)
       ? `${Math.round(angle)}° at ${Math.round(power)}%`
       : "shot";
   const kind = String(entry?.impactKind ?? "");
+  const damage = Number(entry?.damage) || 0;
   const lives = Number(entry?.livesLost) || 0;
+  if (damage > 0) return `${aim} — direct hit, −${damage} HP`;
   if (lives > 0) return `${aim} — direct hit, one life`;
   switch (kind) {
     case "block":
@@ -233,9 +250,9 @@ export function loggedShotLabel(entry: {
   }
 }
 
-/** "2 lives" for the seat cards. */
-export function livesLabel(lives: unknown): string {
-  const count = Number(lives);
-  const safe = Number.isFinite(count) ? count : 0;
-  return `${safe} ${safe === 1 ? "life" : "lives"}`;
+/** "76 HP" for the seat cards. */
+export function hpLabel(hp: unknown): string {
+  const count = Number(hp);
+  const safe = Number.isFinite(count) ? Math.max(0, Math.round(count)) : 0;
+  return `${safe} HP`;
 }

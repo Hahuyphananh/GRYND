@@ -263,8 +263,15 @@ test("the projectile never tunnels through the ground", () => {
   for (const angleDeg of [10, 25, 45, 70, 110, 135, 160]) {
     const simulation = simulate({ angleDeg, power: 100 });
     for (const point of simulation.path) {
+      // The ground is a heightmap of 5-unit STEPS, so a contact can land exactly
+      // on a vertical face between two columns. Both neighbours are legitimate
+      // ground at that x, so the point only has to be above the lower of them.
+      const surface = Math.max(
+        surfaceYAt(FIELD.terrain, point.x),
+        surfaceYAt(FIELD.terrain, point.x - 1e-3),
+      );
       assert.ok(
-        point.y <= surfaceYAt(FIELD.terrain, point.x) + 1e-6,
+        point.y <= surface + 1e-6,
         `path point (${point.x.toFixed(1)}, ${point.y.toFixed(1)}) must stay above the terrain`,
       );
     }
@@ -288,13 +295,17 @@ test("a high-speed shot is stopped by a structure instead of passing through it"
 });
 
 test("a direct player hit arrives as a player contact, not a pass-through", () => {
+  // The cover walls are tall, so the hit window is narrow: a fine sweep finds it
+  // where a coarse one would only ever report stone.
   let hit = null;
-  for (let angleDeg = 0; angleDeg < 180 && !hit; angleDeg += 2) {
-    const simulation = simulate({ angleDeg, power: 100 }, { shooterSeat: "player1" });
-    if (simulation.impact.kind === "player") hit = simulation;
+  for (let power = 100; power >= 60 && !hit; power -= 5) {
+    for (let angleDeg = 0; angleDeg < 180 && !hit; angleDeg += 0.5) {
+      const simulation = simulate({ angleDeg, power }, { shooterSeat: "player1" });
+      if (simulation.impact.kind === "player") hit = simulation;
+    }
   }
 
-  assert.ok(hit, "the near player is reachable at maximum power");
+  assert.ok(hit, "the enemy tank is reachable at maximum power");
   assert.equal(hit.impact.target, "player2");
   assert.equal(otherSeat("player1"), "player2");
   assert.deepEqual(
@@ -347,8 +358,17 @@ test("structures take damage, collapse and never float, overlap or leave the fie
   let collapsed = 0;
   let lastImpact = null;
 
+  // A flat arc that meets the near tower (the exact angle is balance-dependent,
+  // so it is discovered rather than hard-coded).
+  let towerAngle = null;
+  for (let angleDeg = 0; angleDeg <= 45 && towerAngle === null; angleDeg += 1) {
+    const simulation = simulate({ angleDeg, power: 100 });
+    if (simulation.impact.kind === "block") towerAngle = angleDeg;
+  }
+  assert.ok(towerAngle !== null, "a flat shot must meet a tower");
+
   for (let shotIndex = 0; shotIndex < 8; shotIndex++) {
-    const shot = { angleDeg: 4, power: 100 };
+    const shot = { angleDeg: towerAngle, power: 100 };
     const simulation = simulateShot({
       battlefield: field,
       shooterSeat: "player1",

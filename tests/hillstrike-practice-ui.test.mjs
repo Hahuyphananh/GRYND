@@ -4,16 +4,18 @@
  * The contracts the Hillstrike practice screen has to keep, pinned at the TEXT
  * level — the things a browser check cannot see cheaply:
  *
- *   • the UI owns no rule. Collisions, damage, lives, volleys and the winner come
+ *   • the UI owns no rule. Collisions, damage, HP, turns and the winner come
  *     from `src/lib/hillstrike/*`; a component only draws state and reports a
  *     gesture. A drag becomes an aim through the ENGINE's `aimFromDrag`, a
- *     preview is a real `simulateShot`, a press of Fire is `applyShot`.
+ *     preview is a real `simulateShot`, any of the three actions is `applyAction`.
  *   • the canvas is fluid (aspect-ratio + ResizeObserver + device-pixel-ratio
  *     scaling), never a fixed pixel board, so it fits a phone and a desktop.
+ *   • the tanks are drawn as TANKS (tracks, hull, turret, barrel, HP bar), not
+ *     as discs, and the board shows the HP the engine resolved.
  *   • practice stays free and local: no wager, no rating, no network call.
- *   • every affordance the design asks for (lives, turn, shots left, Fire,
- *     Restart, result) has a stable hook, and the browser harness's handles
- *     stay put.
+ *   • every affordance the design asks for (HP, turn, actions left, Fire, Drive,
+ *     Build, Restart, result) has a stable hook, and the browser harness's
+ *     handles stay put.
  *
  * Comments are stripped before the "must not" checks: the prose in these files
  * legitimately talks about the rules (and about not taking wagers) while the
@@ -28,15 +30,16 @@ import { readFileSync } from "node:fs";
 
 import { AI_DIFFICULTIES } from "../src/lib/aiDifficulty.ts";
 import {
+  ACTIONS_PER_TURN,
   DEFAULT_MAX_PULL,
-  LIVES_PER_PLAYER,
+  MAX_HP,
+  MOVE_STEP,
   POWER_MAX,
-  SHOTS_PER_VOLLEY,
 } from "../src/lib/hillstrike/constants.ts";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
-/** The same source with `//` and `/* … *​/` commentary removed. */
+/** The same source with `//` and slash-star commentary removed. */
 function stripComments(source) {
   let out = "";
   let index = 0;
@@ -81,47 +84,53 @@ const hudCode = stripComments(hud);
 test("hillstrike practice: the page drives the engine and nothing else", () => {
   for (const symbol of [
     "createInitialState",
-    "validateShot",
-    "applyShot",
+    "validateAction",
+    "applyAction",
     "simulateShot",
-    "chooseAiShot",
+    "chooseAiAction",
+    "hpOf",
   ]) {
     assert.ok(pageCode.includes(symbol), `the page must use the engine's ${symbol}`);
   }
 
-  // A shot is accepted by the ENGINE, from the engine's own verdict — the exact
-  // shape a future server route will use.
-  assert.ok(pageCode.includes("validateShot(current, seat, shot)"));
-  assert.ok(pageCode.includes("applyShot(current, seat, shot)"));
+  // An action is accepted by the ENGINE, from the engine's own verdict — the
+  // exact shape the server route uses.
+  assert.ok(pageCode.includes("validateAction(current, seat, action)"));
+  assert.ok(pageCode.includes("applyAction(current, seat, action)"));
 
-  // The bot answers through the SAME two calls as the human: it is given no
-  // private path into the rules.
+  // The bot answers through the SAME call as the human: it is given no private
+  // path into the rules, and its action can be a drive or a build too.
   assert.ok(
-    /fireShot\(AI_SEAT, shot\)/.test(pageCode),
-    "the bot's shot must resolve through the same fireShot as the player's",
+    /playAction\(AI_SEAT, action\)/.test(pageCode),
+    "the bot's action must resolve through the same playAction as the player's",
   );
   assert.ok(
-    /fireShot\(HUMAN_SEAT, aim\)/.test(pageCode),
-    "the player's Fire must resolve through fireShot",
+    /playAction\(HUMAN_SEAT, \{ type: "shoot", \.\.\.aim \}\)/.test(pageCode),
+    "the player's Fire must resolve through playAction",
   );
+  for (const kind of ["shoot", "move", "build"]) {
+    assert.ok(
+      pageCode.includes(`"${kind}"`),
+      `the practice page must be able to take a ${kind} action`,
+    );
+  }
 });
 
-test("hillstrike practice: no component decides a collision, a life or a turn", () => {
+test("hillstrike practice: no component decides a collision, HP or a turn", () => {
   const forbidden = [
     // physics / rules that may only live in the engine
     "GRAVITY",
     "PROJECTILE_",
-    "LIVES_PER_PLAYER =" /* a redefinition, not a read */,
     "IMPACT_KINDS.PLAYER",
     "block-destroyed",
-    "lives-exhausted",
+    "hp-depleted",
     "turnIndex =",
-    "shotsRemaining =",
-    "lives[",
+    "actionsRemaining =",
+    "damage =",
     // no second rules implementation anywhere in the UI
     "simulateShot",
-    "applyShot",
-    "validateShot",
+    "applyAction",
+    "validateAction",
     "createInitialState",
     "createBattlefield",
   ];
@@ -130,25 +139,26 @@ test("hillstrike practice: no component decides a collision, a life or a turn", 
     ["hud", hudCode],
   ]) {
     for (const token of forbidden) {
-      if (token === "lives[") {
-        // Read-only access IS how the HUD renders lives; only a write is wrong.
-        assert.equal(
-          /lives\[[^\]]+\]\s*=[^=]/.test(code),
-          false,
-          `${name} must not write the engine's lives`,
-        );
-        continue;
-      }
       assert.equal(
         code.includes(token),
         false,
         `${name} must not contain engine logic (found ${token})`,
       );
     }
+    // Reading HP for a bar is fine; WRITING it is a second rulebook.
+    assert.equal(
+      /hp\[[^\]]+\]\s*=[^=]/.test(code),
+      false,
+      `${name} must not write the engine's hp`,
+    );
+    assert.ok(
+      code.includes("hpOf("),
+      `${name} must read HP through the engine's own accessor`,
+    );
   }
 
   // …and the page never mutates it either.
-  for (const fieldName of ["lives", "turn", "shotsRemaining", "winner", "status"]) {
+  for (const fieldName of ["hp", "turn", "actionsRemaining", "winner", "status", "lastAction"]) {
     assert.equal(
       new RegExp(`state\\.${fieldName}\\s*=[^=]`).test(pageCode),
       false,
@@ -187,8 +197,7 @@ test("hillstrike practice: the preview is the engine's own resolution of the aim
     /return \{ path: simulation\.path, impact: simulation\.impact \}/.test(pageCode),
     "the preview is the simulation's own path and impact",
   );
-  // The battlefield only DRAWS the preview it is handed.
-  assert.ok(fieldCode.includes("preview.path.forEach") || fieldCode.includes("preview.path"));
+  assert.ok(fieldCode.includes("preview.path"));
   assert.ok(fieldCode.includes("preview.impact"));
 });
 
@@ -196,34 +205,39 @@ test("hillstrike practice: the preview is the engine's own resolution of the aim
  * Rules the UI must READ, never duplicate
  * -------------------------------------------------------------------------- */
 
-test("hillstrike practice: lives, volleys and shot limits come from the constants", () => {
+test("hillstrike practice: HP, turns and action limits come from the constants", () => {
   assert.ok(
-    hudCode.includes("LIVES_PER_PLAYER"),
-    "the HUD draws its pip row from the engine's life count",
+    hudCode.includes("MAX_HP"),
+    "the HUD draws its HP bar against the engine's maximum",
   );
-  assert.equal(/\b3\b\s*(lives|\/\s*3)/.test(hudCode), false, "no hard-coded life total");
+  assert.equal(/100\s*(hp|HP)/.test(hudCode), false, "no hard-coded HP total");
+  assert.ok(
+    hudCode.includes("STRUCTURE_BLOCK_SIZE"),
+    "the build button describes the block it places from the engine's size",
+  );
   assert.equal(
-    /SHOTS_PER_VOLLEY|shotsRemaining\s*[-+*/]/.test(pageCode),
+    /ACTIONS_PER_TURN|actionsRemaining\s*[-+*/]/.test(pageCode),
     false,
-    "the page must never compute the volley itself",
+    "the page must never compute the turn counter itself",
   );
   // The values the HUD shows are the state's own.
-  for (const read of ["state.lives[seat]", "state.shotsRemaining", "state.turn === seat"]) {
+  for (const read of ["hpOf(state, seat)", "state.actionsRemaining", "state.turn === seat"]) {
     assert.ok(hudCode.includes(read), `the HUD must render ${read}`);
   }
   assert.ok(pageCode.includes("TICK_MS"), "the flight time is derived from the engine's tick");
-  assert.equal(LIVES_PER_PLAYER, 3);
-  assert.equal(SHOTS_PER_VOLLEY, 2);
+  assert.equal(MAX_HP, 100);
+  assert.equal(ACTIONS_PER_TURN, 2);
+  assert.ok(MOVE_STEP > 0);
 });
 
-test("hillstrike practice: the difficulty changes only the bot's aim search", () => {
+test("hillstrike practice: the difficulty changes only the bot's plan", () => {
   assert.ok(pageCode.includes('from "../../../../lib/hillstrike/ai"'));
-  assert.ok(pageCode.includes("chooseAiShot({"));
+  assert.ok(pageCode.includes("chooseAiAction({"));
   assert.ok(pageCode.includes("difficulty,"), "the tier is handed to the bot's planner");
   assert.ok(pageCode.includes("HILLSTRIKE_TIER_HINTS"), "each tier explains itself");
   assert.ok(pageCode.includes('gameKey="hillstrike"'), "the shared picker is scoped per game");
   assert.ok(
-    pageCode.includes("readStoredAiDifficulty(\"hillstrike\")"),
+    pageCode.includes('readStoredAiDifficulty("hillstrike")'),
     "the remembered tier is a device preference, read on the client",
   );
   for (const difficulty of AI_DIFFICULTIES) {
@@ -240,7 +254,7 @@ test("hillstrike practice: one canvas, drawn fluidly on every screen", () => {
   assert.ok(fieldCode.includes("devicePixelRatio"), "the canvas scales for a retina display");
   assert.ok(fieldCode.includes("ResizeObserver"), "the canvas follows its column's size");
   assert.ok(
-    /aspectRatio: `\$\{BATTLEFIELD_WIDTH\} \/ \$\{BATTLEFIELD_HEIGHT\}`/.test(fieldCode),
+    fieldCode.includes("aspectRatio: `${BATTLEFIELD_WIDTH} / ${BATTLEFIELD_HEIGHT}`"),
     "the battlefield keeps the engine's aspect ratio",
   );
   assert.ok(fieldCode.includes("applyCanvasSize"), "layout is measured, then scaled");
@@ -256,7 +270,7 @@ test("hillstrike practice: one canvas, drawn fluidly on every screen", () => {
   assert.ok(pageCode.includes("overflow-x-clip"));
 });
 
-test("hillstrike practice: the board draws both gunners, towers, terrain and impacts", () => {
+test("hillstrike practice: the board draws terrain, towers, tanks, HP and impacts", () => {
   for (const symbol of [
     "field.terrain",
     "field.blocks",
@@ -269,25 +283,63 @@ test("hillstrike practice: the board draws both gunners, towers, terrain and imp
   ]) {
     assert.ok(fieldCode.includes(symbol), `the battlefield must draw ${symbol}`);
   }
-  assert.ok(fieldCode.includes("current.lives[seat]"), "the board shows each gunner's lives");
-  // A direct hit is announced on the board, not just in the HUD.
+
+  // ── The tanks are actually tanks ─────────────────────────────────────
+  // Tracks + road wheels + hull + turret + barrel: five distinct parts, so the
+  // silhouette reads as an armoured vehicle and not as a coloured circle.
+  for (const part of [
+    "trackWidth",
+    "trackTop",
+    "wheelRadius",
+    "hullWidth",
+    "hullTop",
+    "turretWidth",
+    "turretTop",
+    "roundedRect(",
+  ]) {
+    assert.ok(fieldCode.includes(part), `the tank must be drawn with a ${part}`);
+  }
   assert.ok(
-    fieldCode.includes("-1") && fieldCode.includes("livesLost"),
-    "a lost life is flagged where the shot landed",
+    fieldCode.includes("directionVector(aim.angleDeg)"),
+    "the barrel follows the aim, so a tank reads as aiming",
   );
-  // The animation is driven by the engine's recorded trajectory.
-  assert.ok(fieldCode.includes("shot.path"));
-  assert.ok(fieldCode.includes("shot.events"));
+  assert.equal(
+    /ctx\.arc\(x, y - 4, PLAYER_RADIUS/.test(fieldCode),
+    false,
+    "the old circle body is gone",
+  );
+
+  // ── HP on the board ──────────────────────────────────────────────────
+  assert.ok(fieldCode.includes("hpOf(current, seat)"), "the board shows each tank's HP");
+  assert.ok(
+    fieldCode.includes("barWidth") && fieldCode.includes("barHeight"),
+    "the board draws an HP bar",
+  );
+  assert.ok(fieldCode.includes("strokeText"), "the HP number is legible on any sky");
+  assert.ok(
+    fieldCode.includes("currentAnimation.action.damage"),
+    "a hit is announced on the board with the damage the engine resolved",
+  );
+
+  // The animation is driven by the engine's recorded action.
+  assert.ok(fieldCode.includes("action.path"), "the flight uses the recorded path");
+  assert.ok(fieldCode.includes("action.events"), "the settle uses the recorded events");
   assert.ok(fieldCode.includes("requestAnimationFrame"), "the flight is animated, not teleported");
+  // A drive rolls the tank, a build drops the block: both are animated.
+  assert.ok(fieldCode.includes('action.type === "move"'), "a drive is animated");
+  assert.ok(fieldCode.includes('action.type === "build"'), "a build is animated");
 });
 
-test("hillstrike practice: the HUD shows turn, volley, lives and the result", () => {
+test("hillstrike practice: the HUD shows turn, actions, HP and the three actions", () => {
   for (const testId of [
     "hillstrike-status",
     "hillstrike-seat-you",
     "hillstrike-seat-ai",
     "hillstrike-fire",
     "hillstrike-clear",
+    "hillstrike-move-forward",
+    "hillstrike-move-back",
+    "hillstrike-build",
     "hillstrike-restart",
     "hillstrike-notice",
     "hillstrike-aim-readout",
@@ -296,15 +348,19 @@ test("hillstrike practice: the HUD shows turn, volley, lives and the result", ()
     assert.ok(hudCode.includes(testId), `the HUD needs a stable ${testId} hook`);
   }
   assert.ok(hudCode.includes('role="status"'), "the turn/status line is a live region");
+  assert.ok(hudCode.includes('role="meter"'), "the HP bar is a real meter");
   assert.ok(hudCode.includes("disabled={!aim || !canPlay}"), "Fire is disabled without a legal aim");
+  // Drive and Build are wired to the page's handlers, never to a rule of their own.
+  assert.ok(
+    hudCode.includes("onMove(") && hudCode.includes("onBuild"),
+    "the Drive and Build buttons call the page's handlers",
+  );
+  assert.ok(pageCode.includes("onMove={drive}") && pageCode.includes("onBuild={build}"));
   assert.ok(
     pageCode.includes("<PvpResultScreen") && pageCode.includes("open={Boolean(matchOver)}"),
     "the shared result screen reports the match",
   );
-  for (const testId of [
-    "hillstrike-battlefield",
-    "hillstrike-loading",
-  ]) {
+  for (const testId of ["hillstrike-battlefield", "hillstrike-loading"]) {
     assert.ok(pageCode.includes(testId) || fieldCode.includes(testId), `stable ${testId} hook`);
   }
   assert.equal(DEFAULT_MAX_PULL > 0, true);
@@ -322,9 +378,9 @@ test("hillstrike practice: the browser harness keeps its handles", () => {
     "data-blocks",
     "data-cracked",
     "data-terrain-signature",
-    "data-lives-player1",
-    "data-lives-player2",
-    "data-shots-remaining",
+    "data-hp-player1",
+    "data-hp-player2",
+    "data-actions-remaining",
     "data-winner",
     "data-aim-angle",
     "data-aim-power",
@@ -332,8 +388,9 @@ test("hillstrike practice: the browser harness keeps its handles", () => {
     "data-preview-x",
     "data-preview-y",
     "data-last-impact",
-    "data-last-lives-lost",
+    "data-last-damage",
     "data-last-target",
+    "data-last-action",
     "data-interactive",
     "data-turn-index",
   ]) {
@@ -361,7 +418,6 @@ test("hillstrike practice: free play never wagers, rates or calls the server", (
     /subline="Free practice/.test(page),
     "the result screen repeats that nothing was at stake",
   );
-  // Client-side only: the whole match lives in React state.
   assert.ok(pageCode.includes('"use client"'));
   assert.ok(pageCode.includes("useState"));
 });

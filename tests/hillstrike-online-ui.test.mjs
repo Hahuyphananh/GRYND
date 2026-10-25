@@ -7,9 +7,10 @@
  * Three things this file exists to prove:
  *
  *   1. SERVER AUTHORITY IS VISIBLE IN THE TRANSPORT. The match view's only
- *      gameplay request is an aim plus `expectedVersion`; no trajectory, impact,
- *      damage, life count, turn, winner or completion flag is ever posted, and
- *      nothing on the page decides who won.
+ *      gameplay request is one engine ACTION (shoot, drive or build) plus
+ *      `expectedVersion`; no trajectory, impact, damage, HP, position, turn,
+ *      winner or completion flag is ever posted, and nothing on the page decides
+ *      who won.
  *   2. THE LIVE CHANNEL IS THE EXISTING ONE. Hillstrike uses the platform's
  *      Socket.IO per-match room vocabulary (`hillstrike:match:<id>`,
  *      `hillstrike:ready`, the generic `lobby:updated` relay) and the realtime
@@ -31,10 +32,10 @@ import { readFileSync } from "node:fs";
 
 import {
   durationSeconds,
+  hpFor,
+  hpLabel,
   isIncomingSnapshotStale,
   isTerminalStatus,
-  livesFor,
-  livesLabel,
   loggedShotLabel,
   outcomeFor,
   resultReasonLabel,
@@ -98,16 +99,25 @@ const store = read(STORE);
  * 1. Server authority is visible in the transport
  * -------------------------------------------------------------------------- */
 
-test("hillstrike online: the only gameplay request is an aim plus a version", () => {
-  // The whole body. No trajectory, no damage, no lives, no winner.
+test("hillstrike online: the only gameplay request is one action plus a version", () => {
+  // The whole body. No trajectory, no damage, no HP, no winner.
   assert.ok(
-    pageCode.includes("JSON.stringify({ shot: aim, expectedVersion: current.version })"),
-    "the shot request must carry exactly the aim and the version",
+    pageCode.includes("JSON.stringify({ action, expectedVersion: current.version })"),
+    "the request must carry exactly the action and the version",
   );
+  // The three actions are the entire gameplay vocabulary a client may send.
+  for (const shape of [
+    'sendAction({ type: "shoot", ...aim })',
+    'sendAction({ type: "move", direction })',
+    'sendAction({ type: "build" })',
+  ]) {
+    assert.ok(pageCode.includes(shape), `the view must send ${shape}`);
+  }
   for (const forbidden of [
     "winnerId",
     "gameState",
     "impact",
+    "hp",
     "lives",
     "damage",
     "terrain",
@@ -122,8 +132,8 @@ test("hillstrike online: the only gameplay request is an aim plus a version", ()
   }
   // The version is read from the snapshot, never invented.
   assert.ok(pageCode.includes("expectedVersion: current.version"));
-  // A rejected shot is explained from the response, not guessed locally.
-  assert.ok(pageCode.includes("data?.error || \"That shot was rejected.\""));
+  // A rejected action is explained from the response, not guessed locally.
+  assert.ok(pageCode.includes("data?.error || \"That action was rejected.\""));
 });
 
 test("hillstrike online: the view renders the server's snapshot, not its own verdict", () => {
@@ -132,7 +142,7 @@ test("hillstrike online: the view renders the server's snapshot, not its own ver
     "match?.opponentSeat",
     "match?.gameState",
     "match?.isViewerTurn",
-    "match?.shotsRemaining",
+    "match?.actionsRemaining",
     "match?.openingShotPending",
     "match?.result",
     "match?.winnerId",
@@ -149,49 +159,53 @@ test("hillstrike online: the view renders the server's snapshot, not its own ver
 });
 
 test("hillstrike online: the animation is the SERVER's trajectory, and the preview is only a preview", () => {
-  // The accepted shot's animation is built from the snapshot the server returned.
-  assert.ok(pageCode.includes("nextState.lastShot"));
+  // The accepted action's animation is built from the snapshot the server returned.
+  assert.ok(pageCode.includes("nextState?.lastAction"), "the resolved action is the snapshot's");
+  assert.ok(pageCode.includes('record.type === "shoot"'), "only a shot has a flight to wait for");
   assert.ok(pageCode.includes("from: previousState.battlefield"));
   assert.ok(pageCode.includes("to: nextState.battlefield"));
   assert.ok(pageCode.includes("adopt(data.data.match)"));
   // The one use of the simulator is the dotted aiming preview…
   assert.ok(pageCode.includes("simulateShot({"));
   assert.ok(pageCode.includes("return { path: simulation.path, impact: simulation.impact };"));
-  // …and the page never applies a shot itself: only the server does that.
+  // …and the page never resolves an action itself: only the server does that.
   assert.equal(
-    /\bapplyShot\b/.test(pageCode),
+    /\bapplyAction\b/.test(pageCode),
     false,
-    "the online view must never resolve a shot locally",
+    "the online view must never resolve an action locally",
   );
   assert.equal(
-    /\bvalidateShot\b/.test(pageCode),
+    /\bvalidateAction\b/.test(pageCode),
     false,
-    "the online view must not pre-judge the shot's legality as truth",
+    "the online view must not pre-judge an action's legality as truth",
   );
 });
 
-test("hillstrike online: the shot route reads nothing but the aim and the version", () => {
-  assert.ok(shotRoute.includes("shot: body?.shot"));
+test("hillstrike online: the action route reads nothing but the action and the version", () => {
+  assert.ok(shotRoute.includes("body?.action"), "the route reads the action");
   assert.ok(shotRoute.includes("expectedVersion: body?.expectedVersion"));
   for (const forbidden of [
     "body.board",
     "body.winner",
     "body.result",
     "body.gameState",
+    "body.hp",
     "body.lives",
     "body.damage",
     "body.impact",
+    "body.terrain",
+    "body.blocks",
     "body.turn",
   ]) {
     assert.equal(
       shotRoute.includes(forbidden),
       false,
-      `the shot route must ignore ${forbidden}`,
+      `the action route must ignore ${forbidden}`,
     );
   }
-  // The response is the server's resolved shot and the new snapshot.
+  // The response is the server's resolved action and the new snapshot.
   assert.ok(shotRoute.includes("match: matchToDto(result.match, userId)"));
-  assert.ok(shotRoute.includes("shot: result.shot"));
+  assert.ok(shotRoute.includes("action: result.action"));
   assert.ok(shotRoute.includes("broadcastMatchUpdate(matchId"));
 });
 
@@ -205,7 +219,8 @@ test("hillstrike online: a stale or duplicated shot can never be applied twice",
   assert.ok(store.includes("isUniqueViolation"));
   assert.ok(store.includes("actionIndex"));
   // The store resolves with the shared engine, never with its own maths.
-  assert.ok(store.includes("applyShot("));
+  assert.ok(store.includes("validateAction("));
+  assert.ok(store.includes("applyAction("));
 });
 
 /* -------------------------------------------------------------------------- *
@@ -295,8 +310,9 @@ test("hillstrike practice: the vs-AI board never touches the online surface", ()
     "practice must not call any online route",
   );
   assert.equal(/fetch\(/.test(practiceCode), false, "practice needs no network at all");
-  assert.ok(practiceCode.includes("chooseAiShot"));
-  assert.ok(practiceCode.includes("applyShot"));
+  assert.ok(practiceCode.includes("chooseAiAction"));
+  assert.ok(practiceCode.includes("applyAction"));
+  assert.ok(practiceCode.includes("validateAction"));
   assert.ok(practiceCode.includes("createInitialState"));
   // And it is still described as free and unrated.
   assert.match(practice, /Free practice/i);
@@ -307,7 +323,7 @@ test("hillstrike practice: the vs-AI board never touches the online surface", ()
  * 4. The view-model helpers
  * -------------------------------------------------------------------------- */
 
-test("ui: seat, status, reason and lives copy", () => {
+test("ui: seat, status, reason and HP copy", () => {
   assert.equal(seatName("player1"), "Cyan");
   assert.equal(seatName("player2"), "Magenta");
   assert.equal(seatLabel("player1", "player1"), "You");
@@ -318,13 +334,23 @@ test("ui: seat, status, reason and lives copy", () => {
   assert.equal(statusLabel("nonsense"), "Loading");
   assert.equal(isTerminalStatus("finished"), true);
   assert.equal(isTerminalStatus("playing"), false);
-  assert.equal(livesFor({ player1: 2, player2: 3 }, "player1"), 2);
-  assert.equal(livesFor(null, "player1"), 0);
-  assert.equal(livesLabel(1), "1 life");
-  assert.equal(livesLabel(3), "3 lives");
+  assert.equal(hpFor({ player1: 62, player2: 100 }, "player1"), 62);
+  assert.equal(hpFor({ player1: 0, player2: 100 }, "player1"), 0);
+  assert.equal(hpFor({ player2: 100 }, "player1"), 0, "a missing seat reads as zero");
+  assert.equal(hpFor({ player1: "nonsense" }, "player1"), 0);
+  assert.equal(hpFor(null, "player1"), 0);
+  assert.equal(hpFor({ player1: 60 }, null), 0);
+  assert.equal(hpLabel(76), "76 HP");
+  assert.equal(hpLabel(0), "0 HP");
+  assert.equal(hpLabel(-4), "0 HP", "HP is never drawn negative");
+  assert.equal(hpLabel("nonsense"), "0 HP");
   assert.equal(
-    resultReasonLabel("lives-exhausted", "loss"),
-    "Your opponent knocked out all three of your lives.",
+    resultReasonLabel("hp-depleted", "loss"),
+    "Your tank was knocked out.",
+  );
+  assert.equal(
+    resultReasonLabel("hp-depleted", "win"),
+    "You knocked out your opponent's tank.",
   );
   assert.equal(
     resultReasonLabel("resigned", "win"),
@@ -341,8 +367,13 @@ test("ui: the turn banner follows the server, never a local guess", () => {
   assert.match(turnLabel({ status: "cancelled" }), /cancelled/i);
   assert.match(turnLabel({ status: "finished" }), /complete/i);
   assert.match(
-    turnLabel({ status: "playing", viewerSeat: "player1", isViewerTurn: true, shotsRemaining: 2 }),
-    /2 shots left/i,
+    turnLabel({ status: "playing", viewerSeat: "player1", isViewerTurn: true, actionsRemaining: 3 }),
+    /3 actions left/i,
+  );
+  assert.match(
+    turnLabel({ status: "playing", viewerSeat: "player1", isViewerTurn: true, actionsRemaining: 1 }),
+    /1 action left/i,
+    "the singular is used for the last action",
   );
   assert.match(
     turnLabel({
@@ -350,9 +381,9 @@ test("ui: the turn banner follows the server, never a local guess", () => {
       viewerSeat: "player1",
       isViewerTurn: true,
       openingShotPending: true,
-      shotsRemaining: 1,
+      actionsRemaining: 1,
     }),
-    /opening shot/i,
+    /opening turn is a single action/i,
   );
   assert.match(
     turnLabel({
@@ -361,7 +392,7 @@ test("ui: the turn banner follows the server, never a local guess", () => {
       isViewerTurn: false,
       opponentName: "Alice",
     }),
-    /Alice is aiming/,
+    /Alice is taking their turn/,
   );
 });
 
@@ -412,18 +443,26 @@ test("ui: monotonic snapshots and bounded durations", () => {
   assert.equal(durationSeconds("2026-01-01T00:01:00Z", "2026-01-01T00:00:00Z"), null);
 });
 
-test("ui: a logged shot is described from the server's own row", () => {
+test("ui: a logged action is described from the server's own row", () => {
   assert.equal(
-    loggedShotLabel({ angleDeg: 44.6, power: 88, impactKind: "player", livesLost: 1 }),
-    "45° at 88% — direct hit, one life",
+    loggedShotLabel({ action: "shoot", angleDeg: 44.6, power: 88, impactKind: "player", damage: 21 }),
+    "45° at 88% — direct hit, −21 HP",
   );
   assert.equal(
-    loggedShotLabel({ angleDeg: 12, power: 70, impactKind: "block", livesLost: 0 }),
+    loggedShotLabel({ action: "shoot", angleDeg: 12, power: 70, impactKind: "block", damage: 0 }),
     "12° at 70% — tower hit",
   );
   assert.equal(
-    loggedShotLabel({ angleDeg: 90, power: 30, impactKind: "out-of-bounds", livesLost: 0 }),
+    loggedShotLabel({ action: "shoot", angleDeg: 90, power: 30, impactKind: "out-of-bounds", damage: 0 }),
     "90° at 30% — out of bounds",
+  );
+  // A drive and a build have no aim, so they are named for what they were.
+  assert.equal(loggedShotLabel({ action: "move" }), "drove the tank");
+  assert.equal(loggedShotLabel({ action: "build" }), "built a shield block");
+  // v1 (lives) rows still read as a hit rather than as an unaimed shot.
+  assert.equal(
+    loggedShotLabel({ angleDeg: 45, power: 88, impactKind: "player", livesLost: 1 }),
+    "45° at 88% — direct hit, one life",
   );
 });
 
@@ -432,5 +471,5 @@ test("ui: the view-model module imports no framework, HTTP or database", () => {
   assert.doesNotMatch(source, /from "react"/);
   assert.doesNotMatch(source, /next\//);
   assert.doesNotMatch(source, /drizzle|db\/client/);
-  assert.doesNotMatch(source, /createBattlefield|applyShot|simulateShot/);
+  assert.doesNotMatch(source, /createBattlefield|applyAction|simulateShot/);
 });

@@ -1,27 +1,29 @@
 // src/app/api/hillstrike/match/[matchId]/shot/route.ts
 //
-// POST — fire one shot.
+// POST — take one action: fire, drive or build.
 //
 // The request body carries ONLY:
 //
-//   { shot: { angleDeg, power }, expectedVersion }
+//   { action: { type: "shoot", angleDeg, power }, expectedVersion }
+//   { action: { type: "move", direction: "forward" | "back" }, expectedVersion }
+//   { action: { type: "build" }, expectedVersion }
 //
 // Everything else a client might send — a trajectory, an impact, a hit, a damage
-// amount, a life count, a terrain height, a tower layout, whose turn it is, a
-// winner, a result, a completion flag — is IGNORED: no such field is read here or
-// in the store. The aim is validated by the shared rules engine
-// (`validateShot`), resolved by `applyShot`/`simulateShot` inside the store's
-// row-locked transaction, and the resulting authoritative state is what both
-// clients render. The server never trusts client-side physics.
+// amount, an HP total, a position, a block, a terrain height, a tower layout,
+// whose turn it is, a winner, a result, a completion flag — is IGNORED: no such
+// field is read here or in the store. The action is validated by the shared rules
+// engine (`validateAction`), resolved by `applyAction`/`simulateShot` inside the
+// store's row-locked transaction, and the resulting authoritative state is what
+// both clients render. The server never trusts client-side physics.
 //
 // `expectedVersion` is the optimistic-concurrency token (the match's `ply`): a
 // double-submit, a retried request or a stale tab is rejected with a 409 instead
-// of consuming a second shot.
+// of consuming a second action.
 
 import { NextResponse } from "next/server";
 import { requireAgeVerifiedUser } from "../../../../../../lib/auth/requireAgeVerified";
 import { logError } from "../../../../../../lib/logError";
-import { isMatchId, matchToDto, submitShot } from "../../../../../../lib/hillstrike/serverStore";
+import { isMatchId, matchToDto, submitAction } from "../../../../../../lib/hillstrike/serverStore";
 import { broadcastMatchUpdate } from "../../../../../../lib/hillstrike/rooms";
 
 export async function POST(
@@ -58,10 +60,19 @@ export async function POST(
   }
 
   try {
-    const result = await submitShot({
+    // `shot` is the v1 body shape (a bare aim); it is accepted as the `shoot`
+    // action so an already-open tab keeps working, and it can never mean
+    // anything else — the engine re-derives its type from the action itself.
+    const action =
+      body?.action ??
+      (body?.shot && typeof body.shot === "object"
+        ? { ...(body.shot as Record<string, unknown>), type: "shoot" }
+        : undefined);
+
+    const result = await submitAction({
       userId,
       matchId,
-      shot: body?.shot,
+      action,
       expectedVersion: body?.expectedVersion,
     });
 
@@ -80,7 +91,7 @@ export async function POST(
       version: result.match.ply,
       currentTurnUserId: result.match.currentTurnUserId,
       ply: result.match.ply,
-      lives: result.state.lives,
+      hp: result.state.hp,
       matchCompleted: result.matchCompleted,
       result: result.match.result ?? null,
       winnerId: result.match.winnerId ?? null,
@@ -91,9 +102,9 @@ export async function POST(
       success: true,
       data: {
         match: matchToDto(result.match, userId),
-        // The shot the SERVER resolved. The client animates this rather than
+        // The action the SERVER resolved. The client animates this rather than
         // simulating the outcome itself.
-        shot: result.shot,
+        action: result.action,
         actionIndex: result.actionIndex,
         matchCompleted: result.matchCompleted,
         winnerId: result.match.winnerId ?? null,
