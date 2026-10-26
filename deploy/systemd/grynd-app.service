@@ -1,0 +1,61 @@
+# deploy/systemd/grynd-app.service  —  PROPOSED, NOT INSTALLED
+#
+# This is the only production-unit change the release system needs, and it is
+# deliberately not applied: Phase 4 stops for approval. Until it is installed,
+# grynd-app.service keeps starting /home/ubuntu/GRYND and nothing changes.
+#
+# What changes, and why:
+#   * WorkingDirectory points at `current`, the atomic symlink the release tool
+#     swaps. systemd resolves the link when the unit starts, so a swap takes
+#     effect on the next start — the tool swaps first, then restarts.
+#   * The environment moves to /home/ubuntu/grynd/env/app.env, OUTSIDE
+#     releases/, so a release can never carry (or overwrite) production secrets
+#     and `next start` cannot pick up a `.env.production` from the checkout.
+#   * ExecStart calls Next's bin directly instead of `npm start`. One process,
+#     one PID to signal, so `Restart=always` and the stop timeout behave.
+#     NOTE: /usr/bin/node is a placeholder — replace it with `command -v node`
+#     on the VM, since a version-managed Node install is not in /usr/bin.
+#   * `.next/cache` stays writable (ISR + image cache) while the rest of the
+#     release stays effectively immutable.
+#
+# Verify before enabling: `systemd-analyze verify`, a manual start on a staging
+# VM, and a real request to /api/health through Nginx.
+
+[Unit]
+Description=GRYND web app (Next.js, versioned release)
+Documentation=file:///home/ubuntu/grynd/README.md
+After=network-online.target
+Wants=network-online.target
+# Never start without a release selected.
+ConditionPathExists=/home/ubuntu/grynd/current
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/grynd/current/app
+EnvironmentFile=/home/ubuntu/grynd/env/app.env
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=HOSTNAME=127.0.0.1
+ExecStart=/usr/bin/node /home/ubuntu/grynd/current/app/node_modules/next/dist/bin/next start -p 3000 -H 127.0.0.1
+Restart=always
+RestartSec=3
+# Give in-flight game requests time to finish; the release tool waits longer.
+KillSignal=SIGTERM
+TimeoutStopSec=25
+
+# ── Hardening (verify on staging; the app needs its own release tree writable
+#    only for .next/cache and logs) ───────────────────────────────────────────
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/ubuntu/grynd
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

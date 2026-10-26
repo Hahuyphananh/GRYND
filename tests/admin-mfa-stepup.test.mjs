@@ -355,39 +355,46 @@ test("reset-tokens endpoint requires admin role", () => {
 
 // ── Admin Page Tests ───────────────────────────────────────────────────────
 
-test("admin page independently enforces MFA step-up (defense in depth)", () => {
-  const page = read("src/app/admin/page.tsx");
-  // The page re-checks MFA even though middleware already enforced it
+test("admin pages enforce MFA step-up through the shared gate (defense in depth)", () => {
+  // The gate lives in one module now, so it cannot drift between pages. The
+  // property is unchanged: a page still re-checks a recent second factor even
+  // though the middleware already enforced it.
+  const gate = read("src/lib/admin/requireAdminPage.ts");
+
   assert.match(
-    page,
+    gate,
     /hasRecentMfa\(factorVerificationAge\)/,
-    "admin page should check Clerk factor verification age"
+    "the gate should check Clerk factor verification age"
   );
+  assert.match(gate, /verifyAdminMfaToken/, "the gate should verify the admin MFA token");
   assert.match(
-    page,
-    /verifyAdminMfaToken/,
-    "admin page should verify admin MFA token"
+    gate,
+    /redirect\(\s*["']\/admin\/mfa-required["']\s*\)/,
+    "the gate should redirect to the MFA page when not satisfied"
   );
-  assert.match(
-    page,
-    /redirect.*mfa-required/i,
-    "admin page should redirect to MFA gate when not satisfied"
-  );
+  assert.match(gate, /isAdmin\(userId\)/, "the gate should verify the admin role");
+  assert.match(gate, /redirect\(\s*["']\/sign-in["']\s*\)/, "the gate should require authentication");
 });
 
-test("admin page comment confirms MFA is a required trust boundary", () => {
-  const page = read("src/app/admin/page.tsx");
-  // The comment confirms this is intentional defense in depth
+test("every admin page calls the shared gate", () => {
+  // A new admin page that forgets the gate would be caught here.
+  for (const page of [
+    "src/app/admin/page.tsx",
+    "src/app/admin/operations/page.tsx",
+    "src/app/admin/operations/logs/page.tsx",
+  ]) {
+    assert.match(read(page), /requireAdminPage\(\)/, `${page} must call requireAdminPage()`);
+  }
+});
+
+test("the shared gate documents MFA as a required trust boundary", () => {
+  const gate = read("src/lib/admin/requireAdminPage.ts");
   assert.match(
-    page,
+    gate,
     /Admin access requires.*second factor/i,
-    "admin page should document MFA requirement"
+    "the gate should document the MFA requirement"
   );
-  assert.match(
-    page,
-    /defense in depth/i,
-    "admin page should note this is defense in depth"
-  );
+  assert.match(gate, /defense in depth/i, "the gate should note this is defense in depth");
 });
 
 // ── MFA Setup Endpoint Tests ───────────────────────────────────────────────

@@ -1,0 +1,686 @@
+# .github/workflows/release.yml
+#
+# Build a verified, immutable GRYND release on an isolated GitHub-hosted runner,
+# and optionally deploy it through the reviewed Phase 4 release system.
+#
+# Safety model
+#   * Push to main BUILDS ONLY unless repository variable GRYND_DEPLOY_ENABLED
+#     is exactly "true". Nothing here deploys by default.
+#   * A manual dispatch can deploy, but only from refs/heads/main, only with
+#     deploy=true, and only after the `production` environment's protection
+#     rules (required reviewers) approve the job.
+#   * Two guards stop an older queued run overwriting a newer release:
+#       - preflight compares the built commit to main before the deploy job starts;
+#       - the deploy job re-checks main AND the active release immediately before
+#         activation.
+#   * The deploy job has a concurrency group, so two activations cannot overlap.
+#   * No value from a commit message, PR, branch name or workflow input is ever
+#     placed into a shell command. The host-side operation is one fixed script
+#     (`deploy/ci-deploy.mjs`) with a JSON request on stdin.
+#   * SSH host keys are pinned in a secret; `StrictHostKeyChecking=no` and
+#     `ssh-keyscan` are deliberately absent.
+#   * The artifact is re-verified (whole-artifact checksum, BUILD_ID, realtime
+#     hash) after download and again by the host before activation.
+#
+# Repository variables
+#   RELEASE_RUNNER          default ubuntu-24.04-arm
+#   RELEASE_ARCH            default arm64
+#   GRYND_DEPLOY_ENABLED    "true" enables push-to-main deployment (default off)
+#   DEPLOY_HOST             production host (required for deploy)
+#   DEPLOY_USER             dedicated deploy account (default grynd-deploy)
+#   DEPLOY_PORT             SSH port (default 22)
+#   DEPLOY_PATH             release root (default /home/ubuntu/grynd)
+#
+# Repository / protected-environment secrets
+#   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY, SENTRY_AUTH_TOKEN  (build)
+#   DEPLOY_SSH_KEY, DEPLOY_KNOWN_HOSTS                                      (deploy)
+#
+# The deploy secrets belong to the `production` environment. Configure at least
+# one required reviewer on that environment before the first live run. Use a
+# dedicated deploy key, never the interactive administrator's key.
+
+name: release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: "Deploy this commit after the production environment approval"
+        type: boolean
+        default: false
+      reason:
+        description: "Reason recorded in the release audit trail (max 200 chars)"
+        type: string
+        default: "manual release"
+      allow_out_of_order:
+        description: "Manual recovery only: allow a commit that is not main HEAD or is older than active"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build verified artifact
+    runs-on: ${{ vars.RELEASE_RUNNER || 'ubuntu-24.04-arm' }}
+    timeout-minutes: 90
+    outputs:
+      release_id: ${{ steps.identity.outputs.release_id }}
+      commit: ${{ steps.identity.outputs.commit }}
+      short_commit: ${{ steps.identity.outputs.short_commit }}
+      build_id: ${{ steps.build.outputs.build_id }}
+      built_at: ${{ steps.manifest.outputs.built_at }}
+      artifact_hash: ${{ steps.manifest.outputs.artifact_hash }}
+    env:
+      EXPECTED_ARCH: ${{ vars.RELEASE_ARCH || 'arm64' }}
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - name: Checkout the exact commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Refuse a dirty tree and derive the release identity
+        id: identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::working tree is dirty; a release must be built from a committed SHA"
+            git status --porcelain
+            exit 1
+          fi
+          commit=$(git rev-parse HEAD)
+          short=$(git rev-parse --short=7 HEAD)
+          # Re-running the same commit produces a NEW id (and a new release dir),
+          # never an overwrite.
+          release_id="$(date -u +%Y%m%dT%H%M%SZ)-${short}"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "short_commit=$short" >> "$GITHUB_OUTPUT"
+          echo "release_id=$release_id" >> "$GITHUB_OUTPUT"
+          echo "Building $release_id from $commit on $(uname -m)"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Verify the reviewed production fixes are committed
+        shell: bash
+        run: |
+          set -euo pipefail
+          node deploy/verify-production-fixes.mjs
+
+      - name: Assert the runner architecture matches production
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(node -p 'process.arch')"
+          echo "runner arch: $actual (expected $EXPECTED_ARCH)"
+          if [ "$actual" != "$EXPECTED_ARCH" ]; then
+            echo "::error::the runner is $actual but releases must be built for $EXPECTED_ARCH. Native modules are platform-specific; set RELEASE_RUNNER/RELEASE_ARCH to match the VM."
+            exit 1
+          fi
+
+      - name: Install dependencies (lockfile only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm ci --prefix realtime-server
+
+      - name: Lint the release tooling
+        shell: bash
+        run: npm run lint:release
+
+      - name: Type-check the application
+        shell: bash
+        run: npm run typecheck
+
+      - name: Test the release tooling
+        shell: bash
+        run: node --test deploy/tests/*.test.mjs
+
+      - name: Run the non-production deploy simulation
+        shell: bash
+        run: node deploy/staging/simulate.mjs
+
+      - name: Run the repository test suite
+        shell: bash
+        run: npm test
+
+      - name: Build the app
+        id: build
+        shell: bash
+        env:
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        run: |
+          set -euo pipefail
+          npm run build
+          build_id="$(tr -d '\r\n' < .next/BUILD_ID)"
+          echo "build id: $build_id"
+          echo "build_id=$build_id" >> "$GITHUB_OUTPUT"
+          if [ -d .next/standalone ]; then
+            echo "::error::.next/standalone exists but this deployment runs 'next start'"
+            exit 1
+          fi
+
+      - name: Drop build-only dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The artifact runs `next start`; devDependencies are build inputs only.
+          npm prune --omit=dev
+          npm prune --omit=dev --prefix realtime-server
+
+      - name: Assemble the artifact
+        shell: bash
+        env:
+          RELEASE_ID: ${{ steps.identity.outputs.release_id }}
+        run: |
+          set -euo pipefail
+          dist="dist/$RELEASE_ID"
+          mkdir -p "$dist/app" "$dist/realtime"
+
+          # App runtime: what `next start` needs, nothing else.
+          cp -r .next public package.json package-lock.json next.config.js "$dist/app/"
+          cp -r node_modules "$dist/app/node_modules"
+
+          # Realtime runtime, minus any environment file (systemd provides them).
+          rsync -a \
+            --exclude '.env' --exclude '.env.*' \
+            --exclude 'node_modules/.cache' \
+            realtime-server/ "$dist/realtime/"
+
+          # Belt and braces: no env file may reach the artifact.
+          if find "$dist" -name '.env' -o -name '.env.*' | grep -q .; then
+            echo "::error::artifact contains environment files"
+            find "$dist" -name '.env*'
+            exit 1
+          fi
+
+          du -sh "$dist"
+
+      - name: Write and validate release.json
+        id: manifest
+        shell: bash
+        env:
+          RELEASE_ID: ${{ steps.identity.outputs.release_id }}
+          COMMIT: ${{ steps.identity.outputs.commit }}
+        run: |
+          set -euo pipefail
+          node deploy/build-manifest.mjs \
+            --dist "dist/$RELEASE_ID" \
+            --id "$RELEASE_ID" \
+            --commit "$COMMIT" \
+            --arch "$EXPECTED_ARCH" \
+            --workflow release.yml \
+            --run-id "$GITHUB_RUN_ID" \
+            --build-result passed \
+            --tests-result passed
+          node deploy/verify-artifact.mjs --dist "dist/$RELEASE_ID" --arch "$EXPECTED_ARCH"
+          echo "built_at=$(jq -r '.createdAt' "dist/$RELEASE_ID/release.json")" >> "$GITHUB_OUTPUT"
+          echo "artifact_hash=$(jq -r '.artifact.hash' "dist/$RELEASE_ID/release.json")" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: grynd-release-${{ steps.identity.outputs.release_id }}
+          path: dist/${{ steps.identity.outputs.release_id }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Summary
+        shell: bash
+        env:
+          SUMMARY_RELEASE_ID: ${{ steps.identity.outputs.release_id }}
+          SUMMARY_COMMIT: ${{ steps.identity.outputs.commit }}
+          SUMMARY_BUILD_ID: ${{ steps.build.outputs.build_id }}
+          SUMMARY_ARTIFACT: ${{ steps.manifest.outputs.artifact_hash }}
+          SUMMARY_ARCH: ${{ vars.RELEASE_ARCH || 'arm64' }}
+        run: |
+          {
+            echo "### Release artifact built"
+            echo ""
+            echo "| field | value |"
+            echo "|---|---|"
+            echo "| release id | \`$SUMMARY_RELEASE_ID\` |"
+            echo "| commit | \`$SUMMARY_COMMIT\` |"
+            echo "| build id | \`$SUMMARY_BUILD_ID\` |"
+            echo "| artifact | \`$SUMMARY_ARTIFACT\` |"
+            echo "| arch | \`$SUMMARY_ARCH\` |"
+            echo "| deployed | no — the artifact is inert until the deploy job runs |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  preflight:
+    name: deployment preflight
+    needs: build
+    if: ${{ (github.event_name == 'push' && vars.GRYND_DEPLOY_ENABLED == 'true') || (github.event_name == 'workflow_dispatch' && inputs.deploy == true) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      proceed: ${{ steps.decide.outputs.proceed }}
+      reason: ${{ steps.decide.outputs.reason }}
+    steps:
+      - name: Checkout the released tooling
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Decide whether this run may deploy
+        id: decide
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET: ${{ needs.build.outputs.commit }}
+          EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF: ${{ github.ref }}
+          ALLOW_OUT_OF_ORDER: ${{ inputs.allow_out_of_order == true }}
+        run: |
+          set -euo pipefail
+          echo "proceed=false" >> "$GITHUB_OUTPUT"
+          echo "reason=preflight did not run" >> "$GITHUB_OUTPUT"
+
+          if ! [[ "$TARGET" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::the build did not produce a valid commit sha"
+            echo "reason=invalid target commit" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          set +e
+          main_status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$TARGET...main" --jq .status 2>/dev/null)
+          api_code=$?
+          set -e
+          if [ "$api_code" -ne 0 ] || [ -z "$main_status" ]; then main_status="unavailable"; fi
+
+          decision=$(node deploy/deployment-guard.mjs \
+            --event="$EVENT_NAME" \
+            --branch="$GITHUB_REF" \
+            --target-to-main="$main_status" \
+            --allow-out-of-order="$ALLOW_OUT_OF_ORDER")
+          proceed=$(jq -r '.proceed' <<<"$decision")
+          reason=$(jq -r '.reason' <<<"$decision")
+          echo "proceed=$proceed" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          echo "main compare: $main_status → proceed=$proceed ($reason)"
+          if [ "$proceed" != "true" ]; then
+            echo "::warning::deployment skipped: $reason"
+          fi
+
+  deploy:
+    name: deploy release (approval required)
+    needs: [build, preflight]
+    if: ${{ needs.preflight.outputs.proceed == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Only one activation at a time; a newer pending deploy replaces an older
+    # pending one. The guards below are the second line of defence.
+    concurrency:
+      group: grynd-production-deploy
+      cancel-in-progress: false
+    environment: production
+    permissions:
+      contents: read
+    env:
+      RELEASE_ID: ${{ needs.build.outputs.release_id }}
+      COMMIT: ${{ needs.build.outputs.commit }}
+      SHORT_COMMIT: ${{ needs.build.outputs.short_commit }}
+      BUILD_ID: ${{ needs.build.outputs.build_id }}
+      BUILT_AT: ${{ needs.build.outputs.built_at }}
+      ARTIFACT_HASH: ${{ needs.build.outputs.artifact_hash }}
+      EXPECTED_ARCH: ${{ vars.RELEASE_ARCH || 'arm64' }}
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER || 'grynd-deploy' }}
+      DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+      REMOTE_PATH: ${{ vars.DEPLOY_PATH || '/home/ubuntu/grynd' }}
+      SSH_CMD: /home/runner/.ssh/deploy-ssh
+      REASON_RAW: ${{ github.event_name == 'workflow_dispatch' && inputs.reason || format('push {0}', needs.build.outputs.short_commit) }}
+      ALLOW_OUT_OF_ORDER: ${{ inputs.allow_out_of_order == true }}
+    steps:
+      - name: Prepare the deployment metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          reason=$(node -e 'const raw = process.env.REASON_RAW || ""; process.stdout.write(raw.replace(/[^ -~]/g, "").slice(0, 200))')
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Validate the deployment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! [[ "${DEPLOY_HOST:-}" =~ ^[A-Za-z0-9.-]+$ ]]; then
+            echo "::error::DEPLOY_HOST is not set or is not a hostname/IP"; exit 1
+          fi
+          if ! [[ "${DEPLOY_USER:-}" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+            echo "::error::DEPLOY_USER is not a valid account name"; exit 1
+          fi
+          if ! [[ "${DEPLOY_PORT:-}" =~ ^[0-9]{1,5}$ ]]; then
+            echo "::error::DEPLOY_PORT is not a valid port"; exit 1
+          fi
+          if ! [[ "${REMOTE_PATH:-}" =~ ^/[A-Za-z0-9._/-]+$ ]]; then
+            echo "::error::DEPLOY_PATH must be an absolute path without spaces or shell metacharacters"; exit 1
+          fi
+          if ! [[ "$RELEASE_ID" =~ ^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{7,40}$ ]]; then
+            echo "::error::the release id is not in the expected format"; exit 1
+          fi
+          if ! [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::the commit is not a full sha"; exit 1
+          fi
+
+      - name: Checkout the released tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.build.outputs.commit }}
+          persist-credentials: false
+
+      - name: Download the verified artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: grynd-release-${{ needs.build.outputs.release_id }}
+          path: dist/${{ needs.build.outputs.release_id }}
+
+      - name: Verify the artifact after download
+        shell: bash
+        run: node deploy/verify-artifact.mjs --dist "dist/$RELEASE_ID" --arch "$EXPECTED_ARCH"
+
+      - name: Install the dedicated key and pinned host key
+        shell: bash
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$SSH_KEY" > "$HOME/.ssh/id_deploy"
+          chmod 600 "$HOME/.ssh/id_deploy"
+          # Pinned host keys, never keyscan: a deploy must not trust whatever
+          # answers on the network today.
+          printf '%s\n' "$KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+          cat > "$SSH_CMD" <<'SSH_WRAPPER'
+          #!/bin/bash
+          exec ssh -i "$HOME/.ssh/id_deploy" -p "$DEPLOY_PORT" \
+            -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o ConnectTimeout=15 "$@"
+          SSH_WRAPPER
+          chmod 700 "$SSH_CMD"
+
+          # Fail before touching anything if the pinned host key is missing.
+          if ! ssh-keygen -F "[$DEPLOY_HOST]:$DEPLOY_PORT" -f "$HOME/.ssh/known_hosts" >/dev/null 2>&1 \
+             && ! ssh-keygen -F "$DEPLOY_HOST" -f "$HOME/.ssh/known_hosts" >/dev/null 2>&1; then
+            echo "::error::DEPLOY_KNOWN_HOSTS has no entry for the configured host/port"
+            exit 1
+          fi
+
+      - name: Refresh the release tooling on the host
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$SSH_CMD" "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$REMOTE_PATH/tool' '$REMOTE_PATH/incoming'"
+          # Runtime files only: no tests, staging fixtures or documentation.
+          # The live release is untouched.
+          rsync -az --delete -e "$SSH_CMD" \
+            deploy/lib deploy/release.mjs deploy/ci-deploy.mjs deploy/record-deployment.mjs \
+            "$DEPLOY_USER@$DEPLOY_HOST:$REMOTE_PATH/tool/"
+
+      - name: Read the active release
+        id: active
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$SSH_CMD" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd '$REMOTE_PATH/tool' && GRYND_RELEASE_ROOT='$REMOTE_PATH' node release.mjs status --json" \
+            > active-status.json 2> active-status.err
+          echo "active_commit=$(jq -r '.active.commit // empty' active-status.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Re-check staleness immediately before activation
+        id: guard
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTIVE_COMMIT: ${{ steps.active.outputs.active_commit }}
+          EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          set +e
+          main_status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$COMMIT...main" --jq .status 2>/dev/null)
+          main_code=$?
+          set -e
+          if [ "$main_code" -ne 0 ] || [ -z "$main_status" ]; then main_status="unavailable"; fi
+
+          active_status=""
+          if [ -n "$ACTIVE_COMMIT" ]; then
+            set +e
+            active_status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$COMMIT...$ACTIVE_COMMIT" --jq .status 2>/dev/null)
+            active_code=$?
+            set -e
+            if [ "$active_code" -ne 0 ] || [ -z "$active_status" ]; then active_status="unavailable"; fi
+          fi
+
+          decision=$(node deploy/deployment-guard.mjs \
+            --event="$EVENT_NAME" \
+            --branch="$GITHUB_REF" \
+            --target-to-main="$main_status" \
+            --target-to-active="$active_status" \
+            --allow-out-of-order="$ALLOW_OUT_OF_ORDER")
+          proceed=$(jq -r '.proceed' <<<"$decision")
+          reason=$(jq -r '.reason' <<<"$decision")
+          echo "proceed=$proceed" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          echo "main=$main_status active=${active_status:-none} → proceed=$proceed ($reason)"
+          if [ "$proceed" != "true" ]; then
+            echo "::warning::activation skipped: $reason"
+          fi
+
+      - name: Record a skipped deployment
+        if: steps.guard.outputs.proceed != 'true'
+        shell: bash
+        env:
+          SKIP_REASON: ${{ steps.guard.outputs.reason }}
+          REASON: ${{ steps.meta.outputs.reason }}
+          STARTED_AT: ${{ steps.meta.outputs.started_at }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_BY: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          node deploy/build-deployment-record.mjs \
+            --out=skipped-record.json \
+            --outcome=skipped \
+            --skip-reason="$SKIP_REASON" \
+            --commit="$COMMIT" \
+            --release-id="$RELEASE_ID" \
+            --build-id="$BUILD_ID" \
+            --built-at="$BUILT_AT" \
+            --started-at="$STARTED_AT" \
+            --finished-at="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --run-id="$RUN_ID" \
+            --run-attempt="$RUN_ATTEMPT" \
+            --workflow=release.yml \
+            --event="$EVENT_NAME" \
+            --target=production \
+            --requested-by="$REQUESTED_BY" \
+            --reason="$REASON" \
+            --artifact-hash="$ARTIFACT_HASH"
+          "$SSH_CMD" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd '$REMOTE_PATH/tool' && node record-deployment.mjs --root='$REMOTE_PATH'" \
+            < skipped-record.json
+
+      - name: Upload the artifact into incoming/
+        if: steps.guard.outputs.proceed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rsync -az --delete --chmod=D755,F644 -e "$SSH_CMD" \
+            "dist/$RELEASE_ID/" \
+            "$DEPLOY_USER@$DEPLOY_HOST:$REMOTE_PATH/incoming/$RELEASE_ID/"
+
+      - name: Build the deployment request
+        if: steps.guard.outputs.proceed == 'true'
+        shell: bash
+        env:
+          REASON: ${{ steps.meta.outputs.reason }}
+          STARTED_AT: ${{ steps.meta.outputs.started_at }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_BY: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg releaseId "$RELEASE_ID" \
+            --arg commit "$COMMIT" \
+            --arg buildId "$BUILD_ID" \
+            --arg runId "$RUN_ID" \
+            --argjson runAttempt "$RUN_ATTEMPT" \
+            --arg workflow "release.yml" \
+            --arg event "$EVENT_NAME" \
+            --arg target "production" \
+            --arg builtAt "$BUILT_AT" \
+            --arg startedAt "$STARTED_AT" \
+            --arg requestedBy "$REQUESTED_BY" \
+            --arg reason "$REASON" \
+            --arg artifactHash "$ARTIFACT_HASH" \
+            '{releaseId:$releaseId, commit:$commit, buildId:$buildId, runId:$runId, runAttempt:$runAttempt, workflow:$workflow, event:$event, target:$target, builtAt:$builtAt, startedAt:$startedAt, requestedBy:$requestedBy, reason:$reason, artifactHash:$artifactHash}' \
+            > deploy-request.json
+
+      - name: Install, activate, verify and record
+        id: deploy
+        if: steps.guard.outputs.proceed == 'true'
+        shell: bash
+        run: |
+          set +e
+          "$SSH_CMD" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd '$REMOTE_PATH/tool' && GRYND_ALLOW_SERVICE_RESTART=1 GRYND_RELEASE_ROOT='$REMOTE_PATH' node ci-deploy.mjs --root='$REMOTE_PATH'" \
+            < deploy-request.json > deploy-result.json 2> deploy-result.err
+          code=$?
+          set -e
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" -ne 0 ]; then
+            cat deploy-result.err 2>/dev/null || true
+            if [ -s deploy-result.json ]; then jq -c '{outcome, install, activation, health, rollback}' deploy-result.json || true; fi
+            echo "::error::deployment did not verify (exit $code); the release system reverts a failed activation"
+          fi
+          # The record is written on the host by ci-deploy.mjs. The final gate
+          # below fails the run; this step must still reach the summary.
+          exit 0
+
+      - name: Record a fallback failure if the host runner did not
+        if: always() && steps.guard.outputs.proceed == 'true' && steps.deploy.outputs.exit_code != '0'
+        shell: bash
+        env:
+          REASON: ${{ steps.meta.outputs.reason }}
+          STARTED_AT: ${{ steps.meta.outputs.started_at }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_BY: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          if [ -s deploy-result.json ] && jq -e '.record' deploy-result.json >/dev/null 2>&1; then
+            echo "the host already recorded this attempt"
+            exit 0
+          fi
+          node deploy/build-deployment-record.mjs \
+            --out=failed-record.json \
+            --outcome=failed \
+            --stage=unknown \
+            --skip-reason="the host-side deployment runner did not return a record" \
+            --commit="$COMMIT" \
+            --release-id="$RELEASE_ID" \
+            --build-id="$BUILD_ID" \
+            --built-at="$BUILT_AT" \
+            --started-at="$STARTED_AT" \
+            --finished-at="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --run-id="$RUN_ID" \
+            --run-attempt="$RUN_ATTEMPT" \
+            --workflow=release.yml \
+            --event="$EVENT_NAME" \
+            --target=production \
+            --requested-by="$REQUESTED_BY" \
+            --reason="$REASON" \
+            --artifact-hash="$ARTIFACT_HASH"
+          "$SSH_CMD" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd '$REMOTE_PATH/tool' && node record-deployment.mjs --root='$REMOTE_PATH'" \
+            < failed-record.json || echo "::warning::could not record the failed attempt on the host"
+
+      - name: Summary
+        if: always()
+        shell: bash
+        env:
+          GUARD_PROCEED: ${{ steps.guard.outputs.proceed }}
+          GUARD_REASON: ${{ steps.guard.outputs.reason }}
+          RUNNER_EXIT: ${{ steps.deploy.outputs.exit_code }}
+        run: |
+          {
+            echo "### Deployment attempt"
+            echo ""
+            echo "| field | value |"
+            echo "|---|---|"
+            echo "| release id | \`$RELEASE_ID\` |"
+            echo "| commit | \`$COMMIT\` |"
+            echo "| guard | ${GUARD_PROCEED:-none} — ${GUARD_REASON:-not evaluated} |"
+            echo "| runner exit | ${RUNNER_EXIT:-not run} |"
+            echo ""
+            if [ -s deploy-result.json ]; then
+              echo "| outcome | health | rollback |"
+              echo "|---|---|---|"
+              echo "| \`$(jq -r '.outcome // "unknown"' deploy-result.json)\` | \`$(jq -r '.health.ok // "unknown"' deploy-result.json)\` | \`$(jq -r '.rollback.ok // "none"' deploy-result.json)\` |"
+            fi
+            echo ""
+            echo "A deployment is successful only if this run is green and the host recorded \`activated\` or \`skipped\` with a passing health gate."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Enforce the deployment result
+        if: always()
+        shell: bash
+        env:
+          GUARD_PROCEED: ${{ steps.guard.outputs.proceed }}
+          GUARD_REASON: ${{ steps.guard.outputs.reason }}
+          RUNNER_EXIT: ${{ steps.deploy.outputs.exit_code }}
+        run: |
+          set -euo pipefail
+          if [ "${GUARD_PROCEED:-}" != "true" ]; then
+            echo "Deployment skipped by the ordering guard: ${GUARD_REASON:-not evaluated}"
+            exit 0
+          fi
+
+          code="${RUNNER_EXIT:-}"
+          if [ "$code" != "0" ]; then
+            echo "::error::deployment runner exited $code"
+            exit 1
+          fi
+          if [ ! -s deploy-result.json ]; then
+            echo "::error::no deployment result was returned"
+            exit 1
+          fi
+
+          outcome=$(jq -r '.outcome // "unknown"' deploy-result.json)
+          ok=$(jq -r '.ok // false' deploy-result.json)
+          active=$(jq -r '.active.releaseId // empty' deploy-result.json)
+          health=$(jq -r '.health.ok // false' deploy-result.json)
+
+          if [ "$ok" != "true" ]; then
+            echo "::error::deployment outcome is $outcome"
+            exit 1
+          fi
+          if [ "$active" != "$RELEASE_ID" ] || [ "$health" != "true" ]; then
+            echo "::error::active release ($active) or health gate ($health) does not match the verified target"
+            exit 1
+          fi
+          echo "Deployment verified: $outcome, active $active, health $health"

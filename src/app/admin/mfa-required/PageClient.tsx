@@ -32,6 +32,14 @@ export default function AdminMfaRequiredPage() {
     otpauthUrl: string;
     qrDataUrl: string | null;
   } | null>(null);
+  // Reported by /status: which dependencies are missing on THIS host. Presence
+  // only — the endpoint never returns a value.
+  const [diagnostics, setDiagnostics] = useState<{
+    warnings: Array<{ code: string; severity: string; message: string }>;
+    otpStore: string | null;
+    requiredVariables: string[];
+  } | null>(null);
+  const [statusLoaded, setStatusLoaded] = useState(false);
 
   useEffect(() => {
     fetch("/api/admin/mfa/status", { credentials: "include" })
@@ -39,6 +47,11 @@ export default function AdminMfaRequiredPage() {
       .then((d) => {
         if (d?.success && d.methods) {
           setMethods(d.methods);
+          setDiagnostics({
+            warnings: Array.isArray(d.warnings) ? d.warnings : [],
+            otpStore: typeof d.otpStore === "string" ? d.otpStore : null,
+            requiredVariables: Array.isArray(d.requiredVariables) ? d.requiredVariables : [],
+          });
           const first: Method = d.methods.email
             ? "email"
             : d.methods.totp
@@ -47,8 +60,11 @@ export default function AdminMfaRequiredPage() {
           setActive(first);
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setStatusLoaded(true));
   }, []);
+
+  const anyAvailable = methods.email || methods.totp || methods.passphrase;
 
   async function sendOtp() {
     setBusy(true);
@@ -148,16 +164,39 @@ export default function AdminMfaRequiredPage() {
           any method below.
         </p>
 
+        {/* No factor configured: say so, instead of offering a form that cannot work. */}
+        {statusLoaded && !anyAvailable && (
+          <div className="mb-5 rounded-lg border border-red-400/50 bg-red-500/10 p-4 text-sm text-red-200">
+            <p className="font-semibold">No admin second factor is configured on this server.</p>
+            <p className="mt-1 text-red-200/80">
+              Verification is refused until at least one factor is configured. An administrator must set one of
+              these environment variables on the server and restart the app:
+            </p>
+            <ul className="mt-2 list-disc space-y-0.5 pl-5 font-mono text-xs text-red-100/80">
+              <li>ADMIN_MFA_PASSPHRASE — passphrase</li>
+              <li>ADMIN_TOTP_SECRET — authenticator app</li>
+              <li>RESEND_API_KEY, or SMTP_HOST + SMTP_USER + SMTP_PASS — email codes</li>
+            </ul>
+            {diagnostics?.otpStore === "memory" && (
+              <p className="mt-2 text-xs text-amber-200/80">
+                Email codes are currently held in process memory (no Redis configured), so a restart between
+                sending and verifying invalidates the code.
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Method tabs */}
         <div className="mb-5 flex flex-wrap gap-2">
           {(Object.keys(METHOD_LABELS) as Method[]).map((m) => (
             <button
               key={m}
+              disabled={!methods[m]}
               onClick={() => {
                 setActive(m);
                 setMessage(null);
               }}
-              className={`rounded-lg px-3 py-2 text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] ${
+              className={`rounded-lg px-3 py-2 text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] disabled:cursor-not-allowed disabled:opacity-40 ${
                 active === m
                   ? "bg-[#f5ff3b] text-[#1f1700]"
                   : "border border-[#00e5ff]/30 bg-[#08142f] text-[#d8fbff] hover:bg-[#10234a]"
@@ -172,7 +211,7 @@ export default function AdminMfaRequiredPage() {
         </div>
 
         {/* Email method */}
-        {active === "email" && (
+        {anyAvailable && active === "email" && (
           <div className="space-y-3">
             {!otpSent ? (
               <button
@@ -216,7 +255,7 @@ export default function AdminMfaRequiredPage() {
         )}
 
         {/* Authenticator app method */}
-        {active === "totp" && (
+        {anyAvailable && active === "totp" && (
           <div className="space-y-3">
             {!methods.totp ? (
               <p className="text-sm text-[#9dd8ff]/80">
@@ -277,7 +316,7 @@ export default function AdminMfaRequiredPage() {
         )}
 
         {/* Passphrase method */}
-        {active === "passphrase" && (
+        {anyAvailable && active === "passphrase" && (
           <div className="space-y-3">
             {!methods.passphrase ? (
               <p className="text-sm text-[#9dd8ff]/80">

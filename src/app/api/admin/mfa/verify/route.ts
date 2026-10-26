@@ -73,6 +73,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: "Unknown method." }, { status: 400 });
   }
 
+  // An unconfigured factor is a server problem, not a wrong code. Say so, and do
+  // not count it against the attempt limit — otherwise a migration that dropped
+  // an env var locks the only admin out of their own dashboard.
+  if (method === "totp" && !process.env.ADMIN_TOTP_SECRET?.trim()) {
+    return NextResponse.json(
+      { success: false, error: "The authenticator factor is not configured on this server (ADMIN_TOTP_SECRET is unset)." },
+      { status: 503 },
+    );
+  }
+  if (method === "passphrase" && !process.env.ADMIN_MFA_PASSPHRASE?.trim()) {
+    return NextResponse.json(
+      { success: false, error: "The passphrase factor is not configured on this server (ADMIN_MFA_PASSPHRASE is unset)." },
+      { status: 503 },
+    );
+  }
+
   let ok = false;
   if (method === "email") {
     ok = await verifyOtp(userId, code);

@@ -1,0 +1,46 @@
+# deploy/systemd/grynd-realtime.service  —  PROPOSED, NOT INSTALLED
+#
+# The realtime server stays a single shared process. Two details matter:
+#
+#   * its code ships in the same release as the app, but it is only restarted
+#     when the release's realtime tree hash differs from the active release's
+#     (see restartRealtime in deploy/lib/activate.mjs), so an app-only deploy
+#     does not drop every socket;
+#   * /usr/bin/node is a placeholder: use `command -v node` on the VM.
+#   * realtime-server/server.js calls `require("dotenv").config()`, which reads
+#     `.env` from its cwd. The release does not contain one — the variables come
+#     from EnvironmentFile here. A release that shipped its own `.env` would be
+#     rejected at install time.
+
+[Unit]
+Description=GRYND realtime server (Socket.IO, shared)
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/home/ubuntu/grynd/current
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/grynd/current/realtime
+EnvironmentFile=/home/ubuntu/grynd/env/realtime.env
+Environment=NODE_ENV=production
+Environment=PORT=3001
+ExecStart=/usr/bin/node /home/ubuntu/grynd/current/realtime/server.js
+Restart=always
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/ubuntu/grynd
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

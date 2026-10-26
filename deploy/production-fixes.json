@@ -1,0 +1,31 @@
+{
+  "$comment": [
+    "Production fixes that a releasable commit MUST contain. Checked by",
+    "deploy/verify-production-fixes.mjs in the release workflow before the build,",
+    "and again before the artifact is uploaded. A failure here is the gate that",
+    "stops a release from shipping production code that lacks the reviewed fixes.",
+    "",
+    "`mustNotMatch` / `mustMatch` are regular expressions applied to the file.",
+    "When the reviewed production patch is committed, update this file in the",
+    "same commit so the policy describes the exact fix that is now in the tree."
+  ],
+  "fixes": [
+    {
+      "id": "prod-ca-trust",
+      "title": "Trust the production Postgres CA instead of disabling certificate verification",
+      "reason": "The live runtime requires the reviewed CA patch in src/db/pool.ts. A commit without it either fails to connect or silently accepts any certificate, so it must never become a release.",
+      "file": "src/db/pool.ts",
+      "mustNotMatch": ["rejectUnauthorized\\s*:\\s*false"],
+      "mustMatch": ["\\bca\\s*(?::|[,}])"]
+    },
+    {
+      "id": "lockfile-present",
+      "title": "A committed lockfile for the app and the realtime server",
+      "reason": "Releases are installed with `npm ci`, which refuses to run without a lockfile that matches package.json. The production checkout carries an uncommitted lockfile repair; a release must be built from a commit that contains it.",
+      "file": "package-lock.json",
+      "mustNotMatch": [],
+      "mustMatch": ["\"lockfileVersion\""],
+      "alsoRequires": ["realtime-server/package-lock.json"]
+    }
+  ]
+}

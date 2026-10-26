@@ -858,6 +858,12 @@ export default function AdminDashboardClient({
           >
             ← Home
           </button>
+          <button
+            onClick={() => router.push("/admin/operations")}
+            className="px-4 py-2 rounded-lg border border-[#f5ff3b]/50 bg-[#f5ff3b]/10 text-sm font-semibold text-[#f5ff3b] hover:bg-[#f5ff3b]/20 transition-colors"
+          >
+            Operations
+          </button>
           <div>
             <h1 className="text-3xl font-bold text-white tracking-tight">
               Admin Dashboard

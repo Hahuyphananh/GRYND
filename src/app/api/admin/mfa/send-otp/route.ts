@@ -8,11 +8,10 @@ import { db } from "../../../../../db";
 import { users } from "../../../../../db/schema";
 import { isAdmin } from "../../../../../lib/auth/isAdmin";
 import { issueOtp } from "../../../../../lib/auth/adminOtp";
-import { sendEmailSafely } from "../../../../../lib/emails/base";
-import {
-  checkSendAttemptLimit,
+import { sendEmailSafely } from "../../../../../lib/emails/base";import { checkSendAttemptLimit,
   recordSendAttempt,
 } from "../../../../../lib/security/mfaAttemptLimit";
+import { buildMfaDiagnostics } from "../../../../../lib/admin/mfaDiagnostics";
 
 export const runtime = "nodejs";
 
@@ -24,6 +23,19 @@ export async function POST() {
     }
     if (!(await isAdmin(userId))) {
       return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+    }
+
+    // No mail provider at all is a configuration fault, not a delivery failure.
+    // Say which variable is missing instead of a generic 500.
+    if (!buildMfaDiagnostics(process.env).factors.email.configured) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Email codes are not configured on this server. Set RESEND_API_KEY (or SMTP_HOST with SMTP_USER/SMTP_PASS).",
+        },
+        { status: 503 },
+      );
     }
 
     // Check OTP send rate limit before generating and sending

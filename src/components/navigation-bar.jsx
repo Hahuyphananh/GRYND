@@ -659,6 +659,14 @@ function NavigationBar({ currentPath = "" }) {
                   >
                     <IconMenu size={20} />
                   </button>
+                  {isAdmin && (
+                    <Link
+                      href="/admin"
+                      className="rounded-lg border border-[#f5ff3b]/60 bg-[#f5ff3b]/10 px-3 py-2 text-sm font-semibold text-[#f5ff3b] transition-colors hover:bg-[#f5ff3b]/20"
+                    >
+                      Admin
+                    </Link>
+                  )}
                   <SignOutButton>
                     <UIPro02NavItem className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#00e5ff]/35">
                       {t("nav.sign_out")}
@@ -764,6 +772,15 @@ function NavigationBar({ currentPath = "" }) {
 
               {/* NAV LINKS */}
               <div className="space-y-2">
+                {isAdmin && (
+                  <Link
+                    href="/admin"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="block rounded-lg border border-[#f5ff3b]/60 bg-[#f5ff3b]/10 px-3 py-2 font-semibold text-[#f5ff3b]"
+                  >
+                    Admin dashboard
+                  </Link>
+                )}
                 {["/", "/games", "/classement", "/rewards", "/contact", "/faq"].map((path) => (
                   <Link
                     key={path}
