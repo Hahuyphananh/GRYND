@@ -21,10 +21,26 @@
 // is an affordance, not authority — the store re-validates every action inside
 // its row-locked transaction, so a stale tab is refused (409) and resynced rather
 // than trusted.
+//
+// ── PICKING A TILE UP (POINTER DEVICES) ───────────────────────────────────
+//
+// A playable tile is also a drag SOURCE: a mouse or pen can carry it onto an end
+// of the chain, which is the gesture a table of dominoes invites. Only a tile that
+// really fits an end is draggable (a tile that fits nothing would be a dead
+// gesture), and only while the board is accepting input at all.
+//
+// STARTING A DRAG SELECTS THE TILE. That is not decoration: the board's end chips
+// are rendered as tap/drop targets for the SELECTED tile, so picking a tile up is
+// what makes the ends it fits light up as places to put it. A drag is therefore
+// never a second, parallel notion of "what I am holding" — it is the same one,
+// expressed with the pointer.
 
 import DominoTile from "./DominoTile";
 import { useTranslation } from "../../hooks/useTranslation";
 import { playOptionsFor, tileLabel, type OpenEnds } from "../../lib/dominoes/ui";
+
+/** The drag payload type a hand tile carries onto the board. */
+const DOMINO_DRAG_TYPE = "application/x-domino-tile";
 
 export type DominoHandProps = {
   hand?: string[] | null;
@@ -38,6 +54,10 @@ export type DominoHandProps = {
   isLive?: boolean;
   /** A submission is in flight: every control is disabled until it answers. */
   pending?: boolean;
+  /** A playable tile was picked up (pointer devices): make it the selection. */
+  onDragStart?: (tile: string) => void;
+  /** The drag ended — dropped anywhere, or cancelled with Escape. */
+  onDragEnd?: () => void;
 };
 
 export default function DominoHand({
@@ -49,6 +69,8 @@ export default function DominoHand({
   isViewerTurn = false,
   isLive = true,
   pending = false,
+  onDragStart,
+  onDragEnd,
 }: DominoHandProps) {
   const { t } = useTranslation();
   const tiles = Array.isArray(hand) ? hand : [];
@@ -89,6 +111,9 @@ export default function DominoHand({
         >
           {tiles.map((tile) => {
             const playable = options.some((option) => option.tile === tile);
+            // A dead gesture is worse than none: only a tile with somewhere to go
+            // can be picked up, and only while the board is accepting input.
+            const draggable = playable && canSelect;
             return (
               <DominoTile
                 key={tile}
@@ -99,6 +124,16 @@ export default function DominoHand({
                 selected={selected === tile}
                 disabled={!canSelect}
                 onClick={() => onSelect?.(selected === tile ? null : tile)}
+                draggable={draggable}
+                onDragStart={(event) => {
+                  // The tile travels in the payload AND becomes the selection, so
+                  // the board's ends light up as the pointer passes over them.
+                  event.dataTransfer.effectAllowed = "move";
+                  event.dataTransfer.setData(DOMINO_DRAG_TYPE, tile);
+                  event.dataTransfer.setData("text/plain", tile);
+                  onDragStart?.(tile);
+                }}
+                onDragEnd={() => onDragEnd?.()}
                 label={
                   playable
                     ? t("games.dominoes.tile_playable", { tile: tileLabel(tile) })

@@ -1579,14 +1579,14 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     howToPlay: [
       "Sign in, open the lobby and press Find a Match. You are seated against a live opponent, and a table you open stays listed until somebody joins it.",
       "Both players are dealt seven tiles from a shuffled double-six set. The other fourteen tiles form a face-down pile, and the opponent's tiles are never shown — only how many are left.",
-      "The highest double in either hand starts the round; with no doubles, the hand holding the highest pip total starts. The opener may lay any tile from their hand, and the chain then has two open ends.",
+      "The highest double in either hand starts the round, and it is laid automatically: its holder opens the chain with it, is left with six tiles, and the other seat plays next. With no double anywhere, the hand holding the highest pip total starts instead and opens with any tile it likes.",
       "On your turn, play a tile whose number matches one of the two open values, and choose which end of the chain it goes on. A tile that matches nothing cannot be played.",
       "If nothing in your hand fits and the pile is not empty, draw one tile and keep the turn: a drawn tile may be played immediately, and if it still does not fit you draw again.",
       "When the pile is empty and nothing fits, you pass and your opponent continues. Each turn is fifteen seconds — when the clock runs out the server draws or passes for you, and a late move is refused.",
     ],
     rules: [
-      "Every player holds seven tiles and the pile holds fourteen. Neither hand is ever revealed: the client is given your own tiles, the opponent's count and the pile's count, and nothing else.",
-      "A play must match one of the two open values at the ends of the chain. Doubles are laid crosswise across the chain and open both of their halves to the same number.",
+      "Every player is dealt seven tiles and the pile holds fourteen; the deal then lays the highest double down itself, so the opener starts with six when it had one. Neither hand is ever revealed: the client is given your own tiles, the opponent's count and the pile's count, and nothing else.",
+      "A play must match one of the two open values at the ends of the chain, and a tile that matches both ends may go on either side. Doubles are laid crosswise across the chain and open both of their halves to the same number.",
       "A tile is only attachable to an end when one of its halves equals that end's open value. Where the tile has two different halves, the matching one is the half that meets the chain and the other half becomes the new open value.",
       "Drawing is only legal when you hold no playable tile. You may not draw to improve your hand, and you may not pass a tile you could have played.",
       "Passing is only legal when the pile is empty and no tile in your hand matches either open end.",

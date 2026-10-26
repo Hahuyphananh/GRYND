@@ -810,6 +810,7 @@ export const APP_TEXT_TRANSLATIONS = {
         hint_pass: "Nothing fits and the pile is empty — you have to pass.",
         play_left: "Play left",
         play_right: "Play right",
+        place_on_end_aria: "Place {tile} on the open end — {end}, value {value}",
         your_hand: "Your hand",
         your_tiles: "Your tiles",
         chain_aria_empty: "The chain is empty — the opening tile starts it",
@@ -830,6 +831,8 @@ export const APP_TEXT_TRANSLATIONS = {
         draw_aria: "Draw a tile, {count} left in the pile",
         pass_turn: "Pass this turn",
         rules_summary: "How to play Dominoes",
+        board_rule_start:
+          "The start. The highest double opens the round: its holder lays that double down first, so the board begins with one tile and the other seat plays next.",
         board_rule_match:
           "Match an end. Play a tile whose number matches one of the two open values printed at the ends of the chain. A tile that fits both ends can go on either side.",
         board_rule_doubles:
@@ -2783,6 +2786,8 @@ export const APP_TEXT_TRANSLATIONS = {
         hint_pass: "Rien ne correspond et la pioche est vide — vous devez passer.",
         play_left: "Jouer à gauche",
         play_right: "Jouer à droite",
+        place_on_end_aria:
+          "Posez {tile} sur l'extrémité ouverte — {end}, valeur {value}",
         your_hand: "Votre main",
         your_tiles: "Vos tuiles",
         chain_aria_empty: "La chaîne est vide — la tuile d'ouverture la commence",
@@ -2803,6 +2808,8 @@ export const APP_TEXT_TRANSLATIONS = {
         draw_aria: "Piocher une tuile, {count} restantes dans la pioche",
         pass_turn: "Passer ce tour",
         rules_summary: "Comment jouer aux dominos",
+        board_rule_start:
+          "Le début. Le double le plus haut ouvre la manche : son détenteur pose ce double en premier, donc le plateau commence avec une tuile et c'est à l'autre joueur de jouer.",
         board_rule_match:
           "Posez sur une extrémité. Posez une tuile dont un chiffre correspond à l'une des deux valeurs ouvertes affichées aux extrémités de la chaîne. Une tuile qui correspond aux deux extrémités peut aller d'un côté ou de l'autre.",
         board_rule_doubles:
@@ -4509,6 +4516,8 @@ export const APP_TEXT_TRANSLATIONS = {
         hint_pass: "Nada encaja y la pila está vacía — tienes que pasar.",
         play_left: "Jugar a la izquierda",
         play_right: "Jugar a la derecha",
+        place_on_end_aria:
+          "Pon {tile} en el extremo abierto — {end}, valor {value}",
         your_hand: "Tu mano",
         your_tiles: "Tus fichas",
         chain_aria_empty: "La cadena está vacía — la ficha inicial la abre",
@@ -4529,6 +4538,8 @@ export const APP_TEXT_TRANSLATIONS = {
         draw_aria: "Robar una ficha, quedan {count} en la pila",
         pass_turn: "Pasar este turno",
         rules_summary: "Cómo jugar al dominó",
+        board_rule_start:
+          "El comienzo. Abre la ronda el doble más alto: su dueño coloca ese doble primero, así que el tablero empieza con una ficha y el siguiente en jugar es el otro asiento.",
         board_rule_match:
           "Encaja en un extremo. Juega una ficha cuyo número coincida con uno de los dos valores abiertos que se muestran en los extremos de la cadena. Una ficha que encaja en ambos extremos puede ir por cualquiera de los dos lados.",
         board_rule_doubles:

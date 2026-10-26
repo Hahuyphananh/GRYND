@@ -213,8 +213,12 @@ function innerWith(html, testid) {
   const at = html.indexOf(`data-testid="${testid}"`);
   if (at === -1) return null;
   const from = html.indexOf(">", at) + 1;
-  const to = html.indexOf("</span>", at);
-  return html.slice(from, to);
+  // The same element closes with `</span>` as a value badge and `</button>` as a
+  // tap target, so the inner slice ends at whichever closing tag comes first.
+  const closes = [html.indexOf("</span>", at), html.indexOf("</button>", at)].filter(
+    (index) => index !== -1,
+  );
+  return html.slice(from, closes.length > 0 ? Math.min(...closes) : undefined);
 }
 
 /* -------------------------------------------------------------------------- *
@@ -470,6 +474,154 @@ test("dominoes ui: the board is a real control surface, not a picture", { skip: 
   assert.match(html, /15 seconds a turn/);
 });
 
+test("dominoes ui: an open end places the selected tile when it is tapped", { skip: SKIP_REASON }, () => {
+  // 6-3 matches the left end (6) and not the right one (5), so exactly one chip
+  // is a tap target — and it names the tile, the end and the value it matches.
+  const oneEnd = renderView({ selected: "6-3" });
+  const left = tagWith(oneEnd, "dominoes-open-left");
+  assert.match(left, /^<button type="button"/, "a chip the tile fits is a real button");
+  assert.match(left, /data-tappable="true"/);
+  assert.match(left, /aria-label="Place 6–3 on the open end — left, value 6"/);
+  assert.equal(isDisabled(oneEnd, "dominoes-open-left"), false);
+  // The value the chip prints is untouched: the tap target IS the number.
+  assert.equal(innerWith(oneEnd, "dominoes-open-left").trimEnd().endsWith("6"), true);
+  // The end it does not fit stays the plain badge — no target, no lie.
+  assert.match(tagWith(oneEnd, "dominoes-open-right"), /^<span/);
+  assert.match(tagWith(oneEnd, "dominoes-open-right"), /data-tappable="false"/);
+
+  // A tile that fits BOTH ends offers both taps, each naming its own side, so the
+  // player chooses where the tile goes — and a screen reader hears which is which.
+  const bothEnds = renderView({
+    snapshot: snapshotFor("player1", {
+      chain: [
+        { id: "3-1", end: "left", left: 3, right: 1, isDouble: false, seat: "player1" },
+        { id: "6-1", end: "right", left: 1, right: 6, isDouble: false, seat: "player2" },
+      ],
+      openEnds: { left: 3, right: 6 },
+    }),
+    selected: "6-3",
+  });
+  assert.match(tagWith(bothEnds, "dominoes-open-left"), /^<button/);
+  assert.match(tagWith(bothEnds, "dominoes-open-right"), /^<button/);
+  assert.match(
+    tagWith(bothEnds, "dominoes-open-left"),
+    /aria-label="Place 6–3 on the open end — left, value 3"/,
+  );
+  assert.match(
+    tagWith(bothEnds, "dominoes-open-right"),
+    /aria-label="Place 6–3 on the open end — right, value 6"/,
+  );
+
+  // Nothing selected, a tile that fits nothing, somebody else's turn, or a
+  // submission in flight: NO chip may offer a placement.
+  for (const html of [
+    renderView({}),
+    renderView({ selected: "1-1" }),
+    renderView({ snapshot: snapshotFor("player2"), selected: "6-3" }),
+    renderView({ selected: "6-3", pending: true }),
+  ]) {
+    assert.equal(html.includes('data-tappable="true"'), false, "no tap target may be offered");
+    assert.ok(html.includes('data-tappable="false"'), "the open values are still printed");
+  }
+
+  // …and the wiring that makes a tap DO something. The chip reports the end it
+  // is; the view derives the ends from the same `playOptionsFor` the sidebar
+  // uses and sends the same intent the sidebar sends — so the two controls can
+  // never disagree about what is legal.
+  const chainSource = stripComments(read("src/components/dominoes/DominoChain.tsx"));
+  assert.match(chainSource, /onClick=\{\(\) => onPlace\?\.\(end\)\}/, "the chip reports the end");
+  assert.match(chainSource, /tappableEnds\.includes\(end\)/, "only a fitting end is tappable");
+  const viewSource = stripComments(read("src/components/dominoes/DominoMatchView.tsx"));
+  assert.match(viewSource, /playOptionsFor\(hand, openEnds, chainEmpty\)/);
+  assert.match(viewSource, /tappableEnds=\{selectedEnds\}/);
+  assert.match(viewSource, /onPlay\?\.\(selected, end\)/, "a tap sends the sidebar's own intent");
+
+  // The tap target is styled as one, and the affordance is motion-safe.
+  const table = css.slice(css.indexOf(".dominoes-end-chip {"), css.indexOf(".dominoes-pile {"));
+  assert.match(table, /\.dominoes-end-chip\.is-tappable \{[\s\S]*?pointer-events:\s*auto/);
+  assert.match(table, /\.dominoes-end-chip\.is-tappable \{[\s\S]*?cursor:\s*pointer/);
+  assert.match(table, /\.dominoes-end-chip\.is-tappable:focus-visible \{/, "it is keyboard-reachable");
+  assert.match(
+    table,
+    /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.dominoes-end-chip\.is-tappable/,
+  );
+});
+
+test("dominoes ui: a hand tile is draggable onto an end, on pointer devices", { skip: SKIP_REASON }, () => {
+  /** The opening tag of the hand tile with this id, or null. */
+  const tileTag = (html, id) => {
+    const at = html.indexOf(`data-tile="${id}"`);
+    if (at === -1) return null;
+    return html.slice(html.lastIndexOf("<", at), html.indexOf(">", at) + 1);
+  };
+
+  // Only a tile with somewhere to go is a drag source: 6-3 fits an open end, a
+  // tile that fits nothing would be a dead gesture.
+  const html = renderView({});
+  assert.match(tileTag(html, "6-3"), /draggable="true"/);
+  assert.match(tileTag(html, "6-3"), /data-draggable="true"/);
+  assert.match(tileTag(html, "1-1"), /draggable="false"/);
+  assert.match(tileTag(html, "1-1"), /data-draggable="false"/);
+
+  // Off-turn and while a submission is in flight: nothing may be picked up. (The
+  // explicit `false` is also what keeps a chain tile from dragging its numeral.)
+  const offTurn = renderView({ snapshot: snapshotFor("player2") });
+  assert.match(tileTag(offTurn, "6-6"), /draggable="false"/);
+  const sending = renderView({ pending: true });
+  assert.match(tileTag(sending, "6-3"), /draggable="false"/);
+  // …and NO tile in those renders may be a drag source.
+  assert.equal(offTurn.includes('draggable="true"'), false);
+  assert.equal(sending.includes('draggable="true"'), false);
+  assert.equal(html.includes('draggable="true"'), true, "the seat on turn can pick one up");
+
+  // The end that takes a tap also takes a drop — one target, two gestures — and
+  // carries the end's name for the drop handler's own bookkeeping.
+  const oneEnd = renderView({ selected: "6-3" });
+  assert.match(tagWith(oneEnd, "dominoes-open-left"), /data-domino-end="left"/);
+  assert.match(tagWith(oneEnd, "dominoes-open-left"), /data-drop-target="true"/);
+  assert.match(tagWith(oneEnd, "dominoes-open-left"), /data-drop-over="false"/);
+  assert.match(tagWith(oneEnd, "dominoes-open-right"), /data-drop-target="false"/);
+  assert.match(tagWith(oneEnd, "dominoes-open-right"), /data-domino-end="right"/);
+
+  // ── The wiring: pick up → hover → drop, with no second source of truth ────
+  const handSource = stripComments(read("src/components/dominoes/DominoHand.tsx"));
+  // Picking a tile up makes it the SELECTION, which is what turns the ends it
+  // fits into targets in the first place.
+  assert.match(handSource, /onDragStart\?\.\(tile\)/);
+  assert.match(handSource, /setData\(DOMINO_DRAG_TYPE, tile\)/);
+  assert.match(handSource, /effectAllowed = "move"/);
+  const viewSource = stripComments(read("src/components/dominoes/DominoMatchView.tsx"));
+  assert.match(viewSource, /onDragStart=\{\(tile\) => \{[\s\S]*?onSelect\?\.\(tile\)/);
+  assert.match(viewSource, /onDragEnd=\{\(\) => setDropOverEnd\(null\)\}/, "a cancel clears it");
+  assert.match(viewSource, /dropOverEnd=\{dropOverEnd\}/);
+  assert.match(
+    viewSource,
+    /onDragEnterEnd=\{\(end\) => \{[\s\S]*?if \(selectedEnds\.includes\(end\)\) setDropOverEnd\(end\)/,
+    "only an end the held tile fits may light up",
+  );
+
+  const chainSource = stripComments(read("src/components/dominoes/DominoChain.tsx"));
+  assert.match(chainSource, /onDragEnter=\{\(event\) => \{[\s\S]*?event\.preventDefault\(\)/);
+  assert.match(
+    chainSource,
+    /onDragOver=\{\(event\) => \{[\s\S]*?event\.preventDefault\(\)[\s\S]*?dropEffect = "move"/,
+    "preventDefault is what makes the chip a drop target",
+  );
+  assert.match(chainSource, /onDrop=\{\(event\) => \{[\s\S]*?onPlace\?\.\(end\)/, "a drop is a placement");
+  assert.match(chainSource, /contains\(next\)\) return;/, "a child node is not a leave");
+  assert.match(chainSource, /is-drop-over/, "the hovered end is painted as such");
+  // A chip that is not a target never accepts a drop — no `dragover` handling at
+  // all on the plain badge, so the browser shows its own refusal cursor.
+  const badge = chainSource.slice(chainSource.indexOf('data-tappable="false"'));
+  assert.equal(/onDragOver|onDrop/.test(badge.slice(0, badge.indexOf("</span>"))), false);
+
+  // The affordance itself: a grab cursor on what can be picked up, and a steady
+  // highlight on the end that would take it.
+  assert.match(css, /\.dominoes-tile\[data-draggable="true"\] \{[\s\S]*?cursor:\s*grab/);
+  assert.match(css, /-webkit-user-select:\s*none/, "the numerals must not be selected instead");
+  assert.match(css, /\.dominoes-end-chip\.is-drop-over \{[\s\S]*?background:/);
+});
+
 test("dominoes ui: the chain says which end the last tile went on", { skip: SKIP_REASON }, () => {
   const right = renderView({
     snapshot: snapshotFor("player1", {
@@ -655,6 +807,13 @@ test("dominoes ui: which ends a tile fits is read from the public open values", 
   assert.deepEqual(legalEndsFor("6-6", { left: 6, right: 6 }), ["left", "right"]);
   assert.deepEqual(legalEndsFor("1-1", { left: 6, right: 5 }), []);
   assert.deepEqual(legalEndsFor("6-3", null), []);
+
+  // After the opening double both ends carry the SAME value, so a tile carrying
+  // it — double or not — is offered on either side, and the player chooses.
+  assert.deepEqual(legalEndsFor("6-3", { left: 6, right: 6 }), ["left", "right"]);
+  assert.deepEqual(playOptionsFor(["6-3", "5-5"], { left: 6, right: 6 }, false), [
+    { tile: "6-3", ends: ["left", "right"] },
+  ]);
 
   // An empty chain accepts the whole hand, on the opening (left) end.
   const opening = playOptionsFor(["6-3", "1-1"], { left: null, right: null }, true);

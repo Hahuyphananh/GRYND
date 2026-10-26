@@ -160,7 +160,13 @@ export interface DominoesState {
   readonly openEnds: Readonly<Record<ChainEnd, number | null>>;
   /** The seat the deal's own starting rule selected. */
   readonly startingSeat: Seat;
-  /** The tile that decided it (`highest-double` or `highest-total`). */
+  /**
+   * The tile that decided it (`highest-double` or `highest-total`).
+   *
+   * For a highest-double deal this tile has already been PLAYED — it is the
+   * chain's opening tile — so it is public; for a highest-total deal it is
+   * still in the starting seat's hand and is never projected.
+   */
   readonly startingTile: TileId;
   readonly winner: Seat | null;
   readonly outcome: DominoesOutcome | null;

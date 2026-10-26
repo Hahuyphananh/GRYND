@@ -19,19 +19,23 @@
  *   3. The highest double starts; with no doubles, the highest pip total starts,
  *      and the canonical tile order breaks the tie. Both are total orders over
  *      two disjoint hands, so the same deal always yields the same first seat.
- *   4. One shared chain with two open values. A tile is legal on an end when one
+ *   4. The highest double OPENS: its holder sets it down, so the deal hands back
+ *      a chain that already holds that double, the holder six tiles and the turn
+ *      with the other seat. Only a deal with no double at all is still opened by
+ *      hand, by the seat with the highest pip total.
+ *   5. One shared chain with two open values. A tile is legal on an end when one
  *      of its halves equals that end's open value; the engine orients the tile
  *      and the other half becomes the new open value.
- *   5. A tile can only be played by the seat on turn, from its own hand, in a
+ *   6. A tile can only be played by the seat on turn, from its own hand, in a
  *      live match. A playable tile can never be skipped.
- *   6. With nothing playable, a seat draws one tile at a time and KEEPS the
+ *   7. With nothing playable, a seat draws one tile at a time and KEEPS the
  *      turn; a drawn tile may be played at once, and an unplayable one means
  *      drawing again.
- *   7. With the pile empty and nothing playable, the seat passes.
- *   8. An empty hand wins immediately. With the pile empty and NEITHER seat able
+ *   8. With the pile empty and nothing playable, the seat passes.
+ *   9. An empty hand wins immediately. With the pile empty and NEITHER seat able
  *      to play, fewer remaining pips wins and equal pips draw — checked after
  *      every accepted action.
- *   9. A finished match accepts nothing at all.
+ *  10. A finished match accepts nothing at all.
  *
  * WHAT IS NOT HERE: the 15-second turn clock, its timeout action, forfeits,
  * matchmaking and persistence all belong to the server store's policy. The
@@ -242,9 +246,10 @@ function orientationFor(
  * breaks it, which makes the choice a total function of the deal — the same
  * deal always opens with the same seat.
  *
- * The opening tile is reported for the UI and the audit trail; it is NOT forced
- * as the first play. An empty chain accepts any tile from the starting hand, so
- * the seat on turn is free to open with whatever it likes.
+ * Choosing is not playing: this function only names the seat (and the tile that
+ * decided it). A HIGHEST_DOUBLE deal then has that double placed on the chain by
+ * `createInitialState` — the standard start — while a no-double deal leaves the
+ * chain empty for the winning seat to open with any tile it likes.
  *
  * Throws `INVALID_DEAL` when there is no tile to choose from at all.
  */
@@ -366,9 +371,16 @@ function assertDeal(deal: Deal): void {
  * A fresh, ready-to-play match from a deal.
  *
  * Everything else is derived, never supplied: the starting seat and the tile
- * that decided it come from `chooseStartingSeat`, the chain starts empty and
- * both open ends start `null`. That is what makes a persisted deal replay to
- * exactly one state.
+ * that decided it come from `chooseStartingSeat`, and — when that decision was a
+ * DOUBLE — the deal opens with that double already on the table. The round
+ * therefore begins with one tile on the chain, two open ends of the same value,
+ * the holder one tile lighter (six tiles) and the turn with the OTHER seat. That
+ * is what makes a persisted deal replay to exactly one state.
+ *
+ * A deal with no double in either hand is the one case left to the opener: the
+ * highest pip total starts, the chain is empty, and that seat opens it by hand
+ * with any tile it likes — exactly the turn `applyAction` accepts on an empty
+ * chain.
  */
 export function createInitialState(deal: Deal): DominoesState {
   assertDeal(deal);
@@ -377,7 +389,7 @@ export function createInitialState(deal: Deal): DominoesState {
     player2: Object.freeze([...deal.hands.player2]),
   });
   const choice = chooseStartingSeat(hands);
-  return freezeState({
+  const dealt = freezeState({
     status: MATCH_STATUS.PLAYING,
     turn: choice.seat,
     ply: 0,
@@ -390,6 +402,24 @@ export function createInitialState(deal: Deal): DominoesState {
     winner: null,
     outcome: null,
     lastAction: null,
+  });
+
+  // THE OPENING PLAY. The highest double both starts the round AND opens it: its
+  // holder sets that tile down (the standard block rule — "the tile played must
+  // be the double tile that permitted the player to take the first turn"), so
+  // nobody has to spend a turn putting the tile the deal already decided onto
+  // the table. The other seat is the one who plays next.
+  //
+  // It goes through `applyAction` rather than being hand-built so that a tile
+  // reaches the chain in exactly one way: the orientation, the two open ends,
+  // `lastAction`, ply and every terminal check are the engine's own. A deal also
+  // always leaves fourteen tiles in the pile (`assertDeal`), so this placement
+  // can never block the round it opens.
+  if (choice.rule !== STARTING_RULES.HIGHEST_DOUBLE) return dealt;
+  return applyAction(dealt, choice.seat, {
+    type: ACTION_TYPES.PLAY,
+    tile: choice.tile,
+    end: CHAIN_ENDS[0],
   });
 }
 

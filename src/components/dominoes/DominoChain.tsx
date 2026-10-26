@@ -38,6 +38,22 @@
 // tile names the side, so a player who looked away (or came back mid-match) can
 // see which end just moved without reading the whole line.
 //
+// ── PLACING A TILE BY TAPPING AN END ──────────────────────────────────────
+//
+// The two open-value chips are pinned at the board's corners, so they are where
+// a player's eye already is when deciding a move — which makes them the natural
+// target for "put the selected tile HERE". When the caller says the selected
+// tile fits an end (`tappableEnds`), that chip becomes a real `<button>` that
+// reports the placement upwards; when it does not fit, the chip stays the plain
+// value badge it has always been, so the board never offers a target the engine
+// would refuse. The sidebar's Play-left / Play-right buttons remain, unchanged:
+// the board is a second way to say the same thing, not a replacement for it.
+//
+// WHAT THE CHIP IS NOT: it does not decide anything. `tappableEnds` is the
+// caller's read of the same public information the sidebar uses, and the action
+// it reports is the action a client may only ever send — `{ type: "play", tile,
+// end }` — which the store re-validates inside its row lock.
+//
 // ── ANIMATION ─────────────────────────────────────────────────────────────
 //
 // Only the newest tile animates — it is DROPPED onto the felt and settles, for
@@ -52,7 +68,7 @@ import { IconArrowLeft, IconArrowRight } from "@tabler/icons-react";
 
 import DominoTile from "./DominoTile";
 import { layoutChain, type ChainTileLike as LayoutChainTileLike } from "../../lib/dominoes/layout";
-import { tileLabel } from "../../lib/dominoes/ui";
+import { tileLabel, type ChainEnd } from "../../lib/dominoes/ui";
 import { useTranslation } from "../../hooks/useTranslation";
 
 /** One tile of the engine's chain, as the projection sends it. */
@@ -68,6 +84,25 @@ export type DominoChainProps = {
   openEnds?: { left?: number | null; right?: number | null } | null;
   /** Live match? A finished board keeps its last position, dimmed by CSS. */
   isLive?: boolean;
+  /** The viewer's selected tile, named in a tappable end's accessible label. */
+  selected?: string | null;
+  /**
+   * The ends the SELECTED tile may be placed on — empty whenever there is no
+   * selection, it is not the viewer's turn, a submission is in flight, or the
+   * tile fits nothing. A chip in this list becomes tappable; no other does.
+   */
+  tappableEnds?: readonly ChainEnd[] | null;
+  /** Place the selected tile on `end`. Only ever reachable for a tappable end. */
+  onPlace?: (end: ChainEnd) => void;
+  /**
+   * The end a dragged hand tile is currently hovering over, or null. Owned by the
+   * board, not by this file: the chain paints the highlight it is told to paint.
+   */
+  dropOverEnd?: ChainEnd | null;
+  /** A dragged tile entered an end that would accept it. */
+  onDragEnterEnd?: (end: ChainEnd) => void;
+  /** It left again (or the drag ended somewhere else, including a cancel). */
+  onDragLeaveEnd?: (end: ChainEnd) => void;
 };
 
 /** A facing half as a number, or null when the projection did not carry one. */
@@ -79,6 +114,12 @@ export default function DominoChain({
   chain = [],
   openEnds = null,
   isLive = true,
+  selected = null,
+  tappableEnds = null,
+  onPlace,
+  dropOverEnd = null,
+  onDragEnterEnd,
+  onDragLeaveEnd,
 }: DominoChainProps) {
   const { t } = useTranslation();
   const tiles = useMemo(() => (Array.isArray(chain) ? chain : []), [chain]);
@@ -110,6 +151,10 @@ export default function DominoChain({
 
   const left = openEnds?.left ?? null;
   const right = openEnds?.right ?? null;
+  // Ends that may be tapped right now. A tappable end with no open value cannot
+  // exist (the chip is not offered at all), so the two are checked together.
+  const canTap = (end: ChainEnd, value: number | null) =>
+    value !== null && Array.isArray(tappableEnds) && tappableEnds.includes(end);
   // The end the newest tile was attached to, or null when the engine did not
   // record one. The opening tile records "left" (it opens the line), and there
   // is no side to report on a one-tile chain, so the marker waits for a second
@@ -121,6 +166,96 @@ export default function DominoChain({
 
   /** Cells → CSS length. One cell is half a tile, which is `--dm-half`. */
   const cells = (count: number) => `calc(var(--dm-half) * ${count})`;
+
+  /**
+   * One open-value chip: a placement BUTTON when the selected tile fits this end,
+   * the plain value badge otherwise.
+   *
+   * Both shapes carry the same test id, class and printed value, so which one is
+   * on the board is a statement about what the player may do right now — not
+   * about what the board looks like.
+   */
+  const endChip = (end: ChainEnd, value: number | null) => {
+    const side = end === "left" ? "is-left" : "is-right";
+    const testId = end === "left" ? "dominoes-open-left" : "dominoes-open-right";
+    const hovered = dropOverEnd === end;
+    const arrow =
+      end === "left" ? (
+        <IconArrowLeft size={13} aria-hidden="true" />
+      ) : (
+        <IconArrowRight size={13} aria-hidden="true" />
+      );
+
+    if (value === null || !canTap(end, value)) {
+      return (
+        <span
+          className={`dominoes-end-chip ${side}`}
+          data-testid={testId}
+          data-domino-end={end}
+          data-tappable="false"
+          // No target, and deliberately no `dragover` handling: the browser shows
+          // its own "cannot drop here" cursor and the drop is discarded.
+          data-drop-target="false"
+          aria-hidden={value === null}
+        >
+          {value === null ? null : (
+            <>
+              {end === "left" ? arrow : null}
+              {value}
+              {end === "left" ? null : arrow}
+            </>
+          )}
+        </span>
+      );
+    }
+
+    // A placement target: tappable, and the drop target for a dragged tile. Both
+    // arrive at the same `onPlace(end)`, so a tap and a drop cannot diverge.
+    return (
+      <button
+        type="button"
+        className={`dominoes-end-chip ${side} is-tappable ${hovered ? "is-drop-over" : ""}`}
+        data-testid={testId}
+        data-domino-end={end}
+        data-tappable="true"
+        data-drop-target="true"
+        data-drop-over={hovered ? "true" : "false"}
+        aria-label={t("games.dominoes.place_on_end_aria", {
+          tile: tileLabel(selected),
+          end: t(end === "left" ? "games.dominoes.side_left" : "games.dominoes.side_right"),
+          value,
+        })}
+        onClick={() => onPlace?.(end)}
+        onDragEnter={(event) => {
+          // Entering is enough to accept: this chip is rendered only while the
+          // SELECTED (i.e. picked-up) tile fits this end.
+          event.preventDefault();
+          onDragEnterEnd?.(end);
+        }}
+        onDragOver={(event) => {
+          // preventDefault marks the element as a valid drop target for the
+          // gesture; without it the browser refuses the drop outright.
+          event.preventDefault();
+          if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+        }}
+        onDragLeave={(event) => {
+          // Moving onto one of the chip's own children is not leaving it.
+          const next = event.relatedTarget as Node | null;
+          if (next && event.currentTarget.contains(next)) return;
+          onDragLeaveEnd?.(end);
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          onDragLeaveEnd?.(end);
+          onPlace?.(end);
+        }}
+      >
+        {end === "left" ? arrow : null}
+        {value}
+        {end === "left" ? null : arrow}
+      </button>
+    );
+  };
 
   return (
     <div
@@ -233,33 +368,12 @@ export default function DominoChain({
 
       {/* The two open values, pinned at the corners of the BOARD (not of the
           line), so a long or snaking chain scrolling underneath never hides
-          which ends are playable. */}
+          which ends are playable. An end the selected tile fits is also the
+          tap target that places it, and only that end is. */}
       {tiles.length > 0 ? (
         <>
-          <span
-            className="dominoes-end-chip is-left"
-            data-testid="dominoes-open-left"
-            aria-hidden={left === null}
-          >
-            {left === null ? null : (
-              <>
-                <IconArrowLeft size={13} aria-hidden="true" />
-                {left}
-              </>
-            )}
-          </span>
-          <span
-            className="dominoes-end-chip is-right"
-            data-testid="dominoes-open-right"
-            aria-hidden={right === null}
-          >
-            {right === null ? null : (
-              <>
-                {right}
-                <IconArrowRight size={13} aria-hidden="true" />
-              </>
-            )}
-          </span>
+          {endChip("left", left)}
+          {endChip("right", right)}
         </>
       ) : null}
     </div>

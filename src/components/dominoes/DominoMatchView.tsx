@@ -24,6 +24,20 @@
 //              its own column so the controls never move as the chain grows or
 //              the hand shrinks; on a narrow screen it stacks under the board.
 //
+// PLACING A TILE: a selected tile can be committed either from the sidebar (Play
+// left / Play right), by tapping the open-value chip the tile fits, or — on a
+// pointer device — by dragging the tile out of the hand and dropping it on that
+// chip. All three report the same intent, `onPlay(tile, end)`, and all three are
+// offered off the same public information (`playOptionsFor`), so they can never
+// disagree about which ends are legal.
+//
+// THE DRAG IS THIS COMPONENT'S, ONLY AS BOOKKEEPING. The hand reports that a tile
+// was picked up (which makes it the selection, and therefore lights up the ends it
+// fits), the chain reports which end the pointer is over, and `dropOverEnd` is the
+// one piece of state the two share — so the chain stays a painting of the position
+// plus whatever highlight it is handed. Nothing about the drag is authoritative:
+// it ends in the same validated action as a tap.
+//
 // The opponent's tiles are not in the payload at all, so there is nothing here
 // that could render them; the count is public (in dominoes you can see how many
 // tiles a player holds).
@@ -51,7 +65,9 @@ import { useTranslation } from "../../hooks/useTranslation";
 import {
   countdownFor,
   isTerminalStatus,
+  playOptionsFor,
   seatLabel,
+  type ChainEnd,
   type OpenEnds,
 } from "../../lib/dominoes/ui";
 import { isDominoSoundMuted, setDominoSoundMuted } from "../../lib/dominoes/sound";
@@ -169,6 +185,22 @@ export default function DominoMatchView({
   const opponentTileCount = Number(snapshot.opponentTileCount ?? 0) || 0;
   const drawPileCount = Number(snapshot.drawPileCount ?? 0) || 0;
   const openEnds = snapshot.openEnds ?? null;
+
+  // Which ends the SELECTED tile may be placed on: the same read of the same
+  // public information the sidebar uses (`playOptionsFor`), so a tap on the board
+  // and a press in the sidebar describe one rule. Offered only while it really is
+  // the viewer's turn and no submission is in flight — a stale selection, a
+  // finished round or a pending request leaves the chips as plain values.
+  const selectedEnds =
+    isViewerTurn && !pending && selected
+      ? (playOptionsFor(hand, openEnds, chainEmpty).find((option) => option.tile === selected)
+          ?.ends ?? [])
+      : [];
+
+  // The end a picked-up tile is hovering over, for the chain to highlight. Only
+  // an end the held tile actually fits is ever set, and the drag's end (a drop, a
+  // cancel, an Escape) clears it — so the highlight cannot outlive the gesture.
+  const [dropOverEnd, setDropOverEnd] = useState<ChainEnd | null>(null);
 
   // The countdown only exists while the server says a turn is running: a
   // decided match has no clock, and the store clears it.
@@ -311,7 +343,23 @@ export default function DominoMatchView({
 
           {/* ── The shared chain, which grows like a real table ──────────── */}
           <div className="dominoes-table">
-            <DominoChain chain={chain} openEnds={openEnds} isLive={isLive} />
+            <DominoChain
+              chain={chain}
+              openEnds={openEnds}
+              isLive={isLive}
+              selected={selected}
+              tappableEnds={selectedEnds}
+              onPlace={(end) => {
+                if (selected && selectedEnds.includes(end)) onPlay?.(selected, end);
+              }}
+              dropOverEnd={dropOverEnd}
+              onDragEnterEnd={(end) => {
+                if (selectedEnds.includes(end)) setDropOverEnd(end);
+              }}
+              onDragLeaveEnd={(end) => {
+                setDropOverEnd((current) => (current === end ? null : current));
+              }}
+            />
 
             <div className="dominoes-pile" data-testid="dominoes-pile">
               <span className="dominoes-pile-stack" aria-hidden="true">
@@ -343,6 +391,13 @@ export default function DominoMatchView({
             isViewerTurn={isViewerTurn}
             isLive={isLive}
             pending={pending}
+            // Picking a tile up selects it, which is what makes the ends it fits
+            // into drop targets before the pointer has travelled anywhere.
+            onDragStart={(tile) => {
+              setDropOverEnd(null);
+              onSelect?.(tile);
+            }}
+            onDragEnd={() => setDropOverEnd(null)}
           />
         </div>
 
@@ -410,6 +465,7 @@ export default function DominoMatchView({
               {t("games.dominoes.rules_summary")}
             </summary>
             <ul className="dominoes-rules-list">
+              <li>{t("games.dominoes.board_rule_start")}</li>
               <li>{t("games.dominoes.board_rule_match")}</li>
               <li>{t("games.dominoes.board_rule_doubles")}</li>
               <li>{t("games.dominoes.board_rule_draw")}</li>

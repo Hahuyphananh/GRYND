@@ -163,8 +163,9 @@ export function dealTiles(random: () => number = secureUnitInterval): Deal {
 }
 
 /**
- * Shuffle, deal and build the initial state — the starting seat and the tile
- * that decided it are derived by `createInitialState`, never passed in.
+ * Shuffle, deal and build the initial state — the starting seat, the tile that
+ * decided it and the opening double that is placed on the board are all derived
+ * by `createInitialState`, never passed in.
  */
 export function dealMatch(
   random: () => number = secureUnitInterval,

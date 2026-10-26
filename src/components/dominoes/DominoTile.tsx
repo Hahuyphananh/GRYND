@@ -29,8 +29,15 @@
 // announce as buttons, and activate with Enter/Space (and tap, since touch fires
 // a click). A non-interactive tile in the shared chain is a `<div>` inside an
 // ordered list instead — it is not a control and must not pretend to be one.
+//
+// DRAGGING: a tile may also be a DRAG SOURCE (`draggable` + the two handlers),
+// which is how a pointer device carries it onto an end of the chain. The tile
+// still only reports what happened — who may drag, and whether the end it was
+// dropped on accepts it, are the board's decisions. `draggable` is written out on
+// every tile (true or false) so a chain tile can never begin a native text drag
+// of its own numeral.
 
-import type { CSSProperties, KeyboardEvent } from "react";
+import type { CSSProperties, DragEvent, KeyboardEvent } from "react";
 
 /** Which way the tile is drawn. Chain tiles lie along the line; hand tiles too. */
 export type DominoTileOrientation = "horizontal" | "vertical";
@@ -57,6 +64,10 @@ export type DominoTileProps = {
   interactive?: boolean;
   disabled?: boolean;
   onClick?: () => void;
+  /** Pointer devices: this tile can be picked up and dropped on an end. */
+  draggable?: boolean;
+  onDragStart?: (event: DragEvent<HTMLButtonElement>) => void;
+  onDragEnd?: () => void;
   /** Extra class hooks from the caller (sizing, mostly). */
   className?: string;
   style?: CSSProperties;
@@ -85,6 +96,9 @@ export default function DominoTile({
   interactive = false,
   disabled = false,
   onClick,
+  draggable = false,
+  onDragStart,
+  onDragEnd,
   className = "",
   style,
   label,
@@ -130,10 +144,14 @@ export default function DominoTile({
   const shared = {
     className: classes,
     style,
+    // Always stated, never omitted: `true` makes this tile a drag source, and an
+    // explicit `false` is what keeps a chain tile from dragging its own numeral.
+    draggable,
     "data-testid": testId ?? "domino-tile",
     "data-tile": String(tile ?? ""),
     "data-selected": selected ? "true" : "false",
     "data-playable": playable ? "true" : "false",
+    "data-draggable": draggable ? "true" : "false",
   } as const;
 
   if (!interactive) {
@@ -170,6 +188,8 @@ export default function DominoTile({
       aria-label={accessibleName}
       disabled={disabled}
       onClick={onClick}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
       onKeyDown={handleKeyDown}
     >
       {body}

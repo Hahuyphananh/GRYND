@@ -910,15 +910,35 @@ test("POST create-or-join: opens a lobby, then seats the second caller and deals
   assert.equal(joined.json.data.joined, true);
   assert.equal(joined.json.data.status, MATCH_STATUS.PLAYING);
   const row = liveMatch(fake);
-  assert.equal(row.p1Hand.length, 7);
-  assert.equal(row.p2Hand.length, 7);
   assert.equal(row.drawPile.length, 14);
   assert.ok(row.turnDeadlineAt instanceof Date);
-  // The starting seat comes from the deal, not from either caller.
+
+  // The deal plays the highest double itself: the opener holds six tiles, the
+  // double is on the chain and the turn belongs to the OTHER seat. Both the seat
+  // and the board come from the deal, never from either caller. (The one case
+  // with no placement at all is a deal holding no double whatsoever, which is
+  // about 0.3% of them.)
+  const placed = row.gameState.chain.length === 1;
+  assert.equal(row.p1Hand.length + row.p2Hand.length, placed ? 13 : 14);
+  assert.equal(row.ply, placed ? 1 : 0);
+  assert.equal(
+    row.gameState.turn,
+    placed
+      ? row.gameState.startingSeat === "player1"
+        ? "player2"
+        : "player1"
+      : row.gameState.startingSeat,
+  );
   assert.equal(
     row.currentTurnUserId,
     row.gameState.turn === "player1" ? ALICE : BOB,
   );
+  // …and the placement is logged, so the chain has an author.
+  assert.deepEqual(
+    moveLog(fake).map((moveRow) => [moveRow.ply, moveRow.action]),
+    placed ? [[0, "play"]] : [],
+  );
+  if (placed) assert.equal(row.gameState.startingTile, row.gameState.chain[0].id);
 
   // A third caller cannot take the seat that just filled, and no second lobby is
   // opened under it.
@@ -1152,9 +1172,12 @@ test("POST create-ai: seats the bot, and the bot answers inside the human's turn
   assert.equal(read.json.data.isAi, true);
   assert.equal(read.json.data.viewerSeat, "player1");
 
-  // If the bot won the opening bid its turn is ALREADY played: created inline.
+  // The deal's own placement has already moved the board on (ply 1), and if that
+  // placement left the turn with the bot, the bot has ALREADY played it — created
+  // inline either way, so a live practice row is never waiting on the bot.
   const dto = read.json.data;
-  if (Number(dto.ply) > 0) assert.equal(dto.isViewerTurn, true);
+  assert.equal(dto.version, dto.ply, "the version IS the accepted-action count");
+  if (dto.status === MATCH_STATUS.PLAYING) assert.equal(dto.isViewerTurn, true);
 
   const before = Number(dto.ply);
   const action = firstLegalAction(dto);

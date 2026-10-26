@@ -4,18 +4,21 @@
  * The PURE Dominoes rules engine, pinned exhaustively.
  *
  * Dominoes is the two-player block game on a double-six set: 28 unique tiles,
- * seven each and fourteen face down; the highest double starts; a tile may only
- * be played on an open end it matches; a seat with nothing playable draws one
- * tile at a time (keeping the turn) until it can play, and passes only when the
- * pile is empty; an empty hand wins at once, and with the pile empty and neither
- * seat able to play the fewer remaining pips win (equal pips draw).
+ * seven each and fourteen face down; the highest double starts AND opens — the
+ * deal places that double on the board, leaving its holder six tiles and the
+ * other seat to play; a tile may only be played on an open end it matches; a
+ * seat with nothing playable draws one tile at a time (keeping the turn) until
+ * it can play, and passes only when the pile is empty; an empty hand wins at
+ * once, and with the pile empty and neither seat able to play the fewer
+ * remaining pips win (equal pips draw).
  *
- * This suite is the referee: the set, the deal, the starting-seat rule, chain
- * orientation at both ends, drawing, passing, blockage, victory, every rejection
- * code, and the anti-cheat property — a rejected action leaves the authoritative
- * state byte for byte untouched, a successful one never mutates its input, and
- * the engine's own generated actions are always accepted by its own validator
- * (asserted by a deterministic self-play fuzz, not by hope).
+ * This suite is the referee: the set, the deal, the starting-seat rule and its
+ * opening placement, the ends a tile may be placed on, chain orientation at both
+ * ends, drawing, passing, blockage, victory, every rejection code, and the
+ * anti-cheat property — a rejected action leaves the authoritative state byte
+ * for byte untouched, a successful one never mutates its input, and the engine's
+ * own generated actions are always accepted by its own validator (asserted by a
+ * deterministic self-play fuzz, not by hope).
  *
  * Run:  node --import tsx --test tests/dominoes-rules.test.mjs
  */
@@ -321,24 +324,131 @@ test("createInitialState rejects a deal that is not a double-six deal", () => {
   assert.throws(() => createInitialState({}), { code: REJECTION.INVALID_DEAL });
 });
 
-test("a dealt match starts empty: no chain, both ends closed, all 28 tiles held", () => {
+test("the highest double is PLAYED by the deal: one tile down, its holder left with six", () => {
   const state = dealMatch(seeded(5));
   assert.equal(state.status, MATCH_STATUS.PLAYING);
-  assert.equal(state.ply, 0);
-  assert.deepEqual(state.chain, []);
-  assert.deepEqual(state.openEnds, { left: null, right: null });
+
+  // The deal's own choice — and player2 holds the (seed's) double six.
+  assert.equal(state.startingSeat, SEATS[1]);
+  assert.equal(state.startingTile, "6-6");
+  assert.ok(isDoubleTile(state.startingTile));
+
+  // …and that double is already the chain's only tile.
+  assert.deepEqual(state.chain, [
+    { id: "6-6", end: CHAIN_ENDS[0], left: 6, right: 6, isDouble: true, seat: SEATS[1] },
+  ]);
+  assert.deepEqual(state.openEnds, { left: 6, right: 6 });
+  assert.ok(isChainConsistent(state.chain));
+
+  // The holder is a tile lighter and the OTHER seat is the one to play.
+  assert.equal(state.hands.player2.length, HAND_SIZE - 1);
   assert.equal(state.hands.player1.length, HAND_SIZE);
-  assert.equal(state.hands.player2.length, HAND_SIZE);
+  assert.equal(state.turn, otherSeat(state.startingSeat));
+  assert.equal(state.ply, 1, "the opening placement is the round's first action");
+  assert.deepEqual(state.lastAction, {
+    seat: SEATS[1],
+    action: { type: ACTION_TYPES.PLAY, tile: "6-6", end: CHAIN_ENDS[0] },
+  });
+  assert.equal(
+    state.hands[state.startingSeat].includes(state.startingTile),
+    false,
+    "the opener no longer holds the tile that is on the board",
+  );
+
+  // No tile was lost on the way: all 28 are on the table, once each.
   assert.equal(state.drawPile.length, DRAW_PILE_SIZE);
   assert.equal(heldTiles(state).length, TILE_COUNT);
   assert.equal(new Set(heldTiles(state)).size, TILE_COUNT);
   assert.equal(state.winner, null);
   assert.equal(state.outcome, null);
-  assert.equal(state.lastAction, null);
   assert.ok(Object.isFrozen(state));
   assert.ok(Object.isFrozen(state.hands.player1));
   assert.ok(SEATS.includes(state.turn));
-  assert.ok(TILE_IDS.includes(state.startingTile));
+});
+
+test("a deal with no double is the one start left to the opener", () => {
+  // Every double (0-0 … 6-6) sits in the pile, so neither hand has one.
+  const doubles = TILE_IDS.filter(isDoubleTile);
+  const order = [...TILE_IDS.filter((tile) => !isDoubleTile(tile)), ...doubles];
+  const deal = dealFromOrder(order);
+  const choice = chooseStartingSeat(deal.hands);
+  assert.equal(choice.rule, STARTING_RULES.HIGHEST_TOTAL);
+  assert.equal(isDoubleTile(choice.tile), false);
+
+  const state = createInitialState(deal);
+  // Nothing is placed: seven tiles each, an empty chain, and the winning seat
+  // opens with any tile it likes (which is still a legal chain play).
+  assert.deepEqual(state.chain, []);
+  assert.deepEqual(state.openEnds, { left: null, right: null });
+  assert.equal(state.ply, 0);
+  assert.equal(state.lastAction, null);
+  assert.equal(state.turn, choice.seat);
+  assert.equal(state.startingSeat, choice.seat);
+  assert.equal(state.startingTile, choice.tile);
+  assert.equal(state.hands.player1.length, HAND_SIZE);
+  assert.equal(state.hands.player2.length, HAND_SIZE);
+  assert.equal(legalPlays(state).length, HAND_SIZE, "any tile may open an empty chain");
+  assert.equal(heldTiles(state).length, TILE_COUNT);
+  assert.equal(new Set(heldTiles(state)).size, TILE_COUNT);
+});
+
+test("after the opening double, a tile is placed on whichever end the player picks", () => {
+  // A deliberate deal: player1 holds all seven doubles, so 6-6 opens the round,
+  // and player2 holds six 6-x tiles — each of which meets BOTH open ends — plus
+  // 5-4, which meets neither.
+  const order = [
+    "6-6", "5-5", "4-4", "3-3", "2-2", "1-1", "0-0",
+    "6-5", "6-4", "6-3", "6-2", "6-1", "6-0", "5-4",
+    "5-3", "5-2", "5-1", "5-0", "4-3", "4-2", "4-1", "4-0",
+    "3-2", "3-1", "3-0", "2-1", "2-0", "1-0",
+  ];
+  assert.equal(new Set(order).size, TILE_COUNT, "the fixture must be a real deal");
+  const state = createInitialState(dealFromOrder(order));
+  assert.equal(state.startingTile, "6-6");
+  assert.equal(state.turn, SEATS[1]);
+  assert.deepEqual(state.openEnds, { left: 6, right: 6 });
+
+  // Both ends are offered for every tile that fits both, and nothing else is.
+  const plays = legalPlays(state, SEATS[1]);
+  assert.equal(plays.length, 12, "six matching tiles, each end available");
+  assert.deepEqual(
+    plays.filter((action) => action.tile === "6-5").map((action) => action.end),
+    [CHAIN_ENDS[0], CHAIN_ENDS[1]],
+  );
+  assert.equal(plays.some((action) => action.tile === "5-4"), false);
+  assert.equal(
+    rejectionFor(state, SEATS[1], {
+      type: ACTION_TYPES.PLAY,
+      tile: "5-4",
+      end: CHAIN_ENDS[0],
+    }),
+    REJECTION.TILE_MISMATCH,
+  );
+
+  // The end is a REAL choice: the same tile, two different chains.
+  const onLeft = applyAction(state, SEATS[1], {
+    type: ACTION_TYPES.PLAY,
+    tile: "6-5",
+    end: CHAIN_ENDS[0],
+  });
+  assert.deepEqual(
+    onLeft.chain.map((tile) => [tile.left, tile.right]),
+    [[5, 6], [6, 6]],
+  );
+  assert.deepEqual(onLeft.openEnds, { left: 5, right: 6 });
+
+  const onRight = applyAction(state, SEATS[1], {
+    type: ACTION_TYPES.PLAY,
+    tile: "6-5",
+    end: CHAIN_ENDS[1],
+  });
+  assert.deepEqual(
+    onRight.chain.map((tile) => [tile.left, tile.right]),
+    [[6, 6], [6, 5]],
+  );
+  assert.deepEqual(onRight.openEnds, { left: 6, right: 5 });
+  assert.ok(isChainConsistent(onLeft.chain));
+  assert.ok(isChainConsistent(onRight.chain));
 });
 
 test("the default RNG is Web Crypto, and it deals a valid match", () => {
@@ -416,10 +526,20 @@ test("the starting choice is a pure function of the deal", () => {
   const hands = { player1: ["6-1", "2-2"], player2: ["5-5", "3-0"] };
   assert.deepEqual(chooseStartingSeat(hands), chooseStartingSeat(hands));
 
-  const state = dealMatch(seeded(11));
-  assert.equal(state.startingSeat, chooseStartingSeat(state.hands).seat);
-  assert.equal(state.startingTile, chooseStartingSeat(state.hands).tile);
-  assert.equal(state.turn, state.startingSeat, "the starting seat moves first");
+  // The choice is read off the DEALT hands, and the opening placement is applied
+  // afterwards — so `startingSeat`/`startingTile` stay the deal's own verdict
+  // even though the winning tile has already left its holder's hand.
+  const deal = dealTiles(seeded(11));
+  const choice = chooseStartingSeat(deal.hands);
+  const state = createInitialState(deal);
+  assert.equal(state.startingSeat, choice.seat);
+  assert.equal(state.startingTile, choice.tile);
+  assert.equal(state.hands[choice.seat].includes(choice.tile), false);
+  assert.equal(
+    state.turn,
+    choice.rule === STARTING_RULES.HIGHEST_DOUBLE ? otherSeat(choice.seat) : choice.seat,
+    "a placed double hands the turn over; an empty chain leaves it with the opener",
+  );
 
   assert.throws(
     () => chooseStartingSeat({ player1: [], player2: [] }),

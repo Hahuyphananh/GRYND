@@ -2857,6 +2857,73 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   display: none;
 }
 
+/* THE TAP TARGET. A chip is only tappable while the SELECTED tile really fits
+   that end (DominoChain renders these as buttons and the rest as spans), so the
+   pointer/glow affordance can never invite a placement the engine would refuse.
+   The value stays printed: the player taps the number they are matching. */
+.dominoes-end-chip.is-tappable {
+  pointer-events: auto;
+  cursor: pointer;
+  appearance: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  /* A finger-sized target, slightly larger than the plain badge. */
+  padding: 6px 11px;
+  color: #e0fbff;
+  border-color: rgba(103, 232, 249, 0.8);
+  background: rgba(8, 47, 74, 0.96);
+  box-shadow:
+    0 0 0 1px rgba(103, 232, 249, 0.25),
+    0 2px 10px rgba(0, 0, 0, 0.5);
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease,
+    background 0.12s ease;
+}
+
+.dominoes-end-chip.is-tappable:hover {
+  background: rgba(10, 66, 102, 0.98);
+  box-shadow:
+    0 0 0 1px rgba(103, 232, 249, 0.5),
+    0 4px 16px rgba(0, 229, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.dominoes-end-chip.is-tappable:active {
+  transform: translateY(0) scale(0.97);
+}
+
+.dominoes-end-chip.is-tappable:focus-visible {
+  outline: 2px solid #67e8f9;
+  outline-offset: 2px;
+}
+
+/* THE END UNDER A PICKED-UP TILE. Only an end the held tile fits can be hovered
+   (the chip is not even a drop target otherwise), so this is a confirmation, not
+   an invitation the engine would refuse. Bright and steady, not a pulse: it must
+   stay legible while the tile is being carried over it. */
+.dominoes-end-chip.is-drop-over {
+  color: #062033;
+  background: linear-gradient(180deg, #a5f3fc, #67e8f9);
+  border-color: #e0fbff;
+  box-shadow:
+    0 0 0 3px rgba(103, 232, 249, 0.35),
+    0 6px 20px rgba(0, 229, 255, 0.45);
+  transform: scale(1.06);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dominoes-end-chip.is-tappable {
+    transition: none;
+  }
+
+  .dominoes-end-chip.is-tappable:hover {
+    transform: none;
+  }
+}
+
 .dominoes-pile {
   display: flex;
   align-items: center;
@@ -2951,6 +3018,19 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
    reader who cannot count the two numbers still sees it is special. */
 .dominoes-tile.is-double {
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4), inset 0 -2px 0 rgba(14, 165, 233, 0.9);
+}
+
+/* A tile that can be picked up (pointer devices). `user-select: none` keeps the
+   gesture from turning into a text selection of the numerals instead; the browser
+   owns the drag image, so the tile itself only has to look grabbable. */
+.dominoes-tile[data-draggable="true"] {
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.dominoes-tile[data-draggable="true"]:active {
+  cursor: grabbing;
 }
 
 .dominoes-tile.seat-player2 {

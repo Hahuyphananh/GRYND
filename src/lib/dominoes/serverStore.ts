@@ -345,10 +345,12 @@ export function matchToDto(match: MatchRow, viewerId: string | null) {
     turnUserId: match.currentTurnUserId ?? null,
     turnDeadlineAt: match.turnDeadlineAt ?? null,
     startingSeat: state?.startingSeat ?? null,
-    // `startingTile` is deliberately NOT projected. It is the tile that won the
-    // opening bid, and until the opening play lands it is still sitting in the
-    // starting seat's hand — publishing it would hand the opponent one of its
-    // seven tiles. `startingSeat` is public (it is who moves at ply 0).
+    // `startingTile` is deliberately NOT projected. When the deal opened with a
+    // double it is on the chain and the chain already says so; when it did not
+    // (no double anywhere), the tile is still in the starting seat's hand and
+    // publishing it would hand the opponent one of its tiles. `startingSeat` is
+    // public, and so is the chain: between them a client can read the whole
+    // opening without the engine's internal label being on the wire.
     // Counts only — never the tiles themselves.
     opponentTileCount,
     drawPileCount: state ? state.drawPile.length : 0,
@@ -498,7 +500,8 @@ async function joinExistingMatch(
 
   // The deal: a fresh 28-tile shuffle. `dealMatch` is the engine's own deal
   // (Web Crypto, injectable in tests) and derives the starting seat from the
-  // hands, so the joiner cannot choose who opens.
+  // hands — and, when the deal carries a double, places that double on the chain
+  // — so neither the joiner nor the host can choose who opens, or how.
   const state = dealMatchSafely();
   if (!state) {
     return { error: "Unable to deal the match", status: 500 } as const;
@@ -532,6 +535,11 @@ async function joinExistingMatch(
     // Another joiner raced us and won the conditional UPDATE.
     return { error: "Match is no longer available", status: 409 } as const;
   }
+
+  // The deal's own opening tile, logged now that the row really started. A
+  // racing joiner that lost the UPDATE above returns before this, so a match
+  // that was never created leaves no move behind.
+  await logOpeningPlacement(tx, String(candidateId), seats, state);
 
   return { match: updated, joined: true } as const;
 }
@@ -697,8 +705,13 @@ export async function createAiMatch({
       })
       .returning();
 
-    // The bot may have won the opening bid. Play it now, in the same
-    // transaction, so the returned row is never "waiting on the bot".
+    // The deal's own opening tile, if it came with one — logged at ply 0, by
+    // whichever seat the engine credited with the placement (the bot included).
+    await logOpeningPlacement(tx, String(match.id), seats, state);
+
+    // After the opening placement the turn belongs to the other seat, so the bot
+    // may still owe a turn. Play it now, in the same transaction, so the returned
+    // row is never "waiting on the bot".
     const afterBot = await playAiTurns(tx, match, state);
     if (afterBot === state) return { match, state } as const;
 
@@ -860,6 +873,36 @@ function terminalColumns(state: DominoesState, seats: Seats, now: Date) {
     turnDeadlineAt: null,
     currentTurnUserId: null,
   };
+}
+
+/**
+ * Log the deal's OWN opening placement, when the deal came with one.
+ *
+ * The highest double is played by the deal itself (`createInitialState`), so a
+ * match can start with a tile already on the chain and the move log has to
+ * explain it — otherwise the first thing a player reads is a board that has a
+ * tile none of the logged actions put there.
+ *
+ * It is recorded at ply 0: the turn number that was OPEN when it happened (the
+ * schema's own meaning for the column), which is also the version the first real
+ * action is taken against. `logValuesFrom` reads the placement off the state's
+ * own `lastAction`, so the tile and the end come from the engine, not from here.
+ * A deal with no double anywhere opens by hand and logs nothing yet.
+ */
+async function logOpeningPlacement(
+  tx: any,
+  matchId: string,
+  seats: Seats,
+  state: DominoesState,
+): Promise<void> {
+  const record = state.lastAction;
+  if (!record || record.action.type !== ACTION_TYPES.PLAY) return;
+  await tx.insert(dominoesMoves).values({
+    matchId,
+    ply: 0,
+    playerId: userIdForSeat(seats, record.seat) ?? "",
+    ...logValuesFrom(state, false),
+  });
 }
 
 /** The resolved action, as the move log records it. */

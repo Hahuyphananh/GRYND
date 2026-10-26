@@ -26,24 +26,28 @@
  *      earlier tile wins, and two disjoint hands can never share a tile, so the
  *      tie-break is total. The same deal therefore ALWAYS produces the same
  *      starting seat.
- *   4. Chain — one shared line of tiles with two open values, one at each end.
+ *   4. Opening play — the highest double is PLAYED by its holder as the round's
+ *      first tile: the deal returns a board that already carries it, the holder
+ *      six tiles and the turn with the other seat. A deal with no double is the
+ *      one exception — the highest-total seat opens by hand with any tile.
+ *   5. Chain — one shared line of tiles with two open values, one at each end.
  *      A tile is legal on an end when one of its halves equals that end's open
  *      value; the engine orients the tile (the matching half faces the chain,
  *      the other half becomes the new open value). A double is a tile whose
  *      halves are equal: it is displayed crosswise but matches like any other.
- *   5. Turn — a tile may only be played by the seat on turn, only from that
+ *   6. Turn — a tile may only be played by the seat on turn, only from that
  *      seat's own hand, and only when the match is still `playing`.
- *   6. Draw — a seat with NO legal tile draws one tile at a time and keeps the
+ *   7. Draw — a seat with NO legal tile draws one tile at a time and keeps the
  *      turn while it does; a drawn tile may be played immediately, and if it is
  *      not playable the seat draws again. Drawing is therefore legal only when
  *      nothing in hand is playable, and a playable tile may never be skipped.
- *   7. Pass — the pile is empty and the seat still cannot play.
- *   8. Victory — a hand that empties wins immediately. With the pile empty and
+ *   8. Pass — the pile is empty and the seat still cannot play.
+ *   9. Victory — a hand that empties wins immediately. With the pile empty and
  *      NEITHER seat able to play, the round is over: fewer remaining pips wins,
  *      and equal pips are a draw. This is checked after every accepted action,
  *      so a draw that empties the pile ends the round without a ceremonial
  *      pass.
- *   9. Terminal — a finished match accepts nothing further.
+ *  10. Terminal — a finished match accepts nothing further.
  *
  * WHAT THIS MODULE DELIBERATELY DOES NOT CONTAIN:
  *

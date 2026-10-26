@@ -494,22 +494,61 @@ test("createOrJoin: no deal exists until an opponent arrives, and only one is ev
   assert.equal(joined.joined, true);
   assert.equal(joined.match.player2Id, BOB);
   assert.equal(joined.match.status, MATCH_STATUS.PLAYING);
-  assert.equal(joined.match.ply, 0);
-  assert.equal(joined.match.p1Hand.length, 7);
-  assert.equal(joined.match.p2Hand.length, 7);
+  assert.equal(
+    joined.match.p1Hand.length + joined.match.p2Hand.length + joined.match.gameState.chain.length,
+    14,
+  );
   assert.equal(joined.match.drawPile.length, 14);
   assert.equal(
-    new Set([...joined.match.p1Hand, ...joined.match.p2Hand, ...joined.match.drawPile]).size,
+    new Set([
+      ...joined.match.p1Hand,
+      ...joined.match.p2Hand,
+      ...joined.match.drawPile,
+      ...joined.match.gameState.chain.map((tile) => tile.id),
+    ]).size,
     28,
     "the deal uses all 28 tiles exactly once",
   );
   assert.ok(joined.match.startedAt instanceof Date);
-  // The engine derives the opening seat from the deal, and the row follows it.
-  const openingSeat = joined.match.gameState.turn;
+
+  // The deal plays the highest double itself, so the opening tile is already on
+  // the chain: the holder is down to six tiles, ply counts the placement, and
+  // the row names the OTHER seat as the one to move. (A deal holding no double
+  // whatsoever — about 0.3% of them — is the one start left to the opener.)
+  const gameState = joined.match.gameState;
+  const openingSeat = gameState.startingSeat;
+  const openingHand = openingSeat === "player1" ? joined.match.p1Hand : joined.match.p2Hand;
+  const otherHand = openingSeat === "player1" ? joined.match.p2Hand : joined.match.p1Hand;
+  const placed = gameState.chain.length === 1;
+
+  assert.equal(joined.match.ply, placed ? 1 : 0);
+  assert.equal(openingHand.length, placed ? 6 : 7);
+  assert.equal(otherHand.length, 7);
+  assert.equal(
+    gameState.turn,
+    placed ? (openingSeat === "player1" ? "player2" : "player1") : openingSeat,
+  );
   assert.equal(
     joined.match.currentTurnUserId,
-    openingSeat === "player1" ? ALICE : BOB,
+    gameState.turn === "player1" ? ALICE : BOB,
   );
+  if (placed) {
+    assert.deepEqual(gameState.chain.map((tile) => tile.id), [gameState.startingTile]);
+    assert.equal(gameState.chain[0].isDouble, true);
+  }
+
+  // …and that placement is in the move log, at the turn number it was made at,
+  // credited to its author — so the board the players see is fully explained.
+  assert.equal(moveLog(fake).length, placed ? 1 : 0);
+  if (placed) {
+    const opening = moveLog(fake)[0];
+    assert.equal(opening.ply, 0);
+    assert.equal(opening.playerId, openingSeat === "player1" ? ALICE : BOB);
+    assert.equal(opening.action, "play");
+    assert.equal(opening.tile, gameState.startingTile);
+    assert.equal(opening.chainEnd, "left");
+    assert.equal(opening.timedOut, false);
+  }
   assert.equal(
     joined.match.turnDeadlineAt.getTime(),
     NOW + TURN_WINDOW_MS,
@@ -572,6 +611,72 @@ test("move: a legal play is derived, applied and logged", { skip: SKIP_REASON },
   assert.equal(logged.tile, "6-3");
   assert.equal(logged.chainEnd, "left");
   assert.equal(logged.timedOut, false);
+});
+
+test("a dealt match: the placement owns ply 0, the first real action is taken at ply 1", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+
+  await store.createOrJoin({ userId: ALICE, nowMs: NOW });
+  const joined = await store.createOrJoin({ userId: BOB, nowMs: NOW });
+  const matchId = joined.match.id;
+  const onTurn = joined.match.gameState.turn;
+  const mover = onTurn === "player1" ? ALICE : BOB;
+
+  // The version a client is shown right after the deal already counts the
+  // placement, and THAT is the version the first real action echoes back.
+  const read = await store.fetchMatch({ userId: mover, matchId, nowMs: NOW });
+  const placed = read.dto.chain.length === 1;
+  assert.equal(read.dto.version, placed ? 1 : 0);
+  assert.equal(read.dto.isViewerTurn, true);
+  assert.equal(read.dto.startingSeat, joined.match.gameState.startingSeat);
+  assert.equal(read.dto.startingTile ?? null, null, "the tile stays out of the DTO");
+
+  // Play whatever the projection says is legal, on the end it says. (A deal with
+  // no double anywhere is the one case that opens by hand, from an empty chain.)
+  const open = read.dto.openEnds;
+  const fitted = read.dto.chain.length
+    ? read.dto.hand
+        .map((candidate) => {
+          const [a, b] = String(candidate).split("-").map(Number);
+          if (a === open.left || b === open.left) return { type: "play", tile: candidate, end: "left" };
+          if (a === open.right || b === open.right) return { type: "play", tile: candidate, end: "right" };
+          return null;
+        })
+        .find(Boolean)
+    : { type: "play", tile: read.dto.hand[0] };
+  const action = fitted ?? (read.dto.drawPileCount > 0 ? { type: "draw" } : { type: "pass" });
+
+  const result = await store.move({
+    userId: mover,
+    matchId,
+    action,
+    expectedVersion: read.dto.version,
+    nowMs: NOW,
+  });
+  assert.ok(result.match, `the first action after the deal must be accepted (${JSON.stringify(action)})`);
+
+  // The log reads: the deal's placement at ply 0 when there was one, then this
+  // action at ply 1.
+  const history = await store.fetchMatchMoves(matchId);
+  assert.deepEqual(
+    history.map((row) => [row.ply, row.action]),
+    placed
+      ? [
+          [0, "play"],
+          [1, action.type],
+        ]
+      : [[0, action.type]],
+  );
+  if (placed) {
+    assert.equal(
+      history[0].playerId,
+      joined.match.gameState.startingSeat === "player1" ? ALICE : BOB,
+    );
+    assert.equal(history[0].tile, joined.match.gameState.startingTile);
+  }
+  assert.equal(history[history.length - 1].playerId, mover);
+  assert.equal(fake.rowsOf(dominoesMoves).length, history.length);
 });
 
 test("move: a draw takes one tile, keeps the turn and is allowed only when stuck", { skip: SKIP_REASON }, async (t) => {
