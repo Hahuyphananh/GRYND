@@ -13,6 +13,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 
 import {
   LANE_ORDER,
@@ -29,6 +30,7 @@ import {
   gridCars,
   gridProgress,
   headingOnLane,
+  headingOnRivalRing,
   laneLabelAnchors,
   laneRadii,
   normalizeProgress,
@@ -38,6 +40,12 @@ import {
   stallProgress,
   tierRingInset,
 } from "../src/components/lane-rush/ovalGeometry.js";
+import {
+  CAR_SPRITE_SIZE,
+  carSpriteFor,
+  carSpriteRotation,
+  carSpriteSize,
+} from "../src/components/lane-rush/carSprites.js";
 
 const near = (a, b, message) =>
   assert.ok(Math.abs(a - b) < 0.001, `${message} (${a} vs ${b})`);
@@ -163,6 +171,75 @@ test("tier dots grow with the tier and gain rings above Tier 1", () => {
 });
 
 // ════════════════════════════════════════════════════════════════════
+// Car sprites — tier/damage mapping, sizing and orientation
+// ════════════════════════════════════════════════════════════════════
+
+test("all four tiers map to their own artwork and damaged variant", () => {
+  const expected = {
+    1: ["compact.png", "compact-damaged.png"],
+    2: ["sport.png", "sport-damaged.png"],
+    3: ["supercar.png", "supercar-damaged.png"],
+    4: ["hypercar.png", "hypercar-damaged.png"],
+  };
+
+  for (const [tier, [intactAsset, damagedAsset]] of Object.entries(expected)) {
+    const intact = carSpriteFor({ tier: Number(tier) });
+    assert.equal(intact.tier, Number(tier));
+    assert.equal(intact.damaged, false, `Tier ${tier} starts undamaged`);
+    assert.equal(intact.src, `/images/lane-rush/cars/${intactAsset}`);
+
+    const damaged = carSpriteFor({ tier: Number(tier), damaged: true });
+    assert.equal(damaged.damaged, true);
+    assert.equal(damaged.src, `/images/lane-rush/cars/${damagedAsset}`);
+    assert.notEqual(damaged.src, intact.src, `Tier ${tier} has a distinct damaged asset`);
+
+    // Both files ship with the app; a missing asset is a hard failure.
+    assert.ok(fs.existsSync(`public${intact.src}`), `missing public${intact.src}`);
+    assert.ok(fs.existsSync(`public${damaged.src}`), `missing public${damaged.src}`);
+  }
+
+  const fallback = carSpriteFor({ tier: 99 });
+  assert.equal(fallback.tier, 1, "an unknown tier falls back to Tier 1");
+  assert.equal(fallback.src, "/images/lane-rush/cars/compact.png");
+  assert.equal(carSpriteFor().src, "/images/lane-rush/cars/compact.png");
+  assert.equal(
+    carSpriteFor({ tier: 3, damaged: true }).name,
+    "Supercar",
+    "damage never changes the car's identity",
+  );
+});
+
+test("sprite size grows modestly with the tier and stays inside its lane", () => {
+  assert.ok(carSpriteSize(1) < carSpriteSize(2));
+  assert.ok(carSpriteSize(2) < carSpriteSize(3));
+  assert.ok(carSpriteSize(3) < carSpriteSize(4));
+  assert.equal(carSpriteSize(99), CAR_SPRITE_SIZE[1], "an unknown tier keeps Tier 1's size");
+
+  // Half a sprite + the seat offset must stay inside the gap between lanes,
+  // so neighbouring route lanes can never overlap even for a Tier 4 car.
+  const lanePitch = LANE_RADII.safe.rx - LANE_RADII.sprint.rx;
+  for (const tier of [1, 2, 3, 4]) {
+    const size = carSpriteSize(tier);
+    assert.equal(size, CAR_SPRITE_SIZE[tier]);
+    assert.ok(size >= dotRadius(tier) * 2, `Tier ${tier} is at least as large as its old dot`);
+    assert.ok(size <= LANE_BAND_WIDTH + 2, `Tier ${tier} fits its lane band`);
+    assert.ok(
+      size / 2 + SEAT_RADIAL_OFFSET < lanePitch - LANE_BAND_WIDTH / 2,
+      `Tier ${tier} stays clear of the adjacent lane`,
+    );
+  }
+});
+
+test("nose-up artwork rotates to the screen-space direction of travel", () => {
+  // t=0 is the left edge travelling UP, t=0.25 the top travelling RIGHT.
+  near(carSpriteRotation(headingOnLane({ route: "safe", t: 0 })), 0, "left edge faces up");
+  near(carSpriteRotation(headingOnLane({ route: "safe", t: 0.25 })), 90, "top faces right");
+  near(carSpriteRotation(headingOnLane({ route: "safe", t: 0.5 })), 180, "right edge faces down");
+  near(carSpriteRotation(headingOnLane({ route: "risk", t: 0.75 })), 270, "bottom faces left");
+  assert.equal(carSpriteRotation(Number.NaN), 90, "a malformed heading falls back to rightwards");
+});
+
+// ════════════════════════════════════════════════════════════════════
 // The grid
 // ════════════════════════════════════════════════════════════════════
 
@@ -190,6 +267,35 @@ test("the rival ring parks a route-hidden grid outside every lane", () => {
   assert.ok(inner.x > outer.x, "the two seats never share a rival grid slot");
 });
 
+test("the rival grid faces along its own ellipse at every slot", () => {
+  for (const seat of ["player1", "player2"]) {
+    for (const t of [0, 0.1, 0.25, 0.5, 0.75, 0.98]) {
+      const here = pointOnRivalRing({ seat, t });
+      const ahead = pointOnRivalRing({ seat, t: t + 0.001 });
+      const tangent = (Math.atan2(ahead.y - here.y, ahead.x - here.x) * 180) / Math.PI;
+      const heading = headingOnRivalRing({ seat, t });
+      // Circular difference: a tangent of -180° and a heading of 180° match.
+      const delta = Math.abs(((heading - tangent + 540) % 360) - 180);
+      assert.ok(
+        delta < 0.6,
+        `${seat}@${t} is tangential to the rival ring (${heading} vs ${tangent})`,
+      );
+    }
+  }
+
+  // Cardinal points match the route lanes' convention: clockwise travel.
+  near(headingOnRivalRing({ seat: "player1", t: 0 }), -90, "the left slot faces up");
+  near(headingOnRivalRing({ seat: "player1", t: 0.25 }), 0, "the top slot faces right");
+  near(headingOnRivalRing({ seat: "player1", t: 0.5 }), 90, "the right slot faces down");
+  near(headingOnRivalRing({ seat: "player2", t: 0.75 }), 180, "the bottom slot faces left");
+
+  // A parked rival is not left pointing in one fixed direction.
+  const headings = [0, 0.25, 0.5, 0.75].map((t) =>
+    Math.round(headingOnRivalRing({ seat: "player2", t })),
+  );
+  assert.equal(new Set(headings).size, headings.length);
+});
+
 test("gridCars separates the viewer's routed cars from the hidden rival grid", () => {
   const cars = gridCars({
     mySeat: "player2",
@@ -212,6 +318,26 @@ test("gridCars separates the viewer's routed cars from the hidden rival grid", (
   assert.equal(theirs[0].route, null, "the opponent's route is not invented");
   assert.equal(theirs[0].seat, "player1");
   assert.ok(cars.every((car) => car.t < 0), "every grid car is behind the line");
+});
+
+test("a parked car carries its damaged flag to the sprite", () => {
+  const cars = gridCars({
+    mySeat: "player1",
+    myCars: [
+      {
+        id: "p1-damaged",
+        owner: "player1",
+        tier: 2,
+        status: "racing",
+        route: "safe",
+        damaged: true,
+      },
+    ],
+  });
+  assert.equal(cars.length, 1);
+  assert.equal(cars[0].damaged, true, "damage is carried, not inferred from the lane");
+  assert.equal(cars[0].tier, 2);
+  assert.equal(carSpriteFor({ tier: cars[0].tier, damaged: cars[0].damaged }).tier, 2);
 });
 
 // ════════════════════════════════════════════════════════════════════
@@ -295,6 +421,27 @@ test("a finished car crosses the line; a DNF stalls before it", () => {
     assert.ok(car.duration > 0.5 && car.duration <= 2.2);
     assert.ok(car.delay >= 0 && car.delay < 0.5);
   }
+});
+
+test("a confirmed DNF keeps its outcome and only changes the artwork", () => {
+  const playback = buildRacePlayback(LAST_RESULT);
+  const dnf = playback.cars.find((car) => car.outcome === "dnf");
+  assert.ok(dnf, "the payload's DNF stays a DNF");
+  assert.equal(dnf.points, 0);
+  assert.equal(dnf.to, stallProgress({ roll: 0.01 }), "the stall still comes from the server roll");
+  assert.equal(playback.finished, 2, "a damaged sprite is not a second race outcome");
+  assert.equal(playback.dnf, 1);
+
+  // The sprite choice is derived from the confirmed outcome, never the reverse.
+  assert.equal(
+    carSpriteFor({ tier: dnf.tier, damaged: dnf.outcome === "dnf" }).damaged,
+    true,
+  );
+  assert.equal(
+    carSpriteFor({ tier: dnf.tier, damaged: false }).damaged,
+    false,
+    "an intact car never borrows the damaged asset",
+  );
 });
 
 test("the same resolved round always animates identically", () => {

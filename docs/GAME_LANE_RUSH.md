@@ -218,11 +218,12 @@ top-down **oval circuit** built from pure SVG geometry:
   the same closed lap. A car's position is one normalized lap progress `t` in
   `[0, 1)`; `t = 0` is the start/finish line on the left and travel is clockwise.
   `src/components/lane-rush/ovalGeometry.js` owns that maths and is unit-tested.
-- **Blue dots are Player 1, red dots Player 2**; dot size (and rings) encode the
-  car tier. Deployed cars wait on their lane's grid; an opponent's deployed
-  cars wait on the neutral rival ring because their route stays private until
-  the round resolves.
-- The only moving dots are `buildRacePlayback(lastResult)` — a projection of the
+- **Blue-glowing cars are Player 1, red-glowing cars Player 2**; each tier has
+  its own top-down artwork, oriented along the lane tangent, and the sprite
+  grows modestly with the tier. Deployed cars wait on their lane's grid; an
+  opponent's deployed cars wait on the neutral rival ring because their route
+  stays private until the round resolves.
+- The only moving cars are `buildRacePlayback(lastResult)` — a projection of the
   round the **server already resolved**. A finished car crosses the line, a DNF
   stalls and is marked damaged in the garage. Scores count up to the confirmed
   value; the page never rolls, scores or decides a winner, and a reconnect

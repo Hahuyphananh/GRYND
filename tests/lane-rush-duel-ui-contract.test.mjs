@@ -41,6 +41,8 @@ const matchPage = read("src/app/casino/lane-runner/[matchId]/page.jsx");
 const oval = read("src/components/lane-rush/OvalTrack.jsx");
 const ovalMath = read("src/components/lane-rush/ovalGeometry.js");
 const garage = read("src/components/lane-rush/RaceGarage.jsx");
+const carSprite = read("src/components/lane-rush/CarSprite.jsx");
+const carSpriteData = read("src/components/lane-rush/carSprites.js");
 const store = read("src/lib/lane-rush-duel/serverStore.js");
 const actRoute = read("src/app/api/lane-rush-duel/match/[matchId]/act/route.js");
 const matchRoute = read("src/app/api/lane-rush-duel/match/[matchId]/route.js");
@@ -113,7 +115,7 @@ test("planning submits validated engine actions through the idempotent plan API"
   }
 });
 
-test("the board is one oval with route lanes, seat colours and tier-sized dots", () => {
+test("the board is one oval with route lanes, seat colours and tier-scaled car sprites", () => {
   assert.ok(page.includes("<OvalTrack"), "the match page renders the oval");
   assert.ok(
     oval.includes('viewBox={`0 0 ${TRACK_VIEWBOX.width} ${TRACK_VIEWBOX.height}`}'),
@@ -122,15 +124,68 @@ test("the board is one oval with route lanes, seat colours and tier-sized dots",
   assert.ok(oval.includes("LANE_ORDER.map"), "one band per route lane");
   assert.ok(oval.includes("finishSegments.map"), "a start/finish marking exists");
   assert.ok(oval.includes("directionChevrons()"), "the direction of travel is drawn");
-  assert.ok(oval.includes("pointOnLane("), "dots follow the mathematical ellipse");
+  assert.ok(oval.includes("pointOnLane("), "cars follow the mathematical ellipse");
   assert.ok(oval.includes("pointOnRivalRing("), "a route-hidden rival grid has its own ring");
-  assert.ok(oval.includes("dotRadius(car.tier)"), "dot size encodes the tier");
+  assert.ok(oval.includes("carSpriteSize("), "sprite size encodes the tier");
   assert.ok(ovalMath.includes("player1: Object.freeze({"), "seat colours live in the geometry module");
   assert.ok(ovalMath.includes('dot: "#38bdf8"'), "Player 1 is blue");
   assert.ok(ovalMath.includes('dot: "#fb7185"'), "Player 2 is red");
   assert.ok(ovalMath.includes('1: 7, 2: 9, 3: 11, 4: 13'), "tier radii are distinct");
-  assert.ok(!oval.includes("<img"), "no image asset is used");
-  assert.ok(!oval.includes("next/image"), "no generated car illustrations are imported");
+  assert.ok(oval.includes("<CarSprite"), "the board draws the shared car artwork");
+  assert.ok(oval.includes("headingOnLane("), "route cars face along their lane");
+  assert.ok(oval.includes("headingOnRivalRing("), "rival grid cars face along that grid's ellipse");
+  assert.ok(carSprite.includes("<image"), "the sprite renders a real image asset");
+});
+
+test("car sprites replace the dots on the track, in the fleet and in the merge replay", () => {
+  assert.ok(oval.includes('import CarSprite from "./CarSprite"'), "the board imports the shared sprite");
+  assert.ok(garage.includes('import CarSprite from "./CarSprite"'), "the garage imports the same sprite");
+  assert.ok(!oval.includes("function CarDot("), "the old dot renderer is gone");
+  assert.ok(!garage.includes("FleetDot"), "the old fleet dot is gone");
+  assert.ok(oval.includes("<CarMarker"), "grid and playback cars use the sprite marker");
+  assert.ok(oval.includes("carSpriteRotation("), "the sprite is rotated to the ellipse tangent");
+  assert.ok(
+    oval.includes('const damaged = car.outcome === "dnf"'),
+    "a confirmed DNF shows the damaged artwork",
+  );
+  assert.ok(
+    garage.includes("damaged={Boolean(car.damaged)}"),
+    "a damaged garage car shows the damaged artwork",
+  );
+
+  // The merge replay is still two sources converging into the confirmed tier.
+  const mergeStart = garage.indexOf("Merge replay");
+  const mergeEnd = garage.indexOf("{/* Buy + merge tools. */}", mergeStart);
+  assert.ok(mergeStart > 0 && mergeEnd > mergeStart, "the merge replay exists");
+  const merge = garage.slice(mergeStart, mergeEnd);
+  assert.equal((merge.match(/<CarSprite/g) || []).length, 3, "both sources and the result are sprites");
+  assert.ok(merge.includes("mergeAnim.tier + 1"), "the result is still the confirmed higher tier");
+
+  // Every tier's intact and damaged asset is mapped at the public path.
+  assert.ok(carSpriteData.includes('CAR_SPRITE_DIR = "/images/lane-rush/cars"'));
+  for (const asset of ["compact", "sport", "supercar", "hypercar"]) {
+    assert.ok(carSpriteData.includes(`${asset}.png`), `${asset} artwork is mapped`);
+    assert.ok(carSpriteData.includes(`${asset}-damaged.png`), `${asset} damaged artwork is mapped`);
+  }
+  assert.ok(carSprite.includes("onError"), "a missing image falls back safely");
+  assert.ok(carSprite.includes('role: "img"'), "a labelled sprite is exposed as an image");
+  assert.ok(carSprite.includes('"aria-hidden": true'), "an unlabelled sprite is decorative");
+});
+
+test("sprite rendering preserves selection, labels and reduced motion", () => {
+  assert.ok(oval.includes("selected={selected}"), "the selected grid car keeps its ring");
+  assert.ok(oval.includes("selected={crossed}"), "the finish crossing keeps its ring");
+  assert.ok(
+    oval.includes('showResults && car.outcome === "finished"'),
+    "points labels still render for a confirmed finish",
+  );
+  assert.match(oval, /DNF\s*<\/text>/, "the DNF label is still drawn");
+  assert.ok(oval.includes("car.outcome === \"finished\" && !reduced"), "the finish flash survives");
+  assert.ok(oval.includes("useReducedMotion"), "reduced motion stays supported");
+  assert.ok(oval.includes("enabled: !reduced"), "reduced motion still pins to confirmed endpoints");
+  // Selection still comes from the page's existing state.
+  assert.ok(page.includes("selectedCarId={selectedCarId}"));
+  assert.ok(page.includes("onSelectCar={"), "fleet selection is unchanged");
 });
 
 test("the oval is responsive and keeps the whole track on small screens", () => {

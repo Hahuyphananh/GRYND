@@ -149,13 +149,31 @@ export function pointOnRivalRing({ seat = "player2", t = 0 } = {}) {
   );
 }
 
+/** Screen-space tangent (degrees, clockwise) of an ellipse at `theta`. */
+function ellipseHeading(rx, ry, theta) {
+  const dx = -rx * Math.sin(theta);
+  const dy = ry * Math.cos(theta);
+  return (Math.atan2(dy, dx) * 180) / Math.PI;
+}
+
 /** Screen-space heading (degrees) of travel at progress `t`. */
 export function headingOnLane({ route = "safe", seat = "player1", t = 0 } = {}) {
   const { rx, ry } = laneRadii(route, seat);
   const theta = Math.PI + normalizeProgress(t) * Math.PI * 2;
-  const dx = -rx * Math.sin(theta);
-  const dy = ry * Math.cos(theta);
-  return (Math.atan2(dy, dx) * 180) / Math.PI;
+  return ellipseHeading(rx, ry, theta);
+}
+
+/**
+ * Screen-space heading (degrees) on the (route-hidden) rival grid ring. The
+ * grid is its own ellipse, so a parked rival car still faces along its ring
+ * instead of a fixed direction.
+ */
+export function headingOnRivalRing({ seat = "player2", t = 0 } = {}) {
+  const inset = seat === "player2" ? -8 : 8;
+  const rx = RIVAL_RADII.rx + inset;
+  const ry = RIVAL_RADII.ry + inset;
+  const theta = Math.PI + normalizeProgress(t) * Math.PI * 2;
+  return ellipseHeading(rx, ry, theta);
 }
 
 /** Where a DNF stops: deterministic from the server's authoritative roll. */
@@ -235,6 +253,7 @@ export function gridCars({ myCars = [], oppCars = [], mySeat = "player1" } = {})
       seat: seatOf(car, mySeat),
       tier: Number(car.tier) || 1,
       route: car.route || "safe",
+      damaged: Boolean(car.damaged),
       mine: true,
       index,
       radialOffset: (index - 1.5) * 2.2,
@@ -252,6 +271,7 @@ export function gridCars({ myCars = [], oppCars = [], mySeat = "player1" } = {})
       seat,
       tier: Number(car.tier) || 1,
       route: null,
+      damaged: Boolean(car.damaged),
       mine: false,
       index,
       radialOffset: (index - 1.5) * 2.2,

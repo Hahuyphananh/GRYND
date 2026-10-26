@@ -2,8 +2,8 @@
 
 // src/components/lane-rush/RaceGarage.jsx
 //
-// The player's fleet panel: every owned car as a coloured dot + tier card, with
-// the planning controls the rules actually allow.
+// The player's fleet panel: every owned car as its tier's artwork + tier card,
+// with the planning controls the rules actually allow.
 //
 // ALL of it is presentation over the authoritative state the server sends
 // (`myCars`, `myResources`, `actionPoints`, `phase`, `locked`). Each button
@@ -15,7 +15,7 @@
 //   * a newly purchased car (a car id that was not in the previous payload)
 //     pops in — `AnimatePresence` keys on the server's car id;
 //   * a merge is replayed only after the action succeeded (`mergeAnim`), and
-//     the merged dot is the real car the payload now contains.
+//     the merged car sprite is the real car the payload now contains.
 
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -42,51 +42,12 @@ import {
   mergedTier,
   tierName,
 } from "../../lib/lane-rush/rules";
+import CarSprite from "./CarSprite";
 
-const SEAT_DOT = {
-  player1: { fill: "#38bdf8", edge: "#e0f2fe", glow: "rgba(56,189,248,0.6)" },
-  player2: { fill: "#fb7185", edge: "#ffe4e6", glow: "rgba(251,113,133,0.6)" },
-};
-
-const DOT_SIZE = { 1: 10, 2: 12, 3: 15, 4: 18 };
-
-/** The HTML twin of the track dot: same seat colour, same tier scale. */
-export function FleetDot({ tier, seat = "player1", dim = false }) {
-  const colors = SEAT_DOT[seat] || SEAT_DOT.player1;
-  const size = DOT_SIZE[tier] || DOT_SIZE[1];
-  return (
-    <span
-      aria-hidden="true"
-      className="relative inline-flex h-6 w-6 shrink-0 items-center justify-center"
-      style={{ opacity: dim ? 0.55 : 1 }}
-    >
-      <span
-        className="absolute rounded-full"
-        style={{
-          width: size,
-          height: size,
-          background: colors.fill,
-          border: `1.5px solid ${colors.edge}`,
-          boxShadow: `0 0 10px ${colors.glow}`,
-        }}
-      />
-      {tier >= 2 && (
-        <span
-          className="absolute rounded-full"
-          style={{
-            width: Math.max(3, size - 5),
-            height: Math.max(3, size - 5),
-            border: `1px solid ${colors.edge}`,
-            opacity: 0.7,
-          }}
-        />
-      )}
-      {tier >= 3 && (
-        <span className="relative text-[8px] font-black text-slate-900">{tier}</span>
-      )}
-    </span>
-  );
-}
+/** Fleet thumbnail: the same artwork as the track, small enough to stay compact. */
+const FLEET_SPRITE_SIZE = 34;
+const MERGE_SPRITE_SIZE = 30;
+const MERGED_SPRITE_SIZE = 38;
 
 function Chip({ children, className = "" }) {
   return (
@@ -298,7 +259,7 @@ export default function RaceGarage({
         </span>
       </div>
 
-      {/* Merge replay: two confirmed dots converge, then the new tier appears. */}
+      {/* Merge replay: two confirmed cars converge, then the new tier appears. */}
       <AnimatePresence>
         {mergeAnim && (
           <motion.div
@@ -314,14 +275,14 @@ export default function RaceGarage({
               animate={{ x: -12, opacity: 1, scale: 1 }}
               transition={{ duration: 0.35, ease: "easeOut" }}
             >
-              <FleetDot tier={mergeAnim.tier} seat={seat} />
+              <CarSprite tier={mergeAnim.tier} seat={seat} size={MERGE_SPRITE_SIZE} />
             </motion.span>
             <motion.span
               initial={reduced ? false : { x: 46, opacity: 0, scale: 0.9 }}
               animate={{ x: 12, opacity: 1, scale: 1 }}
               transition={{ duration: 0.35, ease: "easeOut" }}
             >
-              <FleetDot tier={mergeAnim.tier} seat={seat} />
+              <CarSprite tier={mergeAnim.tier} seat={seat} size={MERGE_SPRITE_SIZE} />
             </motion.span>
             <motion.span
               initial={reduced ? false : { scale: 0.2, opacity: 0 }}
@@ -329,7 +290,11 @@ export default function RaceGarage({
               transition={{ delay: 0.36, duration: 0.5, ease: "easeOut" }}
               className="ml-1"
             >
-              <FleetDot tier={mergeAnim.tier + 1} seat={seat} />
+              <CarSprite
+                tier={mergeAnim.tier + 1}
+                seat={seat}
+                size={MERGED_SPRITE_SIZE}
+              />
             </motion.span>
           </motion.div>
         )}
@@ -427,7 +392,15 @@ export default function RaceGarage({
                 } ${isNew ? "shadow-[0_0_22px_-4px_rgba(56,189,248,0.75)]" : ""}`}
               >
                 <div className="flex items-start gap-2">
-                  <FleetDot tier={car.tier} seat={seat} dim={isRecovering} />
+                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center">
+                    <CarSprite
+                      tier={car.tier}
+                      damaged={Boolean(car.damaged)}
+                      seat={seat}
+                      size={FLEET_SPRITE_SIZE}
+                      style={isRecovering ? { opacity: 0.55 } : null}
+                    />
+                  </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[11px] font-black uppercase tracking-wide text-white">
                       {tierName(car.tier)}

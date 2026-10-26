@@ -11,12 +11,13 @@
 // opponent cars wait there while their route is still private (the server
 // hides it until the round resolves).
 //
-// Cars are coloured dots — blue = Player 1, red = Player 2 — sized by tier and
-// ringed so tiers stay distinguishable. Every position is one normalized lap
-// progress value (see ./ovalGeometry.js), and the only animation that leaves the
-// grid is `buildRacePlayback(lastResult)`: it re-plays the round the SERVER
-// already resolved. Nothing here scores, rolls or decides anything, and a
-// reduction in motion simply pins every dot to its confirmed endpoint.
+// Cars are top-down sprites — blue glow = Player 1, red glow = Player 2 — sized
+// by tier and oriented along the ellipse tangent, so a car always faces the
+// direction it is travelling. Every position is one normalized lap progress
+// value (see ./ovalGeometry.js), and the only animation that leaves the grid is
+// `buildRacePlayback(lastResult)`: it re-plays the round the SERVER already
+// resolved. Nothing here scores, rolls or decides anything, and a reduction in
+// motion simply pins every car to its confirmed endpoint.
 
 import { useEffect, useMemo, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
@@ -31,15 +32,17 @@ import {
   TRACK_VIEWBOX,
   buildRacePlayback,
   directionChevrons,
-  dotRadius,
   finishLineSegments,
   gridCars,
+  headingOnLane,
+  headingOnRivalRing,
   laneLabelAnchors,
   laneRadii,
   pointOnLane,
   pointOnRivalRing,
-  tierRingInset,
 } from "./ovalGeometry";
+import CarSprite from "./CarSprite";
+import { carSpriteRotation, carSpriteSize } from "./carSprites";
 
 const ROUTE_SHORT = {
   safe: "SAFE",
@@ -97,24 +100,28 @@ function carAriaLabel(car, { routeHidden = false } = {}) {
   return `${seatName} ${tierName}, ${routeName}`;
 }
 
-/** The dot itself: seat colour, tier size, tier rings, optional glow. */
-function CarDot({
+/**
+ * One car sprite, centred on its track position. The sprite is rotated to the
+ * ellipse tangent while the seat ring, title and result labels stay upright.
+ */
+function CarMarker({
   x,
   y,
   tier,
   seat,
+  heading = 0,
+  damaged = false,
   selected = false,
   dim = false,
   children,
 }) {
-  const radius = dotRadius(tier);
+  const size = carSpriteSize(tier);
   const colors = SEAT_COLORS[seat] || SEAT_COLORS.player1;
-  const inset = tierRingInset(tier);
   return (
     <g transform={`translate(${x} ${y})`} opacity={dim ? 0.55 : 1}>
       {selected && (
         <circle
-          r={radius + 7}
+          r={size / 2 + 6}
           fill="none"
           stroke={colors.dot}
           strokeWidth={1.4}
@@ -122,41 +129,19 @@ function CarDot({
           opacity={0.85}
         />
       )}
-      <circle r={radius + 2.5} fill={colors.glow} opacity={selected ? 0.5 : 0.28} />
-      <circle
-        r={radius}
-        fill={colors.dot}
-        stroke={colors.edge}
-        strokeWidth={1.3}
-        strokeOpacity={0.9}
-      />
-      {inset > 0 && (
-        <circle
-          r={Math.max(1.2, radius - inset)}
-          fill="none"
-          stroke={colors.edge}
-          strokeWidth={1.1}
-          strokeOpacity={0.65}
-        />
-      )}
-      {radius >= 11 && (
-        <text
-          textAnchor="middle"
-          dominantBaseline="central"
-          fontSize={7.5}
-          fontWeight={900}
-          fill="#0b1220"
-        >
-          {tier}
-        </text>
-      )}
+      {/* Rotate around the car's centre: shift the square so its middle is (0, 0). */}
+      <g
+        transform={`rotate(${carSpriteRotation(heading)}) translate(${-size / 2} ${-size / 2})`}
+      >
+        <CarSprite tier={tier} damaged={damaged} size={size} seat={seat} />
+      </g>
       {children}
     </g>
   );
 }
 
 /** A car parked on the start grid (planning phase). */
-function GridDot({ car, selected, reduced }) {
+function GridCar({ car, selected, reduced }) {
   const progress = useLapProgress({
     from: car.t - 0.028,
     to: car.t,
@@ -171,6 +156,10 @@ function GridDot({ car, selected, reduced }) {
         radialOffset: car.radialOffset,
       })
     : pointOnRivalRing({ seat: car.seat, t: progress });
+  // The rival grid has its own ellipse: parked rivals still point along it.
+  const heading = car.route
+    ? headingOnLane({ route: car.route, seat: car.seat, t: progress })
+    : headingOnRivalRing({ seat: car.seat, t: progress });
 
   return (
     <motion.g
@@ -178,22 +167,24 @@ function GridDot({ car, selected, reduced }) {
       animate={{ opacity: 1 }}
       transition={{ duration: 0.25 }}
     >
-      <CarDot
+      <CarMarker
         x={point.x}
         y={point.y}
         tier={car.tier}
         seat={car.seat}
+        heading={heading}
+        damaged={Boolean(car.damaged)}
         selected={selected}
         dim={!car.mine}
       >
         <title>{carAriaLabel(car, { routeHidden: !car.route })}</title>
-      </CarDot>
+      </CarMarker>
     </motion.g>
   );
 }
 
 /** One car replaying the round the server resolved. */
-function PlaybackDot({ car, reduced, showResults }) {
+function PlaybackCar({ car, reduced, showResults }) {
   const progress = useLapProgress({
     from: car.from,
     to: car.to,
@@ -211,6 +202,10 @@ function PlaybackDot({ car, reduced, showResults }) {
   const landed = car.outcome === "dnf" && progress >= car.to - 0.002;
   const crossed = car.outcome === "finished" && progress >= 0.995;
   const colors = SEAT_COLORS[car.seat] || SEAT_COLORS.player1;
+  const heading = headingOnLane({ route: car.route, seat: car.seat, t: progress });
+  const size = carSpriteSize(car.tier);
+  // The artwork follows the car's CONFIRMED outcome; it never changes it.
+  const damaged = car.outcome === "dnf";
 
   return (
     <g>
@@ -232,17 +227,19 @@ function PlaybackDot({ car, reduced, showResults }) {
         />
       )}
 
-      <CarDot
+      <CarMarker
         x={point.x}
         y={point.y}
         tier={car.tier}
         seat={car.seat}
+        heading={heading}
+        damaged={damaged}
         selected={crossed}
       >
         <title>
           {`${carAriaLabel(car)} — ${car.outcome === "dnf" ? "DNF" : `+${car.points} points`}`}
         </title>
-      </CarDot>
+      </CarMarker>
 
       {/* A DNF stalls with a single red pulse and a clear label. */}
       {car.outcome === "dnf" && (
@@ -254,7 +251,7 @@ function PlaybackDot({ car, reduced, showResults }) {
           <motion.circle
             cx={point.x}
             cy={point.y}
-            r={dotRadius(car.tier) + 5}
+            r={size / 2 + 6}
             fill="none"
             stroke="#fb7185"
             strokeWidth={1.6}
@@ -265,7 +262,7 @@ function PlaybackDot({ car, reduced, showResults }) {
             transition={{ duration: 0.9, repeat: landed && !reduced ? 1 : 0 }}
           />
           <text
-            x={point.x + dotRadius(car.tier) + 8}
+            x={point.x + size / 2 + 8}
             y={point.y + 3}
             fontSize={9}
             fontWeight={900}
@@ -278,7 +275,7 @@ function PlaybackDot({ car, reduced, showResults }) {
 
       {showResults && car.outcome === "finished" && car.points > 0 && (
         <motion.text
-          x={point.x + dotRadius(car.tier) + 8}
+          x={point.x + size / 2 + 8}
           y={point.y + 3}
           fontSize={9}
           fontWeight={900}
@@ -369,7 +366,7 @@ export default function OvalTrack({
 
   const aria = [
     "Oval racetrack: three concentric route lanes, Safe outside, Sprint in the middle, Risk inside.",
-    "Blue dots are Player 1, red dots Player 2. Travel is clockwise from the start/finish line on the left.",
+    "Cars glow blue for Player 1 and red for Player 2, facing the direction of travel, clockwise from the start/finish line on the left.",
   ].join(" ");
 
   return (
@@ -574,7 +571,7 @@ export default function OvalTrack({
 
         {/* Cars waiting on the grid for the round to resolve. */}
         {grid.map((car) => (
-          <GridDot
+          <GridCar
             key={car.key}
             car={car}
             reduced={reduced}
@@ -584,7 +581,7 @@ export default function OvalTrack({
 
         {/* Confirmed round playback — the only moving cars on this board. */}
         {racingPlayback.map((car) => (
-          <PlaybackDot
+          <PlaybackCar
             key={car.key}
             car={car}
             reduced={reduced}

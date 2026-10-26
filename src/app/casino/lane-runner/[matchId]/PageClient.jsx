@@ -1137,7 +1137,7 @@ export default function LaneRushMatchPage({ params }) {
             <span>Start/finish on the left · clockwise travel</span>
             <span>
               <span className="text-sky-300">Blue</span> = Player 1 ·{" "}
-              <span className="text-rose-300">Red</span> = Player 2 · dot size = tier
+              <span className="text-rose-300">Red</span> = Player 2 · car size = tier
             </span>
           </div>
 
