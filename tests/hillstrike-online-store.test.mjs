@@ -4,7 +4,7 @@
  * THE ONLINE HILLSTRIKE MATCH STORE, driven for real.
  *
  * The model under test, in one line: a client may only ever say WHAT IT DID (one
- * of the engine's three actions — shoot, drive or build) and WHICH VERSION it was
+ * of the engine's two actions — shoot or drive) and WHICH VERSION it was
  * looking at. The trajectory, the impact and its kind, the crater, both towers,
  * both HP pools, whose turn it is, the actions left in the turn, the block that
  * was placed, the winner and the match result are all derived by the SERVER from
@@ -47,9 +47,9 @@ import {
 import { simulateShot } from "../src/lib/hillstrike/physics.ts";
 import {
   applyAction,
-  buildPlacementFor,
   createInitialState,
   spawnXFor,
+  validateAction,
 } from "../src/lib/hillstrike/rules.ts";
 
 const MODULE_MOCKING_AVAILABLE = typeof mock?.module === "function";
@@ -312,9 +312,53 @@ const loadStore = () => import("../src/lib/hillstrike/serverStore.ts");
 
 // ── Fixtures ──────────────────────────────────────────────────────────────
 
+/**
+ * The opening position with the middle shot open and both tanks climbed into
+ * sight.
+ *
+ * The tower seals a fresh map, and the middle rise hides the far spawn from the
+ * near one, so a test that needs a DIRECT hit has to start from a position where
+ * one exists. The turn bookkeeping stays the opening row's: player1 to move, one
+ * action, ply 0 — only the board is a later position, reached the way a match
+ * reaches it (by driving, and by shooting the tower open).
+ */
+function sightedState(seed = SEED) {
+  const fresh = createInitialState({ seed, openingSeat: "player1" });
+  let walk = {
+    ...fresh,
+    battlefield: {
+      ...fresh.battlefield,
+      blocks: fresh.battlefield.blocks.filter((block) => block.kind !== "tower"),
+    },
+  };
+  const sees = (candidate) => {
+    try {
+      hitShot(candidate, "player1");
+      hitShot(candidate, "player2");
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  for (let guard = 0; guard < 40 && !sees(walk); guard++) {
+    const actor = walk.turn;
+    const drive = { type: "move", direction: "forward" };
+    if (!validateAction(walk, actor, drive).ok) break;
+    walk = applyAction(walk, actor, drive).state;
+  }
+  return {
+    ...fresh,
+    battlefield: {
+      ...fresh.battlefield,
+      blocks: walk.battlefield.blocks,
+      players: walk.battlefield.players,
+    },
+  };
+}
+
 /** A live match row on the opening position, player1 (Alice) to move. */
 function matchRow(overrides = {}) {
-  const state = overrides.gameState ?? createInitialState({ seed: SEED, openingSeat: "player1" });
+  const state = overrides.gameState ?? sightedState();
   return {
     id: MATCH_ID,
     player1Id: ALICE,
@@ -434,8 +478,9 @@ test("submitAction: a hit inside a two-action turn keeps the turn", { skip: SKIP
   const store = await loadStore();
 
   // The opening seat fires one shot out of bounds; Bob then owns a two-action turn.
-  const opening = outOfBoundsShot(createInitialState({ seed: SEED, openingSeat: "player1" }), "player1");
-  const state = stateAfter([["player1", shoot(opening)]]);
+  const sighted = sightedState();
+  const opening = outOfBoundsShot(sighted, "player1");
+  const state = applyAction(sighted, "player1", shoot(opening)).state;
   seedMatch(fake, rowFromState(state));
 
   const shot = hitShot(state, "player2");
@@ -455,7 +500,7 @@ test("submitAction: a hit inside a two-action turn keeps the turn", { skip: SKIP
   assert.equal(writers.rating.length, 0);
 });
 
-// ── Drives and builds through the store ───────────────────────────────────
+// ── Drives through the store ───────────────────────────────────────────────
 
 test("submitAction: a drive is persisted as an action with no aim and no impact", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
@@ -484,41 +529,24 @@ test("submitAction: a drive is persisted as an action with no aim and no impact"
   assert.equal(logged.outcome.hp.player1, MAX_HP);
 });
 
-test("submitAction: a build is persisted with the block it placed", { skip: SKIP_REASON }, async (t) => {
+test("submitAction: a build is not an action any more, so it is refused before it is logged", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   const store = await loadStore();
-  const row = seedMatch(fake);
-  const blocksBefore = row.gameState.battlefield.blocks.length;
-  // A build names the tile; the store sends it through the engine unchanged.
-  const placement = buildPlacementFor(row.gameState, "player1");
-  assert.ok(placement, "player1 has a legal tile to build on");
+  seedMatch(fake);
 
   const result = await store.submitAction({
     userId: ALICE,
     matchId: MATCH_ID,
     expectedVersion: 0,
-    action: { type: "build", x: placement.x, y: placement.y },
+    action: { type: "build", x: 200, y: 400 },
   });
 
-  assert.equal(result.state.battlefield.blocks.length, blocksBefore + 1);
-  assert.equal(result.state.lastAction.type, "build");
-  const block = result.state.battlefield.blocks.find(
-    (candidate) => candidate.id === result.state.lastAction.blockId,
-  );
-  assert.ok(block, "the placed block is on the board");
-  assert.equal(block.seat, "player1");
-  assert.equal(block.kind, "cover");
-  assert.equal(block.x, placement.x);
-  assert.equal(block.y, placement.y);
-
-  const [logged] = shotLog(fake);
-  assert.equal(logged.action, "build");
-  assert.equal(logged.angleDeg, null);
-  assert.equal(logged.impactKind, null);
-  assert.equal(logged.damage, 0);
+  assert.equal(result.status, 400, "a build is not an action the engine knows");
+  assert.equal(result.code, "invalid-action");
+  assert.equal(shotLog(fake).length, 0, "nothing is written for a refused action");
 });
 
-test("submitAction: a drive or a build the engine refuses is a clean 409", { skip: SKIP_REASON }, async (t) => {
+test("submitAction: a drive the engine refuses is a clean 409", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   const store = await loadStore();
   const row = seedMatch(fake);
@@ -562,7 +590,7 @@ test("submitAction: zero HP ends the match and settles exactly once", { skip: SK
   const store = await loadStore();
 
   // Bob is one hit from elimination, Alice to move.
-  const base = createInitialState({ seed: SEED, openingSeat: "player1" });
+  const base = sightedState();
   const state = { ...base, hp: { player1: MAX_HP, player2: 1 } };
   const row = seedMatch(fake, rowFromState(state));
 
@@ -800,17 +828,21 @@ test("replay: the stored row reproduces the engine from its own seed and actions
     action: second,
   });
 
-  const replay = stateAfter([
-    ["player1", first],
-    ["player2", second],
-  ]);
+  const replay = applyAction(
+    applyAction(sightedState(), "player1", first).state,
+    "player2",
+    second,
+  ).state;
   assert.equal(Number(row.seed), SEED);
   assert.deepEqual(row.gameState, replay, "the persisted state is the engine's own");
+  // The row keeps the board it was dealt: the same ground, and the same tanks.
   assert.deepEqual(
-    row.initialBattlefield,
-    createInitialState({ seed: Number(row.seed), openingSeat: "player1" }).battlefield,
-    "the seed reproduces the layout that was dealt",
+    row.initialBattlefield.terrain,
+    createInitialState({ seed: Number(row.seed), openingSeat: "player1" }).battlefield
+      .terrain,
+    "the seed reproduces the ground that was dealt",
   );
+  assert.deepEqual(row.initialBattlefield.players, replay.battlefield.players);
   assert.equal(shotLog(fake).length, 2);
   assert.equal(shotLog(fake)[1].damage, replay.lastAction.damage);
 });

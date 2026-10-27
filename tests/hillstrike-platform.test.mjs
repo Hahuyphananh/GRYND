@@ -249,7 +249,12 @@ test("quick queue: Hillstrike is a destination that routes to its own matchmakin
 
   // The destination is the game's OWN store, and both seats land on one id.
   const store = read(STORE);
-  assert.match(store, /export async function createOrJoin\(\{ userId \}/);
+  // The lobby chooses the clock; the quick queue does not, so it takes the
+  // default. Either way the store is the one place a match row is opened.
+  assert.match(
+    store,
+    /export async function createOrJoin\(\{\s*userId,\s*durationMs,\s*\}/,
+  );
   assert.match(store, /return \{ match: updated, joined: true \} as const;/);
 });
 

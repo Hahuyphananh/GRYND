@@ -7,15 +7,16 @@
 // ── TRUST BOUNDARY ───────────────────────────────────────────────────────
 //
 // The ONLY player-authored values that reach this module are the ACTION
-// (`{ type: "shoot", angleDeg, power }`, `{ type: "move", direction }` or
-// `{ type: "build" }`) and the optimistic-concurrency token `expectedVersion`.
-// The trajectory, the collision point and kind, the crater, both towers, both
-// HP pools, whose turn it is, the actions remaining in the turn, the placed
-// block, the winner and the match result are ALL computed from the server's own
-// authoritative state by the shared engine (`validateAction` → `applyAction` →
-// `simulateShot`). A client cannot submit a board, a hit, a damage amount, an HP
-// total, a position, a block, a terrain height, a winner, a result or a
-// completion flag — no such field is ever read.
+// (`{ type: "shoot", angleDeg, power }` or `{ type: "move", direction }`), the
+// optimistic-concurrency token `expectedVersion` and, at matchmaking, the clock
+// the lobby is opened with. The trajectory, the collision point and kind, the
+// crater, both towers, both HP pools, whose turn it is, the actions remaining in
+// the turn, the winner, a timed-out draw and the match result are ALL computed
+// from the server's own authoritative state by the shared engine
+// (`validateAction` → `applyAction` → `simulateShot` / `finishOnTime`). A client
+// cannot submit a board, a hit, a damage amount, an HP total, a position, a
+// block, a terrain height, a winner, a result or a completion flag — no such
+// field is ever read.
 //
 // ── CONCURRENCY ──────────────────────────────────────────────────────────
 //
@@ -46,6 +47,16 @@
 // Online Hillstrike is UNSTAKED: no wager is taken and no pot is paid. Only Elo,
 // trophies and the account W/L counters move.
 //
+// ── THE CLOCK ────────────────────────────────────────────────────────────
+//
+// A match is created with a fixed duration (5, 10 or 15 minutes) and its clock
+// starts when the second seat joins. The deadline is `startedAt + durationMs` and
+// it is resolved by `resolveTimeout`, which the match view calls when its
+// countdown reaches zero: inside the row lock the SERVER checks its own clock,
+// asks the engine for the verdict (`finishOnTime` — more HP wins, level HP draws)
+// and writes the terminal row exactly once. A draw changes no rating and pays
+// nothing, exactly like a drawn duel on the rest of the platform.
+//
 // AI PRACTICE IS A DIFFERENT PROGRAM. The vs-AI board
 // (src/app/casino/hillstrike/play-ai) runs entirely in the browser against
 // src/lib/hillstrike/ai.ts: it has no match row, no socket and no API call, so it
@@ -60,14 +71,17 @@ import { hillstrikeMatches, hillstrikeShots, users } from "../../db/schema";
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
 import {
+  DEFAULT_MATCH_DURATION_MS,
   END_REASONS,
   HILLSTRIKE_LOCK_NAMESPACE,
+  isMatchDurationMs,
   MATCH_STATUS,
   REJECTION,
 } from "./constants";
 import {
   applyAction,
   createInitialState,
+  finishOnTime,
   hpMapOf,
   otherSeat,
   validateAction,
@@ -181,6 +195,21 @@ export function stateOf(match: MatchRow): HillstrikeState {
   return match.gameState as HillstrikeState;
 }
 
+/**
+ * When a live match's clock runs out, or `null` when it has no clock yet (still
+ * an open lobby, or a legacy row with no `started_at`).
+ */
+export function deadlineFor(match: {
+  startedAt?: Date | string | null;
+  durationMs?: number | null;
+}): number | null {
+  if (!match.startedAt) return null;
+  const started = new Date(match.startedAt).getTime();
+  const duration = Number(match.durationMs ?? DEFAULT_MATCH_DURATION_MS);
+  if (!Number.isFinite(started) || !Number.isFinite(duration) || duration <= 0) return null;
+  return started + duration;
+}
+
 /** The status a live row should carry, derived from the engine's own state. */
 export function statusForState(state: HillstrikeState): string {
   return state.status === MATCH_STATUS.FINISHED
@@ -244,6 +273,11 @@ export function matchToDto(match: MatchRow, viewerId: string | null) {
     player2Id: match.player2Id ?? null,
     startedAt: match.startedAt ?? null,
     endedAt: match.endedAt ?? null,
+    // The clock: the duration the lobby was created with, and the deadline the
+    // match view counts down to. Resolving it is a server call, never a local
+    // verdict.
+    durationMs: Number(match.durationMs ?? DEFAULT_MATCH_DURATION_MS),
+    deadlineAt: deadlineFor(match),
   };
 }
 
@@ -289,12 +323,25 @@ export async function listMyWaitingMatch({ userId }: { userId: string }) {
  * can never join a lobby that is being cancelled at the same moment.
  *
  * Hillstrike is unstaked, so there is no stake matching here: every open lobby is
- * joinable. The seed (and therefore the battlefield and the opening seat) is
- * drawn when the LOBBY is created, so both seats see the same ground from the
- * moment the second one arrives, and the host is not left staring at a blank
- * board.
+ * joinable. The CLOCK is matched too — a 5-minute lobby is only offered to a
+ * caller who also asked for five minutes, so a match can never start with two
+ * seats holding different clocks. The seed (and therefore the battlefield and the
+ * opening seat) is drawn when the LOBBY is created, so both seats see the same
+ * ground from the moment the second one arrives, and the host is not left staring
+ * at a blank board.
  */
-export async function createOrJoin({ userId }: { userId: string }) {
+export async function createOrJoin({
+  userId,
+  durationMs,
+}: {
+  userId: string;
+  durationMs?: unknown;
+}) {
+  const duration = durationMs === undefined ? DEFAULT_MATCH_DURATION_MS : durationMs;
+  if (!isMatchDurationMs(duration)) {
+    return { error: "Unknown match duration", status: 400 } as const;
+  }
+
   return await db.transaction(async (tx) => {
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(${HILLSTRIKE_LOCK_NAMESPACE}, 0)`,
@@ -307,6 +354,7 @@ export async function createOrJoin({ userId }: { userId: string }) {
         and(
           eq(hillstrikeMatches.status, MATCH_STATUS.WAITING),
           isNull(hillstrikeMatches.player2Id),
+          eq(hillstrikeMatches.durationMs, duration),
         ),
       )
       .orderBy(sql`${hillstrikeMatches.createdAt} ASC`)
@@ -320,11 +368,11 @@ export async function createOrJoin({ userId }: { userId: string }) {
       return await joinExistingMatch(tx, open.id, userId);
     }
 
-    return await createWaitingMatch(tx, userId);
+    return await createWaitingMatch(tx, userId, duration);
   });
 }
 
-async function createWaitingMatch(tx: any, userId: string) {
+async function createWaitingMatch(tx: any, userId: string, durationMs: number) {
   // The battlefield is generated here, once, from a server-drawn seed: both
   // seats play the same layout no matter when the second one joins, and the
   // opening seat is the seed's deterministic draw (recorded on the state).
@@ -344,6 +392,9 @@ async function createWaitingMatch(tx: any, userId: string) {
       openingSeat: state.openingSeat,
       initialBattlefield: state.battlefield,
       gameState: state,
+      // The clock this lobby offers. Both seats get the same one, because a
+      // joiner is only matched to a lobby with the clock it asked for.
+      durationMs,
       // Nobody can act yet, so no turn owner is named.
       currentTurnUserId: null,
     })
@@ -494,7 +545,7 @@ function statusForRejection(code: string): number {
 }
 
 /**
- * Take one action — fire, drive or build.
+ * Take one action — fire or drive.
  *
  * The request carries ONLY the action plus `expectedVersion`. Rejections, in
  * order:
@@ -508,7 +559,7 @@ function statusForRejection(code: string): number {
  *   409 it is not the caller's turn
  *   409 no actions left in this turn
  *   400 malformed action (unknown type, angle/power out of range, bad direction)
- *   409 the engine refuses the action (no room to drive, no room to build)
+ *   409 the engine refuses the action (no room to drive that way)
  *
  * `validateAction` then `applyAction` run inside the same row-locked transaction
  * as the write, so nothing about the outcome is trusted from the request and no
@@ -608,8 +659,8 @@ export async function submitAction({
         playerId: userId,
         seat,
         action: record.type,
-        // Only a shot has an aim and an impact; a drive or a build leaves them
-        // null rather than inventing a zero that would read as a real shot.
+        // Only a shot has an aim and an impact; a drive leaves them null rather
+        // than inventing a zero that would read as a real shot.
         angleDeg: shot ? shot.shot.angleDeg : null,
         power: shot ? shot.shot.power : null,
         impactKind: shot ? shot.impact.kind : null,
@@ -695,6 +746,130 @@ export async function submitAction({
     }
     throw error;
   }
+}
+
+// ── The clock ────────────────────────────────────────────────────────────
+
+/** What resolving an expired clock reports. */
+export type TimeoutResult =
+  | {
+      match: MatchRow;
+      state: HillstrikeState;
+      /** The winner the engine named, or `null` for a level-HP draw. */
+      winnerSeat: Seat | null;
+      /** True when THIS call ended the match (false if it was already over). */
+      expired: boolean;
+    }
+  | StoreError;
+
+/**
+ * Resolve a match whose clock has run out.
+ *
+ * Called by the match view when its countdown reaches zero — and by both clients
+ * at once, since a match is watched from both sides. The row lock plus the
+ * conditional `status = 'playing'` UPDATE is what makes that safe: whoever gets
+ * there first settles the match, and the second call finds it terminal and
+ * reports the SAME row instead of a second result.
+ *
+ * The SERVER checks its own clock (`startedAt + durationMs`); a client that asks
+ * early gets a 409 with the time left rather than a verdict. The verdict itself
+ * is the engine's `finishOnTime`: more HP wins, equal HP is a draw. A draw writes
+ * `result: null` with reason `timed-out`, and `settleMatch` deliberately awards
+ * nothing for it — a drawn duel moves no Elo and no trophy on this platform.
+ */
+export async function resolveTimeout({
+  userId,
+  matchId,
+}: {
+  userId: string;
+  matchId: string;
+}): Promise<TimeoutResult> {
+  return await db.transaction(async (tx) => {
+    const [match] = await tx
+      .select()
+      .from(hillstrikeMatches)
+      .where(eq(hillstrikeMatches.id, matchId))
+      .for("update");
+
+    if (!match) return { error: "Match not found", status: 404 } as const;
+
+    const seats = seatsFromRow(match);
+    if (!seatForUser(seats, userId)) {
+      return { error: "Not a participant of this match", status: 403 } as const;
+    }
+
+    // Already terminal: report it, never rewrite it.
+    if (
+      match.status === MATCH_STATUS.FINISHED ||
+      match.status === MATCH_STATUS.CANCELLED ||
+      match.status === MATCH_STATUS.WAITING ||
+      !match.player2Id
+    ) {
+      return {
+        match,
+        state: stateOf(match),
+        winnerSeat: (match.result as Seat | null) ?? null,
+        expired: false,
+      } as const;
+    }
+
+    const deadline = deadlineFor(match);
+    if (deadline === null) {
+      return { error: "This match has no clock", status: 409 } as const;
+    }
+    if (Date.now() < deadline) {
+      return { error: "The clock has not run out yet", status: 409 } as const;
+    }
+
+    const state = stateOf(match);
+    const finished = finishOnTime(state);
+    const next = finished.state;
+    const winnerSeat: Seat | null = next.winner ?? null;
+
+    const [updated] = await tx
+      .update(hillstrikeMatches)
+      .set({
+        gameState: next,
+        status: MATCH_STATUS.FINISHED,
+        result: winnerSeat,
+        winnerId: winnerSeat ? userIdForSeat(seats, winnerSeat) : null,
+        resultReason: END_REASONS.TIMED_OUT,
+        currentTurnUserId: null,
+        endedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(hillstrikeMatches.id, match.id),
+          eq(hillstrikeMatches.status, MATCH_STATUS.PLAYING),
+        ),
+      )
+      .returning();
+
+    if (!updated) {
+      // A shot or a resignation settled it first — that result stands.
+      const [current] = await tx
+        .select()
+        .from(hillstrikeMatches)
+        .where(eq(hillstrikeMatches.id, match.id));
+      const settled = current ?? match;
+      return {
+        match: settled,
+        state: stateOf(settled),
+        winnerSeat: (settled.result as Seat | null) ?? null,
+        expired: false,
+      } as const;
+    }
+
+    // A draw passes no seat, which is exactly how settleMatch refuses to award
+    // anything for it.
+    await settleMatch(tx, match, {
+      result: winnerSeat,
+      reason: END_REASONS.TIMED_OUT,
+    });
+
+    return { match: updated, state: next, winnerSeat, expired: true } as const;
+  });
 }
 
 // ── Forfeit / cancel / disconnect ────────────────────────────────────────
@@ -957,9 +1132,10 @@ export type SettlementOutcome = {
  * with no match row, so it can never reach this function. A match with no second
  * seat is an open lobby, not a result, and returns above.
  *
- * Hillstrike cannot draw — the engine's only terminal reason is
- * `hp-depleted`, and a resignation or a disconnect forfeit names a winner — so
- * there is no draw branch here.
+ * A DRAW IS POSSIBLE, and it awards nothing: a timed match with level HP ends
+ * with `result: null`, so `settleMatch` returns before it touches a rating or a
+ * trophy (the platform's own rule — a draw pays nobody). A knockout, a
+ * resignation and a disconnect forfeit always name a winner.
  */
 async function settleMatch(
   tx: any,

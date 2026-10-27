@@ -3942,6 +3942,10 @@ export const hillstrikeMatches = pgTable(
     seed: bigint("seed", { mode: "number" }).notNull(),
     // The generator/physics version the match was created under.
     fieldVersion: integer("field_version").notNull(),
+    // The match clock, chosen when the lobby was opened (5 / 10 / 15 minutes in
+    // ms, see MATCH_DURATION_OPTIONS_MS). The deadline is `started_at +
+    // duration_ms`, and it is resolved server-side by `resolveTimeout`.
+    durationMs: integer("duration_ms").notNull().default(600000),
     // 'player1' | 'player2' — the seat drawn to fire the opening shot.
     openingSeat: varchar("opening_seat", { length: 8 }).notNull(),
     // The generated layout, kept so a stored match replays against the ground the

@@ -1,16 +1,14 @@
 // src/app/api/hillstrike/match/[matchId]/shot/route.ts
 //
-// POST — take one action: fire, drive or build.
+// POST — take one action: fire or drive.
 //
 // The request body carries ONLY:
 //
 //   { action: { type: "shoot", angleDeg, power }, expectedVersion }
 //   { action: { type: "move", direction: "forward" | "back" }, expectedVersion }
-//   { action: { type: "build", x, y }, expectedVersion }
 //
-// A build names the TILE the player picked; the engine snaps it to the cover
-// grid, refuses anything off the builder's own half (or unsupported, or already
-// occupied) and derives the block itself.
+// There is no build action: the only structures on the board are the two base
+// roofs and the middle tower, and both are dealt by the generator.
 //
 // Everything else a client might send — a trajectory, an impact, a hit, a damage
 // amount, an HP total, a block id, a terrain height, a tower layout, whose turn

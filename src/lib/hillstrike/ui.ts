@@ -167,6 +167,21 @@ export function isIncomingSnapshotStale(
   return currentTerminal && !incomingTerminal;
 }
 
+/**
+ * The match clock as `m:ss`, from the milliseconds left on the server's deadline.
+ *
+ * Presentation only: the DEADLINE and the verdict are the server's (`durationMs`,
+ * `deadlineAt`, and the `timeout` route). This function never decides that time
+ * is up.
+ */
+export function clockLabel(ms: unknown): string {
+  const remaining = Number(ms);
+  const total = Number.isFinite(remaining) ? Math.max(0, Math.ceil(remaining / 1000)) : 0;
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 /** Seconds between two instants, or null when either is unusable. */
 export function durationSeconds(startedAt: unknown, endedAt: unknown): number | null {
   if (!startedAt || !endedAt) return null;
@@ -178,11 +193,12 @@ export function durationSeconds(startedAt: unknown, endedAt: unknown): number | 
 
 /**
  * Why the match ended, as a sentence. The server records the reason; the client
- * only names it (the engine itself can only ever produce `hp-depleted`).
+ * only names it (the engine itself produces `hp-depleted` or, when the clock runs
+ * out, `timed-out` — which can be a draw).
  */
 export function resultReasonLabel(
   reason: unknown,
-  outcome: "win" | "loss" | null,
+  outcome: "win" | "loss" | "draw" | null,
 ): string {
   switch (String(reason ?? "")) {
     case "resigned":
@@ -194,7 +210,8 @@ export function resultReasonLabel(
         ? "Your opponent left and did not return — the match was awarded to you."
         : "You left the match and did not return — it was awarded to your opponent.";
     case "timed-out":
-      return "The match ran out of time.";
+      if (outcome === "draw") return "The clock ran out — level HP is a draw.";
+      return "The clock ran out — the tank with more HP takes it.";
     case "hp-depleted":
       return outcome === "win"
         ? "You knocked out your opponent's tank."

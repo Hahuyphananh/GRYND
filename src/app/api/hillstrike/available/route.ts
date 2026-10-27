@@ -42,6 +42,9 @@ export async function GET() {
         player1Id: row.player1Id,
         status: row.status,
         seed: Number(row.seed),
+        // The clock this lobby plays. It is part of the offer: a joiner is only
+        // matched to a lobby whose duration it asked for.
+        durationMs: Number(row.durationMs),
         createdAt: row.createdAt,
       })),
       myOpenMatchId: mine?.id ?? null,

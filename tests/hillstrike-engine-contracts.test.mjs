@@ -3,10 +3,10 @@
  *
  * The rule suite pins each rule in isolation. This suite pins them TOGETHER, the
  * way a real match runs them: full scripted turns (both opening seats), hits
- * that keep a turn alive, hits that end the match mid-turn, drives and builds
- * sharing the same action budget, out-of-bounds shots, malformed and
- * stale/duplicate actions at the boundary, and the hard limits (ticks, substeps,
- * path points, collapse). Every shot here is produced by searching the engine's
+ * that keep a turn alive, hits that end the match mid-turn, drives sharing the
+ * same action budget as a shot, tower blocks breaking in place, out-of-bounds
+ * shots, malformed and stale/duplicate actions at the boundary, and the hard
+ * limits (ticks, substeps, path points). Every shot here is produced by searching the engine's
  * own simulation for the line that does what the case needs, so the cases cannot
  * silently stop testing what they claim.
  *
@@ -19,7 +19,7 @@ import assert from "node:assert/strict";
 import {
   ACTION_TYPES,
   ACTIONS_PER_TURN,
-  BATTLEFIELD_WIDTH,
+  BASE_ROOF_BLOCKS,
   BLOCK_MAX_INTEGRITY,
   HIT_DAMAGE_MAX,
   IMPACT_KINDS,
@@ -27,7 +27,7 @@ import {
   MAX_HP,
   MAX_PATH_POINTS,
   MAX_STRUCTURE_BLOCKS,
-  MAX_STRUCTURE_BLOCKS_PER_SEAT,
+  MAX_TOWER_BLOCKS,
   MIN_PLAYER_SEPARATION,
   MOVE_STEP,
   OPENING_ACTIONS,
@@ -35,6 +35,7 @@ import {
   REJECTION,
   STRUCTURE_BLOCK_SIZE,
   TERRAIN_COLUMNS,
+  TOWER_BLOCK_INTEGRITY,
   TERRAIN_MAX_SURFACE_Y,
   TERRAIN_MIN_SURFACE_Y,
 } from "../src/lib/hillstrike/constants.ts";
@@ -42,11 +43,11 @@ import { createBattlefield, validateBattlefield } from "../src/lib/hillstrike/ge
 import { aimFromDrag, createProjectileSpec, simulateShot } from "../src/lib/hillstrike/physics.ts";
 import {
   applyAction,
-  buildPlacementFor,
   createInitialState,
   hpOf,
   isHillstrikeRuleError,
   tryApplyAction,
+  validateAction,
 } from "../src/lib/hillstrike/rules.ts";
 
 const SEATS = ["player1", "player2"];
@@ -63,6 +64,68 @@ function simulate(state, seat, shot) {
     shot,
     projectile: state.projectile,
   });
+}
+
+/**
+ * The same match with a lane already shot through the middle tower.
+ *
+ * A fresh battlefield has no spawn-to-spawn line at all — the tower seals it, and
+ * that is its own test. Every case below that needs a DIRECT hit is therefore
+ * staged the way a real match reaches it: the tower has been broken open. Nothing
+ * else about the state changes.
+ */
+function breached(state) {
+  return {
+    ...state,
+    battlefield: {
+      ...state.battlefield,
+      blocks: state.battlefield.blocks.filter((block) => block.kind !== "tower"),
+    },
+  };
+}
+
+/**
+ * A real mid-match position: the tower breached and BOTH tanks climbed into
+ * sight, with the acting seat at the start of a fresh two-action turn.
+ *
+ * The map hides the far spawn behind the middle rise, so a fresh board offers no
+ * direct line at all even with the tower gone — that is a property of the
+ * battlefield, not of the engine. Every hit-based case below is therefore staged
+ * the way a match reaches that position: by driving. The walk is engine-authored
+ * (`validateAction` + `applyAction`), so the staged state is one a real match can
+ * actually be in. Memoised, because the staging is deterministic.
+ */
+const sightCache = new Map();
+function duelInSight(seed, openingSeat) {
+  const key = `${seed}:${openingSeat}`;
+  const cached = sightCache.get(key);
+  if (cached) return cached;
+
+  let state = breached(createInitialState({ seed, openingSeat }));
+  const sees = (candidate) => {
+    try {
+      hitShot(candidate, "player1");
+      hitShot(candidate, "player2");
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  for (let guard = 0; guard < 60; guard++) {
+    assert.equal(state.status, MATCH_STATUS.PLAYING, "staging must not end the match");
+    if (state.actionsRemaining === ACTIONS_PER_TURN && sees(state)) {
+      sightCache.set(key, state);
+      return state;
+    }
+    const actor = state.turn;
+    const drive = { type: ACTION_TYPES.MOVE, direction: "forward" };
+    const action = validateAction(state, actor, drive).ok
+      ? drive
+      : shoot(outOfBoundsShot(state, actor));
+    state = applyAction(state, actor, action).state;
+  }
+  throw new Error(`could not stage a duel in sight for seed ${seed}`);
 }
 
 /**
@@ -134,16 +197,28 @@ function outOfBoundsShot(state, seat) {
 
 test("turns: the opening seat takes one action, then every turn is exactly two", () => {
   for (const openingSeat of SEATS) {
-    let state = createInitialState({ seed: 424242, openingSeat });
-    const timeline = [
-      { turn: state.turn, actions: state.actionsRemaining, index: state.turnIndex },
-    ];
+    // 1. The opening single, on a fresh board.
+    const fresh = breached(createInitialState({ seed: 424242, openingSeat }));
+    assert.equal(fresh.turn, openingSeat);
+    assert.equal(fresh.actionsRemaining, OPENING_ACTIONS);
+    const answered = applyAction(
+      fresh,
+      openingSeat,
+      shoot(outOfBoundsShot(fresh, openingSeat)),
+    ).state;
+    assert.equal(answered.turn, other(openingSeat), "the answering seat gets the next turn");
+    assert.equal(answered.actionsRemaining, ACTIONS_PER_TURN);
+
+    // 2. The two-action volley, played out to a knockout from a position where
+    //    both tanks can see each other. The counter must not care whether an
+    //    action connects, so the script alternates hits and misses.
+    let state = duelInSight(424242, openingSeat);
+    const timeline = [];
     let guard = 0;
 
     while (state.status === MATCH_STATUS.PLAYING && guard < 40) {
+      timeline.push({ turn: state.turn, actions: state.actionsRemaining });
       const shooter = state.turn;
-      // Alternate between hitting and breaking cover: the counter must not care
-      // whether an action connects.
       let shot;
       try {
         shot = guard % 3 === 0 ? hitShot(state, shooter) : blockShot(state, shooter);
@@ -152,28 +227,15 @@ test("turns: the opening seat takes one action, then every turn is exactly two",
       }
       state = applyAction(state, shooter, shoot(shot)).state;
       guard += 1;
-      if (state.status === MATCH_STATUS.PLAYING) {
-        timeline.push({
-          turn: state.turn,
-          actions: state.actionsRemaining,
-          index: state.turnIndex,
-        });
-      }
     }
 
     assert.equal(state.status, MATCH_STATUS.FINISHED, "the scripted match must terminate");
     assert.ok(guard >= 3, "a match cannot end before three actions");
 
-    // Action 0 is the opening single-action turn: the turn passes immediately.
-    assert.equal(timeline[0].index, 0);
-    assert.equal(timeline[0].actions, OPENING_ACTIONS);
-    assert.equal(timeline[1].turn, other(openingSeat), "the answering seat gets the next turn");
-    assert.equal(timeline[1].actions, ACTIONS_PER_TURN);
-
     // Everything after the opening is a pair: the same seat twice, then swap.
-    for (let index = 1; index + 1 < timeline.length; index += 2) {
+    for (let index = 0; index + 1 < timeline.length; index += 2) {
       assert.equal(timeline[index].turn, timeline[index + 1].turn, "a turn is two actions");
-      assert.equal(timeline[index].actions, 2);
+      assert.equal(timeline[index].actions, ACTIONS_PER_TURN);
       assert.equal(timeline[index + 1].actions, 1);
       if (timeline[index + 2]) {
         assert.equal(
@@ -187,18 +249,18 @@ test("turns: the opening seat takes one action, then every turn is exactly two",
 });
 
 test("turns: two hits in one turn both land, and the turn still passes", () => {
-  let state = createInitialState({ seed: 42, openingSeat: "player1" });
-  const shooter = "player2";
+  const start = duelInSight(42, "player1");
+  const shooter = start.turn;
+  const victim = other(shooter);
 
-  state = applyAction(state, "player1", shoot(outOfBoundsShot(state, "player1"))).state;
-  assert.equal(state.turn, shooter);
+  assert.equal(start.actionsRemaining, ACTIONS_PER_TURN, "staged at the start of a turn");
 
-  const first = shoot(hitShot(state, shooter));
-  const afterFirst = applyAction(state, shooter, first).state;
+  const first = shoot(hitShot(start, shooter));
+  const afterFirst = applyAction(start, shooter, first).state;
 
-  assert.ok(hpOf(afterFirst, "player1") < MAX_HP);
+  assert.ok(hpOf(afterFirst, victim) < MAX_HP);
   assert.equal(
-    hpOf(afterFirst, "player1"),
+    hpOf(afterFirst, victim),
     MAX_HP - afterFirst.lastAction.damage,
     "the HP taken is the damage the engine resolved",
   );
@@ -206,61 +268,43 @@ test("turns: two hits in one turn both land, and the turn still passes", () => {
   assert.equal(afterFirst.actionsRemaining, 1);
   assert.equal(afterFirst.status, MATCH_STATUS.PLAYING);
 
-  const hpAfterFirst = hpOf(afterFirst, "player1");
+  const hpAfterFirst = hpOf(afterFirst, victim);
   const second = shoot(hitShot(afterFirst, shooter));
   const afterSecond = applyAction(afterFirst, shooter, second).state;
 
-  assert.ok(hpOf(afterSecond, "player1") < hpAfterFirst, "the second hit also lands");
-  assert.equal(afterSecond.turn, "player1", "the turn passes after its second action");
+  assert.ok(hpOf(afterSecond, victim) < hpAfterFirst, "the second hit also lands");
+  assert.equal(afterSecond.turn, victim, "the turn passes after its second action");
   assert.equal(afterSecond.actionsRemaining, ACTIONS_PER_TURN);
-  assert.equal(afterSecond.turnIndex, 3);
+  assert.equal(afterSecond.turnIndex, afterFirst.turnIndex + 1);
 });
 
 test("turns: a knockout on the FIRST action ends the match and voids the second", () => {
-  let state = createInitialState({ seed: 7, openingSeat: "player2" });
-
-  /** Burn misses until `seat` owns a FRESH two-action turn. */
-  const passToFreshTurn = (seat) => {
-    let guard = 0;
-    while (
-      state.status === MATCH_STATUS.PLAYING &&
-      (state.turn !== seat || state.actionsRemaining !== ACTIONS_PER_TURN) &&
-      guard < 12
-    ) {
-      const shooter = state.turn;
-      state = applyAction(state, shooter, shoot(outOfBoundsShot(state, shooter))).state;
-      guard += 1;
-    }
-    assert.ok(guard < 12, `could not reach a fresh turn for ${seat}`);
-  };
-
-  passToFreshTurn("player2");
-  assert.equal(state.turn, "player2");
-  assert.equal(state.actionsRemaining, ACTIONS_PER_TURN);
+  let state = duelInSight(7, "player2");
 
   // One hit from elimination: the engine reads its own HP field, so staging the
   // victim on 1 HP is exactly the position a real duel arrives at.
-  state = { ...state, hp: { ...state.hp, player1: 1 } };
-  const lethal = applyAction(state, "player2", shoot(hitShot(state, "player2")));
+  const victim = other(state.turn);
+  state = { ...state, hp: { ...state.hp, [victim]: 1 } };
+  const lethal = applyAction(state, state.turn, shoot(hitShot(state, state.turn)));
   const ended = lethal.state;
 
   assert.equal(ended.status, MATCH_STATUS.FINISHED);
-  assert.equal(ended.winner, "player2");
+  assert.equal(ended.winner, state.turn);
   assert.equal(ended.terminationReason, "hp-depleted");
-  assert.equal(ended.hp.player1, 0);
+  assert.equal(ended.hp[victim], 0);
   assert.equal(ended.actionsRemaining, 0, "the turn dies with the match");
   assert.ok(
-    lethal.events.some((event) => event.type === "match-ended" && event.winner === "player2"),
+    lethal.events.some((event) => event.type === "match-ended" && event.winner === ended.winner),
     "the animation stream carries the terminal event",
   );
 
-  const denied = tryApplyAction(ended, "player2", shoot(hitShot(state, "player2")));
+  const denied = tryApplyAction(ended, ended.winner, shoot(hitShot(state, state.turn)));
   assert.equal(denied.ok, false);
   assert.equal(denied.code, REJECTION.MATCH_NOT_PLAYING);
 });
 
 test("turns: HP never goes below zero, and a hit never exceeds the damage cap", () => {
-  let state = createInitialState({ seed: 987654, openingSeat: "player2" });
+  let state = duelInSight(987654, "player2");
   let actions = 0;
   while (state.status === MATCH_STATUS.PLAYING && actions < 40) {
     const shooter = state.turn;
@@ -282,7 +326,7 @@ test("turns: HP never goes below zero, and a hit never exceeds the damage cap", 
 });
 
 /* -------------------------------------------------------------------------- *
- * Drives and builds share the same budget as a shot
+ * Drives share the same budget as a shot; the tower is the structure that matters
  * -------------------------------------------------------------------------- */
 
 test("actions: a drive spends one action and changes nothing but the tank", () => {
@@ -321,39 +365,49 @@ test("actions: drive-then-fire is a legal two-action turn", () => {
   assert.equal(fired.state.turnIndex, state.turnIndex + 2);
 });
 
-test("actions: build-then-fire is a legal two-action turn, and the block is real cover", () => {
+test("actions: a tower block takes the hit, and the turn continues", () => {
   let state = createInitialState({ seed: 424242, openingSeat: "player1" });
   state = applyAction(state, "player1", shoot(outOfBoundsShot(state, "player1"))).state;
+  assert.equal(state.turn, "player2");
 
-  // A build names the tile it wants; the engine derives the block itself.
-  const placement = buildPlacementFor(state, "player2");
-  assert.ok(placement, "player2 has somewhere legal to build");
-  const built = applyAction(state, "player2", {
-    type: ACTION_TYPES.BUILD,
-    x: placement.x,
-    y: placement.y,
-  }).state;
-  const added = built.battlefield.blocks.length - state.battlefield.blocks.length;
-  assert.equal(added, 1, "a build places exactly one block");
-  assert.equal(built.turn, "player2");
-  assert.equal(built.actionsRemaining, 1);
-  assert.equal(built.lastAction.type, "build");
-
-  const block = built.battlefield.blocks.find(
-    (candidate) => candidate.id === built.lastAction.blockId,
+  // A line into the middle wall (found by the engine, not hard-coded).
+  const towerIds = new Set(
+    state.battlefield.blocks.filter((block) => block.kind === "tower").map((block) => block.id),
   );
-  assert.ok(block, "the record names the block");
-  assert.equal(block.seat, "player2");
-  assert.equal(block.kind, "cover");
-  assert.equal(block.integrity, BLOCK_MAX_INTEGRITY);
-  assert.equal(block.size, STRUCTURE_BLOCK_SIZE);
-  assert.ok(block.x + block.size < built.battlefield.players.player2.x, "cover faces the enemy");
+  let shot = null;
+  for (let angle = 94; angle <= 176 && !shot; angle += 1) {
+    for (let power = 40; power <= 100; power += 2) {
+      const impact = simulate(state, "player2", { angleDeg: angle, power }).impact;
+      if (impact.kind === IMPACT_KINDS.BLOCK && towerIds.has(impact.blockId)) {
+        shot = { angleDeg: angle, power };
+        break;
+      }
+    }
+  }
+  assert.ok(shot, "the tower is reachable from the spawn");
 
-  const fired = applyAction(built, "player2", shoot(outOfBoundsShot(built, "player2")));
-  assert.equal(fired.state.turn, "player1");
+  const before = state.battlefield.blocks.length;
+  const hit = applyAction(state, "player2", shoot(shot));
+  const after = hit.state;
+
+  assert.equal(after.turn, "player2", "the turn continues after the action");
+  assert.equal(after.actionsRemaining, 1);
+  assert.equal(after.lastAction.type, "shoot");
+  assert.equal(after.lastAction.impact.kind, IMPACT_KINDS.BLOCK);
+  assert.ok(
+    hit.events.some(
+      (event) => event.type === "block-damaged" || event.type === "block-destroyed",
+    ),
+    "the tower block records the damage",
+  );
+  assert.ok(
+    after.battlefield.blocks.length <= before,
+    "the tower only ever loses blocks, it never grows",
+  );
+  assert.equal(validateBattlefield(after.battlefield).ok, true);
 });
 
-test("actions: a finished match refuses all three action types", () => {
+test("actions: a finished match refuses every action", () => {
   const finished = Object.freeze({
     ...createInitialState({ seed: 3, openingSeat: "player1" }),
     status: MATCH_STATUS.FINISHED,
@@ -366,7 +420,6 @@ test("actions: a finished match refuses all three action types", () => {
   for (const action of [
     shoot({ angleDeg: 45, power: 80 }),
     { type: ACTION_TYPES.MOVE, direction: "forward" },
-    { type: ACTION_TYPES.BUILD },
   ]) {
     const refused = tryApplyAction(finished, "player1", action);
     assert.equal(refused.ok, false);
@@ -472,46 +525,34 @@ test("boundary: malformed payloads are refused with a specific code, state untou
   assert.equal(applyAction(state, seat, padded).state.hp.player2, MAX_HP);
 });
 
-test("boundary: a build cannot be used to smuggle a block, only to name a tile", () => {
-  const state = createInitialState({ seed: 42, openingSeat: "player1" });
-  const placement = buildPlacementFor(state, "player1");
-  assert.ok(placement);
+test("boundary: a shot cannot smuggle a hit, a target, a block or a winner", () => {
+  const state = breached(createInitialState({ seed: 42, openingSeat: "player1" }));
 
-  const clean = { type: "build", x: placement.x, y: placement.y };
-  // Everything else a client might attach is ignored: the block's id, size,
-  // integrity, kind and owner are all derived by the engine.
+  const clean = { angleDeg: 60, power: 80 };
+  // Everything else a client might attach is ignored: where the shell goes, what
+  // it meets, the damage, the HP and the winner are all derived by the engine.
   const padded = {
     ...clean,
+    damage: 99,
+    target: "player2",
     blockId: 999,
-    seat: "player2",
-    size: 999,
-    integrity: 5,
-    kind: "roof",
+    x: 0,
+    y: 0,
+    hp: 0,
+    winner: "player1",
   };
-  const plain = applyAction(state, "player1", clean).state;
-  const smuggled = applyAction(state, "player1", padded).state;
+  const plain = applyAction(state, "player1", shoot(clean)).state;
+  const smuggled = applyAction(state, "player1", shoot(padded)).state;
 
-  assert.deepEqual(smuggled.battlefield.blocks, plain.battlefield.blocks);
+  assert.deepEqual(smuggled.battlefield, plain.battlefield);
+  assert.deepEqual(smuggled.hp, plain.hp);
   assert.deepEqual(smuggled.lastAction, plain.lastAction);
-  assert.notEqual(plain.lastAction.blockId, 999);
-  const block = plain.battlefield.blocks.find((entry) => entry.id === plain.lastAction.blockId);
-  assert.equal(block.seat, "player1", "the owner is the actor, never the payload");
-  assert.equal(block.kind, "cover");
-  assert.equal(block.size, STRUCTURE_BLOCK_SIZE);
-  assert.equal(block.integrity, BLOCK_MAX_INTEGRITY);
-
-  // The tile IS validated: the opponent's half is refused outright.
-  const acrossTheLine = tryApplyAction(state, "player1", {
-    type: "build",
-    x: BATTLEFIELD_WIDTH / 2,
-    y: placement.y,
-  });
-  assert.equal(acrossTheLine.ok, false);
-  assert.equal(acrossTheLine.code, REJECTION.BUILD_OPPONENT_HALF);
+  assert.equal(smuggled.winner, null);
+  assert.notEqual(plain.lastAction.damage, 99);
 });
 
 test("boundary: duplicate and stale actions cannot double-apply or replay a cached outcome", () => {
-  const state = createInitialState({ seed: 1, openingSeat: "player1" });
+  const state = breached(createInitialState({ seed: 1, openingSeat: "player1" }));
   const shot = shoot(hitShot(state, "player1"));
 
   // 1. The same call twice is pure: identical results, and neither mutates input.
@@ -531,7 +572,7 @@ test("boundary: duplicate and stale actions cannot double-apply or replay a cach
 
   // 3. Inside a two-action turn the same payload IS legal twice (two separate
   //    actions), and each one applies exactly once.
-  let state2 = createInitialState({ seed: 2, openingSeat: "player2" });
+  let state2 = breached(createInitialState({ seed: 2, openingSeat: "player2" }));
   state2 = applyAction(state2, "player2", shoot(outOfBoundsShot(state2, "player2"))).state;
   assert.equal(state2.turn, "player1");
   assert.equal(state2.actionsRemaining, ACTIONS_PER_TURN);
@@ -544,7 +585,7 @@ test("boundary: duplicate and stale actions cannot double-apply or replay a cach
 
   // 4. A STALE action (resolved against an older battlefield) is re-validated and
   //    re-simulated against the CURRENT one: no cached outcome is replayed.
-  let staleState = createInitialState({ seed: 2, openingSeat: "player2" });
+  let staleState = breached(createInitialState({ seed: 2, openingSeat: "player2" }));
   staleState = applyAction(staleState, "player2", shoot(outOfBoundsShot(staleState, "player2"))).state;
   assert.equal(staleState.turn, "player1");
 
@@ -578,7 +619,7 @@ test("boundary: duplicate and stale actions cannot double-apply or replay a cach
 });
 
 test("boundary: the shooter may hit themselves, and it costs them HP", () => {
-  const state = createInitialState({ seed: 3, openingSeat: "player1" });
+  const state = breached(createInitialState({ seed: 3, openingSeat: "player1" }));
   const selfShot = (() => {
     for (let angle = 150; angle <= 210; angle += 0.5) {
       for (let power = 40; power <= 100; power += 2) {
@@ -613,11 +654,18 @@ test("generation: 300 seeds reproduce byte-identically and validate", () => {
     }
     assert.ok(field.blocks.length <= MAX_STRUCTURE_BLOCKS);
     const perSeat = SEATS.map((seat) => field.blocks.filter((block) => block.seat === seat).length);
-    assert.deepEqual(perSeat, [perSeat[0], perSeat[0]], "both seats get the same tower");
-    assert.ok(perSeat[0] <= MAX_STRUCTURE_BLOCKS_PER_SEAT);
+    assert.deepEqual(perSeat, [BASE_ROOF_BLOCKS, BASE_ROOF_BLOCKS], "each seat gets the same roof");
+    const tower = field.blocks.filter((block) => block.kind === "tower");
+    assert.ok(tower.length > 0, `seed ${seed} must deal the middle tower`);
+    assert.ok(tower.length <= MAX_TOWER_BLOCKS);
     for (const block of field.blocks) {
       assert.equal(block.size, STRUCTURE_BLOCK_SIZE);
-      assert.equal(block.integrity, BLOCK_MAX_INTEGRITY);
+      if (block.kind === "tower") {
+        assert.equal(block.seat, null, "the tower belongs to neither seat");
+        assert.equal(block.integrity, TOWER_BLOCK_INTEGRITY);
+      } else {
+        assert.equal(block.integrity, BLOCK_MAX_INTEGRITY);
+      }
       assert.ok(block.x >= 0 && block.x + block.size <= field.width);
       assert.ok(block.y >= 0 && block.y + block.size <= field.height);
     }
@@ -635,7 +683,7 @@ test("generation: 300 seeds reproduce byte-identically and validate", () => {
   }
 });
 
-test("generation: the two starting positions and their cover are mirrored", () => {
+test("generation: the two starting positions and their roofs are mirrored", () => {
   for (let seed = 0; seed < 200; seed++) {
     const field = createBattlefield(seed);
     const last = TERRAIN_COLUMNS - 1;
@@ -659,7 +707,7 @@ test("generation: the two starting positions and their cover are mirrored", () =
         .join("|");
     const left = field.blocks.filter((block) => block.seat === "player1").map(mirror);
     const right = field.blocks.filter((block) => block.seat === "player2");
-    assert.equal(signature(left), signature(right), `seed ${seed}: towers are not mirrored`);
+    assert.equal(signature(left), signature(right), `seed ${seed}: roofs are not mirrored`);
 
     assert.equal(
       field.players.player1.y,

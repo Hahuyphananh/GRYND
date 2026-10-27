@@ -11,14 +11,17 @@
 //
 //   { action: { type: "shoot", angleDeg, power }, expectedVersion }
 //   { action: { type: "move", direction }, expectedVersion }
-//   { action: { type: "build" }, expectedVersion }
+//
+// and, when its countdown reaches zero, an empty POST to the match's `timeout`
+// route — which carries no verdict either: the SERVER compares its own clock and
+// the engine's `finishOnTime` names the winner (more HP) or a draw (level HP).
 //
 // No trajectory, no impact, no hit, no damage, no HP total, no position, no
 // block, no terrain, no tower layout, no turn owner, no winner and no completion
 // flag is ever sent — and none is ever derived locally as truth. What the player
 // sees is the server's `gameState`, the server's `isViewerTurn`, the server's
-// `actionsRemaining` and the server's `result` / `winnerId` / `resultReason` for
-// the result screen.
+// `actionsRemaining`, the server's `deadlineAt` and the server's `result` /
+// `winnerId` / `resultReason` for the result screen.
 //
 // The engine is used here for ONE thing: the dotted aiming preview, which runs
 // the same `simulateShot` the server runs so a drag shows where the shot would
@@ -53,9 +56,9 @@ import {
   IconArrowLeft,
   IconArrowRight,
   IconBolt,
+  IconClock,
   IconDoorExit,
   IconFlag,
-  IconShieldPlus,
   IconTargetArrow,
 } from "@tabler/icons-react";
 
@@ -76,9 +79,9 @@ import {
 } from "../../../../lib/hillstrike/rooms";
 import { MAX_HP, TICK_MS } from "../../../../lib/hillstrike/constants";
 import { simulateShot } from "../../../../lib/hillstrike/physics";
-import { hpOf, resolveBuildPlacement } from "../../../../lib/hillstrike/rules";
-import type { Vec2 } from "../../../../lib/physics2d/kinematics";
+import { hpOf } from "../../../../lib/hillstrike/rules";
 import {
+  clockLabel,
   durationSeconds,
   hpFor,
   hpLabel,
@@ -139,9 +142,6 @@ export default function HillstrikeMatchPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [aim, setAim] = useState<ShotInput | null>(null);
-  // True while the viewer is choosing WHERE a cover block goes. The click adapts
-  // the world point, the engine validates it, the server decides.
-  const [placingBlock, setPlacingBlock] = useState(false);
   const [animation, setAnimation] = useState<HillstrikeAnimation | null>(null);
   const [resolving, setResolving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -155,6 +155,12 @@ export default function HillstrikeMatchPage() {
   const abortRef = useRef<AbortController | null>(null);
   const matchRef = useRef<any>(null);
   const timersRef = useRef<number[]>([]);
+  // One shared wall clock for the countdown, so the header re-renders on a tick
+  // rather than on every poll.
+  const [now, setNow] = useState<number>(() => Date.now());
+  // The timeout POST is attempted at most once per match view; a refusal (the
+  // server's clock is a second behind) resets it for the next tick.
+  const timeoutRequestedRef = useRef(false);
 
   const clearTimers = useCallback(() => {
     for (const timer of timersRef.current) window.clearTimeout(timer);
@@ -167,7 +173,6 @@ export default function HillstrikeMatchPage() {
     setMatch(null);
     setLoadError(null);
     setAim(null);
-    setPlacingBlock(false);
     setAnimation(null);
     setResolving(false);
     setSubmitting(false);
@@ -175,9 +180,17 @@ export default function HillstrikeMatchPage() {
     setShowForfeitConfirm(false);
     setShowReportModal(false);
     matchRef.current = null;
+    timeoutRequestedRef.current = false;
     clearTimers();
     return clearTimers;
   }, [matchId, clearTimers]);
+
+  // The countdown's own tick. It only drives the display; the VERDICT is the
+  // server's (see the timeout effect below).
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 500);
+    return () => window.clearInterval(id);
+  }, []);
 
   /**
    * Install a snapshot. When the version advanced and the server attached a
@@ -347,6 +360,14 @@ export default function HillstrikeMatchPage() {
     viewerSeat,
     userId: user?.id,
   });
+  // A level-HP clock expiry has no winner seat, which the shared result screen
+  // calls a draw.
+  const resultOutcome = outcome ?? "draw";
+
+  // The clock: the server sends the deadline, the client only counts down to it.
+  const deadline = Number(match?.deadlineAt) || null;
+  const clockMs =
+    status === "playing" && deadline ? Math.max(0, deadline - now) : 0;
 
   const shots = Array.isArray(match?.shots) ? match.shots : [];
 
@@ -389,7 +410,6 @@ export default function HillstrikeMatchPage() {
 
       setSubmitting(true);
       setNotice(null);
-      setPlacingBlock(false);
       try {
         const res = await fetch(`${apiMatch}/shot`, {
           method: "POST",
@@ -435,30 +455,34 @@ export default function HillstrikeMatchPage() {
   );
 
   /**
-   * Build is a MODE: the button arms placement and the battlefield click spends
-   * the action. Pressing Build again cancels without spending anything.
+   * The clock ran out. Ask the server to resolve it; the engine names the winner
+   * (more HP) or a draw (level HP), and the terminal snapshot it returns is what
+   * this view renders. Both seats will call this; the server settles once.
    */
-  const build = useCallback(() => {
-    if (!canPlay) return;
-    setAim(null);
-    setNotice(null);
-    setPlacingBlock((placing) => !placing);
-  }, [canPlay]);
-
-  /** Send the tile the player clicked, or explain why the engine refuses it. */
-  const placeBlock = useCallback(
-    (point: Vec2) => {
-      if (!state || !viewerSeat || !canPlay) return;
-      const verdict = resolveBuildPlacement(state, viewerSeat, point.x, point.y);
-      if (!verdict.ok) {
-        setNotice((verdict as Extract<typeof verdict, { ok: false }>).message);
+  const requestTimeout = useCallback(async () => {
+    try {
+      const res = await fetch(`${apiMatch}/timeout`, { method: "POST" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        // The server's clock is a moment behind ours: try again on the next tick.
+        timeoutRequestedRef.current = false;
+        refresh();
         return;
       }
-      const placement = (verdict as Extract<typeof verdict, { ok: true }>).placement;
-      void sendAction({ type: "build", x: placement.x, y: placement.y });
-    },
-    [canPlay, sendAction, state, viewerSeat],
-  );
+      adopt(data.data.match);
+      socket?.emit(HILLSTRIKE_READY, { matchId });
+      refresh();
+    } catch {
+      timeoutRequestedRef.current = false;
+    }
+  }, [adopt, apiMatch, matchId, refresh, socket]);
+
+  useEffect(() => {
+    if (status !== "playing" || !deadline || clockMs > 0) return;
+    if (timeoutRequestedRef.current) return;
+    timeoutRequestedRef.current = true;
+    void requestTimeout();
+  }, [clockMs, deadline, requestTimeout, status]);
 
   const forfeit = useCallback(async () => {
     if (!match || forfeiting) return;
@@ -587,145 +611,129 @@ export default function HillstrikeMatchPage() {
           data-version={match?.version ?? 0}
           className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8"
         >
-          <div className="mx-auto max-w-6xl">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h1 className="logo-text flex items-center gap-2 text-2xl font-black uppercase tracking-[0.08em] text-[#7cefff] drop-shadow-[0_0_16px_rgba(0,229,255,0.45)] sm:text-3xl">
-                  <IconTargetArrow className="h-7 w-7 text-cyan-300" aria-hidden="true" />
+          <div className="mx-auto flex max-w-[1800px] flex-col px-1 pb-3 sm:px-2">
+            {/* Header: the match, its clock, and both tanks. */}
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <h1 className="logo-text flex items-center gap-1.5 text-lg font-black uppercase tracking-[0.08em] text-[#7cefff] drop-shadow-[0_0_16px_rgba(0,229,255,0.45)] sm:text-2xl">
+                  <IconTargetArrow className="h-5 w-5 text-cyan-300" aria-hidden="true" />
                   Hillstrike
                 </h1>
-                <p className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-widest text-white/55">
-                  <span>1v1 · {MAX_HP} HP each</span>
-                  <span className="rounded-full border border-emerald-400/40 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold tracking-wider text-emerald-200">
-                    Free &amp; rated
-                  </span>
-                </p>
-              </div>
-              <span
-                data-testid="match-status"
-                className="rounded-full border border-cyan-400/40 bg-cyan-500/10 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-cyan-200"
-              >
-                {statusLabel(status)}
-              </span>
-            </div>
-
-            <div className="mb-3 flex flex-col gap-2 sm:flex-row">
-              {viewerSeat ? seatCard(viewerSeat) : null}
-              {opponentSeat ? (
-                seatCard(opponentSeat)
-              ) : (
-                <div
-                  data-testid="hillstrike-seat-opponent-empty"
-                  className="rounded-xl border border-white/10 bg-black/30 p-2.5 text-[13px] font-semibold text-white/60"
+                <span
+                  data-testid="match-status"
+                  className="rounded-full border border-cyan-400/40 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-cyan-200"
                 >
-                  Waiting for an opponent…
-                </div>
-              )}
+                  {statusLabel(status)}
+                </span>
+                <span
+                  data-testid="hillstrike-clock"
+                  aria-label={"Match clock " + clockLabel(clockMs)}
+                  className={
+                    status === "playing" && clockMs <= 30000
+                      ? "inline-flex items-center gap-1 rounded-full border border-red-400/60 bg-red-500/15 px-2 py-0.5 font-mono text-[11px] font-bold text-red-200"
+                      : "inline-flex items-center gap-1 rounded-full border border-cyan-400/40 bg-cyan-500/10 px-2 py-0.5 font-mono text-[11px] font-bold text-cyan-100"
+                  }
+                >
+                  <IconClock size={12} aria-hidden="true" />
+                  {status === "playing" ? clockLabel(clockMs) : "--:--"}
+                </span>
+                <span className="hidden rounded-full border border-emerald-400/40 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-200 sm:inline">
+                  Free &amp; rated
+                </span>
+              </div>
+
+              <div className="flex min-w-0 flex-1 items-stretch gap-1.5 sm:max-w-md">
+                {viewerSeat ? seatCard(viewerSeat) : null}
+                {opponentSeat ? (
+                  seatCard(opponentSeat)
+                ) : (
+                  <div
+                    data-testid="hillstrike-seat-opponent-empty"
+                    className="flex-1 rounded-xl border border-white/10 bg-black/30 px-2 py-1.5 text-[11px] font-semibold text-white/60"
+                  >
+                    Waiting for an opponent…
+                  </div>
+                )}
+              </div>
             </div>
 
             {!waiting && !cancelled && state ? (
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-                <div className="rounded-2xl border border-cyan-400/20 bg-black/40 p-2 shadow-[0_0_30px_rgba(34,211,238,0.10)] sm:p-4">
-                  <HillstrikeBattlefield
-                    state={state}
-                    viewerSeat={viewerSeat ?? "player1"}
-                    preview={preview}
-                    aim={aim}
-                    animation={animation}
-                    interactive={canPlay}
-                    resolving={resolving || submitting}
-                    placingBlock={placingBlock}
-                    onPlaceBlock={placeBlock}
-                    opponentLabel={opponentName}
-                    onAim={(shot) => {
-                      if (!canPlay) return;
-                      setAim(shot);
-                    }}
-                    onLock={(shot) => {
-                      if (!canPlay) return;
-                      setAim(shot);
-                    }}
-                    onClear={() => setAim(null)}
-                  />
-                </div>
+              <>
+                {/* The game screen: the battlefield fills it, the controls are
+                    mounted inside it at the bottom, so nothing needs a scroll. */}
+                <div className="flex h-[calc(100dvh-180px)] min-h-[430px] flex-col overflow-hidden rounded-2xl border border-cyan-400/25 bg-[#04101f] shadow-[0_0_30px_rgba(34,211,238,0.10)]">
+                  <div className="relative min-h-0 flex-1">
+                    <HillstrikeBattlefield
+                      state={state}
+                      viewerSeat={viewerSeat ?? "player1"}
+                      preview={preview}
+                      aim={aim}
+                      animation={animation}
+                      interactive={canPlay}
+                      resolving={resolving || submitting}
+                      opponentLabel={opponentName}
+                      onAim={(shot) => {
+                        if (!canPlay) return;
+                        setAim(shot);
+                      }}
+                      onLock={(shot) => {
+                        if (!canPlay) return;
+                        setAim(shot);
+                      }}
+                      onClear={() => setAim(null)}
+                    />
+                  </div>
 
-                <div className="flex flex-col gap-3">
-                  <p
-                    role="status"
-                    aria-live="polite"
-                    data-testid="hillstrike-turn-status"
-                    className="rounded-xl border border-cyan-400/25 bg-black/35 px-3 py-2 text-center text-sm font-semibold text-[#d8fbff]"
-                  >
-                    {turnCopy}
-                  </p>
-
-                  <div className="rounded-xl border border-white/10 bg-black/30 p-3">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="inline-flex items-center gap-1.5 font-bold uppercase tracking-wider text-cyan-300">
-                        <IconTargetArrow size={14} aria-hidden="true" />
-                        Aim
-                      </span>
-                      <span
-                        className="font-mono text-sm font-bold text-white"
-                        data-testid="hillstrike-aim-readout"
+                  <div className="shrink-0 border-t border-cyan-400/20 bg-[#020b16]/95 px-2 py-2 backdrop-blur sm:px-3">
+                    <div className="flex items-center gap-2">
+                      <p
+                        role="status"
+                        aria-live="polite"
+                        data-testid="hillstrike-turn-status"
+                        className="min-w-0 flex-1 truncate text-[11px] font-semibold text-[#d8fbff] sm:text-xs"
                       >
-                        {aim ? `${Math.round(aim.angleDeg)}° · ${aim.power}%` : "—"}
+                        {turnCopy}
+                      </p>
+                      <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-cyan-300">
+                        <IconTargetArrow size={12} aria-hidden="true" />
+                        <span className="font-mono text-xs text-white" data-testid="hillstrike-aim-readout">
+                          {aim ? Math.round(aim.angleDeg) + "° · " + aim.power + "%" : "—"}
+                        </span>
                       </span>
                     </div>
 
-                    <p className="mt-1 text-[11px] leading-relaxed text-white/55">
-                      {placingBlock
-                        ? "Placement mode: click any free tile on YOUR half of the map. The block must rest on the ground or on another block."
-                        : canPlay
-                          ? "Three actions: fire, drive (closer or farther) or place cover. Drag to aim, then Fire."
-                          : matchOver
-                            ? "Match over."
-                            : "Wait for your turn."}
-                    </p>
-
-                    <div className="mt-3 flex flex-col gap-2">
+                    <div className="mt-1.5 flex items-stretch gap-2">
                       <button
                         type="button"
                         data-testid="hillstrike-fire"
                         onClick={fire}
                         disabled={!aim || !canPlay}
-                        className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border-b-4 border-[#0087a8] bg-[#00e5ff] px-4 py-2.5 text-sm font-extrabold text-[#001a2e] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="inline-flex w-28 shrink-0 items-center justify-center gap-1.5 rounded-lg border-b-4 border-[#0087a8] bg-[#00e5ff] px-3 py-2 text-sm font-extrabold text-[#001a2e] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         <IconBolt size={16} aria-hidden="true" />
-                        {submitting ? "Resolving…" : "Fire"}
+                        {submitting ? "…" : "Fire"}
                       </button>
 
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="grid flex-1 grid-cols-3 gap-1.5">
                         <button
                           type="button"
                           data-testid="hillstrike-move-back"
                           onClick={() => drive("back")}
                           disabled={!canPlay}
                           title="Drive away from your opponent"
-                          className="inline-flex items-center justify-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-2 text-[11px] font-bold text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                          className="inline-flex items-center justify-center gap-1 rounded-lg border border-white/15 bg-white/5 px-1.5 py-1.5 text-[10px] font-bold text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                          <IconArrowLeft size={14} aria-hidden="true" />
+                          <IconArrowLeft size={12} aria-hidden="true" />
                           Drive back
                         </button>
                         <button
                           type="button"
-                          data-testid="hillstrike-build"
-                          data-placing={placingBlock ? "1" : "0"}
-                          onClick={build}
-                          disabled={!canPlay}
-                          title={
-                            placingBlock
-                              ? "Cancel placement, back to aiming"
-                              : "Place a cover block anywhere on your own half of the map"
-                          }
-                          className={`inline-flex items-center justify-center gap-1 rounded-lg border px-2 py-2 text-[11px] font-bold transition disabled:cursor-not-allowed disabled:opacity-40 ${
-                            placingBlock
-                              ? "border-emerald-300 bg-emerald-400/25 text-emerald-100"
-                              : "border-emerald-400/40 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20"
-                          }`}
+                          data-testid="hillstrike-clear"
+                          onClick={() => setAim(null)}
+                          disabled={!aim}
+                          className="rounded-lg border border-white/15 bg-white/5 px-1.5 py-1.5 text-[10px] font-semibold text-white/70 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                          <IconShieldPlus size={14} aria-hidden="true" />
-                          {placingBlock ? "Cancel" : "Build"}
+                          Clear aim
                         </button>
                         <button
                           type="button"
@@ -733,109 +741,102 @@ export default function HillstrikeMatchPage() {
                           onClick={() => drive("forward")}
                           disabled={!canPlay}
                           title="Drive toward your opponent — a shorter shot hits harder"
-                          className="inline-flex items-center justify-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-2 text-[11px] font-bold text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                          className="inline-flex items-center justify-center gap-1 rounded-lg border border-white/15 bg-white/5 px-1.5 py-1.5 text-[10px] font-bold text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           Drive up
-                          <IconArrowRight size={14} aria-hidden="true" />
+                          <IconArrowRight size={12} aria-hidden="true" />
                         </button>
                       </div>
-
-                      <button
-                        type="button"
-                        data-testid="hillstrike-clear"
-                        onClick={() => setAim(null)}
-                        disabled={!aim}
-                        className="rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-white/70 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        Clear aim
-                      </button>
                     </div>
 
-                    <p
-                      role="status"
-                      aria-live="polite"
-                      data-testid="hillstrike-notice"
-                      className={`mt-2 min-h-[1rem] text-center text-xs ${
-                        notice ? "text-amber-300" : "text-transparent"
-                      }`}
-                    >
-                      {notice ?? "."}
-                    </p>
-
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-bold text-white/80 transition hover:bg-white/10 disabled:opacity-40"
-                        data-testid="hillstrike-resign"
-                        disabled={forfeiting || matchOver || waiting}
-                        onClick={() => setShowForfeitConfirm(true)}
+                    <div className="mt-1.5 flex items-center justify-between gap-2">
+                      <p
+                        role="status"
+                        aria-live="polite"
+                        data-testid="hillstrike-notice"
+                        className={
+                          notice
+                            ? "min-w-0 flex-1 truncate text-[10px] text-amber-300"
+                            : "min-w-0 flex-1 truncate text-[10px] text-transparent"
+                        }
                       >
-                        <IconFlag size={14} aria-hidden="true" /> Resign
-                      </button>
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-bold text-white/80 transition hover:bg-white/10"
-                        data-testid="hillstrike-report"
-                        onClick={() => setShowReportModal(true)}
-                      >
-                        <IconAlertTriangle size={14} aria-hidden="true" /> Report
-                      </button>
-                      {waiting ? (
+                        {notice ?? "."}
+                      </p>
+                      <div className="flex shrink-0 items-center gap-1.5">
                         <button
                           type="button"
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-bold text-white/80 transition hover:bg-white/10"
-                          data-testid="hillstrike-cancel"
-                          disabled={cancellingLobby}
-                          onClick={cancelLobby}
+                          className="inline-flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-[10px] font-bold text-white/80 transition hover:bg-white/10 disabled:opacity-40"
+                          data-testid="hillstrike-resign"
+                          disabled={forfeiting || matchOver || waiting}
+                          onClick={() => setShowForfeitConfirm(true)}
                         >
-                          <IconDoorExit size={14} aria-hidden="true" /> Cancel match
+                          <IconFlag size={12} aria-hidden="true" /> Resign
                         </button>
-                      ) : null}
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-[10px] font-bold text-white/80 transition hover:bg-white/10"
+                          data-testid="hillstrike-report"
+                          onClick={() => setShowReportModal(true)}
+                        >
+                          <IconAlertTriangle size={12} aria-hidden="true" /> Report
+                        </button>
+                        {waiting ? (
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-[10px] font-bold text-white/80 transition hover:bg-white/10"
+                            data-testid="hillstrike-cancel"
+                            disabled={cancellingLobby}
+                            onClick={cancelLobby}
+                          >
+                            <IconDoorExit size={12} aria-hidden="true" /> Cancel
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
-
-                  <div
-                    className="rounded-2xl border border-white/10 bg-white/5 p-3"
-                    data-testid="hillstrike-shot-log"
-                  >
-                    <h2 className="mb-2 text-xs font-bold uppercase tracking-wider text-white/60">
-                      Actions played
-                    </h2>
-                    {shots.length === 0 ? (
-                      <p className="text-xs text-white/45">No shots yet.</p>
-                    ) : (
-                      <ol className="flex flex-col gap-1 text-[11px] text-white/70">
-                        {shots
-                          .slice(-8)
-                          .reverse()
-                          .map((row: any) => (
-                            <li
-                              key={`${row.actionIndex}-${row.createdAt ?? ""}`}
-                              className="flex items-start justify-between gap-2"
-                            >
-                              <span className="text-white/40">
-                                #{Number(row.actionIndex) + 1}
-                              </span>
-                              <span className="flex-1 text-right">
-                                <span
-                                  className="mr-1 font-semibold"
-                                  style={{
-                                    color: seatColor(
-                                      row.seat === "player2" ? "player2" : "player1",
-                                    ),
-                                  }}
-                                >
-                                  {row.seat === viewerSeat ? "You" : seatName(row.seat)}
-                                </span>
-                                {loggedShotLabel(row)}
-                              </span>
-                            </li>
-                          ))}
-                      </ol>
-                    )}
-                  </div>
                 </div>
-              </div>
+
+                <details
+                  className="mt-2 rounded-xl border border-white/10 bg-black/25 p-2"
+                  data-testid="hillstrike-shot-log"
+                >
+                  <summary className="cursor-pointer text-[11px] font-bold uppercase tracking-wider text-white/55">
+                    Actions played ({shots.length})
+                  </summary>
+                  {shots.length === 0 ? (
+                    <p className="mt-1 text-xs text-white/45">No shots yet.</p>
+                  ) : (
+                    <ol className="mt-1 flex flex-col gap-1 text-[11px] text-white/70">
+                      {shots
+                        .slice(-8)
+                        .reverse()
+                        .map((row: any) => (
+                          <li
+                            key={row.actionIndex + "-" + (row.createdAt ?? "")}
+                            className="flex items-start justify-between gap-2"
+                          >
+                            <span className="text-white/40">
+                              #{Number(row.actionIndex) + 1}
+                            </span>
+                            <span className="flex-1 text-right">
+                              <span
+                                className="mr-1 font-semibold"
+                                style={{
+                                  color: seatColor(
+                                    row.seat === "player2" ? "player2" : "player1",
+                                  ),
+                                }}
+                              >
+                                {row.seat === viewerSeat ? "You" : seatName(row.seat)}
+                              </span>
+                              {loggedShotLabel(row)}
+                            </span>
+                          </li>
+                        ))}
+                    </ol>
+                  )}
+                </details>
+              </>
             ) : null}
           </div>
 
@@ -882,15 +883,15 @@ export default function HillstrikeMatchPage() {
 
           <PvpResultScreen
             open={finished}
-            outcome={outcome ?? "loss"}
+            outcome={resultOutcome}
             headline={
-              outcome === "win"
+              resultOutcome === "win"
                 ? "The hill is yours"
-                : outcome === "loss"
-                  ? "Your opponent took the hill"
-                  : "Match complete"
+                : resultOutcome === "draw"
+                  ? "Time — the hill stays unclaimed"
+                  : "Your opponent took the hill"
             }
-            subline={resultReasonLabel(match?.resultReason, outcome)}
+            subline={resultReasonLabel(match?.resultReason, resultOutcome)}
             gameName="Hillstrike"
             durationSeconds={durationSeconds(match?.startedAt, match?.endedAt)}
             opponent={{
@@ -899,10 +900,19 @@ export default function HillstrikeMatchPage() {
               profileFrame: opponentIdentity?.profileFrame ?? null,
             }}
             summary={[
-              { label: "Result", value: outcome === "win" ? "Win" : "Loss" },
+              {
+                label: "Result",
+                value:
+                  resultOutcome === "win"
+                    ? "Win"
+                    : resultOutcome === "draw"
+                      ? "Draw"
+                      : "Loss",
+              },
               { label: "Actions taken", value: String(Number(match?.version) || 0) },
               { label: "Your HP", value: String(viewerHp) },
               { label: "Opponent's HP", value: String(opponentHp) },
+              { label: "Clock", value: clockLabel(Number(match?.durationMs) || 0) },
             ]}
             details={[
               { label: "Match ID", value: String(matchId) },
@@ -910,7 +920,7 @@ export default function HillstrikeMatchPage() {
               { label: "Layout seed", value: String(match?.seed ?? "—") },
               {
                 label: "Reason",
-                value: resultReasonLabel(match?.resultReason, outcome),
+                value: resultReasonLabel(match?.resultReason, resultOutcome),
               },
               ...shots.map((row: any) => ({
                 label: `Shot ${Number(row.actionIndex) + 1}`,

@@ -99,7 +99,7 @@ test("hillstrike practice: the page drives the engine and nothing else", () => {
   assert.ok(pageCode.includes("applyAction(current, seat, action)"));
 
   // The bot answers through the SAME call as the human: it is given no private
-  // path into the rules, and its action can be a drive or a build too.
+  // path into the rules, and its action can be a drive too.
   assert.ok(
     /playAction\(AI_SEAT, action\)/.test(pageCode),
     "the bot's action must resolve through the same playAction as the player's",
@@ -108,7 +108,7 @@ test("hillstrike practice: the page drives the engine and nothing else", () => {
     /playAction\(HUMAN_SEAT, \{ type: "shoot", \.\.\.aim \}\)/.test(pageCode),
     "the player's Fire must resolve through playAction",
   );
-  for (const kind of ["shoot", "move", "build"]) {
+  for (const kind of ["shoot", "move"]) {
     assert.ok(
       pageCode.includes(`"${kind}"`),
       `the practice page must be able to take a ${kind} action`,
@@ -212,8 +212,8 @@ test("hillstrike practice: HP, turns and action limits come from the constants",
   );
   assert.equal(/100\s*(hp|HP)/.test(hudCode), false, "no hard-coded HP total");
   assert.ok(
-    hudCode.includes("MOVE_RANGE"),
-    "the drive copy is written from the engine's leash, never a hard-coded one",
+    hudCode.includes("MATCH_DURATION_OPTIONS_MS"),
+    "the clock picker is the engine's own list of durations",
   );
   assert.ok(
     hudCode.includes("buffsOf(state, viewerSeat)"),
@@ -225,7 +225,12 @@ test("hillstrike practice: HP, turns and action limits come from the constants",
     "the page must never compute the turn counter itself",
   );
   // The values the HUD shows are the state's own.
-  for (const read of ["hpOf(state, seat)", "state.actionsRemaining", "state.turn === seat"]) {
+  for (const read of [
+    "hpOf(state, viewerSeat)",
+    "hpOf(state, aiSeat)",
+    "state.actionsRemaining",
+    "state.turn === viewerSeat",
+  ]) {
     assert.ok(hudCode.includes(read), `the HUD must render ${read}`);
   }
   assert.ok(pageCode.includes("TICK_MS"), "the flight time is derived from the engine's tick");
@@ -257,8 +262,12 @@ test("hillstrike practice: one canvas, drawn fluidly on every screen", () => {
   assert.ok(fieldCode.includes("<canvas"), "the battlefield is a canvas");
   assert.ok(fieldCode.includes("devicePixelRatio"), "the canvas scales for a retina display");
   assert.ok(fieldCode.includes("ResizeObserver"), "the canvas follows its column's size");
+  // Scaled by the SMALLER ratio, so the board fills its frame and is never
+  // stretched out of shape.
   assert.ok(
-    fieldCode.includes("aspectRatio: `${BATTLEFIELD_WIDTH} / ${BATTLEFIELD_HEIGHT}`"),
+    fieldCode.includes("size.cssWidth / BATTLEFIELD_WIDTH") &&
+      fieldCode.includes("size.cssHeight / BATTLEFIELD_HEIGHT") &&
+      fieldCode.includes("Math.min("),
     "the battlefield keeps the engine's aspect ratio",
   );
   assert.ok(fieldCode.includes("applyCanvasSize"), "layout is measured, then scaled");
@@ -266,21 +275,33 @@ test("hillstrike practice: one canvas, drawn fluidly on every screen", () => {
     fieldCode.includes('className="block h-full w-full"'),
     "the canvas fills its fluid wrapper",
   );
-  // The middle's respawn timer is drawn from the engine's own schedule, so a
-  // collected pickup reads as "coming back" instead of vanishing.
-  assert.ok(
-    fieldCode.includes("respawnsOf(state.battlefield)"),
-    "the board reads the engine's respawn tickets",
-  );
-  assert.ok(
-    fieldCode.includes("ticket.atTurn") && fieldCode.includes("drawRespawnRing"),
-    "and renders the countdown for each waiting pickup",
+  // A collected pickup is simply gone: the middle is dealt once, so there is
+  // no respawn timer to draw.
+  assert.equal(
+    fieldCode.includes("respawn"),
+    false,
+    "the board draws no respawn state — pickups never come back",
   );
   // No fixed board size anywhere (that is what breaks phones).
   assert.equal(/\bwidth=\{\d{3,}\}/.test(fieldCode), false, "no fixed canvas width");
   assert.equal(/\bheight=\{\d{3,}\}/.test(fieldCode), false, "no fixed canvas height");
-  // The page is a single column on phones and two on desktop.
-  assert.ok(pageCode.includes("lg:grid-cols-[minmax(0,1fr)_320px]"));
+  // ONE frame sized to the viewport: the board fills it and the controls sit
+  // inside it at the bottom, so firing never needs a scroll.
+  assert.ok(
+    pageCode.includes("h-[calc(100dvh-"),
+    "the game screen is sized to the viewport",
+  );
+  assert.ok(pageCode.includes("min-h-0 flex-1"), "the board takes the frame's slack");
+  // The HUD is a FRAME CHILD, not a panel beside it.
+  assert.ok(
+    /<HillstrikeHud[\s\S]*?\/>\s*<\/div>/.test(pageCode),
+    "the controls live inside the frame, under the board",
+  );
+  assert.equal(
+    pageCode.includes("lg:grid-cols-[minmax(0,1fr)_320px]"),
+    false,
+    "the side panel is gone — it pushed the board out of frame",
+  );
   assert.ok(pageCode.includes("overflow-x-clip"));
 });
 
@@ -339,9 +360,14 @@ test("hillstrike practice: the board draws terrain, towers, tanks, HP and impact
   assert.ok(fieldCode.includes("action.path"), "the flight uses the recorded path");
   assert.ok(fieldCode.includes("action.events"), "the settle uses the recorded events");
   assert.ok(fieldCode.includes("requestAnimationFrame"), "the flight is animated, not teleported");
-  // A drive rolls the tank, a build drops the block: both are animated.
+  // A drive rolls the tank, a shot flies: both are animated.
   assert.ok(fieldCode.includes('action.type === "move"'), "a drive is animated");
-  assert.ok(fieldCode.includes('action.type === "build"'), "a build is animated");
+  assert.ok(fieldCode.includes('action.type === "shoot"'), "a shot is animated");
+  assert.equal(
+    fieldCode.includes('action.type === "build"'),
+    false,
+    "there is no build to animate any more",
+  );
 });
 
 test("hillstrike practice: the HUD shows turn, actions, HP and the three actions", () => {
@@ -353,7 +379,8 @@ test("hillstrike practice: the HUD shows turn, actions, HP and the three actions
     "hillstrike-clear",
     "hillstrike-move-forward",
     "hillstrike-move-back",
-    "hillstrike-build",
+    "hillstrike-clock",
+    "hillstrike-durations",
     "hillstrike-restart",
     "hillstrike-notice",
     "hillstrike-aim-readout",
@@ -364,12 +391,14 @@ test("hillstrike practice: the HUD shows turn, actions, HP and the three actions
   assert.ok(hudCode.includes('role="status"'), "the turn/status line is a live region");
   assert.ok(hudCode.includes('role="meter"'), "the HP bar is a real meter");
   assert.ok(hudCode.includes("disabled={!aim || !canPlay}"), "Fire is disabled without a legal aim");
-  // Drive and Build are wired to the page's handlers, never to a rule of their own.
+  // The drive buttons are wired to the page's handler, never to a rule of
+  // their own, and the clock picker is wired the same way.
   assert.ok(
-    hudCode.includes("onMove(") && hudCode.includes("onBuild"),
-    "the Drive and Build buttons call the page's handlers",
+    hudCode.includes("onMove(") && hudCode.includes("onDuration("),
+    "the drive buttons and the clock picker call the page's handlers",
   );
-  assert.ok(pageCode.includes("onMove={drive}") && pageCode.includes("onBuild={build}"));
+  assert.ok(pageCode.includes("onMove={drive}") && pageCode.includes("onDuration="));
+  assert.equal(hudCode.includes("onBuild"), false, "there is no Build button");
   assert.ok(
     pageCode.includes("<PvpResultScreen") && pageCode.includes("open={Boolean(matchOver)}"),
     "the shared result screen reports the match",

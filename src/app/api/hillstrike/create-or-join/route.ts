@@ -9,16 +9,19 @@
 // no account, while ONLINE matchmaking always carries a real, age-verified
 // `user_…` seat.
 //
-// Hillstrike online is UNSTAKED: the body carries nothing, and no wager, pot or
-// escrow exists anywhere on this path.
+// Hillstrike online is UNSTAKED: the body carries nothing but the CLOCK the
+// caller wants (5 / 10 / 15 minutes), and no wager, pot or escrow exists anywhere
+// on this path. Matchmaking only pairs callers who asked for the same clock, so
+// the two seats always play the same timed match.
 
 import { NextResponse } from "next/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { logError } from "../../../../lib/logError";
 import { createOrJoin } from "../../../../lib/hillstrike/serverStore";
 import { broadcastMatchUpdate } from "../../../../lib/hillstrike/rooms";
+import { isMatchDurationMs } from "../../../../lib/hillstrike/constants";
 
-export async function POST() {
+export async function POST(req: Request) {
   const gate = await requireAgeVerifiedUser();
   if (gate.response) return gate.response;
   const userId = gate.userId;
@@ -29,8 +32,24 @@ export async function POST() {
     );
   }
 
+  // The clock is the only thing the lobby sends. A body-less request (an older
+  // tab) is accepted with the default clock.
+  let durationMs: unknown = undefined;
   try {
-    const result = await createOrJoin({ userId });
+    const body = (await req.json()) as Record<string, unknown> | null;
+    if (body && body.durationMs !== undefined) durationMs = body.durationMs;
+  } catch {
+    durationMs = undefined;
+  }
+  if (durationMs !== undefined && !isMatchDurationMs(durationMs)) {
+    return NextResponse.json(
+      { success: false, error: "Unknown match duration" },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const result = await createOrJoin({ userId, durationMs });
     if ("error" in result) {
       return NextResponse.json(
         { success: false, error: result.error },
@@ -51,6 +70,7 @@ export async function POST() {
         matchId: result.match.id,
         status: result.match.status,
         joined: result.joined,
+        durationMs: Number(result.match.durationMs),
       },
     });
   } catch (error) {

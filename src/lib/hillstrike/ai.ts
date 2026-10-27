@@ -28,15 +28,19 @@
  *    is a won match, and a shot that fells its OWN cover while it is low on HP
  *    is scored down, badly, because that cover is what keeps it alive.
  * 5. SPEND THE ACTION WELL when a shot is not: if no line even reaches the
- *    enemy, the bot drives forward (or, when it is hurt, builds cover) instead
- *    of throwing the action away; with two actions in hand it will also drive
- *    first and shoot second rather than take a bare crater in the open. On the
- *    HARD tier an unarmed bot also walks to the nearest middle power-up before
- *    it fires again, so the middle is contested for the whole match instead of
- *    the bot camping the spawn it was given.
+ *    enemy, the bot drives forward instead of throwing the action away; with
+ *    two actions in hand it will also drive first and shoot second rather than
+ *    take a bare crater in the open. On the HARD tier an unarmed bot also walks
+ *    to the nearest power-up on its own side before it fires again, so the
+ *    middle is contested for the whole match instead of the bot camping the
+ *    spawn it was given.
  * 6. SLIP through the ONE shared tier policy (`chooseAiOption`), which is what
  *    makes a weak tier beatable rather than merely short-sighted. The slip only
- *    applies to the aim — a drive or a build is always the deliberate choice.
+ *    applies to the aim — a drive is always the deliberate choice.
+ *
+ * THE TOWER IS AN OBSTACLE, NOT AN OWNER'S COVER. Its blocks belong to nobody, so
+ * a tower hit is scored as progress for whichever seat fired, never as "own
+ * cover" damage — otherwise one seat would refuse to open the map.
  *
  * ── COST ───────────────────────────────────────────────────────────────────
  * Bounded by construction: at most 21 / 70 / 190 grid simulations, plus (hard
@@ -68,7 +72,6 @@ import {
 import {
   applyAction,
   buffsOf,
-  buildPlacementFor,
   hpOf,
   moveTargetFor,
   validateAction,
@@ -249,6 +252,8 @@ const SCORE = Object.freeze({
   DIRECT_HIT: 10_000,
   MATCH_WIN: 100_000,
   BLOCK_HIT: 2_500,
+  /** A middle-tower block: the wall, owned by nobody, always worth opening. */
+  TOWER_HIT: 2_800,
   GROUND_HIT: 1_200,
   /** A shell stopped by an indestructible base roof: no structural progress. */
   ROOF_HIT: 700,
@@ -267,10 +272,18 @@ const SCORE = Object.freeze({
 /** Below this fraction of `MAX_HP` the bot starts valuing its cover. */
 const LOW_HP_FRACTION = 0.5;
 
-/** Block seat lookup for one battlefield (ids are stable within a match). */
+/**
+ * Block ownership lookup for one battlefield (ids are stable within a match).
+ *
+ * A middle-tower block is deliberately absent: it belongs to neither seat, so
+ * breaking one is structural progress for whoever fired, never "own cover".
+ */
 function seatsById(state: HillstrikeState): Map<number, Seat> {
   const map = new Map<number, Seat>();
-  for (const block of state.battlefield.blocks) map.set(block.id, block.seat);
+  for (const block of state.battlefield.blocks) {
+    if (block.kind === "tower") continue;
+    map.set(block.id, block.seat);
+  }
   return map;
 }
 
@@ -368,14 +381,13 @@ export function scoreAiShot({
     // A ROOF is indestructible, so hitting one makes no structural progress at
     // all: it is scored below a crater, which is what makes the bot climb out of
     // its own base instead of shelling the enemy's ceiling forever.
-    const struck = impact.blockId === null ? null : owner.get(impact.blockId);
-    const struckRoof =
-      impact.blockId !== null &&
-      state.battlefield.blocks.some(
-        (block) => block.id === impact.blockId && block.kind === "roof",
-      );
-    if (struckRoof) base = SCORE.ROOF_HIT;
-    else if (struck === seat) base = SCORE.SELF_HIT;
+    const struckBlock =
+      impact.blockId === null
+        ? null
+        : state.battlefield.blocks.find((block) => block.id === impact.blockId) ?? null;
+    if (struckBlock?.kind === "roof") base = SCORE.ROOF_HIT;
+    else if (struckBlock?.kind === "tower") base = SCORE.TOWER_HIT;
+    else if (impact.blockId !== null && owner.get(impact.blockId) === seat) base = SCORE.SELF_HIT;
     else base = SCORE.BLOCK_HIT;
   } else if (impact.kind === IMPACT_KINDS.TERRAIN) {
     base = SCORE.GROUND_HIT;
@@ -474,19 +486,6 @@ export function isLegalAiAction(
   action: HillstrikeAction,
 ): boolean {
   return validateAction(state, seat, action).ok;
-}
-
-/**
- * The build action the bot would place: the nearest legal column in front of its
- * own hull, or `null` when its arc is full.
- */
-function aiBuildAction(
-  state: HillstrikeState,
-  seat: Seat,
-): HillstrikeAction | null {
-  const placement = buildPlacementFor(state, seat);
-  if (!placement) return null;
-  return { type: ACTION_TYPES.BUILD, x: placement.x, y: placement.y };
 }
 
 /**
@@ -618,7 +617,6 @@ function preferPositioning(
 ): HillstrikeAction | null {
   const hurt = hpOf(state, seat) <= LOW_HP_FRACTION * MAX_HP;
   const forward: HillstrikeAction = { type: ACTION_TYPES.MOVE, direction: "forward" };
-  const build = aiBuildAction(state, seat);
   const pickupDrive = aiPickupDrive(state, seat);
 
   // A miss, a shot into your own base roof, or a bare crater scores below a
@@ -628,9 +626,6 @@ function preferPositioning(
     best.impact.kind === IMPACT_KINDS.OUT_OF_BOUNDS ||
     best.score < SCORE.GROUND_HIT;
   if (uselessShot) {
-    if (hurt && build && isLegalAiAction(state, seat, build)) {
-      return build;
-    }
     if (pickupDrive) return pickupDrive;
     if (isLegalAiAction(state, seat, forward)) return forward;
     return null;

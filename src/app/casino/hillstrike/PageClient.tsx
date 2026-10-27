@@ -45,7 +45,11 @@ import PvpLobbyPage from "../../../components/lobby/PvpLobby";
 import MatchWaiting from "../../../components/lobby/MatchWaiting";
 import { useSocket } from "../../../context/SocketProvider";
 import { useSocketAwarePoll, useVisiblePoll } from "../../../hooks/useVisiblePoll";
-import { MATCH_STATUS } from "../../../lib/hillstrike/constants";
+import {
+  DEFAULT_MATCH_DURATION_MS,
+  MATCH_DURATION_OPTIONS_MS,
+  MATCH_STATUS,
+} from "../../../lib/hillstrike/constants";
 import {
   HILLSTRIKE_LOBBY_ROOM,
   HILLSTRIKE_MATCH_UPDATED,
@@ -64,8 +68,15 @@ type LobbyRow = {
   player1Id: string;
   status: string;
   seed?: number;
+  durationMs?: number;
   createdAt?: string;
 };
+
+/** "10 min" for a lobby's clock. */
+function durationLabel(ms: unknown): string {
+  const minutes = Math.round(Number(ms) / 60_000);
+  return Number.isFinite(minutes) && minutes > 0 ? `${minutes} min` : "—";
+}
 
 export default function HillstrikeLobbyPage() {
   const { isSignedIn, user } = useUser();
@@ -74,6 +85,9 @@ export default function HillstrikeLobbyPage() {
 
   const [busy, setBusy] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  // The clock the caller wants. Matchmaking only pairs seats that asked for the
+  // same one, so this is part of the offer, exactly like a chess time control.
+  const [durationMs, setDurationMs] = useState<number>(DEFAULT_MATCH_DURATION_MS);
   const [error, setError] = useState<string | null>(null);
   const [lobbies, setLobbies] = useState<LobbyRow[]>([]);
   const [lobbiesLoading, setLobbiesLoading] = useState(true);
@@ -179,8 +193,8 @@ export default function HillstrikeLobbyPage() {
       const res = await fetch("/api/hillstrike/create-or-join", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // The whole request. Hillstrike is unstaked, so there is nothing to send.
-        body: JSON.stringify({}),
+        // The whole request: the clock only. Hillstrike is unstaked.
+        body: JSON.stringify({ durationMs }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.success) {
@@ -201,7 +215,7 @@ export default function HillstrikeLobbyPage() {
     } finally {
       setBusy(false);
     }
-  }, [busy, matchPath, pokeLobby, router]);
+  }, [busy, durationMs, matchPath, pokeLobby, router]);
 
   const cancelLobby = useCallback(
     async (matchId: string) => {
@@ -258,14 +272,37 @@ export default function HillstrikeLobbyPage() {
           ),
         },
         {
-          heading: "Three actions per turn",
+          heading: "Two actions per turn",
           body: (
             <>
               A randomly drawn opening seat takes <b>one</b> action; the other
               answers with <b>two</b>. From then on the seats alternate{" "}
-              <b>two-action turns</b>, and each action is one of three things:{" "}
-              <b>fire</b>, <b>drive</b> closer or farther, or <b>build</b> a block
-              of cover anywhere on your own half.
+              <b>two-action turns</b>, and each action is one of two things:{" "}
+              <b>fire</b>, or <b>drive</b> closer or farther.
+            </>
+          ),
+        },
+        {
+          heading: "The tower gates the map",
+          body: (
+            <>
+              A <b>giant tower</b> stands in the middle of the battlefield, from the
+              ground to the sky. Nothing crosses it — a lob over its top simply
+              leaves the battlefield — so a lane has to be shot through its blocks
+              before either tank can be hit. Each tower block takes two hits and
+              never collapses into the hole you make. One of each power-up sits on
+              each side of the tower, and each is dealt <b>once</b>: no respawns.
+            </>
+          ),
+        },
+        {
+          heading: "The clock",
+          body: (
+            <>
+              Every match is timed — <b>5</b>, <b>10</b> or <b>15</b> minutes, chosen
+              when the lobby is opened, and you are only matched with players who
+              picked the same clock. When it runs out the tank with <b>more HP</b>{" "}
+              wins; level HP is a draw, which awards nothing.
             </>
           ),
         },
@@ -273,24 +310,22 @@ export default function HillstrikeLobbyPage() {
           heading: "Range costs power",
           body: (
             <>
-              A shell loses power the longer it flies: the explosion shrinks and
-              the HP a direct hit takes drops with it — up to <b>34 HP</b> at
-              point-blank range, about <b>21</b> across the opening gap, and about
-              <b>15</b> from a full-map lob. Driving forward is how you buy damage,
-              and driving away is how you give it up.
+              A shell loses power the longer it flies: the HP a direct hit takes
+              drops with it — up to <b>50</b> at point-blank range, about <b>25</b>
+              from the middle, and about <b>16</b> from a full-map lob. Driving
+              forward is how you buy damage, and driving away is how you give it up.
               <br />
               <br />
-              Ground and blocks never cost HP by themselves — a shell breaks
-              whatever it touches, at any range, so cover buys one shot. Each
+              Ground and blocks never cost HP by themselves, at any range. Each
               spawn sits under an indestructible roof, and the map climbs away
               from it, so neither tank can be sniped from its own corner: the
-              slopes and the middle power-ups are what a win is made of. The
-              first tank knocked out to 0 HP loses immediately. Whose turn it is, where
-              the shell landed, the damage, both HP pools and the winner are all
-              resolved <b>server-side</b> by the shared engine, so a stale tab can
-              never invent a hit. Online matches are free and rated; practice
-              against the bot at <b>/casino/hillstrike/play-ai</b> is free and
-              unrated.
+              slopes, the tower lane and the power-ups are what a win is made of.
+              The first tank knocked out to 0 HP loses immediately. Whose turn it
+              is, where the shell landed, the damage, both HP pools and the winner
+              are all resolved <b>server-side</b> by the shared engine, so a stale
+              tab can never invent a hit. Online matches are free and rated;
+              practice against the bot at <b>/casino/hillstrike/play-ai</b> is free
+              and unrated.
             </>
           ),
         },
@@ -316,13 +351,42 @@ export default function HillstrikeLobbyPage() {
         playBusyLabel="Searching…"
         canPlay={Boolean(isSignedIn)}
         extraActions={
-          <button
-            type="button"
-            onClick={() => router.push(PRACTICE_PATH)}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-400/40 bg-cyan-400/10 py-2 text-sm font-bold text-cyan-200 transition hover:bg-cyan-400/20"
-          >
-            <IconRobot size={16} aria-hidden="true" /> Play Free vs AI
-          </button>
+          <div className="flex w-full flex-col gap-2">
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-white/45">
+                Match clock
+              </span>
+              <div className="grid grid-cols-3 gap-2" data-testid="hillstrike-duration-picker">
+                {MATCH_DURATION_OPTIONS_MS.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    data-testid={`hillstrike-lobby-duration-${option}`}
+                    data-selected={option === durationMs ? "1" : "0"}
+                    onClick={() => setDurationMs(option)}
+                    className={`rounded-lg border py-1.5 text-xs font-bold transition ${
+                      option === durationMs
+                        ? "border-cyan-300 bg-cyan-400/20 text-cyan-100"
+                        : "border-white/15 text-white/60 hover:bg-white/10"
+                    }`}
+                  >
+                    {option / 60_000} min
+                  </button>
+                ))}
+              </div>
+              <span className="text-[10px] leading-tight text-white/40">
+                You are matched with players who picked the same clock. Most HP wins
+                when it runs out.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => router.push(PRACTICE_PATH)}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-400/40 bg-cyan-400/10 py-2 text-sm font-bold text-cyan-200 transition hover:bg-cyan-400/20"
+            >
+              <IconRobot size={16} aria-hidden="true" /> Play Free vs AI
+            </button>
+          </div>
         }
         myOpenId={myOpenId}
         onResume={(id: string) => setWaitingMatchId(id)}
@@ -337,6 +401,7 @@ export default function HillstrikeLobbyPage() {
           <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
             <span>Host: {String(row.player1Id).slice(0, 12)}…</span>
             <span>1v1 · 100 HP each</span>
+            <span>Clock: {durationLabel(row.durationMs)}</span>
             <span className="text-emerald-300">Free</span>
           </span>
         )}

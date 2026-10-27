@@ -53,6 +53,17 @@ const {
 
 const SEED = 12345;
 const FIELD = createBattlefield(SEED);
+/**
+ * The same battlefield with the middle tower removed.
+ *
+ * The tower is a full-height gate, so a spawn-to-spawn line only exists once a
+ * lane of it has been shot away. The distance and impact tests below are about
+ * the physics of a shot, not about the gate, so they play on the open field.
+ */
+const OPEN_FIELD = Object.freeze({
+  ...FIELD,
+  blocks: FIELD.blocks.filter((block) => block.kind !== "tower"),
+});
 const PROJECTILE = createProjectileSpec();
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
@@ -105,9 +116,9 @@ function assertBattlefieldInvariants(field) {
     }
   }
   for (const block of field.blocks) {
-    // A base roof is anchored to the map: it is never moved, never destroyed and
-    // does not need a support underneath it.
-    if (block.kind === "roof") continue;
+    // Anchored blocks — a base roof and every middle-tower block — are fixed to
+    // the map: they never move, never collapse and need no support underneath.
+    if (block.kind === "roof" || block.kind === "tower") continue;
     assert.equal(
       isSupported(block, field.blocks, field.terrain),
       true,
@@ -305,54 +316,72 @@ test("a high-speed shot is stopped by a block instead of passing through it", ()
   );
 });
 
-test("a cover block breaks on the first contact, however long the shot was", () => {
-  const size = 26;
-  // Just past the base roof's edge, where a lob can reach the ground cleanly.
-  const blockX = 200;
-  const blockY = groundYUnder(FIELD.terrain, blockX, size) - size;
-  const staged = {
-    ...FIELD,
-    blocks: [
-      ...FIELD.blocks,
-      { id: 7000, seat: "player1", kind: "cover", x: blockX, y: blockY, size, integrity: BLOCK_MAX_INTEGRITY },
-    ],
-  };
+test("a tower block takes two contacts to break, however long the shot was", () => {
+  const towerIds = new Set(
+    FIELD.blocks.filter((block) => block.kind === "tower").map((block) => block.id),
+  );
 
-  // Find a line that reaches the staged cover block.
-  let hit = null;
-  for (let angleDeg = 0; angleDeg <= 89 && !hit; angleDeg += 1) {
+  // Find a line that reaches the middle tower from the spawn.
+  let shot = null;
+  let first = null;
+  for (let angleDeg = 4; angleDeg <= 86 && !first; angleDeg += 1) {
     const simulation = simulateShot({
-      battlefield: staged,
+      battlefield: FIELD,
       shooterSeat: "player1",
       shot: { angleDeg, power: 100 },
       projectile: PROJECTILE,
     });
-    if (simulation.impact.blockId === 7000) hit = simulation;
+    if (simulation.impact.kind === "block" && towerIds.has(simulation.impact.blockId)) {
+      shot = { angleDeg, power: 100 };
+      first = simulation;
+    }
   }
+  assert.ok(first, "the tower is reachable from the spawn");
+  assert.ok(first.distance > 800, "the tower is a long shot from the spawn");
 
-  assert.ok(hit, "the staged cover block is reachable");
+  const id = first.impact.blockId;
   assert.ok(
-    hit.events.some((event) => event.type === "block-destroyed" && event.blockId === 7000),
-    "one contact destroys the cover block",
+    first.events.some((event) => event.type === "block-damaged" && event.blockId === id),
+    "the first contact only damages the block",
   );
   assert.equal(
-    hit.battlefield.blocks.some((block) => block.id === 7000),
+    first.battlefield.blocks.some((block) => block.id === id),
+    true,
+    "and leaves it standing",
+  );
+
+  // The second contact breaks it, however far the shell flew.
+  const again = simulateShot({
+    battlefield: first.battlefield,
+    shooterSeat: "player1",
+    shot,
+    projectile: PROJECTILE,
+  });
+  assert.equal(again.impact.blockId, id, "the same block is struck again");
+  assert.ok(
+    again.events.some((event) => event.type === "block-destroyed" && event.blockId === id),
+    "two contacts destroy a tower block",
+  );
+  assert.equal(
+    again.battlefield.blocks.some((block) => block.id === id),
     false,
-    "the block is gone after a single hit",
+    "the block is gone",
   );
 });
 
 test("a crater is the same size whatever the flight distance", () => {
   // A short flat shot and a long lob: both land on terrain, and both must carve
   // the SAME depth at the impact column. Distance is a dial for tank damage only.
-  const flat = simulate({ angleDeg: 12, power: 100 });
+  const flat = simulate({ angleDeg: 12, power: 100 }, { battlefield: OPEN_FIELD });
   assert.equal(flat.impact.kind, "terrain");
 
   let lob = null;
-  for (let angleDeg = 30; angleDeg <= 75 && !lob; angleDeg += 1) {
-    const candidate = simulate({ angleDeg, power: 100 });
-    if (candidate.impact.kind === "terrain" && candidate.distance > flat.distance + 800) {
-      lob = candidate;
+  for (const power of [100, 80, 60]) {
+    for (let angleDeg = 30; angleDeg <= 75 && !lob; angleDeg += 1) {
+      const candidate = simulate({ angleDeg, power }, { battlefield: OPEN_FIELD });
+      if (candidate.impact.kind === "terrain" && candidate.distance > flat.distance + 800) {
+        lob = candidate;
+      }
     }
   }
   assert.ok(lob, "a long terrain shot must be reachable from the spawn");
@@ -360,19 +389,22 @@ test("a crater is the same size whatever the flight distance", () => {
   const column = (x) => Math.min(TERRAIN_COLUMNS - 1, Math.max(0, Math.floor(x / 5)));
   for (const simulation of [flat, lob]) {
     const index = column(simulation.impact.x);
-    const room = TERRAIN_MAX_SURFACE_Y - FIELD.terrain[index];
-    const carved = simulation.battlefield.terrain[index] - FIELD.terrain[index];
+    const room = TERRAIN_MAX_SURFACE_Y - OPEN_FIELD.terrain[index];
+    const carved = simulation.battlefield.terrain[index] - OPEN_FIELD.terrain[index];
     assert.equal(carved, Math.min(CRATER_DEPTH, room), "the crater depth is fixed");
   }
 });
 
 test("a direct player hit arrives as a player contact, not a pass-through", () => {
-  // The cover walls are tall, so the hit window is narrow: a fine sweep finds it
-  // where a coarse one would only ever report stone.
+  // The map is mirrored and the tower is the only thing in the middle: on the
+  // open field a fine sweep finds the line the tower would have swallowed.
   let hit = null;
   for (let power = 100; power >= 60 && !hit; power -= 5) {
     for (let angleDeg = 0; angleDeg < 180 && !hit; angleDeg += 0.5) {
-      const simulation = simulate({ angleDeg, power }, { shooterSeat: "player1" });
+      const simulation = simulate(
+        { angleDeg, power },
+        { shooterSeat: "player1", battlefield: OPEN_FIELD },
+      );
       if (simulation.impact.kind === "player") hit = simulation;
     }
   }
@@ -382,10 +414,10 @@ test("a direct player hit arrives as a player contact, not a pass-through", () =
   assert.equal(otherSeat("player1"), "player2");
   assert.deepEqual(
     hit.battlefield.terrain,
-    FIELD.terrain,
+    OPEN_FIELD.terrain,
     "a direct hit carves nothing, so no life can be lost to terrain",
   );
-  assert.deepEqual(hit.battlefield.blocks, FIELD.blocks);
+  assert.deepEqual(hit.battlefield.blocks, OPEN_FIELD.blocks);
 });
 
 test("terrain deformation is integer, bounded and deterministic", () => {
@@ -424,69 +456,83 @@ test("terrain deformation is integer, bounded and deterministic", () => {
   assert.deepEqual(clone(repeat.battlefield), clone(firstOfSameShot.battlefield));
 });
 
-test("cover breaks, collapses and never floats, overlaps or leaves the field", () => {
-  // A three-block stack of placed cover, in the tank's line of fire.
-  const size = STRUCTURE_BLOCK_SIZE;
-  const baseX = 226;
-  const groundY = groundYUnder(FIELD.terrain, baseX, size);
-  // Five blocks tall, so the blast clears the bottom of the stack while the top
-  // is left with nothing under it — the collapse pass has real work to do.
-  const stack = [0, 1, 2, 3, 4].map((level) => ({
-    id: 7100 + level,
-    seat: "player1",
-    kind: "cover",
-    x: baseX,
-    y: groundY - (level + 1) * size,
-    size,
-    integrity: BLOCK_MAX_INTEGRITY,
-  }));
-  const staged = { ...FIELD, blocks: [...FIELD.blocks, ...stack] };
-  const ids = new Set(stack.map((block) => block.id));
+test("the tower is anchored: it is damaged in place and never collapses", () => {
+  const towerIds = new Set(
+    FIELD.blocks.filter((block) => block.kind === "tower").map((block) => block.id),
+  );
+  const initial = new Map(FIELD.blocks.map((block) => [block.id, block]));
 
-  // A line that meets the stack (the angle is discovered, not hard-coded).
-  let hit = null;
-  for (let angleDeg = 0; angleDeg <= 89 && !hit; angleDeg += 1) {
-    const simulation = simulateShot({
-      battlefield: staged,
+  // A line that meets the tower (the angle is discovered, not hard-coded).
+  let shot = null;
+  for (let angleDeg = 4; angleDeg <= 86 && !shot; angleDeg += 1) {
+    const impact = simulateShot({
+      battlefield: FIELD,
       shooterSeat: "player1",
       shot: { angleDeg, power: 100 },
       projectile: PROJECTILE,
-    });
-    if (simulation.impact.blockId !== null && ids.has(simulation.impact.blockId)) {
-      hit = simulation;
+    }).impact;
+    if (impact.kind === "block" && towerIds.has(impact.blockId)) {
+      shot = { angleDeg, power: 100 };
     }
   }
-  assert.ok(hit, "the cover stack is reachable");
+  assert.ok(shot, "the tower is reachable");
 
-  assert.ok(
-    hit.events.some((event) => event.type === "block-destroyed" && ids.has(event.blockId)),
-    "a struck cover block is destroyed outright",
-  );
-  assert.ok(
-    hit.events.some((event) => event.type === "collapse"),
-    "the blocks above it fall rather than float",
-  );
+  let field = FIELD;
+  let brokeSomething = false;
+  for (let index = 0; index < 4; index++) {
+    const simulation = simulateShot({
+      battlefield: field,
+      shooterSeat: "player1",
+      shot,
+      projectile: PROJECTILE,
+    });
+    field = simulation.battlefield;
+    assert.equal(
+      simulation.events.some((event) => event.type === "collapse"),
+      false,
+      "an anchored tower never collapses",
+    );
+    if (simulation.events.some((event) => event.type === "block-destroyed")) {
+      brokeSomething = true;
+    }
+  }
+  assert.equal(brokeSomething, true, "the shots do break the tower down");
 
-  const field = hit.battlefield;
   assertBattlefieldInvariants(field);
-  const survivors = field.blocks.filter((block) => ids.has(block.id));
-  assert.ok(survivors.length >= 1, "the stack came down, it did not vanish");
-  for (const block of survivors) {
-    assert.equal(isSupported(block, field.blocks, field.terrain), true);
+  // Every surviving tower block is exactly where it started.
+  for (const block of field.blocks) {
+    if (block.kind !== "tower") continue;
+    const original = initial.get(block.id);
+    assert.ok(original, "tower blocks keep their identity");
+    assert.equal(block.x, original.x, "a tower block never slides sideways");
+    assert.equal(block.y, original.y, "a tower block never falls into a hole");
   }
 });
 
 test("the ground under a tower can be carved without costing a life", () => {
   // Physics owns no lives; this pins that its battlefield result carries the
   // players down with the ground instead of inventing a hit.
-  let field = FIELD;
+  let field = OPEN_FIELD;
   let sawCrater = false;
+
+  // A flat arc that lands on the ground ahead (found, not hard-coded).
+  let shot = null;
+  for (let angleDeg = 10; angleDeg <= 80 && !shot; angleDeg += 1) {
+    const impact = simulateShot({
+      battlefield: OPEN_FIELD,
+      shooterSeat: "player1",
+      shot: { angleDeg, power: 80 },
+      projectile: PROJECTILE,
+    }).impact;
+    if (impact.kind === "terrain") shot = { angleDeg, power: 80 };
+  }
+  assert.ok(shot, "a terrain shot exists");
 
   for (let shotIndex = 0; shotIndex < 4; shotIndex++) {
     const simulation = simulateShot({
       battlefield: field,
       shooterSeat: "player1",
-      shot: { angleDeg: 70, power: 80 },
+      shot,
       projectile: PROJECTILE,
     });
     field = simulation.battlefield;

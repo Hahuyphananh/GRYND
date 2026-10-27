@@ -8,35 +8,36 @@
  *   • the opening seat is drawn once and RECORDED in the state
  *   • the opening seat takes ONE action; the other seat answers with TWO; from
  *     then on the seats alternate two-action turns
- *   • an ACTION is one of three things:
+ *   • an ACTION is one of two things:
  *       shoot  — aim and fire the shared projectile
  *       move   — drive forward (closer) or back (farther), up to
  *                `MOVE_RANGE` from the spawn, collecting any power-up the tank
  *                drives onto
- *       build  — place one cover block at a CHOSEN tile on the builder's OWN
- *                half of the map, resting on the ground or on another block
- *     so a two-action turn is \"drive into range, then fire\" or \"place cover,
- *     then fire\", not necessarily two shells
+ *     so a two-action turn is \"drive into range, then fire\", not necessarily
+ *     two shells. There is no build action: the only structures on the board are
+ *     the two base roofs and the middle tower.
  *   • a turn continues after a hit — a player who connects on the first action
  *     of their two still has the second — unless the match has ended
  *   • a DIRECT projectile contact with a tank costs HP, scaled by how far the
  *     shell flew (`damageForDistance`). Distance changes NOTHING else: cover
  *     blocks break on any contact and a crater is always the same size.
  *     Structural and terrain damage never costs HP.
- *   • the middle's three power-ups are collected by DRIVING onto them: heal
- *     restores HP, double-damage doubles the next shot's HP damage and
- *     double-blast doubles the next shot's crater and block blast. A weapon
- *     buff is spent by the next shot, hit or miss.
+ *   • the middle's power-ups (one of each kind on each side of the tower) are
+ *     collected by DRIVING onto them: heal restores HP, double-damage doubles
+ *     the next shot's HP damage and double-blast doubles the next shot's crater
+ *     and block blast. A weapon buff is spent by the next shot, hit or miss, and
+ *     a collected pickup never comes back.
  *   • the match ends IMMEDIATELY when a tank reaches 0 HP; the winner is the
  *     seat that acted, and no further action is accepted
- *   • there is no draw: somebody always runs out of HP
+ *   • a timed match ends when its clock runs out (`finishOnTime`): more HP wins,
+ *     and level HP is a draw. That draw is the ONLY way a match has no winner.
  *
  * ── AUTHORITY ──────────────────────────────────────────────────────────────
  * The caller supplies only a seat and an ACTION (`{ type: \"shoot\", angleDeg,
- * power }`, `{ type: \"move\", direction }` or `{ type: \"build\" }`). Positions,
- * hits, HP, terrain, structures, the turn and the winner are all derived here
- * (and in ./physics) from the state the server already holds. There is no field
- * for a position, a block, a hit, an HP total or a winner.
+ * power }` or `{ type: \"move\", direction }`). Positions, hits, HP, terrain,
+ * structures, the turn and the winner are all derived here (and in ./physics)
+ * from the state the server already holds. There is no field for a position, a
+ * block, a hit, an HP total or a winner.
  *
  * The engine imports nothing from React, HTTP, Drizzle or a browser, and never
  * reads a clock or a random source (`createInitialState` takes a seed and an
@@ -46,15 +47,12 @@
 import {
   ACTION_TYPES,
   ACTIONS_PER_TURN,
-  BATTLEFIELD_HEIGHT,
   BATTLEFIELD_WIDTH,
-  BLOCK_MAX_INTEGRITY,
   END_REASONS,
   FIELD_VERSION,
   LAUNCHER_INSET_X,
   MATCH_STATUS,
   MAX_HP,
-  MAX_STRUCTURE_BLOCKS_PER_SEAT,
   MIN_PLAYER_SEPARATION,
   MOVE_DIRECTIONS,
   MOVE_EDGE_MARGIN,
@@ -67,16 +65,12 @@ import {
   POWERUP_HEAL_AMOUNT,
   POWERUP_KINDS,
   POWERUP_RADIUS,
-  POWERUP_RESPAWN_TURNS,
   REJECTION,
   SEATS,
-  STRUCTURE_BLOCK_SIZE,
-  SUPPORT_TOLERANCE,
 } from "./constants";
 import {
   assertSeed,
   createBattlefield,
-  groundYUnder,
   openingSeatFor,
   surfaceYAt,
 } from "./generation";
@@ -94,14 +88,12 @@ import type {
   ApplyActionResult,
   Battlefield,
   Buffs,
-  BuildRecord,
   EndReason,
   HillstrikeAction,
   HillstrikeState,
   MatchStatus,
   MoveDirection,
   MoveRecord,
-  PickupRespawn,
   PowerUp,
   ProjectileSpec,
   RejectionCode,
@@ -192,58 +184,6 @@ export function buffsMapOf(state: HillstrikeState): Record<Seat, Buffs> {
 export function pickupsOf(battlefield: Battlefield | null | undefined): readonly PowerUp[] {
   const pickups = (battlefield as { pickups?: unknown } | null | undefined)?.pickups;
   return Array.isArray(pickups) ? (pickups as readonly PowerUp[]) : [];
-}
-
-/** The collected pickups waiting to come back (a pre-timer battlefield carries none). */
-export function respawnsOf(
-  battlefield: Battlefield | null | undefined,
-): readonly PickupRespawn[] {
-  const respawns = (battlefield as { respawns?: unknown } | null | undefined)?.respawns;
-  return Array.isArray(respawns) ? (respawns as readonly PickupRespawn[]) : [];
-}
-
-/** True when a block is sitting close enough to a spot to bury a pickup there. */
-function buriedAt(battlefield: Battlefield, x: number, y: number): boolean {
-  for (const block of battlefield.blocks) {
-    const nearestX = Math.max(block.x, Math.min(x, block.x + block.size));
-    const nearestY = Math.max(block.y, Math.min(y, block.y + block.size));
-    if (Math.hypot(x - nearestX, y - nearestY) <= POWERUP_RADIUS) return true;
-  }
-  return false;
-}
-
-/**
- * Bring back the middle: every due respawn returns to the field if its spot is
- * still free.
- *
- * The timer is measured in ACTIONS (`turnIndex`), so it advances exactly once per
- * resolved action and is reproducible from the stored state alone. A spot with a
- * cover block on it is held until the block is broken — the engine never drops a
- * pickup inside a block — which is a legitimate second reason to shoot at cover.
- */
-function settleRespawns(
-  battlefield: Battlefield,
-  turnIndex: number,
-): { pickups: readonly PowerUp[]; respawns: readonly PickupRespawn[] } {
-  const waiting = respawnsOf(battlefield);
-  if (waiting.length === 0) return { pickups: battlefield.pickups, respawns: waiting };
-
-  const pickups = [...pickupsOf(battlefield)];
-  const still: PickupRespawn[] = [];
-  for (const ticket of [...waiting].sort((a, b) => a.id - b.id)) {
-    if (ticket.atTurn > turnIndex) {
-      still.push(ticket);
-      continue;
-    }
-    // Already back (a duplicated ticket can never double-deal a pickup).
-    if (pickups.some((pickup) => pickup.id === ticket.id)) continue;
-    if (buriedAt(battlefield, ticket.x, ticket.y)) {
-      still.push({ ...ticket, atTurn: turnIndex + 1 });
-      continue;
-    }
-    pickups.push({ id: ticket.id, kind: ticket.kind, x: ticket.x, y: ticket.y });
-  }
-  return { pickups, respawns: still };
 }
 
 /** Both seats' HP, normalised (see `hpOf`). */
@@ -375,188 +315,12 @@ export function moveTargetFor(
   return { x, y };
 }
 
-/** A resolved placement: one cover block's top-left corner and size. */
-export interface BuildPlacement {
-  readonly x: number;
-  readonly y: number;
-  readonly size: number;
-}
-
-/** A refused placement, with the engine's own rejection code. */
-export type BuildPlacementVerdict =
-  | { readonly ok: true; readonly placement: BuildPlacement }
-  | { readonly ok: false; readonly code: RejectionCode; readonly message: string };
-
-const COVER_SIZE = STRUCTURE_BLOCK_SIZE;
-
-/** True when a block of `size` at `x` is entirely on `seat`'s half. */
-export function isOwnHalf(seat: Seat, x: number, size = COVER_SIZE): boolean {
-  const half = BATTLEFIELD_WIDTH / 2;
-  return seat === "player1" ? x + size <= half : x >= half;
-}
-
-function blockKindOf(block: TowerBlock): "cover" | "roof" {
-  return block.kind === "roof" ? "roof" : "cover";
-}
-
-function blocksOverlapAt(x: number, y: number, size: number, block: TowerBlock): boolean {
-  return (
-    x < block.x + block.size &&
-    block.x < x + size &&
-    y < block.y + block.size &&
-    block.y < y + size
-  );
-}
-
-/**
- * Resolve a requested build point into a legal placement, or the reason it is
- * illegal.
- *
- * The MAP decides the vertical: a cover block must REST on something, so the
- * column chosen by `requestX` offers its support surfaces — the ground under the
- * footprint and the tops of any blocks already there — and the one nearest the
- * requested `y` is used. That is what makes "place a block anywhere on your own
- * half" both free and well-defined: you pick the column and the stack, the engine
- * picks the legal resting height, and a click in mid-air snaps down to the
- * nearest support instead of floating.
- *
- * Refused, in this order: a non-finite point, a column off the map, the
- * opponent's half, a stack with no free space (a tank or a block is in the way),
- * and any leftover geometry that cannot support the block.
- */
-export function resolveBuildPlacement(
-  state: HillstrikeState,
-  seat: Seat,
-  requestX: unknown,
-  requestY: unknown,
-): BuildPlacementVerdict {
-  if (typeof requestX !== "number" || !Number.isFinite(requestX)) {
-    return { ok: false, code: REJECTION.INVALID_BUILD, message: "A build needs a finite x" };
-  }
-  if (typeof requestY !== "number" || !Number.isFinite(requestY)) {
-    return { ok: false, code: REJECTION.INVALID_BUILD, message: "A build needs a finite y" };
-  }
-
-  const size = COVER_SIZE;
-  const x = Math.round(requestX / size) * size;
-  const wantsBottom = requestY + size;
-
-  if (x < 0 || x + size > BATTLEFIELD_WIDTH) {
-    return {
-      ok: false,
-      code: REJECTION.BUILD_OUT_OF_BOUNDS,
-      message: "That column is off the battlefield",
-    };
-  }
-  if (!isOwnHalf(seat, x, size)) {
-    return {
-      ok: false,
-      code: REJECTION.BUILD_OPPONENT_HALF,
-      message: "You may only build on your own half of the map",
-    };
-  }
-
-  const terrain = state.battlefield.terrain;
-  const blocks = state.battlefield.blocks;
-
-  // Every surface a cover block could rest on in this column.
-  const supports: number[] = [groundYUnder(terrain, x, size)];
-  for (const block of blocks) {
-    const overlap = Math.min(x + size, block.x + block.size) - Math.max(x, block.x);
-    if (overlap < size / 2) continue;
-    supports.push(block.y);
-  }
-  supports.sort((a, b) => Math.abs(a - wantsBottom) - Math.abs(b - wantsBottom) || a - b);
-
-  let blocked = false;
-  for (const support of supports) {
-    const y = support - size;
-    if (y < 0 || y + size > BATTLEFIELD_HEIGHT) continue;
-    // A support that is BELOW the current surface is buried ground: skip it.
-    if (y + size > groundYUnder(terrain, x, size) + SUPPORT_TOLERANCE) continue;
-    if (blocks.some((block) => blocksOverlapAt(x, y, size, block))) {
-      blocked = true;
-      continue;
-    }
-    if (tankOverlapsPlayer(x, y, state)) {
-      blocked = true;
-      continue;
-    }
-    return { ok: true, placement: { x, y, size } };
-  }
-
-  return blocked
-    ? { ok: false, code: REJECTION.BUILD_OVERLAP, message: "Something is already in that space" }
-    : { ok: false, code: REJECTION.BUILD_UNSUPPORTED, message: "A block must rest on the ground or another block" };
-}
-
-/** True when a block at `(x, y)` would overlap either tank's hull. */
-function tankOverlapsPlayer(
-  x: number,
-  y: number,
-  state: HillstrikeState,
-): boolean {
-  for (const seat of SEATS) {
-    const player = state.battlefield.players[seat];
-    if (!player) continue;
-    const centreX = player.x;
-    const centreY = player.y - PLAYER_RADIUS;
-    const nearestX = Math.max(x, Math.min(centreX, x + COVER_SIZE));
-    const nearestY = Math.max(y, Math.min(centreY, y + COVER_SIZE));
-    const dx = centreX - nearestX;
-    const dy = centreY - nearestY;
-    if (dx * dx + dy * dy < PLAYER_RADIUS * PLAYER_RADIUS) return true;
-  }
-  return false;
-}
-
-/**
- * The build a UI (or the bot) would place by default: the nearest legal column in
- * front of the tank, walking outward up to six tiles. Returns `null` when the
- * whole arc is occupied.
- */
-export function buildPlacementFor(
-  state: HillstrikeState,
-  seat: Seat,
-): BuildPlacement | null {
-  const player = state.battlefield.players[seat];
-  if (!player) return null;
-  const sign = forwardSignFor(seat);
-  const size = COVER_SIZE;
-  const baseX =
-    sign > 0
-      ? Math.round((player.x + PLAYER_RADIUS) / size) * size
-      : Math.round((player.x - PLAYER_RADIUS - size) / size) * size;
-
-  for (let step = 0; step < 6; step++) {
-    const requestX = baseX + sign * step * size;
-    const requestY =
-      groundYUnder(state.battlefield.terrain, requestX, size) - size;
-    const verdict = resolveBuildPlacement(state, seat, requestX, requestY);
-    if (verdict.ok) return verdict.placement;
-  }
-  return null;
-}
-
-/** How many COVER blocks a seat has placed (base roofs are not build budget). */
-export function blockCountFor(state: HillstrikeState, seat: Seat): number {
-  let count = 0;
-  for (const block of state.battlefield.blocks) {
-    if (block.seat === seat && blockKindOf(block) === "cover") count += 1;
-  }
-  return count;
-}
-
 // ──────────────────────────────────────────────────────────────────────────
 // Validation
 // ──────────────────────────────────────────────────────────────────────────
 
 function isActionType(value: unknown): value is ActionType {
-  return (
-    value === ACTION_TYPES.SHOOT ||
-    value === ACTION_TYPES.MOVE ||
-    value === ACTION_TYPES.BUILD
-  );
+  return value === ACTION_TYPES.SHOOT || value === ACTION_TYPES.MOVE;
 }
 
 /**
@@ -595,7 +359,7 @@ export function validateAction(
     return {
       ok: false,
       code: REJECTION.INVALID_ACTION,
-      message: "Action type must be shoot, move or build",
+      message: "Action type must be shoot or move",
     };
   }
   if (state.status !== MATCH_STATUS.PLAYING) {
@@ -683,28 +447,6 @@ export function validateAction(
     return { ok: true };
   }
 
-  // build
-  const { x: buildX, y: buildY } = action as { x?: unknown; y?: unknown };
-  if (typeof buildX === "undefined" || typeof buildY === "undefined") {
-    return {
-      ok: false,
-      code: REJECTION.INVALID_BUILD,
-      message: "A build must name the tile to place (x, y)",
-    };
-  }
-  if (blockCountFor(state, seat) >= MAX_STRUCTURE_BLOCKS_PER_SEAT) {
-    return {
-      ok: false,
-      code: REJECTION.BLOCK_LIMIT,
-      message: "You have placed all the blocks your side allows",
-    };
-  }
-  const placement = resolveBuildPlacement(state, seat, buildX, buildY);
-  if (!placement.ok) {
-    // `strict` is off in this repo, so the union is not narrowed here.
-    const denied = placement as Extract<BuildPlacementVerdict, { ok: false }>;
-    return { ok: false, code: denied.code, message: denied.message };
-  }
   return { ok: true };
 }
 
@@ -890,7 +632,7 @@ function applyShoot(
       turnAdvance,
       hp,
       buffs: nextBuffs,
-      battlefield: { ...simulation.battlefield, ...settleRespawns(simulation.battlefield, turnIndex) },
+      battlefield: simulation.battlefield,
       lastAction,
       turnIndex,
     }),
@@ -907,10 +649,8 @@ function applyShoot(
  * a long step can never hop clean over a pickup. Picking the lowest id keeps the
  * choice deterministic if a layout ever did stack two.
  *
- * A collected pickup leaves a RESPAWN TICKET behind: the middle deals it again
- * `POWERUP_RESPAWN_TURNS` actions later, so a buff is a contested resource for
- * the whole match instead of a one-off. The ticket carries the same id, kind and
- * spot, which keeps the layout mirror-symmetric across respawns.
+ * A pickup is dealt ONCE per match: collecting it removes it from the field for
+ * good. The six lanes either side of the tower are the whole inventory.
  */
 function collectPickup({
   state,
@@ -930,20 +670,19 @@ function collectPickup({
   buffs: Record<Seat, Buffs>;
   tick: number;
   events: ShotEvent[];
-}): { pickups: readonly PowerUp[]; respawns: readonly PickupRespawn[] } {
+}): { pickups: readonly PowerUp[] } {
   const bodyY = y - PLAYER_RADIUS;
   const from = state.battlefield.players[seat];
   const fromX = from ? from.x : x;
   const fromY = from ? from.y - PLAYER_RADIUS : bodyY;
   const pickups = pickupsOf(state.battlefield);
-  const respawns = respawnsOf(state.battlefield);
   const hit = [...pickups]
     .sort((a, b) => a.id - b.id)
     .find(
       (pickup) =>
         distanceToSegment(pickup.x, pickup.y, fromX, fromY, x, bodyY) <= POWERUP_RADIUS,
     );
-  if (!hit) return { pickups, respawns };
+  if (!hit) return { pickups };
 
   events.push({
     type: "pickup-collected",
@@ -965,19 +704,7 @@ function collectPickup({
     buffs[seat] = { ...buffs[seat], doubleBlast: true };
   }
 
-  return {
-    pickups: pickups.filter((pickup) => pickup.id !== hit.id),
-    respawns: [
-      ...respawns.filter((ticket) => ticket.id !== hit.id),
-      {
-        id: hit.id,
-        kind: hit.kind,
-        x: hit.x,
-        y: hit.y,
-        atTurn: tick + POWERUP_RESPAWN_TURNS,
-      },
-    ],
-  };
+  return { pickups: pickups.filter((pickup) => pickup.id !== hit.id) };
 }
 
 /** How far a point is from a line segment (the drive's swept path). */
@@ -1071,79 +798,7 @@ function applyMove(
       turnAdvance,
       hp,
       buffs,
-      battlefield: { ...battlefield, ...settleRespawns(battlefield, turnIndex) },
-      lastAction,
-      turnIndex,
-    }),
-    events,
-  };
-}
-
-/** A build: place one cover block at the chosen tile and advance. */
-function applyBuild(
-  state: HillstrikeState,
-  seat: Seat,
-  action: { readonly x: unknown; readonly y: unknown },
-): ApplyActionResult {
-  const verdict = resolveBuildPlacement(state, seat, action.x, action.y);
-  if (!verdict.ok) {
-    const denied = verdict as Extract<BuildPlacementVerdict, { ok: false }>;
-    throw new HillstrikeRuleError(denied.code, denied.message);
-  }
-  const placement = (verdict as Extract<BuildPlacementVerdict, { ok: true }>).placement;
-  if (blockCountFor(state, seat) >= MAX_STRUCTURE_BLOCKS_PER_SEAT) {
-    throw new HillstrikeRuleError(
-      REJECTION.BLOCK_LIMIT,
-      "You have placed all the blocks your side allows",
-    );
-  }
-
-  let nextId = 1;
-  for (const block of state.battlefield.blocks) nextId = Math.max(nextId, block.id + 1);
-
-  const block: TowerBlock = {
-    id: nextId,
-    seat,
-    kind: "cover",
-    x: placement.x,
-    y: placement.y,
-    size: placement.size,
-    integrity: BLOCK_MAX_INTEGRITY,
-  };
-
-  const tick = Number(state.turnIndex);
-  const events: ShotEvent[] = [
-    { type: "block-built", tick, seat, blockId: block.id, x: block.x, y: block.y },
-  ];
-
-  const turnIndex = Number(state.turnIndex) + 1;
-  const turnAdvance = advanceTurn(state, seat, { knockedOut: false, tick });
-  if (turnAdvance.finishedEvent) events.push(turnAdvance.finishedEvent);
-
-  const battlefield: Battlefield = {
-    ...state.battlefield,
-    blocks: [...state.battlefield.blocks, block],
-  };
-  // A build can land on a spot that was about to respawn: the timer waits, so a
-  // well-placed block delays the middle instead of breaking the schedule.
-
-  const lastAction: BuildRecord = {
-    type: "build",
-    seat,
-    turnIndex: Number(state.turnIndex),
-    blockId: block.id,
-    x: block.x,
-    y: block.y,
-    events,
-  };
-
-  return {
-    state: composeState({
-      state,
-      turnAdvance,
-      hp: hpMapOf(state),
-      buffs: buffsMapOf(state),
-      battlefield: { ...battlefield, ...settleRespawns(battlefield, turnIndex) },
+      battlefield,
       lastAction,
       turnIndex,
     }),
@@ -1177,13 +832,10 @@ export function applyAction(
 
   const actor = seat as Seat;
   const input = asAction(action);
-  if (input.type === ACTION_TYPES.SHOOT) {
-    return applyShoot(state, actor, assertShotInput(input));
-  }
   if (input.type === ACTION_TYPES.MOVE) {
     return applyMove(state, actor, input.direction);
   }
-  return applyBuild(state, actor, input as Extract<HillstrikeAction, { type: "build" }>);
+  return applyShoot(state, actor, assertShotInput(input));
 }
 
 /**
@@ -1202,6 +854,57 @@ export function tryApplyAction(
   if (!verdict.ok) return verdict as Extract<ActionVerdict, { ok: false }>;
   const applied = applyAction(state, seat, action);
   return { ok: true, state: applied.state, events: applied.events };
+}
+
+/**
+ * The seat that is ahead on HP, or `null` when the two bars are level.
+ *
+ * This is the only tie-break a timed match has: the match clock asks it, and a
+ * level board is a draw. Nothing else in the engine reads it.
+ */
+export function hpLeaderOf(state: HillstrikeState): Seat | null {
+  const first = hpOf(state, "player1");
+  const second = hpOf(state, "player2");
+  if (first === second) return null;
+  return first > second ? "player1" : "player2";
+}
+
+/**
+ * End a live match because its clock ran out.
+ *
+ * The engine cannot read a clock, so the CALLER decides that time is up (the
+ * practice page from its own timer, the server store from `startedAt +
+ * durationMs`). The verdict is this module's: the tank with more HP wins, and
+ * level HP is a DRAW (`winner: null`) — the one result a Hillstrike match can
+ * have that is not a knockout. No HP is fabricated, no tank is knocked out, and
+ * a match that has already finished is returned untouched.
+ */
+export function finishOnTime(state: HillstrikeState): ApplyActionResult {
+  if (state.status !== MATCH_STATUS.PLAYING) {
+    return { state, events: [] };
+  }
+  const winner = hpLeaderOf(state);
+  const events: ShotEvent[] = winner
+    ? [
+        {
+          type: "match-ended",
+          tick: Number(state.turnIndex),
+          winner,
+          reason: END_REASONS.TIMED_OUT,
+        },
+      ]
+    : [];
+
+  return {
+    state: deepFreeze({
+      ...state,
+      status: MATCH_STATUS.FINISHED,
+      actionsRemaining: 0,
+      winner,
+      terminationReason: END_REASONS.TIMED_OUT,
+    }),
+    events,
+  };
 }
 
 /** The two seats, for callers that need to iterate them. */

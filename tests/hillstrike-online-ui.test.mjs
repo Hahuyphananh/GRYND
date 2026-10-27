@@ -105,11 +105,10 @@ test("hillstrike online: the only gameplay request is one action plus a version"
     pageCode.includes("JSON.stringify({ action, expectedVersion: current.version })"),
     "the request must carry exactly the action and the version",
   );
-  // The three actions are the entire gameplay vocabulary a client may send.
+  // The two actions are the entire gameplay vocabulary a client may send.
   for (const shape of [
     'sendAction({ type: "shoot", ...aim })',
     'sendAction({ type: "move", direction })',
-    'sendAction({ type: "build", x: placement.x, y: placement.y })',
   ]) {
     assert.ok(pageCode.includes(shape), `the view must send ${shape}`);
   }
@@ -258,9 +257,11 @@ test("hillstrike online: the client joins its match room and pokes the opponent"
 });
 
 test("hillstrike online: the lobby asks the server to seat the caller and nothing else", () => {
+  // The only thing the lobby adds to the request is the clock it was opened
+  // with: no stake, no board, no seat.
   assert.ok(
-    lobbyCode.includes("JSON.stringify({})"),
-    "the matchmaking request carries nothing — Hillstrike is unstaked",
+    lobbyCode.includes("JSON.stringify({ durationMs })"),
+    "the matchmaking request carries the chosen clock and nothing else",
   );
   assert.ok(lobbyCode.includes("/api/hillstrike/create-or-join"));
   assert.ok(lobbyCode.includes("/api/hillstrike/available"));
@@ -290,6 +291,7 @@ test("hillstrike online: the routes exist where the views expect them", () => {
     SHOT_ROUTE,
     "src/app/api/hillstrike/match/[matchId]/forfeit/route.ts",
     "src/app/api/hillstrike/match/[matchId]/cancel/route.ts",
+    "src/app/api/hillstrike/match/[matchId]/timeout/route.ts",
   ];
   for (const path of routes) {
     assert.ok(read(path).length > 200, `${path} must exist`);

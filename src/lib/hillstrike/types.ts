@@ -58,19 +58,14 @@ export interface MoveInput {
 }
 
 /**
- * The three actions a turn can spend. Each is plain data and each is validated
- * by ./rules from the state the server already holds — an action never carries a
- * hit or a damage figure.
- *
- * `build` DOES carry a position: the player picks the tile. It is the only
- * positional action in the game, and ./rules validates it against the state
- * (own half, free space, support underneath), so the caller still cannot
- * describe an outcome — only where it would like a block to go.
+ * The two actions a turn can spend. Each is plain data and each is validated by
+ * ./rules from the state the server already holds — an action never carries a
+ * hit or a damage figure, and there is no action that places a block: the only
+ * structures on the board are the base roofs and the middle tower.
  */
 export type HillstrikeAction =
   | { readonly type: "shoot"; readonly angleDeg: number; readonly power: number }
-  | { readonly type: "move"; readonly direction: MoveDirection }
-  | { readonly type: "build"; readonly x: number; readonly y: number };
+  | { readonly type: "move"; readonly direction: MoveDirection };
 
 /** One action as the ENGINE accepts it (already narrowed and type-tagged). */
 export type ActionType = HillstrikeAction["type"];
@@ -99,19 +94,28 @@ export interface Player {
 }
 
 /**
- * One damageable block. `kind: "roof"` is a base ceiling: it is drawn and
- * collides like a block but is INDESTRUCTIBLE and never collapses, which is what
- * makes "sit in your base" safe from above but useless for winning.
+ * One block. Three kinds share the same collision and the same square geometry:
+ *
+ *   • `roof`  — a base ceiling: INDESTRUCTIBLE and anchored, which is what makes
+ *               "sit in your base" safe from above but useless for winning;
+ *   • `tower` — the middle wall: damageable, and ANCHORED, so a hole shot into it
+ *               stays open instead of being filled by the blocks above it;
+ *   • `cover` — a legacy (v3) cover block from when building was an action. New
+ *               matches never create one, but a stored match still reads.
  */
-export type BlockKind = "cover" | "roof";
+export type BlockKind = "cover" | "roof" | "tower";
 
 /**
  * One block: an axis-aligned square whose `(x, y)` is its TOP-LEFT corner and
  * whose `integrity` is how many blast hits it survives.
+ *
+ * `seat` is the seat that owns the block — a base roof — and `null` for the
+ * middle tower, which belongs to neither seat (so "the enemy's cover" and "my
+ * cover" can never describe it).
  */
 export interface TowerBlock {
   readonly id: number;
-  readonly seat: Seat;
+  readonly seat: Seat | null;
   readonly x: number;
   readonly y: number;
   readonly size: number;
@@ -135,20 +139,6 @@ export interface PowerUp {
   readonly y: number;
 }
 
-/**
- * A collected pickup's return ticket: where it comes back, and on which action.
- *
- * `atTurn` is a `turnIndex` (one action = one tick), so the schedule is part of
- * the deterministic state: the same actions always bring the same middle back.
- */
-export interface PickupRespawn {
-  readonly id: number;
-  readonly kind: PowerUpKind;
-  readonly x: number;
-  readonly y: number;
-  readonly atTurn: number;
-}
-
 /** A seat's armed buffs. Each weapon buff is spent by the NEXT shot fired. */
 export interface Buffs {
   readonly doubleDamage: boolean;
@@ -157,9 +147,9 @@ export interface Buffs {
 
 /**
  * The battlefield. `terrain` holds one surface y per column (column `c` spans
- * `x ∈ [c·5, (c+1)·5)`), so the ground is a polyline; `blocks` holds the base
- * roofs plus whatever cover the seats have built, and `pickups` the middle's
- * buffs.
+ * `x ∈ [c·5, (c+1)·5)`), so the ground is a polyline; `blocks` holds the two base
+ * roofs and the middle tower, and `pickups` the six buffs dealt either side of
+ * it. A pickup is collected once and never returns.
  */
 export interface Battlefield {
   readonly version: number;
@@ -169,12 +159,6 @@ export interface Battlefield {
   readonly terrain: readonly number[];
   readonly blocks: readonly TowerBlock[];
   readonly pickups: readonly PowerUp[];
-  /**
-   * Collected pickups waiting to come back. Optional because a battlefield
-   * written before the respawn timer existed has none — and because an old match
-   * must still replay exactly as it was played.
-   */
-  readonly respawns?: readonly PickupRespawn[];
   readonly players: Readonly<Record<Seat, Player>>;
 }
 
@@ -338,23 +322,12 @@ export interface MoveRecord {
   readonly events: readonly ShotEvent[];
 }
 
-/** One placement, as recorded on the state and in match history. */
-export interface BuildRecord {
-  readonly type: "build";
-  readonly seat: Seat;
-  readonly turnIndex: number;
-  readonly blockId: number;
-  readonly x: number;
-  readonly y: number;
-  readonly events: readonly ShotEvent[];
-}
-
 /**
  * Whatever the last accepted action resolved to. Discriminated on `type`, so a
  * client animates a shell only when there is one and just re-reads the board for
- * a drive or a build.
+ * a drive.
  */
-export type ActionRecord = ShotRecord | MoveRecord | BuildRecord;
+export type ActionRecord = ShotRecord | MoveRecord;
 
 /**
  * The whole match, as pure data.

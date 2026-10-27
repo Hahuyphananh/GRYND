@@ -5,8 +5,8 @@
  * gameplay property, not a detail: difficulty may change how carefully it
  * PICKS an action and nothing else. This suite pins that:
  *
- *   • it returns ONE of the engine's three actions — a shot, a drive or a build
- *     — carrying no damage modifier, no projectile and no hidden bonus that
+ *   • it returns ONE of the engine's two actions — a shot or a drive —
+ *     carrying no damage modifier, no projectile and no hidden bonus that
  *     could make a "hard" bot hit harder than an "easy" one;
  *   • every candidate it considers is resolved by the SAME `simulateShot` and
  *     the SAME projectile spec the match uses, and every action it returns is
@@ -115,7 +115,25 @@ function resolve(state, seat, shot) {
 function withoutPickups(state) {
   return {
     ...state,
-    battlefield: { ...state.battlefield, pickups: [], respawns: [] },
+    battlefield: { ...state.battlefield, pickups: [] },
+  };
+}
+
+/**
+ * The same board with the middle TOWER removed.
+ *
+ * The tower is a full-height gate: on a fresh board there is deliberately no
+ * spawn-to-spawn line, which is exactly the rule. The tests below are about how
+ * the bot aims and scores a shot once a lane IS open, so they stage the board the
+ * way a real match gets there — by breaking the tower down first.
+ */
+function openField(state) {
+  return {
+    ...state,
+    battlefield: {
+      ...state.battlefield,
+      blocks: state.battlefield.blocks.filter((block) => block.kind !== "tower"),
+    },
   };
 }
 
@@ -129,7 +147,7 @@ test("hillstrike ai: the bot returns one action, and nothing but an action", () 
       const action = chooseAiAction({ state, seat: AI_SEAT, difficulty, random: neverSlips });
 
       assert.ok(
-        [ACTION_TYPES.SHOOT, ACTION_TYPES.MOVE, ACTION_TYPES.BUILD].includes(action.type),
+        [ACTION_TYPES.SHOOT, ACTION_TYPES.MOVE].includes(action.type),
         `unexpected action type ${action.type}`,
       );
       assert.equal(action.type, "shoot" in action ? "shoot" : action.type);
@@ -140,21 +158,10 @@ test("hillstrike ai: the bot returns one action, and nothing but an action", () 
         assert.ok(action.power >= 0 && action.power <= POWER_MAX, `power ${action.power}`);
         // The bot fires forwards: player2 shoots to the left.
         assert.ok(action.angleDeg > 90 && action.angleDeg <= 180, `angle ${action.angleDeg}`);
-      } else if (action.type === ACTION_TYPES.MOVE) {
+      } else {
+        // A drive names a direction; the engine derives the new position.
         assert.deepEqual(Object.keys(action).sort(), ["direction", "type"]);
         assert.ok(["forward", "back"].includes(action.direction));
-      } else {
-        // A build names the tile it wants; the engine still derives everything
-        // else about the block it will place.
-        assert.deepEqual(Object.keys(action).sort(), ["type", "x", "y"]);
-        assert.equal(Number.isInteger(action.x), true);
-        assert.equal(Number.isInteger(action.y), true);
-        assert.ok(
-          AI_SEAT === "player1"
-            ? action.x + STRUCTURE_BLOCK_SIZE <= BATTLEFIELD_WIDTH / 2
-            : action.x >= BATTLEFIELD_WIDTH / 2,
-          "the bot builds on its own half",
-        );
       }
 
       // Whatever it picked, the engine must accept it.
@@ -210,7 +217,7 @@ test("hillstrike ai: a stronger tier lands at least as many direct hits across s
     const easy = chooseAiAction({ state, seat: AI_SEAT, difficulty: "easy", random: neverSlips });
     const hard = chooseAiAction({ state, seat: AI_SEAT, difficulty: "hard", random: neverSlips });
     // Only seeds where both tiers chose to fire say anything about aiming; a
-    // tier that spends the action on a drive or a build has not mis-aimed.
+    // tier that spends the action on a drive has not mis-aimed.
     if (easy.type !== ACTION_TYPES.SHOOT || hard.type !== ACTION_TYPES.SHOOT) continue;
     compared += 1;
     if (resolve(state, AI_SEAT, hard).kind === IMPACT_KINDS.PLAYER) harder += 1;
@@ -340,7 +347,7 @@ test("hillstrike ai: the search is a bounded, seat-local, monotonic grid", () =>
   const sizes = AI_DIFFICULTIES.map((difficulty) => aiAimGrid(difficulty, HUMAN_SEAT).length);
   assert.ok(sizes[0] < sizes[1] && sizes[1] < sizes[2], `grid sizes must grow (${sizes.join(" < ")})`);
 
-  // Grid + refinement + the top-K resolutions + one probe each for drive/build.
+  // Grid + refinement + the top-K resolutions + one probe for the drive.
   const budgets = AI_DIFFICULTIES.map((difficulty) => aiCandidateBudget(difficulty));
   assert.deepEqual(budgets, [25, 76, 267], "the cost ceilings are stable");
   for (const [index, difficulty] of AI_DIFFICULTIES.entries()) {
@@ -402,12 +409,11 @@ test("hillstrike ai: tie-breaking is a total order, so a plan never wobbles", ()
   assert.ok(compareAiScores(x, z) < 0);
 });
 
-test("hillstrike ai: a direct hit outranks enemy cover, which outranks ground, which outranks a roof", () => {
-  // One BREAKABLE cover block is staged on the human's half, in the bot's arc:
-  // a fresh board only carries the indestructible base roofs, and the whole
-  // point of this ladder is to separate "cover worth breaking" from "scenery
-  // that cannot be broken".
-  const base = stateInTheOpen(424242);
+test("hillstrike ai: a direct hit outranks a damageable block, which outranks ground, which outranks a roof", () => {
+  // The tower is cleared, so the bot has a line to the human's hull, and one
+  // BREAKABLE cover block is staged in that arc: the point of this ladder is to
+  // separate "a block worth breaking" from "scenery that cannot be broken".
+  const base = openField(stateInTheOpen(424242));
   const human = base.battlefield.players[HUMAN_SEAT];
   const size = STRUCTURE_BLOCK_SIZE;
   const coverX = Math.round((human.x - 3 * size) / size) * size;
@@ -461,7 +467,7 @@ test("hillstrike ai: a direct hit outranks enemy cover, which outranks ground, w
 });
 
 test("hillstrike ai: HP decides how much a knockout shot and its own cover are worth", () => {
-  const state = stateInTheOpen(424242);
+  const state = openField(stateInTheOpen(424242));
   const hit = aiAimGrid("hard", AI_SEAT)
     .map((shot) => scoreAiShot({ state, seat: AI_SEAT, shot }))
     .find((entry) => entry && entry.impact.kind === IMPACT_KINDS.PLAYER);
@@ -583,9 +589,10 @@ test("hillstrike ai: hard walks to the middle when a shell is not the better act
   assert.deepEqual(validateAction(behind, AI_SEAT, hard), { ok: true });
 
   // Ahead on HP with a direct hit on the board, the shell is the better action:
-  // a walk there would hand the lead back (measured, not assumed).
+  // a walk there would hand the lead back (measured, not assumed). Four drives
+  // puts the bot over the rise that hides the human from its spawn.
   const ahead = {
-    ...stateWithBotOpener(424242, { drives: 2 }),
+    ...openField(stateWithBotOpener(424242, { drives: 4 })),
     hp: { player1: 60, player2: MAX_HP },
   };
   const trade = chooseAiAction({ state: ahead, seat: AI_SEAT, difficulty: "hard", random: neverSlips });
@@ -620,7 +627,7 @@ test("hillstrike ai: hard spends a buff it already carries, then goes back for t
 });
 
 test("hillstrike ai: hard never trades a knockout for a power-up", () => {
-  const state = stateInTheOpen(424242);
+  const state = openField(stateInTheOpen(424242));
   const oneHit = { ...state, hp: { ...state.hp, [HUMAN_SEAT]: 1 } };
   const action = chooseAiAction({
     state: oneHit,
@@ -685,7 +692,7 @@ test("hillstrike ai: it reads only the documented public state", () => {
   });
 
   const action = chooseAiAction({ state: guarded, seat: AI_SEAT, difficulty: "hard", random: neverSlips });
-  assert.ok([ACTION_TYPES.SHOOT, ACTION_TYPES.MOVE, ACTION_TYPES.BUILD].includes(action.type));
+  assert.ok([ACTION_TYPES.SHOOT, ACTION_TYPES.MOVE].includes(action.type));
   assert.ok(reads.length > 0, "the guard really observed the read");
   for (const key of reads) assert.ok(publicKeys.has(key), `${key} must be public`);
 

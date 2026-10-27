@@ -39,8 +39,8 @@ import {
 import { simulateShot } from "../src/lib/hillstrike/physics.ts";
 import {
   applyAction,
-  buildPlacementFor,
   createInitialState,
+  validateAction,
 } from "../src/lib/hillstrike/rules.ts";
 
 const MODULE_MOCKING_AVAILABLE = typeof mock?.module === "function";
@@ -66,6 +66,7 @@ const R = {
   shot: "src/app/api/hillstrike/match/[matchId]/shot/route.ts",
   forfeit: "src/app/api/hillstrike/match/[matchId]/forfeit/route.ts",
   cancel: "src/app/api/hillstrike/match/[matchId]/cancel/route.ts",
+  timeout: "src/app/api/hillstrike/match/[matchId]/timeout/route.ts",
   disconnect: "src/app/api/hillstrike/disconnect-forfeit/route.ts",
 };
 
@@ -339,9 +340,51 @@ function installMocks(t) {
  * Fixtures
  * -------------------------------------------------------------------------- */
 
+/**
+ * The opening position with the middle shot open and both tanks climbed into
+ * sight.
+ *
+ * The tower seals a fresh map, and the middle rise hides the far spawn from the
+ * near one, so a test that needs a DIRECT hit has to start from a position where
+ * one exists. The turn bookkeeping is the opening row's: player1 to move, one
+ * action, ply 0.
+ */
+function sightedState(seed = SEED) {
+  const fresh = createInitialState({ seed, openingSeat: "player1" });
+  let walk = {
+    ...fresh,
+    battlefield: {
+      ...fresh.battlefield,
+      blocks: fresh.battlefield.blocks.filter((block) => block.kind !== "tower"),
+    },
+  };
+  const sees = (candidate) => {
+    try {
+      hitShot(candidate, "player1");
+      hitShot(candidate, "player2");
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  for (let guard = 0; guard < 40 && !sees(walk); guard++) {
+    const actor = walk.turn;
+    const drive = { type: "move", direction: "forward" };
+    if (!validateAction(walk, actor, drive).ok) break;
+    walk = applyAction(walk, actor, drive).state;
+  }
+  return {
+    ...fresh,
+    battlefield: {
+      ...fresh.battlefield,
+      blocks: walk.battlefield.blocks,
+      players: walk.battlefield.players,
+    },
+  };
+}
+
 function matchRow(overrides = {}) {
-  const state =
-    overrides.gameState ?? createInitialState({ seed: SEED, openingSeat: "player1" });
+  const state = overrides.gameState ?? sightedState();
   return {
     id: MATCH_ID,
     player1Id: ALICE,
@@ -464,14 +507,30 @@ test("surface: the route list is exactly the audited one, and every route is gat
   );
 });
 
-test("surface: migrations 0229/0230 are the newest, idempotent, unique and money-free", { skip: SKIP_REASON }, () => {
+test("surface: migrations 0229/0230/0231 are the newest, idempotent, unique and money-free", { skip: SKIP_REASON }, () => {
   const migrations = readdirSync("src/db/migrations").filter((name) => name.endsWith(".sql"));
   const numbers = migrations.map((name) => Number(name.slice(0, 4))).sort((a, b) => a - b);
   const mine = migrations.find((name) => name.startsWith("0229_"));
   assert.ok(mine, "0229 must be the Hillstrike migration");
   const hpMigration = migrations.find((name) => name.startsWith("0230_"));
-  assert.ok(hpMigration, "0230 must be the HP / three-action migration");
-  assert.equal(Math.max(...numbers), 230, "0230 is the newest migration");
+  assert.ok(hpMigration, "0230 must be the HP / action-log migration");
+  const clockMigration = migrations.find((name) => name.startsWith("0231_"));
+  assert.ok(clockMigration, "0231 must be the match clock migration");
+  assert.equal(Math.max(...numbers), 231, "0231 is the newest migration");
+
+  // The clock migration adds the duration the lobby is opened with, and nothing
+  // else: one integer column with a default, added idempotently.
+  const clockSql = readFileSync(`src/db/migrations/${clockMigration}`, "utf8");
+  assert.match(
+    clockSql,
+    /ADD COLUMN IF NOT EXISTS "duration_ms" integer DEFAULT 600000 NOT NULL/,
+  );
+  assert.match(
+    clockSql,
+    /ADD COLUMN IF NOT EXISTS "duration_ms" integer DEFAULT 600000 NOT NULL/,
+    "the clock is added with the ten-minute default",
+  );
+  assert.match(clockSql, /started_at \+ duration_ms/);
 
   const sql = readFileSync(`src/db/migrations/${mine}`, "utf8");
   const body = sql
@@ -530,8 +589,8 @@ test("surface: migrations 0229/0230 are the newest, idempotent, unique and money
   }
   assert.match(block, /unique\("hillstrike_shots_action_unique"\)/);
 
-  // 0230 teaches the log the three actions and makes an aim optional, because a
-  // drive and a build have none.
+  // 0230 teaches the log the two actions and makes an aim optional, because a
+  // drive has none.
   const alter = readFileSync(`src/db/migrations/${hpMigration}`, "utf8");
   assert.match(
     alter,
@@ -542,7 +601,7 @@ test("surface: migrations 0229/0230 are the newest, idempotent, unique and money
     assert.match(
       alter,
       new RegExp(`ALTER COLUMN "${column}" DROP NOT NULL`),
-      `${column} must be nullable so a drive or a build is not recorded as a shot`,
+      `${column} must be nullable so a drive is not recorded as a shot`,
     );
   }
 });
@@ -731,7 +790,7 @@ test("POST shot: forged outcome fields are ignored, not honoured", { skip: SKIP_
   assert.equal(forged.json.data.match.gameState.hp.player2, MAX_HP);
 });
 
-test("POST shot: a drive and a build are the same route, and both reach the board", { skip: SKIP_REASON }, async (t) => {
+test("POST shot: a drive reaches the board through the same route, and a build is refused", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   const row = seedMatch(fake);
   const tankBefore = row.gameState.battlefield.players.player1;
@@ -750,29 +809,29 @@ test("POST shot: a drive and a build are the same route, and both reach the boar
   );
   assert.equal(drove.json.data.match.hp.player1, MAX_HP, "a drive costs no HP");
 
-  // Alice's single opening action is spent, so the build is Bob's to make.
-  const placement = buildPlacementFor(drove.json.data.match.gameState, "player2");
+  // A build is not an action any more: the same route refuses it, and nothing is
+  // written for it.
   const built = await fire(
-    { action: { type: "build", x: placement.x, y: placement.y }, expectedVersion: 1 },
+    { action: { type: "build", x: 200, y: 400 }, expectedVersion: 1 },
     { as: BOB },
   );
-  assert.equal(built.status, 200);
-  assert.equal(built.json.data.action.type, "build");
-  const blocks = built.json.data.match.gameState.battlefield.blocks;
-  assert.equal(blocks.length, blocksBefore + 1);
-  assert.ok(blocks.some((block) => block.id === built.json.data.action.blockId));
+  assert.equal(built.status, 400);
+  assert.equal(built.json.success, false);
+  assert.equal(
+    liveMatch(fake).gameState.battlefield.blocks.length,
+    blocksBefore,
+    "the tower and the roofs are the only structures there will ever be",
+  );
 
-  // The log has one row per action, each named for what it was.
+  // The log has one row, named for what it was.
   assert.deepEqual(
     shotLog(fake).map((entry) => entry.action),
-    ["move", "build"],
+    ["move"],
   );
-  for (const entry of shotLog(fake)) {
-    assert.equal(entry.damage, 0);
-    assert.equal(entry.angleDeg, null, "only a shot has an aim");
-    assert.equal(entry.impactKind, null);
-  }
-  assert.equal(liveMatch(fake).ply, 2);
+  assert.equal(shotLog(fake)[0].damage, 0);
+  assert.equal(shotLog(fake)[0].angleDeg, null, "only a shot has an aim");
+  assert.equal(shotLog(fake)[0].impactKind, null);
+  assert.equal(liveMatch(fake).ply, 1);
 });
 
 test("POST shot: the v1 bare-aim body still means exactly one shoot action", { skip: SKIP_REASON }, async (t) => {
@@ -827,7 +886,7 @@ test("POST shot: refusals are specific and write nothing", { skip: SKIP_REASON }
 
 test("POST shot: a killed match settles once, through the route, and then refuses", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
-  const base = createInitialState({ seed: SEED, openingSeat: "player1" });
+  const base = sightedState();
   const state = { ...base, hp: { player1: MAX_HP, player2: 1 } };
   const row = seedMatch(fake, { gameState: state });
   const shot = hitShot(state, "player1");

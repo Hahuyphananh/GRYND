@@ -5,9 +5,13 @@
  * Hillstrike is a skill-based 1v1 artillery duel: two players start in ROOFED
  * BASES at the bottom of opposite hills and each drives a TANK with a pool of
  * HIT POINTS. A direct hit costs HP in proportion to how far the shell flew, and
- * a turn offers three actions — fire, drive closer/farther, or place a cover
- * block on your own half — so the duel is about leaving the safety of the base
- * to climb, grab the middle's power-ups and trade range for damage.
+ * a turn offers two actions — fire, or drive closer/farther — so the duel is
+ * about leaving the safety of the base, breaking a way through the GIANT TOWER
+ * that walls off the middle, and trading range for damage.
+ *
+ * A match is also timed (`MATCH_DURATION_OPTIONS_MS`): when the clock runs out the
+ * tank with more HP wins, and equal HP is a draw. Nothing in the engine reads a
+ * clock — the caller decides that time is up and asks `finishOnTime`.
  *
  * This module and `./rules` / `./physics` / `./generation` are the single source
  * of truth for those rules; a store, a bot or a board UI is expected to derive
@@ -31,12 +35,12 @@
  * instead of re-deriving the outcome.
  *
  * ── TRUST BOUNDARY ─────────────────────────────────────────────────────────
- * A caller supplies an ACTION and nothing else: an aim (`{ angleDeg, power }`),
- * a drive direction (`{ direction }`) or an empty build request. There is no
- * field for a position, a hit, an HP total, a terrain height, a structure or a
- * winner, and the engine reads none of those from input. Every consequence —
- * the new standing position, the block that was placed, the damage — is derived
- * here from the state the server already holds.
+ * A caller supplies an ACTION and nothing else: an aim (`{ angleDeg, power }`)
+ * or a drive direction (`{ direction }`). There is no field for a position, a
+ * hit, an HP total, a terrain height, a structure or a winner, and the engine
+ * reads none of those from input. Every consequence — the new standing position,
+ * the damage, the tower blocks that broke — is derived here from the state the
+ * server already holds.
  */
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -49,12 +53,12 @@
  * seed, so a live match still replays with the rules it was created under.
  */
 /**
- * v3 — twice the map, higher hills, roofed bases, one-hit cover blocks, free
- * placement on your own half and middle power-ups. Bumped so a match dealt under
- * v1 (three lives, low towers) or v2 (cover walls, no roofs) still replays with
- * the layout it was dealt.
+ * v4 — the giant middle TOWER, one set of power-ups on each side of it, no
+ * respawning pickups, no build action and a match clock. Bumped so a match dealt
+ * under v1 (three lives, low towers), v2 (cover walls, no roofs) or v3 (buildable
+ * cover, respawning pickups) still replays with the layout it was dealt.
  */
-export const FIELD_VERSION = 3;
+export const FIELD_VERSION = 4;
 
 /**
  * Playable width, in world units (1 unit = 1 px at 1× render scale).
@@ -162,7 +166,6 @@ export const MIN_PLAYER_SEPARATION = 400;
 
 /** A tower block is a square of this many world units. */
 export const STRUCTURE_BLOCK_SIZE = 26;
-
 /**
  * A base roof: the indestructible ceiling over each tank's SPAWN.
  *
@@ -182,23 +185,45 @@ export const BASE_ROOF_BLOCKS = 3;
 export const BASE_ROOF_CLEARANCE = 130;
 
 /**
- * Hard cap on blocks per seat / per battlefield (a deserialised state may lie).
+ * Hard cap on blocks held by one battlefield (a deserialised state may lie).
  *
- * The cap counts COVER blocks only — a base roof is scenery, not build budget —
- * and leaves room for a dozen placed blocks per seat on the doubled map without
- * ever letting the board grow into an unreachable maze.
+ * It has to cover the two base roofs AND the whole middle tower, whose columns
+ * run from the sky to the ground: three tower columns of up to 28 blocks are 84,
+ * plus six roof blocks, plus the slack a legacy row's cover needs.
  */
-export const MAX_STRUCTURE_BLOCKS_PER_SEAT = 12;
-export const MAX_STRUCTURE_BLOCKS = 40;
+export const MAX_STRUCTURE_BLOCKS = 160;
 
 /**
- * How many blast hits a block survives.
+ * How many blast hits a cover block or a base roof survives.
  *
  * ONE: a projectile that reaches a cover block destroys it outright, however far
  * it flew. Distance is a dial for HP damage on tanks, never for structures or
- * ground — a shell is a shell when it lands.
+ * ground — a shell is a shell when it lands. Base roofs are indestructible
+ * outright and never take a hit at all.
  */
 export const BLOCK_MAX_INTEGRITY = 1;
+
+/**
+ * The middle TOWER: a wall of anchored, damageable blocks across the centre of
+ * the map, from the ground to the sky.
+ *
+ * It is the map's one gate. Nothing crosses the centre until a lane of it has
+ * been shot away — including a lob, because it reaches y = 0 and anything fired
+ * above the battlefield is out of bounds. Its blocks are ANCHORED (no collapse),
+ * so a hole stays a hole instead of being filled by the blocks above it.
+ */
+export const TOWER_COLUMNS = 3;
+/** The tower's top edge: the first row of blocks starts at the sky. */
+export const TOWER_TOP_Y = 0;
+/**
+ * Blast hits one tower block survives. Twice a cover block: the whole middle is
+ * one obstacle, and a shell that merely clips it should not open the map.
+ */
+export const TOWER_BLOCK_INTEGRITY = 2;
+
+/** Hard cap on tower blocks a battlefield may hold (a deserialised state may lie). */
+export const MAX_TOWER_BLOCKS =
+  TOWER_COLUMNS * Math.ceil(BATTLEFIELD_HEIGHT / STRUCTURE_BLOCK_SIZE);
 
 /** How far a block may move in one collapse pass before it counts as detached. */
 export const SUPPORT_TOLERANCE = 0.75;
@@ -212,9 +237,8 @@ export const SUPPORT_TOLERANCE = 0.75;
  * other seat answers with TWO, and from then on the seats alternate two-action
  * volleys.
  *
- * An ACTION is any of the three below — firing, driving or building — so a
- * two-action volley is "drive into range, then fire", or "build cover, then
- * fire", not necessarily two shells.
+ * An ACTION is either of the two below — firing or driving — so a two-action
+ * volley is "drive into range, then fire", not necessarily two shells.
  */
 export const OPENING_ACTIONS = 1;
 export const ACTIONS_PER_TURN = 2;
@@ -227,11 +251,10 @@ export const ACTIONS_PER_TURN = 2;
 export const OPENING_SHOTS = OPENING_ACTIONS;
 export const SHOTS_PER_VOLLEY = ACTIONS_PER_TURN;
 
-/** The three things a turn can spend an action on. */
+/** The two things a turn can spend an action on. */
 export const ACTION_TYPES = {
   SHOOT: "shoot",
   MOVE: "move",
-  BUILD: "build",
 } as const;
 
 /** Which way a drive goes: `forward` closes the range, `back` opens it. */
@@ -254,13 +277,6 @@ export const MOVE_RANGE = 1180;
 
 /** Closest a tank may ever stand to a battlefield edge. */
 export const MOVE_EDGE_MARGIN = 24;
-
-/**
- * A build is a PLACEMENT, not a default: the caller supplies a world point and
- * the engine snaps it to this grid. Kept equal to the block size so a block is
- * always exactly one tile.
- */
-export const BUILD_GRID = 26;
 
 /** Canonical angle range: [0, 360). 90° is straight up (see the header). */
 export const ANGLE_MIN = 0;
@@ -368,26 +384,18 @@ export const POWERUP_DAMAGE_MULTIPLIER = 2;
 export const POWERUP_BLAST_MULTIPLIER = 2;
 
 /**
- * Where the pickups sit: a heal exactly on the centre mound and a mirrored pair
- * of each weapon buff around it. The layout is mirror-symmetric, so neither seat
- * has a shorter run at any buff.
+ * Where the pickups sit: ONE of each kind on each side of the middle tower, on
+ * lanes measured from the centre of the map. The near lane (a heal) is just
+ * outside the tower's face, so a tank has to drive up to the tower to take it.
+ * Every lane has a mirror on the other side, so neither seat gets a shorter run.
  */
-export const POWERUP_INSET_X = 220;
-export const POWERUP_HEAL_X = BATTLEFIELD_WIDTH / 2;
+export const POWERUP_LANE_GAP = 70;
 
 /**
- * How long a collected pickup stays away, in ACTIONS (one action = one tick of
- * `turnIndex`). Eight actions is about two full turns each: long enough that a
- * buff is a real prize, short enough that the middle is worth contesting for the
- * whole match instead of being picked clean in the first round.
+ * Hard cap on pickups a battlefield may deal (a deserialised state may lie).
+ * Six are dealt — three kinds on each side of the tower — and they never return.
  */
-export const POWERUP_RESPAWN_TURNS = 8;
-
-/** Hard cap on pickups a battlefield may deal (a deserialised state may lie). */
-export const MAX_POWERUPS = 5;
-
-/** Hard cap on the waiting-respawn list (same reason; it can never exceed 5). */
-export const MAX_POWERUP_RESPAWNS = MAX_POWERUPS;
+export const MAX_POWERUPS = 8;
 
 /**
  * How far the hard tier will walk toward a power-up at all: beyond this it takes
@@ -437,9 +445,21 @@ export const END_REASONS = {
   /** @deprecated v1 rows only — new matches never write this. */
   LIVES_EXHAUSTED: "lives-exhausted",
   RESIGNED: "resigned",
+  /** The match clock ran out: more HP wins, equal HP is a draw. */
   TIMED_OUT: "timed-out",
   ABANDONED: "abandoned",
 } as const;
+
+/**
+ * The match clocks a lobby can be created with, in milliseconds.
+ *
+ * Chess clocks, as the brief puts it: five, ten or fifteen minutes. The clock is
+ * fixed when the match is created and is the same for both seats.
+ */
+export const MATCH_DURATION_OPTIONS_MS = [300_000, 600_000, 900_000] as const;
+
+/** The clock a match gets when the caller does not choose one: ten minutes. */
+export const DEFAULT_MATCH_DURATION_MS = 600_000;
 
 /**
  * Advisory-lock namespace for the online match store's matchmaking critical
@@ -468,7 +488,6 @@ export const REJECTION = {
   INVALID_SEAT: "invalid-seat",
   INVALID_ACTION: "invalid-action",
   INVALID_SHOT: "invalid-shot",
-  INVALID_BUILD: "invalid-build",
   MOVE_BLOCKED: "move-blocked",
   NO_ACTION_REMAINING: "no-action-remaining",
   MATCH_NOT_PLAYING: "match-not-playing",
@@ -477,10 +496,12 @@ export const REJECTION = {
   ANGLE_INVALID: "angle-invalid",
   POWER_INVALID: "power-invalid",
   INVALID_DIRECTION: "invalid-direction",
-  NO_BUILD_SPACE: "no-build-space",
-  BUILD_OPPONENT_HALF: "build-opponent-half",
-  BUILD_OUT_OF_BOUNDS: "build-out-of-bounds",
-  BUILD_OVERLAP: "build-overlap",
-  BUILD_UNSUPPORTED: "build-unsupported",
-  BLOCK_LIMIT: "block-limit",
 } as const;
+
+/** True when `value` is one of the clocks a match may be created with. */
+export function isMatchDurationMs(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    (MATCH_DURATION_OPTIONS_MS as readonly number[]).includes(value)
+  );
+}

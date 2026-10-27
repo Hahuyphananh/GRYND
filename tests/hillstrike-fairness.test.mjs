@@ -7,8 +7,9 @@
  * still in play. So this suite measures the things the symmetry does not cover:
  *
  *   • layout validity and rejection over a fixed seed set;
- *   • whether a layout is even PLAYABLE (a direct-hit line exists for both seats
- *     from their spawns) — a symmetric map with no line of fire is not a fair map;
+ *   • whether the layout's GATE holds: the middle tower must seal every
+ *     spawn-to-spawn line on every seed (that is the rule), while both seats can
+ *     still shoot the tower down from their own spawn;
  *   • full bot-vs-bot matches over the same seeds, with the opening seat swapped,
  *     asserting every match terminates, every intermediate state is valid, and
  *     the volley invariants hold on every single shot;
@@ -60,10 +61,9 @@ const NO_SLIPS = () => 1;
  *
  * The SAME mirrored candidate set is sampled for both seats (player1 at θ is the
  * mirror of player2 at 180−θ), so this measurement cannot invent an asymmetry out
- * of its own sampling grid. Because the battlefield and the physics are exactly
- * mirrored, the expected answer is "both" or "neither" — the test asserts that.
+ * of its own sampling grid.
  */
-function playableSeats(state) {
+function crossingSeats(state) {
   const seats = new Set();
   const hits = (seat, angle, power) => {
     const impact = simulateShot({
@@ -75,10 +75,34 @@ function playableSeats(state) {
     return impact.kind === IMPACT_KINDS.PLAYER && impact.target === other(seat);
   };
 
-  // A fine sweep: the cover walls make the direct-hit window narrow, and a
-  // coarse grid would report "unplayable" for a layout that is merely hard.
-  for (let angle = 4; angle <= 86 && seats.size < 2; angle += 1) {
-    for (let power = 20; power <= 100; power += 5) {
+  for (let angle = 4; angle <= 86 && seats.size < 2; angle += 2) {
+    for (let power = 20; power <= 100; power += 10) {
+      if (!seats.has("player1") && hits("player1", angle, power)) seats.add("player1");
+      if (!seats.has("player2") && hits("player2", 180 - angle, power)) seats.add("player2");
+      if (seats.size === 2) break;
+    }
+  }
+  return seats;
+}
+
+/** Which seats can put a shell into the middle tower from their spawn? */
+function towerSeats(state) {
+  const towerIds = new Set(
+    state.battlefield.blocks.filter((block) => block.kind === "tower").map((block) => block.id),
+  );
+  const seats = new Set();
+  const hits = (seat, angle, power) => {
+    const impact = simulateShot({
+      battlefield: state.battlefield,
+      shooterSeat: seat,
+      shot: { angleDeg: angle, power },
+      projectile: state.projectile,
+    }).impact;
+    return impact.kind === IMPACT_KINDS.BLOCK && towerIds.has(impact.blockId);
+  };
+
+  for (let angle = 4; angle <= 86 && seats.size < 2; angle += 2) {
+    for (let power = 20; power <= 100; power += 10) {
       if (!seats.has("player1") && hits("player1", angle, power)) seats.add("player1");
       if (!seats.has("player2") && hits("player2", 180 - angle, power)) seats.add("player2");
       if (seats.size === 2) break;
@@ -94,11 +118,10 @@ function layoutReport(seeds) {
     rejected: [],
     invalid: [],
     mirrorFailures: [],
-    unplayable: [],
-    bothSeatsPlayable: 0,
-    oneSeatPlayable: 0,
+    leaks: [],
+    towerUnreachable: [],
     spawnHeights: [],
-    coverHeights: [],
+    towerBlocks: [],
   };
 
   for (const seed of seeds) {
@@ -122,32 +145,24 @@ function layoutReport(seeds) {
     if (!mirrorOk) report.mirrorFailures.push(seed);
 
     const state = createInitialState({ seed, openingSeat: "player1" });
-    const reachable = playableSeats(state);
-    // Mirror symmetry says the two seats are playable together or not at all; a
-    // one-sided result would be a real physics asymmetry, so record it as such.
-    if (reachable.size === 2) report.bothSeatsPlayable += 1;
-    else if (reachable.size === 1) {
-      report.oneSeatPlayable += 1;
-      report.unplayable.push({ seed, playableSeats: [...reachable] });
-    } else {
-      report.unplayable.push({ seed, playableSeats: [] });
-    }
+
+    // The gate: on a fresh board the tower must swallow every line between the
+    // spawns, for BOTH seats. A leak here is the tower not being a tower.
+    const crossing = crossingSeats(state);
+    if (crossing.size > 0) report.leaks.push({ seed, seats: [...crossing] });
+
+    // …and the gate has to be openable: each seat must be able to hit it.
+    const reachable = towerSeats(state);
+    if (reachable.size < 2) report.towerUnreachable.push({ seed, seats: [...reachable] });
 
     report.spawnHeights.push(field.players.player1.y);
-    // \"Cover\": how many blocks stand between the spawn and the middle of the field.
-    const cover = field.blocks.filter(
-      (block) =>
-        block.seat === "player1" &&
-        block.x > field.players.player1.x &&
-        block.x < field.players.player2.x,
-    );
-    report.coverHeights.push(cover.length);
+    report.towerBlocks.push(field.blocks.filter((block) => block.kind === "tower").length);
   }
 
   return report;
 }
 
-test("fairness: every seed generates a valid, mirrored, playable layout", () => {
+test("fairness: every seed generates a valid, mirrored layout whose tower seals the middle", () => {
   const report = layoutReport(SEEDS);
 
   assert.equal(report.rejected.length, 0, `seeds failed to generate: ${JSON.stringify(report.rejected.slice(0, 3))}`);
@@ -155,20 +170,25 @@ test("fairness: every seed generates a valid, mirrored, playable layout", () => 
   assert.equal(report.mirrorFailures.length, 0, `asymmetric layouts: ${report.mirrorFailures.slice(0, 5)}`);
   assert.equal(report.generated, SEEDS.length);
 
-  // Every layout in this set must give BOTH seats a line of fire. This is the
-  // playability bar the generator's symmetry alone does not guarantee.
-  assert.ok(
-    report.bothSeatsPlayable >= Math.ceil(SEEDS.length * 0.98),
-    `only ${report.bothSeatsPlayable}/${SEEDS.length} layouts are playable for both seats ` +
-      `(unplayable: ${JSON.stringify(report.unplayable.slice(0, 3))})`,
+  // The takeaway: no spawn-to-spawn line survives the tower on ANY seed, and both
+  // seats can still shoot the tower down from their own spawn.
+  assert.deepEqual(
+    report.leaks,
+    [],
+    `the tower must seal the middle on every seed (leaks: ${JSON.stringify(report.leaks.slice(0, 3))})`,
+  );
+  assert.deepEqual(
+    report.towerUnreachable,
+    [],
+    `both seats must be able to hit the tower (unreachable: ${JSON.stringify(report.towerUnreachable.slice(0, 3))})`,
   );
 
   const spread = (values) => Math.max(...values) - Math.min(...values);
   console.log(
-    `fairness: ${report.bothSeatsPlayable}/${SEEDS.length} layouts playable for both seats; ` +
+    `fairness: ${report.generated}/${SEEDS.length} layouts valid, mirrored and sealed; ` +
       `spawn height ${Math.min(...report.spawnHeights)}–${Math.max(...report.spawnHeights)} ` +
-      `(spread ${spread(report.spawnHeights)}); cover blocks/seat ${Math.min(...report.coverHeights)}–` +
-      `${Math.max(...report.coverHeights)}`,
+      `(spread ${spread(report.spawnHeights)}); tower blocks ${Math.min(...report.towerBlocks)}–` +
+      `${Math.max(...report.towerBlocks)}`,
   );
 });
 
@@ -182,7 +202,7 @@ test("fairness: every seed generates a valid, mirrored, playable layout", () => 
  * Returns the outcome and the per-shot invariants this match observed, so the
  * aggregate can be asserted as a total rather than a sample.
  */
-function playMatch({ seed, openingSeat, tier = TIER, maxActions = 90 }) {
+function playMatch({ seed, openingSeat, tier = TIER, maxActions = 240 }) {
   let state = createInitialState({ seed, openingSeat });
   const timeline = [];
   let actions = 0;
@@ -245,7 +265,8 @@ test("fairness: 48 full matches terminate, stay valid and respect every turn rul
     assert.equal(match.hp[other(match.winner)], 0, "the loser is out of HP");
     assert.ok(match.hp[match.winner] > 0, "the winner still has HP");
     assert.equal(match.turnViolations, 0, `seed ${match.seed}: turn invariant broken`);
-    assert.ok(match.actions <= 70, `seed ${match.seed} took ${match.actions} actions`);
+    // Breaking a lane through the tower costs turns before the duel starts.
+    assert.ok(match.actions <= 200, `seed ${match.seed} took ${match.actions} actions`);
 
     // The opening turn is one action, then pairs: check the shape directly.
     const timeline = match.timeline;

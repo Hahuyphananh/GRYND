@@ -1485,6 +1485,13 @@
       "when": 1800000074000,
       "tag": "0230_hillstrike_hp_actions",
       "breakpoints": true
+    },
+    {
+      "idx": 212,
+      "version": "7",
+      "when": 1800000075000,
+      "tag": "0231_hillstrike_match_clock",
+      "breakpoints": true
     }
   ]
 }

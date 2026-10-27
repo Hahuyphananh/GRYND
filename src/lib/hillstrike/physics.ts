@@ -38,6 +38,11 @@
  *   • base roofs (`kind: "roof"`) are INDESTRUCTIBLE: a shell that meets one
  *     stops there and does nothing at all — no block damage, no crater, no
  *     collapse — and a roof never collapses or falls
+ *   • the middle tower (`kind: "tower"`) is DAMAGEABLE (`TOWER_BLOCK_INTEGRITY`
+ *     hits per block) but ANCHORED: it never collapses and is never removed as
+ *     rubble, so a lane shot through it stays open
+ *   • the top of the battlefield is out of bounds: a shell fired above y = 0 is
+ *     lost, which is what lets the tower reach the sky and actually seal the map
  *   • damage: a direct player contact costs HP (in ./rules); a block or terrain
  *     contact never does
  *   • limits: `maxTicks`, `substepMaxPx`, `MAX_SUBSTEPS_PER_TICK`,
@@ -91,6 +96,7 @@ import type {
   ImpactKind,
   Player,
   PowerUp,
+  BlockKind,
   ProjectileSpec,
   Seat,
   ShotEvent,
@@ -149,9 +155,12 @@ export function damageForDistance(distance: number): number {
   return Math.max(1, Math.round(HIT_DAMAGE_MAX * powerScaleForDistance(distance)));
 }
 
-/** A block's kind, defaulting a legacy (v2) row to cover. */
-function blockKind(block: TowerBlock): "cover" | "roof" {
-  return block.kind === "roof" ? "roof" : "cover";
+/**
+ * A block's kind, defaulting a legacy (v2) row to cover. A "tower" block is the
+ * middle wall: DAMAGEABLE like cover, but anchored like a roof.
+ */
+function blockKind(block: TowerBlock): BlockKind {
+  return block.kind === "roof" ? "roof" : block.kind === "tower" ? "tower" : "cover";
 }
 
 /**
@@ -644,6 +653,16 @@ function damageBlocks(
 }
 
 /**
+ * True when a block is anchored to the map rather than standing on the ground:
+ * a base roof (indestructible) or a middle-tower block (damageable, but never
+ * falls). Anchored blocks are skipped by the collapse pass entirely.
+ */
+function isAnchored(block: TowerBlock): boolean {
+  const kind = blockKind(block);
+  return kind === "roof" || kind === "tower";
+}
+
+/**
  * The nearest support at or below a block's bottom edge: the smallest surface y
  * among the ground under its footprint and the tops of blocks it overlaps. The
  * block rests on that surface, so it never sinks into a support.
@@ -685,7 +704,7 @@ function isSupported(
 interface MutableBlock {
   id: number;
   seat: Seat;
-  kind: "cover" | "roof";
+  kind: BlockKind;
   x: number;
   y: number;
   size: number;
@@ -718,7 +737,7 @@ function resolveCollapse(
     let changed = false;
     for (const block of [...working].sort((a, b) => a.id - b.id)) {
       if (moves >= MAX_COLLAPSE_MOVES) break;
-      if (blockKind(block) === "roof") continue;
+      if (isAnchored(block)) continue;
       const bottom = block.y + block.size;
       const support = nearestSupport(block, working, terrain);
       if (!Number.isFinite(support) || support - bottom <= SUPPORT_TOLERANCE) continue;
@@ -742,7 +761,7 @@ function resolveCollapse(
 
   const settled: TowerBlock[] = [];
   for (const block of [...working].sort((a, b) => a.id - b.id)) {
-    if (blockKind(block) === "roof" || isSupported(block, working, terrain)) {
+    if (isAnchored(block) || isSupported(block, working, terrain)) {
       settled.push(block);
       continue;
     }
@@ -925,7 +944,10 @@ export function simulateShot(params: SimulateShotParams): ShotSimulation {
       travelled += Math.hypot(x1 - x0, y1 - y0);
       x = x1;
       y = y1;
-      if (x < 0 || x > BATTLEFIELD_WIDTH || y > BATTLEFIELD_HEIGHT) {
+      // The SKY is a wall too: a shell fired above the battlefield is out of
+      // bounds. Without this the tower could never seal the map, because a lob
+      // would simply arc over its top.
+      if (x < 0 || x > BATTLEFIELD_WIDTH || y < 0 || y > BATTLEFIELD_HEIGHT) {
         impact = {
           tick,
           x,
