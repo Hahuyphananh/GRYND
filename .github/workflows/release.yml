@@ -176,6 +176,14 @@ jobs:
           git show HEAD:src/lib/chatMessageList.js | grep -c 'export function upsertChatMessage'
           echo "--- g) cache dir state ---"
           ls -la node_modules/.cache 2>&1 | head -5
+          echo "--- h) FULL suite WITH tsx (as npm test does) ---"
+          LIST=$(node -e "const t=require('./package.json').scripts.test;process.stdout.write(t.slice(t.indexOf('--test ')+7))")
+          echo "files: $(echo \"$LIST\" | wc -w)"
+          node --import tsx --test $LIST 2>&1 | grep -E '^# (tests|pass|fail)' | tr '\n' ' '; echo
+          echo "--- i) FULL suite WITHOUT any loader ---"
+          node --test $LIST 2>&1 | grep -E '^# (tests|pass|fail)' | tr '\n' ' '; echo
+          echo "--- j) any non-erasable TS syntax that would need a loader? ---"
+          node --test $LIST 2>&1 | grep -iE 'strip-only|not supported|enum|namespace' | head -5
           exit 0
 
       - name: Run the repository test suite
