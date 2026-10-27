@@ -214,6 +214,16 @@ jobs:
             exit 1
           fi
 
+          # An archive stores files, not directories, so upload-artifact cannot
+          # carry an empty one. `npm prune --omit=dev` empties the scope
+          # directories that hold only devDependencies (`node_modules/@types`)
+          # and leaves them behind, and a tree that still contains them hashes
+          # one way here and another after the deploy job extracts it — its
+          # verify-artifact.mjs then rejects the release on a checksum mismatch.
+          # Drop them while the tree that is hashed is still the tree that ships.
+          find "$dist" -depth -type d -empty -print -delete | sed 's|^|dropped empty directory: |'
+          echo "tree: $(find "$dist" -type d | wc -l) dirs, $(find "$dist" -type f | wc -l) files, $(find "$dist" -type l | wc -l) symlinks"
+
           du -sh "$dist"
 
       - name: Write and validate release.json

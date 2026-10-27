@@ -202,6 +202,22 @@ test("workflow: the artifact tree carries no symlinks into the hash", () => {
   }
 });
 
+test("workflow: the artifact tree carries no empty directories into the hash", () => {
+  // upload-artifact stores files, not directories, so it cannot carry an empty
+  // one: `npm prune --omit=dev` empties the scope directory that held only
+  // devDependencies (`node_modules/@types`) and leaves it behind, and a tree
+  // that still contains it hashes one way on the runner and another after the
+  // deploy job extracts it, where verify-artifact.mjs then rejects the release
+  // on a checksum mismatch. Assembly drops them before the manifest hashes it.
+  const assemble = buildSection.split(/name: Assemble the artifact/)[1] ?? "";
+  const assembleStep = assemble.split(/^ {6}- name:/m)[0];
+  assert.match(
+    assembleStep,
+    /find "\$dist" -depth -type d -empty -print -delete/,
+    "assembly must drop empty directories so the hashed tree is the archived tree",
+  );
+});
+
 test("workflow: only main push or an explicit dispatch can deploy", () => {
   assert.ok(!/^\s*pull_request:/m.test(workflowSource), "pull requests must never deploy");
   assert.match(workflowSource, /^permissions:\n {2}contents: read$/m, "the workflow token must be read-only");
