@@ -151,6 +151,33 @@ jobs:
         shell: bash
         run: node deploy/staging/simulate.mjs
 
+      - name: Diagnose the test loader (TEMPORARY - diag branch only)
+        shell: bash
+        run: |
+          set +e
+          echo "uname: $(uname -s -m)"
+          echo "node: $(node -v)   npm: $(npm -v)"
+          echo "NODE_OPTIONS: ${NODE_OPTIONS:-<unset>}"
+          echo "tsx: $(node -p "require('tsx/package.json').version" 2>&1)"
+          echo "tsx wants esbuild: $(node -p "require('tsx/package.json').dependencies.esbuild" 2>&1)"
+          echo "esbuild pkg: $(node -p "require('esbuild/package.json').version" 2>&1)"
+          echo "esbuild runtime: $(node -e "console.log(require('esbuild').version)" 2>&1 | head -3)"
+          echo "--- a) node --import tsx --test (what CI does) ---"
+          node --import tsx --test tests/chat-message-list.test.mjs 2>&1 | tail -5
+          echo "--- b) tsx CLI ---"
+          npx tsx --test tests/chat-message-list.test.mjs 2>&1 | tail -5
+          echo "--- c) no loader at all (node native TS) ---"
+          node --test tests/chat-message-list.test.mjs 2>&1 | tail -5
+          echo "--- d) is the export really in the checked-out file? ---"
+          grep -n 'export function upsertChatMessage' src/lib/chatMessageList.js || echo "EXPORT LINE ABSENT"
+          echo "--- e) byte-level head of the module ---"
+          head -c 60 src/lib/chatMessageList.js | od -c | head -3
+          echo "--- f) does the commit have it? ---"
+          git show HEAD:src/lib/chatMessageList.js | grep -c 'export function upsertChatMessage'
+          echo "--- g) cache dir state ---"
+          ls -la node_modules/.cache 2>&1 | head -5
+          exit 0
+
       - name: Run the repository test suite
         shell: bash
         run: npm test
