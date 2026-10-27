@@ -9,11 +9,7 @@ import { CacheKeys } from "../../../lib/redis/keys";
 import { parseAndValidateJson } from "../../../lib/security/validation";
 import { findProfanity, moderatedDisplayName } from "../../../lib/moderation/profanity";
 import { searchNameFor } from "../../../lib/searchName";
-import {
-  calculateAge,
-  MAXIMUM_AGE,
-  MINIMUM_AGE,
-} from "../../../lib/ageVerification";
+import { calculateAge, MAXIMUM_AGE } from "../../../lib/ageVerification";
 
 export async function POST(req) {
   const { userId } = await auth();
@@ -84,11 +80,14 @@ export async function POST(req) {
   // client-side checks only pre-empt the request (src/lib/ageVerification.ts).
   const age = calculateAge(birthDate);
 
-  if (age === null || age < MINIMUM_AGE || age > MAXIMUM_AGE) {
+  // Age is ASKED FOR, never used to turn a player away: an under-18 birth date is
+  // stored like any other. Only an unusable date (unparseable, in the future, or
+  // older than any living person) is refused.
+  if (age === null || age < 0 || age > MAXIMUM_AGE) {
     return new Response(
-      JSON.stringify({ success: false, error: "Must be 18+" }),
+      JSON.stringify({ success: false, error: "Enter a valid date of birth" }),
       {
-        status: 403,
+        status: 400,
       },
     );
   }

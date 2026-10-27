@@ -788,21 +788,14 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
       }
     }
 
+    // Age is ASKED FOR, never enforced here: a signed-in player with no date of
+    // birth on file is sent to /complete-profile to supply one, and a player who
+    // reports being under 18 plays on like anybody else. Nothing about a page
+    // navigation depends on the NUMBER any more — only on whether it exists.
     if (!age) {
       auditLog("missing_age_claim", { userId, ip, path: pathname });
 
       return applySecurityHeaders(NextResponse.redirect(new URL("/complete-profile", req.url)));
-    }
-
-    if (Number(age) < 18) {
-      auditLog("underage_redirect", {
-        userId,
-        ip,
-        path: pathname,
-        age: Number(age),
-      });
-
-      return applySecurityHeaders(NextResponse.redirect(new URL("/access-denied", req.url)));
     }
   }
 

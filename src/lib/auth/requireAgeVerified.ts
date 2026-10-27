@@ -1,6 +1,13 @@
 // src/lib/auth/requireAgeVerified.ts
 //
-// Server-side 18+ gate for game / wagering API routes.
+// Server-side AUTHENTICATION gate for game / wagering API routes, which also
+// records the caller's age.
+//
+// AGE IS NOT ENFORCED. The 18+ rule was removed: the platform still ASKS for a
+// date of birth (/complete-profile), still stores the resulting `users.age`, and
+// still reports it to the pages, but being under 18 never blocks play. A route
+// behind this helper therefore only refuses a signed-out caller — the 401 — and
+// nothing else.
 //
 // WHY THIS EXISTS: the page middleware (src/proxy.ts) only guards page
 // NAVIGATIONS. Every /api/* path is listed as public there, so an API request
@@ -44,7 +51,6 @@ import { db } from "../../db";
 import { users } from "../../db/schema";
 import { cacheGet, cacheSet } from "../redis/cache";
 import { CacheKeys, CacheTTL } from "../redis/keys";
-import { MINIMUM_AGE } from "../ageVerification";
 import { withTimeout } from "../security/withTimeout";
 
 export type AgeGateMode = "off" | "log" | "enforce";
@@ -215,16 +221,21 @@ async function lookupAge(userId: string): Promise<AgeLookup> {
   return { age: Number(age), createdAt, failed: false };
 }
 
-/** Map an age lookup onto the failure it warrants, or null when allowed. */
+/**
+ * Map an age lookup onto the failure it warrants, or null when allowed.
+ *
+ * NO AGE FAILS THIS GATE ANY MORE. The age is collected and stored so the
+ * platform knows who it is serving, but it is not a condition of play: a signed-in
+ * caller with no date of birth on file and a caller who reports being under 18
+ * are both allowed through. Authentication is the only thing this helper still
+ * refuses, and that is decided before it is ever called.
+ *
+ * Kept as a function (rather than deleted) so every route keeps one documented
+ * decision point — and so a future legal requirement has one place to return to.
+ */
 function failureFor(lookup: AgeLookup): AgeGateFailure | null {
   if (lookup.failed) {
-    return { status: 503, error: "Age verification unavailable", reason: "age_lookup_failed" };
-  }
-  if (lookup.age === null) {
-    return { status: 403, error: "Age verification required", reason: "missing_age" };
-  }
-  if (lookup.age < MINIMUM_AGE) {
-    return { status: 403, error: "Must be 18+", reason: "underage" };
+    console.warn("[age-gate] age lookup failed; allowing the request");
   }
   return null;
 }

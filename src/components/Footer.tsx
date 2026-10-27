@@ -206,7 +206,7 @@ export default function Footer() {
 
             <div className="flex items-center gap-2">
               <Link href="/terms" className="transition-colors hover:text-[#f5ff3b]">
-                18+ only
+                Terms
               </Link>
               <span>&bull;</span>
               <Link href="/fair-play" className="transition-colors hover:text-[#f5ff3b]">

@@ -2,7 +2,9 @@
 
 // ── /complete-profile — age gate between sign-up and the rest of onboarding ──
 //
-// ONE job: confirm the date of birth the platform needs for its 18+ check.
+// ONE job: collect the date of birth the platform asks every player for. Age is
+// recorded, never used to turn anybody away — an under-18 player signs up and
+// plays like everyone else.
 // The submit path is unchanged and still the only thing that matters —
 // `calculateAge` mirrors the authoritative server calculation in
 // /api/update-birthdate (src/lib/ageVerification.ts), and a pass hands the
@@ -12,8 +14,8 @@
 // app feel like the same product: near-black navy stage, cyan / yellow neon
 // glows over a faint grid, drifting card suits, the GRYND logo, shimmer
 // gradient headings and a gold primary action. The one flourish borrowed
-// outright is the 404's slot-reel styling — here rolled as a compact "18+"
-// marker, so the age requirement is legible before a single word is read.
+// outright is the 404's slot-reel styling — here rolled as a compact "DOB"
+// marker, so the one thing this page asks for is legible at a glance.
 //
 // Clarity work over the previous plain card:
 //   * WHY the date is needed, and who can see it, stated up front.
@@ -39,7 +41,7 @@ import {
   IconShieldCheck,
 } from "@tabler/icons-react";
 import LogoSmiley from "../../images/logo1.png";
-import { calculateAge, MINIMUM_AGE } from "../../lib/ageVerification";
+import { calculateAge } from "../../lib/ageVerification";
 import { useTranslation } from "../../hooks/useTranslation";
 
 /* Drifting card suits — the 404 page's backdrop, kept at low opacity so it can
@@ -75,8 +77,8 @@ const FLOATING_SUITS = [
   },
 ];
 
-/* The three cells of the "18+" marker, drawn in the 404's reel style. */
-const AGE_CELLS = ["1", "8", "+"];
+/* The three cells of the date-of-birth marker, drawn in the 404's reel style. */
+const AGE_CELLS = ["D", "O", "B"];
 
 /* The "why we ask" bullets, in order. */
 const WHY_KEYS = ["why1", "why2", "why3"];
@@ -93,32 +95,16 @@ export default function CompleteProfilePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  // The latest birth date that still clears the gate, in `yyyy-mm-dd` — the
-  // input's `max` uses it (calendar maths in UTC, matching calculateAge) and
-  // the hint below spells the same boundary out in the player's language.
+  // The latest date the picker offers, in `yyyy-mm-dd`: today. There is no age
+  // floor any more — the birthday is asked for, not gated on — so an under-18
+  // date is as valid as any other.
   const latestAllowedDate = useMemo(() => {
-    const now = new Date();
-    return new Date(
-      Date.UTC(now.getUTCFullYear() - MINIMUM_AGE, now.getUTCMonth(), now.getUTCDate()),
-    )
-      .toISOString()
-      .slice(0, 10);
+    return new Date().toISOString().slice(0, 10);
   }, []);
-  const latestAllowedLabel = useMemo(
-    () =>
-      new Date(`${latestAllowedDate}T00:00:00Z`).toLocaleDateString(language, {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-        timeZone: "UTC",
-      }),
-    [latestAllowedDate, language],
-  );
-
   // Live preview only — the submit path below recomputes through the same
   // shared helper, and the server remains authoritative.
   const previewAge = birthDate ? calculateAge(birthDate) : null;
-  const previewOk = previewAge !== null && previewAge >= MINIMUM_AGE;
+  const previewOk = previewAge !== null && previewAge >= 0;
   // Username rule mirrors the server (2–20 chars). The account line shows the
   // typed handle, never the Clerk real name.
   const trimmedUsername = username.trim();
@@ -147,11 +133,12 @@ export default function CompleteProfilePage() {
     }
 
     // Calendar-based age, kept in sync with the authoritative server check
-    // in /api/update-birthdate (src/lib/ageVerification.ts).
+    // in /api/update-birthdate (src/lib/ageVerification.ts). Only an unusable
+    // date is refused — being under 18 is not a refusal.
     const age = calculateAge(birthDate);
 
-    if (age === null || age < MINIMUM_AGE) {
-      setError(t("completeProfile.errorTooYoung"));
+    if (age === null || age < 0) {
+      setError(t("completeProfile.errorRequired"));
       setIsSubmitting(false);
       return;
     }
@@ -236,7 +223,7 @@ export default function CompleteProfilePage() {
           <div className="h-1 bg-gradient-to-r from-[#00e5ff] via-[#f5ff3b] to-[#00e5ff]" />
 
           <div className="px-5 py-6 text-center sm:px-9 sm:py-8">
-            {/* 18+ reel marker — the 404's slot styling, rolled down to the one
+            {/* Reel marker — the 404's slot styling, rolled down to the one
                 thing this page is about. */}
             <div className="flex items-center justify-center gap-2 [perspective:300px]">
               {AGE_CELLS.map((cell, i) => (
@@ -338,13 +325,6 @@ export default function CompleteProfilePage() {
                 className="mt-2 w-full rounded-2xl border-2 border-[#00e5ff]/30 bg-[#040d24] px-4 py-3.5 text-base font-semibold text-[#d8fbff] outline-none transition [color-scheme:dark] focus:border-[#00e5ff] focus:ring-2 focus:ring-[#00e5ff]/40 sm:text-lg"
               />
 
-              <p id="birthDateHelp" className="mt-2 text-xs text-[#6b91b3]">
-                {t("completeProfile.dateHint", {
-                  age: MINIMUM_AGE,
-                  date: latestAllowedLabel,
-                })}
-              </p>
-
               {/* Live verdict — shown as soon as the picker yields a date. */}
               <p
                 id="birthDateStatus"
@@ -359,9 +339,7 @@ export default function CompleteProfilePage() {
               >
                 {previewAge === null
                   ? ""
-                  : previewOk
-                    ? t("completeProfile.statusOk", { age: previewAge })
-                    : t("completeProfile.statusTooYoung", { age: MINIMUM_AGE })}
+                  : t("completeProfile.statusOk", { age: previewAge })}
               </p>
 
               {error && (

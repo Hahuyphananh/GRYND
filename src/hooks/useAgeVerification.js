@@ -1,17 +1,17 @@
 "use client";
 
 import { useUser } from "@clerk/nextjs";
-import { calculateAge, MINIMUM_AGE } from "../lib/ageVerification";
+import { calculateAge } from "../lib/ageVerification";
 
 /**
  * Client-side age pre-check.
  *
- * IMPORTANT: age is AUTHORITATIVE on the server, not here. The server writes
- * `users.age` (via /api/update-birthdate) and enforces it in two places:
- *   - page navigations: src/proxy.ts redirects no-age -> /complete-profile and
- *     under-18 -> /access-denied;
- *   - game/wagering APIs: src/lib/auth/requireAgeVerified.ts rejects with
- *     403 unless the DB age is >= 18.
+ * THERE IS NO 18+ RULE ANY MORE. Age is still asked for and stored, so this hook
+ * answers "does this account have a birthday on file?" and nothing more:
+ *   - page navigations: src/proxy.ts sends a no-age navigation to
+ *     /complete-profile (a prompt) and NEVER blocks an under-18 one;
+ *   - game/wagering APIs: src/lib/auth/requireAgeVerified.ts only checks that
+ *     the caller is signed in.
  *
  * Clerk's `publicMetadata.birthDate` is written best-effort by
  * /api/update-birthdate and can therefore be missing or stale (e.g. the Clerk
@@ -28,9 +28,9 @@ export function useAgeVerification() {
   const verifiedAge = calculateAge(user?.publicMetadata?.birthDate ?? "");
 
   return {
-    // Positive-only: true when the metadata yields a valid 18+ age. A missing
-    // or unparseable value is "unknown", not "unverified".
-    isVerified: verifiedAge !== null && verifiedAge >= MINIMUM_AGE,
+    // True when the metadata yields a parseable age — any age. A missing or
+    // unparseable value is "unknown", not "unverified".
+    isVerified: verifiedAge !== null,
     isLoaded,
   };
 }
