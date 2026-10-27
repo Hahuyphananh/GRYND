@@ -237,6 +237,12 @@ jobs:
           path: dist/${{ steps.identity.outputs.release_id }}
           if-no-files-found: error
           retention-days: 14
+          # upload-artifact@v4 defaults this to false, which silently drops every
+          # dot-prefixed path: the whole of `app/.next/**` (so the downloaded
+          # artifact could not start, and its hash no longer matched release.json)
+          # plus each `node_modules/.bin`. The upload must carry what the build
+          # hashed, or a green run ships an unusable release.
+          include-hidden-files: true
 
       - name: Summary
         shell: bash

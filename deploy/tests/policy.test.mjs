@@ -172,6 +172,20 @@ test("workflow: build job runs the required gates in order", () => {
   assert.deepEqual([...order].sort((a, b) => a - b), order, "gates must run in the listed order");
 });
 
+test("workflow: the artifact upload keeps hidden paths", () => {
+  // upload-artifact@v4 defaults `include-hidden-files` to false. With it off the
+  // archive silently lost all of `app/.next/**` and every `node_modules/.bin`,
+  // so a green run produced a download that could not start and whose hash no
+  // longer matched release.json. The upload must carry what the build hashed.
+  const afterUpload = buildSection.split(/uses: actions\/upload-artifact@v4/)[1] ?? "";
+  const uploadStep = afterUpload.split(/^ {6}- name:/m)[0];
+  assert.match(
+    uploadStep,
+    /^\s*include-hidden-files: true$/m,
+    "the artifact upload must set include-hidden-files: true or app/.next is dropped",
+  );
+});
+
 test("workflow: only main push or an explicit dispatch can deploy", () => {
   assert.ok(!/^\s*pull_request:/m.test(workflowSource), "pull requests must never deploy");
   assert.match(workflowSource, /^permissions:\n {2}contents: read$/m, "the workflow token must be read-only");
