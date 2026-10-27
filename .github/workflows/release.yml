@@ -31,9 +31,22 @@
 #   DEPLOY_PORT             SSH port (default 22)
 #   DEPLOY_PATH             release root (default /home/ubuntu/grynd)
 #
+# Public build-time config (repository variables, one per value)
+#   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY, NEXT_PUBLIC_SUPABASE_URL,
+#   NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+#   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY, NEXT_PUBLIC_POSTHOG_KEY,
+#   NEXT_PUBLIC_POSTHOG_HOST, NEXT_PUBLIC_SOCKET_URL, NEXT_PUBLIC_BASE_URL,
+#   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+#   `next build` inlines every NEXT_PUBLIC_* the code reads, so these have to be
+#   in the build environment or the artifact ships with an empty Clerk
+#   publishable key (sign-in fails), no realtime socket URL and no analytics.
+#   They are browser-visible by construction, hence variables, not secrets.
+#
 # Repository / protected-environment secrets
-#   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY, SENTRY_AUTH_TOKEN  (build)
-#   DEPLOY_SSH_KEY, DEPLOY_KNOWN_HOSTS                                      (deploy)
+#   CLERK_SECRET_KEY, SENTRY_AUTH_TOKEN    (build; the deployed app reads
+#                                           CLERK_SECRET_KEY at runtime from
+#                                           /home/ubuntu/grynd/env/app.env)
+#   DEPLOY_SSH_KEY, DEPLOY_KNOWN_HOSTS     (deploy)
 #
 # The deploy secrets belong to the `production` environment. Configure at least
 # one required reviewer on that environment before the first live run. Use a
@@ -159,7 +172,21 @@ jobs:
         id: build
         shell: bash
         env:
-          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          # Public config, inlined into the client bundles by `next build`.
+          # Anything missing here reaches users as `undefined` in the browser:
+          # without the Clerk key every page renders with an unconfigured
+          # ClerkProvider, without the socket URL browser realtime is disabled.
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY }}
+          NEXT_PUBLIC_POSTHOG_KEY: ${{ vars.NEXT_PUBLIC_POSTHOG_KEY }}
+          NEXT_PUBLIC_POSTHOG_HOST: ${{ vars.NEXT_PUBLIC_POSTHOG_HOST }}
+          NEXT_PUBLIC_SOCKET_URL: ${{ vars.NEXT_PUBLIC_SOCKET_URL }}
+          NEXT_PUBLIC_BASE_URL: ${{ vars.NEXT_PUBLIC_BASE_URL }}
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+          # Server-side only; the running service gets this from env/app.env.
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         run: |

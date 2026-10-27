@@ -430,9 +430,25 @@ controller check, so an accidental invocation cannot bounce production.
 | `DEPLOY_PATH` | `/home/ubuntu/grynd` | Release root on the host |
 | `GRYND_DEPLOY_ENABLED` | **leave unset** | `"true"` enables push-to-main deployment |
 
-**Repository secrets (build only):** `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`,
-`CLERK_SECRET_KEY`, `SENTRY_AUTH_TOKEN`. The build job never receives a deploy
-key or host key; a policy test enforces that.
+**Repository variables (public build config, one per value):**
+`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`,
+`NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`,
+`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY`, `NEXT_PUBLIC_POSTHOG_KEY`,
+`NEXT_PUBLIC_POSTHOG_HOST`, `NEXT_PUBLIC_SOCKET_URL`, `NEXT_PUBLIC_BASE_URL`,
+`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`.
+
+`next build` inlines every `NEXT_PUBLIC_*` the code reads, so each one has to be
+in the build environment: built without them the artifact carries an empty Clerk
+publishable key (every page renders with an unconfigured ClerkProvider), no
+realtime socket URL (browser sockets never connect) and no analytics. They are
+browser-visible by construction, which is why they are variables rather than
+secrets. Their values mirror the production `.env.production`.
+
+**Repository secrets (build only):** `CLERK_SECRET_KEY`, `SENTRY_AUTH_TOKEN`
+(optional). The build job never receives a deploy key or host key; a policy test
+enforces that. `CLERK_SECRET_KEY` is read at runtime from
+`/home/ubuntu/grynd/env/app.env`, so it is only needed at build time if a
+build-time Clerk call requires it.
 
 **Environment `production`** (Settings → Environments → New environment):
 
