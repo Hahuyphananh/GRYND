@@ -191,8 +191,15 @@ jobs:
           mkdir -p "$dist/app" "$dist/realtime"
 
           # App runtime: what `next start` needs, nothing else.
-          cp -r .next public package.json package-lock.json next.config.js "$dist/app/"
-          cp -r node_modules "$dist/app/node_modules"
+          #
+          # -L dereferences symlinks. upload-artifact archives a symlink as its
+          # target, so a tree that still contains symlinks hashes one way here and
+          # another after download — the deploy job's verify-artifact.mjs would
+          # reject the release on a checksum mismatch. The tree that is hashed has
+          # to be the tree that ships, so materialise it now: `.next/node_modules`
+          # and every `node_modules/.bin` are symlinks on the runner.
+          cp -rL .next public package.json package-lock.json next.config.js "$dist/app/"
+          cp -rL node_modules "$dist/app/node_modules"
 
           # Realtime runtime, minus any environment file (systemd provides them).
           rsync -a \

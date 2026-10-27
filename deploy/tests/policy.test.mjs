@@ -186,6 +186,22 @@ test("workflow: the artifact upload keeps hidden paths", () => {
   );
 });
 
+test("workflow: the artifact tree carries no symlinks into the hash", () => {
+  // upload-artifact archives a symlink as the file it points at. A dist tree that
+  // still contains symlinks therefore hashes one way at build time and another
+  // after download, and the deploy job's verify-artifact.mjs rejects the release
+  // on a checksum mismatch. `cp -rL` materialises them before hashing.
+  const assemble = buildSection.split(/name: Assemble the artifact/)[1] ?? "";
+  const assembleStep = assemble.split(/^ {6}- name:/m)[0];
+  for (const copy of [/cp -rL \.next public/, /cp -rL node_modules/]) {
+    assert.match(
+      assembleStep,
+      copy,
+      `assembly must dereference symlinks so the hashed tree is the archived tree: ${copy}`,
+    );
+  }
+});
+
 test("workflow: only main push or an explicit dispatch can deploy", () => {
   assert.ok(!/^\s*pull_request:/m.test(workflowSource), "pull requests must never deploy");
   assert.match(workflowSource, /^permissions:\n {2}contents: read$/m, "the workflow token must be read-only");
