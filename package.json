@@ -10,7 +10,7 @@
     "lint": "next lint",
     "lint:release": "eslint deploy --ext .mjs --max-warnings=0",
     "test:ops": "node --test deploy/tests/ops.test.mjs",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "next typegen && tsc --noEmit -p tsconfig.json",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx ./src/db/migrate.ts",
     "db:backup": "node scripts/db-backup.mjs",
