@@ -1,3 +1,5 @@
+import fs from "node:fs";
+
 import { Pool } from "pg";
 
 /**
@@ -8,19 +10,96 @@ import { Pool } from "pg";
  * of which module does the query. The connection string is read from
  * `DATABASE_URL` (preferred) with `POSTGRES_URL` as a fallback — point
  * whichever one you use at your Postgres provider (Supabase pooler or
- * direct connection both work; SSL is enabled automatically for non-local
- * hosts).
+ * direct connection both work).
+ *
+ * TLS is verified on every non-local connection against the provider's own
+ * root CA, which the operator installs on the host and names with
+ * `DATABASE_SSL_CA_PATH`. There is no unverified path and no fallback: a
+ * non-local connection either verifies the server certificate or throws
+ * before a socket is opened. See
+ * `docs/SUPABASE_MIGRATION.md` → "Verifying the database certificate".
  */
 let poolInstance: Pool | null = null;
+
+/** Names the PEM CA bundle used to verify non-local TLS. */
+export const SSL_CA_PATH_ENV = "DATABASE_SSL_CA_PATH";
+
+/**
+ * Where an installed release expects the CA bundle: alongside the env files,
+ * outside `releases/`, which is also the only place the release tooling
+ * accepts certificate material (`deploy/lib/inspect.mjs`).
+ */
+export const PRODUCTION_SSL_CA_PATH = "/home/ubuntu/grynd/env/db-ca.pem";
+
+/** Verified TLS: pinned CA, and verification that cannot be switched off. */
+export type VerifiedSslOptions = { ca: string; rejectUnauthorized: true };
+
+const LOCAL_HOST = /localhost|127\.0\.0\.1|::1/;
 
 function extractHost(connectionString: string): string {
   try {
     return new URL(connectionString).hostname || "";
   } catch {
-    // Not a parseable URL (e.g. an unencrypted local DSN) — fall back to
-    // assuming local so we don't force SSL on it.
+    // Not a parseable URL. An empty host is NOT local, so the connection is
+    // treated as remote and must present a verifiable certificate — the safe
+    // direction to fail in.
     return "";
   }
+}
+
+/**
+ * The `ssl` option for a connection, or `undefined` for a local host.
+ *
+ * Never returns an option that skips verification: a non-local connection
+ * either verifies against the operator-supplied CA or throws here, before
+ * anything is dialled. The thrown messages name the variable and the path
+ * only — never the connection string, and never any of its certificate
+ * contents, which would end up in logs.
+ *
+ * @param connectionString already stripped of `sslmode` (see `getPool`)
+ * @param env process environment, injectable for tests
+ */
+export function resolveSslConfig(
+  connectionString: string,
+  env: NodeJS.ProcessEnv = process.env,
+): VerifiedSslOptions | undefined {
+  const host = extractHost(connectionString);
+
+  // Local development is unchanged: no TLS on the loopback, so no CA to
+  // install and no requirement to set one.
+  if (LOCAL_HOST.test(host)) return undefined;
+
+  const target = host || "this database host";
+  const caPath = (env[SSL_CA_PATH_ENV] || "").trim();
+
+  if (!caPath) {
+    throw new Error(
+      `${SSL_CA_PATH_ENV} is not set, so the TLS certificate presented by ${target} cannot be verified. ` +
+        `Install the root CA bundle published by your database provider and set ${SSL_CA_PATH_ENV} to its path ` +
+        `(production: ${PRODUCTION_SSL_CA_PATH}, configured in /home/ubuntu/grynd/env/app.env). ` +
+        `Certificate verification is not disabled to work around a missing bundle.`,
+    );
+  }
+
+  let ca: string;
+  try {
+    ca = fs.readFileSync(caPath, "utf8");
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code || "unreadable";
+    throw new Error(
+      `${SSL_CA_PATH_ENV} points at ${caPath}, which could not be read (${code}). ` +
+        `The file must exist and be readable by the account that runs the app; no unverified fallback is used.`,
+    );
+  }
+
+  if (!ca.includes("-----BEGIN CERTIFICATE-----")) {
+    throw new Error(
+      `${SSL_CA_PATH_ENV} points at ${caPath}, which is not a PEM certificate bundle. ` +
+        `Point it at the PEM root CA published by the provider, not a DER file or an empty one.`,
+    );
+  }
+
+  return { ca, rejectUnauthorized: true };
 }
 
 export function getPool(): Pool {
@@ -35,20 +114,20 @@ export function getPool(): Pool {
     );
   }
 
-  // pg merges the connection string over the Pool options
-  // (`Object.assign({}, config, parse(connectionString))`), so an
-  // `sslmode` query param in the URL would clobber the explicit `ssl`
-  // option below and re-enable certificate verification — which breaks
-  // connections to Supabase's pooler (self-signed leaf cert) with
-  // `SELF_SIGNED_CERT_IN_CHAIN`. SSL is controlled solely by the `ssl`
-  // option, so strip `sslmode` (and friends) from the URL.
+  // `pg` parses the connection string and assigns the result OVER the explicit
+  // options (`Object.assign({}, config, parse(connectionString))` in
+  // node_modules/pg/lib/connection-parameters.js), so an `sslmode` query param
+  // would replace the `ssl` option below in either direction: `sslmode=require`
+  // becomes `{}` (verify the server, but against no CA — which rejects the
+  // pooler's chain with SELF_SIGNED_CERT_IN_CHAIN) and `sslmode=no-verify`
+  // becomes an option that skips verification altogether, undoing the pinning
+  // this function establishes. TLS is therefore controlled solely by
+  // `resolveSslConfig()`, and `sslmode` is removed from the URL so it cannot
+  // override it.
   const sanitizedConnectionString = connectionString.replace(
     /([?&])sslmode=[^&]*(&|$)/g,
     (_match, prefix: string, suffix: string) => (suffix === "&" ? prefix : ""),
   );
-
-  const host = extractHost(sanitizedConnectionString);
-  const isLocal = /localhost|127\.0\.0\.1|::1/.test(host);
 
   poolInstance = new Pool({
     connectionString: sanitizedConnectionString,
@@ -79,9 +158,9 @@ export function getPool(): Pool {
     // 8s is generous for game queries but still bounds worst-case latency
     // when the provider pooler misbehaves or a lock is stuck.
     statement_timeout: 8_000,
-    // Cloud Postgres (Supabase, Neon, RDS) requires SSL. Local dev
-    // Postgres usually doesn't have SSL enabled, so skip it for localhost.
-    ssl: isLocal ? undefined : { rejectUnauthorized: false },
+    // Cloud Postgres (Supabase, Neon, RDS) requires TLS. Local dev Postgres
+    // usually doesn't have it enabled, so this is undefined for the loopback.
+    ssl: resolveSslConfig(sanitizedConnectionString),
   });
 
   return poolInstance;

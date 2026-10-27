@@ -15,8 +15,9 @@ Auth (Clerk), the realtime server (Render), and the app itself are
 All database access now goes through plain `pg` (TCP) so it works against
 any Postgres, including Supabase:
 
-- `src/db/pool.ts` — one shared `pg` Pool (reads `DATABASE_URL`, SSL on for
-  cloud hosts).
+- `src/db/pool.ts` — one shared `pg` Pool (reads `DATABASE_URL`; TLS on for
+  cloud hosts, verified against the provider's root CA — see "Verifying the
+  database certificate" below).
 - `src/db/client.ts` — Drizzle over `pg` (`drizzle-orm/node-postgres`),
   typed with the schema.
 - `src/db/index.ts` — re-exports the same client (all `import { db } from
@@ -168,6 +169,82 @@ Neon project only after a few days of clean Supabase operation.
   not applied on Neon, so not applied here.
 - `drizzle/` (legacy folder) — an older migration out-dir superseded by
   `src/db/migrations/`.
+
+## Verifying the database certificate (TLS)
+
+Encryption without verification protects traffic from being read; it does not
+stop an impostor answering on the database's host and port from being trusted.
+The pool used to encrypt with certificate verification off, on the grounds that
+the pooler's leaf is not signed by a public CA. The fix is to trust Supabase's
+own root instead of to stop checking.
+
+| | |
+|---|---|
+| Variable | `DATABASE_SSL_CA_PATH` — absolute path to a PEM bundle |
+| Production value | `/home/ubuntu/grynd/env/db-ca.pem` |
+| Local dev | not needed — the loopback connects without TLS, as before |
+| Unset, unreadable, or not PEM | the pool throws **before** dialling; there is no unverified fallback |
+
+The variable is read in `resolveSslConfig()` and the result is passed as the
+pool's `ssl` option, with `rejectUnauthorized: true`. `sslmode` is stripped from
+the connection string because `pg` parses the URL **over** the explicit options,
+so `sslmode=no-verify` would otherwise re-introduce an unverified connection.
+
+### Obtaining the authoritative bundle
+
+Supabase publishes the server root certificate per project, and it is the only
+authority that can verify the leaf the pooler presents:
+
+1. Supabase Dashboard → **Project Settings → Database → SSL Configuration** →
+   download the CA certificate. The same step is documented at
+   <https://supabase.com/docs/guides/platform/ssl-enforcement>.
+2. Confirm it is the certificate the server actually presents, rather than
+trusting the download blindly:
+
+   ```bash
+   openssl s_client -showcerts -connect <pooler-host>:6543 -starttls postgres </dev/null 2>/dev/null \
+     | openssl x509 -noout -issuer -subject
+   openssl x509 -in db-ca.pem -noout -subject
+   ```
+
+   The `issuer` of the served chain must be the `subject` of the bundle. If it
+   is not, the bundle belongs to another project or region — do not install it.
+3. If the project's chain is signed by a public CA instead (Neon chains to
+   Let's Encrypt, for example), point the variable at the system bundle
+   (`/etc/ssl/certs/ca-certificates.crt`) rather than installing a provider file.
+
+### Installing it on the production VM
+
+```bash
+sudo install -m 600 -o ubuntu -g ubuntu db-ca.pem /home/ubuntu/grynd/env/db-ca.pem
+```
+
+and name it in the app's environment file:
+
+```
+DATABASE_SSL_CA_PATH=/home/ubuntu/grynd/env/db-ca.pem
+```
+
+It lives in `env/`, outside `releases/`, for two reasons: it has to survive a
+rollback (a release is immutable and pruned), and the artifact gate rejects
+`.pem` material inside a release (`deploy/lib/inspect.mjs`). Rotating the CA is
+therefore a restart of the app service, not a new release.
+
+After installing, restart the app service and confirm the read path:
+`curl -fsS http://127.0.0.1:3000/api/health` must report `ok: true` **and**
+`db: "ok"`. A wrong or unreadable bundle surfaces as a refused connection, never
+as a silent downgrade.
+
+### Local development
+
+Unchanged: a loopback host (`localhost`, `127.0.0.1`, `::1`) connects without TLS
+and needs no bundle. To point local development at a remote database instead,
+download the bundle and set `DATABASE_SSL_CA_PATH` in `.env.local` — `**/*.pem`
+is git-ignored, so the file cannot be committed by accident.
+
+**Scope:** this covers the application pool. The backup, restore and
+migration-check scripts connect with verification off; that is recorded as
+finding **F2** in `docs/backup-recovery-readiness.md` and is not addressed here.
 
 ## Security posture (unchanged)
 

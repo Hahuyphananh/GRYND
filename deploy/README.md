@@ -496,13 +496,16 @@ variable and approve a run.
 
 ## 10. What still needs your decision
 
-1. **The CA patch is not committed.** `deploy/verify-production-fixes.mjs`
-   currently fails against `main` (`src/db/pool.ts` still has
-   `rejectUnauthorized: false`), so the release workflow stops before building —
-   by design, and reproduced here: `FAIL prod-ca-trust (src/db/pool.ts)`, exit 1.
-   Commit the reviewed patch (and adjust `deploy/production-fixes.json` if its
-   final form differs) to unlock the pipeline. The CA bundle itself belongs in
-   `grynd/env/`, not in a release; certificates inside an artifact are rejected.
+1. **The CA patch is committed; the bundle still has to be installed on the
+   host.** The gate now passes against `main` — `ok prod-ca-trust
+   (src/db/pool.ts)` — so the build is no longer blocked by it. What remains is
+   host-side and untestable from here: the pool verifies non-local TLS against a
+   root CA that must exist at `/home/ubuntu/grynd/env/db-ca.pem` and be named by
+   `DATABASE_SSL_CA_PATH` in `grynd/env/app.env`. Until it is, the app fails
+   closed (a refused connection) rather than connecting unverified. The bundle
+   belongs in `grynd/env/`, not in a release; certificates inside an artifact
+   are rejected. How to obtain and install it: `docs/SUPABASE_MIGRATION.md` →
+   "Verifying the database certificate".
 2. **Architecture and Node version.** The workflow defaults to
    `ubuntu-24.04-arm` / `arm64`, and the installer refuses an artifact whose arch
    or Node major differs from the host. Confirm both on the VM before the first

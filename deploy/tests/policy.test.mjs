@@ -55,6 +55,18 @@ test("production fixes: a committed CA patch satisfies the gate", () => {
   }
 });
 
+test("production fixes: the COMMITTED pool.ts satisfies the gate", () => {
+  // Every case above uses a fixture. This one reads the real file, so reverting
+  // the pool to an unverified TLS mode fails here as well as in the workflow —
+  // the gate is only useful if the tree it guards passes it.
+  const { ok, results } = verifyProductionFixes(policy, (file) =>
+    fs.readFileSync(path.join(REPO, file), "utf8"),
+  );
+  const caFix = results.find((result) => result.id === "prod-ca-trust");
+  assert.deepEqual(caFix.problems, [], "the committed src/db/pool.ts must not trip prod-ca-trust");
+  assert.equal(ok, true, `the committed tree must pass its own gate: ${JSON.stringify(results)}`);
+});
+
 test("production fixes: a missing file, or a missing lockfile, fails the gate", () => {
   const missingPool = verifyProductionFixes(policy, (file) => (file === "src/db/pool.ts" ? null : '"lockfileVersion": 3'));
   assert.equal(missingPool.ok, false);
