@@ -331,11 +331,13 @@ test("Precision's page brings the countdown read forward without a recurring pol
   // The read is still armed from the arming countdown. A stop-reconcile
   // instant takes precedence while one is armed (asserted below), because a
   // round this seat has already stopped in is the transition it is waiting on;
-  // every other moment still counts down to `countdownEndsAt`.
+  // every other moment still counts down to `countdownEndsAt`. A paused practice
+  // match deliberately arms NOTHING: the pause is server-backed, so a read left
+  // armed behind it would advance the very clock the player just stopped.
   assert.match(
     code,
-    /useDeadlineRead\(stopReconcileAtMs \?\? precisionDueRead\(state\),\s*refreshState, \{/,
-    "the read must be armed from the arming countdown",
+    /useDeadlineRead\(paused \? null : \(stopReconcileAtMs \?\? precisionDueRead\(state\)\),\s*refreshState, \{/,
+    "the read must be armed from the arming countdown, and disarmed while practice is paused",
   );
   // The reconcile window is BOUNDED — a fixed number of reads, not a poll — and
   // only that window narrows the budget, so the countdown keeps the shared
@@ -416,12 +418,14 @@ test("Keno's ready countdown read is timed by the server clock, not the device's
   // doesn't start immediately". The read is what lights the first tile, and the
   // page already carries the offset the tile nudge uses — so the countdown
   // ending is what fires it, in the same clock the deadline was stamped in.
+  // While a practice match is paused the read is disarmed instead: the pause is
+  // server-backed, so an armed read would resolve the window it is frozen on.
   const page = read("src/app/casino/keno-pvp/[matchId]/PageClient.jsx");
   const code = stripComments(page);
   assert.match(
     code,
-    /useDeadlineRead\(kenoPvpDueRead\(match\), fetchStatus, \{/,
-    "the ready-banner read must pass the clock through",
+    /useDeadlineRead\(paused \? null : kenoPvpDueRead\(match\), fetchStatus, \{/,
+    "the ready-banner read must pass the clock through, and be disarmed while practice is paused",
   );
   assert.match(
     code,
