@@ -21,6 +21,31 @@ import {
   orderByDependencies,
 } from "../scripts/db-backup-lib.mjs";
 
+/**
+ * Decode a SQL string literal the way Postgres would: strip the quotes, and
+ * for an E'' string interpret the backslash escapes. Lets the tests assert the
+ * VALUE a dump will restore rather than one particular escaping spelling.
+ */
+function decodeLiteral(lit) {
+  if (!lit.startsWith("E'")) return lit.slice(1, -1).replace(/''/g, "'");
+  const body = lit.slice(2, -1);
+  let out = "";
+  for (let i = 0; i < body.length; i += 1) {
+    const ch = body[i];
+    if (ch === "\\") {
+      const next = body[i + 1];
+      out += next === "n" ? "\n" : next === "r" ? "\r" : next === "t" ? "\t" : next;
+      i += 1;
+    } else if (ch === "'" && body[i + 1] === "'") {
+      out += "'";
+      i += 1;
+    } else {
+      out += ch;
+    }
+  }
+  return out;
+}
+
 // ── qLiteral ─────────────────────────────────────────────────────────
 test("qLiteral renders scalars and nulls", () => {
   assert.equal(qLiteral(null), "NULL");
@@ -49,6 +74,42 @@ test("qLiteral treats bigint/numeric/uuid/enum values as quoted strings", () => 
   assert.equal(qLiteral("12345678901234567890"), "'12345678901234567890'");
   assert.equal(qLiteral("123.4500"), "'123.4500'");
   assert.equal(qLiteral("550e8400-e29b-41d4-a716-446655440000"), "'550e8400-e29b-41d4-a716-446655440000'");
+});
+
+test("qLiteral re-serialises json/jsonb values instead of stringifying them", () => {
+  // `pg` hands back parsed objects for json/jsonb columns. `String(obj)` would
+  // emit '[object Object]' and every such column would restore as that text.
+  assert.equal(qLiteral({ a: 1, b: [2, 3] }, "jsonb"), `'{"a":1,"b":[2,3]}'`);
+  assert.equal(qLiteral([1, "x"], "jsonb"), `'[1,"x"]'`);
+  assert.equal(qLiteral({ note: "it's" }), `'{"note":"it''s"}'`);
+});
+
+test("qLiteral renders native Postgres arrays as array literals, not JSON", () => {
+  // A `text[]` column must become '{"a","b"}': Postgres rejects JSON's
+  // ["a","b"] with `malformed array literal`.
+  assert.equal(qLiteral(["a", "b"], "ARRAY"), `'{"a","b"}'`);
+  assert.equal(qLiteral([1, 2], "ARRAY"), `'{1,2}'`);
+  // Two escaping layers (array body, then SQL E-string), so assert what
+  // Postgres will actually parse rather than a specific spelling.
+  assert.equal(decodeLiteral(qLiteral(['has "quotes"'], "ARRAY")), String.raw`{"has \"quotes\""}`);
+  assert.equal(decodeLiteral(qLiteral(["C:" + "\\" + "temp"], "ARRAY")), String.raw`{"C:\\temp"}`);
+  assert.equal(qLiteral([], "ARRAY"), `'{}'`);
+  // Elements containing a comma or brace stay quoted, so they are not split.
+  assert.equal(qLiteral(["a,b", "c}"], "ARRAY"), `'{"a,b","c}"}'`);
+});
+
+test("qLiteral renders bytea buffers as hex, not as text", () => {
+  assert.equal(qLiteral(Buffer.from([0xde, 0xad, 0xbe, 0xef])), "decode('deadbeef', 'hex')");
+});
+
+test("qLiteral escapes control characters so a value never spans lines", () => {
+  // A newline inside a literal would break the line-based statement splitter:
+  // a following `;` at end of line would truncate the INSERT.
+  assert.equal(qLiteral("line1\nline2"), "E'line1\\nline2'");
+  assert.equal(qLiteral("tab\there"), "E'tab\\there'");
+  assert.equal(qLiteral("back\\slash"), "E'back\\\\slash'");
+  const stmt = `INSERT INTO "chat" ("msg") VALUES\n  ,(${qLiteral("hi\nthere;")});`;
+  assert.equal(splitStatements(stmt + "\nCOMMIT;").length, 2);
 });
 
 // ── qIdent ───────────────────────────────────────────────────────────

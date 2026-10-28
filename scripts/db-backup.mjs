@@ -140,12 +140,12 @@ async function dumpTables(sqlArr) {
 }
 
 async function dumpConstraints(sqlArr) {
-  const { rows: tables } = await client.query(
+  const { rows } = await client.query(
     `SELECT tablename FROM pg_tables
      WHERE schemaname = 'public' AND tablename <> '__drizzle_migrations'
      ORDER BY tablename`,
   );
-  const tableNames = tables.rows.map((r) => r.tablename);
+  const tableNames = rows.map((r) => r.tablename);
 
   // Phase A: PK / UNIQUE / CHECK for ALL tables (parent constraints first).
   for (const table of tableNames) {
@@ -187,12 +187,12 @@ async function dumpConstraints(sqlArr) {
 }
 
 async function dumpIndexes(sqlArr) {
-  const { rows: tables } = await client.query(
+  const { rows } = await client.query(
     `SELECT tablename FROM pg_tables
      WHERE schemaname = 'public' AND tablename <> '__drizzle_migrations'
      ORDER BY tablename`,
   );
-  for (const r of tables.rows) {
+  for (const r of rows) {
     const table = r.tablename;
     const indexes = await client.query(
       `SELECT pg_get_indexdef(i.oid) AS def
@@ -245,6 +245,8 @@ async function dumpTableData(sqlArr, table) {
 
   const names = insertCols.map((c) => c.column_name);
   const quoted = names.map(qIdent);
+  // Array vs json rendering depends on the column type, not the JS value.
+  const columnTypes = new Map(insertCols.map((c) => [c.column_name, c.data_type]));
 
   // Count first so we can report progress and skip empties.
   const count = await client.query(`SELECT COUNT(*)::int AS n FROM ${qIdent(table)}`);
@@ -262,23 +264,31 @@ async function dumpTableData(sqlArr, table) {
   let lastPk = null;
 
   // Single-column PK lets us page; otherwise read everything at once.
+  // `to_regclass($1)` takes the table name as a VALUE. A quoted identifier
+  // (`"table"::regclass`) is parsed as a column reference and fails with
+  // `column "…" does not exist`.
   const pk = await client.query(
     `SELECT a.attname FROM pg_index i
      JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-     WHERE i.indrelid = ${qIdent(table)}::regclass AND i.indisprimary`,
+     WHERE i.indrelid = to_regclass($1) AND i.indisprimary`,
+    [table],
   );
   const pkCol = pk.rows.length === 1 ? pk.rows[0].attname : null;
 
   while (true) {
-    const where = lastPk != null && pkCol ? ` WHERE ${qIdent(pkCol)} > ${lastPk}` : "";
+    // The cursor is a BOUND PARAMETER, not interpolated: primary keys here are
+    // serial integers, UUIDs and timestamps, and a UUID interpolated raw reads
+    // as `> 0d710b77-…`, which Postgres rejects as a numeric literal.
+    const paged = lastPk != null && pkCol != null;
+    const where = paged ? ` WHERE ${qIdent(pkCol)} > $1` : "";
     const q = `SELECT ${colList} FROM ${qIdent(table)}${where} ORDER BY ${
       pkCol ? qIdent(pkCol) : "1"
     } LIMIT ${BATCH}`;
-    const { rows } = await client.query(q);
+    const { rows } = await client.query(q, paged ? [lastPk] : []);
     if (!rows.length) break;
     if (pkCol != null) lastPk = rows[rows.length - 1][pkCol];
     for (const row of rows) {
-      const vals = names.map((c) => qLiteral(row[c]));
+      const vals = names.map((c) => qLiteral(row[c], columnTypes.get(c)));
       if (first) {
         sqlArr.push(
           `INSERT INTO ${qIdent(table)} (${colList}) VALUES\n  (${vals.join(", ")})`,
@@ -303,13 +313,13 @@ async function dumpSequencesData(sqlArr) {
   // pg_get_serial_sequence — that dependency can be missing after a schema
   // restore, exactly what broke the Neon→Supabase migration). Identical to
   // fixSequences() in scripts/migrate-data.mjs.
-  const { rows: tables } = await client.query(
+  const { rows } = await client.query(
     `SELECT tablename FROM pg_tables
      WHERE schemaname = 'public' AND tablename <> '__drizzle_migrations'
      ORDER BY tablename`,
   );
   let count = 0;
-  for (const r of tables.rows) {
+  for (const r of rows) {
     const table = r.tablename;
     const cols = await client.query(
       `SELECT column_name, column_default
