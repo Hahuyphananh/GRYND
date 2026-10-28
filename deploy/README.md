@@ -652,3 +652,89 @@ Practical notes:
 - A reverted activation is recorded with its `rollback` outcome in
   `state/deployments.json` and fails the workflow run, so it can never be
   mistaken for a green deployment.
+
+## 13. Scheduled jobs (Oracle systemd timers, replaces Vercel Cron)
+
+`vercel.json` schedules four routes. On Oracle they are run by four systemd
+timers with the **same routes, the same `CRON_SECRET` bearer token and the same
+UTC schedules**, so removing Vercel removes nothing that production still needs.
+
+| Unit (`deploy/jobs/`) | Route | Schedule (UTC) | Effect |
+|---|---|---|---|
+| `grynd-job-daily-reset.timer` | `/api/jobs/daily-reset` | `00:00` daily | Zeroes `users.daily_wagered` / `daily_won`; no-op when nobody has wagered today |
+| `grynd-job-weekly-reset.timer` | `/api/jobs/weekly-reset` | `00:00` Monday | Zeroes weekly counters **and emails every active player** |
+| `grynd-job-retention.timer` | `/api/jobs/retention` | `04:00` daily | Deletes terminal matches older than 45 days + stale presence rows |
+| `grynd-job-rank-snapshots.timer` | `/api/jobs/rank-snapshots` | `21:00` daily | Records each ranked player's Overall Elo position for the day |
+
+Installed files:
+
+```
+/usr/local/lib/grynd/run-job.sh          root:root 0755   (deploy/jobs/run-job.sh)
+/etc/systemd/system/grynd-job@.service   root:root 0644   (deploy/jobs/grynd-job@.service)
+/etc/systemd/system/grynd-job-*.timer    root:root 0644   (one per job)
+```
+
+`run-job.sh` is root-owned and not writable by `ubuntu`, so the account that runs
+the job cannot edit the script the job runs as it. It reads `CRON_SECRET` from
+`/home/ubuntu/grynd/env/app.env` (the same 0600 file `grynd-app.service` loads)
+and passes it to `curl` on **stdin** via `--config -`, so the secret never appears
+in a process argument list or in the journal. Only the HTTP status and a bounded
+response excerpt are logged.
+
+### 13.1 Behaviour that makes a failure visible
+
+| Situation | Result |
+|---|---|
+| Unknown job name | exit 64, nothing invoked |
+| `env/app.env` unreadable or `CRON_SECRET` empty | exit 78, nothing invoked (fails closed rather than calling without a token) |
+| Connection refused / 502 / 503 / 504 | retried 3× at 10 s intervals (a deploy restarts the app at the top of the hour) |
+| Any other non-200 (401, 500, …) | not retried, exit 1 — repeating a 500 does not make it succeed |
+| 200 without `"ok": true` (or `"success": true` for snapshots) | exit 1 |
+| Exceeds `TimeoutStartSec` (600 s) | unit fails, logged in the journal |
+
+A failed unit is therefore visible in `systemctl --failed`, in
+`journalctl -u grynd-job@<name>`, and in `systemctl list-timers`.
+
+### 13.2 Operating it
+
+```bash
+systemctl list-timers 'grynd-job-*' --all        # next/last run per job
+journalctl -u grynd-job@retention -n 50 --no-pager
+sudo systemctl start grynd-job@retention.service # run one now, same unit and env
+systemctl cat grynd-job@retention.service        # what is actually installed
+```
+
+`Persistent=true` catches up a missed run after a reboot. Because that would
+fire an *immediate* catch-up when a timer is first enabled (a stamp file with no
+recorded run counts as "missed"), each timer's stamp was pre-seeded on install so
+enabling them ran nothing — the first real run is the next scheduled slot, or an
+explicit `systemctl start`.
+
+### 13.3 Proof runs on the live host (2026-10-28)
+
+| Job | Result |
+|---|---|
+| `daily-reset` | `{"ok":true,"reset":0}` — a true no-op at the time (no player had a non-zero daily counter) |
+| `retention` | `{"ok":true,…}` — 0 rows older than the cutoff; **found a real defect** (below) |
+| `rank-snapshots` | `{"success":true,"bucket":"2026-10-28","captured":0}` — correct: `player_ratings` is empty, so nobody is ranked yet and there is nothing to record |
+| `weekly-reset` | **deliberately not executed.** It is destructive and emails every active player; 3 players had non-zero weekly counters and it was mid-week. Automated at `Mon 00:00 UTC`, where it is the intended behaviour |
+
+### 13.4 Defect this work surfaced (fixed)
+
+`retention` purged a table called `lane_runner_pvp_matches`, which **does not
+exist** — the lane-runner PvP table is `lane_rush_duel_matches` (already purged)
+and `lane_runner_games` is legacy *solo* history that retention leaves alone on
+purpose. Every run therefore threw on that statement, recorded `-1` for it, and
+still answered `ok: true`, so the sweep could degrade silently forever while the
+scheduler reported success. Fixed in `src/app/api/jobs/retention/route.ts`:
+the phantom table is gone, and a sweep in which any table failed now returns
+HTTP 500 with `failedTables`, which fails the timer.
+
+### 13.5 Before deleting Vercel
+
+Nothing in production reads Vercel for scheduling any more, but until Vercel is
+retired its own `vercel.json` crons still fire against the Vercel deployment. Do
+not leave both active longer than the observation period: the jobs are idempotent
+by design (the resets are single guarded `UPDATE`s, retention only deletes
+already-terminal rows, snapshots are `ON CONFLICT` upserts), so doubles are
+harmless, but the weekly reset would send its email twice.

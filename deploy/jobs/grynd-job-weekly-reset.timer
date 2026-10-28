@@ -1,0 +1,11 @@
+[Unit]
+Description=GRYND weekly reset (Monday 00:00 UTC; emails the week summary, then zeroes weekly counters)
+
+[Timer]
+OnCalendar=Mon *-*-* 00:00:00 UTC
+RandomizedDelaySec=120
+Persistent=true
+Unit=grynd-job@weekly-reset.service
+
+[Install]
+WantedBy=timers.target

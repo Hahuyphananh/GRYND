@@ -1,0 +1,12 @@
+[Unit]
+Description=GRYND daily reset (00:00 UTC; zeroes users.daily_wagered / daily_won)
+
+[Timer]
+OnCalendar=*-*-* 00:00:00 UTC
+RandomizedDelaySec=60
+# Catch up after a reboot or an outage instead of skipping the day.
+Persistent=true
+Unit=grynd-job@daily-reset.service
+
+[Install]
+WantedBy=timers.target

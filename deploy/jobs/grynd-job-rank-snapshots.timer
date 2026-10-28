@@ -1,0 +1,11 @@
+[Unit]
+Description=GRYND rank snapshots (21:00 UTC; records every ranked player's Overall Elo position for the day)
+
+[Timer]
+OnCalendar=*-*-* 21:00:00 UTC
+RandomizedDelaySec=120
+Persistent=true
+Unit=grynd-job@rank-snapshots.service
+
+[Install]
+WantedBy=timers.target

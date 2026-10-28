@@ -25,7 +25,9 @@ import { verifyCronRequest } from "../../../../lib/security/cronAuth";
  * than a correctness step — and putting it here keeps one retention sweep
  * instead of adding another cron.
  *
- * Wire into Vercel Cron Jobs (see vercel.json): schedule daily off-peak.
+ * Scheduled on Oracle by the systemd timer `grynd-job-retention.timer`
+ * (deploy/jobs/), daily off-peak, with the same CRON_SECRET bearer token
+ * verification as the other jobs. Any platform scheduler works.
  */
 export async function GET(request: Request) {
   // Authenticate cron request before performing global state changes
@@ -65,8 +67,12 @@ export async function GET(request: Request) {
   await purge("mines_pvp_matches", FINISHED);
   await purge("memory_grid_matches", FINISHED);
   await purge("keno_pvp_matches", FINISHED);
+  // Lane Runner's PvP table is `lane_rush_duel_matches` (purged here). There is
+  // no `lane_runner_pvp_matches` table: the legacy `lane_runner_games` table is
+  // the SOLO lane runner, whose history is retained on purpose like the other
+  // solo cash-game tables. Purging a table name that does not exist throws on
+  // every run, which is why a failed purge now fails the sweep (below).
   await purge("lane_rush_duel_matches", FINISHED);
-  await purge("lane_runner_pvp_matches", FINISHED);
   await purge("precision_matches", FINISHED);
   await purge("speed_typing_matches", FINISHED);
   await purge("tic_tac_toe_matches", FINISHED);
@@ -97,10 +103,24 @@ export async function GET(request: Request) {
     deletedByTable["user_game_presence"] = -1;
   }
 
-  return Response.json({
-    ok: true,
-    runAt: new Date().toISOString(),
-    cutoff: cutoff.toISOString(),
-    deletedByTable,
-  });
+  // A table that could not be purged (for example a renamed or dropped one) is
+  // recorded as -1 above. Returning `ok: true` regardless is how a stale table
+  // name can keep failing on every run while the job reports success — the
+  // sweep exists precisely to stop unbounded growth, so a partial sweep must
+  // be visible to whatever scheduled it (systemd timer, cron, CI).
+  const failedTables = Object.entries(deletedByTable)
+    .filter(([, count]) => count < 0)
+    .map(([table]) => table);
+  const ok = failedTables.length === 0;
+
+  return Response.json(
+    {
+      ok,
+      runAt: new Date().toISOString(),
+      cutoff: cutoff.toISOString(),
+      deletedByTable,
+      ...(ok ? {} : { failedTables }),
+    },
+    { status: ok ? 200 : 500 },
+  );
 }

@@ -1,0 +1,38 @@
+[Unit]
+# GRYND scheduled job (%i). Started by grynd-job-%i.timer, which is the Oracle
+# replacement for the same route's Vercel Cron entry in vercel.json.
+Description=GRYND scheduled job %i
+Documentation=https://github.com/Hahuyphananh/GRYND/blob/main/deploy/README.md
+After=network-online.target grynd-app.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# The app account: it owns the release, listens on 127.0.0.1:3000 and is the
+# mode-0600 owner of env/app.env, where CRON_SECRET lives.
+User=ubuntu
+Group=ubuntu
+ExecStart=/usr/local/lib/grynd/run-job.sh %i
+TimeoutStartSec=600
+Nice=10
+
+# The job needs one loopback HTTP call and nothing else: no capabilities, no
+# writable system paths, no devices, no new privileges.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM

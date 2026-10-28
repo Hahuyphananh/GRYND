@@ -25,9 +25,10 @@
 //     are simply absent: there is no position to record, and the dashboard says
 //     the curve has not started rather than plotting a fabricated rank.
 //
-// It is scheduled from vercel.json (daily, off-peak). Wire the same route into
-// any other scheduler with the CRON_SECRET bearer token the platform's other
-// jobs use (src/lib/security/cronAuth).
+// It is scheduled on the Oracle host by `grynd-job-rank-snapshots.timer`
+// (deploy/jobs/), daily off-peak. Wire the same route into any other scheduler
+// with the CRON_SECRET bearer token the platform's other jobs use
+// (src/lib/security/cronAuth).
 //
 // READ/WRITE SCOPE: it writes ONLY its own snapshot table. No rating, trophy,
 // match, subscription or user row is read or written anywhere in this file.

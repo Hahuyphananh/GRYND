@@ -1,6 +1,7 @@
 // src/app/api/jobs/daily-reset/route.ts
 //
-// GET /api/jobs/daily-reset — Vercel Cron (see vercel.json: "0 0 * * *").
+// GET /api/jobs/daily-reset — scheduled at 00:00 UTC by the systemd timer
+// `grynd-job-daily-reset.timer` on the Oracle host (deploy/jobs/).
 //
 // Zeroes the daily responsible-play counters (users.daily_wagered /
 // users.daily_won) at midnight UTC so "down X tokens today" always refers

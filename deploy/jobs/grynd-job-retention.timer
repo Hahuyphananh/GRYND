@@ -1,0 +1,11 @@
+[Unit]
+Description=GRYND retention sweep (04:00 UTC; terminal matches older than 45 days, stale presence)
+
+[Timer]
+OnCalendar=*-*-* 04:00:00 UTC
+RandomizedDelaySec=120
+Persistent=true
+Unit=grynd-job@retention.service
+
+[Install]
+WantedBy=timers.target
