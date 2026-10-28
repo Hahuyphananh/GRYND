@@ -34,6 +34,14 @@ export async function GET() {
       totp: diagnostics.factors.totp.configured,
       passphrase: diagnostics.factors.passphrase.configured,
     },
+    // Why each factor is off, in the words of the diagnostics module. Static
+    // sentences naming variables only — never a value, prefix or length — so the
+    // gate page can explain an unavailable factor instead of just disabling it.
+    reasons: {
+      email: diagnostics.factors.email.reason,
+      totp: diagnostics.factors.totp.reason,
+      passphrase: diagnostics.factors.passphrase.reason,
+    },
     anyConfigured: diagnostics.anyConfigured,
     warnings: diagnostics.warnings.map((warning) => ({
       code: warning.code,

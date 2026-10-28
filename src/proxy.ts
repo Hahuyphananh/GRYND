@@ -417,15 +417,11 @@ function applySecurityHeaders(response: NextResponse) {
       // src/lib/consentRegions.ts. Blocking it would leave those visitors
       // unable to consent at all, which is a revenue loss, not a privacy win.
       //
-      // The Monetag hosts (lib/ads.ts MONETAG_FRAME_HOSTS) are the second
-      // provider's frames: its MultiTag loader runs from quge5.com and pulls the
-      // zone's extra formats from auqot.com, ekhay.com and b3mny.com. Same
-      // failure mode as AdSense — the tags load (script-src allows https:) and
-      // then paint nothing if the frame is refused. They are named per host
-      // rather than wildcarded because the `frame-src` directive is what keeps
-      // third parties from framing our pages' content, and `frame-ancestors`
-      // below separately keeps anyone from framing US.
-      "frame-src 'self' https://challenges.cloudflare.com https://*.clerk.com https://*.clerk.accounts.dev https://js.stripe.com https://checkout.stripe.com https://*.stripe.com https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://fundingchoicesmessages.google.com https://quge5.com https://*.quge5.com https://auqot.com https://*.auqot.com https://ekhay.com https://*.ekhay.com https://b3mny.com https://*.b3mny.com; " +
+      // Ad hosts are named per host rather than wildcarded because the
+      // `frame-src` directive is what keeps third parties from framing our
+      // pages' content, and `frame-ancestors` below separately keeps anyone
+      // from framing US.
+      "frame-src 'self' https://challenges.cloudflare.com https://*.clerk.com https://*.clerk.accounts.dev https://js.stripe.com https://checkout.stripe.com https://*.stripe.com https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://fundingchoicesmessages.google.com; " +
       "worker-src 'self' blob:; " +
       "frame-ancestors 'self'; " +
       "base-uri 'self'; " +

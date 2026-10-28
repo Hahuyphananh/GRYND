@@ -58,6 +58,15 @@ function Outcome({ value }: { value: string | null }) {
   return <span className={OUTCOME_STYLE[value] ?? "text-[#e6f7ff]"}>{value}</span>;
 }
 
+// The gate page (/admin/mfa-required) can only offer the factors this host can
+// honour, so an operator who lands there needs to know WHICH variable to set.
+// Same three factors, same order, as the gate page and /api/admin/mfa/status.
+const FACTOR_ROWS = [
+  { key: "email", label: "Email code", short: "email code" },
+  { key: "totp", label: "Authenticator app", short: "authenticator app" },
+  { key: "passphrase", label: "Passphrase", short: "passphrase" },
+] as const;
+
 const SEVERITY_STYLE: Record<string, string> = {
   critical: "border-red-500/40 bg-red-500/10 text-red-300",
   warning: "border-amber-400/40 bg-amber-400/10 text-amber-200",
@@ -94,6 +103,8 @@ export default async function OperationsPage() {
 
   const critical = snapshot.warnings.filter((warning) => warning.severity === "critical");
   const rest = snapshot.warnings.filter((warning) => warning.severity !== "critical");
+  const factors = FACTOR_ROWS.map((row) => ({ ...row, status: mfa.factors[row.key] }));
+  const missingFactors = factors.filter((factor) => !factor.status.configured);
   const latestDeployment = snapshot.deployments[0] ?? null;
   const recentAudit = [...snapshot.audit].reverse().slice(0, 8);
 
@@ -227,21 +238,101 @@ export default async function OperationsPage() {
             <div className={LABEL}>Admin second factor</div>
             <div className="mt-1 text-sm">
               {mfa.anyConfigured ? (
-                <span className="text-emerald-400">{Object.values(mfa.factors).filter((f) => f.configured).length} factor(s) available</span>
+                <span className="text-emerald-400">
+                  {factors.length - missingFactors.length} of {factors.length} factor(s) available
+                </span>
               ) : (
-                <span className="text-red-400">none configured</span>
+                <span className="text-red-400">none configured — admin access is refused</span>
               )}
             </div>
-            <ul className="mt-2 space-y-1 text-xs text-[#7f9bbd]">
-              <li>email: {mfa.factors.email.configured ? "available" : "unavailable"}</li>
-              <li>authenticator: {mfa.factors.totp.configured ? "available" : "unavailable"}</li>
-              <li>passphrase: {mfa.factors.passphrase.configured ? "available" : "unavailable"}</li>
-            </ul>
+            <div className="mt-2 text-xs text-[#7f9bbd]">
+              {missingFactors.length === 0
+                ? "Every factor this host can use is configured."
+                : `Missing: ${missingFactors.map((factor) => factor.short).join(", ")}`}
+            </div>
+            <a
+              href="#admin-second-factor"
+              className="mt-2 inline-block text-xs text-[#f5ff3b] hover:underline"
+            >
+              What to set →
+            </a>
             {mfa.sessionSecret.source === "insecure-fallback" && (
               <div className="mt-2 text-xs text-red-400">MFA cookie signing secret is not configured.</div>
             )}
           </section>
         </div>
+
+        {/* The detail behind the card above: one row per factor, with the
+            variable that turns it on. Names only — buildMfaDiagnostics never
+            returns a value, a prefix or a length. */}
+        <section
+          id="admin-second-factor"
+          className="mt-6 rounded-xl border border-[#1b2a4a] bg-[#0d1830]"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1b2a4a] px-5 py-3">
+            <h2 className="text-sm font-semibold text-white">Admin second factor</h2>
+            <Link href="/admin/mfa-required" className="text-xs text-[#f5ff3b] hover:underline">
+              Open the verification page →
+            </Link>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="text-[11px] uppercase tracking-wider text-[#7f9bbd]">
+                <tr>
+                  <th className="px-5 py-2 font-medium">Factor</th>
+                  <th className="px-3 py-2 font-medium">Status</th>
+                  <th className="px-5 py-2 font-medium">What to set</th>
+                </tr>
+              </thead>
+              <tbody>
+                {factors.map((factor) => (
+                  <tr key={factor.key} className="border-t border-[#16233d] align-top">
+                    <td className="px-5 py-2 text-xs text-[#e6f7ff]">{factor.label}</td>
+                    <td className="px-3 py-2 text-xs">
+                      {factor.status.configured ? (
+                        <span className="text-emerald-400">available</span>
+                      ) : (
+                        <span className="text-red-400">missing</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-2 text-xs">
+                      {factor.status.configured ? (
+                        <span className="text-[#7f9bbd]">configured on this host</span>
+                      ) : (
+                        <>
+                          <div className="text-amber-200">{factor.status.reason}</div>
+                          <div className="mt-1 font-mono text-[10px] text-[#7f9bbd]">
+                            {factor.status.variables.join(" · ")}
+                          </div>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="border-t border-[#1b2a4a] px-5 py-3 text-xs text-[#7f9bbd]">
+            <div>
+              Cookie signing secret:{" "}
+              <span className={mfa.sessionSecret.secure ? "text-emerald-400" : "text-red-400"}>
+                {mfa.sessionSecret.source === "env"
+                  ? "dedicated secret"
+                  : mfa.sessionSecret.source === "clerk-fallback"
+                    ? "falling back to CLERK_SECRET_KEY"
+                    : "missing — signed with a development value"}
+              </span>
+            </div>
+            <div className="mt-1">
+              Email codes:{" "}
+              <span className={mfa.otpStore.kind === "redis" ? "text-emerald-400" : "text-amber-300"}>
+                {mfa.otpStore.kind === "redis" ? "held in Redis" : "held in process memory"}
+              </span>
+            </div>
+          </div>
+        </section>
 
         <section className="mt-6 rounded-xl border border-[#1b2a4a] bg-[#0d1830]">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1b2a4a] px-5 py-3">

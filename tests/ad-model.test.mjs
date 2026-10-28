@@ -33,15 +33,10 @@ import {
 import {
   AD_PLACEMENT_ENV,
   DEFAULT_ADSENSE_PUBLISHER_ID,
-  DEFAULT_MONETAG_ZONE,
-  MONETAG_FRAME_HOSTS,
-  MONETAG_TAG_SRC,
   adUnitId,
   adsensePublisherId,
   adsEnabled,
   hasAnyConfiguredAdUnit,
-  monetagEnabled,
-  monetagZoneId,
   normalizePublisherId,
 } from "../src/lib/ads.ts";
 
@@ -57,7 +52,6 @@ const ENTITLEMENT = read("src/lib/adEntitlement.ts");
 const SLOT = read("src/components/AdSlot.tsx");
 const UNIT = read("src/components/AdUnit.tsx");
 const LOADER = read("src/components/AdSenseScript.tsx");
-const MONETAG = read("src/components/MonetagScript.tsx");
 const PROXY = read("src/proxy.ts");
 const MARKER = read("src/components/AdCodeMarker.tsx");
 const MATCH_ROUTER = read("src/hooks/useMatchRouter.ts");
@@ -179,7 +173,6 @@ test("no ad capability exists inside gameplay", () => {
     const source = read(page);
     assert.ok(!/<AdSlot\s/.test(source), `${page} ${why} — no ad slot`);
     assert.ok(!/AdSenseScript/.test(source), `${page} ${why} — no ad loader`);
-    assert.ok(!/MonetagScript/.test(source), `${page} ${why} — no Monetag loader`);
   };
 
   // 1. Any per-entity route (`[matchId]`, `game/[gameId]`, `table/[tableId]`,
@@ -267,115 +260,6 @@ test("the ad provider is swappable without touching a page", () => {
   assert.ok(exists("src/lib/ads.ts"), "the provider config module must exist");
 });
 
-// ── The second provider (Monetag) ───────────────────────────────────────────
-// It is held to exactly the same model as the first: server-side entitlement,
-// configuration-driven identifiers, browsing pages only, nothing inside
-// gameplay. These assertions exist because a second loader is precisely where
-// the "ads never reach gameplay" rule and the "no client flag" rule get
-// forgotten.
-
-test("the Monetag loader is the provider's own tag, for a configured zone", () => {
-  assert.equal(MONETAG_TAG_SRC, "https://quge5.com/88/tag.min.js");
-  assert.equal(DEFAULT_MONETAG_ZONE, "295730");
-
-  // The tag markup: the loader's src, the zone as `data-zone`, async, and the
-  // Cloudflare opt-out the provider's snippet ships with.
-  assert.match(MONETAG, /src=\{MONETAG_TAG_SRC\}/, "the src must come from the config module");
-  assert.match(MONETAG, /data-zone=\{zone\}/, "the zone must be the configured one");
-  assert.match(MONETAG, /^\s*async$/m, "the tag must be async");
-  assert.match(MONETAG, /data-cfasync="false"/);
-
-  // The zone is never written into the component — same rule as the publisher
-  // id, so pointing the app at another zone is configuration, not a code edit.
-  // Prose may say which zone was measured against; the CODE must not carry it —
-  // that is what makes pointing the app at another zone configuration, not an edit.
-  assert.ok(
-    !code(MONETAG).includes(DEFAULT_MONETAG_ZONE),
-    "the zone id must not be hardcoded in the loader",
-  );
-  assert.match(MONETAG, /monetagZoneId\(\)/);
-  assert.match(MONETAG, /monetagEnabled\(\)/);
-});
-
-test("a malformed or disabled Monetag config renders nothing", () => {
-  // Ads are on by default in this checkout, and the zone falls back to the one
-  // this property is registered under.
-  assert.equal(monetagEnabled(), true);
-  assert.equal(monetagZoneId(), DEFAULT_MONETAG_ZONE);
-
-  const JUNK = ["", "   ", "29573O", "zone-295730", "12", "<script>"];
-  const previous = process.env.NEXT_PUBLIC_MONETAG_ZONE;
-  try {
-    for (const value of JUNK) {
-      process.env.NEXT_PUBLIC_MONETAG_ZONE = value;
-      // A blank value means "unset" and takes the documented fallback; junk is
-      // refused outright so a typo cannot load somebody else's zone.
-      const resolved = monetagZoneId();
-      assert.ok(
-        value.trim() === "" ? resolved === DEFAULT_MONETAG_ZONE : resolved === null,
-        `${JSON.stringify(value)} must not resolve to an emitted zone`,
-      );
-    }
-    process.env.NEXT_PUBLIC_MONETAG_ZONE = "12031482";
-    assert.equal(monetagZoneId(), "12031482", "a configured zone wins");
-
-    process.env.NEXT_PUBLIC_MONETAG_ENABLED = "false";
-    assert.equal(monetagEnabled(), false, "the provider must be switchable off");
-    assert.match(MONETAG, /if \(!monetagEnabled\(\)\) return null;/);
-  } finally {
-    if (previous === undefined) delete process.env.NEXT_PUBLIC_MONETAG_ZONE;
-    else process.env.NEXT_PUBLIC_MONETAG_ZONE = previous;
-    delete process.env.NEXT_PUBLIC_MONETAG_ENABLED;
-  }
-});
-
-test("a GRYND PRO member receives no Monetag tag either", () => {
-  assert.match(MONETAG, /isAdFreeViewer\(\)/, "the loader must check entitlement server-side");
-  assert.match(
-    code(MONETAG),
-    /await isAdFreeViewer\(\)/,
-    "the check must be awaited, not a rendered promise",
-  );
-  assert.ok(!/premium/i.test(MONETAG), "the loader takes no caller-supplied premium flag");
-  assert.ok(!/"use client"/.test(MONETAG), "it must stay a server component");
-  for (const [name, source] of Object.entries({ MONETAG })) {
-    assert.ok(
-      !/(localStorage|sessionStorage|document\.cookie)/.test(source),
-      `${name} must not read entitlement from the client`,
-    );
-  }
-});
-
-test("the Monetag loader sits on exactly the pages that carry the AdSense one", () => {
-  const withAds = allPages().filter((p) => /<AdSenseScript\s*\/>/.test(read(p)));
-  const withMonetag = allPages().filter((p) => /<MonetagScript\s*\/>/.test(read(p)));
-  assert.deepEqual(
-    withMonetag,
-    withAds,
-    "the two loaders must share one allow-list — a page that gains one must gain both",
-  );
-  // Never global: the layout must not mount it, and each page renders it once.
-  assert.ok(!/MonetagScript/.test(read("src/app/layout.tsx")), "the loader must not be global");
-  for (const page of withMonetag) {
-    const renders = read(page).match(/<MonetagScript\s*\/>/g) || [];
-    assert.equal(renders.length, 1, `${page} must render <MonetagScript /> exactly once`);
-  }
-});
-
-test("the CSP lets Monetag's ad frames through", () => {
-  // script-src/img-src/connect-src already allow all of `https:`, so the loader
-  // always downloads; frame-src is the directive that decides whether a format
-  // can actually paint. Each host named here comes from the zone's own config.
-  const frameSrc = PROXY.match(/frame-src [^;]+;/);
-  assert.ok(frameSrc, "the CSP must keep an explicit frame-src directive");
-  for (const host of MONETAG_FRAME_HOSTS) {
-    assert.ok(
-      frameSrc[0].includes(`https://${host}`),
-      `the CSP must allow ${host}, or its formats load and paint nothing`,
-    );
-  }
-});
-
 test("public/ads.txt still authorises the configured publisher", () => {
   const adsTxt = read("public/ads.txt");
   const publisher = DEFAULT_ADSENSE_PUBLISHER_ID.replace(/^ca-/, "");
@@ -384,60 +268,9 @@ test("public/ads.txt still authorises the configured publisher", () => {
     "ads.txt must list the configured publisher as a DIRECT seller",
   );
 });
-// ── The network's worker file ───────────────────────────────────────────────
-// The one regression this integration can cause is a SECOND worker at the ROOT
-// scope, which would displace next-pwa's /sw.js. Monetag names its worker itself
-// (its zone endpoint answers `"swName":"sw.js"`), so the supported move is to
-// SERVE the file under a path that does not clash and never register it — and
-// "register it, the file is just sitting there" is precisely the well-meant change
-// that breaks offline caching. Both halves are pinned here.
-
-test("no Monetag surface ever registers a service worker", () => {
-  // Comments are stripped, so prose that explains the rule cannot satisfy it.
-  for (const [name, source] of Object.entries({
-    "MonetagScript.tsx": MONETAG,
-    "ads.ts": CONFIG,
-    "layout.tsx": read("src/app/layout.tsx"),
-    "next.config.js": read("next.config.js"),
-  })) {
-    assert.ok(
-      !/serviceWorker/.test(code(source)),
-      `${name} must not register a worker — next-pwa owns the root scope`,
-    );
-  }
-  // next-pwa stays the only thing that registers anything, and it does so at the
-  // root, which is what the network's formats would otherwise fight over.
-  assert.match(read("next.config.js"), /register: true/);
-});
-
-test("the network's worker file is served from the root under a safe name", () => {
-  assert.ok(exists("public/sw1.js"), "the dashboard's worker file is served from public/");
-  assert.ok(
-    !exists("sw.js"),
-    "a copy at the repo root is never served (only public/ is) — and this path is next-pwa's",
-  );
-  assert.ok(
-    !exists("sw1.js"),
-    "a copy at the repo root would never be served; public/ is the only served root",
-  );
-
-  // Served at the root path, uncached, with the root scope stated explicitly.
-  const conf = read("next.config.js");
-  assert.match(conf, /source: "\/sw1\.js"/, "the worker must be served from the root path");
-  assert.match(conf, /\{ key: "Cache-Control", value: "no-store" \}/);
-  assert.match(conf, /\{ key: "Service-Worker-Allowed", value: "\/" \}/);
-
-  // …and it is the network's own bootstrap, bound to one of its zones.
-  const worker = read("public/sw1.js");
-  assert.match(worker, /self\.options/, "the file must be the network's own worker");
-  assert.match(worker, /importScripts\(/, "…which pulls the network's worker script");
-  assert.match(worker, /"zoneId"/, "…and is bound to a zone");
-});
-
 // ── Ad code must not survive into gameplay ──────────────────────────────────
-// The loaders' behaviour is DOCUMENT-global (Monetag installs a popunder click
-// handler and can keep a vignette / in-page-push node on screen; the AdSense
-// loader is what Auto Ads hook into), and a Next client-side navigation never
+// The loader's behaviour is DOCUMENT-global (the AdSense loader is what Auto
+// Ads hook into), and a Next client-side navigation never
 // unloads the document. A match page's own HTML is ad-free — these tests make
 // sure nothing a LOBBY loaded follows the player onto the board.
 
@@ -485,18 +318,13 @@ test("a match is a document navigation only while the document has ad code", () 
   assert.equal(resolveMatchNavigation("/games/chess/play", true), "client");
 });
 
-test("both ad loaders flag the document, so the flag cannot drift from the tags", () => {
-  for (const [name, source] of Object.entries({
-    AdSenseScript: LOADER,
-    MonetagScript: MONETAG,
-  })) {
-    assert.match(
-      source,
-      /import AdCodeMarker from "\.\/AdCodeMarker";/,
-      `${name} must render the marker — a tag without the flag would ride into a match`,
-    );
-    assert.match(source, /<AdCodeMarker \/>/, `${name} must actually render it`);
-  }
+test("the ad loader flags the document, so the flag cannot drift from the tag", () => {
+  assert.match(
+    LOADER,
+    /import AdCodeMarker from "\.\/AdCodeMarker";/,
+    "AdSenseScript must render the marker — a tag without the flag would ride into a match",
+  );
+  assert.match(LOADER, /<AdCodeMarker \/>/, "AdSenseScript must actually render it");
   assert.match(MARKER, /"use client"/);
   assert.match(MARKER, /markAdCodeLoaded\(\)/);
 });
@@ -576,4 +404,109 @@ test("link-based match entries also leave an ad-carrying document", () => {
     /<MatchEntryGuard \/>/,
     "the guard must be mounted once, globally",
   );
+});
+
+// ── Monetag was removed, and stays removed ─────────────────────────────────
+// The second ad provider's intrusive formats (popunder, vignette, in-page push)
+// were removed deliberately: they hurt retention. Nothing here may come back
+// accidentally — a leftover import, a re-added CSP host or a renamed loader
+// file would reintroduce the tag without anyone deciding to.
+//
+// `CHANGELOG.md` is exempt on purpose: it is a historical record of what was
+// shipped, not an instruction or a live reference.
+
+const MONETAG_PATTERN = /monetag|quge5|295730|1203148[1-4]|sw1\.js/i;
+
+const SKIP_DIRS = new Set([
+  "node_modules",
+  ".next",
+  ".git",
+  ".open-next",
+  ".vercel",
+  "coverage",
+  ".cache_ggshield",
+]);
+const TEXT_FILE = /\.(js|jsx|ts|tsx|mjs|cjs|json|md|txt|css|scss|html|ya?ml)$/i;
+
+/** Every text file we ship, repo-relative POSIX. Dotfiles (env) are excluded. */
+function shippedTextFiles(dir = ".", out = []) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name.startsWith(".")) continue;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (!SKIP_DIRS.has(entry.name)) shippedTextFiles(full, out);
+    } else if (TEXT_FILE.test(entry.name)) {
+      out.push(relative(process.cwd(), full).split(sep).join("/"));
+    }
+  }
+  return out;
+}
+
+test("no Monetag file is shipped any more", () => {
+  for (const path of [
+    "src/components/MonetagScript.tsx",
+    "public/sw1.js",
+    "qa/monetag-browser-check.mjs",
+    "docs/MONETAG.md",
+    "docs/monetag-support-request.md",
+  ]) {
+    assert.ok(!exists(path), `${path} must stay deleted`);
+  }
+});
+
+test("nothing in the source tree, config, tests or docs references Monetag", () => {
+  const offenders = shippedTextFiles()
+    // This file names the provider on purpose — it is the removal guard.
+    .filter((file) => file !== "tests/ad-model.test.mjs")
+    // Historical record, not a live reference.
+    .filter((file) => file !== "CHANGELOG.md")
+    .filter((file) => MONETAG_PATTERN.test(read(file)));
+
+  assert.deepEqual(
+    offenders,
+    [],
+    "a Monetag domain, zone id, worker filename or loader reference came back",
+  );
+});
+
+test("the ad config exposes no Monetag surface", () => {
+  assert.ok(!/monetag/i.test(code(CONFIG)), "lib/ads.ts must not export provider values");
+
+  // The zone was configuration, so no deploy can switch the provider back on.
+  // Only the files that DECIDE configuration are scanned here — the app source,
+  // the deploy tooling and the env template — so this guard does not count its
+  // own search pattern as a hit.
+  const configFiles = [
+    ...shippedTextFiles("src"),
+    ...shippedTextFiles("deploy"),
+    ...shippedTextFiles("scripts"),
+    "next.config.js",
+    ".env.example",
+  ].filter((file) => file !== ".env.example" || exists(".env.example"));
+
+  const offenders = configFiles.filter(
+    (file) => exists(file) && /NEXT_PUBLIC_MONETAG/i.test(read(file)),
+  );
+  assert.deepEqual(offenders, [], "no Monetag environment variable may be read by the app");
+});
+
+test("the CSP allows no Monetag frame host, and keeps the AdSense ones", () => {
+  const frameSrc = PROXY.match(/frame-src [^;]+;/);
+  assert.ok(frameSrc, "the CSP must keep an explicit frame-src directive");
+  assert.ok(
+    !MONETAG_PATTERN.test(frameSrc[0]),
+    "no removed provider host may linger in frame-src",
+  );
+  assert.ok(
+    frameSrc[0].includes("https://*.googlesyndication.com"),
+    "the AdSense ad frames must still be allowed",
+  );
+});
+
+test("the PWA keeps the root service worker and no second worker is served", () => {
+  // next-pwa owns /sw.js; the removal must not have touched it.
+  assert.ok(exists("public/sw.js"), "the generated Workbox service worker is preserved");
+  const conf = read("next.config.js");
+  assert.match(conf, /register: true/, "next-pwa must still register its worker");
+  assert.ok(!/sw1\.js/.test(conf), "no removed-provider worker route may be served");
 });

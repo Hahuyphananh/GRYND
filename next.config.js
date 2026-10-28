@@ -330,40 +330,6 @@ const nextConfig = {
         source: "/:path*",
         headers: securityHeaders
       },
-      // The Monetag worker file (public/sw1.js), served at the root path.
-      //
-      // READ THIS BEFORE CHANGING ANYTHING HERE. The file's NAME is not ours to
-      // pick: the network's zone endpoint answers with `"swName":"sw.js"` and
-      // their loader registers that name, i.e. it asks this site for /sw.js —
-      // which next-pwa owns and regenerates on every build. So this route is the
-      // "if Monetag ever sets swName to sw1.js" route, and nothing requests it
-      // today (verified in a real browser against a production build: zero
-      // registrations, zero requests for /sw1.js). Serving it costs a 156-byte
-      // file and keeps that option open; registering it from our own code would
-      // not — it would put a second worker at the root scope beside next-pwa's.
-      //
-      // The two headers are the ones a worker file needs:
-      //
-      //   * it must be reachable at the site ROOT — a worker's scope is its own
-      //     directory, so the root is the only path that gives it the scope the
-      //     network's formats expect. public/ is what serves it; a copy at the
-      //     repo root would never be served at all, which is the trap the older
-      //     root sw.js fell into.
-      //   * it must NOT be cached, or a worker update can be pinned to a stale
-      //     revision. `no-store` is the answer for a file the browser fetches
-      //     once per update check.
-      //
-      // `Service-Worker-Allowed: /` states the root scope explicitly rather than
-      // relying on the script's own location. It is not a permission grant we
-      // control — the browser still decides whether the network's tag may
-      // register — it just keeps the served file honest about its scope.
-      {
-        source: "/sw1.js",
-        headers: [
-          { key: "Cache-Control", value: "no-store" },
-          { key: "Service-Worker-Allowed", value: "/" }
-        ]
-      }
     ];
   }
 };

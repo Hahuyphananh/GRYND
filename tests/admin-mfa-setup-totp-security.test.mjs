@@ -17,6 +17,34 @@ function read(path) {
   return fs.readFileSync(path, "utf8");
 }
 
+/**
+ * Extract a brace-balanced block from proxy.ts, starting at `header`.
+ *
+ * These tests used to slice the source with `([\s\S]{0,1000})` windows. That
+ * silently captured the WRONG code as soon as an unrelated branch moved (a
+ * `pathname.startsWith("/api/admin")` window landed inside the maintenance
+ * block), so a guard that was present still failed its own test. Walking the
+ * braces keeps each assertion on the block it names.
+ */
+function blockFrom(source, header) {
+  const start = source.indexOf(header);
+  assert.notEqual(start, -1, `proxy.ts no longer contains: ${header}`);
+  let depth = 0;
+  for (let i = source.indexOf("{", start); i < source.length; i++) {
+    if (source[i] === "{") depth++;
+    else if (source[i] === "}") {
+      depth--;
+      if (depth === 0) return source.slice(start, i + 1);
+    }
+  }
+  throw new Error(`unbalanced block after: ${header}`);
+}
+
+/** The branch that makes public routes (every /api/* path included) reachable. */
+function publicRouteBranch() {
+  return blockFrom(read("src/proxy.ts"), "if (isPublicRoute(req)");
+}
+
 test("proxy middleware enforces MFA for /api/admin/mfa/setup-totp", () => {
   const proxy = read("src/proxy.ts");
 
@@ -83,38 +111,36 @@ test("proxy middleware enforces MFA for /api/admin/mfa/setup-totp", () => {
 });
 
 test("proxy middleware checks MFA before allowing setup-totp in public route branch", () => {
-  const proxy = read("src/proxy.ts");
-
-  // The setup-totp check must be in the public route branch (after isPublicRoute check)
-  // because /api/* routes are public routes
-  const publicRouteBranchMatch = proxy.match(
-    /if\s*\(isPublicRoute\(req\)\)\s*\{([\s\S]*?)\n\s*return applySecurityHeaders\(NextResponse\.next\(\)\);/
-  );
-
-  assert.ok(
-    publicRouteBranchMatch,
-    "proxy should have a public route branch that returns NextResponse.next()"
-  );
-
-  const publicRouteBranch = publicRouteBranchMatch[1];
+  // The branch is declared as `isPublicRoute(req) && !isGameRoute(pathname)`:
+  // public game routes fall through to the auth block instead.
+  const branch = publicRouteBranch();
 
   // The setup-totp MFA check must be within the public route branch
   assert.match(
-    publicRouteBranch,
+    branch,
     /pathname\s*===\s*["']\/api\/admin\/mfa\/setup-totp["']/,
     "setup-totp MFA check should be in the public route branch"
   );
 
   assert.match(
-    publicRouteBranch,
+    branch,
     /hasRecentMfa/,
     "public route branch should check hasRecentMfa for setup-totp"
   );
 
   assert.match(
-    publicRouteBranch,
+    branch,
     /verifyAdminMfaToken/,
     "public route branch should verify admin MFA token for setup-totp"
+  );
+
+  // …and it must run before the branch hands the request on.
+  const setupTotpIndex = branch.indexOf('pathname === "/api/admin/mfa/setup-totp"');
+  const fallThrough = branch.search(/return applySecurityHeaders\(\s*NextResponse\.next\(\)\s*\)/);
+  assert.ok(setupTotpIndex > -1, "setup-totp guard should be in the branch");
+  assert.ok(
+    fallThrough > setupTotpIndex,
+    "the branch must not return NextResponse.next() before the setup-totp guard"
   );
 });
 
@@ -365,25 +391,17 @@ test("exploit scenario: admin without MFA cannot access setup-totp", () => {
 });
 
 test("mitigation completeness: setup-totp is protected in public route branch", () => {
-  const proxy = read("src/proxy.ts");
-
   // The vulnerability existed because /api/* routes are public routes,
   // and the setup-totp endpoint was reached before the admin MFA enforcement
   // that happens later in the middleware for /api/admin/* routes.
   //
   // The fix adds explicit MFA enforcement for setup-totp in the public route branch.
-
-  // Find the public route branch
-  const publicRouteBranchMatch = proxy.match(
-    /if\s*\(isPublicRoute\(req\)\)\s*\{([\s\S]*?)\n\s*return applySecurityHeaders\(NextResponse\.next\(\)\);/
-  );
-
-  assert.ok(publicRouteBranchMatch, "should find public route branch");
-  const publicRouteBranch = publicRouteBranchMatch[1];
+  const branch = publicRouteBranch();
 
   // The setup-totp check must be AFTER userMfaGate but BEFORE the final return
-  const userMfaGateIndex = publicRouteBranch.indexOf("userMfaGate");
-  const setupTotpIndex = publicRouteBranch.indexOf("/api/admin/mfa/setup-totp");
+  const userMfaGateIndex = branch.indexOf("userMfaGate");
+  const setupTotpIndex = branch.indexOf("/api/admin/mfa/setup-totp");
+  const fallThrough = branch.search(/return applySecurityHeaders\(\s*NextResponse\.next\(\)\s*\)/);
 
   assert.ok(
     userMfaGateIndex >= 0,
@@ -400,8 +418,13 @@ test("mitigation completeness: setup-totp is protected in public route branch", 
     "setup-totp check should come after userMfaGate"
   );
 
+  assert.ok(
+    fallThrough > setupTotpIndex,
+    "setup-totp check should come before the branch returns NextResponse.next()"
+  );
+
   // The setup-totp check must return early if MFA is not satisfied
-  const setupTotpToEnd = publicRouteBranch.substring(setupTotpIndex);
+  const setupTotpToEnd = branch.substring(setupTotpIndex);
   assert.match(
     setupTotpToEnd,
     /return\s+applySecurityHeaders\(\s*NextResponse\.json/,
@@ -419,13 +442,21 @@ test("defense in depth: admin MFA enforcement still exists for /api/admin routes
     "proxy should have general /api/admin enforcement"
   );
 
-  // This enforcement should also check MFA
-  const apiAdminSection = proxy.match(
-    /pathname\.startsWith\(["']\/api\/admin["']\)([\s\S]{0,1000})/
+  // Anchor on the branch itself — NOT on the first `startsWith("/api/admin")`
+  // in the file, which is the maintenance exemption further up.
+  const apiAdminCode = blockFrom(proxy, 'if (pathname.startsWith("/api/admin"))');
+
+  assert.match(
+    apiAdminCode,
+    /await\s+auth\(\)/,
+    "/api/admin section should authenticate the request"
   );
 
-  assert.ok(apiAdminSection, "should find /api/admin section");
-  const apiAdminCode = apiAdminSection[1];
+  assert.match(
+    apiAdminCode,
+    /isAdmin\(userId\)/,
+    "/api/admin section should check the admin role"
+  );
 
   assert.match(
     apiAdminCode,
@@ -437,6 +468,24 @@ test("defense in depth: admin MFA enforcement still exists for /api/admin routes
     apiAdminCode,
     /verifyAdminMfaToken/,
     "/api/admin section should verify admin MFA token"
+  );
+
+  assert.match(
+    apiAdminCode,
+    /verifyUserMfaToken/,
+    "/api/admin section should accept a user MFA token"
+  );
+
+  assert.match(
+    apiAdminCode,
+    /admin_mfa_required/,
+    "/api/admin section should audit the refused step-up"
+  );
+
+  assert.match(
+    apiAdminCode,
+    /MFA required for admin access/,
+    "/api/admin section should refuse with the MFA error"
   );
 });
 

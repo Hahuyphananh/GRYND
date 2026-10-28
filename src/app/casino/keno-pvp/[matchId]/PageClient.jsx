@@ -505,6 +505,22 @@ export default function KenoPvpMatchPage({ params }) {
     fetchStatus();
   }, [matchId, fetchStatus]);
 
+  // ── Status flags ───────────────────────────────────────────────────────
+  //
+  // Derived from `match` and declared HERE, above the hooks that read them.
+  // They used to sit further down the component, which made
+  // `Boolean(match?.isAi) && !isFinished` below a temporal-dead-zone read: a
+  // PvP match short-circuited on the left operand and hid it, but the moment a
+  // practice (AI) match's payload landed — i.e. as soon as you joined a free
+  // game — `!isFinished` threw `ReferenceError: Cannot access 'isFinished'
+  // before initialization` during render and the route error boundary took the
+  // whole screen ("This screen hit a problem").
+  const isWaiting = match?.status === "waiting";
+  const isReady = match?.status === "ready";
+  const isLive = Boolean(match?.status) && /^round_\d+$/.test(match.status);
+  const isFinished = match?.status === "finished";
+  const isCancelled = match?.status === "cancelled";
+
   // Socket room (KENO_PVP_MATCH_UPDATED) pushes opponent actions instantly;
   // this poll is the reconnect safety net. It relaxes while the socket is
   // healthy and tightens if it drops, and it stops while the tab is hidden.
@@ -686,12 +702,6 @@ export default function KenoPvpMatchPage({ params }) {
   useEffect(() => {
     setLoading(false);
   }, [match]);
-
-  const isWaiting = match?.status === "waiting";
-  const isReady = match?.status === "ready";
-  const isLive = Boolean(match?.status) && /^round_\d+$/.test(match.status);
-  const isFinished = match?.status === "finished";
-  const isCancelled = match?.status === "cancelled";
 
   const liveTile = match?.liveTile ?? null;
   const windowMs = Number(match?.windowMs) || tileWindowMs(0);
@@ -1514,6 +1524,11 @@ function ResultModal({
   myTiles,
   oppTiles,
 }) {
+  // This component is a sibling of the page, not a child of it, so it does not
+  // close over the page's router. `onReturnToLobby` used to call a free
+  // `router` that was never in scope — a ReferenceError the moment a practice
+  // player clicked the lobby exit on the result panel.
+  const router = useRouter();
   const result = match.result;
   const iWon = result === me;
   const drew = result === "draw";

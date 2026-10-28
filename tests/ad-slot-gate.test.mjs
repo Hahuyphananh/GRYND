@@ -1,21 +1,20 @@
 // tests/ad-slot-gate.test.mjs
 //
-// Behavioural test for the ad gate — drives the REAL AdSlot, the REAL
-// AdSenseScript and the REAL MonetagScript through every branch with the ad
-// configuration and the membership answer mocked.
+// Behavioural test for the ad gate — drives the REAL AdSlot and the REAL
+// AdSenseScript through every branch with the ad configuration and the
+// membership answer mocked.
 //
-// ALL THREE SURFACES, because GRYND PRO's ad-free promise is only as strong as
-// the weakest one: a second provider whose loader forgot the entitlement check
-// would put its own popunder/vignette in front of a paying member while the
-// first provider's surfaces stayed correctly empty.
+// EVERY SURFACE, because GRYND PRO's ad-free promise is only as strong as the
+// weakest one: any ad surface that forgot the entitlement check would put a
+// unit in front of a paying member while the other surfaces stayed correctly
+// empty.
 //
 // The two properties this protects are the two that fail silently in
 // production:
 //
 //   * a GRYND PRO member must receive NOTHING — no `<ins>`, no loader, no
-//     Monetag tag, no ad request. Asserted for all three surfaces, because "we
-//     hid it with CSS" and "we didn't load the tag" are very different
-//     outcomes.
+//     ad request. Asserted for every surface, because "we hid it with CSS"
+//     and "we didn't load the tag" are very different outcomes.
 //   * a placement with no configured ad-unit id must render nothing, so an
 //     unconfigured deploy shows no ads instead of an invented slot id.
 //
@@ -35,8 +34,6 @@ const SKIP_REASON = MODULE_MOCKING_AVAILABLE
 
 const PUBLISHER = "ca-pub-4903728316211815";
 const REAL_SLOT = "1234567890";
-const REAL_MONETAG_ZONE = "295730";
-const MONETAG_TAG_SRC = "https://quge5.com/88/tag.min.js";
 
 test(
   "ads render for free viewers only, and only where a real unit is configured",
@@ -51,10 +48,6 @@ test(
       slot: REAL_SLOT,
       perPlacement: false,
       asked: [],
-      // The second provider: its own on/off switch and its own zone, exactly as
-      // the first one has a publisher id and per-placement unit ids.
-      monetag: true,
-      monetagZone: REAL_MONETAG_ZONE,
     };
 
     t.mock.module("../src/lib/adEntitlement.ts", {
@@ -71,18 +64,12 @@ test(
         adsensePublisherId: () => PUBLISHER,
         normalizePublisherId: (value) =>
           typeof value === "string" && value.startsWith("ca-pub-") ? value : null,
-        monetagEnabled: () => world.monetag,
-        monetagZoneId: () => world.monetagZone,
-        MONETAG_TAG_SRC,
       },
     });
 
     const { default: AdSlot } = await import("../src/components/AdSlot.tsx");
     const { default: AdSenseScript } = await import(
       "../src/components/AdSenseScript.tsx"
-    );
-    const { default: MonetagScript } = await import(
-      "../src/components/MonetagScript.tsx"
     );
 
     /**
@@ -119,17 +106,7 @@ test(
       "the loader must use the configured publisher",
     );
 
-    const monetagResult = await MonetagScript();
-    assert.ok(monetagResult, "a free viewer must get the Monetag tag");
-    assert.ok(shippedMarker(monetagResult), "the tag must flag the document");
-    const monetagTag = shippedScript(monetagResult);
-    assert.ok(monetagTag, "the tag must ship Monetag's script");
-    assert.equal(monetagTag.props.src, MONETAG_TAG_SRC);
-    assert.equal(monetagTag.props["data-zone"], REAL_MONETAG_ZONE);
-    assert.equal(monetagTag.props["data-cfasync"], "false");
-    assert.equal(monetagTag.props.async, true);
-
-    // ── 2. GRYND PRO member → nothing at all, on all three surfaces ───────
+    // ── 2. GRYND PRO member → nothing at all, on every surface ────────────
     world.adFree = true;
     assert.equal(
       await AdSlot({ placement: "home" }),
@@ -140,11 +117,6 @@ test(
       await AdSenseScript(),
       null,
       "a member must receive no ad tag — no code, no ad requests",
-    );
-    assert.equal(
-      await MonetagScript(),
-      null,
-      "a member must receive no Monetag tag — no popunder, no vignette, no in-page push",
     );
 
     // ── 3. Free viewer, but this placement has no unit configured ─────────
@@ -159,23 +131,10 @@ test(
     // ── 4. Ads switched off entirely → nothing, even for a free viewer ────
     world.slot = REAL_SLOT;
     world.enabled = false;
-    world.monetag = false;
     assert.equal(await AdSlot({ placement: "home" }), null);
     assert.equal(await AdSenseScript(), null);
-    assert.equal(await MonetagScript(), null);
 
-    // ── 5. Provider on, but the zone is unusable → nothing (never a tag
-    //       pointed at a zone that isn't this property's) ───────────────────
-    world.monetag = true;
-    world.monetagZone = null;
-    assert.equal(
-      await MonetagScript(),
-      null,
-      "a malformed zone must emit no tag at all",
-    );
-    world.monetagZone = REAL_MONETAG_ZONE;
-
-    // ── 6. Placements are independent: each asks for its own unit id ──────
+    // ── 5. Placements are independent: each asks for its own unit id ──────
     world.enabled = true;
     world.perPlacement = true;
     assert.ok(

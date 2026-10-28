@@ -54,6 +54,22 @@
 // it reports is the action a client may only ever send — `{ type: "play", tile,
 // end }` — which the store re-validates inside its row lock.
 //
+// ── DROPPING A TILE ONTO THE TABLE ────────────────────────────────────────
+//
+// The chip is a small target at the corner of the board, and the gesture players
+// actually make is to carry a tile over and put it down NEXT TO the dominoes. So
+// the felt itself is the drop target: the chain end(s) the tile in hand fits are
+// ringed (`is-drop-target`), the one under the pointer brightens
+// (`is-drop-over`), and a drop anywhere over the felt places the tile on the end
+// it was aimed at. Which end that is comes from the tile under the pointer, or —
+// when the chain takes the tile on one side only — from the fact that there is
+// only one place it can go.
+//
+// The drop only accepts OUR payload (`DOMINO_DRAG_TYPE`), so a file or a link
+// dragged across the board is never mistaken for a tile, and it reports the same
+// `onPlace(end)` a tap does. Nothing is ever optimistically placed: the tile
+// appears when the server's snapshot says it did.
+//
 // ── ANIMATION ─────────────────────────────────────────────────────────────
 //
 // Only the newest tile animates — it is DROPPED onto the felt and settles, for
@@ -63,13 +79,16 @@
 // under `prefers-reduced-motion: reduce` in globals.css: no transforms, no fade,
 // the tile simply appears.
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, type DragEvent as ReactDragEvent } from "react";
 import { IconArrowLeft, IconArrowRight } from "@tabler/icons-react";
 
 import DominoTile from "./DominoTile";
 import { layoutChain, type ChainTileLike as LayoutChainTileLike } from "../../lib/dominoes/layout";
-import { tileLabel, type ChainEnd } from "../../lib/dominoes/ui";
+import { DOMINO_DRAG_TYPE, tileLabel, type ChainEnd } from "../../lib/dominoes/ui";
 import { useTranslation } from "../../hooks/useTranslation";
+
+/** The two ends, in the order the board reads them. */
+const CHAIN_ENDS: readonly ChainEnd[] = ["left", "right"];
 
 /** One tile of the engine's chain, as the projection sends it. */
 export type ChainTileLike = LayoutChainTileLike & {
@@ -155,6 +174,88 @@ export default function DominoChain({
   // exist (the chip is not offered at all), so the two are checked together.
   const canTap = (end: ChainEnd, value: number | null) =>
     value !== null && Array.isArray(tappableEnds) && tappableEnds.includes(end);
+
+  /** Ends that would take the tile in hand right now (none without a selection). */
+  const acceptingEnds = CHAIN_ENDS.filter((end) => canTap(end, end === "left" ? left : right));
+
+  /**
+   * Which end a dragged tile is over.
+   *
+   * The felt is the target, not the two corner chips: a player drops a tile NEXT
+   * TO the dominoes, so the whole table has to answer. The end under the pointer
+   * wins when its own tile is hit; a chain that accepts on one side only takes
+   * every drop; and a chain that accepts on both (an opening double, or a value
+   * that appears at both ends) is split down the middle of the felt, which is the
+   * side the player is aiming at.
+   *
+   * Nothing here decides legality: `acceptingEnds` is the caller's read of the
+   * same `playOptionsFor` the sidebar uses, and the action it reports is the one
+   * action a client may send — the store re-validates it inside its row lock.
+   */
+  const endFromDrag = (event: ReactDragEvent<HTMLElement>): ChainEnd | null => {
+    if (acceptingEnds.length === 0) return null;
+    const under = (event.target as HTMLElement | null)
+      ?.closest?.("[data-drop-end]")
+      ?.getAttribute("data-drop-end");
+    if ((under === "left" || under === "right") && acceptingEnds.includes(under)) return under;
+    if (acceptingEnds.length === 1) return acceptingEnds[0];
+    const scroller = scrollerRef.current;
+    if (!scroller) return acceptingEnds[0];
+    const box = scroller.getBoundingClientRect();
+    return event.clientX < box.left + box.width / 2 ? "left" : "right";
+  };
+
+  /**
+   * Is this drag carrying a hand tile?
+   *
+   * Checked during the gesture, so a file or a link dragged over the board is not
+   * offered a place to land; the drop re-checks the payload itself, which is
+   * where the authoritative answer lives. Safari hides custom types during
+   * dragover ("protected mode") but exposes them at drop, so the gesture check
+   * also accepts the plain-text payload the hand sets alongside its own type.
+   */
+  const isTileDrag = (transfer: DataTransfer | null) => {
+    if (!transfer) return false;
+    const types = Array.from(transfer.types ?? []);
+    if (types.includes(DOMINO_DRAG_TYPE)) return true;
+    return types.length === 1 && types[0] === "text/plain";
+  };
+
+  // The felt's own drop handling. `preventDefault` is what makes the table a drop
+  // target at all, and the highlight is set on ENTER as well as on every dragover,
+  // so it appears the moment the tile crosses onto the felt rather than on the
+  // browser's next dragover tick. The drop reports the same `onPlace(end)` a tap
+  // does, so drag and tap can never diverge.
+  const hoverEnd = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (!isTileDrag(event.dataTransfer)) return;
+    const end = endFromDrag(event);
+    if (!end) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+    if (end !== dropOverEnd) onDragEnterEnd?.(end);
+  };
+
+  const feltDropProps = {
+    onDragEnter: hoverEnd,
+    onDragOver: hoverEnd,
+    // NO `dragleave` HERE. Chromium reports `relatedTarget: null` for a pointer
+    // that has merely moved onto one of the felt's own children, so a leave
+    // handler cannot tell "over a chain tile" from "off the table" — and the
+    // wrong guess clears the highlight the player is following. The gesture's own
+    // `dragend` clears it instead, and entering the other end replaces it.
+    onDrop: (event: ReactDragEvent<HTMLDivElement>) => {
+      const end = endFromDrag(event);
+      if (!end) return;
+      // Whatever was dropped, the browser must not act on it (a file dropped on a
+      // page navigates to it) — but only OUR payload is a tile.
+      event.preventDefault();
+      const tile = event.dataTransfer?.getData(DOMINO_DRAG_TYPE) ?? "";
+      if (!tile) return;
+      onDragLeaveEnd?.(end);
+      onPlace?.(end);
+    },
+  };
+
   // The end the newest tile was attached to, or null when the engine did not
   // record one. The opening tile records "left" (it opens the line), and there
   // is no side to report on a one-tile chain, so the marker waits for a second
@@ -266,7 +367,7 @@ export default function DominoChain({
       data-cols={layout.cols}
       data-rows={layout.rows}
     >
-      <div className="dominoes-chain-scroller" ref={scrollerRef}>
+      <div className="dominoes-chain-scroller" ref={scrollerRef} {...feltDropProps}>
         {tiles.length === 0 ? (
           <p className="dominoes-chain-empty" data-testid="dominoes-chain-empty">
             {t("games.dominoes.chain_empty")}
@@ -294,10 +395,27 @@ export default function DominoChain({
                 tile?.seat === "player1" || tile?.seat === "player2" ? tile.seat : null;
               const facedLeft = valueOf(tile?.left);
               const facedRight = valueOf(tile?.right);
+              // The end(s) this tile owns: the first tile is the LEFT end and the
+              // newest is the RIGHT end (a one-tile chain is both). A tile is a
+              // drop target only while the tile in hand really fits that end, so
+              // the highlight can never invite a placement the engine refuses.
+              const tileEnds = acceptingEnds.filter((end) =>
+                end === "left" ? placed.index === 0 : placed.index === newestIndex,
+              );
+              const isDropTarget = tileEnds.length > 0;
+              const isDropOver =
+                isDropTarget && dropOverEnd !== null && tileEnds.includes(dropOverEnd);
               return (
                 <span
                   key={`${String(tile?.id ?? "tile")}-${placed.index}`}
-                  className="dominoes-chain-slot"
+                  className={[
+                    "dominoes-chain-slot",
+                    isDropTarget ? "is-drop-target" : "",
+                    isDropOver ? "is-drop-over" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  data-drop-end={tileEnds.length === 1 ? tileEnds[0] : undefined}
                   // The slot is a square box centred on the tile, so the marker
                   // above it stays upright while the tile itself is rotated.
                   style={{

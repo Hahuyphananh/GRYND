@@ -2784,6 +2784,46 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   transform-origin: center;
 }
 
+/* THE END THAT WOULD TAKE THE TILE IN HAND. A selected tile (tapped, or picked up
+   with a pointer) rings the chain end(s) it fits, so "put it next to THIS one" is
+   visible before the pointer has travelled anywhere, and the felt those tiles sit
+   on accepts the drop — not only the small value chip at the corner.
+
+   The ring is a dashed outline around the slot, drawn INSIDE the slot so it never
+   shifts a tile or the last-play badge. */
+.dominoes-chain-slot.is-drop-target::before {
+  content: "";
+  position: absolute;
+  inset: 16%;
+  border-radius: 10px;
+  border: 1px dashed rgba(103, 232, 249, 0.6);
+  background: rgba(8, 47, 74, 0.24);
+  pointer-events: none;
+}
+
+/* Named through the tile box so it also beats the newest tile's own "last played"
+   ring (same specificity, declared later) — the drop cue has to win while a tile
+   is in hand, because it is the thing being asked about. */
+.dominoes-chain-slot.is-drop-target .dominoes-chain-tile-box .dominoes-tile {
+  box-shadow:
+    0 0 0 2px rgba(103, 232, 249, 0.75),
+    0 6px 18px rgba(0, 229, 255, 0.28);
+}
+
+/* The end under the pointer: the same confirmation the corner chip gives. Steady,
+   not a pulse — it has to stay legible while a tile is carried over it. */
+.dominoes-chain-slot.is-drop-over::before {
+  border-style: solid;
+  border-color: #a5f3fc;
+  background: rgba(103, 232, 249, 0.26);
+}
+
+.dominoes-chain-slot.is-drop-over .dominoes-chain-tile-box .dominoes-tile {
+  box-shadow:
+    0 0 0 3px #a5f3fc,
+    0 8px 24px rgba(0, 229, 255, 0.45);
+}
+
 /* "LAST ON THE LEFT/RIGHT" — a small badge above the newest tile, naming the end
    the last play was attached to. It floats, so it never shifts a tile. */
 .dominoes-last-marker {

@@ -837,7 +837,13 @@ test("the client renders the 5s get-ready countdown from the server clock", () =
   assert.ok(waitingPanel.includes("First tile is lighting — tap it the instant it turns blue"));
   // The countdown must never be the thing that starts the run: the page still
   // fetches the snapshot, and the ready read is still armed from the deadline.
-  assert.ok(page.includes("useDeadlineRead(kenoPvpDueRead(match), fetchStatus, {"));
+  // The read is armed from the deadline; the practice pause is the only thing
+  // allowed to stand in front of it (`paused ? null : kenoPvpDueRead(match)`).
+  assert.match(
+    page,
+    /useDeadlineRead\(\s*(?:paused \? null : )?kenoPvpDueRead\(match\),\s*fetchStatus,\s*\{/,
+    "the ready read must still be armed from the match's own deadline",
+  );
   // …and the payload only carries it during the ready banner.
   assert.ok(
     matchRoute.includes("match.status === MATCH_STATUS.READY ? (match.roundDeadline ?? null) : null"),

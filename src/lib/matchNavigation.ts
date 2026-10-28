@@ -2,14 +2,12 @@
 //
 // WHEN A MATCH ENTRY MUST BE A DOCUMENT NAVIGATION, AND WHEN IT CAN STAY CLIENT-SIDE.
 //
-// The ad loaders (components/AdSenseScript.tsx, components/MonetagScript.tsx)
-// are rendered on browsing pages, game lobbies included. Their effects are
-// global to the DOCUMENT: Monetag's MultiTag installs a popunder click handler
-// and can keep a vignette / in-page-push node on screen, and the AdSense loader
-// is what Auto Ads hook into. A Next.js client-side navigation into a match
-// never unloads that document, so ad code a lobby loaded would keep running
-// over the board even though the match page's own HTML carries no tag at all
-// (the property tests/ad-model.test.mjs pins).
+// The ad loader (components/AdSenseScript.tsx) is rendered on browsing pages,
+// game lobbies included. Its effects are global to the DOCUMENT: the AdSense
+// loader is what Auto Ads hook into. A Next.js client-side navigation into a
+// match never unloads that document, so ad code a lobby loaded would keep
+// running over the board even though the match page's own HTML carries no tag
+// at all (the property tests/ad-model.test.mjs pins).
 //
 // THE RULE. Entering a match is a DOCUMENT navigation whenever this document
 // has already loaded ad code: the new document has none, so nothing from the
@@ -17,7 +15,7 @@
 // member's session, or a match opened directly — the entry is an ordinary
 // client-side navigation and nothing is slowed down.
 //
-// WIRING. Both loaders render components/AdCodeMarker, which sets the flag
+// WIRING. The loader renders components/AdCodeMarker, which sets the flag
 // below; every lobby's router comes from hooks/useMatchRouter, so an entry is
 // covered by construction instead of by remembering to call a helper at each
 // `router.push`. The lobby/match URL shapes live here, in ONE classifier, so

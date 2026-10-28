@@ -41,6 +41,15 @@ export type Seat = "player1" | "player2";
 /** A chain end. */
 export type ChainEnd = "left" | "right";
 
+/**
+ * The drag payload type a hand tile carries when it is picked up.
+ *
+ * Shared, because two components have to agree on it: the hand SETS it when a
+ * tile is lifted, and the chain only accepts a drop that carries it — so a file
+ * or a link dragged over the board can never be mistaken for a tile.
+ */
+export const DOMINO_DRAG_TYPE = "application/x-domino-tile";
+
 /** What the result screen is told. `draw` is a real Dominoes outcome. */
 export type Outcome = "win" | "loss" | "draw";
 

@@ -76,23 +76,6 @@ export const metadata = {
       "Challenge real players in competitive games, climb the leaderboard, and prove your skill.",
     images: [ogImageUrl("/images/og-banner.png")],
   },
-  // Monetag site ownership verification. `other` emits a plain
-  // <meta name="monetag" content="…"> into <head>, which is the tag Monetag's
-  // crawler reads to approve the property. The value is the public token from
-  // the Monetag dashboard's "add site" flow — it is not a secret.
-  //
-  // This is the META-TAG method on purpose: the file method wants Monetag's
-  // worker at the site ROOT under a name their own zone endpoint decides
-  // (`"swName":"sw.js"`, measured), and /sw.js is already owned by next-pwa,
-  // which regenerates public/sw.js on every build. Their worker is served as
-  // public/sw1.js instead — unused until Monetag renames it, see next.config.js.
-  // The alternative (merging their bootstrap INTO the next-pwa worker) is
-  // deliberately not done automatically: their worker installs a `fetch` handler
-  // (verified by executing it), so it would sit next to workbox's routing in the
-  // same worker, which is exactly how offline caching regresses.
-  other: {
-    monetag: "5ff7ccfa99ccd949f62b8eeaadc1d677",
-  },
 };
 // Minimal, factual Organization structured data — name + URL only. No
 // ratings, reviews, or aggregate claims that the platform can't back. (The

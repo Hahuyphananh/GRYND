@@ -37,10 +37,12 @@
 
 import DominoTile from "./DominoTile";
 import { useTranslation } from "../../hooks/useTranslation";
-import { playOptionsFor, tileLabel, type OpenEnds } from "../../lib/dominoes/ui";
-
-/** The drag payload type a hand tile carries onto the board. */
-const DOMINO_DRAG_TYPE = "application/x-domino-tile";
+import {
+  DOMINO_DRAG_TYPE,
+  playOptionsFor,
+  tileLabel,
+  type OpenEnds,
+} from "../../lib/dominoes/ui";
 
 export type DominoHandProps = {
   hand?: string[] | null;

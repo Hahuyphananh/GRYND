@@ -622,6 +622,111 @@ test("dominoes ui: a hand tile is draggable onto an end, on pointer devices", { 
   assert.match(css, /\.dominoes-end-chip\.is-drop-over \{[\s\S]*?background:/);
 });
 
+test("dominoes ui: the felt next to an open end takes a dropped tile", { skip: SKIP_REASON }, () => {
+  /** The chain slot's class list, or null. */
+  const slotClass = (html) => (/class="(dominoes-chain-slot[^"]*)"/.exec(html) ?? [])[1] ?? null;
+  const slotTag = (html) => {
+    const at = html.indexOf("dominoes-chain-slot");
+    if (at === -1) return null;
+    return html.slice(html.lastIndexOf("<", at), html.indexOf(">", at) + 1);
+  };
+
+  // THE HIGHLIGHT. With 6-3 in hand the left end (6) is the only end it fits, so
+  // the end DOMINO itself is marked as the place to put it — that is the cue the
+  // player needs while carrying a tile, not a small value badge at the corner.
+  const oneEnd = renderView({ selected: "6-3" });
+  assert.match(slotClass(oneEnd) ?? "", /is-drop-target/);
+  assert.match(slotTag(oneEnd) ?? "", /data-drop-end="left"/, "the slot names the end it owns");
+
+  // A tile that fits nothing, no selection at all, someone else's turn and a
+  // submission in flight: NOTHING may be marked, because nothing may be dropped.
+  for (const html of [
+    renderView({}),
+    renderView({ selected: "1-1" }),
+    renderView({ snapshot: snapshotFor("player2"), selected: "6-3" }),
+    renderView({ selected: "6-3", pending: true }),
+  ]) {
+    assert.equal(/is-drop-target/.test(html), false, "only a fitting end may be a target");
+    assert.equal(/data-drop-end=/.test(html), false);
+  }
+
+  // A chain whose ONE tile owns both ends (an opening double, or here a tile that
+  // matches either open value): the slot is a target, and the side is decided by
+  // where the pointer is, so it does not name a single end.
+  const both = renderView({
+    snapshot: snapshotFor("player1", {
+      hand: ["5-6"],
+      chain: [{ id: "6-5", end: "left", left: 6, right: 5, isDouble: false, seat: "player2" }],
+      openEnds: { left: 5, right: 5 },
+    }),
+    selected: "5-6",
+  });
+  assert.match(slotClass(both) ?? "", /is-drop-target/);
+  assert.equal(/data-drop-end=/.test(slotTag(both) ?? ""), false);
+
+  // ── The wiring: the FELT is the drop target, not just the corner chip ────────
+  const chainSource = stripComments(read("src/components/dominoes/DominoChain.tsx"));
+  assert.match(chainSource, /const feltDropProps = \{/);
+  assert.match(
+    chainSource,
+    /const hoverEnd = \(event[\s\S]*?event\.preventDefault\(\)/,
+    "preventDefault on the felt is what lets a drop land there",
+  );
+  assert.match(chainSource, /onDragEnter: hoverEnd/, "the cue appears on entry, not on the next tick");
+  assert.match(chainSource, /onDragOver: hoverEnd/);
+  assert.match(chainSource, /onDrop: \(event[\s\S]*?onPlace\?\.\(end\)/, "a drop is a placement");
+  assert.match(chainSource, /\.\.\.feltDropProps/, "the handlers must be on the felt");
+  assert.match(
+    chainSource,
+    /onDrop: \(event[\s\S]*?onDragLeaveEnd\?\.\(end\)[\s\S]*?onPlace\?\.\(end\)/,
+    "a drop clears the hover before it places",
+  );
+
+  // Which end: the end DOMINO under the pointer when there is one, otherwise the
+  // only end that takes the tile, otherwise the side of the felt it was dropped on.
+  assert.match(chainSource, /closest\?\.\("\[data-drop-end\]"\)/);
+  assert.match(chainSource, /if \(acceptingEnds\.length === 1\) return acceptingEnds\[0\]/);
+  assert.match(chainSource, /event\.clientX < box\.left \+ box\.width \/ 2 \? "left" : "right"/);
+  assert.match(chainSource, /const acceptingEnds = CHAIN_ENDS\.filter/, "ends come from one read");
+
+  // Only OUR gesture: a file or a link dragged across the board is not a tile, so
+  // the payload type is shared with the hand rather than re-spelled here.
+  const uiSource = read("src/lib/dominoes/ui.ts");
+  assert.match(uiSource, /export const DOMINO_DRAG_TYPE = "application\/x-domino-tile"/);
+  assert.match(chainSource, /import \{[^}]*DOMINO_DRAG_TYPE[^}]*\} from "\.\.\/\.\.\/lib\/dominoes\/ui"/);
+  assert.match(chainSource, /types\.includes\(DOMINO_DRAG_TYPE\)/, "a foreign drag is refused");
+  assert.match(
+    chainSource,
+    /getData\(DOMINO_DRAG_TYPE\)[\s\S]*?if \(!tile\) return/,
+    "and the drop re-checks the payload rather than trusting the type list",
+  );
+  const handSourceDrag = stripComments(read("src/components/dominoes/DominoHand.tsx"));
+  assert.match(handSourceDrag, /DOMINO_DRAG_TYPE/);
+  assert.equal(/const DOMINO_DRAG_TYPE/.test(handSourceDrag), false, "one definition, not two");
+
+  // The drop reports the same intent a tap does, so the two can never disagree.
+  const viewSourceDrag = stripComments(read("src/components/dominoes/DominoMatchView.tsx"));
+  assert.match(viewSourceDrag, /onPlace=\{\(end\) => \{[\s\S]*?onPlay\?\.\(selected, end\)/);
+
+  // The affordance is painted: a dashed slot on the accepting end, and a brighter
+  // one while the tile is carried over it.
+  assert.match(css, /\.dominoes-chain-slot\.is-drop-target::before \{/);
+  // Through the tile box, so the cue beats the newest tile's own "last played" ring.
+  assert.match(
+    css,
+    /\.dominoes-chain-slot\.is-drop-target \.dominoes-chain-tile-box \.dominoes-tile \{/,
+  );
+  assert.match(css, /\.dominoes-chain-slot\.is-drop-over::before \{/);
+  assert.match(
+    css,
+    /\.dominoes-chain-slot\.is-drop-over \.dominoes-chain-tile-box \.dominoes-tile \{/,
+  );
+
+  // The felt has no `dragleave` of its own: Chromium reports a null relatedTarget
+  // for a move onto a child, so leaving is the gesture's own `dragend`.
+  assert.equal(/onDragLeave:/.test(chainSource), false, "a leave guess would clear the cue");
+});
+
 test("dominoes ui: the chain says which end the last tile went on", { skip: SKIP_REASON }, () => {
   const right = renderView({
     snapshot: snapshotFor("player1", {
