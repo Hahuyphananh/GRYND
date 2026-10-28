@@ -509,11 +509,11 @@ strict checking`. Both forms name the same key, so nothing wider is trusted.
 4. Compare the target with `main` and the active release (preflight + guard).
 5. Refresh the reviewed tooling under `tool/`, then rsync the application
    artifact **only** into `incoming/<release-id>/`. The tooling runs as
-   `grynd-deploy`; its only elevated operation is the two-unit restart rule. The
-   rsync is `--delete`, so `tool/` is reconciled to that deploy runtime subset
-   (`lib/`, `release.mjs`, `ci-deploy.mjs`, `record-deployment.mjs`); run the
-   operator-only tooling (`ops.mjs`, the verifiers, `systemd/`, `units/`) from a
-   repository checkout rather than from `tool/`.
+   `grynd-deploy`; its only elevated operation is the two-unit restart rule. That
+   rsync rewrites `lib/` (its own `--delete` applies inside that directory),
+   `release.mjs`, `ci-deploy.mjs` and `record-deployment.mjs`, and does not remove
+   anything else already in `tool/`: the first live deploy refreshed exactly those
+   four paths and left `ops.mjs`, the verifiers, `systemd/` and `units/` untouched.
 6. `install` verifies it again and renames it to `releases/<release-id>/`; an
    existing id is never overwritten.
 7. Activation checks the env files by existence/mode/location (never contents),
