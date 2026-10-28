@@ -90,7 +90,7 @@ test("production fixes: the policy file describes the CA fix, not a placeholder"
 
 test("workflow: there is an approval-gated deploy job, and the build section is separate", () => {
   assert.ok(deploySection.length > 0, "a deploy job must exist");
-  assert.match(deploySection, /environment: production/, "deployment must sit behind the production environment");
+  assert.match(deploySection, /environment: grynd-production/, "deployment must sit behind the dedicated production environment");
   assert.match(deploySection, /concurrency:/, "deployments must be serialised");
   assert.match(deploySection, /group: grynd-production-deploy/, "one activation group");
   assert.match(deploySection, /cancel-in-progress: false/);
@@ -222,7 +222,7 @@ test("workflow: only main push or an explicit dispatch can deploy", () => {
   assert.ok(!/^\s*pull_request:/m.test(workflowSource), "pull requests must never deploy");
   assert.match(workflowSource, /^permissions:\n {2}contents: read$/m, "the workflow token must be read-only");
   assert.match(deploySection, /permissions:\n {6}contents: read/);
-  assert.match(workflowSource, /environment: production/);
+  assert.match(workflowSource, /environment: grynd-production/);
 });
 
 test("workflow: the deploy account is dedicated and never gets root shell", () => {

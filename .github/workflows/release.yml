@@ -7,7 +7,7 @@
 #   * Push to main BUILDS ONLY unless repository variable GRYND_DEPLOY_ENABLED
 #     is exactly "true". Nothing here deploys by default.
 #   * A manual dispatch can deploy, but only from refs/heads/main, only with
-#     deploy=true, and only after the `production` environment's protection
+#     deploy=true, and only after the `grynd-production` environment's protection
 #     rules (required reviewers) approve the job.
 #   * Two guards stop an older queued run overwriting a newer release:
 #       - preflight compares the built commit to main before the deploy job starts;
@@ -48,7 +48,8 @@
 #                                           /home/ubuntu/grynd/env/app.env)
 #   DEPLOY_SSH_KEY, DEPLOY_KNOWN_HOSTS     (deploy)
 #
-# The deploy secrets belong to the `production` environment. Configure at least
+# The deploy secrets belong to the `grynd-production` environment (a dedicated
+# name: the repository also carries a Vercel-managed `Production`). Configure at least
 # one required reviewer on that environment before the first live run. Use a
 # dedicated deploy key, never the interactive administrator's key.
 
@@ -379,7 +380,11 @@ jobs:
     concurrency:
       group: grynd-production-deploy
       cancel-in-progress: false
-    environment: production
+    # A dedicated name, not `production`: this repository also carries a
+    # `Production` environment from the Vercel integration, and environment
+    # name matching is not something a deploy should leave to chance. The
+    # protections and the two deploy secrets live on this name only.
+    environment: grynd-production
     permissions:
       contents: read
     env:

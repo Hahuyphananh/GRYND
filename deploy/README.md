@@ -217,6 +217,13 @@ artifact gates (tampered `BUILD_ID`, realtime hash mismatch, tampered app file,
 active or previous release; environment files reported by size/mode only; and the
 refusal to activate on a host with no service controller.
 
+On the production host (Linux, Node 22.23.4, arm64) the same two commands report
+**149/149** deploy tests and **49/49** simulation checks, with `lint:release` and
+`typecheck` clean. A Windows working tree with `core.autocrlf=true` checks out
+`.github/workflows/release.yml` with CRLF, which trips two LF-anchored policy
+assertions locally; CI checks out the committed blob as LF. Check out with
+`core.autocrlf=false` before treating a red suite as a real failure.
+
 What the simulation deliberately does **not** claim:
 
 - it does not build the real Next.js app (runs on the CI runner, not here);
@@ -267,7 +274,7 @@ modified until step 5, and step 7 only happens after a verified release is live.
 |---|---|---|---|
 | 0 | Merge `deploy/`, `.github/workflows/release.yml` | none | revert commit |
 | 1 | Commit the CA patch and the lockfile repair (production's current content) | none | revert commit — **required before any release can build** |
-| 2 | Create the dedicated `grynd-deploy` account/key and scoped sudoers rule; set repo variables and `production` environment secrets (see §9) | none | delete the account/key and variables |
+| 2 | Create the dedicated `grynd-deploy` account/key and scoped sudoers rule; set repo variables and `grynd-production` environment secrets (see §9) | none | delete the account/key and variables |
 | 3 | Run the workflow with `deploy: false`; verify the artifact on a staging VM | none | discard artifact |
 | 4 | Create `/home/ubuntu/grynd/{releases,incoming,env,state,tool}`, copy the two env files in as `0600`, install the tool at `grynd/tool/` (§9.1 has ownership/modes) | none (nothing reads these yet) | `rm -rf /home/ubuntu/grynd` |
 | 5 | Build the release for the live commit and `install` it (no activation) | none | delete `releases/<id>` |
@@ -371,7 +378,8 @@ administrator's key, and do not allow root SSH.
 
 ```bash
 # 1. On the trusted workstation: create a dedicated key for Actions.
-#    Protect the private key; it goes only into the `production` environment.
+#    Protect the private key; it goes only into the `grynd-production`
+#    environment (note the leading `grynd-`: see §9.2).
 ssh-keygen -t ed25519 -a 100 -f ~/.ssh/grynd-actions-deploy -C "grynd-actions-deploy"
 
 # 2. On the host: create the service account and its key directory.
@@ -424,7 +432,7 @@ controller check, so an accidental invocation cannot bounce production.
 |---|---|---|
 | `RELEASE_RUNNER` | `ubuntu-24.04-arm` | Runner matching the VM architecture |
 | `RELEASE_ARCH` | `arm64` | Asserted against `process.arch` in the build |
-| `DEPLOY_HOST` | `<PRODUCTION_HOSTNAME>` | SSH target; no scheme, no path |
+| `DEPLOY_HOST` | the instance's public IP (`155.248.226.196`) | SSH target; no scheme, no path |
 | `DEPLOY_USER` | `grynd-deploy` | Dedicated deploy account |
 | `DEPLOY_PORT` | `22` | SSH port |
 | `DEPLOY_PATH` | `/home/ubuntu/grynd` | Release root on the host |
@@ -450,12 +458,23 @@ enforces that. `CLERK_SECRET_KEY` is read at runtime from
 `/home/ubuntu/grynd/env/app.env`, so it is only needed at build time if a
 build-time Clerk call requires it.
 
-**Environment `production`** (Settings → Environments → New environment):
+**Environment `grynd-production`** (Settings → Environments → New environment).
+The name is deliberately not `production`: this repository also carries a
+`Production` environment from the Vercel integration, and a deploy must not
+depend on how GitHub resolves two names that differ only in case. The workflow
+names `grynd-production` and nothing else:
 
 1. Add **required reviewers** (at least one; two for the first live release).
 2. Restrict **deployment branches** to `main`.
 3. Add environment secrets `DEPLOY_SSH_KEY` (the private key generated above)
    and `DEPLOY_KNOWN_HOSTS`.
+
+The configured state is: required reviewers = the repository owner, deployment
+branches = `main` only, `prevent_self_review` off (a single-owner repository
+must be able to approve its own deployment; turn it on once a second reviewer
+exists), and both secrets stored on this environment alone. Only this
+environment is protected — `Preview` and `Production` are left exactly as they
+were.
 
 `DEPLOY_KNOWN_HOSTS` is the host's public key in `known_hosts` format, obtained
 from the host console and verified out of band — not with `ssh-keyscan` in CI:
@@ -469,6 +488,18 @@ fingerprint (`ssh-keygen -lf`) against the provider's console before saving it.
 The workflow refuses to start if this entry is missing for `DEPLOY_HOST` and
 `DEPLOY_PORT`, and `StrictHostKeyChecking=yes` is always in effect.
 
+Store **two** lines for the same key:
+
+```
+<HOST> <KEYTYPE> <HOST_PUBLIC_KEY>
+[<HOST>]:<PORT> <KEYTYPE> <HOST_PUBLIC_KEY>
+```
+
+With the default port 22 the client looks the host up under its bare name, so a
+file holding only the bracketed form passes this pre-check and then fails the
+connection with `No ED25519 host key is known for <host> and you have requested
+strict checking`. Both forms name the same key, so nothing wider is trusted.
+
 ### 9.3 Deployment sequence
 
 1. Build and test on the isolated runner; every required gate must pass.
@@ -478,7 +509,11 @@ The workflow refuses to start if this entry is missing for `DEPLOY_HOST` and
 4. Compare the target with `main` and the active release (preflight + guard).
 5. Refresh the reviewed tooling under `tool/`, then rsync the application
    artifact **only** into `incoming/<release-id>/`. The tooling runs as
-   `grynd-deploy`; its only elevated operation is the two-unit restart rule.
+   `grynd-deploy`; its only elevated operation is the two-unit restart rule. The
+   rsync is `--delete`, so `tool/` is reconciled to that deploy runtime subset
+   (`lib/`, `release.mjs`, `ci-deploy.mjs`, `record-deployment.mjs`); run the
+   operator-only tooling (`ops.mjs`, the verifiers, `systemd/`, `units/`) from a
+   repository checkout rather than from `tool/`.
 6. `install` verifies it again and renames it to `releases/<release-id>/`; an
    existing id is never overwritten.
 7. Activation checks the env files by existence/mode/location (never contents),
@@ -503,7 +538,7 @@ firewall or production env file is changed by the workflow.
 4. `node deploy/staging/simulate.mjs` runs as part of the build and must report
    `49/49`; it is the non-production simulation for hosts without a staging VM.
 5. Only after that sign-off, a manual dispatch with `deploy: true` pauses at the
-   `production` environment for reviewer approval. Keep
+   `grynd-production` environment for reviewer approval. Keep
    `GRYND_DEPLOY_ENABLED` unset until the first live release has been observed.
 
 **Stop here before the first real production deployment.** This phase does not
@@ -570,3 +605,50 @@ node deploy/ops.mjs --stdin                          # one JSON request, one res
 Exit codes: `0` success, `1` activation/health failure, `2` refused (validation,
 confirmation, unavailable controller). `--json` on any command for machines;
 `--root` overrides `GRYND_RELEASE_ROOT` (default `/home/ubuntu/grynd`).
+
+## 12. Rollback: what it restores and what it cannot
+
+`rollback` is the recovery path for a release that passed its gate and then
+misbehaved. It is activation with stricter preconditions: the target must be
+installed, must have passed the health gate on this host before
+(`state/verified.json`), must not be the release that is already live, and must
+be named twice with a reason. It swaps `current` atomically, restarts the units,
+runs the same health gate, and appends actor, target sha, previous sha and
+reason to `state/audit.jsonl`. Nothing is rebuilt — the artifact is on disk.
+
+Rehearsed on the live host on 2026-10-28 with two releases of the same commit:
+activate B (`activated`, app 200 in 460 ms, realtime 200) → rollback to A
+(`rolled back …`, app 200 in 450 ms) → activate B again. The build id the server
+itself reports in the HTML flipped `83BRWjpEluzBwas6JRBF4` →
+`xClmASzhoIr5_sLjoO8Kk` → back, and every attempt is in the audit log with both
+shas. The same day, a battery of eleven refusal cases (immutable install, an
+uninstalled target, wrong `--confirm`, empty reason, already active, no
+`GRYND_ALLOW_SERVICE_RESTART=1`, dry-run controller, CI request for a missing
+release, a path as a release id, prune with `--keep 1`) was run against the live
+root: every one refused, `current` never moved, and the rejections are recorded.
+
+What a rollback does not restore — plan for these before relying on it:
+
+| Area | Behaviour | What to plan for |
+|---|---|---|
+| Database schema | Never applied and never reverted. The pipeline does not run migrations at all (`npm run db:migrate`, Drizzle) and migration SQL is not in the artifact | Make each schema change backward compatible for one release (expand → deploy → backfill → contract later); otherwise a code rollback leaves the new schema in place |
+| `/api/health` | Reports `db:"ok"` for a reachable database; it cannot detect a schema mismatch | A green gate after a rollback is not proof that the older code matches the current schema |
+| Env files (`grynd/env/*.env`) | Not versioned per release, never touched by install, activate or rollback | A release needing a new variable, or a rollback to one needing an old one, is an operator action on the env file |
+| systemd units | Not reinstalled or reverted; every release is served through `current`, so a unit change applies to all releases at once | Treat unit files as their own change with their own `daemon-reload` and revert path |
+| Realtime process | Restarted only when its tree hash differs from the live release's (`activate.mjs`), so identical trees are not bounced and the socket server keeps running the previous release's byte-identical directory | Check which release dir it resolved: `readlink /proc/$(systemctl show grynd-realtime -p MainPID --value)/cwd`. `prune` never removes the active or previous release, which is also the directory a process may still hold open |
+| Browser assets | Chunk filenames change with their contents, so a browser holding pre-rollback HTML can request a chunk the older release does not have and get 404 until it reloads | Expected for a few minutes after a rollback; nothing serves two releases at once |
+| Nginx, TLS, DNS, firewall | Untouched by design | Out-of-band changes are not reverted by a rollback |
+| `state/` history | Append-only; failed attempts, refusals and reverts are never rewritten or hidden | Read `state/audit.jsonl` and `state/deployments.json` to reconstruct an attempt |
+| Release inventory | One `previous` pointer, and only releases that passed the gate on this host are valid targets (`NOT_VERIFIED` otherwise). The first-ever release has no fallback: if its gate fails, `current` is removed and the units have no `WorkingDirectory` | Keep two releases installed and verified; a two-step rollback re-activates each older release explicitly |
+
+Practical notes:
+
+- Run the tooling as `grynd-deploy`. As another account it fails closed with
+  `EACCES` on `state/audit.jsonl` (those files are `0640` to that account)
+  *before* the pointer moves — production stays healthy, but the refusal reads
+  like a broken rollback if you do not know that.
+- A rollback needs no rebuild, no migration, no env or unit change, and never
+  needs `--allow-out-of-order`.
+- A reverted activation is recorded with its `rollback` outcome in
+  `state/deployments.json` and fails the workflow run, so it can never be
+  mistaken for a green deployment.
