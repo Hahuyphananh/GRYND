@@ -240,8 +240,8 @@ top-down **oval circuit** built from pure SVG geometry:
 | `src/lib/lane-rush/engine.ts` | Pure engine: init, state validation, actions, plans, lock-in, race resolution, match result |
 | `src/lib/lane-rush/bot.ts` | Minimal legal practice planner (same engine actions as a human) |
 | `src/lib/lane-rush/raceStore.ts` | Authoritative lifecycle: planning actions, lock-ins, `resolving`, exactly-once resolution, bots, resignation, sanitized views |
-| `src/components/lane-rush/ovalGeometry.js` | Pure oval geometry + confirmed-round playback projection (unit-tested) |
-| `src/components/lane-rush/OvalTrack.jsx` | The SVG board: route lanes, grid, tier dots, finish/DNF animation |
+| `src/components/lane-rush/ovalGeometry.js` | Pure oval geometry, grid parking queue + confirmed-round playback projection (unit-tested) |
+| `src/components/lane-rush/OvalTrack.jsx` | The SVG board: route lanes, parked-grid queue, tier-scaled car sprites, finish/DNF animation |
 | `src/components/lane-rush/RaceGarage.jsx` | Fleet panel: deploy/recall/routes/buy/merge/repair/workshop |
 | `src/app/casino/lane-runner/[matchId]/PageClient.jsx` | Match page: HUD, planning, lock-in, result screen, waiting states |
 | `src/lib/lane-rush-duel/serverStore.js` | Preserved legacy bridge engine + the ONE shared settlement path (`settleLaneRushMatch`) |

@@ -14,6 +14,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import zlib from "node:zlib";
 
 import {
   LANE_ORDER,
@@ -42,6 +43,7 @@ import {
 } from "../src/components/lane-rush/ovalGeometry.js";
 import {
   CAR_SPRITE_SIZE,
+  carSpriteBox,
   carSpriteFor,
   carSpriteRotation,
   carSpriteSize,
@@ -209,24 +211,167 @@ test("all four tiers map to their own artwork and damaged variant", () => {
   );
 });
 
-test("sprite size grows modestly with the tier and stays inside its lane", () => {
+test("sprite size grows with the tier and stays off the adjacent lane", () => {
   assert.ok(carSpriteSize(1) < carSpriteSize(2));
   assert.ok(carSpriteSize(2) < carSpriteSize(3));
   assert.ok(carSpriteSize(3) < carSpriteSize(4));
   assert.equal(carSpriteSize(99), CAR_SPRITE_SIZE[1], "an unknown tier keeps Tier 1's size");
 
-  // Half a sprite + the seat offset must stay inside the gap between lanes,
-  // so neighbouring route lanes can never overlap even for a Tier 4 car.
+  // The width is the car's ACROSS-THE-LANE footprint. Half of it plus the seat
+  // offset must stay short of the neighbouring route's centre line, so two
+  // route lanes can never paint a car on top of each other.
+  //
+  // The old contract capped the width at the band itself (`LANE_BAND_WIDTH + 2`)
+  // because the sprite was a square dot; a real car is longer than it is wide,
+  // so the across-lane width is now led by the artwork's own proportions and the
+  // length runs along the lane. The previous floor (`dotRadius(tier) * 2`) is
+  // kept: no tier may shrink back to the size of the old dot.
   const lanePitch = LANE_RADII.safe.rx - LANE_RADII.sprint.rx;
   for (const tier of [1, 2, 3, 4]) {
-    const size = carSpriteSize(tier);
-    assert.equal(size, CAR_SPRITE_SIZE[tier]);
-    assert.ok(size >= dotRadius(tier) * 2, `Tier ${tier} is at least as large as its old dot`);
-    assert.ok(size <= LANE_BAND_WIDTH + 2, `Tier ${tier} fits its lane band`);
+    assert.equal(carSpriteSize(tier), CAR_SPRITE_SIZE[tier]);
     assert.ok(
-      size / 2 + SEAT_RADIAL_OFFSET < lanePitch - LANE_BAND_WIDTH / 2,
-      `Tier ${tier} stays clear of the adjacent lane`,
+      carSpriteSize(tier) >= dotRadius(tier) * 2,
+      `Tier ${tier} is at least as large as its old dot`,
     );
+    assert.ok(
+      carSpriteSize(tier) / 2 + SEAT_RADIAL_OFFSET < lanePitch,
+      `Tier ${tier} stays clear of the adjacent lane's centre line`,
+    );
+    // The camera invariant: half a car plus the seat offset still fits INSIDE
+    // the painted band, so the widest tier never spills onto the tarmac (or
+    // onto the neighbouring route's band) however the car is rotated.
+    assert.ok(
+      carSpriteSize(tier) / 2 + SEAT_RADIAL_OFFSET <= LANE_BAND_WIDTH / 2,
+      `Tier ${tier} stays inside its own lane band`,
+    );
+  }
+});
+
+test("the sprite box follows the artwork's own aspect instead of a square", () => {
+  for (const tier of [1, 2, 3, 4]) {
+    for (const damaged of [false, true]) {
+      const box = carSpriteBox({ tier, damaged });
+      const { frame } = carSpriteFor({ tier, damaged });
+      assert.equal(box.width, carSpriteSize(tier), `Tier ${tier} boxes share one width`);
+      assert.ok(
+        Math.abs(box.height - (box.width * frame.height) / frame.width) < 0.11,
+        `Tier ${tier}${damaged ? " (damaged)" : ""} preserves the artwork aspect`,
+      );
+      // A car is roughly twice as long as it is wide — the height may never be
+      // collapsed back to a square (or a dot).
+      assert.ok(
+        box.height > box.width * 1.5,
+        `Tier ${tier}${damaged ? " (damaged)" : ""} is a car, not a square`,
+      );
+    }
+  }
+  assert.equal(carSpriteBox({ tier: 99 }).width, CAR_SPRITE_SIZE[1], "unknown tiers keep Tier 1");
+});
+
+// ── The stored content frames must match the shipped PNGs ──────────────────
+//
+// The sprite crops the transparent canvas by drawing the asset through a
+// viewBox set to its alpha bounding box. If an asset is ever re-rendered, these
+// frames silently frame the wrong part of the car, so they are re-measured here
+// (PNG → inflate → per-pixel alpha) instead of trusted.
+const PNG_CHANNELS = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 };
+
+function alphaBoundingBox(file) {
+  const buf = fs.readFileSync(file);
+  let pos = 8;
+  let width = 0;
+  let height = 0;
+  let bitDepth = 0;
+  let colorType = 0;
+  const chunks = [];
+  while (pos < buf.length) {
+    const length = buf.readUInt32BE(pos);
+    const type = buf.toString("ascii", pos + 4, pos + 8);
+    const data = buf.subarray(pos + 8, pos + 8 + length);
+    if (type === "IHDR") {
+      width = data.readUInt32BE(0);
+      height = data.readUInt32BE(4);
+      bitDepth = data[8];
+      colorType = data[9];
+    } else if (type === "IDAT") {
+      chunks.push(data);
+    } else if (type === "IEND") {
+      break;
+    }
+    pos += 12 + length;
+  }
+  assert.equal(bitDepth, 8, `${file} must be 8-bit per channel`);
+  const channels = PNG_CHANNELS[colorType];
+  assert.ok(channels >= 2, `${file} must carry an alpha channel`);
+
+  const raw = zlib.inflateSync(Buffer.concat(chunks));
+  const stride = width * channels;
+  const pixels = Buffer.alloc(height * stride);
+  let previous = Buffer.alloc(stride);
+  let rp = 0;
+  const paeth = (a, b, c) => {
+    const p = a + b - c;
+    const pa = Math.abs(p - a);
+    const pb = Math.abs(p - b);
+    const pc = Math.abs(p - c);
+    return pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+  };
+  for (let y = 0; y < height; y += 1) {
+    const filter = raw[rp];
+    rp += 1;
+    const line = Buffer.from(raw.subarray(rp, rp + stride));
+    rp += stride;
+    for (let x = 0; x < stride; x += 1) {
+      const a = x >= channels ? line[x - channels] : 0;
+      const b = previous[x];
+      const c = x >= channels ? previous[x - channels] : 0;
+      let value = line[x];
+      if (filter === 1) value = (value + a) & 0xff;
+      else if (filter === 2) value = (value + b) & 0xff;
+      else if (filter === 3) value = (value + ((a + b) >> 1)) & 0xff;
+      else if (filter === 4) value = (value + paeth(a, b, c)) & 0xff;
+      line[x] = value;
+    }
+    line.copy(pixels, y * stride);
+    previous = line;
+  }
+
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const alpha = pixels[y * stride + x * channels + channels - 1];
+      if (alpha > 16) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  return { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 };
+}
+
+test("every sprite's content frame matches the transparent margins of its PNG", () => {
+  for (const tier of [1, 2, 3, 4]) {
+    for (const damaged of [false, true]) {
+      const sprite = carSpriteFor({ tier, damaged });
+      const measured = alphaBoundingBox(`public${sprite.src}`);
+      for (const edge of ["x", "y", "width", "height"]) {
+        assert.ok(
+          Math.abs(measured[edge] - sprite.frame[edge]) <= 1,
+          `${sprite.src} ${edge}: frame ${sprite.frame[edge]} vs measured ${measured[edge]}`,
+        );
+      }
+      // The crop is what makes the car fill its box: the frame must be a real
+      // crop of the canvas, not the whole square.
+      assert.ok(
+        sprite.frame.width < 256 * 0.75,
+        `${sprite.src} must crop its side margins (${sprite.frame.width}px of 256)`,
+      );
+    }
   }
 });
 
@@ -318,6 +463,48 @@ test("gridCars separates the viewer's routed cars from the hidden rival grid", (
   assert.equal(theirs[0].route, null, "the opponent's route is not invented");
   assert.equal(theirs[0].seat, "player1");
   assert.ok(cars.every((car) => car.t < 0), "every grid car is behind the line");
+});
+
+test("cars sharing one route park nose-to-tail instead of stacking", () => {
+  // The rules allow four cars on one route. They are real car sprites now, so a
+  // fixed fractional grid step would paint them on top of each other; the queue
+  // must leave at least a car's half-length either side of each neighbour.
+  const fleet = [1, 1, 2, 3].map((tier, index) => ({
+    id: `same-${index}`,
+    owner: "player1",
+    tier,
+    status: "racing",
+    route: "risk",
+  }));
+  const cars = gridCars({ myCars: fleet, oppCars: [], mySeat: "player1" });
+  assert.equal(cars.length, 4);
+  assert.ok(
+    cars.every((car) => car.t < 0),
+    "the queue stays behind the start line",
+  );
+
+  const { rx } = laneRadii("risk", "player1");
+  const circumference = 2 * Math.PI * rx;
+  for (let i = 1; i < cars.length; i += 1) {
+    const gap = (cars[i - 1].t - cars[i].t) * circumference;
+    const needed = (carSpriteBox({ tier: cars[i - 1].tier }).height +
+      carSpriteBox({ tier: cars[i].tier }).height) /
+      2;
+    assert.ok(
+      gap >= needed,
+      `cars ${i - 1}/${i} keep a car's length apart (${gap.toFixed(1)} < ${needed.toFixed(1)})`,
+    );
+  }
+
+  // Different routes never share a queue: each lane starts at its own slot.
+  const mixed = gridCars({
+    myCars: [
+      { id: "s1", owner: "player1", tier: 1, status: "racing", route: "safe" },
+      { id: "s2", owner: "player1", tier: 1, status: "racing", route: "sprint" },
+    ],
+    mySeat: "player1",
+  });
+  assert.equal(mixed[0].t, mixed[1].t, "a fresh lane still parks at the line");
 });
 
 test("a parked car carries its damaged flag to the sprite", () => {

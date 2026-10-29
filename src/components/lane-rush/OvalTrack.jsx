@@ -42,7 +42,7 @@ import {
   pointOnRivalRing,
 } from "./ovalGeometry";
 import CarSprite from "./CarSprite";
-import { carSpriteRotation, carSpriteSize } from "./carSprites";
+import { carSpriteBox, carSpriteRotation } from "./carSprites";
 
 const ROUTE_SHORT = {
   safe: "SAFE",
@@ -101,8 +101,11 @@ function carAriaLabel(car, { routeHidden = false } = {}) {
 }
 
 /**
- * One car sprite, centred on its track position. The sprite is rotated to the
- * ellipse tangent while the seat ring, title and result labels stay upright.
+ * One car sprite, centred on its track position. The sprite box is the
+ * artwork's own aspect (width across the lane, height along it), rotated to the
+ * ellipse tangent so the nose follows the direction of travel. The selection
+ * ring rotates with the car so it hugs the body; titles and result labels stay
+ * upright.
  */
 function CarMarker({
   x,
@@ -115,25 +118,33 @@ function CarMarker({
   dim = false,
   children,
 }) {
-  const size = carSpriteSize(tier);
+  const { width, height } = carSpriteBox({ tier, damaged });
   const colors = SEAT_COLORS[seat] || SEAT_COLORS.player1;
   return (
     <g transform={`translate(${x} ${y})`} opacity={dim ? 0.55 : 1}>
-      {selected && (
-        <circle
-          r={size / 2 + 6}
-          fill="none"
-          stroke={colors.dot}
-          strokeWidth={1.4}
-          strokeDasharray="3 4"
-          opacity={0.85}
-        />
-      )}
-      {/* Rotate around the car's centre: shift the square so its middle is (0, 0). */}
+      {/*
+        Rotate around the car's centre: shift the box so its middle is (0, 0).
+        The selection ring is drawn inside this group so it hugs the car's real
+        rectangle instead of circling a point.
+      */}
       <g
-        transform={`rotate(${carSpriteRotation(heading)}) translate(${-size / 2} ${-size / 2})`}
+        transform={`rotate(${carSpriteRotation(heading)}) translate(${-width / 2} ${-height / 2})`}
       >
-        <CarSprite tier={tier} damaged={damaged} size={size} seat={seat} />
+        {selected && (
+          <rect
+            x={-4}
+            y={-4}
+            width={width + 8}
+            height={height + 8}
+            rx={width * 0.3}
+            fill="none"
+            stroke={colors.dot}
+            strokeWidth={1.4}
+            strokeDasharray="3 4"
+            opacity={0.85}
+          />
+        )}
+        <CarSprite tier={tier} damaged={damaged} width={width} height={height} seat={seat} />
       </g>
       {children}
     </g>
@@ -203,9 +214,11 @@ function PlaybackCar({ car, reduced, showResults }) {
   const crossed = car.outcome === "finished" && progress >= 0.995;
   const colors = SEAT_COLORS[car.seat] || SEAT_COLORS.player1;
   const heading = headingOnLane({ route: car.route, seat: car.seat, t: progress });
-  const size = carSpriteSize(car.tier);
   // The artwork follows the car's CONFIRMED outcome; it never changes it.
   const damaged = car.outcome === "dnf";
+  const { width, height } = carSpriteBox({ tier: car.tier, damaged });
+  // A circle that still contains the rotated car, used for the DNF status ring.
+  const statusRadius = Math.hypot(width, height) / 2 + 4;
 
   return (
     <g>
@@ -251,7 +264,7 @@ function PlaybackCar({ car, reduced, showResults }) {
           <motion.circle
             cx={point.x}
             cy={point.y}
-            r={size / 2 + 6}
+            r={statusRadius}
             fill="none"
             stroke="#fb7185"
             strokeWidth={1.6}
@@ -262,7 +275,7 @@ function PlaybackCar({ car, reduced, showResults }) {
             transition={{ duration: 0.9, repeat: landed && !reduced ? 1 : 0 }}
           />
           <text
-            x={point.x + size / 2 + 8}
+            x={point.x + width / 2 + 8}
             y={point.y + 3}
             fontSize={9}
             fontWeight={900}
@@ -275,7 +288,7 @@ function PlaybackCar({ car, reduced, showResults }) {
 
       {showResults && car.outcome === "finished" && car.points > 0 && (
         <motion.text
-          x={point.x + size / 2 + 8}
+          x={point.x + width / 2 + 8}
           y={point.y + 3}
           fontSize={9}
           fontWeight={900}

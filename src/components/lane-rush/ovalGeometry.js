@@ -20,11 +20,21 @@
 // This module has no React/DOM dependency on purpose: the ellipse maths is
 // unit-tested (tests/lane-rush-oval-track.test.mjs) without a browser.
 
-export const TRACK_VIEWBOX = Object.freeze({ width: 800, height: 504 });
-export const TRACK_CENTER = Object.freeze({ x: 400, y: 252 });
+import { carSpriteBox } from "./carSprites";
+
+//
+// CAMERA. The board is framed so a full-size car fits inside its own lane
+// band: a 60-unit band holds a Tier 4 car (46 wide, half of it on each side of
+// the ±6.5 seat offset) with room to spare, and the three bands sit 66 apart so
+// neighbouring routes never paint over each other. Growing the bands cost the
+// board height (504 → 660) rather than the cars' rendered size: the viewBox is
+// still 900 × 660 read at the column's width, so cars keep their on-screen
+// pixels and only the circuit got roomier.
+export const TRACK_VIEWBOX = Object.freeze({ width: 900, height: 660 });
+export const TRACK_CENTER = Object.freeze({ x: 450, y: 330 });
 
 /** Width of one route's band, in viewBox units. */
-export const LANE_BAND_WIDTH = 34;
+export const LANE_BAND_WIDTH = 60;
 
 /** Route lanes, outermost first. Three concentric lanes = three route choices. */
 export const LANE_ORDER = Object.freeze(["safe", "sprint", "risk"]);
@@ -35,13 +45,17 @@ export const LANE_ORDER = Object.freeze(["safe", "sprint", "risk"]);
  * track that pretends to be a different course.
  */
 export const LANE_RADII = Object.freeze({
-  safe: Object.freeze({ rx: 318, ry: 180 }),
-  sprint: Object.freeze({ rx: 274, ry: 142 }),
-  risk: Object.freeze({ rx: 230, ry: 104 }),
+  safe: Object.freeze({ rx: 344, ry: 228 }),
+  sprint: Object.freeze({ rx: 278, ry: 162 }),
+  risk: Object.freeze({ rx: 212, ry: 96 }),
 });
 
-/** The thin dashed ring the opponent's (route-hidden) grid sits on. */
-export const RIVAL_RADII = Object.freeze({ rx: 368, ry: 222 });
+/**
+ * The thin dashed ring the opponent's (route-hidden) grid sits on. It clears the
+ * Safe band by a car's half-width plus the seat inset, so parked rivals still
+ * sit on their own ring instead of spilling onto the outer route.
+ */
+export const RIVAL_RADII = Object.freeze({ rx: 407, ry: 291 });
 
 /**
  * The two seats share a lane band: player 1 rides the outer half, player 2 the
@@ -100,11 +114,53 @@ export function laneRadii(route, seat = "player1") {
  * The normalized lap progress a car occupies while it is parked on the grid.
  * Grid slots sit just BEFORE the start/finish line, so a deployed car has not
  * "started" until the server resolves the round and the animation moves it.
+ *
+ * This is the FIRST slot of a lane; the cars queued behind it are spaced by
+ * `gridSlotQueue` below, because a fixed fractional step cannot keep car-sized
+ * artwork apart.
  */
 export function gridProgress(seat = "player1", index = 0) {
   const slot = Math.max(0, Math.floor(Number(index) || 0));
   const seatLag = seat === "player2" ? 0.006 : 0;
   return -(0.004 + seatLag + slot * 0.011);
+}
+
+/** Tarmac between two cars parked nose-to-tail, in viewBox units. */
+const GRID_NOSE_GAP = 8;
+
+/** Circumference of the ellipse a parked car sits on, in viewBox units. */
+function parkCircumference(seat, route) {
+  const rx = route
+    ? laneRadii(route, seat).rx
+    : RIVAL_RADII.rx + (seat === "player2" ? -8 : 8);
+  return 2 * Math.PI * rx;
+}
+
+/**
+ * Build the parking queue for one lane: a factory that hands out the lap
+ * progress of each parked car, nose-to-tail behind the start line.
+ *
+ * A parked car is a real sprite, roughly twice as long as it is wide, and the
+ * rules allow four cars on one route. A fixed fractional step packed them into
+ * an unreadable pile, so each car is placed `half of each car + a gap` behind
+ * the one in front of it. The step is an ARC length divided by the lane's
+ * circumference, so the gap looks the same on the inside lane as on the
+ * outside one.
+ */
+export function gridSlotQueue({ seat = "player1", route = null } = {}) {
+  const circumference = parkCircumference(seat, route);
+  let previous = null;
+  return ({ tier = 1, damaged = false } = {}) => {
+    const { height } = carSpriteBox({ tier, damaged });
+    if (!previous) {
+      const t = gridProgress(seat, 0);
+      previous = { t, length: height };
+      return t;
+    }
+    const step = (previous.length / 2 + height / 2 + GRID_NOSE_GAP) / circumference;
+    previous = { t: previous.t - step, length: height };
+    return previous.t;
+  };
 }
 
 function polar(x, y, theta) {
@@ -205,21 +261,31 @@ export function playbackDurationSeconds(car = {}) {
 export function buildRacePlayback(lastResult) {
   if (!lastResult || !Array.isArray(lastResult.cars)) return null;
   const perSeatIndex = { player1: 0, player2: 0 };
+  // Cars leave the grid nose-to-tail, exactly as the parked queue is drawn, so
+  // a packed lane does not replay as one car sliding out from under another.
+  const queues = new Map();
+  const park = ({ seat, route, tier }) => {
+    const key = `${seat}:${route}`;
+    if (!queues.has(key)) queues.set(key, gridSlotQueue({ seat, route }));
+    return queues.get(key)({ tier });
+  };
   const cars = lastResult.cars.map((car, i) => {
     const seat = car.seat === "player2" ? "player2" : "player1";
     const index = perSeatIndex[seat]++;
     const dnf = car.outcome === "dnf";
+    const tier = Number(car.tier) || 1;
+    const route = car.route || "safe";
     return {
       key: `r${lastResult.round}:${car.carId}`,
       round: Number(lastResult.round) || 0,
       carId: String(car.carId || ""),
       seat,
-      tier: Number(car.tier) || 1,
-      route: car.route || "safe",
+      tier,
+      route,
       outcome: dnf ? "dnf" : "finished",
       points: Number(car.points) || 0,
       reward: car.reward ?? null,
-      from: gridProgress(seat, index),
+      from: park({ seat, route, tier }),
       to: dnf ? stallProgress(car) : 1,
       // Spread same-lane cars across the band (not along it).
       radialOffset: (index - 1.5) * 2.2,
@@ -246,18 +312,30 @@ export function gridCars({ myCars = [], oppCars = [], mySeat = "player1" } = {})
   const mine = (Array.isArray(myCars) ? myCars : []).filter((car) => car.status === "racing");
   const theirs = (Array.isArray(oppCars) ? oppCars : []).filter((car) => car.status === "racing");
   const out = [];
+  // One parking queue per seat + lane, so cars that share a lane queue up
+  // behind each other instead of stacking on one point.
+  const queues = new Map();
+  const park = ({ seat, route, tier, damaged }) => {
+    const key = `${seat}:${route ?? "rival"}`;
+    if (!queues.has(key)) queues.set(key, gridSlotQueue({ seat, route }));
+    return queues.get(key)({ tier, damaged });
+  };
   mine.forEach((car, index) => {
+    const seat = seatOf(car, mySeat);
+    const route = car.route || "safe";
+    const tier = Number(car.tier) || 1;
+    const damaged = Boolean(car.damaged);
     out.push({
       key: `grid:${car.id}`,
       carId: car.id,
-      seat: seatOf(car, mySeat),
-      tier: Number(car.tier) || 1,
-      route: car.route || "safe",
-      damaged: Boolean(car.damaged),
+      seat,
+      tier,
+      route,
+      damaged,
       mine: true,
       index,
       radialOffset: (index - 1.5) * 2.2,
-      t: gridProgress(seatOf(car, mySeat), index),
+      t: park({ seat, route, tier, damaged }),
     });
   });
   theirs.forEach((car, index) => {
@@ -265,17 +343,19 @@ export function gridCars({ myCars = [], oppCars = [], mySeat = "player1" } = {})
     // cars wait on the neutral rival ring instead of a route lane, so the
     // board never invents a route the player was not shown.
     const seat = seatOf(car, mySeat === "player1" ? "player2" : "player1");
+    const tier = Number(car.tier) || 1;
+    const damaged = Boolean(car.damaged);
     out.push({
       key: `rival:${car.id}`,
       carId: car.id,
       seat,
-      tier: Number(car.tier) || 1,
+      tier,
       route: null,
-      damaged: Boolean(car.damaged),
+      damaged,
       mine: false,
       index,
       radialOffset: (index - 1.5) * 2.2,
-      t: gridProgress(seat, index),
+      t: park({ seat, route: null, tier, damaged }),
     });
   });
   return out;

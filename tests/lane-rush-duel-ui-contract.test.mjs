@@ -126,7 +126,9 @@ test("the board is one oval with route lanes, seat colours and tier-scaled car s
   assert.ok(oval.includes("directionChevrons()"), "the direction of travel is drawn");
   assert.ok(oval.includes("pointOnLane("), "cars follow the mathematical ellipse");
   assert.ok(oval.includes("pointOnRivalRing("), "a route-hidden rival grid has its own ring");
-  assert.ok(oval.includes("carSpriteSize("), "sprite size encodes the tier");
+  // The box accessor is width-led for the tier and height-derived from the
+  // artwork's own frame (a square box used to shrink the car to a dot).
+  assert.ok(oval.includes("carSpriteBox("), "the sprite box encodes the tier");
   assert.ok(ovalMath.includes("player1: Object.freeze({"), "seat colours live in the geometry module");
   assert.ok(ovalMath.includes('dot: "#38bdf8"'), "Player 1 is blue");
   assert.ok(ovalMath.includes('dot: "#fb7185"'), "Player 2 is red");
