@@ -653,23 +653,40 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
 
     // Enforce admin MFA step-up: the session must have verified a second
     // factor recently, or hold a valid admin_mfa / user_mfa cookie.
-    const adminMfaToken = req.cookies.get(ADMIN_MFA_COOKIE)?.value;
-    const userMfaToken = req.cookies.get(USER_MFA_COOKIE)?.value;
-    if (
-      !hasRecentMfa(factorVerificationAge) &&
-      !(await verifyAdminMfaToken(adminMfaToken, userId)) &&
-      !(await verifyUserMfaToken(userMfaToken, userId))
-    ) {
-      auditLog("admin_mfa_required", { userId, ip, path: pathname });
-      return applySecurityHeaders(
-        NextResponse.json(
-          { success: false, error: "MFA required for admin access." },
-          { status: 403 }
-        )
-      );
+    //
+    // The gate's own bootstrap endpoints are exempt. `status` reports which
+    // factors this host can honour, `send-otp` issues an email code and
+    // `verify` exchanges a code for the admin_mfa cookie — i.e. the requests an
+    // admin has to make BEFORE they have any second factor. Requiring the
+    // cookie to reach them was a deadlock: the gate page could never send or
+    // verify a code, so no admin could ever get past it and every factor
+    // looked blocked. Authentication and the admin role check above still
+    // apply, and each handler re-checks auth() + isAdmin() itself.
+    const adminMfaBootstrap =
+      pathname === "/api/admin/mfa/status" ||
+      pathname === "/api/admin/mfa/send-otp" ||
+      pathname === "/api/admin/mfa/verify";
+
+    if (!adminMfaBootstrap) {
+      const adminMfaToken = req.cookies.get(ADMIN_MFA_COOKIE)?.value;
+      const userMfaToken = req.cookies.get(USER_MFA_COOKIE)?.value;
+      if (
+        !hasRecentMfa(factorVerificationAge) &&
+        !(await verifyAdminMfaToken(adminMfaToken, userId)) &&
+        !(await verifyUserMfaToken(userMfaToken, userId))
+      ) {
+        auditLog("admin_mfa_required", { userId, ip, path: pathname });
+        return applySecurityHeaders(
+          NextResponse.json(
+            { success: false, error: "MFA required for admin access." },
+            { status: 403 }
+          )
+        );
+      }
     }
 
-    // Admin API request is authenticated, authorized, and MFA-verified.
+    // Admin API request is authenticated and authorized; MFA is verified
+    // unless this is the bootstrap flow that establishes it.
     return applySecurityHeaders(NextResponse.next());
   }
 
