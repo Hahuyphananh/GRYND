@@ -1019,7 +1019,12 @@ test("routes: the lobby renders under /casino/tic-tac-toe and carries the ad scr
   // The BOARD route deliberately carries no ad tag.
   const matchRoute = code(MATCH_ROUTE_PAGE);
   assert.match(matchRoute, /export async function generateMetadata/);
-  assert.match(matchRoute, /return <PageClient \/>;|return <PageClient\/>;/);
+  // The page passes the server-read runtime ad switch; the board itself still
+  // carries no ad tag (asserted on the next line).
+  assert.match(
+    matchRoute,
+    /return <PageClient postMatchAdsEnabled=\{postMatchAdsEnabledOnServer\(\)\} \/>;/,
+  );
   assert.doesNotMatch(matchRoute, /AdSenseScript/);
 });
 

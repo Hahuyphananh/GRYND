@@ -178,6 +178,12 @@ export default function PvpResultScreen({
   // a compact self-explanatory visual — e.g. Precision's frozen rockets from
   // the deciding round. Games that don't pass it render exactly as before.
   extraContent = null,
+  // Optional post-match advertisement node. Games opt in by passing one; the
+  // shared screen never creates or configures an ad itself, so the provider and
+  // its policy stay outside the results architecture. Rendered BELOW the action
+  // buttons (never between the player and "Run it back"), and suppressed in
+  // compact mode so Creator Mode recordings never carry an ad.
+  postMatchAd = null,
 }) {
   const shouldReduce = useReducedMotion();
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -823,6 +829,13 @@ export default function PvpResultScreen({
                   </button>
                 )}
               </div>
+            )}
+
+            {/* Optional post-match advertisement — below every result, reward
+                and action, so it can never cover or delay them. The node is
+                null unless a game explicitly passed one. */}
+            {postMatchAd && !compact && (
+              <div className="mx-auto mt-5 w-full max-w-xs">{postMatchAd}</div>
             )}
 
             {/* Expandable match details */}

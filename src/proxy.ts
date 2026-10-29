@@ -422,6 +422,16 @@ function applySecurityHeaders(response: NextResponse) {
       // pages' content, and `frame-ancestors` below separately keeps anyone
       // from framing US.
       "frame-src 'self' https://challenges.cloudflare.com https://*.clerk.com https://*.clerk.accounts.dev https://js.stripe.com https://checkout.stripe.com https://*.stripe.com https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://fundingchoicesmessages.google.com; " +
+      // The post-match video ad (components/ads/PostMatchVideoAd.tsx) plays a
+      // provider-supplied creative in a native <video>. With no `media-src`,
+      // media falls back to `default-src 'self'` and every ad video is blocked
+      // — the component would show its "unavailable" state and never play. The
+      // creative host is not stable (the VAST MediaFile 302s to a rotating
+      // third-party CDN), so an allow-list is not maintainable here; `https:`
+      // is the narrowest rule that still works. It permits media bytes only —
+      // script-src, frame-src and connect-src are unchanged, and the ad
+      // element refuses anything that is not https before setting <video src>.
+      "media-src 'self' blob: https:; " +
       "worker-src 'self' blob:; " +
       "frame-ancestors 'self'; " +
       "base-uri 'self'; " +

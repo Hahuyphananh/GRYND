@@ -53,6 +53,7 @@ import SeatAvatar from "../../../../components/game/SeatAvatar";
 import MatchLoading from "../../../../components/game/MatchLoading";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
+import PostMatchVideoAd from "../../../../components/ads/PostMatchVideoAd";
 import ReportModal from "../../../../components/ReportModal";
 import GameSessionHost from "../../../../components/GameSessionHost";
 import {
@@ -115,7 +116,12 @@ function moveBoardLabel(boardIndex: unknown): string {
 
 type PendingMove = { boardIndex: number; cellIndex: number; version: number };
 
-export default function TicTacToeMatchPage() {
+export default function TicTacToeMatchPage({
+  postMatchAdsEnabled = true,
+}: {
+  /** Server-read runtime kill switch (POST_MATCH_ADS_ENABLED). */
+  postMatchAdsEnabled?: boolean;
+} = {}) {
   const params = useParams<{ matchId: string }>();
   const router = useRouter();
   const { socket } = useSocket();
@@ -1010,6 +1016,21 @@ export default function TicTacToeMatchPage() {
             gameName="Ultimate Tic-Tac-Toe"
             onReturnToLobby={Boolean(match.isAi) ? () => router.push("/casino/tic-tac-toe") : null}
             gameKey="tic-tac-toe"
+            postMatchAd={
+              // Pilot surface. Only a SETTLED PvP duel offers the optional ad:
+              // `finished` is the server snapshot's own status (never a local
+              // guess), and a vs-AI practice match has nothing to monetise and
+              // is excluded outright. The component's own frequency policy
+              // makes this a once-per-match offer, so a refresh or a remount of
+              // this page cannot bring the card back.
+              match.isAi ? null : (
+                <PostMatchVideoAd
+                  matchEnded={finished}
+                  matchId={String(matchId ?? "")}
+                  enabled={postMatchAdsEnabled}
+                />
+              )
+            }
             durationSeconds={durationSeconds(match.startedAt, match.endedAt)}
             opponent={{
               name: opponentName,
