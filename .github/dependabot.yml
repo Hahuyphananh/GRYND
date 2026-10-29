@@ -1,0 +1,60 @@
+# .github/dependabot.yml
+#
+# Weekly, grouped dependency updates for the two npm manifests this repository
+# builds: the Next.js app at the root and the realtime server beside it.
+#
+# Without a config Dependabot opens one PR per dependency, and a single stale
+# major holds up everything behind it. Here each directory gets:
+#   * one PR per week for every minor and patch bump;
+#   * a separate PR for majors, so a breaking upgrade is reviewed on its own
+#     instead of blocking the routine ones;
+#   * one PR for grouped security updates (when Dependabot security updates are
+#     enabled on the repository).
+#
+# Security updates that GitHub raises outside a group still land as normal
+# alert-driven PRs. Nothing here changes the release pipeline: a dependabot
+# branch deploys nothing until it is merged into main.
+
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+      npm-major:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["major"]
+      npm-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: "/realtime-server"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+      npm-major:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["major"]
+      npm-security:
+        applies-to: security-updates
+        patterns: ["*"]
