@@ -13,8 +13,12 @@
 //   * claims are graded against the server clock — a claim only counts if
 //     it arrived inside the tile's window (+ a small hidden network
 //     grace), so a client can never self-report a win
-//   * the window tightens by 100ms for every claimed tile, derived from
-//     server-owned counters (a client cannot slow the game down)
+//   * the window is server-generated per tile: a base ramp that tightens
+//     with progress plus a bounded, seed-derived variation, so the pace is
+//     not predictable (a client can neither slow the game down nor pick its
+//     own window)
+//   * a short server-chosen anticipation pause separates two targets, and
+//     no upcoming target exists while it runs (nothing to pre-aim at)
 //   * a tile nobody claims is resolved by the server as a BOTH-MISS, so
 //     the match progresses even if both players go AFK
 //   * 3-second ready banner auto-advance
@@ -71,6 +75,7 @@ import {
   round2,
 } from "./constants";
 import {
+  anticipationDelayMs,
   applyMissesToLives,
   capTileLog,
   chooseAiClaim,
@@ -79,7 +84,7 @@ import {
   pickLiveTile,
   TILE_OUTCOME,
   tileLogEntry,
-  tileWindowMs,
+  tileWindowForIndex,
 } from "./engine";
 import { aiDifficultyFromMatch, coerceAiDifficulty } from "../aiDifficulty";
 
@@ -490,9 +495,17 @@ export function claimedTotal(match) {
   return Math.max(0, intOr(match?.p1Tiles)) + Math.max(0, intOr(match?.p2Tiles));
 }
 
-// How long the CURRENT live tile stays claimable.
+// How long the CURRENT tile (lit, or about to light) stays claimable.
+//
+// Derived from the match seed + the tile INDEX only — never from lives, the
+// score, either player's reactions, or the claim counters (which move when a
+// tap is credited while its tile is still live). That is what makes it
+// stable across a reconnect and identical for both seats.
 export function currentWindowMs(match) {
-  return tileWindowMs(claimedTotal(match));
+  return tileWindowForIndex({
+    seed: runSeed(match),
+    index: Math.max(0, intOr(match?.liveTileIndex)),
+  });
 }
 
 function liveDeadlineMs(match) {
@@ -571,9 +584,7 @@ function aiPlanFor(match) {
   if (match.player2Id !== KENO_AI_PLAYER_ID) return null;
   if (!LIVE_STATES.has(match.status) || !hasLiveTile(match)) return null;
 
-  const windowMs = tileWindowMs(
-    Math.max(0, intOr(match.p1Tiles)) + Math.max(0, intOr(match.p2Tiles)),
-  );
+  const windowMs = currentWindowMs(match);
   const plan = chooseAiClaim({
     seed: `${runSeed(match)}:ai`,
     index: match.liveTileIndex,
@@ -657,7 +668,7 @@ async function lightNextTile(tx, match, { now = Date.now(), reset = false } = {}
     });
   }
 
-  const windowMs = tileWindowMs(tiles1 + tiles2);
+  const windowMs = tileWindowForIndex({ seed: runSeed(match), index });
   const [updated] = await tx
     .update(kenoPvpMatches)
     .set({
@@ -769,7 +780,15 @@ async function applyResolution(tx, match, {
     });
   }
 
-  const windowMs = tileWindowMs(p1Tiles + p2Tiles);
+  // Do NOT reveal the next tile yet. A short, server-picked anticipation
+  // beat separates one target from the next: while `liveTile` is null there
+  // is nothing to tap (the claim path refuses "No tile is live yet"), so
+  // nobody can pre-aim or claim a future target. `roundDeadline` doubles as
+  // the "next tile may light" marker until the tile actually lights.
+  const delayMs = anticipationDelayMs({
+    seed: runSeed(match),
+    index: nextIndex,
+  });
   const [updated] = await tx
     .update(kenoPvpMatches)
     .set({
@@ -778,11 +797,11 @@ async function applyResolution(tx, match, {
       p1Tiles,
       p2Tiles,
       tileLog: log,
-      usedTiles: [...used, nextTile],
-      liveTile: nextTile,
+      usedTiles: used,
+      liveTile: null,
       liveTileIndex: nextIndex,
-      liveStartedAt: new Date(now),
-      roundDeadline: new Date(now + windowMs),
+      liveStartedAt: null,
+      roundDeadline: new Date(now + delayMs),
       // A fresh tile starts with nobody having tapped it.
       ...NO_LIVE_TAPS,
     })
@@ -1263,9 +1282,15 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
       current = await lightNextTile(tx, current, { reset: true });
     }
 
-    // 2) A live run must always have a tile on the board.
+    // 2) A live run must always have a tile on the board — unless the
+    //    server-set anticipation beat has not elapsed yet. `roundDeadline`
+    //    is the "next tile may light" marker while no tile is live, so the
+    //    pause is never skipped by a poll and never needs a client timer.
     if (LIVE_STATES.has(current.status) && !hasLiveTile(current)) {
-      current = await lightNextTile(tx, current, { reset: false });
+      const nextAtMs = liveDeadlineMs(current);
+      if (nextAtMs <= Date.now()) {
+        current = await lightNextTile(tx, current, { reset: false });
+      }
     }
 
     // 3) The bot's due tap (free matches only). Runs before the expiry check

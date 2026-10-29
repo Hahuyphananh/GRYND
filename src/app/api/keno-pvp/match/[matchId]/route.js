@@ -84,10 +84,10 @@ function normaliseMatch(match, viewerUserId) {
   const log = capTileLog(Array.isArray(match.tileLog) ? match.tileLog : [], KENO_POOL_SIZE);
   const claimed = claimedTilesFromLog(log);
 
-  // The claim window in play RIGHT NOW (tightens with every claimed
-  // tile), plus the deadline it was derived from. The client renders its
-  // ring from these two values and the server clock, so the ring can
-  // never disagree with the server's grading.
+  // The claim window the SERVER generated for the current tile (base ramp
+  // + bounded variation, derived from the match seed + tile index), plus
+  // the deadline it was derived from. Both seats receive these same two
+  // values, so neither ring can disagree with the other or with grading.
   const windowMs = currentWindowMs(match);
   const liveDeadline = match.roundDeadline ?? null;
 
@@ -108,7 +108,10 @@ function normaliseMatch(match, viewerUserId) {
     liveTile: hasTile && isLive ? liveTile : null,
     liveTileIndex: Math.max(0, intOr(match.liveTileIndex)),
     liveStartedAt: match.liveStartedAt ?? null,
-    liveDeadline: isLive ? liveDeadline : null,
+    // Only a LIT tile has a deadline. Between tiles the server is holding an
+    // anticipation beat (`roundDeadline` is that marker, not a claim
+    // deadline), so nothing about the upcoming target is exposed early.
+    liveDeadline: isLive && hasTile ? liveDeadline : null,
     // The get-ready countdown. Only meaningful while the match is in the
     // `ready` state, where `roundDeadline` IS the ready deadline — the
     // waiting room renders the real remaining seconds from the server

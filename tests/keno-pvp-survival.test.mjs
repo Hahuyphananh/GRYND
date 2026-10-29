@@ -47,7 +47,7 @@ import {
   isClaimInWindow,
   pickLiveTile,
   tileLogEntry,
-  tileWindowMs,
+  tileWindowForIndex,
 } from "../src/lib/keno-pvp/engine.js";
 
 // Normalise CRLF so multi-line structural assertions work on any OS.
@@ -83,8 +83,8 @@ function createRun({ seed = SEED } = {}) {
     used: [liveTile],
     liveTile,
     startedMs: 0,
-    windowMs: tileWindowMs(0),
-    deadlineMs: tileWindowMs(0),
+    windowMs: tileWindowForIndex({ seed, index: 0 }),
+    deadlineMs: tileWindowForIndex({ seed, index: 0 }),
     // Who has already tapped the tile that is lit RIGHT NOW.
     taps: { p1: false, p2: false, p1Ms: null, p2Ms: null },
     log: [],
@@ -98,7 +98,7 @@ function lightNext(run, now) {
   const index = run.index + 1;
   const next = pickLiveTile({ seed: run.seed, index, used: run.used });
   if (next == null) return settle(run, { exhausted: true, now });
-  const windowMs = tileWindowMs(run.p1Tiles + run.p2Tiles);
+  const windowMs = tileWindowForIndex({ seed: run.seed, index });
   return {
     ...run,
     index,
@@ -284,7 +284,7 @@ test("a claim while the OPPONENT also taps costs the claimant nothing", () => {
   assert.equal(run.p1Tiles, 1);
 });
 
-test("the window tightens with every claimed tile, never below the floor", () => {
+test("the window stays inside its bounds and settles at the floor", () => {
   // A long life bar so the run cannot end before the floor is reached —
   // this test is about the window, not about elimination. Both players tap
   // each tile, which resolves it immediately and tightens the next window.
@@ -303,27 +303,44 @@ test("the window tightens with every claimed tile, never below the floor", () =>
     assert.equal(run.p2Lives, 99);
     windows.push(run.windowMs);
   }
-  for (let i = 1; i < windows.length; i += 1) {
-    assert.equal(
-      windows[i],
-      Math.max(MIN_WINDOW_MS, windows[i - 1] - WINDOW_STEP_MS),
-      `window ${i} did not tighten by ${WINDOW_STEP_MS}ms`,
+  for (const w of windows) {
+    assert.ok(
+      w >= MIN_WINDOW_MS && w <= START_WINDOW_MS,
+      `window ${w}ms is outside [${MIN_WINDOW_MS}, ${START_WINDOW_MS}]`,
     );
   }
-  assert.ok(windows.includes(MIN_WINDOW_MS), "the window never reached its floor");
+  assert.equal(windows[0], START_WINDOW_MS, "the opening window is unchanged");
+  // The pace is no longer a straight line: a step may tighten by more or
+  // less than WINDOW_STEP_MS, hold, or be slightly forgiving — it just may
+  // never invert the trend.
   assert.ok(
-    windows.filter((w) => w === MIN_WINDOW_MS).length > 1,
+    windows.some((w, i) => i > 0 && w !== windows[i - 1] - WINDOW_STEP_MS),
+    "the progression should not be the fixed ramp",
+  );
+  for (let i = 1; i < windows.length; i += 1) {
+    const rise = windows[i] - windows[i - 1];
+    assert.ok(rise <= 200, `window ${i} rose ${rise}ms — too forgiving a step`);
+  }
+  assert.ok(
+    windows[windows.length - 1] <= MIN_WINDOW_MS + 30,
+    "late windows sit on their floor",
+  );
+  assert.ok(
+    windows.filter((w) => w <= MIN_WINDOW_MS + 30).length > 1,
     "the floor should hold once reached",
   );
 });
 
-test("a both-miss costs BOTH players a life and does NOT tighten the window", () => {
+test("a both-miss costs BOTH players a life and advances to the next tile", () => {
   const run = createRun();
-  const before = run.windowMs;
   const after = resolveBothMiss(run, run.deadlineMs + TAP_GRACE_MS + 1);
   assert.equal(after.p1Lives, STARTING_LIVES - 1, "a no-tap tile is a miss for both");
   assert.equal(after.p2Lives, STARTING_LIVES - 1);
-  assert.equal(after.windowMs, before, "a miss must not speed the match up");
+  assert.equal(
+    after.windowMs,
+    tileWindowForIndex({ seed: SEED, index: 1 }),
+    "the next tile carries its own authoritative window",
+  );
   assert.equal(after.log.length, 1);
   assert.equal(after.log[0].outcome, "both_miss");
   assert.equal(after.log[0].reactionMs, null);
@@ -601,7 +618,7 @@ test("one shared resolution path handles claims, misses and the bot", () => {
     store.includes("decideSurvivalResult({"),
     "the result must come from the shared survival decision",
   );
-  assert.ok(store.includes("tileWindowMs(p1Tiles + p2Tiles)"));
+  assert.ok(store.includes("tileWindowForIndex({"));
   assert.ok(store.includes("applyMissesToLives({"));
 });
 
@@ -617,7 +634,7 @@ test("the bot's tap is an INSTANT inside the tile's window, not a request", () =
   // The plan carries the instant the bot tapped, derived from the same live
   // window a human is graded against…
   assert.ok(aiPlanBody.includes("chooseAiClaim({"));
-  assert.ok(aiPlanBody.includes("tileWindowMs("), "the plan must use the live window");
+  assert.ok(aiPlanBody.includes("currentWindowMs("), "the plan must use the tile's own window");
   assert.ok(
     aiPlanBody.includes("if (!plan.claims || plan.dueAtMs == null) return null;"),
     "a declined plan is not a claim at all",

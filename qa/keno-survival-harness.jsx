@@ -314,6 +314,17 @@ window.fetch = async (input, init) => {
       },
     });
   }
+  // The emote picker loads the viewer's loadout on mount. There is no server
+  // here, so answer it with an empty loadout instead of letting the request
+  // fail on file:// (the page would surface it as a fetch error).
+  if (url.includes("/api/user/emotes")) {
+    return json({ success: true, emotes: [], equippedEmotes: [] });
+  }
+  // Practice pause is read on mount for vs-AI matches. Nothing is frozen here,
+  // so answer with the idle state instead of letting the probe fail on file://.
+  if (url.includes("/api/practice/pause")) {
+    return json({ game: "keno-pvp", matchId: 5150, paused: false, pausedAtMs: null });
+  }
   if (realFetch) return realFetch(input, init);
   return json({ success: true });
 };

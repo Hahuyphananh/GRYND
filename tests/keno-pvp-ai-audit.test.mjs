@@ -32,7 +32,10 @@ import {
   STARTING_LIVES,
   TAP_GRACE_MS,
 } from "../src/lib/keno-pvp/constants.js";
-import { chooseAiClaim, tileWindowMs } from "../src/lib/keno-pvp/engine.js";
+import {
+  chooseAiClaim,
+  tileWindowForIndex,
+} from "../src/lib/keno-pvp/engine.js";
 
 const MODULE_MOCKING_AVAILABLE = typeof mock?.module === "function";
 const SKIP_REASON = MODULE_MOCKING_AVAILABLE
@@ -43,6 +46,8 @@ const HUMAN = "human-1";
 const TRACE = process.env.KENO_AUDIT_TRACE === "1";
 /** The bot's own seed, mirroring `playAiTurnInTransaction`. */
 const aiSeedFor = (matchId) => `keno-pvp:${matchId}:ai`;
+/** The MATCH seed the pacing (window/anticipation) is derived from. */
+const runSeedFor = (matchId) => `keno-pvp:${matchId}`;
 
 // The client's constants (src/app/casino/keno-pvp/[matchId]/PageClient.jsx).
 const AI_TURN_PROBE_OFFSETS_MS = [140, 300, 460];
@@ -289,7 +294,10 @@ async function playMatch({
     for (const offset of probeOffsetsMs) {
       schedule(world, world.clock + offset + networkLagMs, "probe", runProbe);
     }
-    const windowMs = tileWindowMs((row.p1Tiles || 0) + (row.p2Tiles || 0));
+    const windowMs = tileWindowForIndex({
+      seed: runSeedFor(matchId),
+      index: row.liveTileIndex,
+    });
     // Snapshot the tile: the tap callback fires later, after the row has
     // moved on to the next tile.
     const tile = row.liveTile;
@@ -571,7 +579,10 @@ test("AUDIT: a human tap that arrives after the bot's instant loses the TILE but
   while (guard++ < 40) {
     const row = fake.matchRow();
     if (row.status !== MATCH_STATUS.READY && row.liveTile) {
-      const windowMs = tileWindowMs((row.p1Tiles || 0) + (row.p2Tiles || 0));
+      const windowMs = tileWindowForIndex({
+        seed: runSeedFor(matchId),
+        index: row.liveTileIndex,
+      });
       plan = chooseAiClaim({
         seed: aiSeedFor(matchId),
         index: row.liveTileIndex,

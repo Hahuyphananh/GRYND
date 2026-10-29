@@ -2990,9 +2990,9 @@ export const kenoPvpMatches = pgTable(
     // tile costs you nothing. 0 = eliminated.
     p1Lives: integer("p1_lives").notNull().default(3),
     p2Lives: integer("p2_lives").notNull().default(3),
-    // Tiles each player claimed first this match. Feeds the shrinking
-    // claim window (3s − 100ms per claim, floor 0.5s) and the
-    // board-exhausted tiebreak.
+    // Tiles each player claimed first this match. Feeds the
+    // board-exhausted tiebreak (the claim window itself is derived from the
+    // tile index, not from these counters).
     p1Tiles: integer("p1_tiles").notNull().default(0),
     p2Tiles: integer("p2_tiles").notNull().default(0),
     // Per-tile scratch state for the tile CURRENTLY lit: whether each
@@ -3035,8 +3035,9 @@ export const kenoPvpMatches = pgTable(
     // Deadline of the CURRENT live tile (= live_started_at + the current
     // window). NULL when no tile is live.
     roundDeadline: timestamp("round_deadline"),
-    // Opening claim window in seconds (legacy column name; the window
-    // shrinks by 100ms per claimed tile down to 0.4s).
+    // Opening claim window in seconds (legacy column name; the live window
+    // is generated per tile by `tileWindowForIndex` — 3s base ramp with a
+    // bounded variation, floor 0.5s — and never stored here).
     roundTimerSeconds: integer("round_timer_seconds").notNull().default(2),
     // Final match bookkeeping.
     winnerId: varchar("winner_id", { length: 255 }),

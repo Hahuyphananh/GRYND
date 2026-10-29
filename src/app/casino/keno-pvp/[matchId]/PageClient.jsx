@@ -9,8 +9,9 @@
 // first costs the opponent nothing. A life is lost only for your OWN
 // miss: if you do not tap the lit tile before its window closes, you (and
 // only you) lose a life, whether the opponent took the tile or nobody
-// did. The claim window starts at 3s and tightens 100ms for every claimed
-// tile (floor 0.5s), so the match turns into a pure reaction test. A 5s
+// did. The server generates each target's window (3s base ramp, bounded
+// variation, 0.5s floor) and a short anticipation pause between targets,
+// so the pace is unpredictable but identical for both seats. A 5s
 // get-ready countdown runs before the first tile lights. Lose all your
 // lives and the match is over (both eliminated on the same tile → draw).
 //
@@ -26,6 +27,7 @@ import confetti from "canvas-confetti";
 import NavigationBar from "../../../../components/navigation-bar";
 import MatchLoading from "../../../../components/game/MatchLoading";
 import Footer from "../../../../components/Footer";
+import SoundToggle from "../../../../components/SoundToggle";
 import KenoWaitingPanel from "../../../../components/keno-pvp/KenoWaitingPanel";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import FrameAvatar from "../../../../components/FrameAvatar";
@@ -65,6 +67,10 @@ import {
   START_WINDOW_MS,
 } from "../../../../lib/keno-pvp/constants";
 import { tileWindowMs, windowRemainingMs } from "../../../../lib/keno-pvp/engine";
+import {
+  streakMilestoneAt,
+  streakStats,
+} from "../../../../lib/keno-pvp/streaks";
 import { withReducedMotion } from "../../../../lib/animations";
 import {
   useMatchSync,
@@ -78,6 +84,8 @@ import { kenoPvpDueRead } from "../../../../lib/deadlineRead";
 import { useDeadlineRead } from "../../../../hooks/useDeadlineRead";
 import {
   IconCoins,
+  IconHeart,
+  IconHeartBroken,
   IconHeartHandshake,
   IconTrophy,
   IconCircleX,
@@ -173,25 +181,73 @@ function liveStatusText({ isLive, hasLiveTile, remainingMs, viewerCanClaim, save
   return "Tap the lit tile before the window closes";
 }
 
-// Lives as pips: filled = remaining, hollow = lost. The SHAPE carries the
-// seat as well as the colour — your lives are circles, the opponent's are
-// diamonds (the same circle/diamond pair the shared seat tokens use), so the
-// two pips never differ by hue alone.
-function LivesPips({ lives, total = STARTING_LIVES, tone = "cyan" }) {
+// Lives as HEARTS: a full heart is a life still in hand, a broken faded heart
+// is one already lost. The seat is carried by colour as well as the glyph
+// (you = mint, opponent = gold) so the two bars never differ by hue alone.
+//
+// `pulseKey` changes whenever THIS seat loses a life (the page bumps it from
+// the authoritative payload, never from a local guess): the newly lost heart
+// plays its break once and the remaining hearts get a short emphasis. Reduced
+// motion renders exactly the same end state with no animation.
+function LivesPips({ lives, total = STARTING_LIVES, tone = "cyan", size = "md", pulseKey = 0 }) {
+  const shouldReduceMotion = useReducedMotion();
   const filled = Math.max(0, Math.min(total, Number(lives) || 0));
-  const color = tone === "opp" ? "bg-[#FFD700]" : "bg-[#00ffa6]";
-  const shape = tone === "opp" ? "rotate-45 rounded-[2px]" : "rounded-full";
+  const isOpp = tone === "opp";
+  const heartPx = size === "lg" ? 26 : size === "sm" ? 16 : 20;
+  const color = isOpp ? "text-[#FFD700]" : "text-[#00ffa6]";
+  const glow = isOpp
+    ? "drop-shadow-[0_0_6px_rgba(255,215,0,0.5)]"
+    : "drop-shadow-[0_0_6px_rgba(0,255,166,0.5)]";
+  // Hearts fill left to right, so the heart that has JUST been lost is the
+  // first empty one (`filled`). `pulseKey > 0` means a loss just happened.
+  const justLostIndex = pulseKey > 0 ? filled : -1;
+
   return (
-    <span className="inline-flex items-center gap-1" aria-label={`${filled} of ${total} lives left`}>
-      {Array.from({ length: total }, (_, i) => (
-        <span
-          key={i}
-          className={
-            `h-2.5 w-2.5 border ${shape} border-[color:var(--gr-outline)] ` +
-            (i < filled ? `${color}` : "bg-white/10")
-          }
-        />
-      ))}
+    <span
+      className="inline-flex items-center gap-1"
+      aria-label={`${filled} of ${total} lives left`}
+      data-lives={filled}
+    >
+      {Array.from({ length: total }, (_, i) => {
+        const isLost = i >= filled;
+        const justLost = isLost && i === justLostIndex;
+        return (
+          <motion.span
+            key={i}
+            className="relative inline-flex items-center justify-center"
+            initial={false}
+            animate={
+              shouldReduceMotion
+                ? { opacity: 1, scale: 1, rotate: 0 }
+                : justLost
+                  ? { opacity: 0.55, scale: [1.45, 0.85], rotate: [0, -16, 6] }
+                  : isLost
+                    ? { opacity: 1, scale: 1, rotate: 0 }
+                    : pulseKey > 0
+                      ? { scale: [1, 1.22, 1], opacity: 1 }
+                      : { scale: 1, opacity: 1, rotate: 0 }
+            }
+            transition={{ duration: 0.45, ease: "easeOut" }}
+          >
+            {isLost ? (
+              <IconHeartBroken
+                size={heartPx}
+                stroke={2}
+                aria-hidden="true"
+                className="text-red-400/45"
+              />
+            ) : (
+              <IconHeart
+                size={heartPx}
+                stroke={2.2}
+                aria-hidden="true"
+                fill="currentColor"
+                className={`${color} ${glow}`}
+              />
+            )}
+          </motion.span>
+        );
+      })}
     </span>
   );
 }
@@ -205,7 +261,10 @@ function LivesPips({ lives, total = STARTING_LIVES, tone = "cyan" }) {
 // prefers-reduced-motion.
 const KenoTile = memo(function KenoTile({
   num,
+  tilePx = 44,
   isLive,
+  phase = "normal",
+  ripple = false,
   savedByMe,
   liveRemainingRatio,
   claimedByMe,
@@ -214,6 +273,35 @@ const KenoTile = memo(function KenoTile({
   frozen,
   onClaim,
 }) {
+  const shouldReduceMotion = useReducedMotion();
+  // Scale the numeral with the tile so a 100px tile does not show a 14px
+  // number, while a 30px floor tile still fits two digits.
+  const numeralPx = Math.max(11, Math.round(tilePx * 0.3));
+  // The live tile's tone follows the SAME server deadline the meter uses.
+  // It is a warning colour only — the server still grades every tap.
+  // Full class strings (never interpolated): Tailwind only emits classes it
+  // can see as literals in the source.
+  const liveTone =
+    phase === "expired"
+      ? {
+          bg: "bg-[#ff4d5e]",
+          ring: "ring-[#ffe3e6]",
+          shadow:
+            "shadow-[0_0_0_2px_var(--gr-outline),0_0_18px_rgba(255,77,94,0.6),0_0_34px_rgba(255,77,94,0.5)]",
+        }
+      : phase === "urgent"
+        ? {
+            bg: "bg-[#ffb020]",
+            ring: "ring-[#fff1cf]",
+            shadow:
+              "shadow-[0_0_0_2px_var(--gr-outline),0_0_18px_rgba(255,176,32,0.6),0_0_34px_rgba(255,176,32,0.45)]",
+          }
+        : {
+            bg: "bg-[#00e5ff]",
+            ring: "ring-[#eaf6ff]",
+            shadow:
+              "shadow-[0_0_0_2px_var(--gr-outline),0_0_18px_rgba(0,229,255,0.55),0_0_34px_rgba(0,229,255,0.35)]",
+          };
   // ONE dark outline (the shared `--gr-outline`) on every tile, with the
   // state choosing only the hue. That outline is what stops a claimed green
   // tile and the neon-cyan live tile reading as two different games.
@@ -240,8 +328,9 @@ const KenoTile = memo(function KenoTile({
       "ring-2 ring-[#eaf6ff] shadow-[0_0_0_2px_var(--gr-outline),0_0_18px_rgba(0,255,166,0.5)] cursor-default";
   } else if (isLive) {
     cls =
-      "border-[color:var(--gr-legal-move)] bg-[#00e5ff] text-[#001933] font-black scale-110 " +
-      "ring-2 ring-[#eaf6ff] shadow-[0_0_0_2px_var(--gr-outline),0_0_18px_rgba(0,229,255,0.55)] cursor-pointer animate-pulse";
+      `border-[color:var(--gr-legal-move)] ${liveTone.bg} text-[#001933] font-black scale-110 ` +
+      `ring-2 ${liveTone.ring} cursor-pointer animate-pulse motion-reduce:animate-none ` +
+      `${liveTone.shadow}`;
   }
   const disabled = frozen || !isLive || savedByMe;
   return (
@@ -269,6 +358,7 @@ const KenoTile = memo(function KenoTile({
                 : `Tile ${num}`
       }
       className={`gr-focusable relative w-full aspect-square overflow-hidden flex items-center justify-center rounded-[6px] border-2 text-sm font-bold leading-none tabular-nums transition-all duration-200 touch-manipulation select-none active:scale-90 ${cls}`}
+      style={{ fontSize: `${numeralPx}px` }}
     >
       <span className="relative z-0">{num}</span>
       {/* Ownership is a SHAPE, not only a hue: a white dot in the top-right
@@ -295,6 +385,26 @@ const KenoTile = memo(function KenoTile({
           style={{ width: `${Math.max(0, Math.min(1, liveRemainingRatio)) * 100}%` }}
         />
       )}
+      {/* Brief impact ring on a CONFIRMED claim. Purely visual and started
+          after the POST already returned, so it can never delay the request
+          or the next target. */}
+      {ripple &&
+        (shouldReduceMotion ? (
+          <span
+            aria-hidden="true"
+            data-testid="keno-ripple"
+            className="pointer-events-none absolute inset-0 rounded-[6px] border-2 border-white/80"
+          />
+        ) : (
+          <motion.span
+            aria-hidden="true"
+            data-testid="keno-ripple"
+            className="pointer-events-none absolute inset-0 rounded-[6px] border-2 border-white"
+            initial={{ opacity: 0.9, scale: 0.55 }}
+            animate={{ opacity: 0, scale: 2.1 }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
+          />
+        ))}
     </button>
   );
 });
@@ -316,6 +426,70 @@ const DEADLINE_NUDGE_CUSHION_MS = 300;
 // entire window: whichever probe first lands at/after the bot's due time is
 // the one that writes the claim.
 const AI_TURN_PROBE_OFFSETS_MS = [140, 300, 460];
+
+// ── Board layout ──────────────────────────────────────────────────────────
+// Narrow phones get FIVE columns (8 rows) instead of eight 30px slivers, so a
+// tile keeps a real tap target. Anything wider gets the classic 8 × 5 board.
+const BOARD_TILE_MIN_PX = 30;
+const BOARD_TILE_MAX_PX = 104;
+
+/**
+ * Observe the board's content box. The board is sized from BOTH axes, which
+ * CSS alone cannot do (an aspect-ratio box cannot read its parent's height),
+ * so the page measures the space the flex layout actually gave the board.
+ *
+ * Returns `[box, attach]` where `attach` is a CALLBACK REF. An effect keyed on
+ * `ref.current` would run once against the loading screen (where the board does
+ * not exist yet) and never again — which left every tile on the fallback size
+ * and clipped the board on short phones. A callback ref re-runs the effect when
+ * the board actually mounts.
+ */
+function useElementBox() {
+  const [element, setElement] = useState(null);
+  const [box, setBox] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    if (!element || typeof ResizeObserver === "undefined") return undefined;
+
+    const measure = (width, height) => {
+      setBox((prev) =>
+        Math.abs(prev.width - width) < 1 && Math.abs(prev.height - height) < 1
+          ? prev
+          : { width, height },
+      );
+    };
+
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (rect) measure(rect.width, rect.height);
+    });
+    observer.observe(element);
+
+    const rect = element.getBoundingClientRect();
+    measure(rect.width, rect.height);
+    return () => observer.disconnect();
+  }, [element]);
+
+  return [box, setElement];
+}
+
+/** True below the `sm` breakpoint (where the 5-column board is used). */
+function useNarrowBoard() {
+  const [narrow, setNarrow] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return undefined;
+    }
+    const query = window.matchMedia("(max-width: 639px)");
+    const apply = () => setNarrow(query.matches);
+    apply();
+    query.addEventListener("change", apply);
+    return () => query.removeEventListener("change", apply);
+  }, []);
+
+  return narrow;
+}
 
 export default function KenoPvpMatchPage({ params }) {
   const router = useRouter();
@@ -344,6 +518,13 @@ export default function KenoPvpMatchPage({ params }) {
   const [selfReady, setSelfReady] = useState(false);
   const [flashSeat, setFlashSeat] = useState(null); // "you" | "opp" | null
   const [showResult, setShowResult] = useState(false);
+  // Mobile "collapsed sidebar" sheet. Layout state only — no match state.
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  // Feedback only. Never match state: every value below is a message about a
+  // payload the server already sent, and none of it gates a claim.
+  const [lifeEvent, setLifeEvent] = useState(null); // { text, tone }
+  const [heartPulse, setHeartPulse] = useState({ you: 0, opp: 0 });
+  const [justClaimedTile, setJustClaimedTile] = useState(null);
 
   // Synchronous in-flight guard: one tap per live tile. A ref so a second
   // tap in the same tick is dropped before it can race the first request.
@@ -360,6 +541,14 @@ export default function KenoPvpMatchPage({ params }) {
   const flashTimerRef = useRef(null);
   const tapMissTimerRef = useRef(null);
   const resultTimerRef = useRef(null);
+  const lifeEventTimerRef = useRef(null);
+  const heartPulseTimerRef = useRef(null);
+  const claimRippleTimerRef = useRef(null);
+  // Keyboard claim buffer (desktop): the digits typed so far for the live
+  // tile. Numbers above 9 need a second key, so the buffer is what turns
+  // "1" then "7" into tile 17 — and "7" alone into no claim at all.
+  const keyBufferRef = useRef("");
+  const keyBufferTimerRef = useRef(null);
   const confettiFiredRef = useRef(false);
   // Highest tile-log index already announced, so a poll/socket snapshot
   // can never replay a banner or a life-loss flash.
@@ -382,6 +571,46 @@ export default function KenoPvpMatchPage({ params }) {
     if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
     flashTimerRef.current = setTimeout(() => setFlashSeat(null), 1800);
   }, []);
+
+  /**
+   * Announce a life loss that the payload just reported. `myDrop`/`oppDrop`
+   * were derived by comparing the previous payload with this one — the client
+   * never decrements a life itself. Handles the simultaneous case (a both-miss
+   * that can eliminate both players → draw) with one message and a break on
+   * BOTH seats' hearts.
+   */
+  const announceLifeLoss = useCallback(
+    ({ myDrop, oppDrop, myLives, oppLives, oppName: rivalName }) => {
+      const both = myDrop && oppDrop;
+      const text = both
+        ? myLives === 0 && oppLives === 0
+          ? "Both eliminated — draw."
+          : `Both lost a life — you ${myLives}, ${rivalName} ${oppLives}.`
+        : myDrop
+          ? `Life lost — ${myLives} remaining.`
+          : `${rivalName} lost a life — ${oppLives} left.`;
+
+      setLifeEvent({ text, tone: myDrop || both ? "miss" : "opp" });
+      if (lifeEventTimerRef.current) clearTimeout(lifeEventTimerRef.current);
+      lifeEventTimerRef.current = setTimeout(() => {
+        lifeEventTimerRef.current = null;
+        setLifeEvent(null);
+      }, 2800);
+
+      setHeartPulse((prev) => ({
+        you: prev.you + (myDrop ? 1 : 0),
+        opp: prev.opp + (oppDrop ? 1 : 0),
+      }));
+      if (heartPulseTimerRef.current) clearTimeout(heartPulseTimerRef.current);
+      heartPulseTimerRef.current = setTimeout(
+        () => setHeartPulse({ you: 0, opp: 0 }),
+        950,
+      );
+
+      if (myDrop) playBuzz();
+    },
+    [],
+  );
 
   // Short confetti burst when YOU take the match. Fires once per match
   // (guard ref); visible because the result modal is held back ~1.2s.
@@ -408,6 +637,11 @@ export default function KenoPvpMatchPage({ params }) {
       if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
       if (tapMissTimerRef.current) clearTimeout(tapMissTimerRef.current);
       if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
+      if (lifeEventTimerRef.current) clearTimeout(lifeEventTimerRef.current);
+      if (heartPulseTimerRef.current) clearTimeout(heartPulseTimerRef.current);
+      if (claimRippleTimerRef.current) clearTimeout(claimRippleTimerRef.current);
+      if (streakTimerRef.current) clearTimeout(streakTimerRef.current);
+      if (keyBufferTimerRef.current) clearTimeout(keyBufferTimerRef.current);
       claimingRef.current = false;
     };
   }, []);
@@ -476,8 +710,18 @@ export default function KenoPvpMatchPage({ params }) {
           prev && Number(newest.p1Lives) < Number(prev.p1Lives ?? STARTING_LIVES);
         const p2Dropped =
           prev && Number(newest.p2Lives) < Number(prev.p2Lives ?? STARTING_LIVES);
-        if (m.viewerIsPlayer1 ? p1Dropped : p2Dropped) triggerSeatFlash("you");
-        else if (m.viewerIsPlayer1 ? p2Dropped : p1Dropped) triggerSeatFlash("opp");
+        const myDropped = Boolean(m.viewerIsPlayer1 ? p1Dropped : p2Dropped);
+        const oppDropped = Boolean(m.viewerIsPlayer1 ? p2Dropped : p1Dropped);
+        if (prev && (myDropped || oppDropped)) {
+          announceLifeLoss({
+            myDrop: myDropped,
+            oppDrop: oppDropped,
+            myLives: Number(m.viewerIsPlayer1 ? m.p1Lives : m.p2Lives) || 0,
+            oppLives: Number(m.viewerIsPlayer1 ? m.p2Lives : m.p1Lives) || 0,
+            oppName,
+          });
+          triggerSeatFlash(myDropped ? "you" : "opp");
+        }
       }
 
       // Result modal is held back ~1.2s so the final board + the winning
@@ -498,7 +742,7 @@ export default function KenoPvpMatchPage({ params }) {
       setLoading(false);
       setError("Can't reach the server — check your connection. Retrying…");
     }
-  }, [matchId, router, showFeed, triggerSeatFlash]);
+  }, [matchId, router, showFeed, triggerSeatFlash, announceLifeLoss]);
 
   useEffect(() => {
     if (!matchId) return;
@@ -699,6 +943,79 @@ export default function KenoPvpMatchPage({ params }) {
   // Server-view of "now": every timing comparison uses the server clock.
   const serverNow = now + clockOffset;
 
+  // ── Viewport layout ──────────────────────────────────────────────
+  // Hooks must run before the loading/empty early returns below.
+  const narrowBoard = useNarrowBoard();
+  const [boardBox, attachBoardArea] = useElementBox();
+
+  // Reaction + streak read-outs for the sidebar. Derived ONLY from the public
+  // tile log (presentation, never authority): a "streak" is how many resolved
+  // tiles in a row this seat claimed. Tiles either player can claim, so both
+  // seats may hold a streak at once.
+  const viewerStats = useMemo(() => {
+    const log = Array.isArray(match?.tileLog) ? match.tileLog : [];
+    const isP1 = Boolean(match?.viewerIsPlayer1);
+    // Streaks are replayed from the PUBLIC log by the shared helper, so the
+    // page, the tests and a historical replay always agree on the counts.
+    const runs = streakStats(log);
+    const myRun = isP1 ? runs.p1Run : runs.p2Run;
+    const oppRun = isP1 ? runs.p2Run : runs.p1Run;
+    const myBest = isP1 ? runs.p1Best : runs.p2Best;
+    const oppBest = isP1 ? runs.p2Best : runs.p1Best;
+    const num = (value) =>
+      value == null || !Number.isFinite(Number(value))
+        ? null
+        : Math.max(0, Math.round(Number(value)));
+    const last = log.length > 0 ? log[log.length - 1] : null;
+    const myLast = last ? num(isP1 ? last.p1ReactionMs : last.p2ReactionMs) : null;
+    const oppLast = last ? num(isP1 ? last.p2ReactionMs : last.p1ReactionMs) : null;
+    return {
+      myRun,
+      oppRun,
+      myBest,
+      oppBest,
+      myLast,
+      oppLast,
+      delta: myLast != null && oppLast != null ? myLast - oppLast : null,
+    };
+  }, [match?.tileLog, match?.viewerIsPlayer1]);
+
+  // ── Cosmetic streak milestones ─────────────────────────────────────
+  // Purely decorative: the run is replayed from the public log, the newest
+  // entry's INDEX is the idempotency key (a re-delivered snapshot can never
+  // double-fire), and nothing here touches a claim, a life, a deadline, the
+  // board or the result. Celebrations live in the status row and the seat
+  // cards — never over the active target — and they never block input.
+  const [streakMilestone, setStreakMilestone] = useState(null);
+  const streakEntryIndexRef = useRef(-1);
+  const streakPrimedRef = useRef(false);
+  const streakTimerRef = useRef(null);
+  // A page opened mid-match must not replay milestones it never witnessed.
+  useEffect(() => {
+    const log = Array.isArray(match?.tileLog) ? match.tileLog : [];
+    if (log.length === 0) return;
+    const newest = log[log.length - 1];
+    const index = Number(newest?.index);
+    if (!Number.isInteger(index) || index <= streakEntryIndexRef.current) return;
+    streakEntryIndexRef.current = index;
+    if (!streakPrimedRef.current) {
+      streakPrimedRef.current = true;
+      return;
+    }
+    const hits = streakMilestoneAt(log);
+    if (hits.length === 0) return;
+    const viewerSeat = match?.viewerIsPlayer1 ? "p1" : "p2";
+    const hit = hits.find((h) => h.seat === viewerSeat) || hits[0];
+    const seat = hit.seat === viewerSeat ? "you" : "opp";
+    setStreakMilestone({ seat, count: hit.count });
+    if (seat === "you") playGoodReveal();
+    if (streakTimerRef.current) clearTimeout(streakTimerRef.current);
+    streakTimerRef.current = setTimeout(() => {
+      streakTimerRef.current = null;
+      setStreakMilestone(null);
+    }, 1800);
+  }, [match?.tileLog, match?.viewerIsPlayer1]);
+
   useEffect(() => {
     setLoading(false);
   }, [match]);
@@ -713,6 +1030,18 @@ export default function KenoPvpMatchPage({ params }) {
     : 0;
   const remainingSec = remainingMs / 1000;
   const remainingRatio = windowMs > 0 ? remainingMs / windowMs : 0;
+  // Countdown warning phase. Derived ONLY from the server deadline and the
+  // server clock (`remainingMs`), so it is a colour hint and nothing more:
+  // the server still grades every tap against `liveDeadline + tapGraceMs`,
+  // and no client-side deadline is created.
+  const windowExpired = Boolean(isLive && liveTile != null && remainingMs <= 0);
+  const windowUrgent = Boolean(
+    isLive &&
+      liveTile != null &&
+      !windowExpired &&
+      (remainingRatio <= 0.4 || remainingMs <= 500),
+  );
+  const windowPhase = windowExpired ? "expired" : windowUrgent ? "urgent" : "normal";
   // This viewer has already tapped the tile that is lit RIGHT NOW. The tile
   // stays lit for the rest of its window — the other player may still save
   // themselves — so the board has to say so instead of looking stuck.
@@ -829,6 +1158,14 @@ export default function KenoPvpMatchPage({ params }) {
           return;
         }
         playGoodReveal();
+        // Confirmed by the server. Start the impact ring here (never before
+        // the response) so feedback can't delay the request or the next tile.
+        setJustClaimedTile(tileNumber);
+        if (claimRippleTimerRef.current) clearTimeout(claimRippleTimerRef.current);
+        claimRippleTimerRef.current = setTimeout(() => {
+          claimRippleTimerRef.current = null;
+          setJustClaimedTile(null);
+        }, 650);
         posthog?.capture("keno_pvp_claimed", {
           match_id: matchId,
           tile: tileNumber,
@@ -858,6 +1195,65 @@ export default function KenoPvpMatchPage({ params }) {
     },
     [matchId, match?.liveTile, match?.liveDeadline, match?.tapGraceMs, match?.isAi, clockOffset, fetchStatus, posthog, socket],
   );
+
+  // ── E. Desktop keyboard claim ───────────────────────────────────────
+  // Typing the lit tile's number runs the SAME validated claim as a tap
+  // (`doClaim`): the server clock, the tile-identity check, the per-tile
+  // in-flight guard and the server's grading all still apply, and nothing is
+  // optimistic. Numbers above 9 are buffered ("1" then "7" → 17). Ignored
+  // while any overlay is open, and never intercepted inside a text field.
+  useEffect(() => {
+    if (!isLive || !match?.viewerCanClaim || paused) return undefined;
+    const live = match?.liveTile == null ? "" : String(match.liveTile);
+    if (!live) return undefined;
+
+    const onKeyDown = (event) => {
+      if (event.defaultPrevented || event.repeat) return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (!/^[0-9]$/.test(event.key)) return;
+      if (showRules || detailsOpen || showResult) return;
+      if (event.target instanceof HTMLElement) {
+        if (event.target.isContentEditable) return;
+        if (/^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName)) return;
+      }
+      if (typeof document !== "undefined" && document.querySelector('[role="dialog"]')) {
+        return;
+      }
+
+      const next = `${keyBufferRef.current}${event.key}`;
+      if (next === live) {
+        keyBufferRef.current = "";
+        if (keyBufferTimerRef.current) clearTimeout(keyBufferTimerRef.current);
+        keyBufferTimerRef.current = null;
+        event.preventDefault();
+        doClaim(Number(live));
+        return;
+      }
+      if (live.startsWith(next)) {
+        keyBufferRef.current = next;
+        if (keyBufferTimerRef.current) clearTimeout(keyBufferTimerRef.current);
+        keyBufferTimerRef.current = setTimeout(() => {
+          keyBufferTimerRef.current = null;
+          keyBufferRef.current = "";
+        }, 1200);
+        return;
+      }
+      // Not a prefix of the live tile: restart from this key, never claim.
+      keyBufferRef.current = live.startsWith(event.key) ? event.key : "";
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [
+    isLive,
+    match?.viewerCanClaim,
+    match?.liveTile,
+    paused,
+    showRules,
+    detailsOpen,
+    showResult,
+    doClaim,
+  ]);
 
   const goToLobby = useCallback(() => {
     if (leaving) return;
@@ -985,8 +1381,35 @@ export default function KenoPvpMatchPage({ params }) {
     viewerCanClaim: match.viewerCanClaim,
   });
 
+  // ── Match layout: the board is sized from BOTH available axes ────
+  // Width and height are used together, so a short laptop shrinks the tiles
+  // instead of pushing the controls off-screen, and a phone gets real 44px
+  // targets from five columns rather than eight slivers.
+  const boardCols = narrowBoard ? 5 : 8;
+  const boardRows = Math.ceil(KENO_NUMBERS.length / boardCols);
+  const boardGap = narrowBoard ? 5 : 8;
+  const measuredTile = Math.floor(
+    Math.min(
+      (boardBox.width - boardGap * (boardCols - 1)) / boardCols,
+      (boardBox.height - boardGap * (boardRows - 1)) / boardRows,
+    ),
+  );
+  const hasBoardMeasurement = Number.isFinite(measuredTile) && measuredTile > 0;
+  const tilePx = Math.max(
+    BOARD_TILE_MIN_PX,
+    Math.min(
+      BOARD_TILE_MAX_PX,
+      hasBoardMeasurement ? measuredTile : narrowBoard ? 44 : 64,
+    ),
+  );
+  // Only a very short window (where even the 30px floor cannot fit) lets the
+  // board area scroll; every normal viewport fits without one.
+  const boardScrolls = hasBoardMeasurement && measuredTile < BOARD_TILE_MIN_PX;
+
   // ── Scoreboard: lives + tiles claimed, per seat ────────────────────
-  const seatCard = (side) => {
+  // ONE card shape renders in the desktop sidebar AND the mobile strip, so the
+  // two layouts can never disagree about a player's lives or tiles.
+  const seatCard = (side, compact = false) => {
     const isMe = side === "you";
     const lives = isMe ? myLives : oppLives;
     const tiles = isMe ? myTiles : oppTiles;
@@ -994,369 +1417,613 @@ export default function KenoPvpMatchPage({ params }) {
     const summary = isMe ? mySeatSummary : oppSeatSummary;
     const nameColor = isMe ? myNameColor : oppNameColor;
     const nameEffect = isMe ? myNameEffect : oppNameEffect;
+    const streak = isMe ? viewerStats.myRun : viewerStats.oppRun;
     const flashing = flashSeat === (isMe ? "you" : "opp");
     return (
       <div
         className={
-          "relative flex-1 rounded-xl border px-3 py-2 transition-colors " +
+          "relative flex min-w-0 flex-1 items-center gap-2 rounded-xl border px-2 py-1.5 transition-colors " +
           (isMe
             ? "border-[#00ffa6]/40 bg-[#00ffa6]/5"
             : "border-[#FFD700]/40 bg-[#FFD700]/5") +
-          (flashing ? " ring-2 ring-white/70" : "")
+          (flashing ? " ring-2 ring-white/70" : "") +
+          (streakMilestone?.seat === (isMe ? "you" : "opp")
+            ? " ring-2 ring-[#00e5ff]/70"
+            : "")
         }
       >
-        <div className="flex items-center gap-2">
-          <FrameAvatar
-            frame={summary?.profileFrame || null}
-            iconKey={summary?.iconKey || null}
-            name={name}
-            isGuest={Boolean(summary?.isGuest)}
-            size="h-7 w-7"
-          />
-          <div className="min-w-0 flex-1">
-            <div
-              className={`truncate text-xs font-bold ${nameEffect}`}
-              style={nameColor ? { color: nameColor } : undefined}
-            >
-              {name}
-              {isMe ? " (you)" : ""}
-            </div>
-            <div className="mt-0.5 flex items-center gap-2">
-              <LivesPips lives={lives} tone={isMe ? "cyan" : "opp"} />
-              <span className="text-[10px] font-semibold text-white/50">
-                {lives} {lives === 1 ? "life" : "lives"} · {tiles} claimed
-              </span>
-            </div>
+        <FrameAvatar
+          frame={summary?.profileFrame || null}
+          iconKey={summary?.iconKey || null}
+          name={name}
+          isGuest={Boolean(summary?.isGuest)}
+          size={compact ? "h-7 w-7" : "h-9 w-9"}
+        />
+        <div className="min-w-0 flex-1">
+          <div
+            className={`truncate font-bold ${compact ? "text-[11px]" : "text-xs"} ${nameEffect}`}
+            style={nameColor ? { color: nameColor } : undefined}
+          >
+            {name}
+            {isMe ? " (you)" : ""}
           </div>
-          <EmoteBubble emote={isMe ? myEmote : incomingEmote} />
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+            <LivesPips
+              lives={lives}
+              tone={isMe ? "cyan" : "opp"}
+              size={compact ? "sm" : "md"}
+              pulseKey={isMe ? heartPulse.you : heartPulse.opp}
+            />
+            <span className="text-[10px] font-semibold text-white/50">
+              {lives} {lives === 1 ? "life" : "lives"} · {tiles} claimed
+            </span>
+          </div>
+          {streak > 1 && (
+            <span
+              data-testid={`keno-streak-${isMe ? "you" : "opp"}`}
+              aria-label={`${name} is on a ${streak}-tile streak`}
+              className={
+                "mt-0.5 inline-flex w-fit items-center rounded-full border px-1.5 py-0.5 text-[9px] font-black tabular-nums " +
+                (streak >= 10
+                  ? "border-[#FFD700]/60 bg-[#FFD700]/15 text-[#ffe98a]"
+                  : streak >= 5
+                    ? "border-[#00e5ff]/50 bg-[#00e5ff]/12 text-[#aef7ff]"
+                    : "border-white/20 bg-white/5 text-white/70")
+              }
+            >
+              x{streak} streak
+            </span>
+          )}
         </div>
+        {!compact && <EmoteBubble emote={isMe ? myEmote : incomingEmote} />}
       </div>
     );
   };
 
-  const livesNode = (
-    <div className="mb-3 flex items-stretch gap-2">
-      {seatCard("you")}
-      {seatCard("opp")}
-    </div>
-  );
-
-  // ── The live-tile clock ────────────────────────────────────────────
-  const windowNode = (
-    <div
-      className={
-        "relative overflow-hidden rounded-2xl border p-3 text-center shadow-[0_0_25px_rgba(0,229,255,0.15)] sm:p-5 " +
-        (liveTile == null
-          ? "border-[#00e5ff]/35 bg-[#050d1f]/80"
-          : remainingSec <= 0.5
-            ? "border-red-400/60 bg-[#1a0505]/80"
-            : "border-[#00e5ff]/35 bg-[#050d1f]/80")
-      }
-      role="status"
-      aria-live="polite"
-    >
-      {liveTile == null ? (
-        <>
-          <p className="text-sm font-bold text-white/70">
-            {isLive ? "Lighting the next tile…" : statusLine || "Waiting…"}
-          </p>
-          <p className="mt-1 text-[11px] text-white/40">
-            Window next tile: {windowMs / 1000}s
-          </p>
-        </>
-      ) : (
-        <>
-          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/50">
-            {remainingSec <= 0
-              ? "Window closed"
-              : iAmSafeOnLiveTile
-                ? "You tapped it — your life is safe"
-                : "Tap the lit tile"}
-          </p>
-          <p
-            className={
-              "mt-1 text-4xl font-black tabular-nums sm:text-5xl " +
-              (iAmSafeOnLiveTile ? "text-[#00ffa6]" : "text-[#00e5ff]")
-            }
-          >
-            {Math.max(0, remainingSec).toFixed(1)}s
-          </p>
-          <p className="mt-1 text-xs font-semibold text-white/60">
-            Tile{" "}
-            <span className="font-black text-white">{liveTile}</span> · window{" "}
-            {windowMs / 1000}s ·{" "}
-            {iAmSafeOnLiveTile
-              ? `${oppName} can still tap it until the window closes`
-              : "tap it before your window closes"}
-          </p>
-          {/* Window bar — a pure data read-out (no animation), so it stays
-              readable with motion reduced. */}
-          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-            <div
-              className={
-                "h-full rounded-full transition-[width] duration-100 ease-linear " +
-                (remainingSec <= 0.5 ? "bg-red-400" : "bg-[#00e5ff]")
-              }
-              style={{ width: `${Math.max(0, Math.min(1, remainingRatio)) * 100}%` }}
-            />
-          </div>
-        </>
-      )}
-      <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[10px] text-white/40">
-        <span>
-          Lives {myLives}–{oppLives}
-        </span>
-        <span>·</span>
-        <span>
-          {match.claimedTotal} claimed · window tightens {MIN_WINDOW_MS / 1000}s →
-        </span>
-        {claiming && <span className="text-[#7cefff]">· sending…</span>}
-      </div>
-      <div className="mt-2 flex justify-center">
-        <EmotePicker
-          compact
-          hideBubbles
-          incomingEmote={incomingEmote}
-          myEmote={myEmote}
-          onSend={(emote) => sendEmote(emote)}
-        />
-      </div>
-      <AnimatePresence>
-        {tapMiss && (
-          <motion.div
-            key={tapMiss.text}
-            {...withReducedMotion(shouldReduceMotion, {
-              initial: { opacity: 0, scale: 0.7 },
-              animate: { opacity: 1, scale: 1 },
-              exit: { opacity: 0, scale: 0.7 },
-            })}
-            className="pointer-events-none absolute inset-x-0 bottom-2 z-40 flex justify-center"
-          >
-            <span className="rounded-full border border-red-400/60 bg-red-500/20 px-5 py-1.5 text-sm font-black tracking-widest text-red-200">
-              {tapMiss.text}
-            </span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-
-  // ── The resolved-tile feed ─────────────────────────────────────────
-  const feedTone = {
-    mine: "border-[#00ffa6]/50 bg-[#00ffa6]/10 text-[#7cefff]",
-    opp: "border-[#FFD700]/50 bg-[#FFD700]/10 text-[#FFD700]",
-    miss: "border-red-400/50 bg-red-500/10 text-red-200",
-  };
-  const feedNode = (
-    <AnimatePresence>
-      {feedEntry && (
-        <motion.div
-          key={`${feedEntry.text}-${match.tileLog.length}`}
+  // ── Momentum chip ──────────────────────────────────────────────────
+  // Brief, in the status row (outside the board column), so it can never
+  // cover the active target or delay the next one. Stronger tiers are
+  // louder only in weight/colour — nothing moves into the board area.
+  const milestoneNode = (
+    <AnimatePresence initial={false}>
+      {streakMilestone && (
+        <motion.span
+          key={`${streakMilestone.seat}-${streakMilestone.count}`}
+          role="status"
+          aria-live="polite"
+          data-testid="keno-streak-milestone"
           {...withReducedMotion(shouldReduceMotion, {
-            initial: { opacity: 0, y: -8 },
-            animate: { opacity: 1, y: 0 },
-            exit: { opacity: 0, y: -8 },
+            initial: { opacity: 0, scale: 0.85 },
+            animate: { opacity: 1, scale: 1 },
+            exit: { opacity: 0, scale: 0.95 },
+            transition: { duration: 0.25 },
           })}
-          className={`mb-3 rounded-lg border px-3 py-2 text-center text-sm font-semibold ${
-            feedTone[feedEntry.tone] || feedTone.miss
-          }`}
+          className={
+            "max-w-[12rem] shrink-0 truncate rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide " +
+            (streakMilestone.count >= 15
+              ? "border-white/70 bg-[#FFD700]/25 text-white shadow-[0_0_16px_rgba(255,215,0,0.55)]"
+              : streakMilestone.count >= 10
+                ? "border-[#FFD700]/70 bg-[#FFD700]/15 text-[#ffe98a] shadow-[0_0_12px_rgba(255,215,0,0.35)]"
+                : "border-[#00e5ff]/60 bg-[#00e5ff]/12 text-[#aef7ff]")
+          }
         >
-          {feedEntry.text}
-        </motion.div>
+          {streakMilestone.seat === "you"
+            ? `You ${streakMilestone.count} in a row`
+            : `${oppName} ${streakMilestone.count} in a row`}
+        </motion.span>
       )}
     </AnimatePresence>
   );
 
-  // Last few resolved tiles, newest first — the match feed under the
-  // board (public log, so it survives the 2.2s banner).
-  const recentFeed = (Array.isArray(match.tileLog) ? match.tileLog : [])
-    .slice(-5)
-    .reverse();
-
-  // ── Board ──────────────────────────────────────────────────────────
-  const boardNode = (
-    <div className="relative rounded-2xl border-2 border-[color:var(--gr-outline)] bg-[#050d1f]/70 p-3 shadow-[0_10px_0_-2px_rgba(3,8,20,0.9),inset_0_2px_0_rgba(255,255,255,0.05)] sm:p-5">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-[#7cefff]">
-          <span className="inline-flex items-center gap-1.5">
-            <PoolBallIcon size={16} className="text-[#00e5ff]" /> Keno Board 1–
-            {KENO_POOL_SIZE}
-          </span>
-        </h3>
-        <span className="text-xs text-white/50">
-          <span className="text-[#00ffa6]">{myTiles} you</span> ·{" "}
-          <span className="text-[#FFD700]">{oppTiles} {oppName}</span> ·{" "}
-          {match.claimedTotal} / {KENO_POOL_SIZE} tiles claimed
+  // ── Live-tile clock ────────────────────────────────────────────────
+  // Kept in the top bar (never in the board column) so the seconds, the tile
+  // number and the window are on screen at every width, including phones.
+  const windowNode = (
+    <div
+      role="status"
+      aria-live="polite"
+      data-testid="keno-window"
+      className={
+        "flex min-w-0 items-center gap-2 rounded-xl border px-2 py-1.5 shadow-[0_0_20px_rgba(0,229,255,0.12)] sm:gap-3 sm:px-3 " +
+        (liveTile == null
+          ? "border-[#00e5ff]/35 bg-[#050d1f]/80"
+          : windowPhase === "expired"
+            ? "border-red-400/80 bg-[#24060a]/85 motion-safe:animate-pulse"
+            : windowPhase === "urgent"
+              ? "border-amber-400/70 bg-[#1d1405]/85"
+              : "border-[#00e5ff]/35 bg-[#050d1f]/80")
+      }
+    >
+      <div className="flex shrink-0 flex-col leading-none">
+        <span
+          className={`mb-1 text-[9px] font-bold uppercase tracking-[0.16em] ${
+            windowPhase === "expired"
+              ? "text-[#ff8a97]"
+              : windowPhase === "urgent"
+                ? "text-[#ffc247]"
+                : "text-white/45"
+          }`}
+        >
+          {liveTile == null
+            ? isLive
+              ? "Lighting the next tile…"
+              : statusLine || "Waiting…"
+            : remainingSec <= 0
+              ? "Window closed"
+              : iAmSafeOnLiveTile
+                ? "You tapped it — your life is safe"
+                : "Tap the lit tile"}
+        </span>
+        <span
+          className={`text-2xl font-black tabular-nums sm:text-3xl ${
+            iAmSafeOnLiveTile
+              ? "text-[#00ffa6]"
+              : windowPhase === "expired"
+                ? "text-[#ff6b7a]"
+                : windowPhase === "urgent"
+                  ? "text-[#ffc247]"
+                  : "text-[#00e5ff]"
+          }`}
+        >
+          {liveTile == null ? "—" : `${Math.max(0, remainingSec).toFixed(1)}s`}
         </span>
       </div>
-      <div className="mx-auto grid w-full max-w-[30rem] grid-cols-8 gap-1 sm:gap-2">
-        {KENO_NUMBERS.map((num) => (
-          <KenoTile
-            key={num}
-            num={num}
-            isLive={isLive && liveTile === num && remainingMs > 0}
-            liveRemainingRatio={remainingRatio}
-            savedByMe={iAmSafeOnLiveTile && liveTile === num}
-            claimedByMe={myClaimedSet.has(num)}
-            claimedByOpp={oppClaimedSet.has(num)}
-            missed={missedSet.has(num)}
-            frozen={!match.viewerCanClaim || isFinished}
-            onClaim={doClaim}
-          />
-        ))}
-      </div>
-      <p className="mt-3 text-[11px] text-white/40">
-        <span className="text-[#00e5ff]">cyan</span> = the live tile, waiting for
-        you · <span className="text-[#00ffa6]">green</span> = you tapped it, so
-        your life is safe ·{" "}
-        <span className="text-[#FFD700]">gold</span> = {oppName} took it ·{" "}
-        <span className="text-red-300">red</span> = you missed it and lost a
-        life. A white dot in a tile&apos;s corner is yours and a gold diamond is{" "}
-        {oppName}&apos;s. Untouched tiles all look the same — the board never
-        reveals what is coming.
-      </p>
-      {recentFeed.length > 0 && (
-        <div className="mt-3 space-y-1 border-t border-[#00e5ff]/20 pt-3">
-          <h4 className="text-[11px] font-bold uppercase tracking-wider text-white/40">
-            Feed
-          </h4>
-          {recentFeed.map((entry) => {
-            const line = feedLineFor(
-              entry,
-              Boolean(match.viewerIsPlayer1),
-              oppName,
-            );
-            const tone =
-              line?.tone === "mine"
-                ? "text-[#00ffa6]"
-                : line?.tone === "opp"
-                  ? "text-[#FFD700]"
-                  : "text-red-300";
-            return (
-              <p key={`${entry.index}-${entry.tile}`} className="text-[11px]">
-                <span className="text-white/40">#{entry.index + 1}</span>{" "}
-                <span className={tone}>{line?.text}</span>
-                <span className="text-white/30"> · {(entry.windowMs || 0) / 1000}s window</span>
-              </p>
-            );
-          })}
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-[10px] font-semibold text-white/55">
+          <span className="truncate">
+            Tile{" "}
+            <span className="font-black text-white">{liveTile ?? "—"}</span> · window{" "}
+            {windowMs / 1000}s
+          </span>
+          {liveTile != null && (
+            <span className="hidden text-white/55 sm:inline">
+              {iAmSafeOnLiveTile
+                ? `${oppName} can still tap it until the window closes`
+                : "tap it before your window closes"}
+            </span>
+          )}
         </div>
+        {/* Window bar — a pure data read-out (no animation), so it stays
+            readable with motion reduced. */}
+        <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+          <div
+            className={
+              "h-full rounded-full transition-[width] duration-100 ease-linear " +
+              (windowPhase === "expired"
+                ? "bg-red-400"
+                : windowPhase === "urgent"
+                  ? "bg-amber-400"
+                  : "bg-[#00e5ff]")
+            }
+            style={{ width: `${Math.max(0, Math.min(1, remainingRatio)) * 100}%` }}
+          />
+        </div>
+      </div>
+      {claiming && (
+        <span className="hidden shrink-0 text-[10px] text-[#7cefff] sm:inline">
+          sending…
+        </span>
       )}
     </div>
   );
 
+  // ── Resolved-tile banner ───────────────────────────────────────────
+  // An OVERLAY on the board, never a block above it: a banner that grows the
+  // column would push the board (and the controls) off a short laptop screen.
+  // Last few resolved tiles, newest first — the match feed. Public log, so it
+  // is shared information (never a local guess).
+  const recentFeed = (Array.isArray(match.tileLog) ? match.tileLog : [])
+    .slice(-4)
+    .reverse();
+
+  // ── Reaction-time rivalry (server-timed) ────────────────────────────
+  // Both numbers come from the resolved tile's PUBLIC log entry, which the
+  // server wrote from its own clock. A measured reaction includes the trip
+  // from that player's device, so a gap under ~25ms is presented as even
+  // rather than declaring a winner. Shown only while that tile's feedback is
+  // on screen, in the one-line status row (never over the board).
+  const lastEntry = recentFeed[0] ?? null;
+  const msOrNull = (value) =>
+    value == null || !Number.isFinite(Number(value))
+      ? null
+      : Math.max(0, Math.round(Number(value)));
+  const lastMine = lastEntry
+    ? msOrNull(match.viewerIsPlayer1 ? lastEntry.p1ReactionMs : lastEntry.p2ReactionMs)
+    : null;
+  const lastOpp = lastEntry
+    ? msOrNull(match.viewerIsPlayer1 ? lastEntry.p2ReactionMs : lastEntry.p1ReactionMs)
+    : null;
+  const reactionChip =
+    feedEntry && lastEntry && (lastMine != null || lastOpp != null) ? (
+      <span
+        className="hidden shrink-0 items-center gap-1 sm:inline-flex"
+        title="Server-timed reaction; includes each player's network latency"
+      >
+        <span className="text-[#7dffcf]">
+          you {lastMine != null ? `~${lastMine}ms` : "—"}
+        </span>
+        <span className="text-white/25">vs</span>
+        <span className="text-[#ffe98a]">
+          {lastOpp != null ? `~${lastOpp}ms` : "—"}
+        </span>
+        {lastMine != null && lastOpp != null && (
+          <span className="text-white/35">
+            {Math.abs(lastMine - lastOpp) <= 25
+              ? "even"
+              : lastMine < lastOpp
+                ? `${lastOpp - lastMine}ms faster`
+                : `${lastMine - lastOpp}ms slower`}
+          </span>
+        )}
+      </span>
+    ) : null;
+
   const pauseNode = practicePause.canPause ? (
-    <div className="mt-2 flex justify-center">
-      <PracticePauseChip
-        paused={paused}
-        busy={practicePause.busy}
-        onToggle={() => void practicePause.toggle()}
-        testId="keno-pvp-pause"
-      />
+    <PracticePauseChip
+      paused={paused}
+      busy={practicePause.busy}
+      onToggle={() => void practicePause.toggle()}
+      testId="keno-pvp-pause"
+    />
+  ) : null;
+
+  const resignNode = isLive ? (
+    <button
+      type="button"
+      onClick={resignMatch}
+      disabled={leaving}
+      className="w-full rounded-lg border border-red-400/30 bg-red-500/10 px-3 py-1.5 text-[11px] font-bold text-red-300 transition hover:border-red-400/50 hover:text-red-200 disabled:opacity-50"
+    >
+      {leaving ? "Resigning…" : "Resign"}
+    </button>
+  ) : null;
+
+  // ── Reaction + streak read-outs (secondary information) ────────────
+  // Both come from the PUBLIC tile log, so neither can disagree with the
+  // server; neither is ever used to grade anything.
+  const reactionNode = (
+    <div className="space-y-1">
+      <div className="flex items-baseline justify-between gap-2 text-[11px]">
+        <span className="text-white/60">You</span>
+        <span className="font-mono font-bold text-[#7dffcf]">
+          {viewerStats.myLast != null ? `~${viewerStats.myLast}ms` : "—"}
+        </span>
+      </div>
+      <div className="flex items-baseline justify-between gap-2 text-[11px]">
+        <span className="text-white/60">{oppName}</span>
+        <span className="font-mono font-bold text-[#ffe98a]">
+          {viewerStats.oppLast != null ? `~${viewerStats.oppLast}ms` : "—"}
+        </span>
+      </div>
+      <p className="text-[10px] text-white/60">
+        {viewerStats.delta == null
+          ? "Needs both players' timings"
+          : Math.abs(viewerStats.delta) <= 25
+            ? "Too close to call"
+            : viewerStats.delta < 0
+              ? `~${Math.abs(viewerStats.delta)}ms faster than ${oppName}`
+              : `~${viewerStats.delta}ms slower than ${oppName}`}
+      </p>
+      <p className="text-[9px] text-white/45">
+        Server-timed · includes network latency
+      </p>
+    </div>
+  );
+
+  const streakNode = (
+    <div className="space-y-1 text-[11px]">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-white/60">You</span>
+        <span className="font-bold text-[#7dffcf]">
+          {viewerStats.myRun} now · best {viewerStats.myBest}
+        </span>
+      </div>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-white/60">{oppName}</span>
+        <span className="font-bold text-[#ffe98a]">
+          {viewerStats.oppRun} now · best {viewerStats.oppBest}
+        </span>
+      </div>
+    </div>
+  );
+
+  const feedListNode = (limit = 3) => {
+    const entries = recentFeed.slice(0, limit);
+    if (entries.length === 0) {
+      return <p className="text-[10px] text-white/50">No tiles resolved yet.</p>;
+    }
+    return (
+      <div className="space-y-1">
+        {entries.map((entry) => {
+          const line = feedLineFor(entry, Boolean(match.viewerIsPlayer1), oppName);
+          const tone =
+            line?.tone === "mine"
+              ? "text-[#00ffa6]"
+              : line?.tone === "opp"
+                ? "text-[#FFD700]"
+                : "text-red-300";
+          return (
+            <p key={`${entry.index}-${entry.tile}`} className="truncate text-[10px]">
+              <span className="text-white/50">#{entry.index + 1}</span>{" "}
+              <span className={tone}>{line?.text}</span>
+              <span className="text-white/45"> · {(entry.windowMs || 0) / 1000}s</span>
+            </p>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const rulesButton = (label = "How to play") => (
+    <button
+      type="button"
+      onClick={() => setShowRules(true)}
+      aria-label={label}
+      title={label}
+      className="h-8 w-8 shrink-0 rounded-lg border border-[#00e5ff]/40 bg-[#0b224f]/70 text-sm font-bold text-[#7cefff] transition hover:border-[#00e5ff]/80 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+    >
+      ?
+    </button>
+  );
+
+  const detailsButton = (
+    <button
+      type="button"
+      onClick={() => setDetailsOpen((open) => !open)}
+      aria-expanded={detailsOpen}
+      aria-controls="keno-match-details"
+      aria-label={detailsOpen ? "Close match details" : "Match details"}
+      className="shrink-0 rounded-lg border border-[#00e5ff]/40 bg-[#0b224f]/70 px-2.5 py-1.5 text-[11px] font-bold text-[#7cefff] transition hover:border-[#00e5ff]/80 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] lg:hidden"
+    >
+      {detailsOpen ? "Close" : "Details"}
+    </button>
+  );
+
+  const errorNode = error ? (
+    <div className="shrink-0 rounded-lg border border-red-400/40 bg-red-900/30 px-3 py-1.5 text-[11px] text-red-200">
+      {error}
     </div>
   ) : null;
 
-  const leaveNode =
-    !isFinished && !isCancelled && !isWaiting ? (
-      <div className="flex justify-center">
-        <button
-          onClick={resignMatch}
-          disabled={leaving}
-          className="px-4 py-2 rounded-lg text-xs text-red-300 border border-red-400/30 bg-red-500/10 hover:text-red-200 hover:border-red-400/50 transition disabled:opacity-50"
-        >
-          {leaving ? "Resigning…" : "Resign"}
-        </button>
-      </div>
-    ) : null;
+  const rulesNode = (
+    <AnimatePresence>
+      {showRules && <RulesModal onClose={() => setShowRules(false)} />}
+    </AnimatePresence>
+  );
 
+  const titleNode = (
+    <div className="flex min-w-0 items-center gap-2">
+      <h1 className="logo-text flex min-w-0 items-center gap-1.5 truncate text-base font-black uppercase tracking-[0.06em] text-[#7cefff] drop-shadow-[0_0_14px_rgba(0,229,255,0.4)] sm:text-lg">
+        <PoolBallIcon size={20} className="text-[#00e5ff]" /> Keno Survival Duel
+      </h1>
+      <span className="hidden shrink-0 items-center gap-1 text-[10px] font-semibold text-white/45 sm:inline-flex">
+        {STARTING_LIVES} lives · stake
+        <span className="font-bold text-white/80">
+          {match.stakeAmount.toLocaleString()}
+        </span>
+        <IconCoins size={11} />
+      </span>
+    </div>
+  );
+
+  // ── Waiting / ready / cancelled ────────────────────────────────────
+  // No board exists yet, so these keep the normal document flow (the waiting
+  // panel is taller than a phone viewport at its smallest). The viewport-
+  // filling shell below only mounts for a real run.
+  if (!isLive && !isFinished) {
+    return (
+      <>
+        <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-16 text-white sm:px-6 sm:pt-20 md:pb-8 md:pt-24">
+          <NavigationBar currentPath="/casino" />
+          <GameSessionHost
+            autoStart={false}
+            autoStop={isFinished || isCancelled}
+            gameLabel="keno"
+          >
+            <div className="mx-auto mt-4 max-w-3xl">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                {titleNode}
+                <div className="flex items-center gap-2">
+                  {rulesButton()}
+                  {pauseNode}
+                </div>
+              </div>
+              {rulesNode}
+              {errorNode}
+              {waitingPanelNode}
+              {isCancelled && (
+                <div className="rounded-2xl border border-red-400/30 bg-[#0b224f]/85 p-10 text-center">
+                  <p className="mb-3">
+                    <IconCircleX size={36} className="text-red-400" />
+                  </p>
+                  <h2 className="text-xl font-bold mb-2">Match cancelled</h2>
+                  <p className="text-sm text-white/60 mb-6">
+                    Your stake was refunded.
+                  </p>
+                </div>
+              )}
+              <Footer />
+            </div>
+          </GameSessionHost>
+        </div>
+        <PracticePauseOverlay
+          paused={paused}
+          busy={practicePause.busy}
+          onResume={() => void practicePause.toggle()}
+          testId="keno-pvp-pause-overlay"
+        />
+      </>
+    );
+  }
+
+  // ── Live / finished: the viewport-filling match shell ──────────────
+  // Height is 100dvh minus the fixed navbar and the bottom chrome (plus the
+  // safe-area inset), so nothing here needs a page scroll: the board column
+  // takes every pixel that is left and the tiles are sized from BOTH axes.
   return (
     <>
-      <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
+      <div className="relative flex h-[100dvh] flex-col overflow-hidden bg-gradient-to-br from-[#001933] to-[#000d1a] text-white">
         <NavigationBar currentPath="/casino" />
-
-        {/* Only the actual match content is recorded — the matchmaking
-            takeover and nav sit outside the shared GameSessionHost
-            recording viewport. */}
         <GameSessionHost
           autoStart={isLive}
           autoStop={isFinished || isCancelled}
           gameLabel="keno"
         >
-          {<>
-                <div className="mx-auto mt-4 max-w-5xl">
-                  {/* Header */}
-                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3 sm:mb-4">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-[#00e5ff] to-[#00ffa6]">
-                          <span className="inline-flex items-center gap-2">
-                            <PoolBallIcon size={28} className="text-[#00e5ff]" /> Keno
-                            Survival Duel
-                          </span>
-                        </h1>
-                        <button
-                          onClick={() => setShowRules(true)}
-                          className="h-7 w-7 shrink-0 rounded-full border border-[#00e5ff]/40 bg-[#0b224f]/70 text-sm font-bold text-[#7cefff] transition hover:border-[#00e5ff]/80 hover:text-white"
-                          aria-label="How to play"
-                          title="How to play"
-                        >
-                          ?
-                        </button>
-                      </div>
-                      <p className="text-xs text-white/50 mt-1">
-                        {STARTING_LIVES} lives each · stake{" "}
-                        {match.stakeAmount.toLocaleString()}{" "}
-                        <IconCoins size={12} className="inline" /> · survive the
-                        shrinking window
-                      </p>
-                    </div>
-                  </div>
+          <div className="mx-auto flex h-full min-h-0 w-full max-w-[1700px] flex-col gap-1.5 px-2 pb-[calc(5rem+env(safe-area-inset-bottom))] pt-16 sm:gap-2 sm:px-4 sm:pt-20 md:pb-3 md:pt-24">
+            {/* Top bar: identity, the live-tile clock, the always-reachable
+                commands. */}
+            <div className="flex shrink-0 items-center gap-2">
+              <div className="hidden min-w-0 flex-1 lg:flex">{titleNode}</div>
+              <div className="min-w-0 flex-1 lg:flex-[1.4]">{windowNode}</div>
+              <div className="flex shrink-0 items-center gap-1.5">
+                {rulesButton()}
+                {detailsButton}
+              </div>
+            </div>
 
-                  <AnimatePresence>
-                    {showRules && <RulesModal onClose={() => setShowRules(false)} />}
-                  </AnimatePresence>
+            {errorNode}
 
-                  {error && (
-                    <div className="mb-3 rounded-lg border border-red-400/40 bg-red-900/30 px-3 py-2 text-sm text-red-200">
-                      {error}
-                    </div>
-                  )}
-
-                  {waitingPanelNode}
-
-                  {(isLive || isFinished) && (
-                    <div className="space-y-3 sm:space-y-4">
-                      {livesNode}
-                      {feedNode}
-                      {windowNode}
-                      {boardNode}
-                    </div>
-                  )}
-
-                  {isCancelled && (
-                    <div className="rounded-2xl border border-red-400/30 bg-[#0b224f]/85 p-10 text-center">
-                      <p className="mb-3">
-                        <IconCircleX size={36} className="text-red-400" />
-                      </p>
-                      <h2 className="text-xl font-bold mb-2">Match cancelled</h2>
-                      <p className="text-sm text-white/60 mb-6">
-                        Your stake was refunded.
-                      </p>
-                    </div>
-                  )}
-
-                  {pauseNode}
-                  {leaveNode && <div className="mt-4">{leaveNode}</div>}
-
-                  <Footer />
+            <div className="flex min-h-0 flex-1 gap-2 sm:gap-3">
+              <main className="flex min-h-0 min-w-0 flex-1 flex-col gap-1.5 sm:gap-2">
+                {/* Mobile status strip: both seats' lives stay visible while
+                    the details sheet is closed. */}
+                <div className="flex shrink-0 items-stretch gap-1.5 lg:hidden">
+                  {seatCard("you", true)}
+                  {seatCard("opp", true)}
                 </div>
-              </>}
 
-          {/* ── FINISHED: end-of-match result screen ──────────────────
-              Mounted INSIDE GameSessionHost as a sibling of the game view,
-              so the WIN/LOSS panel is part of the recording. showResult
-              lands 1.2s after the finish, inside the auto-stop grace
-              period, so it is captured. */}
+                {/* The board: sized from the measured box, centered, and the
+                    only thing that grows/shrinks with the viewport. */}
+                <div
+                  ref={attachBoardArea}
+                  className={
+                    "relative flex min-h-0 flex-1 items-center justify-center rounded-2xl border-2 border-[color:var(--gr-outline)] bg-[#050d1f]/70 p-1.5 shadow-[0_10px_0_-2px_rgba(3,8,20,0.9),inset_0_2px_0_rgba(255,255,255,0.05)] sm:p-2.5 " +
+                    (boardScrolls ? "overflow-y-auto" : "overflow-hidden")
+                  }
+                >
+                  <div
+                    className="grid"
+                    style={{
+                      gridTemplateColumns: `repeat(${boardCols}, ${tilePx}px)`,
+                      gridAutoRows: `${tilePx}px`,
+                      gap: `${boardGap}px`,
+                    }}
+                  >
+                    {KENO_NUMBERS.map((num) => (
+                      <KenoTile
+                        key={num}
+                        num={num}
+                        tilePx={tilePx}
+                        isLive={isLive && liveTile === num && remainingMs > 0}
+                        phase={liveTile === num ? windowPhase : "normal"}
+                        ripple={justClaimedTile === num}
+                        liveRemainingRatio={remainingRatio}
+                        savedByMe={iAmSafeOnLiveTile && liveTile === num}
+                        claimedByMe={myClaimedSet.has(num)}
+                        claimedByOpp={oppClaimedSet.has(num)}
+                        missed={missedSet.has(num)}
+                        frozen={!match.viewerCanClaim || isFinished}
+                        onClaim={doClaim}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* One-line feedback + counters. Priority: a rejected tap,
+                    then a life-loss announcement (the authoritative one),
+                    then the resolved-tile feed, then the standing hint. It
+                    never sits over the board, so it can't hide the next tile. */}
+                <div className="flex shrink-0 items-center justify-between gap-2 px-1 text-[10px]">
+                  <span
+                    aria-live="polite"
+                    data-testid="keno-feedback"
+                    className={
+                      "min-w-0 truncate font-semibold " +
+                      (tapMiss
+                        ? "text-red-300"
+                        : lifeEvent
+                          ? lifeEvent.tone === "opp"
+                            ? "text-[#ffe98a]"
+                            : "text-red-300"                            : feedEntry
+                              ? "text-[#d8fbff]"
+                              : "text-white/60")
+                    }
+                  >
+                    {tapMiss?.text ||
+                      lifeEvent?.text ||
+                      feedEntry?.text ||
+                      statusLine ||
+                      "Waiting for the next tile…"}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2 tabular-nums text-white/55">
+                    {milestoneNode}
+                    {reactionChip}
+                    <span>
+                      {match.claimedTotal} / {KENO_POOL_SIZE} tiles
+                    </span>
+                  </span>
+                </div>
+              </main>
+
+              {/* Desktop sidebar: persistent opponent/lives/reaction/streak
+                  information plus every secondary command. */}
+              <aside className="hidden w-[17.5rem] shrink-0 flex-col gap-2 overflow-hidden lg:flex xl:w-[19.5rem]">
+                <section className="rounded-2xl border border-[#00e5ff]/20 bg-[#04101f]/85 p-2">
+                  <h2 className="px-1 pb-1 text-[9px] font-bold uppercase tracking-[0.2em] text-white/55">
+                    Players
+                  </h2>
+                  <div className="flex flex-col gap-1.5">
+                    {seatCard("you")}
+                    {seatCard("opp")}
+                  </div>
+                </section>
+
+                <section className="rounded-2xl border border-[#00e5ff]/20 bg-[#04101f]/85 p-2">
+                  <h2 className="px-1 pb-1 text-[9px] font-bold uppercase tracking-[0.2em] text-white/55">
+                    Last reaction
+                  </h2>
+                  {reactionNode}
+                </section>
+
+                <section className="rounded-2xl border border-[#00e5ff]/20 bg-[#04101f]/85 p-2">
+                  <h2 className="px-1 pb-1 text-[9px] font-bold uppercase tracking-[0.2em] text-white/55">
+                    Streaks
+                  </h2>
+                  {streakNode}
+                </section>
+
+                {/* Secondary history — hidden on short laptops so the command
+                    row below can never be pushed out of view. */}
+                <section className="hidden min-h-0 flex-1 flex-col rounded-2xl border border-[#00e5ff]/20 bg-[#04101f]/85 p-2 [@media(min-height:820px)]:flex">
+                  <h2 className="px-1 pb-1 text-[9px] font-bold uppercase tracking-[0.2em] text-white/55">
+                    Feed
+                  </h2>
+                  {feedListNode(3)}
+                </section>
+
+                <section className="rounded-2xl border border-[#00e5ff]/20 bg-[#04101f]/85 p-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <SoundToggle className="!px-2 !py-1.5" />
+                    <EmotePicker
+                      compact
+                      hideBubbles
+                      incomingEmote={incomingEmote}
+                      myEmote={myEmote}
+                      onSend={(emote) => sendEmote(emote)}
+                    />
+                  </div>
+                  <p className="mt-1.5 text-center text-[9px] text-white/55">
+                    Keyboard: type the lit tile&apos;s number
+                  </p>
+                  <div className="mt-1.5 flex flex-col gap-1.5">
+                    {resignNode}
+                    {pauseNode && <div className="flex justify-center">{pauseNode}</div>}
+                  </div>
+                </section>
+              </aside>
+            </div>
+          </div>
+
           {isFinished && showResult && (
             <ResultModal
               match={match}
@@ -1373,6 +2040,71 @@ export default function KenoPvpMatchPage({ params }) {
         </GameSessionHost>
       </div>
 
+      {/* Mobile details sheet — the collapsed sidebar. Fixed, so opening it
+          never reflows the board; it has its own scroll only when the phone is
+          too short to show the rows. */}
+      {detailsOpen && (
+        <>
+          <button
+            type="button"
+            aria-label="Close match details"
+            onClick={() => setDetailsOpen(false)}
+            className="fixed inset-0 z-40 bg-black/55 lg:hidden"
+          />
+          <div
+            id="keno-match-details"
+            role="dialog"
+            aria-label="Match details"
+            className="fixed inset-x-2 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-50 max-h-[64dvh] space-y-2 overflow-y-auto rounded-2xl border border-[#00e5ff]/40 bg-[#04101f]/95 p-3 text-white shadow-[0_0_30px_rgba(0,229,255,0.22)] backdrop-blur lg:hidden"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-xs font-black uppercase tracking-wider text-[#7cefff]">
+                Match details
+              </h2>
+              <button
+                type="button"
+                onClick={() => setDetailsOpen(false)}
+                aria-label="Close match details"
+                className="rounded-lg border border-white/15 px-2 py-1 text-[11px] font-bold text-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+              >
+                Close
+              </button>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-black/30 p-2">
+              <p className="pb-1 text-[9px] font-bold uppercase tracking-[0.2em] text-white/35">
+                Last reaction
+              </p>
+              {reactionNode}
+            </div>
+            <div className="rounded-xl border border-white/10 bg-black/30 p-2">
+              <p className="pb-1 text-[9px] font-bold uppercase tracking-[0.2em] text-white/35">
+                Streaks
+              </p>
+              {streakNode}
+            </div>
+            <div className="rounded-xl border border-white/10 bg-black/30 p-2">
+              <p className="pb-1 text-[9px] font-bold uppercase tracking-[0.2em] text-white/35">
+                Feed
+              </p>
+              {feedListNode(2)}
+            </div>
+            <div className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/30 p-2">
+              <SoundToggle />
+              <EmotePicker
+                compact
+                hideBubbles
+                incomingEmote={incomingEmote}
+                myEmote={myEmote}
+                onSend={(emote) => sendEmote(emote)}
+              />
+              {pauseNode}
+            </div>
+            {resignNode}
+          </div>
+        </>
+      )}
+
+      {rulesNode}
       <PracticePauseOverlay
         paused={paused}
         busy={practicePause.busy}
@@ -1448,6 +2180,11 @@ function RulesModal({ onClose }) {
             <span className="font-semibold text-red-300">only if YOU miss</span> — i.e.
             you don't tap the lit tile before its window closes. It makes no
             difference whether your opponent took it.
+          </li>
+          <li>
+            On desktop you can also press the{" "}
+            <span className="font-semibold text-white">number keys</span> for the lit
+            tile.
           </li>
           <li>
             If neither player taps in time,{" "}

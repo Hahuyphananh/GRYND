@@ -18,7 +18,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { KENO_POOL_SIZE, MIN_WINDOW_MS, START_WINDOW_MS } from "../src/lib/keno-pvp/constants.js";
-import { chooseAiClaim, tileWindowMs } from "../src/lib/keno-pvp/engine.js";
+import {
+  chooseAiClaim,
+  tileWindowForIndex,
+} from "../src/lib/keno-pvp/engine.js";
 
 const SEED = "keno-pvp:42:ai";
 const STARTED_MS = 1_000_000;
@@ -33,7 +36,7 @@ test("the bot's reaction is always slower than the human's floor — and inside 
   let skipped = 0;
   for (let index = 0; index < KENO_POOL_SIZE; index += 1) {
     const tile = (index % KENO_POOL_SIZE) + 1;
-    const windowMs = tileWindowMs(index);
+    const windowMs = tileWindowForIndex({ seed: SEED, index });
     const plan = chooseAiClaim({
       seed: SEED,
       index,

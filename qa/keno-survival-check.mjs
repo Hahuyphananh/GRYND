@@ -453,17 +453,17 @@ await page.evaluate((tile) => {
   );
 }, 31);
 await page.waitForFunction(
-  () => /claimed tile 31 first — you lost a life/.test(document.body.textContent || ""),
+  () => /claimed tile 31 — you missed it and lost a life/.test(document.body.textContent || ""),
   null,
   { timeout: 5000 },
 );
 check(
   "an opponent claim is announced by name",
-  /Rival claimed tile 31 first — you lost a life/.test(await text(page, "body")),
+  /Rival claimed tile 31 — you missed it and lost a life/.test(await text(page, "body")),
 );
 check(
   "…and the tile is painted as theirs",
-  (await count(page, 'button[aria-label="Tile 31 claimed by your opponent"]')) === 1,
+  (await count(page, 'button[aria-label="Tile 31 claimed by your opponent — you lost a life"]')) === 1,
 );
 
 // 7. A both-miss → announced + painted red.
@@ -486,17 +486,17 @@ await page.evaluate((tile) => {
   );
 }, 33);
 await page.waitForFunction(
-  () => /Nobody claimed tile 33/.test(document.body.textContent || ""),
+  () => /Tile 33 went unclaimed/.test(document.body.textContent || ""),
   null,
   { timeout: 5000 },
 );
 check(
   "a both-miss is announced for both players",
-  /Nobody claimed tile 33 — both lost a life/.test(await text(page, "body")),
+  /Tile 33 went unclaimed — you lost a life/.test(await text(page, "body")),
 );
 check(
   "…and the unclaimed tile is painted as missed",
-  (await count(page, 'button[aria-label="Tile 33 went unclaimed"]')) === 1,
+  (await count(page, 'button[aria-label="Tile 33 went unclaimed — you lost a life"]')) === 1,
 );
 
 // 8. Finish the match: three more claims take the opponent's last life.
@@ -848,6 +848,79 @@ const readyState = {
     JSON.stringify(rErr.slice(0, 3)),
   );
   await rctx.close();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STREAK MILESTONES — cosmetic, log-derived, never over the board
+// ═══════════════════════════════════════════════════════════════════════════
+{
+  const { context: sctx, page: spage, pageErrors: sErr } = await bootPage({
+    width: 1200,
+    height: 900,
+  });
+  await spage.evaluate(() => window.__ks.mount());
+  await spage.waitForFunction(
+    (sel) => document.querySelectorAll(sel).length === 40,
+    BOARD_TILES,
+    { timeout: 10000 },
+  );
+  // Five opponent claims in a row → a 5-in-a-row milestone for that seat.
+  for (let i = 0; i < 5; i += 1) {
+    await spage.evaluate((i) => {
+      const p = window.__ks.current;
+      window.__ks.pushLog(
+        {
+          tile: 1 + i,
+          outcome: "player2",
+          at: new Date().toISOString(),
+          p1Lives: p.p1Lives,
+          p2Lives: p.p2Lives,
+          windowMs: p.windowMs,
+          reactionMs: 260,
+          p1Claimed: false,
+          p2Claimed: true,
+        },
+        { opponentClaimed: [...(p.opponentClaimed || []), 1 + i] },
+      );
+    }, i);
+    await spage.waitForTimeout(60);
+  }
+  await spage
+    .waitForSelector('[data-testid="keno-streak-milestone"]', { timeout: 4000 })
+    .catch(() => null);
+  check(
+    "a 5-in-a-row streak shows its milestone chip",
+    (await count(spage, '[data-testid="keno-streak-milestone"]')) === 1,
+  );
+  check(
+    "the streak counter is visible on the seat card",
+    // The sidebar and the mobile strip render the same seat card, so the
+    // test id can legitimately appear twice in the DOM.
+    (await count(spage, '[data-testid="keno-streak-opp"]')) >= 1,
+  );
+  check(
+    "the milestone names the streak",
+    /in a row/.test(await text(spage, '[data-testid="keno-streak-milestone"]')),
+  );
+  check(
+    "the celebration never replaces or hides the board",
+    (await boardTiles(spage)) === 40,
+  );
+  const milestoneOverflow = await spage.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  check(
+    "the milestone fits without horizontal overflow",
+    milestoneOverflow <= 2,
+    `overflow=${milestoneOverflow}`,
+  );
+  check(
+    "the milestone phase raises no runtime errors",
+    structuralErrors(sErr).length === 0,
+    JSON.stringify(structuralErrors(sErr).slice(0, 3)),
+  );
+  await spage.screenshot({ path: join(REPORTS, "keno-survival-streak.png") });
+  await sctx.close();
 }
 
 await browser.close();

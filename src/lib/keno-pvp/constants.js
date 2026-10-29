@@ -22,8 +22,13 @@
 //     pot. If a both-miss eliminates both players at once the match ends
 //     as a DRAW (full refund, no rake).
 //   * The window starts at START_WINDOW_MS (3s) and tightens by
-//     WINDOW_STEP_MS (100ms) for every tile either player has claimed,
-//     down to MIN_WINDOW_MS (0.5s) — later tiles are pure reaction time.
+//     WINDOW_STEP_MS (100ms) per RESOLVED tile down to MIN_WINDOW_MS
+//     (0.5s) — later tiles are pure reaction time. On top of that ramp the
+//     server applies a bounded, seed-derived variation per tile (see
+//     `tileWindowForIndex` in engine.js), so the pace is not a straight
+//     line: some steps are steeper, some are plateaus or slightly
+//     forgiving. Both players always get the same tile and the same
+//     authoritative deadline.
 //   * If the board is exhausted before anyone is eliminated, the player
 //     with more lives wins (equal lives → DRAW).
 //
@@ -151,13 +156,49 @@ export const STARTING_LIVES = 3;
 // long enough to read the board and settle in, before the pace ramps up.
 export const START_WINDOW_MS = 3000;
 
-// How much the window tightens for every tile either player has CLAIMED
-// (unclaimed tiles do not speed the game up). After 25 claims the window
-// sits on its floor.
+// How much the window tightens per resolved tile in the base ramp. After
+// 25 resolved tiles the base ramp sits on its floor.
 export const WINDOW_STEP_MS = 100;
 
 // Fastest the window ever gets.
 export const MIN_WINDOW_MS = 500;
+
+// ── Randomized pacing (server-only) ──────────────────────────────────
+//
+// The per-tile window is the base ramp plus a bounded variation derived
+// from the match seed + tile index. The variation shrinks as the ramp
+// approaches its floor, so early tiles vary more than late ones (late
+// tiles are already reaction-limited) and a step can never swing far
+// enough to invert the overall difficulty curve.
+
+// Largest early-tile variation (±ms around the base ramp). Kept under half
+// of WINDOW_STEP_MS × 2 so a single step can be forgiving without ever
+// making the match get easier as a whole.
+export const KENO_WINDOW_JITTER_MAX_MS = 90;
+
+// Smallest variation, applied once the ramp is at/near its floor.
+export const KENO_WINDOW_JITTER_MIN_MS = 30;
+
+// Share of tiles that get an extra authoritative tightening on top of the
+// ramp (a "surge" step), scaled by how early the tile is.
+export const KENO_WINDOW_SURGE_CHANCE = 0.3;
+
+// Maximum extra tightening a surge can apply (at the very start of a run).
+export const KENO_WINDOW_SURGE_MS = 80;
+
+// ── Anticipation delay ───────────────────────────────────────────────
+//
+// Server-chosen pause between one tile resolving and the next one lighting.
+// Small and bounded: long enough to read the board again, short enough to
+// keep the arcade rhythm (a shorter pause than the MIN window would be
+// invisible; a longer one than MAX would read as a stall). The first tile
+// has no delay (the ready banner already covers it). While the delay runs
+// there is NO live tile at all, so neither player can see or claim the
+// upcoming target early, and the pause is identical for both seats because
+// it is derived from the match seed + tile index.
+export const ANTICIPATION_MIN_MS = 150;
+
+export const ANTICIPATION_MAX_MS = 450;
 
 // Network cushion: a tap that reaches the server this long AFTER the
 // window closed is still honoured as a tap. The player tapped while the

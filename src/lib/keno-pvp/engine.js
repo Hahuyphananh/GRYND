@@ -17,7 +17,13 @@
 // once → DRAW).
 
 import {
+  ANTICIPATION_MAX_MS,
+  ANTICIPATION_MIN_MS,
   KENO_POOL_SIZE,
+  KENO_WINDOW_JITTER_MAX_MS,
+  KENO_WINDOW_JITTER_MIN_MS,
+  KENO_WINDOW_SURGE_CHANCE,
+  KENO_WINDOW_SURGE_MS,
   MIN_WINDOW_MS,
   RESULT,
   STARTING_LIVES,
@@ -53,18 +59,76 @@ function hash32(text) {
 // ── The shrinking window ──────────────────────────────────────────────
 
 /**
- * How long the live tile stays claimable after `claimedTotal` tiles have
- * been claimed in this match. Starts at START_WINDOW_MS and tightens by
+ * The BASE ramp: how long a tile stays claimable when `claimedTotal` tiles
+ * have been claimed. Starts at START_WINDOW_MS and tightens by
  * WINDOW_STEP_MS per claim, never below MIN_WINDOW_MS.
  *
- * Both players (and the server) derive the SAME window from the same
- * public claim count, so the ring a player sees is the window the server
- * grades against.
+ * This is the un-varied line the randomized progression is built on (and
+ * the client's last-resort fallback when a payload has no window). The
+ * server never hands out this value directly any more — see
+ * `tileWindowForIndex`.
  */
 export function tileWindowMs(claimedTotal) {
   const claimed = Number(claimedTotal);
   const n = Number.isFinite(claimed) && claimed > 0 ? Math.floor(claimed) : 0;
   return Math.max(MIN_WINDOW_MS, START_WINDOW_MS - WINDOW_STEP_MS * n);
+}
+
+/**
+ * The authoritative window for tile `index` of a match — the base ramp plus
+ * a bounded, seed-derived variation, clamped to [MIN_WINDOW_MS,
+ * START_WINDOW_MS].
+ *
+ * Properties (all deliberate):
+ *   * `index 0` is exactly START_WINDOW_MS, so the opening window is
+ *     unchanged from the fixed ramp.
+ *   * The variation shrinks as the base ramp approaches MIN_WINDOW_MS, so
+ *     late tiles are not made randomly harder or easier.
+ *   * A step can tighten (sometimes extra, a "surge"), hold, or be slightly
+ *     more forgiving, so the pace is not a straight line — but the base
+ *     ramp still dominates: over any run the windows trend down and the
+ *     floor/top are never crossed.
+ *   * The value depends ONLY on (seed, index). It never looks at lives,
+ *     who is winning, or how fast either player reacted, so both seats
+ *     always get identical timing for the same tile, and a reconnect that
+ *     recomputes it lands on the same number.
+ */
+export function tileWindowForIndex({ seed = "", index = 0 } = {}) {
+  const n = Math.max(0, Math.trunc(Number(index) || 0));
+  if (n === 0) return START_WINDOW_MS;
+  const base = Math.max(MIN_WINDOW_MS, START_WINDOW_MS - WINDOW_STEP_MS * n);
+  const progress =
+    (base - MIN_WINDOW_MS) / (START_WINDOW_MS - MIN_WINDOW_MS);
+  const amplitude =
+    KENO_WINDOW_JITTER_MIN_MS +
+    (KENO_WINDOW_JITTER_MAX_MS - KENO_WINDOW_JITTER_MIN_MS) * progress;
+  const ease = (hash32(`${seed}:window:ease:${n}`) % 1000) / 1000;
+  let offset = Math.round((ease * 2 - 1) * amplitude);
+  const surge = (hash32(`${seed}:window:surge:${n}`) % 1000) / 1000;
+  if (surge < KENO_WINDOW_SURGE_CHANCE) {
+    offset -= Math.round(KENO_WINDOW_SURGE_MS * Math.max(0, progress));
+  }
+  return Math.min(
+    START_WINDOW_MS,
+    Math.max(MIN_WINDOW_MS, Math.round(base + offset)),
+  );
+}
+
+/**
+ * The authoritative anticipation pause before tile `index` may light, in ms.
+ * Bounded to [ANTICIPATION_MIN_MS, ANTICIPATION_MAX_MS]; the first tile of a
+ * run has none (the ready banner already covers it). Server-only: clients
+ * learn each delay from the authoritative match payload, never by computing
+ * it.
+ */
+export function anticipationDelayMs({ seed = "", index = 0 } = {}) {
+  const n = Math.trunc(Number(index) || 0);
+  if (n <= 0) return 0;
+  const roll = (hash32(`${seed}:anticipation:${n}`) % 1000) / 1000;
+  return (
+    ANTICIPATION_MIN_MS +
+    Math.round(roll * (ANTICIPATION_MAX_MS - ANTICIPATION_MIN_MS))
+  );
 }
 
 /** Milliseconds left in the current window (never negative). */
