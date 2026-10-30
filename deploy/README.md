@@ -238,7 +238,7 @@ Staging VM checklist (must pass before migration approval):
 
 1. `uname -m` and `node -v` → set `RELEASE_ARCH` / confirm the Node major used by the workflow.
 2. Install the two units with `ExecStart` pointing at the real `node`, plus the sudoers line.
-3. Copy `.env.production` → `grynd/env/app.env` and `realtime-server/.env` → `grynd/env/realtime.env`, both `chmod 600`, then `node deploy/release.mjs env`.
+3. Copy `.env.production` → `grynd/env/app.env` and `realtime-server/.env` → `grynd/env/realtime.env`, both `chmod 600`, then `node deploy/release.mjs env`. Runtime feature flags live in `env/app.env` too — they are read per request, so changing one needs a service restart but no rebuild. Opt-in flags that default to OFF (and therefore silently hide their surface when absent): `COIN_PURCHASES_ENABLED=1` (the /rewards coin-packs shop), `POST_MATCH_ADS_ENABLED` (post-match video ad kill switch).
 4. Run one release through `install` + `activate` with `--controller=systemd --allow-systemd`, and confirm `/api/health`, a static asset, a socket connection and a game page.
 5. Activate a deliberately broken build; confirm the automatic revert, the audit entry and that the site never served it.
 6. Roll back to the previous release; confirm the recorded actor/shas and that no rebuild happened.
