@@ -37,6 +37,7 @@ import {
 } from "../../../../components/game/PracticePause";
 import { usePracticePause } from "../../../../hooks/usePracticePause";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
+import PostMatchVideoAd from "../../../../components/ads/PostMatchVideoAd";
 import AiDifficultyPicker from "../../../../components/lobby/AiDifficultyPicker";
 import BarricadeBoard from "../../../../components/barricade/BarricadeBoard";
 import useMySeatIdentity from "../../../../hooks/useMySeatIdentity";
@@ -93,7 +94,15 @@ function playMoveSound(kind: MoveKind, mine: boolean) {
   else playBarricadeJump(kind === MOVE_KINDS.JUMP_DIAGONAL, mine);
 }
 
-export default function BarricadePracticePage() {
+export default function BarricadePracticePage({
+  postMatchAdsEnabled = true,
+  postMatchAdFree = false,
+}: {
+  /** Server-resolved kill switch (`POST_MATCH_ADS_ENABLED`). */
+  postMatchAdsEnabled?: boolean;
+  /** True for an active GRYND PRO member (`ad_free`) — no post-match video. */
+  postMatchAdFree?: boolean;
+} = {}) {
   const router = useRouter();
   const reduceMotion = useReducedMotion();
   // Real username / official icon / equipped colour for the human seat — a
@@ -183,11 +192,17 @@ export default function BarricadePracticePage() {
     return () => clearTimeout(handle);
   }, [state, matchOver, difficulty, resetGame, paused]);
 
+  // One id per FINISHED practice game. The ad's cadence counts a match once, so
+  // a re-render or a reopened result screen cannot advance it again — the same
+  // guarantee a server match id gives the online boards.
+  const [adMatchId, setAdMatchId] = useState("");
+
   // ── Result cues and the session tally ─────────────────────────────────
   useEffect(() => {
     if (!matchOver) return;
     if (resultSoundedRef.current === state.ply) return;
     resultSoundedRef.current = state.ply;
+    setAdMatchId(`barricade-ai-${state.ply}-${Date.now()}`);
     if (state.winner === HUMAN_SEAT) {
       playBarricadeWin();
       setScore((current) => ({ ...current, wins: current.wins + 1 }));
@@ -394,6 +409,17 @@ export default function BarricadePracticePage() {
       ]}
       playAgain={{ label: "New game", onClick: () => resetGame() }}
       onReturnToLobby={() => router.push(LOBBY_PATH)}
+      postMatchAd={
+        // Practice still earns an offer: the result is final and the player is
+        // on the result screen. A PRO member gets nothing (`adFree`), and the
+        // build-time public switches are applied inside the component.
+        <PostMatchVideoAd
+          matchEnded={matchOver}
+          matchId={adMatchId}
+          enabled={postMatchAdsEnabled}
+          adFree={postMatchAdFree}
+        />
+      }
     />
   );
 

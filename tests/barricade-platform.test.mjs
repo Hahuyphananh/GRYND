@@ -112,7 +112,15 @@ test("discovery: the catalog and the lobby agree on Barricade's position", () =>
   // titles that shipped before it — asserted relatively, so a newer card does
   // not falsify the append-at-the-end rule. (Dominoes shipped after it and holds
   // the last slot now.)
-  assert.equal(lobbyIds[lobbyIds.length - 2], KEY, "Barricade is second-last, after the older titles");
+  // Newer titles are APPENDED after Barricade, so assert the ORDER, never a
+  // fixed slot: Dominoes and Hillstrike both shipped after it, and the next
+  // game to ship must not falsify this test.
+  for (const newerSlug of ["dominoes", "hillstrike"]) {
+    assert.ok(
+      lobbyIds.indexOf(newerSlug) > lobbyIds.indexOf(KEY),
+      `${newerSlug} shipped after Barricade, so it must sit below it in the lobby`,
+    );
+  }
   assert.ok(lobbyIds.indexOf(KEY) > lobbyIds.indexOf("sudoku-duel"));
 });
 
@@ -141,7 +149,15 @@ test("discovery: the lobby card links to the game, records plays and is 1v1", ()
   const newestKeys = [...orderBlock.slice(0, orderBlock.indexOf("];")).matchAll(/"([a-z0-9-]+)"/g)].map(
     (m) => m[1],
   );
-  assert.equal(newestKeys[1], KEY, "Barricade is the second-newest game in the catalogue");
+  // Newest-first, so a NEWER title has a SMALLER index: Hillstrike, Dominoes,
+  // then Barricade. Asserted relative to those two rather than at a fixed
+  // position, so the next game to ship keeps this test honest.
+  for (const newerSlug of ["dominoes", "hillstrike"]) {
+    assert.ok(
+      newestKeys.indexOf(KEY) > newestKeys.indexOf(newerSlug),
+      `${newerSlug} shipped after Barricade, so it must lead it in the recency list`,
+    );
+  }
   assert.ok(
     newestKeys.indexOf(KEY) < newestKeys.indexOf("sudoku-duel"),
     "newest-first: Barricade must sit above the games that shipped before it",

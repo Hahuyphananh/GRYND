@@ -1,23 +1,10 @@
 import type { Metadata } from "next";
 import PageClient from "./PageClient";
-
-/**
- * RUNTIME kill switch for post-match advertising.
- *
- * Read on the SERVER, per request, from a non-public variable: setting
- * `POST_MATCH_ADS_ENABLED=false` in the deployment's environment stops the
- * surface on the very next request — no rebuild, no redeploy. The build-time
- * public switch (`NEXT_PUBLIC_POST_MATCH_ADS_ENABLED`) is still applied inside
- * the ad component, so either one disables advertising.
- */
-function postMatchAdsEnabledOnServer(): boolean {
-  return (
-    (process.env.POST_MATCH_ADS_ENABLED ?? "").trim().toLowerCase() !== "false"
-  );
-}
+import { postMatchAdSurface } from "../../../../lib/vast/entitlement";
 
 // The match page is authenticated and per-match; never prerender it, so the
-// flag above is always evaluated against the running deployment's environment.
+// kill switch and the membership answer are always evaluated against the
+// running deployment and the caller's own subscription row.
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({
@@ -34,6 +21,19 @@ export async function generateMetadata({
   };
 }
 
-export default function Page() {
-  return <PageClient postMatchAdsEnabled={postMatchAdsEnabledOnServer()} />;
+/**
+ * The post-match surface is resolved on the SERVER, per request:
+ *
+ *   * `POST_MATCH_ADS_ENABLED=false` is the runtime kill switch — it stops the
+ *     surface on the very next request, no rebuild or redeploy;
+ *   * an active GRYND PRO member is `ad_free`, so the post-match video is
+ *     withheld from them like every other advertisement;
+ *   * the build-time public switches (`NEXT_PUBLIC_POST_MATCH_ADS_ENABLED`,
+ *     `NEXT_PUBLIC_HILLTOPS_ENABLED`) are still applied inside the component.
+ */
+export default async function Page() {
+  const ads = await postMatchAdSurface();
+  return (
+    <PageClient postMatchAdsEnabled={ads.enabled} postMatchAdFree={ads.adFree} />
+  );
 }

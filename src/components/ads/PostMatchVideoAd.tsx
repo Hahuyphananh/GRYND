@@ -96,6 +96,12 @@ export interface PostMatchVideoAdProps {
    * true; the build-time public switch is applied on top of it.
    */
   enabled?: boolean;
+  /**
+   * True when the viewer is an active GRYND PRO member (`ad_free`). Resolved
+   * server-side by `postMatchAdSurface()`; a member gets no card, no request
+   * and no cadence advance, even if a caller only checked the kill switch.
+   */
+  adFree?: boolean;
   className?: string;
   /** Called when the player closes the card (before or after playback). */
   onDismiss?: () => void;
@@ -105,6 +111,7 @@ export default function PostMatchVideoAd({
   matchEnded,
   matchId,
   enabled = true,
+  adFree = false,
   className = "",
   onDismiss,
 }: PostMatchVideoAdProps) {
@@ -123,9 +130,11 @@ export default function PostMatchVideoAd({
   const skipSentRef = useRef(false);
   const endedRef = useRef(false);
 
-  // Both switches must allow it: the live server flag (prop) and the build-time
-  // public flag. Either being false means nothing renders and nothing loads.
-  const active = enabled && postMatchAdsEnabled();
+  // Three gates, all required: the live server flag (prop), the membership
+  // answer (prop — `ad_free` is a paid benefit, so a member sees nothing) and
+  // the build-time public flag. Any one being false means nothing renders,
+  // nothing loads and the cadence is not advanced.
+  const active = enabled && !adFree && postMatchAdsEnabled();
 
   // ── Cadence ───────────────────────────────────────────────────────────────
   // Runs AFTER paint, so the result/reward content is already on screen and the

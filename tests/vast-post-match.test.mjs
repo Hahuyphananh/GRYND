@@ -422,7 +422,7 @@ test("the approved tag is configuration, and malformed values are refused", () =
   }
 });
 
-test("the surface is mounted only by the Tic-Tac-Toe pilot", () => {
+test("the surface is mounted only by the wired result screens", () => {
   const offenders = [];
   const walk = (dir) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -435,13 +435,27 @@ test("the surface is mounted only by the Tic-Tac-Toe pilot", () => {
   };
   walk("src/app");
 
+  // An explicit list, not "any file": mounting this on a browsing page, a
+  // lobby or the shared layout would advertise outside a finished match. The
+  // Tic-Tac-Toe pilot is a settled PvP duel; Barrier Blitz practice is a
+  // finished single-player board. Every other game still has NO ad.
   assert.deepEqual(
-    offenders,
-    ["src/app/casino/tic-tac-toe/[matchId]/PageClient.tsx"],
-    "the ad is enabled for exactly one pilot game",
+    [...offenders].sort(),
+    [
+      "src/app/casino/barrier-blitz/play-ai/PageClient.tsx",
+      "src/app/casino/tic-tac-toe/[matchId]/PageClient.tsx",
+    ],
+    "only a finished match may offer the ad",
   );
   assert.ok(
     !/PostMatchVideoAd/.test(read("src/app/layout.tsx")),
     "nothing advertising may be mounted globally",
+  );
+  // Every other game reaches the same player through the ONE shared slot,
+  // which asks the server first and never renders on a browsing page.
+  assert.match(
+    read("src/components/result/PvpResultScreen.jsx"),
+    /<PostMatchAdSlot \/>/,
+    "the shared result screen is the single wiring point for every game",
   );
 });

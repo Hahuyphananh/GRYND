@@ -118,9 +118,12 @@ type PendingMove = { boardIndex: number; cellIndex: number; version: number };
 
 export default function TicTacToeMatchPage({
   postMatchAdsEnabled = true,
+  postMatchAdFree = false,
 }: {
-  /** Server-read runtime kill switch (POST_MATCH_ADS_ENABLED). */
+  /** Server-resolved kill switch (POST_MATCH_ADS_ENABLED). */
   postMatchAdsEnabled?: boolean;
+  /** True for an active GRYND PRO member (`ad_free`) — no post-match video. */
+  postMatchAdFree?: boolean;
 } = {}) {
   const params = useParams<{ matchId: string }>();
   const router = useRouter();
@@ -1028,6 +1031,7 @@ export default function TicTacToeMatchPage({
                   matchEnded={finished}
                   matchId={String(matchId ?? "")}
                   enabled={postMatchAdsEnabled}
+                  adFree={postMatchAdFree}
                 />
               )
             }

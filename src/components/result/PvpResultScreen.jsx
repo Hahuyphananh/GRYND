@@ -54,6 +54,7 @@ import {
 import { fireConfetti, withReducedMotion } from "../../lib/animations";
 import { notifyDailyRewardWin } from "../../lib/practiceWinClient";
 import FrameAvatar from "../FrameAvatar";
+import PostMatchAdSlot from "../ads/PostMatchAdSlot";
 
 const CONFETTI_COLORS = ["#00e5ff", "#f5ff3b", "#ff4fd8", "#a855f7", "#34d399"];
 
@@ -178,11 +179,14 @@ export default function PvpResultScreen({
   // a compact self-explanatory visual — e.g. Precision's frozen rockets from
   // the deciding round. Games that don't pass it render exactly as before.
   extraContent = null,
-  // Optional post-match advertisement node. Games opt in by passing one; the
-  // shared screen never creates or configures an ad itself, so the provider and
-  // its policy stay outside the results architecture. Rendered BELOW the action
-  // buttons (never between the player and "Run it back"), and suppressed in
-  // compact mode so Creator Mode recordings never carry an ad.
+  // Optional post-match advertisement node. When a game passes one it is
+  // rendered verbatim (the wired pages resolve the surface on the server).
+  // Otherwise the shared screen mounts the ONE shared slot, which asks the
+  // server whether an ad may be offered and resolves the match id — that is
+  // what gives every game's result screen the surface without each one
+  // duplicating the plumbing. Rendered BELOW the action buttons (never between
+  // the player and "Run it back"), and suppressed in compact mode so Creator
+  // Mode recordings never carry an ad.
   postMatchAd = null,
 }) {
   const shouldReduce = useReducedMotion();
@@ -831,11 +835,16 @@ export default function PvpResultScreen({
               </div>
             )}
 
-            {/* Optional post-match advertisement — below every result, reward
-                and action, so it can never cover or delay them. The node is
-                null unless a game explicitly passed one. */}
-            {postMatchAd && !compact && (
-              <div className="mx-auto mt-5 w-full max-w-xs">{postMatchAd}</div>
+            {/* Post-match advertisement — below every result, reward and
+                action, so it can never cover or delay them. A game that wired
+                its own node wins; every other game gets the shared slot, which
+                renders nothing unless the server says it may offer one (and
+                never for a GRYND PRO member). Compact creator recordings
+                carry no ad at all. */}
+            {!compact && (postMatchAd || <PostMatchAdSlot />) && (
+              <div className="mx-auto mt-5 w-full max-w-xs">
+                {postMatchAd || <PostMatchAdSlot />}
+              </div>
             )}
 
             {/* Expandable match details */}

@@ -247,8 +247,14 @@ test("the kill switch also works at runtime, without a rebuild", () => {
   // the page, which passes it to the ad. Flipping it stops the surface on the
   // next request; the build-time public switch is applied on top.
   const page = read("src/app/casino/tic-tac-toe/[matchId]/page.tsx");
-  assert.match(page, /process\.env\.POST_MATCH_ADS_ENABLED/);
-  assert.match(page, /<PageClient postMatchAdsEnabled=\{postMatchAdsEnabledOnServer\(\)\} \/>/);
+  const entitlement = read("src/lib/vast/entitlement.ts");
+  assert.match(
+    entitlement,
+    /process\.env\.POST_MATCH_ADS_ENABLED/,
+    "the server helper reads the flag",
+  );
+  assert.match(page, /await postMatchAdSurface\(\)/);
+  assert.match(page, /postMatchAdsEnabled=\{ads\.enabled\}/);
   assert.match(page, /export const dynamic = "force-dynamic"/, "the flag must be read per request");
 
   const pilot = read(PILOT);
@@ -256,7 +262,7 @@ test("the kill switch also works at runtime, without a rebuild", () => {
   assert.match(pilot, /enabled=\{postMatchAdsEnabled\}/, "the page's flag reaches the ad");
 
   const ad = code(read(AD_COMPONENT));
-  assert.match(ad, /const active = enabled && postMatchAdsEnabled\(\)/);
+  assert.match(ad, /const active = enabled && !adFree && postMatchAdsEnabled\(\)/);
 });
 
 test("the kill switch disables every post-match ad", () => {
@@ -310,7 +316,7 @@ test("the ad lives below every result, reward and action", () => {
 
   assert.match(source, /postMatchAd = null,/, "the shared screen takes an optional node");
 
-  const adIndex = source.indexOf("{postMatchAd && !compact && (");
+  const adIndex = source.indexOf("{!compact && (postMatchAd || <PostMatchAdSlot />) && (");
   assert.ok(adIndex > -1, "the shared screen renders the node");
 
   for (const marker of ["YOU WON", "RUN IT BACK", "Match Details"]) {
@@ -322,7 +328,7 @@ test("the ad lives below every result, reward and action", () => {
 
   assert.match(
     source,
-    /\{postMatchAd && !compact && \(/,
+    /\{!compact && \(postMatchAd \|\| <PostMatchAdSlot \/>\) && \(/,
     "compact (Creator Mode) recordings never carry an ad",
   );
 });
@@ -342,7 +348,7 @@ test("nothing is offered before a match is definitively over", () => {
 
 test("reward and progression paths never depend on the ad", () => {
   const source = read(RESULT_SCREEN);
-  const adIndex = source.indexOf("{postMatchAd && !compact && (");
+  const adIndex = source.indexOf("{!compact && (postMatchAd || <PostMatchAdSlot />) && (");
   const actionsIndex = source.indexOf("{/* Actions */}");
 
   assert.ok(actionsIndex > -1 && actionsIndex < adIndex, "the ad follows the actions");
@@ -353,7 +359,7 @@ test("reward and progression paths never depend on the ad", () => {
   }
 });
 
-test("exactly one game is wired — the pilot — and nothing is global", () => {
+test("only finished-match screens are wired, and nothing is global", () => {
   const offenders = [];
   const walk = (dir) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -366,7 +372,14 @@ test("exactly one game is wired — the pilot — and nothing is global", () => 
   };
   walk("src/app");
 
-  assert.deepEqual(offenders, [PILOT], "only the Tic-Tac-Toe pilot may mount the ad");
+  assert.deepEqual(
+    [...offenders].sort(),
+    [
+      "src/app/casino/barrier-blitz/play-ai/PageClient.tsx",
+      PILOT,
+    ].sort(),
+    "only a finished-match screen may mount the ad",
+  );
   assert.ok(
     !/PostMatchVideoAd/.test(read("src/app/layout.tsx")),
     "nothing advertising may be mounted globally",
@@ -385,6 +398,103 @@ test("no lobby, browsing page or matchmaking surface mounts the ad", () => {
       `${forbidden} is a browsing/lobby surface and must stay ad-free`,
     );
   }
+});
+
+// ── GRYND PRO: `ad_free` covers the post-match video ──────────────────────
+
+test("a GRYND PRO member is never offered the post-match video", () => {
+  // The membership answer is resolved on the server (the same authoritative
+  // check the AdSense slots use) and passed in; the component refuses on it as
+  // well, so a caller that forgets to fold the two flags cannot leak an ad to a
+  // paying member.
+  const entitlement = read("src/lib/vast/entitlement.ts");
+  assert.match(entitlement, /isAdFreeViewer/);
+  assert.match(entitlement, /enabled: enabled && !adFree/);
+
+  const component = code(read(AD_COMPONENT));
+  assert.match(component, /const active = enabled && !adFree && postMatchAdsEnabled\(\);/);
+});
+
+test("every surface that mounts the ad passes the server's membership answer", () => {
+  for (const page of [
+    "src/app/casino/tic-tac-toe/[matchId]/page.tsx",
+    "src/app/casino/barrier-blitz/play-ai/page.tsx",
+  ]) {
+    const source = read(page);
+    assert.match(source, /postMatchAdSurface\(\)/, `${page} must resolve the surface on the server`);
+    assert.match(source, /postMatchAdFree=\{ads\.adFree\}/, `${page} must pass the membership answer`);
+    assert.match(source, /export const dynamic = "force-dynamic"/, `${page} must not be prerendered`);
+  }
+});
+
+test("practice results can offer the ad without a server match row", () => {
+  const practice = read("src/app/casino/barrier-blitz/play-ai/PageClient.tsx");
+  assert.match(practice, /import PostMatchVideoAd from/);
+  assert.match(practice, /postMatchAd=\{/);
+  assert.match(practice, /matchEnded=\{matchOver\}/);
+  // The id is minted once per FINISHED game, so the cadence counts it once.
+  assert.match(practice, /setAdMatchId\(`barricade-ai-\$/);
+  assert.match(practice, /adFree=\{postMatchAdFree\}/);
+});
+
+// ── The shared slot: every game gets the surface from ONE wiring point ────
+
+test("every result screen offers the ad through one shared slot", () => {
+  const shared = read(RESULT_SCREEN);
+  assert.match(shared, /import PostMatchAdSlot from "\.\.\/ads\/PostMatchAdSlot"/);
+  assert.match(shared, /\{!compact && \(postMatchAd \|\| <PostMatchAdSlot \/>\) && \(/);
+  // A game that wired its own node still wins; every other game gets the slot.
+  assert.match(shared, /\{postMatchAd \|\| <PostMatchAdSlot \/>\}/);
+
+  const slot = read("src/components/ads/PostMatchAdSlot.tsx");
+  assert.match(slot, /\/api\/ads\/post-match/, "the slot asks the server");
+  assert.match(
+    slot,
+    /params\?\.matchId \|\| params\?\.gameId/,
+    "the route's match id is the cadence id",
+  );
+  assert.match(slot, /surface\.adFree/, "a member is refused inside the slot too");
+  assert.match(slot, /practiceResultId/, "a client-only practice result mints its id");
+});
+
+test("the slot's answer is server-owned and takes no client input", () => {
+  const status = read("src/app/api/ads/post-match/route.ts");
+  assert.match(status, /postMatchAdSurface\(\)/);
+  assert.match(status, /\{ enabled, adFree \}/);
+  assert.match(status, /Cache-Control/);
+  // No query, no body: membership is never read from the request.
+  assert.doesNotMatch(status, /searchParams|request\.json|await request/);
+});
+
+// ── GRYND PRO: `ad_free` covers EVERY post-match surface ──────────────────
+
+test("a GRYND PRO member renders no post-match ad on any wired surface", () => {
+  // 1. The entitlement is resolved server-side and folded into `enabled`, so a
+  //    member never receives the player from the shared slot.
+  const entitlement = read("src/lib/vast/entitlement.ts");
+  assert.match(entitlement, /const adFree = await isAdFreeViewer\(\);/);
+  assert.match(entitlement, /enabled: enabled && !adFree/);
+
+  // 2. The player itself refuses on `adFree` alone — the belt to the server's
+  //    braces, so a caller that only checked the kill switch cannot leak an ad.
+  const component = code(read(AD_COMPONENT));
+  assert.match(component, /const active = enabled && !adFree && postMatchAdsEnabled\(\);/);
+
+  // 3. The two hand-wired surfaces pass the server's membership answer.
+  for (const page of [
+    "src/app/casino/tic-tac-toe/[matchId]/page.tsx",
+    "src/app/casino/barrier-blitz/play-ai/page.tsx",
+  ]) {
+    assert.match(
+      read(page),
+      /postMatchAdFree=\{ads\.adFree\}/,
+      `${page} must pass the membership answer`,
+    );
+  }
+
+  // 4. The shared slot refuses as well, before mounting the player at all.
+  const slot = read("src/components/ads/PostMatchAdSlot.tsx");
+  assert.match(slot, /surface\.adFree \|\| !resolvedId/);
 });
 
 test("settlement, Elo, escrow, rules and matchmaking code are untouched", () => {
