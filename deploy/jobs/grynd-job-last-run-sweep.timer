@@ -1,0 +1,11 @@
+[Unit]
+Description=GRYND LAST RUN sweep (hourly at :17; closes abandoned `started` matches as failed, never as a win)
+
+[Timer]
+OnCalendar=*-*-* *:17:00 UTC
+RandomizedDelaySec=60
+Persistent=true
+Unit=grynd-job@last-run-sweep.service
+
+[Install]
+WantedBy=timers.target

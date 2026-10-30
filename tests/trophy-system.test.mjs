@@ -282,15 +282,15 @@ test("config: a ranked win is +30, a loss −30, a draw 0", () => {
   // Trophies are UNBOUNDED — there is no per-game max or overall-max cap.
   assert.equal(TROPHY_CONFIG.max, undefined);
   assert.equal(TROPHY_CONFIG.overallMax, undefined);
-  // 23 rated keys — TROPHY_GAMES IS RATED_GAMES, so the count is derived.
-  assert.equal(TROPHY_CONFIG.gameCount, 23);
+  // 24 rated keys — TROPHY_GAMES IS RATED_GAMES, so the count is derived.
+  assert.equal(TROPHY_CONFIG.gameCount, 24);
   assert.equal(TROPHY_CONFIG.gameCount, RATED_GAMES.length);
   assert.deepEqual([...TROPHY_OUTCOMES], ["win", "loss", "draw"]);
 });
 
 test("registry: trophies use EXACTLY the Elo game set (no drift)", () => {
   assert.deepEqual([...TROPHY_GAMES], [...RATED_GAMES]);
-  assert.equal(TROPHY_GAMES.length, 23);
+  assert.equal(TROPHY_GAMES.length, 24);
   // Hillstrike is registered on the same one-list rule, and its label comes
   // from the Elo registry's label map (no second list to keep in sync).
   assert.equal(isTrophyGame("hillstrike"), true);
@@ -1478,6 +1478,11 @@ const WIRING = [
   // and every life live in the server's own row: the shared engine resolves the
   // shot and its `winner`, so it uses the same original 1v1 writer.
   ["hillstrike", "src/lib/hillstrike/serverStore.ts"],
+  // LAST RUN settles from the shared deterministic engine's own final state
+  // (one seeded course, server-stamped inputs, server-decided crash/draw), so
+  // its settlement reuses the same ±30 duel writer inside the match
+  // transaction.
+  ["last-run", "src/lib/last-run/settlement.ts"],
 ];
 
 for (const [gameKey, file, writer = "applyTrophyResult"] of WIRING) {

@@ -5,9 +5,9 @@
 #
 # Installed as /usr/local/lib/grynd/run-job.sh (root-owned, so the service
 # account cannot edit the thing that runs as it) and started by
-# grynd-job@<name>.service, which the four grynd-job-*.timer units trigger.
-# This replaces Vercel Cron for the same four routes; the endpoints, the
-# CRON_SECRET bearer token and the schedules are unchanged.
+# grynd-job@<name>.service, which the grynd-job-*.timer units trigger.
+# This replaces Vercel Cron for the same routes; the endpoints, the CRON_SECRET
+# bearer token and the schedules are unchanged.
 #
 # The secret is read from the same 0600 environment file the app uses
 # (EnvironmentFile= for grynd-app.service) and handed to curl on **stdin** via
@@ -20,9 +20,9 @@ set -eu
 
 JOB="${1:-}"
 case "$JOB" in
-  daily-reset | weekly-reset | retention | rank-snapshots) ;;
+  daily-reset | weekly-reset | retention | rank-snapshots | last-run-sweep) ;;
   *)
-    echo "usage: run-job.sh <daily-reset|weekly-reset|retention|rank-snapshots>" >&2
+    echo "usage: run-job.sh <daily-reset|weekly-reset|retention|rank-snapshots|last-run-sweep>" >&2
     exit 64
     ;;
 esac

@@ -42,16 +42,16 @@ export async function GET(request: Request) {
   // older than the cutoff. Child rows cascade from the parent.
   const purge = async (
     table: string,
-    statuses: string[],
+    /** null for a table that is terminal by construction and has no status. */
+    statuses: string[] | null,
     on: "ended_at" | "created_at" = "ended_at",
   ) => {
-    const statusList = statuses.map((s) => `'${s}'`).join(",");
+    const statusList = statuses ? statuses.map((s) => `'${s}'`).join(",") : null;
     const column = on === "ended_at" ? "ended_at" : "created_at";
     try {
       const res = await sql.query(
         `DELETE FROM ${table}
-         WHERE status IN (${statusList})
-           AND ${column} < $1`,
+         ${statusList ? `WHERE status IN (${statusList}) AND ${column} < $1` : `WHERE ${column} < $1`}`,
         [cutoff],
       );
       deletedByTable[table] = res.rowCount ?? 0;
@@ -83,6 +83,10 @@ export async function GET(request: Request) {
   await purge("rps_pvp_games", FINISHED);
   // Cascades to hex_duel_actions.
   await purge("hex_duel_games", FINISHED);
+  // LAST RUN (migration 0233). One row exists per COMPLETED match and the table
+  // has no `status` column, so it is filtered on `ended_at` alone — an
+  // interrupted match never writes a row at all, so nothing in-flight is at risk.
+  await purge("last_run_matches", null);
 
   // ── Chess games → cascades to chess_moves (also terminal 'expired') ──
   await purge("chess_games", ["finished", "cancelled", "expired"]);

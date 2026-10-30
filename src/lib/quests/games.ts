@@ -42,6 +42,11 @@ export const QUEST_GAME_IDS = [
   "sudoku-duel",
   "barricade",
   "dice-flush",
+  // LAST RUN settles through applyRatingResult, whose quest recorder rejects an
+  // unknown key (`canonicalQuestGame` → null, `reason: "unknown-game"`). The
+  // game is a real 1v1 duel, so it belongs in the catalogue: without this entry
+  // a completed match would rate but never advance a quest.
+  "last-run",
 ] as const;
 
 export type QuestGameId = (typeof QUEST_GAME_IDS)[number];

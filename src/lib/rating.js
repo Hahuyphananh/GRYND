@@ -222,6 +222,28 @@ export const RATED_GAMES = Object.freeze([
   // browser-only game with no match row — so AI games can never move Elo or
   // trophies.
   "hillstrike",
+  // LAST RUN is a 1v1 endless-runner duel on ONE seeded course: the seed, the
+  // obstacle sequence and the timing constants are identical for both seats,
+  // every input is a `{ jump, duck }` transition the server stamps onto its own
+  // tick, and the winner/draw is the shared engine's own `end` result
+  // (src/lib/last-run/engine.ts). A client never sends a position, distance,
+  // collision, survival time or winner, so the result is fully server-derivable
+  // — the same property that makes Mini Golf, Tic-Tac-Toe and Dominoes ratable.
+  //
+  // Settlement is src/lib/last-run/settlement.ts, which writes the match record,
+  // transitions the canonical lifecycle and calls THIS writer inside one
+  // transaction. Registering the key HERE is what makes that call take effect
+  // (trophies reuse this list as TROPHY_GAMES, so there is no second registry);
+  // `rating_events`' (user, game_key, match_id) unique key makes a retry, a
+  // duplicate completion and a concurrent settlement a guaranteed no-op.
+  //
+  // Draws (both runners crashing on the same authoritative tick) settle through
+  // the same writer with `result: "draw"`, exactly as Tic-Tac-Toe does.
+  //
+  // Only completed online human-vs-human matches reach the writer: the registry
+  // pairs two authenticated queue entries, a bot/AI seat does not exist in LAST
+  // RUN, and settlement refuses a completion whose ids are missing or equal.
+  "last-run",
 ]);
 
 /** Display labels for the rating boards (mirrors the lobby names). */
@@ -249,6 +271,7 @@ export const RATING_GAME_LABELS = Object.freeze({
   "barricade": "Barrier Blitz",
   dominoes: "Dominoes",
   hillstrike: "Hillstrike",
+  "last-run": "LAST RUN",
 });
 
 /** True when a game key is eligible for Elo. */

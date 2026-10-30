@@ -53,6 +53,10 @@ const RATED_GAMES_FALLBACK = [
   { key: "sudoku-duel", label: "Sudoku Duel" },
   { key: "barricade", label: "Barrier Blitz" },
   { key: "dominoes", label: "Dominoes" },
+  // Hillstrike joined the rated registry without being mirrored here, which
+  // made the first-paint game list disagree with the server on load.
+  { key: "hillstrike", label: "Hillstrike" },
+  { key: "last-run", label: "LAST RUN" },
 ];
 
 // Game-result categories the weekly/all-time boards rank by. Alongside the

@@ -15,6 +15,12 @@ export interface CreateMatchLifecycleInput {
   mode: string;
   playerCount?: number;
   queuedAt?: Date;
+  /**
+   * Optional caller transaction. Passing it makes the lifecycle row and its
+   * event commit atomically with the caller's own writes (e.g. LAST RUN's
+   * match record + Elo), so a failure cannot leave one half applied.
+   */
+  tx?: any;
 }
 
 export async function createMatchLifecycle(input: CreateMatchLifecycleInput) {
@@ -27,7 +33,8 @@ export async function createMatchLifecycle(input: CreateMatchLifecycleInput) {
   }
 
   const queuedAt = input.queuedAt ?? new Date();
-  const [row] = await db
+  const conn = input.tx ?? db;
+  const [row] = await conn
     .insert(matchLifecycle)
     .values({
       matchId: input.matchId,
@@ -45,7 +52,7 @@ export async function createMatchLifecycle(input: CreateMatchLifecycleInput) {
     crypto.randomUUID(),
     queuedAt.toISOString(),
   );
-  await db.insert(matchLifecycleEvents).values({
+  await conn.insert(matchLifecycleEvents).values({
     eventId: event.event_id,
     matchId: input.matchId,
     eventType: event.event_type,
@@ -62,8 +69,18 @@ export async function transitionMatchLifecycle(input: {
   playerCount?: number;
   at?: Date;
   eventId?: string;
+  /**
+   * Game-specific detail for the emitted event (e.g. a result, a duration or a
+   * per-seat distance). It rides in the canonical payload's `metadata` field,
+   * which is additive — no schema change, and consumers that ignore it are
+   * unaffected.
+   */
+  metadata?: Record<string, unknown>;
+  /** Optional caller transaction — see CreateMatchLifecycleInput.tx. */
+  tx?: any;
 }) {
-  const [current] = await db
+  const conn = input.tx ?? db;
+  const [current] = await conn
     .select()
     .from(matchLifecycle)
     .where(eq(matchLifecycle.matchId, input.matchId))
@@ -90,7 +107,7 @@ export async function transitionMatchLifecycle(input: {
       ? calculateQueueWaitMs(current.queuedAt, input.to === "started" ? startedAt! : endedAt!)
       : current.queueWaitMs;
 
-  const [row] = await db
+  const [row] = await conn
     .update(matchLifecycle)
     .set({
       status: input.to,
@@ -110,8 +127,9 @@ export async function transitionMatchLifecycle(input: {
     input.matchId,
     input.eventId ?? crypto.randomUUID(),
     at.toISOString(),
+    input.metadata,
   );
-  await db.insert(matchLifecycleEvents).values({
+  await conn.insert(matchLifecycleEvents).values({
     eventId: event.event_id,
     matchId: input.matchId,
     eventType: event.event_type,
@@ -119,6 +137,43 @@ export async function transitionMatchLifecycle(input: {
     occurredAt: at,
   });
   return row;
+}
+
+/**
+ * Append one lifecycle event for a row whose status is already terminal.
+ *
+ * The state machine refuses a second `completed`, so a match that was marked
+ * completed by an earlier partial write cannot be transitioned again. This lets
+ * the settlement repair the missing event with the SAME deterministic event id,
+ * `ON CONFLICT DO NOTHING` — never a second event, never a second result.
+ */
+export async function appendMatchLifecycleEvent(input: {
+  row: typeof matchLifecycle.$inferSelect;
+  eventId: string;
+  at?: Date;
+  metadata?: Record<string, unknown>;
+  tx?: any;
+}) {
+  const conn = input.tx ?? db;
+  const at = input.at ?? new Date();
+  const event = createMatchLifecycleEvent(
+    toCanonicalLifecycle(input.row),
+    input.row.matchId,
+    input.eventId,
+    at.toISOString(),
+    input.metadata,
+  );
+  await conn
+    .insert(matchLifecycleEvents)
+    .values({
+      eventId: event.event_id,
+      matchId: input.row.matchId,
+      eventType: event.event_type,
+      payload: event,
+      occurredAt: at,
+    })
+    .onConflictDoNothing();
+  return event;
 }
 
 function toCanonicalLifecycle(row: typeof matchLifecycle.$inferSelect) {

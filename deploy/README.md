@@ -655,7 +655,7 @@ Practical notes:
 
 ## 13. Scheduled jobs (Oracle systemd timers, replaces Vercel Cron)
 
-`vercel.json` schedules four routes. On Oracle they are run by four systemd
+`vercel.json` schedules five routes. On Oracle they are run by five systemd
 timers with the **same routes, the same `CRON_SECRET` bearer token and the same
 UTC schedules**, so removing Vercel removes nothing that production still needs.
 
@@ -665,6 +665,7 @@ UTC schedules**, so removing Vercel removes nothing that production still needs.
 | `grynd-job-weekly-reset.timer` | `/api/jobs/weekly-reset` | `00:00` Monday | Zeroes weekly counters **and emails every active player** |
 | `grynd-job-retention.timer` | `/api/jobs/retention` | `04:00` daily | Deletes terminal matches older than 45 days + stale presence rows |
 | `grynd-job-rank-snapshots.timer` | `/api/jobs/rank-snapshots` | `21:00` daily | Records each ranked player's Overall Elo position for the day |
+| `grynd-job-last-run-sweep.timer` | `/api/jobs/last-run-sweep` | `17` past every hour | Closes LAST RUN `started` lifecycle rows abandoned for over 10 minutes as `failed` — never as a win |
 
 Installed files:
 

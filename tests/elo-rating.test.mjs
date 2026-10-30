@@ -1093,6 +1093,10 @@ test("RATED_GAMES: the registry is the audited 1v1/server-authoritative set", ()
     // `winner`, inside the transaction that claimed the match), so it joins the
     // rated set on the same terms as the other turn-based duels.
     "hillstrike",
+    // LAST RUN settles from the shared deterministic engine's own final state
+    // (one seeded course, server-stamped inputs, server-decided crash/draw),
+    // so it joins the rated set on the same terms.
+    "last-run",
   ]);
   assert.equal(isRatedGame("chess"), true);
   // The formerly-excluded games are now REGISTERED, so every listed game is a
@@ -1507,6 +1511,11 @@ const WIRING = [
   // and pile (src/lib/dominoes), including a blocked round on equal pips, which
   // settles as a draw through the SAME shared writer.
   ["dominoes", "src/lib/dominoes/serverStore.ts"],
+  // LAST RUN is a 1v1 race on ONE seeded course: the crash/draw is the shared
+  // deterministic engine's own final result, replayed by the server from
+  // server-stamped inputs, so it settles through the same shared writer inside
+  // the transaction that records the match.
+  ["last-run", "src/lib/last-run/settlement.ts"],
 ];
 
 for (const [gameKey, file] of WIRING) {

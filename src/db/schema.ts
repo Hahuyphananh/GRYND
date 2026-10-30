@@ -72,6 +72,52 @@ export const matchLifecycleEvents = pgTable(
   })
 );
 
+// LAST RUN — durable per-match record (migration 0233).
+//
+// The canonical `match_lifecycle` row is the platform queue record and carries
+// no participants, so a completed LAST RUN match would otherwise exist only as
+// JSON inside an outbox event. This table is the game's authoritative result:
+// written by src/lib/last-run/settlement.ts from the server engine's own final
+// state, inside the same transaction that applies Elo. No client ever supplies
+// a winner, distance, survival time or rating.
+//
+// Player ids are plain Clerk id strings with no FK to `users`, matching every
+// other PvP table. Elo and trophies are NOT duplicated here — they live in
+// `rating_events` / `trophy_events`, keyed by (user, game_key, match_id).
+//
+// `id` is the match registry's UUID, which makes it the natural idempotency
+// key: settlement inserts with ON CONFLICT (id) DO NOTHING.
+export const lastRunMatches = pgTable(
+  "last_run_matches",
+  {
+    id: uuid("id").primaryKey(),
+    player1Id: varchar("player1_id", { length: 255 }).notNull(),
+    player2Id: varchar("player2_id", { length: 255 }).notNull(),
+    winnerId: varchar("winner_id", { length: 255 }),
+    // Seat-absolute: 'player1' | 'player2' | 'draw'. Readers convert to a
+    // viewer-relative win/loss/draw.
+    result: varchar("result", { length: 8 }).notNull(),
+    // crash | time | abandon | left
+    endReason: varchar("end_reason", { length: 16 }).notNull(),
+    player1Distance: integer("player1_distance").notNull().default(0),
+    player2Distance: integer("player2_distance").notNull().default(0),
+    player1SurvivalMs: integer("player1_survival_ms").notNull().default(0),
+    player2SurvivalMs: integer("player2_survival_ms").notNull().default(0),
+    durationMs: integer("duration_ms").notNull().default(0),
+    seed: bigint("seed", { mode: "number" }).notNull(),
+    // True once the shared Elo writer applied this match exactly once.
+    rated: boolean("rated").notNull().default(false),
+    startedAt: timestamp("started_at").notNull(),
+    endedAt: timestamp("ended_at").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    p1Idx: index("last_run_matches_p1_idx").on(table.player1Id, table.endedAt),
+    p2Idx: index("last_run_matches_p2_idx").on(table.player2Id, table.endedAt),
+    endedIdx: index("last_run_matches_ended_idx").on(table.endedAt),
+  })
+);
+
 export const availabilityAlerts = pgTable(
   "availability_alerts",
   {
