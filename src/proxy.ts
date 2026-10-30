@@ -119,6 +119,13 @@ const GAME_ROUTE_PATTERNS = [
   "/games/barrier-blitz(.*)",
   "/games/dominoes(.*)",
   "/games/hillstrike(.*)",
+  // LAST RUN's lobby (/games/last-run) and its per-match view
+  // (/games/last-run/<id>). The surface is unreleased and `noindex`, but it is
+  // still a real route with real matchmaking — so it must be classified like
+  // every other game. While it was missing, `/games/last-run` was caught by the
+  // single-segment slug guard below, rewritten to the not-found sentinel and
+  // answered with a 500 — the game shipped but could not be opened at all.
+  "/games/last-run(.*)",
 ] as const;
 
 const isPublicRoute = createRouteMatcher([
@@ -154,6 +161,12 @@ const isPublicRoute = createRouteMatcher([
   "/mfa-required",
   "/profile(.*)",
   "/settings(.*)",
+  // The rewrite target for a slug-less /games/<slug> 404 (NOT_FOUND_SENTINEL).
+  // Nothing serves it, which is the point: an unknown game slug is answered
+  // with the app's own 404 page. It must be readable WITHOUT a session, or the
+  // rewritten request falls back into the auth gate, gets 307'd to /sign-in and
+  // the response becomes a 500 instead of the 404 the guard exists to emit.
+  "/__unknown-game-slug",
 
   // Every playable casino/game route — declared once in GAME_ROUTE_PATTERNS
   // above. Explicitly public today (no behaviour change); the patterns are
@@ -535,7 +548,14 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
   // This adds a gate; it changes no authentication decision. The slug check is a
   // pure lookup against the same list the pages and the sitemap use.
   const unknownGameSlug = /^\/games\/([^/]+)\/?$/.exec(pathname);
-  if (unknownGameSlug && !isGameLandingSlug(unknownGameSlug[1])) {
+  // A slug that IS a real playable route (GAME_ROUTE_PATTERNS) has a page even
+  // when it has no public landing page — LAST RUN is exactly that case, and
+  // rewriting it away made the shipped game unreachable with a 500.
+  if (
+    unknownGameSlug &&
+    !isGameLandingSlug(unknownGameSlug[1]) &&
+    !isGameRoute(pathname)
+  ) {
     return applySecurityHeaders(
       NextResponse.rewrite(new URL(NOT_FOUND_SENTINEL, req.url)),
     );

@@ -142,6 +142,11 @@ created on first use and lives in the Next.js process.
 - **Not in the public catalogue.** `/games/last-run` is `noindex` and is not in
   `GAME_CATALOG`/`GAME_LANDING_PAGES`, so the lobby and hub are untouched until
   the launch copy exists.
+- **Registered as a playable route.** Because it has no landing-page entry, the
+  route is listed in `GAME_ROUTE_PATTERNS` (src/proxy.ts). Without that entry the
+  middleware's unknown-slug guard treats `/games/last-run` as a missing page and
+  rewrites it to the not-found sentinel — the game 500s. Any future game that
+  ships before its landing page needs the same entry.
 
 ---
 

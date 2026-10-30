@@ -55,6 +55,26 @@ function casinoLobbySlugs() {
     .sort();
 }
 
+/**
+ * Slugs with a real top-level page under src/app/games, e.g. `last-run`.
+ *
+ * These are playable routes that may ship BEFORE their public landing page
+ * exists. LAST RUN shipped that way and was missing from GAME_ROUTE_PATTERNS,
+ * so the unknown-slug guard in src/proxy.ts rewrote /games/last-run to the
+ * not-found sentinel and the game 500'd in production.
+ */
+function gamesAppSlugs() {
+  return readdirSync("src/app/games", { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("["))
+    .map((entry) => entry.name)
+    .filter((slug) =>
+      ["page.js", "page.jsx", "page.ts", "page.tsx"].some((file) =>
+        existsSync(join("src/app/games", slug, file)),
+      ),
+    )
+    .sort();
+}
+
 /** Slugs the public hub links to, from `href: "/games/<slug>"`. */
 function hubSlugs() {
   return [...HUB.matchAll(/href:\s*"\/games\/([a-z0-9-]+)"/g)]
@@ -86,6 +106,20 @@ test("every lobby page in the casino app is classified as a game route", () => {
     [],
     "a game with a lobby page but no GAME_ROUTE_PATTERNS entry bounces " +
       "signed-out visitors to /sign-in — add it to src/proxy.ts",
+  );
+});
+
+test("every page under src/app/games is classified as a game route", () => {
+  // A real page the classifier does not recognise is either bounced to
+  // /sign-in (missing auth allowance) or rewritten away by the unknown-slug
+  // guard when it has no landing page — both look like "the deploy did not
+  // ship". LAST RUN shipped exactly that way.
+  const missing = gamesAppSlugs().filter((slug) => !matches(`/games/${slug}`));
+  assert.deepEqual(
+    missing,
+    [],
+    "a page under src/app/games with no GAME_ROUTE_PATTERNS entry is " +
+      "unreachable in production — add it to src/proxy.ts",
   );
 });
 
