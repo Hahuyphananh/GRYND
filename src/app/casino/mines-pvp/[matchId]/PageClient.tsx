@@ -43,7 +43,7 @@ import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import FrameAvatar from "../../../../components/FrameAvatar";
 import { cosmeticEffectClass } from "../../../../lib/profileCosmetics";
-import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
+import GameEmoteLayer from "../../../../components/game/emotes/GameEmoteLayer";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
 import { useSocket } from "../../../../context/SocketProvider";
 import {
@@ -406,7 +406,6 @@ function ScoreSide({
             {name}
           </p>
         </div>
-        <EmoteBubble emote={emote} side={emoteSide} />
       </div>
       <p className="mt-1 text-3xl font-black tabular-nums text-white sm:text-4xl">
         {score.toLocaleString()}
@@ -1479,7 +1478,13 @@ export default function MinesPvpMatchPage({
 
   const emoteNode = (
     <div className="mt-3 flex justify-center">
-      <EmotePicker compact hideBubbles incomingEmote={incomingEmote} myEmote={myEmote} onSend={(emote) => sendEmote(emote)} />
+      <GameEmoteLayer
+        gameId="mines-pvp"
+        compact
+        incomingEmote={incomingEmote}
+        myEmote={myEmote}
+        onSend={(emote) => sendEmote(emote)}
+      />
     </div>
   );
 

@@ -440,7 +440,17 @@ test("auth: an unknown /games/<slug> is a real 404, not a 200 soft 404", () => {
     PROXY.includes("/^\\/games\\/([^/]+)\\/?$/.exec(pathname)"),
     "the guard must match exactly a one-segment /games/<slug> request",
   );
-  assert.ok(PROXY.includes("if (unknownGameSlug && !isGameLandingSlug(unknownGameSlug[1]))"));
+  // The guard also exempts a route that is a real playable game even when it has
+  // no landing page (`!isGameRoute`) — LAST RUN shipped exactly that way, and
+  // rewriting it to the sentinel answered the shipped game with a 500. Both
+  // halves of the condition are load-bearing, so they are asserted together.
+  const proxyOneLine = PROXY.replace(/\s+/g, " ");
+  assert.ok(
+    proxyOneLine.includes(
+      "unknownGameSlug && !isGameLandingSlug(unknownGameSlug[1]) && !isGameRoute(pathname)",
+    ),
+    "the 404 guard must exempt real playable routes that have no landing page yet",
+  );
   assert.ok(PROXY.includes("NextResponse.rewrite(new URL(NOT_FOUND_SENTINEL, req.url))"));
   // …and the not-found page itself can never be indexed, whatever status it is
   // served with.

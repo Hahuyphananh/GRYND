@@ -46,7 +46,7 @@ import {
 } from "@tabler/icons-react";
 
 import { useSocket } from "../../../../context/SocketProvider";
-import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
+import GameEmoteLayer from "../../../../components/game/emotes/GameEmoteLayer";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
 import MegaBoard from "../../../../components/tic-tac-toe/MegaBoard";
 import SeatAvatar from "../../../../components/game/SeatAvatar";
@@ -692,10 +692,6 @@ export default function TicTacToeMatchPage({
                               {mark} · {moveCount} {moveCount === 1 ? "move" : "moves"}
                             </p>
                           </div>
-                          <EmoteBubble
-                            emote={isViewer ? myEmote : incomingEmote}
-                            side={isViewer ? "mine" : "incoming"}
-                          />
                         </div>
                       </div>
                     );
@@ -919,9 +915,9 @@ export default function TicTacToeMatchPage({
                 <section className="rounded-2xl border border-amber-500/20 bg-black/40 p-4">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs text-white/50">Emotes</span>
-                    <EmotePicker
+                    <GameEmoteLayer
+                      gameId="tic-tac-toe"
                       compact
-                      hideBubbles
                       incomingEmote={incomingEmote}
                       myEmote={myEmote}
                       onSend={(emote) => sendEmote(emote)}

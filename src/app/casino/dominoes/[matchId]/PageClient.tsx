@@ -70,6 +70,7 @@ import {
   durationSeconds,
   isIncomingSnapshotStale,
   outcomeFor,
+  scoreboardFor,
   tileLabel,
   type Outcome,
 } from "../../../../lib/dominoes/ui";
@@ -405,6 +406,9 @@ export default function DominoesMatchPage() {
     ? t("games.dominoes.ai_opponent")
     : opponentIdentity?.name || t("games.dominoes.opponent");
 
+  // Cumulative match points, seat-relative — the result screen's final score.
+  const scoreboard = scoreboardFor(match ?? null);
+
   const moves = useMemo<MoveRow[]>(
     () => (Array.isArray(match?.moves) ? (match?.moves as MoveRow[]) : []),
     [match?.moves],
@@ -437,9 +441,17 @@ export default function DominoesMatchPage() {
     return "—";
   };
 
-  /** Why the round ended, as a sentence in the player's language. */
+  /** Why the MATCH ended, as a sentence in the player's language. */
   const reasonText = (verdict: Outcome | null): string => {
     switch (String(match?.resultReason ?? "")) {
+      case "match-target":
+        // The series verdict: a seat reached the cumulative target first.
+        return t(
+          verdict === "win"
+            ? "games.dominoes.reason_match_target_win"
+            : "games.dominoes.reason_match_target_loss",
+          { target: scoreboard.target },
+        );
       case "emptied-hand":
         return t(
           verdict === "win"
@@ -683,13 +695,23 @@ export default function DominoesMatchPage() {
           open={finished}
           outcome={outcome ?? "loss"}
           headline={
+            // A MATCH verdict, never a round win: the series is what ends here.
             outcome === "win"
-              ? t("games.dominoes.result_won")
+              ? t("games.dominoes.result_match_won")
               : outcome === "draw"
-                ? t("games.dominoes.result_drawn")
-                : t("games.dominoes.result_lost")
+                ? t("games.dominoes.result_match_drawn")
+                : t("games.dominoes.result_match_lost")
           }
           subline={reasonText(outcome)}
+          // The final cumulative score, both sides, on the shared comparison.
+          sides={[
+            {
+              name: t("games.dominoes.you"),
+              score: scoreboard.viewerScore,
+              highlight: outcome === "win",
+            },
+            { name: opponentName, score: scoreboard.opponentScore },
+          ]}
           gameName={t("games.dominoes_name")}
           durationSeconds={durationSeconds(match?.startedAt, match?.endedAt)}
           opponent={{
@@ -708,6 +730,18 @@ export default function DominoesMatchPage() {
                     : outcome === "loss"
                       ? t("games.dominoes.result_loss")
                       : "—",
+            },
+            {
+              label: t("games.dominoes.final_score_label"),
+              value: t("games.dominoes.final_score_value", {
+                youScore: scoreboard.viewerScore,
+                opponentName,
+                opponentScore: scoreboard.opponentScore,
+              }),
+            },
+            {
+              label: t("games.dominoes.rounds_played"),
+              value: String(scoreboard.round),
             },
             {
               label: t("games.dominoes.your_tiles_left"),

@@ -37,10 +37,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "node:test";
 
-import { dominoesMatches, dominoesMoves, users } from "../src/db/schema.ts";
 import {
+  dominoesMatches,
+  dominoesMoves,
+  dominoesRounds,
+  users,
+} from "../src/db/schema.ts";
+import {
+  DOMINOES_AI_PLAYER_ID,
   END_REASONS,
   MATCH_STATUS,
+  MATCH_TARGET_POINTS,
   RESULT,
   TURN_WINDOW_MS,
 } from "../src/lib/dominoes/constants.ts";
@@ -145,6 +152,22 @@ function createFakeDb() {
 
   const insert = (table) => ({
     values: (v) => {
+      // Model UNIQUE (match_id, round_number) + ON CONFLICT DO NOTHING: a round
+      // can be appended once, however many times the request is retried.
+      if (
+        table === dominoesRounds &&
+        rowsOf(table).some(
+          (existing) =>
+            existing.matchId === v.matchId &&
+            existing.roundNumber === v.roundNumber,
+        )
+      ) {
+        const skipped = { returning: () => Promise.resolve([]) };
+        skipped.onConflictDoNothing = () => skipped;
+        skipped.then = (resolve, reject) =>
+          Promise.resolve([]).then(resolve, reject);
+        return skipped;
+      }
       if (state.failInserts.has(table)) {
         throw Object.assign(
           new Error("duplicate key value violates unique constraint"),
@@ -162,6 +185,7 @@ function createFakeDb() {
       state.writes.push({ table, op: "insert", values: v });
       rowsOf(table).push(row);
       const out = { returning: () => Promise.resolve([{ ...row }]) };
+      out.onConflictDoNothing = () => out;
       out.then = (resolve, reject) => Promise.resolve([{ ...row }]).then(resolve, reject);
       return out;
     },
@@ -320,6 +344,11 @@ function matchRow(overrides = {}) {
     p1Hand: [...state.hands.player1],
     p2Hand: [...state.hands.player2],
     drawPile: [...state.drawPile],
+    player1Score: 0,
+    player2Score: 0,
+    roundNumber: 1,
+    previousRoundWinner: null,
+    previousStartingSeat: null,
     winnerId: null,
     result: null,
     resultReason: null,
@@ -392,6 +421,12 @@ test("fetchMatch: each seat sees its own hand and only a COUNT of the other", { 
   assert.equal(asAlice.dto.drawPileCount, 3);
   assert.deepEqual(asAlice.dto.openEnds, { left: null, right: null });
   assert.equal(asAlice.dto.version, 0);
+  // The scoreboard is public; the hands are not. A match starts at 0–0, round 1,
+  // playing to MATCH_TARGET_POINTS.
+  assert.deepEqual(asAlice.dto.scores, { player1: 0, player2: 0 });
+  assert.equal(asAlice.dto.roundNumber, 1);
+  assert.equal(asAlice.dto.matchTarget, MATCH_TARGET_POINTS);
+  assert.equal(asAlice.dto.matchTarget, 50);
 
   // The opponent's tiles and the pile are nowhere in the payload — not as a
   // field, not nested inside one.
@@ -915,12 +950,13 @@ test("the clock resolves an expired turn at most once, even for two readers", { 
   assert.equal(row.ply, 1);
 });
 
-test("with an empty pile the clock passes, and a blocked round settles as a draw", { skip: SKIP_REASON }, async (t) => {
+test("with an empty pile the clock passes, and the blocked round is scored and re-dealt", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   const store = await loadStore();
   const late = NOW + TURN_WINDOW_MS + 500;
   // Chain is 6-5, the pile is empty, and NEITHER hand can play. Alice holds
-  // 2-2 (4 pips) and Bob 3-1 (4 pips), so the blockage is an exact tie.
+  // 2-2 (4 pips) and Bob 3-1 (4 pips): a blocked round scores BOTH seats the
+  // other's pips, so it is 4–4 and the match (0–0) continues.
   const state = craftState({
     p1: ["2-2"],
     p2: ["3-1"],
@@ -933,44 +969,110 @@ test("with an empty pile the clock passes, and a blocked round settles as a draw
   const result = await store.fetchMatch({ userId: ALICE, matchId: MATCH_ID, nowMs: late });
 
   assert.equal(result.timedOut, true);
-  assert.equal(result.match.status, MATCH_STATUS.FINISHED);
-  assert.equal(result.match.result, RESULT.DRAW);
-  assert.equal(result.match.winnerId, null);
-  assert.equal(result.match.resultReason, END_REASONS.BLOCKED_PIPS);
-  assert.equal(result.match.turnDeadlineAt ?? null, null, "a decided match has no clock");
-  assert.equal(row.ply, 1);
+  // The ROUND is over; the MATCH is not.
+  assert.equal(result.match.status, MATCH_STATUS.PLAYING);
+  assert.equal(result.match.result ?? null, null);
+  assert.equal(result.match.winnerId ?? null, null);
+  assert.equal(result.match.player1Score, 4);
+  assert.equal(result.match.player2Score, 4);
+  assert.equal(result.match.roundNumber, 2);
+  assert.ok(result.match.turnDeadlineAt instanceof Date, "a live round has a clock");
+  assert.ok(row.ply >= 1, "the version advanced past the clock's action");
 
-  // The clock's action is logged as its own.
-  const [logged] = moveLog(fake);
-  assert.equal(logged.action, "pass");
-  assert.equal(logged.timedOut, true);
+  // The clock's action is logged as its own. (Read by ply: the next round's
+  // opening placement is written before the clock's row in this transaction,
+  // so the log's INSERT order is not its ply order.)
+  const clockRows = moveLog(fake).filter((entry) => entry.timedOut === true);
+  assert.equal(clockRows.length, 1);
+  assert.equal(clockRows[0].action, "pass");
+  assert.equal(clockRows[0].ply, 0);
 
-  // A draw settles through the shared writers with `result: "draw"` and moves
-  // no W/L counter.
-  assert.equal(writers.rating.length, 1);
-  assert.equal(writers.rating[0].result, "draw");
-  assert.equal(writers.rating[0].gameKey, "dominoes");
-  assert.equal(writers.trophy.length, 1);
-  assert.equal(writers.trophy[0].result, "draw");
-  const userWrites = fake.state.writes.filter((write) => write.table === users);
-  assert.equal(userWrites.length, 0, "a draw must not increment gamesWon/gamesLost");
+  // The blocked round is on the record: pips, points, no winner, its own reason.
+  const [blocked] = await store.fetchMatchRounds(MATCH_ID);
+  assert.equal(blocked.roundNumber, 1);
+  assert.equal(blocked.player1Pips, 4);
+  assert.equal(blocked.player2Pips, 4);
+  assert.equal(blocked.player1Points, 4);
+  assert.equal(blocked.player2Points, 4);
+  assert.equal(blocked.winnerSeat ?? null, null);
+  assert.equal(blocked.endReason, END_REASONS.BLOCKED_PIPS);
+  assert.ok(blocked.completedAt instanceof Date);
+
+  // A fresh set was dealt, and nothing was settled: the match is not over.
+  const dealt = [
+    ...row.p1Hand, ...row.p2Hand, ...row.drawPile,
+    ...row.gameState.chain.map((tile) => tile.id),
+  ];
+  assert.equal(dealt.length, 28);
+  assert.equal(new Set(dealt).size, 28);
+  assert.equal(writers.rating.length, 0);
+  assert.equal(writers.trophy.length, 0);
+});
+
+test("a level crossing of the target forces a tiebreak round, never a draw", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  const late = NOW + TURN_WINDOW_MS + 500;
+  const state = craftState({
+    p1: ["2-2"],
+    p2: ["3-1"],
+    pile: [],
+    chain: [{ id: "6-5", end: "left", left: 6, right: 5, isDouble: false, seat: "player2" }],
+    turn: "player1",
+  });
+  // 46–46: +4 each reaches the 50-point target together.
+  const row = seedMatch(fake, { state, player1Score: 46, player2Score: 46 });
+
+  const result = await store.fetchMatch({ userId: ALICE, matchId: MATCH_ID, nowMs: late });
+
+  // Both seats crossed the target, but nobody LEADS: no winner may be declared.
+  assert.equal(result.match.status, MATCH_STATUS.PLAYING);
+  assert.equal(result.match.result ?? null, null);
+  assert.equal(result.match.winnerId ?? null, null);
+  assert.equal(result.match.resultReason ?? null, null);
+  assert.equal(result.match.player1Score, 50);
+  assert.equal(result.match.player2Score, 50);
+  assert.ok(result.match.turnDeadlineAt instanceof Date, "the tiebreak round has a clock");
+  assert.equal(result.match.roundNumber, 2, "the tiebreak round is in progress");
+  assert.equal(result.match.previousRoundWinner ?? null, null);
+
+  // The round itself is still recorded, with its own level result.
+  const [blocked] = await store.fetchMatchRounds(MATCH_ID);
+  assert.equal(blocked.roundNumber, 1);
+  assert.equal(blocked.player1Points, 4);
+  assert.equal(blocked.player2Points, 4);
+  assert.equal(blocked.endReason, END_REASONS.BLOCKED_PIPS);
+
+  // A level round inherits no winner, so the bid ALTERNATES: this round started
+  // with player1, so the tiebreak round starts with player2 — who opens by hand
+  // (the fresh chain is empty).
+  assert.equal(row.gameState.startingSeat, "player2");
+  assert.equal(row.gameState.turn, "player2");
+  assert.equal(row.gameState.chain.length, 0);
+  assert.equal(result.match.previousStartingSeat, "player2");
+  assert.equal(row.ply, 1, "the tiebreak deal is rebased onto the closing ply");
+
+  // Nothing was settled while the series is undecided.
+  assert.equal(writers.rating.length, 0);
+  assert.equal(writers.trophy.length, 0);
 });
 
 /* -------------------------------------------------------------------------- *
  * Victory and settlement
  * -------------------------------------------------------------------------- */
 
-test("a winning play finishes the match and settles it exactly once", { skip: SKIP_REASON }, async (t) => {
+test("the first seat to 50 wins the match, and it settles exactly once", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   const store = await loadStore();
-  // Alice's last tile is the only thing between her and an emptied hand.
+  // Alice's last tile is the only thing between her and an emptied hand; she is
+  // on 45, so Bob's 6 remaining pips take her past the 50-point target.
   const state = craftState({
     p1: ["6-3"],
     p2: ["1-1", "2-2"],
     pile: ["4-4"],
     turn: "player1",
   });
-  const row = seedMatch(fake, { state });
+  const row = seedMatch(fake, { state, player1Score: 45, player2Score: 49 });
 
   const result = await store.move({
     userId: ALICE,
@@ -981,14 +1083,27 @@ test("a winning play finishes the match and settles it exactly once", { skip: SK
   });
 
   assert.equal(result.matchCompleted, true);
+  assert.equal(result.roundCompleted, true);
   assert.equal(result.winnerSeat, "player1");
   assert.equal(result.match.status, MATCH_STATUS.FINISHED);
   assert.equal(result.match.result, RESULT.PLAYER1);
   assert.equal(result.match.winnerId, ALICE);
-  assert.equal(result.match.resultReason, END_REASONS.EMPTIED_HAND);
+  assert.equal(result.match.resultReason, END_REASONS.MATCH_TARGET);
+  // Points carried in from previous rounds and the round's own award are both
+  // on the row: 45 + 6 = 51, and 49 + 0 = 49.
+  assert.equal(result.match.player1Score, 51);
+  assert.equal(result.match.player2Score, 49);
+  assert.equal(result.match.roundNumber, 1);
   assert.ok(result.match.endedAt instanceof Date);
   assert.equal(result.match.turnDeadlineAt ?? null, null);
   assert.deepEqual(row.gameState.hands, undefined, "hands are never part of the public state");
+
+  // The round that decided it keeps its own reason, separate from the match's.
+  const [deciding] = await store.fetchMatchRounds(MATCH_ID);
+  assert.equal(deciding.player1Points, 6);
+  assert.equal(deciding.player2Points, 0);
+  assert.equal(deciding.winnerSeat, "player1");
+  assert.equal(deciding.endReason, END_REASONS.EMPTIED_HAND);
 
   // One settlement, through the shared writers, inside the claiming transaction.
   assert.equal(writers.rating.length, 1);
@@ -1223,4 +1338,652 @@ test("move history is append-only and ordered by ply", { skip: SKIP_REASON }, as
   assert.equal(history[1].tile, "6-6");
   assert.equal(history[1].chainEnd, "left");
   assert.equal(history[1].timedOut, false);
+});
+
+/* -------------------------------------------------------------------------- *
+ * Multi-round matches (the 50-point series)
+ * -------------------------------------------------------------------------- */
+
+test("a round that ends below the target records it and deals a fresh round", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  // Round 2 of a match carrying 12–9 in from round 1. Alice's last tile is the
+  // only thing between her and an emptied hand; Bob holds 6 pips.
+  const state = craftState({
+    p1: ["6-3"],
+    p2: ["1-1", "2-2"],
+    pile: [],
+    turn: "player1",
+    ply: 7,
+  });
+  const row = seedMatch(fake, { state, player1Score: 12, player2Score: 9, roundNumber: 2 });
+
+  const result = await store.move({
+    userId: ALICE,
+    matchId: MATCH_ID,
+    action: play("6-3"),
+    expectedVersion: 7,
+    nowMs: NOW,
+  });
+
+  // A finished ROUND is not a finished MATCH.
+  assert.equal(result.roundCompleted, true);
+  assert.equal(result.matchCompleted, false);
+  assert.equal(result.match.status, MATCH_STATUS.PLAYING);
+  assert.equal(result.match.result ?? null, null);
+  assert.equal(result.match.winnerId ?? null, null);
+  assert.equal(result.match.resultReason ?? null, null);
+  assert.equal(result.applyAction, undefined);
+  assert.equal(result.appliedAction, "play");
+
+  // Points carry over: 12 + 6, and 9 + 0. Round 3 is now in progress.
+  assert.equal(result.match.player1Score, 18);
+  assert.equal(result.match.player2Score, 9);
+  assert.equal(result.match.roundNumber, 3);
+  assert.equal(result.roundNumber, 3);
+  assert.deepEqual(result.scores, { player1: 18, player2: 9 });
+  assert.equal(result.match.previousRoundWinner, "player1");
+  assert.equal(result.match.previousStartingSeat, result.match.gameState.startingSeat);
+
+  // The previous round's WINNER opens the new round, and opens it BY HAND: the
+  // deal places nothing, so the chain is empty and the turn is the winner's.
+  assert.equal(result.match.gameState.startingSeat, "player1");
+  assert.equal(result.match.gameState.turn, "player1");
+  assert.equal(result.match.gameState.chain.length, 0);
+  assert.ok(result.match.turnDeadlineAt instanceof Date, "the new round has a clock");
+
+  // The projection carries the round that just closed — pips and points only,
+  // never a hand — so the board can announce it without racing the new deal.
+  const readBack = await store.fetchMatch({ userId: ALICE, matchId: MATCH_ID, nowMs: NOW });
+  assert.equal(readBack.dto.lastRound.roundNumber, 2);
+  assert.equal(readBack.dto.lastRound.player1Pips, 0);
+  assert.equal(readBack.dto.lastRound.player2Pips, 6);
+  assert.equal(readBack.dto.lastRound.player1Points, 6);
+  assert.equal(readBack.dto.lastRound.player2Points, 0);
+  assert.equal(readBack.dto.lastRound.winnerSeat, "player1");
+  assert.equal("hands" in readBack.dto.lastRound, false, "no hand may leave the store");
+  assert.equal("hand" in readBack.dto.lastRound, false);
+
+  // The completed round is on the record with its OWN result.
+  const rounds = await store.fetchMatchRounds(MATCH_ID);
+  assert.equal(rounds.length, 1);
+  const [opened] = rounds;
+  assert.equal(opened.roundNumber, 2);
+  assert.equal(opened.player1Pips, 0);
+  assert.equal(opened.player2Pips, 6);
+  assert.equal(opened.player1Points, 6);
+  assert.equal(opened.player2Points, 0);
+  assert.equal(opened.winnerSeat, "player1");
+  assert.equal(opened.endReason, END_REASONS.EMPTIED_HAND);
+  assert.ok(opened.completedAt instanceof Date);
+
+  // A fresh double-six set, and a ply version that continues instead of resetting.
+  const dealt = [
+    ...row.p1Hand,
+    ...row.p2Hand,
+    ...row.drawPile,
+    ...row.gameState.chain.map((tile) => tile.id),
+  ];
+  assert.equal(dealt.length, 28);
+  assert.equal(new Set(dealt).size, 28);
+  assert.ok(row.ply > 7, "the version never resets between rounds");
+
+  // The move log stays duplicate-free across the round boundary.
+  const history = await store.fetchMatchMoves(MATCH_ID);
+  const plies = history.map((entry) => entry.ply);
+  assert.equal(new Set(plies).size, plies.length, "a ply is never reused");
+  assert.equal(history[0].ply, 7);
+  assert.equal(history[0].action, "play");
+
+  // Nothing was settled: the series is still on.
+  assert.equal(writers.rating.length, 0);
+  assert.equal(writers.trophy.length, 0);
+
+  // ANY tile is a legal opening play — the winner does not need a double.
+  const opening = await store.move({
+    userId: ALICE,
+    matchId: MATCH_ID,
+    action: play(result.state.hands.player1[0]),
+    expectedVersion: result.match.ply,
+    nowMs: NOW,
+  });
+  assert.equal(opening.error, undefined);
+  assert.equal(opening.state.ply, result.state.ply + 1);
+  assert.equal(opening.state.turn, "player2");
+});
+
+test("a retried round-closing action cannot record the round or its points twice", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  const state = craftState({
+    p1: ["6-3"],
+    p2: ["1-1"],
+    pile: [],
+    turn: "player1",
+  });
+  const row = seedMatch(fake, { state, player1Score: 10, player2Score: 10 });
+
+  const first = await store.move({
+    userId: ALICE,
+    matchId: MATCH_ID,
+    action: play("6-3"),
+    expectedVersion: 0,
+    nowMs: NOW,
+  });
+  assert.equal(first.roundCompleted, true);
+  assert.equal(first.match.player1Score, 12);
+  assert.equal(fake.rowsOf(dominoesRounds).length, 1);
+
+  // The retry echoes the version it was shown — stale now, so nothing happens.
+  const retry = await store.move({
+    userId: ALICE,
+    matchId: MATCH_ID,
+    action: play("6-3"),
+    expectedVersion: 0,
+    nowMs: NOW,
+  });
+  assert.equal(retry.status, 409);
+
+  assert.equal(fake.rowsOf(dominoesRounds).length, 1, "one round, one record");
+  assert.equal(row.player1Score, 12, "points are never added twice");
+  assert.equal(row.player2Score, 10);
+  assert.equal(row.roundNumber, 2);
+});
+
+test("round history accumulates: an older round is never overwritten", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  const state = craftState({
+    p1: ["6-3"],
+    p2: ["1-1"],
+    pile: [],
+    turn: "player1",
+  });
+  const row = seedMatch(fake, { state });
+
+  // Round 1: Alice empties, scores Bob's 2 pips.
+  const first = await store.move({
+    userId: ALICE,
+    matchId: MATCH_ID,
+    action: play("6-3"),
+    expectedVersion: 0,
+    nowMs: NOW,
+  });
+  assert.equal(first.match.player1Score, 2);
+  assert.equal(row.roundNumber, 2);
+
+  // Round 2: re-seat the row on a hand-crafted final position (the deal in
+  // between is random by design) and empty the bot-free hand again.
+  const nextPly = row.ply;
+  const roundTwo = craftState({
+    p1: ["5-5"],
+    p2: ["1-1", "2-2"],
+    pile: [],
+    turn: "player1",
+    ply: nextPly,
+  });
+  row.gameState = publicState(roundTwo);
+  row.p1Hand = [...roundTwo.hands.player1];
+  row.p2Hand = [...roundTwo.hands.player2];
+  row.drawPile = [...roundTwo.drawPile];
+  row.ply = nextPly;
+  row.currentTurnUserId = ALICE;
+  row.turnDeadlineAt = new Date(NOW + TURN_WINDOW_MS);
+
+  const second = await store.move({
+    userId: ALICE,
+    matchId: MATCH_ID,
+    action: play("5-5"),
+    expectedVersion: nextPly,
+    nowMs: NOW,
+  });
+  assert.equal(second.roundCompleted, true);
+  assert.equal(second.match.player1Score, 2 + 6);
+  assert.equal(second.match.roundNumber, 3);
+
+  const rounds = await store.fetchMatchRounds(MATCH_ID);
+  assert.deepEqual(
+    rounds.map((entry) => [entry.roundNumber, entry.player1Points, entry.winnerSeat]),
+    [
+      [1, 2, "player1"],
+      [2, 6, "player1"],
+    ],
+  );
+});
+
+/* -------------------------------------------------------------------------- *
+ * The verdict, the simultaneous crossing and the tiebreak round
+ * -------------------------------------------------------------------------- */
+
+test("matchVerdict: the target, the higher total, and a tiebreak that is no draw", async () => {
+  const { matchVerdict } = await import("../src/lib/dominoes/match.ts");
+
+  // Below the target on both sides: still playing.
+  assert.deepEqual(matchVerdict({ player1: 49, player2: 48 }), {
+    finished: false,
+    seat: null,
+    result: null,
+    tiebreak: false,
+  });
+  // A seat at the target with the lead wins the match.
+  assert.deepEqual(matchVerdict({ player1: 50, player2: 40 }), {
+    finished: true,
+    seat: "player1",
+    result: "player1",
+    tiebreak: false,
+  });
+  // Both cross TOGETHER and one leads: the higher final total wins.
+  assert.deepEqual(matchVerdict({ player1: 53, player2: 51 }), {
+    finished: true,
+    seat: "player1",
+    result: "player1",
+    tiebreak: false,
+  });
+  assert.equal(matchVerdict({ player1: 48, player2: 52 }).seat, "player2");
+  // Level at/above the target: no winner may be declared — a tiebreak round.
+  assert.deepEqual(matchVerdict({ player1: 50, player2: 50 }), {
+    finished: false,
+    seat: null,
+    result: null,
+    tiebreak: true,
+  });
+  assert.equal(matchVerdict({ player1: 57, player2: 57 }).tiebreak, true);
+});
+
+test("crossing the target together: the higher cumulative score wins", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  // A blocked round awards BOTH seats: 47 + 6 = 53 and 47 + 4 = 51. Both pass the
+  // target in the same round, and the final totals decide it.
+  const state = craftState({
+    p1: ["2-2"],
+    p2: ["3-1", "1-1"],
+    pile: [],
+    chain: [{ id: "6-5", end: "left", left: 6, right: 5, isDouble: false, seat: "player2" }],
+    turn: "player1",
+  });
+  seedMatch(fake, { state, player1Score: 47, player2Score: 47 });
+
+  const result = await store.move({
+    userId: ALICE,
+    matchId: MATCH_ID,
+    action: PASS,
+    expectedVersion: 0,
+    nowMs: NOW,
+  });
+
+  assert.equal(result.roundCompleted, true);
+  assert.equal(result.matchCompleted, true);
+  assert.equal(result.match.status, MATCH_STATUS.FINISHED);
+  assert.equal(result.match.result, RESULT.PLAYER1);
+  assert.equal(result.match.winnerId, ALICE);
+  assert.equal(result.match.resultReason, END_REASONS.MATCH_TARGET);
+  assert.deepEqual(result.scores, { player1: 53, player2: 51 });
+  assert.equal(result.winnerSeat, "player1");
+  assert.equal(result.match.roundNumber, 1, "the deciding round is the one just closed");
+  assert.equal(result.match.turnDeadlineAt ?? null, null, "a decided match has no clock");
+
+  // One round row, one settlement.
+  const rounds = await store.fetchMatchRounds(MATCH_ID);
+  assert.equal(rounds.length, 1);
+  assert.equal(rounds[0].winnerSeat, "player1");
+  assert.equal(writers.rating.length, 1);
+  assert.equal(writers.rating[0].winnerClerkId, ALICE);
+  assert.equal(writers.rating[0].loserClerkId, BOB);
+  assert.equal(writers.trophy.length, 1);
+});
+
+test("a tiebreak round that breaks the tie settles the match exactly once", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  const late = NOW + TURN_WINDOW_MS + 500;
+  // Round 1: 46–46, blocked for 4 each => 50–50. A tiebreak round is dealt.
+  const level = craftState({
+    p1: ["2-2"],
+    p2: ["3-1"],
+    pile: [],
+    chain: [{ id: "6-5", end: "left", left: 6, right: 5, isDouble: false, seat: "player2" }],
+    turn: "player1",
+  });
+  const row = seedMatch(fake, { state: level, player1Score: 46, player2Score: 46 });
+  await store.fetchMatch({ userId: ALICE, matchId: MATCH_ID, nowMs: late });
+  assert.equal(row.roundNumber, 2);
+  assert.equal(row.status, MATCH_STATUS.PLAYING);
+  assert.equal(writers.rating.length, 0, "a level crossing settles nothing");
+
+  // The tiebreak round: Alice empties her hand for Bob's 2 pips — 52–50, the
+  // first totals that are no longer level.
+  const tiebreak = craftState({
+    p1: ["6-3"],
+    p2: ["1-1"],
+    pile: [],
+    turn: "player1",
+    ply: row.ply,
+  });
+  row.gameState = publicState(tiebreak);
+  row.p1Hand = [...tiebreak.hands.player1];
+  row.p2Hand = [...tiebreak.hands.player2];
+  row.drawPile = [...tiebreak.drawPile];
+  row.currentTurnUserId = ALICE;
+  row.turnDeadlineAt = new Date(NOW + TURN_WINDOW_MS);
+
+  const decided = await store.move({
+    userId: ALICE,
+    matchId: MATCH_ID,
+    action: play("6-3"),
+    expectedVersion: row.ply,
+    nowMs: NOW,
+  });
+
+  assert.equal(decided.matchCompleted, true);
+  assert.equal(decided.match.status, MATCH_STATUS.FINISHED);
+  assert.equal(decided.match.result, RESULT.PLAYER1);
+  assert.equal(decided.match.winnerId, ALICE);
+  assert.deepEqual(decided.scores, { player1: 52, player2: 50 });
+  assert.equal(decided.match.roundNumber, 2, "the tiebreak round is the one just closed");
+  assert.equal(writers.rating.length, 1);
+  assert.equal(writers.trophy.length, 1);
+
+  // Settled ONCE: a re-read and a late action change nothing.
+  await store.fetchMatch({ userId: BOB, matchId: MATCH_ID, nowMs: NOW });
+  const retry = await store.move({
+    userId: BOB,
+    matchId: MATCH_ID,
+    action: play("1-1"),
+    expectedVersion: row.ply,
+    nowMs: NOW,
+  });
+  assert.equal(retry.status, 409);
+  assert.equal(writers.rating.length, 1);
+  assert.equal(writers.trophy.length, 1);
+
+  // Both rounds survive, oldest first, each with its own result.
+  const rounds = await store.fetchMatchRounds(MATCH_ID);
+  assert.deepEqual(
+    rounds.map((entry) => [entry.roundNumber, entry.winnerSeat, entry.player1Points]),
+    [
+      [1, null, 4],
+      [2, "player1", 2],
+    ],
+  );
+});
+
+/* -------------------------------------------------------------------------- *
+ * FREE PRACTICE — the bot plays the SAME multi-round match to 50
+ * -------------------------------------------------------------------------- */
+
+/** A practice row: Alice against the bot, seat 2 occupied from creation. */
+function seedAiMatch(fake, overrides = {}) {
+  return seedMatch(fake, {
+    player2Id: DOMINOES_AI_PLAYER_ID,
+    isAi: true,
+    aiDifficulty: "normal",
+    ...overrides,
+  });
+}
+
+const botMoves = (fake, fromPly = 0) =>
+  moveLog(fake).filter(
+    (entry) => entry.playerId === DOMINOES_AI_PLAYER_ID && entry.ply >= fromPly,
+  );
+
+test("practice: the bot wins a round, its points accumulate and it opens the next one", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  // Alice opens the left end (6) with 6-4, which turns that end into 4. The bot
+  // holds the only 4-4, so its reply empties its hand and ends the round with
+  // Alice still holding 5-5 (10 pips).
+  const state = craftState({
+    p1: ["6-4", "5-5"],
+    p2: ["4-4"],
+    pile: [],
+    chain: [{ id: "6-5", end: "left", left: 6, right: 5, isDouble: false, seat: "player1" }],
+    turn: "player1",
+    ply: 4,
+  });
+  const row = seedAiMatch(fake, { state, player1Score: 12, player2Score: 9, roundNumber: 2 });
+
+  const result = await store.move({
+    userId: ALICE,
+    matchId: MATCH_ID,
+    action: play("6-4", "left"),
+    expectedVersion: 4,
+    nowMs: NOW,
+  });
+
+  // The ROUND ended — Alice's play handed the bot the turn and the bot emptied
+  // its hand inline. The MATCH is not over.
+  assert.equal(result.roundCompleted, true);
+  assert.equal(result.matchCompleted, false);
+  assert.equal(result.match.status, MATCH_STATUS.PLAYING);
+  // Points carry over: 12 + 0 and 9 + 10, awarded by the SAME round rule PvP uses.
+  assert.deepEqual(result.scores, { player1: 12, player2: 19 });
+  assert.equal(result.match.player1Score, 12);
+  assert.equal(result.match.player2Score, 19);
+  assert.equal(result.match.previousRoundWinner, "player2");
+  // The bot WON the round, so the bot opens round 3 — inline, so the row the
+  // human reads is already on the human's turn.
+  assert.equal(result.match.previousStartingSeat, "player2");
+  assert.equal(result.match.gameState.startingSeat, "player2");
+  assert.equal(result.match.gameState.turn, "player1");
+  assert.equal(result.match.gameState.chain.length, 1, "the bot opened the fresh chain");
+  assert.equal(result.match.roundNumber, 3);
+  assert.equal(result.match.currentTurnUserId, ALICE);
+  assert.ok(result.match.turnDeadlineAt instanceof Date, "the human gets a fresh clock");
+  // The bot's difficulty is preserved across the transition.
+  assert.equal(result.match.aiDifficulty, "normal");
+
+  // The round is recorded once, with the engine's own scoring.
+  const [round] = await store.fetchMatchRounds(MATCH_ID);
+  assert.equal(round.roundNumber, 2);
+  assert.equal(round.player1Pips, 10);
+  assert.equal(round.player2Pips, 0);
+  assert.equal(round.player1Points, 0);
+  assert.equal(round.player2Points, 10);
+  assert.equal(round.winnerSeat, "player2");
+  assert.equal(round.endReason, END_REASONS.EMPTIED_HAND);
+
+  // Ply keeps climbing across the round boundary and no ply is reused.
+  const plies = moveLog(fake).map((entry) => entry.ply);
+  assert.equal(new Set(plies).size, plies.length);
+  assert.ok(row.ply > 5, `the version advanced past the transition (ply ${row.ply})`);
+
+  // Practice still settles NOTHING mid-series.
+  assert.equal(writers.rating.length, 0);
+  assert.equal(writers.trophy.length, 0);
+});
+
+test("practice: the human wins a round, opens the next one and the bot answers in it", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  const state = craftState({
+    p1: ["6-3"],
+    p2: ["1-1", "2-2"],
+    pile: [],
+    turn: "player1",
+  });
+  const row = seedAiMatch(fake, { state });
+
+  const first = await store.move({
+    userId: ALICE,
+    matchId: MATCH_ID,
+    action: play("6-3"),
+    expectedVersion: 0,
+    nowMs: NOW,
+  });
+
+  // Alice emptied her hand for the bot's 6 pips.
+  assert.equal(first.roundCompleted, true);
+  assert.equal(first.matchCompleted, false);
+  assert.deepEqual(first.scores, { player1: 6, player2: 0 });
+  assert.equal(first.match.previousRoundWinner, "player1");
+  // The winner opens: Alice, on an EMPTY chain, so any tile is legal — and the
+  // bot owes nothing yet, because it is not on turn.
+  assert.equal(first.match.previousStartingSeat, "player1");
+  assert.equal(first.match.gameState.startingSeat, "player1");
+  assert.equal(first.match.gameState.turn, "player1");
+  assert.equal(first.match.gameState.chain.length, 0);
+  assert.equal(first.match.roundNumber, 2);
+  assert.equal(botMoves(fake).length, 0, "no bot move before its turn in the new round");
+
+  const transitionPly = first.match.ply;
+
+  // The human opens the new round with ANY tile, and the bot answers inside the
+  // same transaction — the bot is never left stale at a round boundary.
+  const second = await store.move({
+    userId: ALICE,
+    matchId: MATCH_ID,
+    action: play(first.state.hands.player1[0]),
+    expectedVersion: transitionPly,
+    nowMs: NOW,
+  });
+  assert.equal(second.error, undefined);
+  assert.equal(second.match.status, MATCH_STATUS.PLAYING);
+  assert.ok(
+    botMoves(fake).length >= 1,
+    "the bot takes its turn in the round after a human round win",
+  );
+  assert.ok(botMoves(fake).some((entry) => entry.ply >= transitionPly));
+  assert.equal(row.isAi, true);
+});
+
+test("practice: a blocked round scores BOTH seats and the bid alternates to the bot", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  // Pile empty, neither hand playable, 4 pips each: the pass blocks the round.
+  const state = craftState({
+    p1: ["2-2"],
+    p2: ["3-1"],
+    pile: [],
+    chain: [{ id: "6-5", end: "left", left: 6, right: 5, isDouble: false, seat: "player1" }],
+    turn: "player1",
+  });
+  // The round started with Alice; a LEVEL round inherits no winner, so the bid
+  // alternates to the bot.
+  const row = seedAiMatch(fake, { state, previousStartingSeat: "player1" });
+
+  const result = await store.move({
+    userId: ALICE,
+    matchId: MATCH_ID,
+    action: PASS,
+    expectedVersion: 0,
+    nowMs: NOW,
+  });
+
+  assert.equal(result.roundCompleted, true);
+  assert.equal(result.matchCompleted, false);
+  // Both sides scored the OTHER's pips — the new blocked-round rule, unchanged
+  // for practice.
+  assert.deepEqual(result.scores, { player1: 4, player2: 4 });
+  assert.equal(result.match.previousRoundWinner ?? null, null);
+  assert.equal(result.match.previousStartingSeat, "player2", "a level round alternates the bid");
+  assert.equal(result.match.gameState.startingSeat, "player2");
+  assert.equal(result.match.gameState.turn, "player1");
+  assert.equal(result.match.gameState.chain.length, 1, "the bot opened the new round inline");
+  assert.equal(result.match.roundNumber, 2);
+  assert.ok(result.match.turnDeadlineAt instanceof Date);
+  assert.equal(row.currentTurnUserId, ALICE);
+
+  const [round] = await store.fetchMatchRounds(MATCH_ID);
+  assert.equal(round.player1Points, 4);
+  assert.equal(round.player2Points, 4);
+  assert.equal(round.winnerSeat ?? null, null);
+  assert.equal(round.endReason, END_REASONS.BLOCKED_PIPS);
+  assert.equal(writers.rating.length, 0);
+  assert.equal(writers.trophy.length, 0);
+});
+
+test("practice: the bot reaching 50 ends the match and settles nothing competitive", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  // 44–41 and the same bot round win worth 10 pips: the bot passes the target.
+  const state = craftState({
+    p1: ["6-4", "5-5"],
+    p2: ["4-4"],
+    pile: [],
+    chain: [{ id: "6-5", end: "left", left: 6, right: 5, isDouble: false, seat: "player1" }],
+    turn: "player1",
+  });
+  const row = seedAiMatch(fake, { state, player1Score: 44, player2Score: 41 });
+
+  const result = await store.move({
+    userId: ALICE,
+    matchId: MATCH_ID,
+    action: play("6-4", "left"),
+    expectedVersion: 0,
+    nowMs: NOW,
+  });
+
+  assert.equal(result.matchCompleted, true);
+  assert.equal(result.match.status, MATCH_STATUS.FINISHED);
+  assert.equal(result.match.result, RESULT.PLAYER2);
+  assert.equal(result.match.winnerId, DOMINOES_AI_PLAYER_ID);
+  assert.equal(result.match.resultReason, END_REASONS.MATCH_TARGET);
+  assert.deepEqual(result.scores, { player1: 44, player2: 51 });
+  assert.equal(result.match.turnDeadlineAt ?? null, null, "a decided match has no clock");
+  assert.equal(result.match.currentTurnUserId ?? null, null);
+  assert.ok(result.match.endedAt instanceof Date);
+
+  // UNRATED: no Elo, no trophy, no W/L counter, no daily win for a bot win.
+  assert.equal(writers.rating.length, 0);
+  assert.equal(writers.trophy.length, 0);
+  assert.equal(
+    fake.state.writes.filter((write) => write.table === users).length,
+    0,
+    "practice never moves an account counter",
+  );
+  // A re-read does not re-settle anything.
+  await store.fetchMatch({ userId: ALICE, matchId: MATCH_ID, nowMs: NOW });
+  assert.equal(writers.rating.length, 0);
+  assert.equal(writers.trophy.length, 0);
+  assert.equal(row.isAi, true);
+});
+
+test("practice: an expired bot turn is resolved and never leaves the next round on the bot", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  // The bot is on turn in a BLOCKED position, so the clock's pass ends the round
+  // and the bot wins it (4 pips to 0).
+  const state = craftState({
+    p1: ["2-2"],
+    p2: ["0-0"],
+    pile: [],
+    chain: [{ id: "6-5", end: "left", left: 6, right: 5, isDouble: false, seat: "player1" }],
+    turn: "player2",
+  });
+  const row = seedAiMatch(fake, { state, previousStartingSeat: "player1" });
+
+  const result = await store.fetchMatch({
+    userId: ALICE,
+    matchId: MATCH_ID,
+    nowMs: NOW + TURN_WINDOW_MS + 500,
+  });
+
+  assert.equal(result.timedOut, true);
+  // The round closed on the clock, points were awarded, and the bot — the round
+  // winner — opened the next one inline.
+  assert.equal(result.match.status, MATCH_STATUS.PLAYING);
+  assert.deepEqual(
+    { player1: result.match.player1Score, player2: result.match.player2Score },
+    { player1: 0, player2: 4 },
+  );
+  assert.equal(result.match.roundNumber, 2);
+  assert.equal(result.match.previousRoundWinner, "player2");
+  assert.equal(result.match.previousStartingSeat, "player2");
+  assert.equal(result.match.gameState.startingSeat, "player2");
+  // NOT stuck: the bot has already opened, so the turn and the clock belong to
+  // the human.
+  assert.equal(result.match.gameState.turn, "player1");
+  assert.equal(result.match.currentTurnUserId, ALICE);
+  assert.ok(result.match.turnDeadlineAt instanceof Date);
+  assert.ok(botMoves(fake).length >= 1, "the bot's new-round opener is logged");
+
+  const [round] = await store.fetchMatchRounds(MATCH_ID);
+  assert.equal(round.roundNumber, 1);
+  assert.equal(round.player1Points, 0);
+  assert.equal(round.player2Points, 4);
+  assert.equal(round.winnerSeat, "player2");
+  assert.equal(round.endReason, END_REASONS.BLOCKED_PIPS);
+  assert.equal(writers.rating.length, 0);
+  assert.equal(row.isAi, true);
 });

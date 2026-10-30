@@ -169,17 +169,77 @@ function isDomainInteger(value: unknown): value is number {
 /**
  * Validate a prediction object (typically a request body).
  *
- * Accepts either `{ exact: n }` or `{ min: n, max: n }`. Every value must be an
+ * Accepts the canonical engine shape the board sends — `{ kind: "exact",
+ * value: n }` or `{ kind: "range", min: n, max: n }` — and the older flat
+ * request shape `{ exact: n }` / `{ min: n, max: n }`. Every value must be an
  * INTEGER inside TARGET_MIN..TARGET_MAX and `min <= max`. Anything else —
  * missing halves, a non-integer, 0, 101, NaN, a reversed range — is rejected
  * here rather than being scored as a miss, so a malformed request is a 400 and
  * never a silent zero.
+ *
+ * Both shapes must be accepted: the client's `PredictionPanel` emits `kind`
+ * predictions, and an exact one carries `value` and neither `exact` nor
+ * `min`/`max` — reading it as the flat shape found "no prediction at all" and
+ * refused every exact call while ranges worked.
  */
 export function parsePrediction(input: unknown): PredictionParseResult {
   if (!input || typeof input !== "object") {
     return { ok: false, error: "A prediction is required" };
   }
-  const raw = input as { exact?: unknown; min?: unknown; max?: unknown };
+
+  const shaped = input as {
+    kind?: unknown;
+    value?: unknown;
+    exact?: unknown;
+    min?: unknown;
+    max?: unknown;
+  };
+
+  // Normalise a `kind`-tagged prediction onto the flat shape the rest of this
+  // function validates. A tagged prediction that ALSO carries the other
+  // shape's fields is ambiguous, and ambiguity is refused rather than guessed.
+  let raw: { exact?: unknown; min?: unknown; max?: unknown };
+  if (shaped.kind === "exact") {
+    if (
+      shaped.exact !== undefined ||
+      shaped.min !== undefined ||
+      shaped.max !== undefined
+    ) {
+      return {
+        ok: false,
+        error: "Send either an exact number or a range, not both",
+      };
+    }
+    if (shaped.value === undefined || shaped.value === null) {
+      return {
+        ok: false,
+        error: `An exact prediction must be a whole number between ${TARGET_MIN} and ${TARGET_MAX}`,
+      };
+    }
+    raw = { exact: shaped.value };
+  } else if (shaped.kind === "range") {
+    if (shaped.exact !== undefined) {
+      return {
+        ok: false,
+        error: "Send either an exact number or a range, not both",
+      };
+    }
+    if (shaped.min === undefined || shaped.max === undefined) {
+      return {
+        ok: false,
+        error: "A range prediction needs both a minimum and a maximum",
+      };
+    }
+    raw = { min: shaped.min, max: shaped.max };
+  } else if (shaped.kind !== undefined) {
+    return {
+      ok: false,
+      error: 'A prediction kind must be "exact" or "range"',
+    };
+  } else {
+    raw = shaped;
+  }
+
   const hasExact = raw.exact !== undefined && raw.exact !== null;
   const hasRange = raw.min !== undefined || raw.max !== undefined;
 

@@ -22,7 +22,7 @@ import {
 } from "../../../../../lib/aiDifficulty";
 import { Ball, PlayerTurn, ShotLifecycle, ShotMeta, SyncedState, Team } from "../../../../../lib/pool/types";
 import { useUser } from "@clerk/nextjs";
-import EmotePicker, { EmoteBubble } from "../../../../../components/game/EmotePicker";
+import GameEmoteLayer from "../../../../../components/game/emotes/GameEmoteLayer";
 import useGameEmotes from "../../../../../hooks/useGameEmotes";
 import ReportModal from "../../../../../components/ReportModal";
 import PvpResultScreen from "../../../../../components/result/PvpResultScreen";
@@ -1530,7 +1530,6 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
             <p className="relative flex items-center gap-1.5 font-bold">
               <FrameAvatar frame={myProfileFrame} iconKey={myIconKey} name={myName} isGuest={myIsGuest} size="h-4 w-4" />
               <span style={myNameColor ? { color: myNameColor } : undefined}>{myName}</span>
-              <EmoteBubble emote={myEmote} side="mine" />
             </p>
             <p className="text-xs text-cyan-100">{myTeam ?? "unassigned"}</p>
             <p className="mt-1 text-sm">Balls: {myRemaining.join(", ") || "none"}</p>
@@ -1539,7 +1538,6 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
             <p className="relative flex items-center justify-end gap-1.5 font-bold">
               <span style={oppNameColor ? { color: oppNameColor } : undefined}>{oppName}</span>
               <FrameAvatar frame={oppProfileFrame} iconKey={oppIconKey} name={oppName} isGuest={oppIsGuest} size="h-4 w-4" />
-              <EmoteBubble emote={incomingEmote} />
             </p>
             <p className="text-xs text-cyan-100">{oppTeam ?? "unassigned"}</p>
             <p className="mt-1 text-sm">Balls: {oppRemaining.join(", ") || "none"}</p>
@@ -1550,9 +1548,9 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
     <>{/* ── Emotes ── */}
         {started && !winner && (
           <div className="mt-3 flex justify-center">
-            <EmotePicker
+            <GameEmoteLayer
+              gameId="pool-masters"
               compact
-              hideBubbles
               incomingEmote={incomingEmote}
               myEmote={myEmote}
               onSend={(emote) => sendEmote(emote)}
@@ -1964,7 +1962,6 @@ ${!canShoot ? "pointer-events-none" : ""}`}
           <span className="truncate" style={myNameColor ? { color: myNameColor } : undefined}>
             {myName}
           </span>
-          <EmoteBubble emote={myEmote} side="mine" />
         </p>
         <p className="truncate text-[10px] text-cyan-100">
           {myTeam ?? "unassigned"} • Balls: {myRemaining.join(", ") || "—"}
@@ -1976,7 +1973,6 @@ ${!canShoot ? "pointer-events-none" : ""}`}
             {oppName}
           </span>
           <FrameAvatar frame={oppProfileFrame} iconKey={oppIconKey} name={oppName} isGuest={oppIsGuest} size="h-3.5 w-3.5" />
-          <EmoteBubble emote={incomingEmote} />
         </p>
         <p className="truncate text-[10px] text-cyan-100">
           {oppTeam ?? "unassigned"} • Balls: {oppRemaining.join(", ") || "—"}

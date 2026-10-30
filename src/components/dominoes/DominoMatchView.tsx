@@ -66,6 +66,8 @@ import {
   countdownFor,
   isTerminalStatus,
   playOptionsFor,
+  roundResultFor,
+  scoreboardFor,
   seatLabel,
   type ChainEnd,
   type OpenEnds,
@@ -113,6 +115,27 @@ export type DominoSnapshot = {
   /** True for a free practice match: the opponent seat is the bot. */
   isAi?: boolean;
   aiDifficulty?: string | null;
+  // ── The multi-round series (all server-owned) ───────────────────────────
+  /** Cumulative match points per seat, carried across rounds. */
+  scores?: { player1?: number | null; player2?: number | null } | null;
+  /** Points needed to win the match (the engine's MATCH_TARGET_POINTS). */
+  matchTarget?: number | null;
+  /** The round in progress, 1-based. */
+  roundNumber?: number | null;
+  /** The seat that won the round just closed (null when it was level). */
+  previousRoundWinner?: "player1" | "player2" | null;
+  /** The seat that opened the round now in progress. */
+  previousStartingSeat?: "player1" | "player2" | null;
+  /** The last COMPLETED round's public record — pips and points, never a hand. */
+  lastRound?: {
+    roundNumber?: number | null;
+    player1Pips?: number | null;
+    player2Pips?: number | null;
+    player1Points?: number | null;
+    player2Points?: number | null;
+    winnerSeat?: "player1" | "player2" | null;
+    endReason?: string | null;
+  } | null;
 };
 
 export type DominoMatchViewProps = {
@@ -154,6 +177,21 @@ export default function DominoMatchView({
   useEffect(() => {
     setSoundOn(!isDominoSoundMuted());
   }, []);
+  // The round result is announced once per completed round: dismissing it is a
+  // local preference, and a NEW round result re-opens it (a different key).
+  const [dismissedRound, setDismissedRound] = useState<number | null>(null);
+
+  // A SELECTION NEVER OUTLIVES THE TURN IT WAS MADE IN. The ends it fits are
+  // already withheld off-turn (`selectedEnds` below), but a lifted tile would
+  // still read as "armed" while nothing it can do would be accepted — and the
+  // requirement is that it does not. Clearing on a turn change or when the match
+  // stops being live keeps the hand's picture equal to its powers; the same
+  // happens when the played tile leaves the hand (the page does that on read).
+  const selectionStale =
+    Boolean(selected) && (!snapshot?.isLive || !snapshot?.isViewerTurn);
+  useEffect(() => {
+    if (selectionStale) onSelect?.(null);
+  }, [selectionStale, onSelect]);
 
   if (!snapshot) {
     return (
@@ -185,6 +223,31 @@ export default function DominoMatchView({
   const opponentTileCount = Number(snapshot.opponentTileCount ?? 0) || 0;
   const drawPileCount = Number(snapshot.drawPileCount ?? 0) || 0;
   const openEnds = snapshot.openEnds ?? null;
+
+  // ── The MATCH (cumulative points), seat-relative ─────────────────────────
+  // `scoreboardFor` reads the server's columns and the engine's target; this
+  // component never adds a round's points itself. Both sides print the same
+  // truth, each with its own seat called "you".
+  const scoreboard = scoreboardFor(snapshot);
+  // ── The round that JUST closed, while the series is still on ────────────
+  // Null once the match is decided (the result screen owns that moment) and null
+  // before the first round has completed.
+  const roundResult = roundResultFor(snapshot);
+  const showRoundResult = Boolean(roundResult) && roundResult.round !== dismissedRound;
+  const roundWinnerText = roundResult
+    ? roundResult.winner === "viewer"
+      ? t("games.dominoes.round_result_winner_you")
+      : roundResult.winner === "opponent"
+        ? t("games.dominoes.round_result_winner_opponent", { name: opponentName })
+        : t("games.dominoes.round_result_level")
+    : "";
+  const roundNextText = roundResult
+    ? roundResult.nextStarter === "viewer"
+      ? t("games.dominoes.round_result_next_you")
+      : roundResult.nextStarter === "opponent"
+        ? t("games.dominoes.round_result_next_opponent", { name: opponentName })
+        : ""
+    : "";
 
   // Which ends the SELECTED tile may be placed on: the same read of the same
   // public information the sidebar uses (`playOptionsFor`), so a tap on the board
@@ -228,6 +291,41 @@ export default function DominoMatchView({
       <div className="dominoes-layout">
         {/* ══ THE BOARD ══════════════════════════════════════════════════ */}
         <div className="dominoes-main">
+          {/* ── The MATCH scoreboard: cumulative points, target and round ─── */}
+          <div
+            className="dominoes-scoreboard"
+            data-testid="dominoes-scoreboard"
+            data-round={scoreboard.round}
+            role="group"
+            aria-label={t("games.dominoes.scoreboard_aria", {
+              you: scoreboard.viewerScore,
+              opponent: scoreboard.opponentScore,
+              target: scoreboard.target,
+              round: scoreboard.round,
+            })}
+          >
+            <span className="dominoes-score is-you" data-testid="dominoes-score-you">
+              <span className="dominoes-score-name">{t("games.dominoes.scoreboard_you")}</span>
+              <span className="dominoes-score-value" data-testid="dominoes-score-you-value">
+                {scoreboard.viewerScore}
+              </span>
+            </span>
+            <span className="dominoes-score-middle">
+              <span className="dominoes-score-round" data-testid="dominoes-round-number">
+                {t("games.dominoes.scoreboard_round", { round: scoreboard.round })}
+              </span>
+              <span className="dominoes-score-target" data-testid="dominoes-score-target">
+                {t("games.dominoes.scoreboard_target", { target: scoreboard.target })}
+              </span>
+            </span>
+            <span className="dominoes-score is-opponent" data-testid="dominoes-score-opponent">
+              <span className="dominoes-score-name">{opponentName}</span>
+              <span className="dominoes-score-value" data-testid="dominoes-score-opponent-value">
+                {scoreboard.opponentScore}
+              </span>
+            </span>
+          </div>
+
           {/* ── Opponent seat: a name, an avatar, and a COUNT ────────────── */}
           <div
             className={`dominoes-seat ${isLive && !isViewerTurn ? "is-active" : ""}`}
@@ -339,6 +437,69 @@ export default function DominoMatchView({
             >
               {t("games.dominoes.reconnecting")}
             </p>
+          ) : null}
+
+          {/* ── The round that just closed (the series continues) ─────────── */}
+          {showRoundResult && roundResult ? (
+            <section
+              className="dominoes-round-result"
+              data-testid="dominoes-round-result"
+              data-round={roundResult.round}
+              role="status"
+              aria-live="polite"
+              aria-label={t("games.dominoes.round_result_aria", { round: roundResult.round })}
+            >
+              <div className="dominoes-round-result-head">
+                <h3 className="dominoes-round-result-title">
+                  {t("games.dominoes.round_result_title", { round: roundResult.round })}
+                </h3>
+                <button
+                  type="button"
+                  className="dominoes-round-result-dismiss"
+                  data-testid="dominoes-round-result-dismiss"
+                  onClick={() => setDismissedRound(roundResult.round)}
+                >
+                  {t("games.dominoes.round_result_dismiss")}
+                </button>
+              </div>
+              <p className="dominoes-round-result-outcome">{roundWinnerText}</p>
+              <div className="dominoes-round-result-grid">
+                <div className="dominoes-round-result-cell" data-testid="dominoes-round-you">
+                  <p className="dominoes-round-result-cell-name">{t("games.dominoes.you")}</p>
+                  <p className="dominoes-round-result-cell-points">
+                    {t("games.dominoes.round_result_points_value", {
+                      points: roundResult.viewerPoints,
+                    })}
+                  </p>
+                  <p className="dominoes-round-result-cell-pips">
+                    {t("games.dominoes.round_result_pips_value", { pips: roundResult.viewerPips })}
+                  </p>
+                </div>
+                <div
+                  className="dominoes-round-result-cell"
+                  data-testid="dominoes-round-opponent"
+                >
+                  <p className="dominoes-round-result-cell-name">{opponentName}</p>
+                  <p className="dominoes-round-result-cell-points">
+                    {t("games.dominoes.round_result_points_value", {
+                      points: roundResult.opponentPoints,
+                    })}
+                  </p>
+                  <p className="dominoes-round-result-cell-pips">
+                    {t("games.dominoes.round_result_pips_value", {
+                      pips: roundResult.opponentPips,
+                    })}
+                  </p>
+                </div>
+              </div>
+              {roundNextText ? <p className="dominoes-round-result-next">{roundNextText}</p> : null}
+              <p className="dominoes-round-result-score">
+                {t("games.dominoes.round_result_score", {
+                  you: scoreboard.viewerScore,
+                  opponent: scoreboard.opponentScore,
+                })}
+              </p>
+            </section>
           ) : null}
 
           {/* ── The shared chain, which grows like a real table ──────────── */}

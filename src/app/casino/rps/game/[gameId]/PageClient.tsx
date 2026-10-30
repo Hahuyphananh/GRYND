@@ -23,7 +23,7 @@ import RoundMarkers from "../../../../../components/casino/RoundMarkers";
 import ReportModal from "../../../../../components/ReportModal";
 import PvpResultScreen from "../../../../../components/result/PvpResultScreen";
 import FrameAvatar from "../../../../../components/FrameAvatar";
-import EmotePicker, { EmoteBubble } from "../../../../../components/game/EmotePicker";
+import GameEmoteLayer from "../../../../../components/game/emotes/GameEmoteLayer";
 import useGameEmotes from "../../../../../hooks/useGameEmotes";
 import { useSocket } from "../../../../../context/SocketProvider";
 import {
@@ -557,12 +557,10 @@ export default function RPSPvpGamePage() {
             <span className="relative inline-flex items-center gap-1.5">
               <FrameAvatar frame={myProfileFrame} iconKey={myIconKey} name={myName} size="h-4 w-4" />
               <span style={myNameColor ? { color: myNameColor } : undefined}>{myName}</span>
-              <EmoteBubble emote={myEmote} side="mine" />
             </span>
             <span className="relative inline-flex items-center gap-1.5">
               <FrameAvatar frame={opponentProfileFrame} iconKey={opponentIconKey} name={opponentName} size="h-4 w-4" />
               <span style={opponentNameColor ? { color: opponentNameColor } : undefined}>{opponentName}</span>
-              <EmoteBubble emote={incomingEmote} />
             </span>
           </div>
 
@@ -628,9 +626,9 @@ export default function RPSPvpGamePage() {
 
               {/* Emotes */}
               <div className="flex justify-center pt-1">
-                <EmotePicker
+                <GameEmoteLayer
+                  gameId="rps"
                   compact
-                  hideBubbles
                   incomingEmote={incomingEmote}
                   myEmote={myEmote}
                   onSend={(emote) => sendEmote(emote)}

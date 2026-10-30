@@ -139,14 +139,17 @@ created on first use and lives in the Next.js process.
 - **No Socket.IO push yet.** The match page polls the authoritative snapshot at
   4 Hz. The existing `lobby:updated` relay can be added later without changing
   the engine or the payload.
-- **Not in the public catalogue.** `/games/last-run` is `noindex` and is not in
-  `GAME_CATALOG`/`GAME_LANDING_PAGES`, so the lobby and hub are untouched until
-  the launch copy exists.
-- **Registered as a playable route.** Because it has no landing-page entry, the
-  route is listed in `GAME_ROUTE_PATTERNS` (src/proxy.ts). Without that entry the
-  middleware's unknown-slug guard treats `/games/last-run` as a missing page and
-  rewrites it to the not-found sentinel — the game 500s. Any future game that
-  ships before its landing page needs the same entry.
+- **In the public catalogue.** LAST RUN is a first-class game: `/games/last-run`
+  is its public landing page (`GAME_LANDING_PAGES` + `GAME_CATALOG`), the lobby
+  is `/casino/last-run` (reached publicly as `/games/last-run/play`), and a
+  match is `/games/last-run/<id>` (rewritten to `/casino/last-run/<id>`). The
+  lobby card lives in the casino hub's `games` array, so the game is listed with
+  every other one.
+- **Registered as a playable route.** Both URL prefixes are listed in
+  `GAME_ROUTE_PATTERNS` (src/proxy.ts), so the lobby and its match views are
+  classified like every other game. A future game that ships before its landing
+  page needs the same entry, or the middleware's unknown-slug guard rewrites it
+  to the not-found sentinel and the shipped game answers with a 500.
 
 ---
 

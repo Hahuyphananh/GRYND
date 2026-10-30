@@ -103,7 +103,10 @@ export async function POST(
         match: matchToDto(result.match, userId),
         // Echo of the action the SERVER applied, for the client's move log.
         action: {
-          type: result.state.lastAction?.action.type ?? null,
+          // The action THIS request applied — not the next round's opening
+          // placement, which is what `state.lastAction` becomes once a round
+          // has been closed and a fresh deal has started.
+          type: result.appliedAction ?? null,
           ply: result.ply,
           timedOut: false,
         },

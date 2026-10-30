@@ -45,6 +45,8 @@ import {
   outcomeFor,
   playOptionsFor,
   resultReasonLabel,
+  roundResultFor,
+  scoreboardFor,
   seatLabel,
   statusLabel,
   tileCountLabel,
@@ -173,6 +175,13 @@ function snapshotFor(seat, overrides = {}) {
     result: null,
     winnerId: null,
     resultReason: null,
+    // ── The multi-round series (all server-owned) ───────────────────────
+    scores: { player1: 0, player2: 0 },
+    matchTarget: 50,
+    roundNumber: 1,
+    previousRoundWinner: null,
+    previousStartingSeat: null,
+    lastRound: null,
     player1Id: ALICE,
     player2Id: BOB,
     startedAt: "2026-10-22T12:00:00.000Z",
@@ -545,6 +554,85 @@ test("dominoes ui: an open end places the selected tile when it is tapped", { sk
     table,
     /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.dominoes-end-chip\.is-tappable/,
   );
+});
+
+test("dominoes ui: a selected tile previews its landing, and never guesses a side", { skip: SKIP_REASON }, () => {
+  const renderChain = (props) =>
+    renderToStaticMarkup(
+      React.createElement(DominoChain, {
+        chain: CHAIN,
+        openEnds: { left: 6, right: 5 },
+        isLive: true,
+        ...props,
+      }),
+    );
+
+  // Only one end fits: there is nothing to choose, so the ghost is already on it
+  // and the player can see where the tile goes without a second tap.
+  const one = renderChain({ selected: "6-3", tappableEnds: ["left"] });
+  assert.match(one, /data-testid="dominoes-place-preview"/);
+  assert.match(one, /data-preview-end="left"/);
+  assert.match(one, /data-legal-ends="left"/);
+  const ghost = tagWith(one, "dominoes-place-preview");
+  assert.match(ghost, /aria-hidden="true"/, "a hint is not part of the position");
+  assert.match(ghost, /data-rotation="\d+"/);
+  assert.match(one, /data-testid="dominoes-preview-tile"[^>]*data-tile="6-3"/);
+  // The chain itself has NOT grown: the preview is a drawing, not a claim.
+  assert.match(one, /data-chain-length="1"/);
+
+  // Both ends fit: the board may not choose a side for the player, so there is no
+  // ghost until a pointer (or focus) aims at one.
+  const both = renderChain({ selected: "6-3", tappableEnds: ["left", "right"] });
+  assert.equal(both.includes('data-testid="dominoes-place-preview"'), false);
+  assert.match(both, /data-legal-ends="left right"/);
+
+  // Nothing selected, or a tile with nowhere to go: no ghost at all.
+  for (const html of [renderChain({}), renderChain({ selected: "1-1", tappableEnds: [] })]) {
+    assert.equal(html.includes("dominoes-place-preview"), false);
+  }
+
+  // Aiming is a pointer/focus gesture on the chip, and the ghost is painted from
+  // the SAME layout function the real placement uses — never a private rule.
+  const chainSource = stripComments(read("src/components/dominoes/DominoChain.tsx"));
+  assert.match(chainSource, /onPointerEnter=\{\(\) => setAimEnd\(end\)\}/);
+  assert.match(chainSource, /placementPreview\(tiles, openEnds, selected, previewEnd\)/);
+  assert.match(chainSource, /layoutChain\(preview\.chain\)/);
+
+  // On a phone the chip IS the placement control, so it is thumb-sized; and the
+  // preview lives inside the surface, so it never widens the page.
+  const table = css.slice(css.indexOf(".dominoes-end-chip {"), css.indexOf(".dominoes-pile {"));
+  assert.match(table, /@media \(pointer: coarse\) \{[\s\S]*?min-height: 44px/);
+  const previewCss = css.slice(css.indexOf(".dominoes-chain-slot.is-preview {"));
+  assert.match(previewCss, /pointer-events: none/);
+});
+
+test("dominoes ui: a tap and a drop carry ONE placement intent", () => {
+  const chainSource = stripComments(read("src/components/dominoes/DominoChain.tsx"));
+  // Both gestures report the same `end` into the same callback…
+  assert.match(chainSource, /onClick=\{\(\) => onPlace\?\.\(end\)\}/);
+  assert.match(chainSource, /onDrop: \(event[\s\S]*?onPlace\?\.\(end\)/);
+  assert.ok(
+    [...chainSource.matchAll(/onPlace\?\.\(end\)/g)].length >= 2,
+    "a tap and a drop cannot diverge",
+  );
+  // …and the view turns both into the one `{tile, end}` the sidebar sends.
+  const viewSource = stripComments(read("src/components/dominoes/DominoMatchView.tsx"));
+  assert.match(
+    viewSource,
+    /if \(selected && selectedEnds\.includes\(end\)\) onPlay\?\.\(selected, end\)/,
+  );
+});
+
+test("dominoes ui: a selection is cleared when the turn moves on", { skip: SKIP_REASON }, () => {
+  const viewSource = stripComments(read("src/components/dominoes/DominoMatchView.tsx"));
+  assert.match(
+    viewSource,
+    /const selectionStale =[\s\S]*?!snapshot\?\.isLive \|\| !snapshot\?\.isViewerTurn[\s\S]*?onSelect\?\.\(null\)/,
+    "a lifted tile must not outlive the turn it was picked up in",
+  );
+  // A live, on-turn selection is left alone.
+  const live = renderView({ selected: "6-3" });
+  assert.match(tagWith(live, "dominoes-hand-tile"), /aria-pressed="true"/);
 });
 
 test("dominoes ui: a hand tile is draggable onto an end, on pointer devices", { skip: SKIP_REASON }, () => {
@@ -988,6 +1076,222 @@ test("dominoes ui: the action log names the clock's own actions as such", () => 
     loggedActionLabel({ action: "play", tile: "0-0", chainEnd: "left", timedOut: true }),
     "the clock played 0–0 on the left",
   );
+});
+
+/* -------------------------------------------------------------------------- *
+ * 5b. The multi-round match: scoreboard, round result, final score
+ * -------------------------------------------------------------------------- */
+
+const LAST_ROUND = {
+  roundNumber: 2,
+  player1Pips: 0,
+  player2Pips: 6,
+  player1Points: 6,
+  player2Points: 0,
+  winnerSeat: "player1",
+  endReason: "emptied-hand",
+};
+
+test("dominoes ui: the scoreboard shows BOTH cumulative scores, the target and the round", { skip: SKIP_REASON }, () => {
+  const shared = {
+    scores: { player1: 12, player2: 9 },
+    matchTarget: 50,
+    roundNumber: 3,
+  };
+  const asAlice = renderView({ snapshot: snapshotFor("player1", shared) });
+  const asBob = renderView({ snapshot: snapshotFor("player2", shared) });
+
+  assert.ok(tagWith(asAlice, "dominoes-scoreboard"), "the match score is always on screen");
+  // Each seat reads its OWN total under "You" — the numbers follow the server's
+  // seat, never a fixed column.
+  assert.match(asAlice, /data-testid="dominoes-score-you-value"[^>]*>12</);
+  assert.match(asAlice, /data-testid="dominoes-score-opponent-value"[^>]*>9</);
+  assert.match(asBob, /data-testid="dominoes-score-you-value"[^>]*>9</);
+  assert.match(asBob, /data-testid="dominoes-score-opponent-value"[^>]*>12</);
+  // The target and the round are both printed.
+  assert.match(asAlice, /data-testid="dominoes-score-target"[^>]*>First to 50</);
+  assert.match(asAlice, /data-testid="dominoes-round-number"[^>]*>Round 3</);
+  // Whose score is whose is stated in the accessible name too.
+  assert.match(
+    tagWith(asAlice, "dominoes-scoreboard"),
+    /aria-label="Match score: you 12, opponent 9\. First to 50, round 3\."/,
+  );
+  // The scoreboard publishes no tiles: the opponent's hand is not on the wire.
+  for (const tile of HANDS.player2) {
+    assert.equal(asAlice.includes(`data-tile="${tile}"`), false, `${tile} leaked through the scoreboard`);
+  }
+
+  // The pure read, seat-relative and defensive.
+  assert.deepEqual(
+    scoreboardFor({ viewerSeat: "player2", scores: { player1: 12, player2: 9 }, matchTarget: 50, roundNumber: 3 }),
+    { round: 3, target: 50, viewerSeat: "player2", opponentSeat: "player1", viewerScore: 9, opponentScore: 12 },
+  );
+  assert.deepEqual(scoreboardFor(null), {
+    round: 1,
+    target: 50,
+    viewerSeat: null,
+    opponentSeat: null,
+    viewerScore: 0,
+    opponentScore: 0,
+  });
+});
+
+test("dominoes ui: a completed round announces pips, points and who starts next", { skip: SKIP_REASON }, () => {
+  const playing = snapshotFor("player1", {
+    scores: { player1: 12, player2: 9 },
+    roundNumber: 3,
+    previousRoundWinner: "player1",
+    previousStartingSeat: "player2",
+    lastRound: LAST_ROUND,
+  });
+
+  const html = renderView({ snapshot: playing });
+  const panel = tagWith(html, "dominoes-round-result");
+  assert.ok(panel, "the round result must be announced");
+  assert.match(panel, /data-round="2"/);
+  assert.match(panel, /role="status"/);
+  assert.match(html, /Round 2 complete/);
+  // The round winner, seat-relative.
+  assert.match(html, /You won the round/);
+  // Each side's remaining pips and the points it was awarded, in its own cell.
+  const youCell = innerWith(html, "dominoes-round-you");
+  const opponentCell = innerWith(html, "dominoes-round-opponent");
+  assert.match(youCell, /\+6 pts/);
+  assert.match(youCell, /0 pips left/);
+  assert.match(opponentCell, /\+0 pts/);
+  assert.match(opponentCell, /6 pips left/);
+  // Who opens the round now in progress (the next round the round watched for).
+  assert.match(html, /Bob starts the next round\./);
+  // Updated cumulative scores, not just this round's points.
+  assert.match(html, /Match 12–9/);
+
+  // The same snapshot for the other seat is mirrored, not re-written.
+  const theirs = renderView({
+    snapshot: snapshotFor("player2", {
+      scores: { player1: 12, player2: 9 },
+      roundNumber: 3,
+      previousStartingSeat: "player2",
+      lastRound: LAST_ROUND,
+    }),
+  });
+  assert.match(theirs, /Alice won the round/);
+  assert.match(theirs, /You start the next round\./);
+  assert.match(innerWith(theirs, "dominoes-round-you"), /\+0 pts/);
+  assert.match(innerWith(theirs, "dominoes-round-opponent"), /\+6 pts/);
+
+  // A LEVEL round says so instead of naming a winner.
+  const level = renderView({
+    snapshot: snapshotFor("player1", {
+      roundNumber: 2,
+      previousStartingSeat: "player1",
+      lastRound: {
+        roundNumber: 1,
+        player1Pips: 4,
+        player2Pips: 4,
+        player1Points: 4,
+        player2Points: 4,
+        winnerSeat: null,
+        endReason: "blocked-pips",
+      },
+    }),
+  });
+  assert.match(level, /The round was level/);
+  assert.match(level, /You start the next round\./);
+
+  // The dismissal is per round, so the next completed round announces again.
+  const board = stripComments(read("src/components/dominoes/DominoMatchView.tsx"));
+  assert.match(board, /dismissedRound/);
+  assert.match(board, /setDismissedRound\(roundResult\.round\)/);
+});
+
+test("dominoes ui: the round transition is NEVER shown once the match is complete", { skip: SKIP_REASON }, () => {
+  // A live round with history announces; nothing to announce before round 1 ends.
+  assert.equal(tagWith(renderView({}), "dominoes-round-result"), null);
+  assert.equal(
+    tagWith(
+      renderView({ snapshot: snapshotFor("player1", { roundNumber: 3, lastRound: { ...LAST_ROUND, roundNumber: 1 } }) }),
+      "dominoes-round-result",
+    ),
+    null,
+    "an older round is not news",
+  );
+
+  // DECIDED match: the result screen owns the moment, and the board shows no
+  // round transition — even though the final round is on the record.
+  const finished = renderView({
+    snapshot: snapshotFor("player1", {
+      status: "finished",
+      isLive: false,
+      isViewerTurn: false,
+      turnDeadlineAt: null,
+      roundNumber: 3,
+      previousStartingSeat: "player1",
+      scores: { player1: 51, player2: 49 },
+      lastRound: { ...LAST_ROUND, roundNumber: 3 },
+      result: "player1",
+      winnerId: ALICE,
+      resultReason: "match-target",
+    }),
+  });
+  assert.equal(tagWith(finished, "dominoes-round-result"), null);
+  // The final scoreboard is still there, as the last read of the series.
+  assert.match(finished, /data-testid="dominoes-score-you-value"[^>]*>51</);
+  assert.match(finished, /data-testid="dominoes-score-opponent-value"[^>]*>49</);
+
+  // The pure gate: only a LIVE series, and only the round immediately after the
+  // one that closed.
+  assert.equal(roundResultFor(null), null);
+  assert.equal(roundResultFor({ status: "finished", roundNumber: 2, lastRound: { roundNumber: 1 } }), null);
+  assert.equal(roundResultFor({ status: "playing", roundNumber: 2, lastRound: { roundNumber: 2 } }), null);
+  assert.equal(roundResultFor({ status: "playing", roundNumber: 3, lastRound: { roundNumber: 1 } }), null);
+  assert.equal(
+    roundResultFor({ status: "playing", roundNumber: 2, lastRound: { roundNumber: 1 } }).round,
+    1,
+  );
+});
+
+test("dominoes online: the final result screen shows the final score, not a round win", () => {
+  // Only a settled match opens the shared result screen.
+  assert.match(pageCode, /open=\{finished\}/);
+  assert.match(pageCode, /const finished = status === "finished"/);
+  // The headline is the MATCH verdict — the round copy is not used here.
+  assert.match(pageCode, /games\.dominoes\.result_match_won/);
+  assert.match(pageCode, /games\.dominoes\.result_match_lost/);
+  assert.equal(/t\("games\.dominoes\.result_won"\)/.test(pageCode), false, "a match may not be announced as a round");
+  // Both final cumulative totals, on the shared score comparison and the summary.
+  assert.match(pageCode, /sides=\{\[/);
+  assert.match(pageCode, /score: scoreboard\.viewerScore/);
+  assert.match(pageCode, /score: scoreboard\.opponentScore/);
+  assert.match(pageCode, /games\.dominoes\.final_score_label/);
+  assert.match(pageCode, /games\.dominoes\.rounds_played/);
+  // A series win reason is its own sentence, in the player's language.
+  assert.match(pageCode, /case "match-target":/);
+  assert.match(pageCode, /games\.dominoes\.reason_match_target_win/);
+});
+
+test("dominoes ui: the scoreboard and round result fit a phone without overflowing", () => {
+  const boardCss = css.slice(css.indexOf(".dominoes-scoreboard {"), css.indexOf(".dominoes-clock {"));
+  assert.ok(boardCss.length > 0, "the scoreboard styles must exist beside the board");
+  // Three shrinkable tracks: the side columns yield rather than forcing a scroll.
+  assert.match(boardCss, /grid-template-columns: minmax\(0, 1fr\) auto minmax\(0, 1fr\)/);
+  assert.match(
+    boardCss,
+    /\.dominoes-round-result-grid \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\)/,
+  );
+  // Long names truncate, and no RULE sets a fixed pixel width that could
+  // overflow. (The `max-width` in the media query is a breakpoint, not a
+  // layout width, so it is not what this guards against.)
+  assert.match(boardCss, /text-overflow: ellipsis/);
+  const fixedWidths = boardCss
+    .split(/\r?\n/)
+    .filter((line) => !line.trim().startsWith("@media"))
+    .filter((line) => /(^|[^-])width:\s*\d+px/.test(line));
+  assert.deepEqual(fixedWidths, [], "a fixed width would force a horizontal scroll");
+  // The panel is inline (not a modal): the next round's clock is already running.
+  assert.equal(/position:\s*fixed/.test(boardCss), false);
+  assert.match(boardCss, /flex-wrap: wrap/);
+  // A tighter type scale on the narrowest phones.
+  assert.match(boardCss, /@media \(max-width: 420px\)/);
 });
 
 /* -------------------------------------------------------------------------- *

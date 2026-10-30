@@ -18,6 +18,7 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import { withReducedMotion } from "../../lib/animations";
+import { triggerHaptic } from "../../lib/native/haptics";
 
 /**
  * Global branded toast system (UX plan P0-1, Law 6 — Doherty Threshold).
@@ -130,6 +131,16 @@ export function ToastProvider({ children }) {
 
   const showToast = useCallback(
     (message, type = "info") => {
+      // Native haptics (Phase 6). A toast IS this app's confirmation surface,
+      // so it is the single place that decides what a confirmation feels like:
+      // a completed action gets the success pattern, a failure gets the warning
+      // pattern, and an `info` hint stays silent — a hint is not a
+      // confirmation. Nothing here is timed, continuous or game-related, so no
+      // haptic can leak timing into a match. Native-only by construction: on
+      // the web this is a no-op (see lib/native/haptics).
+      if (type === "success") triggerHaptic("success");
+      else if (type === "error") triggerHaptic("warning");
+
       const id = ++nextToastId;
       setToasts((prev) => [...prev, { id, message, type }]);
       timersRef.current.set(

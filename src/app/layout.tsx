@@ -13,10 +13,26 @@ import CsrfFetchGuard from "../components/CsrfFetchGuard";
 import HostCanonicalizer from "../components/HostCanonicalizer";
 import SplashScreen from "../components/SplashScreen";
 import MatchEntryGuard from "../components/MatchEntryGuard";
+import NativeLifecycleBridge from "../components/native/NativeLifecycleBridge";
+import NativeBackButton from "../components/native/NativeBackButton";
+import NativeSystemBars from "../components/native/NativeSystemBars";
+import NativeKeyboard from "../components/native/NativeKeyboard";
 import { ToastProvider } from "../components/toast/ToastProvider";
 import { ogImageUrl, SITE_URL } from "../lib/ogImages";
 
 export const dynamic = "force-dynamic";
+
+// `viewportFit: "cover"` is what makes `env(safe-area-inset-*)` report real
+// values instead of 0 on a notched phone and in the Android WebView, where
+// Android 15+ draws the app edge-to-edge under the system bars. Without it the
+// app's existing safe-area CSS could never fire. The rest of the viewport is
+// Next's default, and `themeColor` is deliberately NOT set so browser chrome
+// keeps the colour it already had.
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover" as const,
+};
 
 export const metadata = {
   metadataBase: new URL(SITE_URL),
@@ -194,6 +210,16 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             handled by hooks/useMatchRouter. Renders nothing. */}
         <MatchEntryGuard />
 
+        {/* Native lifecycle + network bridge (Capacitor only). Publishes
+            `grynd:app-state-change` and `grynd:network-status-change`; a
+            no-op in browsers, where useVisiblePoll / PresenceHeartbeat /
+            SWRProvider already own visibility and connectivity. Renders
+            nothing. */}
+        <NativeLifecycleBridge />
+        <NativeBackButton />
+        <NativeSystemBars />
+        <NativeKeyboard />
+
         <Providers>
           {/* Global branded toast system (UX plan P0-1) — wraps everything
               so any page/component can call useToast(). Toasts portal to
@@ -207,7 +233,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <HostCanonicalizer />
             <CsrfFetchGuard />
             <DisableInspect />
-            <main id="main-content" className="pt-[68px] sm:pt-16">{children}</main>
+            {/* The fixed navigation bar clears the status bar with its own
+                `.safe-top` padding, so the page offset below adds the same
+                inset — one source of truth (`--safe-top`), no double padding,
+                and 0px everywhere the platform reports no inset. */}
+            <main
+              id="main-content"
+              className="pt-[calc(68px_+_var(--safe-top))] sm:pt-[calc(4rem_+_var(--safe-top))]"
+            >{children}</main>
             <ClerkSafeChatWidget />
             {/* Mirrors Google's CMP decision into the local consent record so
                 the existing gating (GA, PostHog, Sentry) keeps working for

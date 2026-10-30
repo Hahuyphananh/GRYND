@@ -275,6 +275,21 @@ test("Lane Rush and Keno read their READY window only — the live one is nudged
   assert.equal(kenoPvpDueRead({ status: "ready", readyDeadline: null }), null);
 });
 
+test("Keno reads the gap between targets — the next tile exists only once a read lights it", () => {
+  // A resolved tile clears the live tile and stores only WHEN the next target may
+  // appear. That transition is applied inside a read, so a page with nothing
+  // armed for the marker sat on an empty board until an unrelated event read the
+  // match (the reported freeze that a refresh "fixed").
+  assert.equal(
+    kenoPvpDueRead({ status: "live", nextTileAt: DEADLINE }),
+    DEADLINE,
+    "the anticipation marker must arm the read that lights the next tile",
+  );
+  assert.equal(kenoPvpDueRead({ status: "live", nextTileAt: null }), null, "nothing stamped → nothing to read");
+  assert.equal(kenoPvpDueRead({ status: "finished", nextTileAt: DEADLINE }), null, "a finished match arms nothing");
+  assert.equal(kenoPvpDueRead({ status: "cancelled", nextTileAt: DEADLINE }), null);
+});
+
 test("Speed Typing reads the race limit, including a practice race whose bot already finished", () => {
   const live = { deadlineMs: 1_700_000_010_000, goAtMs: 1_700_000_000_000 };
   assert.equal(speedTypingDueRead(live), live.deadlineMs, "a live unresolved race must be graded at its limit");

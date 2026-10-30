@@ -1,64 +1,108 @@
-# Animated Emotes
+# Emote pins
 
-Drop the 15 animated **Noto** emoji files here as **animated WebP** with the
-exact lowercase filenames below. The game picker, emote bubbles, profile
-Emotes manager, and Battle Pass rewards all resolve artwork from
-`/emotes/<key>.webp` through the allow-listed catalog in
-`src/lib/emoteAssets.ts` (mirrored by the `emotes` table seeded in
-migration `0138_animated_emotes.sql`).
+GRYND's in-match emotes. Fifteen animated **WebP** files, resolved through the
+allow-listed catalog in `src/lib/emoteAssets.ts` (mirrored by the `emotes` table
+seeded in migration `0138_animated_emotes.sql`), and drawn by the shared emote
+layer in `src/components/game/emotes/`:
 
-Missing files fail safely (a hidden/placeholder tile is shown instead of a
-broken image), so you can ship the code before dropping the artwork.
+| Surface | File |
+| --- | --- |
+| Quick bar (one-tap pins) | `EmoteBar.tsx` |
+| Full set + emote controls | `EmoteWheel.tsx` |
+| Speech bubble | `EmoteBubble.tsx` |
+| Artwork renderer (allow-listed) | `EmoteArtwork.tsx` |
+| Per-match mount | `GameEmoteLayer.tsx` |
 
-## Expected files (15)
+Missing or disabled files fail safely — the artwork is hidden instead of
+showing a broken image — so code can ship before the art does.
 
-### FREE — owned + equipped by every user automatically
-| key | file | Noto emoji |
-| --- | --- | --- |
-| `laugh` | `public/emotes/laugh.webp` | 😂 Laughing / Tears of Joy |
-| `shock` | `public/emotes/shock.webp` | 😱 Shocked / Face Screaming |
-| `cry` | `public/emotes/cry.webp` | 😭 Crying / Loudly Crying |
-| `angry` | `public/emotes/angry.webp` | 😡 Angry |
-| `love` | `public/emotes/love.webp` | 😍 Love Hearts / Smiling with Hearts |
-| `cool` | `public/emotes/cool.webp` | 😎 Cool / Sunglasses |
-| `wow` | `public/emotes/wow.webp` | 😮 Wow / Astonished |
-| `fire` | `public/emotes/fire.webp` | 🔥 Fire |
+## Budget (please keep it)
 
-### BATTLE PASS — granted at levels 6 / 13 / 22 / 31 / 42 / 56 / 81
-| key | file | Unlock level |
-| --- | --- | --- |
-| `hype` | `public/emotes/hype.webp` | Battle Pass 6 |
-| `victory` | `public/emotes/victory.webp` | Battle Pass 13 |
-| `party` | `public/emotes/party.webp` | Battle Pass 22 |
-| `skull` | `public/emotes/skull.webp` | Battle Pass 31 |
-| `thumbsup` | `public/emotes/thumbsup.webp` | Battle Pass 42 |
-| `clap` | `public/emotes/clap.webp` | Battle Pass 56 |
-| `star` | `public/emotes/star.webp` | Battle Pass 81 |
+The UI draws a pin at **24–40 px** (bar, bubble, wheel) and at most ~84 px on the
+profile page. The catalog is therefore shipped small on purpose:
 
-> GG and NICE MOVE are permanent **text** system emotes — they are NOT part
-> of the animated catalog and never need an asset here. The old
-> `gg.svg` / `nice-move.svg` / `laugh.svg` / `cry.svg` / `fire.svg` /
-> `wow.svg` files in this folder are unreferenced legacy leftovers and can be
-> deleted once the WebP files are in place.
+| Rule | Value |
+| --- | --- |
+| Canvas | **128 × 128 px** (`fit: inside`, never upscaled past 2× the biggest draw) |
+| Per file | **≤ 60 KB** |
+| Whole catalog | **≤ 900 KB** |
+| Frames | 12–26 · the compactor thins to ≤10 fps and keeps the loop seamless |
 
-## Changing keys / filenames
+```bash
+node scripts/compact-emote-assets.mjs            # re-encode in place
+node scripts/compact-emote-assets.mjs --dry-run  # report before/after only
+```
 
-If your downloaded files use different names, easiest path: rename the files
-to match the table above. If you prefer different **keys**, update all of
-these together (one row each):
+The script keeps each file's frames and name and only caps the canvas/quality,
+so it is safe to run after dropping in new artwork. A first frame that reads on
+its own matters: bubbles can pop before the animation has advanced.
 
-1. `src/lib/emoteAssets.ts` → `OFFICIAL_EMOTE_DEFINITIONS` (and
-   `FREE_EMOTE_KEYS` for the 8 free ones),
-2. `src/db/migrations/0138_animated_emotes.sql` → the `emotes` INSERT + the
-   `user_emotes` backfill + the `equipped_emotes` default (only needed if the
-   migration has not run yet),
-3. `src/lib/battlepassRewards.js` → the 7 `emote` reward rows,
-4. For an already-applied database, remap rows:
+## Art direction — brand pins, not stock emoji
+
+Aim for a **die-cut sticker** that reads as GRYND at a glance:
+
+- **Background:** none (transparent). The bubble/bar supplies the navy chip
+  (`#071531`).
+- **Rim:** a cyan edge light (`#00e5ff`) so the pin reads on dark surfaces;
+  gold (`#FFD700`) reserved for win/premium moments.
+- **Shape:** one strong silhouette, one focal feature; no text, no numerals.
+- **Motion:** the reaction must be legible in the first 150 ms.
+- **Never:** third-party characters, watermarks, photographic realism, or
+  Unicode-emoji artwork copied from another set — see
+  `docs/GRYND_ICON_SPEC.md` §11/§14 for the full avoid list.
+
+## Files (15)
+
+Every pin is owned by every player; there is no unlock track.
+
+| key | file |
+| --- | --- |
+| `laugh` | `public/emotes/laugh.webp` |
+| `shock` | `public/emotes/shock.webp` |
+| `cry` | `public/emotes/cry.webp` |
+| `angry` | `public/emotes/angry.webp` |
+| `love` | `public/emotes/love.webp` |
+| `cool` | `public/emotes/cool.webp` |
+| `wow` | `public/emotes/wow.webp` |
+| `fire` | `public/emotes/fire.webp` |
+| `hype` | `public/emotes/hype.webp` |
+| `victory` | `public/emotes/victory.webp` |
+| `party` | `public/emotes/party.webp` |
+| `skull` | `public/emotes/skull.webp` |
+| `thumbsup` | `public/emotes/thumbsup.webp` |
+| `clap` | `public/emotes/clap.webp` |
+| `star` | `public/emotes/star.webp` |
+
+**GG** and **NICE MOVE** are permanent *text* emotes (`PERMANENT_TEXT_EMOTES` in
+`src/components/game/emotes/useEmoteLoadout.ts`). They are not part of the
+catalog and need no file here.
+
+The old unreferenced `gg.svg` / `nice-move.svg` / `laugh.svg` / `cry.svg` /
+`fire.svg` leftovers have been deleted.
+
+## Adding a new pin
+
+1. Drop `public/emotes/<key>.webp` (lowercase key, ≤60 KB).
+2. Add the key to `OFFICIAL_EMOTE_DEFINITIONS` in `src/lib/emoteAssets.ts`.
+3. Add it to `EMOTE_CATALOG_KEYS` in `realtime-server/server.js` — the server
+   allow-lists emote keys, so a pin the server does not know is dropped.
+4. Seed the `emotes` row (a new migration; do not edit `0138` once applied) and
+   grant it, otherwise the picker will not offer it.
+
+## Renaming a key
+
+Keep these in sync:
+
+1. `src/lib/emoteAssets.ts` → `OFFICIAL_EMOTE_DEFINITIONS` (+ `FREE_EMOTE_KEYS`
+   for the original eight).
+2. `realtime-server/server.js` → `EMOTE_CATALOG_KEYS`.
+3. For an already-migrated database:
+
    ```sql
    UPDATE emotes      SET key = 'new-key', asset_path = '/emotes/new-key.webp' WHERE key = 'old-key';
    UPDATE user_emotes SET emote_key = 'new-key' WHERE emote_key = 'old-key';
-   -- users.equipped_emotes stores an ordered JSON array of keys; drop the old
-   -- key from every array (the app also sanitizes unknown entries on read):
+   -- users.equipped_emotes is an ordered JSON array; unknown entries are also
+   -- sanitized on read, so a stale key degrades to "not equipped".
    UPDATE users
    SET equipped_emotes = (
      SELECT COALESCE(jsonb_agg(elem ORDER BY ord), '[]'::jsonb)

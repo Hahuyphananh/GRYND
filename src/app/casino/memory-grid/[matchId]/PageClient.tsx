@@ -69,7 +69,7 @@ import GameSessionHost from "../../../../components/GameSessionHost";
 import FrameAvatar from "../../../../components/FrameAvatar";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
-import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
+import GameEmoteLayer from "../../../../components/game/emotes/GameEmoteLayer";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
 import Footer from "../../../../components/Footer";
 import RoundMarkers from "../../../../components/casino/RoundMarkers";
@@ -946,7 +946,6 @@ export default function MemoryGridMatchPage({
         <div className="rounded-2xl border border-amber-400/70 bg-amber-500/10 p-3 text-center">
           <p className="relative text-[10px] font-bold uppercase tracking-widest text-white/50">
             {myName}
-            <EmoteBubble emote={myEmote} side="mine" />
           </p>
           <p className="mt-0.5 text-3xl font-black tabular-nums text-yellow-300">
             {myTotal ?? 0}
@@ -966,7 +965,6 @@ export default function MemoryGridMatchPage({
               size="h-3.5 w-3.5"
             />
             {oppName}
-            <EmoteBubble emote={incomingEmote} />
           </p>
           <p className="mt-0.5 text-3xl font-black tabular-nums text-cyan-300">
             {oppTotal ?? 0}
@@ -1070,7 +1068,13 @@ export default function MemoryGridMatchPage({
         {submitting ? "Submitting…" : "Submit"}
       </button>
       <div className="flex justify-center">
-        <EmotePicker compact hideBubbles incomingEmote={incomingEmote} myEmote={myEmote} onSend={(emote) => sendEmote(emote)} />
+        <GameEmoteLayer
+          gameId="memory-grid"
+          compact
+          incomingEmote={incomingEmote}
+          myEmote={myEmote}
+          onSend={(emote) => sendEmote(emote)}
+        />
       </div>
     </div>
   );
@@ -1325,8 +1329,7 @@ export default function MemoryGridMatchPage({
             <p className="text-[10px] font-bold uppercase tracking-widest text-white/50">
               <span className="relative inline-block">
                 {myName}
-                <EmoteBubble emote={myEmote} side="mine" />
-              </span>
+                  </span>
               {viewerSubmitted && <span className="ml-1.5 text-emerald-300">✓</span>}
             </p>
             <p className="mt-0.5 text-3xl font-black tabular-nums text-yellow-300">
@@ -1357,7 +1360,6 @@ export default function MemoryGridMatchPage({
               />
               <span className="relative inline-block">
                 {oppName}
-                <EmoteBubble emote={incomingEmote} />
               </span>
               {opponentSubmitted && <span className="ml-0.5 text-cyan-300">✓</span>}
             </p>

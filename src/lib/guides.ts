@@ -736,9 +736,9 @@ export const GUIDES: readonly Guide[] = [
         ],
       },
       {
-        heading: "Learn the pip count, because it decides draws",
+        heading: "Learn the pip count, because it decides blocked rounds",
         paragraphs: [
-          "When the round blocks, the player with fewer pips left in hand wins, and equal pips is a draw. Pips are simply the numbers on your remaining tiles added up, with a double counting both halves — so a 6-6 is twelve points of liability and a 0-0 is none.",
+          "When the round blocks, you score the pips left in your opponent's hand and they score the pips left in yours — so both totals move, and holding cheap tiles is what keeps their score small. Pips are simply the numbers on your remaining tiles added up, with a double counting both halves — so a 6-6 is twelve points of liability and a 0-0 is none.",
           "This changes how you should think about high tiles. A 6-5 is a powerful tile while the chain is open and a liability the moment it closes. If you sense a block coming, spend your expensive tiles while you still can and hold the cheap, flexible ones; a 0 or a 1 that matches nothing is worth more at the end than a 6 you never got to play.",
         ],
       },

@@ -32,7 +32,12 @@ const journal = JSON.parse(read("src/db/migrations/meta/_journal.json"));
 const journalEntries = journal.entries || [];
 const emotesLib = read("src/lib/emotes.ts");
 const getRoute = read("src/app/api/user/emotes/route.ts");
-const picker = read("src/components/game/EmotePicker.jsx");
+// The emote UI moved out of the old EmotePicker into ./emotes (Phase: shared
+// emote layer). These three modules replace it: the loadout/settings hook, the
+// artwork renderer, and the wheel that owns the emote controls.
+const picker = read("src/components/game/emotes/useEmoteLoadout.ts");
+const artwork = read("src/components/game/emotes/EmoteArtwork.tsx");
+const wheel = read("src/components/game/emotes/EmoteWheel.tsx");
 const clerkWebhook = read("src/app/api/webhooks/clerk/route.js");
 const syncUser = read("src/app/api/sync-user/route.ts");
 
@@ -283,23 +288,30 @@ test("GG + NICE MOVE stay as permanent text emotes outside the loadout", () => {
 test("the picker fetches the equipped loadout from the server and resolves assets by key", () => {
   assert.match(picker, /\/api\/user\/emotes/);
   assert.match(picker, /equippedEmotes/);
-  assert.match(picker, /emoteAssetUrl\(emote\.key\)/);
+  assert.match(artwork, /emoteAssetUrl\(emote\.key\)/);
   assert.match(picker, /emotesUpdated/);
 });
 
 test("bubbles render words as text and animated emotes as official assets only", () => {
-  assert.match(picker, /emote\.kind === "word"/);
-  assert.match(picker, /emoteAssetUrl\(emote\.key\)/);
+  assert.match(artwork, /emote\.kind === "word"/);
+  assert.match(artwork, /emoteAssetUrl\(emote\.key\)/);
   assert.ok(
-    !picker.includes("http") && !picker.includes("src={emote.value}"),
+    !artwork.includes("http") && !artwork.includes("src={emote.value}"),
     "an emote value must never be used as an image src"
   );
+  // The bar and wheel both delegate to that one renderer.
+  assert.match(read("src/components/game/emotes/EmoteBar.tsx"), /<EmoteArtwork/);
+  assert.match(wheel, /<EmoteArtwork/);
 });
 
-test("the legacy inline .value bubbles in game pages now render via EmoteArtwork", () => {
+test("game pages no longer hand-roll their own emote markup", () => {
+  // Chess used to render <EmoteArtwork> inline and every other game injected
+  // its own <EmoteBubble>; both now come from the single GameEmoteLayer.
   const chess = read("src/app/casino/chess-game/[gameId]/PageClient.jsx");
   for (const file of [chess]) {
-    assert.match(file, /EmoteArtwork/);
+    assert.match(file, /<GameEmoteLayer/);
+    assert.ok(!/<EmoteArtwork/.test(file), "no bespoke artwork rendering");
+    assert.ok(!/<EmoteBubble/.test(file), "no bespoke bubbles");
     assert.ok(
       !/>\{.*emote\.value\}<\/span>/.test(file) &&
         !/>\{myEmote\.value\}\s*<\/motion\.span>/.test(file)

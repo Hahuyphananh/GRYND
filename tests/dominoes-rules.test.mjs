@@ -33,6 +33,7 @@ import {
   END_REASONS,
   HAND_SIZE,
   MATCH_STATUS,
+  MATCH_TARGET_POINTS,
   MAX_PIP,
   REJECTION,
   SEATS,
@@ -61,6 +62,7 @@ import {
   openEndsOf,
   otherSeat,
   pipsInHand,
+  roundPoints,
   tileOrder,
   tilePips,
   tileValues,
@@ -886,7 +888,7 @@ test("a pass is refused while the pile still holds tiles", () => {
  * Blockage
  * -------------------------------------------------------------------------- */
 
-test("both seats stuck with an empty pile: fewer pips wins", () => {
+test("both seats stuck with an empty pile: both score the other's pips", () => {
   const state = afterOpening({
     opening: "6-5",
     p1: ["4-4"],
@@ -903,6 +905,9 @@ test("both seats stuck with an empty pile: fewer pips wins", () => {
   assert.equal(finished.winner, SEATS[1]);
   assert.equal(finished.outcome.reason, END_REASONS.BLOCKED_PIPS);
   assert.deepEqual(finished.outcome.pips, { player1: 8, player2: 1 });
+  // The NEW rule: player2 scores player1's 8 pips, player1 scores player2's 1.
+  // Both seats are awarded points — there is no "only the lighter hand scores".
+  assert.deepEqual(finished.outcome.points, { player1: 1, player2: 8 });
   assert.deepEqual(legalActions(finished), []);
   assert.equal(isMatchFinished(finished), true);
 });
@@ -918,6 +923,7 @@ test("blocked the other way round: the first seat can win on pips", () => {
   const finished = applyAction(state, SEATS[0], { type: ACTION_TYPES.PASS });
   assert.equal(finished.winner, SEATS[0]);
   assert.deepEqual(finished.outcome.pips, { player1: 1, player2: 8 });
+  assert.deepEqual(finished.outcome.points, { player1: 8, player2: 1 });
 });
 
 test("equal pips on a blockage is a draw", () => {
@@ -934,6 +940,9 @@ test("equal pips on a blockage is a draw", () => {
   assert.equal(finished.winner, null);
   assert.equal(finished.outcome.reason, END_REASONS.BLOCKED_PIPS);
   assert.deepEqual(finished.outcome.pips, { player1: 4, player2: 4 });
+  // Level hands score level points in BOTH directions: neither seat is penalised
+  // for the tie, and the round has no winner because the points are equal.
+  assert.deepEqual(finished.outcome.points, { player1: 4, player2: 4 });
 });
 
 test("a pile with a tile left is not a blockage", () => {
@@ -977,6 +986,7 @@ test("the draw that empties the pile can end the round on its own", () => {
   assert.equal(drawn.outcome.reason, END_REASONS.BLOCKED_PIPS);
   assert.equal(drawn.winner, SEATS[1]);
   assert.deepEqual(drawn.outcome.pips, { player1: 8, player2: 2 });
+  assert.deepEqual(drawn.outcome.points, { player1: 2, player2: 8 });
   assert.equal(drawn.lastAction.action.type, ACTION_TYPES.DRAW);
 });
 
@@ -1010,6 +1020,8 @@ test("emptying a hand wins immediately, before any pip count", () => {
   assert.equal(finished.winner, SEATS[0]);
   assert.equal(finished.outcome.reason, END_REASONS.EMPTIED_HAND);
   assert.deepEqual(finished.outcome.pips, { player1: 0, player2: 2 });
+  // The emptied seat scores the opponent's remaining pips; the opponent scores 0.
+  assert.deepEqual(finished.outcome.points, { player1: 2, player2: 0 });
   assert.deepEqual(finished.hands.player1, []);
   assert.deepEqual(legalActions(finished), []);
 });
@@ -1328,21 +1340,43 @@ test("randomised self-play preserves every invariant, for 40 seeds", () => {
       player1: pipsInHand(state.hands.player1),
       player2: pipsInHand(state.hands.player2),
     });
+    // The round's points are always the swap of the remaining pips — derived by
+    // the engine from the hands it owns, never read from anywhere else.
+    assert.deepEqual(
+      state.outcome.points,
+      roundPoints(state.outcome.pips),
+      `seed ${seed}: points are not the opponent's pips`,
+    );
 
     if (state.outcome.reason === END_REASONS.EMPTIED_HAND) {
       emptiedHand += 1;
       assert.ok(state.winner, "an emptied hand produces a winner");
       assert.deepEqual(state.hands[state.winner], []);
       assert.equal(state.outcome.pips[state.winner], 0);
+      assert.equal(
+        state.outcome.points[state.winner],
+        state.outcome.pips[otherSeat(state.winner)],
+        `seed ${seed}: the emptied hand must score the opponent's pips`,
+      );
+      assert.equal(
+        state.outcome.points[otherSeat(state.winner)],
+        0,
+        `seed ${seed}: the opponent of an emptied hand must score 0`,
+      );
     } else {
       assert.equal(state.outcome.reason, END_REASONS.BLOCKED_PIPS);
       blockedPips += 1;
-      const { player1, player2 } = state.outcome.pips;
+      const { player1, player2 } = state.outcome.points;
+      // A blocked round awards points to BOTH seats: each total is the OTHER
+      // seat's remaining pips, never 0-by-default for one of them.
+      assert.equal(player1, state.outcome.pips.player2);
+      assert.equal(player2, state.outcome.pips.player1);
+      assert.ok(player1 >= 0 && player2 >= 0);
       if (player1 === player2) {
-        assert.equal(state.winner, null, "equal pips draw");
+        assert.equal(state.winner, null, "equal points draw the round");
         assert.ok(state.hands.player1.length > 0 && state.hands.player2.length > 0);
       } else {
-        assert.equal(state.winner, player1 < player2 ? SEATS[0] : SEATS[1]);
+        assert.equal(state.winner, player1 > player2 ? SEATS[0] : SEATS[1]);
       }
     }
   }
@@ -1351,4 +1385,146 @@ test("randomised self-play preserves every invariant, for 40 seeds", () => {
   assert.ok(emptiedHand > 0, "some rounds are won by emptying a hand");
   assert.ok(blockedPips > 0, "some rounds are decided on pips");
   assert.ok(totalActions > 40, "a round takes more than one action");
+});
+
+/* -------------------------------------------------------------------------- *
+ * Round scoring — the 50-point match rules
+ *
+ * Every seat scores the pips LEFT IN THE OTHER SEAT'S HAND. An emptied hand
+ * scores the opponent's pips for the seat that emptied it and 0 for the
+ * opponent; a blocked round scores BOTH seats; equal (or empty) hands score
+ * equal (or zero) points. `outcome.points` is that record; `state.winner` is the
+ * ROUND's winner, never a match victory.
+ * -------------------------------------------------------------------------- */
+
+test("a match is won at 50 cumulative points", () => {
+  assert.equal(MATCH_TARGET_POINTS, 50);
+  // A single round is scored, not aggregated: the engine never sums rounds.
+  const state = position({ p1: ["6-5"], p2: ["4-4"], pile: [] });
+  const round = applyAction(state, SEATS[0], { type: ACTION_TYPES.PLAY, tile: "6-5" });
+  assert.ok(round.outcome.points.player1 < MATCH_TARGET_POINTS);
+  assert.equal("score" in round, false, "the engine holds no match-level score");
+});
+
+test("roundPoints is the pure scoring rule: each seat gets the other's pips", () => {
+  assert.deepEqual(roundPoints({ player1: 0, player2: 13 }), { player1: 13, player2: 0 });
+  assert.deepEqual(roundPoints({ player1: 8, player2: 1 }), { player1: 1, player2: 8 });
+  assert.deepEqual(roundPoints({ player1: 4, player2: 4 }), { player1: 4, player2: 4 });
+  assert.deepEqual(roundPoints({ player1: 0, player2: 0 }), { player1: 0, player2: 0 });
+});
+
+test("player 1 empties their hand: scores everything left in player 2's hand", () => {
+  const state = position({ p1: ["6-5"], p2: ["4-4", "3-2"], pile: [] });
+  assert.equal(pipsInHand(state.hands.player2), 13);
+  const finished = applyAction(state, SEATS[0], { type: ACTION_TYPES.PLAY, tile: "6-5" });
+
+  assert.equal(finished.status, MATCH_STATUS.FINISHED);
+  assert.equal(finished.outcome.reason, END_REASONS.EMPTIED_HAND);
+  assert.equal(finished.winner, SEATS[0]);
+  assert.deepEqual(finished.outcome.pips, { player1: 0, player2: 13 });
+  assert.deepEqual(finished.outcome.points, { player1: 13, player2: 0 });
+});
+
+test("player 2 empties their hand: scores everything left in player 1's hand", () => {
+  const state = position({
+    p1: ["2-1", "3-0"],
+    p2: ["6-0"],
+    pile: [],
+    turn: SEATS[1],
+  });
+  assert.equal(pipsInHand(state.hands.player1), 6);
+  const finished = applyAction(state, SEATS[1], { type: ACTION_TYPES.PLAY, tile: "6-0" });
+
+  assert.equal(finished.outcome.reason, END_REASONS.EMPTIED_HAND);
+  assert.equal(finished.winner, SEATS[1]);
+  assert.deepEqual(finished.outcome.pips, { player1: 6, player2: 0 });
+  assert.deepEqual(finished.outcome.points, { player1: 0, player2: 6 });
+});
+
+test("an emptied hand's score does not depend on who was on turn or on plys", () => {
+  // Same two hands, emptied by seat 2 instead: the points follow the pips, not
+  // the seat order or the history of the round.
+  const state = position({ p1: ["3-3"], p2: ["6-4"], pile: [] });
+  const p2First = applyAction(state, SEATS[0], { type: ACTION_TYPES.PLAY, tile: "3-3" });
+  assert.deepEqual(p2First.outcome.points, { player1: 10, player2: 0 });
+});
+
+test("blocked with different pip totals: BOTH seats score the other's pips", () => {
+  const state = afterOpening({
+    opening: "6-5",
+    p1: ["4-4", "0-0"],
+    p2: ["3-2", "1-0"],
+    pile: [],
+    turn: SEATS[0],
+  });
+  assert.equal(isBlocked(state), true);
+  const finished = applyAction(state, SEATS[0], { type: ACTION_TYPES.PASS });
+
+  assert.equal(finished.outcome.reason, END_REASONS.BLOCKED_PIPS);
+  assert.deepEqual(finished.outcome.pips, { player1: 8, player2: 6 });
+  // The lighter hand still GIVES AWAY fewer points, but the heavier hand is not
+  // left with 0: it scores the lighter hand's pips.
+  assert.deepEqual(finished.outcome.points, { player1: 6, player2: 8 });
+  assert.equal(finished.winner, SEATS[1]);
+});
+
+test("blocked with equal pip totals: both seats score, and the round is level", () => {
+  const state = afterOpening({
+    opening: "6-5",
+    p1: ["4-4"],
+    p2: ["3-3", "1-1"],
+    pile: [],
+    turn: SEATS[0],
+  });
+  assert.equal(pipsInHand(state.hands.player1), 8);
+  assert.equal(pipsInHand(state.hands.player2), 8);
+  const finished = applyAction(state, SEATS[0], { type: ACTION_TYPES.PASS });
+
+  assert.deepEqual(finished.outcome.points, { player1: 8, player2: 8 });
+  assert.equal(finished.winner, null);
+  assert.deepEqual(legalActions(finished), []);
+});
+
+test("blocked with zero remaining pips on both sides: 0 points each", () => {
+  // Defensive: a real round cannot reach this, because an empty hand ends the
+  // round as `emptied-hand` before any blockage check. The rule must still be
+  // total — two empty hands score 0 / 0 and name no winner.
+  const state = position({ p1: [], p2: [], pile: [], turn: SEATS[0] });
+  assert.equal(isBlocked(state), true);
+  const finished = applyAction(state, SEATS[0], { type: ACTION_TYPES.PASS });
+
+  assert.equal(finished.outcome.reason, END_REASONS.BLOCKED_PIPS);
+  assert.deepEqual(finished.outcome.pips, { player1: 0, player2: 0 });
+  assert.deepEqual(finished.outcome.points, { player1: 0, player2: 0 });
+  assert.equal(finished.winner, null);
+});
+
+test("scoring is derived from the hands, never read from a supplied result", () => {
+  // A client-supplied score/outcome on the state must be ignored: the engine
+  // recomputes both from the hands it owns when the round closes.
+  const state = {
+    ...position({ p1: ["6-5"], p2: ["4-4", "3-2"], pile: [] }),
+    outcome: {
+      winner: SEATS[1],
+      reason: END_REASONS.EMPTIED_HAND,
+      pips: { player1: 999, player2: 999 },
+      points: { player1: 999, player2: 999 },
+    },
+    score: { player1: 49, player2: 49 },
+  };
+  const finished = applyAction(state, SEATS[0], { type: ACTION_TYPES.PLAY, tile: "6-5" });
+
+  assert.equal(finished.winner, SEATS[0]);
+  assert.deepEqual(finished.outcome.pips, { player1: 0, player2: 13 });
+  assert.deepEqual(finished.outcome.points, { player1: 13, player2: 0 });
+});
+
+test("the recorded points are frozen and copied, not aliased", () => {
+  const state = position({ p1: ["6-5"], p2: ["4-4", "3-2"], pile: [] });
+  const finished = applyAction(state, SEATS[0], { type: ACTION_TYPES.PLAY, tile: "6-5" });
+  assert.equal(Object.isFrozen(finished.outcome.points), true);
+  assert.notEqual(finished.outcome.points, finished.outcome.pips);
+  const copy = cloneState(finished);
+  assert.deepEqual(copy.outcome.points, finished.outcome.points);
+  assert.notEqual(copy.outcome.points, finished.outcome.points);
 });

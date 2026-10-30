@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- GRYND adaptive-icon background layer (Phase 7).
+     Deep navy rather than the template's flat black: it is the app's own dark
+     theme base (#030817, the same value styles.xml uses for the system bars and
+     values-v31/styles.xml uses for the Android 12+ splash), so the launcher icon
+     and the splash frame read as the same surface. The foreground is the GRYND
+     mark in mipmap-*/ic_launcher_foreground.png. -->
 <resources>
-    <color name="ic_launcher_background">#000000</color>
+    <color name="ic_launcher_background">#030817</color>
 </resources>

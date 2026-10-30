@@ -16,6 +16,7 @@ import FrameAvatar from "./FrameAvatar";
 import { cosmeticEffectClass } from "../lib/profileCosmetics";
 import useDailyLoss from "../lib/useDailyLoss";
 import { DAILY_LOSS_CHIP_THRESHOLD } from "../lib/games/economy";
+import { triggerHaptic } from "../lib/native/haptics";
 import { COIN_BALANCE_EVENT } from "../hooks/useCoinBalance";
 import { fetchDeduped } from "../lib/dedupeFetch";
 
@@ -433,7 +434,11 @@ function NavigationBar({ currentPath = "" }) {
         animate={navVariant.animate}
         transition={navVariant.transition}
         data-no-translate="true"
-        className="fixed top-0 left-0 right-0 z-40 border-b border-[#00e5ff]/40 bg-[#050b1e]/75 shadow-[0_0_22px_rgba(0,229,255,0.25)]"
+        // `safe-top`: on Android 15+ the app is drawn edge-to-edge, so the bar's
+        // content (logo, balance, menu button) would sit under the status bar.
+        // The padding moves the content down; the bar's own translucent
+        // background still paints behind the system bar. It is 0 on the web.
+        className="safe-top fixed top-0 left-0 right-0 z-40 border-b border-[#00e5ff]/40 bg-[#050b1e]/75 shadow-[0_0_22px_rgba(0,229,255,0.25)]"
       >
         {/* max-w-[1440px] gives the fully-loaded navbar (logo + 7 links +
             install + avatar + tokens + sign-out ≈1390px) room to breathe on
@@ -479,7 +484,7 @@ function NavigationBar({ currentPath = "" }) {
               animate="animate"
               className="hidden items-center space-x-1 md:flex lg:space-x-4"
             >
-              {["/", "/games", "/classement", "/rewards", "/contact", "/faq"].map((path) => (
+              {["/", "/games", "/classement", "/rewards", "/faq"].map((path) => (
                 <motion.div
                   key={path}
                   initial={itemVariant.initial}
@@ -651,7 +656,12 @@ function NavigationBar({ currentPath = "" }) {
                     </Link>
                   </div>
                   <button
-                    onClick={() => setMobileMenuOpen((v) => !v)}
+                    onClick={() => {
+                      // Phase 6: a menu opening is a real selection, so it gets
+                      // the light tick. Nothing else in this bar feels it.
+                      triggerHaptic("selection");
+                      setMobileMenuOpen((v) => !v);
+                    }}
                     className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 text-[#d8fbff] 2xl:hidden"
                     aria-label="Toggle menu"
                     aria-expanded={mobileMenuOpen}
@@ -676,7 +686,12 @@ function NavigationBar({ currentPath = "" }) {
               ) : (
                 <>
                   <button
-                    onClick={() => setMobileMenuOpen((v) => !v)}
+                    onClick={() => {
+                      // Phase 6: a menu opening is a real selection, so it gets
+                      // the light tick. Nothing else in this bar feels it.
+                      triggerHaptic("selection");
+                      setMobileMenuOpen((v) => !v);
+                    }}
                     className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 text-[#d8fbff] md:hidden"
                     aria-label="Toggle menu"
                   >
@@ -781,7 +796,7 @@ function NavigationBar({ currentPath = "" }) {
                     Admin dashboard
                   </Link>
                 )}
-                {["/", "/games", "/classement", "/rewards", "/contact", "/faq"].map((path) => (
+                {["/", "/games", "/classement", "/rewards", "/faq"].map((path) => (
                   <Link
                     key={path}
                     href={path}

@@ -124,6 +124,18 @@ export const GAME_CATALOG = [
     tags: ["pvp", "skill", "competitive", "fast_paced"],
   },
 
+  // LAST RUN is a seeded endless runner raced head-to-head: both seats face the
+  // same obstacle sequence and the first crash loses, so the outcome is
+  // sustained reaction ability (skill) under an accelerating clock
+  // (fast_paced) on a rated ladder (competitive). The course is generated from
+  // a stored seed rather than rolled during play, so it is never `chance`; and
+  // it is a duel rather than a pick-up game, so it is not tagged `casual`.
+  {
+    id: "last-run",
+    href: "/games/last-run",
+    tags: ["pvp", "skill", "fast_paced", "competitive"],
+  },
+
   // Aiming and table planning: ability (skill) over a plan (strategy).
   { id: "pool-masters", href: "/games/pool-masters", tags: ["pvp", "skill", "strategy"] },
 

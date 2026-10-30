@@ -472,6 +472,19 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
       pvpMode: "1v1",
     },
     {
+      name: "LAST RUN",
+      href: "/games/last-run",
+      leaderboardKey: "last-run",
+      recencyKey: "last-run",
+      playsKey: "last-run",
+      image: GAME_CARD_ART["last-run"],
+      // The runner and its obstacles sit near the bottom of the art, so keep
+      // the hover zoom gentle enough that the whole course stays readable.
+      imageClassName: "group-hover:scale-[1.03]",
+      descriptionKey: "games.last_run_desc",
+      pvpMode: "1v1",
+    },
+    {
       name: "Pool Masters",
       href: "/games/pool-masters",
       leaderboardKey: "pool-masters",

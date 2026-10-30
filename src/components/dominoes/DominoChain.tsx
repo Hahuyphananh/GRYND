@@ -79,12 +79,17 @@
 // under `prefers-reduced-motion: reduce` in globals.css: no transforms, no fade,
 // the tile simply appears.
 
-import { useEffect, useMemo, useRef, type DragEvent as ReactDragEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent } from "react";
 import { IconArrowLeft, IconArrowRight } from "@tabler/icons-react";
 
 import DominoTile from "./DominoTile";
 import { layoutChain, type ChainTileLike as LayoutChainTileLike } from "../../lib/dominoes/layout";
-import { DOMINO_DRAG_TYPE, tileLabel, type ChainEnd } from "../../lib/dominoes/ui";
+import {
+  DOMINO_DRAG_TYPE,
+  placementPreview,
+  tileLabel,
+  type ChainEnd,
+} from "../../lib/dominoes/ui";
 import { useTranslation } from "../../hooks/useTranslation";
 
 /** The two ends, in the order the board reads them. */
@@ -146,8 +151,10 @@ export default function DominoChain({
   const scrollerRef = useRef<HTMLDivElement | null>(null);
 
   // One layout per chain. Every tile is placed in half-tile cells, so the surface
-  // grows in both directions as the table does.
-  const layout = useMemo(() => layoutChain(tiles), [tiles]);
+  // grows in both directions as the table does. A PREVIEW lays the table out WITH
+  // the prospective tile in it (`layout` below); that is what makes the ghost and
+  // the real placement the same geometry by construction, not by agreement.
+  const baseLayout = useMemo(() => layoutChain(tiles), [tiles]);
   // The newest tile is the last INDEX in the engine's order, which is not
   // necessarily the last entry the layout emits — but it is always the tile with
   // the highest index, so it is the one flagged latest below.
@@ -177,6 +184,47 @@ export default function DominoChain({
 
   /** Ends that would take the tile in hand right now (none without a selection). */
   const acceptingEnds = CHAIN_ENDS.filter((end) => canTap(end, end === "left" ? left : right));
+
+  /**
+   * The end the player is AIMING at: the one under a carried tile or the pointer,
+   * or — when the tile fits exactly one end — that end, because there is nothing
+   * to choose between.
+   */
+  const [aimEnd, setAimEnd] = useState<ChainEnd | null>(null);
+  const aimedEnd = dropOverEnd ?? aimEnd ?? (acceptingEnds.length === 1 ? acceptingEnds[0] : null);
+  // Only an end that really takes the tile may be previewed: the aim can outlive
+  // the selection by a frame, and a hint the engine would refuse is a lie.
+  const previewEnd = aimedEnd && acceptingEnds.includes(aimedEnd) ? aimedEnd : null;
+
+  /**
+   * WHERE THE SELECTED TILE WOULD LAND. `placementPreview` builds the prospective
+   * chain from the same public open value the engine validates against; nothing is
+   * claimed and nothing is sent.
+   */
+  const preview = useMemo(() => {
+    if (!selected || !previewEnd) return null;
+    return placementPreview(tiles, openEnds, selected, previewEnd);
+  }, [selected, previewEnd, tiles, openEnds]);
+
+  /** The table as it is — or, with a preview, as it WOULD be. One layout call. */
+  const layout = useMemo(
+    () => (preview ? layoutChain(preview.chain) : baseLayout),
+    [preview, baseLayout],
+  );
+
+  /**
+   * The engine's index of the tile a layout position belongs to.
+   *
+   * A preview makes the layout one tile longer, so indices on the widened side
+   * shift: a left play PREPENDS (every real index moves down one), a right play
+   * appends (nothing shifts, the last index is the ghost). -1 is the prospective
+   * tile itself.
+   */
+  const originalIndex = (index: number): number => {
+    if (!preview) return index;
+    if (index === preview.index) return -1;
+    return preview.position === "prepend" ? index - 1 : index;
+  };
 
   /**
    * Which end a dragged tile is over.
@@ -265,6 +313,16 @@ export default function DominoChain({
       ? newest.end
       : null;
 
+  /**
+   * Where the selected tile WOULD lie, from the same layout that will draw it once
+   * it is accepted. Painted after the chain (so it can never be mistaken for one
+   * of its tiles) and marked `aria-hidden`, because the position has not changed.
+   */
+  const ghostPlacement =
+    preview && previewEnd
+      ? (layout.tiles.find((placed) => placed.index === preview.index) ?? null)
+      : null;
+
   /** Cells → CSS length. One cell is half a tile, which is `--dm-half`. */
   const cells = (count: number) => `calc(var(--dm-half) * ${count})`;
 
@@ -321,6 +379,12 @@ export default function DominoChain({
         data-tappable="true"
         data-drop-target="true"
         data-drop-over={hovered ? "true" : "false"}
+        // Aiming with a pointer (or the keyboard) is what picks BETWEEN two legal
+        // ends; moving away drops the ghost again rather than leaving a stale one.
+        onPointerEnter={() => setAimEnd(end)}
+        onPointerLeave={() => setAimEnd((current) => (current === end ? null : current))}
+        onFocus={() => setAimEnd(end)}
+        onBlur={() => setAimEnd((current) => (current === end ? null : current))}
         aria-label={t("games.dominoes.place_on_end_aria", {
           tile: tileLabel(selected),
           end: t(end === "left" ? "games.dominoes.side_left" : "games.dominoes.side_right"),
@@ -366,6 +430,8 @@ export default function DominoChain({
       data-live={isLive ? "true" : "false"}
       data-cols={layout.cols}
       data-rows={layout.rows}
+      data-legal-ends={acceptingEnds.join(" ")}
+      data-preview-end={previewEnd ?? ""}
     >
       <div className="dominoes-chain-scroller" ref={scrollerRef} {...feltDropProps}>
         {tiles.length === 0 ? (
@@ -389,8 +455,12 @@ export default function DominoChain({
             }}
           >
             {layout.tiles.map((placed) => {
-              const tile = tiles[placed.index];
-              const isLatest = placed.index === newestIndex;
+              const index = originalIndex(placed.index);
+              // The prospective tile is not part of the chain and is painted last
+              // (see `ghostPlacement` below), so the list stays one slot per tile.
+              if (index < 0) return null;
+              const tile = tiles[index];
+              const isLatest = index === newestIndex;
               const seat =
                 tile?.seat === "player1" || tile?.seat === "player2" ? tile.seat : null;
               const facedLeft = valueOf(tile?.left);
@@ -400,14 +470,14 @@ export default function DominoChain({
               // drop target only while the tile in hand really fits that end, so
               // the highlight can never invite a placement the engine refuses.
               const tileEnds = acceptingEnds.filter((end) =>
-                end === "left" ? placed.index === 0 : placed.index === newestIndex,
+                end === "left" ? index === 0 : index === newestIndex,
               );
               const isDropTarget = tileEnds.length > 0;
               const isDropOver =
                 isDropTarget && dropOverEnd !== null && tileEnds.includes(dropOverEnd);
               return (
                 <span
-                  key={`${String(tile?.id ?? "tile")}-${placed.index}`}
+                  key={`${String(tile?.id ?? "tile")}-${index}`}
                   className={[
                     "dominoes-chain-slot",
                     isDropTarget ? "is-drop-target" : "",
@@ -480,6 +550,39 @@ export default function DominoChain({
                 </span>
               );
             })}
+            {ghostPlacement && preview ? (
+              <span
+                className="dominoes-chain-slot is-preview"
+                data-testid="dominoes-place-preview"
+                data-preview-end={preview.end}
+                data-rotation={ghostPlacement.rotation}
+                data-direction={ghostPlacement.direction}
+                data-double={ghostPlacement.isDouble ? "true" : "false"}
+                aria-hidden="true"
+                style={{
+                  left: cells(ghostPlacement.cx - layout.minX - 1),
+                  top: cells(ghostPlacement.cy - layout.minY - 1),
+                  width: cells(2),
+                  height: cells(2),
+                }}
+              >
+                <span
+                  className="dominoes-chain-tile-box"
+                  style={{
+                    transform: `translate(-50%, -50%) rotate(${ghostPlacement.rotation}deg)`,
+                  }}
+                >
+                  <DominoTile
+                    tile={selected ?? ""}
+                    left={preview.facing.left}
+                    right={preview.facing.right}
+                    className="is-preview"
+                    testId="dominoes-preview-tile"
+                    label={t("games.dominoes.preview_aria", { tile: tileLabel(selected) })}
+                  />
+                </span>
+              </span>
+            ) : null}
           </div>
         )}
       </div>

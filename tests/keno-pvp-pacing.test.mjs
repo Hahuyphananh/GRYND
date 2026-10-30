@@ -186,6 +186,14 @@ test("B. no future target is exposed or claimable during the pause", () => {
     route.includes("liveDeadline: isLive && hasTile ? liveDeadline : null"),
     "a pending marker is not a claim deadline",
   );
+  // …but it IS readable as its own instant, so a page can arm its ONE read on it
+  // instead of waiting for an unrelated event to light the next target.
+  assert.ok(
+    route.includes(
+      "nextTileAt: isLive && !hasTile ? (match.roundDeadline ?? null) : null",
+    ),
+    "the anticipation marker must be exposed so the board can read past it",
+  );
   assert.ok(
     store.includes("return { error: \"No tile is live yet\", status: 409 };"),
     "claims between targets are refused",
@@ -211,6 +219,10 @@ test("C. the server owns the window and the client has no pacing randomness", ()
     !page.includes("tileWindowForIndex") &&
       !page.includes("anticipationDelayMs"),
     "the client must never generate pacing values",
+  );
+  assert.ok(
+    /socket\.on\("connect", joinRoom\)/.test(page),
+    "the match room must be (re)joined on every connect, or pushes die on a reconnect",
   );
   // No future sequence is shipped: the payload carries one window, for the
   // tile in play.

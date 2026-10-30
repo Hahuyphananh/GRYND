@@ -126,20 +126,38 @@ export interface ActionRecord {
   readonly action: LegalAction;
 }
 
-/** Terminal result. `winner: null` is the tied-pip draw. */
+/**
+ * The result of ONE ROUND — points, not match victory.
+ *
+ * SCORING (see `roundPoints` in `./rules`): every seat scores the pips left in
+ * the opponent's hand. An emptied hand therefore scores the opponent's pips for
+ * the seat that emptied it and 0 for the opponent; a BLOCKED round (pile empty,
+ * neither seat able to play) scores BOTH seats, and both hands empty scores
+ * 0 / 0. `pips` is kept beside `points` because they are different facts: what
+ * was left on the table, and what it was worth.
+ *
+ * `winner` is the seat that won this round (`null` when the points are level).
+ * It is NOT a match victory: a match is won at `MATCH_TARGET_POINTS` cumulative
+ * points, and aggregating rounds into a match is deliberately not implemented
+ * here yet.
+ */
 export interface DominoesOutcome {
   readonly winner: Seat | null;
   readonly reason: EndReason;
   /** Remaining pips per seat at the final position (0 for the empty hand). */
   readonly pips: Readonly<Record<Seat, number>>;
+  /** Points scored IN THIS ROUND, per seat. `points[seat]` = opponent's pips. */
+  readonly points: Readonly<Record<Seat, number>>;
 }
 
 /**
  * The whole match, as pure data.
  *
- * When `status` is not `"playing"` the match accepts nothing further: `turn` is
+ * When `status` is not `"playing"` the round accepts nothing further: `turn` is
  * then informational only, `legalActions` returns an empty list and
- * `winner`/`outcome` are the truth.
+ * `winner`/`outcome` are the truth. `winner` here is the ROUND's winner — the
+ * match is a separate, not-yet-implemented accumulation of round `points`
+ * towards `MATCH_TARGET_POINTS`.
  *
  * `hands`, `drawPile` and `chain` partition the 28 tiles exactly — no tile is
  * ever duplicated or lost, which the tests assert after every action.
@@ -183,6 +201,23 @@ export interface Deal {
 export interface StartingChoice {
   readonly seat: Seat;
   readonly tile: TileId;
+  readonly rule: StartingRule;
+}
+
+/**
+ * A round that opens with a KNOWN starter (round 2 onwards).
+ *
+ * Round 1's opener is decided by the deal (highest double, else highest total),
+ * but every later round inherits it from the round before: its winner
+ * (`previous-winner`), or — after a level round — the seat that did not start it
+ * (`alternate`). `rule` is descriptive only; nothing in the rules depends on it.
+ *
+ * A forced starter opens the round BY HAND with any tile: the deal places no
+ * opening tile for it, so the chain starts empty and `startingTile` is purely
+ * descriptive (it is never projected and never played by the engine).
+ */
+export interface ForcedStart {
+  readonly seat: Seat;
   readonly rule: StartingRule;
 }
 

@@ -50,16 +50,19 @@ function fitsOpenEnds(tile: TileId, open: readonly number[]): boolean {
  *
  * Higher is better. The three terms are the whole strategy, deliberately:
  *
- *   1. `tilePips * 10`   — shed the heavy tiles, which is what wins a blocked
- *                          round (fewer pips left) and is never wasted.
+ *   1. `tilePips * 10`   — shed the heavy tiles: a blocked round pays the
+ *                          OPPONENT the pips you are left holding, so the heavy
+ *                          tiles are what that payout is made of.
  *   2. `playable * 4`    — keep tiles that still fit the two open ends. A move
  *                          that strands the bot's own hand is worth less even
  *                          if it sheds a high tile.
  *   3. `- pipsLeft`      — between otherwise equal moves, keep the lighter hand
  *                          (and prefer the play that empties it).
  *
- * A play that wins the round (empties the hand, or blocks on fewer pips)
- * short-circuits to `WIN_SCORE`.
+ * A play that wins the round on the engine's own verdict (empties the hand, or
+ * blocks with the higher pip total) short-circuits to `WIN_SCORE`; one that
+ * hands the round to the opponent is refused. The weights are the bot's
+ * difficulty, not a second copy of the rule.
  */
 function scorePlay(state: DominoesState, seat: Seat, action: LegalAction): number {
   if (action.type !== ACTION_TYPES.PLAY) return 0;

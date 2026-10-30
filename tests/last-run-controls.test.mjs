@@ -26,7 +26,7 @@ const read = (relative) => fs.readFileSync(path.join(ROOT, relative), "utf8");
 
 const HOOK = "src/components/last-run/useRunInput.ts";
 const ARENA = "src/components/last-run/RunnerArena.tsx";
-const MATCH = "src/app/games/last-run/[matchId]/MatchClient.tsx";
+const MATCH = "src/app/casino/last-run/[matchId]/PageClient.tsx";
 const AUDIO = "src/components/last-run/useRunAudio.ts";
 const ENGINE_CONSTANTS = "src/lib/last-run/constants.ts";
 

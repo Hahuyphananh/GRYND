@@ -7,7 +7,7 @@ import { usePostHog } from "posthog-js/react";
 import { useHexDuel, otherPlayer, type DuelPlayer } from "../../../../../lib/hexDuelEngine";
 import { startMatchSync } from "../../../../../hooks/useMatchSync";
 import { useSocket } from "../../../../../context/SocketProvider";
-import EmotePicker, { EmoteBubble } from "../../../../../components/game/EmotePicker";
+import GameEmoteLayer from "../../../../../components/game/emotes/GameEmoteLayer";
 import useGameEmotes from "../../../../../hooks/useGameEmotes";
 import { decideAIAction, type AIDifficulty, type AIAction, type AIStateSnapshot } from "../../../../../lib/hexDuelAI";
 import { useHexAudio } from "../../../../../lib/hexAudio";
@@ -347,7 +347,6 @@ function PlayerCard({
           >
             {label}
           </span>
-          <EmoteBubble emote={emoteBubble} side={emoteSide ?? "incoming"} />
         </span>
         <div className="flex items-center gap-2">
           {/* Chess clock display */}
@@ -3014,9 +3013,9 @@ export default function HexDuelPage() {
           {/* ── Emotes ──────────────────────────────────────────────── */}
           {showGame && !isGameOver && !isSpectator && (
             <div className="mt-6 flex justify-center">
-              <EmotePicker
+              <GameEmoteLayer
+                gameId="hex-duel"
                 compact
-                hideBubbles
                 incomingEmote={incomingEmote}
                 myEmote={myEmote}
                 onSend={(emote) => sendEmote(emote)}

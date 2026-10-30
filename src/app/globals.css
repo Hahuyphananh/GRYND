@@ -21,7 +21,37 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* ── System-bar insets (Phase 5A) ──────────────────────────────────────
+   Android 15+ (targetSdk 35+) draws every app edge-to-edge whether it asks
+   for it or not, so the status bar and the gesture/navigation area sit OVER
+   the WebView. These variables are the single place that reads the insets;
+   `env()` is 0 on every platform that has none (desktop, most mobile
+   browsers, Android 7–14 without an overlay), so nothing changes there.
+
+   They are only non-zero once the document opts into `viewport-fit=cover`
+   (see the `viewport` export in app/layout.tsx) — which is exactly why the
+   existing `env(safe-area-inset-bottom)` uses in this file and in the Keno /
+   sticky-CTA components were silently resolving to 0 until now. */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* Native keyboard (Phase 5B). Set by
+     components/native/NativeKeyboard.tsx while the Android IME is up. It is a
+     CONTRACT, not a transform: the WebView is already resized by the OS
+     (`windowSoftInputMode="adjustResize"` + the plugin's resizeOnFullScreen),
+     so a fixed element that lifted itself by this value would be shifted
+     twice. Only a surface that proves it is NOT resized may consume it. */
+  --keyboard-height: 0px;
+}
+
 @layer utilities {
+  /* Clear the status bar / notch. Use on a `fixed top-0` element: the padding
+     moves the CONTENT down while the element's own background still paints
+     behind the system bar, which is what makes the transition seamless. */
+  .safe-top {
+    padding-top: var(--safe-top);
+  }
+
   .safe-bottom {
     padding-bottom: max(1rem, env(safe-area-inset-bottom));
   }
@@ -2661,6 +2691,198 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   color: rgba(165, 243, 252, 0.9);
 }
 
+/* ── The match scoreboard (cumulative points to 50) ────────────────────
+   One compact row: your total, the round and the target, the opponent's
+   total. Three tracks, none of them fixed, with the side columns shrinkable
+   and the names truncating — so a long display name or a 3-digit total can
+   never push the board into a horizontal scroll on a phone. */
+.dominoes-scoreboard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(124, 239, 255, 0.22);
+  border-radius: 12px;
+  background: rgba(0, 229, 255, 0.07);
+  padding: 8px 10px;
+}
+
+.dominoes-score {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.dominoes-score.is-opponent {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.dominoes-score-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.dominoes-score-value {
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(20px, 6vw, 28px);
+  font-weight: 900;
+  line-height: 1;
+  color: #f5ff3b;
+}
+
+.dominoes-score-middle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  text-align: center;
+}
+
+.dominoes-score-round {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #a5f3fc;
+}
+
+.dominoes-score-target {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+/* ── The round result (the series goes on) ────────────────────────────
+   An inline panel above the table, NOT a modal: the next round is already
+   dealt and its clock is already running, so nothing may cover the board. */
+.dominoes-round-result {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid rgba(245, 255, 59, 0.35);
+  border-radius: 12px;
+  background: rgba(245, 255, 59, 0.08);
+  padding: 10px 12px;
+}
+
+.dominoes-round-result-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dominoes-round-result-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f5ff3b;
+}
+
+.dominoes-round-result-dismiss {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.08);
+  padding: 3px 10px;
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+}
+
+.dominoes-round-result-dismiss:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.dominoes-round-result-outcome {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.dominoes-round-result-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
+}
+
+.dominoes-round-result-cell {
+  min-width: 0;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.25);
+  padding: 6px 8px;
+}
+
+.dominoes-round-result-cell-name {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.dominoes-round-result-cell-points {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+  font-weight: 900;
+  color: #7cefff;
+}
+
+.dominoes-round-result-cell-pips {
+  margin: 0;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.dominoes-round-result-next,
+.dominoes-round-result-score {
+  margin: 0;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+@media (max-width: 420px) {
+  .dominoes-scoreboard {
+    gap: 6px;
+    padding: 7px 8px;
+  }
+
+  .dominoes-score-value {
+    font-size: 20px;
+  }
+
+  .dominoes-score-target {
+    font-size: 8px;
+  }
+
+  .dominoes-round-result {
+    padding: 8px 10px;
+  }
+}
+
 .dominoes-clock {
   display: flex;
   align-items: center;
@@ -2824,6 +3046,27 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
     0 8px 24px rgba(0, 229, 255, 0.45);
 }
 
+/* THE PLACEMENT PREVIEW — where the selected tile would land.
+   It is drawn from the SAME `layoutChain` call the play itself produces, on a
+   table laid out WITH the tile in it, so it cannot point anywhere the tile will
+   not go. Dashed and dimmed, because it is a hint and not a tile: nothing the
+   server has accepted is ever ghosted, and the shared chain is never optimistic. */
+.dominoes-chain-slot.is-preview {
+  z-index: 0;
+  pointer-events: none;
+}
+
+.dominoes-chain-slot.is-preview .dominoes-chain-tile-box {
+  opacity: 0.55;
+}
+
+.dominoes-tile.is-preview {
+  border-style: dashed;
+  border-color: rgba(103, 232, 249, 0.85);
+  background: rgba(8, 47, 74, 0.6);
+  box-shadow: none;
+}
+
 /* "LAST ON THE LEFT/RIGHT" — a small badge above the newest tile, naming the end
    the last play was attached to. It floats, so it never shifts a tile. */
 .dominoes-last-marker {
@@ -2938,6 +3181,18 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 .dominoes-end-chip.is-tappable:focus-visible {
   outline: 2px solid #67e8f9;
   outline-offset: 2px;
+}
+
+/* ON A PHONE THE CHIP IS THE PLACEMENT CONTROL. It sits at a corner of a board a
+   thumb is already over, so on a coarse pointer it is given a finger-sized box;
+   the printed value stays inside it, and nothing moves on a mouse. */
+@media (pointer: coarse) {
+  .dominoes-end-chip.is-tappable {
+    min-width: 48px;
+    min-height: 44px;
+    justify-content: center;
+    padding: 8px 12px;
+  }
 }
 
 /* THE END UNDER A PICKED-UP TILE. Only an end the held tile fits can be hovered

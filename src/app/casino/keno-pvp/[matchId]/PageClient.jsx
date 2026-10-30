@@ -52,7 +52,7 @@ import {
   playDefeat,
   playTick,
 } from "../../../../lib/gameAudio";
-import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
+import GameEmoteLayer from "../../../../components/game/emotes/GameEmoteLayer";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
 import { useSocket } from "../../../../context/SocketProvider";
 import {
@@ -782,10 +782,13 @@ export default function KenoPvpMatchPage({ params }) {
 
   useMatchSync(fetchStatus, socket, Boolean(matchId) && !paused);
 
-  // …plus the ONE read the ready banner needs. The tile window is nudged just
-  // below, but the ready banner is a separate instant (it only becomes the first
-  // lit tile inside a read), so both seats could sit on "Get ready…" forever.
-  // Which instant counts is `kenoPvpDueRead` (see `lib/deadlineRead.ts`).
+  // …plus the ONE read each pending server instant needs. The tile window is
+  // nudged just below, but the ready banner AND the gap between two targets are
+  // separate instants that only become the next state inside a read. Without
+  // this, both seats could sit on "Get ready…" forever — or, after a tile
+  // resolved, on an empty board until some unrelated event happened to read the
+  // match (the reported freeze). Which instant counts is `kenoPvpDueRead`
+  // (see `lib/deadlineRead.ts`).
   //
   // `serverNow` hands the read the page's own estimate of the server clock, so
   // the countdown reaching 0 is what FIRES it rather than a slack added on top —
@@ -879,15 +882,26 @@ export default function KenoPvpMatchPage({ params }) {
   ]);
 
   // Socket live-update: refresh instantly on opponent actions.
+  //
+  // The room is joined on EVERY `connect`, not just on mount: Socket.IO does not
+  // restore room membership across a reconnect, so a mobile suspend, a network
+  // blip or a deploy left this page silently OUT of its match room — every
+  // opponent push was then lost and the board only moved when some unrelated
+  // read happened (the reported freeze, which a refresh "fixed"). Re-joining
+  // also tells the realtime server this player is present again, cancelling its
+  // disconnect-forfeit grace timer for the match.
   useEffect(() => {
     if (!socket || !matchId) return;
     const roomId = kenoPvpMatchRoom(matchId);
     const refresh = () => fetchStatus();
-    socket.emit("join_room", { roomId });
+    const joinRoom = () => socket.emit("join_room", { roomId });
+    joinRoom();
+    socket.on("connect", joinRoom);
     socket.on(KENO_PVP_MATCH_UPDATED, refresh);
     return () => {
-      socket.emit("leave_room", { roomId });
+      socket.off("connect", joinRoom);
       socket.off(KENO_PVP_MATCH_UPDATED, refresh);
+      socket.emit("leave_room", { roomId });
     };
   }, [socket, matchId, fetchStatus]);
 
@@ -1475,7 +1489,6 @@ export default function KenoPvpMatchPage({ params }) {
             </span>
           )}
         </div>
-        {!compact && <EmoteBubble emote={isMe ? myEmote : incomingEmote} />}
       </div>
     );
   };
@@ -2004,9 +2017,9 @@ export default function KenoPvpMatchPage({ params }) {
                 <section className="rounded-2xl border border-[#00e5ff]/20 bg-[#04101f]/85 p-2">
                   <div className="flex items-center justify-between gap-2">
                     <SoundToggle className="!px-2 !py-1.5" />
-                    <EmotePicker
+                    <GameEmoteLayer
+                      gameId="keno-pvp"
                       compact
-                      hideBubbles
                       incomingEmote={incomingEmote}
                       myEmote={myEmote}
                       onSend={(emote) => sendEmote(emote)}
@@ -2090,9 +2103,9 @@ export default function KenoPvpMatchPage({ params }) {
             </div>
             <div className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/30 p-2">
               <SoundToggle />
-              <EmotePicker
+              <GameEmoteLayer
+                gameId="keno-pvp"
                 compact
-                hideBubbles
                 incomingEmote={incomingEmote}
                 myEmote={myEmote}
                 onSend={(emote) => sendEmote(emote)}

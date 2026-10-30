@@ -243,24 +243,41 @@ export function laneRushDueRead(
   return match.roundDeadline ?? null;
 }
 
-/** Keno Duel. `status`/`readyDeadline`. */
+/** Keno Duel. `status`/`readyDeadline`/`nextTileAt`. */
 export interface KenoPvpReadSource {
   status?: string | null;
   readyDeadline?: StampedInstant;
+  nextTileAt?: StampedInstant;
 }
 
 /**
- * Keno Duel: the ready banner only.
+ * Keno Duel: the ready banner AND the gap between two targets.
  *
  * The tile window is a separate instant (`liveDeadline`) and the page already
  * nudges it. The ready banner — `lightNextTile` on the read's first step — had
  * no reader, so "Get ready…" never became the first lit tile.
+ *
+ * The gap BETWEEN targets is the same defect one round later. A resolved tile
+ * clears `liveTile` and stores only WHEN the next one may light (`nextTileAt`);
+ * the store lights it inside a read, never on a timer. The push that tells the
+ * page a tile resolved therefore always lands while the server is still holding
+ * that beat: the read it triggers sees "no tile yet", and with nothing armed for
+ * the marker the board sat empty until some unrelated event read the match —
+ * reported as the game stopping and freezing for a moment, with the next timer
+ * appearing only after a refresh.
+ *
+ * `nextTileAt` names an instant, never a tile: the next target is still drawn
+ * inside the read, so arming on it cannot reveal or pre-aim at the future board.
  */
 export function kenoPvpDueRead(
   match: KenoPvpReadSource | null | undefined,
 ): StampedInstant {
-  if (!match || match.status !== "ready") return null;
-  return match.readyDeadline ?? null;
+  if (!match) return null;
+  if (match.status === "ready") return match.readyDeadline ?? null;
+  // Terminal states arm nothing, whatever a stale marker says.
+  if (match.status === "finished" || match.status === "cancelled") return null;
+  // A live run with no tile lit is waiting on the server's anticipation beat.
+  return match.nextTileAt ?? null;
 }
 
 /** Precision. `phase`/`countdownEndsAt`. */

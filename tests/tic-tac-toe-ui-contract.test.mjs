@@ -77,7 +77,7 @@ test("ui: every required match state is rendered", () => {
   assert.match(page, /data-testid="tic-tac-toe-cancelled"/, "cancelled state");
   assert.match(page, /<PvpResultScreen/, "the shared win/loss/draw screen");
   assert.match(page, /<ReportModal/, "report flow");
-  assert.match(page, /<EmotePicker/, "emotes");
+  assert.match(page, /<GameEmoteLayer/, "emotes");
 });
 
 test("ui: the game information block shows opponent, mark, destination and turn", () => {

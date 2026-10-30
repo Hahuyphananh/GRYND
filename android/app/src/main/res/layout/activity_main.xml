@@ -4,9 +4,15 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="#030817"
     tools:context=".MainActivity">
 
+    <!-- The dark window colour is the only thing that shows for the frames
+         between the native splash and the remote page's first paint. Without
+         it that gap is the default white, which is the flash this phase
+         removes. It does not affect the page itself. -->
     <WebView
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent"
+        android:background="#030817" />
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

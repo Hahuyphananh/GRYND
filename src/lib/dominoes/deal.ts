@@ -34,6 +34,7 @@ import {
   DRAW_PILE_SIZE,
   HAND_SIZE,
   REJECTION,
+  STARTING_RULES,
   TILE_COUNT,
   TILE_IDS,
 } from "./constants";
@@ -43,7 +44,7 @@ import {
   isTileId,
   tileOrder,
 } from "./rules";
-import type { Deal, DominoesState, TileId } from "./types";
+import type { Deal, DominoesState, Seat, StartingRule, TileId } from "./types";
 
 /** Canonical tile order — the stable order every dealt hand is stored in. */
 function byCanonicalOrder(a: TileId, b: TileId): number {
@@ -171,4 +172,30 @@ export function dealMatch(
   random: () => number = secureUnitInterval,
 ): DominoesState {
   return createInitialState(dealTiles(random));
+}
+
+/**
+ * Deal the NEXT round of a match that already has a starting seat.
+ *
+ * Round 1's opener is decided BY THE DEAL (highest double, else highest total);
+ * every later round inherits it from the round before — that round's WINNER, or,
+ * after a level round, the seat that did not start it — so `startingSeat` is
+ * imposed here and `rule` only records why.
+ *
+ * The set itself is dealt exactly like the first round (a fresh 28-tile shuffle,
+ * 7 / 7 / 14). What this does NOT do is place an opening tile: the bid belongs to
+ * `startingSeat`, which opens the fresh chain BY HAND with any tile it likes (no
+ * double required). The returned state's chain is therefore empty and the turn
+ * is the starter's.
+ */
+export function dealNextRound({
+  startingSeat,
+  rule = STARTING_RULES.PREVIOUS_WINNER,
+  random = secureUnitInterval,
+}: {
+  startingSeat: Seat;
+  rule?: StartingRule;
+  random?: () => number;
+}): DominoesState {
+  return createInitialState(dealTiles(random), { seat: startingSeat, rule });
 }

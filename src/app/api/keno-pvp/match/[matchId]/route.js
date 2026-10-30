@@ -112,6 +112,13 @@ function normaliseMatch(match, viewerUserId) {
     // anticipation beat (`roundDeadline` is that marker, not a claim
     // deadline), so nothing about the upcoming target is exposed early.
     liveDeadline: isLive && hasTile ? liveDeadline : null,
+    // …but the anticipation marker itself has to be READABLE, or nothing in the
+    // page knows when to look again: a tile that resolved sets no live tile, and
+    // the next one is lit only by a read past this instant. A page with nothing
+    // armed for it sat on an empty board until some unrelated event read the
+    // match (the reported freeze between targets, "fixed" by a refresh). It
+    // names a time, never a tile — the next target is still drawn on the read.
+    nextTileAt: isLive && !hasTile ? (match.roundDeadline ?? null) : null,
     // The get-ready countdown. Only meaningful while the match is in the
     // `ready` state, where `roundDeadline` IS the ready deadline — the
     // waiting room renders the real remaining seconds from the server

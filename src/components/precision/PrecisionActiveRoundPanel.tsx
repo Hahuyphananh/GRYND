@@ -16,7 +16,7 @@
 import { motion } from "framer-motion";
 import { IconTarget } from "@tabler/icons-react";
 
-import EmotePicker from "../game/EmotePicker";
+import GameEmoteLayer from "../game/emotes/GameEmoteLayer";
 import { useTranslation } from "../../hooks/useTranslation";
 import { fadeUp } from "../../lib/animations";
 import type { RoundStopsSummary } from "../../lib/precision/matchView";
@@ -210,7 +210,8 @@ export default function PrecisionActiveRoundPanel({
             >
               {t("games.precision.resign")}
             </button>
-            <EmotePicker
+            <GameEmoteLayer
+              gameId="precision"
               compact
               incomingEmote={incomingEmote}
               myEmote={myEmote}

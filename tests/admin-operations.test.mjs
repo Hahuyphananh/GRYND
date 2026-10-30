@@ -17,8 +17,11 @@ import path from "node:path";
 import {
   BACKUP_STALE_AFTER_HOURS,
   DEFAULT_RELEASE_ROOT,
+  deploymentLog,
   formatBytes,
   getOperationsSnapshot,
+  isFailedDeployment,
+  readLiveBuild,
   redactText,
   releaseRoot,
   safeText,
@@ -240,6 +243,110 @@ test("operations: a torn or corrupt state file degrades instead of throwing", as
   assert.equal(snapshot.configured, true);
   assert.equal(snapshot.active, null);
   assert.equal(snapshot.audit.length, 1);
+});
+
+test("operations: the live commit is the one this build was made from", () => {
+  const live = readLiveBuild({
+    VERCEL_GIT_COMMIT_SHA: "3F9C2AB0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6",
+    VERCEL_GIT_COMMIT_MESSAGE: "feat(ops): show the live commit\n\nbody that is not repeated",
+    VERCEL_GIT_COMMIT_REF: "main",
+    VERCEL_GIT_REPO_OWNER: "Hahuyphananh",
+    VERCEL_GIT_REPO_SLUG: "GRYND",
+    VERCEL_DEPLOYMENT_ID: "dpl_abc123",
+    VERCEL_ENV: "production",
+    VERCEL_URL: "grynd-abc.vercel.app",
+  });
+
+  assert.equal(live.source, "build-env");
+  assert.equal(live.commit, "3f9c2ab0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6");
+  assert.equal(live.shortCommit, "3f9c2ab");
+  assert.equal(live.message, "feat(ops): show the live commit body that is not repeated");
+  assert.equal(live.ref, "main");
+  assert.equal(live.repo, "Hahuyphananh/GRYND");
+  assert.equal(live.environment, "production");
+  assert.equal(live.deploymentId, "dpl_abc123");
+  assert.equal(live.url, "grynd-abc.vercel.app");
+
+  // A placeholder is not a commit: "unknown" beats a value that is not what is live.
+  assert.equal(readLiveBuild({}), null);
+  assert.equal(readLiveBuild({ VERCEL_GIT_COMMIT_SHA: "dev" }), null);
+  assert.equal(readLiveBuild({ VERCEL_GIT_COMMIT_SHA: "   " }), null);
+
+  // An unexpected environment is dropped rather than rendered.
+  const odd = readLiveBuild({ VERCEL_GIT_COMMIT_SHA: "a".repeat(40), VERCEL_ENV: "staging-ish" });
+  assert.equal(odd.environment, null);
+});
+
+test("operations: the snapshot names the live commit with or without host state", async () => {
+  const root = await makeRoot();
+  await writeJson(root, "state/active.json", ACTIVE);
+
+  // A platform build: no host release files are needed, the build metadata is
+  // enough — and it must survive an unreadable state root too.
+  const fromBuild = await getOperationsSnapshot({
+    env: { GRYND_RELEASE_ROOT: root, VERCEL_GIT_COMMIT_SHA: "b".repeat(40) },
+    now: NOW,
+  });
+  assert.equal(fromBuild.live.source, "build-env");
+  assert.equal(fromBuild.live.shortCommit, "bbbbbbb");
+
+  const missing = await getOperationsSnapshot({
+    env: { GRYND_RELEASE_ROOT: path.join(root, "absent"), VERCEL_GIT_COMMIT_SHA: "c".repeat(40) },
+    now: NOW,
+  });
+  assert.equal(missing.configured, false);
+  assert.equal(missing.live.shortCommit, "ccccccc", "the live commit does not depend on host state");
+
+  // A self-hosted release with no build metadata falls back to the active release.
+  const fromHost = await getOperationsSnapshot({ env: { GRYND_RELEASE_ROOT: root }, now: NOW });
+  assert.equal(fromHost.live.source, "host-release");
+  assert.equal(fromHost.live.commit, ACTIVE.commit);
+  assert.equal(fromHost.live.deploymentId, ACTIVE.releaseId);
+});
+
+test("operations: a failed deploy keeps its log lines and never leaks a secret", async () => {
+  const root = await makeRoot();
+  await writeJson(root, "state/deployments.json", {
+    schema: 1,
+    records: [
+      {
+        ...DEPLOYMENT,
+        outcome: "failed",
+        stage: "health",
+        reason: "health gate failed postgres://user:hunter2@db/grynd",
+        health: { ok: false, checks: [{ name: "app", ok: false, status: 503, error: "HTTP 503" }] },
+        rollback: { attempted: true, target: "20261024T143012Z-1111111", ok: false, error: "revert unhealthy" },
+      },
+    ],
+  });
+
+  const snapshot = await getOperationsSnapshot({ env: { GRYND_RELEASE_ROOT: root }, now: NOW });
+  const record = snapshot.deployments[0];
+
+  assert.equal(record.health.ok, false);
+  assert.equal(record.health.checks[0].name, "app");
+  assert.equal(record.health.checks[0].status, 503);
+  assert.equal(isFailedDeployment(record), true);
+  assert.equal(isFailedDeployment(snapshot.deployments[1] ?? null), false);
+
+  const log = deploymentLog(record).join("\n");
+  assert.match(log, /outcome\s+failed/);
+  assert.match(log, /stage\s+health/);
+  assert.match(log, /health\s+app: FAILED: HTTP 503/);
+  assert.match(log, /rollback\s+FAILED/);
+  assert.ok(!log.includes("hunter2"), "the log must be redacted like every other ops value");
+});
+
+test("operations: the page names the live commit and only the newest attempt", async () => {
+  const source = await fs.readFile("src/app/admin/operations/page.tsx", "utf8");
+
+  assert.match(source, /Live commit/);
+  assert.match(source, /Latest commit/);
+  // The newest record only — a commit history table is exactly what this page
+  // used to render instead of saying what is live.
+  assert.match(source, /snapshot\.deployments\[0\]/);
+  assert.ok(!/snapshot\.deployments\.slice\(0, 10\)/.test(source));
+  assert.match(source, /deploymentLog\(latestDeployment\)/, "the failed deploy must show its log");
 });
 
 test("operations: helpers bound text and resolve an absolute root only", () => {

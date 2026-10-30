@@ -4561,6 +4561,58 @@ export const practicePauses = pgTable(
 // `ply` is the optimistic-concurrency version the move route echoes back as
 // `expectedVersion`, and it is also the turn number the append-only move log
 // is keyed by (unique per match).
+// ── One row per COMPLETED round (append-only) ──────────────────────────
+//
+// `game_state` holds the position in progress, so a round's own result would be
+// destroyed by the next deal. Each completed round is therefore appended here:
+// the pips each seat held, the points those pips were worth, the seat that won
+// the round (NULL when the round scored level) and why it ended.
+//
+// (match_id, round_number) is UNIQUE, which is what makes the store's insert an
+// idempotent ON CONFLICT DO NOTHING and duplicate round records unrepresentable.
+// Nothing here is secret: end-of-round pips were already published when the
+// round closed, and no hand ever leaves the match row's secret columns.
+//
+// Declared before `dominoesMatches` because the foreign key is a lazy closure;
+// declaration order in this file carries no meaning.
+export const dominoesRounds = pgTable(
+  "dominoes_rounds",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    matchId: uuid("match_id")
+      .notNull()
+      .references(() => dominoesMatches.id, { onDelete: "cascade" }),
+    /** 1-based, contiguous per match. */
+    roundNumber: integer("round_number").notNull(),
+    /** Pips each seat still held when the round closed. */
+    player1Pips: integer("player1_pips").notNull(),
+    player2Pips: integer("player2_pips").notNull(),
+    /** Points awarded THIS round: each seat scores the other's remaining pips. */
+    player1Points: integer("player1_points").notNull(),
+    player2Points: integer("player2_points").notNull(),
+    /** player1 | player2 (seat), NULL when the round scored level. */
+    winnerSeat: varchar("winner_seat", { length: 20 }),
+    /** emptied-hand | blocked-pips (END_REASONS in src/lib/dominoes). */
+    endReason: varchar("end_reason", { length: 32 }).notNull(),
+    /** The instant the round closed, stamped from the SERVER clock. */
+    completedAt: timestamp("completed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // Idempotent round writes: one row per round, forever.
+    roundUnique: unique("dominoes_rounds_match_round_unique").on(
+      table.matchId,
+      table.roundNumber,
+    ),
+    matchIdx: index("dominoes_rounds_match_idx").on(
+      table.matchId,
+      table.roundNumber,
+    ),
+  }),
+);
+
 export const dominoesMatches = pgTable(
   "dominoes_matches",
   {
@@ -4603,6 +4655,19 @@ export const dominoesMatches = pgTable(
       .notNull()
       .default(sql`'[]'::jsonb`),
     winnerId: varchar("winner_id", { length: 255 }),
+    /**
+     * Cumulative MATCH points, carried across rounds. Advanced only by the
+     * ply-conditional write that closes a round, so a retried request cannot
+     * add a round twice. First to MATCH_TARGET_POINTS (50) wins the match.
+     */
+    player1Score: integer("player1_score").notNull().default(0),
+    player2Score: integer("player2_score").notNull().default(0),
+    /** The round in progress, 1-based. Never resets the `ply` version. */
+    roundNumber: integer("round_number").notNull().default(1),
+    /** Seat that won the round just completed (player1 | player2 | null). */
+    previousRoundWinner: varchar("previous_round_winner", { length: 20 }),
+    /** Seat the CURRENT round's deal chose to start (player1 | player2). */
+    previousStartingSeat: varchar("previous_starting_seat", { length: 20 }),
     /** player1 | player2 | draw (RESULT in src/lib/dominoes/constants.ts). */
     result: varchar("result", { length: 20 }),
     /** emptied-hand | blocked-pips | resigned | abandoned (END_REASONS). */

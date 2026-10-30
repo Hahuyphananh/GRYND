@@ -36,7 +36,7 @@ import {
 } from "@tabler/icons-react";
 
 import { useSocket } from "../../../../context/SocketProvider";
-import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
+import GameEmoteLayer from "../../../../components/game/emotes/GameEmoteLayer";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
 import MiniGolfCourse from "../../../../components/mini-golf/MiniGolfCourse";
 import SeatAvatar from "../../../../components/game/SeatAvatar";
@@ -1231,10 +1231,6 @@ export default function MiniGolfMatchPage() {
                               {wins} {wins === 1 ? "hole" : "holes"} won
                             </p>
                           </div>
-                          <EmoteBubble
-                            emote={isViewer ? myEmote : incomingEmote}
-                            side={isViewer ? "mine" : "incoming"}
-                          />
                         </div>
                         <div className="mt-2 flex items-center gap-1.5" aria-label={`${wins} holes won`}>
                           {winPips(wins, HOLES_TO_WIN).map((won, i) => (
@@ -1535,9 +1531,9 @@ export default function MiniGolfMatchPage() {
                 <section className="rounded-2xl border border-emerald-500/20 bg-black/40 p-3">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs text-white/50">Emotes</span>
-                    <EmotePicker
+                    <GameEmoteLayer
+                      gameId="mini-golf"
                       compact
-                      hideBubbles
                       incomingEmote={incomingEmote}
                       myEmote={myEmote}
                       onSend={(emote) => sendEmote(emote)}

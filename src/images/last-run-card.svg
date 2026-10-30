@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" width="800" height="450" role="img" aria-label="LAST RUN — two runners on one neon track">
+  <defs>
+    <linearGradient id="lr-sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#050b1a"/>
+      <stop offset="0.7" stop-color="#0a1730"/>
+      <stop offset="1" stop-color="#10224a"/>
+    </linearGradient>
+    <linearGradient id="lr-track" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#00e5ff"/>
+      <stop offset="1" stop-color="#f5ff3b"/>
+    </linearGradient>
+    <linearGradient id="lr-runner" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7dffcf"/>
+      <stop offset="1" stop-color="#00e5ff"/>
+    </linearGradient>
+    <linearGradient id="lr-rival" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffe98a"/>
+      <stop offset="1" stop-color="#ffb020"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="800" height="450" fill="url(#lr-sky)"/>
+
+  <!-- speed streaks -->
+  <g stroke="#00e5ff" stroke-linecap="round" opacity="0.35">
+    <line x1="60" y1="120" x2="210" y2="120" stroke-width="3"/>
+    <line x1="140" y1="170" x2="330" y2="170" stroke-width="2"/>
+    <line x1="30" y1="220" x2="180" y2="220" stroke-width="2"/>
+    <line x1="520" y1="105" x2="700" y2="105" stroke-width="3"/>
+    <line x1="600" y1="160" x2="760" y2="160" stroke-width="2"/>
+    <line x1="450" y1="215" x2="640" y2="215" stroke-width="2"/>
+  </g>
+
+  <!-- distant skyline -->
+  <g fill="#0e2550">
+    <rect x="40" y="250" width="90" height="90" rx="4"/>
+    <rect x="150" y="270" width="60" height="70" rx="4"/>
+    <rect x="560" y="255" width="80" height="85" rx="4"/>
+    <rect x="665" y="275" width="70" height="65" rx="4"/>
+  </g>
+
+  <!-- first lane (you) -->
+  <line x1="0" y1="342" x2="800" y2="342" stroke="url(#lr-track)" stroke-width="6"/>
+  <line x1="0" y1="404" x2="800" y2="404" stroke="url(#lr-track)" stroke-width="3" opacity="0.55"/>
+
+  <!-- crate + spike -->
+  <g>
+    <rect x="300" y="292" width="44" height="50" rx="6" fill="#00e5ff" opacity="0.85"/>
+    <path d="M300 292 L322 292 L300 342 Z" fill="#050b1a" opacity="0.35"/>
+    <path d="M420 342 L440 288 L460 342 Z" fill="#ff4d5e"/>
+    <path d="M430 342 L440 312 L450 342 Z" fill="#ffe3e6" opacity="0.7"/>
+    <rect x="540" y="262" width="120" height="22" rx="6" fill="#f5ff3b" opacity="0.9"/>
+    <rect x="540" y="262" width="120" height="8" rx="4" fill="#050b1a" opacity="0.35"/>
+  </g>
+
+  <!-- runner (you) mid-jump -->
+  <g transform="translate(170,236)">
+    <rect x="0" y="0" width="34" height="46" rx="9" fill="url(#lr-runner)"/>
+    <rect x="6" y="46" width="8" height="22" rx="4" fill="url(#lr-runner)"/>
+    <rect x="21" y="46" width="8" height="22" rx="4" fill="url(#lr-runner)"/>
+    <rect x="10" y="12" width="14" height="6" rx="3" fill="#050b1a" opacity="0.55"/>
+  </g>
+
+  <!-- rival runner ahead -->
+  <g transform="translate(600,262)">
+    <rect x="0" y="0" width="28" height="38" rx="8" fill="url(#lr-rival)"/>
+    <rect x="5" y="38" width="7" height="18" rx="3.5" fill="url(#lr-rival)"/>
+    <rect x="17" y="38" width="7" height="18" rx="3.5" fill="url(#lr-rival)"/>
+  </g>
+
+  <!-- ground glow -->
+  <rect x="0" y="418" width="800" height="32" fill="#00e5ff" opacity="0.08"/>
+</svg>

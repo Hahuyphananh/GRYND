@@ -55,7 +55,7 @@ import {
 } from "@tabler/icons-react";
 
 import { useSocket } from "../../../../context/SocketProvider";
-import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
+import GameEmoteLayer from "../../../../components/game/emotes/GameEmoteLayer";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
 import SeatAvatar from "../../../../components/game/SeatAvatar";
 import MatchLoading from "../../../../components/game/MatchLoading";
@@ -582,7 +582,6 @@ export default function BarricadeMatchPage() {
             />
           </span>
         </span>
-        <EmoteBubble emote={emote} side={isViewer ? "mine" : "incoming"} />
         {active ? (
           <span className="barricade-turn-badge" data-testid="barricade-turn-badge">
             to move
@@ -809,7 +808,13 @@ export default function BarricadeMatchPage() {
                     )}
                   </div>
 
-                  <EmotePicker onSend={sendEmote} />
+                  <GameEmoteLayer
+                    gameId="barrier-blitz"
+                    compact
+                    incomingEmote={incomingEmote}
+                    myEmote={myEmote}
+                    onSend={sendEmote}
+                  />
                 </div>
               </div>
             ) : null}

@@ -14,7 +14,7 @@ import {
   PracticePauseOverlay,
 } from "../../../../../components/game/PracticePause";
 import { usePracticePause } from "../../../../../hooks/usePracticePause";
-import EmotePicker from "../../../../../components/game/EmotePicker";
+import GameEmoteLayer from "../../../../../components/game/emotes/GameEmoteLayer";
 import useGameEmotes from "../../../../../hooks/useGameEmotes";
 import { useSocket } from "../../../../../context/SocketProvider";
 import PredictionPanel from "../../../../../components/odds/PredictionPanel";
@@ -1413,7 +1413,8 @@ function PvPOddsGame({ audio, matchId }: { audio: ReturnType<typeof useOddsAudio
 
           {/* Emotes */}
           <div className="mt-3 flex justify-center">
-              <EmotePicker
+              <GameEmoteLayer
+                gameId="odds"
                 compact
                 incomingEmote={incomingEmote}
                 myEmote={myEmote}

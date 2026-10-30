@@ -1,6 +1,6 @@
 "use client";
 
-// src/app/games/last-run/[matchId]/MatchClient.tsx
+// src/app/casino/last-run/[matchId]/PageClient.tsx
 //
 // LAST RUN — the match.
 //
@@ -124,7 +124,7 @@ function SpeakerIcon({ muted }: { muted: boolean }) {
   );
 }
 
-export default function MatchClient({ matchId }: { matchId: string }) {
+export default function PageClient({ matchId }: { matchId: string }) {
   const router = useRouter();
   const reducedMotion = useReducedMotion() ?? false;
   const audio = useRunAudio();
@@ -336,7 +336,7 @@ export default function MatchClient({ matchId }: { matchId: string }) {
           <h1 className="mt-3 text-3xl font-black tracking-tight">This run is not open</h1>
           <p className="mt-3 text-sm text-white/50">{error}</p>
           <Link
-            href="/games/last-run"
+            href="/games/last-run/play"
             className="mt-6 inline-flex h-11 items-center rounded-xl bg-cyan-400 px-5 text-xs font-black uppercase tracking-[0.18em] text-[#04121a]"
           >
             Back to the lobby
@@ -407,13 +407,13 @@ export default function MatchClient({ matchId }: { matchId: string }) {
             <div className="mt-3 flex flex-col gap-1.5 sm:flex-row sm:gap-2">
               <button
                 type="button"
-                onClick={() => router.push("/games/last-run?queue=1")}
+                onClick={() => router.push("/games/last-run/play?queue=1")}
                 className="flex-1 rounded-xl bg-cyan-400 py-2.5 text-[10px] font-black uppercase tracking-[0.18em] text-[#04121a] transition hover:bg-cyan-300 sm:text-[11px]"
               >
                 Run it back
               </button>
               <Link
-                href="/games/last-run"
+                href="/games/last-run/play"
                 className="flex-1 rounded-xl border border-white/15 bg-white/[0.03] py-2.5 text-center text-[10px] font-black uppercase tracking-[0.18em] text-white/70 transition hover:border-white/30 hover:text-white sm:text-[11px]"
               >
                 Return to lobby
@@ -434,7 +434,7 @@ export default function MatchClient({ matchId }: { matchId: string }) {
         {/* ── HUD ─────────────────────────────────────────────────────── */}
         <header className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-baseline gap-2.5">
-            <Link href="/games/last-run" className="text-base font-black tracking-tight text-white/90 hover:text-white sm:text-lg">
+            <Link href="/games/last-run/play" className="text-base font-black tracking-tight text-white/90 hover:text-white sm:text-lg">
               LAST<span className="text-cyan-300">RUN</span>
             </Link>
             <span className="hidden text-[10px] font-bold uppercase tracking-[0.24em] text-white/30 sm:inline">
@@ -631,13 +631,13 @@ export default function MatchClient({ matchId }: { matchId: string }) {
                 <div className="mt-3 flex flex-col gap-1.5 sm:flex-row sm:gap-2">
                   <button
                     type="button"
-                    onClick={() => router.push("/games/last-run?queue=1")}
+                    onClick={() => router.push("/games/last-run/play?queue=1")}
                     className="flex-1 rounded-xl bg-cyan-400 py-2.5 text-[10px] font-black uppercase tracking-[0.18em] text-[#04121a] transition hover:bg-cyan-300 sm:text-[11px]"
                   >
                     Run it back
                   </button>
                   <Link
-                    href="/games/last-run"
+                    href="/games/last-run/play"
                     className="flex-1 rounded-xl border border-white/15 bg-white/[0.03] py-2.5 text-center text-[10px] font-black uppercase tracking-[0.18em] text-white/70 transition hover:border-white/30 hover:text-white sm:text-[11px]"
                   >
                     Return to lobby

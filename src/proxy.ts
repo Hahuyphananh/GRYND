@@ -93,6 +93,9 @@ const GAME_ROUTE_PATTERNS = [
   // sends a signed-out visitor to sign-in — while the practice board is entirely
   // client-side and needs no account at all.
   "/casino/hillstrike(.*)",
+  // LAST RUN's lobby (/casino/last-run, reached publicly as
+  // /games/last-run/play) and its per-match view (/casino/last-run/<id>).
+  "/casino/last-run(.*)",
   // /games/* mirrors of the /casino/* routes.
   "/games/uno(.*)",
   "/games/neon-flush(.*)",
@@ -119,12 +122,12 @@ const GAME_ROUTE_PATTERNS = [
   "/games/barrier-blitz(.*)",
   "/games/dominoes(.*)",
   "/games/hillstrike(.*)",
-  // LAST RUN's lobby (/games/last-run) and its per-match view
-  // (/games/last-run/<id>). The surface is unreleased and `noindex`, but it is
-  // still a real route with real matchmaking — so it must be classified like
-  // every other game. While it was missing, `/games/last-run` was caught by the
-  // single-segment slug guard below, rewritten to the not-found sentinel and
-  // answered with a 500 — the game shipped but could not be opened at all.
+  // LAST RUN's public landing page (/games/last-run), its lobby
+  // (/games/last-run/play, rewritten to /casino/last-run) and its match views
+  // (/games/last-run/<id>). Bare /games/last-run is classified here AND has a
+  // landing page, which is safe because every pattern in this list is public;
+  // while the entry was missing entirely, the slug guard below rewrote the
+  // shipped game to the not-found sentinel and it answered with a 500.
   "/games/last-run(.*)",
 ] as const;
 

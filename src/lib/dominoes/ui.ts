@@ -34,6 +34,7 @@
 
 import { viewerOutcome } from "../results/viewerOutcome";
 import { MATCH_STATUS } from "./constants";
+import type { ChainTileLike } from "./layout";
 
 /** A seat key, as the API spells it. */
 export type Seat = "player1" | "player2";
@@ -311,6 +312,116 @@ export function hasPlayableTile(
   return playOptionsFor(hand, openEnds, chainEmpty).length > 0;
 }
 
+/** One tile of a previewed chain, in exactly the shape the projection sends. */
+export type PreviewChainTile = {
+  id: string;
+  end: ChainEnd;
+  left: number;
+  right: number;
+  isDouble: boolean;
+};
+
+/** A prospective placement: the chain as it would read once the tile was laid. */
+export type PlacementPreview = {
+  /** The table's chain with the prospective tile in it. */
+  chain: PreviewChainTile[];
+  /** Where the prospective tile sits in `chain` (0 for a left play). */
+  index: number;
+  /** Whether the tile widens the line at its start or its end. */
+  position: "prepend" | "append";
+  /** The half facing each side of the line, as the engine would resolve it. */
+  facing: { left: number; right: number };
+  isDouble: boolean;
+  /** The end the tile would be attached to. */
+  end: ChainEnd;
+};
+
+/**
+ * WHERE THE SELECTED TILE WOULD LAND — the chain as it would read once it was laid.
+ *
+ * Selecting a tile is a client-side idea: the player picks one up, the ends it fits
+ * light up, and the table shows where it would go. That picture has to be the one
+ * the server will produce, so the prospective entry is built here with the engine's
+ * own conventions from the same public information the engine validates against:
+ *
+ *   * the aimed end and that end's open value (`openEnds`, falling back to the
+ *     exposed half of the tile already sitting at that end);
+ *   * the tile's two halves, one of which must BE that value;
+ *   * the canonical id, the end it was attached to, the half facing each side of
+ *     the line, and the double flag.
+ *
+ * The result is a chain in the projection's shape, so the caller can hand it to
+ * `layoutChain` and draw the REAL geometry — a preview can never disagree with the
+ * placement, because it is computed by the same function on the same shape.
+ *
+ * NOTHING IS SENT. An end the tile cannot meet returns `null`, which is what keeps
+ * a ghost off an end the engine would refuse. The store still re-validates
+owner-ship, pip match, turn, version and end inside its row lock.
+ */
+export function placementPreview(
+  chain: readonly ChainTileLike[] | null | undefined,
+  openEnds: OpenEnds,
+  tile: unknown,
+  end: ChainEnd,
+): PlacementPreview | null {
+  if (typeof tile !== "string") return null;
+  const parts = tileParts(tile);
+  if (!parts) return null;
+  const [high, low] = parts;
+  const isDouble = high === low;
+  const line = Array.isArray(chain) ? chain : [];
+
+  // The opening placement IS the chain's first tile: any tile, always recorded on
+  // the left, and drawn with its canonical facing (the layout turns doubles).
+  if (line.length === 0) {
+    return {
+      chain: [{ id: tile, end: "left", left: high, right: low, isDouble }],
+      index: 0,
+      position: "append",
+      facing: { left: high, right: low },
+      isDouble,
+      end: "left",
+    };
+  }
+
+  const wire = end === "left" ? openEnds?.left : openEnds?.right;
+  const edge = (end === "left" ? line[0] : line[line.length - 1]) as
+    | { left?: unknown; right?: unknown }
+    | undefined;
+  const fromEdge = edge?.[end];
+  const open =
+    typeof wire === "number" && Number.isFinite(wire)
+      ? wire
+      : typeof fromEdge === "number" && Number.isFinite(fromEdge)
+        ? fromEdge
+        : null;
+  if (open === null) return null;
+
+  // Which half meets the chain. A tile that carries neither value fits nothing.
+  const mate = high === open ? low : low === open ? high : null;
+  if (mate === null) return null;
+
+  const facing =
+    end === "left" ? { left: mate, right: open } : { left: open, right: mate };
+  const laid: PreviewChainTile = {
+    id: tile,
+    end,
+    left: facing.left,
+    right: facing.right,
+    isDouble,
+  };
+  const nextChain = (end === "left" ? [laid, ...line] : [...line, laid]) as PreviewChainTile[];
+
+  return {
+    chain: nextChain,
+    index: end === "left" ? 0 : line.length,
+    position: end === "left" ? "prepend" : "append",
+    facing,
+    isDouble,
+    end,
+  };
+}
+
 /**
  * Which non-play controls the server would accept.
  *
@@ -384,6 +495,156 @@ export function durationSeconds(startedAt: unknown, endedAt: unknown): number | 
 /* -------------------------------------------------------------------------- *
  * The action log
  * -------------------------------------------------------------------------- */
+
+/* -------------------------------------------------------------------------- *
+ * The multi-round match: cumulative scoreboard and the round just closed
+ * -------------------------------------------------------------------------- */
+
+/** A cumulative score, normalised (a pre-rounds row has none). */
+function scoreValue(value: unknown): number {
+  const total = Number(value);
+  return Number.isFinite(total) && total > 0 ? Math.floor(total) : 0;
+}
+
+/** The seat opposite `seat`, or null when the seat is unknown. */
+function oppositeSeatOf(seat: Seat | null): Seat | null {
+  if (seat === "player1") return "player2";
+  if (seat === "player2") return "player1";
+  return null;
+}
+
+/** The cumulative scoreboard, SEAT-RELATIVE: every number follows the server's seat. */
+export type SeatScoreboard = {
+  /** The round in progress (1-based). */
+  round: number;
+  /** Points needed to win the match. */
+  target: number;
+  viewerSeat: Seat | null;
+  opponentSeat: Seat | null;
+  viewerScore: number;
+  opponentScore: number;
+};
+
+/**
+ * Read the match scoreboard off the projection.
+ *
+ * `scores` are the match row's cumulative columns and `matchTarget` is the
+ * engine's own constant, so the client prints server numbers and never adds a
+ * round's points itself. A seat-relative read is what makes the same snapshot
+ * render correctly for both players (and for a spectator-less guest).
+ */
+export function scoreboardFor(
+  snapshot:
+    | {
+        viewerSeat?: Seat | null;
+        opponentSeat?: Seat | null;
+        scores?: { player1?: number | null; player2?: number | null } | null;
+        matchTarget?: number | null;
+        roundNumber?: number | null;
+      }
+    | null
+    | undefined,
+): SeatScoreboard {
+  const viewerSeat = snapshot?.viewerSeat ?? null;
+  const opponentSeat = snapshot?.opponentSeat ?? oppositeSeatOf(viewerSeat);
+  const round = Number(snapshot?.roundNumber);
+  const target = Number(snapshot?.matchTarget);
+  const scoreFor = (seat: Seat | null): number => {
+    if (!seat) return 0;
+    return scoreValue(seat === "player1" ? snapshot?.scores?.player1 : snapshot?.scores?.player2);
+  };
+  return {
+    round: Number.isFinite(round) && round >= 1 ? Math.floor(round) : 1,
+    target: Number.isFinite(target) && target > 0 ? Math.floor(target) : 50,
+    viewerSeat,
+    opponentSeat,
+    viewerScore: scoreFor(viewerSeat),
+    opponentScore: scoreFor(opponentSeat),
+  };
+}
+
+/** The just-closed round, as the viewer reads it. */
+export type RoundResultView = {
+  round: number;
+  viewerPips: number;
+  opponentPips: number;
+  viewerPoints: number;
+  opponentPoints: number;
+  /** Who took the round; null when the points were level. */
+  winner: "viewer" | "opponent" | null;
+  /** Who opened the round now in progress (i.e. starts the next round). */
+  nextStarter: "viewer" | "opponent" | null;
+};
+
+/**
+ * The round-result announcement, or null when there is nothing to announce.
+ *
+ * ONLY a live series announces a round. `lastRound` is the store's public record
+ * of the last COMPLETED round (pips and points at the close — never a hand), and
+ * it is shown only while the round immediately after it is in progress. Once the
+ * match is decided the verdict owns the screen, and the round transition is not
+ * shown at all.
+ */
+export function roundResultFor(
+  snapshot:
+    | {
+        status?: string | null;
+        viewerSeat?: Seat | null;
+        opponentSeat?: Seat | null;
+        roundNumber?: number | null;
+        previousStartingSeat?: Seat | null;
+        lastRound?: {
+          roundNumber?: number | null;
+          player1Pips?: number | null;
+          player2Pips?: number | null;
+          player1Points?: number | null;
+          player2Points?: number | null;
+          winnerSeat?: string | null;
+        } | null;
+      }
+    | null
+    | undefined,
+): RoundResultView | null {
+  if (!snapshot || String(snapshot.status ?? "") !== MATCH_STATUS.PLAYING) return null;
+  const last = snapshot.lastRound ?? null;
+  const lastRound = Number(last?.roundNumber);
+  const currentRound = Number(snapshot.roundNumber);
+  if (!Number.isFinite(lastRound) || !Number.isFinite(currentRound)) return null;
+  // Only the round that JUST closed is announced — an older history entry is not
+  // news, and the round in progress is not finished.
+  if (currentRound !== lastRound + 1) return null;
+
+  const viewerSeat = snapshot.viewerSeat ?? null;
+  const opponentSeat = snapshot.opponentSeat ?? oppositeSeatOf(viewerSeat);
+  const relative = (seat: unknown): "viewer" | "opponent" | null => {
+    const value = String(seat ?? "");
+    if (value !== "player1" && value !== "player2") return null;
+    if (!viewerSeat) return null;
+    return value === viewerSeat ? "viewer" : "opponent";
+  };
+  const numberFor = (seat: Seat | null, field: "pips" | "points"): number => {
+    if (!seat) return 0;
+    const raw =
+      field === "pips"
+        ? seat === "player1"
+          ? last?.player1Pips
+          : last?.player2Pips
+        : seat === "player1"
+          ? last?.player1Points
+          : last?.player2Points;
+    return scoreValue(raw);
+  };
+
+  return {
+    round: lastRound,
+    viewerPips: numberFor(viewerSeat, "pips"),
+    opponentPips: numberFor(opponentSeat, "pips"),
+    viewerPoints: numberFor(viewerSeat, "points"),
+    opponentPoints: numberFor(opponentSeat, "points"),
+    winner: relative(last?.winnerSeat),
+    nextStarter: relative(snapshot.previousStartingSeat),
+  };
+}
 
 /**
  * One logged action (`dominoes_moves` row) as human copy.

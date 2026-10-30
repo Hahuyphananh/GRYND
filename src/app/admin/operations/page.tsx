@@ -14,7 +14,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { buildMfaDiagnostics } from "../../../lib/admin/mfaDiagnostics";
-import { formatBytes, getOperationsSnapshot } from "../../../lib/admin/operations";
+import {
+  deploymentLog,
+  formatBytes,
+  getOperationsSnapshot,
+  isFailedDeployment,
+} from "../../../lib/admin/operations";
 import { requireAdminPage } from "../../../lib/admin/requireAdminPage";
 
 export const dynamic = "force-dynamic";
@@ -105,7 +110,15 @@ export default async function OperationsPage() {
   const rest = snapshot.warnings.filter((warning) => warning.severity !== "critical");
   const factors = FACTOR_ROWS.map((row) => ({ ...row, status: mfa.factors[row.key] }));
   const missingFactors = factors.filter((factor) => !factor.status.configured);
+  // Only two commits are ever named: the one serving this page, and the newest
+  // deploy attempt. A history table of runs is not the question an operator asks
+  // here ("what is live, and what did the deploy that did not land say").
+  const live = snapshot.live;
   const latestDeployment = snapshot.deployments[0] ?? null;
+  const latestIsLive = Boolean(
+    live?.commit && latestDeployment?.commit === live.commit,
+  );
+  const latestFailed = isFailedDeployment(latestDeployment);
   const recentAudit = [...snapshot.audit].reverse().slice(0, 8);
 
   return (
@@ -115,7 +128,8 @@ export default async function OperationsPage() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-white">Operations</h1>
             <p className="mt-1 text-sm text-[#7f9bbd]">
-              Read-only. Sourced from the host state files written by the release tooling.
+              Read-only. The live commit comes from this deployment&apos;s own build metadata (or the host&apos;s active
+              release); the newest deploy attempt comes from the host state files written by the release tooling.
             </p>
           </div>
           <nav className="flex gap-2 text-sm">
@@ -336,55 +350,133 @@ export default async function OperationsPage() {
 
         <section className="mt-6 rounded-xl border border-[#1b2a4a] bg-[#0d1830]">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1b2a4a] px-5 py-3">
-            <h2 className="text-sm font-semibold text-white">GitHub deployments</h2>
+            <h2 className="text-sm font-semibold text-white">Live commit</h2>
             <span className="text-xs text-[#7f9bbd]">
-              {latestDeployment ? `latest run ${latestDeployment.runId ?? "—"}` : "no records"}
+              {live
+                ? live.source === "build-env"
+                  ? "from this deployment's build metadata"
+                  : "from the host's active release"
+                : "not recorded"}
             </span>
           </div>
 
-          {snapshot.deployments.length === 0 ? (
-            <p className="px-5 py-6 text-sm text-[#7f9bbd]">
-              No deploy-job records on this host. Runs that stopped before the deploy job are visible in GitHub only.
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="text-[11px] uppercase tracking-wider text-[#7f9bbd]">
-                  <tr>
-                    <th className="px-5 py-2 font-medium">Started</th>
-                    <th className="px-3 py-2 font-medium">Commit</th>
-                    <th className="px-3 py-2 font-medium">Release</th>
-                    <th className="px-3 py-2 font-medium">Outcome</th>
-                    <th className="px-3 py-2 font-medium">Stage</th>
-                    <th className="px-3 py-2 font-medium">Health</th>
-                    <th className="px-5 py-2 font-medium">Duration</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {snapshot.deployments.slice(0, 10).map((record) => (
-                    <tr key={`${record.runId}-${record.commit}`} className="border-t border-[#16233d]">
-                      <td className="px-5 py-2 text-xs text-[#a9c4dd]">{fmtTime(record.startedAt)}</td>
-                      <td className="px-3 py-2 font-mono text-xs">{record.shortCommit}</td>
-                      <td className="px-3 py-2 font-mono text-xs text-[#a9c4dd]">{record.releaseId ?? "—"}</td>
-                      <td className="px-3 py-2 text-xs">
-                        <Outcome value={record.outcome} />
-                      </td>
-                      <td className="px-3 py-2 text-xs text-[#a9c4dd]">{record.stage ?? "—"}</td>
-                      <td className="px-3 py-2 text-xs">
-                        {record.health ? (
-                          <span className={record.health.ok ? "text-emerald-400" : "text-red-400"}>
-                            {record.health.ok ? "ok" : "failed"}
-                          </span>
-                        ) : (
-                          <span className="text-[#7f9bbd]">—</span>
-                        )}
-                      </td>
-                      <td className="px-5 py-2 text-xs text-[#a9c4dd]">{fmtDuration(record.durationMs)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {live ? (
+            <div className="px-5 py-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="font-mono text-lg font-semibold text-[#f5ff3b]">{live.shortCommit}</span>
+                {live.repo && (
+                  <a
+                    href={`https://github.com/${live.repo}/commit/${live.commit}`}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="text-xs text-[#00e5ff] hover:underline"
+                  >
+                    View the commit on GitHub ↗
+                  </a>
+                )}
+              </div>
+              {live.message && <p className="mt-2 max-w-3xl text-sm text-[#e6f7ff]">{live.message}</p>}
+              <dl className="mt-3 grid gap-x-6 gap-y-1 text-xs text-[#7f9bbd] sm:grid-cols-2">
+                <div>
+                  branch <span className="font-mono text-[#a9c4dd]">{live.ref ?? "—"}</span>
+                </div>
+                <div>
+                  repository <span className="font-mono text-[#a9c4dd]">{live.repo ?? "—"}</span>
+                </div>
+                <div>
+                  environment <span className="font-mono text-[#a9c4dd]">{live.environment ?? "—"}</span>
+                </div>
+                <div>
+                  deployment <span className="font-mono text-[#a9c4dd]">{live.deploymentId ?? "—"}</span>
+                </div>
+                {live.url && (
+                  <div className="sm:col-span-2">
+                    serving <span className="font-mono text-[#a9c4dd]">{live.url}</span>
+                  </div>
+                )}
+              </dl>
             </div>
+          ) : (
+            <p className="px-5 py-6 text-sm text-[#7f9bbd]">
+              This process carries no build metadata and no active host release is readable, so the live commit cannot
+              be named. Set <code className="font-mono">GRYND_RELEASE_ROOT</code> on a self-hosted deployment, or read{" "}
+              <code className="font-mono">/api/version</code> from the live host.
+            </p>
+          )}
+        </section>
+
+        <section className="mt-4 rounded-xl border border-[#1b2a4a] bg-[#0d1830]">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1b2a4a] px-5 py-3">
+            <h2 className="text-sm font-semibold text-white">Latest commit</h2>
+            {latestDeployment ? (
+              <span
+                className={`rounded-full border px-2 py-0.5 text-[11px] ${
+                  latestIsLive
+                    ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
+                    : "border-amber-400/40 bg-amber-400/10 text-amber-200"
+                }`}
+              >
+                {latestIsLive ? "live" : "not live"}
+              </span>
+            ) : (
+              <span className="text-xs text-[#7f9bbd]">no deploy records</span>
+            )}
+          </div>
+
+          {latestDeployment ? (
+            <div className="px-5 py-4">
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <span className="font-mono text-sm text-[#e6f7ff]">{latestDeployment.shortCommit}</span>
+                <span className="text-xs text-[#a9c4dd]">{fmtTime(latestDeployment.startedAt)}</span>
+                <span className="text-xs">
+                  <Outcome value={latestDeployment.outcome} />
+                </span>
+                {latestDeployment.stage && (
+                  <span className="text-xs text-[#7f9bbd]">stage {latestDeployment.stage}</span>
+                )}
+                <span className="text-xs text-[#7f9bbd]">{fmtDuration(latestDeployment.durationMs)}</span>
+              </div>
+              <p className="mt-1 text-xs text-[#7f9bbd]">
+                {latestDeployment.event ?? "deploy"}
+                {latestDeployment.target ? ` · ${latestDeployment.target}` : ""}
+                {latestDeployment.requestedBy ? ` · by ${latestDeployment.requestedBy}` : ""}
+              </p>
+
+              {!latestIsLive && (
+                <p className="mt-2 text-xs text-amber-200">
+                  This attempt is not what is serving the page
+                  {live ? ` — the live commit is ${live.shortCommit}` : ""}.
+                </p>
+              )}
+
+              {/* The failing deploy's own record, rendered as a log: stage,
+                  reason, each health check and the rollback outcome — the same
+                  information Vercel's build log shows for a failed deploy. */}
+              {latestFailed || !latestIsLive ? (
+                <details
+                  open={latestFailed}
+                  className={`mt-3 rounded-lg border bg-black/40 ${
+                    latestFailed ? "border-red-500/40" : "border-[#1b2a4a]"
+                  }`}
+                >
+                  <summary
+                    className={`cursor-pointer px-3 py-2 text-xs font-semibold ${
+                      latestFailed ? "text-red-200" : "text-[#a9c4dd]"
+                    }`}
+                  >
+                    {latestFailed ? "Deploy log — failed" : "Deploy log"}
+                  </summary>
+                  <pre className="max-h-72 overflow-auto whitespace-pre-wrap px-3 pb-3 font-mono text-[11px] leading-relaxed text-[#c9f7ff]">
+                    {deploymentLog(latestDeployment).join("\n")}
+                  </pre>
+                </details>
+              ) : null}
+            </div>
+          ) : (
+            <p className="px-5 py-6 text-sm text-[#7f9bbd]">
+              No deploy-job records on this host, so there is no failed attempt to log here. Runs that stopped before the
+              deploy job are visible in GitHub only; the live commit above is read from the running build itself.
+            </p>
           )}
         </section>
 

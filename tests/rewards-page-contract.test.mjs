@@ -122,7 +122,7 @@ test("the navbar links to /rewards on desktop and in the mobile menu", () => {
   // Both link arrays carry the new path, in the same position, so the desktop
   // row and the mobile menu can never disagree.
   const arrays = nav.matchAll(
-    /\["\/", "\/games", "\/classement", "\/rewards", "\/contact", "\/faq"\]/g,
+    /\["\/", "\/games", "\/classement", "\/rewards", "\/faq"\]/g,
   );
   assert.equal(
     [...arrays].length,
@@ -136,7 +136,7 @@ test("the navbar links to /rewards on desktop and in the mobile menu", () => {
   assert.match(nav, /NAV_ICONS = \{ "\/rewards": <IconGift/);
 
   // Pre-existing primary links are untouched.
-  for (const path of ["/", "/games", "/classement", "/contact", "/faq"]) {
+  for (const path of ["/", "/games", "/classement", "/faq"]) {
     assert.match(nav, /NAV_TRANSLATION_KEYS/);
   }
   assert.match(nav, /"\/faq": "nav\.faq"/);

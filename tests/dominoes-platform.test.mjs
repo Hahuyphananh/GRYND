@@ -480,9 +480,16 @@ test("authority: the store settles exactly once, through the shared writers", ()
 
 test("settlement: a draw uses the supported draw semantics", () => {
   const store = code(STORE);
-  // The engine's terminal state has no winner for a blocked round on equal pips;
-  // the store records the platform's own DRAW vocabulary and settles it as one.
-  assert.match(store, /const result = state\.winner \?\? RESULT\.DRAW;/);
+  // A MATCH is a series of rounds played to 50 points. The store asks the pure
+  // match layer for the verdict rather than reading a single round's winner, and
+  // a level finish (both seats crossing the target together) uses the platform's
+  // own DRAW vocabulary and settles as one.
+  assert.match(store, /matchVerdict\(scores\)/);
+  assert.match(
+    store,
+    /return finished\(verdict\.result, END_REASONS\.MATCH_TARGET, verdict\.seat\);/,
+  );
+  assert.match(store, /matchTerminalColumns\(result, reason, seats, now\)/);
   assert.match(store, /if \(outcome\.result === RESULT\.DRAW\) \{/);
   assert.match(store, /result: "draw",/);
   // A draw is the ONLY branch that skips the W/L counters.

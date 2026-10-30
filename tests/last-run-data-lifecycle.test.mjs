@@ -58,7 +58,7 @@ test("the abandoned-match sweep is scheduled, not merely implemented", () => {
 });
 
 test("the lobby surfaces an expired queue instead of searching forever", () => {
-  const source = read("src/app/games/last-run/LobbyClient.tsx");
+  const source = read("src/app/casino/last-run/PageClient.tsx");
   const poll = source.slice(source.indexOf("const poll = async"), source.indexOf("poll();"));
   assert.ok(poll.includes('data.status === "idle"'), "the poll loop must handle the pruned entry");
   assert.ok(poll.includes('setStatus("expired")'));

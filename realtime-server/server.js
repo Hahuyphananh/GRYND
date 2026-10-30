@@ -1687,6 +1687,80 @@ io.on("connection", (socket) => {
   // only signal a live client gives that a stored instant now exists — so it is
   // what arms the scheduler for the opening countdown and, through it, for the
   // bot's first stop.
+  // ── Emotes: one validator for every game's emote event ────────────────
+  //
+  // All fourteen games relay their emotes through the generic `room_event`
+  // handler below, so this is the only place that has to validate them. The
+  // client sends a tiny `{ kind, key }` / `{ kind, value }` object; anything
+  // else is dropped.
+  //
+  // The fifteen catalog keys are deliberately restated here rather than
+  // imported: this server runs as a standalone process (same reason the game
+  // room prefixes are restated further down). Keeping the list explicit means a
+  // forged `key` can never resolve to an arbitrary asset, and adding a pin is a
+  // two-line change in one known place.
+  const EMOTE_EVENT_SUFFIX = ":emote";
+  const EMOTE_CATALOG_KEYS = new Set([
+    "laugh",
+    "shock",
+    "cry",
+    "angry",
+    "love",
+    "cool",
+    "wow",
+    "fire",
+    "hype",
+    "victory",
+    "party",
+    "skull",
+    "thumbsup",
+    "clap",
+    "star",
+  ]);
+  // GG / NICE MOVE are the only text emotes. They are an enum, never free text:
+  // a client cannot put its own string into another player's bubble.
+  const EMOTE_WORD_VALUES = new Set(["GG", "NICE MOVE"]);
+  const EMOTE_MIN_INTERVAL_MS = 2000;
+  const EMOTE_WINDOW_MS = 30000;
+  const EMOTE_WINDOW_MAX = 6;
+
+  function sanitizeEmote(payload) {
+    const emote = payload && typeof payload === "object" ? payload.emote : null;
+    if (!emote || typeof emote !== "object") return null;
+
+    if (emote.kind === "word") {
+      const value =
+        typeof emote.value === "string" ? emote.value.trim().toUpperCase() : "";
+      if (!EMOTE_WORD_VALUES.has(value)) return null;
+      const key = value === "GG" ? "gg" : "nice-move";
+      return { id: key, key, kind: "word", value, label: value === "GG" ? "GG" : "Nice Move" };
+    }
+
+    if (emote.kind !== "animated") return null;
+    const key = typeof emote.key === "string" ? emote.key.trim().toLowerCase() : "";
+    // Allow-list, not a regex: an unknown-but-well-formed key is still refused.
+    if (!EMOTE_CATALOG_KEYS.has(key)) return null;
+    return { id: key, key, kind: "animated" };
+  }
+
+  // Per-socket, per-room burst limit. `socket.data` dies with the socket, so no
+  // cleanup or global map is needed. Returns false when the send is refused.
+  function allowEmote(roomId) {
+    const now = Date.now();
+    if (!socket.data.emoteBudget) socket.data.emoteBudget = new Map();
+    const budget = socket.data.emoteBudget;
+    const bucket = budget.get(roomId) || { last: 0, times: [] };
+
+    if (now - bucket.last < EMOTE_MIN_INTERVAL_MS) return false;
+    bucket.times = bucket.times.filter((at) => now - at < EMOTE_WINDOW_MS);
+    if (bucket.times.length >= EMOTE_WINDOW_MAX) return false;
+
+    bucket.last = now;
+    bucket.times.push(now);
+    budget.set(roomId, bucket);
+    return true;
+  }
+
   const PRECISION_ARMING_EVENTS = new Set(["precision:playerReady", "precision:matchStart"]);
   socket.on("room_event", ({ roomId, event, payload }) => {
     if (PRECISION_ARMING_EVENTS.has(String(event))) {
@@ -1754,6 +1828,35 @@ io.on("connection", (socket) => {
       );
       return;
     }
+    // ── Emote validation + cooldown (all fourteen games) ─────────────
+    // Runs AFTER the forgery guards above and BEFORE the relay: an invalid
+    // emote is dropped here instead of reaching the opponent's screen.
+    if (relayedEvent.endsWith(EMOTE_EVENT_SUFFIX)) {
+      const safeEmote = sanitizeEmote(payload);
+      if (!safeEmote) {
+        logThrottled(
+          "emote:rejectPayload",
+          "[emote] dropping invalid emote payload from",
+          socket.data.userId,
+          "event=",
+          relayedEvent
+        );
+        return;
+      }
+      if (!allowEmote(String(roomId))) {
+        logThrottled(
+          "emote:rateLimited",
+          "[emote] rate-limited",
+          socket.data.userId,
+          "event=",
+          relayedEvent
+        );
+        return;
+      }
+      // Only the sanitized emote travels on; every other field is preserved.
+      payload = { ...payload, emote: safeEmote };
+    }
+
     socket.to(String(roomId)).emit(String(event), {
       ...(payload && typeof payload === "object" ? payload : {}),
       userId: socket.data.userId,

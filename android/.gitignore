@@ -93,7 +93,17 @@ lint/tmp/
 capacitor-cordova-android-plugins
 
 # Copied web assets
-app/src/main/assets/public
+#
+# Capacitor regenerates this folder from `webDir` on every sync, so the copied
+# files stay out of git — EXCEPT the two hand-authored assets the remote-URL
+# build depends on: `server.errorPath` resolves to error.html (Phase 8), which
+# references grynd-mark.png. Those must be committed, or a fresh clone builds an
+# APK whose failure page 404s. Git cannot re-include files inside an ignored
+# directory, so the directory is re-included first and then narrowed.
+!app/src/main/assets/public/
+app/src/main/assets/public/*
+!app/src/main/assets/public/error.html
+!app/src/main/assets/public/grynd-mark.png
 
 # Generated Config files
 app/src/main/assets/capacitor.config.json

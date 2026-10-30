@@ -42,6 +42,7 @@ export type HealthCheck = {
   name: string;
   ok: boolean;
   status: number | null;
+  ms: number | null;
   error: string | null;
 };
 
@@ -57,22 +58,50 @@ export type ActiveRelease = {
   health: { ok: boolean; attempts: number | null; checks: HealthCheck[] } | null;
 };
 
+/**
+ * The commit actually serving THIS page — not a history of commits.
+ *
+ * Two sources, in order of authority:
+ *
+ *   * `build-env` — the deployment platform's own build metadata (Vercel sets
+ *     `VERCEL_GIT_COMMIT_SHA` for the build that is running). This is the commit
+ *     the process was built from, so it cannot disagree with what is live.
+ *   * `host-release` — the host's `state/active.json`, for a self-hosted release
+ *     where no build metadata exists.
+ *
+ * `null` means neither is readable, which is shown as unknown rather than
+ * guessed from git or from a deployment history.
+ */
+export type LiveBuild = {
+  source: "build-env" | "host-release";
+  commit: string;
+  shortCommit: string;
+  message: string | null;
+  ref: string | null;
+  repo: string | null;
+  deploymentId: string | null;
+  environment: string | null;
+  url: string | null;
+};
+
 export type DeploymentRecord = {
   runId: string | null;
   commit: string | null;
   shortCommit: string | null;
   releaseId: string | null;
   buildId: string | null;
+  builtAt: string | null;
   event: string | null;
   target: string | null;
   outcome: string | null;
   stage: string | null;
   reason: string | null;
+  skipReason: string | null;
   requestedBy: string | null;
   startedAt: string | null;
   finishedAt: string | null;
   durationMs: number | null;
-  health: { ok: boolean } | null;
+  health: { ok: boolean; checks: HealthCheck[] } | null;
   rollback: { attempted: boolean; ok: boolean | null } | null;
 };
 
@@ -108,6 +137,7 @@ export type OperationsSnapshot = {
   configured: boolean;
   root: string;
   reason: string | null;
+  live: LiveBuild | null;
   active: ActiveRelease | null;
   deployments: DeploymentRecord[];
   audit: AuditEntry[];
@@ -266,6 +296,7 @@ function normaliseChecks(value: unknown): HealthCheck[] {
       name: safeText(check.name, 40) ?? "check",
       ok: check.ok === true,
       status: numOrNull(check.status),
+      ms: numOrNull(check.ms),
       error: safeText(check.error, 160),
     };
   });
@@ -314,16 +345,22 @@ function normaliseDeployment(value: unknown): DeploymentRecord | null {
     shortCommit: commit.slice(0, 7),
     releaseId: safeText(record.releaseId, 80),
     buildId: safeText(record.buildId, 120),
+    builtAt: isoOrNull(record.builtAt),
     event: safeText(record.event, 40),
     target: safeText(record.target, 20),
     outcome: safeText(record.outcome, 40),
     stage: safeText(record.stage, 40),
     reason: safeText(record.reason, 200),
+    skipReason: safeText(record.skipReason, 200),
     requestedBy: safeText(record.requestedBy, 40),
     startedAt: isoOrNull(record.startedAt),
     finishedAt: isoOrNull(record.finishedAt),
     durationMs: numOrNull(record.durationMs),
-    health: health ? { ok: health.ok === true } : null,
+    // The health checks ARE the deploy log on a host release: which check
+    // failed and with what status is the only diagnostic the record carries.
+    health: health
+      ? { ok: health.ok === true, checks: normaliseChecks(health.checks ?? health.results) }
+      : null,
     rollback: rollback
       ? { attempted: rollback.attempted === true, ok: boolOrNull(rollback.ok) }
       : null,
@@ -415,6 +452,125 @@ function normaliseBackup(records: unknown[]): BackupSummary | null {
   };
 }
 
+// ── the live build ────────────────────────────────────────────────────────
+
+const COMMIT_RE = /^[0-9a-f]{7,40}$/i;
+const SLUG_RE = /^[A-Za-z0-9._-]{1,100}$/;
+const DEPLOY_ENVIRONMENTS = new Set(["production", "preview", "development"]);
+
+/**
+ * The commit this deployment was built from, read from the platform's own build
+ * metadata. This is the only source that cannot be stale: the process answering
+ * the request is the build that carries these variables.
+ *
+ * A value that does not look like a commit is rejected rather than displayed —
+ * a placeholder (`dev`, a branch name) is worse than "unknown" on a page an
+ * operator uses to decide what is live.
+ */
+export function readLiveBuild(env: NodeJS.ProcessEnv = process.env): LiveBuild | null {
+  const raw = env.VERCEL_GIT_COMMIT_SHA?.trim();
+  if (!raw || !COMMIT_RE.test(raw)) return null;
+  const commit = raw.toLowerCase();
+
+  const owner = env.VERCEL_GIT_REPO_OWNER?.trim() ?? "";
+  const slug = env.VERCEL_GIT_REPO_SLUG?.trim() ?? "";
+  const repo = SLUG_RE.test(owner) && SLUG_RE.test(slug) ? `${owner}/${slug}` : null;
+
+  const rawEnvironment = env.VERCEL_ENV?.trim() ?? "";
+  const environment = DEPLOY_ENVIRONMENTS.has(rawEnvironment) ? rawEnvironment : null;
+
+  return {
+    source: "build-env",
+    commit,
+    shortCommit: commit.slice(0, 7),
+    // `safeText` folds the commit body into one bounded line: the page names the
+    // commit, it does not reproduce a changelog.
+    message: safeText(env.VERCEL_GIT_COMMIT_MESSAGE, 200),
+    ref: safeText(env.VERCEL_GIT_COMMIT_REF, 120),
+    repo,
+    deploymentId: safeText(env.VERCEL_DEPLOYMENT_ID, 120),
+    environment,
+    url: safeText(env.VERCEL_URL, 200),
+  };
+}
+
+/** The host's active release as a live build — the fallback when nothing built this process. */
+function liveFromActiveRelease(active: ActiveRelease | null): LiveBuild | null {
+  if (!active?.commit) return null;
+  return {
+    source: "host-release",
+    commit: active.commit,
+    shortCommit: active.shortCommit ?? active.commit.slice(0, 7),
+    message: null,
+    ref: null,
+    repo: null,
+    deploymentId: active.releaseId,
+    environment: null,
+    url: null,
+  };
+}
+
+/** True when the newest attempt is a failure worth showing logs for. */
+export function isFailedDeployment(record: DeploymentRecord | null | undefined): boolean {
+  if (!record) return false;
+  if (record.outcome === "failed" || record.outcome === "install-failed") return true;
+  if (record.health && record.health.ok === false) return true;
+  if (record.rollback && record.rollback.ok === false) return true;
+  return false;
+}
+
+/**
+ * One deployment record as log lines, in the same spirit as a Vercel build log:
+ * what ran, what stage it reached, what failed and how the rollback ended.
+ *
+ * Redacted on the way out — the host's record is already a whitelist, but a
+ * reason string is free text and this is the page's own net.
+ */
+export function deploymentLog(record: DeploymentRecord): string[] {
+  const lines: string[] = [];
+  const push = (label: string, value: string | number | null | undefined) => {
+    if (value === null || value === undefined || value === "") return;
+    lines.push(`${label.padEnd(10)} ${redactText(String(value))}`);
+  };
+
+  push("run", record.runId);
+  push("commit", record.commit);
+  push("release", record.releaseId);
+  push("build", record.buildId);
+  push("event", record.event);
+  push("target", record.target);
+  push("by", record.requestedBy);
+  push("started", record.startedAt);
+  push("finished", record.finishedAt);
+  push("duration", record.durationMs === null ? null : `${record.durationMs}ms`);
+  push("outcome", record.outcome);
+  push("stage", record.stage);
+  push("reason", record.reason);
+  push("skipped", record.skipReason);
+
+  for (const check of record.health?.checks ?? []) {
+    const detail = check.ok
+      ? `ok${check.status ? ` ${check.status}` : ""}${check.ms ? ` ${check.ms}ms` : ""}`
+      : `FAILED${check.error ? `: ${check.error}` : check.status ? `: HTTP ${check.status}` : ""}`;
+    lines.push(`${"health".padEnd(10)} ${check.name}: ${redactText(detail)}`);
+  }
+
+  if (record.rollback) {
+    push(
+      "rollback",
+      record.rollback.attempted
+        ? record.rollback.ok === null
+          ? "attempted"
+          : record.rollback.ok
+            ? "succeeded"
+            : "FAILED"
+        : "not attempted",
+    );
+  }
+
+  return lines;
+}
+
 // ── the snapshot ──────────────────────────────────────────────────────────
 
 export function formatBytes(bytes: number | null): string {
@@ -450,6 +606,10 @@ export async function getOperationsSnapshot(
       configured: false,
       root,
       reason: `No operations state at ${stateDir}. The release tooling has not been installed on this host, or this process cannot read it.`,
+      // The build metadata is independent of the host state files: a deployment
+      // with no readable state (a platform build) can still say exactly which
+      // commit it is serving.
+      live: readLiveBuild(env),
       active: null,
       deployments: [],
       audit: [],
@@ -474,6 +634,9 @@ export async function getOperationsSnapshot(
   ]);
 
   const active = normaliseActive(activeRaw.value);
+  // What is actually serving this request: the build's own commit when the
+  // platform stamped one, otherwise the host's activated release.
+  const live = readLiveBuild(env) ?? liveFromActiveRelease(active);
 
   const deploymentsValue = deploymentsRaw.value as Record<string, unknown> | null;
   const deploymentRecords = Array.isArray(deploymentsValue?.records) ? deploymentsValue.records : [];
@@ -572,6 +735,7 @@ export async function getOperationsSnapshot(
     configured: true,
     root,
     reason: null,
+    live,
     active,
     deployments,
     audit,

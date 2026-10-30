@@ -17,7 +17,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import GameSessionHost from "../../../../../components/GameSessionHost";
 
 import { useSocket } from "../../../../../context/SocketProvider";
-import EmotePicker, { EmoteBubble } from "../../../../../components/game/EmotePicker";
+import GameEmoteLayer from "../../../../../components/game/emotes/GameEmoteLayer";
 import useGameEmotes from "../../../../../hooks/useGameEmotes";
 import { findWinningLine, getDropRow } from "../../../../../lib/fourInARow";
 import {
@@ -1348,7 +1348,6 @@ export default function ConnectFourGamePage() {
                   <span style={game?.hostNameColor ? { color: game.hostNameColor } : undefined}>
                     {game?.hostName || "Host"}
                   </span>
-                  <EmoteBubble emote={game?.role === "host" ? myEmote : incomingEmote} side={game?.role === "host" ? "mine" : "incoming"} />
                 </p>
                 <p className="text-2xl font-mono font-bold">{hostTimer}s</p>
               </div>
@@ -1369,7 +1368,6 @@ export default function ConnectFourGamePage() {
                   <span style={game?.guestNameColor ? { color: game.guestNameColor } : undefined}>
                     {game?.guestName || "Guest"}
                   </span>
-                  <EmoteBubble emote={game?.role === "guest" ? myEmote : incomingEmote} side={game?.role === "guest" ? "mine" : "incoming"} />
                 </p>
                 <p className="text-2xl font-mono font-bold">{guestTimer}s</p>
               </div>
@@ -1377,9 +1375,9 @@ export default function ConnectFourGamePage() {
 
             {/* Emotes */}
             <div className="mb-3 flex justify-center">
-              <EmotePicker
+              <GameEmoteLayer
+                gameId="four-in-a-row"
                 compact
-                hideBubbles
                 incomingEmote={incomingEmote}
                 myEmote={myEmote}
                 onSend={(emote) => sendEmote(emote)}

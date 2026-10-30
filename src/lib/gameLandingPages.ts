@@ -657,6 +657,69 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
   },
 
   {
+    slug: "last-run",
+    name: "LAST RUN",
+    headline: "LAST RUN — 1v1 Endless-Runner Duel",
+    category: "Reflex & Recall",
+    leaderboardKey: "last-run",
+    ogImage: "/images/og/last-run.svg",
+    shortDescription:
+      "A 1v1 endless-runner duel: both players run the same server-seeded course, jumping crates and ducking beams while the track accelerates. The first runner to crash loses, and a ranked result moves this game's rating and trophies.",
+    aiPractice: false,
+    introduction: [
+      "LAST RUN is a head-to-head endless runner. One seed is drawn per match and both seats run the identical course — same obstacle order, same spacing, same accelerating speed curve — so the only variable is how long each player keeps their runner alive.",
+      "It is competitive because a run is decided entirely by execution: a jump tapped one frame late or a duck released early ends the match, and the server steps the shared simulation itself rather than trusting either browser.",
+    ],
+    howToPlay: [
+      "Open the lobby and press Find a match. The queue pairs two players for this game and sends both seats to the same seeded course.",
+      "Jump crates and spikes with Space or the up arrow, and duck under beams with the down arrow. On a phone the same two actions are the touch buttons under the arena.",
+      "The track accelerates from 260 to 640 pixels per second over the first half-minute, and the obstacle gap tightens with it, but never below a readable reaction window.",
+      "Your run ends the first time your runner touches an obstacle. The last runner standing wins the match.",
+      "Every jump and duck is sent to the server as an input. The server steps the engine and stamps the result, so a client cannot decide who won.",
+    ],
+    rules: [
+      "Both seats receive the same seed, so the course is identical: the server generates the obstacle sequence once and replays it for both runners.",
+      "A crate or a spike is cleared by jumping and a beam is cleared by ducking. Touching any of them ends that runner's attempt immediately.",
+      "Speed and the distance between obstacles come from the seed and the elapsed time, never from either player's input, so neither seat can alter the course for the other.",
+      "If both runners fail on the same simulation tick the match is a draw; otherwise the surviving runner wins. The comparison happens on the server's tick, not on either client's clock.",
+      "Every input is graded against the server's own clock and the simulation is stepped at a fixed rate, so a modified client can neither extend its own run nor shorten the opponent's.",
+      "A match abandoned mid-run is resolved by the server as a forfeit, and a run the server cannot finish is closed as failed rather than written down as a result.",
+    ],
+    scoring: [
+      "The winner is the runner who survives longer, measured in the server's own simulation ticks — not in distance, and not in either client's timer.",
+      "If both runners crash on the same tick the match is a draw and neither rating moves.",
+      "A ranked result moves this game's own Elo rating and its trophy ladder. Nothing is wagered, and no coins are paid out for a result.",
+    ],
+    strategy: [
+      "Jump early rather than late. The window is generous at the opening speed and tightens as the track accelerates, and a mistimed jump cannot be corrected once your runner is airborne.",
+      "Duck only for beams. Holding duck through an empty stretch costs you nothing, but releasing it a moment too early puts your runner straight back into the beam.",
+      "Watch the gap between obstacles, not the obstacle itself. At higher speeds two of them arrive closer together than one full jump arc, so the second input has to be prepared before the first lands.",
+      "Expect the speed step rather than reacting to it. Most runs end in the first few seconds after the track accelerates, when a rhythm that was comfortable a moment ago is no longer fast enough.",
+    ],
+    competitive:
+      "LAST RUN tests sustained reaction discipline. Both seats face an identical, accelerating course and the first mistake ends the match, so the winner is whoever holds a clean rhythm longest under a clock that keeps getting faster. The server owns the seed, the simulation and the result.",
+    faq: [
+      {
+        q: "Do both players run exactly the same course?",
+        a: "Yes. The server mints one seed per match and builds the obstacle sequence from it, so both runners face identical spacing, identical obstacles and an identical speed curve.",
+      },
+      {
+        q: "What happens if both runners crash at the same moment?",
+        a: "The match is a draw. The server compares the two failures on its own simulation tick, so a same-tick crash can never be awarded to either seat.",
+      },
+      {
+        q: "How is the result of a match decided?",
+        a: "The server steps the shared engine itself and records the surviving runner as the winner. Your browser only sends jump and duck inputs; it never reports a distance or a result.",
+      },
+      {
+        q: "Can I play LAST RUN against a bot?",
+        a: "Not yet. LAST RUN matches are 1v1 against another player, so the queue needs a second seat before a run can start. The lobby says so rather than starting a one-sided game.",
+      },
+    ],
+    related: ["lane-runner", "precision", "speed-typing", "mini-golf"],
+  },
+
+  {
     slug: "lane-runner",
     name: "Lane Rush",
     headline: "Lane Rush — 1v1 Oval Circuit Racing",
@@ -1566,7 +1629,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     leaderboardKey: "dominoes",
     ogImage: "/images/og-banner.png",
     shortDescription:
-      "A free, rated 1v1 block-dominoes duel. Seven tiles each, one shared chain and fifteen seconds a turn — match either open end, draw when nothing fits, and empty your hand first.",
+      "A free, rated 1v1 block-dominoes series. Seven tiles each, one shared chain and fifteen seconds a turn — match either open end, draw when nothing fits, and score the pips left in your rival's hand: first to 50 points takes the match.",
     // The lobby offers a free, unrated practice match against the built-in bot
     // alongside the ranked online table — and, because the practice route needs
     // nothing but a seat, this landing page can start one directly.
@@ -1579,7 +1642,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     howToPlay: [
       "Sign in, open the lobby and press Find a Match. You are seated against a live opponent, and a table you open stays listed until somebody joins it.",
       "Both players are dealt seven tiles from a shuffled double-six set. The other fourteen tiles form a face-down pile, and the opponent's tiles are never shown — only how many are left.",
-      "The highest double in either hand starts the round, and it is laid automatically: its holder opens the chain with it, is left with six tiles, and the other seat plays next. With no double anywhere, the hand holding the highest pip total starts instead and opens with any tile it likes.",
+      "The highest double in either hand starts the round, and it is laid automatically: its holder opens the chain with it, is left with six tiles, and the other seat plays next. With no double anywhere, the hand holding the highest pip total starts instead and opens with any tile it likes. That decides the FIRST round only — every later round is dealt fresh from a full set, and the previous round's winner opens the empty chain by hand with any tile it likes.",
       "On your turn, play a tile whose number matches one of the two open values, and choose which end of the chain it goes on. A tile that matches nothing cannot be played.",
       "If nothing in your hand fits and the pile is not empty, draw one tile and keep the turn: a drawn tile may be played immediately, and if it still does not fit you draw again.",
       "When the pile is empty and nothing fits, you pass and your opponent continues. Each turn is fifteen seconds — when the clock runs out the server draws or passes for you, and a late move is refused.",
@@ -1594,18 +1657,18 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
       "A disconnect resolves as it does in every duel here: a player who does not come back forfeits the match to the opponent. Practice games against the bot are unrated — they never move your Elo or your trophies — and nothing hidden is ever sent to a client.",
     ],
     scoring: [
-      "There is no running score. A round has one winner: the first player to play their last tile.",
-      "If the round is blocked — the pile is empty and neither player can move — the player holding fewer pips on their remaining tiles wins.",
-      "A blocked round with identical pip totals on both sides is a genuine draw: it is recorded as a draw and moves neither player's win or loss count.",
-      "Resigning, or leaving and not returning, awards the match to the opponent, exactly like a played-out win.",
-      "A ranked online result moves your Dominoes Elo and your Dominoes trophy ladder, and the account win and loss counters. Nothing else is awarded.",
+      "The match is a series of rounds played to 50 cumulative points. Every round is dealt fresh from a full double-six set: seven tiles each and fourteen face down.",
+      "Emptied hand: the player who plays their last tile scores every pip left in the opponent's hand, and the opponent scores nothing for that round.",
+      "Blocked round — the pile is empty and neither player can move: BOTH players score the pips left in the other's hand. There is no 'fewer pips wins' comparison, so level hands award equal points and both totals can climb in the same round.",
+      "The first player to reach 50 wins. If both cross the target in the same round, the higher total wins; if the totals are level at 50, another round is dealt and the series continues until they are apart — a level position is never declared as a draw.",
+      "Resigning, or leaving and not returning, awards the match to the opponent, exactly like a played-out win. A ranked online result moves your Dominoes Elo and your Dominoes trophy ladder, and the account win and loss counters, exactly once — when the match ends, not after each round.",
     ],
     strategy: [
       "Count the chain, not your hand. The two open values tell you which of your tiles are dead weight, so the useful question every turn is which end your opponent can still answer.",
       "Play the tile you can only play now. A tile that matches the current end may never be playable again once the chain has moved on, so feed the ends that are about to close rather than the ones that stay open.",
       "Doubles are positional. A double leaves five tiles in your hand instead of six and seals you into whichever value it carries, so spend a double early if the chain is likely to leave it behind.",
       "Draws are a resource for both seats. Because you only draw when you cannot play, your draw pile count is evidence: a long draw tells the opponent your hand is weak in those values, so expect them to close those ends.",
-      "Track the pile. Once it is nearly gone, holding a flexible tile matters more than shedding quickly, because a blocked round is decided by pip totals and low tiles win those.",
+      "Track the pile. Once it is nearly gone, holding flexible tiles matters more than shedding quickly: a blocked round scores each player the pips left in the other's hand, so a cheap, flexible hand keeps what your opponent scores from it small.",
       "Use the clock deliberately. Fifteen seconds is enough for a considered play but not for counting the whole set twice, so settle on a simple heuristic for pip totals before the clock forces the server to act for you.",
     ],
     competitive:
@@ -1617,7 +1680,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
       },
       {
         q: "What happens if neither player can move?",
-        a: "Once the pile is empty and both seats are stuck, the round is blocked. The player holding fewer pips on their remaining tiles wins, and identical totals make it a draw.",
+        a: "Once the pile is empty and both seats are stuck, the round is blocked and each player scores the pips left in the other's hand — so a blocked round can move both totals. There is no pip tie-break, and the match only ends at 50 with a higher total; level totals at 50 deal another round.",
       },
       {
         q: "What is the turn clock?",

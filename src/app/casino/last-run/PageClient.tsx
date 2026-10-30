@@ -1,6 +1,6 @@
 "use client";
 
-// src/app/games/last-run/LobbyClient.tsx
+// src/app/casino/last-run/PageClient.tsx
 //
 // LAST RUN — the lobby.
 //
@@ -58,7 +58,7 @@ function formatClock(ms: number): string {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
 
-export default function LobbyClient({ autoQueue = false }: { autoQueue?: boolean }) {
+export default function PageClient({ autoQueue = false }: { autoQueue?: boolean }) {
   const { isLoaded, isSignedIn, user } = useUser();
   const router = useRouter();
 
@@ -210,7 +210,7 @@ export default function LobbyClient({ autoQueue = false }: { autoQueue?: boolean
                 <div className="h-12 w-44 animate-pulse rounded-xl bg-white/5" aria-hidden="true" />
               ) : !isSignedIn ? (
                 <Link
-                  href="/sign-in?redirect_url=%2Fgames%2Flast-run"
+                  href="/sign-in?redirect_url=%2Fgames%2Flast-run%2Fplay"
                   className="inline-flex h-12 items-center justify-center rounded-xl bg-cyan-400 px-6 text-sm font-black uppercase tracking-[0.14em] text-[#04121a] transition hover:bg-cyan-300"
                 >
                   Sign in to run

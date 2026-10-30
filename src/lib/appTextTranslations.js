@@ -717,7 +717,7 @@ export const APP_TEXT_TRANSLATIONS = {
           "Once the pile is empty and you still cannot play, you pass and your opponent continues.",
         rule_win_title: "Win by emptying your hand",
         rule_win_body:
-          "Play your last tile and the round is yours. If neither player can move and the pile is empty, the fewer pips left wins — and equal pips is a draw. Every turn is 15 seconds: when the clock runs out the server draws (or passes) for you, and a late move is refused. Online matches are free — there is no stake.",
+          "Play your last tile and the round is yours: you score every pip left in your opponent's hand. If neither player can move and the pile is empty, both players score the pips left in the other's hand — there is no tie-break on pips, so equal hands score equally. The match is a series played to 50 points, and every turn is 15 seconds: when the clock runs out the server draws (or passes) for you, and a late move is refused. Online matches are free — there is no stake.",
         find_match: "Find a Match",
         searching: "Searching…",
         lobby_empty:
@@ -760,6 +760,30 @@ export const APP_TEXT_TRANSLATIONS = {
         result_won: "You won the round",
         result_drawn: "The round is drawn",
         result_lost: "Your opponent won the round",
+        result_match_won: "You won the match",
+        result_match_lost: "Your opponent won the match",
+        result_match_drawn: "The match is drawn",
+        final_score_label: "Final score",
+        final_score_value: "You {youScore} — {opponentName} {opponentScore}",
+        rounds_played: "Rounds played",
+        scoreboard_you: "You",
+        scoreboard_round: "Round {round}",
+        scoreboard_target: "First to {target}",
+        scoreboard_aria:
+          "Match score: you {you}, opponent {opponent}. First to {target}, round {round}.",
+        round_result_title: "Round {round} complete",
+        round_result_aria: "Round {round} result",
+        round_result_winner_you: "You won the round",
+        round_result_winner_opponent: "{name} won the round",
+        round_result_level: "The round was level",
+        round_result_points_value: "+{points} pts",
+        round_result_pips_value: "{pips} pips left",
+        round_result_next_you: "You start the next round.",
+        round_result_next_opponent: "{name} starts the next round.",
+        round_result_score: "Match {you}–{opponent}",
+        round_result_dismiss: "Continue",
+        reason_match_target_win: "You reached {target} points first.",
+        reason_match_target_loss: "Your opponent reached {target} points first.",
         result_label: "Result",
         result_win: "Win",
         result_draw: "Draw",
@@ -811,6 +835,7 @@ export const APP_TEXT_TRANSLATIONS = {
         play_left: "Play left",
         play_right: "Play right",
         place_on_end_aria: "Place {tile} on the open end — {end}, value {value}",
+        preview_aria: "Preview of {tile} on this end",
         your_hand: "Your hand",
         your_tiles: "Your tiles",
         chain_aria_empty: "The chain is empty — the opening tile starts it",
@@ -832,7 +857,7 @@ export const APP_TEXT_TRANSLATIONS = {
         pass_turn: "Pass this turn",
         rules_summary: "How to play Dominoes",
         board_rule_start:
-          "The start. The highest double opens the round: its holder lays that double down first, so the board begins with one tile and the other seat plays next.",
+          "The start. Round 1 opens with the highest double. Every later round is opened by the winner of the round before, who may start it with ANY tile.",
         board_rule_match:
           "Match an end. Play a tile whose number matches one of the two open values printed at the ends of the chain. A tile that fits both ends can go on either side.",
         board_rule_doubles:
@@ -842,7 +867,7 @@ export const APP_TEXT_TRANSLATIONS = {
         board_rule_pass:
           "Pass only when the pile is empty and you still cannot play.",
         board_rule_win:
-          "Win by emptying your hand. If nobody can play and the pile is empty, the seat with fewer pips left wins; equal pips is a draw.",
+          "Score points with your tiles. Empty your hand to take the pips left in the opponent's hand; a blocked round scores BOTH seats the pips left in the other's hand. The first seat to 50 points wins the match.",
         board_rule_clock:
           "15 seconds a turn. The clock is the server's: when it runs out the server draws (or passes) for you, and a late move is refused.",
         // Why the round ended
@@ -965,6 +990,8 @@ export const APP_TEXT_TRANSLATIONS = {
       },
       lane_runner_desc:
         "Build a garage and race a rival on the same oval — deploy cars to the Safe, Sprint or Risk lane each round and reach 1,000 points first.",
+      last_run_desc:
+        "Run the same seeded course as a rival — jump crates, duck beams and survive the accelerating track; the first runner to crash loses.",
       pool_masters_desc: "Compete in a strategic game of pool. Sink the 8-ball to win!",
       pool_masters_name: "Pool Masters",
       chess_name: "Chess",
@@ -2692,7 +2719,7 @@ export const APP_TEXT_TRANSLATIONS = {
           "Quand la pioche est vide et que vous ne pouvez toujours pas jouer, vous passez et votre adversaire continue.",
         rule_win_title: "Gagnez en vidant votre main",
         rule_win_body:
-          "Posez votre dernière tuile et la manche est à vous. Si aucun joueur ne peut jouer et que la pioche est vide, le moins de points restants gagne — et à égalité, c'est un match nul. Chaque tour dure 15 secondes : à l'expiration, le serveur pioche (ou passe) pour vous, et un coup en retard est refusé. Les parties en ligne sont gratuites — sans mise.",
+          "Posez votre dernière tuile et la manche est à vous : vous marquez tous les points restants dans la main de votre adversaire. Si aucun joueur ne peut jouer et que la pioche est vide, chaque joueur marque les points restants dans la main de l'autre — sans départage sur les points, donc des mains égales donnent des points égaux. La partie se joue en plusieurs manches jusqu'à 50 points, et chaque tour dure 15 secondes : à l'expiration, le serveur pioche (ou passe) pour vous, et un coup en retard est refusé. Les parties en ligne sont gratuites — sans mise.",
         find_match: "Trouver une partie",
         searching: "Recherche…",
         lobby_empty:
@@ -2735,6 +2762,31 @@ export const APP_TEXT_TRANSLATIONS = {
         result_won: "Vous avez gagné la manche",
         result_drawn: "La manche est nulle",
         result_lost: "Votre adversaire a gagné la manche",
+        result_match_won: "Vous avez gagné la partie",
+        result_match_lost: "Votre adversaire a gagné la partie",
+        result_match_drawn: "La partie est nulle",
+        final_score_label: "Score final",
+        final_score_value: "Vous {youScore} — {opponentName} {opponentScore}",
+        rounds_played: "Manches jouées",
+        scoreboard_you: "Vous",
+        scoreboard_round: "Manche {round}",
+        scoreboard_target: "Premier à {target}",
+        scoreboard_aria:
+          "Score du match : vous {you}, adversaire {opponent}. Premier à {target}, manche {round}.",
+        round_result_title: "Manche {round} terminée",
+        round_result_aria: "Résultat de la manche {round}",
+        round_result_winner_you: "Vous avez gagné la manche",
+        round_result_winner_opponent: "{name} a gagné la manche",
+        round_result_level: "La manche est nulle",
+        round_result_points_value: "+{points} pts",
+        round_result_pips_value: "{pips} pips restants",
+        round_result_next_you: "Vous commencez la manche suivante.",
+        round_result_next_opponent: "{name} commence la manche suivante.",
+        round_result_score: "Match {you}–{opponent}",
+        round_result_dismiss: "Continuer",
+        reason_match_target_win: "Vous avez atteint {target} points en premier.",
+        reason_match_target_loss:
+          "Votre adversaire a atteint {target} points en premier.",
         result_label: "Résultat",
         result_win: "Victoire",
         result_draw: "Nul",
@@ -2788,6 +2840,7 @@ export const APP_TEXT_TRANSLATIONS = {
         play_right: "Jouer à droite",
         place_on_end_aria:
           "Posez {tile} sur l'extrémité ouverte — {end}, valeur {value}",
+        preview_aria: "Aperçu de {tile} sur cette extrémité",
         your_hand: "Votre main",
         your_tiles: "Vos tuiles",
         chain_aria_empty: "La chaîne est vide — la tuile d'ouverture la commence",
@@ -2809,7 +2862,7 @@ export const APP_TEXT_TRANSLATIONS = {
         pass_turn: "Passer ce tour",
         rules_summary: "Comment jouer aux dominos",
         board_rule_start:
-          "Le début. Le double le plus haut ouvre la manche : son détenteur pose ce double en premier, donc le plateau commence avec une tuile et c'est à l'autre joueur de jouer.",
+          "Le départ. La manche 1 s'ouvre avec le double le plus haut. Les manches suivantes sont ouvertes par le gagnant de la manche précédente, qui peut commencer avec N'IMPORTE QUELLE tuile.",
         board_rule_match:
           "Posez sur une extrémité. Posez une tuile dont un chiffre correspond à l'une des deux valeurs ouvertes affichées aux extrémités de la chaîne. Une tuile qui correspond aux deux extrémités peut aller d'un côté ou de l'autre.",
         board_rule_doubles:
@@ -2819,7 +2872,7 @@ export const APP_TEXT_TRANSLATIONS = {
         board_rule_pass:
           "Passez seulement quand la pioche est vide et que vous ne pouvez toujours pas jouer.",
         board_rule_win:
-          "Gagnez en vidant votre main. Si personne ne peut jouer et que la pioche est vide, le siège avec le moins de points restants gagne ; à égalité, c'est un nul.",
+          "Marquez des points avec vos tuiles. Videz votre main pour empocher les pips restant dans la main adverse ; une manche bloquée donne à CHAQUE joueur les pips restants chez l'autre. Le premier à 50 points gagne la partie.",
         board_rule_clock:
           "15 secondes par tour. L'horloge est celle du serveur : à l'expiration, le serveur pioche (ou passe) pour vous, et un coup en retard est refusé.",
         reason_emptied_win: "Vous avez posé votre dernière tuile.",
@@ -2938,6 +2991,8 @@ export const APP_TEXT_TRANSLATIONS = {
       },
       lane_runner_desc:
         "Construisez votre garage et affrontez un rival sur le même ovale : déployez vos voitures sur les pistes Sûre, Sprint ou Risque et atteignez 1 000 points en premier.",
+      last_run_desc:
+        "Parcourez le même circuit généré pour vous deux : sautez les caisses, baissez-vous sous les poutres et survivez à l'accélération ; le premier à tomber perd.",
       chess_name: "Échecs",
       rps_name: "Roche-Papier-Ciseaux",
       pool_masters_name: "Maîtres du Billard",
@@ -4422,7 +4477,7 @@ export const APP_TEXT_TRANSLATIONS = {
           "Cuando la pila está vacía y sigues sin poder jugar, pasas y tu rival continúa.",
         rule_win_title: "Gana vaciando tu mano",
         rule_win_body:
-          "Juega tu última ficha y la ronda es tuya. Si nadie puede jugar y la pila está vacía, gana quien tenga menos puntos restantes — y con los mismos puntos es tablas. Cada turno dura 15 segundos: cuando se agota, el servidor roba (o pasa) por ti, y un movimiento tardío se rechaza. Las partidas en línea son gratis — sin apuesta.",
+          "Juega tu última ficha y la ronda es tuya: sumas todos los puntos que le quedan a tu rival en la mano. Si nadie puede jugar y la pila está vacía, cada jugador suma los puntos que le quedan al otro — sin desempate por puntos, así que manos iguales dan los mismos puntos. La partida se juega a varias rondas hasta 50 puntos, y cada turno dura 15 segundos: cuando se agota, el servidor roba (o pasa) por ti, y un movimiento tardío se rechaza. Las partidas en línea son gratis — sin apuesta.",
         find_match: "Buscar partida",
         searching: "Buscando…",
         lobby_empty:
@@ -4465,6 +4520,30 @@ export const APP_TEXT_TRANSLATIONS = {
         result_won: "Has ganado la ronda",
         result_drawn: "La ronda es tablas",
         result_lost: "Tu rival ha ganado la ronda",
+        result_match_won: "Has ganado la partida",
+        result_match_lost: "Tu rival ha ganado la partida",
+        result_match_drawn: "La partida es tablas",
+        final_score_label: "Marcador final",
+        final_score_value: "Tú {youScore} — {opponentName} {opponentScore}",
+        rounds_played: "Rondas jugadas",
+        scoreboard_you: "Tú",
+        scoreboard_round: "Ronda {round}",
+        scoreboard_target: "Primero a {target}",
+        scoreboard_aria:
+          "Marcador: tú {you}, rival {opponent}. Primero a {target}, ronda {round}.",
+        round_result_title: "Ronda {round} completada",
+        round_result_aria: "Resultado de la ronda {round}",
+        round_result_winner_you: "Has ganado la ronda",
+        round_result_winner_opponent: "{name} ha ganado la ronda",
+        round_result_level: "La ronda quedó igualada",
+        round_result_points_value: "+{points} pts",
+        round_result_pips_value: "{pips} pips restantes",
+        round_result_next_you: "Tú empiezas la siguiente ronda.",
+        round_result_next_opponent: "{name} empieza la siguiente ronda.",
+        round_result_score: "Partida {you}–{opponent}",
+        round_result_dismiss: "Continuar",
+        reason_match_target_win: "Has llegado a {target} puntos primero.",
+        reason_match_target_loss: "Tu rival ha llegado a {target} puntos primero.",
         result_label: "Resultado",
         result_win: "Victoria",
         result_draw: "Tablas",
@@ -4518,6 +4597,7 @@ export const APP_TEXT_TRANSLATIONS = {
         play_right: "Jugar a la derecha",
         place_on_end_aria:
           "Pon {tile} en el extremo abierto — {end}, valor {value}",
+        preview_aria: "Vista previa de {tile} en este extremo",
         your_hand: "Tu mano",
         your_tiles: "Tus fichas",
         chain_aria_empty: "La cadena está vacía — la ficha inicial la abre",
@@ -4539,7 +4619,7 @@ export const APP_TEXT_TRANSLATIONS = {
         pass_turn: "Pasar este turno",
         rules_summary: "Cómo jugar al dominó",
         board_rule_start:
-          "El comienzo. Abre la ronda el doble más alto: su dueño coloca ese doble primero, así que el tablero empieza con una ficha y el siguiente en jugar es el otro asiento.",
+          "El inicio. La ronda 1 la abre el doble más alto. Las rondas siguientes las abre el ganador de la ronda anterior, que puede empezar con CUALQUIER ficha.",
         board_rule_match:
           "Encaja en un extremo. Juega una ficha cuyo número coincida con uno de los dos valores abiertos que se muestran en los extremos de la cadena. Una ficha que encaja en ambos extremos puede ir por cualquiera de los dos lados.",
         board_rule_doubles:
@@ -4549,7 +4629,7 @@ export const APP_TEXT_TRANSLATIONS = {
         board_rule_pass:
           "Pasa solo cuando la pila está vacía y sigues sin poder jugar.",
         board_rule_win:
-          "Gana vaciando tu mano. Si nadie puede jugar y la pila está vacía, gana el asiento con menos puntos restantes; con los mismos puntos es tablas.",
+          "Suma puntos con tus fichas. Vacía tu mano para llevarte los pips que quedan en la mano del rival; una ronda bloqueada da a CADA asiento los pips que le quedan al otro. Gana quien llegue primero a 50 puntos.",
         board_rule_clock:
           "15 segundos por turno. El reloj es del servidor: cuando se agota, el servidor roba (o pasa) por ti, y un movimiento tardío se rechaza.",
         reason_emptied_win: "Has jugado tu última ficha.",
@@ -4668,6 +4748,8 @@ export const APP_TEXT_TRANSLATIONS = {
       },
       lane_runner_desc:
         "Construye tu garaje y compite contra un rival en el mismo óvalo: despliega tus coches en las pistas Segura, Sprint o Riesgo y llega primero a 1.000 puntos.",
+      last_run_desc:
+        "Recorre el mismo circuito generado para ambos: salta las cajas, agáchate bajo las vigas y sobrevive a la aceleración; el primero en caer pierde.",
       chess_name: "Ajedrez",
       rps_name: "Piedra-Papel-Tijeras",
       pool_masters_name: "Maestros del Billar",

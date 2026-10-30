@@ -42,12 +42,17 @@
  *      not playable the seat draws again. Drawing is therefore legal only when
  *      nothing in hand is playable, and a playable tile may never be skipped.
  *   8. Pass — the pile is empty and the seat still cannot play.
- *   9. Victory — a hand that empties wins immediately. With the pile empty and
- *      NEITHER seat able to play, the round is over: fewer remaining pips wins,
- *      and equal pips are a draw. This is checked after every accepted action,
- *      so a draw that empties the pile ends the round without a ceremonial
- *      pass.
- *  10. Terminal — a finished match accepts nothing further.
+ *   9. Scoring — every seat scores the pips LEFT IN THE OTHER SEAT'S HAND (see
+ *      `roundPoints` in `./rules`). An emptied hand ends the round at once and
+ *      its holder scores the opponent's remaining pips, the opponent 0. With
+ *      the pile empty and NEITHER seat able to play the round is BLOCKED and
+ *      BOTH seats score the pips left in the other's hand — there is no
+ *      "fewer pips wins" comparison, so level hands simply score level points
+ *      and two empty hands score 0 / 0. Checked after every accepted action, so
+ *      a draw that empties the pile ends the round without a ceremonial pass.
+ *  10. Terminal — a finished round accepts nothing further. The round's `points`
+ *      are per-round: MATCH victory is reaching `MATCH_TARGET_POINTS` across
+ *      rounds, which this module states but does not implement.
  *
  * WHAT THIS MODULE DELIBERATELY DOES NOT CONTAIN:
  *
@@ -135,6 +140,15 @@ export const ACTION_TYPES = {
 export const END_REASONS = {
   EMPTIED_HAND: "emptied-hand",
   BLOCKED_PIPS: "blocked-pips",
+  /**
+   * The MATCH ended because a seat reached `MATCH_TARGET_POINTS`.
+   *
+   * A round always ends for a table reason (`emptied-hand` / `blocked-pips`),
+   * which is what `dominoes_rounds.end_reason` records. This reason belongs to
+   * the match row only: it says the series is over, not how the last round was
+   * won.
+   */
+  MATCH_TARGET: "match-target",
   RESIGNED: "resigned",
   TIMED_OUT: "timed-out",
   ABANDONED: "abandoned",
@@ -164,6 +178,20 @@ export const DOMINOES_LOCK_NAMESPACE = 0x444f4d4e & 0x7fffffff; // "DOMN"
 export const DOMINOES_AI_PLAYER_ID = "dominoes_ai_bot";
 
 /**
+ * Points a seat must reach, across rounds, to win the match.
+ *
+ * Each round awards `outcome.points` (see `roundPoints` in `./rules`): the pips
+ * left in the opponent's hand. A blocked round awards points to both seats, so
+ * both totals can climb in the same round.
+ *
+ * The number is declared here so it is stated once with the game it paces. This
+ * module does not run a match: nothing yet aggregates round points or declares
+ * a match winner — a caller that adds rounds must sum `points` itself and stop
+ * at this target. Neither `winner` nor `outcome` may be read as a match result.
+ */
+export const MATCH_TARGET_POINTS = 50;
+
+/**
  * How long the seat on turn has to act. The store stamps an absolute instant
  * (`turn_deadline_at`) from the SERVER clock and resolves an expired turn with
  * `applyTimeout`; a client countdown is decoration, never evidence.
@@ -175,7 +203,8 @@ export const TURN_WINDOW_MS = 15_000;
 
 /**
  * The persisted `result` vocabulary (the row's own column). `draw` is a real
- * outcome here — blocked on equal pips — unlike the win/lose-only duels.
+ * outcome here — a round whose two seats scored the same points — unlike the
+ * win/lose-only duels.
  */
 export const RESULT = {
   PLAYER1: "player1",
@@ -191,6 +220,18 @@ export const RESULT = {
 export const STARTING_RULES = {
   HIGHEST_DOUBLE: "highest-double",
   HIGHEST_TOTAL: "highest-total",
+  /**
+   * Round 2+: the seat that won the previous ROUND opens the new deal. Its
+   * opener is inherited from the round before, not won again by the tiles — and
+   * it may open the fresh chain with ANY tile (no double required).
+   */
+  PREVIOUS_WINNER: "previous-winner",
+  /**
+   * Round 2+: the previous round was level, so there is no winner to inherit and
+   * the bid ALTERNATES — the seat that did not start the round just closed opens
+   * the next one. Deterministic, and it can never drift.
+   */
+  ALTERNATE: "alternate",
 } as const;
 
 /**

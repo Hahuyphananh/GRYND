@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <title>GRYND — can't connect</title>
+    <!--
+      GRYND recovery page (Phase 8).
+
+      Shown by Capacitor when the REMOTE app cannot be loaded: it is the target of
+      `server.errorPath` in capacitor.config.ts, and BridgeWebViewClient loads it
+      for a main-frame network error and for a main-frame 4xx/5xx response. It
+      replaces the platform's blank/white WebView error screen with something the
+      player can act on.
+
+      Constraints that shaped this file:
+        * It is a LOCAL page (https://localhost/…) — on Android it has no Capacitor
+          plugin access, so it cannot and does not touch the socket, match state,
+          storage, cookies or authentication. Plain HTML/CSS/JS only.
+        * It is NOT an offline version of GRYND. Nothing is cached, mirrored or
+          replayed; the only way forward is a real load of the remote app.
+        * Retry is user-triggered and navigates ONCE, to the canonical URL — the
+          exact page this WebView failed to load (the app boots at that URL, so
+          there is no deeper "current page" to restore). No auto-retry, no
+          navigation timers, no meta refresh.
+        * grynd-mark.png next to this file is the Phase 7 launcher mark on
+          transparency, produced from public/icon-512.png with sharp:
+            sharp("android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png")
+              .resize({ width: 192, fit: "inside" }).png()
+              .toFile("android/app/src/main/assets/public/grynd-mark.png")
+    -->
+    <style>
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: calc(env(safe-area-inset-top, 0px) + 24px) 20px
+          calc(env(safe-area-inset-bottom, 0px) + 24px);
+        background: radial-gradient(78% 78% at 50% 42%, #0a2450 0%, #071536 45%, #030817 100%);
+        color: #d8fbff;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      main {
+        width: 100%;
+        max-width: 400px;
+        text-align: center;
+      }
+      .mark {
+        width: 96px;
+        height: 96px;
+        margin: 0 auto 18px;
+        display: block;
+        object-fit: contain;
+        filter: drop-shadow(0 0 28px rgba(0, 229, 255, 0.28));
+      }
+      .pill {
+        display: inline-block;
+        margin-bottom: 14px;
+        padding: 4px 12px;
+        border-radius: 999px;
+        border: 1px solid rgba(245, 255, 59, 0.45);
+        background: rgba(8, 20, 47, 0.9);
+        color: #f5ff3b;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+      h1 {
+        margin: 0 0 10px;
+        font-size: 22px;
+        line-height: 1.25;
+        font-weight: 700;
+        color: #ffffff;
+      }
+      p {
+        margin: 0 0 8px;
+        font-size: 14px;
+        line-height: 1.55;
+        color: #9dd8ff;
+      }
+      .fineprint {
+        margin-top: 18px;
+        font-size: 12px;
+        color: #6b91b3;
+      }
+      button {
+        margin-top: 22px;
+        min-height: 48px;
+        width: 100%;
+        cursor: pointer;
+        border: 1px solid rgba(0, 229, 255, 0.55);
+        border-radius: 12px;
+        background: #0a214d;
+        color: #00e5ff;
+        font-size: 15px;
+        font-weight: 700;
+        font-family: inherit;
+        box-shadow: 0 0 24px rgba(0, 229, 255, 0.18);
+        transition: opacity 0.15s ease, background 0.15s ease;
+      }
+      button:hover:not(:disabled) { background: #0d2a60; }
+      button:focus-visible { outline: 2px solid #00e5ff; outline-offset: 2px; }
+      button:disabled { cursor: default; opacity: 0.6; }
+      @media (prefers-reduced-motion: reduce) {
+        button { transition: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img class="mark" src="./grynd-mark.png" alt="" width="96" height="96" />
+      <div class="pill" id="state" role="status" aria-live="polite">Server unreachable</div>
+      <h1>Can't reach GRYND</h1>
+      <p id="detail">
+        GRYND's server didn't respond. It may be briefly unavailable — trying again
+        usually fixes it.
+      </p>
+      <button id="retry" type="button">Try again</button>
+      <p class="fineprint">
+        Your account and saved data stay on GRYND's servers. If a match was in
+        progress, it continues on the server — reconnecting here is the only way
+        back to it.
+      </p>
+      <noscript>
+        <p class="fineprint">
+          JavaScript is disabled, so the retry button can't run.
+          <a href="https://www.grynd.dedyn.io/" style="color: #00e5ff">Open GRYND</a>.
+        </p>
+      </noscript>
+    </main>
+
+    <script>
+      (function () {
+        // The canonical remote app — the page this WebView failed to load.
+        var APP_URL = "https://www.grynd.dedyn.io/";
+
+        var button = document.getElementById("retry");
+        var detail = document.getElementById("detail");
+        var state = document.getElementById("state");
+        var busy = false;
+
+        // Copy only: the page never starts a request of its own, so a dropping
+        // connection cannot make this screen reload itself.
+        function paint() {
+          var offline = navigator.onLine === false;
+          state.textContent = offline ? "No connection" : "Server unreachable";
+          detail.textContent = offline
+            ? "This device is offline. Reconnect to Wi-Fi or mobile data, then try again."
+            : "GRYND's server didn't respond. It may be briefly unavailable — trying again usually fixes it.";
+        }
+
+        paint();
+        window.addEventListener("online", paint);
+        window.addEventListener("offline", paint);
+
+        button.addEventListener("click", function () {
+          if (busy) return;
+          busy = true;
+          button.disabled = true;
+          button.textContent = "Reconnecting…";
+
+          // Exactly one navigation per tap, and no automatic retry: if this
+          // load fails too, Capacitor shows this page again as a fresh document
+          // rather than leaving the app in a loop.
+          try {
+            window.location.replace(APP_URL);
+          } catch (error) {
+            // Nothing else to try; the button is re-enabled below.
+          }
+
+          // UI-only reset, in case the navigation never commits (e.g. the tap
+          // was swallowed). It does not navigate and cannot loop.
+          window.setTimeout(function () {
+            busy = false;
+            button.disabled = false;
+            button.textContent = "Try again";
+          }, 10000);
+        });
+      })();
+    </script>
+  </body>
+</html>

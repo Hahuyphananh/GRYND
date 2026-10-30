@@ -5,8 +5,17 @@ import { useAuth } from "@clerk/nextjs";
 import {
   createSocketConnection,
   disconnectSocket,
+  getSocket,
   type RealtimeSocket,
 } from "../lib/socket";
+import {
+  subscribeToAppStateChange,
+  subscribeToNetworkStatusChange,
+} from "../lib/native/appLifecycle";
+import {
+  RECOVERY_MIN_INTERVAL_MS,
+  createSocketRecovery,
+} from "../lib/native/socketRecovery";
 
 type SocketContextValue = {
   socket: RealtimeSocket | null;
@@ -66,6 +75,50 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       socket.off("connect", joinUserRoom);
     };
   }, [socket]);
+
+  // ── Native lifecycle / network recovery (Phase 3B) ──────────────────────
+  //
+  // The native bridge (components/native/NativeLifecycleBridge) publishes
+  // `grynd:app-state-change` and `grynd:network-status-change`, and ONLY on
+  // Android/iOS. Neither event ever fires in a browser, so this effect is
+  // inert on the web and the existing tab-visibility / `online` handling stays
+  // the only recovery path there.
+  //
+  // Recovery is deliberately thin: refresh the Clerk token into the ONE
+  // existing client and ask it to connect (see lib/native/socketRecovery).
+  // Everything that has to be restored afterwards is already bound to the
+  // socket's own `connect` event — `user:join` above, and each game page's own
+  // room join — so nothing here re-sends a join, a move, a bet or a
+  // matchmaking request.
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return undefined;
+
+    // No `onError` handler: a failed attempt is benign — Socket.IO's own
+    // `connect_error`/`disconnect` handlers in lib/socket.ts already report the
+    // transport in development, and this provider reads no env directly.
+    const controller = createSocketRecovery({
+      getSocket,
+      createConnection: createSocketConnection,
+      getToken,
+      minIntervalMs: RECOVERY_MIN_INTERVAL_MS,
+    });
+
+    // Only the "we are back" edges are triggers. A background/dropout edge has
+    // nothing to recover, and letting the socket's own backoff finish is
+    // better than racing it.
+    const offAppState = subscribeToAppStateChange(({ isActive }) => {
+      if (isActive) void controller.recover("foreground");
+    });
+    const offNetwork = subscribeToNetworkStatusChange(({ connected }) => {
+      if (connected) void controller.recover("network");
+    });
+
+    return () => {
+      offAppState();
+      offNetwork();
+      controller.dispose();
+    };
+  }, [getToken, isLoaded, isSignedIn]);
 
   const value = useMemo(() => ({ socket, userId: isSignedIn ? userId : null }), [socket, isSignedIn, userId]);
 

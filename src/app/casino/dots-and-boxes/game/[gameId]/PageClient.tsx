@@ -9,7 +9,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import GameSessionHost from "../../../../../components/GameSessionHost";
 
 import { useSocket } from "../../../../../context/SocketProvider";
-import EmotePicker, { EmoteBubble } from "../../../../../components/game/EmotePicker";
+import GameEmoteLayer from "../../../../../components/game/emotes/GameEmoteLayer";
 import MatchLoading from "../../../../../components/game/MatchLoading";
 import useGameEmotes from "../../../../../hooks/useGameEmotes";
 import useGamePresence from "../../../../../hooks/useGamePresence";
@@ -979,7 +979,6 @@ const prefersReducedMotion = useReducedMotion();
                       <span style={game?.hostNameColor ? { color: game.hostNameColor } : undefined}>
                         {hostSeatName}
                       </span>
-                      <EmoteBubble emote={game?.role === "host" ? myEmote : incomingEmote} side={game?.role === "host" ? "mine" : "incoming"} />
                     </span>
                     <span className="text-3xl font-extrabold text-amber-400 tabular-nums">
                       {scores.host}
@@ -998,7 +997,6 @@ const prefersReducedMotion = useReducedMotion();
                       <span style={game?.guestNameColor ? { color: game.guestNameColor } : undefined}>
                         {guestSeatName}
                       </span>
-                      <EmoteBubble emote={game?.role === "guest" ? myEmote : incomingEmote} side={game?.role === "guest" ? "mine" : "incoming"} />
                     </span>
                     <span className="text-3xl font-extrabold text-cyan-400 tabular-nums">
                       {scores.guest}
@@ -1096,9 +1094,9 @@ const prefersReducedMotion = useReducedMotion();
 
             {/* Emotes */}
             <div className="mt-3 flex justify-center">
-              <EmotePicker
+              <GameEmoteLayer
+                gameId="dots-and-boxes"
                 compact
-                hideBubbles
                 incomingEmote={incomingEmote}
                 myEmote={myEmote}
                 onSend={(emote) => sendEmote(emote)}

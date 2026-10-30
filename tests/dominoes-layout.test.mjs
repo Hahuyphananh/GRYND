@@ -32,6 +32,7 @@ import {
 import { applyAction, createInitialState, legalActions } from "../src/lib/dominoes/rules.ts";
 import { dealFromOrder } from "../src/lib/dominoes/deal.ts";
 import { TILE_IDS } from "../src/lib/dominoes/constants.ts";
+import { placementPreview } from "../src/lib/dominoes/ui.ts";
 
 /* -------------------------------------------------------------------------- *
  * Helpers
@@ -327,6 +328,127 @@ test("layout: the board expands as the chain grows, and never shrinks at the sam
     }
     previous = layout;
   });
+});
+
+/* -------------------------------------------------------------------------- *
+ * Doubles after a bend, and the placement preview
+ * -------------------------------------------------------------------------- */
+
+test("layout: a double AFTER a bend lies across the run that led in", () => {
+  // The case a "the board is horizontal" assumption gets wrong: once the chain
+  // has turned, a double must be crosswise to the run that LED INTO it, not to
+  // the opening tile. Real ones are taken from engine-played matches rather than
+  // hand-placed, so the case tested is one the engine actually produces.
+  const axis = (direction) => (direction === "right" || direction === "left" ? "x" : "y");
+  const longAxis = (rotation) => (rotation % 180 === 90 ? "y" : "x");
+  let found = null;
+  for (let seed = 1; seed <= 40 && !found; seed += 1) {
+    playMatch(seed, (chain) => {
+      if (found) return;
+      const layout = layoutChain(chain);
+      const byIndex = new Map(layout.tiles.map((tile) => [tile.index, tile]));
+      const opening = byIndex.get(layout.pivot);
+      for (let index = 1; index + 1 < chain.length; index += 1) {
+        const before = byIndex.get(index - 1);
+        const double = byIndex.get(index);
+        const after = byIndex.get(index + 1);
+        if (!before || !double || !double.isDouble || !after) continue;
+        if (before.isDouble) continue;
+        // Only a double laid ON a run (not at the corner where the path turns):
+        // the heading it lies across is then the one it was laid from.
+        if (double.direction !== before.direction) continue;
+        // A genuine bend: the arriving run is perpendicular to the opening run.
+        if (!opening || axis(before.direction) === axis(opening.direction)) continue;
+        found = { before, double, after };
+        return;
+      }
+    });
+  }
+
+  assert.ok(found, "an engine-played chain must contain a double after a bend");
+  const { before, double, after } = found;
+
+  // Crosswise to the run that led in, measured on the TABLE: the line from the
+  // previous tile is vertical, so the double's long side is horizontal…
+  const runAxis =
+    Math.abs(double.cx - before.cx) >= Math.abs(double.cy - before.cy) ? "x" : "y";
+  assert.notEqual(longAxis(double.rotation), runAxis, "…across that run, not along it");
+  // …and the chain leaves it at a right angle to the same run.
+  assert.ok(
+    PERPENDICULAR[double.direction].includes(after.direction),
+    `the chain leaves the double at right angles to ${double.direction}`,
+  );
+});
+
+test("layout: no preview exists on an end the tile cannot meet", () => {
+  const chain = [{ id: "6-5", end: "left", left: 6, right: 5, isDouble: false }];
+  const openEnds = { left: 6, right: 5 };
+
+  assert.equal(placementPreview(chain, openEnds, "1-1", "left"), null);
+  assert.equal(placementPreview(chain, openEnds, "6-3", "right"), null, "5 is not on 6–3");
+  assert.equal(placementPreview(chain, openEnds, "nonsense", "left"), null);
+  // A projection with no open values AND no exposed half has nothing to meet.
+  assert.equal(placementPreview([{ id: "6-5" }], null, "6-3", "left"), null);
+
+  // The legal one PREPENDS, with the half that matches facing the chain.
+  const left = placementPreview(chain, openEnds, "6-3", "left");
+  assert.ok(left);
+  assert.equal(left.end, "left");
+  assert.equal(left.position, "prepend");
+  assert.equal(left.index, 0);
+  assert.deepEqual(left.facing, { left: 3, right: 6 });
+  assert.equal(left.chain.length, 2);
+  assert.equal(left.chain[0].id, "6-3");
+
+  // A tile that fits BOTH ends previews each side independently — the player is
+  // choosing a side, not a rotation.
+  const both = [
+    { id: "3-1", end: "left", left: 3, right: 1, isDouble: false },
+    { id: "6-1", end: "right", left: 1, right: 6, isDouble: false },
+  ];
+  const toLeft = placementPreview(both, { left: 3, right: 6 }, "6-3", "left");
+  const toRight = placementPreview(both, { left: 3, right: 6 }, "6-3", "right");
+  assert.deepEqual(toLeft.facing, { left: 6, right: 3 });
+  assert.deepEqual(toRight.facing, { left: 6, right: 3 });
+  assert.equal(toRight.position, "append");
+  assert.equal(toRight.index, 2);
+});
+
+test("layout: a placement preview lands exactly where the real play puts it", () => {
+  // The board draws the selected tile's landing BEFORE the server answers. It may
+  // only ever draw the table the authoritative chain produces, so every legal
+  // play of several matches is compared: the previewed chain must equal the
+  // engine's next chain, and so must the geometry derived from it.
+  const shape = (chain) =>
+    chain.map((tile) => [tile.id, tile.end, tile.left, tile.right, Boolean(tile.isDouble)]);
+  const geometry = (chain) =>
+    layoutChain(chain).tiles.map((tile) => [tile.index, tile.cx, tile.cy, tile.rotation]);
+
+  let checked = 0;
+  for (let seed = 1; seed <= 4; seed += 1) {
+    let state = createInitialState(dealFromOrder(orderForSeed(seed)));
+    let guard = 0;
+    while (state.status === "playing" && guard < 200) {
+      guard += 1;
+      const plays = legalActions(state).filter((action) => action.type === "play");
+      if (plays.length === 0) break;
+      for (const action of plays) {
+        const preview = placementPreview(state.chain, state.openEnds, action.tile, action.end);
+        assert.ok(preview, `seed ${seed}: ${action.tile} on ${action.end} must preview`);
+        const next = applyAction(state, state.turn, action);
+        assert.deepEqual(shape(preview.chain), shape(next.chain), "the preview IS the next chain");
+        assert.deepEqual(
+          geometry(preview.chain),
+          geometry(next.chain),
+          "and the table drawn from it is the table the play produces",
+        );
+        assert.equal(preview.index, preview.position === "prepend" ? 0 : next.chain.length - 1);
+        checked += 1;
+      }
+      state = applyAction(state, state.turn, plays[guard % plays.length]);
+    }
+  }
+  assert.ok(checked > 50, `the check must cover a real number of plays (saw ${checked})`);
 });
 
 /* -------------------------------------------------------------------------- *

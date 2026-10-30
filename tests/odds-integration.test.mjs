@@ -222,6 +222,70 @@ test("invalid predictions are rejected, never scored as a silent zero", () => {
   );
 });
 
+test("the board's kind-tagged calls parse, exact included", () => {
+  // The wheel/input emits the engine's own shape (`{ kind, value }`), while the
+  // flat `{ exact }` form is what older callers send. Both must parse: reading
+  // the tagged exact call as the flat shape found no prediction at all, so the
+  // server answered 400 and lock-in never worked for an exact number.
+  assert.deepEqual(parsePrediction({ kind: "exact", value: 42 }), {
+    ok: true,
+    prediction: { kind: "exact", value: 42 },
+  });
+  assert.deepEqual(parsePrediction({ kind: "exact", value: TARGET_MIN }), {
+    ok: true,
+    prediction: { kind: "exact", value: TARGET_MIN },
+  });
+  assert.deepEqual(parsePrediction({ kind: "range", min: 40, max: 44 }), {
+    ok: true,
+    prediction: { kind: "range", min: 40, max: 44 },
+  });
+  // The flat request shape keeps working unchanged.
+  assert.deepEqual(parsePrediction({ exact: 42 }), {
+    ok: true,
+    prediction: { kind: "exact", value: 42 },
+  });
+  assert.deepEqual(parsePrediction({ min: 40, max: 44 }), {
+    ok: true,
+    prediction: { kind: "range", min: 40, max: 44 },
+  });
+
+  // Every rejection applies to the tagged shape too — accepting it must not
+  // loosen validation.
+  const bad = [
+    { kind: "exact" },
+    { kind: "exact", value: null },
+    { kind: "exact", value: 0 },
+    { kind: "exact", value: 101 },
+    { kind: "exact", value: 5.5 },
+    { kind: "exact", value: "42" },
+    { kind: "exact", value: 42, min: 1, max: 100 },
+    { kind: "range" },
+    { kind: "range", min: 1 },
+    { kind: "range", max: 100 },
+    { kind: "range", min: 50, max: 40 },
+    { kind: "range", min: 40, max: 44, exact: 42 },
+    { kind: "closest", value: 42 },
+  ];
+  for (const input of bad) {
+    const parsed = parsePrediction(input);
+    assert.ok("error" in parsed, `must reject ${JSON.stringify(input)}`);
+  }
+
+  // End to end at the engine boundary: an exact call in the board's shape is
+  // stored and scores, rather than being turned away.
+  const state = initPvPOddsGame({ random: seeded(5) });
+  const target = currentRoundOf(state).target;
+  const submitted = submitPrediction(
+    state,
+    "player1",
+    parsePrediction({ kind: "exact", value: target }).prediction,
+  );
+  assert.deepEqual(predictionOf(submitted.updatedState, true), {
+    kind: "exact",
+    value: target,
+  });
+});
+
 test("one call per seat per round, and no resolving before both are in", () => {
   const state = initPvPOddsGame({ random: seeded(11) });
   assert.throws(() => resolveRound(state), /Both players must submit/);

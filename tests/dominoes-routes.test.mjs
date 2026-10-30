@@ -28,7 +28,11 @@ import { mock } from "node:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { dominoesMatches, dominoesMoves } from "../src/db/schema.ts";
+import {
+  dominoesMatches,
+  dominoesMoves,
+  dominoesRounds,
+} from "../src/db/schema.ts";
 import {
   DOMINOES_AI_PLAYER_ID,
   END_REASONS,
@@ -151,6 +155,22 @@ function createFakeDb() {
 
   const insert = (table) => ({
     values: (v) => {
+      // UNIQUE (match_id, round_number) + ON CONFLICT DO NOTHING: a round is
+      // appended once, however many times the request is retried.
+      if (
+        table === dominoesRounds &&
+        rowsOf(table).some(
+          (existing) =>
+            existing.matchId === v.matchId &&
+            existing.roundNumber === v.roundNumber,
+        )
+      ) {
+        const skipped = { returning: () => Promise.resolve([]) };
+        skipped.onConflictDoNothing = () => skipped;
+        skipped.then = (resolve, reject) =>
+          Promise.resolve([]).then(resolve, reject);
+        return skipped;
+      }
       if (state.failInserts.has(table)) {
         throw Object.assign(
           new Error("duplicate key value violates unique constraint"),
@@ -166,6 +186,7 @@ function createFakeDb() {
       state.writes.push({ table, op: "insert", values: v });
       rowsOf(table).push(row);
       const out = { returning: () => Promise.resolve([{ ...row }]) };
+      out.onConflictDoNothing = () => out;
       out.then = (resolve, reject) => Promise.resolve([{ ...row }]).then(resolve, reject);
       return out;
     },
@@ -395,6 +416,11 @@ function matchRow(overrides = {}) {
     p1Hand: state ? [...state.hands.player1] : [],
     p2Hand: state ? [...state.hands.player2] : [],
     drawPile: state ? [...state.drawPile] : [],
+    player1Score: 0,
+    player2Score: 0,
+    roundNumber: 1,
+    previousRoundWinner: null,
+    previousStartingSeat: null,
     winnerId: null,
     result: null,
     resultReason: null,
@@ -1037,11 +1063,15 @@ test("GET available: the lobby list is a list of id + host, never a position", {
 
 test("a winning play settles the match once, and re-reads never settle it again", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
+  // 45–49 with Bob holding 6 pips: emptying the hand takes Alice to 51, past the
+  // 50-point match target.
   seedMatch(fake, {
     state: craftState({ p1: ["6-3"], p2: ["1-1", "2-2"], pile: ["4-4"], turn: "player1" }),
     p1Hand: ["6-3"],
     p2Hand: ["1-1", "2-2"],
     drawPile: ["4-4"],
+    player1Score: 45,
+    player2Score: 49,
   });
 
   const result = await play({ action: { type: "play", tile: "6-3" }, expectedVersion: 0 }, { as: ALICE });
@@ -1051,7 +1081,9 @@ test("a winning play settles the match once, and re-reads never settle it again"
   assert.equal(result.json.data.match.status, MATCH_STATUS.FINISHED);
   assert.equal(result.json.data.match.result, RESULT.PLAYER1);
   assert.equal(result.json.data.match.winnerId, ALICE);
-  assert.equal(result.json.data.match.resultReason, END_REASONS.EMPTIED_HAND);
+  assert.equal(result.json.data.match.resultReason, END_REASONS.MATCH_TARGET);
+  assert.equal(result.json.data.match.scores.player1, 51);
+  assert.equal(result.json.data.match.scores.player2, 49);
   assert.equal(result.json.data.match.turnDeadlineAt, null, "a decided match has no clock");
   assert.equal(writers.rating.length, 1);
   assert.equal(writers.rating[0].gameKey, "dominoes");
@@ -1069,7 +1101,7 @@ test("a winning play settles the match once, and re-reads never settle it again"
   assert.equal(writers.trophy.length, 1);
 });
 
-test("a blocked round on equal pips settles as a DRAW with no W/L move", { skip: SKIP_REASON }, async (t) => {
+test("a level crossing of the target forces a tiebreak round, not a draw", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   // Pile empty, neither hand playable, equal pips: the pass ends the round.
   seedMatch(fake, {
@@ -1083,19 +1115,27 @@ test("a blocked round on equal pips settles as a DRAW with no W/L move", { skip:
     p1Hand: ["2-2"],
     p2Hand: ["3-1"],
     drawPile: [],
+    // 46–46: the blocked round scores 4 each and both seats reach the target.
+    player1Score: 46,
+    player2Score: 46,
   });
 
   const result = await play({ action: { type: "pass" }, expectedVersion: 0 }, { as: ALICE });
 
   assert.equal(result.status, 200);
-  assert.equal(result.json.data.matchCompleted, true);
-  assert.equal(result.json.data.match.status, MATCH_STATUS.FINISHED);
-  assert.equal(result.json.data.match.result, RESULT.DRAW);
-  assert.equal(result.json.data.match.winnerId, null);
-  assert.equal(result.json.data.match.resultReason, END_REASONS.BLOCKED_PIPS);
-  assert.equal(writers.rating.length, 1);
-  assert.equal(writers.rating[0].result, "draw");
-  assert.equal(writers.trophy.length, 1);
+  // Both crossed the target together on LEVEL totals: nobody won, and a tiebreak
+  // round is already in progress — nothing may be settled.
+  assert.equal(result.json.data.matchCompleted, false);
+  assert.equal(result.json.data.match.status, MATCH_STATUS.PLAYING);
+  assert.equal(result.json.data.match.result ?? null, null);
+  assert.equal(result.json.data.match.winnerId ?? null, null);
+  assert.equal(result.json.data.match.resultReason ?? null, null);
+  assert.equal(result.json.data.match.scores.player1, 50);
+  assert.equal(result.json.data.match.scores.player2, 50);
+  assert.equal(result.json.data.match.roundNumber, 2, "the tiebreak round is in progress");
+  assert.ok(result.json.data.match.turnDeadlineAt, "the tiebreak round has a clock");
+  assert.equal(writers.rating.length, 0, "a level crossing settles nothing");
+  assert.equal(writers.trophy.length, 0);
 });
 
 /* -------------------------------------------------------------------------- *

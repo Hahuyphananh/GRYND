@@ -10,7 +10,7 @@ import { useRealtimeSubscription } from "../../../../hooks/useRealtimeSubscripti
 import ReportModal from "../../../../components/ReportModal";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
-import EmotePicker, { EmoteArtwork } from "../../../../components/game/EmotePicker";
+import GameEmoteLayer from "../../../../components/game/emotes/GameEmoteLayer";
 import GameSessionHost from "../../../../components/GameSessionHost";
 
 
@@ -1089,11 +1089,6 @@ export default function ChessGamePage() {
                 <div className="flex items-center gap-2">
                   <span className="relative font-bold text-cyan-300">
                     {opponentName || "Opponent"}
-                    {incomingEmote && (
-                      <span className="absolute bottom-full left-0 mb-1 whitespace-nowrap rounded-xl rounded-bl-sm border border-fuchsia-300/60 bg-[#071531] px-2 py-1 text-base shadow-[0_0_18px_rgba(255,60,172,.35)]">
-                        <EmoteArtwork emote={incomingEmote} imageClassName="h-7 w-7" />
-                      </span>
-                    )}
                   </span>
                   {oppCaptured.length > 0 && (
                     <span className="text-lg tracking-tight opacity-80">
@@ -1187,11 +1182,6 @@ export default function ChessGamePage() {
                 <div className="flex items-center gap-2">
                   <span className="relative font-bold text-fuchsia-300">
                     {myName || "You"}
-                    {myEmote && (
-                      <span className="absolute bottom-full left-0 mb-1 whitespace-nowrap rounded-xl rounded-bl-sm border border-cyan-300/60 bg-[#071531] px-2 py-1 text-base shadow-[0_0_18px_rgba(0,229,255,.35)]">
-                        <EmoteArtwork emote={myEmote} imageClassName="h-7 w-7" />
-                      </span>
-                    )}
                   </span>
                   {myCaptured.length > 0 && (
                     <span className="text-lg tracking-tight opacity-80">
@@ -1303,9 +1293,9 @@ export default function ChessGamePage() {
 
                 {/* Emotes */}
                 <div className="mt-3 flex justify-center">
-                  <EmotePicker
+                  <GameEmoteLayer
+                    gameId="chess"
                     compact
-                    hideBubbles
                     incomingEmote={incomingEmote}
                     myEmote={myEmote}
                     onSend={(emote) => {

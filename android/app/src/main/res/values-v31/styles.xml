@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- GRYND launch theme for Android 12+ (API 31 and up) — Phase 7.
+
+     Android 12 replaced the old window-background splash with the system splash
+     screen API: the platform draws `windowSplashScreenBackground` plus
+     `windowSplashScreenAnimatedIcon` (defaulting to the app icon on a
+     theme-derived background) and ignores the `@drawable/splash` image that the
+     values/styles.xml launch theme still uses below API 31. Without this
+     override the first frame came from the platform defaults rather than from
+     GRYND's own drawables, which is exactly the stock look this phase removes.
+
+     Resource qualifiers are not merged, so this style repeats every item from
+     the values/ copy and only adds the two Android 12 attributes. The animated
+     icon points at the adaptive launcher icon (navy background + GRYND mark),
+     so the system splash, the launcher icon and the dark theme are one surface
+     and there is no white frame between launch and the WebView. -->
+<resources>
+    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <item name="android:background">@drawable/splash</item>
+        <item name="android:windowSplashScreenBackground">#030817</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="android:statusBarColor">#030817</item>
+        <item name="android:navigationBarColor">#030817</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

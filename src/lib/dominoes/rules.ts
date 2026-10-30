@@ -32,10 +32,18 @@
  *      turn; a drawn tile may be played at once, and an unplayable one means
  *      drawing again.
  *   8. With the pile empty and nothing playable, the seat passes.
- *   9. An empty hand wins immediately. With the pile empty and NEITHER seat able
- *      to play, fewer remaining pips wins and equal pips draw — checked after
- *      every accepted action.
- *  10. A finished match accepts nothing at all.
+ *   9. SCORING — every seat scores the pips LEFT IN THE OTHER SEAT'S HAND.
+ *      A hand that empties ends the round at once: its holder scores the
+ *      opponent's remaining pips and the opponent scores 0 (which is the same
+ *      rule, because the emptied hand holds no pips). With the pile empty and
+ *      NEITHER seat able to play the round is BLOCKED and BOTH seats score: the
+ *      pips still in the other seat's hand. There is no "fewer pips wins"
+ *      tie-break — a blocked round can score for both seats, and a position
+ *      where both hands are empty scores 0 / 0. Checked after every accepted
+ *      action.
+ *  10. A finished round accepts nothing at all. A ROUND result is not a MATCH
+ *      victory: a match is won at `MATCH_TARGET_POINTS` cumulative points, and
+ *      aggregating rounds into a match is the store's job (not implemented).
  *
  * WHAT IS NOT HERE: the 15-second turn clock, its timeout action, forfeits,
  * matchmaking and persistence all belong to the server store's policy. The
@@ -67,6 +75,7 @@ import type {
   DominoesState,
   DrawAction,
   EndReason,
+  ForcedStart,
   LegalAction,
   LegalPlayAction,
   PassAction,
@@ -158,7 +167,7 @@ export function tileOrder(id: TileId): number {
   return index;
 }
 
-/** Total pips left in a hand — the blocked-round tie-break. */
+/** Total pips left in a hand — the unit `roundPoints` scores in. */
 export function pipsInHand(hand: readonly TileId[] | null | undefined): number {
   let total = 0;
   for (const tile of hand ?? []) total += tilePips(tile);
@@ -382,13 +391,43 @@ function assertDeal(deal: Deal): void {
  * with any tile it likes — exactly the turn `applyAction` accepts on an empty
  * chain.
  */
-export function createInitialState(deal: Deal): DominoesState {
+/**
+ * The seat's HIGHEST tile in canonical order.
+ *
+ * Descriptive only: it fills `startingTile` for a round whose opener was
+ * inherited rather than won by a tile. It is never played by the deal, never
+ * projected and never read by a rule.
+ */
+function highestTileIn(hand: readonly TileId[]): TileId {
+  for (const tile of TILE_IDS) {
+    if (hand.includes(tile)) return tile;
+  }
+  return TILE_IDS[0];
+}
+
+/**
+ * A fresh, ready-to-play round from a deal.
+ *
+ * ROUND 1 bids for the opening seat (`chooseStartingSeat`): the highest double,
+ * else the highest total. `forced` names the starter instead — that is round 2
+ * onwards, where the bid is inherited from the previous round (its winner, or the
+ * alternation fallback) — and in that case the seat opens BY HAND with any tile:
+ * the deal places nothing, so the chain is empty and the turn is the starter's.
+ */
+export function createInitialState(deal: Deal, forced?: ForcedStart): DominoesState {
   assertDeal(deal);
   const hands = Object.freeze({
     player1: Object.freeze([...deal.hands.player1]),
     player2: Object.freeze([...deal.hands.player2]),
   });
-  const choice = chooseStartingSeat(hands);
+  const imposed = forced && isSeat(forced.seat) ? forced : null;
+  const choice: StartingChoice = imposed
+    ? Object.freeze({
+        seat: imposed.seat,
+        tile: highestTileIn(hands[imposed.seat]),
+        rule: imposed.rule,
+      })
+    : chooseStartingSeat(hands);
   const dealt = freezeState({
     status: MATCH_STATUS.PLAYING,
     turn: choice.seat,
@@ -415,6 +454,8 @@ export function createInitialState(deal: Deal): DominoesState {
   // `lastAction`, ply and every terminal check are the engine's own. A deal also
   // always leaves fourteen tiles in the pile (`assertDeal`), so this placement
   // can never block the round it opens.
+  // An INHERITED opener places nothing: the starter chooses its own first tile.
+  if (imposed) return dealt;
   if (choice.rule !== STARTING_RULES.HIGHEST_DOUBLE) return dealt;
   return applyAction(dealt, choice.seat, {
     type: ACTION_TYPES.PLAY,
@@ -448,6 +489,10 @@ function freezeState(state: DominoesState): DominoesState {
           pips: Object.freeze({
             player1: state.outcome.pips.player1,
             player2: state.outcome.pips.player2,
+          }),
+          points: Object.freeze({
+            player1: state.outcome.points.player1,
+            player2: state.outcome.points.player2,
           }),
         })
       : null,
@@ -763,14 +808,61 @@ function pipsBySeat(state: DominoesState): Record<Seat, number> {
   };
 }
 
-/** Close the round with the given winner (`null` = drawn on pips). */
+/**
+ * THE ROUND'S SCORING, as one pure function of the remaining pips.
+ *
+ * Every seat scores the pips still in the OPPONENT's hand — that is the whole
+ * rule, and both endings are the same rule:
+ *
+ *   * BLOCKED (pile empty, neither seat able to play): both seats score, so a
+ *     round can award points to both players. Hands of 8 and 1 score 1 and 8;
+ *     level hands (4 / 4) score 4 / 4, which is not a tie-break because the
+ *     rule no longer compares the two hands at all.
+ *   * EMPTIED HAND: the winner's own hand holds 0 pips, so the swap scores the
+ *     opponent's pips to the winner and 0 to the opponent — "the player who
+ *     played their last tile receives the total pip value of ALL tiles still in
+ *     the opponent's hand, and the opponent receives zero".
+ *
+ * Deterministic and derived entirely from engine state, so a client can never
+ * supply a score: the only input is the two hands the server owns.
+ */
+export function roundPoints(
+  pips: Readonly<Record<Seat, number>>,
+): Record<Seat, number> {
+  return {
+    player1: pips.player2,
+    player2: pips.player1,
+  };
+}
+
+/** The seat that scored more this round (`null` when the points are level). */
+function roundWinner(points: Readonly<Record<Seat, number>>): Seat | null {
+  if (points.player1 > points.player2) return SEATS[0];
+  if (points.player2 > points.player1) return SEATS[1];
+  return null;
+}
+
+/**
+ * Close the ROUND: record why it ended, the pips left and the points each seat
+ * scored. `winner` is the seat that won THIS ROUND (`null` = level points); it
+ * is never a match victory — the match is decided at `MATCH_TARGET_POINTS`.
+ */
 function finishWith(
   state: DominoesState,
   reason: EndReason,
   winner: Seat | null,
+  points: Readonly<Record<Seat, number>>,
 ): DominoesState {
   const pips = Object.freeze(pipsBySeat(state));
-  const outcome: DominoesOutcome = Object.freeze({ winner, reason, pips });
+  const outcome: DominoesOutcome = Object.freeze({
+    reason,
+    winner,
+    pips,
+    points: Object.freeze({
+      player1: points.player1,
+      player2: points.player2,
+    }),
+  });
   return freezeState({
     ...state,
     status: MATCH_STATUS.FINISHED,
@@ -782,14 +874,8 @@ function finishWith(
 /** Finish on blockage when the position has become blocked; otherwise pass through. */
 function finishIfBlocked(state: DominoesState): DominoesState {
   if (!isBlocked(state)) return state;
-  const pips = pipsBySeat(state);
-  const winner =
-    pips.player1 < pips.player2
-      ? SEATS[0]
-      : pips.player2 < pips.player1
-        ? SEATS[1]
-        : null;
-  return finishWith(state, END_REASONS.BLOCKED_PIPS, winner);
+  const points = Object.freeze(roundPoints(pipsBySeat(state)));
+  return finishWith(state, END_REASONS.BLOCKED_PIPS, roundWinner(points), points);
 }
 
 /** A hand without `tile`. The engine validated membership before calling this. */
@@ -898,9 +984,12 @@ export function applyAction(
       lastAction: record,
     });
 
-    // Rule 8: emptying a hand wins immediately, before any blockage check.
+    // Rule 9: emptying a hand ends the round immediately, before any blockage
+    // check. The emptied seat scores the opponent's remaining pips; the
+    // opponent scores 0 (its own pips are the seed the swap reads).
     if (hand.length === 0) {
-      return finishWith(played, END_REASONS.EMPTIED_HAND, seat);
+      const points = Object.freeze(roundPoints(pipsBySeat(played)));
+      return finishWith(played, END_REASONS.EMPTIED_HAND, seat, points);
     }
     return finishIfBlocked(played);
   }

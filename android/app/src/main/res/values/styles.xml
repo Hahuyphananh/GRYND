@@ -9,14 +9,41 @@
         <item name="colorAccent">@color/colorAccent</item>
     </style>
 
+    <!--
+      System bars (Phase 5A).
+
+      These attributes matter on Android 7–14, where the status and navigation
+      bars are opaque and the window colour is visible for the first frames,
+      before the WebView has painted. Without them that frame uses the AppCompat
+      default, i.e. a LIGHT bar over GRYND's near-black UI — the white flash
+      this phase is meant to remove.
+
+      On Android 15+ (this app targets SDK 36) the OS enforces edge-to-edge and
+      these colour attributes are ignored; there the app's own background shows
+      through the bars and the WebView reports safe-area insets instead (see
+      `viewport-fit=cover` in src/app/layout.tsx and the safe-top / safe-bottom
+      CSS variables in globals.css). `windowLight*Bar=false` asks for LIGHT
+      icons on that dark colour, which is the same choice
+      components/native/NativeSystemBars.tsx re-asserts at runtime.
+    -->
     <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <item name="android:statusBarColor">#030817</item>
+        <item name="android:navigationBarColor">#030817</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
     </style>
 
 
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="android:background">@drawable/splash</item>
+        <!-- Same dark system bars on the launch theme, so the splash frame is
+             already on-brand instead of flashing a light status bar first. -->
+        <item name="android:statusBarColor">#030817</item>
+        <item name="android:navigationBarColor">#030817</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
     </style>
 </resources>

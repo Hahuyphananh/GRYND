@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useUser } from "@clerk/nextjs";
 import { usePostHog } from "posthog-js/react";
 import { useSocket } from "../../../context/SocketProvider";
-import EmotePicker, { EmoteBubble } from "../../../components/game/EmotePicker";
+import GameEmoteLayer from "../../../components/game/emotes/GameEmoteLayer";
 import useGameEmotes from "../../../hooks/useGameEmotes";
 import NavigationBar from "../../../components/navigation-bar";
 import MatchWaiting from "../../../components/lobby/MatchWaiting";
@@ -1078,7 +1078,6 @@ export default function DiceFlushPage() {
           >
             {opponent?.name || "OPPONENT"}
           </span>
-          <EmoteBubble emote={incomingEmote} />
         </div>
         <motion.div
           key={sectionTotals(opponent?.userId).total}
@@ -1293,9 +1292,9 @@ export default function DiceFlushPage() {
       </div>
 
       {/* Emotes */}
-      <EmotePicker
+      <GameEmoteLayer
+        gameId="dice-flush"
         compact
-        hideBubbles
         incomingEmote={incomingEmote}
         myEmote={myEmote}
         onSend={(emote) => sendEmote(emote)}
@@ -1323,7 +1322,6 @@ export default function DiceFlushPage() {
       <div className="flex items-center gap-2">
         <div className="relative rounded-full bg-[#34d399]/20 border border-[#34d399]/30 px-3 py-1 text-sm font-black text-[#34d399]">
           YOU
-          <EmoteBubble emote={myEmote} side="mine" />
         </div>
         <motion.div
           key={sectionTotals(you?.userId).total}
