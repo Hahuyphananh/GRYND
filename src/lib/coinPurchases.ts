@@ -12,15 +12,16 @@
 //   * isCoinPurchasesEnabled()  — the feature flag. DISABLED unless the
 //     deployment explicitly sets COIN_PURCHASES_ENABLED=1, so a fresh
 //     environment (and production, today) never offers a purchase.
-//   * INITIAL_COIN_OFFER_KEYS   — the small launch catalog, expressed purely as
-//     KEYS into the EXISTING `token_packages` table. There is no second
-//     package system: amounts, bonuses, prices, enabled state and ordering all
-//     come from that table (see src/db/schema.ts and
-//     src/lib/stripe/packages.ts).
-//   * selectInitialCoinOffers() — a pure function that validates catalog rows
-//     and turns them into display data. The client never supplies a price, a
-//     coin amount or a currency; everything it renders is resolved here.
-//   * resolveInitialCoinOffers() — the DB read used by the public catalog API.
+//   * COIN_OFFER_TIERS          — presentation-only labels for the keys that
+//     have one. The catalog itself is the EXISTING `token_packages` table:
+//     every enabled, well-formed row is for sale, so adding or retiring a pack
+//     is a data change, never a code change. Amounts, bonuses, prices, badge,
+//     enabled state and ordering all come from that table (see
+//     src/db/schema.ts and src/lib/stripe/packages.ts).
+//   * selectCoinOffers() — a pure function that validates catalog rows and
+//     turns them into display data. The client never supplies a price, a coin
+//     amount or a currency; everything it renders is resolved here.
+//   * resolveCoinOffers() — the DB read used by the public catalog API.
 //   * resolveCoinCheckoutPackage() / hasFulfilledPackagePurchase() — the
 //     server-side package resolution and one-time-per-user check used by the
 //     checkout route.
@@ -38,7 +39,7 @@
 // supports is the `stripe_checkout_sessions` ledger row the route persists.
 
 import { createHash } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type Stripe from "stripe";
 import { db } from "../db/client";
 import { stripeCheckoutSessions, tokenPackages } from "../db/schema";
@@ -65,34 +66,16 @@ export function isCoinPurchasesEnabled(
 }
 
 /**
- * The launch catalog: three offers, expressed as keys into `token_packages`.
+ * Presentation-only tier labels for the catalog keys that have one.
  *
- * The rows already exist (seeded by migrations 0115–0156) and stay the single
- * source of truth for coin amounts, bonuses, prices, badge, enabled state and
- * ordering. A key that is missing, disabled or invalid simply drops out of the
- * catalog — it is never replaced by a code-side default.
- *
- * The requested Starter / Standard / Value ladder maps onto the existing
- * records:
- *   starter → Starter   (entry offer)
- *   medium  → Standard  (middle offer)
- *   large   → Value     (best tokens-per-dollar of the three)
- *
- * NOTE: the row names are shown as-is. Renaming them (or changing amounts and
- * prices) is a catalog/business decision made against the live economy, not
- * something this module invents.
+ * The catalog itself lives in `token_packages`, which stays the single source
+ * of truth for coin amounts, bonuses, prices, badge, enabled state and
+ * ordering: any enabled, well-formed row is offered, so adding or retiring a
+ * coin pack is a data change rather than a code change. A key with no label
+ * here simply falls back to the row's own `name`, which is why this map never
+ * has to grow.
  */
-export const INITIAL_COIN_OFFER_KEYS = ["starter", "medium", "large"] as const;
-
-export type CoinOfferKey = (typeof INITIAL_COIN_OFFER_KEYS)[number];
-
-/**
- * The shop's three tier labels for the launch catalog. Presentation only — the
- * amount, bonus, price and currency still come from `token_packages`. Kept
- * server-side so the client renders a label the server chose instead of
- * hardcoding one (and so Starter/Standard/Value cannot drift from the keys).
- */
-export const COIN_OFFER_TIERS: Record<CoinOfferKey, string> = {
+export const COIN_OFFER_TIERS: Record<string, string> = {
   starter: "Starter",
   medium: "Standard",
   large: "Value",
@@ -196,33 +179,30 @@ export function validateCoinPackage(row: CoinPackageRow): CoinPackageValidation 
 export type SkippedCoinPackage = { key: string; reason: string };
 
 /**
- * Turn catalog rows into the launch catalog. PURE — no DB, no Stripe, no env —
- * so the catalog rules are unit-testable.
+ * Turn catalog rows into the offers the shop may display. PURE — no DB, no
+ * Stripe, no env — so the catalog rules are unit-testable.
  *
  * Rules:
- *   * only keys in `INITIAL_COIN_OFFER_KEYS` are offered (a legacy row such as
- *     `mega`, `own`, `popular` or `big` can never leak into the shop),
+ *   * EVERY enabled row is offered: the catalog is the `token_packages` table,
+ *     not a code-side ladder, so adding a pack never needs a code change,
  *   * every offered row must pass `validateCoinPackage`,
  *   * a duplicate key keeps the FIRST valid row,
  *   * order is the catalog's `sortOrder`, then key, so the server owns layout,
  *   * the amount, bonus, price and currency are copied from the row — never
  *     derived from anything a client sent.
  */
-export function selectInitialCoinOffers(rows: readonly CoinPackageRow[]): {
+export function selectCoinOffers(rows: readonly CoinPackageRow[]): {
   offers: CoinOffer[];
   skipped: SkippedCoinPackage[];
 } {
-  const allowed = new Set<string>(INITIAL_COIN_OFFER_KEYS);
   const skipped: SkippedCoinPackage[] = [];
   const seen = new Set<string>();
   const selected: Array<{ offer: CoinOffer; sortOrder: number }> = [];
 
   for (const row of rows ?? []) {
     const key = String(row?.key ?? "");
-    if (!allowed.has(key)) {
-      if (key) skipped.push({ key, reason: "not part of the launch catalog" });
-      continue;
-    }
+    // A row with no key has nothing to sell and nothing to name in a log.
+    if (!key) continue;
     const validation = validateCoinPackage(row);
     if (!validation.ok) {
       // `reason` is read with an `in` guard because this project compiles with
@@ -240,7 +220,7 @@ export function selectInitialCoinOffers(rows: readonly CoinPackageRow[]): {
       sortOrder: row.sortOrder ?? 0,
       offer: {
         key,
-        tier: COIN_OFFER_TIERS[key as CoinOfferKey] ?? row.name.trim(),
+        tier: COIN_OFFER_TIERS[key] ?? row.name.trim(),
         name: row.name.trim(),
         coins: row.tokenAmount,
         bonusCoins: row.bonusTokens,
@@ -265,13 +245,14 @@ export function selectInitialCoinOffers(rows: readonly CoinPackageRow[]): {
 }
 
 /**
- * Read the launch catalog from `token_packages`. Server-only.
+ * Read the catalog from `token_packages`. Server-only.
  *
  * READ-ONLY and side-effect free: it never creates a Stripe product or price,
  * never writes the catalog and never touches a balance. Disabled rows are
- * filtered by the query AND re-checked by validation.
+ * filtered by the query AND re-checked by validation, so a pack is added by
+ * enabling its row and retired by disabling it — no deploy involved.
  */
-export async function resolveInitialCoinOffers(): Promise<{
+export async function resolveCoinOffers(): Promise<{
   offers: CoinOffer[];
   skipped: SkippedCoinPackage[];
   currency: string;
@@ -290,14 +271,11 @@ export async function resolveInitialCoinOffers(): Promise<{
     })
     .from(tokenPackages)
     .where(
-      and(
-        eq(tokenPackages.enabled, true),
-        inArray(tokenPackages.key, [...INITIAL_COIN_OFFER_KEYS]),
-      ),
+      eq(tokenPackages.enabled, true),
     )
     .orderBy(tokenPackages.sortOrder);
 
-  const { offers, skipped } = selectInitialCoinOffers(rows);
+  const { offers, skipped } = selectCoinOffers(rows);
   return { offers, skipped, currency: COIN_PACKAGE_CURRENCY };
 }
 
@@ -323,9 +301,11 @@ export type CoinCheckoutPackage = {
 /**
  * Resolve ONE purchasable package from the server's own catalog.
  *
- * Unknown, disabled, malformed and out-of-ladder keys all resolve to `null`, so
- * the caller answers identically for all of them (the client learns nothing
- * about a package that is not for sale). No amount, price or currency is ever
+ * Unknown, disabled and malformed keys all resolve to `null`, so the caller
+ * answers identically for all of them (the client learns nothing about a
+ * package that is not for sale). The catalog is the same `token_packages` read
+ * the packages route uses — there is no second, narrower ladder here, so every
+ * offer the shop displays can actually be bought. No amount, price or currency is ever
  * taken from the caller — only the key is.
  */
 export async function resolveCoinCheckoutPackage(
@@ -333,7 +313,6 @@ export async function resolveCoinCheckoutPackage(
 ): Promise<CoinCheckoutPackage | null> {
   const key = typeof packageKey === "string" ? packageKey.trim() : "";
   if (!key) return null;
-  if (!(INITIAL_COIN_OFFER_KEYS as readonly string[]).includes(key)) return null;
 
   const rows = await db
     .select({

@@ -33,7 +33,7 @@ import {
 } from "../src/lib/coinCheckoutClient.ts";
 import {
   COIN_OFFER_TIERS,
-  selectInitialCoinOffers,
+  selectCoinOffers,
 } from "../src/lib/coinPurchases.ts";
 
 const read = (path) => fs.readFileSync(path, "utf8");
@@ -115,7 +115,7 @@ test("polling stops on fulfilment and after the ceiling", () => {
 
 // ── 4. Server-resolved tiers and offers ────────────────────────────────────
 
-test("the three tiers are server-owned and match the launch keys", () => {
+test("the tier labels are server-owned and drop straight onto the catalog keys", () => {
   assert.deepEqual(COIN_OFFER_TIERS, {
     starter: "Starter",
     medium: "Standard",
@@ -137,7 +137,7 @@ test("offers carry the server-resolved tier with the catalog amounts", () => {
     ...overrides,
   });
 
-  const { offers } = selectInitialCoinOffers([
+  const { offers } = selectCoinOffers([
     row({}),
     row({ key: "medium", name: "Medium", tokenAmount: 20000, bonusTokens: 3000, priceCents: 1999, sortOrder: 3 }),
     row({ key: "large", name: "Large", tokenAmount: 40000, bonusTokens: 10000, priceCents: 3999, sortOrder: 4 }),

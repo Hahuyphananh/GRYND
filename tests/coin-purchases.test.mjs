@@ -28,9 +28,8 @@ import {
   COIN_CHECKOUT_READY,
   COIN_PACKAGE_CURRENCY,
   COIN_PURCHASES_FLAG,
-  INITIAL_COIN_OFFER_KEYS,
   isCoinPurchasesEnabled,
-  selectInitialCoinOffers,
+  selectCoinOffers,
   validateCoinPackage,
 } from "../src/lib/coinPurchases.ts";
 import { PACKAGE_CURRENCY } from "../src/lib/stripe/packages.ts";
@@ -102,13 +101,11 @@ test("the process environment is disabled unless it explicitly opts in", () => {
 
 // ── 2. The launch catalog reuses token_packages ────────────────────────────
 
-test("the launch catalog is three keys into the existing package table", () => {
-  assert.deepEqual([...INITIAL_COIN_OFFER_KEYS], ["starter", "medium", "large"]);
-  assert.equal(new Set(INITIAL_COIN_OFFER_KEYS).size, 3);
-
-  // The keys exist as seeded catalog rows (migration 0115).
+test("the catalog is the existing package table, with no code-side ladder", () => {
+  // The launch rows exist in the catalog (migration 0115); the shop reads them
+  // like every other row rather than from a list of allowed keys.
   const seed = read("src/db/migrations/0115_tokens_offer_catalog.sql");
-  for (const key of INITIAL_COIN_OFFER_KEYS) {
+  for (const key of ["starter", "medium", "large"]) {
     assert.match(seed, new RegExp(`\\('${key}',`), `${key} must be a seeded row`);
   }
 
@@ -116,6 +113,11 @@ test("the launch catalog is three keys into the existing package table", () => {
   assert.match(LIB, /import \{[^}]*\btokenPackages\b[^}]*\} from "\.\.\/db\/schema"/);
   assert.match(LIB, /\.from\(tokenPackages\)/);
   assert.doesNotMatch(SCHEMA, /coin_packages|coinPackages/);
+
+  // Enabling a row is the ONLY way to add a pack: nothing narrows the key
+  // space, so a newly added package cannot silently miss /rewards.
+  assert.doesNotMatch(LIB, /INITIAL_COIN_OFFER_KEYS|not part of the launch catalog/);
+  assert.doesNotMatch(LIB, /inArray\(tokenPackages\.key/);
 });
 
 test("no migration is added for coin purchases (the schema is sufficient)", () => {
@@ -169,18 +171,22 @@ const LADDER_ROWS = [
   baseRow({ key: "own", name: "Grynd Tokens", tokenAmount: 5000, priceCents: 0, sortOrder: 0 }),
 ];
 
-test("only the three launch keys are offered, in catalog order", () => {
-  const { offers, skipped } = selectInitialCoinOffers(LADDER_ROWS);
-  assert.deepEqual(offers.map((offer) => offer.key), ["starter", "medium", "large"]);
+test("every enabled, well-formed row is offered, in catalog order", () => {
+  const { offers, skipped } = selectCoinOffers(LADDER_ROWS);
   assert.deepEqual(
-    skipped.map((row) => row.key).sort(),
-    ["mega", "own", "small"],
-    "rows outside the launch ladder are reported, never offered",
+    offers.map((offer) => offer.key),
+    ["starter", "small", "medium", "large", "mega"],
+    "the catalog is the table, not a code-side ladder",
   );
+  // The only row that drops out is the one that cannot be sold: the `own`
+  // placeholder carries a 0 price.
+  assert.deepEqual(skipped, [
+    { key: "own", reason: "price must be a positive integer number of cents" },
+  ]);
 });
 
 test("amounts, bonuses, totals and prices come from the rows unchanged", () => {
-  const { offers } = selectInitialCoinOffers(LADDER_ROWS);
+  const { offers } = selectCoinOffers(LADDER_ROWS);
   const medium = offers.find((offer) => offer.key === "medium");
 
   assert.equal(medium.coins, 20000);
@@ -190,7 +196,7 @@ test("amounts, bonuses, totals and prices come from the rows unchanged", () => {
 });
 
 test("the displayed price is the charged amount in the charge currency", () => {
-  const { offers } = selectInitialCoinOffers(LADDER_ROWS);
+  const { offers } = selectCoinOffers(LADDER_ROWS);
 
   for (const offer of offers) {
     assert.equal(offer.currency, COIN_PACKAGE_CURRENCY);
@@ -213,7 +219,7 @@ test("a disabled, malformed or duplicated row never reaches the shop", () => {
     baseRow({ key: "medium", enabled: false }),
     baseRow({ key: "large", priceCents: 0 }),
   ];
-  const { offers, skipped } = selectInitialCoinOffers(rows);
+  const { offers, skipped } = selectCoinOffers(rows);
 
   assert.deepEqual(offers.map((offer) => offer.key), ["starter"]);
   assert.equal(offers[0].priceCents, 499, "the first valid row wins");
@@ -248,7 +254,7 @@ test("the catalog route is read-only and gated by the flag before any read", () 
 
   // The gate comes first: disabled → empty offers, before the catalog read.
   const gateIndex = ROUTE.indexOf("isCoinPurchasesEnabled()");
-  const readIndex = ROUTE.indexOf("resolveInitialCoinOffers()");
+  const readIndex = ROUTE.indexOf("resolveCoinOffers()");
   assert.ok(gateIndex > 0, "the route must check the flag");
   assert.ok(readIndex > gateIndex, "the flag check must run before any DB read");
   assert.match(ROUTE, /enabled: false,/);

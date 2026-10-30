@@ -29,7 +29,7 @@ import {
   COIN_CHECKOUT_READY,
   COIN_PACKAGE_CURRENCY,
   isCoinPurchasesEnabled,
-  resolveInitialCoinOffers,
+  resolveCoinOffers,
 } from "../../../../lib/coinPurchases";
 
 export const runtime = "nodejs";
@@ -49,7 +49,7 @@ export async function GET() {
   }
 
   try {
-    const { offers, currency, skipped } = await resolveInitialCoinOffers();
+    const { offers, currency, skipped } = await resolveCoinOffers();
     if (skipped.length > 0) {
       // Not an error: a disabled or malformed row is simply not for sale. Log
       // it so a catalog mistake is visible to an operator.
