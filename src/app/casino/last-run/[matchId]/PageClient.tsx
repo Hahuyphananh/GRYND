@@ -137,6 +137,7 @@ export default function PageClient({ matchId }: { matchId: string }) {
   const [persisted, setPersisted] = useState<PersistedMatch | null>(null);
   const [rating, setRating] = useState<RatingView>(null);
   const [settleState, setSettleState] = useState<SettleState>("idle");
+  const [rematching, setRematching] = useState(false);
 
   const skew = useRef(0);
   const lastOk = useRef(0);
@@ -217,7 +218,8 @@ export default function PageClient({ matchId }: { matchId: string }) {
         setNow(Date.now());
 
         if (next.phase === "finished") {
-          void pollSettled();
+          // A practice match has no durable record to wait for.
+          if (!next.practice) void pollSettled();
           return;
         }
         timer = setTimeout(load, next.phase === "racing" ? POLL_RACING_MS : POLL_OTHER_MS);
@@ -238,8 +240,8 @@ export default function PageClient({ matchId }: { matchId: string }) {
   // A final snapshot also triggers the persisted read (covers a reconnect that
   // only ever saw the finished frame).
   useEffect(() => {
-    if (snapshot?.final) void pollSettled();
-  }, [snapshot?.final, pollSettled]);
+    if (snapshot?.final && !snapshot.practice) void pollSettled();
+  }, [snapshot?.final, snapshot?.practice, pollSettled]);
 
   // A 100 ms display clock, derived from the server's own instant.
   useEffect(() => {
@@ -320,6 +322,26 @@ export default function PageClient({ matchId }: { matchId: string }) {
     }
   }, [matchId]);
 
+  // Practice rematch: the same route mints a fresh seed and a fresh AI run.
+  const rematch = useCallback(async () => {
+    setRematching(true);
+    try {
+      const res = await fetch("/api/last-run/practice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success && typeof data.matchId === "string") {
+        router.replace(`/games/last-run/${data.matchId}`);
+        return;
+      }
+    } catch {
+      // Fall back to the lobby, which offers the same action.
+    }
+    setRematching(false);
+  }, [router]);
+
   const outcome = useMemo(() => {
     if (!snapshot?.final) return null;
     if (snapshot.final.result === "draw") return "draw" as const;
@@ -348,6 +370,7 @@ export default function PageClient({ matchId }: { matchId: string }) {
   }
 
   const finished = snapshot?.final ?? null;
+  const practice = Boolean(snapshot?.practice);
   const rival = snapshot?.opponent;
 
   // ── Persisted result screen (no live snapshot) ────────────────────────
@@ -438,7 +461,7 @@ export default function PageClient({ matchId }: { matchId: string }) {
               LAST<span className="text-cyan-300">RUN</span>
             </Link>
             <span className="hidden text-[10px] font-bold uppercase tracking-[0.24em] text-white/30 sm:inline">
-              duel · seeded course
+              {practice ? "practice · unrated" : "duel · seeded course"}
             </span>
           </div>
 
@@ -631,10 +654,10 @@ export default function PageClient({ matchId }: { matchId: string }) {
                 <div className="mt-3 flex flex-col gap-1.5 sm:flex-row sm:gap-2">
                   <button
                     type="button"
-                    onClick={() => router.push("/games/last-run/play?queue=1")}
+                    onClick={practice ? rematch : () => router.push("/games/last-run/play?queue=1")}
                     className="flex-1 rounded-xl bg-cyan-400 py-2.5 text-[10px] font-black uppercase tracking-[0.18em] text-[#04121a] transition hover:bg-cyan-300 sm:text-[11px]"
                   >
-                    Run it back
+                    {practice ? (rematching ? "Starting…" : "Race the AI again") : "Run it back"}
                   </button>
                   <Link
                     href="/games/last-run/play"
@@ -643,7 +666,13 @@ export default function PageClient({ matchId }: { matchId: string }) {
                     Return to lobby
                   </Link>
                 </div>
-                <RatingNote state={settleState} rating={rating} />
+                {practice ? (
+                  <p className="mt-2 text-[9px] font-bold uppercase tracking-[0.18em] text-white/30">
+                    Practice · unrated · nothing recorded
+                  </p>
+                ) : (
+                  <RatingNote state={settleState} rating={rating} />
+                )}
                 <p className="mt-1 text-[9px] text-white/25">
                   A rematch mints a new seed — this result is never reused.
                 </p>

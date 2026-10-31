@@ -39,6 +39,7 @@ import {
   DISCONNECT_GRACE_MS,
   DT,
   INPUT_LEAD_TICKS,
+  RUNNER_WIDTH,
   MATCH_MAX_MS,
   MAX_INPUTS_PER_SECOND,
   QUEUE_TTL_MS,
@@ -51,13 +52,31 @@ import {
   type Seat,
 } from "./constants";
 import {
+  createRng,
+  createRunner,
   createSimulation,
   sampleInput,
+  speedAt,
+  stepRunner,
   stepSimulation,
+  type Course,
   type InputTransition,
   type Obstacle,
+  type RunnerInput,
+  type RunnerState,
   type SimulationState,
 } from "./engine";
+
+/**
+ * The practice opponent's seat id.
+ *
+ * It is NOT a Clerk id, so it can never hold a durable record: a practice
+ * match produces no completion record (see `getCompletionRecord`), and the one
+ * seat in it that is never expected to poll is excluded from the abandonment
+ * policy below.
+ */
+export const BOT_SEAT_ID = "last-run:ai";
+export const BOT_NAME = "TRAINING AI";
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -80,6 +99,8 @@ type MatchPlayer = {
 export type LastRunMatch = {
   id: string;
   seed: number;
+  /** True when the second seat is the server-scripted AI (never recorded). */
+  practice: boolean;
   createdAt: number;
   /** The simulation's tick 0. Before this the match is in countdown. */
   startsAt: number;
@@ -108,6 +129,8 @@ export type SnapshotSeat = {
 export type MatchSnapshot = {
   matchId: string;
   seed: number;
+  /** Practice matches are unrated and never written to `last_run_matches`. */
+  practice: boolean;
   phase: MatchPhase;
   serverNow: number;
   startsAt: number;
@@ -266,15 +289,18 @@ function createMatch({
   player1,
   player2,
   now,
+  practice = false,
 }: {
   player1: QueueEntry;
   player2: { userId: string; name: string };
   now: number;
+  practice?: boolean;
 }): LastRunMatch {
   const seed = randomInt(0, 0x100000000);
   return {
     id: randomUUID(),
     seed,
+    practice,
     createdAt: now,
     startsAt: now + COUNTDOWN_MS,
     players: {
@@ -286,6 +312,128 @@ function createMatch({
     sim: createSimulation(seed, COURSE_DURATION_S),
     final: null,
   };
+}
+
+// ── Practice vs the AI ──────────────────────────────────────────────────
+//
+// The AI is a SCRIPTED runner, not a second engine: its input transitions are
+// generated once, up front, from the same course the player gets, and then
+// replayed through the same `sampleInput` -> `stepRunner` path as any seat. It
+// never sees the player's position, never gets a different obstacle list, and
+// every collision is decided by the normal engine. Nothing about it is peer to
+// the player's authority: the match is still advanced by the server alone.
+
+/** Takeoff lead before a crate/spike's leading edge, seconds. */
+const BOT_JUMP_LEAD_S = 0.17;
+/** Duck lead before a beam's leading edge, seconds. */
+const BOT_DUCK_LEAD_S = 0.26;
+/**
+ * How often the AI runs the whole course clean, per match seed.
+ *
+ * A scripted runner that never misses would make every practice run a draw at
+ * best, which is a bad training partner. The AI therefore fumbles exactly one
+ * obstacle on most courses — picked from the seed, so the same practice match
+ * is always the same run — and the player wins by outlasting that point.
+ */
+const BOT_CLEAN_RUN_CHANCE = 0.25;
+/** The AI never fumbles the opening: the first obstacles teach the read. */
+const BOT_FUMBLE_AFTER_ID = 3;
+
+function nextObstacle(obstacles: readonly Obstacle[], distance: number): Obstacle | null {
+  for (const obstacle of obstacles) {
+    if (obstacle.x + obstacle.width > distance) return obstacle;
+  }
+  return null;
+}
+
+function botInput(
+  runner: RunnerState,
+  obstacle: Obstacle | null,
+  tick: number,
+): RunnerInput {
+  if (!obstacle) return { jump: false, duck: false };
+  const front = runner.distance + RUNNER_WIDTH;
+  const speed = speedAt(tick * DT);
+  const eta = (obstacle.x - front) / speed;
+  if (obstacle.kind === "beam") {
+    const under = obstacle.x < front && obstacle.x + obstacle.width > runner.distance;
+    return { jump: false, duck: eta < BOT_DUCK_LEAD_S && (eta > 0 || under) };
+  }
+  return { jump: eta > 0 && eta <= BOT_JUMP_LEAD_S, duck: false };
+}
+
+/**
+ * The AI's whole run, as recorded transitions.
+ *
+ * Simulated here with `stepRunner` — the very function the match replays — so
+ * the scripted seat behaves EXACTLY as it will inside the live match. A crash
+ * is left in the script; the engine, not this helper, decides the result.
+ */
+function scriptBotRun(course: Course, seed: number): InputTransition[] {
+  const transitions: InputTransition[] = [{ tick: 0, jump: false, duck: false }];
+  const rand = createRng(seed ^ 0x9e3779b9);
+  const candidates = course.obstacles.filter((obstacle) => obstacle.id >= BOT_FUMBLE_AFTER_ID);
+  const fumbleId =
+    candidates.length > 0 && rand() > BOT_CLEAN_RUN_CHANCE
+      ? candidates[Math.min(candidates.length - 1, Math.floor(rand() * candidates.length))].id
+      : -1;
+  let runner = createRunner();
+  let held: RunnerInput = { jump: false, duck: false };
+  const maxTicks = Math.ceil(course.duration / DT);
+
+  for (let tick = 0; tick < maxTicks; tick += 1) {
+    const next = nextObstacle(course.obstacles, runner.distance);
+    // The one deliberate miss: no input at all for that obstacle, so the crash
+    // is the ordinary engine collision, never a scripted "bot loses" event.
+    const desired =
+      next && next.id === fumbleId ? { jump: false, duck: false } : botInput(runner, next, tick);
+    if (desired.jump !== held.jump || desired.duck !== held.duck) {
+      held = desired;
+      transitions.push({ tick, jump: held.jump, duck: held.duck });
+    }
+    runner = stepRunner(runner, held, tick, DT, course.obstacles);
+    if (!runner.alive) break;
+  }
+
+  return transitions;
+}
+
+/**
+ * Start (or resume) a free practice match against the scripted AI.
+ *
+ * One live practice per player: a second click re-uses the match already
+ * running instead of minting another (which would leak a registry entry for
+ * every double-click). The AI's name is display-only and its seat id is not a
+ * Clerk id, so `getCompletionRecord` never yields a record for this match and
+ * no rating, trophy, history row or `last_run_matches` row is written.
+ */
+export function createPracticeMatch({
+  userId,
+  name,
+  now = Date.now(),
+}: {
+  userId: string;
+  name: unknown;
+  now?: number;
+}): { matchId: string } {
+  prune(now);
+  const state = registry();
+
+  for (const match of state.matches.values()) {
+    if (match.practice && !match.final && match.players.player1.userId === userId) {
+      return { matchId: match.id };
+    }
+  }
+
+  const match = createMatch({
+    player1: { userId, name: sanitizeName(name), at: now },
+    player2: { userId: BOT_SEAT_ID, name: BOT_NAME },
+    now,
+    practice: true,
+  });
+  match.inputs.player2 = scriptBotRun(match.sim.course, match.seed);
+  state.matches.set(match.id, match);
+  return { matchId: match.id };
 }
 
 // ── Finalisation ─────────────────────────────────────────────────────────
@@ -333,8 +481,12 @@ function advance(match: LastRunMatch, now: number): void {
   // few seconds after the countdown begins — a win for whoever polled first,
   // without either runner moving. Grace therefore counts from whichever is
   // later: the last authorised call, or tick 0.
+  // The scripted AI seat never polls and is never expected to: measuring its
+  // silence would forfeit every practice match ten seconds in.
   const silent = SEATS.filter(
-    (seat) => now - Math.max(match.players[seat].lastSeen, match.startsAt) > DISCONNECT_GRACE_MS,
+    (seat) =>
+      match.players[seat].userId !== BOT_SEAT_ID &&
+      now - Math.max(match.players[seat].lastSeen, match.startsAt) > DISCONNECT_GRACE_MS,
   );
   if (silent.length === SEATS.length) {
     finalize(match, "draw", "abandon", match.sim.tick, now);
@@ -482,8 +634,11 @@ function seatSnapshot(match: LastRunMatch, seat: Seat, now: number): SnapshotSea
     crashedAtTick,
     survivalMs: Math.round((crashedAtTick ?? match.sim.tick) * TICK_MS),
     // Same anchor as the forfeit rule: nobody is "disconnected" for failing to
-    // poll during the countdown they never had to poll through.
-    connected: now - Math.max(player.lastSeen, match.startsAt) <= DISCONNECT_GRACE_MS,
+    // poll during the countdown they never had to poll through. The AI seat is
+    // always connected — it has no poll to miss.
+    connected:
+      player.userId === BOT_SEAT_ID ||
+      now - Math.max(player.lastSeen, match.startsAt) <= DISCONNECT_GRACE_MS,
   };
 }
 
@@ -521,6 +676,7 @@ export function getSnapshot({
   return {
     matchId: match.id,
     seed: match.seed,
+    practice: match.practice,
     phase,
     serverNow: now,
     startsAt: match.startsAt,
@@ -573,6 +729,8 @@ export function getCompletionRecord(matchId: string, userId: string): {
 } | null {
   const match = registry().matches.get(matchId);
   if (!match || !match.final) return null;
+  // Practice is never recorded: no match record, no Elo, no trophy.
+  if (match.practice) return null;
   const seat = seatOf(match, userId);
   if (!seat) return null;
 

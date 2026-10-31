@@ -68,6 +68,8 @@ export default function PageClient({ autoQueue = false }: { autoQueue?: boolean 
   const [waitingCount, setWaitingCount] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [matchedId, setMatchedId] = useState<string | null>(null);
+  const [practiceBusy, setPracticeBusy] = useState(false);
+  const [practiceError, setPracticeError] = useState<string | null>(null);
   const autoQueued = useRef(false);
 
   const displayName = user?.username || user?.fullName || "Runner";
@@ -162,6 +164,37 @@ export default function PageClient({ autoQueue = false }: { autoQueue?: boolean 
     }
   }, [displayName, isSignedIn]);
 
+  // ── Practice vs the AI ────────────────────────────────────────────────
+  // Same server authority as the ranked queue: the route mints the match, the
+  // seed and the AI's own scripted run. Nothing is recorded, so this is safe
+  // to start as often as the player likes.
+  const startPractice = useCallback(async () => {
+    setPracticeBusy(true);
+    setPracticeError(null);
+    try {
+      const res = await fetch("/api/last-run/practice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name: displayName }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.status === 401) {
+        setPracticeError("Sign in to race the AI.");
+        return;
+      }
+      if (!res.ok || !data?.success || typeof data.matchId !== "string") {
+        setPracticeError(data?.error || "Could not start the practice run.");
+        return;
+      }
+      router.push(`/games/last-run/${data.matchId}`);
+    } catch {
+      setPracticeError("Network unavailable. Check your connection and retry.");
+    } finally {
+      setPracticeBusy(false);
+    }
+  }, [displayName, router]);
+
   const cancel = useCallback(async () => {
     setStatus("idle");
     setWaitingSince(null);
@@ -216,14 +249,27 @@ export default function PageClient({ autoQueue = false }: { autoQueue?: boolean 
                   Sign in to run
                 </Link>
               ) : (
-                <button
-                  type="button"
-                  onClick={join}
-                  disabled={status === "searching" || status === "found"}
-                  className="inline-flex h-12 items-center justify-center rounded-xl bg-cyan-400 px-6 text-sm font-black uppercase tracking-[0.14em] text-[#04121a] transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {status === "searching" ? "Searching…" : "Find a match"}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={join}
+                    disabled={status === "searching" || status === "found"}
+                    className="inline-flex h-12 items-center justify-center rounded-xl bg-cyan-400 px-6 text-sm font-black uppercase tracking-[0.14em] text-[#04121a] transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {status === "searching" ? "Searching…" : "Find a match"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={startPractice}
+                    disabled={practiceBusy || status === "searching"}
+                    className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-violet-400/40 bg-violet-400/10 px-5 text-sm font-black uppercase tracking-[0.14em] text-violet-200 transition hover:bg-violet-400/20 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Race the AI
+                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-white/60">
+                      {practiceBusy ? "Starting" : "Unrated"}
+                    </span>
+                  </button>
+                </>
               )}
               <Link
                 href="/games"
@@ -236,6 +282,12 @@ export default function PageClient({ autoQueue = false }: { autoQueue?: boolean 
                 Free · unranked while in beta
               </span>
             </div>
+
+            {practiceError && (
+              <p role="alert" className="mt-3 text-xs font-semibold text-red-300">
+                {practiceError}
+              </p>
+            )}
 
             <div className="mt-5 flex flex-wrap items-center gap-x-6 gap-y-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/35">
               {CONTROLS.map((control) => (

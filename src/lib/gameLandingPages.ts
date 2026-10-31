@@ -665,13 +665,13 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     ogImage: "/images/og/last-run.svg",
     shortDescription:
       "A 1v1 endless-runner duel: both players run the same server-seeded course, jumping crates and ducking beams while the track accelerates. The first runner to crash loses, and a ranked result moves this game's rating and trophies.",
-    aiPractice: false,
+    aiPractice: true,
     introduction: [
       "LAST RUN is a head-to-head endless runner. One seed is drawn per match and both seats run the identical course — same obstacle order, same spacing, same accelerating speed curve — so the only variable is how long each player keeps their runner alive.",
       "It is competitive because a run is decided entirely by execution: a jump tapped one frame late or a duck released early ends the match, and the server steps the shared simulation itself rather than trusting either browser.",
     ],
     howToPlay: [
-      "Open the lobby and press Find a match. The queue pairs two players for this game and sends both seats to the same seeded course.",
+      "Open the lobby and press Find a match. The queue pairs two players for this game and sends both seats to the same seeded course. For a free, unrated warm-up against the server-scripted AI, press Race the AI instead — same engine, same kind of course, no opponent to wait for.",
       "Jump crates and spikes with Space or the up arrow, and duck under beams with the down arrow. On a phone the same two actions are the touch buttons under the arena.",
       "The track accelerates from 260 to 640 pixels per second over the first half-minute, and the obstacle gap tightens with it, but never below a readable reaction window.",
       "Your run ends the first time your runner touches an obstacle. The last runner standing wins the match.",
@@ -713,7 +713,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
       },
       {
         q: "Can I play LAST RUN against a bot?",
-        a: "Not yet. LAST RUN matches are 1v1 against another player, so the queue needs a second seat before a run can start. The lobby says so rather than starting a one-sided game.",
+        a: "Yes. Press Race the AI in the lobby for a free practice match against the server-scripted bot. It runs the same seeded course through the same server engine and fumbles one obstacle on most runs, so it is beatable — and nothing about a practice run is rated, wagered or recorded.",
       },
     ],
     related: ["lane-runner", "precision", "speed-typing", "mini-golf"],

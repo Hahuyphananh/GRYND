@@ -80,9 +80,40 @@ POST /api/last-run/match/x/input  { jump, duck } ──► stamp tick ─► rep
 | `GET /api/last-run/match/:id` | — | authoritative snapshot; `403` for non-members |
 | `POST /api/last-run/match/:id/input` | `{ jump: boolean, duck: boolean }` | accepted tick, `400` malformed, `403` non-member, `409` wrong phase, `429` rate limit |
 | `POST /api/last-run/match/:id/forfeit` | — | the single final result (idempotent) |
+| `POST /api/last-run/practice` | `{ name? }` | free match vs the scripted AI → `{ matchId }` (idempotent while it is live) |
 
 Every endpoint requires a Clerk session; the user id comes from the session,
 never the body.
+
+### Practice vs the AI (unrated)
+
+`POST /api/last-run/practice` creates a match whose second seat is the
+server-scripted AI (`last-run:ai`). It is a normal match in every other
+respect: one server seed, one shared course, one start instant, and the same
+`{ jump, duck }` input contract for the human seat.
+
+- **The AI is a scripted runner, not a second engine.** Its transitions are
+generated once at creation by stepping the real `stepRunner` over the same
+course, then replayed through `sampleInput` exactly like a human seat. It never
+sees the player's position, never receives a different obstacle list, and every
+collision it suffers is the ordinary engine collision.
+- **It genuinely plays.** A clean run crosses the whole 75-second course with
+roughly 950 input transitions and both kinds of input (jumps and ducks).
+`tests/last-run-practice.test.mjs` asserts this by replaying the stored log the
+way the server does.
+- **It is beatable.** On about three seeds in four the AI deliberately misses
+one obstacle, chosen from the seed — so a given practice match always replays
+the same run — and the player wins by outlasting that point. On the rest it
+runs clean, and a player who also survives to the final marker draws.
+- **Nothing is recorded.** `getCompletionRecord` returns `null` for a practice
+match, so there is no `last_run_matches` row, no Elo change, no trophy, no quest
+progress and no history entry. The match screen labels the run
+`practice · unrated`.
+- **One live practice per player.** A second click resumes the match already
+running instead of minting another registry entry.
+- **The AI seat is exempt from the forfeit policy.** It never polls by design,
+so the disconnect grace window skips it and it always reports
+`connected: true`; the human seat keeps the ordinary ten-second rule.
 
 ---
 
@@ -119,6 +150,10 @@ never the body.
    player's snapshot resolves as `reason: "abandon"`.
 7. Restart test: `POST /api/last-run/match/:id/forfeit` twice with curl and
    confirm the JSON result is identical both times.
+8. Practice: press **Race the AI** in the lobby. The AI runs the same seeded
+   course and fumbles one obstacle on most seeds — outlasting it wins. The
+   result screen says `practice · unrated`, and nothing is written to the
+database.
 
 No database rows, no fixtures and no test accounts are needed: the registry is
 created on first use and lives in the Next.js process.
@@ -150,6 +185,10 @@ created on first use and lives in the Next.js process.
   classified like every other game. A future game that ships before its landing
   page needs the same entry, or the middleware's unknown-slug guard rewrites it
   to the not-found sentinel and the shipped game answers with a 500.
+- **Practice vs the AI is unrated and unrecorded by construction.** The match
+  lives only in the in-process registry: it inherits the restart limitation
+  above (a restart ends an in-flight run like any other match) and it can never
+  produce a match row, a rating change or a history entry.
 
 ---
 
@@ -171,6 +210,9 @@ node --import tsx --test tests/last-run-progression.test.mjs
 
 # Settlement: completion → plan, draw handling, migration/schema/RLS invariants
 node --import tsx --test tests/last-run-settlement.test.mjs
+
+# Practice: the AI actually plays, and practice is never recorded
+node --import tsx --test tests/last-run-practice.test.mjs
 ```
 
 ---
