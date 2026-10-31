@@ -67,6 +67,7 @@
  * of this repo.
  */
 
+import fs from "node:fs";
 import path from "node:path";
 
 /** The only working entry point of the `stockfish` package (see header). */
@@ -235,24 +236,75 @@ const quietConsole: ConsoleLike = {
   },
 };
 
+/** The two files the single-threaded build loads, by name. */
+const STOCKFISH_JS_FILE = "stockfish-nnue-16-single.js";
+
 /**
- * The Emscripten loader resolves the .wasm next to its own JS file, so the
- * directory must be resolved at runtime. `require.resolve` is correct under
- * Node/tsx; the cwd fallback covers a bundler that rewrites require.resolve.
+ * Every directory the engine's two assets could legitimately live in, preferred
+ * first.
+ *
+ * WHY THIS EXISTS AT ALL: the .wasm is read by the Emscripten loader through a
+ * DYNAMIC path, so where it lives is a deployment fact, not a build fact. A
+ * release is built on a runner and started on another host (see deploy/README),
+ * and an engine that cannot find its wasm fails in ~0 ms — reported to the player
+ * as a bare 503 on every AI move. The app's OWN `node_modules` (the directory
+ * `next start` is launched from) is therefore asked first, and the build's
+ * externalised copy (`.next/node_modules/stockfish-<hash>`) second; the
+ * bundler's own resolution stays last so a local `next start` behaves as it
+ * always did.
+ *
+ * The MODULE itself is still loaded through the bundler: Turbopack rewrites the
+ * module id to the hashed external copy and loads it through its own runtime, so
+ * loading it by path instead (createRequire) is not equivalent and throws. Only
+ * the ASSET path is resolved here.
  */
-function resolveWasmPath(): string {
+function stockfishAssetDirs(): string[] {
+  const dirs: string[] = [path.join(process.cwd(), "node_modules", "stockfish", "src")];
+
+  const externals = path.join(process.cwd(), ".next", "node_modules");
   try {
-    const jsPath = require.resolve(STOCKFISH_MODULE_ID);
-    return path.join(path.dirname(jsPath), STOCKFISH_WASM_FILE);
+    for (const entry of fs.readdirSync(externals)) {
+      if (entry === "stockfish" || entry.startsWith("stockfish-")) {
+        dirs.push(path.join(externals, entry, "src"));
+      }
+    }
   } catch {
-    return path.join(
-      process.cwd(),
-      "node_modules",
-      "stockfish",
-      "src",
-      STOCKFISH_WASM_FILE,
+    /* no build directory beside us — the other candidates stand */
+  }
+
+  try {
+    dirs.push(path.dirname(require.resolve(STOCKFISH_MODULE_ID)));
+  } catch {
+    /* unresolvable through the bundler; the cwd candidate is the one that matters */
+  }
+
+  return [...new Set(dirs)];
+}
+
+/** A location is usable only when BOTH assets are there. */
+function hasEngineAssets(dir: string): boolean {
+  return (
+    fs.existsSync(path.join(dir, STOCKFISH_JS_FILE)) &&
+    fs.existsSync(path.join(dir, STOCKFISH_WASM_FILE))
+  );
+}
+
+/**
+ * The directory the engine's assets are read from.
+ *
+ * Fails with the list of places that were tried: "the engine is not there" and
+ * "the engine is there but broken" need different fixes, and from the outside
+ * (a bare 503) they used to look identical.
+ */
+function resolveStockfishDir(): string {
+  const dirs = stockfishAssetDirs();
+  const found = dirs.find(hasEngineAssets);
+  if (!found) {
+    throw new ChessEngineError(
+      `the stockfish engine assets are missing; looked in ${dirs.join(", ")}`,
     );
   }
+  return found;
 }
 
 function loadStockfishFactory(): StockfishFactory {
@@ -353,8 +405,9 @@ function clampInt(value: number | undefined, min: number, max: number, fallback:
  * itself — all coordination happens through listeners).
  */
 async function bootEngine(): Promise<StockfishEngine> {
+  const dir = resolveStockfishDir();
   const factory = loadStockfishFactory();
-  const createModule = factory(quietConsole, resolveWasmPath());
+  const createModule = factory(quietConsole, path.join(dir, STOCKFISH_WASM_FILE));
 
   let engine: StockfishEngine;
   try {

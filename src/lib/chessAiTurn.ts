@@ -732,6 +732,14 @@ export async function advanceAiTurn(
     });
   } catch (err) {
     if (err instanceof ChessGameplayEngineError) {
+      // A bare 503 is undiagnosable from outside: name the cause in the
+      // server log before answering.
+      console.warn("[chess-ai] the engine could not produce a move", {
+        gameId: request.gameId,
+        message: err.message,
+        cause:
+          err.cause instanceof Error ? err.cause.message : String(err.cause ?? ""),
+      });
       // Nothing was written and the row is untouched, so the client can retry
       // the same turn. This is the ONLY failure that is retryable in place.
       return {
