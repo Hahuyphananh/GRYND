@@ -27,6 +27,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
+import {
+  DEFAULT_PRACTICE_LEVEL,
+  PRACTICE_LEVELS,
+  PRACTICE_LEVELS_CONFIG,
+  type PracticeLevel,
+} from "../../../lib/last-run/practice";
 
 type Status = "idle" | "searching" | "found" | "expired" | "error";
 
@@ -70,6 +76,7 @@ export default function PageClient({ autoQueue = false }: { autoQueue?: boolean 
   const [matchedId, setMatchedId] = useState<string | null>(null);
   const [practiceBusy, setPracticeBusy] = useState(false);
   const [practiceError, setPracticeError] = useState<string | null>(null);
+  const [practiceLevel, setPracticeLevel] = useState<PracticeLevel>(DEFAULT_PRACTICE_LEVEL);
   const autoQueued = useRef(false);
 
   const displayName = user?.username || user?.fullName || "Runner";
@@ -176,7 +183,7 @@ export default function PageClient({ autoQueue = false }: { autoQueue?: boolean 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ name: displayName }),
+        body: JSON.stringify({ name: displayName, level: practiceLevel }),
       });
       const data = await res.json().catch(() => null);
       if (res.status === 401) {
@@ -193,7 +200,7 @@ export default function PageClient({ autoQueue = false }: { autoQueue?: boolean 
     } finally {
       setPracticeBusy(false);
     }
-  }, [displayName, router]);
+  }, [displayName, practiceLevel, router]);
 
   const cancel = useCallback(async () => {
     setStatus("idle");
@@ -287,6 +294,39 @@ export default function PageClient({ autoQueue = false }: { autoQueue?: boolean 
               <p role="alert" className="mt-3 text-xs font-semibold text-red-300">
                 {practiceError}
               </p>
+            )}
+
+            {/* Practice AI level — only meaningful to a signed-in player, and
+                only read by the server when a practice match is created. */}
+            {isLoaded && isSignedIn && (
+              <div className="mt-5">
+                <p className="text-[11px] font-black uppercase tracking-[0.28em] text-white/35">
+                  Practice AI
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  {PRACTICE_LEVELS.map((level) => {
+                    const selected = practiceLevel === level;
+                    return (
+                      <button
+                        key={level}
+                        type="button"
+                        onClick={() => setPracticeLevel(level)}
+                        aria-pressed={selected}
+                        className={`rounded-lg border px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.14em] transition ${
+                          selected
+                            ? "border-violet-400/60 bg-violet-400/15 text-violet-100"
+                            : "border-white/10 bg-white/[0.03] text-white/50 hover:border-white/25 hover:text-white"
+                        }`}
+                      >
+                        {PRACTICE_LEVELS_CONFIG[level].label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-2 max-w-md text-[11px] leading-relaxed text-white/40">
+                  {PRACTICE_LEVELS_CONFIG[practiceLevel].blurb}
+                </p>
+              </div>
             )}
 
             <div className="mt-5 flex flex-wrap items-center gap-x-6 gap-y-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/35">

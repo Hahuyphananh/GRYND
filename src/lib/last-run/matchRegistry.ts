@@ -66,6 +66,12 @@ import {
   type RunnerState,
   type SimulationState,
 } from "./engine";
+import {
+  DEFAULT_PRACTICE_LEVEL,
+  PRACTICE_LEVELS_CONFIG,
+  sanitizePracticeLevel,
+  type PracticeLevel,
+} from "./practice";
 
 /**
  * The practice opponent's seat id.
@@ -101,6 +107,8 @@ export type LastRunMatch = {
   seed: number;
   /** True when the second seat is the server-scripted AI (never recorded). */
   practice: boolean;
+  /** The level the AI was built at; `normal` for every ranked match. */
+  practiceLevel: PracticeLevel;
   createdAt: number;
   /** The simulation's tick 0. Before this the match is in countdown. */
   startsAt: number;
@@ -131,6 +139,8 @@ export type MatchSnapshot = {
   seed: number;
   /** Practice matches are unrated and never written to `last_run_matches`. */
   practice: boolean;
+  /** The AI's difficulty, so the result screen and a rematch can name it. */
+  practiceLevel: PracticeLevel;
   phase: MatchPhase;
   serverNow: number;
   startsAt: number;
@@ -290,17 +300,20 @@ function createMatch({
   player2,
   now,
   practice = false,
+  practiceLevel = DEFAULT_PRACTICE_LEVEL,
 }: {
   player1: QueueEntry;
   player2: { userId: string; name: string };
   now: number;
   practice?: boolean;
+  practiceLevel?: PracticeLevel;
 }): LastRunMatch {
   const seed = randomInt(0, 0x100000000);
   return {
     id: randomUUID(),
     seed,
     practice,
+    practiceLevel,
     createdAt: now,
     startsAt: now + COUNTDOWN_MS,
     players: {
@@ -328,16 +341,11 @@ const BOT_JUMP_LEAD_S = 0.17;
 /** Duck lead before a beam's leading edge, seconds. */
 const BOT_DUCK_LEAD_S = 0.26;
 /**
- * How often the AI runs the whole course clean, per match seed.
- *
- * A scripted runner that never misses would make every practice run a draw at
- * best, which is a bad training partner. The AI therefore fumbles exactly one
- * obstacle on most courses — picked from the seed, so the same practice match
- * is always the same run — and the player wins by outlasting that point.
+ * How often the AI runs the whole course clean is a LEVEL decision — see
+ * src/lib/last-run/practice.ts. A scripted runner that never missed would make
+ * every practice run a draw at best, which is a bad training partner, so even
+ * the hard bot misses occasionally and the player wins by outlasting it.
  */
-const BOT_CLEAN_RUN_CHANCE = 0.25;
-/** The AI never fumbles the opening: the first obstacles teach the read. */
-const BOT_FUMBLE_AFTER_ID = 3;
 
 function nextObstacle(obstacles: readonly Obstacle[], distance: number): Obstacle | null {
   for (const obstacle of obstacles) {
@@ -369,12 +377,17 @@ function botInput(
  * the scripted seat behaves EXACTLY as it will inside the live match. A crash
  * is left in the script; the engine, not this helper, decides the result.
  */
-function scriptBotRun(course: Course, seed: number): InputTransition[] {
+function scriptBotRun(course: Course, seed: number, level: PracticeLevel): InputTransition[] {
   const transitions: InputTransition[] = [{ tick: 0, jump: false, duck: false }];
+  const config = PRACTICE_LEVELS_CONFIG[level];
   const rand = createRng(seed ^ 0x9e3779b9);
-  const candidates = course.obstacles.filter((obstacle) => obstacle.id >= BOT_FUMBLE_AFTER_ID);
+  const lastId = course.obstacles[course.obstacles.length - 1]?.id ?? 0;
+  const windowEnd = Math.floor(lastId * config.fumbleWindow);
+  const candidates = course.obstacles.filter(
+    (obstacle) => obstacle.id >= config.fumbleFromId && obstacle.id <= windowEnd,
+  );
   const fumbleId =
-    candidates.length > 0 && rand() > BOT_CLEAN_RUN_CHANCE
+    candidates.length > 0 && rand() > config.cleanRunChance
       ? candidates[Math.min(candidates.length - 1, Math.floor(rand() * candidates.length))].id
       : -1;
   let runner = createRunner();
@@ -410,18 +423,30 @@ function scriptBotRun(course: Course, seed: number): InputTransition[] {
 export function createPracticeMatch({
   userId,
   name,
+  level,
   now = Date.now(),
 }: {
   userId: string;
   name: unknown;
+  /** Untrusted: sanitised here, so an unknown value is `normal`, not an error. */
+  level?: unknown;
   now?: number;
-}): { matchId: string } {
+}): { matchId: string; level: PracticeLevel } {
   prune(now);
   const state = registry();
+  const practiceLevel = sanitizePracticeLevel(level);
 
+  // One live practice per player PER LEVEL: asking for the same bot again
+  // resumes the run in progress, asking for a different one starts that bot
+  // instead of silently handing back the old difficulty.
   for (const match of state.matches.values()) {
-    if (match.practice && !match.final && match.players.player1.userId === userId) {
-      return { matchId: match.id };
+    if (
+      match.practice &&
+      !match.final &&
+      match.practiceLevel === practiceLevel &&
+      match.players.player1.userId === userId
+    ) {
+      return { matchId: match.id, level: match.practiceLevel };
     }
   }
 
@@ -430,10 +455,11 @@ export function createPracticeMatch({
     player2: { userId: BOT_SEAT_ID, name: BOT_NAME },
     now,
     practice: true,
+    practiceLevel,
   });
-  match.inputs.player2 = scriptBotRun(match.sim.course, match.seed);
+  match.inputs.player2 = scriptBotRun(match.sim.course, match.seed, practiceLevel);
   state.matches.set(match.id, match);
-  return { matchId: match.id };
+  return { matchId: match.id, level: practiceLevel };
 }
 
 // ── Finalisation ─────────────────────────────────────────────────────────
@@ -677,6 +703,7 @@ export function getSnapshot({
     matchId: match.id,
     seed: match.seed,
     practice: match.practice,
+    practiceLevel: match.practiceLevel,
     phase,
     serverNow: now,
     startsAt: match.startsAt,

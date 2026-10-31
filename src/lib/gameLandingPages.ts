@@ -671,7 +671,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
       "It is competitive because a run is decided entirely by execution: a jump tapped one frame late or a duck released early ends the match, and the server steps the shared simulation itself rather than trusting either browser.",
     ],
     howToPlay: [
-      "Open the lobby and press Find a match. The queue pairs two players for this game and sends both seats to the same seeded course. For a free, unrated warm-up against the server-scripted AI, press Race the AI instead — same engine, same kind of course, no opponent to wait for.",
+      "Open the lobby and press Find a match. The queue pairs two players for this game and sends both seats to the same seeded course. For a free, unrated warm-up against the server-scripted AI, press Race the AI instead and pick Easy, Normal or Hard — same engine, same kind of course, no opponent to wait for.",
       "Jump crates and spikes with Space or the up arrow, and duck under beams with the down arrow. On a phone the same two actions are the touch buttons under the arena.",
       "The track accelerates from 260 to 640 pixels per second over the first half-minute, and the obstacle gap tightens with it, but never below a readable reaction window.",
       "Your run ends the first time your runner touches an obstacle. The last runner standing wins the match.",
@@ -713,7 +713,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
       },
       {
         q: "Can I play LAST RUN against a bot?",
-        a: "Yes. Press Race the AI in the lobby for a free practice match against the server-scripted bot. It runs the same seeded course through the same server engine and fumbles one obstacle on most runs, so it is beatable — and nothing about a practice run is rated, wagered or recorded.",
+        a: "Yes. Press Race the AI in the lobby and pick Easy, Normal or Hard. The bot runs the same seeded course through the same server engine and fumbles one obstacle on most runs — rarer the harder you set it — so it is always beatable, and nothing about a practice run is rated, wagered or recorded.",
       },
     ],
     related: ["lane-runner", "precision", "speed-typing", "mini-golf"],

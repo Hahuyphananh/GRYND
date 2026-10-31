@@ -31,6 +31,11 @@ import Footer from "../../../../components/Footer";
 import RunnerArena, { SeatBadge } from "../../../../components/last-run/RunnerArena";
 import { useRunInput } from "../../../../components/last-run/useRunInput";
 import { useRunAudio } from "../../../../components/last-run/useRunAudio";
+import {
+  DEFAULT_PRACTICE_LEVEL,
+  practiceLevelLabel,
+  sanitizePracticeLevel,
+} from "../../../../lib/last-run/practice";
 import type { MatchSnapshot } from "../../../../lib/last-run/matchRegistry";
 
 type Feed = "connecting" | "live" | "reconnecting" | "lost";
@@ -322,15 +327,23 @@ export default function PageClient({ matchId }: { matchId: string }) {
     }
   }, [matchId]);
 
-  // Practice rematch: the same route mints a fresh seed and a fresh AI run.
+  // The AI's difficulty belongs to the match, not to local UI state: it can
+  // only be chosen when the practice is created, so the HUD, the result badge
+  // and a rematch all read it back from the server snapshot.
+  const practiceLevel = sanitizePracticeLevel(snapshot?.practiceLevel ?? DEFAULT_PRACTICE_LEVEL);
+
+  // Practice rematch: the same route mints a fresh seed and a fresh AI run at
+  // the difficulty this match was played at.
   const rematch = useCallback(async () => {
     setRematching(true);
     try {
-      const res = await fetch("/api/last-run/practice", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      });
+      // The difficulty travels as a query parameter, never as request content:
+      // this client posts game INPUT and nothing else, and that invariant is
+      // asserted by the tests. A match setting is not game state.
+      const res = await fetch(
+        `/api/last-run/practice?level=${encodeURIComponent(practiceLevel)}`,
+        { method: "POST", credentials: "include" },
+      );
       const data = await res.json().catch(() => null);
       if (res.ok && data?.success && typeof data.matchId === "string") {
         router.replace(`/games/last-run/${data.matchId}`);
@@ -340,7 +353,7 @@ export default function PageClient({ matchId }: { matchId: string }) {
       // Fall back to the lobby, which offers the same action.
     }
     setRematching(false);
-  }, [router]);
+  }, [practiceLevel, router]);
 
   const outcome = useMemo(() => {
     if (!snapshot?.final) return null;
@@ -461,7 +474,7 @@ export default function PageClient({ matchId }: { matchId: string }) {
               LAST<span className="text-cyan-300">RUN</span>
             </Link>
             <span className="hidden text-[10px] font-bold uppercase tracking-[0.24em] text-white/30 sm:inline">
-              {practice ? "practice · unrated" : "duel · seeded course"}
+              {practice ? `practice · ${practiceLevelLabel(practiceLevel)} AI` : "duel · seeded course"}
             </span>
           </div>
 
@@ -667,9 +680,20 @@ export default function PageClient({ matchId }: { matchId: string }) {
                   </Link>
                 </div>
                 {practice ? (
-                  <p className="mt-2 text-[9px] font-bold uppercase tracking-[0.18em] text-white/30">
-                    Practice · unrated · nothing recorded
-                  </p>
+                  <div className="mt-3 rounded-xl border border-violet-400/30 bg-violet-400/[0.07] p-2.5 text-left">
+                    <p className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-[0.18em] text-violet-200/90">
+                      <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-violet-300" />
+                      Practice · {practiceLevelLabel(practiceLevel)} AI · unrated
+                    </p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-white/60">
+                      {snapshot.opponent.alive
+                        ? "The AI reached the finish line — this one was decided on distance."
+                        : `AI crash point: ${formatSeconds(snapshot.opponent.survivalMs)} · ${formatDistance(snapshot.opponent.distance)}`}
+                    </p>
+                    <p className="mt-1 text-[9px] uppercase tracking-[0.18em] text-white/25">
+                      Nothing about a practice run is rated or recorded
+                    </p>
+                  </div>
                 ) : (
                   <RatingNote state={settleState} rating={rating} />
                 )}

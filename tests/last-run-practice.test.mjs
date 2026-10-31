@@ -28,6 +28,12 @@ import {
 } from "../src/lib/last-run/matchRegistry.ts";
 import { createRunner, sampleInput, speedAt, stepRunner } from "../src/lib/last-run/engine.ts";
 import { DT, INPUT_LEAD_TICKS, RUNNER_WIDTH, TICK_MS } from "../src/lib/last-run/constants.ts";
+import {
+  DEFAULT_PRACTICE_LEVEL,
+  PRACTICE_LEVELS,
+  PRACTICE_LEVELS_CONFIG,
+  sanitizePracticeLevel,
+} from "../src/lib/last-run/practice.ts";
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const SEEDS = 12;
@@ -61,9 +67,9 @@ function replaySeat(match, seat) {
   };
 }
 
-function withPractice(name = "Runner") {
+function withPractice(name = "Runner", level = DEFAULT_PRACTICE_LEVEL) {
   const userId = `practice-${Math.random().toString(36).slice(2)}`;
-  const { matchId } = createPracticeMatch({ userId, name });
+  const { matchId } = createPracticeMatch({ userId, name, level });
   const match = peekMatch(matchId);
   assert.ok(match, "the practice match must exist in the registry");
   return { userId, matchId, match };
@@ -78,7 +84,10 @@ test("a practice match seats the scripted AI as the second seat", () => {
   assert.equal(match.practice, true, "the match is flagged as practice");
   assert.equal(match.players.player2.userId, BOT_SEAT_ID, "the AI holds the second seat");
   assert.notEqual(match.seed, undefined, "the user's seed still comes from the server");
-  assert.ok(match.inputs.player2.length > 10, "the AI arrives with a scripted run, not an empty log");
+  // Transition COUNT depends on where this seed fumbles, so the schedule is
+  // pinned by what it does, not by how many entries it happens to log.
+  assert.ok(match.inputs.player2.length >= 4, "the AI arrives with a scripted run, not an empty log");
+  assert.ok(replaySeat(match, "player2").distance > 500, "the scripted run actually moves");
   assert.equal(match.inputs.player1.length, 0, "the human seat starts neutral");
 });
 
@@ -223,6 +232,77 @@ test("the practice route exists and only serves signed-in POSTs", () => {
   assert.match(source, /export async function POST/);
   assert.match(source, /Unauthorized/);
   assert.match(source, /createPracticeMatch/);
+});
+
+test("difficulty: the server sanitises the level and defaults to normal", () => {
+  assert.equal(sanitizePracticeLevel(undefined), "normal");
+  assert.equal(sanitizePracticeLevel(null), "normal");
+  assert.equal(sanitizePracticeLevel(" HARDCORE "), "normal", "an unknown level is not an error");
+  assert.equal(sanitizePracticeLevel({ level: "easy" }), "normal");
+  assert.equal(sanitizePracticeLevel("HARD"), "hard", "case is not part of the contract");
+  assert.deepEqual([...PRACTICE_LEVELS], ["easy", "normal", "hard"]);
+});
+
+test("difficulty: each level is a measurably different opponent", () => {
+  __resetLastRunRegistryForTests();
+  const averageSurvival = (level) => {
+    const runs = [];
+    for (let index = 0; index < 16; index += 1) {
+      const { match } = withPractice(`Level ${level} ${index}`, level);
+      runs.push(replaySeat(match, "player2").survivalS);
+    }
+    return runs.reduce((total, value) => total + value, 0) / runs.length;
+  };
+
+  const easy = averageSurvival("easy");
+  const normal = averageSurvival("normal");
+  const hard = averageSurvival("hard");
+
+  assert.ok(
+    easy < normal,
+    `easy (avg ${easy.toFixed(1)}s) must be weaker than normal (avg ${normal.toFixed(1)}s)`,
+  );
+  assert.ok(
+    normal < hard,
+    `normal (avg ${normal.toFixed(1)}s) must be weaker than hard (avg ${hard.toFixed(1)}s)`,
+  );
+  assert.ok(
+    PRACTICE_LEVELS_CONFIG.easy.cleanRunChance < PRACTICE_LEVELS_CONFIG.normal.cleanRunChance &&
+      PRACTICE_LEVELS_CONFIG.normal.cleanRunChance < PRACTICE_LEVELS_CONFIG.hard.cleanRunChance,
+    "the level table is ordered from weakest to strongest",
+  );
+  // A difficulty may only change how often the AI misses, never the course:
+  // the finish line is the same distance whatever level is chosen (obstacle
+  // COUNTS differ between seeds by construction, so compare the course length).
+  const { match: easyMatch } = withPractice("Fairness", "easy");
+  const { match: hardMatch } = withPractice("Fairness", "hard");
+  assert.equal(easyMatch.sim.course.duration, hardMatch.sim.course.duration);
+  assert.equal(
+    Math.round(easyMatch.sim.course.length),
+    Math.round(hardMatch.sim.course.length),
+    "the finish line is the same distance at every level",
+  );
+  for (const level of PRACTICE_LEVELS) {
+    const { match } = withPractice(`Same course ${level}`, level);
+    const sameSeed = withPractice(`Same course ${level}`, level).match;
+    assert.notEqual(match.seed, sameSeed.seed, "each practice still draws its own seed");
+  }
+});
+
+test("difficulty: the chosen level rides on the match and its snapshot", () => {
+  const { userId, match } = withPractice("Elite", "hard");
+  assert.equal(match.practiceLevel, "hard");
+  const snapshot = getSnapshot({ matchId: match.id, userId, now: match.startsAt + 500 });
+  assert.equal(snapshot.practiceLevel, "hard", "the result screen can name the bot it played");
+
+  // A ranked pairing is never a practice level.
+  __resetLastRunRegistryForTests();
+  joinQueue({ userId: "level-a", name: "A" });
+  joinQueue({ userId: "level-b", name: "B" });
+  const paired = joinQueue({ userId: "level-a", name: "A" });
+  const ranked = getSnapshot({ matchId: paired.matchId, userId: "level-a", now: Date.now() });
+  assert.equal(ranked.practice, false);
+  assert.equal(ranked.practiceLevel, DEFAULT_PRACTICE_LEVEL);
 });
 
 // Guard: the AI's scripted run is an INPUT LOG, never a recorded position.

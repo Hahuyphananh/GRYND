@@ -80,7 +80,7 @@ POST /api/last-run/match/x/input  { jump, duck } ──► stamp tick ─► rep
 | `GET /api/last-run/match/:id` | — | authoritative snapshot; `403` for non-members |
 | `POST /api/last-run/match/:id/input` | `{ jump: boolean, duck: boolean }` | accepted tick, `400` malformed, `403` non-member, `409` wrong phase, `429` rate limit |
 | `POST /api/last-run/match/:id/forfeit` | — | the single final result (idempotent) |
-| `POST /api/last-run/practice` | `{ name? }` | free match vs the scripted AI → `{ matchId }` (idempotent while it is live) |
+| `POST /api/last-run/practice` | `?level=` (query) or `{ name?, level? }` | free match vs the scripted AI → `{ matchId, level }` (idempotent per level while it is live) |
 
 Every endpoint requires a Clerk session; the user id comes from the session,
 never the body.
@@ -101,16 +101,29 @@ collision it suffers is the ordinary engine collision.
 roughly 950 input transitions and both kinds of input (jumps and ducks).
 `tests/last-run-practice.test.mjs` asserts this by replaying the stored log the
 way the server does.
-- **It is beatable.** On about three seeds in four the AI deliberately misses
-one obstacle, chosen from the seed — so a given practice match always replays
-the same run — and the player wins by outlasting that point. On the rest it
-runs clean, and a player who also survives to the final marker draws.
+- **It is beatable, and you choose how strong it is.** `level` is
+`easy | normal | hard`; an unknown value falls back to `normal` rather than
+erroring. The level changes only how often and how early the AI misses — never
+the course, the seed, the speed curve or the collision rules — and it is
+sanitised server-side, so the client cannot tune the bot beyond this table
+(`src/lib/last-run/practice.ts`):
+
+| level | runs the course clean | earliest fumble | latest fumble |
+|---|---|---|---|
+| `easy` | ~5% | obstacle 2 | ~45% into the course |
+| `normal` (default) | ~25% | obstacle 4 | ~85% into the course |
+| `hard` | ~65% | obstacle 8 | the last obstacle |
+
+On the seeds where it runs clean the AI finishes the whole course, so a player
+who also survives to the final marker draws on distance. The miss is picked
+from the match seed, so a given practice match always replays the same run.
 - **Nothing is recorded.** `getCompletionRecord` returns `null` for a practice
 match, so there is no `last_run_matches` row, no Elo change, no trophy, no quest
 progress and no history entry. The match screen labels the run
 `practice · unrated`.
-- **One live practice per player.** A second click resumes the match already
-running instead of minting another registry entry.
+- **One live practice per player, per level.** Asking for the same bot again
+resumes the match already running; asking for a different level starts that bot
+instead of silently handing back the old difficulty.
 - **The AI seat is exempt from the forfeit policy.** It never polls by design,
 so the disconnect grace window skips it and it always reports
 `connected: true`; the human seat keeps the ordinary ten-second rule.
