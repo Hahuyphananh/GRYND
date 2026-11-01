@@ -43,6 +43,11 @@ import {
   playDefeat,
 } from "../../../../../lib/gameAudio";
 import { towerArenaDueRead } from "../../../../../lib/deadlineRead";
+import {
+  createAiTurnGuard,
+  fetchAiTurn,
+  type AiTurnGuard,
+} from "../../../../../lib/aiTurnRetry";
 import { useDeadlineRead } from "../../../../../hooks/useDeadlineRead";
 import { useServerClockEstimate } from "../../../../../hooks/useServerClockEstimate";
 import {
@@ -1367,6 +1372,8 @@ export default function TowerArenaMatchPage() {
   // resolves the bot if this fires late.
   const aiTurnFiredTurn = useRef<number | null>(null);
   const aiTurnTimer = useRef<number | null>(null);
+  const aiTurnGuardRef = useRef<AiTurnGuard | null>(null);
+  if (!aiTurnGuardRef.current) aiTurnGuardRef.current = createAiTurnGuard();
   useEffect(() => {
     if (!match || match.status !== "active") return;
     if (match.phase !== "placement") return;
@@ -1376,17 +1383,35 @@ export default function TowerArenaMatchPage() {
     if (aiTurnFiredTurn.current === match.turnNumber) return;
     aiTurnFiredTurn.current = match.turnNumber;
     if (aiTurnTimer.current) window.clearTimeout(aiTurnTimer.current);
-    aiTurnTimer.current = window.setTimeout(async () => {
+    const guard = aiTurnGuardRef.current as AiTurnGuard;
+    let retry: ReturnType<typeof setTimeout> | null = null;
+    let cancelled = false;
+
+    // The bot's turn is asked for a BOUNDED number of times, each with a
+    // deadline (src/lib/aiTurnRetry): a refused or unanswered ask used to be
+    // dropped on the floor, leaving the board on the bot's turn with no
+    // controls and nothing asking again.
+    const askAi = async () => {
       try {
-        await fetch("/api/tower-arena/ai-turn", {
+        const res = await fetchAiTurn("/api/tower-arena/ai-turn", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ matchId }),
         });
+        if (res.ok) {
+          guard.succeed();
+          return;
+        }
       } catch {
         // Transient failure — the authoritative re-read below (and the
         // deadline read at the bot's own window) is the backstop.
       }
+      const delay = guard.begin(`turn-${match.turnNumber}`) ? guard.fail() : null;
+      if (delay !== null && !cancelled) retry = setTimeout(askAi, delay);
+    };
+
+    aiTurnTimer.current = window.setTimeout(async () => {
+      await askAi();
       // ALWAYS adopt the server's answer, whatever the ask returned:
       //   • 200 — the bot played; the route only answers with flags, so the
       //     board needs this read to show the new block and turn;
@@ -1397,6 +1422,10 @@ export default function TowerArenaMatchPage() {
       // bot's turn with every control disabled while the store had moved on.
       await loadRef.current();
     }, BOT_PLAN_DELAY_MS);
+    return () => {
+      cancelled = true;
+      if (retry !== null) window.clearTimeout(retry);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [match?.status, match?.phase, match?.currentTurnPlayerId, match?.turnNumber, match?.paused]);
 

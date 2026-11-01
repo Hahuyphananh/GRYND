@@ -20,9 +20,9 @@ set -eu
 
 JOB="${1:-}"
 case "$JOB" in
-  daily-reset | weekly-reset | retention | rank-snapshots | last-run-sweep) ;;
+  daily-reset | weekly-reset | retention | rank-snapshots) ;;
   *)
-    echo "usage: run-job.sh <daily-reset|weekly-reset|retention|rank-snapshots|last-run-sweep>" >&2
+    echo "usage: run-job.sh <daily-reset|weekly-reset|retention|rank-snapshots>" >&2
     exit 64
     ;;
 esac

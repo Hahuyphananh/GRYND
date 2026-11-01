@@ -15,10 +15,6 @@
     {
       "path": "/api/jobs/rank-snapshots",
       "schedule": "0 21 * * *"
-    },
-    {
-      "path": "/api/jobs/last-run-sweep",
-      "schedule": "17 * * * *"
     }
   ]
 }

@@ -39,6 +39,11 @@ import {
 } from "../../../../../hooks/useMatchSync";
 import { fourInARowDueRead } from "../../../../../lib/deadlineRead";
 import { useDeadlineRead } from "../../../../../hooks/useDeadlineRead";
+import {
+  createAiTurnGuard,
+  fetchAiTurn,
+  type AiTurnGuard,
+} from "../../../../../lib/aiTurnRetry";
 import { useServerClockEstimate } from "../../../../../hooks/useServerClockEstimate";
 import {
   IconTarget,
@@ -300,23 +305,54 @@ export default function ConnectFourGamePage() {
     setStatusText(myTurn ? "Your move" : "Opponent's move");
   };
 
-  const aiMoveKeyRef = useRef<number | null>(null);
+  // The bot's turn: asked for ONCE per position, with a bounded number of
+  // retries and a deadline on the request (src/lib/aiTurnRetry). A refused or
+  // unanswered turn used to re-arm itself — every later render asked again —
+  // leaving the board on the bot's turn with no way forward.
+  const aiMoveKeyRef = useRef<string | null>(null);
+  const aiTurnGuardRef = useRef<AiTurnGuard | null>(null);
+  if (!aiTurnGuardRef.current) aiTurnGuardRef.current = createAiTurnGuard();
+
   useEffect(() => {
-    if (!game?.isAiGame || game.status !== "in_progress" || game.currentTurn !== "guest") return;
-    const key = Number(game.guestDiscsUsed || 0) + Number(game.hostDiscsUsed || 0);
-    if (aiMoveKeyRef.current === key) return;
-    const timer = window.setTimeout(async () => {
-      aiMoveKeyRef.current = key;
-      const res = await fetch("/api/four-in-a-row/ai-turn", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ gameId: Number(gameId) }),
-      });
-      if (!res.ok) aiMoveKeyRef.current = null;
+    if (!game?.isAiGame || game.status !== "in_progress" || game.currentTurn !== "guest") return undefined;
+    const guard = aiTurnGuardRef.current as AiTurnGuard;
+    const key = `discs-${Number(game.guestDiscsUsed || 0) + Number(game.hostDiscsUsed || 0)}`;
+    // Already asking for this turn, or it has used up its attempts.
+    if (aiMoveKeyRef.current === key) return undefined;
+    if (!guard.begin(key)) return undefined;
+    aiMoveKeyRef.current = key;
+
+    let cancelled = false;
+    let retry: ReturnType<typeof setTimeout> | null = null;
+    const askAi = async () => {
+      try {
+        const res = await fetchAiTurn("/api/four-in-a-row/ai-turn", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ gameId: Number(gameId) }),
+        });
+        if (res.ok) {
+          guard.succeed();
+        } else {
+          const delay = guard.fail();
+          if (delay !== null && !cancelled) retry = setTimeout(askAi, delay);
+        }
+      } catch {
+        const delay = guard.fail();
+        if (delay !== null && !cancelled) retry = setTimeout(askAi, delay);
+      }
+      // ALWAYS adopt the server's answer, whatever the ask returned: the board
+      // is a view of the match, not of this request.
       await fetchState();
-    }, 700);
-    return () => window.clearTimeout(timer);
+    };
+
+    const timer = window.setTimeout(askAi, 700);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      if (retry !== null) window.clearTimeout(retry);
+    };
   }, [game?.isAiGame, game?.status, game?.currentTurn, game?.guestDiscsUsed, game?.hostDiscsUsed, gameId]);
 
   // Tear the falling disc (and its trail) down once it has landed. Key-guarded

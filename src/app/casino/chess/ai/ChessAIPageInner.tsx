@@ -340,6 +340,46 @@ function computeAnnotation(fenBefore: string, fenAfter: string, perspectiveColor
   }
 }
 
+// ── Bot-turn failure bounds ──
+//
+// A refused bot turn must be FINITE. The AI effect reacts to the position, so
+// adopting a refusal snapshot — which the endpoint sends — produced a new
+// position with the bot still to move, and the effect asked again, with no delay
+// and no limit. One refusal therefore became an endless "AI is thinking…" loop
+// that hammered the endpoint and never advanced the game.
+//
+// These bounds stop that: a couple of spaced-out automatic retries, a deadline
+// on the requests themselves (a turn that never answers must not leave the board
+// spinning forever), and a mark for the position whose turn was given up on, so
+// only a new move or the player's own "Retry AI move" asks again.
+const AI_TURN_MAX_ATTEMPTS = 3;
+const AI_TURN_RETRY_DELAY_MS = 700;
+const AI_TURN_TIMEOUT_MS = 20_000;
+const BOARD_REQUEST_TIMEOUT_MS = 20_000;
+
+/** Raised when a board request is still unanswered at its deadline. */
+class BoardRequestTimeout extends Error {}
+
+/** `fetch` with a deadline, so a request that never settles cannot freeze the board. */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new BoardRequestTimeout(`${url} was not answered within ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ── Main component ──
 
 export default function ChessAIPageInner() {
@@ -420,6 +460,12 @@ export default function ChessAIPageInner() {
   const [aiReducedStrength, setAiReducedStrength] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const aiTurnInFlightRef = useRef(false);
+  // A failed bot turn is retried a bounded number of times (see
+  // AI_TURN_MAX_ATTEMPTS): the attempts made for the current turn, the position
+  // whose turn was given up on, and the pending delayed retry.
+  const aiTurnAttemptsRef = useRef(0);
+  const aiTurnBlockedForRef = useRef<string | null>(null);
+  const aiRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The human's write to `/api/chess/move`, while it is in flight. The AI-turn
   // endpoint reads the PERSISTED history, so asking for the reply before that
   // write lands would be refused as "not the AI's turn" — and the snapshot it
@@ -679,9 +725,10 @@ export default function ChessAIPageInner() {
   } | null> {
     if (!serverMode) return null;
     try {
-      const res = await fetch(
+      const res = await fetchWithTimeout(
         `/api/chess/game-state?gameId=${encodeURIComponent(gameId as string)}`,
         { credentials: "include" },
+        BOARD_REQUEST_TIMEOUT_MS,
       );
       if (!res.ok) return null;
       const payload = await res.json();
@@ -727,12 +774,16 @@ export default function ChessAIPageInner() {
   async function submitHumanMove(from: string, to: string, promotion: string) {
     if (!serverMode) return;
     try {
-      const res = await fetch("/api/chess/move", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ gameId, from, to, promotion }),
-      });
+      const res = await fetchWithTimeout(
+        "/api/chess/move",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ gameId, from, to, promotion }),
+        },
+        BOARD_REQUEST_TIMEOUT_MS,
+      );
       if (res.ok) return;
       const loaded = await resyncFromServer();
       // The row is still open, so the board has been rewound to the server's
@@ -756,6 +807,38 @@ export default function ChessAIPageInner() {
     }
   }
 
+  /** Forget a failed bot turn — a new move, or the player's retry, starts clean. */
+  function resetAiTurnFailure() {
+    aiTurnAttemptsRef.current = 0;
+    aiTurnBlockedForRef.current = null;
+    if (aiRetryTimerRef.current) {
+      clearTimeout(aiRetryTimerRef.current);
+      aiRetryTimerRef.current = null;
+    }
+  }
+
+  /**
+   * Record a failed bot turn for `fen`.
+   *
+   * The message is shown at once. While attempts remain, ONE delayed retry is
+   * scheduled; when they are used up the position is marked, so the AI effect
+   * stops asking and the player is left with the manual "Retry AI move".
+   */
+  function noteAiTurnFailure(fen: string, message: string) {
+    setServerError(message);
+    aiTurnAttemptsRef.current += 1;
+    if (aiTurnAttemptsRef.current >= AI_TURN_MAX_ATTEMPTS) {
+      aiTurnBlockedForRef.current = fen;
+      return;
+    }
+    if (aiRetryTimerRef.current) clearTimeout(aiRetryTimerRef.current);
+    aiRetryTimerRef.current = setTimeout(() => {
+      aiRetryTimerRef.current = null;
+      if (aiTurnBlockedForRef.current === fen) return;
+      void requestAiTurn();
+    }, AI_TURN_RETRY_DELAY_MS * aiTurnAttemptsRef.current);
+  }
+
   /**
    * Ask the server for the bot's move.
    *
@@ -764,8 +847,11 @@ export default function ChessAIPageInner() {
    * exactly as a locally played finish would. A refusal carries the server's own
    * snapshot, which is adopted for the same reason; only a failure that left the
    * row open (an engine that could not answer) is offered as a retry.
+   *
+   * A failed turn is retried by `noteAiTurnFailure`, never by this function being
+   * called again on its own from the AI effect.
    */
-  async function requestAiTurn() {
+  async function requestAiTurn(options: { manual?: boolean } = {}) {
     if (!serverMode || aiTurnInFlightRef.current) return;
     if (gameOver || pausedRef.current) return;
 
@@ -773,6 +859,12 @@ export default function ChessAIPageInner() {
     // the page does not ask on every render.
     const aiChar = playerColor === "white" ? "b" : "w";
     if (game.turn() !== aiChar) return;
+
+    // The position this turn answers for: a give-up mark is keyed by it, so it
+    // stops applying the moment the board moves on.
+    const turnFen = game.fen();
+    if (options.manual) resetAiTurnFailure();
+    if (aiTurnBlockedForRef.current === turnFen) return;
 
     aiTurnInFlightRef.current = true;
     setAiThinking(true);
@@ -786,17 +878,22 @@ export default function ChessAIPageInner() {
       if (pendingHumanMove) await pendingHumanMove;
       if (pausedRef.current) return;
 
-      const res = await fetch("/api/chess/ai-move", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ gameId }),
-      });
+      const res = await fetchWithTimeout(
+        "/api/chess/ai-move",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ gameId }),
+        },
+        AI_TURN_TIMEOUT_MS,
+      );
       const payload = await res.json().catch(() => null);
 
       if (!res.ok) {
         if (payload?.state) adoptAiTurnState(payload.state, { appendMove: false });
-        setServerError(
+        noteAiTurnFailure(
+          turnFen,
           payload?.error || "The AI could not move. Please try again.",
         );
         return;
@@ -805,17 +902,42 @@ export default function ChessAIPageInner() {
       const state = payload?.data;
       if (!state || !state.fen) {
         await resyncFromServer();
-        setServerError("The AI's move could not be read — please try again.");
+        noteAiTurnFailure(
+          turnFen,
+          "The AI's move could not be read — please try again.",
+        );
         return;
       }
       // A pause may have landed while the response was in flight. The row is
       // authoritative, so leave it to the resume read instead of applying a
       // move under the frozen overlay.
       if (pausedRef.current) return;
+      resetAiTurnFailure();
       adoptAiTurnState(state, { appendMove: true });
-    } catch {
+    } catch (error) {
+      if (error instanceof BoardRequestTimeout) {
+        // The endpoint may have completed the turn on the server anyway; the row
+        // is authoritative, so ask it before reporting a failure.
+        const loaded = await resyncFromServer();
+        const aiCharNow = playerColor === "white" ? "b" : "w";
+        if (loaded && !loaded.finished && loaded.position.turn() !== aiCharNow) {
+          resetAiTurnFailure();
+          setServerError(null);
+          return;
+        }
+        // A turn that never answered is not retried on its own — the player is
+        // told once, and the retry is theirs to press.
+        aiTurnBlockedForRef.current = turnFen;
+        setServerError(
+          "The AI took too long to answer — check the connection and retry.",
+        );
+        return;
+      }
       await resyncFromServer();
-      setServerError("Connection lost — the AI could not move. Please try again.");
+      noteAiTurnFailure(
+        turnFen,
+        "Connection lost — the AI could not move. Please try again.",
+      );
     } finally {
       aiTurnInFlightRef.current = false;
       setAiThinking(false);
@@ -925,6 +1047,7 @@ export default function ChessAIPageInner() {
     setMoveIndex(-1);
     endGameCalled.current = false;
     initCompleteRef.current = false;
+    resetAiTurnFailure();
     setAiReducedStrength(false);
     prevFenRef.current = newGame.fen();
     setClockResetKey((k) => k + 1);
@@ -1048,6 +1171,11 @@ export default function ChessAIPageInner() {
       return;
     }
     if (!initCompleteRef.current) return;
+    // This bot turn already failed: a delayed retry is scheduled, or the
+    // position was given up on. Neither may be re-asked from here — that loop is
+    // what left the board saying "thinking" forever.
+    if (aiRetryTimerRef.current) return;
+    if (aiTurnBlockedForRef.current === game.fen()) return;
 
     // Switch clock to AI during its turn
     setActivePlayer(aiClockKey as "player1" | "player2");
@@ -1056,6 +1184,13 @@ export default function ChessAIPageInner() {
     aiTimeoutRef.current = t;
     return () => clearTimeout(t);
   }, [game, aiColor, aiLevel, paused]);
+
+  // ── Drop a pending automatic retry when the page goes away ──
+  useEffect(() => {
+    return () => {
+      if (aiRetryTimerRef.current) clearTimeout(aiRetryTimerRef.current);
+    };
+  }, []);
 
   // ── Show hint ──
   function showHint() {
@@ -1163,6 +1298,9 @@ export default function ChessAIPageInner() {
     setGame(new Chess(gameCopy.fen()));
     setActivePlayer(aiClockKey as "player1" | "player2");
     setHintMove(null);
+    // A new human move opens a new bot turn, so a give-up mark for the previous
+    // one no longer applies.
+    resetAiTurnFailure();
     playCardDraw();
 
     if (gameCopy.isGameOver()) handleGameOver(gameCopy);
@@ -1725,7 +1863,7 @@ export default function ChessAIPageInner() {
                     type="button"
                     onClick={() => {
                       setServerError(null);
-                      void requestAiTurn();
+                      void requestAiTurn({ manual: true });
                     }}
                     disabled={aiThinking}
                     className="rounded-lg border border-cyan-300/40 bg-cyan-400/10 px-3 py-1.5 text-sm font-semibold text-cyan-100 transition-colors hover:border-cyan-300 hover:bg-cyan-400/20 disabled:opacity-40"

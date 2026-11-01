@@ -133,7 +133,9 @@ test("chess: the server-backed pause stops the clock, the bot and the row", () =
   assert.match(page, /if \(!game \|\| game\.isGameOver\(\) \|\| paused\) return;/);
   assert.match(page, /\}, \[game, aiColor, aiLevel, paused\]\);/);
   // A response that raced the pause is not adopted.
-  assert.match(page, /if \(pausedRef\.current\) return;\s*\n\s*adoptAiTurnState/);
+  // The pause check still runs before the answer is adopted; the bounded-retry
+  // bookkeeping that clears a give-up mark sits between the two.
+  assert.match(page, /if \(pausedRef\.current\) return;[\s\S]{0,160}?adoptAiTurnState/);
 
   const aiRoute = code("src/app/api/chess/ai-move/route.js");
   assert.match(aiRoute, /isPracticePaused\("chess", gameId\)/);

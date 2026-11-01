@@ -317,6 +317,38 @@ function loadStockfishFactory(): StockfishFactory {
   return factory;
 }
 
+/**
+ * Waits for `promise`, rejecting with a ChessEngineError when it is not settled
+ * within `timeoutMs`.
+ *
+ * The work itself is not cancelled (the module keeps loading in the
+ * background) — this only stops the CALLER waiting forever. A boot that never
+ * settles used to leave every AI turn pending with no answer and no error, so
+ * the board showed "thinking" indefinitely; the deadline turns that into the
+ * ordinary engine failure a turn can answer with a move of its own.
+ */
+function withDeadline<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new ChessEngineError(`timed out waiting for ${label}`));
+    }, timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 /** Waits for the first engine line matching `predicate`, or rejects on timeout. */
 function waitForLine(
   engine: StockfishEngine,
@@ -411,7 +443,11 @@ async function bootEngine(): Promise<StockfishEngine> {
 
   let engine: StockfishEngine;
   try {
-    engine = await createModule();
+    engine = await withDeadline(
+      createModule(),
+      BOOT_TIMEOUT_MS,
+      "the stockfish module to boot",
+    );
   } finally {
     // Booting the module nulls the global `fetch` (see PRISTINE_FETCH). Put it
     // back before this process does anything else — in the finally so a boot

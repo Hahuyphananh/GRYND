@@ -22,6 +22,11 @@ import {
   PracticePauseOverlay,
 } from "../../../../../components/game/PracticePause";
 import { usePracticePause } from "../../../../../hooks/usePracticePause";
+import {
+  createAiTurnGuard,
+  fetchAiTurn,
+  type AiTurnGuard,
+} from "../../../../../lib/aiTurnRetry";
 import DotsAndBoxesLegend, {
   SeatMark,
 } from "../../../../../components/DotsAndBoxesLegend";
@@ -222,23 +227,54 @@ const prefersReducedMotion = useReducedMotion();
   const gameState = game?.gameState ?? null;
 
   // ─── AI opponent progression ───────────────────────────────────────
+  // The bot's turn: asked for ONCE per position, with a bounded number of
+  // retries and a deadline on the request (src/lib/aiTurnRetry). Re-arming the
+  // "already asked" flag on failure is what turned one refused turn into an
+  // endless "bot is thinking" board that never advanced.
   const aiFiredForEdges = useRef<number | null>(null);
+  const aiTurnGuardRef = useRef<AiTurnGuard | null>(null);
+  if (!aiTurnGuardRef.current) aiTurnGuardRef.current = createAiTurnGuard();
+
   useEffect(() => {
-    if (paused || !game?.isAiGame || game.status !== "in_progress" || gameState?.currentTurn !== "guest") return;
+    if (paused || !game?.isAiGame || game.status !== "in_progress" || gameState?.currentTurn !== "guest") return undefined;
+    const guard = aiTurnGuardRef.current as AiTurnGuard;
     const edgeCount = Array.isArray(gameState.edges) ? gameState.edges.length : 0;
-    if (aiFiredForEdges.current === edgeCount) return;
-    const timer = setTimeout(async () => {
-      aiFiredForEdges.current = edgeCount;
-      const res = await fetch("/api/dots-and-boxes/ai-turn", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ gameId: Number(gameId) }),
-      });
-      if (!res.ok) aiFiredForEdges.current = null;
+    const key = `edges-${edgeCount}`;
+    // Already asking for this turn, or it has used up its attempts.
+    if (aiFiredForEdges.current === edgeCount) return undefined;
+    if (!guard.begin(key)) return undefined;
+    aiFiredForEdges.current = edgeCount;
+
+    let cancelled = false;
+    let retry: ReturnType<typeof setTimeout> | null = null;
+    const askAi = async () => {
+      try {
+        const res = await fetchAiTurn("/api/dots-and-boxes/ai-turn", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ gameId: Number(gameId) }),
+        });
+        if (res.ok) {
+          guard.succeed();
+        } else {
+          const delay = guard.fail();
+          if (delay !== null && !cancelled) retry = setTimeout(askAi, delay);
+        }
+      } catch {
+        const delay = guard.fail();
+        if (delay !== null && !cancelled) retry = setTimeout(askAi, delay);
+      }
+      // The board follows the server, whatever this ask returned.
       await fetchState();
-    }, 900);
-    return () => clearTimeout(timer);
+    };
+
+    const timer = setTimeout(askAi, 900);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      if (retry !== null) clearTimeout(retry);
+    };
   }, [paused, game?.isAiGame, game?.status, gameState?.currentTurn, gameState?.edges?.length, gameId, fetchState]);
   const edgesKey = useMemo(() => {
     if (!gameState || !Array.isArray(gameState.edges)) return "";

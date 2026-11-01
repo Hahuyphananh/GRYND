@@ -72,14 +72,15 @@ export const matchLifecycleEvents = pgTable(
   })
 );
 
-// LAST RUN — durable per-match record (migration 0233).
+// LAST RUN — RETIRED GAME; table retained so historical results survive.
 //
-// The canonical `match_lifecycle` row is the platform queue record and carries
-// no participants, so a completed LAST RUN match would otherwise exist only as
-// JSON inside an outbox event. This table is the game's authoritative result:
-// written by src/lib/last-run/settlement.ts from the server engine's own final
-// state, inside the same transaction that applies Elo. No client ever supplies
-// a winner, distance, survival time or rating.
+// The game is gone from the application: no route, API endpoint, client or
+// engine exists any more. These rows are kept because they are the only
+// per-match history those players have — the canonical `match_lifecycle` row is
+// the platform queue record and carries no participants. They remain covered by
+// the user-erasure purge (src/lib/security/deleteUserData.ts) and by the
+// retention job. Dropping the table is a separate, explicitly approved
+// migration; see docs/last-run-removal.md.
 //
 // Player ids are plain Clerk id strings with no FK to `users`, matching every
 // other PvP table. Elo and trophies are NOT duplicated here — they live in

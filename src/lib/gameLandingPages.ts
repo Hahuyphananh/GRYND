@@ -657,69 +657,6 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
   },
 
   {
-    slug: "last-run",
-    name: "LAST RUN",
-    headline: "LAST RUN — 1v1 Endless-Runner Duel",
-    category: "Reflex & Recall",
-    leaderboardKey: "last-run",
-    ogImage: "/images/og/last-run.svg",
-    shortDescription:
-      "A 1v1 endless-runner duel: both players run the same server-seeded course, jumping crates and ducking beams while the track accelerates. The first runner to crash loses, and a ranked result moves this game's rating and trophies.",
-    aiPractice: true,
-    introduction: [
-      "LAST RUN is a head-to-head endless runner. One seed is drawn per match and both seats run the identical course — same obstacle order, same spacing, same accelerating speed curve — so the only variable is how long each player keeps their runner alive.",
-      "It is competitive because a run is decided entirely by execution: a jump tapped one frame late or a duck released early ends the match, and the server steps the shared simulation itself rather than trusting either browser.",
-    ],
-    howToPlay: [
-      "Open the lobby and press Find a match. The queue pairs two players for this game and sends both seats to the same seeded course. For a free, unrated warm-up against the server-scripted AI, press Race the AI instead and pick Easy, Normal or Hard — same engine, same kind of course, no opponent to wait for.",
-      "Jump crates and spikes with Space or the up arrow, and duck under beams with the down arrow. On a phone the same two actions are the touch buttons under the arena.",
-      "The track accelerates from 260 to 640 pixels per second over the first half-minute, and the obstacle gap tightens with it, but never below a readable reaction window.",
-      "Your run ends the first time your runner touches an obstacle. The last runner standing wins the match.",
-      "Every jump and duck is sent to the server as an input. The server steps the engine and stamps the result, so a client cannot decide who won.",
-    ],
-    rules: [
-      "Both seats receive the same seed, so the course is identical: the server generates the obstacle sequence once and replays it for both runners.",
-      "A crate or a spike is cleared by jumping and a beam is cleared by ducking. Touching any of them ends that runner's attempt immediately.",
-      "Speed and the distance between obstacles come from the seed and the elapsed time, never from either player's input, so neither seat can alter the course for the other.",
-      "If both runners fail on the same simulation tick the match is a draw; otherwise the surviving runner wins. The comparison happens on the server's tick, not on either client's clock.",
-      "Every input is graded against the server's own clock and the simulation is stepped at a fixed rate, so a modified client can neither extend its own run nor shorten the opponent's.",
-      "A match abandoned mid-run is resolved by the server as a forfeit, and a run the server cannot finish is closed as failed rather than written down as a result.",
-    ],
-    scoring: [
-      "The winner is the runner who survives longer, measured in the server's own simulation ticks — not in distance, and not in either client's timer.",
-      "If both runners crash on the same tick the match is a draw and neither rating moves.",
-      "A ranked result moves this game's own Elo rating and its trophy ladder. Nothing is wagered, and no coins are paid out for a result.",
-    ],
-    strategy: [
-      "Jump early rather than late. The window is generous at the opening speed and tightens as the track accelerates, and a mistimed jump cannot be corrected once your runner is airborne.",
-      "Duck only for beams. Holding duck through an empty stretch costs you nothing, but releasing it a moment too early puts your runner straight back into the beam.",
-      "Watch the gap between obstacles, not the obstacle itself. At higher speeds two of them arrive closer together than one full jump arc, so the second input has to be prepared before the first lands.",
-      "Expect the speed step rather than reacting to it. Most runs end in the first few seconds after the track accelerates, when a rhythm that was comfortable a moment ago is no longer fast enough.",
-    ],
-    competitive:
-      "LAST RUN tests sustained reaction discipline. Both seats face an identical, accelerating course and the first mistake ends the match, so the winner is whoever holds a clean rhythm longest under a clock that keeps getting faster. The server owns the seed, the simulation and the result.",
-    faq: [
-      {
-        q: "Do both players run exactly the same course?",
-        a: "Yes. The server mints one seed per match and builds the obstacle sequence from it, so both runners face identical spacing, identical obstacles and an identical speed curve.",
-      },
-      {
-        q: "What happens if both runners crash at the same moment?",
-        a: "The match is a draw. The server compares the two failures on its own simulation tick, so a same-tick crash can never be awarded to either seat.",
-      },
-      {
-        q: "How is the result of a match decided?",
-        a: "The server steps the shared engine itself and records the surviving runner as the winner. Your browser only sends jump and duck inputs; it never reports a distance or a result.",
-      },
-      {
-        q: "Can I play LAST RUN against a bot?",
-        a: "Yes. Press Race the AI in the lobby and pick Easy, Normal or Hard. The bot runs the same seeded course through the same server engine and fumbles one obstacle on most runs — rarer the harder you set it — so it is always beatable, and nothing about a practice run is rated, wagered or recorded.",
-      },
-    ],
-    related: ["lane-runner", "precision", "speed-typing", "mini-golf"],
-  },
-
-  {
     slug: "lane-runner",
     name: "Lane Rush",
     headline: "Lane Rush — 1v1 Oval Circuit Racing",

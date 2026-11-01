@@ -187,23 +187,6 @@
     "hasAllGames": true
   },
   {
-    "slug": "last-run",
-    "status": 200,
-    "finalUrl": "/games/last-run/play",
-    "file": "screenshots/lobbies/last-run.png",
-    "removed": 2,
-    "errors": [],
-    "theme": "dark",
-    "h1": "LASTRUN",
-    "h1Color": "rgb(255, 255, 255)",
-    "bg": "rgb(3, 8, 23)",
-    "hasKicker": true,
-    "hasGradientWordmark": true,
-    "hasMatchPanel": true,
-    "hasOpenLobbies": false,
-    "hasAllGames": true
-  },
-  {
     "slug": "memory-grid",
     "status": 200,
     "finalUrl": "/games/memory-grid/play",

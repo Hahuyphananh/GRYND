@@ -31,6 +31,7 @@ import {
   playCardDraw,
 } from "../../../../../lib/gameAudio";
 import GameSessionHost from "../../../../../components/GameSessionHost";
+import { createAiTurnGuard, fetchAiTurn } from "../../../../../lib/aiTurnRetry";
 import {
   PracticePauseChip,
   PracticePauseOverlay,
@@ -296,10 +297,19 @@ export default function UnoGamePage() {
     }
     setLoading(false);
   };
+  // One bot turn is asked for once, with a BOUNDED number of retries and a
+  // deadline on the request (src/lib/aiTurnRetry). A failed ask used to be
+  // swallowed here, leaving the table on the bot's turn with nothing asking
+  // again; an unbounded re-ask would be the opposite failure, so neither.
+  const aiTurnGuardRef = useRef(null);
+  if (!aiTurnGuardRef.current) aiTurnGuardRef.current = createAiTurnGuard();
   const handleAITurn = async (gameId) => {
     if (pausedRef.current) return;
+    const guard = aiTurnGuardRef.current;
+    const key = `${gameId}:turns-${turnHistory.length}`;
+    if (!guard.begin(key)) return;
     try {
-      const res = await fetch("/api/uno/ai-turn", {
+      const res = await fetchAiTurn("/api/uno/ai-turn", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -309,6 +319,14 @@ export default function UnoGamePage() {
         }),
       });
       const data = await res.json();
+      if (!res.ok || !data.success) {
+        const delay = guard.fail();
+        if (delay !== null && !pausedRef.current) {
+          setTimeout(() => handleAITurn(gameId), delay);
+        }
+        return;
+      }
+      guard.succeed();
       if (data.success) {
         setPlayerHand(data.data.playerHand);
         setAiHandCount(data.data.aiHandCount);
@@ -321,6 +339,10 @@ export default function UnoGamePage() {
       }
     } catch (err) {
       console.error("Erreur IA:", err);
+      const delay = guard.fail();
+      if (delay !== null && !pausedRef.current) {
+        setTimeout(() => handleAITurn(gameId), delay);
+      }
     }
   };
   const sendPlayCard = async (card, chosenColor = null) => {

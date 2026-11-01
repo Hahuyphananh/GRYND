@@ -482,10 +482,6 @@ test("bespoke result panels mount the shared slot themselves", () => {
       file: "src/app/casino/uno/game/[gameId]/PageClient.jsx",
       gate: /\{endPopup && <PostMatchAdSlot \/>\}/,
     },
-    {
-      file: "src/app/casino/last-run/[matchId]/PageClient.tsx",
-      gate: /\{finished && <PostMatchAdSlot matchId=\{matchId\} \/>\}/,
-    },
   ];
 
   for (const { file, gate } of panels) {

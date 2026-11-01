@@ -3,7 +3,7 @@
 // src/components/lobby/PvpLobby.jsx
 //
 // Shared lobby for the casino's 1v1 PvP games. It reproduces the
-// LAST RUN lobby design — ink-black page, uppercase kickers, one dark
+// casino lobby design — ink-black page, uppercase kickers, one dark
 // aside panel carrying the stake picker and the actions, then the
 // open-lobby list below — so every game lobby reads as the same
 // product.
@@ -20,7 +20,7 @@
 // The component is intentionally data-driven: each game wires its own
 // fetch/create/join callbacks and lobby-row renderers. The visual
 // chrome is the only thing shared, which is exactly the point — every
-// game lobby now looks like LAST RUN.
+// game lobby looks the same.
 
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@clerk/nextjs";
@@ -80,7 +80,7 @@ function LoadingDotsIcon({ className = "" }) {
   );
 }
 
-// LAST RUN palette tokens — keep the accents consistent across games.
+// Shared palette tokens — keep the accents consistent across games.
 const PALETTE = {
   page: "bg-[#07080b]",
   card: "border-white/10 bg-[#0b0d12]",
@@ -193,7 +193,7 @@ export function CoinWagerPicker({
 }
 
 /**
- * RulesModal — a "How to Play" overlay in the LAST RUN palette. Each
+ * RulesModal — a "How to Play" overlay in the shared lobby palette. Each
  * section is { heading, body } where body may be JSX. Shared by every
  * game lobby so the rules popup looks identical across the casino.
  */
@@ -311,9 +311,10 @@ export function useFirstVisitRules(rulesKey) {
  * Lobby content (no page chrome) — use inside an existing page layout.
  */
 /**
- * LobbyTitle — the wordmark, in LAST RUN's treatment.
+ * LobbyTitle — the wordmark, in the shared lobby's treatment.
  *
- * LAST RUN renders `LAST` in white and `RUN` in a cyan→violet gradient. Every
+ * The wordmark shows the title in white, its final word in a cyan→violet
+ * gradient. Every
  * lobby gets the same split on its final word, so a two-word title reads as one
  * product across the casino. A single-word title takes the gradient whole, and
  * a JSX title is rendered untouched (it may already carry its own styling).
@@ -449,9 +450,16 @@ export function PvpLobby({
         />
       )}
 
-      <section className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-end">
+      {/* The hero and the match panel are aligned on their TOP edge, exactly as
+          the casino hero reads: the title block starts level with the panel
+          instead of being dropped to meet the panel's bottom. `items-end` pulled
+          the hero down by however much taller the panel happened to be, which on
+          this shared chrome (a short hero beside a tall facts/queue card) sank
+          the title and description well below the panel's top. Below `lg` the
+          grid is a single column, so this changes nothing on a phone. */}
+      <section className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-start">
         {/* ── Hero ─────────────────────────────────────────────────────── */}
-        {/* LAST RUN's shape, kept identical across the casino: uppercase
+        {/* The casino lobby shape, kept identical across the casino: uppercase
             kicker → wordmark with a gradient final word → the ONE action row
             (primary, violet practice action, ghost exit, mode pill) →
             parameters (the stake) directly under it. */}
@@ -479,7 +487,7 @@ export function PvpLobby({
             <p className="mt-4 max-w-xl text-sm leading-relaxed text-white/60 sm:text-base">{subtitle}</p>
           )}
 
-          {/* The action row. Same order and same weights as LAST RUN: solid
+          {/* The action row. Same order and weights as every lobby: solid
               cyan primary, violet secondary, a ghost exit, then the mode. */}
           <div className="mt-6 flex flex-wrap items-center gap-3">
             <button
@@ -553,7 +561,7 @@ export function PvpLobby({
         </div>
 
         {/* ── The match panel ──────────────────────────────────────────── */}
-        {/* LAST RUN's aside: one dark card with a cyan top hairline carrying
+        {/* The casino lobby's aside: one dark card with a cyan top hairline carrying
             the FACTS of the match. The actions live in the hero, so this panel
             never competes with them for the player's first tap. */}
         <motion.aside
@@ -677,7 +685,7 @@ export function PvpLobby({
       </section>
 
       {/* ── Open lobbies ─────────────────────────────────────────────── */}
-      {/* LAST RUN's section rhythm: a small uppercase header with the
+      {/* The casino lobby's section rhythm: a small uppercase header with the
           secondary controls on the right, then flat cards — no heavy panel. */}
       <section className="mt-12 lg:mt-16">
         <div className="flex items-baseline justify-between">

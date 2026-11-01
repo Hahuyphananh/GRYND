@@ -17,7 +17,7 @@ export interface CreateMatchLifecycleInput {
   queuedAt?: Date;
   /**
    * Optional caller transaction. Passing it makes the lifecycle row and its
-   * event commit atomically with the caller's own writes (e.g. LAST RUN's
+   * event commit atomically with the caller's own writes (e.g. Tower Arena's
    * match record + Elo), so a failure cannot leave one half applied.
    */
   tx?: any;

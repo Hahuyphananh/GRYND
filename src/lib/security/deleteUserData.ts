@@ -239,10 +239,11 @@ export async function deleteUserLocalData(clerkId: string): Promise<boolean> {
     await tx
       .delete(kenoPvpMatches)
       .where(or(eq(kenoPvpMatches.player1Id, clerkId), eq(kenoPvpMatches.player2Id, clerkId)));
-    // LAST RUN's durable match record (migration 0233). Guarded like
-    // lane_runner_pvp_matches above: the table only exists once that migration
-    // has been applied, and a DELETE against a missing table would roll back
-    // the whole purge.
+    // The retired LAST RUN table (migration 0233) still holds those players'
+    // historical results, so erasing an account must erase them too. Guarded
+    // like lane_runner_pvp_matches above: the table only exists once that
+    // migration has been applied, and a DELETE against a missing table would
+    // roll back the whole purge.
     if ((await getExistingTables()).has("last_run_matches")) {
       await tx
         .delete(lastRunMatches)

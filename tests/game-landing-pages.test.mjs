@@ -441,9 +441,9 @@ test("auth: an unknown /games/<slug> is a real 404, not a 200 soft 404", () => {
     "the guard must match exactly a one-segment /games/<slug> request",
   );
   // The guard also exempts a route that is a real playable game even when it has
-  // no landing page (`!isGameRoute`) — LAST RUN shipped exactly that way, and
-  // rewriting it to the sentinel answered the shipped game with a 500. Both
-  // halves of the condition are load-bearing, so they are asserted together.
+  // no landing page (`!isGameRoute`) — rewriting such a route to the sentinel
+  // answers the shipped game with a 500. Both halves of the condition are
+  // load-bearing, so they are asserted together.
   const proxyOneLine = PROXY.replace(/\s+/g, " ");
   assert.ok(
     proxyOneLine.includes(

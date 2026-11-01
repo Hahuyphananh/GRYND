@@ -31,7 +31,6 @@ import unoArt from "../../images/uno game div.webp";
 import rpsArt from "../../images/rockpaperscissorsimage.png";
 import fourInARowArt from "../../images/four-in-a-row-card.png";
 import laneRunnerArt from "../../images/lanerushimage.png";
-import lastRunArt from "../../images/last-run-card.svg";
 import poolMastersArt from "../../images/poolmastersimage.png";
 import hexDuelArt from "../../images/hexduelimage.png";
 import oddsArt from "../../images/odds.svg";
@@ -59,7 +58,6 @@ export const GAME_CARD_ART = {
   "tower-arena": towerArenaArt,
   "four-in-a-row": fourInARowArt,
   "lane-runner": laneRunnerArt,
-  "last-run": lastRunArt,
   "pool-masters": poolMastersArt,
   precision: precisionArt,
   "dots-and-boxes": dotsAndBoxesArt,

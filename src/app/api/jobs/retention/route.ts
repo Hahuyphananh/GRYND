@@ -83,9 +83,10 @@ export async function GET(request: Request) {
   await purge("rps_pvp_games", FINISHED);
   // Cascades to hex_duel_actions.
   await purge("hex_duel_games", FINISHED);
-  // LAST RUN (migration 0233). One row exists per COMPLETED match and the table
-  // has no `status` column, so it is filtered on `ended_at` alone — an
-  // interrupted match never writes a row at all, so nothing in-flight is at risk.
+  // Retired LAST RUN table (migration 0233) — the game is no longer playable,
+  // but its historical results stay inside the same retention window as every
+  // other game. One row exists per COMPLETED match and the table has no
+  // `status` column, so it is filtered on `ended_at` alone.
   await purge("last_run_matches", null);
 
   // ── Chess games → cascades to chess_moves (also terminal 'expired') ──

@@ -17,6 +17,7 @@ import { cosmeticEffectClass } from "../../../lib/profileCosmetics";
 import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import { type AiDifficulty, readStoredAiDifficulty } from "../../../lib/aiDifficulty";
+import { createAiTurnGuard, fetchAiTurn } from "../../../lib/aiTurnRetry";
 import { TURN_TIME_LIMIT_MS } from "../../../../game-engine/diceFlushEngine";
 import { playVictory, playDefeat, playTurnSwitch, playTick } from "../../../lib/gameAudio";
 import {
@@ -415,6 +416,11 @@ export default function DiceFlushPage() {
   const [aiAnimating, setAiAnimating] = useState(false);
   const [aiRollSteps, setAiRollSteps] = useState<{ dice: number[]; heldDice: boolean[]; rollNum: number }[]>([]);
   const aiTurnScheduledRef = useRef(false);
+  // The bot's turn is asked for once per turn, with a BOUNDED number of retries
+  // and a deadline on the request (src/lib/aiTurnRetry). Without a bound, one
+  // refused turn re-arms itself and the table sits on the bot's turn forever.
+  const aiTurnGuardRef = useRef<ReturnType<typeof createAiTurnGuard> | null>(null);
+  if (!aiTurnGuardRef.current) aiTurnGuardRef.current = createAiTurnGuard();
   const aiUnmountedRef = useRef(false);
 
   // Cleanup on unmount
@@ -701,17 +707,27 @@ export default function DiceFlushPage() {
     await new Promise(r => setTimeout(r, 800));
     if (aiUnmountedRef.current) return;
     
+    const guard = aiTurnGuardRef.current as ReturnType<typeof createAiTurnGuard>;
+    const turnKey = `${rId}:turn-${game?.turnNumber ?? 0}`;
     try {
-      const res = await fetch("/api/dice-flush/ai-turn", {
+      const res = await fetchAiTurn("/api/dice-flush/ai-turn", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ roomId: rId }),
       });
       const d = await res.json();
-      if (!d.success || aiUnmountedRef.current) {
+      if (!res.ok || !d.success || aiUnmountedRef.current) {
+        // A refused turn gets the bounded retry; once it is used up the table
+        // waits for the server's own resolution instead of spinning.
+        const delay = guard.fail();
         setAiAnimating(false);
+        aiTurnScheduledRef.current = false;
+        if (delay !== null && !aiUnmountedRef.current) {
+          window.setTimeout(() => runAiTurnAnimation(rId), delay);
+        }
         return;
       }
+      guard.succeed();
       
       // Animate through each AI roll
       if (d.rollSteps) {
@@ -742,7 +758,13 @@ export default function DiceFlushPage() {
     } catch {
       setAiAnimating(false);
       setAiRollSteps([]);
-      aiTurnScheduledRef.current = false;
+      const delay = guard.fail();
+      if (delay !== null && !aiUnmountedRef.current) {
+        aiTurnScheduledRef.current = true;
+        window.setTimeout(() => runAiTurnAnimation(rId), delay);
+      } else {
+        aiTurnScheduledRef.current = false;
+      }
     }
   };
 

@@ -56,7 +56,6 @@ const RATED_GAMES_FALLBACK = [
   // Hillstrike joined the rated registry without being mirrored here, which
   // made the first-paint game list disagree with the server on load.
   { key: "hillstrike", label: "Hillstrike" },
-  { key: "last-run", label: "LAST RUN" },
 ];
 
 // Game-result categories the weekly/all-time boards rank by. Alongside the

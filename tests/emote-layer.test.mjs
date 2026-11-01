@@ -43,7 +43,6 @@ const MATCH_PAGES = [
   "src/app/casino/hillstrike/[matchId]/PageClient.tsx",
   "src/app/casino/keno-pvp/[matchId]/PageClient.jsx",
   "src/app/casino/lane-runner/[matchId]/PageClient.jsx",
-  "src/app/casino/last-run/[matchId]/PageClient.tsx",
   "src/app/casino/memory-grid/[matchId]/PageClient.tsx",
   "src/app/casino/mines-pvp/[matchId]/PageClient.tsx",
   "src/app/casino/mini-golf/[matchId]/PageClient.tsx",

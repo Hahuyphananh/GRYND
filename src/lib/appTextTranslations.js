@@ -994,8 +994,6 @@ export const APP_TEXT_TRANSLATIONS = {
       },
       lane_runner_desc:
         "Build a garage and race a rival on the same oval — deploy cars to the Safe, Sprint or Risk lane each round and reach 1,000 points first.",
-      last_run_desc:
-        "Run the same seeded course as a rival — jump crates, duck beams and survive the accelerating track; the first runner to crash loses.",
       pool_masters_desc: "Compete in a strategic game of pool. Sink the 8-ball to win!",
       pool_masters_name: "Pool Masters",
       chess_name: "Chess",
@@ -2999,8 +2997,6 @@ export const APP_TEXT_TRANSLATIONS = {
       },
       lane_runner_desc:
         "Construisez votre garage et affrontez un rival sur le même ovale : déployez vos voitures sur les pistes Sûre, Sprint ou Risque et atteignez 1 000 points en premier.",
-      last_run_desc:
-        "Parcourez le même circuit généré pour vous deux : sautez les caisses, baissez-vous sous les poutres et survivez à l'accélération ; le premier à tomber perd.",
       chess_name: "Échecs",
       rps_name: "Roche-Papier-Ciseaux",
       pool_masters_name: "Maîtres du Billard",
@@ -4760,8 +4756,6 @@ export const APP_TEXT_TRANSLATIONS = {
       },
       lane_runner_desc:
         "Construye tu garaje y compite contra un rival en el mismo óvalo: despliega tus coches en las pistas Segura, Sprint o Riesgo y llega primero a 1.000 puntos.",
-      last_run_desc:
-        "Recorre el mismo circuito generado para ambos: salta las cajas, agáchate bajo las vigas y sobrevive a la aceleración; el primero en caer pierde.",
       chess_name: "Ajedrez",
       rps_name: "Piedra-Papel-Tijeras",
       pool_masters_name: "Maestros del Billar",

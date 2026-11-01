@@ -57,14 +57,18 @@ test("tower arena: the page's ask lands after the server's think window", () => 
   // The page only asks while a bot actually holds the turn, once per turn.
   const start = towerPage.indexOf("AI turns: when a bot holds the placement turn");
   assert.ok(start > 0, "the page must carry a bot-turn effect");
-  const body = towerPage.slice(start, start + 2600);
+  const body = towerPage.slice(start, start + 4600);
   assert.ok(body.includes("holder?.isAi"), "only a bot's turn is woken");
   assert.ok(body.includes("match.phase !== \"placement\""), "only during placement");
   assert.ok(
     body.includes("aiTurnFiredTurn.current === match.turnNumber"),
     "one ask per turn number, so a re-render cannot spam the route",
   );
-  assert.ok(body.includes('fetch("/api/tower-arena/ai-turn"'));
+  // The ask goes through the shared bounded retry (src/lib/aiTurnRetry): a
+  // deadline on the request and a finite number of attempts, so one refused or
+  // unanswered ask cannot leave the board on the bot's turn for good.
+  assert.ok(body.includes('fetchAiTurn("/api/tower-arena/ai-turn"'));
+  assert.ok(body.includes("guard.fail()"));
   assert.ok(body.includes("}, BOT_PLAN_DELAY_MS);"), "the ask is scheduled, not fired inline");
   // The ask's ANSWER is not the state: the route replies with flags only, and it
   // may refuse the ask outright (403 "Not an AI turn" when a read resolved the

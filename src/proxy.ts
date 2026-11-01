@@ -33,6 +33,23 @@ import { isGuideSlug } from "./lib/guides";
 const NOT_FOUND_SENTINEL = "/__unknown-game-slug";
 
 /**
+ * RETIRED GAMES — real, playable games that have since been removed from the
+ * app (see docs/last-run-removal.md).
+ *
+ * Their URLs must be a plain 404 for EVERY visitor, signed out included. The
+ * auth gate below answers an unrecognised path with a `/sign-in` bounce, which
+ * would turn a deleted game into a dead end after signing in; and because the
+ * unknown-slug guard only covers the one-segment `/games/<slug>` form, a nested
+ * URL like `/games/last-run/play` would never reach it. Both prefixes are caught
+ * here instead, before any authentication decision, and rewritten to the same
+ * not-found sentinel the rest of the app uses.
+ */
+const RETIRED_GAME_PATHS: readonly RegExp[] = [
+  /^\/games\/last-run(\/|$)/,
+  /^\/casino\/last-run(\/|$)/,
+];
+
+/**
  * Playable casino/game routes — the single source of truth for
  * `isGameRoute()`. These are the exact same patterns the public matcher
  * below has always listed; they live here so the two lists cannot drift.
@@ -93,9 +110,6 @@ const GAME_ROUTE_PATTERNS = [
   // sends a signed-out visitor to sign-in — while the practice board is entirely
   // client-side and needs no account at all.
   "/casino/hillstrike(.*)",
-  // LAST RUN's lobby (/casino/last-run, reached publicly as
-  // /games/last-run/play) and its per-match view (/casino/last-run/<id>).
-  "/casino/last-run(.*)",
   // /games/* mirrors of the /casino/* routes.
   "/games/uno(.*)",
   "/games/neon-flush(.*)",
@@ -122,13 +136,6 @@ const GAME_ROUTE_PATTERNS = [
   "/games/barrier-blitz(.*)",
   "/games/dominoes(.*)",
   "/games/hillstrike(.*)",
-  // LAST RUN's public landing page (/games/last-run), its lobby
-  // (/games/last-run/play, rewritten to /casino/last-run) and its match views
-  // (/games/last-run/<id>). Bare /games/last-run is classified here AND has a
-  // landing page, which is safe because every pattern in this list is public;
-  // while the entry was missing entirely, the slug guard below rewrote the
-  // shipped game to the not-found sentinel and it answered with a 500.
-  "/games/last-run(.*)",
 ] as const;
 
 const isPublicRoute = createRouteMatcher([
@@ -558,13 +565,20 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
   // pure lookup against the same list the pages and the sitemap use.
   const unknownGameSlug = /^\/games\/([^/]+)\/?$/.exec(pathname);
   // A slug that IS a real playable route (GAME_ROUTE_PATTERNS) has a page even
-  // when it has no public landing page — LAST RUN is exactly that case, and
-  // rewriting it away made the shipped game unreachable with a 500.
+  // when it has no public landing page. Rewriting such a slug away makes a
+  // shipped game unreachable with a 500.
   if (
     unknownGameSlug &&
     !isGameLandingSlug(unknownGameSlug[1]) &&
     !isGameRoute(pathname)
   ) {
+    return applySecurityHeaders(
+      NextResponse.rewrite(new URL(NOT_FOUND_SENTINEL, req.url)),
+    );
+  }
+
+  // A retired game's URL is gone, not redirected and not a sign-in bounce.
+  if (RETIRED_GAME_PATHS.some((pattern) => pattern.test(pathname))) {
     return applySecurityHeaders(
       NextResponse.rewrite(new URL(NOT_FOUND_SENTINEL, req.url)),
     );
