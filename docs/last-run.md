@@ -184,9 +184,14 @@ created on first use and lives in the Next.js process.
   `/api/jobs/last-run-sweep` — never recorded as a result.
 - **In-process state.** One Next.js instance owns the match. Fine for the
   single-host deployment this repo uses; not for serverless multi-instance.
-- **No Socket.IO push yet.** The match page polls the authoritative snapshot at
-  4 Hz. The existing `lobby:updated` relay can be added later without changing
-  the engine or the payload.
+- **No Socket.IO push yet.** The match page reads the authoritative snapshot
+  every 120 ms while racing. Rendering does not wait for it: the arena replays
+  the same deterministic engine locally at 60 Hz
+  (`src/components/last-run/useRunPrediction.ts`), so your own jump starts on
+  your input and your rival's arc is continued from the snapshot's own `y`/`vy`.
+  Prediction is display-only — it steps with no obstacles, so it cannot end a
+  run, and every read re-anchors it. The existing `lobby:updated` relay can
+  still be added later without changing the engine or the payload.
 - **In the public catalogue.** LAST RUN is a first-class game: `/games/last-run`
   is its public landing page (`GAME_LANDING_PAGES` + `GAME_CATALOG`), the lobby
   is `/casino/last-run` (reached publicly as `/games/last-run/play`), and a
@@ -273,9 +278,10 @@ minutes as `failed` — it never invents a winner.
 - One Next.js process holds live matches; a restart drops them (players see
   "match not found"). The canonical record of a *completed* match survives in
   Postgres.
-- The 4 Hz snapshot poll is one authenticated read per player per 250 ms while a
-  match is live — under a handful of requests per second for two players, well
-  inside a free tier.
+- The racing snapshot read is one authenticated request per player per 120 ms
+  while a match is live — about 8 per second per player, under 20 for a full
+  two-player match, well inside a free tier. The 60 Hz rendering is local and
+  costs the server nothing.
 - No new service, queue, cache, analytics provider or paid API is used.
 - `match_lifecycle` and `match_lifecycle_events` grow by one row (plus the
   canonical transition rows) per completed match; the existing retention job is

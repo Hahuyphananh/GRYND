@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { getCompletionRecord, getSnapshot } from "../../../../../lib/last-run/matchRegistry";
 import { markLastRunStarted, persistLastRunCompletion } from "../../../../../lib/last-run/persistence";
 import { readLastRunMatch } from "../../../../../lib/last-run/queries";
+import { ensureLastRunPusher, flushLastRunFinal } from "../../../../../lib/last-run/realtime";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +55,13 @@ export async function GET(
     const completion = getCompletionRecord(matchId, userId);
     if (completion) void persistLastRunCompletion(completion);
   }
+
+  // The push loop for this match: 10 Hz from the server's own clock, for as long
+  // as a seat keeps reading. Idempotent — a later read only marks the match as
+  // still watched. A final state is pushed once, immediately, instead of on the
+  // next tick, so the result appears with the read that observed it.
+  if (snapshot.final) flushLastRunFinal(matchId);
+  else ensureLastRunPusher(matchId);
 
   return NextResponse.json({ success: true, snapshot });
 }

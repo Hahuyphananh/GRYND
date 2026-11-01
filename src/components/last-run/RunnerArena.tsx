@@ -10,11 +10,11 @@
 //
 // ── WHAT IT DOES NOT DO ───────────────────────────────────────────────────
 //
-// It does not simulate, score or decide anything. Distances, jump heights, duck
-// states and alive/dead come from the server snapshot; this component only
-// projects them. Between snapshots it advances each DISTANCE on the shared
-// speed curve, so a 4 Hz authoritative feed reads as smooth motion — a purely
-// visual extrapolation that the next snapshot overwrites exactly.
+// It does not score or decide anything. Alive/dead, survival times and the
+// result come from the server snapshot; this component only projects them.
+// Between authoritative reads it replays the shared deterministic engine
+// (`useRunPrediction`), so both lanes move at 60 Hz — distance, jump arc and
+// duck included — and the next snapshot overwrites that projection exactly.
 //
 // ── EFFECTS ───────────────────────────────────────────────────────────────
 //
@@ -32,8 +32,10 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { speedAt } from "../../lib/last-run/engine";
+import { NEUTRAL_INPUT, type RunnerInput } from "../../lib/last-run/engine";
 import type { ObstacleKind } from "../../lib/last-run/constants";
+import type { MatchSnapshot } from "../../lib/last-run/matchRegistry";
+import { useRunPrediction } from "./useRunPrediction";
 
 export type ArenaSeat = {
   name: string;
@@ -61,7 +63,21 @@ type Props = {
   elapsedMs: number;
   running: boolean;
   reducedMotion?: boolean;
+  /**
+   * 60 Hz local prediction between authoritative reads. Without it (or before
+   * the first snapshot) the arena draws `you`/`opponent` exactly as given.
+   */
+  predict?: {
+    snapshot: MatchSnapshot | null;
+    /** The server's clock, ms — the same one its snapshot stamps use. */
+    serverNow: () => number;
+    /** The controls held right now, for your lane's predicted pose. */
+    held: RunnerInput;
+  };
 };
+
+/** No prediction anchor yet: the arena simply falls back to the snapshot. */
+const noServerNow = () => Date.now();
 
 const VIEW_W = 1000;
 const VIEW_H = 340;
@@ -83,38 +99,6 @@ type Burst = {
   y: number;
   at: number;
 };
-
-/**
- * Advance a distance between authoritative snapshots on the shared speed
- * curve. Resets on every new server value and freezes the moment a runner dies.
- */
-function useSmoothDistance(serverDistance: number, alive: boolean, running: boolean, reduced: boolean): number {
-  const [distance, setDistance] = useState(serverDistance);
-  const anchor = useRef({ distance: serverDistance, at: Date.now() });
-
-  useEffect(() => {
-    anchor.current = { distance: serverDistance, at: Date.now() };
-    setDistance(serverDistance);
-  }, [serverDistance]);
-
-  useEffect(() => {
-    if (!running || !alive || reduced) return undefined;
-    let raf = 0;
-    let previous = performance.now();
-    const step = (nowMs: number) => {
-      const dt = Math.min(0.1, (nowMs - previous) / 1000);
-      previous = nowMs;
-      const elapsed = (Date.now() - anchor.current.at) / 1000;
-      const next = anchor.current.distance + speedAt(Math.max(0, elapsed)) * dt;
-      setDistance((current) => (next > current ? next : current));
-      raf = requestAnimationFrame(step);
-    };
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
-  }, [alive, reduced, running]);
-
-  return distance;
-}
 
 /** The three obstacle silhouettes, drawn to read at a glance and at speed. */
 function ObstacleShape({
@@ -262,7 +246,7 @@ function Lane({
   bursts: Burst[];
   accent: "cyan" | "violet";
 }) {
-  const distance = useSmoothDistance(seat.distance, seat.alive, running, reduced);
+  const distance = seat.distance;
   const palette = ACCENT[accent];
   const jumping = seat.y > 1;
   const bodyWidth = seat.ducking ? 17 : 13;
@@ -372,23 +356,33 @@ function Lane({
   );
 }
 
-export function RunnerArena({ you, opponent, obstacles, elapsedMs, running, reducedMotion = false }: Props) {
-  const leaderDistance = Math.max(you.distance, opponent.distance);
+export function RunnerArena({ you, opponent, obstacles, elapsedMs, running, reducedMotion = false, predict }: Props) {
+  // Predicted poses while racing, the snapshot's own values otherwise.
+  const predicted = useRunPrediction({
+    snapshot: predict?.snapshot ?? null,
+    serverNow: predict?.serverNow ?? noServerNow,
+    held: predict?.held ?? NEUTRAL_INPUT,
+    active: running,
+  });
+  const shownYou: ArenaSeat = predicted ? { ...you, ...predicted.you } : you;
+  const shownOpponent: ArenaSeat = predicted ? { ...opponent, ...predicted.rival } : opponent;
+
+  const leaderDistance = Math.max(shownYou.distance, shownOpponent.distance);
   const sceneryShift = (leaderDistance * 0.22) % 220;
 
   // One cosmetic effect stream, derived from the server's state transitions.
   const [bursts, setBursts] = useState<Burst[]>([]);
   const previous = useRef({
-    you: { y: you.y, alive: you.alive, ducking: you.ducking },
-    opponent: { y: opponent.y, alive: opponent.alive, ducking: opponent.ducking },
+    you: { y: shownYou.y, alive: shownYou.alive, ducking: shownYou.ducking },
+    opponent: { y: shownOpponent.y, alive: shownOpponent.alive, ducking: shownOpponent.ducking },
   });
   const burstId = useRef(0);
 
   useEffect(() => {
     if (reducedMotion) return;
     const lanes: Array<{ key: "you" | "opponent"; seat: ArenaSeat; lane: "player1" | "player2" }> = [
-      { key: "you", seat: you, lane: "player1" },
-      { key: "opponent", seat: opponent, lane: "player2" },
+      { key: "you", seat: shownYou, lane: "player1" },
+      { key: "opponent", seat: shownOpponent, lane: "player2" },
     ];
     const spawned: Burst[] = [];
     for (const { key, seat, lane } of lanes) {
@@ -411,17 +405,17 @@ export function RunnerArena({ you, opponent, obstacles, elapsedMs, running, redu
     }
     if (spawned.length === 0) return;
     setBursts((current) => [...current.slice(-5), ...spawned]);
-    // Primitive dependencies: `you`/`opponent` are rebuilt on every render, so
-    // depending on the objects would re-run this effect (and its state write
-    // check) on every frame of the parent clock.
+    // Primitive dependencies: the seats are rebuilt on every predicted frame,
+    // so depending on the objects would re-run this effect (and its state write
+    // check) at 60 Hz.
   }, [
-    opponent.alive,
-    opponent.ducking,
-    opponent.y,
     reducedMotion,
-    you.alive,
-    you.ducking,
-    you.y,
+    shownOpponent.alive,
+    shownOpponent.ducking,
+    shownOpponent.y,
+    shownYou.alive,
+    shownYou.ducking,
+    shownYou.y,
   ]);
 
   useEffect(() => {
@@ -447,8 +441,8 @@ export function RunnerArena({ you, opponent, obstacles, elapsedMs, running, redu
         preserveAspectRatio="xMidYMid meet"
         className="block h-auto max-h-[min(60vh,440px)] w-full landscape:max-h-[min(56vh,330px)]"
         role="img"
-        aria-label={`Last Run arena. ${you.name}: ${you.alive ? "running" : "crashed"}. ${opponent.name}: ${
-          opponent.alive ? "running" : "crashed"
+        aria-label={`Last Run arena. ${shownYou.name}: ${shownYou.alive ? "running" : "crashed"}. ${shownOpponent.name}: ${
+          shownOpponent.alive ? "running" : "crashed"
         }.`}
       >
         <defs>
@@ -474,21 +468,21 @@ export function RunnerArena({ you, opponent, obstacles, elapsedMs, running, redu
           );
         })}
 
-        <Lane seat={you} laneId="player1" laneY={LANE_Y.player1} obstacles={obstacles} reduced={reducedMotion} running={running} bursts={bursts} accent={you.accent} />
-        <Lane seat={opponent} laneId="player2" laneY={LANE_Y.player2} obstacles={obstacles} reduced={reducedMotion} running={running} bursts={bursts} accent={opponent.accent} />
+        <Lane seat={shownYou} laneId="player1" laneY={LANE_Y.player1} obstacles={obstacles} reduced={reducedMotion} running={running} bursts={bursts} accent={shownYou.accent} />
+        <Lane seat={shownOpponent} laneId="player2" laneY={LANE_Y.player2} obstacles={obstacles} reduced={reducedMotion} running={running} bursts={bursts} accent={shownOpponent.accent} />
 
         <g fontFamily="ui-sans-serif, system-ui" fontSize={11} letterSpacing={2}>
-          <text x={18} y={LANE_Y.player1 - 116} fill={ACCENT[you.accent].main} opacity={0.85}>
+          <text x={18} y={LANE_Y.player1 - 116} fill={ACCENT[shownYou.accent].main} opacity={0.85}>
             YOU
           </text>
-          <text x={18} y={LANE_Y.player2 - 116} fill={ACCENT[opponent.accent].main} opacity={0.75}>
+          <text x={18} y={LANE_Y.player2 - 116} fill={ACCENT[shownOpponent.accent].main} opacity={0.75}>
             RIVAL
           </text>
           <text x={VIEW_W - 18} y={LANE_Y.player1 - 116} textAnchor="end" fill="rgba(255,255,255,0.45)">
-            {Math.round(you.distance)} M
+            {Math.round(shownYou.distance)} M
           </text>
           <text x={VIEW_W - 18} y={LANE_Y.player2 - 116} textAnchor="end" fill="rgba(255,255,255,0.35)">
-            {Math.round(opponent.distance)} M
+            {Math.round(shownOpponent.distance)} M
           </text>
         </g>
 

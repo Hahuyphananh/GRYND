@@ -13,6 +13,7 @@ import { COUNTDOWN_MS, DISCONNECT_GRACE_MS, MAX_INPUTS_PER_SECOND } from "../src
 import {
   __resetLastRunRegistryForTests,
   forfeitMatch,
+  getBroadcastSnapshot,
   getSnapshot,
   joinQueue,
   leaveQueue,
@@ -21,6 +22,13 @@ import {
   sanitizeName,
   submitInput,
 } from "../src/lib/last-run/matchRegistry.ts";
+import {
+  LAST_RUN_SNAPSHOT_EVENT,
+  isMatchBroadcast,
+  lastRunMatchRoom,
+  snapshotForSeat,
+} from "../src/lib/last-run/broadcast.ts";
+import { pushLastRunSnapshot } from "../src/lib/last-run/realtime.ts";
 
 const T0 = 1_700_000_000_000;
 
@@ -210,6 +218,66 @@ test("result: a finished match keeps its outcome on every later read", () => {
   assert.equal(later.phase, "finished");
   assert.equal(later.final.result, "player2");
   assert.equal(later.final.reason, "left");
+});
+
+// ── The pushed snapshot ─────────────────────────────────────────────────
+//
+// The push sends ONE viewer-neutral build per match and each seat reads its own
+// side out of it, so the socket path and the HTTP path hand the page the same
+// object. These tests pin that equivalence and the refusal of malformed frames.
+
+test("push: the frame is viewer-neutral and each seat reads its own side", () => {
+  const { matchId, startsAt } = pair();
+  const broadcast = getBroadcastSnapshot(matchId, startsAt + 500);
+  assert.ok(broadcast);
+
+  assert.equal("you" in broadcast, false, "a pushed frame is not addressed to a seat");
+  assert.equal("opponent" in broadcast, false);
+
+  const one = snapshotForSeat(broadcast, "player1");
+  const two = snapshotForSeat(broadcast, "player2");
+  assert.equal(one.you.seat, "player1");
+  assert.equal(one.opponent.seat, "player2");
+  assert.equal(two.you.seat, "player2");
+  assert.equal(two.opponent.seat, "player1");
+  assert.equal(one.seed, two.seed);
+  assert.deepEqual(one.course.obstacles, two.course.obstacles);
+  // Identical to the seat's own HTTP read — one rendering branch, not two.
+  assert.deepEqual(one, getSnapshot({ matchId, userId: "u1", now: startsAt + 500 }));
+});
+
+test("push: a malformed or foreign frame is refused instead of drawn", () => {
+  const { matchId, startsAt } = pair();
+  const good = getBroadcastSnapshot(matchId, startsAt + 100);
+  assert.ok(good);
+
+  assert.equal(isMatchBroadcast(good), true);
+  assert.equal(isMatchBroadcast(null), false);
+  assert.equal(isMatchBroadcast({}), false);
+  assert.equal(isMatchBroadcast({ ...good, phase: "tampered" }), false);
+  assert.equal(isMatchBroadcast({ ...good, seats: { player1: {}, player2: {} } }), false);
+});
+
+test("push: one frame goes to the match room under the snapshot event", async () => {
+  const { matchId, startsAt } = pair();
+  const previousIo = globalThis.io;
+  const frames = [];
+  globalThis.io = {
+    to: (room) => ({ emit: (event, payload) => frames.push({ room, event, payload }) }),
+  };
+
+  try {
+    const sent = await pushLastRunSnapshot(matchId, startsAt + 700);
+    assert.equal(sent, true);
+    assert.equal(frames.length, 1, "exactly one frame per push");
+    assert.equal(frames[0].room, lastRunMatchRoom(matchId));
+    assert.equal(frames[0].event, LAST_RUN_SNAPSHOT_EVENT);
+    assert.equal(frames[0].payload.matchId, matchId);
+    assert.ok(frames[0].payload.tick > 0, "the frame is advanced, not stale");
+  } finally {
+    if (previousIo === undefined) delete globalThis.io;
+    else globalThis.io = previousIo;
+  }
 });
 
 // ── Names ───────────────────────────────────────────────────────────────

@@ -33,6 +33,8 @@
 
 import { randomInt, randomUUID } from "node:crypto";
 
+import { snapshotForSeat, type MatchBroadcast } from "./broadcast";
+
 import {
   COUNTDOWN_MS,
   COURSE_DURATION_S,
@@ -127,6 +129,14 @@ export type SnapshotSeat = {
   name: string;
   distance: number;
   y: number;
+  /**
+   * Vertical velocity, px/s. A client that is not predicting the rival's inputs
+   * can still continue its jump arc exactly from `(y, vy)` — airborne motion is
+   * pure gravity — so the arc stays smooth between authoritative reads.
+   */
+  vy: number;
+  /** True while the feet are on the ground line. */
+  onGround: boolean;
   ducking: boolean;
   alive: boolean;
   crashedAtTick: number | null;
@@ -655,6 +665,8 @@ function seatSnapshot(match: LastRunMatch, seat: Seat, now: number): SnapshotSea
     name: player.name,
     distance: runner.distance,
     y: runner.y,
+    vy: runner.vy,
+    onGround: runner.onGround,
     ducking: runner.ducking,
     alive: runner.alive,
     crashedAtTick,
@@ -668,12 +680,58 @@ function seatSnapshot(match: LastRunMatch, seat: Seat, now: number): SnapshotSea
   };
 }
 
+function phaseOf(match: LastRunMatch, now: number): MatchPhase {
+  return match.final ? "finished" : now < match.startsAt ? "countdown" : "racing";
+}
+
+/**
+ * The viewer-NEUTRAL snapshot of a live match, addressed by seat.
+ *
+ * This is the payload the realtime push carries: ONE build per match instead of
+ * one per player, with no opinion about who is asking. It advances the
+ * simulation exactly like `getSnapshot` does.
+ *
+ * It deliberately does NOT refresh a seat's `lastSeen`. Presence is the seat's
+ * own authorised read; if a push loop could refresh it, a closed tab would look
+ * alive forever and the abandonment policy would stop working.
+ */
+export function getBroadcastSnapshot(matchId: string, now = Date.now()): MatchBroadcast | null {
+  prune(now);
+  const match = registry().matches.get(matchId);
+  if (!match) return null;
+
+  advance(match, now);
+
+  return {
+    matchId: match.id,
+    seed: match.seed,
+    practice: match.practice,
+    practiceLevel: match.practiceLevel,
+    phase: phaseOf(match, now),
+    serverNow: now,
+    startsAt: match.startsAt,
+    elapsedMs: Math.max(0, Math.min(MATCH_MAX_MS, now - match.startsAt)),
+    tick: match.sim.tick,
+    seats: {
+      player1: seatSnapshot(match, "player1", now),
+      player2: seatSnapshot(match, "player2", now),
+    },
+    course: {
+      duration: match.sim.course.duration,
+      length: match.sim.course.length,
+      obstacles: windowObstacles(match),
+    },
+    final: match.final,
+  };
+}
+
 /**
  * The authoritative snapshot for one seat.
  *
- * Advances the simulation first (so two clients reading at slightly different
- * moments see a coherent, monotone world), then returns only what a renderer
- * needs. Membership is enforced here: a caller without a seat gets `null`.
+ * Membership is enforced here: a caller without a seat gets `null`, so knowing a
+ * match id is still not enough to watch it over HTTP. The seat's own read is
+ * what records presence, and the same neutral build the push uses is filtered
+ * down to this seat — so both delivery paths render identically.
  */
 export function getSnapshot({
   matchId,
@@ -691,33 +749,9 @@ export function getSnapshot({
   if (!seat) return null;
 
   match.players[seat].lastSeen = now;
-  advance(match, now);
 
-  const phase: MatchPhase = match.final
-    ? "finished"
-    : now < match.startsAt
-      ? "countdown"
-      : "racing";
-
-  return {
-    matchId: match.id,
-    seed: match.seed,
-    practice: match.practice,
-    practiceLevel: match.practiceLevel,
-    phase,
-    serverNow: now,
-    startsAt: match.startsAt,
-    elapsedMs: Math.max(0, Math.min(MATCH_MAX_MS, now - match.startsAt)),
-    tick: match.sim.tick,
-    you: seatSnapshot(match, seat, now),
-    opponent: seatSnapshot(match, otherSeat(seat), now),
-    course: {
-      duration: match.sim.course.duration,
-      length: match.sim.course.length,
-      obstacles: windowObstacles(match),
-    },
-    final: match.final,
-  };
+  const broadcast = getBroadcastSnapshot(matchId, now);
+  return broadcast ? snapshotForSeat(broadcast, seat) : null;
 }
 
 /** Test/QA hook: a clean registry. Never called by a route handler. */

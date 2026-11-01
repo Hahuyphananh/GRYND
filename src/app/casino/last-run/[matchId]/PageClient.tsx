@@ -14,8 +14,19 @@
 // ── WHAT THE CLIENT OWNS ──────────────────────────────────────────────────
 //
 // Two booleans, on transition: `{ jump, duck }`. Everything else — distance,
-// height, collisions, survival, winner — is the server's. The arena
-// interpolates distance for smoothness; nothing here can change a tick.
+// height, collisions, survival, winner — is the server's, and this page never
+// sends a position or a result.
+//
+// ── WHY IT DOES NOT WAIT TO DRAW ───────────────────────────────────────────
+//
+// The snapshot is the authority, and while the match is live the server PUSHES
+// it (10 Hz) to `last-run:match:<id>`, so the world arrives without a request
+// per frame. Rendering does not wait for it either: the arena replays the SAME
+// deterministic engine locally at 60 Hz
+// (src/components/last-run/useRunPrediction.ts) — your jump from your own input,
+// your rival's arc from the snapshot's own (`y`, `vy`) — and every frame
+// re-anchors it. Prediction is display only: it steps with no obstacles, so it
+// can never decide a collision, a survival time or a result.
 //
 // Sound is off by default (no autoplay) and is toggled by the visible mute
 // control. Effects are cosmetic: with reduced motion they disappear, and the
@@ -25,10 +36,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
+import { useSocket } from "../../../../context/SocketProvider";
+import useGameEmotes from "../../../../hooks/useGameEmotes";
+import GameEmoteLayer from "../../../../components/game/emotes/GameEmoteLayer";
 
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import RunnerArena, { SeatBadge } from "../../../../components/last-run/RunnerArena";
+import PostMatchAdSlot from "../../../../components/ads/PostMatchAdSlot";
 import { useRunInput } from "../../../../components/last-run/useRunInput";
 import { useRunAudio } from "../../../../components/last-run/useRunAudio";
 import {
@@ -37,11 +52,21 @@ import {
   sanitizePracticeLevel,
 } from "../../../../lib/last-run/practice";
 import type { MatchSnapshot } from "../../../../lib/last-run/matchRegistry";
+import {
+  LAST_RUN_SNAPSHOT_EVENT,
+  isMatchBroadcast,
+  lastRunMatchRoom,
+  snapshotForSeat,
+} from "../../../../lib/last-run/broadcast";
 
 type Feed = "connecting" | "live" | "reconnecting" | "lost";
 
-const POLL_RACING_MS = 250;
-const POLL_OTHER_MS = 500;
+// With the socket connected the push carries every frame (10 Hz), so this read
+// is presence + resync only; without a socket it IS the frame source again, and
+// 120 ms keeps a verdict inside a frame budget without turning the match into a
+// request flood.
+const POLL_RACING_MS = 120;
+const HEARTBEAT_MS = 1000;
 const STALE_AFTER_MS = 2000;
 
 function formatSeconds(ms: number, decimals = 1): string {
@@ -130,6 +155,17 @@ function SpeakerIcon({ muted }: { muted: boolean }) {
 }
 
 export default function PageClient({ matchId }: { matchId: string }) {
+  const { socket } = useSocket();
+
+  // Emotes: the shared layer over the generic `room_event` relay. The match
+  // itself syncs over HTTP (there is no gameplay socket for this race), so the
+  // emote room is a second, independent join — losing it only loses reactions.
+  const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
+    socket,
+    roomId: matchId ? `last-run:emote:${matchId}` : null,
+    eventName: "last-run:emote",
+    selfId: null,
+  });
   const router = useRouter();
   const reducedMotion = useReducedMotion() ?? false;
   const audio = useRunAudio();
@@ -146,6 +182,8 @@ export default function PageClient({ matchId }: { matchId: string }) {
 
   const skew = useRef(0);
   const lastOk = useRef(0);
+  /** Which side of the match this page is; learned from the authorised read. */
+  const seatRef = useRef<MatchSnapshot["you"]["seat"] | null>(null);
   const previousSent = useRef({ jump: false, duck: false });
   const playedResult = useRef(false);
   const playedCrash = useRef(false);
@@ -217,6 +255,7 @@ export default function PageClient({ matchId }: { matchId: string }) {
         const next = data.snapshot as MatchSnapshot;
         skew.current = next.serverNow - Date.now();
         lastOk.current = Date.now();
+        seatRef.current = next.you.seat;
         setSnapshot(next);
         setError(null);
         setFeed("live");
@@ -227,7 +266,13 @@ export default function PageClient({ matchId }: { matchId: string }) {
           if (!next.practice) void pollSettled();
           return;
         }
-        timer = setTimeout(load, next.phase === "racing" ? POLL_RACING_MS : POLL_OTHER_MS);
+        // A connected socket already receives the frames; this read is then a
+        // heartbeat (presence + resync) rather than the frame source.
+        const streaming = Boolean(socket?.connected);
+        timer = setTimeout(
+          load,
+          next.phase === "racing" && !streaming ? POLL_RACING_MS : HEARTBEAT_MS,
+        );
       } catch {
         if (cancelled) return;
         setFeed((current) => (current === "connecting" ? "lost" : "reconnecting"));
@@ -240,7 +285,43 @@ export default function PageClient({ matchId }: { matchId: string }) {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [matchId]);
+  }, [matchId, socket]);
+
+  // ── The pushed frame ──────────────────────────────────────────────────
+  // The server broadcasts this match's snapshot to `last-run:match:<id>` ten
+  // times a second, so the world moves on the socket. The room is joined after
+  // the authoritative read has confirmed a seat (that read is what proves
+  // membership) and re-joined on every reconnect — Socket.IO does not restore
+  // room membership by itself. The frame is viewer-neutral, so it is read from
+  // THIS seat, and a malformed or foreign frame is dropped, never spread into
+  // state. Losing the socket costs nothing but the frames: the read below still
+  // delivers every verdict.
+  useEffect(() => {
+    if (!socket) return undefined;
+    const roomId = lastRunMatchRoom(matchId);
+    const join = () => socket.emit("join_room", { roomId });
+    const onSnapshot = (payload: unknown) => {
+      const seat = seatRef.current;
+      if (!seat || !isMatchBroadcast(payload) || payload.matchId !== matchId) return;
+      const next = snapshotForSeat(payload, seat);
+      skew.current = next.serverNow - Date.now();
+      lastOk.current = Date.now();
+      setSnapshot(next);
+      setError(null);
+      setFeed("live");
+      setNow(Date.now());
+    };
+
+    join();
+    socket.on("connect", join);
+    socket.on(LAST_RUN_SNAPSHOT_EVENT, onSnapshot);
+
+    return () => {
+      socket.off("connect", join);
+      socket.off(LAST_RUN_SNAPSHOT_EVENT, onSnapshot);
+      socket.emit("leave_room", { roomId });
+    };
+  }, [matchId, socket]);
 
   // A final snapshot also triggers the persisted read (covers a reconnect that
   // only ever saw the finished frame).
@@ -259,6 +340,8 @@ export default function PageClient({ matchId }: { matchId: string }) {
   }, [feed, now]);
 
   const serverNow = now + skew.current;
+  // A stable reader of the server's clock, for the arena's 60 Hz prediction.
+  const serverClock = useCallback(() => Date.now() + skew.current, []);
   const phase = snapshot?.phase ?? "connecting";
   const countdown = snapshot ? Math.max(0, Math.ceil((snapshot.startsAt - serverNow) / 1000)) : 3;
   const elapsed = snapshot ? Math.max(0, Math.min(snapshot.course.duration * 1000, serverNow - snapshot.startsAt)) : 0;
@@ -547,6 +630,27 @@ export default function PageClient({ matchId }: { matchId: string }) {
           />
         </div>
 
+        {/* ── Emotes ──────────────────────────────────────────────────── */}
+        {/* The quick bar is a fixed 274px (six 32px slots + the wheel, 6px gaps)
+            and cannot shrink, so it fits every phone from 320px up. Narrower
+            than that (a 280px Galaxy Fold cover screen) it overflows, and the
+            row scrolls it. NOT `justify-end`: in a scroll container that puts
+            the overflow on the START side, where it is unreachable and clips
+            the GG slot. `ml-auto` right-aligns the bar when there is room and
+            collapses to 0 when there is not, which is `overflow-x-auto`'s end
+            overflow — scrollable. */}
+        <div className="mb-1 flex max-w-full overflow-x-auto">
+          <GameEmoteLayer
+            gameId="last-run"
+            className="ml-auto"
+            compact
+            incomingEmote={incomingEmote}
+            myEmote={myEmote}
+            onSend={(emote) => sendEmote(emote)}
+            opponentLabel={rival?.name ?? null}
+          />
+        </div>
+
         {/* ── Arena ───────────────────────────────────────────────────── */}
         <div className="relative mt-2.5">
           <RunnerArena
@@ -570,6 +674,7 @@ export default function PageClient({ matchId }: { matchId: string }) {
             elapsedMs={elapsed}
             running={phase === "racing" && !finished}
             reducedMotion={reducedMotion}
+            predict={{ snapshot, serverNow: serverClock, held: controls.held }}
           />
 
           {/* Countdown + control guide: the only thing between the players and
@@ -704,6 +809,15 @@ export default function PageClient({ matchId }: { matchId: string }) {
             </div>
           )}
         </div>
+
+        {/* ── Post-match video ─────────────────────────────────────────
+            This match has a bespoke result panel, so it does not inherit the
+            shared `PvpResultScreen` slot; it mounts the same slot itself. The
+            slot asks the server whether an offer is allowed and renders a
+            full-page overlay only once the server says the match is finished —
+            a PvP duel and a practice run against the AI both count, and the
+            result on screen is never delayed by it. */}
+        {finished && <PostMatchAdSlot matchId={matchId} />}
 
         {/* ── Touch controls (always comfortable, never tiny) ─────────── */}
         <div className="mt-2.5 grid grid-cols-2 gap-2 sm:hidden">
