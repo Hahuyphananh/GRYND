@@ -55,12 +55,16 @@ node deploy/ops.mjs apply restart.app --token=<token> \
 The realtime unit does **not** need restarting: this feature ships no
 `realtime-server` code.
 
-### The CSP step, if you want creatives to actually paint
+### The CSP host
 
-`src/proxy.ts` sets `frame-src` as an explicit host list that does **not**
-include `juvenilechoice.com`, so the creative's iframe is refused. Until that
-host is added (a code change, so a new release), the banner reserves its space,
-receives a `securitypolicyviolation`, and collapses — no ad, no blank box.
+`src/proxy.ts` names `https://juvenilechoice.com` in `frame-src`, so the
+creative's iframe is allowed once the banner is switched on. `frame-src` stays
+an explicit per-host allow-list rather than `https:`: it is the directive that
+also stops third parties from framing our own pages.
+
+If a deploy ever ships a header without that host, the banner does not break the
+page — it reserves its space, takes a `securitypolicyviolation`, and collapses
+quietly instead of leaving a blank box.
 
 ## 3. Disabling it fast
 

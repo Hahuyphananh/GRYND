@@ -437,7 +437,13 @@ function applySecurityHeaders(response: NextResponse) {
       // `frame-src` directive is what keeps third parties from framing our
       // pages' content, and `frame-ancestors` below separately keeps anyone
       // from framing US.
-      "frame-src 'self' https://challenges.cloudflare.com https://*.clerk.com https://*.clerk.accounts.dev https://js.stripe.com https://checkout.stripe.com https://*.stripe.com https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://fundingchoicesmessages.google.com; " +
+      // juvenilechoice.com serves the HilltopAds banner's creative iframe
+      // (src/lib/hilltop/config.ts). It is named per host for the same reason
+      // as the others: `frame-src` is what stops third parties framing OUR
+      // pages, so it stays an allow-list rather than `https:`. The banner is
+      // off by default; without this host a switched-on banner could never
+      // paint, and it would collapse instead of showing a blank box.
+      "frame-src 'self' https://challenges.cloudflare.com https://*.clerk.com https://*.clerk.accounts.dev https://js.stripe.com https://checkout.stripe.com https://*.stripe.com https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://fundingchoicesmessages.google.com https://juvenilechoice.com; " +
       // The post-match video ad (components/ads/PostMatchVideoAd.tsx) plays a
       // provider-supplied creative in a native <video>. With no `media-src`,
       // media falls back to `default-src 'self'` and every ad video is blocked
