@@ -217,6 +217,60 @@ export function terminalResultFor(
   };
 }
 
+/**
+ * The LAST-RESORT move chooser, used only when the engine itself is unavailable.
+ *
+ * WHY THIS EXISTS: the bot's strength comes from Stockfish, but its ability to
+ * MOVE must not depend on it. A deployment whose .wasm cannot be read (or a
+ * search that hangs) used to answer every AI turn with a 503, which makes the
+ * game unplayable for a player who did nothing wrong. This picks a legal move
+ * from the authoritative position instead, so the turn always completes.
+ *
+ * WHAT IT IS NOT: a chess engine. It is one ply of greed — take the most
+ * valuable piece available, promote, prefer mate and check — with the first
+ * generated move as a deterministic tie-break. It plays poorly on purpose and is
+ * never reached unless Stockfish could not answer at all.
+ *
+ * The move is chess.js's own, and `claimAiMove` re-validates it under the lock
+ * before writing, exactly as it does for an engine answer.
+ */
+const FALLBACK_PIECE_VALUE: Record<string, number> = {
+  p: 100,
+  n: 320,
+  b: 330,
+  r: 500,
+  q: 900,
+  k: 0,
+};
+
+export function chooseFallbackMove(position: Chess): { uci: string } | null {
+  const legal = position.moves({ verbose: true });
+  if (legal.length === 0) return null;
+
+  let best: (typeof legal)[number] | null = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+
+  for (const move of legal) {
+    let score = 0;
+    if (move.captured) score += FALLBACK_PIECE_VALUE[move.captured] ?? 0;
+    if (move.promotion) score += FALLBACK_PIECE_VALUE[move.promotion] ?? 0;
+    if (move.san.includes("#")) score += 100_000;
+    else if (move.san.includes("+")) score += 50;
+
+    // Strictly greater, so an equal-scoring move never displaces an earlier
+    // one: the choice is deterministic for a given position.
+    if (score > bestScore) {
+      bestScore = score;
+      best = move;
+    }
+  }
+
+  if (!best) return null;
+  return {
+    uci: toStoredUci(best) || `${best.from}${best.to}${best.promotion ?? ""}`,
+  };
+}
+
 /** The state a client can resync from. */
 export function buildAiTurnState(
   game: ChessGameSeatRow,
@@ -619,6 +673,12 @@ export type AiTurnSuccess = AiTurnState & {
   /** The tier the search ran at — the row's, never the caller's. */
   difficulty: ChessAiDifficulty;
   /**
+   * True when the move came from the last-resort chooser because the engine
+   * could not answer (see `chooseFallbackMove`). The board tells the player, so
+   * "the AI played badly" is never a mystery.
+   */
+  engineFallback?: boolean;
+  /**
    * What THIS call did, as opposed to `status`, which is the ROW's status:
    *
    *   * `moved`    — the bot's move was appended and the game continues,
@@ -651,8 +711,11 @@ export type AdvanceAiTurnOutcome =
  *   4. claim — inside one transaction, which re-checks all of (2) and refuses
  *      rather than writing if anything moved.
  *
- * A refusal NEVER writes, and an engine failure never even reaches the claim,
- * so a game that could not be advanced is left exactly as it was — retryable.
+ * A refusal NEVER writes. An engine failure does not end the turn either: the
+ * last-resort chooser (`chooseFallbackMove`) supplies a legal move so the game
+ * can continue, and that move goes through the SAME claim, so it is re-validated
+ * and written exactly once like any other. Only a position with no legal move at
+ * all leaves the game untouched — and that is a finished game, not a failure.
  */
 export async function advanceAiTurn(
   request: {
@@ -725,6 +788,8 @@ export async function advanceAiTurn(
   }
 
   let chosen: { uci: string };
+  /** Set when the engine could not answer and the fallback chooser was used. */
+  let usedFallback = false;
   try {
     chosen = await chooseMove({
       fen: assessed.fen,
@@ -732,25 +797,36 @@ export async function advanceAiTurn(
     });
   } catch (err) {
     if (err instanceof ChessGameplayEngineError) {
-      // A bare 503 is undiagnosable from outside: name the cause in the
-      // server log before answering.
-      console.warn("[chess-ai] the engine could not produce a move", {
+      // The engine is unavailable (a boot failure, a missing .wasm, a hung
+      // search, a terminated instance). A player must still get their move, so
+      // the turn falls back to a legal move chosen here rather than ending the
+      // game's life with a 503. The cause is logged because the host problem it
+      // describes is real and worth fixing — it is just no longer the player's
+      // problem. The fallback move goes through the SAME claim below, which
+      // re-validates it under the lock, so it cannot race or land illegally.
+      console.warn("[chess-ai] the engine could not produce a move — using a fallback move", {
         gameId: request.gameId,
         message: err.message,
         cause:
           err.cause instanceof Error ? err.cause.message : String(err.cause ?? ""),
       });
-      // Nothing was written and the row is untouched, so the client can retry
-      // the same turn. This is the ONLY failure that is retryable in place.
-      return {
-        ok: false,
-        status: 503,
-        error: "The AI could not move right now",
-        reason: "engine_failed",
-        state: assessed.state,
-      };
+      const fallback = chooseFallbackMove(assessed.position);
+      if (!fallback) {
+        // No legal move content exists at all — the position is over, which the
+        // assessment above already refuses, so this is belt and braces.
+        return {
+          ok: false,
+          status: 503,
+          error: "The AI could not move right now",
+          reason: "engine_failed",
+          state: assessed.state,
+        };
+      }
+      chosen = fallback;
+      usedFallback = true;
+    } else {
+      throw err;
     }
-    throw err;
   }
 
   const claimed = await claimAiMove(
@@ -780,6 +856,7 @@ export async function advanceAiTurn(
       aiMove: claimed.aiMove,
       outcome: claimed.status,
       difficulty: assessed.difficulty,
+      ...(usedFallback ? { engineFallback: true } : {}),
     },
   };
 }

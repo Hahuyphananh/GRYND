@@ -54,6 +54,9 @@ import { useMatchSync } from "../../../../hooks/useMatchSync";
 import { useTurnCountdown } from "../../../../hooks/useTurnCountdown";
 import { useDominoSounds } from "../../../../hooks/useDominoSounds";
 import { useDeadlineRead } from "../../../../hooks/useDeadlineRead";
+import useDominoBotReveal from "../../../../hooks/useDominoBotReveal";
+import useGameEmotes from "../../../../hooks/useGameEmotes";
+import GameEmoteLayer from "../../../../components/game/emotes/GameEmoteLayer";
 import MatchLoading from "../../../../components/game/MatchLoading";
 import GameSessionHost from "../../../../components/GameSessionHost";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
@@ -147,6 +150,12 @@ export default function DominoesMatchPage() {
   useEffect(() => {
     matchRef.current = match;
   }, [match]);
+
+  // The board draws the snapshot with the PRACTICE BOT's newest tiles held back
+  // for a beat, so its reply reads as a turn rather than landing in the same
+  // frame as the player's own move. The server has already played; this is only
+  // how the change is presented. PvP snapshots are returned untouched.
+  const boardSnapshot = useDominoBotReveal(match);
 
   // The App Router reuses this page instance when only `[matchId]` differs, so
   // every piece of per-match state is reset — otherwise the previous match's hand
@@ -255,6 +264,16 @@ export default function DominoesMatchPage() {
   const status = String(match?.status ?? "");
   const ended = status === "finished" || status === "cancelled";
   const viewerSeat = match?.viewerSeat ?? null;
+
+  // Emotes: the shared layer, on the generic `room_event` relay every game uses.
+  // A practice match's socket room has no other player in it, so the bot simply
+  // never answers — nothing here has to special-case it.
+  const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
+    socket,
+    roomId: matchId ? `dominoes:emote:${matchId}` : null,
+    eventName: "dominoes:emote",
+    selfId: viewerSeat,
+  });
 
   // Exactly one read on socket reconnect and one when the tab becomes visible
   // again. There is no interval anywhere in this page.
@@ -577,6 +596,15 @@ export default function DominoesMatchPage() {
                 </span>
               </p>
             </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <GameEmoteLayer
+                gameId="dominoes"
+                compact
+                incomingEmote={incomingEmote}
+                myEmote={myEmote}
+                onSend={(emote) => sendEmote(emote)}
+                opponentLabel={opponentName}
+              />
             <span
               className="rounded-full border border-cyan-400/40 bg-cyan-500/10 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-cyan-200"
               data-testid="match-status"
@@ -587,11 +615,12 @@ export default function DominoesMatchPage() {
               {waiting ? t("games.dominoes.status_waiting") : null}
               {!status ? t("games.dominoes.status_loading") : null}
             </span>
+            </div>
           </div>
 
           {!waiting && !cancelled ? (
             <DominoMatchView
-              snapshot={match}
+              snapshot={boardSnapshot}
               nowMs={nowMs}
               selected={selected}
               onSelect={setSelected}

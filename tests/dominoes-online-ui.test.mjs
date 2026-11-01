@@ -596,7 +596,19 @@ test("dominoes ui: a selected tile previews its landing, and never guesses a sid
   const chainSource = stripComments(read("src/components/dominoes/DominoChain.tsx"));
   assert.match(chainSource, /onPointerEnter=\{\(\) => setAimEnd\(end\)\}/);
   assert.match(chainSource, /placementPreview\(tiles, openEnds, selected, previewEnd\)/);
-  assert.match(chainSource, /layoutChain\(preview\.chain\)/);
+  // Same function AND same table shape as the real placement — the ghost is a
+  // layout of the real chain plus one tile, never a rule of its own. (The layout
+  // gained a shape option, so both calls must carry it.)
+  assert.match(
+    chainSource,
+    /layoutChain\(preview\.chain, \{ runCells \}\)/,
+    "the ghost is laid out by the real table's own layout call",
+  );
+  assert.match(
+    chainSource,
+    /layoutChain\(tiles, \{ runCells \}\)/,
+    "…and the table passes that exact option, so the two can never diverge",
+  );
 
   // On a phone the chip IS the placement control, so it is thumb-sized; and the
   // preview lives inside the surface, so it never widens the page.

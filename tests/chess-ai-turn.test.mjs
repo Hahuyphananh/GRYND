@@ -29,6 +29,7 @@ import {
   AI_TURN_REFUSALS,
   advanceAiTurn,
   assessAiTurn,
+  chooseFallbackMove,
   claimAiMove,
   parseAiTurnRequest,
   positionAfter,
@@ -472,10 +473,10 @@ test("an engine move that is illegal in the authoritative position is never stor
 // 5. Engine failure and recovery
 // ════════════════════════════════════════════════════════════════════
 
-test("an engine failure writes nothing and is retryable in place", async () => {
+test("an engine failure still plays a legal fallback move", async () => {
   const db = memoryDb({ game: gameRow("white"), moves: playedMoves(["e2e4"]) });
 
-  const failed = await advanceAiTurn(
+  const result = await advanceAiTurn(
     { gameId: UUID, humanMatches },
     {
       reader: db.reader,
@@ -486,20 +487,36 @@ test("an engine failure writes nothing and is retryable in place", async () => {
     },
   );
 
-  assert.equal(failed.ok, false);
-  assert.equal(failed.status, 503);
-  assert.equal(failed.reason, "engine_failed");
-  assert.equal(db.appends.length, 0, "a failed search must not write a move");
-  assert.equal(db.state.status, "in_progress", "the game stays exactly as it was");
-  assert.equal(failed.state.turn, "black", "the snapshot still says it is the bot's turn");
+  // The bot must MOVE. A dead engine is a host problem, not a reason to leave
+  // the player staring at a board that never answers.
+  assert.equal(result.ok, true);
+  assert.equal(result.data.outcome, "moved");
+  assert.equal(db.appends.length, 1, "the fallback move is persisted exactly once");
+  assert.equal(db.state.status, "in_progress");
+  assert.equal(result.data.turn, "white", "the turn passed to the human");
 
-  // …and the SAME turn can then be played: nothing was consumed.
-  const recovered = await advanceAiTurn(
-    { gameId: UUID, humanMatches },
-    { reader: db.reader, store: db.store, chooseMove: async () => ({ uci: "e7e5" }) },
-  );
-  assert.equal(recovered.ok, true);
-  assert.equal(db.appends.length, 1);
+  // …and the move it wrote is LEGAL in the authoritative position, which is the
+  // guarantee the claim re-checks under the lock.
+  const uci = result.data.aiMove.uci;
+  assert.equal(db.appends[0].moveUci, uci);
+  const position = new Chess(playedMoves(["e2e4"])[0].fenAfter);
+  const applied = position.move({
+    from: uci.slice(0, 2),
+    to: uci.slice(2, 4),
+    promotion: uci.length > 4 ? uci.slice(4, 5) : undefined,
+  });
+  assert.ok(applied, "the fallback move is legal");
+  assert.equal(db.appends[0].fenAfter, position.fen());
+});
+
+test("the fallback chooser takes material rather than the first legal move", () => {
+  // Black's rook on d8 can take the white queen on d5.
+  const position = new Chess("3rk3/8/8/3Q4/8/8/8/4K3 b - - 0 1");
+  assert.deepEqual(chooseFallbackMove(position), { uci: "d8d5" });
+
+  // A finished position has nothing to play, and says so rather than inventing.
+  const mated = new Chess("rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3");
+  assert.equal(chooseFallbackMove(mated), null);
 });
 
 test("a non-engine error is not swallowed as a retryable failure", async () => {

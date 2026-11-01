@@ -321,17 +321,29 @@ export default function ChessLobby() {
   }
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-center text-white sm:px-6 md:pb-8">
+    <div className="min-h-screen overflow-x-clip bg-[#07080b] text-white">
+      <div className="mx-auto w-full max-w-6xl px-4 pb-16 pt-20 sm:px-6 md:pb-10">
       <NavigationBar currentPath="/casino" />
-      <h1 className="mb-4 mt-4 text-3xl font-bold text-[#FFD700] drop-shadow-[0_0_12px_rgba(255,215,0,0.55)] sm:text-4xl">
-        <span className="inline-flex items-center gap-2"><IconChess size={28} /> Chess Arena: Challenge Players</span>
+      <p className="mt-4 text-[11px] font-black uppercase tracking-[0.42em] text-cyan-300/70">
+        GRYND &middot; 1v1 duel
+      </p>
+      <h1 className="mt-3 flex flex-wrap items-center justify-center gap-3 text-4xl font-black leading-[0.95] tracking-tight text-white sm:text-5xl lg:text-6xl">
+        <IconChess size={32} className="text-cyan-300" />
+        <span>Chess</span>
+        <span className="bg-gradient-to-r from-cyan-300 to-violet-300 bg-clip-text text-transparent">
+          Arena
+        </span>
       </h1>
+      <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-white/60 sm:text-base">
+        Challenge players to a rated table: pick a stake and a move timer, and
+        the winner takes the pot minus the 10% platform fee.
+      </p>
 
       {/* How to Play — rules modal at the top of the lobby */}
-      <div className="mb-6 text-center">
+      <div className="mb-6 mt-5 text-center">
         <button
           onClick={() => setShowRules(true)}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-bold text-amber-300 transition-all duration-300 hover:bg-amber-500/20 hover:scale-105 shadow-[0_0_14px_rgba(251,191,36,0.15)]"
+          className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-white/15 bg-white/[0.03] px-4 text-[11px] font-black uppercase tracking-[0.16em] text-white/70 transition hover:border-white/30 hover:text-white"
         >
           <IconBook size={15} /> How to Play
         </button>
@@ -372,17 +384,15 @@ export default function ChessLobby() {
         />
       )}
 
-      <div className="max-w-4xl mx-auto bg-[#0b224f]/85 p-6 rounded-xl border border-[#00e5ff]/30 mb-8 shadow-[0_0_24px_rgba(0,229,255,0.18)]">
-        <h2 className="text-2xl font-bold text-[#FFD700] mb-4">
-          Create Multiplayer Game
-        </h2>
-        <p className="text-white/80 mb-5">
+      <div className="mx-auto mb-8 mt-6 max-w-4xl rounded-2xl border border-white/10 bg-[#0b0d12] p-5 text-left shadow-[0_30px_80px_-50px_rgba(34,211,238,0.55)]">
+        <p className="text-[11px] font-black uppercase tracking-[0.28em] text-white/35">The match</p>
+        <p className="mt-3 mb-5 text-sm text-white/50">
           Select a stake and timer, then create your game. Winner gets the pot minus 10% platform fee.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           {/* Stake card (crash-style) */}
-          <div className="relative p-5 flex flex-col gap-3 rounded-2xl border border-[#00e5ff]/30 bg-[#08142f]/70 overflow-hidden">
+          <div className="relative p-5 flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-[#00e5ff] to-transparent opacity-70" />
             <div className="flex items-center justify-between">
               <div>
@@ -479,8 +489,8 @@ export default function ChessLobby() {
           </div>
 
           {/* Timer card (crash-style) */}
-          <div className="relative p-5 flex flex-col gap-3 rounded-2xl border border-[#00e5ff]/30 bg-[#08142f]/70 overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-[#FFD700] to-transparent opacity-70" />
+          <div className="relative p-5 flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-violet-300 to-transparent opacity-70" />
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-xs uppercase tracking-widest text-cyan-100/60">
@@ -569,29 +579,29 @@ export default function ChessLobby() {
 
       {/* Sticky action bar — Create Game + Play vs AI, sticks on scroll */}
       <div className="sticky bottom-0 z-30 mt-4 px-3">
-        <div className="mx-auto max-w-4xl flex flex-col sm:flex-row gap-3 rounded-xl border border-[#00e5ff]/30 bg-[#0b224f]/95 backdrop-blur-md px-4 py-3 shadow-[0_-8px_30px_rgba(0,0,0,0.5)]">
+        <div className="mx-auto max-w-4xl flex flex-col sm:flex-row gap-3 rounded-2xl border border-white/10 bg-[#0b0d12]/95 px-4 py-3 shadow-[0_-8px_30px_rgba(0,0,0,0.5)] backdrop-blur-md">
           <button
             onClick={createGame}
             disabled={!stakeNum || !selectedTimer || creatingGame}
-            className="flex-1 bg-[#FFD700] text-[#030817] px-6 py-3 rounded-lg text-lg font-bold hover:bg-[#ffe14f] shadow-[0_0_16px_rgba(255,215,0,0.45)] disabled:bg-[#7f8520] disabled:text-[#c6c6c6] disabled:cursor-not-allowed"
+            className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-6 text-sm font-black uppercase tracking-[0.14em] text-[#04121a] transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {creatingGame ? "Creating..." : "Create Game"}
           </button>
           <button
             onClick={() => setShowBetPopup(true)}
-            className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-3 rounded-lg text-lg font-bold hover:from-purple-500 hover:to-indigo-500 shadow-[0_0_16px_rgba(139,92,246,0.45)] transition-colors"
+            className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-violet-400/40 bg-violet-400/10 px-5 text-sm font-black uppercase tracking-[0.14em] text-violet-200 transition hover:bg-violet-400/20"
           >
             <span className="inline-flex items-center justify-center gap-2"><IconRobot size={18} /> Play vs AI</span>
           </button>
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto mt-10 bg-[#0b224f]/85 p-5 rounded-xl border border-[#00e5ff]/30 text-left shadow-[0_0_24px_rgba(0,229,255,0.18)]">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-2xl font-bold text-[#FFD700]">Available Games</h2>
+      <section className="mx-auto mt-12 max-w-3xl text-left lg:mt-16">
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-[11px] font-black uppercase tracking-[0.32em] text-white/40">Open Lobbies</h2>
           <button
             onClick={fetchAvailableGames}
-            className="bg-[#00e5ff] text-[#001933] px-4 py-2 rounded-lg font-semibold hover:bg-[#49eeff] shadow-[0_0_10px_rgba(0,229,255,0.35)]"
+            className="rounded-lg bg-cyan-400 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-[#04121a] transition hover:bg-cyan-300"
           >
             {isLoadingAvailableGames ? "Refreshing..." : "Refresh"}
           </button>
@@ -609,7 +619,7 @@ export default function ChessLobby() {
             {availableGames.map((game) => (
               <div
                 key={game.id}
-                className="flex items-center justify-between bg-[#08142f] border border-[#00e5ff]/20 rounded-lg p-3"
+                className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.02] p-4"
               >
                 <div>
                   <p className="font-semibold">Game #{game.id}</p>
@@ -637,7 +647,7 @@ export default function ChessLobby() {
             ))}
           </div>
         )}
-      </div>
+      </section>
 
       {showBetPopup && (
         <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50">
@@ -735,6 +745,7 @@ export default function ChessLobby() {
           </div>
         </div>
       )}
+      </div>
       <Footer />
     </div>
   );

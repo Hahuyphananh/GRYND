@@ -96,7 +96,7 @@ const PALETTE = {
     "border border-violet-400/40 bg-violet-400/10 text-violet-200 hover:bg-violet-400/20",
   sectionTitle: "text-white/40",
   join: "bg-cyan-400 text-[#04121a] hover:bg-cyan-300",
-  row: "border-white/[0.06] bg-white/[0.02] hover:border-white/20",
+  row: "border-white/10 bg-white/[0.02] hover:border-white/20",
   ghost:
     "border border-white/15 bg-white/[0.03] text-white/70 hover:border-white/30 hover:text-white",
 };
@@ -310,6 +310,35 @@ export function useFirstVisitRules(rulesKey) {
 /**
  * Lobby content (no page chrome) — use inside an existing page layout.
  */
+/**
+ * LobbyTitle — the wordmark, in LAST RUN's treatment.
+ *
+ * LAST RUN renders `LAST` in white and `RUN` in a cyan→violet gradient. Every
+ * lobby gets the same split on its final word, so a two-word title reads as one
+ * product across the casino. A single-word title takes the gradient whole, and
+ * a JSX title is rendered untouched (it may already carry its own styling).
+ */
+function LobbyTitle({ title }) {
+  if (typeof title !== "string") return <span>{title}</span>;
+  const words = title.trim().split(/\s+/);
+  if (words.length < 2) {
+    return (
+      <span className="bg-gradient-to-r from-cyan-300 to-violet-300 bg-clip-text text-transparent">
+        {title}
+      </span>
+    );
+  }
+  const accent = words.pop();
+  return (
+    <>
+      <span>{words.join(" ")}</span>
+      <span className="bg-gradient-to-r from-cyan-300 to-violet-300 bg-clip-text text-transparent">
+        {accent}
+      </span>
+    </>
+  );
+}
+
 export function PvpLobby({
   // identity
   title,
@@ -422,6 +451,10 @@ export function PvpLobby({
 
       <section className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-end">
         {/* ── Hero ─────────────────────────────────────────────────────── */}
+        {/* LAST RUN's shape, kept identical across the casino: uppercase
+            kicker → wordmark with a gradient final word → the ONE action row
+            (primary, violet practice action, ghost exit, mode pill) →
+            parameters (the stake) directly under it. */}
         <div>
           <motion.p
             initial={{ opacity: 0, y: -8 }}
@@ -436,18 +469,78 @@ export function PvpLobby({
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.35 }}
-              className={`mt-3 flex items-center gap-3 text-4xl font-black leading-[0.95] tracking-tight sm:text-5xl lg:text-6xl ${PALETTE.title}`}
+              className={`mt-3 flex flex-wrap items-center gap-3 text-4xl font-black leading-[0.95] tracking-tight sm:text-5xl lg:text-6xl ${PALETTE.title}`}
             >
               {icon}
-              <span>{title}</span>
+              <LobbyTitle title={title} />
             </motion.h1>
           )}
           {subtitle && (
-            <p className="mt-4 max-w-xl text-sm leading-relaxed text-white/55 sm:text-base">{subtitle}</p>
+            <p className="mt-4 max-w-xl text-sm leading-relaxed text-white/60 sm:text-base">{subtitle}</p>
+          )}
+
+          {/* The action row. Same order and same weights as LAST RUN: solid
+              cyan primary, violet secondary, a ghost exit, then the mode. */}
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={handlePlay}
+              disabled={busy || (!canPlay && !signedOut)}
+              className={`inline-flex h-12 items-center justify-center gap-2 rounded-xl px-6 text-sm font-black uppercase tracking-[0.14em] transition disabled:cursor-not-allowed disabled:opacity-50 ${PALETTE.play}`}
+            >
+              {busy ? (
+                <>
+                  <LoadingDotsIcon className="h-4 w-4 animate-pulse text-black" />
+                  <span>{playBusyLabel}</span>
+                </>
+              ) : (
+                <span>{signedOut ? "Sign in to play" : playLabel}</span>
+              )}
+            </button>
+            {vsAi && (
+              <button
+                type="button"
+                onClick={vsAi.onClick}
+                disabled={vsAi.disabled || busy}
+                className={`inline-flex h-12 items-center justify-center gap-2 rounded-xl px-5 text-sm font-black uppercase tracking-[0.14em] transition disabled:cursor-not-allowed disabled:opacity-40 ${PALETTE.vsAi}`}
+              >
+                <IconRobot size={16} className="opacity-70" />
+                {vsAi.busy ? "Starting…" : vsAi.label}
+                {vsAi.badge && (
+                  <span className="rounded-full bg-white/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-white/60">
+                    {vsAi.badge}
+                  </span>
+                )}
+              </button>
+            )}
+            {extraActions}
+            <Link
+              href="/games"
+              className={`inline-flex h-12 items-center justify-center rounded-xl px-5 text-sm font-bold transition ${PALETTE.ghost}`}
+            >
+              All games
+            </Link>
+            <span className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-[11px] font-semibold text-white/40">
+              <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              {wager ? "Coin · both stakes escrowed" : "Free play · no tokens at stake"}
+            </span>
+          </div>
+
+          {error && (
+            <div className="mt-4 flex items-center gap-2 rounded-xl border border-red-400/30 bg-red-400/[0.07] px-3 py-2 text-sm text-red-200">
+              <IconAlertTriangle className="h-4 w-4 flex-shrink-0 text-red-300" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {wager && (
+            <div className="mt-5">
+              <CoinWagerPicker {...wager} />
+            </div>
           )}
 
           {rules && (
-            <div className="mt-6">
+            <div className="mt-5">
               <button
                 type="button"
                 onClick={() => setShowRules(true)}
@@ -459,7 +552,10 @@ export function PvpLobby({
           )}
         </div>
 
-        {/* ── Action panel ─────────────────────────────────────────────── */}
+        {/* ── The match panel ──────────────────────────────────────────── */}
+        {/* LAST RUN's aside: one dark card with a cyan top hairline carrying
+            the FACTS of the match. The actions live in the hero, so this panel
+            never competes with them for the player's first tap. */}
         <motion.aside
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -468,19 +564,7 @@ export function PvpLobby({
         >
           <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
 
-          {/* Coin match (wager) or free match: the chip tells the player which. */}
-          <div className="flex items-center justify-between">
-            <p className="text-[11px] font-black uppercase tracking-[0.28em] text-white/35">The match</p>
-            {wager ? (
-              <span className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200">
-                Coin · winner takes it
-              </span>
-            ) : (
-              <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-300">
-                Free · no stake
-              </span>
-            )}
-          </div>
+          <p className="text-[11px] font-black uppercase tracking-[0.28em] text-white/35">The match</p>
 
           {/* Your own open match notification */}
           <AnimatePresence>
@@ -518,53 +602,22 @@ export function PvpLobby({
             )}
           </AnimatePresence>
 
-          <div className="mt-4">
-            {wager ? (
-              <CoinWagerPicker {...wager} />
-            ) : (
-              <div>
-                <label className="text-[11px] font-black uppercase tracking-[0.28em] text-white/35">Entry</label>
-                <div className="mt-2 rounded-lg border border-emerald-500/25 bg-emerald-500/[0.07] px-3 py-2 text-center text-xs font-bold text-emerald-200">
-                  Free
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="mt-4 flex flex-col gap-2">
-            <button
-              type="button"
-              onClick={handlePlay}
-              disabled={busy || (!canPlay && !signedOut)}
-              className={`inline-flex h-12 items-center justify-center gap-2 rounded-xl px-6 text-sm font-black uppercase tracking-[0.14em] transition disabled:cursor-not-allowed disabled:opacity-50 ${PALETTE.play}`}
-            >
-              {busy ? (
-                <>
-                  <LoadingDotsIcon className="h-4 w-4 animate-pulse text-black" />
-                  <span>{playBusyLabel}</span>
-                </>
-              ) : (
-                <span>{signedOut ? "Sign in to play" : playLabel}</span>
-              )}
-            </button>
-            {vsAi && (
-              <button
-                type="button"
-                onClick={vsAi.onClick}
-                disabled={vsAi.disabled || busy}
-                className={`inline-flex h-11 items-center justify-center gap-2 rounded-xl text-xs font-black uppercase tracking-[0.14em] transition disabled:cursor-not-allowed disabled:opacity-40 ${PALETTE.vsAi}`}
+          <dl className="mt-4 space-y-3 text-sm">
+            {[
+              ["Entry", wager ? `${formatTokens(wager?.value ?? 0)} coins` : "Free"],
+              ["Opponent", "Live player"],
+              ["Winner", wager ? "Takes 1.8× the stake" : "Nothing wagered"],
+              ["Draw", "Both seats refunded"],
+            ].map(([label, value]) => (
+              <div
+                key={label}
+                className="flex items-center justify-between border-b border-white/[0.06] pb-2.5"
               >
-                <IconRobot size={16} className="opacity-70" />
-                {vsAi.busy ? "Starting…" : vsAi.label}
-                {vsAi.badge && (
-                  <span className="rounded-full bg-white/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-white/60">
-                    {vsAi.badge}
-                  </span>
-                )}
-              </button>
-            )}
-            {extraActions}
-          </div>
+                <dt className="text-white/40">{label}</dt>
+                <dd className="font-semibold text-white/85">{value}</dd>
+              </div>
+            ))}
+          </dl>
 
           <p className="mt-4 text-xs leading-relaxed text-white/40">
             {wager ? (
@@ -584,7 +637,7 @@ export function PvpLobby({
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-200/80">
-                    Platform quick queue
+                    Platform Quick Queue
                   </p>
                   <p className="mt-1 text-xs text-white/45">
                     {quickQueue.ready
@@ -620,22 +673,17 @@ export function PvpLobby({
           )}
 
           {children}
-
-          {error && (
-            <div className="mt-4 flex items-center gap-2 rounded-xl border border-red-400/30 bg-red-400/[0.07] px-3 py-2 text-sm text-red-200">
-              <IconAlertTriangle className="h-4 w-4 flex-shrink-0 text-red-300" />
-              <span>{error}</span>
-            </div>
-          )}
         </motion.aside>
       </section>
 
       {/* ── Open lobbies ─────────────────────────────────────────────── */}
-      <section className={`mt-10 rounded-2xl border p-5 ${PALETTE.card}`}>
-        <div className="flex items-center justify-between">
-          <h2 className={`flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.32em] ${PALETTE.sectionTitle}`}>
+      {/* LAST RUN's section rhythm: a small uppercase header with the
+          secondary controls on the right, then flat cards — no heavy panel. */}
+      <section className="mt-12 lg:mt-16">
+        <div className="flex items-baseline justify-between">
+          <h2 className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.32em] text-white/40">
             <IconDeviceGamepad2 className="h-4 w-4" />
-            Open lobbies
+            Open Lobbies
           </h2>
           <div className="flex items-center gap-2">
             {historyHref && (
@@ -664,7 +712,7 @@ export function PvpLobby({
             {[0, 1, 2].map((i) => (
               <div
                 key={i}
-                className={`flex items-center justify-between rounded-xl border p-3 ${PALETTE.row}`}
+                className={`flex items-center justify-between rounded-2xl border p-4 ${PALETTE.row}`}
               >
                 <div className="space-y-2">
                   <div className="h-3.5 w-32 animate-pulse rounded bg-white/10" />
@@ -687,7 +735,7 @@ export function PvpLobby({
               return (
                 <div
                   key={key}
-                  className={`flex items-center justify-between rounded-xl border p-3 transition ${PALETTE.row}`}
+                  className={`flex items-center justify-between rounded-2xl border p-4 transition ${PALETTE.row}`}
                 >
                   <div>
                     <p className="text-sm font-semibold text-white/90">{lobbyTitle(l)}</p>

@@ -414,6 +414,10 @@ export default function ChessAIPageInner() {
   // contradict.
   const serverMode = Boolean(gameId);
   const [aiThinking, setAiThinking] = useState(false);
+  // The server answered a turn with its last-resort chooser because the engine
+  // could not move. The game continues (that is the point), but a player is told
+  // why the opponent suddenly plays like a beginner.
+  const [aiReducedStrength, setAiReducedStrength] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const aiTurnInFlightRef = useRef(false);
   // The human's write to `/api/chess/move`, while it is in flight. The AI-turn
@@ -833,6 +837,8 @@ export default function ChessAIPageInner() {
         to: string;
         promotion: string | null;
       } | null;
+      /** The engine could not move, so the server used its fallback chooser. */
+      engineFallback?: boolean;
     },
     options: { appendMove: boolean },
   ) {
@@ -865,6 +871,7 @@ export default function ChessAIPageInner() {
     }
 
     const position = applyBoardFromServer(state.fen, seat);
+    if (state.engineFallback === true) setAiReducedStrength(true);
     setHintMove(null);
     setSelectedSquare(null);
     setActivePlayer(
@@ -918,6 +925,7 @@ export default function ChessAIPageInner() {
     setMoveIndex(-1);
     endGameCalled.current = false;
     initCompleteRef.current = false;
+    setAiReducedStrength(false);
     prevFenRef.current = newGame.fen();
     setClockResetKey((k) => k + 1);
 
@@ -1697,6 +1705,20 @@ export default function ChessAIPageInner() {
                 the bot's turn — a move the server refused for the human has
                 already been answered by reloading the board.
               */}
+              {/* The engine was unavailable for this turn: the bot still played,
+                  at a much weaker level. Small, once-granted information — not
+                  an error, because the move is real and the game continues. */}
+              {aiReducedStrength && !gameOver ? (
+                <div className="mt-2 flex justify-center">
+                  <span
+                    className="rounded-lg border border-amber-300/40 bg-amber-400/10 px-3 py-1 text-xs font-semibold text-amber-200"
+                    data-testid="chess-ai-reduced-strength"
+                  >
+                    AI at reduced strength — the chess engine is unavailable on this server.
+                  </span>
+                </div>
+              ) : null}
+
               {serverError && !gameOver && !isPlayerTurnNow && (
                 <div className="mt-2 flex justify-center">
                   <button

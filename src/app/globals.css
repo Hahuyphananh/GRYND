@@ -2991,6 +2991,31 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   margin: auto;
 }
 
+/* THE LAYOUT TOGGLE — one straight line of tiles, or the wrapped table. It sits
+   above the felt and reads as a small mode chip, because it changes how the
+   table is DRAWN and nothing about a single rule. */
+.dominoes-chain-shape {
+  align-self: flex-end;
+  margin: 0 6px 6px auto;
+  border-radius: 999px;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  background: rgba(14, 165, 233, 0.12);
+  color: #bae6fd;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.dominoes-chain-shape:hover {
+  background: rgba(14, 165, 233, 0.24);
+}
+.dominoes-chain-shape.is-straight {
+  border-color: rgba(251, 191, 36, 0.5);
+  background: rgba(251, 191, 36, 0.14);
+  color: #fde68a;
+}
+
 /* A slot is a square centred on its tile: the tile rotates inside it (a
    crosswise double, or a run turning), and the badge above it stays upright. */
 .dominoes-chain-slot {

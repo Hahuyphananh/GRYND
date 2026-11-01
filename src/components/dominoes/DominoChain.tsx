@@ -154,7 +154,18 @@ export default function DominoChain({
   // grows in both directions as the table does. A PREVIEW lays the table out WITH
   // the prospective tile in it (`layout` below); that is what makes the ghost and
   // the real placement the same geometry by construction, not by agreement.
-  const baseLayout = useMemo(() => layoutChain(tiles), [tiles]);
+  // HOW THE CHAIN IS LAID OUT. "Wrap" (the historical layout) turns a long run
+  // so the table stays compact, which means tiles eventually stack vertically.
+  // "Straight" keeps every tile on ONE horizontal line, so a tile is always put
+  // down TO THE SIDE of the line with its end edge meeting the previous tile's
+  // end edge. This is presentation only: the engine's chain, its order and its
+  // open ends are identical either way, and nothing here is ever sent.
+  const [straight, setStraight] = useState(false);
+  const runCells = straight ? Number.POSITIVE_INFINITY : undefined;
+  const baseLayout = useMemo(
+    () => layoutChain(tiles, { runCells }),
+    [tiles, runCells],
+  );
   // The newest tile is the last INDEX in the engine's order, which is not
   // necessarily the last entry the layout emits — but it is always the tile with
   // the highest index, so it is the one flagged latest below.
@@ -208,8 +219,8 @@ export default function DominoChain({
 
   /** The table as it is — or, with a preview, as it WOULD be. One layout call. */
   const layout = useMemo(
-    () => (preview ? layoutChain(preview.chain) : baseLayout),
-    [preview, baseLayout],
+    () => (preview ? layoutChain(preview.chain, { runCells }) : baseLayout),
+    [preview, baseLayout, runCells],
   );
 
   /**
@@ -432,7 +443,26 @@ export default function DominoChain({
       data-rows={layout.rows}
       data-legal-ends={acceptingEnds.join(" ")}
       data-preview-end={previewEnd ?? ""}
+      data-chain-shape={straight ? "straight" : "wrap"}
     >
+      {/* The layout is the player's choice: one straight line, or the wrapped
+          table. Offered here because it is about how the table is DRAWN, and
+          nothing it does can change a rule. */}
+      {tiles.length > 1 ? (
+        <button
+          type="button"
+          className={`dominoes-chain-shape ${straight ? "is-straight" : ""}`}
+          data-testid="dominoes-chain-shape"
+          data-chain-shape={straight ? "straight" : "wrap"}
+          aria-pressed={straight}
+          title={t("games.dominoes.chain_shape_aria")}
+          onClick={() => setStraight((value) => !value)}
+        >
+          {straight
+            ? t("games.dominoes.chain_shape_wrap")
+            : t("games.dominoes.chain_shape_flat")}
+        </button>
+      ) : null}
       <div className="dominoes-chain-scroller" ref={scrollerRef} {...feltDropProps}>
         {tiles.length === 0 ? (
           <p className="dominoes-chain-empty" data-testid="dominoes-chain-empty">

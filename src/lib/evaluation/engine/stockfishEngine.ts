@@ -487,6 +487,22 @@ export function getEngineIdentity(): string {
 }
 
 /**
+ * Where the engine's assets were looked for, and which of those places has them.
+ *
+ * Exposed for the diagnostic endpoint (`GET /api/chess/engine-health`): "the
+ * engine cannot boot" and "the engine's .wasm is not on this host" need
+ * different fixes, and from outside they look identical.
+ */
+export function describeStockfishAssets(): {
+  dirs: { dir: string; complete: boolean }[];
+  resolved: string | null;
+} {
+  const dirs = stockfishAssetDirs().map((dir) => ({ dir, complete: hasEngineAssets(dir) }));
+  const resolved = dirs.find((entry) => entry.complete)?.dir ?? null;
+  return { dirs, resolved };
+}
+
+/**
  * Evaluates one FEN. Scores come back from the SIDE TO MOVE's point of view, as
  * UCI specifies; callers convert to their own perspective.
  *
