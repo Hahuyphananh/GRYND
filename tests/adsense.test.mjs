@@ -88,6 +88,9 @@ const ALLOWED = [
   "src/app/casino/four-in-a-row/page.tsx",
   "src/app/casino/hex-duel/page.tsx",
   "src/app/casino/lane-runner/page.jsx",
+  // Last Run's lobby is its own route and its board lives at
+  // /casino/last-run/[matchId], which stays ad-free like every other match page.
+  "src/app/casino/last-run/page.jsx",
   "src/app/casino/memory-grid/page.tsx",
   "src/app/casino/mines-pvp/page.tsx",
   "src/app/casino/mini-golf/page.tsx",

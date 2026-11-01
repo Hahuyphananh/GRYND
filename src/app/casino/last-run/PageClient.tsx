@@ -21,10 +21,13 @@
 //   signed out  → sign-in CTA (the queue endpoint is session-only)
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+// This lobby carries the AdSense loader (page.jsx renders it), so entering a
+// match has to leave the document — otherwise the loader keeps running over the
+// board. useMatchRouter is next/navigation's router for everything else.
+import { useMatchRouter } from "../../../hooks/useMatchRouter";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
 import {
@@ -66,7 +69,7 @@ function formatClock(ms: number): string {
 
 export default function PageClient({ autoQueue = false }: { autoQueue?: boolean }) {
   const { isLoaded, isSignedIn, user } = useUser();
-  const router = useRouter();
+  const router = useMatchRouter();
 
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
