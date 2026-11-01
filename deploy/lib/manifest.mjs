@@ -21,6 +21,14 @@ export const REQUIRED_APP_PATHS = [
   "app/package.json",
   "app/next.config.js",
   "app/node_modules/next/package.json",
+  // Chess VS-AI runs Stockfish 16 (WASM) in-process, and the Emscripten loader
+  // reads its .wasm through a DYNAMIC path — file tracing cannot see it, and a
+  // release that is missing either file boots no engine at all: every AI move
+  // fell back (and, before that, answered 503). `node_modules` is copied whole
+  // into the artifact, so this is a packaging assertion, not a build one, and
+  // `GET /api/chess/engine-health` reports it from the running host.
+  "app/node_modules/stockfish/src/stockfish-nnue-16-single.js",
+  "app/node_modules/stockfish/src/stockfish-nnue-16-single.wasm",
 ];
 
 export const REQUIRED_REALTIME_PATHS = [

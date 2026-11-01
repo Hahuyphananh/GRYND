@@ -229,6 +229,11 @@ test("manifest: BUILD_ID must agree with the manifest", async () => {
     await fs.writeFile(path.join(dir, "app", "package.json"), "{}");
     await fs.writeFile(path.join(dir, "app", "next.config.js"), "module.exports={}");
     await fs.writeFile(path.join(dir, "app", "node_modules", "next", "package.json"), "{}");
+    // The chess engine's two assets are part of a complete release (see
+    // REQUIRED_APP_PATHS): chess VS-AI boots Stockfish from them at runtime.
+    await fs.mkdir(path.join(dir, "app", "node_modules", "stockfish", "src"), { recursive: true });
+    await fs.writeFile(path.join(dir, "app", "node_modules", "stockfish", "src", "stockfish-nnue-16-single.js"), "// loader");
+    await fs.writeFile(path.join(dir, "app", "node_modules", "stockfish", "src", "stockfish-nnue-16-single.wasm"), "");
     await fs.writeFile(path.join(dir, "realtime", "server.js"), "// noop");
     await fs.writeFile(path.join(dir, "realtime", "package.json"), "{}");
     await fs.writeFile(path.join(dir, "realtime", "node_modules", "express", "package.json"), "{}");

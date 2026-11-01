@@ -47,6 +47,17 @@ export async function buildFixtureRelease({
   await write(path.join(incomingDir, "app", "package.json"), JSON.stringify({ name: "fixture-app", private: true, version: "1.0.0" }, null, 2));
   await write(path.join(incomingDir, "app", "next.config.js"), "module.exports = {};\n");
   await write(path.join(incomingDir, "app", "node_modules", "next", "package.json"), JSON.stringify({ name: "next", version: "16.0.0-fixture" }, null, 2));
+  // The Stockfish assets REQUIRED_APP_PATHS insists on. Chess VS-AI boots the
+  // engine from these two files at runtime, so a fixture that omits them is not
+  // the artifact the release gate accepts — which is the point of the check.
+  await write(
+    path.join(incomingDir, "app", "node_modules", "stockfish", "src", "stockfish-nnue-16-single.js"),
+    "// fixture stockfish loader\n",
+  );
+  await write(
+    path.join(incomingDir, "app", "node_modules", "stockfish", "src", "stockfish-nnue-16-single.wasm"),
+    "\u0000asm",
+  );
   await write(path.join(incomingDir, "app", "health-mode.txt"), `${variant === "unhealthy" ? "fail" : "ok"}\n`);
   await fs.copyFile(FIXTURE_APP, path.join(incomingDir, "app", "server.mjs"));
 
