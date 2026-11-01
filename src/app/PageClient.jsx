@@ -50,7 +50,7 @@ import useSharedPoll from "../hooks/useSharedPoll";
 // and how progression works — content that has to exist in the HTML for a
 // crawler and for a visitor without JavaScript, which is exactly why it is
 // rendered on the server instead of here.
-function MainComponent({ adSlot = null, popularGames = [], explainerSlot = null }) {
+function MainComponent({ adSlot = null, hilltopSlot = null, popularGames = [], explainerSlot = null }) {
   const router = useRouter();
   const { isLoaded, isSignedIn, signOut } = useAuth();
   const { user } = useUser();
@@ -510,6 +510,15 @@ function MainComponent({ adSlot = null, popularGames = [], explainerSlot = null 
       {/* Server-rendered explainer — what GRYND is, the games, competitive
           play, progression and how to start. Part of the HTML, not deferred. */}
       {explainerSlot}
+
+      {/* Advertising — inside the normal content column, AFTER the explainer
+          and BEFORE the games/leaderboard sections. That keeps it clear of the
+          hero's primary call to action above it (nothing here covers a button)
+          and clear of every featured game link below it, and it is nowhere near
+          the page's footer slot, so the two providers never form one dense
+          block. `hilltopSlot` is server-rendered and carries its own
+          entitlement check — nothing about membership is passed from here. */}
+      {hilltopSlot}
 
       <div className="mx-auto max-w-7xl px-4 py-8">
         <section className="mb-16 reveal">

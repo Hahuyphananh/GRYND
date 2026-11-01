@@ -43,7 +43,7 @@ const CHAT_COLORS = [
 
 // `adSlot` is the server-rendered <AdSlot placement="profile" /> from
 // app/profil/page.jsx — above the footer, never over a control.
-export default function ProfilePage({ adSlot = null }) {
+export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
   const { isSignedIn, isLoaded, user } = useUser();
   const { signOut } = useClerk();
   // Both history panels resolve their copy through the app-wide bundle
@@ -1507,6 +1507,12 @@ export default function ProfilePage({ adSlot = null }) {
               )}
           </>
         </div>
+
+        {/* Advertising — a SECONDARY area between profile sections, not the
+            identity card. It is a card of its own: nothing under it is a
+            control, a statistic or an account setting, and the footer slot is
+            a long way below so the two providers never stack. */}
+        {hilltopSlot}
 
         {/* Profile accent — free for everyone (previously advertised as a
             GRYND PRO perk; the membership check is gone from the API too). */}

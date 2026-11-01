@@ -1,6 +1,7 @@
 import PageClient from "./PageClient";
 import AdSenseScript from "../../components/AdSenseScript";
 import AdSlot from "../../components/AdSlot";
+import HilltopBanner from "../../components/ads/HilltopBanner";
 import GameDiscovery from "../../components/games/GameDiscovery";
 import { GAME_INDEX } from "../../lib/gameLandingPages";
 
@@ -30,6 +31,9 @@ export default function Page() {
           from the same catalogue the game pages and the sitemap are. */}
       <PageClient
         adSlot={<AdSlot placement="hub" />}
+        // Independent of the AdSense slot above: its own provider, its own
+        // server-side entitlement check, its own reserved space.
+        hilltopSlot={<HilltopBanner placement="hub" />}
         gameIndex={gameIndex}
         discoverySlot={<GameDiscovery />}
       />

@@ -1,6 +1,7 @@
 import PageClient from "./PageClient";
 import AdSenseScript from "../components/AdSenseScript";
 import AdSlot from "../components/AdSlot";
+import HilltopBanner from "../components/ads/HilltopBanner";
 import HomeExplainer from "../components/home/HomeExplainer";
 import {
   HOMEPAGE_FEATURED_SLUGS,
@@ -83,6 +84,10 @@ export default async function Page() {
           to start — so the whole explanation is in the page's HTML. */}
       <PageClient
         adSlot={<AdSlot placement="home" />}
+        // A second, independent provider. It carries its own server-side
+        // entitlement check and its own placement allow-list, and it renders
+        // inside the page's content column — never over the hero or a card.
+        hilltopSlot={<HilltopBanner placement="home" />}
         popularGames={popularGames}
         explainerSlot={<HomeExplainer />}
       />

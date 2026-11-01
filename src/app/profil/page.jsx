@@ -1,6 +1,7 @@
 import PageClient from "./PageClient";
 import AdSenseScript from "../../components/AdSenseScript";
 import AdSlot from "../../components/AdSlot";
+import HilltopBanner from "../../components/ads/HilltopBanner";
 
 export const metadata = {
   robots: { index: false, follow: false },
@@ -18,7 +19,10 @@ export default function Page() {
           the loader nor the slot — this surfaces the very membership they
           might cancel, so the entitlement check matters here. */}
       <AdSenseScript />
-      <PageClient adSlot={<AdSlot placement="profile" />} />
+      <PageClient
+        adSlot={<AdSlot placement="profile" />}
+        hilltopSlot={<HilltopBanner placement="profile" />}
+      />
     </>
   );
 }

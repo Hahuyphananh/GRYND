@@ -1,6 +1,7 @@
 import PageClient from "./PageClient";
 import AdSenseScript from "../../components/AdSenseScript";
 import AdSlot from "../../components/AdSlot";
+import HilltopBanner from "../../components/ads/HilltopBanner";
 
 export const metadata = {
   alternates: { canonical: "/classement" },
@@ -14,7 +15,10 @@ export default function Page() {
   return (
     <>
       <AdSenseScript />
-      <PageClient adSlot={<AdSlot placement="leaderboard" />} />
+      <PageClient
+        adSlot={<AdSlot placement="leaderboard" />}
+        hilltopSlot={<HilltopBanner placement="leaderboard" />}
+      />
     </>
   );
 }

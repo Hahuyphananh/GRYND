@@ -89,7 +89,7 @@ function shuffledCopy(items, random = Math.random) {
 // app/casino/page.jsx (src/components/games/GameDiscovery): the catalogue
 // grouped by skill and by category, so the hub explains which game suits a
 // visitor in its own HTML rather than only in the client-filtered card grid.
-function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) {
+function MainComponent({ adSlot = null, hilltopSlot = null, gameIndex = [], discoverySlot = null }) {
   const { user } = useUser();
   const [selectedGame, setSelectedGame] = useState(null);
   const [error, setError] = useState(null);
@@ -1219,6 +1219,13 @@ function MainComponent({ adSlot = null, gameIndex = [], discoverySlot = null }) 
               </button>
             </div>
           )}
+
+        {/* Advertising — between content sections, BELOW the whole game grid.
+            Deliberately not between cards: inserting a banner every few games
+            would break browsing and game selection, so there is exactly one
+            block, after the grid has ended and above the discovery content.
+            Every filter, search box and sort control sits above it. */}
+        {hilltopSlot}
 
         {/* Server-rendered discovery content — the catalogue grouped by what a
             game asks of you (skill) and by kind of game (category). Part of the

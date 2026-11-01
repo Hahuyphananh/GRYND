@@ -408,7 +408,7 @@ function rankStatus(rank, t) {
 
 // `adSlot` is the server-rendered <AdSlot placement="leaderboard" /> from
 // app/classement/page.jsx — above the footer, after the boards.
-export default function LeaderboardPage({ adSlot = null }) {
+export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
   const { t } = useTranslation();
   const { isLoaded: clerkLoaded, isSignedIn, user } = useUser();
   const [tab, setTab] = useState("all-time");
@@ -524,6 +524,13 @@ export default function LeaderboardPage({ adSlot = null }) {
         <div className="mb-6 flex justify-center">
           <UpgradeProButton variant="compact" />
         </div>
+
+        {/* Advertising — OUTSIDE the board. It sits between the page intro and
+            the ranking controls, so it is never inside the table, never
+            between two ranks and never over a tab or a player row. The
+            footer slot stays at the very bottom, so the two providers are not
+            stacked into one dense block. */}
+        {hilltopSlot}
 
         {/* Tab bar — scrolls horizontally on mobile instead of wrapping. */}
         <div className="mb-6 -mx-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">

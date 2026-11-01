@@ -173,6 +173,9 @@ test("no ad capability exists inside gameplay", () => {
     const source = read(page);
     assert.ok(!/<AdSlot\s/.test(source), `${page} ${why} — no ad slot`);
     assert.ok(!/AdSenseScript/.test(source), `${page} ${why} — no ad loader`);
+    // The third provider's banner is subject to the same rule: gameplay is
+    // ad-free whatever vendor the tag comes from.
+    assert.ok(!/<HilltopBanner\b/.test(source), `${page} ${why} — no banner`);
   };
 
   // 1. Any per-entity route (`[matchId]`, `game/[gameId]`, `table/[tableId]`,
