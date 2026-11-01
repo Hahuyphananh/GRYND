@@ -67,6 +67,8 @@ import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import SeatAvatar from "../../../../components/game/SeatAvatar";
 import SolitaireBoard from "../../../../components/solitaire-duel/SolitaireBoard";
 import { useSocket } from "../../../../context/SocketProvider";
+import useGameEmotes from "../../../../hooks/useGameEmotes";
+import GameEmoteLayer from "../../../../components/game/emotes/GameEmoteLayer";
 import {
   useMatchSync,
 } from "../../../../hooks/useMatchSync";
@@ -254,6 +256,14 @@ export default function SolitaireDuelMatchPage() {
   const { socket } = useSocket();
   const { user } = useUser();
   const matchId = params?.matchId;
+
+  // Emotes: the shared layer over the generic `room_event` relay.
+  const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
+    socket,
+    roomId: matchId ? `solitaire-duel:emote:${matchId}` : null,
+    eventName: "solitaire-duel:emote",
+    selfId: null,
+  });
   const apiMatch = `/api/solitaire-duel/match/${matchId}`;
 
   const [match, setMatch] = useState<MatchDto | null>(null);
@@ -795,6 +805,13 @@ export default function SolitaireDuelMatchPage() {
             </div>
 
             <div className="flex items-center gap-2">
+              <GameEmoteLayer
+                gameId="solitaire-duel"
+                compact
+                incomingEmote={incomingEmote}
+                myEmote={myEmote}
+                onSend={(emote) => sendEmote(emote)}
+              />
               <span
                 data-testid="solitaire-phase"
                 className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-wider ${

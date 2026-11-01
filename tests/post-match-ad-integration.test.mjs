@@ -49,12 +49,29 @@ function memoryStorage() {
   };
 }
 
-/** Three matches per offer, no cooldown — the timing gets its own tests. */
+/**
+ * A LIGHTENED cadence (one offer every three matches, no cooldown), used to pin
+ * the counting behaviour. The shipped default is every match; the knobs must
+ * keep working either way.
+ */
 const CADENCE = { matchesPerOffer: 3, cooldownMs: 0 };
 
-test("the defaults are one offer every three completed matches", () => {
-  assert.equal(DEFAULT_POST_MATCH_AD_CADENCE.matchesPerOffer, 3);
-  assert.equal(DEFAULT_POST_MATCH_AD_CADENCE.cooldownMs, 5 * 60_000);
+test("the defaults offer the ad after EVERY completed match", () => {
+  assert.equal(DEFAULT_POST_MATCH_AD_CADENCE.matchesPerOffer, 1);
+  assert.equal(DEFAULT_POST_MATCH_AD_CADENCE.cooldownMs, 0);
+});
+
+test("by default every finished match offers the ad — once per match", () => {
+  const storage = memoryStorage();
+  const context = { storage, now: 0 };
+
+  assert.equal(observeCompletedMatch("m1", context).offer, true);
+  assert.equal(observeCompletedMatch("m2", context).offer, true);
+  assert.equal(
+    observeCompletedMatch("m2", context).offer,
+    false,
+    "a refresh or a duplicated event never re-offers the same match",
+  );
 });
 
 test("the first two completed matches never offer; the third does", () => {
@@ -236,7 +253,7 @@ test("the cadence is configurable, clamped and defaulted", () => {
   );
 
   // Nonsense falls back; out-of-range clamps rather than disabling the limit.
-  assert.equal(postMatchAdCadence({ NEXT_PUBLIC_POST_MATCH_AD_MATCHES_PER_OFFER: "x" }).matchesPerOffer, 3);
+  assert.equal(postMatchAdCadence({ NEXT_PUBLIC_POST_MATCH_AD_MATCHES_PER_OFFER: "x" }).matchesPerOffer, 1);
   assert.equal(postMatchAdCadence({ NEXT_PUBLIC_POST_MATCH_AD_MATCHES_PER_OFFER: "99" }).matchesPerOffer, 20);
   assert.equal(postMatchAdCadence({ NEXT_PUBLIC_POST_MATCH_AD_MATCHES_PER_OFFER: "-1" }).matchesPerOffer, 1);
   assert.equal(postMatchAdCadence({ NEXT_PUBLIC_POST_MATCH_AD_COOLDOWN_MINUTES: "9999" }).cooldownMs, 240 * 60_000);
@@ -341,8 +358,8 @@ test("nothing is offered before a match is definitively over", () => {
   assert.match(source, /markPostMatchAdDismissed\(matchId\)/);
   assert.match(
     source,
-    /if \(!active \|\| !matchEnded \|\| !offerAllowed \|\| phase === "dismissed"\)/,
-    "the card cannot render without completion and an allowed offer",
+    /if \(!active \|\| !matchEnded \|\| !offerAllowed \|\| phase === "closed"\)/,
+    "the ad cannot render without completion and an allowed offer",
   );
 });
 
@@ -455,6 +472,27 @@ test("every result screen offers the ad through one shared slot", () => {
   );
   assert.match(slot, /surface\.adFree/, "a member is refused inside the slot too");
   assert.match(slot, /practiceResultId/, "a client-only practice result mints its id");
+});
+
+test("bespoke result panels mount the shared slot themselves", () => {
+  // Every game whose result screen is NOT the shared `PvpResultScreen` has to
+  // mount the slot directly, or that game silently loses the post-match video.
+  const panels = [
+    {
+      file: "src/app/casino/uno/game/[gameId]/PageClient.jsx",
+      gate: /\{endPopup && <PostMatchAdSlot \/>\}/,
+    },
+    {
+      file: "src/app/casino/last-run/[matchId]/PageClient.tsx",
+      gate: /\{finished && <PostMatchAdSlot matchId=\{matchId\} \/>\}/,
+    },
+  ];
+
+  for (const { file, gate } of panels) {
+    const source = read(file);
+    assert.match(source, /import PostMatchAdSlot from/, `${file} must import the shared slot`);
+    assert.match(source, gate, `${file} must render the slot only once its game is over`);
+  }
 });
 
 test("the slot's answer is server-owned and takes no client input", () => {

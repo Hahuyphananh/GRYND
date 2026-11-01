@@ -18,8 +18,9 @@
  *      remembered for a minute in sessionStorage — a refresh of the same
  *      result reuses it, while playing another game mints a new one.
  *   3. RENDERS NOTHING while the answer is in flight, when advertising is off,
- *      or when the viewer is a member. `PostMatchVideoAd` itself asks for
- *      nothing until the player clicks "Watch video".
+ *      or when the viewer is a member. Once it does render, `PostMatchVideoAd`
+ *      starts the creative itself as a full-page overlay with the 15 s skip
+ *      rule — there is no click-to-play step here.
  */
 
 import { useEffect, useState } from "react";

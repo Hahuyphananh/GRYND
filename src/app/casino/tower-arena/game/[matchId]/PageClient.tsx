@@ -18,6 +18,8 @@ import MatchLoading from "../../../../../components/game/MatchLoading";
 import Footer from "../../../../../components/Footer";
 import FrameAvatar from "../../../../../components/FrameAvatar";
 import { useSocket } from "../../../../../context/SocketProvider";
+import useGameEmotes from "../../../../../hooks/useGameEmotes";
+import GameEmoteLayer from "../../../../../components/game/emotes/GameEmoteLayer";
 import { CoinIcon } from "../../../../../components/lobby/PvpLobby";
 import PvpResultScreen from "../../../../../components/result/PvpResultScreen";
 import {
@@ -862,6 +864,14 @@ export default function TowerArenaMatchPage() {
   const { matchId } = useParams<{ matchId: string }>();
   const router = useRouter();
   const { socket } = useSocket();
+
+  // Emotes: the shared layer over the generic `room_event` relay.
+  const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
+    socket,
+    roomId: matchId ? `tower-arena:emote:${matchId}` : null,
+    eventName: "tower-arena:emote",
+    selfId: null,
+  });
   const posthog = usePostHog();
 
   const [match, setMatch] = useState<Match | null>(null);
@@ -2024,6 +2034,13 @@ export default function TowerArenaMatchPage() {
         </div>
       </div>
       <div className="flex items-center gap-4">
+        <GameEmoteLayer
+          gameId="tower-arena"
+          compact
+          incomingEmote={incomingEmote}
+          myEmote={myEmote}
+          onSend={(emote) => sendEmote(emote)}
+        />
         {isFinalDuel ? (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/50 bg-amber-500/15 px-3 py-1 text-xs font-black uppercase tracking-widest text-amber-300">
             <IconTrophy size={14} /> Final Duel

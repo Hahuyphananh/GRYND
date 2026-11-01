@@ -36,6 +36,8 @@ import Footer from "../../../../components/Footer";
 import OvalTrack from "../../../../components/lane-rush/OvalTrack";
 import RaceGarage from "../../../../components/lane-rush/RaceGarage";
 import { useSocket } from "../../../../context/SocketProvider";
+import useGameEmotes from "../../../../hooks/useGameEmotes";
+import GameEmoteLayer from "../../../../components/game/emotes/GameEmoteLayer";
 import { useMatchSync } from "../../../../hooks/useMatchSync";
 import { usePracticePause } from "../../../../hooks/usePracticePause";
 import {
@@ -276,6 +278,14 @@ function PlanningClock({ secondsLeft }) {
 export default function LaneRushMatchPage({ params }) {
   const resolvedParams = use(params);
   const matchId = resolvedParams?.matchId;
+
+  // Emotes: the shared layer over the generic `room_event` relay.
+  const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
+    socket,
+    roomId: matchId ? `lane-runner:emote:${matchId}` : null,
+    eventName: "lane-runner:emote",
+    selfId: null,
+  });
   const router = useRouter();
   // useSocket() returns the CONTEXT VALUE ({ socket, userId }), not a socket.
   // Binding the whole value here made every `socket.on/emit` a TypeError on the
@@ -1428,7 +1438,22 @@ export default function LaneRushMatchPage({ params }) {
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              {/* The status row wraps, so the emote bar takes its own line on a
+                  phone. The bar is a fixed 274px and fits from 320px up; below
+                  that it has to scroll, and `min-w-0` is what lets this flex
+                  item shrink below the bar's min-content width so the scroller
+                  actually has a range (this page clips overflow at the page
+                  level, so unshrunk it would just be cut off). */}
+              <div className="min-w-0 max-w-full overflow-x-auto">
+                <GameEmoteLayer
+                  gameId="lane-runner"
+                  compact
+                  incomingEmote={incomingEmote}
+                  myEmote={myEmote}
+                  onSend={(emote) => sendEmote(emote)}
+                />
+              </div>
               {statusChip && (
                 <span
                   className={`rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-wider ${statusChip.cls}`}

@@ -10,8 +10,11 @@ import NavigationBar from "../../../../../components/navigation-bar";
 import MatchLoading from "../../../../../components/game/MatchLoading";
 import Footer from "../../../../../components/Footer";
 import { useFirstVisitRules, RulesModal } from "../../../../../components/lobby/PvpLobby";
+import PostMatchAdSlot from "../../../../../components/ads/PostMatchAdSlot";
 import MatchWaiting from "../../../../../components/lobby/MatchWaiting";
 import { useSocket } from "../../../../../context/SocketProvider";
+import useGameEmotes from "../../../../../hooks/useGameEmotes";
+import GameEmoteLayer from "../../../../../components/game/emotes/GameEmoteLayer";
 import useGamePresence from "../../../../../hooks/useGamePresence";
 import { startMatchSync } from "../../../../../hooks/useMatchSync";
 import {
@@ -51,6 +54,15 @@ export default function UnoGamePage() {
   const { gameId } = useParams();
   const router = useRouter();
   const { socket } = useSocket();
+
+  // Emotes: the shared layer over the generic `room_event` relay. A practice
+  // game's room has no other player in it, so the bot simply never answers.
+  const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
+    socket,
+    roomId: gameId ? `uno:emote:${gameId}` : null,
+    eventName: "uno:emote",
+    selfId: null,
+  });
   const posthog = usePostHog();
   const { t } = useTranslation();
   const [game, setGame] = useState(null);
@@ -779,6 +791,12 @@ export default function UnoGamePage() {
     );
   const modalsNode = (
     <>
+      {/* Post-match video. A full-page overlay that appears only once THIS game
+          is over (`endPopup`), asks the server whether an offer is allowed and
+          never delays the result. UNO uses its own end panel rather than the
+          shared result screen, so it mounts the shared slot itself — PvP and
+          vs-AI alike. */}
+      {endPopup && <PostMatchAdSlot />}
       <AnimatePresence>
         {endPopup && (
           <motion.div
@@ -1323,6 +1341,15 @@ export default function UnoGamePage() {
   return (
     <div className="page-enter mt-0 flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-[#0a0118] to-[#061b3d] px-3 pb-24 pt-20 text-white sm:px-4 md:pb-8">
       <NavigationBar currentPath="/casino" />
+      <div className="mt-2 flex w-full max-w-3xl justify-end px-1">
+        <GameEmoteLayer
+          gameId="uno"
+          compact
+          incomingEmote={incomingEmote}
+          myEmote={myEmote}
+          onSend={(emote) => sendEmote(emote)}
+        />
+      </div>
       <AnimatePresence>
         {waitingForOpponent && (
           <MatchWaiting

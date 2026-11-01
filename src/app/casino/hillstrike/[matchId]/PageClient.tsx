@@ -63,6 +63,8 @@ import {
 } from "@tabler/icons-react";
 
 import { useSocket } from "../../../../context/SocketProvider";
+import useGameEmotes from "../../../../hooks/useGameEmotes";
+import GameEmoteLayer from "../../../../components/game/emotes/GameEmoteLayer";
 import MatchLoading from "../../../../components/game/MatchLoading";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
@@ -135,6 +137,14 @@ export default function HillstrikeMatchPage() {
   const { socket } = useSocket();
   const { user, isLoaded: identityLoaded } = useUser();
   const matchId = params?.matchId;
+
+  // Emotes: the shared layer over the generic `room_event` relay.
+  const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
+    socket,
+    roomId: matchId ? `hillstrike:emote:${matchId}` : null,
+    eventName: "hillstrike:emote",
+    selfId: null,
+  });
   const apiMatch = `/api/hillstrike/match/${matchId}`;
   const signedOut = identityLoaded && !user;
 
@@ -640,6 +650,14 @@ export default function HillstrikeMatchPage() {
                 <span className="hidden rounded-full border border-emerald-400/40 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-200 sm:inline">
                   Free &amp; rated
                 </span>
+                <GameEmoteLayer
+                  gameId="hillstrike"
+                  compact
+                  incomingEmote={incomingEmote}
+                  myEmote={myEmote}
+                  onSend={(emote) => sendEmote(emote)}
+                  opponentLabel={opponentName}
+                />
               </div>
 
               <div className="flex min-w-0 flex-1 items-stretch gap-1.5 sm:max-w-md">

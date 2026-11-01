@@ -211,7 +211,9 @@ test("client: gameplay is gated on the server's GO instant, never on mount", () 
     "the board is interactive only while the server says the race is live",
   );
   assert.match(src, /interactive=\{canPlayNow\}/);
-  assert.match(src, /if \(phase !== "racing" \|\| expired\) return;/);
+  // The move gate repeats the same conditions, including the practice pause:
+  // a paused match must not accept a move behind the frozen overlay.
+  assert.match(src, /if \(phase !== "racing" \|\| expired \|\| pausedRef\.current\) return;/);
   // The countdown is derived from the server's GO instant.
   assert.match(src, /Math\.max\(0, goAtMs - serverNowMs\)/);
 });
@@ -297,11 +299,15 @@ test("client: a live PRACTICE match polls, because the bot only moves when it is
   assert.match(src, /const opponentIsBot = Boolean\(match\?\.isAi\)/);
   assert.match(
     src,
-    /usePracticeBotHeartbeat\(opponentIsBot && racing, \(\) => loadRef\.current\(\)\)/,
-    "the practice heartbeat must be gated on a live bot race and re-read the authoritative snapshot",
+    /usePracticeBotHeartbeat\(opponentIsBot && racing && !paused, \(\) => loadRef\.current\(\)\)/,
+    "the practice heartbeat must be gated on a live, unpaused bot race and re-read the authoritative snapshot",
   );
   // A HUMAN duel keeps the purely event-driven path — no timer for it.
-  assert.match(src, /useMatchSync\(load, socket, Boolean\(matchId\) && Boolean\(match\) && !terminal\)/);
+  // A paused practice match is frozen, so the event-driven sync is gated too.
+  assert.match(
+    src,
+    /useMatchSync\(load, socket, Boolean\(matchId\) && Boolean\(match\) && !terminal && !paused\)/,
+  );
   // The cadence lives ONCE, in the shared hook, rather than as a private copy.
   assert.ok(
     !src.includes("PRACTICE_BOT_POLL_MS"),

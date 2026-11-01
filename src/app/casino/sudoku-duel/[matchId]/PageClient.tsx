@@ -67,6 +67,8 @@ import CompetitiveHud from "../../../../components/sudoku-duel/CompetitiveHud";
 import SudokuBoard from "../../../../components/sudoku-duel/SudokuBoard";
 import SudokuNumberPad from "../../../../components/sudoku-duel/SudokuNumberPad";
 import { useSocket } from "../../../../context/SocketProvider";
+import useGameEmotes from "../../../../hooks/useGameEmotes";
+import GameEmoteLayer from "../../../../components/game/emotes/GameEmoteLayer";
 import {
   useMatchSync,
 } from "../../../../hooks/useMatchSync";
@@ -210,6 +212,14 @@ export default function SudokuDuelMatchPage() {
   const router = useRouter();
   const { socket } = useSocket();
   const matchId = params?.matchId;
+
+  // Emotes: the shared layer over the generic `room_event` relay.
+  const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
+    socket,
+    roomId: matchId ? `sudoku-duel:emote:${matchId}` : null,
+    eventName: "sudoku-duel:emote",
+    selfId: null,
+  });
   const apiMatch = `/api/sudoku-duel/match/${matchId}`;
 
   const [match, setMatch] = useState<MatchDto | null>(null);
@@ -869,6 +879,13 @@ export default function SudokuDuelMatchPage() {
               </p>
             </div>
 
+            <GameEmoteLayer
+              gameId="sudoku-duel"
+              compact
+              incomingEmote={incomingEmote}
+              myEmote={myEmote}
+              onSend={(emote) => sendEmote(emote)}
+            />
             <span
               data-testid="sudoku-status"
               className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white/70"

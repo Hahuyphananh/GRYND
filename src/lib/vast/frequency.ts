@@ -7,18 +7,18 @@
 //
 // THE RULE (defaults, all configurable)
 //
-//   * ONE OFFER PER `matchesPerOffer` COMPLETED MATCHES — default 3. The counter
-//     advances only when a completed match is OBSERVED for the first time, so
-//     the 1st and 2nd match never offer, the 3rd may, and an offer resets the
-//     counter to 0. Consecutive ads are therefore structurally impossible, not
-//     merely unlikely.
-//   * A COOLDOWN between offers, and after a dismissal. Closing the card resets
-//     the counter AND stamps `lastDismissedAt`, so dismissing cannot immediately
-//     produce another ad.
+//   * ONE OFFER PER COMPLETED MATCH — `matchesPerOffer` defaults to 1, with no
+//     cooldown, so every finished match on a post-match surface is offered the
+//     video. A deploy that wants a lighter cadence can raise the two knobs
+//     (`NEXT_PUBLIC_POST_MATCH_AD_MATCHES_PER_OFFER` /
+//     `..._COOLDOWN_MINUTES`) without a code change.
 //   * ONE OFFER PER MATCH EVER. A match id is counted once: refreshing the
 //     result page, remounting the component, navigating back to the same result
 //     or a duplicated socket/realtime event does not advance the counter and
 //     cannot earn a second offer.
+//   * A CLOSED AD RESETS THE CYCLE. Skipping or finishing stamps
+//     `lastDismissedAt`, so a dismissal can never immediately produce another ad
+//     even when the cooldown knob is set above zero.
 //
 // WHY localStorage (with a sessionStorage fallback)
 //
@@ -48,8 +48,8 @@ export interface PostMatchAdCadence {
 }
 
 export const DEFAULT_POST_MATCH_AD_CADENCE: PostMatchAdCadence = Object.freeze({
-  matchesPerOffer: 3,
-  cooldownMs: 5 * 60_000,
+  matchesPerOffer: 1,
+  cooldownMs: 0,
 });
 
 /** localStorage key. Versioned so a shape change can never misread old state. */

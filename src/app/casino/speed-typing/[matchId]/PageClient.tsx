@@ -48,6 +48,8 @@ import {
 } from "../../../../components/game/PracticePause";
 import { usePracticePause } from "../../../../hooks/usePracticePause";
 import { useSocket } from "../../../../context/SocketProvider";
+import useGameEmotes from "../../../../hooks/useGameEmotes";
+import GameEmoteLayer from "../../../../components/game/emotes/GameEmoteLayer";
 import {
   useMatchSync,
 } from "../../../../hooks/useMatchSync";
@@ -289,6 +291,14 @@ export default function SpeedTypingMatchPage() {
   const { socket } = useSocket();
   const { user } = useUser();
   const matchId = params?.matchId;
+
+  // Emotes: the shared layer over the generic `room_event` relay.
+  const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
+    socket,
+    roomId: matchId ? `speed-typing:emote:${matchId}` : null,
+    eventName: "speed-typing:emote",
+    selfId: null,
+  });
   const snapshotUrl = `/api/speed-typing/match/${matchId}`;
   // The page's estimate of the server's clock (null until sampled), for timing
   // the race-limit read below against the deadline the server stamped.
@@ -768,6 +778,16 @@ export default function SpeedTypingMatchPage() {
           <p className="mt-1 text-xs font-semibold uppercase tracking-widest text-amber-200/70">
             Rated 1v1 · same passage · first to finish correctly
           </p>
+          <div className="mt-2 flex justify-end">
+            <GameEmoteLayer
+              gameId="speed-typing"
+              compact
+              incomingEmote={incomingEmote}
+              myEmote={myEmote}
+              onSend={(emote) => sendEmote(emote)}
+              opponentLabel={opponentName}
+            />
+          </div>
 
           {loading && !match && (
             <p className="mt-8 text-sm text-white/60" data-testid="speed-typing-loading">

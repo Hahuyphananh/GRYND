@@ -285,15 +285,21 @@ test("CDATA and predefined entities decode to plain values", () => {
 
 // ── Surface contracts ───────────────────────────────────────────────────────
 
-test("the component loads the tag only after an explicit activation", () => {
+test("the component plays itself, over the whole page", () => {
   const source = code(COMPONENT);
   assert.match(source, /"use client"/);
-  assert.match(source, /onClick=\{\(\) => void activate\(\)\}/, "a click starts the request");
-  assert.match(source, /requestVastAds\(/, "the request is what activation triggers");
-  assert.ok(
-    !/useEffect\([^)]*requestVastAds/.test(source),
-    "nothing may fetch on mount — activation is a click, not an effect",
+  // The offer itself starts the ad: there is no click-to-play step left.
+  assert.match(
+    source,
+    /useEffect\(\(\) => \{\s*if \(!active \|\| !matchEnded \|\| !offerAllowed\) return;\s*void activate\(\);/,
+    "the surface requests the tag on its own, once an offer is allowed",
   );
+  assert.ok(!/Watch video/.test(source), "there is no manual play step");
+  assert.match(source, /fixed inset-0 z-\[100\]/, "the ad takes the whole viewport");
+  assert.match(source, /role="dialog"/);
+  // Muted autoplay is what makes an automatic start work under every policy.
+  assert.match(source, /autoPlay/);
+  assert.match(source, /muted=\{muted\}/);
   // No tag is loaded at module scope either.
   assert.ok(
     !/fetch\(/.test(code(CONFIG)),
@@ -302,6 +308,26 @@ test("the component loads the tag only after an explicit activation", () => {
   assert.ok(
     !/<script/i.test(source) && !/next\/script/.test(source),
     "no advertising code may be injected into the document",
+  );
+});
+
+test("the skip control opens at 15 s for a long ad, and at its end for a short one", () => {
+  const source = code(COMPONENT);
+  assert.match(source, /export const SKIP_AFTER_SECONDS = 15;/);
+  assert.match(
+    source,
+    /videoDuration !== null && videoDuration <= SKIP_AFTER_SECONDS\s*\?\s*videoDuration\s*:\s*SKIP_AFTER_SECONDS/,
+    "a long creative unlocks at 15 s; a shorter one at its own end",
+  );
+  // The wait is the PLAYING clock: a paused or stalled ad earns no skip.
+  assert.match(source, /onTimeUpdate=/);
+  assert.match(source, /playedSeconds >= skipUnlockSeconds/);
+  assert.match(source, /Skip in \$\{skipRemaining\}s/, "the wait is shown, not silent");
+  // Loading and failure are always closeable — the 15 s rule never traps.
+  assert.match(source, /aria-label="Close advertisement"/);
+  assert.ok(
+    !/setTimeout\([^)]*dismiss/.test(source),
+    "a mount timer must never end an ad",
   );
 });
 
@@ -348,11 +374,16 @@ test("the component shows loading and graceful error states, never fake media", 
   );
 });
 
-test("a close control always exists, and the card is labelled as an ad", () => {
+test("a close control always exists, and the surface is labelled as an ad", () => {
   const source = code(COMPONENT);
   assert.match(source, /aria-label="Advertisement"/);
-  assert.match(source, /aria-label="Close advertisement"/);
-  assert.match(source, /const closeButton =/, "every phase renders the close control");
+  assert.match(source, /aria-label="Close advertisement"/, "loading and failure stay closeable");
+  assert.match(source, /aria-label=\{\s*canSkip \? "Skip advertisement"/, "playback has a skip control");
+  assert.match(
+    source,
+    /data-post-match-ad=\{phase\}/,
+    "every phase renders the labelled surface",
+  );
 });
 
 test("the surface is gated on a finished match", () => {
@@ -360,7 +391,7 @@ test("the surface is gated on a finished match", () => {
   assert.match(source, /matchEnded/);
   assert.match(
     source,
-    /if \(!active \|\| !matchEnded \|\| !offerAllowed \|\| phase === "dismissed"\)/,
+    /if \(!active \|\| !matchEnded \|\| !offerAllowed \|\| phase === "closed"\)/,
     "an active match — or a match the offer policy declined — must render nothing",
   );
 });
