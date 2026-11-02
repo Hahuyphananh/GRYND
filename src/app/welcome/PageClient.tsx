@@ -48,6 +48,8 @@ import {
 import { useTranslation } from "../../hooks/useTranslation";
 import { shouldRouteWelcomeToQuestionnaire } from "../../lib/onboardingFlow";
 import { welcomeMessageKey } from "../../lib/gameRecommendations";
+import GlitchSay from "../../components/mascot/GlitchSay";
+import { glitchWelcomeLine } from "../../lib/mascot/glitchOnboarding";
 
 const TOTAL_STEPS = 5;
 const STEP_STORAGE_PREFIX = "grynd:welcome:step:";
@@ -346,6 +348,7 @@ export default function WelcomePageClient({
     case 0: {
       content = (
         <div className="text-center">
+          <GlitchGuide step={0} center />
           <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center">
             <div className="h-14 w-14 rotate-45 rounded-lg border-2 border-[#00e5ff] bg-gradient-to-br from-[#FF2D9B]/20 to-[#00e5ff]/20 shadow-[0_0_30px_rgba(0,229,255,0.5)]" />
           </div>
@@ -395,6 +398,7 @@ export default function WelcomePageClient({
       ];
       content = (
         <div>
+          <GlitchGuide step={1} />
           {eyebrow(t("onboarding.what.kicker"))}
           <h2 className="mb-6 text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
             {t("onboarding.what.title")}
@@ -428,6 +432,7 @@ export default function WelcomePageClient({
       ];
       content = (
         <div>
+          <GlitchGuide step={2} />
           {eyebrow(t("onboarding.tokens.kicker"))}
           <h2 className="mb-2 text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
             {t("onboarding.tokens.title")}
@@ -464,6 +469,7 @@ export default function WelcomePageClient({
       ];
       content = (
         <div>
+          <GlitchGuide step={3} />
           {eyebrow(t("onboarding.pvp.kicker"))}
           <h2 className="mb-2 text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
             {t("onboarding.pvp.title")}
@@ -508,6 +514,7 @@ export default function WelcomePageClient({
       ];
       content = (
         <div>
+          <GlitchGuide step={4} center />
           <div className="mx-auto mb-5 max-w-md rounded-2xl border border-amber-500/40 bg-[#0a0f2e]/70 p-6 text-center shadow-[0_0_40px_rgba(255,215,0,0.14)] backdrop-blur-sm">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-[#00e5ff]/50 bg-[#00e5ff]/10 shadow-[0_0_25px_rgba(0,229,255,0.25)]">
               <IconRobot size={34} className="text-[#7cefff]" />
@@ -669,6 +676,37 @@ export default function WelcomePageClient({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * GLITCH's line for one tutorial step, INLINE in the page.
+ *
+ * Inline, never floating: the mascot is part of the step, so it can never
+ * cover the heading, the progress dots or the Back/Next/Skip controls — it
+ * takes layout space instead of overlapping anything. Every step in the
+ * existing five-step walkthrough gets one line; the expression and the copy
+ * come from src/lib/mascot/glitchOnboarding.ts → appTextTranslations
+ * (`onboarding.glitch.welcome.*`, en/fr/es).
+ *
+ * It renders nothing when a step has no line, so adding a sixth step cannot
+ * leave a stray empty box behind.
+ */
+function GlitchGuide({ step, center = false }: { step: number; center?: boolean }) {
+  const { t } = useTranslation();
+  const line = glitchWelcomeLine(step);
+  if (!line) return null;
+  return (
+    <div className={center ? "mb-5 flex justify-center" : "mb-5"}>
+      <GlitchSay
+        expression={line.expression}
+        message={t(line.messageKey)}
+        placement="inline"
+        // The hero has room to introduce the character; the content steps stay
+        // compact so the cards keep their place on a phone.
+        size={step === 0 ? "md" : "sm"}
+      />
     </div>
   );
 }

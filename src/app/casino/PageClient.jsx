@@ -3,12 +3,14 @@ import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import { useUser } from "@clerk/nextjs";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import GameCard from "../../components/games/GameCard";
 import { GAME_CARD_ART } from "../../components/games/gameCardArt";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslation } from "../../hooks/useTranslation";
+import { useGlitch } from "../../components/mascot/GlitchProvider";
+import { glitchLobbyMoment } from "../../lib/mascot/glitchMoments";
 import UpgradeProButton from "../../components/UpgradeProButton";
 import { IconClock, IconSparkles } from "@tabler/icons-react";
 import StickyMobileCta from "../../components/StickyMobileCta";
@@ -154,6 +156,7 @@ function MainComponent({ adSlot = null, hilltopSlot = null, gameIndex = [], disc
   // shuffle their own orders the same way (once when their data lands).
   const [featuredOrder, setFeaturedOrder] = useState(null);
   const { t, language } = useTranslation();
+  const { say: glitchSay } = useGlitch();
 
   // Persist search + filter for the session (UX plan P1-1). Written on
   // every change; read once on mount via the lazy initializers above.
@@ -182,6 +185,35 @@ function MainComponent({ adSlot = null, hilltopSlot = null, gameIndex = [], disc
   useEffect(() => {
     setRecentGames(shuffledCopy(getPlayedGames()));
   }, []);
+
+  // ── GLITCH in the games hub ─────────────────────────────────────────────
+  // ONE line per session, chosen from the only two states this hub really
+  // has: a player with session history ("Pick a game…") and a player without
+  // ("Practice first…"). Both go through the provider, so the cadence rules
+  // decide whether anything appears at all — one bubble at a time, 90 s
+  // apart, three per session, and never over a match, a modal, an ad, a
+  // loading or an error surface. The stable event id is what makes the same
+  // hint unrepeatable for the rest of the session, including when the player
+  // comes back to this page.
+  //
+  // It stays silent while the first-battle card is up: that card is already
+  // this account's next step, and two first steps are noise. The mascot is a
+  // corner layer (`pointer-events-none`), so it cannot cover a game card, a
+  // filter, the wallet chip or any control.
+  const lobbyGlitchAskedRef = useRef(false);
+  useEffect(() => {
+    if (!user || firstBattle || lobbyGlitchAskedRef.current) return;
+    const moment = glitchLobbyMoment(getPlayedGames().length > 0);
+    const accepted = glitchSay({
+      expression: moment.expression,
+      message: t(moment.messageKey),
+      priority: 1,
+      eventId: moment.eventId,
+    });
+    // Only remember an ACCEPTED hint: a request the cadence declined (a
+    // cooldown, a suppressed moment) must not consume this session's chance.
+    if (accepted) lobbyGlitchAskedRef.current = true;
+  }, [user, firstBattle, glitchSay, t]);
 
   // First-time guidance: both lobby onboarding cards are decided from the SAME
   // server snapshot (/api/onboarding/status) and each keeps its own

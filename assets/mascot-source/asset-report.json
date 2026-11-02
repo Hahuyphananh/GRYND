@@ -1,0 +1,139 @@
+{
+  "generatedAt": "2026-11-02T18:39:25.539Z",
+  "ground": "#030817",
+  "scale": 1.1135697399527187,
+  "outputs": [
+    {
+      "expression": "idle",
+      "source": "glitch.png",
+      "sourceBox": "635x794",
+      "coveragePct": 32.4,
+      "placedOnMaster": "707x884",
+      "masterKb": 493.6,
+      "webp": [
+        {
+          "file": "glitch-idle.webp",
+          "px": 384,
+          "kb": 17.7,
+          "hasAlpha": true
+        },
+        {
+          "file": "glitch-idle-192.webp",
+          "px": 192,
+          "kb": 7.7,
+          "hasAlpha": true
+        }
+      ]
+    },
+    {
+      "expression": "wink",
+      "source": "glitch wink.png",
+      "sourceBox": "708x815",
+      "coveragePct": 34.6,
+      "placedOnMaster": "788x908",
+      "masterKb": 630.3,
+      "webp": [
+        {
+          "file": "glitch-wink.webp",
+          "px": 384,
+          "kb": 21.4,
+          "hasAlpha": true
+        },
+        {
+          "file": "glitch-wink-192.webp",
+          "px": 192,
+          "kb": 9.3,
+          "hasAlpha": true
+        }
+      ]
+    },
+    {
+      "expression": "victory",
+      "source": "glitch victory.png",
+      "sourceBox": "681x846",
+      "coveragePct": 30.9,
+      "placedOnMaster": "758x942",
+      "masterKb": 766.8,
+      "webp": [
+        {
+          "file": "glitch-victory.webp",
+          "px": 384,
+          "kb": 26.7,
+          "hasAlpha": true
+        },
+        {
+          "file": "glitch-victory-192.webp",
+          "px": 192,
+          "kb": 11.2,
+          "hasAlpha": true
+        }
+      ]
+    },
+    {
+      "expression": "defeat",
+      "source": "glitch defeat.png",
+      "sourceBox": "658x793",
+      "coveragePct": 31,
+      "placedOnMaster": "733x883",
+      "masterKb": 595.8,
+      "webp": [
+        {
+          "file": "glitch-defeat.webp",
+          "px": 384,
+          "kb": 20.3,
+          "hasAlpha": true
+        },
+        {
+          "file": "glitch-defeat-192.webp",
+          "px": 192,
+          "kb": 8.9,
+          "hasAlpha": true
+        }
+      ]
+    },
+    {
+      "expression": "surprised",
+      "source": "glitch suprised.png",
+      "sourceBox": "593x786",
+      "coveragePct": 27.3,
+      "placedOnMaster": "660x875",
+      "masterKb": 547.9,
+      "webp": [
+        {
+          "file": "glitch-surprised.webp",
+          "px": 384,
+          "kb": 17.3,
+          "hasAlpha": true
+        },
+        {
+          "file": "glitch-surprised-192.webp",
+          "px": 192,
+          "kb": 7.6,
+          "hasAlpha": true
+        }
+      ]
+    },
+    {
+      "expression": "focused",
+      "source": "glitch focused.png",
+      "sourceBox": "649x736",
+      "coveragePct": 31.7,
+      "placedOnMaster": "723x820",
+      "masterKb": 531.8,
+      "webp": [
+        {
+          "file": "glitch-focused.webp",
+          "px": 384,
+          "kb": 16.7,
+          "hasAlpha": true
+        },
+        {
+          "file": "glitch-focused-192.webp",
+          "px": 192,
+          "kb": 7.3,
+          "hasAlpha": true
+        }
+      ]
+    }
+  ]
+}

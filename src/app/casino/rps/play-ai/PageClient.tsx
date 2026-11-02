@@ -32,6 +32,9 @@ import {
   PracticePauseOverlay,
 } from "../../../../components/game/PracticePause";
 import { usePracticePause } from "../../../../hooks/usePracticePause";
+import { useTranslation } from "../../../../hooks/useTranslation";
+import GlitchSay from "../../../../components/mascot/GlitchSay";
+import { glitchFirstMatchResultLine } from "../../../../lib/mascot/glitchOnboarding";
 
 
 import NavigationBar from "../../../../components/navigation-bar";
@@ -152,6 +155,7 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
   // human seat (client-side game — no server match payload).
   const myIdentity = useMySeatIdentity();
   const myDisplayName = myIdentity.name || "You";
+  const { t } = useTranslation();
 
   // The tier chosen in the lobby (remembered per game by the shared picker).
   const [aiDifficulty] = useState<AiDifficulty>(() =>
@@ -179,6 +183,9 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
   const paused = practicePause.paused;
   const pausedRef = practicePause.pausedRef;
   const wonMatch = myWins >= ROUNDS_TO_WIN;
+  // GLITCH's terminal tutorial line (victory or defeat). Only ever rendered
+  // inside the onboarding run — see the extraContent prop below.
+  const resultGlitch = glitchFirstMatchResultLine(wonMatch);
 
   // Tutorial (first-match) framing, only when launched from the welcome flow.
   const [tutorial, setTutorial] = useState<TutorialState>(() =>
@@ -369,6 +376,22 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
             </span>
           </div>
 
+          {/* GLITCH's opening line, in the rounds-history card — the empty
+              state before the tutorial's first throw. INLINE and inside an
+              existing panel: it never overlaps the board or the throw buttons,
+              and it disappears the moment the first round is played, so it can
+              never obstruct an active turn. Onboarding only (`tutorialActive`). */}
+          {tutorialActive && phase === "picking" && history.length === 0 && (
+            <div className="mb-3">
+              <GlitchSay
+                expression="idle"
+                message={t("onboarding.glitch.firstMatch.start")}
+                placement="inline"
+                size="sm"
+              />
+            </div>
+          )}
+
           {history.length === 0 ? (
             <p className="text-sm text-white/50">
               No rounds played yet. Every throw from you and the AI will
@@ -493,6 +516,26 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
                 { label: "Final Score", value: `${myWins} – ${aiWins}` },
                 { label: "Rounds", value: `${history.length} of ${TOTAL_ROUNDS}` },
               ]}
+              // The tutorial's closing line, rendered through the result
+              // screen's EXISTING generic in-flow slot (no change to the shared
+              // component, no gameplay involvement). Inline, so it cannot cover
+              // the result, and only in the onboarding run — plain free play
+              // renders exactly as before.
+              // This screen supplies its OWN mascot line below, so the shared
+              // default (a result reaction) is switched off here — one result
+              // event must never render two.
+              showGlitch={false}
+              extraContent={
+                tutorial.mode === "complete" ? (
+                  <GlitchSay
+                    expression={resultGlitch.expression}
+                    message={t(resultGlitch.messageKey)}
+                    placement="inline"
+                    size="sm"
+                    className="justify-center"
+                  />
+                ) : null
+              }
               playAgain={{ onClick: restartAfterFirstMatch }}
               onReturnToLobby={() => router.push("/casino/rps")}
             />

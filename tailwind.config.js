@@ -82,6 +82,12 @@ module.exports = {
           "on-accent": "rgb(var(--gr-ink-on-accent-rgb) / <alpha-value>)",
           disabled: "rgb(var(--gr-disabled-ink-rgb) / <alpha-value>)",
         },
+        // GLITCH's speech bubble — the one light surface in the app. Declared
+        // in the "Mascot (GLITCH)" section of the token block in globals.css.
+        mascot: {
+          bubble: "rgb(var(--gr-mascot-bubble-rgb) / <alpha-value>)",
+          ink: "rgb(var(--gr-mascot-bubble-ink-rgb) / <alpha-value>)",
+        },
       },
       borderRadius: {
         cell: "var(--gr-cell-radius)",

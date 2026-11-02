@@ -1278,7 +1278,43 @@ export const APP_TEXT_TRANSLATIONS = {
       accept: "Accept",
       decline: "Decline",
     },
+    // GLITCH outside onboarding (Stage 4): one reaction to a finished match,
+    // and one games-hub hint per session. Chosen by src/lib/mascot/
+    // glitchMoments.ts — never written into a component. No line may imply a
+    // reward: the mascot does not know whether one was granted.
+    glitch: {
+      result: {
+        victory: "That one's yours.",
+        defeat: "Shake it off. Run it back.",
+        draw: "All square. Go again.",
+      },
+      lobby: {
+        pickGame: "Pick a game. I'll be watching.",
+        practiceFirst: "Practice first. Brag later.",
+      },
+    },
     onboarding: {
+      // GLITCH (the mascot). Behaviour — which step, which expression, when it
+      // may appear — lives in src/lib/mascot/glitchOnboarding.ts; only the
+      // words are here. Short, one breath each: the bubble is small.
+      glitch: {
+        questionnaire: {
+          q1: "No wrong answers. Promise.",
+          q5: "Last one. This one actually matters.",
+        },
+        welcome: {
+          step0: "Hey. I'm GLITCH. I'll keep this quick.",
+          step1: "Play. Outplay. Progress. That's the loop.",
+          step2: "Tokens buy entries. Practice is always free.",
+          step3: "Get matched, play, climb. That's it.",
+          step4: "First match is on me. Let's get your win.",
+        },
+        firstMatch: {
+          start: "Tap one. That's the whole tutorial.",
+          victory: "That's how it works. Now do it for real.",
+          defeat: "Rough one. Run it back.",
+        },
+      },
       welcome: {
         kicker: "Your first GRYND",
         title: "STARTS NOW",
@@ -3060,7 +3096,36 @@ export const APP_TEXT_TRANSLATIONS = {
       accept: "Accepter",
       decline: "Refuser",
     },
+    glitch: {
+      result: {
+        victory: "Celle-là est à toi.",
+        defeat: "Secoue-toi. Relance.",
+        draw: "Match nul. On remet ça.",
+      },
+      lobby: {
+        pickGame: "Choisis un jeu. Je regarde.",
+        practiceFirst: "Entraîne-toi d'abord. Tu frimeras après.",
+      },
+    },
     onboarding: {
+      glitch: {
+        questionnaire: {
+          q1: "Aucune mauvaise réponse. Promis.",
+          q5: "La dernière. Celle-ci compte vraiment.",
+        },
+        welcome: {
+          step0: "Salut. Moi c'est GLITCH. Je fais vite.",
+          step1: "Joue. Surpasse. Progresse. C'est la boucle.",
+          step2: "Les jetons paient les entrées. L'entraînement est toujours gratuit.",
+          step3: "Tu es matché, tu joues, tu montes. C'est tout.",
+          step4: "Ton premier match est pour moi. Allons chercher ta victoire.",
+        },
+        firstMatch: {
+          start: "Choisis-en une. C'est tout le tutoriel.",
+          victory: "Voilà comment ça marche. Maintenant, fais-le pour de vrai.",
+          defeat: "Série difficile. Relance.",
+        },
+      },
       welcome: {
         kicker: "Ton premier GRYND",
         title: "C'EST PARTI",
@@ -4815,7 +4880,36 @@ export const APP_TEXT_TRANSLATIONS = {
       accept: "Aceptar",
       decline: "Rechazar",
     },
+    glitch: {
+      result: {
+        victory: "Esa es tuya.",
+        defeat: "Sacúdetelo. Otra vez.",
+        draw: "Empate. Otra ronda.",
+      },
+      lobby: {
+        pickGame: "Elige un juego. Estaré mirando.",
+        practiceFirst: "Primero practica. Ya presumirás.",
+      },
+    },
     onboarding: {
+      glitch: {
+        questionnaire: {
+          q1: "No hay respuestas incorrectas. Prometido.",
+          q5: "La última. Esta sí importa.",
+        },
+        welcome: {
+          step0: "Hola. Soy GLITCH. Seré rápido.",
+          step1: "Juega. Supera. Progresa. Ese es el ciclo.",
+          step2: "Las fichas pagan las entradas. La práctica siempre es gratis.",
+          step3: "Te emparejan, juegas, subes. Eso es todo.",
+          step4: "Tu primera partida la invito yo. Vamos por tu victoria.",
+        },
+        firstMatch: {
+          start: "Elige una. Ese es todo el tutorial.",
+          victory: "Así funciona. Ahora hazlo de verdad.",
+          defeat: "Mala racha. Otra vez.",
+        },
+      },
       welcome: {
         kicker: "Tu primer GRYND",
         title: "EMPIEZA YA",

@@ -55,6 +55,42 @@ import { fireConfetti, withReducedMotion } from "../../lib/animations";
 import { notifyDailyRewardWin } from "../../lib/practiceWinClient";
 import FrameAvatar from "../FrameAvatar";
 import PostMatchAdSlot from "../ads/PostMatchAdSlot";
+import { useTranslation } from "../../hooks/useTranslation";
+import GlitchSay from "../mascot/GlitchSay";
+import { selectGlitchResultReaction } from "../../lib/mascot/glitchMoments";
+
+// ── GLITCH result reactions: at most one per event, per session ──────────
+//
+// The selector decides WHETHER this result gets a reaction (first rated match
+// → completed tier → rank improvement → one occasional line). This is the only
+// state that needs remembering: which event ids have already spoken in this
+// session. It is session-scoped on purpose — a new tab or a new session may
+// speak again, and nothing is written to the server.
+const GLITCH_RESULT_SEEN_KEY = "grynd:glitch:result-seen";
+const GLITCH_RESULT_SEEN_MAX = 20;
+
+function readSeenGlitchResultEvents() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.sessionStorage.getItem(GLITCH_RESULT_SEEN_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((value) => typeof value === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberGlitchResultEvent(eventId) {
+  if (typeof window === "undefined" || !eventId) return;
+  try {
+    const seen = readSeenGlitchResultEvents();
+    if (seen.includes(eventId)) return;
+    const next = [...seen, eventId].slice(-GLITCH_RESULT_SEEN_MAX);
+    window.sessionStorage.setItem(GLITCH_RESULT_SEEN_KEY, JSON.stringify(next));
+  } catch {
+    // Storage unavailable — the reaction simply may repeat later. Harmless.
+  }
+}
 
 const CONFETTI_COLORS = ["#00e5ff", "#f5ff3b", "#ff4fd8", "#a855f7", "#34d399"];
 
@@ -188,8 +224,36 @@ export default function PvpResultScreen({
   // the player and "Run it back"), and suppressed in compact mode so Creator
   // Mode recordings never carry an ad.
   postMatchAd = null,
+  // GLITCH's reaction to this result, inline under the outcome hero. On by
+  // default — every result screen is a legitimate place for the character to
+  // react — and switched OFF by the one screen that already renders its own
+  // mascot line (the RPS onboarding match passes it through `extraContent`),
+  // so a single result can never show two mascots.
+  showGlitch = true,
 }) {
   const shouldReduce = useReducedMotion();
+  const { t } = useTranslation();
+  // Decided ONCE, from synchronous props only. The result screen's numbers are
+  // still free to arrive (or animate) afterwards without ever re-deciding: a
+  // reaction that appeared and then withdrew as a fetch landed would be worse
+  // than no reaction at all.
+  const [glitchReaction] = useState(() =>
+    selectGlitchResultReaction(
+      {
+        outcome,
+        showGlitch,
+        compact,
+        overallElo,
+        progress,
+        rankDelta,
+      },
+      { seenEventIds: readSeenGlitchResultEvents() }
+    )
+  );
+
+  useEffect(() => {
+    if (glitchReaction.show) rememberGlitchResultEvent(glitchReaction.moment.eventId);
+  }, [glitchReaction]);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [navigating, setNavigating] = useState(false);
   // The post-match ad is offered when the player picks an EXIT action, so this
@@ -588,6 +652,33 @@ export default function PvpResultScreen({
                 </p>
               )}
             </div>
+
+            {/* GLITCH's reaction — INLINE in the panel's own flow, directly
+                under the outcome hero. It cannot cover the score, the
+                progression rows (Overall Elo, trophies, streak, weekly rank),
+                the summary, the Rematch/Play Again/exit controls or the
+                post-match ad — those either follow it in the flow or render
+                in a layer above this whole panel. It states nothing about
+                rewards (see glitchMoments.ts); the reward rows are the
+                server's, not the character's.
+
+                Suppressed in `compact` (a Creator Mode recording frame) and
+                whenever a game supplies its own mascot line, so one result
+                event can never produce two. */}
+            {showGlitch && !compact && glitchReaction.show && (
+              <div className="mx-auto mt-3 flex w-full max-w-xs justify-center">
+                <GlitchSay
+                  expression={glitchReaction.moment.expression}
+                  message={t(glitchReaction.moment.messageKey)}
+                  // The event that earned this reaction (data-glitch-event):
+                  // first rated match, a completed tier, a rank climb, or the
+                  // session's one occasional line.
+                  eventId={glitchReaction.moment.eventId}
+                  placement="inline"
+                  size="sm"
+                />
+              </div>
+            )}
 
             {/* Final score — hierarchy step 1.5: after the outcome hero, the
                 winner's score is emphasised and the loser's is muted but still

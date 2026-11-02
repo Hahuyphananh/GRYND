@@ -18,6 +18,7 @@ import NativeBackButton from "../components/native/NativeBackButton";
 import NativeSystemBars from "../components/native/NativeSystemBars";
 import NativeKeyboard from "../components/native/NativeKeyboard";
 import { ToastProvider } from "../components/toast/ToastProvider";
+import GlitchProvider from "../components/mascot/GlitchProvider";
 import { ogImageUrl, SITE_URL } from "../lib/ogImages";
 
 export const dynamic = "force-dynamic";
@@ -241,6 +242,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               id="main-content"
               className="pt-[calc(68px_+_var(--safe-top))] sm:pt-[calc(4rem_+_var(--safe-top))]"
             >{children}</main>
+            {/* GLITCH's floating layer — the ONLY mount of the mascot provider.
+                Its own decisions (cadence, suppression, session limits) come
+                from lib/mascot/glitchCadence.js; this only states that the
+                layer exists. Inside ToastProvider so a toast always wins, and
+                before the chat widget so bottom-left stays free. Renders
+                nothing until something calls useGlitch().say(). */}
+            <GlitchProvider />
             <ClerkSafeChatWidget />
             {/* Mirrors Google's CMP decision into the local consent record so
                 the existing gating (GA, PostHog, Sentry) keeps working for

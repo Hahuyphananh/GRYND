@@ -52,6 +52,8 @@ import {
   QUESTIONNAIRE_VERSION,
 } from "../../../lib/onboardingQuestionnaire";
 import { questionnaireDestination } from "../../../lib/onboardingFlow";
+import GlitchSay from "../../../components/mascot/GlitchSay";
+import { glitchQuestionnaireLine } from "../../../lib/mascot/glitchOnboarding";
 
 type AnswerValue = string | string[];
 type Answers = Record<string, AnswerValue>;
@@ -202,6 +204,11 @@ export default function QuestionnairePageClient({ from }: Props) {
 
   const question = QUESTIONNAIRE_QUESTIONS[step];
   const accent = ACCENTS[step % ACCENTS.length];
+  // GLITCH speaks on two questions only (see glitchOnboarding.ts). Rendered
+  // inline under the options — in the flow, so it can never sit on top of the
+  // selected answer or the Next/Skip controls — and only in a first run, only
+  // when nothing is loading, saving or retrying.
+  const questionGlitch = glitchQuestionnaireLine(step);
   const isLast = step === TOTAL - 1;
   const canAdvance = isAnswered(question);
 
@@ -589,6 +596,21 @@ export default function QuestionnairePageClient({ from }: Props) {
                 <p className="mt-3 text-xs font-bold text-[#FFD700]/80" role="status">
                   {t("onboarding.questionnaire.selectAtLeastOne")}
                 </p>
+              )}
+
+              {/* GLITCH — questions 1 and 5 only. `mode === "first"` keeps it
+                  out of EDIT MODE (an existing player changing saved answers is
+                  not being onboarded); `saving`/`saveFailed` keep it out of a
+                  pending or failed write. */}
+              {mode === "first" && questionGlitch && !saving && !saveFailed && (
+                <div className="mt-5">
+                  <GlitchSay
+                    expression={questionGlitch.expression}
+                    message={t(questionGlitch.messageKey)}
+                    placement="inline"
+                    size="sm"
+                  />
+                </div>
               )}
             </motion.div>
           </AnimatePresence>
