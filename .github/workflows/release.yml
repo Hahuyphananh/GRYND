@@ -261,8 +261,37 @@ jobs:
           # one way here and another after the deploy job extracts it — its
           # verify-artifact.mjs then rejects the release on a checksum mismatch.
           # Drop them while the tree that is hashed is still the tree that ships.
+          #
+          # Symlinks get the same treatment, for the same reason. upload-artifact
+          # stores a symlink as its TARGET, so a link left in the tree hashes as
+          # `l:<path>:<target>` here and as `f:<path>+<contents>` after download;
+          # the deploy job's verify-artifact.mjs then rejects the release on an
+          # artifact-checksum / file-count mismatch. `cp -rL` covers the app copy,
+          # but `rsync -a` deliberately preserves links in the realtime tree and
+          # `npm prune` can recreate `node_modules/.bin` shims afterwards, so
+          # materialise whatever is still a link instead of trusting the copies.
+          while IFS= read -r -d '' link; do
+            resolved="$(readlink -f "$link" 2>/dev/null || true)"
+            if [ -z "$resolved" ] || [ ! -e "$resolved" ]; then
+              # A dangling link carries nothing `next start` needs.
+              rm -f "$link"
+              continue
+            fi
+            rm -f "$link"
+            cp -a "$resolved" "$link"
+          done < <(find "$dist" -type l -print0)
+
           find "$dist" -depth -type d -empty -print -delete | sed 's|^|dropped empty directory: |'
-          echo "tree: $(find "$dist" -type d | wc -l) dirs, $(find "$dist" -type f | wc -l) files, $(find "$dist" -type l | wc -l) symlinks"
+
+          symlinks="$(find "$dist" -type l | wc -l | tr -d ' ')"
+          echo "tree: $(find "$dist" -type d | wc -l) dirs, $(find "$dist" -type f | wc -l) files, $symlinks symlinks"
+          # The tree that is hashed MUST be the tree that ships. Refuse to build a
+          # manifest over anything upload-artifact would rewrite.
+          if [ "$symlinks" -ne 0 ]; then
+            echo "::error::artifact still contains $symlinks symlinks; upload-artifact would change its checksum"
+            find "$dist" -type l | head -20
+            exit 1
+          fi
 
           du -sh "$dist"
 
