@@ -2,7 +2,7 @@
 
 // src/components/dominoes/DominoHand.tsx
 //
-// THE VIEWER'S OWN HAND — the row of tiles under the board.
+// THE VIEWER'S OWN HAND — the tiles at the top of the board's sidebar.
 //
 // `hand` is the VIEWER's tiles only — the projection the server builds per
 // caller. The opponent's hand never reaches this component (it is not in the

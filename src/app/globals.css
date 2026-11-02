@@ -2546,37 +2546,59 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 
 /* ── Dominoes (online 1v1 table) ─────────────────────────────────────────
    TWO COLUMNS. On the left is the BOARD — the opponent card, the turn banner and
-   its 15-second clock, the shared chain that grows like a real table, the draw
-   pile, and the viewer's own hand underneath it. On the right is the ACTION
-   sidebar: the open ends, the selected tile and the three controls, which stay
-   in one place however long the chain gets.
+   its 15-second clock, the shared chain laid out on a felt the size of the page,
+   and the draw pile. On the right is the SIDEBAR: your own hand, the open ends,
+   the selected tile and the three controls.
 
-   SIZING IS THE WHOLE DESIGN PROBLEM. A chain can hold all 28 tiles, so the line
-   is never squeezed to fit: it keeps growing and the board scrolls along it, with
-   the newest tile brought into view. Every tile is one CSS variable wide, so the
-   hand can be larger than the chain (it is what you tap) without the two drifting
-   apart, and the halves never drop below a value a phone can read. */
+   SIZING IS THE WHOLE DESIGN PROBLEM. A chain can hold all 28 tiles, so the felt
+   is given the page and the CHAIN FITS ITSELF TO IT: the layout turns the line
+   when it reaches the board's edge, so the table never grows into a region the
+   player has to scroll to find. The felt's size in cells is measured from this
+   stylesheet's own `--dm-half` (see DominoChain), so the bounds and the tiles can
+   never disagree about how big a cell is. Every tile is that one variable wide,
+   so the hand can be larger than the chain (it is what you tap) without the two
+   drifting apart, and the halves never drop below a value a phone can read. */
 .dominoes-board {
-  --dm-half: clamp(24px, 6.2vw, 34px);
+  /* The felt is the page now, so a desktop cell is a palm-sized piece rather than
+     the phone size the board used to be squeezed to. A cell is also the unit the
+     board is MEASURED in, so the max is bounded by what the felt can hold: the
+     chrome above it was compacted (see .dominoes-main / the seat and scoreboard)
+     to buy the rows this needs. */
+  --dm-half: clamp(24px, 6.2vw, 42px);
   --dm-gap: clamp(4px, 1vw, 8px);
-  display: block;
+  /* Everything the page puts AROUND the board: the navbar, the header and the
+     bottom breathing room. The board takes the rest of the viewport. */
+  --dm-chrome: 13rem;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
 }
 
 /* The board and its sidebar. The sidebar is a fixed column so a growing hand can
-   never push the controls around, and it is sticky so they stay reachable while
-   the page scrolls. */
+   never push the controls around, and it now holds the hand as well as the
+   actions — which is what frees the board to be the size of the page. */
 .dominoes-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 264px;
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  align-items: stretch;
   gap: 12px;
+  /* AS BIG AS THE PAGE: the viewport, minus the chrome the page wraps around it.
+     The felt's own limit is this box, so the table is bounded by what is visible. */
+  height: calc(100dvh - var(--dm-chrome));
+  min-height: 460px;
 }
 
 .dominoes-main {
   display: flex;
   min-width: 0;
+  /* The column may be shorter than its contents would like: the table shrinks
+     into the space left, never the other way round. */
+  min-height: 0;
   flex-direction: column;
-  gap: 10px;
+  /* EVERY ROW OF CHROME HERE IS FELT THE PLAYER CANNOT USE. The stack above the
+     table is compact by design, so a full 26-tile chain still has the rows to
+     snake through. */
+  gap: 6px;
 }
 
 .dominoes-sidebar {
@@ -2584,31 +2606,26 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   top: 76px;
   display: flex;
   min-width: 0;
+  /* The hand lives here now, so on a short screen the column can be taller than
+     the board: it scrolls on its own instead of pushing the page around. */
+  max-height: calc(100dvh - 6rem);
   flex-direction: column;
   gap: 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 
-/* Under ~900px the sidebar stacks UNDER the board (the hand stays directly under
-   the table, so the tiles are still where the thumb expects them). */
-@media (max-width: 900px) {
-  .dominoes-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .dominoes-sidebar {
-    position: static;
-  }
-}
 
 /* ── Seat cards ─────────────────────────────────────────────────────── */
 .dominoes-seat {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.04);
-  padding: 8px 10px;
+  padding: 5px 10px;
 }
 
 .dominoes-seat.is-active {
@@ -2618,8 +2635,8 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 
 .dominoes-seat-avatar {
   display: inline-flex;
-  height: 36px;
-  width: 36px;
+  height: 30px;
+  width: 30px;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
@@ -2704,7 +2721,7 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   border: 1px solid rgba(124, 239, 255, 0.22);
   border-radius: 12px;
   background: rgba(0, 229, 255, 0.07);
-  padding: 8px 10px;
+  padding: 6px 10px;
 }
 
 .dominoes-score {
@@ -2733,7 +2750,7 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 
 .dominoes-score-value {
   font-variant-numeric: tabular-nums;
-  font-size: clamp(20px, 6vw, 28px);
+  font-size: clamp(18px, 4.6vw, 26px);
   font-weight: 900;
   line-height: 1;
   color: #f5ff3b;
@@ -2938,6 +2955,9 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 /* ── The chain and the pile ─────────────────────────────────────────── */
 .dominoes-table {
   display: flex;
+  /* The table takes whatever height the column has left: that is the felt's. */
+  flex: 1 1 auto;
+  min-height: 0;
   flex-direction: column;
   gap: 8px;
 }
@@ -2958,25 +2978,46 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 }
 
 /* The board itself: the open-value chips are pinned to ITS corners, while the
-   surface inside scrolls under them. */
+   surface inside fills it. */
 .dominoes-chain {
   position: relative;
+  display: flex;
+  flex: 1 1 auto;
   min-width: 0;
+  min-height: 0;
+  flex-direction: column;
   border-radius: 14px;
 }
 
-/* The scroll viewport. Both axes, because the table snakes as it grows. */
+/* ONE CELL, FOR MEASURING. The chain reads its board in cells, and a cell is
+   `--dm-half` — a clamp that the narrow-phone block redefines, so it cannot be
+   guessed from the window. This probe IS one cell, and the effect in DominoChain
+   measures it and nothing else. Invisible, out of the flow, never in the way. */
+.dominoes-cell-probe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--dm-half);
+  height: var(--dm-half);
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* The felt. It fills the board and the chain is laid out to FIT it, so the table
+   is bounded by what is on screen; `overflow: auto` is only reached if a chain
+   genuinely cannot fit the felt at all (see `layoutChain`'s unbounded fallback). */
 .dominoes-chain-scroller {
-  /* Flex (one child, auto margins) centres a small table in both axes and lets a
-     large one scroll, which block layout cannot do vertically. */
+  /* Flex (one child, auto margins) centres a small table in both axes, which
+     block layout cannot do vertically. */
   display: flex;
-  min-height: clamp(170px, 30vh, 280px);
-  max-height: min(54vh, 480px);
+  flex: 1 1 auto;
+  min-height: clamp(240px, 32vh, 420px);
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
   /* The top padding is the newest tile's badge's room: it floats above the felt,
-     so the scroll box has to leave space for it. */
+     so the box has to leave space for it. It is also what the board's own size is
+     measured from, so it is not costed twice. */
   padding: 42px 18px 18px;
   scroll-padding: 52px;
 }
@@ -2989,31 +3030,6 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   position: relative;
   flex: 0 0 auto;
   margin: auto;
-}
-
-/* THE LAYOUT TOGGLE — one straight line of tiles, or the wrapped table. It sits
-   above the felt and reads as a small mode chip, because it changes how the
-   table is DRAWN and nothing about a single rule. */
-.dominoes-chain-shape {
-  align-self: flex-end;
-  margin: 0 6px 6px auto;
-  border-radius: 999px;
-  border: 1px solid rgba(56, 189, 248, 0.35);
-  background: rgba(14, 165, 233, 0.12);
-  color: #bae6fd;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  padding: 3px 10px;
-  cursor: pointer;
-}
-.dominoes-chain-shape:hover {
-  background: rgba(14, 165, 233, 0.24);
-}
-.dominoes-chain-shape.is-straight {
-  border-color: rgba(251, 191, 36, 0.5);
-  background: rgba(251, 191, 36, 0.14);
-  color: #fde68a;
 }
 
 /* A slot is a square centred on its tile: the tile rotates inside it (a
@@ -3029,6 +3045,17 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   top: 50%;
   display: flex;
   transform-origin: center;
+}
+
+/* THE VALUES STAY UPRIGHT WHEN THE TILE IS TURNED. A tile on the table carries
+   its rotation on the box around it — a crosswise double, or the left-hand arm
+   drawn the other way round — which would take its numerals with it, so a
+   vertical tile read sideways. `--dm-turn` is the INVERSE of that rotation,
+   written inline by the chain, so each half is turned back and its value is read
+   normally however the tile is lying. The halves are square, so nothing shifts
+   and nothing spills out of the tile. */
+.dominoes-chain-slot .dominoes-tile-half {
+  transform: rotate(var(--dm-turn, 0deg));
 }
 
 /* THE END THAT WOULD TAKE THE TILE IN HAND. A selected tile (tapped, or picked up
@@ -3092,14 +3119,20 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   box-shadow: none;
 }
 
-/* "LAST ON THE LEFT/RIGHT" — a small badge above the newest tile, naming the end
-   the last play was attached to. It floats, so it never shifts a tile. */
+/* "LAST ON THE LEFT/RIGHT" — a small badge naming the end the last play was
+   attached to. It floats, so it never shifts a tile.
+
+   WHERE IT FLOATS MATTERS ONCE THE TABLE SNAKES. A slot is two cells tall while a
+   FLAT tile is one, so a flat tile has half a cell of free space above it — the
+   badge sits in there and can never reach the row above, however tightly the
+   table has folded. An UPRIGHT tile fills its slot, so the badge is put on the
+   side the run is heading towards instead, which is where the line ends and the
+   felt is empty. Either way it stays off its neighbours: the badge is narrower
+   than a tile and never lands on another tile's values. */
 .dominoes-last-marker {
   position: absolute;
   z-index: 2;
   left: 50%;
-  /* Just above the tile: the slot is two cells tall, the tile one, so 50% is the
-     tile's centre line and 0.62 cells is its top edge plus a hair of clearance. */
   bottom: calc(50% + var(--dm-half) * 0.62);
   display: inline-flex;
   align-items: center;
@@ -3116,6 +3149,35 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   text-transform: uppercase;
   color: #fde68a;
   pointer-events: none;
+}
+
+/* THE ARROW IS WHAT POINTS; THE WORD IS WHAT MADE IT WIDE. "LEFT"/"RIGHT"
+   printed on a badge that floats between tiles is redundant — the arrow points at
+   the end, the badge sits at that end of the line, and the accessible name still
+   says it in words. Printing it cost the badge the width that put it on top of a
+   neighbouring tile in a folded table. */
+.dominoes-last-marker > span {
+  display: none;
+}
+
+/* A flat tile: the badge lives in the half cell above it, inside its own slot. */
+.dominoes-chain-slot[data-rotation="0"] .dominoes-last-marker,
+.dominoes-chain-slot[data-rotation="180"] .dominoes-last-marker {
+  bottom: calc(50% + var(--dm-half) * 0.5);
+}
+
+/* An upright tile fills its slot, so the badge goes above it. */
+.dominoes-chain-slot[data-rotation="90"] .dominoes-last-marker,
+.dominoes-chain-slot[data-rotation="270"] .dominoes-last-marker {
+  bottom: calc(50% + var(--dm-half) * 1);
+}
+
+/* …unless the run is heading DOWN, in which case the empty side is below it. */
+.dominoes-chain-slot[data-rotation="90"][data-direction="down"] .dominoes-last-marker,
+.dominoes-chain-slot[data-rotation="270"][data-direction="down"] .dominoes-last-marker {
+  top: calc(50% + var(--dm-half) * 1);
+  bottom: auto;
+  transform: translate(-50%, 2px);
 }
 
 .dominoes-chain-empty {
@@ -3709,19 +3771,187 @@ button.dominoes-tile:disabled {
    two lines, and the table keeps enough height to read as a board without
    pushing the hand below the fold. The tiles stay readable: the value is the
    thing you match on. */
-@media (max-width: 420px) {
+/* ── On a phone the WHOLE BOARD is one screen ────────────────────────
+   Not "as big as the page" but "as big as the phone": the board is bound to the
+   viewport less the page's own header, the felt takes whatever the controls do
+   not, and the controls are compacted so the leftover is worth looking at. The
+   page still scrolls — the move log and the bottom bar sit below the fold — but
+   nothing of the BOARD needs a scroll: felt, your own tiles and the buttons are
+   all on screen at once.
+
+   THIS BLOCK SITS AT THE END OF THE SECTION ON PURPOSE. It overrides base rules
+   (the hand's size, the panel's padding, the pile), and a media query carries no
+   extra weight in CSS — only its position in the sheet does. */
+@media (max-width: 900px) {
   .dominoes-board {
-    --dm-half: clamp(22px, 6vw, 28px);
+    /* The page's own chrome: navbar clearance plus header. The board gets the
+       rest of the screen and no more. */
+    --dm-chrome: 12rem;
+    /* Felt cells shrink a little on a phone: the felt is much shorter than a
+       desktop's, and a 26-tile chain still has to snake through it. The numerals
+       stay 13px, which is the smallest this board goes. */
+    --dm-half: clamp(20px, 5.2vw, 26px);
   }
 
+  .dominoes-layout {
+    grid-template-columns: minmax(0, 1fr);
+    /* The felt row flexes; the controls row keeps its natural height. */
+    grid-template-rows: minmax(0, 1fr) auto;
+    height: calc(100dvh - var(--dm-chrome));
+    min-height: 0;
+  }
+
+  .dominoes-main {
+    min-height: 0;
+    gap: 5px;
+  }
+
+  /* The felt shrinks into whatever is left instead of forcing a scrollbar. */
   .dominoes-chain-scroller {
-    min-height: clamp(136px, 26vh, 210px);
-    max-height: min(46vh, 360px);
-    padding: 36px 12px 14px;
+    min-height: 0;
+    padding: 26px 10px 10px;
+  }
+
+  /* The pile's count is printed on the Draw button, so this strip is a row of
+     felt spent on a number the player already has. */
+  .dominoes-pile {
+    display: none;
+  }
+
+  /* A slimmer seat card: the same information, one line tall. */
+  .dominoes-seat {
+    padding: 3px 8px;
+  }
+
+  .dominoes-seat-avatar {
+    height: 22px;
+    width: 22px;
+  }
+
+  .dominoes-seat-name {
+    font-size: 12px;
+  }
+
+  .dominoes-scoreboard {
+    padding: 4px 8px;
+  }
+
+  .dominoes-status {
+    font-size: 11px;
+  }
+
+  /* A phone's felt is dense enough that even the arrow would sit between two
+     tiles: the newest tile keeps its gold ring here, and the end is still
+     announced (the badge is clipped, not removed). */
+  .dominoes-last-marker {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* THE TURN SENTENCE STILL ANNOUNCES, BUT TAKES NO ROW. It is a live region, so
+     hiding it with `display: none` would silence it for a screen reader; clipped
+     to a pixel it speaks and costs nothing — the seat badge, the clock and the
+     hint beside the buttons already say whose move it is on sight. */
+  .dominoes-banner {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .dominoes-sidebar {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    /* Two columns, so the two secondary buttons share a row… */
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .dominoes-hand,
+  .dominoes-side-panel,
+  .dominoes-notice,
+  .dominoes-rules {
+    grid-column: 1 / -1;
+  }
+
+  /* ONE ROW OF TILES, scrolled sideways. A second wrapped row costs ~50px of felt,
+     and the row cannot get lost: the page around it no longer scrolls, so a
+     sideways swipe inside the hand is unambiguous. The tiles stay 44px tall. */
+  .dominoes-hand {
+    --dm-half: clamp(22px, 6vw, 28px);
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .dominoes-hand-tiles {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  /* THE PANEL SAYS ONLY WHAT IS NOT ALREADY ON SCREEN. The open ends are printed
+     at the felt's corners, the selected tile is the one lit in your hand, and the
+     title labels a panel the buttons already explain. */
+  .dominoes-side-panel {
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .dominoes-side-title,
+  .dominoes-side-ends,
+  .dominoes-side-selected {
+    display: none;
+  }
+
+  .dominoes-controls {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px;
   }
 
   .dominoes-action-button {
-    flex-basis: 100%;
+    min-height: 44px;
+    flex: 1 1 calc(50% - 3px);
+    padding: 8px 10px;
+  }
+
+  .dominoes-hint {
+    font-size: 10px;
+  }
+
+  /* A notice with nothing to say is not a row. */
+  .dominoes-notice:empty {
+    display: none;
+  }
+
+  .dominoes-secondary-button {
+    min-height: 34px;
+    padding: 5px 10px;
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 420px) {
+  /* Still two per row: the felt is paying for every stacked button now that the
+     board is bound to the screen. */
+  .dominoes-action-button {
+    flex-basis: calc(50% - 3px);
   }
 
   .dominoes-rules {

@@ -842,10 +842,6 @@ export const APP_TEXT_TRANSLATIONS = {
         chain_aria: "The chain, {count} tiles",
         chain_aria_one: "The chain, {count} tile",
         chain_empty: "The chain is empty. Play any tile to open it.",
-        chain_shape_flat: "Lay tiles in a line",
-        chain_shape_wrap: "Wrap the chain",
-        chain_shape_aria:
-          "Lay the chain out as one straight horizontal line of tiles instead of wrapping it",
         draw: "Draw",
         draw_disabled: "Draw a tile — not available right now",
         pass: "Pass",
@@ -2849,10 +2845,6 @@ export const APP_TEXT_TRANSLATIONS = {
         chain_aria: "La chaîne, {count} tuiles",
         chain_aria_one: "La chaîne, {count} tuile",
         chain_empty: "La chaîne est vide. Posez n'importe quelle tuile pour l'ouvrir.",
-        chain_shape_flat: "Aligner les tuiles",
-        chain_shape_wrap: "Enrouler la chaîne",
-        chain_shape_aria:
-          "Disposer la chaîne en une seule ligne horizontale de tuiles au lieu de l'enrouler",
         draw: "Piocher",
         draw_disabled: "Piocher une tuile — indisponible pour le moment",
         pass: "Passer",
@@ -4608,10 +4600,6 @@ export const APP_TEXT_TRANSLATIONS = {
         chain_aria: "La cadena, {count} fichas",
         chain_aria_one: "La cadena, {count} ficha",
         chain_empty: "La cadena está vacía. Juega cualquier ficha para abrirla.",
-        chain_shape_flat: "Alinear las fichas",
-        chain_shape_wrap: "Enrollar la cadena",
-        chain_shape_aria:
-          "Coloca la cadena en una sola línea horizontal de fichas en lugar de enrollarla",
         draw: "Robar",
         draw_disabled: "Robar una ficha — no disponible ahora",
         pass: "Pasar",

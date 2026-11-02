@@ -546,7 +546,7 @@ test("dominoes ui: an open end places the selected tile when it is tapped", { sk
   assert.match(viewSource, /onPlay\?\.\(selected, end\)/, "a tap sends the sidebar's own intent");
 
   // The tap target is styled as one, and the affordance is motion-safe.
-  const table = css.slice(css.indexOf(".dominoes-end-chip {"), css.indexOf(".dominoes-pile {"));
+  const table = css.slice(css.indexOf(".dominoes-end-chip {"), css.lastIndexOf(".dominoes-pile {"));
   assert.match(table, /\.dominoes-end-chip\.is-tappable \{[\s\S]*?pointer-events:\s*auto/);
   assert.match(table, /\.dominoes-end-chip\.is-tappable \{[\s\S]*?cursor:\s*pointer/);
   assert.match(table, /\.dominoes-end-chip\.is-tappable:focus-visible \{/, "it is keyboard-reachable");
@@ -596,23 +596,23 @@ test("dominoes ui: a selected tile previews its landing, and never guesses a sid
   const chainSource = stripComments(read("src/components/dominoes/DominoChain.tsx"));
   assert.match(chainSource, /onPointerEnter=\{\(\) => setAimEnd\(end\)\}/);
   assert.match(chainSource, /placementPreview\(tiles, openEnds, selected, previewEnd\)/);
-  // Same function AND same table shape as the real placement — the ghost is a
-  // layout of the real chain plus one tile, never a rule of its own. (The layout
-  // gained a shape option, so both calls must carry it.)
+  // Same function AND same board as the real placement — the ghost is a layout of
+  // the real chain plus one tile, never a rule of its own. (The layout is given
+  // the felt's own limits, so both calls must carry them.)
   assert.match(
     chainSource,
-    /layoutChain\(preview\.chain, \{ runCells \}\)/,
+    /layoutChain\(preview\.chain, layoutOptions\)/,
     "the ghost is laid out by the real table's own layout call",
   );
   assert.match(
     chainSource,
-    /layoutChain\(tiles, \{ runCells \}\)/,
-    "…and the table passes that exact option, so the two can never diverge",
+    /layoutChain\(tiles, layoutOptions\)/,
+    "…and the table passes those exact options, so the two can never diverge",
   );
 
   // On a phone the chip IS the placement control, so it is thumb-sized; and the
   // preview lives inside the surface, so it never widens the page.
-  const table = css.slice(css.indexOf(".dominoes-end-chip {"), css.indexOf(".dominoes-pile {"));
+  const table = css.slice(css.indexOf(".dominoes-end-chip {"), css.lastIndexOf(".dominoes-pile {"));
   assert.match(table, /@media \(pointer: coarse\) \{[\s\S]*?min-height: 44px/);
   const previewCss = css.slice(css.indexOf(".dominoes-chain-slot.is-preview {"));
   assert.match(previewCss, /pointer-events: none/);
@@ -901,11 +901,14 @@ test("dominoes ui: the chain renders the engine's order and marks a double", () 
   assert.equal(slots.length, 3, "one slot per tile, in the engine's order");
   assert.equal(slots[1].isDouble, true);
   assert.equal(slots[1].rotation % 180, 90, "a double is drawn crosswise");
-  assert.notEqual(
+  // A double lies ACROSS the run but does not bend it: the tile after it is flat,
+  // laid the way the line was already going.
+  assert.equal(
     slots[2].direction,
     slots[1].direction,
-    "the tile after a double runs perpendicular to the run that led in",
+    "the chain carries straight on past a double",
   );
+  assert.equal(slots[2].rotation, 0, "so an upright double is followed by flat tiles");
 });
 
 test("dominoes ui: the table expands as the chain grows", () => {
@@ -1504,7 +1507,10 @@ test("dominoes online: the lobby and match URLs are the ones that resolve", () =
  * -------------------------------------------------------------------------- */
 
 test("dominoes css: the chain is a 2D table that scrolls as it snakes", () => {
-  const table = css.slice(css.indexOf(".dominoes-chain {"), css.indexOf(".dominoes-pile {"));
+  // …as far as the hand. The slice ends BEFORE `.dominoes-hand` on purpose: the
+  // hand wraps its tiles, the table places them, and the phone block at the end of
+  // the section re-states rules the chain slice must not be judged against.
+  const table = css.slice(css.indexOf(".dominoes-chain {"), css.indexOf(".dominoes-hand {"));
   // Both axes: a real table path turns, so the board is not a single row.
   assert.match(table, /\.dominoes-chain-scroller \{[\s\S]*?overflow:\s*auto/);
   assert.match(table, /overscroll-behavior:\s*contain/);
@@ -1522,10 +1528,27 @@ test("dominoes css: the chain is a 2D table that scrolls as it snakes", () => {
   // felt (`position: absolute` inside the chain, not inside the surface).
   assert.match(table, /\.dominoes-end-chip \{[\s\S]*?position:\s*absolute/);
   assert.match(table, /\.dominoes-end-chip\.is-left \{[\s\S]*?left:\s*8px/);
-  // The board keeps a table-sized floor and a ceiling, so it never grows the page
-  // without bound.
+  // The felt FILLS the board it is given, and the board is bounded by the page:
+  // the chain is laid out to fit, so the table never grows past the felt.
   assert.match(table, /min-height:\s*clamp\(/);
-  assert.match(table, /max-height:\s*min\(/);
+  assert.match(table, /\.dominoes-chain-scroller \{[\s\S]*?flex: 1 1 auto/);
+  const boardSized = css.slice(css.indexOf(".dominoes-layout {"), css.indexOf(".dominoes-main {"));
+  assert.match(boardSized, /height:\s*calc\(100dvh - var\(--dm-chrome\)\)/);
+  // THE VALUES STAY UPRIGHT ON A TURNED TILE. The chain writes the INVERSE of a
+  // tile's rotation onto its slot, and the tile's halves turn back to face the
+  // reader — so a domino lying vertically still reads left-to-right.
+  assert.match(
+    table,
+    /\.dominoes-chain-slot \.dominoes-tile-half \{[\s\S]*?transform: rotate\(var\(--dm-turn/,
+  );
+  const chainForTurn = read("src/components/dominoes/DominoChain.tsx");
+  assert.match(chainForTurn, /"--dm-turn":/);
+  assert.match(chainForTurn, /\(360 - placed\.rotation\) % 360/, "the turn comes off the placed tile");
+  assert.match(chainForTurn, /\(360 - ghostPlacement\.rotation\) % 360/);
+  // …and the board it fits itself into is MEASURED from the felt, never guessed
+  // from the window (a cell is a CSS clamp that the stylesheet can redefine).
+  assert.match(chainForTurn, /new ResizeObserver\(measure\)/);
+  assert.match(chainForTurn, /dominoes-cell-probe/);
   // Tile size is one variable, clamped so a phone still shows readable halves.
   const board = css.slice(css.indexOf(".dominoes-board {"), css.indexOf(".dominoes-layout {"));
   assert.match(board, /--dm-half:\s*clamp\(24px,/);
@@ -1559,15 +1582,34 @@ test("dominoes ui: a move is audible, and the sound can be switched off", { skip
   assert.doesNotMatch(sound, /\.mp3|\.wav|\.ogg/);
 });
 
-test("dominoes css: the controls sit in a right-hand sidebar, the hand under the board", () => {
-  // Two columns: board first, controls second.
+test("dominoes css: the board fills the page, the hand and controls in the sidebar", () => {
+  // Two columns: the felt first, the hand + controls second. The sidebar is wider
+  // than it was because it now carries your tiles as well as the buttons.
   const layout = css.slice(css.indexOf(".dominoes-layout {"), css.indexOf(".dominoes-seat {"));
-  assert.match(layout, /grid-template-columns:\s*minmax\(0, 1fr\) 264px/);
-  // …and it stacks on a phone, so the sidebar never squeezes the board.
-  assert.match(layout, /@media \(max-width: 900px\)[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\);/);
-  // The board and the hand are one column, so the tiles stay under the table.
+  assert.match(layout, /grid-template-columns:\s*minmax\(0, 1fr\) 320px/);
+  // The board IS the page: the viewport minus the chrome the page wraps round it.
+  assert.match(layout, /height:\s*calc\(100dvh - var\(--dm-chrome\)\)/);
+  // …and it stacks on a phone, so the sidebar never squeezes the board. The phone
+  // block lives at the END of the section — it overrides base rules, and a media
+  // query only wins on position — so it is read from its own slice.
+  const phone = css.slice(css.lastIndexOf("@media (max-width: 900px)"));
+  assert.match(phone, /grid-template-columns:\s*minmax\(0, 1fr\);/);
+  assert.match(phone, /grid-template-rows:\s*minmax\(0, 1fr\) auto;/);
+  assert.match(
+    phone,
+    /height:\s*calc\(100dvh - var\(--dm-chrome\)\)/,
+    "the phone board is bound to the screen, not to its contents",
+  );
+  // The board is one column, and the HAND IS NOT IN IT any more.
   const main = css.slice(css.indexOf(".dominoes-main {"), css.indexOf(".dominoes-sidebar {"));
   assert.match(main, /flex-direction:\s*column/);
+  const viewSource = stripComments(read("src/components/dominoes/DominoMatchView.tsx"));
+  const sidebarAt = viewSource.indexOf('<aside className="dominoes-sidebar">');
+  const handAt = viewSource.indexOf("<DominoHand");
+  const actionsAt = viewSource.indexOf("<DominoActions");
+  assert.ok(sidebarAt > -1, "the sidebar is still there");
+  assert.ok(handAt > sidebarAt, "the viewer's hand belongs to the sidebar");
+  assert.ok(actionsAt > handAt, "the tiles sit above the controls that play them");
 });
 
 test("dominoes css: tap targets, small screens and reduced motion", () => {
@@ -1576,9 +1618,10 @@ test("dominoes css: tap targets, small screens and reduced motion", () => {
   const height = Number(/min-height:\s*(\d+)px/.exec(action)?.[1] ?? 0);
   assert.ok(height >= 44, `the action target is ${height}px tall, below the 44px minimum`);
   assert.match(action, /touch-action:\s*manipulation/);
-  // A narrow-phone block exists, and it lets the end buttons take a full row each.
+  // A narrow-phone block exists, and on the smallest phones the controls still
+  // share a row — a stacked column of buttons is felt the player cannot see.
   assert.match(css, /@media \(max-width: 420px\) \{/);
-  assert.match(css, /\.dominoes-action-button \{\s*flex-basis: 100%;/);
+  assert.match(css, /\.dominoes-action-button \{\s*flex-basis: calc\(50% - 3px\);/);
   // Reduced motion removes the placement animation AND the lift on selection.
   const reduced = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
   assert.match(reduced, /\.dominoes-tile\.is-new \{\s*animation: none;/);

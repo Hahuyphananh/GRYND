@@ -7,10 +7,10 @@
  * so this suite can check the shape of a real table directly:
  *
  *   * the chain grows from its OPENING tile in both directions;
- *   * a double lies CROSSWISE, and the tiles after it run PERPENDICULAR to the
- *     run that led in;
- *   * a long run turns, so the table snakes and expands instead of running off
- *     the felt;
+ *   * a double lies CROSSWISE and the chain CARRIES STRAIGHT ON past it — an
+ *     upright double is followed by flat tiles, never by an upright line;
+ *   * the line turns at the edge of the BOARD it is given, so a bounded table
+ *     snakes inside the felt instead of growing off it;
  *   * NO TWO TILES EVER OCCUPY THE SAME SQUARE — the invariant a real table must
  *     not break, checked over dozens of engine-played matches.
  *
@@ -50,13 +50,6 @@ function overlap(a, b) {
   const epsilon = 0.01;
   return a.x0 < b.x1 - epsilon && b.x0 < a.x1 - epsilon && a.y0 < b.y1 - epsilon && b.y0 < a.y1 - epsilon;
 }
-
-const PERPENDICULAR = {
-  right: ["up", "down"],
-  left: ["up", "down"],
-  up: ["left", "right"],
-  down: ["left", "right"],
-};
 
 /** A deterministic shuffle, so every seed is reproducible without Web Crypto. */
 function orderForSeed(seed) {
@@ -156,7 +149,7 @@ test("layout: a projection with no `end` still lays the chain out in order", () 
  * Doubles pivot the table
  * -------------------------------------------------------------------------- */
 
-test("layout: a double is crosswise and the tile after it runs perpendicular", () => {
+test("layout: a double is crosswise and the chain carries straight on past it", () => {
   const chain = [
     { id: "6-5", end: "left", left: 6, right: 5 },
     { id: "5-5", end: "right", left: 5, right: 5, isDouble: true },
@@ -169,15 +162,19 @@ test("layout: a double is crosswise and the tile after it runs perpendicular", (
 
   assert.equal(double.isDouble, true);
   assert.equal(double.rotation % 180, 90, "the double is drawn across the run");
-  assert.ok(
-    PERPENDICULAR[double.direction].includes(after.direction),
-    `the next tile (${after.direction}) must run perpendicular to the double's run (${double.direction})`,
-  );
-  // ...and the tile after that carries on along the new direction.
+  // THE DOUBLE DOES NOT BEND THE TABLE. The tile after it is laid the way the run
+  // was already going, which is what puts an upright double between FLAT tiles
+  // instead of at the head of an upright line.
+  assert.equal(after.direction, double.direction, "the chain carries straight on");
+  assert.equal(after.rotation, 0, "so the tile after an upright double is flat");
+  assert.equal(after.cy, double.cy, "and abreast of it");
+  // ...and the tile after that carries on too.
   const third = layout.tiles.find((tile) => tile.index === 3);
   assert.equal(third.direction, after.direction);
-  // A crosswise double advances the line by its short side only.
-  assert.ok(Math.abs(after.cx - double.cx) <= 1.01);
+  assert.equal(third.rotation, 0);
+  // A crosswise double advances the line by its short side only: the next tile's
+  // centre sits one whole cell past the double's centre (half of each of them).
+  assert.ok(Math.abs(after.cx - double.cx - 1.5) < 1e-9);
 });
 
 test("layout: a run turns instead of running off the felt", () => {
@@ -232,11 +229,11 @@ test("layout: every neighbouring pair of tiles TOUCHES", () => {
   }
 });
 
-test("layout: a double hands the chain off at its ENDS, not its side", () => {
-  // A real double is set crosswise: the run comes into its long side, and the
-  // tiles after it are laid flush against one of its two short ends, a whole cell
-  // either side of its centre. Hanging the next tile off the side would leave a
-  // broken join, which is what this pins.
+test("layout: the tile after a double is flush against its leading SIDE", () => {
+  // A real double is set crosswise: the run comes into one long side and leaves
+  // from the other, so the tiles either side of it are FLAT and their edges meet
+  // its long edge. Leaving a gap, or hanging the next tile off an end, is the
+  // broken join this pins.
   const chain = [
     { id: "6-5", end: "left", left: 6, right: 5 },
     { id: "5-5", end: "right", left: 5, right: 5, isDouble: true },
@@ -246,25 +243,37 @@ test("layout: a double hands the chain off at its ENDS, not its side", () => {
   const double = layout.tiles.find((tile) => tile.index === 1);
   const after = layout.tiles.find((tile) => tile.index === 2);
   assert.equal(double.rotation % 180, 90, "the double lies across the run");
-  // The double is vertical, so its ends are directly above and below its centre.
-  assert.equal(after.cx, double.cx, "the next tile leaves from an END of the double");
+  // Upright, the double's long sides are its left and right edges — and that is
+  // where the run carries on from.
+  assert.equal(after.cy, double.cy, "the next tile is abreast of the double");
   const box = boxOf(double);
   const next = boxOf(after);
-  const touchesAnEnd = Math.abs(next.y0 - box.y1) < 1e-9 || Math.abs(next.y1 - box.y0) < 1e-9;
-  assert.ok(touchesAnEnd, "it is flush against that end, not offset over the side");
+  const touchesASide = Math.abs(next.x0 - box.x1) < 1e-9 || Math.abs(next.x1 - box.x0) < 1e-9;
+  assert.ok(touchesASide, "it is flush against that long side, not floating off it");
 });
 
-test("layout: an opening double is left through its two ends", () => {
+test("layout: an opening upright double is followed by FLAT tiles", () => {
+  // The position the board opens on: a double set down upright in the middle of
+  // the felt. The chain leaves it to the left and to the right, so the tiles after
+  // it lie across the double's own axis rather than stacking on it — a double
+  // standing upright does NOT commit the rest of the line to standing upright.
   const chain = [
     { id: "4-4", end: "left", left: 4, right: 4, isDouble: true },
     { id: "4-2", end: "right", left: 4, right: 2 },
+    { id: "2-6", end: "right", left: 2, right: 6 },
   ];
   const layout = layoutChain(chain);
   const double = layout.tiles.find((tile) => tile.index === 0);
   const next = layout.tiles.find((tile) => tile.index === 1);
+  const third = layout.tiles.find((tile) => tile.index === 2);
   assert.equal(double.rotation, 90, "the opening double is crosswise");
-  assert.equal(next.cx, double.cx, "the chain leaves the double from an end");
-  assert.ok(next.cy > double.cy, "and runs away from it");
+  assert.equal(next.rotation, 0, "the tile after it is flat, not upright");
+  assert.equal(next.cy, double.cy, "it sits beside the double, on the same line");
+  assert.ok(next.cx > double.cx, "and runs away from it, to the right");
+  assert.equal(third.rotation, 0, "the run carries on flat");
+  assert.equal(third.cy, next.cy);
+  // The run stays inside one BAND: the double is the only thing that is tall.
+  assert.equal(layout.rows, TILE_LENGTH_CELLS, "no tile after the double climbs or drops");
 });
 
 /* -------------------------------------------------------------------------- *
@@ -373,11 +382,66 @@ test("layout: a double AFTER a bend lies across the run that led in", () => {
   const runAxis =
     Math.abs(double.cx - before.cx) >= Math.abs(double.cy - before.cy) ? "x" : "y";
   assert.notEqual(longAxis(double.rotation), runAxis, "…across that run, not along it");
-  // …and the chain leaves it at a right angle to the same run.
-  assert.ok(
-    PERPENDICULAR[double.direction].includes(after.direction),
-    `the chain leaves the double at right angles to ${double.direction}`,
+  // …and the chain carries on past it, in the same direction it arrived.
+  assert.equal(
+    after.direction,
+    double.direction,
+    `the chain carries on past the double, in ${double.direction}`,
   );
+});
+
+/* -------------------------------------------------------------------------- *
+ * The board's limits
+ * -------------------------------------------------------------------------- */
+
+test("layout: a bounded board keeps the whole chain on the felt", () => {
+  // The felt is as big as the page, and the table has to fit ON it: a tile that
+  // would stick out past the edge is turned inwards instead. Every board of a
+  // real match is laid out against a bounded felt and checked for the two things
+  // that matter — it never leaves the limits, and it never breaks a join.
+  const limits = { cols: 14, rows: 16 };
+  let checked = 0;
+  let turned = 0;
+  for (let seed = 1; seed <= 20; seed += 1) {
+    playMatch(seed, (chain) => {
+      const layout = layoutChain(chain, { limits, runCells: Number.POSITIVE_INFINITY });
+      assert.ok(
+        layout.cols <= limits.cols,
+        `seed ${seed}: the board is ${layout.cols} cells wide, over the ${limits.cols} it was given`,
+      );
+      assert.ok(
+        layout.rows <= limits.rows,
+        `seed ${seed}: the board is ${layout.rows} cells tall, over the ${limits.rows} it was given`,
+      );
+      const byIndex = new Map(layout.tiles.map((tile) => [tile.index, tile]));
+      const headings = new Set(layout.tiles.map((tile) => tile.direction));
+      if (headings.size > 1) turned += 1;
+      for (let index = 0; index + 1 < chain.length; index += 1) {
+        const gap = gapBetween(boxOf(byIndex.get(index)), boxOf(byIndex.get(index + 1)));
+        assert.ok(
+          gap < 0.01,
+          `seed ${seed}: tiles ${index} and ${index + 1} do not touch (gap ${gap.toFixed(2)})`,
+        );
+      }
+      checked += 1;
+    });
+  }
+  assert.ok(checked > 100, `only ${checked} bounded boards were checked`);
+  assert.ok(turned > 0, "a chain long enough to reach the edge must actually turn");
+});
+
+test("layout: the limits are centred on the opening tile, and a chain that fits is untouched", () => {
+  // The bounds are symmetric around the opening tile, which is what the surface
+  // centres itself on — so a chain that fits is drawn exactly as it would be on an
+  // unbounded table, and only a chain that would overflow is turned.
+  const chain = [
+    { id: "4-4", end: "left", left: 4, right: 4, isDouble: true },
+    { id: "4-2", end: "right", left: 4, right: 2 },
+    { id: "2-6", end: "right", left: 2, right: 6 },
+  ];
+  const free = layoutChain(chain);
+  const bounded = layoutChain(chain, { limits: { cols: 40, rows: 20 } });
+  assert.deepEqual(bounded.tiles, free.tiles, "a board with room changes nothing");
 });
 
 test("layout: no preview exists on an end the tile cannot meet", () => {

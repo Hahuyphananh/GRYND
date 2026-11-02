@@ -582,7 +582,9 @@ export default function DominoesMatchPage() {
         data-viewer-seat={viewerSeat ?? ""}
         className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001628] to-[#03040c] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8"
       >
-        <div className="mx-auto max-w-4xl">
+        {/* The board is meant to be AS BIG AS THE PAGE: the felt gets the width
+            on wide screens, and the board's own CSS bounds the height. */}
+        <div className="mx-auto w-full max-w-[1500px]">
           {/* ── Header ─────────────────────────────────────────────────── */}
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <div>

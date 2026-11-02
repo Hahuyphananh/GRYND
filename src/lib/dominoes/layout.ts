@@ -17,17 +17,20 @@
  *     left play widens the table leftwards and a right play widens it rightwards,
  *     without the line sliding under the player.
  *
- *   * A DOUBLE LIES CROSSWISE, and it is the pivot of the table. It is set down
- *     with its long side against the tile that led in — the T a real domino makes
- *     — and its two open ends are then its SHORT edges, which point across the
- *     run. So the tile after a double starts flush against one of those ends and
- *     runs PERPENDICULAR to the run that led in. An opening double is crosswise
- *     too, and the chain leaves it from its two ends.
+ *   * A DOUBLE LIES ACROSS THE RUN, AND THE RUN CARRIES STRAIGHT ON. It is set
+ *     down with its long side against the tile that led in — the cross a real
+ *     domino makes — and the tile after it leaves from the double's leading LONG
+ *     side, travelling the way the chain already was. A VERTICAL DOUBLE DOES NOT
+ *     TURN THE TABLE: the tiles after it are horizontal, abreast of it, which is
+ *     what the eye expects of a double. An opening double is crosswise too, and
+ *     the chain leaves it to the left and to the right.
  *
- *   * A LONG RUN ALSO TURNS. Independently of doubles, a run that reaches
- *     `RUN_CELLS` bends, so a chain with no doubles still snakes instead of
- *     running off the felt — and the caller sizes the board from `cols`/`rows`,
- *     which is what makes the table expand.
+ *   * THE LINE TURNS AT THE BOARD'S EDGE. The caller may pass the board it has
+ *     (`limits`, in cells); a tile that would stick out past those limits is
+ *     turned inwards instead, so the chain snakes inside the felt the player can
+ *     see rather than growing into a region they would have to scroll to find.
+ *     With no limits a run still bends at `RUN_CELLS`, so a table can never
+ *     become one endless row.
  *
  *   * TILES NEVER OVERLAP AND NEVER FLOAT OFF. Every tile is checked against the
  *     tiles already placed, and the walk BACKTRACKS to an earlier tile when the
@@ -92,9 +95,26 @@ export const TILE_WIDTH_CELLS = 1;
  * How far the chain runs in one direction before the path turns.
  *
  * Eight cells is four tiles: the longest run that still reads at a glance on a
- * phone without the player having to scroll to find where the chain went.
+ * phone without the player having to scroll to find where the chain went. It is
+ * the fallback for a caller that hands over no board to fit into — given
+ * `limits`, the BOARD'S OWN EDGE is what turns the line, however long that run
+ * happens to be.
  */
 export const RUN_CELLS = 8;
+
+/**
+ * The board the chain has to stay inside, in half-tile cells.
+ *
+ * Centred on the opening tile (which is where the surface is centred too), so a
+ * chain that respects these bounds is a chain that is on screen. The caller sizes
+ * it from the felt it actually has; nothing here knows about pixels.
+ */
+export type ChainLimits = {
+  /** Cells across the board. */
+  readonly cols: number;
+  /** Cells down the board. */
+  readonly rows: number;
+};
 
 const STEP: Readonly<Record<LayoutDirection, { x: number; y: number }>> = {
   right: { x: 1, y: 0 },
@@ -239,37 +259,30 @@ type TurnBias = (direction: LayoutDirection) => LayoutDirection;
 
 /** The state the walk carries from one tile to the next. */
 type WalkState = {
-  /** The edge the next tile attaches to. Ignored when a double was just placed. */
+  /** The edge the next tile attaches to. */
   point: Point;
   heading: LayoutDirection;
   /** Cells run in `heading` since the last turn. */
   run: number;
-  /**
-   * Centre of the tile just placed when that tile was a DOUBLE.
-   *
-   * A double's open ends are its short edges — a whole cell to either side of its
-   * centre, across the run the chain arrived on — so the next tile leaves from
-   * one of those and turns. Carrying that centre is what keeps the continuation
-   * flush instead of hanging off the double's side.
-   */
-  doubleCentre: Point | null;
 };
 
-/** Where the next tile may attach, most wanted first. */
+/**
+ * Where the next tile may attach, most wanted first.
+ *
+ * CARRYING ON COMES FIRST, WHETHER OR NOT THE LAST TILE WAS A DOUBLE. A double is
+ * DRAWN across the run (see `rotationOf`) but it does not BEND it: `placeAt`
+ * advanced it by its short side only, so the point it hands on is the middle of
+ * its leading long side and the next tile leaves from there, in the same
+ * direction. A vertical double is therefore followed by horizontal tiles. Turning
+ * is now only what the board's edge (or a caller's `runCells`) asks for, and it is
+ * offered as the three preferences after straight on.
+ */
 function attemptsFrom(
   state: WalkState,
   isDouble: boolean,
   turnBias: TurnBias,
   runCells: number,
 ): Attempt[] {
-  if (state.doubleCentre) {
-    const ends = [turnBias(state.heading), turnBias(turnBias(turnBias(state.heading)))];
-    return ends.map((direction) => ({
-      from: shift(state.doubleCentre as Point, direction, TILE_WIDTH_CELLS),
-      direction,
-    }));
-  }
-
   let preferred = state.heading;
   if (state.run >= runCells) preferred = turnBias(state.heading);
 
@@ -290,12 +303,17 @@ function attemptsFrom(
   );
 }
 
-/** The state after this tile has been laid. */
+/**
+ * The state after this tile has been laid.
+ *
+ * A DOUBLE NEEDS NO SPECIAL CASE HERE: `placeAt` already advanced it by its short
+ * side only, so the point it hands on is the middle of its leading long side —
+ * exactly where the next tile attaches.
+ */
 function advanceState(
   state: WalkState,
   attempt: Attempt,
   placement: { cx: number; cy: number; advance: number },
-  isDouble: boolean,
 ): WalkState {
   return {
     point: shift(attempt.from, attempt.direction, placement.advance),
@@ -305,7 +323,6 @@ function advanceState(
       attempt.direction === state.heading
         ? state.run + placement.advance
         : placement.advance,
-    doubleCentre: isDouble ? { x: placement.cx, y: placement.cy } : null,
   };
 }
 
@@ -316,7 +333,7 @@ function advanceState(
  * genuinely boxes itself in — so a real chain needs a few dozen nodes. This
  * ceiling is what keeps a pathological one from stalling a frame.
  */
-const WALK_NODE_BUDGET = 8000;
+const WALK_NODE_BUDGET = 20000;
 
 /**
  * Lay one half of the chain out from the pivot.
@@ -338,6 +355,13 @@ const WALK_NODE_BUDGET = 8000;
  * `allowGaps` the remaining tiles are placed after a short break instead, which
  * is the last resort the caller only reaches when no plan fits — a broken line
  * still shows where every tile went.
+ *
+ * THE BOARD IS A LIMIT, NOT A TARGET. When `limits` is given, every candidate tile
+ * is checked against it with the same rejection as an overlap, so a tile that
+ * would stick out past the felt is never chosen: the walk simply takes the next
+ * preference, which is a turn, and the chain snakes along the edge instead of
+ * growing the table. The later attempts in `attemptsFrom` are what make that work
+ * — straight on is the first choice, turning is the one that survives the limit.
  */
 function walkSide({
   chain,
@@ -348,6 +372,7 @@ function walkSide({
   placed,
   occupied,
   runCells,
+  limits,
   turnBias,
   allowGaps,
 }: {
@@ -360,6 +385,8 @@ function walkSide({
   placed: (PlacedTile | undefined)[];
   occupied: Rect[];
   runCells: number;
+  /** The board the tiles must stay inside, or null for an unbounded table. */
+  limits: ChainLimits | null;
   turnBias: TurnBias;
   allowGaps: boolean;
 }): boolean {
@@ -390,6 +417,9 @@ function walkSide({
       const placement = placeAt(attempt.from, attempt.direction, isDouble);
       const box = footprint(placement.cx, placement.cy, placement.rotation);
       if (occupied.some((taken) => overlaps(box, taken))) continue;
+      // Off the felt: rejected exactly like an overlap, so the walk turns into
+      // the board rather than stretching it.
+      if (!fitsInside(box, limits)) continue;
 
       const previous = placed[index];
       placed[index] = {
@@ -402,7 +432,7 @@ function walkSide({
       };
       occupied.push(box);
 
-      if (extend(position + 1, advanceState(state, attempt, placement, isDouble))) return true;
+      if (extend(position + 1, advanceState(state, attempt, placement))) return true;
 
       occupied.pop();
       placed[index] = previous;
@@ -415,7 +445,6 @@ function walkSide({
     point: { ...cursor },
     heading: direction,
     run: 0,
-    doubleCentre: null,
   };
   if (extend(0, start)) return true;
   if (!allowGaps) return false;
@@ -463,7 +492,7 @@ function walkSide({
       isDouble,
     };
     occupied.push(footprint(chosen.placement.cx, chosen.placement.cy, chosen.placement.rotation));
-    state = advanceState(state, chosen.attempt, chosen.placement, isDouble);
+    state = advanceState(state, chosen.attempt, chosen.placement);
   }
 
   return false;
@@ -485,6 +514,25 @@ const PLANS: readonly { rightFirst: boolean; turnBias: TurnBias }[] = [
   { rightFirst: true, turnBias: counterClockwise },
   { rightFirst: false, turnBias: counterClockwise },
 ];
+
+/**
+ * Is this box inside the board the caller gave us?
+ *
+ * A tile may touch the limit exactly — the chain can run along the edge of the
+ * felt — so the comparison is inclusive, within a hair of rounding.
+ */
+function fitsInside(box: Rect, limits: ChainLimits | null): boolean {
+  if (!limits) return true;
+  const epsilon = 0.01;
+  const halfCols = limits.cols / 2;
+  const halfRows = limits.rows / 2;
+  return (
+    box.x0 >= -halfCols - epsilon &&
+    box.x1 <= halfCols + epsilon &&
+    box.y0 >= -halfRows - epsilon &&
+    box.y1 <= halfRows + epsilon
+  );
+}
 
 /** The bounds of a placed table, or the origin when it is empty. */
 function boundsOf(placed: readonly (PlacedTile | undefined)[]) {
@@ -508,10 +556,20 @@ function boundsOf(placed: readonly (PlacedTile | undefined)[]) {
  *
  * Empty chain → empty layout (the board keeps its table-sized floor and shows the
  * "this opens the chain" copy). One tile → that tile alone, centred, horizontal.
+ *
+ * `limits` IS THE BOARD, AND IT IS OBEYED. The bounds are centred on the opening
+ * tile — which is where the surface centres itself — so a chain that fits is a
+ * chain the player can see. A plan that cannot be seated inside those bounds is
+ * not a failure: the layout is retried WITHOUT them, so a table that genuinely
+ * does not fit (a very small window, a pathological chain) still gets every tile
+ * placed, and the board is simply allowed to scroll.
  */
 export function layoutChain(
   chain: readonly ChainTileLike[] | null | undefined,
-  { runCells = RUN_CELLS }: { runCells?: number } = {},
+  {
+    runCells = RUN_CELLS,
+    limits = null,
+  }: { runCells?: number; limits?: ChainLimits | null } = {},
 ): ChainLayout {
   const tiles = Array.isArray(chain) ? chain : [];
   if (tiles.length === 0) {
@@ -528,20 +586,22 @@ export function layoutChain(
   const leftwards: number[] = [];
   for (let index = pivot - 1; index >= 0; index -= 1) leftwards.push(index);
 
-  // A crosswise opening double hands its neighbours its two ENDS, so the chain
-  // leaves it vertically; a normal opening tile hands them its two short edges.
+  // AN OPENING DOUBLE IS CROSSWISE, SO THE CHAIN LEAVES IT HORIZONTALLY. Its long
+  // sides are its left and right edges, and the two arms attach to those: the run
+  // runs ACROSS the double rather than in line with it, which is the whole point
+  // of laying a double down. The tiles after it are therefore flat, not upright.
   const arms = pivotDouble
     ? [
         {
           order: leftwards,
-          cursor: { x: 0, y: -TILE_WIDTH_CELLS },
-          direction: "up" as LayoutDirection,
+          cursor: { x: -TILE_WIDTH_CELLS / 2, y: 0 },
+          direction: "left" as LayoutDirection,
           mirrored: true,
         },
         {
           order: rightwards,
-          cursor: { x: 0, y: TILE_WIDTH_CELLS },
-          direction: "down" as LayoutDirection,
+          cursor: { x: TILE_WIDTH_CELLS / 2, y: 0 },
+          direction: "right" as LayoutDirection,
           mirrored: false,
         },
       ]
@@ -560,46 +620,74 @@ export function layoutChain(
         },
       ];
 
+  // INSIDE THE BOARD FIRST, AND ONLY INSIDE IT: a chain that fits must never be
+  // drawn past the felt. The pass without limits is the fallback for a board too
+  // small for the chain, where scrolling beats a tile that floats off the table.
+  const limitSets: (ChainLimits | null)[] = limits ? [limits, null] : [null];
   let placed: (PlacedTile | undefined)[] | null = null;
 
-  for (const allowGaps of [false, true]) {
-    for (const plan of PLANS) {
-      const attempt: (PlacedTile | undefined)[] = new Array(tiles.length);
-      const occupied: Rect[] = [footprint(0, 0, pivotRotation)];
-      attempt[pivot] = {
-        index: pivot,
-        cx: 0,
-        cy: 0,
-        rotation: pivotRotation,
-        direction: "right",
-        isDouble: pivotDouble,
-      };
+  // THE BAND WIDTH A BOUNDED BOARD IS PACKED AT. A run allowed to go on for ever
+  // only turns when it is blocked, which packs a tall felt beautifully and can box
+  // itself in on a SHORT one — where the retry below gives the line a band it may
+  // not exceed, so it turns at a predictable place and fills the rows it has.
+  const packedRun = (board: ChainLimits) => {
+    const bands = Math.max(1, Math.floor(board.rows / (TILE_WIDTH_CELLS * 2)));
+    const chainCells = tiles.length * TILE_LENGTH_CELLS;
+    return Math.max(4, Math.min(board.cols, Math.ceil(chainCells / bands) + 1));
+  };
 
-      const ordered = plan.rightFirst ? [arms[0], arms[1]] : [arms[1], arms[0]];
+  for (const activeLimits of limitSets) {
+    const runCaps: number[] = activeLimits
+      ? [runCells, packedRun(activeLimits)].filter(
+          (cap, index, all) => all.indexOf(cap) === index,
+        )
+      : [runCells];
+    // A line with gaps breaks the run, so it is a last resort for an unbounded
+    // table only: a bounded one takes the retry without limits instead.
+    for (const activeRun of runCaps) {
+    for (const allowGaps of activeLimits ? [false] : [false, true]) {
+      for (const plan of PLANS) {
+        const attempt: (PlacedTile | undefined)[] = new Array(tiles.length);
+        const occupied: Rect[] = [footprint(0, 0, pivotRotation)];
+        attempt[pivot] = {
+          index: pivot,
+          cx: 0,
+          cy: 0,
+          rotation: pivotRotation,
+          direction: "right",
+          isDouble: pivotDouble,
+        };
 
-      let connected = true;
-      for (const arm of ordered) {
-        const seated = walkSide({
-          chain: tiles,
-          order: arm.order,
-          cursor: arm.cursor,
-          direction: arm.direction,
-          mirrored: arm.mirrored,
-          placed: attempt,
-          occupied,
-          runCells,
-          turnBias: plan.turnBias,
-          allowGaps,
-        });
-        if (!seated) connected = false;
+        const ordered = plan.rightFirst ? [arms[0], arms[1]] : [arms[1], arms[0]];
+
+        let connected = true;
+        for (const arm of ordered) {
+          const seated = walkSide({
+            chain: tiles,
+            order: arm.order,
+            cursor: arm.cursor,
+            direction: arm.direction,
+            mirrored: arm.mirrored,
+            placed: attempt,
+            occupied,
+            runCells: activeRun,
+            limits: activeLimits,
+            turnBias: plan.turnBias,
+            allowGaps,
+          });
+          if (!seated) connected = false;
+        }
+
+        // With gaps allowed this pass always places something, so it is the plan
+        // of last resort and is accepted even though it is not fully connected.
+        if (connected || allowGaps) {
+          placed = attempt;
+          break;
+        }
       }
-
-      // With gaps allowed this pass always places something, so it is the plan of
-      // last resort and is accepted even though it is not fully connected.
-      if (connected || allowGaps) {
-        placed = attempt;
-        break;
-      }
+      if (placed) break;
+    }
+    if (placed) break;
     }
     if (placed) break;
   }

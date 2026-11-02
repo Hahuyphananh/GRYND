@@ -13,16 +13,18 @@
 //
 // ── WHAT IS ON SCREEN, AND WHERE ──────────────────────────────────────────
 //
-// The table is a two-column layout: the BOARD (left) and the ACTIONS (right).
+// The table is a two-column layout: the BOARD (left) and the SIDEBAR (right).
 //
 //   board      opponent seat (name/avatar + TILE COUNT only), the turn banner
-//              and the 15-second window, the shared chain and its two open
-//              values, the draw pile, and — underneath the table, where a
-//              player's own tiles belong — the viewer's hand.
-//   sidebar    the open ends, the selected tile, and the three actions (play on
-//              an end, draw, pass), plus resign and the rules. It is pinned in
-//              its own column so the controls never move as the chain grows or
-//              the hand shrinks; on a narrow screen it stacks under the board.
+//              and the 15-second window, the shared chain laid out on a felt the
+//              size of the page, and the draw pile. The felt is BOUNDED: the
+//              chain turns when it reaches the board's edge instead of growing
+//              off-screen (see DominoChain and lib/dominoes/layout).
+//   sidebar    the viewer's OWN HAND first, then the open ends, the selected
+//              tile and the three actions (play on an end, draw, pass), plus
+//              sound, resign and the rules. Your tiles and the controls that
+//              play them share one column, so neither moves as the chain grows;
+//              on a narrow screen the sidebar stacks under the board.
 //
 // PLACING A TILE: a selected tile can be committed either from the sidebar (Play
 // left / Play right), by tapping the open-value chip the tile fits, or — on a
@@ -542,7 +544,13 @@ export default function DominoMatchView({
             </div>
           </div>
 
-          {/* ── The viewer's own tiles, UNDER the table ──────────────────── */}
+        </div>
+
+        {/* ══ THE SIDEBAR — your hand, and the actions ═══════════════════ */}
+        <aside className="dominoes-sidebar">
+          {/* The viewer's own tiles. They live in the sidebar, next to the
+              controls that play them, so the felt is free to be the size of the
+              page instead of sharing its column with a row of tiles. */}
           <DominoHand
             hand={hand}
             selected={selected}
@@ -560,10 +568,7 @@ export default function DominoMatchView({
             }}
             onDragEnd={() => setDropOverEnd(null)}
           />
-        </div>
 
-        {/* ══ THE ACTIONS — a sidebar on the right ═══════════════════════ */}
-        <aside className="dominoes-sidebar">
           <DominoActions
             hand={hand}
             selected={selected}

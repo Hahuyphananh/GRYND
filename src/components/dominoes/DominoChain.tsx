@@ -17,19 +17,18 @@
 //
 //   * tiles attach on BOTH ends, so a left play widens the table leftwards and a
 //     right play widens it rightwards, without the line sliding under the player;
-//   * a DOUBLE lies crosswise, as it does on a real table, and hands the chain
-//     off at one of its two ends — so the tiles after it run PERPENDICULAR to the
-//     run that led in;
-//   * a run that gets long turns as well, so the table snakes and grows instead
-//     of running off the felt;
+//   * a DOUBLE lies crosswise, as it does on a real table, and the chain carries
+//     STRAIGHT ON past it — a vertical double is followed by horizontal tiles;
+//   * a run turns when it reaches the edge of the BOARD, so the line snakes inside
+//     the felt the player can actually see instead of growing off-screen;
 //   * no two tiles ever occupy the same square, and no tile ever floats off its
 //     neighbour: the path is one connected line.
 //
-// The surface is sized from the layout in half-tile cells, so the board EXPANDS
-// as the chain grows and the viewport scrolls to follow, with the newest tile
-// scrolled into view. Both open values stay pinned at the corners of the board,
-// so "which ends can I attach to" is answered even when the far end is off
-// screen.
+// The surface is sized from that layout in half-tile cells, and the board the
+// layout fits itself into is MEASURED from the felt, so the table fills the page
+// on a desktop and still fits a phone. Both open values stay pinned at the corners
+// of the board, so "which ends can I attach to" is answered wherever the line has
+// snaked to.
 //
 // ── WHERE THE LAST TILE WENT ──────────────────────────────────────────────
 //
@@ -79,11 +78,22 @@
 // under `prefers-reduced-motion: reduce` in globals.css: no transforms, no fade,
 // the tile simply appears.
 
-import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type DragEvent as ReactDragEvent,
+} from "react";
 import { IconArrowLeft, IconArrowRight } from "@tabler/icons-react";
 
 import DominoTile from "./DominoTile";
-import { layoutChain, type ChainTileLike as LayoutChainTileLike } from "../../lib/dominoes/layout";
+import {
+  layoutChain,
+  type ChainLimits,
+  type ChainTileLike as LayoutChainTileLike,
+} from "../../lib/dominoes/layout";
 import {
   DOMINO_DRAG_TYPE,
   placementPreview,
@@ -94,6 +104,18 @@ import { useTranslation } from "../../hooks/useTranslation";
 
 /** The two ends, in the order the board reads them. */
 const CHAIN_ENDS: readonly ChainEnd[] = ["left", "right"];
+
+/**
+ * The board the chain is laid out in, before the felt has been measured.
+ *
+ * Only ever used for the very first render (and for a server render, where there
+ * is no layout to measure): the real board is taken from the felt itself the
+ * moment it exists.
+ */
+const DEFAULT_LIMITS: ChainLimits = { cols: 24, rows: 12 };
+
+/** No window is so small that the table cannot hold a chain of this many cells. */
+const MIN_LIMIT_CELLS = 4;
 
 /** One tile of the engine's chain, as the projection sends it. */
 export type ChainTileLike = LayoutChainTileLike & {
@@ -150,21 +172,66 @@ export default function DominoChain({
   const newest = tiles.length > 0 ? tiles[tiles.length - 1] : null;
   const scrollerRef = useRef<HTMLDivElement | null>(null);
 
-  // One layout per chain. Every tile is placed in half-tile cells, so the surface
-  // grows in both directions as the table does. A PREVIEW lays the table out WITH
-  // the prospective tile in it (`layout` below); that is what makes the ghost and
-  // the real placement the same geometry by construction, not by agreement.
-  // HOW THE CHAIN IS LAID OUT. "Wrap" (the historical layout) turns a long run
-  // so the table stays compact, which means tiles eventually stack vertically.
-  // "Straight" keeps every tile on ONE horizontal line, so a tile is always put
-  // down TO THE SIDE of the line with its end edge meeting the previous tile's
-  // end edge. This is presentation only: the engine's chain, its order and its
-  // open ends are identical either way, and nothing here is ever sent.
-  const [straight, setStraight] = useState(false);
-  const runCells = straight ? Number.POSITIVE_INFINITY : undefined;
+  // ── THE BOARD THE CHAIN HAS TO FIT INTO ────────────────────────────────
+  // The felt is as large as the space it is given, and the chain is laid out to
+  // fit it: the layout is handed the board IN CELLS and turns the line when a tile
+  // would otherwise grow the table past the edge. Measuring it rather than
+  // hard-coding it is what makes that promise hold on a phone and on a desktop —
+  // what the table is compared against is the felt's own size.
+  const [limits, setLimits] = useState<ChainLimits>(DEFAULT_LIMITS);
+  const probeRef = useRef<HTMLSpanElement | null>(null);
+
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    const probe = probeRef.current;
+    if (!scroller || !probe || typeof ResizeObserver === "undefined") return undefined;
+
+    const measure = () => {
+      // One cell in pixels, taken from a probe that IS `--dm-half` wide: the
+      // variable is a clamp (and the narrow-phone block redefines it), so it
+      // cannot be derived from the window without copying the stylesheet.
+      const cell = probe.getBoundingClientRect().width;
+      if (!cell) return;
+      const style = window.getComputedStyle(scroller);
+      const usableX =
+        scroller.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      const usableY =
+        scroller.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+      // ONE CELL OF SLACK. The felt scrolls only in the fallback case, and a
+      // scrollbar that appears because the table exactly fills it would shrink the
+      // felt, which would re-lay the table, which would hide it again — a loop. A
+      // cell (24px or more) is wider than any scrollbar.
+      const cols = Math.max(MIN_LIMIT_CELLS, Math.floor(usableX / cell) - 1);
+      const rows = Math.max(MIN_LIMIT_CELLS, Math.floor(usableY / cell) - 1);
+      setLimits((current) =>
+        current.cols === cols && current.rows === rows ? current : { cols, rows },
+      );
+    };
+
+    measure();
+    // Both the felt and the cell shrink and grow with the window, so both are
+    // watched: a rotated phone or a resized window re-lays the table out inside
+    // the board it now has.
+    const observer = new ResizeObserver(measure);
+    observer.observe(scroller);
+    observer.observe(probe);
+    return () => observer.disconnect();
+  }, []);
+
+  // ONE LAYOUT PER CHAIN, INSIDE THAT BOARD. Every tile is placed in half-tile
+  // cells, so the surface is exactly as large as the table the chain has grown
+  // into. `runCells` is infinite on purpose: the line no longer turns after a
+  // fixed run — it turns when the BOARD ends, which is what fills the felt instead
+  // of leaving it half empty. A PREVIEW lays the table out WITH the prospective
+  // tile in it (`layout` below), through the same options, so the ghost and the
+  // real placement are the same geometry by construction rather than by agreement.
+  const layoutOptions = useMemo(
+    () => ({ runCells: Number.POSITIVE_INFINITY, limits }),
+    [limits],
+  );
   const baseLayout = useMemo(
-    () => layoutChain(tiles, { runCells }),
-    [tiles, runCells],
+    () => layoutChain(tiles, layoutOptions),
+    [tiles, layoutOptions],
   );
   // The newest tile is the last INDEX in the engine's order, which is not
   // necessarily the last entry the layout emits — but it is always the tile with
@@ -219,8 +286,8 @@ export default function DominoChain({
 
   /** The table as it is — or, with a preview, as it WOULD be. One layout call. */
   const layout = useMemo(
-    () => (preview ? layoutChain(preview.chain, { runCells }) : baseLayout),
-    [preview, baseLayout, runCells],
+    () => (preview ? layoutChain(preview.chain, layoutOptions) : baseLayout),
+    [preview, baseLayout, layoutOptions],
   );
 
   /**
@@ -443,26 +510,10 @@ export default function DominoChain({
       data-rows={layout.rows}
       data-legal-ends={acceptingEnds.join(" ")}
       data-preview-end={previewEnd ?? ""}
-      data-chain-shape={straight ? "straight" : "wrap"}
     >
-      {/* The layout is the player's choice: one straight line, or the wrapped
-          table. Offered here because it is about how the table is DRAWN, and
-          nothing it does can change a rule. */}
-      {tiles.length > 1 ? (
-        <button
-          type="button"
-          className={`dominoes-chain-shape ${straight ? "is-straight" : ""}`}
-          data-testid="dominoes-chain-shape"
-          data-chain-shape={straight ? "straight" : "wrap"}
-          aria-pressed={straight}
-          title={t("games.dominoes.chain_shape_aria")}
-          onClick={() => setStraight((value) => !value)}
-        >
-          {straight
-            ? t("games.dominoes.chain_shape_wrap")
-            : t("games.dominoes.chain_shape_flat")}
-        </button>
-      ) : null}
+      {/* One cell, MEASURED rather than assumed (see the effect above). It is out
+          of the flow and out of the way: nothing on the board can see it. */}
+      <span className="dominoes-cell-probe" ref={probeRef} aria-hidden="true" />
       <div className="dominoes-chain-scroller" ref={scrollerRef} {...feltDropProps}>
         {tiles.length === 0 ? (
           <p className="dominoes-chain-empty" data-testid="dominoes-chain-empty">
@@ -518,12 +569,18 @@ export default function DominoChain({
                   data-drop-end={tileEnds.length === 1 ? tileEnds[0] : undefined}
                   // The slot is a square box centred on the tile, so the marker
                   // above it stays upright while the tile itself is rotated.
-                  style={{
-                    left: cells(placed.cx - layout.minX - 1),
-                    top: cells(placed.cy - layout.minY - 1),
-                    width: cells(2),
-                    height: cells(2),
-                  }}
+                  style={
+                    {
+                      left: cells(placed.cx - layout.minX - 1),
+                      top: cells(placed.cy - layout.minY - 1),
+                      width: cells(2),
+                      height: cells(2),
+                      // The INVERSE of the tile's own turn, so the values stay
+                      // upright on a tile that is lying vertically (and on the
+                      // left-hand arm, which is drawn the other way round).
+                      "--dm-turn": `${(360 - placed.rotation) % 360}deg`,
+                    } as CSSProperties
+                  }
                   data-domino-latest={isLatest ? "1" : undefined}
                   data-rotation={placed.rotation}
                   data-direction={placed.direction}
@@ -589,12 +646,15 @@ export default function DominoChain({
                 data-direction={ghostPlacement.direction}
                 data-double={ghostPlacement.isDouble ? "true" : "false"}
                 aria-hidden="true"
-                style={{
-                  left: cells(ghostPlacement.cx - layout.minX - 1),
-                  top: cells(ghostPlacement.cy - layout.minY - 1),
-                  width: cells(2),
-                  height: cells(2),
-                }}
+                style={
+                  {
+                    left: cells(ghostPlacement.cx - layout.minX - 1),
+                    top: cells(ghostPlacement.cy - layout.minY - 1),
+                    width: cells(2),
+                    height: cells(2),
+                    "--dm-turn": `${(360 - ghostPlacement.rotation) % 360}deg`,
+                  } as CSSProperties
+                }
               >
                 <span
                   className="dominoes-chain-tile-box"
