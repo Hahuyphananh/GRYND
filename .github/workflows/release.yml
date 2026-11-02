@@ -441,6 +441,18 @@ jobs:
           ref: ${{ needs.build.outputs.commit }}
           persist-credentials: false
 
+      - name: Setup Node.js to match the production host
+        uses: actions/setup-node@v4
+        with:
+          # `verify-artifact.mjs` asserts the artifact's build-time Node major
+          # against the `node` that runs it, and the host installer applies the
+          # same rule. Without a pinned version this step inherits whatever the
+          # runner image happens to ship, so an image rollout (ubuntu-latest
+          # moving to Node 24) fails every deploy at "Verify the artifact after
+          # download" — after a fully green build — and no release is activated.
+          # Pin the major production actually runs.
+          node-version: 22
+
       - name: Download the verified artifact
         uses: actions/download-artifact@v4
         with:
