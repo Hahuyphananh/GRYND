@@ -17,13 +17,20 @@
  *      board has no server match id, so one is minted per finished result and
  *      remembered for a minute in sessionStorage — a refresh of the same
  *      result reuses it, while playing another game mints a new one.
- *   3. RENDERS NOTHING while the answer is in flight, when advertising is off,
- *      or when the viewer is a member. Once it does render, `PostMatchVideoAd`
- *      starts the creative itself as a full-page overlay with the 15 s skip
- *      rule — there is no click-to-play step here.
+ *   3. TELLS THE HOST WHEN IT IS DONE. The result screen now plays this ad when
+ *      the player picks an EXIT action (return to lobby, run it back, the back
+ *      arrow) and holds that action until the ad settles. `onDone` is that
+ *      signal, and it always fires exactly once — after the creative closes or
+ *      finishes, and ALSO when no ad can be offered (surface off, member, no
+ *      id, failed request, cadence declined). Without that second half an
+ *      unavailable ad would strand the player on a button that does nothing.
+ *
+ * Once it does render, `PostMatchVideoAd` starts the creative itself as a
+ * full-page overlay with the 15 s skip rule — there is no click-to-play step
+ * here.
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 
 import PostMatchVideoAd from "./PostMatchVideoAd";
@@ -79,17 +86,36 @@ function practiceResultId(pathname: string): string {
 export default function PostMatchAdSlot({
   matchId,
   pathname,
+  onDone,
 }: {
   /** Explicit id, when the game passes one instead of using a route param. */
   matchId?: string;
   /** The result screen's own path, for the practice fallback id. */
   pathname?: string;
+  /**
+   * Called exactly once, as soon as this mount knows whether anything plays:
+   * `true` after the creative was closed, skipped or finished; `false` when no
+   * ad can be offered. A host that defers navigation until the ad settles
+   * depends on both halves of that answer.
+   */
+  onDone?: (played: boolean) => void;
 } = {}) {
   const params = useParams() as Record<string, string | undefined> | null;
   const routeId = matchId || params?.matchId || params?.gameId || "";
 
   const [surface, setSurface] = useState<SurfaceAnswer | null>(null);
   const [resolvedId, setResolvedId] = useState(routeId);
+  const settledRef = useRef(false);
+
+  // Exactly one settle per mount, whichever path answers first.
+  const settle = useCallback(
+    (played: boolean) => {
+      if (settledRef.current) return;
+      settledRef.current = true;
+      onDone?.(played);
+    },
+    [onDone],
+  );
 
   // Practice screens have no match id in the URL: mint one per finished game.
   useEffect(() => {
@@ -107,16 +133,32 @@ export default function PostMatchAdSlot({
     fetch("/api/ads/post-match", { cache: "no-store", credentials: "include" })
       .then((response) => (response.ok ? response.json() : null))
       .then((data: SurfaceAnswer | null) => {
-        if (cancelled || !data) return;
+        if (cancelled) return;
+        if (!data) {
+          settle(false);
+          return;
+        }
         setSurface({ enabled: Boolean(data.enabled), adFree: Boolean(data.adFree) });
       })
       .catch(() => {
-        // Silent: a failed read means "no ad", never a broken result screen.
+        // Silent: a failed read means "no ad", never a broken result screen —
+        // and the host's held action must still be released.
+        if (!cancelled) settle(false);
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [settle]);
+
+  // Answered "no": tell the host so the exit action it is holding can run.
+  useEffect(() => {
+    if (!surface) return;
+    if (!surface.enabled || surface.adFree) settle(false);
+  }, [surface, settle]);
+
+  useEffect(() => {
+    if (!resolvedId) settle(false);
+  }, [resolvedId, settle]);
 
   if (!surface || !surface.enabled || surface.adFree || !resolvedId) return null;
 
@@ -126,6 +168,8 @@ export default function PostMatchAdSlot({
       matchId={resolvedId}
       enabled={surface.enabled}
       adFree={surface.adFree}
+      onDismiss={() => settle(true)}
+      onNoOffer={() => settle(false)}
     />
   );
 }

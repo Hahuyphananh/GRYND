@@ -328,13 +328,20 @@ test("the pilot's completion signal is the server's own match status", () => {
   assert.match(source, /matchId=\{String\(matchId \?\? ""\)\}/);
 });
 
-test("the ad lives below every result, reward and action", () => {
+test("the ad is offered on the way out, never over the result", () => {
   const source = read(RESULT_SCREEN);
 
   assert.match(source, /postMatchAd = null,/, "the shared screen takes an optional node");
 
-  const adIndex = source.indexOf("{!compact && (postMatchAd || <PostMatchAdSlot />) && (");
+  // The slot hangs off the exit guard's state: the player reads the result and
+  // meets the ad when they choose where to go next, not before.
+  const adIndex = source.indexOf("{!compact && adOpen && !postMatchAd && (");
   assert.ok(adIndex > -1, "the shared screen renders the node");
+  assert.match(
+    source,
+    /<PostMatchAdSlot onDone=\{handleAdSettled\} \/>/,
+    "the slot reports back so the held exit action can run",
+  );
 
   for (const marker of ["YOU WON", "RUN IT BACK", "Match Details"]) {
     assert.ok(
@@ -343,17 +350,29 @@ test("the ad lives below every result, reward and action", () => {
     );
   }
 
+  // Compact (Creator Mode) recordings never carry an ad, and the guard is what
+  // opens it, so the same condition has to gate the attempt.
   assert.match(
     source,
-    /\{!compact && \(postMatchAd \|\| <PostMatchAdSlot \/>\) && \(/,
-    "compact (Creator Mode) recordings never carry an ad",
+    /if \(!compact && !adAttemptedRef\.current\) \{/,
+    "only one ad attempt per result, and none in compact mode",
+  );
+  assert.match(
+    source,
+    /const handleAdSettled = useCallback\(\(\) => \{/,
+    "the held action runs when the ad settles",
   );
 });
 
 test("nothing is offered before a match is definitively over", () => {
   const source = code(read(AD_COMPONENT));
 
-  assert.match(source, /if \(!active \|\| !matchEnded\) return;/, "no cadence before completion");
+  assert.match(source, /if \(!matchEnded\) return;/, "no cadence before completion");
+  assert.ok(
+    source.indexOf("if (!active) {") > -1 &&
+      source.indexOf("if (!active) {") < source.indexOf("observeCompletedMatch(matchId)"),
+    "a switched-off surface reports back and never advances the cadence",
+  );
   assert.match(source, /observeCompletedMatch\(matchId\)/);
   assert.match(source, /markPostMatchAdDismissed\(matchId\)/);
   assert.match(
@@ -365,7 +384,7 @@ test("nothing is offered before a match is definitively over", () => {
 
 test("reward and progression paths never depend on the ad", () => {
   const source = read(RESULT_SCREEN);
-  const adIndex = source.indexOf("{!compact && (postMatchAd || <PostMatchAdSlot />) && (");
+  const adIndex = source.indexOf("{!compact && adOpen && !postMatchAd && (");
   const actionsIndex = source.indexOf("{/* Actions */}");
 
   assert.ok(actionsIndex > -1 && actionsIndex < adIndex, "the ad follows the actions");
@@ -459,9 +478,11 @@ test("practice results can offer the ad without a server match row", () => {
 test("every result screen offers the ad through one shared slot", () => {
   const shared = read(RESULT_SCREEN);
   assert.match(shared, /import PostMatchAdSlot from "\.\.\/ads\/PostMatchAdSlot"/);
-  assert.match(shared, /\{!compact && \(postMatchAd \|\| <PostMatchAdSlot \/>\) && \(/);
-  // A game that wired its own node still wins; every other game gets the slot.
-  assert.match(shared, /\{postMatchAd \|\| <PostMatchAdSlot \/>\}/);
+  assert.match(shared, /\{!compact && adOpen && !postMatchAd && \(/);
+  // A game that wired its own node still wins; every other game gets the slot,
+  // which now opens on the exit action and reports back once it settles so the
+  // navigation the player asked for can run.
+  assert.match(shared, /<PostMatchAdSlot onDone=\{handleAdSettled\} \/>/);
 
   const slot = read("src/components/ads/PostMatchAdSlot.tsx");
   assert.match(slot, /\/api\/ads\/post-match/, "the slot asks the server");

@@ -41,7 +41,7 @@
  *      so every result screen can reuse it, never a game-specific prop.
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
@@ -192,6 +192,12 @@ export default function PvpResultScreen({
   const shouldReduce = useReducedMotion();
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [navigating, setNavigating] = useState(false);
+  // The post-match ad is offered when the player picks an EXIT action, so this
+  // screen holds that action until the ad reports back.
+  const [adOpen, setAdOpen] = useState(false);
+  const adOpenRef = useRef(false);
+  const adAttemptedRef = useRef(false);
+  const pendingExitRef = useRef(null);
 
   const style = OUTCOME_STYLES[outcome] || OUTCOME_STYLES.draw;
   const OutcomeIcon = style.icon;
@@ -231,11 +237,41 @@ export default function PvpResultScreen({
 
   // One action per screen: once Play Again / Rematch / Lobby is picked,
   // disable the buttons so a double-tap can't create two matches.
+  //
+  // THE POST-MATCH VIDEO COMES FIRST. Every exit control routes through this
+  // guard, so a finished match — a win, a loss or a resignation — offers its ad
+  // at the moment the player leaves the result, never over the result itself.
+  // The action is parked in a ref and run once the ad reports back.
+  //
+  // ONE ATTEMPT PER RESULT. If the surface is off, the viewer is a member, the
+  // cadence declines or the tag fails, the slot answers `onDone` immediately and
+  // the player moves on. A declined ad must never leave a button that looks
+  // clickable and does nothing.
   const guard = (fn) => () => {
     if (navigating || typeof fn !== "function") return;
+    if (!compact && !adAttemptedRef.current) {
+      adAttemptedRef.current = true;
+      pendingExitRef.current = fn;
+      adOpenRef.current = true;
+      setAdOpen(true);
+      return;
+    }
     setNavigating(true);
     fn();
   };
+
+  // The ad is over (played, skipped, closed) or was never available: continue to
+  // where the player asked to go. Idempotent — the slot settles exactly once.
+  const handleAdSettled = useCallback(() => {
+    if (!adOpenRef.current) return;
+    adOpenRef.current = false;
+    setAdOpen(false);
+    const next = pendingExitRef.current;
+    pendingExitRef.current = null;
+    if (!next) return;
+    setNavigating(true);
+    next();
+  }, []);
 
   // Live progression — real numbers from the platform's own endpoints,
   // fetched only when the game didn't pass its own values. Fire-and-forget:
@@ -826,7 +862,7 @@ export default function PvpResultScreen({
                 {onDismiss && (
                   <button
                     type="button"
-                    onClick={onDismiss}
+                    onClick={guard(onDismiss)}
                     className="w-full rounded-xl border border-white/10 px-5 py-2.5 text-xs font-semibold text-white/50 transition hover:bg-white/5 hover:text-white/80"
                   >
                     {dismissLabel}
@@ -835,15 +871,19 @@ export default function PvpResultScreen({
               </div>
             )}
 
-            {/* Post-match advertisement — below every result, reward and
-                action, so it can never cover or delay them. A game that wired
-                its own node wins; every other game gets the shared slot, which
-                renders nothing unless the server says it may offer one (and
-                never for a GRYND PRO member). Compact creator recordings
-                carry no ad at all. */}
-            {!compact && (postMatchAd || <PostMatchAdSlot />) && (
+            {/* Post-match advertisement. It is NOT mounted over the result any
+                more: the guard above opens it when the player picks an exit
+                action, and that action runs once it reports back. A game that
+                wired its own node still wins; every other game gets the shared
+                slot, which renders nothing unless the server says it may offer
+                one (and never for a GRYND PRO member). Compact creator
+                recordings carry no ad at all. */}
+            {!compact && postMatchAd && (
+              <div className="mx-auto mt-5 w-full max-w-xs">{postMatchAd}</div>
+            )}
+            {!compact && adOpen && !postMatchAd && (
               <div className="mx-auto mt-5 w-full max-w-xs">
-                {postMatchAd || <PostMatchAdSlot />}
+                <PostMatchAdSlot onDone={handleAdSettled} />
               </div>
             )}
 

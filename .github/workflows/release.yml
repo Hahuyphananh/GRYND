@@ -187,6 +187,18 @@ jobs:
           NEXT_PUBLIC_SOCKET_URL: ${{ vars.NEXT_PUBLIC_SOCKET_URL }}
           NEXT_PUBLIC_BASE_URL: ${{ vars.NEXT_PUBLIC_BASE_URL }}
           NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+          # Advertising. These are inlined by `next build` exactly like the block
+          # above: a switch that is absent here is baked into the artifact as
+          # `undefined` and can never take effect on the host, no matter what
+          # `grynd/env/app.env` says. The HilltopAds banner gates are opt-in, so
+          # without these a deploy renders no banner at all.
+          NEXT_PUBLIC_POST_MATCH_ADS_ENABLED: ${{ vars.NEXT_PUBLIC_POST_MATCH_ADS_ENABLED }}
+          NEXT_PUBLIC_POST_MATCH_AD_MATCHES_PER_OFFER: ${{ vars.NEXT_PUBLIC_POST_MATCH_AD_MATCHES_PER_OFFER }}
+          NEXT_PUBLIC_POST_MATCH_AD_COOLDOWN_MINUTES: ${{ vars.NEXT_PUBLIC_POST_MATCH_AD_COOLDOWN_MINUTES }}
+          NEXT_PUBLIC_HILLTOPS_ENABLED: ${{ vars.NEXT_PUBLIC_HILLTOPS_ENABLED }}
+          NEXT_PUBLIC_HILLTOPS_VAST_URL: ${{ vars.NEXT_PUBLIC_HILLTOPS_VAST_URL }}
+          NEXT_PUBLIC_HILLTOP_BANNER_ENABLED: ${{ vars.NEXT_PUBLIC_HILLTOP_BANNER_ENABLED }}
+          NEXT_PUBLIC_HILLTOP_BANNER_SCRIPT_URL: ${{ vars.NEXT_PUBLIC_HILLTOP_BANNER_SCRIPT_URL }}
           # Server-side only; the running service gets this from env/app.env.
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}

@@ -85,6 +85,13 @@ import { isDominoSoundMuted, setDominoSoundMuted } from "../../lib/dominoes/soun
  * take no locale); this component renders the same statements through `t()`.
  */
 
+/**
+ * How long the round that just closed stays on screen. The next round is already
+ * dealt and live underneath it (see `roundResultFor`), so this is a pause to read
+ * the points — not a gate the player has to click through.
+ */
+const ROUND_RESULT_AUTO_DISMISS_MS = 5_000;
+
 /** The seat identity the route decorates the snapshot with. */
 export type SeatIdentity = {
   name?: string | null;
@@ -266,6 +273,23 @@ export default function DominoMatchView({
   // an end the held tile actually fits is ever set, and the drag's end (a drop, a
   // cancel, an Escape) clears it — so the highlight cannot outlive the gesture.
   const [dropOverEnd, setDropOverEnd] = useState<ChainEnd | null>(null);
+
+  // ── The round result clears ITSELF ────────────────────────────────────
+  // The next round is already dealt by the server before this panel can appear:
+  // `roundResultFor` answers only while `roundNumber === lastRound.roundNumber + 1`,
+  // so the board underneath is the NEXT round and the "Continue" button was a
+  // local dismissal standing between the player and a table that was already
+  // live. It now dismisses itself after five seconds — long enough to read the
+  // points — and the button stays for anyone who wants to move on sooner.
+  const roundResultNumber = roundResult?.round ?? null;
+  useEffect(() => {
+    if (!showRoundResult || roundResultNumber === null) return undefined;
+    const timer = window.setTimeout(
+      () => setDismissedRound(roundResultNumber),
+      ROUND_RESULT_AUTO_DISMISS_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [showRoundResult, roundResultNumber]);
 
   // The countdown only exists while the server says a turn is running: a
   // decided match has no clock, and the store clears it.

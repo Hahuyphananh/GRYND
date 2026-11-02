@@ -118,6 +118,14 @@ export interface PostMatchVideoAdProps {
   className?: string;
   /** Called when the player skips/closes (or the ad finishes on its own). */
   onDismiss?: () => void;
+  /**
+   * Called when this mount will never play anything: the kill switch or the
+   * membership answer turned the surface off, the cadence declined this match,
+   * or there is no match id. A host that is holding an exit action until the ad
+   * settles needs this answer, otherwise it would wait for a close that can
+   * never come.
+   */
+  onNoOffer?: () => void;
 }
 
 export default function PostMatchVideoAd({
@@ -127,6 +135,7 @@ export default function PostMatchVideoAd({
   adFree = false,
   className = "",
   onDismiss,
+  onNoOffer,
 }: PostMatchVideoAdProps) {
   const [phase, setPhase] = useState<Phase>("loading");
   const [offerAllowed, setOfferAllowed] = useState(false);
@@ -152,14 +161,30 @@ export default function PostMatchVideoAd({
   // nothing loads and the cadence is not advanced.
   const active = enabled && !adFree && postMatchAdsEnabled();
 
+  // A host that decides navigation AFTER this component must hear "nothing will
+  // play" from whichever path produces that answer. Held in a ref so a
+  // re-rendered inline callback cannot re-run the cadence effect below (which
+  // would double-count the match).
+  const onNoOfferRef = useRef(onNoOffer);
+  useEffect(() => {
+    onNoOfferRef.current = onNoOffer;
+  }, [onNoOffer]);
+
   // ── Cadence ───────────────────────────────────────────────────────────────
   // Runs AFTER paint, so the result content is already on screen and the policy
   // can never delay it. The observation is idempotent per match id, which is
   // what makes a refresh of this result page a non-event.
   useEffect(() => {
-    if (!active || !matchEnded) return;
+    if (!matchEnded) return;
+    // Switched off (kill switch, membership or the build-time flag): nothing is
+    // requested and the cadence is deliberately not advanced.
+    if (!active) {
+      onNoOfferRef.current?.();
+      return;
+    }
     const decision = observeCompletedMatch(matchId);
     if (decision.offer) setOfferAllowed(true);
+    else onNoOfferRef.current?.();
   }, [active, matchEnded, matchId]);
 
   const fireTracking = useCallback(

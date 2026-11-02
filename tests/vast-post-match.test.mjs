@@ -486,7 +486,7 @@ test("the surface is mounted only by the wired result screens", () => {
   // which asks the server first and never renders on a browsing page.
   assert.match(
     read("src/components/result/PvpResultScreen.jsx"),
-    /<PostMatchAdSlot \/>/,
+    /<PostMatchAdSlot onDone=\{handleAdSettled\} \/>/,
     "the shared result screen is the single wiring point for every game",
   );
 });

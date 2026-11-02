@@ -3011,15 +3011,20 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
      block layout cannot do vertically. */
   display: flex;
   flex: 1 1 auto;
-  min-height: clamp(240px, 32vh, 420px);
+  /* THE FELT IS GIVEN MORE OF THE PAGE. A chain that runs out of rows turns
+     earlier and folds tighter, so the rows are what stop a rotated tile from
+     being crowded by its neighbours above and below. The floor is raised enough
+     to hold a folded table of a dozen tiles on a laptop, and the cap grows with
+     the viewport instead of stopping at 420px. */
+  min-height: clamp(320px, 42vh, 560px);
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
   /* The top padding is the newest tile's badge's room: it floats above the felt,
      so the box has to leave space for it. It is also what the board's own size is
      measured from, so it is not costed twice. */
-  padding: 42px 18px 18px;
-  scroll-padding: 52px;
+  padding: 46px 22px 22px;
+  scroll-padding: 56px;
 }
 
 /* ONE ROW PER LAYOUT ROW, NOT A REFLOWED BLOCK: every tile is absolutely placed
@@ -3056,6 +3061,21 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
    and nothing spills out of the tile. */
 .dominoes-chain-slot .dominoes-tile-half {
   transform: rotate(var(--dm-turn, 0deg));
+}
+
+/* A HAIRLINE GUTTER BETWEEN TILES — AT EVERY ROTATION.
+   A real table packs its tiles edge to edge, and that is exactly what the
+   geometry owns (`src/lib/dominoes/layout.ts`, pinned by
+   tests/dominoes-layout.test.mjs), so spacing cannot come from moving anything.
+   A ROTATED tile puts its long side against its neighbour, which left the two
+   sets of numerals sitting flush across the join — the crowding this fixes. Each
+   half is drawn just inside the cell it owns instead: the tile keeps its 2:1
+   proportion and its centre, a rotated tile gets the same gap on all four sides
+   as a flat one, and no tile's position changes by a pixel. Scoped to the chain,
+   so the hand's tiles (which are meant to be thumb-sized) are untouched. */
+.dominoes-chain-slot .dominoes-tile-half {
+  width: calc(var(--dm-half) * 0.94);
+  height: calc(var(--dm-half) * 0.94);
 }
 
 /* THE END THAT WOULD TAKE THE TILE IN HAND. A selected tile (tapped, or picked up

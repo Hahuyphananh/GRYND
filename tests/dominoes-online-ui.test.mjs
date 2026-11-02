@@ -1627,3 +1627,26 @@ test("dominoes css: tap targets, small screens and reduced motion", () => {
   assert.match(reduced, /\.dominoes-tile\.is-new \{\s*animation: none;/);
   assert.match(reduced, /button\.dominoes-tile\.is-selected \{\s*transform: none;/);
 });
+
+/* -------------------------------------------------------------------------- *
+ * The round that just closed clears itself
+ * -------------------------------------------------------------------------- */
+
+test("dominoes ui: the round result clears itself so the next round can start", () => {
+  const board = stripComments(read("src/components/dominoes/DominoMatchView.tsx"));
+
+  // The next round is already dealt by the server before this panel can appear:
+  // `roundResultFor` answers only while the round number is lastRound + 1, so the
+  // panel is a five-second read, not a gate the player has to click through.
+  assert.match(board, /const ROUND_RESULT_AUTO_DISMISS_MS = 5_000;/);
+  assert.ok(
+    board.includes("window.setTimeout(") &&
+      board.includes("() => setDismissedRound(roundResultNumber)") &&
+      board.includes("ROUND_RESULT_AUTO_DISMISS_MS,"),
+    "the panel dismisses itself after five seconds",
+  );
+  // The manual control stays for a player who wants to move on sooner.
+  assert.ok(board.includes("setDismissedRound(roundResult.round)"));
+  // The timer is released, so a remount can never dismiss a later round early.
+  assert.ok(board.includes("window.clearTimeout(timer)"));
+});
