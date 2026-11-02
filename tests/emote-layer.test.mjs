@@ -29,6 +29,10 @@ const WHEEL = `${EMOTES_DIR}/EmoteWheel.tsx`;
 const BUBBLE = `${EMOTES_DIR}/EmoteBubble.tsx`;
 const ARTWORK = `${EMOTES_DIR}/EmoteArtwork.tsx`;
 const LOADOUT = `${EMOTES_DIR}/useEmoteLoadout.ts`;
+const CHANNEL = `${EMOTES_DIR}/emoteChannel.ts`;
+const SENDER = `${EMOTES_DIR}/useEmoteSender.ts`;
+const TRAY = `${EMOTES_DIR}/ChatEmoteTray.tsx`;
+const CHAT = "src/components/ChatWidget.jsx";
 const SERVER = "realtime-server/server.js";
 
 /** Pages that mount emotes (one layer each; keno has a mobile+desktop pair). */
@@ -61,7 +65,7 @@ const MATCH_PAGES = [
 // ── The four pieces exist and are the only implementation ─────────────────
 
 test("the shared pieces live in one place", () => {
-  for (const file of [LAYER, BAR, WHEEL, BUBBLE, ARTWORK, LOADOUT]) {
+  for (const file of [LAYER, BAR, WHEEL, BUBBLE, ARTWORK, LOADOUT, CHANNEL, SENDER, TRAY]) {
     assert.ok(exists(file), `${file} is missing`);
     assert.match(read(file), /^"use client";/m, `${file} must be client-side`);
   }
@@ -141,16 +145,64 @@ test("the bar is one-tap, respects sending being off, and shows the cooldown", (
 });
 
 test("sends are single-shot and cannot be queued", () => {
+  const sender = read(SENDER);
+
+  assert.match(sender, /if \(!sendEnabled \|\| cooling\) return;/);
+  assert.match(sender, /setCooling\(true\)/);
+  assert.match(sender, /EMOTE_COOLDOWN_MS/);
+  // The cooldown timer is cleared on unmount — no setState after leaving.
+  assert.match(sender, /clearTimeout\(cooldownTimer\.current\)/);
+});
+
+// ── The picker lives in the chat, not in the match header ────────────────
+
+test("match pages render no picker; the chat hosts it", () => {
   const layer = read(LAYER);
 
-  assert.match(layer, /if \(!sendEnabled \|\| cooling\) return;/);
-  assert.match(layer, /setCooling\(true\)/);
-  assert.match(layer, /EMOTE_COOLDOWN_MS/);
-  // The cooldown timer is cleared on unmount — no setState after leaving.
-  assert.match(layer, /clearTimeout\(cooldownTimer\.current\)/);
+  // The layer keeps the bubbles and the delivery path only.
+  assert.ok(!/<EmoteBar/.test(layer), "the match header no longer draws a bar");
+  assert.ok(!/<EmoteWheel/.test(layer), "the match header no longer draws a wheel");
+  assert.ok(!/EmoteBar|EmoteWheel/.test(layer.replace(/\/\/.*/g, "")), "no picker imports");
+  assert.match(layer, /registerEmoteChannel/);
+
+  // The chat mounts the tray, which reuses the same bar + wheel.
+  assert.match(read(CHAT), /<ChatEmoteTray/);
+  const tray = read(TRAY);
+  assert.match(tray, /<EmoteBar/);
+  assert.match(tray, /<EmoteWheel/);
+  assert.match(tray, /inline/);
+  assert.match(tray, /useEmoteSender/);
+});
+
+test("delivery goes through the mounted match's own socket event", () => {
+  const channel = read(CHANNEL);
+
+  assert.match(channel, /registerEmoteChannel/);
+  assert.match(channel, /getEmoteChannel/);
+  assert.match(channel, /useSyncExternalStore/);
+  // Sending resolves the channel at call time, never a snapshot from render.
+  assert.match(read(SENDER), /const target = getEmoteChannel\(\);/);
+  assert.match(read(SENDER), /target\.send\(emote\)/);
+  // The layer keeps forwarding the page's onSend, refreshed through a ref so
+  // an inline arrow does not re-register on every render.
+  assert.match(read(LAYER), /send: \(emote\) => sendRef\.current\(emote\)/);
+});
+
+test("the chat launcher carries a social-style unread badge", () => {
+  const chat = read(CHAT);
+
+  assert.match(chat, /data-chat-unread/);
+  assert.match(chat, /unread > 9 \? "9\+" : unread/);
+  assert.match(chat, /setUnread\(\(n\) => n \+ 1\)/);
+  assert.match(chat, /setUnread\(0\)/);
+  // Messages that arrive while the panel is closed are what raises it.
+  assert.match(chat, /openRef\.current/);
 });
 
 test("the wheel keeps the full loadout and the existing controls", () => {
+  // `inline` is additive: no popover, same panel.
+  assert.match(read(WHEEL), /inline\?: boolean/);
+
   const wheel = read(WHEEL);
 
   assert.match(wheel, /role="dialog"/);

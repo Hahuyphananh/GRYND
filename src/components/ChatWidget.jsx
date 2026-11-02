@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useUser } from "@clerk/nextjs";
@@ -10,6 +10,8 @@ import { cosmeticEffectClass } from "../lib/profileCosmetics";
 import { subscribeToChatMessages } from "../lib/realtime";
 import { upsertChatMessage } from "../lib/chatMessageList";
 import { IconFlame, IconX } from "@tabler/icons-react";
+import ChatEmoteTray from "./game/emotes/ChatEmoteTray";
+import { useActiveEmoteChannel } from "./game/emotes/emoteChannel";
 
 const GLOBAL_ROUTES = new Set(["/", "/casino", "/games", "/classement", "/rankings"]);
 
@@ -78,6 +80,12 @@ export default function ChatWidget() {
   const [error, setError] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  // Unread messages, social-app style: raised by anything arriving while the
+  // panel is closed, cleared the moment it opens.
+  const [unread, setUnread] = useState(0);
+  // True while the emote grid is expanded: the message list then gives up its
+  // minimum height so the grid and the composer both stay inside the panel.
+  const [emotesOpen, setEmotesOpen] = useState(false);
 
   // Fetch admin status from DB-backed API on mount
   // Uses sessionStorage to cache across page navigations within a session
@@ -114,6 +122,32 @@ export default function ChatWidget() {
   const { socket } = useSocket();
   const messagesContainerRef = useRef(null);
 
+  // The emote picker lives in this panel; it sends through whichever match page
+  // is mounted (see game/emotes/emoteChannel).
+  const emoteChannel = useActiveEmoteChannel();
+
+  // What the socket handlers should do about the panel being open, read at the
+  // moment a message lands. A ref keeps the room subscription stable across
+  // open/close, so a message arriving just after closing still counts.
+  const openRef = useRef(false);
+  // Ids already counted: the socket broadcast and the Supabase safety net can
+  // both deliver the same row, and it must only count once.
+  const countedIdsRef = useRef([]);
+
+  useEffect(() => {
+    openRef.current = isOpen;
+  }, [isOpen]);
+
+  const bumpUnread = useCallback((id) => {
+    if (id != null) {
+      const counted = countedIdsRef.current;
+      if (counted.includes(id)) return;
+      counted.push(id);
+      if (counted.length > 120) counted.shift();
+    }
+    if (!openRef.current) setUnread((n) => n + 1);
+  }, []);
+
   const room = useMemo(() => {
     if (!pathname) return null;
 
@@ -133,6 +167,12 @@ export default function ChatWidget() {
 
     return null;
   }, [pathname]);
+
+  // A different room is a different conversation: no badge carries over.
+  useEffect(() => {
+    countedIdsRef.current = [];
+    setUnread(0);
+  }, [room?.roomType, room?.roomId]);
 
   async function loadMessages() {
     if (!room) return;
@@ -172,14 +212,19 @@ export default function ChatWidget() {
   // re-fetching the whole history. Events without a message payload (legacy
   // tabs still on the old protocol) fall back to a full reload.
   useEffect(() => {
-    if (!socket || !room || !isOpen) return;
+    if (!socket || !room) return;
     const roomKey = `chat:${room.roomType}:${room.roomId}`;
     const handleChatUpdate = (payload) => {
       if (payload?.message?.id != null) {
         setMessages((prev) => upsertChatMessage(prev, payload.message));
+        // This is what raises the badge while the panel is closed.
+        bumpUnread(payload.message.id);
         return;
       }
-      loadMessages().catch(() => {});
+      // Legacy payload with no row to merge: flag it, and refresh only when the
+      // panel is open (opening refetches the history anyway).
+      bumpUnread(null);
+      if (openRef.current) loadMessages().catch(() => {});
     };
 
     socket.emit("join_room", { roomId: roomKey });
@@ -189,7 +234,7 @@ export default function ChatWidget() {
       socket.emit("leave_room", { roomId: roomKey });
       socket.off("chat:updated", handleChatUpdate);
     };
-  }, [socket, room?.roomType, room?.roomId, isOpen]);
+  }, [socket, room?.roomType, room?.roomId, bumpUnread]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -205,13 +250,14 @@ export default function ChatWidget() {
   // subscription is server-side filtered to room_type=global, so it only
   // fires for the global chat — game-room chat stays on the socket path.
   useEffect(() => {
-    if (!isOpen || !room || room.roomType !== "global") return;
+    if (!room || room.roomType !== "global") return;
     const unsubscribe = subscribeToChatMessages((row) => {
       if (row.roomType !== room.roomType || row.roomId !== room.roomId) return;
       setMessages((prev) => upsertChatMessage(prev, row));
+      bumpUnread(row.id);
     });
     return unsubscribe;
-  }, [isOpen, room?.roomType, room?.roomId]);
+  }, [room?.roomType, room?.roomId, bumpUnread]);
 
   async function handleRefresh() {
     setError("");
@@ -325,23 +371,53 @@ export default function ChatWidget() {
     }
   }
 
+  function toggleChat() {
+    // Opening clears the badge; closing it leaves zero (nothing was unread
+    // while you were looking at the room). Also fold the emote grid away.
+    setUnread(0);
+    setEmotesOpen(false);
+    setIsOpen((v) => !v);
+  }
+
   if (!room) return null;
 
   return (
     <div className="fixed bottom-20 left-3 z-[70] sm:bottom-4 sm:left-4">
       <button
         type="button"
-        onClick={() => setIsOpen((v) => !v)}
+        onClick={toggleChat}
+        data-chat-toggle=""
+        data-chat-unread-count={unread}
         className="relative h-14 w-14 touch-manipulation rounded-full bg-gradient-to-br from-cyan-400 via-fuchsia-500 to-purple-600 text-2xl text-black shadow-[0_0_25px_rgba(34,211,238,0.5)] transition-all hover:scale-110 hover:shadow-[0_0_40px_rgba(217,70,239,0.7)] active:scale-95 animate-neonButton sm:h-16 sm:w-16 sm:text-3xl"
-        aria-label="Toggle chat"
+        aria-label={
+          unread > 0
+            ? `Open chat, ${unread} unread message${unread === 1 ? "" : "s"}`
+            : "Toggle chat"
+        }
       >
         💬
         {/* pulsing ring */}
         <span className="absolute inset-0 rounded-full border border-cyan-300/40 animate-ping" />
+        {/* Notification dot, top-right, like a social app: it stays until the
+            panel is opened. */}
+        {unread > 0 ? (
+          <span
+            data-chat-unread=""
+            role="status"
+            className="absolute -right-1 -top-1 z-10 flex h-5 min-w-5 items-center justify-center rounded-full border border-black/60 bg-gradient-to-br from-rose-500 to-fuchsia-500 px-1 text-[11px] font-black leading-none text-white shadow-[0_0_10px_rgba(244,63,94,0.85)]"
+          >
+            {unread > 9 ? "9+" : unread}
+          </span>
+        ) : null}
       </button>
 
       {isOpen ? (
-        <div className="mt-2 w-[calc(100vw-1.5rem)] max-w-[420px] rounded-xl border border-cyan-400/30 bg-black/70 p-3 text-sm text-cyan-50 shadow-[0_0_35px_rgba(34,211,238,0.25)] backdrop-blur-xl relative overflow-hidden animate-neonPulse sm:p-4">
+        <div
+          data-chat-panel=""
+          className={`relative mt-2 flex w-[calc(100vw-1.5rem)] max-w-[420px] flex-col overflow-hidden rounded-xl border border-cyan-400/30 bg-black/70 p-3 text-sm text-cyan-50 shadow-[0_0_35px_rgba(34,211,238,0.25)] backdrop-blur-xl animate-neonPulse sm:p-4 ${
+            emotesOpen ? "h-[min(78dvh,38rem)]" : "max-h-[min(78dvh,38rem)]"
+          }`}
+        >
           {/* scanline overlay */}
           <div className="pointer-events-none absolute inset-0 z-0 opacity-[0.08] mix-blend-overlay bg-[repeating-linear-gradient(0deg,black,black_2px,transparent_2px,transparent_4px)] animate-scanlines" />
           <div className="mb-2 flex items-center justify-between gap-2 text-cyan-300">
@@ -386,7 +462,7 @@ export default function ChatWidget() {
                 role="region"
                 aria-label="Chat messages"
                 tabIndex={0}
-                className="mb-2 h-[45vh] max-h-72 overflow-y-auto rounded border border-cyan-400/20 bg-black/60 p-2 shadow-inner shadow-cyan-500/10"
+                className="mb-2 min-h-40 flex-1 basis-0 overflow-y-auto rounded border border-cyan-400/20 bg-black/60 p-2 shadow-inner shadow-cyan-500/10"
               >
                 {messages.length === 0 ? (
                   <p className="text-cyan-400/40">No messages yet.</p>
@@ -468,6 +544,9 @@ export default function ChatWidget() {
               <p className="mb-2 text-[11px] text-slate-400">
                 Live updates enabled with refresh fallback.
               </p>
+
+              {/* The emote picker, only inside a match (it sends to the game). */}
+              {emoteChannel ? <ChatEmoteTray onOpenChange={setEmotesOpen} /> : null}
 
               {!isSignedIn ? (
                 <p className="text-xs text-slate-400">Sign in to join chat.</p>

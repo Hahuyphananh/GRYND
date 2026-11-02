@@ -3,7 +3,7 @@
 // src/components/game/emotes/GameEmoteLayer.tsx
 //
 // The single emote surface for a multiplayer match. Mount it ONCE per match
-// page, next to the controls it should sit beside:
+// page:
 //
 //   <GameEmoteLayer
 //     gameId="chess"
@@ -13,30 +13,29 @@
 //     opponentLabel={opponentName}
 //   />
 //
-// It renders three things and owns no socket logic:
+// It no longer renders a picker: the emote UI lives inside the chat panel
+// (ChatEmoteTray), bottom-left on every page. What stays here is everything the
+// chat cannot own:
 //   1. the opponent's bubble — fixed to the top of the screen, labelled with
-//      their name (this is what the old per-game bubbles got wrong in odds and
-//      precision, where the reaction appeared above your own emote button);
+//      their name;
 //   2. your own bubble — bottom-right, above the app's bottom UI, safe-area
 //      aware and mirrored in cyan;
-//   3. the quick bar + wheel, in the flow where you mounted it.
+//   3. the delivery path: the match publishes its `onSend` to emoteChannel so
+//      the chat can fire emotes over THIS match's socket event.
 //
 // Bubbles are portalled to <body>: pages wrap themselves in animated
 // (transform/filter) containers, and a `position: fixed` child of a transformed
 // ancestor is positioned against that ancestor instead of the viewport.
 //
-// Cooldown lives here (not in the socket hook) because it is a UI/anti-spam
-// rule: 2.5 s between sends per player. The realtime server enforces its own
-// limit as the authority.
+// The component renders no layout of its own (a fragment of portals), so the
+// header rows that used to hold the bar lose the element rather than keeping an
+// empty gap.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import EmoteBar from "./EmoteBar";
 import EmoteBubble from "./EmoteBubble";
-import EmoteWheel from "./EmoteWheel";
+import { registerEmoteChannel } from "./emoteChannel";
 import {
-  EMOTE_COOLDOWN_MS,
-  useEmoteLoadout,
   useEmoteSettings,
   type EmoteChoice,
   type EmotePayload,
@@ -53,7 +52,9 @@ export type GameEmoteLayerProps = {
   onSend: (emote: EmoteChoice) => void;
   /** Shown on the opponent bubble so it is always clear whose reaction it is. */
   opponentLabel?: string | null;
+  /** Retained for the existing call sites; the picker now lives in the chat. */
   compact?: boolean;
+  /** Retained for the existing call sites; nothing is laid out here any more. */
   className?: string;
 };
 
@@ -63,58 +64,38 @@ export default function GameEmoteLayer({
   myEmote = null,
   onSend,
   opponentLabel = null,
-  compact = false,
-  className = "",
 }: GameEmoteLayerProps) {
-  const { choices } = useEmoteLoadout();
-  const { sendEnabled, muteOpponent, toggleSend, toggleMute } = useEmoteSettings();
+  const { muteOpponent } = useEmoteSettings();
 
-  const [wheelOpen, setWheelOpen] = useState(false);
-  const [cooling, setCooling] = useState(false);
-  const [cooldownKey, setCooldownKey] = useState(0);
   const [portalReady, setPortalReady] = useState(false);
+  const sendRef = useRef(onSend);
 
-  const cooldownTimer = useRef<number | null>(null);
+  // Pages commonly pass an inline arrow, so its identity changes on every
+  // render. Keeping it in a ref lets the registration below stay stable.
+  useEffect(() => {
+    sendRef.current = onSend;
+  }, [onSend]);
 
   // The bubble portal targets <body>, which only exists in the browser. Gating
   // on a post-mount flag keeps the first client render identical to the server
-  // render (the ToastProvider learned the same lesson).
+  // render.
   useEffect(() => setPortalReady(true), []);
 
+  // Publish this match's sender for the chat's emote tray.
   useEffect(
-    () => () => {
-      if (cooldownTimer.current) window.clearTimeout(cooldownTimer.current);
-    },
-    [],
-  );
-
-  const pick = useCallback(
-    (emote: EmoteChoice) => {
-      // Sending disabled, or still cooling down: swallow the tap rather than
-      // queue it. Nothing is replayed later.
-      if (!sendEnabled || cooling) return;
-
-      onSend(emote);
-      setWheelOpen(false);
-      setCooling(true);
-      setCooldownKey((key) => key + 1);
-      if (cooldownTimer.current) window.clearTimeout(cooldownTimer.current);
-      cooldownTimer.current = window.setTimeout(
-        () => setCooling(false),
-        EMOTE_COOLDOWN_MS,
-      );
-    },
-    [onSend, sendEnabled, cooling],
+    () =>
+      registerEmoteChannel({
+        gameId,
+        opponentLabel,
+        send: (emote) => sendRef.current(emote),
+      }),
+    [gameId, opponentLabel],
   );
 
   const showIncoming = Boolean(incomingEmote) && !muteOpponent;
 
   return (
-    <div
-      data-emote-layer=""
-      data-game={gameId}
-      className={`relative inline-flex items-center ${className}`}
-    >
+    <>
       {portalReady &&
         createPortal(
           <>
@@ -144,29 +125,6 @@ export default function GameEmoteLayer({
           </>,
           document.body,
         )}
-
-      <EmoteBar
-        choices={choices}
-        onPick={pick}
-        onOpenWheel={() => setWheelOpen((open) => !open)}
-        wheelOpen={wheelOpen}
-        disabled={!sendEnabled}
-        cooling={cooling}
-        cooldownKey={cooldownKey}
-        compact={compact}
-      />
-
-      <EmoteWheel
-        open={wheelOpen}
-        choices={choices}
-        onPick={pick}
-        onClose={() => setWheelOpen(false)}
-        sendEnabled={sendEnabled}
-        muteOpponent={muteOpponent}
-        onToggleSend={toggleSend}
-        onToggleMute={toggleMute}
-        compact={compact}
-      />
-    </div>
+    </>
   );
 }

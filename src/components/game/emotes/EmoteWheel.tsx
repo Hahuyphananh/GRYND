@@ -9,6 +9,10 @@
 // This is where the old picker's grid went — including its "Emote controls"
 // (stop sending / mute the opponent), which stay here for now so no existing
 // preference is lost.
+//
+// `inline` renders the same panel IN FLOW instead of as an upward popover. The
+// chat hosts it: the chat is a fixed box with its own scroll, so a popover
+// opening above the trigger would sit outside it.
 
 import { useEffect } from "react";
 import EmoteArtwork from "./EmoteArtwork";
@@ -24,6 +28,7 @@ export default function EmoteWheel({
   onToggleSend,
   onToggleMute,
   compact = false,
+  inline = false,
 }: {
   open: boolean;
   choices: EmoteChoice[];
@@ -34,6 +39,7 @@ export default function EmoteWheel({
   onToggleSend: () => void;
   onToggleMute: () => void;
   compact?: boolean;
+  inline?: boolean;
 }) {
   // Escape closes the wheel. Registered only while it is open, and removed on
   // close/unmount, so no listener accumulates across a match.
@@ -52,13 +58,23 @@ export default function EmoteWheel({
   if (!open) return null;
 
   return (
-    <div className="absolute bottom-full left-1/2 z-40 mb-2 w-[min(20rem,calc(100vw-1.5rem))] -translate-x-1/2">
-      {/* Click-away layer: invisible, behind the panel. */}
-      <div
-        aria-hidden="true"
-        onClick={onClose}
-        className="fixed inset-0 -z-10"
-      />
+    <div
+      className={
+        inline
+          ? "relative z-40 w-full"
+          : "absolute bottom-full left-1/2 z-40 mb-2 w-[min(20rem,calc(100vw-1.5rem))] -translate-x-1/2"
+      }
+    >
+      {/* Click-away layer: invisible, behind the panel. Inline inside the chat
+          the ✕ (and the trigger) already close it, and a fixed overlay there
+          would swallow the rest of the chat. */}
+      {!inline ? (
+        <div
+          aria-hidden="true"
+          onClick={onClose}
+          className="fixed inset-0 -z-10"
+        />
+      ) : null}
       <div
         role="dialog"
         aria-label="Emotes"
@@ -81,7 +97,7 @@ export default function EmoteWheel({
           </button>
         </div>
 
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid max-h-[min(30vh,14rem)] grid-cols-3 gap-2 overflow-y-auto">
           {choices.map((emote) => (
             <button
               key={emote.id}
@@ -103,8 +119,10 @@ export default function EmoteWheel({
           ))}
         </div>
 
-        <div className="mt-2 grid grid-cols-1 gap-1.5 border-t border-white/10 pt-2">
-          <span className="text-center text-[9px] font-bold uppercase tracking-[0.16em] text-white/40">
+        {/* Two columns: the controls are two buttons, and stacking them made the
+            inline tray tall enough to push the chat composer out of its panel. */}
+        <div className="mt-2 grid grid-cols-2 gap-1.5 border-t border-white/10 pt-2">
+          <span className="col-span-2 text-center text-[9px] font-bold uppercase tracking-[0.16em] text-white/40">
             Emote controls
           </span>
           <button
