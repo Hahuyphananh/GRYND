@@ -153,7 +153,7 @@ test("result: only a PRACTICE match offers the way back to the lobby", () => {
   // own AI flag, so a live PvP match still has no way out but Resign.
   assert.match(
     src,
-    /onReturnToLobby=\{\s*Boolean\(match\?\.isAi\)\s*\?[^}]*router\.push\("\/casino\/mini-golf"\)[^}]*\}/,
+    /onReturnToLobby=\{\(\) => router\.push\("\/casino\/mini-golf"\)\}/,
   );
   // The way out of a live match is still Resign.
   assert.match(src, /data-testid="resign-button"/);

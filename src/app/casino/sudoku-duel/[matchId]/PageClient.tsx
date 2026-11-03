@@ -1246,7 +1246,7 @@ export default function SudokuDuelMatchPage() {
           profileFrame: opponentIdentity?.profileFrame ?? null,
         }}
         gameName="Sudoku Duel"
-        onReturnToLobby={Boolean(match?.isAi) ? () => router.push("/casino/sudoku-duel") : null}
+        onReturnToLobby={() => router.push("/casino/sudoku-duel")}
         gameKey="sudoku-duel"
         durationSeconds={resultDuration}
         sides={[

@@ -323,8 +323,9 @@ test("the skip control opens at 15 s for a long ad, and at its end for a short o
   assert.match(source, /onTimeUpdate=/);
   assert.match(source, /playedSeconds >= skipUnlockSeconds/);
   assert.match(source, /Skip in \$\{skipRemaining\}s/, "the wait is shown, not silent");
-  // Loading and failure are always closeable — the 15 s rule never traps.
-  assert.match(source, /aria-label="Close advertisement"/);
+  // The overlay exists only while a creative is on screen, so there is no
+  // loading or failure card the 15 s rule could trap the player behind.
+  assert.doesNotMatch(source, /aria-label="Close advertisement"/);
   assert.ok(
     !/setTimeout\([^)]*dismiss/.test(source),
     "a mount timer must never end an ad",
@@ -359,14 +360,28 @@ test("the component cannot navigate, redirect or open a window", () => {
   );
 });
 
-test("the component shows loading and graceful error states, never fake media", () => {
+test("nothing is drawn until a creative is ready, and never fake media", () => {
   const source = code(COMPONENT);
-  assert.match(source, /Loading advertisement…/, "a loading state is required");
-  assert.match(source, /role="status"/);
-  assert.match(source, /aria-live="polite"/);
-  assert.match(source, /role="alert"/, "a failure is announced, not silent");
-  assert.match(source, /No advertisement is available right now\./);
-  assert.match(source, /This video could not be played\./);
+  // The wait for the tag is invisible: no loading overlay, no black screen.
+  assert.doesNotMatch(source, /Loading advertisement…/);
+  assert.doesNotMatch(source, /role="status"/);
+  assert.doesNotMatch(source, /aria-live=/);
+  assert.match(
+    source,
+    /if \(!active \|\| !matchEnded \|\| !offerAllowed \|\| phase !== "ready" \|\| !media\)/,
+    "the overlay only mounts once a playable creative exists",
+  );
+  assert.doesNotMatch(
+    source,
+    /No advertisement is available right now\./,
+    "an unavailable ad must never be left as a card to dismiss",
+  );
+  assert.doesNotMatch(
+    source,
+    /This video could not be played\./,
+    "a creative that fails to play is removed, not explained on screen",
+  );
+  assert.doesNotMatch(source, /role="alert"/, "nothing is left behind to announce");
   // No stand-in creative of any kind.
   assert.ok(
     !/placeholder.*\.mp4|sample.*\.mp4|fallback.*src=/i.test(source),
@@ -374,16 +389,52 @@ test("the component shows loading and graceful error states, never fake media", 
   );
 });
 
-test("a close control always exists, and the surface is labelled as an ad", () => {
+test("an unavailable ad is removed immediately, never left on screen", () => {
+  const source = code(COMPONENT);
+
+  // Every no-ad path — a missing tag URL, a refused/failed/timed-out request,
+  // a response with no playable creative, or a creative the browser cannot
+  // play — closes the surface at once.
+  assert.equal(
+    (source.match(/removeNow\(\);/g) ?? []).length,
+    4,
+    "each no-ad path must remove the surface immediately",
+  );
+
+  const removal = source.match(
+    /const removeNow = useCallback\(\(\) => \{[\s\S]*?\}, \[\]\);/,
+  );
+  assert.ok(removal, "removal must be one callback");
+  assert.match(removal[0], /setPhase\("closed"\)/, "the overlay is closed, not re-labelled");
+  assert.match(
+    removal[0],
+    /onNoOfferRef\.current\?\.\(\);/,
+    "the host is told, so a held exit action can run",
+  );
+  // Nothing played, so this is not a dismissal and not a skip.
+  assert.ok(
+    !/markPostMatchAdDismissed|fireTracking/.test(removal[0]),
+    "a removed ad must not be recorded as dismissed or skipped",
+  );
+
+  // A served creative that fails to play is cleared the same way: the 405 is
+  // reported to the network, then the surface goes — no "could not be played"
+  // card is left over the result.
+  assert.match(source, /fireTracking\(ad\.errorUrls, "405"\);\s*removeNow\(\);/);
+
+  // Removal leaves nothing behind: the overlay only exists with a creative,
+  // so there is no loading screen and no card left to close.
+  assert.match(source, /phase !== "ready"/);
+  assert.doesNotMatch(source, /aria-label="Close advertisement"/);
+});
+
+test("the surface is labelled as an advertisement and carries a skip control", () => {
   const source = code(COMPONENT);
   assert.match(source, /aria-label="Advertisement"/);
-  assert.match(source, /aria-label="Close advertisement"/, "loading and failure stay closeable");
+  assert.match(source, /role="dialog"/);
+  assert.match(source, /aria-modal="true"/);
   assert.match(source, /aria-label=\{\s*canSkip \? "Skip advertisement"/, "playback has a skip control");
-  assert.match(
-    source,
-    /data-post-match-ad=\{phase\}/,
-    "every phase renders the labelled surface",
-  );
+  assert.match(source, /data-post-match-ad=\{phase\}/);
 });
 
 test("the surface is gated on a finished match", () => {
@@ -391,8 +442,8 @@ test("the surface is gated on a finished match", () => {
   assert.match(source, /matchEnded/);
   assert.match(
     source,
-    /if \(!active \|\| !matchEnded \|\| !offerAllowed \|\| phase === "closed"\)/,
-    "an active match — or a match the offer policy declined — must render nothing",
+    /if \(!active \|\| !matchEnded \|\| !offerAllowed \|\| phase !== "ready" \|\| !media\)/,
+    "an active match, a declined offer, or an ad that is not ready must render nothing",
   );
 });
 
@@ -412,6 +463,13 @@ test("the request is bounded, anonymous and cancellable", () => {
   assert.match(source, /credentials: "omit"/, "the ad request is never authenticated");
   assert.match(source, /cache: "no-store"/);
   assert.match(source, /DEFAULT_TIMEOUT_MS/, "a hung request must time out");
+  const deadlineMs = Number(
+    (source.match(/DEFAULT_TIMEOUT_MS = ([\d_]+)/) ?? [])[1]?.replace(/_/g, ""),
+  );
+  assert.ok(
+    deadlineMs > 0 && deadlineMs <= 4_000,
+    "the deadline is the player's worst-case wait to leave, so it must stay short",
+  );
   assert.match(source, /AbortController/);
   assert.match(source, /MAX_RESPONSE_BYTES/, "the response is size-capped");
   assert.ok(!/eval\(|new Function/.test(source + code(PARSER)), "no dynamic code execution");
@@ -471,12 +529,9 @@ test("the surface is mounted only by the wired result screens", () => {
   // Tic-Tac-Toe pilot is a settled PvP duel; Barrier Blitz practice is a
   // finished single-player board. Every other game still has NO ad.
   assert.deepEqual(
-    [...offenders].sort(),
-    [
-      "src/app/casino/barrier-blitz/play-ai/PageClient.tsx",
-      "src/app/casino/tic-tac-toe/[matchId]/PageClient.tsx",
-    ],
-    "only a finished match may offer the ad",
+    offenders,
+    [],
+    "no page mounts the player directly: every finished match uses the shared slot",
   );
   assert.ok(
     !/PostMatchVideoAd/.test(read("src/app/layout.tsx")),

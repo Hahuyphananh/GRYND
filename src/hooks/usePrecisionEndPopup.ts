@@ -8,7 +8,8 @@
 //   * the server-authoritative payout request (`/api/precision/finish-match`,
 //     idempotent server-side so BOTH clients can safely ask),
 //   * the replay / return-to-lobby handshake over the dedicated end-replay
-//     room, including the auto-return when the replay window lapses.
+//     room. Leaving is the player's choice now: the popup's Return to Lobby
+//     button, or the two-player Replay agreement.
 //
 // The popup is opened from the POLLED state (`phase === "finished"`), not from
 // a socket event, because polling is the canonical source of truth for the
@@ -26,7 +27,7 @@ import {
 } from "../lib/precision/multiplayer";
 import { SOCKET_NAMESPACE } from "../lib/precision/constants";
 import { PVP_WINNER_SHARE } from "../lib/games/economy";
-import { getReplaySecondsLeft, makeInitialEndPopupState } from "../lib/precision/utils";
+import { makeInitialEndPopupState } from "../lib/precision/utils";
 import type {
   PrecisionEndPopupState,
   PrecisionPlayer,
@@ -56,6 +57,12 @@ export interface UsePrecisionEndPopupResult {
   requestReplay: () => void;
   /** Tell the opponent we are heading back to the lobby. */
   requestReturn: () => void;
+  /**
+   * Leave the popup for the lobby NOW: the shared result panel's CTA. It uses
+   * the same handshake as `requestReturn` (so the opponent's replay option is
+   * withdrawn), then navigates. Leaving is always the player's choice.
+   */
+  returnToLobby: () => void;
 }
 
 export function usePrecisionEndPopup({
@@ -109,19 +116,6 @@ export function usePrecisionEndPopup({
       router.push("/casino/precision");
     }
   }, [replayRequested, opponentReplayRequested, router]);
-
-  // ── Auto-return when the replay window closes ─────────────────────────
-  useEffect(() => {
-    if (!endPopup) return;
-    const deadline = endPopup.openedAt + getReplaySecondsLeft(endPopup.openedAt) * 1000;
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) {
-      router.push("/casino/precision");
-      return;
-    }
-    const id = setTimeout(() => router.push("/casino/precision"), remaining);
-    return () => clearTimeout(id);
-  }, [endPopup, router]);
 
   // ── Auto-open the result popup when the server ends the match ──────
   // The match goes to `phase: "finished"` server-side once either seat hits
@@ -240,6 +234,11 @@ export function usePrecisionEndPopup({
     });
   }, [socket, matchId]);
 
+  const returnToLobby = useCallback(() => {
+    requestReturn();
+    router.push("/casino/precision");
+  }, [requestReturn, router]);
+
   return {
     endPopup,
     setEndPopup,
@@ -248,5 +247,6 @@ export function usePrecisionEndPopup({
     returnChosen,
     requestReplay,
     requestReturn,
+    returnToLobby,
   };
 }

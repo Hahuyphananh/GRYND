@@ -750,18 +750,10 @@ export default function DominoesMatchPage() {
             iconKey: opponentIdentity?.iconKey ?? null,
             profileFrame: opponentIdentity?.profileFrame ?? null,
           }}
+          // Two rows only: the outcome is the chip above, the final score is
+          // the sides comparison, and the tile counts moved into Match Details.
+          // Six rows made this panel taller than a phone screen.
           summary={[
-            {
-              label: t("games.dominoes.result_label"),
-              value:
-                outcome === "win"
-                  ? t("games.dominoes.result_win")
-                  : outcome === "draw"
-                    ? t("games.dominoes.result_draw")
-                    : outcome === "loss"
-                      ? t("games.dominoes.result_loss")
-                      : "—",
-            },
             {
               label: t("games.dominoes.final_score_label"),
               value: t("games.dominoes.final_score_value", {
@@ -773,6 +765,18 @@ export default function DominoesMatchPage() {
             {
               label: t("games.dominoes.rounds_played"),
               value: String(scoreboard.round),
+            },
+            {
+              label: t("games.dominoes.actions_played"),
+              value: String(Number(match?.ply ?? 0)),
+            },
+          ]}
+          onReturnToLobby={() => router.push(LOBBY_PATH)}
+          details={[
+            { label: t("games.dominoes.match_id"), value: String(matchId) },
+            {
+              label: t("games.dominoes.reason"),
+              value: reasonText(outcome),
             },
             {
               label: t("games.dominoes.your_tiles_left"),
@@ -791,17 +795,6 @@ export default function DominoesMatchPage() {
                   : "games.dominoes.tiles_count",
                 { count: Number(match?.opponentTileCount ?? 0) },
               ),
-            },
-            {
-              label: t("games.dominoes.actions_played"),
-              value: String(Number(match?.ply ?? 0)),
-            },
-          ]}
-          details={[
-            { label: t("games.dominoes.match_id"), value: String(matchId) },
-            {
-              label: t("games.dominoes.reason"),
-              value: reasonText(outcome),
             },
             ...moves.map((row) => ({
               label: t("games.dominoes.action_n", { n: Number(row.ply ?? 0) + 1 }),

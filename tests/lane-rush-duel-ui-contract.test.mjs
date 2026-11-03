@@ -253,9 +253,9 @@ test("win, loss and draw are presented from the server's seat-based verdict", ()
   assert.ok(page.includes("exact dead heat"), "an exact draw is named");
   assert.ok(page.includes("Resignation"), "a resignation is named");
   assert.ok(page.includes("sides: ["), "both finals scores are shown");
-  // The lobby CTA is a game link, never the forbidden "Return to Lobby" exit.
-  assert.ok(page.includes('secondaryAction: { label: "Back to Lane Rush"'));
-  assert.ok(!page.includes("onReturnToLobby"));
+  // The lobby CTA is the shared panel's own exit, labelled for every game.
+  assert.ok(page.includes("onReturnToLobby: () => {"));
+  assert.ok(!page.includes("Back to Lane Rush"));
 });
 
 test("the client never offers a removed mechanic", () => {

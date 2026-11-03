@@ -1650,7 +1650,7 @@ export default function MiniGolfMatchPage() {
               headline={`${match.player1HoleWins} — ${match.player2HoleWins} on holes`}
               subline={`Total strokes ${totals.player1} — ${totals.player2} across ${match.holes?.length ?? 0} holes.`}
               gameName="Mini Golf"
-              onReturnToLobby={Boolean(match?.isAi) ? () => router.push("/casino/mini-golf") : null}
+              onReturnToLobby={() => router.push("/casino/mini-golf")}
               gameKey="mini-golf"
               opponent={{
                 name: opponentName,

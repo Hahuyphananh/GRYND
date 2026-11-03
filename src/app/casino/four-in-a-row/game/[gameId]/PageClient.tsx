@@ -760,6 +760,7 @@ export default function ConnectFourGamePage() {
         headline={headline}
         subline={subline}
         gameName="Four in a Row"
+        onReturnToLobby={() => router.push("/casino/four-in-a-row")}
         opponent={{ name: oppName, iconKey: oppIconKey || null, profileFrame: oppProfileFrame || null }}
         summary={[
           {

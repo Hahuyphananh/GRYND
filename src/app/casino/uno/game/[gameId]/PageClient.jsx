@@ -91,6 +91,12 @@ export default function UnoGamePage() {
   }, [firstVisitRules]);
   const [isResigning, setIsResigning] = useState(false);
   const [endPopup, setEndPopup] = useState(null);
+  // The post-match video is offered when the player LEAVES the end panel: the
+  // chosen action is parked and released once the slot settles (played, closed
+  // or unavailable). Nothing plays before that click.
+  const [adPending, setAdPending] = useState(false);
+  const adAttemptedRef = useRef(false);
+  const pendingExitRef = useRef(null);
   const [replayRequested, setReplayRequested] = useState(false);
   const [opponentReplayRequested, setOpponentReplayRequested] = useState(false);
   const [returnChosen, setReturnChosen] = useState(false);
@@ -132,6 +138,9 @@ export default function UnoGamePage() {
   const prevIsPlayerTurnRef = useRef(null);
   const replayClientIdRef = useRef(Math.random().toString(36).slice(2));
   const openEndPopup = (result, reason = "finished") => {
+    adAttemptedRef.current = false;
+    pendingExitRef.current = null;
+    setAdPending(false);
     setEndPopup({
       result,
       reason,
@@ -174,6 +183,56 @@ export default function UnoGamePage() {
       });
     }
   };
+  // Leave the result for the lobby. In an online match the other player is
+  // told too, so their replay option is withdrawn (the window timeout path
+  // already does this when the countdown ends).
+  const chooseReturn = () => {
+    if (returnChosen) return;
+    setReturnChosen(true);
+    if (gameMode === "online" && socket && game?.id) {
+      socket.emit("room_event", {
+        roomId: `uno:end:${game.id}`,
+        event: "uno:end:return",
+        payload: { gameId: game.id, clientId: replayClientIdRef.current },
+      });
+    }
+    returnToLobby();
+  };
+
+  // The ad gate for this panel's exits: one offer per match, the action parked
+  // until the surface settles. A declared "no ad" releases it immediately.
+  const guardExit = (action) => () => {
+    if (adPending) return;
+    if (!adAttemptedRef.current) {
+      adAttemptedRef.current = true;
+      pendingExitRef.current = action;
+      setAdPending(true);
+      return;
+    }
+    action();
+  };
+
+  const handleAdSettled = () => {
+    setAdPending(false);
+    const next = pendingExitRef.current;
+    pendingExitRef.current = null;
+    if (next) next();
+  };
+
+  // The browser back gesture is an exit too: with the end panel open it goes
+  // through the same ad gate as the panel's own buttons, so the post-match
+  // video cannot be dodged with the system back button.
+  useEffect(() => {
+    if (!endPopup) return;
+    const onPopState = () => {
+      window.history.pushState(null, "", window.location.href);
+      if (adPending) return;
+      guardExit(chooseReturn)();
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [endPopup, adPending, guardExit, chooseReturn]);
+
   useGamePresence({
     gameKey: "uno",
     gameId: Number(game?.id),
@@ -771,6 +830,9 @@ export default function UnoGamePage() {
     setTurnHistory([]);
     setHistoryIndex(null);
     setEndPopup(null);
+    adAttemptedRef.current = false;
+    pendingExitRef.current = null;
+    setAdPending(false);
     setReplayRequested(false);
     setOpponentReplayRequested(false);
     setReturnChosen(false);
@@ -813,22 +875,21 @@ export default function UnoGamePage() {
     );
   const modalsNode = (
     <>
-      {/* Post-match video. A full-page overlay that appears only once THIS game
-          is over (`endPopup`), asks the server whether an offer is allowed and
-          never delays the result. UNO uses its own end panel rather than the
-          shared result screen, so it mounts the shared slot itself — PvP and
-          vs-AI alike. */}
-      {endPopup && <PostMatchAdSlot />}
+      {/* Post-match video. Offered when the player picks Replay / Return to
+          Lobby in the end panel — the action is held until the slot settles —
+          never over the result itself. UNO mounts the shared slot itself
+          because its end panel is its own. */}
+      {endPopup && adPending && <PostMatchAdSlot onDone={handleAdSettled} />}
       <AnimatePresence>
         {endPopup && (
           <motion.div
             {...gameOverModal.backdrop}
-            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
+            className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-black/80 px-4 py-4 backdrop-blur-sm"
             key={"uno-end-popup"}
           >
             <motion.div
               {...gameOverModal.panel}
-              className={`relative w-full max-w-md overflow-hidden rounded-3xl border-4 p-6 text-center shadow-2xl ${endPopup.result === "win" ? "border-amber-400 bg-gradient-to-b from-[#1a3a1a] to-[#0d2b0d] shadow-[0_0_60px_rgba(251,191,36,0.4)]" : "border-red-500 bg-gradient-to-b from-[#3a1a1a] to-[#2b0d0d] shadow-[0_0_60px_rgba(239,68,68,0.3)]"}`}
+              className={`relative max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-3xl border-4 p-6 text-center shadow-2xl ${endPopup.result === "win" ? "border-amber-400 bg-gradient-to-b from-[#1a3a1a] to-[#0d2b0d] shadow-[0_0_60px_rgba(251,191,36,0.4)]" : "border-red-500 bg-gradient-to-b from-[#3a1a1a] to-[#2b0d0d] shadow-[0_0_60px_rgba(239,68,68,0.3)]"}`}
               key={"uno-end-panel"}
             >
               <motion.div
@@ -978,7 +1039,7 @@ export default function UnoGamePage() {
                 className="mt-6 grid gap-3 sm:grid-cols-2"
               >
                 <button
-                  onClick={requestReplay}
+                  onClick={guardExit(requestReplay)}
                   disabled={returnChosen || replayRequested}
                   className="rounded-xl border border-fuchsia-300/70 bg-fuchsia-500/20 px-4 py-3 font-black text-fuchsia-100 shadow-[0_0_18px_rgba(217,70,239,0.25)] disabled:cursor-not-allowed disabled:opacity-40"
                 >
@@ -987,6 +1048,13 @@ export default function UnoGamePage() {
                     : gameMode === "online"
                       ? "Replay"
                       : "RUN IT BACK"}
+                </button>
+                <button
+                  onClick={guardExit(chooseReturn)}
+                  disabled={returnChosen}
+                  className="rounded-xl border border-white/20 bg-white/10 px-4 py-3 font-black text-white/80 transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Return to Lobby
                 </button>
               </motion.div>
               {gameMode === "online" && (

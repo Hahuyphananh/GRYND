@@ -875,6 +875,9 @@ export default function BarricadeMatchPage() {
             }
             subline={resultReasonLabel(match?.resultReason, outcome)}
             gameName="Barrier Blitz"
+            onReturnToLobby={() => {
+              window.location.href = "/casino/barrier-blitz";
+            }}
             durationSeconds={durationSeconds(match?.startedAt, match?.endedAt)}
             opponent={{
               name: opponentName,

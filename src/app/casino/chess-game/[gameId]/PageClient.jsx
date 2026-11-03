@@ -1396,6 +1396,9 @@ export default function ChessGamePage() {
         outcome={outcome}
         headline={headline}
         gameName="Chess Arena"
+        onReturnToLobby={() => {
+          window.location.href = "/casino/chess";
+        }}
         opponent={{ name: oppName }}
         summary={[
           {

@@ -137,8 +137,8 @@ export function usePrecisionMatchState({
       // Audit fix: skip the HTTP refresh once the match is terminally
       // finished. After `phase === "finished"` the canonical state never
       // changes — polling would just burn a request every tick. The
-      // end-popup's auto-return effect navigates away once the replay window
-      // expires, so there's no UX benefit to continued polling.
+      // result popup no longer navigates on its own (its CTA does), but the
+      // canonical state is final, so there's no UX benefit to continued polling.
       if (paused) return;
       if (stateRef.current?.phase === "finished") return;
       const sentAtDeviceMs = Date.now();

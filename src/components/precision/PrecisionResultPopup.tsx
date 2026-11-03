@@ -31,6 +31,9 @@ interface PrecisionResultPopupProps {
   replayRequested: boolean;
   opponentReplayRequested: boolean;
   returnChosen: boolean;
+  /** Leave the result for the lobby (the shared panel's own CTA). Waiting the
+   *  replay window out no longer navigates on its own. */
+  onReturnToLobby: () => void;
   /** Frozen rockets from the DECIDING round, shown in the main flow when the
    *  match ended on a decided round. Absent for a resignation / forfeit (no
    *  decided round to show). Both lanes carry server-stamped elapseds. */
@@ -46,6 +49,7 @@ function PrecisionResultPopupImpl({
   replayRequested,
   opponentReplayRequested,
   returnChosen,
+  onReturnToLobby,
   race = null,
 }: PrecisionResultPopupProps) {
   const { t } = useTranslation();
@@ -139,6 +143,7 @@ function PrecisionResultPopupImpl({
           </p>
         </div>
       }
+      onReturnToLobby={onReturnToLobby}
       playAgain={{
         label: replayRequested
           ? t("games.precision.replay_requested")

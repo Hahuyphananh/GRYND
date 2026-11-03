@@ -37,7 +37,6 @@ import {
 } from "../../../../components/game/PracticePause";
 import { usePracticePause } from "../../../../hooks/usePracticePause";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
-import PostMatchVideoAd from "../../../../components/ads/PostMatchVideoAd";
 import AiDifficultyPicker from "../../../../components/lobby/AiDifficultyPicker";
 import BarricadeBoard from "../../../../components/barricade/BarricadeBoard";
 import useMySeatIdentity from "../../../../hooks/useMySeatIdentity";
@@ -409,17 +408,6 @@ export default function BarricadePracticePage({
       ]}
       playAgain={{ label: "New game", onClick: () => resetGame() }}
       onReturnToLobby={() => router.push(LOBBY_PATH)}
-      postMatchAd={
-        // Practice still earns an offer: the result is final and the player is
-        // on the result screen. A PRO member gets nothing (`adFree`), and the
-        // build-time public switches are applied inside the component.
-        <PostMatchVideoAd
-          matchEnded={matchOver}
-          matchId={adMatchId}
-          enabled={postMatchAdsEnabled}
-          adFree={postMatchAdFree}
-        />
-      }
     />
   );
 

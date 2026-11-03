@@ -361,6 +361,9 @@ export default function RPSPvpGamePage() {
         headline={headline}
         subline={subline}
         gameName="Rock Paper Scissors"
+        onReturnToLobby={() => {
+          window.location.href = "/casino/rps";
+        }}
         opponent={{
           name: opponentName || "Opponent",
           iconKey: opponentIconKey,

@@ -30,8 +30,14 @@ import {
   type VastLinearAd,
 } from "./parse";
 
-/** Fetch deadline. A slow ad must never hold the surface open. */
-const DEFAULT_TIMEOUT_MS = 8_000;
+/**
+ * Fetch deadline. The tag is requested when the player chooses to leave the
+ * result, and the surface draws nothing until a creative is ready, so this
+ * deadline IS the worst-case delay on their navigation. Kept short for that
+ * reason: a tag that cannot answer in four seconds is treated as "no ad" and
+ * the player's exit runs.
+ */
+const DEFAULT_TIMEOUT_MS = 4_000;
 
 /** Hard cap on the response body, mirroring the parser's own limit. */
 const MAX_RESPONSE_BYTES = 512 * 1024;

@@ -53,7 +53,6 @@ import SeatAvatar from "../../../../components/game/SeatAvatar";
 import MatchLoading from "../../../../components/game/MatchLoading";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
-import PostMatchVideoAd from "../../../../components/ads/PostMatchVideoAd";
 import ReportModal from "../../../../components/ReportModal";
 import GameSessionHost from "../../../../components/GameSessionHost";
 import {
@@ -1013,24 +1012,8 @@ export default function TicTacToeMatchPage({
               ply: match.ply,
             })}
             gameName="Ultimate Tic-Tac-Toe"
-            onReturnToLobby={Boolean(match.isAi) ? () => router.push("/casino/tic-tac-toe") : null}
+            onReturnToLobby={() => router.push("/casino/tic-tac-toe")}
             gameKey="tic-tac-toe"
-            postMatchAd={
-              // Pilot surface. Only a SETTLED PvP duel offers the optional ad:
-              // `finished` is the server snapshot's own status (never a local
-              // guess), and a vs-AI practice match has nothing to monetise and
-              // is excluded outright. The component's own frequency policy
-              // makes this a once-per-match offer, so a refresh or a remount of
-              // this page cannot bring the card back.
-              match.isAi ? null : (
-                <PostMatchVideoAd
-                  matchEnded={finished}
-                  matchId={String(matchId ?? "")}
-                  enabled={postMatchAdsEnabled}
-                  adFree={postMatchAdFree}
-                />
-              )
-            }
             durationSeconds={durationSeconds(match.startedAt, match.endedAt)}
             opponent={{
               name: opponentName,

@@ -883,7 +883,7 @@ test("lifecycle: forfeit and cancel reuse the existing shared conventions", () =
   assert.doesNotMatch(page, /playAgain=/);
   assert.match(
     page,
-    /onReturnToLobby=\{Boolean\(match\.isAi\) \? \(\) => router\.push\("\/casino\/tic-tac-toe"\) : null\}/,
+    /onReturnToLobby=\{\(\) => router\.push\("\/casino\/tic-tac-toe"\)\}/,
     "the practice popup carries the lobby exit, and only practice",
   );
   assert.match(page, /data-testid="forfeit-button"/);

@@ -1466,7 +1466,7 @@ export default function DiceFlushPage() {
             open
             outcome={gameOverType === "win" ? "win" : "loss"}
             gameName="Dice Flush"
-            onReturnToLobby={opponent?.isAI ? resetToLobby : null}
+            onReturnToLobby={resetToLobby}
             headline={
               gameOverType === "win"
                 ? "You took the match with the higher total"

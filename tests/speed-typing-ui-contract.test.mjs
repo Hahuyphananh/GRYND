@@ -93,7 +93,7 @@ test("ui: rematch and return-to-queue reuse the existing platform patterns", () 
   // re-entry and its way out is Resign, while a bot race returns to the lobby.
   assert.match(
     page,
-    /onReturnToLobby=\{opponentIsAi \? \(\) => router\.push\("\/casino\/speed-typing"\) : null\}/,
+    /onReturnToLobby=\{\(\) => router\.push\("\/casino\/speed-typing"\)\}/,
   );
   assert.doesNotMatch(page, /Return to the Speed Typing lobby/);
   assert.match(page, /data-testid="speed-typing-resign"/);

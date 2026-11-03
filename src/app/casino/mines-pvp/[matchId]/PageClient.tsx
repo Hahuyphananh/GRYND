@@ -1098,7 +1098,7 @@ export default function MinesPvpMatchPage({
         outcome={outcome}
         headline={headline}
         gameName="Mines Duel"
-        onReturnToLobby={isAi ? () => router.push("/casino/mines-pvp") : null}
+        onReturnToLobby={() => router.push("/casino/mines-pvp")}
         opponent={
           isAi
             ? { name: "GRYND AI", isAi: true }

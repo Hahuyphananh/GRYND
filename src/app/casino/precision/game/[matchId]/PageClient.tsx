@@ -321,6 +321,7 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
     opponentReplayRequested,
     returnChosen,
     requestReplay,
+    returnToLobby,
   } = usePrecisionEndPopup({
     matchId,
     socket,
@@ -810,6 +811,7 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
           replayRequested={replayRequested}
           opponentReplayRequested={opponentReplayRequested}
           returnChosen={returnChosen}
+          onReturnToLobby={returnToLobby}
           // Frozen rockets of the last decided round. `lastRoundStops` survives
           // the match-finish transition, so the board can show where both
           // rockets ultimately landed; null when no round was ever decided.

@@ -1117,7 +1117,7 @@ export default function MemoryGridMatchPage({
         headline={headline}
         subline={subline}
         gameName="Memory Grid"
-        onReturnToLobby={isAi ? () => router.push("/casino/memory-grid") : null}
+        onReturnToLobby={() => router.push("/casino/memory-grid")}
         opponent={{ name: oppName, iconKey: oppIconKey, profileFrame: oppProfileFrame, isAi }}
         durationSeconds={durationSeconds}
         summary={[

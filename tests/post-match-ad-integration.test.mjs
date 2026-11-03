@@ -276,7 +276,9 @@ test("the kill switch also works at runtime, without a rebuild", () => {
 
   const pilot = read(PILOT);
   assert.match(pilot, /postMatchAdsEnabled\?: boolean/);
-  assert.match(pilot, /enabled=\{postMatchAdsEnabled\}/, "the page's flag reaches the ad");
+  // The page no longer mounts the player: the shared slot resolves the surface
+  // through /api/ads/post-match, which folds in the same runtime kill switch.
+  assert.doesNotMatch(pilot, /PostMatchVideoAd/);
 
   const ad = code(read(AD_COMPONENT));
   assert.match(ad, /const active = enabled && !adFree && postMatchAdsEnabled\(\)/);
@@ -322,10 +324,8 @@ test("the pilot's completion signal is the server's own match status", () => {
     "completion must come from the authoritative snapshot, never a local guess",
   );
   assert.match(source, /<PvpResultScreen\s+open=\{finished\}/);
-  assert.match(source, /postMatchAd=\{/);
-  assert.match(source, /match\.isAi \? null : \(/, "AI/practice matches are excluded");
-  assert.match(source, /matchEnded=\{finished\}/);
-  assert.match(source, /matchId=\{String\(matchId \?\? ""\)\}/);
+  assert.doesNotMatch(source, /PostMatchVideoAd/, "the shared slot owns the player");
+  assert.doesNotMatch(source, /postMatchAd=\{/, "no per-page ad node");
 });
 
 test("the ad is offered on the way out, never over the result", () => {
@@ -354,13 +354,21 @@ test("the ad is offered on the way out, never over the result", () => {
   // opens it, so the same condition has to gate the attempt.
   assert.match(
     source,
-    /if \(!compact && !adAttemptedRef\.current\) \{/,
-    "only one ad attempt per result, and none in compact mode",
+    /if \(!compact && !postMatchAd && !adAttemptedRef\.current\) \{/,
+    "one attempt per result: none in compact mode, and none when the game supplies its own node",
   );
   assert.match(
     source,
     /const handleAdSettled = useCallback\(\(\) => \{/,
     "the held action runs when the ad settles",
+  );
+
+  // The only exit that was not a button — an href secondary action — now goes
+  // through the same gate, so a link cannot skip the video.
+  assert.match(
+    source,
+    /event\.preventDefault\(\);\s*guard\("secondary", \(\) => router\.push\(secondaryAction\.href\)\)\(\)/,
+    "the secondary link offers the ad too",
   );
 });
 
@@ -377,8 +385,8 @@ test("nothing is offered before a match is definitively over", () => {
   assert.match(source, /markPostMatchAdDismissed\(matchId\)/);
   assert.match(
     source,
-    /if \(!active \|\| !matchEnded \|\| !offerAllowed \|\| phase === "closed"\)/,
-    "the ad cannot render without completion and an allowed offer",
+    /if \(!active \|\| !matchEnded \|\| !offerAllowed \|\| phase !== "ready" \|\| !media\)/,
+    "the ad cannot render without completion, an allowed offer and a ready creative",
   );
 });
 
@@ -409,12 +417,9 @@ test("only finished-match screens are wired, and nothing is global", () => {
   walk("src/app");
 
   assert.deepEqual(
-    [...offenders].sort(),
-    [
-      "src/app/casino/barrier-blitz/play-ai/PageClient.tsx",
-      PILOT,
-    ].sort(),
-    "only a finished-match screen may mount the ad",
+    offenders,
+    [],
+    "no page mounts the player directly: every finished match uses the shared slot",
   );
   assert.ok(
     !/PostMatchVideoAd/.test(read("src/app/layout.tsx")),
@@ -437,6 +442,19 @@ test("no lobby, browsing page or matchmaking surface mounts the ad", () => {
 });
 
 // ── GRYND PRO: `ad_free` covers the post-match video ──────────────────────
+
+test("UNO's own end panel offers the video on its exit buttons, not on open", () => {
+  const uno = read("src/app/casino/uno/game/[gameId]/PageClient.jsx");
+  assert.match(uno, /const \[adPending, setAdPending\] = useState\(false\)/);
+  assert.match(
+    uno,
+    /\{endPopup && adPending && <PostMatchAdSlot onDone=\{handleAdSettled\} \/>\}/,
+    "the slot only mounts once the player picks an exit",
+  );
+  assert.match(uno, /onClick=\{guardExit\(requestReplay\)\}/);
+  assert.match(uno, /onClick=\{guardExit\(chooseReturn\)\}/);
+  assert.doesNotMatch(uno, /\{endPopup && <PostMatchAdSlot/);
+});
 
 test("a GRYND PRO member is never offered the post-match video", () => {
   // The membership answer is resolved on the server (the same authoritative
@@ -465,12 +483,9 @@ test("every surface that mounts the ad passes the server's membership answer", (
 
 test("practice results can offer the ad without a server match row", () => {
   const practice = read("src/app/casino/barrier-blitz/play-ai/PageClient.tsx");
-  assert.match(practice, /import PostMatchVideoAd from/);
-  assert.match(practice, /postMatchAd=\{/);
-  assert.match(practice, /matchEnded=\{matchOver\}/);
-  // The id is minted once per FINISHED game, so the cadence counts it once.
-  assert.match(practice, /setAdMatchId\(`barricade-ai-\$/);
-  assert.match(practice, /adFree=\{postMatchAdFree\}/);
+  assert.doesNotMatch(practice, /PostMatchVideoAd/, "the shared slot owns the player");
+  assert.doesNotMatch(practice, /postMatchAd=\{/, "no per-page ad node");
+  assert.match(practice, /<PvpResultScreen/, "the result hands over to the shared screen");
 });
 
 // ── The shared slot: every game gets the surface from ONE wiring point ────
@@ -501,7 +516,7 @@ test("bespoke result panels mount the shared slot themselves", () => {
   const panels = [
     {
       file: "src/app/casino/uno/game/[gameId]/PageClient.jsx",
-      gate: /\{endPopup && <PostMatchAdSlot \/>\}/,
+      gate: /\{endPopup && adPending && <PostMatchAdSlot onDone=\{handleAdSettled\} \/>\}/,
     },
   ];
 
@@ -566,4 +581,94 @@ test("settlement, Elo, escrow, rules and matchmaking code are untouched", () => 
       `${file} must stay ad-agnostic`,
     );
   }
+});
+
+// ── The exit action can never be held hostage by the ad ────────────────────
+
+test("an unavailable post-match ad never blocks the exit action it interrupted", () => {
+  const result = code(read(RESULT_SCREEN));
+  const slot = code(read("src/components/ads/PostMatchAdSlot.tsx"));
+  const ad = code(read(AD_COMPONENT));
+
+  // 1. The control the player pressed is PARKED, not dropped, and the surface is
+  //    attempted at most once per result.
+  assert.match(result, /pendingExitRef\.current = fn;/, "the exit action must be kept");
+  assert.match(result, /setAdOpen\(true\);/, "the ad is opened in its place");
+  assert.match(
+    result,
+    /if \(!compact && !postMatchAd && !adAttemptedRef\.current\) \{/,
+    "one attempt per result, none in compact mode, and none when the game supplies its own node",
+  );
+
+  // 2. The one handler that releases it does not care whether an ad played: the
+  //    slot reports `false` for every "nothing will play" answer, and that path
+  //    runs the player's action all the same.
+  const released = result.match(
+    /const handleAdSettled = useCallback\(\(\) => \{[\s\S]*?\}, \[\]\);/,
+  );
+  assert.ok(released, "the result screen needs exactly one settle handler");
+  assert.match(released[0], /const next = pendingExitRef\.current;/);
+  assert.match(released[0], /next\(\);/, "the parked action must actually run");
+  assert.ok(
+    !/played/.test(released[0]),
+    "the handler must not branch on whether the ad played",
+  );
+
+  // 3. The slot answers on BOTH paths, exactly once, whichever finishes first.
+  assert.match(slot, /onDismiss=\{\(\) => settle\(true\)\}/);
+  assert.match(slot, /onNoOffer=\{\(\) => settle\(false\)\}/);
+  assert.match(slot, /if \(settledRef\.current\) return;/);
+
+  // 4. Every way the player can end up without an ad — a missing tag, a failed
+  //    request, no fill, or a creative the browser cannot play — removes the
+  //    surface and reports `onNoOffer`, so the parked action is always released.
+  assert.equal(
+    (ad.match(/removeNow\(\);/g) ?? []).length,
+    4,
+    "every no-ad path must report back, not leave the action waiting",
+  );
+  assert.match(ad, /fireTracking\(ad\.errorUrls, "405"\);\s*removeNow\(\);/);
+  assert.match(ad, /onNoOfferRef\.current\?\.\(\);/);
+
+  // 5. And nothing is left on screen that the player would have to dismiss
+  //    before their action could run.
+  assert.doesNotMatch(ad, /No advertisement is available right now\./);
+  assert.doesNotMatch(ad, /This video could not be played\./);
+  assert.doesNotMatch(ad, /Loading advertisement…/);
+
+  // 6. While the tag is being fetched the pressed control shows a lightweight
+  //    inline spinner, and no other action can fire a second exit.
+  assert.match(result, /const \[pendingExit, setPendingExit\] = useState\(null\)/);
+  assert.match(result, /disabled=\{navigating \|\| Boolean\(pendingExit\)\}/);
+  assert.match(result, /pendingExit === "playAgain" && \(/);
+  assert.match(result, /animate-spin rounded-full border-2 border-current/);
+});
+
+
+// ── The system back gesture is an exit too ────────────────────────────────
+
+test("the browser back gesture is held for the post-match video", () => {
+  const result = code(read(RESULT_SCREEN));
+  const uno = code(read("src/app/casino/uno/game/[gameId]/PageClient.jsx"));
+
+  // Shared panel: while the result is open, the pop is cancelled and its leave
+  // action goes through the same guard as every button.
+  assert.match(result, /window\.addEventListener\("popstate", onPopState\)/);
+  assert.match(
+    result,
+    /window\.history\.pushState\(null, "", window\.location\.href\)/,
+    "the popped entry must be restored so the player stays on the result",
+  );
+  assert.match(result, /guardRef\.current\("back", backExitRef\.current\)\(\)/);
+  assert.match(
+    result,
+    /if \(navigating \|\| adOpenRef\.current \|\| pendingExitRef\.current\) return;/,
+    "back while an exit is already in flight must not start a second exit",
+  );
+
+  // UNO's own end panel gates the gesture through guardExit too.
+  assert.match(uno, /window\.addEventListener\("popstate", onPopState\)/);
+  assert.match(uno, /if \(!endPopup\) return;/);
+  assert.match(uno, /if \(adPending\) return;/);
+  assert.match(uno, /guardExit\(chooseReturn\)\(\)/);
 });

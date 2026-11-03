@@ -76,13 +76,13 @@ const PRACTICE_PAGES = new Set([
   "src/app/casino/tower-arena/game/[matchId]/PageClient.tsx",
 ]);
 
-// Lane Rush already offers the lobby as a game link ("Back to Lane Rush"), and
-// Precision's round-popup game auto-returns when the replay window closes —
-// neither grows a second CTA.
-const NO_CTA_BY_DESIGN = new Set([
-  "src/app/casino/lane-runner/[matchId]/PageClient.jsx",
-  "src/app/casino/precision/game/[matchId]/PageClient.tsx",
-]);
+// UNO draws its OWN end panel (the shared screen is never mounted there), so
+// its lobby button is the literal label below instead of the shared CTA.
+const NO_CTA_BY_DESIGN = new Set(["src/app/casino/uno/game/[gameId]/PageClient.jsx"]);
+
+// Pages whose finished-match panel is bespoke: they carry the lobby label
+// themselves instead of the shared panel's CTA.
+const OWN_RESULT_PANEL = new Set(["src/app/casino/uno/game/[gameId]/PageClient.jsx"]);
 
 // Anything that ends the match on the player's own terms. Every game spells it
 // Resign or Forfeit; both are accepted.
@@ -91,36 +91,30 @@ const RESIGN_RE = /(resign|forfeit|surrender)/i;
 for (const [game, path] of Object.entries(MATCH_PAGES)) {
   const source = read(path);
 
-  test(`${game}: a live match has no lobby exit`, () => {
-    // No lobby button of any kind is drawn by the page itself.
-    assert.doesNotMatch(source, LOBBY_BUTTON_RE);
-    // The shared panel's CTA is only ever gated on a practice match.
-    for (const call of source.match(/onReturnToLobby=\{[\s\S]*?\}/g) ?? []) {
-      assert.match(
-        call,
-        AI_GATE_RE,
-        `${game}: onReturnToLobby must be gated on the match's own AI flag`,
-      );
-    }
-  });
-
-  test(`${game}: the result popup carries the practice lobby exit`, () => {
-    if (PRACTICE_PAGES.has(path)) {
-      // Dice Flush's lobby is the page's own table list, so it resets in place
-      // instead of routing; every other practice page navigates to its lobby.
-      assert.match(
-        source,
-        /onReturnToLobby=\{[\s\S]*?(router\.push\(|resetToLobby)[\s\S]*?\}/,
-        "a practice match must be able to return to the lobby from its result popup",
-      );
+  test(`${game}: a live match has no lobby button in its own chrome`, () => {
+    if (OWN_RESULT_PANEL.has(path)) {
+      // Its own end panel IS the finished state, so the label lives there —
+      // exactly once, and nowhere in the live chrome.
+      assert.equal((source.match(/Return to Lobby/g) ?? []).length, 1);
       return;
     }
+    // The page body still draws no lobby control of its own: the exit lives on
+    // the result popup, which only exists once the match is over.
+    assert.doesNotMatch(source, LOBBY_BUTTON_RE);
+  });
+
+  test(`${game}: the result popup carries the Return to Lobby exit`, () => {
     if (NO_CTA_BY_DESIGN.has(path)) {
       assert.doesNotMatch(source, /onReturnToLobby/);
       return;
     }
-    // PvP-only page: no CTA, ever.
-    assert.doesNotMatch(source, /onReturnToLobby/);
+    // PvP and practice alike: a finished match always offers the way back to
+    // the lobby. The exit is the shared panel's CTA, never an in-page button.
+    assert.match(
+      source,
+      /onReturnToLobby(=|\s*:)/,
+      "every win / loss / draw popup must offer the lobby exit",
+    );
   });
 
   test(`${game}: the player can resign or forfeit`, () => {

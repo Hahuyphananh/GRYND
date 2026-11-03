@@ -2308,7 +2308,7 @@ function ResultModal({
             : "You survived the duel."
       }
       gameName="Keno Duel"
-      onReturnToLobby={match.isAi ? () => router.push("/casino/keno") : null}
+      onReturnToLobby={() => router.push("/casino/keno")}
       opponent={
         match.isAi
           ? { name: "GRYND AI", isAi: true }

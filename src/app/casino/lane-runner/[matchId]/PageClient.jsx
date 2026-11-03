@@ -1028,7 +1028,9 @@ export default function LaneRushMatchPage({ params }) {
           },
           ...(isBotMatch ? [{ label: "Mode", value: "Practice — no stake, no rating" }] : []),
         ],
-        secondaryAction: { label: "Back to Lane Rush", href: "/casino/lane-runner" },
+        onReturnToLobby: () => {
+          window.location.href = "/casino/lane-runner";
+        },
       }
     : null;
 

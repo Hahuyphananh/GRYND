@@ -43,6 +43,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   IconChevronDown,
@@ -233,6 +234,7 @@ export default function PvpResultScreen({
 }) {
   const shouldReduce = useReducedMotion();
   const { t } = useTranslation();
+  const router = useRouter();
   // Decided ONCE, from synchronous props only. The result screen's numbers are
   // still free to arrive (or animate) afterwards without ever re-deciding: a
   // reaction that appeared and then withdrew as a fetch landed would be worse
@@ -262,6 +264,11 @@ export default function PvpResultScreen({
   const adOpenRef = useRef(false);
   const adAttemptedRef = useRef(false);
   const pendingExitRef = useRef(null);
+  // Which exit control started the ad attempt. The ad surface draws nothing
+  // while the tag is fetched, so the pressed button is what tells the player
+  // their choice registered: it carries a small inline spinner until the ad
+  // settles (played, skipped, or unavailable).
+  const [pendingExit, setPendingExit] = useState(null);
 
   const style = OUTCOME_STYLES[outcome] || OUTCOME_STYLES.draw;
   const OutcomeIcon = style.icon;
@@ -311,12 +318,17 @@ export default function PvpResultScreen({
   // cadence declines or the tag fails, the slot answers `onDone` immediately and
   // the player moves on. A declined ad must never leave a button that looks
   // clickable and does nothing.
-  const guard = (fn) => () => {
-    if (navigating || typeof fn !== "function") return;
-    if (!compact && !adAttemptedRef.current) {
+  const guard = (key, fn) => () => {
+    if (navigating || pendingExit || typeof fn !== "function") return;
+    // A game that supplies its own node renders the ad itself (no shared slot
+    // is mounted), so parking the exit action here would leave the buttons
+    // waiting for a settle that can never arrive. Those screens navigate at
+    // once; everyone else meets the shared slot.
+    if (!compact && !postMatchAd && !adAttemptedRef.current) {
       adAttemptedRef.current = true;
       pendingExitRef.current = fn;
       adOpenRef.current = true;
+      setPendingExit(key);
       setAdOpen(true);
       return;
     }
@@ -330,12 +342,48 @@ export default function PvpResultScreen({
     if (!adOpenRef.current) return;
     adOpenRef.current = false;
     setAdOpen(false);
+    setPendingExit(null);
     const next = pendingExitRef.current;
     pendingExitRef.current = null;
     if (!next) return;
     setNavigating(true);
     next();
   }, []);
+
+  // Latest guard, for the listener registered below: the back gesture hands
+  // its exit to the same gate as the buttons.
+  const guardRef = useRef(guard);
+  guardRef.current = guard;
+
+  // THE BROWSER BACK GESTURE IS AN EXIT TOO. A finished match can be left with
+  // the system back button or gesture, which never reaches a click handler;
+  // without this, that one way out would walk straight past the post-match
+  // video. While the result is on screen the pop is cancelled and the leave
+  // action goes through the guard, so back is held for the ad exactly like
+  // "Return to Lobby". A result with no leave action at all (replay only) is
+  // left alone: back already goes where it went before.
+  const backExitRef = useRef(null);
+  backExitRef.current = onReturnToLobby
+    ? onReturnToLobby
+    : secondaryAction
+      ? secondaryAction.href
+        ? () => router.push(secondaryAction.href)
+        : secondaryAction.onClick
+      : onDismiss;
+
+  useEffect(() => {
+    if (!open || compact || !backExitRef.current) return;
+    const onPopState = () => {
+      // The entry was already popped: put the result back first, so the
+      // player stays on it while the ad runs, and when there is none.
+      window.history.pushState(null, "", window.location.href);
+      // A second back while an exit is already in flight is not a second exit.
+      if (navigating || adOpenRef.current || pendingExitRef.current) return;
+      guardRef.current("back", backExitRef.current)();
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [open, compact, navigating]);
 
   // Live progression — real numbers from the platform's own endpoints,
   // fetched only when the game didn't pass its own values. Fire-and-forget:
@@ -487,10 +535,15 @@ export default function PvpResultScreen({
           role="dialog"
           aria-modal="true"
           aria-label={`Match result — ${style.label}`}
-          className={`fixed inset-0 z-[95] flex items-center justify-center overflow-y-auto bg-black/80 px-3 py-6 backdrop-blur-sm sm:px-4 ${
+          className={`fixed inset-0 z-[95] overflow-y-auto bg-black/80 px-3 py-4 backdrop-blur-sm sm:px-4 ${
             compact ? "!px-2 !py-3" : ""
           }`}
         >
+          {/* Centred by this wrapper, NOT by the scroll container: a result
+              taller than the viewport (Dominoes carries its full scoreboard
+              plus the score comparison) then scrolls from its first pixel
+              instead of being centred into a clipped top. */}
+          <div className="flex min-h-full items-center justify-center">
           <motion.div
             {...withReducedMotion(shouldReduce, {
               ...panelMotion,
@@ -902,20 +955,28 @@ export default function PvpResultScreen({
                 {playAgain && (
                   <button
                     type="button"
-                    onClick={guard(playAgain.onClick)}
-                    disabled={navigating}
-                    className="w-full rounded-xl border-b-4 border-[#0087a8] bg-[#00e5ff] px-5 py-3 text-sm font-extrabold text-[#001a2e] transition hover:brightness-110 disabled:opacity-60"
+                    onClick={guard("playAgain", playAgain.onClick)}
+                    disabled={navigating || Boolean(pendingExit)}
+                    aria-busy={pendingExit === "playAgain"}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border-b-4 border-[#0087a8] bg-[#00e5ff] px-5 py-3 text-sm font-extrabold text-[#001a2e] transition hover:brightness-110 disabled:opacity-60"
                   >
+                    {pendingExit === "playAgain" && (
+                      <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    )}
                     {playAgain.label || "RUN IT BACK"}
                   </button>
                 )}
                 {rematch && (
                   <button
                     type="button"
-                    onClick={guard(rematch.onClick)}
-                    disabled={navigating}
-                    className="w-full rounded-xl border border-[#00e5ff]/50 bg-[#00e5ff]/10 px-5 py-3 text-sm font-bold text-[#67f9ff] transition hover:bg-[#00e5ff]/20 disabled:opacity-60"
+                    onClick={guard("rematch", rematch.onClick)}
+                    disabled={navigating || Boolean(pendingExit)}
+                    aria-busy={pendingExit === "rematch"}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#00e5ff]/50 bg-[#00e5ff]/10 px-5 py-3 text-sm font-bold text-[#67f9ff] transition hover:bg-[#00e5ff]/20 disabled:opacity-60"
                   >
+                    {pendingExit === "rematch" && (
+                      <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    )}
                     {rematch.label || "Rematch"}
                   </button>
                 )}
@@ -925,6 +986,12 @@ export default function PvpResultScreen({
                 {secondaryAction && secondaryAction.href && (
                   <Link
                     href={secondaryAction.href}
+                    // Same gate as the buttons: this exit offers the video
+                    // first and the route runs once the surface settles.
+                    onClick={(event) => {
+                      event.preventDefault();
+                      guard("secondary", () => router.push(secondaryAction.href))();
+                    }}
                     className="flex w-full items-center justify-center rounded-xl border border-[#00e5ff]/50 bg-[#00e5ff]/10 px-5 py-3 text-sm font-bold text-[#67f9ff] transition hover:bg-[#00e5ff]/20"
                   >
                     {secondaryAction.label || "Continue"}
@@ -933,29 +1000,42 @@ export default function PvpResultScreen({
                 {secondaryAction && !secondaryAction.href && (
                   <button
                     type="button"
-                    onClick={guard(secondaryAction.onClick)}
-                    disabled={navigating}
-                    className="w-full rounded-xl border border-[#00e5ff]/50 bg-[#00e5ff]/10 px-5 py-3 text-sm font-bold text-[#67f9ff] transition hover:bg-[#00e5ff]/20 disabled:opacity-60"
+                    onClick={guard("secondary", secondaryAction.onClick)}
+                    disabled={navigating || Boolean(pendingExit)}
+                    aria-busy={pendingExit === "secondary"}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#00e5ff]/50 bg-[#00e5ff]/10 px-5 py-3 text-sm font-bold text-[#67f9ff] transition hover:bg-[#00e5ff]/20 disabled:opacity-60"
                   >
+                    {pendingExit === "secondary" && (
+                      <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    )}
                     {secondaryAction.label || "Continue"}
                   </button>
                 )}
                 {onReturnToLobby && (
                   <button
                     type="button"
-                    onClick={guard(onReturnToLobby)}
-                    disabled={navigating}
-                    className="w-full rounded-xl border border-white/15 bg-white/5 px-5 py-3 text-sm font-semibold text-white/80 transition hover:bg-white/10 disabled:opacity-60"
+                    onClick={guard("lobby", onReturnToLobby)}
+                    disabled={navigating || Boolean(pendingExit)}
+                    aria-busy={pendingExit === "lobby"}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-5 py-3 text-sm font-semibold text-white/80 transition hover:bg-white/10 disabled:opacity-60"
                   >
+                    {pendingExit === "lobby" && (
+                      <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    )}
                     Return to Lobby
                   </button>
                 )}
                 {onDismiss && (
                   <button
                     type="button"
-                    onClick={guard(onDismiss)}
-                    className="w-full rounded-xl border border-white/10 px-5 py-2.5 text-xs font-semibold text-white/50 transition hover:bg-white/5 hover:text-white/80"
+                    onClick={guard("dismiss", onDismiss)}
+                    disabled={navigating || Boolean(pendingExit)}
+                    aria-busy={pendingExit === "dismiss"}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 px-5 py-2.5 text-xs font-semibold text-white/50 transition hover:bg-white/5 hover:text-white/80 disabled:opacity-60"
                   >
+                    {pendingExit === "dismiss" && (
+                      <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    )}
                     {dismissLabel}
                   </button>
                 )}
@@ -1020,6 +1100,7 @@ export default function PvpResultScreen({
               </div>
             )}
           </motion.div>
+          </div>
         </motion.div>
       )}
     </AnimatePresence>
