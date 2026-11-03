@@ -257,6 +257,21 @@ export const GAME_CATALOG = [
     href: "/games/hillstrike",
     tags: ["pvp", "strategy", "skill", "competitive"],
   },
+
+  // Battleship is a 1v1 duel on two hidden 10x10 boards: you place your own
+  // fleet, then both seats lock one shot per round and the server resolves them
+  // together. Reading the board, probing for the enemy hulls and deciding where
+  // a hit is worth pursuing is planning (strategy), and the outcome turns on
+  // that reading rather than on anything rolled during play (skill — the fleets
+  // are placed, not dealt, so it is never `chance`). It is a rated ladder duel
+  // (`competitive`; the id is registered in RATED_GAMES) with free AI practice.
+  // Turn-based with short rounds but no reflex test, so not `fast_paced`, and a
+  // planned duel rather than a pick-up game, so not `casual`.
+  {
+    id: "battleship",
+    href: "/games/battleship",
+    tags: ["pvp", "strategy", "skill", "competitive"],
+  },
 ];
 
 /** The default (featured) order — exactly the lobby's order. Returned for any

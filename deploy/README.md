@@ -665,6 +665,7 @@ UTC schedules**, so removing Vercel removes nothing that production still needs.
 | `grynd-job-weekly-reset.timer` | `/api/jobs/weekly-reset` | `00:00` Monday | Zeroes weekly counters **and emails every active player** |
 | `grynd-job-retention.timer` | `/api/jobs/retention` | `04:00` daily | Deletes terminal matches older than 45 days + stale presence rows |
 | `grynd-job-rank-snapshots.timer` | `/api/jobs/rank-snapshots` | `21:00` daily | Records each ranked player's Overall Elo position for the day |
+| `grynd-job-battleship-timeouts.timer` | `/api/jobs/battleship-timeouts` | every minute | Settles overdue Battleship placement and attack deadlines: one random untried timeout attack, forfeit at two consecutive timeouts, draw when both time out, cancel when both fleets are missing |
 
 Installed files:
 

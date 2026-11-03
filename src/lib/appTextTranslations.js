@@ -696,6 +696,8 @@ export const APP_TEXT_TRANSLATIONS = {
       dominoes_desc: "A free, rated 1v1 block-dominoes duel. Seven tiles each, one shared chain and fifteen seconds a turn — match either open end, draw when nothing fits, and empty your hand first.",
       hillstrike_name: "Hillstrike",
       hillstrike_desc: "A free, rated 1v1 tank-artillery duel on a mirrored battlefield. 100 HP each, a drawn opening seat and turns of three actions — fire, drive or build cover — resolved by the server, with damage falling off over flight distance.",
+      battleship_name: "Battleship",
+      battleship_desc: "A free, rated 1v1 naval duel on two hidden 10x10 boards. Place five ships, lock one simultaneous shot each round, and sink the enemy fleet first.",
       // ── Dominoes: lobby, board and match chrome ──────────────────────
       // One block for the whole game so a translator sees the vocabulary
       // together ("end", "pile", "pips", "round"). The values here are the
@@ -2738,6 +2740,8 @@ export const APP_TEXT_TRANSLATIONS = {
       dominoes_desc: "Un duel de dominos 1v1 gratuit et noté. Sept tuiles chacun, une chaîne commune et quinze secondes par tour — posez sur l'une des deux extrémités, piochez quand rien ne correspond, et videz votre main le premier.",
       hillstrike_name: "Hillstrike",
       hillstrike_desc: "Un duel d'artillerie de chars 1v1 gratuit et noté sur un champ de bataille en miroir. 100 PV chacun, un tour d'ouverture tiré au sort et des tours de trois actions — tirer, manœuvrer ou bâtir un abri — résolues par le serveur, les dégâts diminuant avec la distance de vol.",
+      battleship_name: "Battleship",
+      battleship_desc: "Un duel naval 1v1 gratuit et noté sur deux grilles 10x10 cachées. Placez cinq navires, verrouillez un tir simultané à chaque tour et coulez la flotte adverse le premier.",
       dominoes: {
         lobby_subtitle:
           "Dominos en bloc 1v1 gratuits : posez sur l'une des extrémités ouvertes, piochez quand vous ne pouvez pas, et videz votre main avant votre adversaire.",
@@ -4523,6 +4527,8 @@ export const APP_TEXT_TRANSLATIONS = {
       dominoes_desc: "Un duelo de dominó 1v1 gratuito y puntuado. Siete fichas cada uno, una cadena compartida y quince segundos por turno — juega en cualquiera de los dos extremos, roba cuando nada encaje y vacía tu mano primero.",
       hillstrike_name: "Hillstrike",
       hillstrike_desc: "Un duelo de artillería de tanques 1v1 gratuito y puntuado en un campo de batalla simétrico. 100 PV cada uno, un turno inicial sorteado y turnos de tres acciones — disparar, maniobrar o construir cobertura — resueltas por el servidor, con daño que baja según la distancia de vuelo.",
+      battleship_name: "Battleship",
+      battleship_desc: "Un duelo naval 1v1 gratuito y puntuado en dos tableros 10x10 ocultos. Coloca cinco barcos, fija un disparo simultáneo cada ronda y hunde la flota enemiga primero.",
       dominoes: {
         lobby_subtitle:
           "Dominó en bloque 1v1 gratis: juega en cualquiera de los extremos abiertos, roba cuando no puedas y vacía tu mano antes que tu rival.",

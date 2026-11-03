@@ -4717,3 +4717,132 @@ export const dominoesMoves = pgTable(
     plyIdx: unique("dominoes_moves_ply_unique").on(table.matchId, table.ply),
   }),
 );
+
+// ── BATTLESHIP — ranked 1v1 naval duel ──────────────────────────────────
+//
+// FREE TO PLAY: there is deliberately no stake, escrow, rake or payout column.
+// (src/lib/battleship/serverStore.ts has no wager call and no stake argument.)
+//
+// PRIVATE FLEETS do not live here. They are seat-keyed rows in
+// `battleship_fleets`, and the store reads that table ONLY for the viewer's own
+// seat — so an opponent's layout is never one SELECT away from a response.
+//
+// `phase` is server-owned (waiting | placement | combat | finished | cancelled).
+// Player ids are plain Clerk-id strings with no FK to `users`, matching every
+// other PvP table.
+export const battleshipMatches = pgTable(
+  "battleship_matches",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    player1Id: varchar("player1_id", { length: 255 }).notNull(),
+    // Nullable so a `waiting` row doubles as the open lobby.
+    player2Id: varchar("player2_id", { length: 255 }),
+    /** waiting | placement | combat | finished | cancelled */
+    phase: varchar("phase", { length: 12 }).notNull().default("waiting"),
+    // PRACTICE vs the built-in bot. Always unrated: no settlement path reads
+    // this flag, and matchmaking filters on an empty player2 seat — which an AI
+    // row never has, so a practice match can never enter the ranked pool.
+    isAi: boolean("is_ai").notNull().default(false),
+    aiDifficulty: varchar("ai_difficulty", { length: 8 }),
+    // 0 while the match is waiting; 1+ once combat opens.
+    round: integer("round").notNull().default(0),
+    // Derived from the two fleet rows, never from a client.
+    player1Ready: boolean("player1_ready").notNull().default(false),
+    player2Ready: boolean("player2_ready").notNull().default(false),
+    winnerId: varchar("winner_id", { length: 255 }),
+    /** player1 | player2 | draw — written only by the combat resolver. */
+    result: varchar("result", { length: 16 }),
+    // Server-owned clocks: placement opens with the second seat, the round
+    // clock opens when both fleets are confirmed.
+    placementDeadline: timestamp("placement_deadline"),
+    roundDeadline: timestamp("round_deadline"),
+    player1Timeouts: integer("player1_timeouts").notNull().default(0),
+    player2Timeouts: integer("player2_timeouts").notNull().default(0),
+    // CONSECUTIVE automatic attacks, reset to 0 by any manual attack. Separate
+    // from the totals above (which are lifetime counts): the forfeit rule is
+    // "two in a row" and must not be expressible by a running total.
+    player1ConsecutiveTimeouts: integer("player1_consecutive_timeouts")
+      .notNull()
+      .default(0),
+    player2ConsecutiveTimeouts: integer("player2_consecutive_timeouts")
+      .notNull()
+      .default(0),
+    startedAt: timestamp("started_at"),
+    endedAt: timestamp("ended_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    phaseIdx: index("battleship_matches_phase_idx").on(table.phase, table.createdAt),
+    player1Idx: index("battleship_matches_player1_idx").on(table.player1Id, table.createdAt),
+    player2Idx: index("battleship_matches_player2_idx").on(table.player2Id, table.createdAt),
+  }),
+);
+
+// PRIVATE fleet layouts. One row per seat, ever (unique match_id + seat).
+//
+// This table is the server-protected structure for hidden information: the
+// store filters every read by the viewer's OWN seat, so the opponent's fleet
+// is never selected, let alone returned. `placement` is the canonical
+// serializeFleet text, re-validated by deserializeFleet on read.
+export const battleshipFleets = pgTable(
+  "battleship_fleets",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    matchId: uuid("match_id")
+      .notNull()
+      .references(() => battleshipMatches.id, { onDelete: "cascade" }),
+    /** player1 | player2 — the seat that owns this fleet. */
+    seat: varchar("seat", { length: 8 }).notNull(),
+    placement: text("placement").notNull(),
+    confirmedAt: timestamp("confirmed_at").notNull().defaultNow(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // One fleet per seat: a storage-level guarantee, not an application check.
+    seatUnique: unique("battleship_fleets_match_seat_unique").on(table.matchId, table.seat),
+  }),
+);
+
+// Append-only attack log. EMPTY until the combat phase ships: the columns are
+// prepared here so the round state has one place to live.
+//
+// (match_id, round, seat) is unique — one attack per seat per round;
+// (match_id, seat, coordinate) is unique — a coordinate may be attacked once
+// per seat. `result` is NULL until the simultaneous resolution writes it.
+export const battleshipAttacks = pgTable(
+  "battleship_attacks",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    matchId: uuid("match_id")
+      .notNull()
+      .references(() => battleshipMatches.id, { onDelete: "cascade" }),
+    round: integer("round").notNull(),
+    seat: varchar("seat", { length: 8 }).notNull(),
+    /** Canonical printed coordinate ("B7"). */
+    coordinate: varchar("coordinate", { length: 4 }).notNull(),
+    /** miss | hit | sunk — NULL until the round resolves. */
+    result: varchar("result", { length: 8 }),
+    /** The ship this shot sank, set only when result is `sunk`. */
+    ship: varchar("ship", { length: 16 }),
+    // true when the server chose this cell after the 15 s deadline. A timeout
+    // attack is a normal row for every uniqueness rule; this flag is what keeps
+    // it distinguishable from a manual shot forever.
+    automatic: boolean("automatic").notNull().default(false),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    roundSeatUnique: unique("battleship_attacks_round_seat_unique").on(
+      table.matchId,
+      table.round,
+      table.seat,
+    ),
+    coordinateUnique: unique("battleship_attacks_coordinate_unique").on(
+      table.matchId,
+      table.seat,
+      table.coordinate,
+    ),
+    matchIdx: index("battleship_attacks_match_idx").on(table.matchId, table.round),
+  }),
+);

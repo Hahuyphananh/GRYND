@@ -117,10 +117,11 @@ test("discovery: the catalog and the lobby agree on Dominoes' position", () => {
     "the catalog must mirror the lobby's featured order — it IS the engine's fallback",
   );
   // New games are APPENDED, so Dominoes sits after everything that shipped
-  // before it. It is no longer LAST — Hillstrike shipped after it — but it still
-  // holds the second-newest slot, immediately ahead of the older games.
-  assert.equal(lobbyIds[lobbyIds.length - 1], "hillstrike", "the newest game is appended last");
-  assert.equal(lobbyIds[lobbyIds.length - 2], KEY, "Dominoes is the one before it");
+  // before it. It is no longer LAST — Hillstrike shipped after it and Battleship
+  // after that — but it still holds a newest-third slot, ahead of the older games.
+  assert.equal(lobbyIds[lobbyIds.length - 1], "battleship", "the newest game is appended last");
+  assert.equal(lobbyIds[lobbyIds.length - 2], "hillstrike", "Hillstrike is before it");
+  assert.equal(lobbyIds[lobbyIds.length - 3], KEY, "Dominoes is the one before that");
   assert.ok(lobbyIds.indexOf(KEY) > lobbyIds.indexOf("barricade"));
   // …and it leads the "Newest" sort, because it is the newest game.
   const newestBlock = strip(read(LOBBY)).slice(
@@ -129,8 +130,9 @@ test("discovery: the catalog and the lobby agree on Dominoes' position", () => {
   const newestKeys = [
     ...newestBlock.slice(0, newestBlock.indexOf("];")).matchAll(/"([a-z0-9-]+)"/g),
   ].map((m) => m[1]);
-  assert.equal(newestKeys[0], "hillstrike", "the newest game leads the recency list");
-  assert.equal(newestKeys[1], KEY, "Dominoes is second-newest");
+  assert.equal(newestKeys[0], "battleship", "the newest game leads the recency list");
+  assert.equal(newestKeys[1], "hillstrike", "Hillstrike is next");
+  assert.equal(newestKeys[2], KEY, "Dominoes is third-newest");
 });
 
 test("discovery: the lobby card links to the game, records plays and is 1v1", () => {

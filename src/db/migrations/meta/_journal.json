@@ -1520,6 +1520,27 @@
       "when": 1800000079000,
       "tag": "0235_dominoes_rounds",
       "breakpoints": true
+    },
+    {
+      "idx": 217,
+      "version": "7",
+      "when": 1800000080000,
+      "tag": "0236_battleship",
+      "breakpoints": true
+    },
+    {
+      "idx": 218,
+      "version": "7",
+      "when": 1800000081000,
+      "tag": "0237_battleship_timeouts",
+      "breakpoints": true
+    },
+    {
+      "idx": 219,
+      "version": "7",
+      "when": 1800000082000,
+      "tag": "0238_battleship_ai",
+      "breakpoints": true
     }
   ]
 }

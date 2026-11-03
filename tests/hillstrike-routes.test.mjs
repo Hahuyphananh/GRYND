@@ -516,7 +516,10 @@ test("surface: migrations 0229/0230/0231 are the newest, idempotent, unique and 
   assert.ok(hpMigration, "0230 must be the HP / action-log migration");
   const clockMigration = migrations.find((name) => name.startsWith("0231_"));
   assert.ok(clockMigration, "0231 must be the match clock migration");
-  assert.equal(Math.max(...numbers), 231, "0231 is the newest migration");
+  // Hillstrike's migrations are still present; Battleship (0236–0238) shipped
+  // after them, so the newest-migration snapshot tracks that game now.
+  assert.equal(Math.max(...numbers), 238, "0238 is the newest migration");
+  assert.ok(numbers.includes(231), "Hillstrike's clock migration is still present");
 
   // The clock migration adds the duration the lobby is opened with, and nothing
   // else: one integer column with a default, added idempotently.

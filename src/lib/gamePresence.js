@@ -132,6 +132,11 @@ export const GAME_LABEL_TO_GAME_ID = {
   // public page slug, the rating/trophy key and the presence key are one
   // string).
   hillstrike: "hillstrike",
+  // Battleship is registered the same way: the lobby, the match screen and the
+  // public page all use the canonical id `battleship`, which is also its rating
+  // and trophy key. Practice shares the same page (there is no separate
+  // `battleship-ai` route), so there is no alternate label to collapse.
+  battleship: "battleship",
 
   // ── alternate labels on the same game (AI / other play surface) ────
   "chess-ai": "chess",

@@ -1093,6 +1093,10 @@ test("RATED_GAMES: the registry is the audited 1v1/server-authoritative set", ()
     // `winner`, inside the transaction that claimed the match), so it joins the
     // rated set on the same terms as the other turn-based duels.
     "hillstrike",
+    // Battleship settles from its own server-resolved engine state (the winner
+    // or draw derived by `resolveRound` inside the row-locked transaction), so
+    // it joins the rated set on the same terms. AI practice rows never settle.
+    "battleship",
   ]);
   assert.equal(isRatedGame("chess"), true);
   // The formerly-excluded games are now REGISTERED, so every listed game is a

@@ -1,0 +1,16 @@
+[Unit]
+Description=GRYND Battleship timeout sweep (every minute; overdue placement + attack deadlines)
+
+[Timer]
+# Every minute, because the combat clock is 15 seconds. AccuracySec keeps the
+# unit from being coalesced with other timers into a slot that is too late for a
+# 15 s round; Persistent=true catches up after a reboot or a missed run, and the
+# sweep itself is idempotent and deadline-driven, so a burst of catch-up runs is
+# harmless.
+OnCalendar=*-*-* *:*:00
+AccuracySec=10s
+Persistent=true
+Unit=grynd-job@battleship-timeouts.service
+
+[Install]
+WantedBy=timers.target

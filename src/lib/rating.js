@@ -222,6 +222,24 @@ export const RATED_GAMES = Object.freeze([
   // browser-only game with no match row — so AI games can never move Elo or
   // trophies.
   "hillstrike",
+  // Battleship is server-authoritative end to end: both fleets are validated
+  // from the stored placements, the attack log is the server's own rows, and the
+  // round outcome, the winner and the draw are derived by the shared engine
+  // (`resolveRound`) inside a row-locked transaction — the only player-authored
+  // value is a coordinate. So the result is fully server-derivable and the game
+  // is ratable on the same terms as Dominoes and Hillstrike.
+  //
+  // The key is the game's ONE id: the lobby `leaderboardKey`, the public page
+  // slug, the presence id, the Quick Queue key and the key
+  // src/lib/battleship/serverStore.ts settles with are all `battleship`.
+  // Registering it HERE is what makes that settlement take effect (trophies
+  // reuse this list as TROPHY_GAMES, so there is no second registry).
+  //
+  // Only completed online human-vs-human matches reach the writer: settlement
+  // runs inside the transaction that finalises the match, and the helper bails
+  // out for `is_ai` rows, a lobby with no second seat, and a cancelled match —
+  // so practice against the bot can never move Elo or trophies.
+  "battleship",
 ]);
 
 /** Display labels for the rating boards (mirrors the lobby names). */
@@ -249,6 +267,7 @@ export const RATING_GAME_LABELS = Object.freeze({
   "barricade": "Barrier Blitz",
   dominoes: "Dominoes",
   hillstrike: "Hillstrike",
+  battleship: "Battleship",
 });
 
 /** True when a game key is eligible for Elo. */

@@ -76,6 +76,9 @@ export async function GET(request: Request) {
   await purge("precision_matches", FINISHED);
   await purge("speed_typing_matches", FINISHED);
   await purge("tic_tac_toe_matches", FINISHED);
+  // Cascades to battleship_fleets and battleship_attacks. `phase` is the game's
+  // own vocabulary, so a cancelled lobby (never played) is purged with the rest.
+  await purge("battleship_matches", ["finished", "cancelled"]);
   await purge("solitaire_duel_matches", FINISHED);
   await purge("sudoku_duel_matches", FINISHED);
   await purge("odds_games", FINISHED);

@@ -43,6 +43,7 @@ import type { MetadataRoute } from "next";
 import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
 import {
   barricadeMatches,
+  battleshipMatches,
   dominoesMatches,
   chessGames,
   dotsAndBoxesGames,
@@ -101,6 +102,7 @@ const GAME_FRESHNESS: Record<string, { table: AnyPgTable; column: AnyPgColumn }>
   barricade: { table: barricadeMatches, column: barricadeMatches.createdAt },
   dominoes: { table: dominoesMatches, column: dominoesMatches.createdAt },
   hillstrike: { table: hillstrikeMatches, column: hillstrikeMatches.createdAt },
+  battleship: { table: battleshipMatches, column: battleshipMatches.createdAt },
   keno: { table: kenoPvpMatches, column: kenoPvpMatches.createdAt },
   rps: { table: rpsPvpGames, column: rpsPvpGames.createdAt },
   chess: { table: chessGames, column: chessGames.createdAt },

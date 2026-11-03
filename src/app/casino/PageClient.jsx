@@ -651,6 +651,20 @@ function MainComponent({ adSlot = null, hilltopSlot = null, gameIndex = [], disc
       nameKey: "games.hillstrike_name",
       pvpMode: "1v1",
     },
+    {
+      // Battleship carries ONE id everywhere — the lobby key, the public page
+      // slug, the rating/trophy key, the Quick Queue key and the presence id are
+      // all `battleship`. It is free to play: a Battleship match has no stake
+      // column and no wager picker, and practice against the AI is unrated.
+      name: "Battleship",
+      href: "/games/battleship",
+      leaderboardKey: "battleship",
+      playsKey: "battleship",
+      image: GAME_CARD_ART["battleship"],
+      descriptionKey: "games.battleship_desc",
+      nameKey: "games.battleship_name",
+      pvpMode: "1v1",
+    },
   ];
 
   // "For You": the engine ranks canonical game ids (leaderboardKey), so map
@@ -681,8 +695,10 @@ function MainComponent({ adSlot = null, hilltopSlot = null, gameIndex = [], disc
   );
 
   const newestOrder = [
-    // Newest first: Hillstrike shipped last, so it leads the recency list (and
+    // Newest first: Battleship shipped last, so it leads the recency list (and
     // takes the last "NEW" badge slot from the game it displaced).
+    "battleship",
+    // Hillstrike was the game before it.
     "hillstrike",
     // Dominoes was the game before it.
     "dominoes",

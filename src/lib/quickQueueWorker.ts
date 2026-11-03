@@ -25,6 +25,7 @@ import { createOrJoin as createOrJoinTicTacToeMatch } from "./tic-tac-toe/server
 import { createOrJoin as createOrJoinBarricadeMatch } from "./barricade/serverStore";
 import { createOrJoin as createOrJoinDominoesMatch } from "./dominoes/serverStore";
 import { createOrJoin as createOrJoinHillstrikeMatch } from "./hillstrike/serverStore";
+import { createOrJoin as createOrJoinBattleshipMatch } from "./battleship/serverStore";
 
 export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
   return db.transaction(async (tx) => {
@@ -151,6 +152,10 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
       // second seat is seated by the same `createOrJoin` (see the generic
       // fallback below), so both halves of the pair arrive at the same authority.
       "hillstrike": (userId) => createOrJoinHillstrikeMatch({ userId }),
+      // Battleship is lobby-style and free: both paired seats land on ONE match
+      // id, and the queue's stake is never passed because a Battleship match has
+      // no stake at all (src/lib/battleship/serverStore.ts takes no wager).
+      "battleship": (userId) => createOrJoinBattleshipMatch({ userId }),
     }[pair.candidate.gameKey];
     if (createMatch) {
       let result: any;

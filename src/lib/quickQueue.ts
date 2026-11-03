@@ -29,6 +29,10 @@ export const QUICK_QUEUE_GAME_KEYS = [
   // and it is free to play — a Hillstrike match has no stake column at all, so
   // the queue's normalized stake is never passed to it.
   "hillstrike",
+  // Battleship joins the SAME queue: its `createOrJoin` opens one waiting lobby
+  // and hands the second caller that row, and it is free to play — no stake
+  // column, no escrow, so the queue's normalized stake is never passed to it.
+  "battleship",
 ] as const;
 
 export type QuickQueueGameKey = (typeof QUICK_QUEUE_GAME_KEYS)[number];

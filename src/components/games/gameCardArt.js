@@ -45,6 +45,10 @@ import barricadeArt from "../../images/barricade-card.svg";
 import dominoesArt from "../../images/dominoes-card.svg";
 import hillstrikeArt from "../../images/hillstrike-card.svg";
 import towerArenaArt from "../../images/towersimage.jpg";
+// Battleship's art is the temporary GEOMETRIC illustration (dark navy board,
+// grid, blue ship blocks) — no real ship imagery and no external asset. It is
+// keyed by the landing-page slug like every other card.
+import battleshipArt from "../../images/battleship-card.svg";
 import minesPvpArt from "../../images/minesimage.png";
 import memoryGridArt from "../../images/memorygridimage.png";
 
@@ -72,4 +76,5 @@ export const GAME_CARD_ART = {
   "barrier-blitz": barricadeArt,
   dominoes: dominoesArt,
   hillstrike: hillstrikeArt,
+  battleship: battleshipArt,
 };

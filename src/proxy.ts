@@ -110,6 +110,11 @@ const GAME_ROUTE_PATTERNS = [
   // sends a signed-out visitor to sign-in — while the practice board is entirely
   // client-side and needs no account at all.
   "/casino/hillstrike(.*)",
+  // Battleship's lobby (/casino/battleship) and its free-practice / match
+  // state live on that one page — the lobby is public to READ, while its Play
+  // action and the practice start still require the gates above (practice mints
+  // a guest through its own API route).
+  "/casino/battleship(.*)",
   // /games/* mirrors of the /casino/* routes.
   "/games/uno(.*)",
   "/games/neon-flush(.*)",
@@ -136,6 +141,7 @@ const GAME_ROUTE_PATTERNS = [
   "/games/barrier-blitz(.*)",
   "/games/dominoes(.*)",
   "/games/hillstrike(.*)",
+  "/games/battleship(.*)",
 ] as const;
 
 const isPublicRoute = createRouteMatcher([

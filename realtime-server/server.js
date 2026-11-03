@@ -212,6 +212,9 @@ const crashArenaDisconnectTimers = global.__crashArenaDisconnectTimers;
 // page refresh (a few seconds) AND Socket.IO's auto-reconnect backoff
 // (up to ~40s with the client's 10 attempts / exponential delay).
 const CRASH_ARENA_DISCONNECT_GRACE_MS = 45_000;
+// Battleship's reconnect window, matching src/lib/battleship/timeouts.ts
+// (DISCONNECT_GRACE_SECONDS = 30).
+const BATTLESHIP_DISCONNECT_GRACE_MS = 30_000;
 // Deferred cleanups (player cashed out mid-round and could still win
 // the pot) are re-checked on this cadence until the round settles.
 const CRASH_ARENA_DISCONNECT_RETRY_MS = 15_000;
@@ -1468,6 +1471,49 @@ io.on("connection", (socket) => {
   // This literal is deliberately restated rather than imported: this server is
   // plain CommonJS and cannot load the TypeScript vocabulary in
   // src/lib/hillstrike/rooms.ts. A test pins the two to the same string.
+  // ── Battleship room-participant tracking ────────────────────────
+  // Same pattern as barricade: only a socket that actually joined a match's own
+  // room may relay an invalidation for it, and the id is a uuid. Battleship has
+  // no forfeit route, so a disconnect only drops the entry — the match itself is
+  // resolved by the two round locks, never by presence.
+  //
+  // The literal is restated rather than imported: this server is plain CommonJS
+  // and cannot load the TypeScript vocabulary in src/lib/battleship/rooms.ts.
+  // A test pins the two to the same string.
+  const BATTLESHIP_MATCH_ROOM_PREFIX = "battleship:match:";
+  if (!global.__battleshipRoomParticipants) {
+    global.__battleshipRoomParticipants = new Map();
+  }
+  const battleshipRoomParticipants = global.__battleshipRoomParticipants;
+
+  function trackBattleshipJoin(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(BATTLESHIP_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(BATTLESHIP_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    if (!battleshipRoomParticipants.has(matchId)) {
+      battleshipRoomParticipants.set(matchId, new Set());
+    }
+    battleshipRoomParticipants.get(matchId).add(userId);
+    // A (re)joining socket means the player is present again — cancel any
+    // pending disconnect forfeit for this seat, so a refresh never costs a match.
+    cancelDisconnectGraceTimer(`battleship:${matchId}:${userId}`);
+    logThrottled("battleship:join", "[battleship] participant joined: matchId=", matchId, "userId=", userId);
+  }
+  function trackBattleshipLeave(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(BATTLESHIP_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(BATTLESHIP_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    const set = battleshipRoomParticipants.get(matchId);
+    if (!set) return;
+    set.delete(userId);
+    if (set.size === 0) battleshipRoomParticipants.delete(matchId);
+    logThrottled("battleship:leave", "[battleship] participant left: matchId=", matchId, "userId=", userId);
+  }
+
   const HILLSTRIKE_MATCH_ROOM_PREFIX = "hillstrike:match:";
   if (!global.__hillstrikeRoomParticipants) {
     global.__hillstrikeRoomParticipants = new Map();
@@ -1606,6 +1652,7 @@ io.on("connection", (socket) => {
     trackSolitaireDuelJoin(String(roomId), socket.data.userId);
     trackSudokuDuelJoin(String(roomId), socket.data.userId);
     trackBarricadeJoin(String(roomId), socket.data.userId);
+    trackBattleshipJoin(String(roomId), socket.data.userId);
     trackHillstrikeJoin(String(roomId), socket.data.userId);
     trackDominoesJoin(String(roomId), socket.data.userId);
   });
@@ -1679,6 +1726,7 @@ io.on("connection", (socket) => {
     trackSolitaireDuelLeave(String(roomId), socket.data.userId);
     trackSudokuDuelLeave(String(roomId), socket.data.userId);
     trackBarricadeLeave(String(roomId), socket.data.userId);
+    trackBattleshipLeave(String(roomId), socket.data.userId);
     trackHillstrikeLeave(String(roomId), socket.data.userId);
     trackDominoesLeave(String(roomId), socket.data.userId);
   });
@@ -2539,6 +2587,34 @@ io.on("connection", (socket) => {
     });
   });
 
+  // ── Battleship ready poke ────────────────────────────────────────
+  // A bare "refetch the snapshot" hint, relayed only when the socket is a tracked
+  // participant of THIS match. It carries no coordinate, no result and no fleet.
+  socket.on("battleship:ready", ({ matchId } = {}) => {
+    if (!matchId) return;
+    const matchIdStr = String(matchId);
+    // matchId is a uuid — keep the character set tight so a malformed id can
+    // never build a surprising room name.
+    if (!/^[0-9a-fA-F-]{1,64}$/.test(matchIdStr)) return;
+    const participants = battleshipRoomParticipants.get(matchIdStr);
+    if (!participants || !participants.has(socket.data.userId)) {
+      logThrottled(
+        "battleship:rejectReady",
+        "[battleship] rejecting ready from non-participant: matchId=",
+        matchIdStr,
+        "userId=",
+        socket.data.userId,
+      );
+      return;
+    }
+    const roomId = `${BATTLESHIP_MATCH_ROOM_PREFIX}${matchIdStr}`;
+    socket.to(roomId).emit("lobby:updated", {
+      matchId: matchIdStr,
+      userId: socket.data.userId,
+      sentAt: new Date().toISOString(),
+    });
+  });
+
   socket.on("hillstrike:ready", ({ matchId } = {}) => {
     if (!matchId) return;
     const matchIdStr = String(matchId);
@@ -3122,6 +3198,47 @@ io.on("connection", (socket) => {
           return true; // transient — retry
         }
       });
+    }
+
+    // For Battleship: same pattern as Barricade — a seat absent past the 30 s
+    // grace window forfeits (or an empty lobby is cancelled) via
+    // /api/battleship/disconnect-forfeit. A reconnect inside the window cancels
+    // the timer (see trackBattleshipJoin), so a refresh can never cost a match.
+    const battleshipMatchesForUser = [];
+    for (const [mid, set] of battleshipRoomParticipants.entries()) {
+      if (set.has(socket.data.userId)) battleshipMatchesForUser.push(mid);
+    }
+    for (const mid of battleshipMatchesForUser) {
+      const roomId = `${BATTLESHIP_MATCH_ROOM_PREFIX}${mid}`;
+      if (hasLiveSocketForUser(socket.data.userId, roomId)) continue;
+      const set = battleshipRoomParticipants.get(mid);
+      if (set) {
+        set.delete(socket.data.userId);
+        if (set.size === 0) battleshipRoomParticipants.delete(mid);
+      }
+      scheduleDisconnectGraceTimer(
+        `battleship:${mid}:${socket.data.userId}`,
+        async () => {
+          if (hasLiveSocketForUser(socket.data.userId, roomId)) return false;
+          try {
+            const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
+            const res = await fetch(`${baseUrl}/api/battleship/disconnect-forfeit`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ matchId: mid, token: socket.data.clerkToken }),
+            });
+            const payload = await res.json().catch(() => null);
+            return !(payload && payload.success === true);
+          } catch (err) {
+            console.warn(
+              "[battleship] disconnect forfeit failed:",
+              err && err.message ? err.message : err,
+            );
+            return true; // transient — retry
+          }
+        },
+        { delay: BATTLESHIP_DISCONNECT_GRACE_MS },
+      );
     }
 
     // For Hillstrike: same pattern as Barricade — a duel abandoned past the

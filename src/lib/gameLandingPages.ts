@@ -1727,6 +1727,94 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     ],
     related: ["barrier-blitz", "pool-masters", "tic-tac-toe", "chess"],
   },
+
+  {
+    slug: "battleship",
+    name: "Battleship",
+    headline: "Battleship — Free 1v1 Naval Duel on Two Hidden Boards",
+    category: "Naval Duel",
+    leaderboardKey: "battleship",
+    ogImage: "/images/battleship-card.svg",
+    shortDescription:
+      "A free, rated 1v1 naval duel on two hidden 10×10 boards. Place five ships, lock one simultaneous shot each round, and be the first to sink the enemy fleet.",
+    // Free practice exists and is fully server-side (create-ai, then the
+    // practice routes), but the landing page deliberately declares no
+    // `practiceApi`: that button follows the match id the route answers with to
+    // `/games/<slug>/<id>`, and Battleship's board is a single page that reads
+    // the match from its own state rather than a per-match URL. Linking to a
+    // match path that does not exist would be a broken CTA, so the page points
+    // at the lobby's practice card instead.
+    aiPractice: true,
+    introduction: [
+      "Battleship is a one-on-one duel of hidden information. Each captain commands a fleet on their OWN 10×10 grid; neither board is visible to the other side, and every round both captains lock exactly one shot before either result is revealed.",
+      "It is competitive because nothing about the exchange is decided by luck after placement: both fleets are placed by the players, the server judges every shot against the same pre-round position, and the match turns on how well each captain reads the pattern of hits and misses in front of them.",
+    ],
+    howToPlay: [
+      "Sign in, open the Battleship lobby and choose Ranked PvP — or start a free, unrated practice match against the built-in AI captain. No entry fee is charged in either mode.",
+      "Place your fleet first. The board is 10×10: columns A to J and rows 1 to 10, so every cell has a name like B7 or J10. Drag each of your five ships onto the grid, turning it between horizontal and vertical as needed.",
+      "Both fleets must be confirmed before combat opens. The server validates each placement (inside the board, no overlapping cells, all five ships present) and starts the first round only when both seats are ready.",
+      "Each round you pick one untried cell on the enemy waters and lock it. Your opponent does the same on their own board. Neither of you sees the other's chosen cell or its result while the round is open.",
+      "When both attacks are locked the server resolves them together against the same pre-round state: both shots are judged, both results are revealed at once, and the next round opens on the fresh boards.",
+      "Sink the whole enemy fleet to win. A shot that touches no ship is a miss; one that lands on a ship is a hit; the shot that covers the last remaining cell of a ship is a sunk, and the ship's name is announced to both captains.",
+    ],
+    rules: [
+      "The board is 10×10 — columns A–J, rows 1–10 — and each captain has their own board. An attack is addressed by a single cell; the server owns the round, the result and the winner.",
+      "The fleet is exactly five ships and seventeen cells: Carrier 5, Battleship 4, Cruiser 3, Submarine 3 and Destroyer 2. Ships may touch, orthogonally or diagonally, but they may never share a cell and must stay inside the board.",
+      "Your fleet is private. The server never sends an opponent's ship positions to a client — their board shows only shots that have already been fired, and their ships are listed by identity and sunk state, never by location.",
+      "Combat is simultaneous. Both captains lock one shot per round; a lock is final and hidden, and the round resolves with both shots at once. A player cannot react to the opponent's cell because it is not revealed until the round resolves.",
+      "Each shot is judged against the position BEFORE either shot in that round. Two ships can therefore be sunk in the same round, and if both fleets are destroyed by that exchange the match is a draw.",
+      "Each round has a 15-second clock. If a captain has not locked when it expires the server records one random untried cell as that captain's attack, marks it as a timeout attack, and resolves the round with the opponent's shot. Never an already-attacked cell, and the server — never the browser — chooses it.",
+      "Two consecutive timeout attacks forfeit the match to the opponent. A manual attack resets that streak. If both captains reach the threshold in the same round, the result is a draw.",
+      "Placement has its own 60-second window once both seats are filled. A captain who never confirms a fleet loses the match; if neither fleet is confirmed the match is cancelled, because there is no fleet to invent and nobody to award it to.",
+      "Leaving a live match and not returning within the reconnection grace forfeits it to the opponent. Resigning is resolved the same way. Neither rewrites the board, the round or the attack log.",
+    ],
+    scoring: [
+      "There is no running score. The tally is ships: five enemy ships, seventeen cells, and the first captain to destroy all five wins.",
+      "Hit, miss, sunk. A miss is open water; a hit is a ship cell; a sunk is announced when that shot covers the ship's last remaining cell. The sunk ship's identity becomes public to both captains.",
+      "A completed ranked match moves your Battleship Elo and your Battleship trophy count — a win gains, a loss costs, and a draw is recorded as a draw. Practice against the AI never moves either.",
+    ],
+    strategy: [
+      "Do not fire at random once you have a hit. A hit tells you a ship is adjacent to that cell; probe the four neighbouring cells before you go back to sweeping, or the ship gets away and you spend shots re-finding it.",
+      "Use the sunk announcements. When a ship is announced, stop shooting around its wreck — those cells are resolved — and re-read what the remaining unseen lengths can still be.",
+      "Spread your opening shots across the board instead of clustering them. Five ships occupy only seventeen of a hundred cells, so a tight pattern can miss an entire corner of the map for a dozen rounds.",
+      "Place your own fleet with a plan. Ships may touch, so a neat row of five is legal — and easy to read. Mix orientations, avoid lining every ship up on the same axis, and keep at least one ship out of the lane an opponent naturally sweeps first.",
+      "Track what you have already fired at. The board shows your resolved shots; repeatedly probing a cell you have already tried wastes a round, and every round is one shot you cannot take back.",
+      "Play the clock. The round resolves as soon as both shots are locked, so there is no advantage in holding a shot you are sure about — but there is a real cost to letting the 15-second clock pick a random cell for you, and two of those in a row forfeit the match.",
+    ],
+    competitive:
+      "Battleship tests deduction and risk management under hidden information: reading a sparse pattern of hits and misses, choosing which lead to pursue and which to abandon, and committing one irreversible shot per round while the opponent does the same.",
+    faq: [
+      {
+        q: "How many ships are in a Battleship fleet?",
+        a: "Five: Carrier (5 cells), Battleship (4), Cruiser (3), Submarine (3) and Destroyer (2). That is seventeen occupied cells on your 10×10 board. Ships may touch but never overlap, and the server refuses a fleet that is incomplete, out of bounds or overlapping.",
+      },
+      {
+        q: "Can I see my opponent's ships?",
+        a: "No. Each captain has their own hidden board, and the server never sends the opponent's ship positions to a client. Enemy waters show only the shots you have already resolved — unknown, miss, hit or sunk — and the enemy fleet panel lists ships by identity and sunk state with no locations.",
+      },
+      {
+        q: "What happens if I do not attack in time?",
+        a: "The server records one uniformly random cell you have not fired at yet as your attack, marks it as a timeout attack, and resolves the round with your opponent's shot. Two consecutive timeout attacks forfeit the match; a manual attack resets that streak. If both captains reach two in the same round, the match is a draw.",
+      },
+      {
+        q: "How can both attacks be simultaneous if one player locks first?",
+        a: "Locking is hidden. The first captain's cell and result stay private until the second captain locks; then the server resolves both shots against the same pre-round position and reveals both results together. Neither captain can react to the other's choice in that round.",
+      },
+      {
+        q: "Does AI practice affect my rating or trophies?",
+        a: "No. Practice is free and unrated by construction: AI matches are marked as practice and the ranked settlement only ever runs for a completed online human-vs-human match. Practice cannot change your Battleship Elo, your trophies or your ranked record.",
+      },
+      {
+        q: "Is Battleship free to play?",
+        a: "Yes. Ranked matches and AI practice are both free — there is no entry fee, no wager, no escrow and no payout. A ranked result is rewarded with rating and trophies, never with anything of value.",
+      },
+      {
+        q: "What happens if both fleets are destroyed in the same round?",
+        a: "The match is a draw. Both shots are judged against the pre-round position, so each can finish the other's fleet; the engine records the mutual destruction as a draw rather than inventing a winner.",
+      },
+    ],
+    related: ["dominoes", "hillstrike", "chess", "tic-tac-toe"],
+  },
 ];
 
 /** Slugs that have a public landing page, in catalog order. */
