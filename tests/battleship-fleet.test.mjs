@@ -2,7 +2,7 @@
  * battleship-fleet.test.mjs
  *
  * Fleet DEALING and SERIALIZATION: random placement must always produce a legal
- * 17-cell fleet, must be deterministic under an injected random source, and the
+ * 20-cell fleet, must be deterministic under an injected random source, and the
  * canonical text form must round-trip — while rejecting anything tampered with.
  *
  * Run:  node --import tsx --test tests/battleship-fleet.test.mjs
@@ -41,13 +41,13 @@ function mulberry32(seed) {
   };
 }
 
-test("a generated fleet is always legal and uses exactly 17 cells", () => {
+test("a generated fleet is always legal and uses exactly 20 cells", () => {
   for (let seed = 1; seed <= 50; seed += 1) {
     const fleet = generateRandomFleet(mulberry32(seed));
     const verdict = validateFleet(fleet);
     assert.ok(verdict.ok, `seed ${seed}: ${verdict.message}`);
 
-    assert.equal(fleet.ships.length, 5, `seed ${seed}`);
+    assert.equal(fleet.ships.length, 6, `seed ${seed}`);
     assert.equal(
       Object.values(verdict.cells).reduce((sum, cells) => sum + cells.length, 0),
       FLEET_CELL_COUNT,
@@ -95,7 +95,7 @@ test("a fleet serializes to one canonical form and round-trips", () => {
   assert.equal(serializeFleet(restored), text);
 
   // Lower-case coordinates are accepted, but the canonical form is upper-case.
-  const lowerCaseCell = text.replace(/:([a-j])(\d{1,2}):/i, (_, column, row) => `:${column.toLowerCase()}${row}:`);
+  const lowerCaseCell = text.replace(/:([a-n])(\d{1,2}):/i, (_, column, row) => `:${column.toLowerCase()}${row}:`);
   assert.deepEqual(deserializeFleet(lowerCaseCell), fleet);
 });
 
@@ -106,13 +106,14 @@ test("every hand-placed fleet serializes and restores", () => {
       { ship: "battleship", orientation: "horizontal", x: 2, y: 2 },
       { ship: "cruiser", orientation: "vertical", x: 9, y: 4 },
       { ship: "submarine", orientation: "horizontal", x: 4, y: 6 },
+      { ship: "frigate", orientation: "horizontal", x: 11, y: 0 },
       { ship: "destroyer", orientation: "vertical", x: 7, y: 8 },
     ],
   };
   const text = serializeFleet(fleet);
   assert.equal(
     text,
-    "carrier:A1:vertical;battleship:C3:horizontal;cruiser:J5:vertical;submarine:E7:horizontal;destroyer:H9:vertical",
+    "carrier:A1:vertical;battleship:C3:horizontal;cruiser:J5:vertical;submarine:E7:horizontal;frigate:L1:horizontal;destroyer:H9:vertical",
   );
   assert.deepEqual(deserializeFleet(text), fleet);
 });
@@ -131,19 +132,20 @@ test("deserializing rejects anything unreadable or illegal", () => {
     "",
     "   ",
     "not-a-fleet",
-    "carrier:F1:horizontal", // missing four ships
-    "carrier:F1:horizontal;carrier:F1:horizontal;battleship:A1:horizontal;cruiser:A3:h;submarine:A5:h;destroyer:A7:h",
-    "carrier:J1:horizontal;battleship:A1:horizontal;cruiser:A3:horizontal;submarine:A5:horizontal;destroyer:A7:horizontal", // off the board
-    "carrier:A1:diagonal;battleship:A3:horizontal;cruiser:A5:horizontal;submarine:A7:horizontal;destroyer:A9:horizontal",
+    "carrier:F1:horizontal", // missing five ships
+    "carrier:F1:horizontal;carrier:F1:horizontal;battleship:A1:horizontal;cruiser:A3:horizontal;submarine:A5:horizontal;frigate:A7:horizontal;destroyer:A9:horizontal",
+    "carrier:K1:horizontal;battleship:A1:horizontal;cruiser:A3:horizontal;submarine:A5:horizontal;frigate:A7:horizontal;destroyer:A9:horizontal", // off the board
+    "carrier:A1:diagonal;battleship:A3:horizontal;cruiser:A5:horizontal;submarine:A7:horizontal;frigate:A2:horizontal;destroyer:A9:horizontal",
   ]) {
     assert.equal(deserializeFleet(bad), null, `${String(bad)} must be refused`);
   }
 });
 
 test("placement candidates are the board's legal runs", () => {
-  assert.equal(placementsFor("carrier").length, 120); // (10 × 6) × 2 orientations
-  assert.equal(placementsFor("battleship").length, 140);
-  assert.equal(placementsFor("destroyer").length, 180);
+  // Horizontal runs + vertical runs, over 14 columns × 10 rows.
+  assert.equal(placementsFor("carrier").length, 184); // 10 × 10 rows + 6 × 14 columns
+  assert.equal(placementsFor("battleship").length, 208); // 11 × 10 + 7 × 14
+  assert.equal(placementsFor("destroyer").length, 256); // 13 × 10 + 9 × 14
   for (const placement of placementsFor("destroyer")) {
     assert.equal(placement.ship, "destroyer");
     assert.equal(validateFleet({ ships: [placement] }).ok, false, "one ship is not a fleet");

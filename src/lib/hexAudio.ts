@@ -91,6 +91,8 @@ export interface HexAudioAPI {
   playPush: () => void;
   /** Power node controlled */
   playPowerNode: () => void;
+  /** A territory's fortification is built (upgrade) */
+  playFortify: () => void;
   /** Turn switches */
   playTurnSwitch: (toPlayer: "player1" | "player2") => void;
   /** Match won */
@@ -139,6 +141,15 @@ export function useHexAudio(): HexAudioAPI {
     setTimeout(() => playChime(1568, 0.2, 0.04), 240);
   }, []);
 
+  // Stone settling, then a short rise: "the wall is being raised". Kept
+  // quieter than a capture so it reads as construction, not a conquest.
+  const playFortify = useCallback(() => {
+    if (!enabledRef.current) return;
+    playNoise(0.12, 0.05);
+    playTone(150, 0.18, "triangle", 0.09);
+    setTimeout(() => playSweep(392, 523, 0.22, 0.06, "sine"), 70);
+  }, []);
+
   const playTurnSwitch = useCallback((toPlayer: "player1" | "player2") => {
     if (!enabledRef.current) return;
     const base = toPlayer === "player1" ? 440 : 330;
@@ -183,6 +194,7 @@ export function useHexAudio(): HexAudioAPI {
     playCapture,
     playPush,
     playPowerNode,
+    playFortify,
     playTurnSwitch,
     playVictory,
     playDefeat,

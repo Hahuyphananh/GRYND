@@ -12,7 +12,7 @@ import useGameEmotes from "../../../../../hooks/useGameEmotes";
 import { decideAIAction, type AIDifficulty, type AIAction, type AIStateSnapshot } from "../../../../../lib/hexDuelAI";
 import { useHexAudio } from "../../../../../lib/hexAudio";
 import { useChessClock } from "../../../../../lib/useChessClock";
-import HexBoard from "../../../../../components/HexBoard";
+import HexBoard, { type UpgradeFunding } from "../../../../../components/HexBoard";
 import HexTroopCount from "../../../../../components/HexTroopCount";
 import HexActionPanel, { type ActionType, type UpgradePreview } from "../../../../../components/HexActionPanel";
 import HexActionLog from "../../../../../components/HexActionLog";
@@ -856,6 +856,22 @@ export default function HexDuelPage() {
     }
     prevCaptureLen.current = recentlyCaptured.length;
   }, [recentlyCaptured, audio]);
+
+  // Fortification sound. Driven by the LEVEL MAP, not by the action type, so a
+  // human upgrade, an opponent's upgrade, the bot's upgrade and a spectator
+  // replay all produce exactly one cue — and only when a level really went up
+  // (not on mount, where every existing level would look "new").
+  const levelsForAudio = useRef<Record<string, number> | null>(null);
+  useEffect(() => {
+    const current = territoryLevels ?? {};
+    const previous = levelsForAudio.current;
+    levelsForAudio.current = current;
+    if (!previous) return; // first snapshot: nothing was just built
+    const raised = Object.keys(current).some(
+      (key) => (current[key] ?? 1) > (previous[key] ?? 1),
+    );
+    if (raised) audio.playFortify();
+  }, [territoryLevels, audio]);
 
   // Push sound (replaced by attack sound via capture detection)
   const prevCombatFlashLen = useRef(0);
@@ -1760,6 +1776,9 @@ export default function HexDuelPage() {
       currentLevel: info.level,
       nextLevel: info.nextLevel ?? info.level,
       cost: info.cost ?? 0,
+      paidFromSelf: info.paidFromSelf,
+      paidFromNeighbours: info.paidFromNeighbours,
+      contributions: info.contributions,
       troops: info.troops,
       remainingTroops: info.remainingTroops,
       nextCapacity: info.nextMaxTroops,
@@ -1767,6 +1786,25 @@ export default function HexDuelPage() {
       reason: info.ok ? null : info.error ?? null,
     };
   }, [selectedAction, pendingTarget, capturedTiles, tileTroops, territoryLevels, currentTurn]);
+
+  // The same plan, shaped for the BOARD: which neighbours pay and how much, so
+  // the split is visible on the tiles before the player confirms.
+  const upgradeFunding = useMemo<UpgradeFunding | null>(() => {
+    if (selectedAction !== "upgrade" || !upgradePreview) return null;
+    const donors: Record<string, number> = {};
+    for (const contribution of upgradePreview.contributions) {
+      if (contribution.fromNeighbour) {
+        donors[contribution.key] = contribution.troops;
+      }
+    }
+    if (Object.keys(donors).length === 0) return null;
+    return {
+      targetKey: upgradePreview.key,
+      self: upgradePreview.paidFromSelf,
+      cost: upgradePreview.cost,
+      donors,
+    };
+  }, [selectedAction, upgradePreview]);
 
   // The Skip Turn control: flips the turn locally, and in multiplayer also
   // sends the skip and records it on the server.
@@ -2830,6 +2868,19 @@ export default function HexDuelPage() {
                   actionArrow={
   isGameOver || (aiThinking && currentTurn === "player2") ? null : actionArrow
 }
+                  upgradeFunding={
+                    upgradeFunding
+                      ? {
+                          ...upgradeFunding,
+                          targetKey: flipKey(upgradeFunding.targetKey),
+                          donors: Object.fromEntries(
+                            Object.entries(upgradeFunding.donors).map(
+                              ([key, troops]) => [flipKey(key), troops] as [string, number],
+                            ),
+                          ),
+                        }
+                      : null
+                  }
                 />
               </div>
               </div>

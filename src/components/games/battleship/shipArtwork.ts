@@ -12,7 +12,7 @@
 //
 //   1. Drop the files into `public/images/battleship/ships/` using exactly these
 //      names: carrier.png, battleship.png, cruiser.png, submarine.png,
-//      destroyer.png.
+//      frigate.png, destroyer.png.
 //   2. Map the ship to its public URL below, e.g.
 //        carrier: "/images/battleship/ships/carrier.png",
 //   3. That is the whole change. Nothing outside `ShipVisual` reads this
@@ -34,6 +34,7 @@ export const SHIP_ARTWORK_FILE_NAMES: Readonly<Record<ShipKey, string>> = {
   battleship: "battleship.png",
   cruiser: "cruiser.png",
   submarine: "submarine.png",
+  frigate: "frigate.png",
   destroyer: "destroyer.png",
 };
 

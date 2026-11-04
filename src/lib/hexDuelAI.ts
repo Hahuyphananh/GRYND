@@ -1,7 +1,12 @@
 import type { DuelPlayer } from "./hexDuelEngine";
 import { GRID_SIZE, getHexNeighbors } from "./hexGridUtils";
 import { coerceAiDifficulty } from "./aiDifficulty";
-import { TERRITORY_LEVELS, normalizeTerritoryLevel } from "./hex-duel/rules";
+import {
+  TERRITORY_LEVELS,
+  getUpgradeInfo,
+  normalizeTerritoryLevel,
+  type TerritoryLevel,
+} from "./hex-duel/rules";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -65,6 +70,33 @@ function areAdjacent(keyA: string, keyB: string): boolean {
   return dx <= 1 && dy <= 1 && !(dx === 0 && dy === 0);
 }
 
+interface ThreatenedCapital {
+  key: string;
+  troops: number;
+  /** "x,y" of every enemy tile standing next to the capital. */
+  adjacentEnemies: string[];
+}
+
+/**
+ * The bot's capital and the enemies next to it, or null when it is safe.
+ *
+ * A threatened capital is the whole match: the bot keeps its garrison at home,
+ * banks reinforcements on it and only spends those troops to remove the threat
+ * or to win outright.
+ */
+function threatenedCapitalOf(snap: AIStateSnapshot): ThreatenedCapital | null {
+  const key = Object.entries(snap.capitals).find(
+    ([, owner]) => owner === snap.myPlayer,
+  )?.[0];
+  if (!key) return null;
+  const [x, y] = key.split(",").map(Number);
+  const adjacentEnemies = getHexNeighbors(x, y)
+    .map((neighbour) => `${neighbour.x},${neighbour.y}`)
+    .filter((neighbourKey) => isEnemyTile(neighbourKey, snap));
+  if (adjacentEnemies.length === 0) return null;
+  return { key, troops: getTroops(key, snap), adjacentEnemies };
+}
+
 // ── Attack scoring ──────────────────────────────────────────────────────────
 
 interface ScoredAttack {
@@ -80,6 +112,17 @@ function scoreAttack(sourceKey: string, targetKey: string, snap: AIStateSnapshot
   const maxSend = sourceTroops - 1; // must leave at least 1
 
   if (maxSend <= 0) return null;
+
+  // A threatened capital does not throw its garrison away. It may attack ONLY
+  // the tile that is threatening it, and only when that attack conquers —
+  // that trade removes the threat (or takes the enemy capital and wins).
+  const threatened = threatenedCapitalOf(snap);
+  if (threatened && sourceKey === threatened.key) {
+    const removesThreat =
+      threatened.adjacentEnemies.includes(targetKey) &&
+      sourceTroops > targetTroops;
+    if (!removesThreat) return null;
+  }
 
   // Neutral tiles have 0 troops, so any attack with ≥1 troop conquers them
   const isNeutral = isNeutralTile(targetKey, snap);
@@ -142,6 +185,19 @@ function scoreDisplace(sourceKey: string, targetKey: string, snap: AIStateSnapsh
   const room = capacityOf(targetKey, snap) - targetTroops;
   if (room <= 0) return null;
 
+  // While the capital is threatened, troops go IN, never out. Reinforcing it
+  // outranks almost anything else — the capital is the win condition, and a
+  // garrison that grows every turn is what makes the threat pointless.
+  const threatened = threatenedCapitalOf(snap);
+  if (threatened) {
+    if (sourceKey === threatened.key) return null;
+    if (targetKey === threatened.key) {
+      const banked = Math.min(maxSend, room);
+      if (banked <= 0) return null;
+      return { sourceKey, targetKey, troopCount: banked, score: 150 + banked * 10 };
+    }
+  }
+
   // Determine how many to send: bulk up frontline tiles, thin out backline
   const targetIsCapital = snap.capitals[targetKey] === snap.myPlayer;
   const sourceIsCapital = snap.capitals[sourceKey] === snap.myPlayer;
@@ -189,30 +245,67 @@ interface ScoredUpgrade {
  * favours front-line territories and tiles already sitting at their ceiling:
  * the two cases where a higher capacity changes what the next turn can do.
  *
- * The cost/level rules come from the same table the validator and reducer use,
- * so the bot can never propose an upgrade the rulebook would refuse.
+ * The payment plan comes from `getUpgradeInfo`, the same rulebook the validator
+ * and the reducer use: the tile pays what it can (keeping one) and the rest is
+ * drawn from adjacent friendly territories. That means a tile holding less than
+ * the whole price can still be upgraded by borrowing — and the bot can never
+ * propose an upgrade the rulebook would refuse. Borrowing is discounted, since
+ * every troop comes off a neighbour's garrison.
  */
-function scoreUpgrade(sourceKey: string, snap: AIStateSnapshot): ScoredUpgrade | null {
+export function scoreUpgrade(sourceKey: string, snap: AIStateSnapshot): ScoredUpgrade | null {
   if (!isMyTile(sourceKey, snap)) return null;
 
-  const level = normalizeTerritoryLevel(snap.territoryLevels?.[sourceKey]);
-  const { maxTroops, upgradeCost } = TERRITORY_LEVELS[level];
-  if (upgradeCost === null) return null;
-
-  const troops = getTroops(sourceKey, snap);
-  // Same bound as getUpgradeInfo: pay the cost and still hold at least 1.
-  if (troops - upgradeCost < 1) return null;
+  const info = getUpgradeInfo(
+    {
+      capturedTiles: snap.capturedTiles,
+      tileTroops: snap.tileTroops,
+      territoryLevels: snap.territoryLevels as Record<string, TerritoryLevel> | undefined,
+    },
+    snap.myPlayer,
+    sourceKey,
+  );
+  if (!info.ok) return null;
 
   const [x, y] = sourceKey.split(",").map(Number);
   const onFrontline = getHexNeighbors(x, y).some((n) =>
     isAttackableTile(`${n.x},${n.y}`, snap),
   );
-  const atCapacity = troops >= maxTroops;
+  const atCapacity = info.troops >= info.maxTroops;
 
-  let score = 40 + level * 10;
+  let score = 40 + info.level * 10;
   if (onFrontline) score += 120;
   if (atCapacity) score += 160; // growth is blocked until the level rises
   if (snap.capitals[sourceKey] === snap.myPlayer) score += 30;
+
+  // The capital is the win condition: never strip it to fortify somewhere
+  // else, and never leave it too thin to answer an enemy standing next to it.
+  // A level is worth less than the tile that loses the match.
+  const myCapitalKey = Object.entries(snap.capitals).find(
+    ([, owner]) => owner === snap.myPlayer,
+  )?.[0];
+  if (myCapitalKey) {
+    const paidFromCapital =
+      info.contributions.find((contribution) => contribution.key === myCapitalKey)
+        ?.troops ?? 0;
+    if (paidFromCapital > 0) {
+      const capitalFloor = threatenedCapitalOf(snap) ? 5 : 3;
+      if (getTroops(myCapitalKey, snap) - paidFromCapital < capitalFloor) return null;
+    }
+  }
+
+  if (info.paidFromNeighbours > 0) {
+    // Thinning a neighbour is a real cost: it may be holding a front line.
+    score -= info.paidFromNeighbours * 8;
+    const drainsFrontlineNeighbour = info.contributions.some((contribution) => {
+      if (!contribution.fromNeighbour) return false;
+      const [nx, ny] = contribution.key.split(",").map(Number);
+      return getHexNeighbors(nx, ny).some((n) =>
+        isAttackableTile(`${n.x},${n.y}`, snap),
+      );
+    });
+    if (drainsFrontlineNeighbour) score -= 60;
+  }
+
   return { sourceKey, score };
 }
 

@@ -210,7 +210,9 @@ const check = (name, ok, extra = "") => {
 };
 
 const fileUrl = pathToFileURL(join(outDir, "index.html")).href;
-const browser = await chromium.launch();
+const browser = await chromium
+  .launch({ channel: "chrome" })
+  .catch(() => chromium.launch());
 
 // ── Mutation recorder ──────────────────────────────────────────────────────
 // The DIGITS are read straight off the DOM's text mutations, not off a

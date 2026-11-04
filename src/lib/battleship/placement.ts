@@ -5,7 +5,7 @@
 //
 // It is deliberately separate from both the rules engine and the React screen:
 //
-//   * `./rules` validates a COMPLETE fleet (five ships, no overlap, in bounds)
+//   * `./rules` validates a COMPLETE fleet (six ships, no overlap, in bounds)
 //     for the match. Placement has a different question — "may this ONE ship go
 //     here, on top of the four already down?" — and it has to answer it on every
 //     tap, so it lives here as a small, testable model instead of component
@@ -18,7 +18,15 @@
 // model drops the ship's previous placement first, so "tap the ship, tap the new
 // cell" and a desktop drag both end up as one `placeShip` call.
 
-import { ORIENTATIONS, PLACEMENT_SECONDS, REJECTION, SHIP_KEYS } from "./constants";
+import {
+  BOARD_COLUMNS,
+  BOARD_ROWS,
+  ORIENTATIONS,
+  PLACEMENT_SECONDS,
+  REJECTION,
+  SHIP_KEYS,
+  SHIP_LENGTHS,
+} from "./constants";
 import { cellKey, formatCoordinate, shipCells, validateFleet, validateShipPlacement } from "./rules";
 import { generateRandomFleet } from "./fleet";
 import type { Fleet, Orientation, RejectionCode, ShipKey, ShipPlacement } from "./types";
@@ -53,6 +61,36 @@ export function isPlaced(state: PlacementState, ship: ShipKey): boolean {
 /** The current placement of a ship, or null. */
 export function placementOf(state: PlacementState, ship: ShipKey): ShipPlacement | null {
   return state.ships.find((placement) => placement.ship === ship) ?? null;
+}
+
+/**
+ * Slides a placement back inside the board, keeping its orientation and moving
+ * it the shortest distance needed so every cell of the run is on the board.
+ *
+ * The screen uses this so a cell near the right or bottom edge still places the
+ * ship — snapped flush with the edge — instead of refusing the tap. The model
+ * itself stays strict: `placeShip` still rejects an out-of-bounds run, so this
+ * is the caller deciding what the player meant, not a relaxation of the rules.
+ */
+export function clampPlacement(placement: ShipPlacement): ShipPlacement {
+  const length = SHIP_LENGTHS[placement.ship] ?? 1;
+  const span = length > 0 ? length : 1;
+  const lastColumn = Math.max(0, BOARD_COLUMNS - span);
+  const lastRow = Math.max(0, BOARD_ROWS - span);
+  const clamp = (value: number, max: number) =>
+    Math.min(Math.max(0, Number.isFinite(value) ? Math.trunc(value) : 0), max);
+
+  return placement.orientation === "vertical"
+    ? {
+        ...placement,
+        x: clamp(placement.x, BOARD_COLUMNS - 1),
+        y: clamp(placement.y, lastRow),
+      }
+    : {
+        ...placement,
+        x: clamp(placement.x, lastColumn),
+        y: clamp(placement.y, BOARD_ROWS - 1),
+      };
 }
 
 /**
@@ -102,7 +140,7 @@ export function autoPlace(state: PlacementState = emptyPlacement(), random: () =
   return { ships: canonicalOrder(fleet.ships) };
 }
 
-/** True when all five ships are down and the fleet validates. */
+/** True when all six ships are down and the fleet validates. */
 export function placementComplete(state: PlacementState): boolean {
   return validateFleet(state).ok;
 }

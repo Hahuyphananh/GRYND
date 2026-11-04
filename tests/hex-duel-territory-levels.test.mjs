@@ -316,6 +316,116 @@ test("a territory that becomes neutral loses its level", () => {
   assert.equal(territoryLevelOf(after, "1,0"), 1, "a neutral read is level 1");
 });
 
+// ── Funding an upgrade from nearby territories ───────────────────────────
+
+test("a tile short of the price can be upgraded with its neighbours' troops", () => {
+  const state = board({ troops: 2, level: 1 });
+  state.capturedTiles["1,0"] = "player1";
+  state.tileTroops["1,0"] = 8;
+
+  const info = getUpgradeInfo(state, "player1", P1_CAP);
+  assert.equal(info.ok, true);
+  assert.equal(info.cost, 5);
+  assert.equal(info.paidFromSelf, 1, "the upgraded tile keeps one troop");
+  assert.equal(info.paidFromNeighbours, 4);
+  assert.equal(info.remainingTroops, 1);
+  assert.deepEqual(
+    info.contributions.map((c) => [c.key, c.troops, c.fromNeighbour]),
+    [
+      [P1_CAP, 1, false],
+      ["1,0", 4, true],
+    ],
+  );
+
+  const after = applyRecordedMove(state, "player1", { type: "upgrade", sourceKey: P1_CAP });
+  assert.equal(after.territoryLevels[P1_CAP], 2);
+  assert.equal(after.tileTroops[P1_CAP], 2, "1 left + 1 growth");
+  assert.equal(
+    after.tileTroops["1,0"],
+    5,
+    "the neighbour gave exactly the shortfall, then grew 1",
+  );
+  assert.equal(after.currentTurn, "player2");
+});
+
+test("every contributor keeps at least one troop", () => {
+  // A one-troop tile has nothing spare, so it cannot fund somebody else.
+  const state = board({ troops: 1, level: 1 });
+  state.capturedTiles["1,0"] = "player1";
+  state.tileTroops["1,0"] = 1;
+
+  const info = getUpgradeInfo(state, "player1", P1_CAP);
+  assert.equal(info.ok, false);
+  assert.equal(info.code, "NOT_ENOUGH_TROOPS");
+  assert.equal(info.paidFromNeighbours, 0);
+  assert.match(info.error, /neighbours/);
+  assert.deepEqual(
+    applyRecordedMove(state, "player1", { type: "upgrade", sourceKey: P1_CAP }),
+    state,
+  );
+});
+
+test("enemy and neutral tiles are never asked to pay", () => {
+  const enemy = board({ troops: 1, level: 1 });
+  enemy.capturedTiles["1,0"] = "player2";
+  enemy.tileTroops["1,0"] = 40;
+  assert.equal(getUpgradeInfo(enemy, "player1", P1_CAP).ok, false);
+
+  const neutral = board({ troops: 1, level: 1 });
+  neutral.tileTroops["1,0"] = 40; // nobody owns it
+  assert.equal(getUpgradeInfo(neutral, "player1", P1_CAP).ok, false);
+});
+
+test("the payment plan is stable, and a recorded upgrade replays with it", () => {
+  const state = board({ troops: 1, level: 2 });
+  state.capturedTiles["1,0"] = "player1";
+  state.capturedTiles["0,1"] = "player1";
+  state.tileTroops["1,0"] = 3;
+  state.tileTroops["0,1"] = 9;
+
+  const info = getUpgradeInfo(state, "player1", P1_CAP);
+  assert.equal(info.ok, true);
+  assert.equal(info.paidFromSelf, 0, "a lone troop stays on the tile");
+  assert.equal(info.paidFromSelf + info.paidFromNeighbours, info.cost);
+  assert.ok(info.contributions.every((c) => c.troops > 0));
+  // Deterministic: the same board always plans the same payment.
+  assert.deepEqual(getUpgradeInfo(state, "player1", P1_CAP).contributions, info.contributions);
+});
+
+test("a replay rebuilds the neighbours and funds the upgrade the same way", () => {
+  // The rows that produce a neighbour to draw on, then the upgrade itself. The
+  // upgrade row carries only the tile — no donor list — so the server has to
+  // arrive at the same payment plan from the board it replayed.
+  const rows = [
+    { userId: SEATS.player1Id, actionType: "attack", sourceKey: P1_CAP, targetKey: "1,0", troopCount: 2 },
+    { userId: SEATS.player2Id, actionType: "skipRound", sourceKey: null, targetKey: null, troopCount: null },
+    { userId: SEATS.player1Id, actionType: "skipRound", sourceKey: null, targetKey: null, troopCount: null },
+    { userId: SEATS.player2Id, actionType: "skipRound", sourceKey: null, targetKey: null, troopCount: null },
+    { userId: SEATS.player1Id, actionType: "upgrade", sourceKey: P1_CAP, targetKey: null, troopCount: null },
+  ];
+
+  const replayed = replayHexDuel(SEATS, rows);
+
+  let sequential = makeInitialCore();
+  for (const row of rows) {
+    const seat = row.userId === SEATS.player1Id ? "player1" : "player2";
+    sequential = applyRecordedMove(sequential, seat, {
+      type: row.actionType,
+      sourceKey: row.sourceKey,
+      targetKey: row.targetKey,
+      troopCount: row.troopCount,
+    });
+  }
+
+  assert.deepEqual(replayed.state, sequential, "replay and live play agree");
+  assert.equal(replayed.state.territoryLevels[P1_CAP], 2);
+  assert.equal(replayed.applied, rows.length);
+  // 5 troops on the capital: 4 paid from it (keeping 1), the shortfall from the
+  // neighbour, then one growth tick each at the end of the turn.
+  assert.equal(replayed.state.tileTroops[P1_CAP], 2);
+  assert.equal(replayed.state.tileTroops["1,0"], 4);
+});
+
 // ── Determinism: reducer, replay, snapshots ──────────────────────────────
 
 test("coreReducer and applyRecordedMove produce identical upgrade results", () => {

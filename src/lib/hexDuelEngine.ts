@@ -369,13 +369,23 @@ export function useHexDuel(startingTurn: DuelPlayer = "player1") {
   );
 
   const logUpgrade = useCallback(
-    (sourceKey: string, player: DuelPlayer, level: TerritoryLevel, cost: number) => {
+    (
+      sourceKey: string,
+      player: DuelPlayer,
+      level: TerritoryLevel,
+      cost: number,
+      paidFromNeighbours = 0,
+    ) => {
       const [x, y] = sourceKey.split(",").map(Number);
       addActionLog({
         player,
         type: "upgrade",
         target: { x, y },
-        label: `Upgrade: (${x},${y}) level ${level} → ${level + 1} (paid ${cost} troops)`,
+        // The log names both sources so a player can see the garrison was not
+        // always the whole payment: the rulebook lets neighbours contribute.
+        label: `Upgrade: (${x},${y}) level ${level} → ${level + 1} (paid ${cost} troops${
+          paidFromNeighbours > 0 ? `, ${paidFromNeighbours} from neighbours` : ""
+        })`,
       });
     },
     [addActionLog],
@@ -474,7 +484,13 @@ export function useHexDuel(startingTurn: DuelPlayer = "player1") {
       if (!check.ok) return;
       const info = getUpgradeInfo(state, state.currentTurn, sourceKey);
       if (!info.ok || info.cost === null) return;
-      logUpgrade(sourceKey, state.currentTurn, info.level, info.cost);
+      logUpgrade(
+        sourceKey,
+        state.currentTurn,
+        info.level,
+        info.cost,
+        info.paidFromNeighbours,
+      );
       dispatch({ type: "upgrade", sourceKey, player: state.currentTurn });
     },
     [state, logUpgrade],
@@ -641,7 +657,13 @@ export function useHexDuel(startingTurn: DuelPlayer = "player1") {
           if (!action.sourceKey) return;
           const info = getUpgradeInfo(state, fromPlayer, action.sourceKey);
           if (info.ok && info.cost !== null) {
-            logUpgrade(action.sourceKey, fromPlayer, info.level, info.cost);
+            logUpgrade(
+              action.sourceKey,
+              fromPlayer,
+              info.level,
+              info.cost,
+              info.paidFromNeighbours,
+            );
           }
           dispatch({
             type: "upgrade",

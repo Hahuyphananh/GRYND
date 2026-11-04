@@ -185,7 +185,9 @@ const readText = (page, sel) =>
 const countOf = (page, sel) =>
   page.$$eval(sel, (els) => els.length).catch(() => 0);
 
-const browser = await chromium.launch();
+// Chrome is the browser this machine actually has; the bundled Chromium build
+// may not be downloaded. Same fallback the other harnesses use.
+const browser = await chromium.launch({ channel: "chrome" }).catch(() => chromium.launch());
 
 async function boot(world, viewport = { width: 1440, height: 1000 }) {
   const context = await browser.newContext({ viewport });
@@ -309,6 +311,38 @@ async function boot(world, viewport = { width: 1440, height: 1000 }) {
       (await countOf(page, '[data-testid="quest-widget-claim-11"]')) === 1,
   );
 
+  // ── GLITCH states what is done and what is still worth coins ──────────
+  const GLITCH_IN_POPUP = '[data-testid="quest-widget-glitch"]';
+  check(
+    "GLITCH appears in the quest popup with done / remaining / claimable",
+    (await countOf(page, GLITCH_IN_POPUP)) === 1 &&
+      /Quests done: 1\/4\. 50 tokens are ready to claim right now\./.test(
+        (await readText(page, GLITCH_IN_POPUP)) ?? "",
+      ),
+    await readText(page, GLITCH_IN_POPUP),
+  );
+  check(
+    "exactly one mascot is drawn in the popup",
+    (await countOf(page, `${GLITCH_IN_POPUP} img`)) === 1,
+  );
+  check(
+    "the mascot never covers a quest card, progress bar or claim button",
+    await page.evaluate((glitchSel) => {
+      const bubble = document.querySelector(glitchSel)?.getBoundingClientRect();
+      if (!bubble) return false;
+      const targets = [...document.querySelectorAll('[data-testid^="quest-widget-quest-"]')];
+      return targets.every((target) => {
+        const rect = target.getBoundingClientRect();
+        return (
+          rect.bottom <= bubble.top + 1 ||
+          rect.top >= bubble.bottom - 1 ||
+          rect.right <= bubble.left + 1 ||
+          rect.left >= bubble.right - 1
+        );
+      });
+    }, GLITCH_IN_POPUP),
+  );
+
   await page.click('[data-testid="quest-widget-claim-11"]');
   await page.waitForTimeout(400);
 
@@ -329,6 +363,33 @@ async function boot(world, viewport = { width: 1440, height: 1000 }) {
     "the confirmation reports the amount the server credited",
     /You claimed 50 coins/.test((await readText(page, DIALOG)) ?? ""),
     await readText(page, '[data-testid="quest-widget-claimed-now"]'),
+  );
+  check(
+    "a rerender updates the summary without duplicating the mascot",
+    (await countOf(page, GLITCH_IN_POPUP)) === 1 &&
+      /Quests done: 1\/4\. 3 left to finish/.test(
+        (await readText(page, GLITCH_IN_POPUP)) ?? "",
+      ),
+    await readText(page, GLITCH_IN_POPUP),
+  );
+
+  await page.click(`${GLITCH_IN_POPUP} button`);
+  // The wrapper stays mounted (it is page flow); the BUBBLE and the MASCOT are
+  // what dismiss, so that is what has to disappear. The bubble fades through
+  // AnimatePresence, so poll rather than guess a duration.
+  await page
+    .waitForFunction(
+      (sel) => document.querySelectorAll(`${sel} button, ${sel} img`).length === 0,
+      GLITCH_IN_POPUP,
+      { timeout: 4000 },
+    )
+    .catch(() => {});
+  check(
+    "the mascot is dismissible and the quests stay on screen",
+    (await countOf(page, `${GLITCH_IN_POPUP} button`)) === 0 &&
+      (await countOf(page, `${GLITCH_IN_POPUP} img`)) === 0 &&
+      (await countOf(page, '[data-testid^="quest-widget-quest-"]')) === 4,
+    `mascot=${await countOf(page, `${GLITCH_IN_POPUP} img`)} quests=${await countOf(page, '[data-testid^="quest-widget-quest-"]')}`,
   );
 
   await page.click('[data-testid="quest-widget-close"]');

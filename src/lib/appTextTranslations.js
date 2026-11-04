@@ -2,6 +2,12 @@ export const APP_TEXT_TRANSLATIONS = {
   en: {
     quests: {
       title: "Quests",
+      // GLITCH inside the quest popup: what is done, what is still payable.
+      glitch: {
+        summaryClaimable: "Quests done: {done}/{total}. {amount} tokens are ready to claim right now.",
+        summaryOpen: "Quests done: {done}/{total}. {remaining} left to finish — each one pays tokens.",
+        summaryComplete: "All {total} quests are done and paid. Fresh ones drop at the next reset.",
+      },
       available: "{amount} coins available",
       requiresHumanPvp:
         "Quest progress counts only completed matches against real players. Practice, AI and bot games never count.",
@@ -697,7 +703,7 @@ export const APP_TEXT_TRANSLATIONS = {
       hillstrike_name: "Hillstrike",
       hillstrike_desc: "A free, rated 1v1 tank-artillery duel on a mirrored battlefield. 100 HP each, a drawn opening seat and turns of three actions — fire, drive or build cover — resolved by the server, with damage falling off over flight distance.",
       battleship_name: "Battleship",
-      battleship_desc: "A free, rated 1v1 naval duel on two hidden 10x10 boards. Place five ships, lock one simultaneous shot each round, and sink the enemy fleet first.",
+      battleship_desc: "A free, rated 1v1 naval duel on two hidden 14x10 boards. Place six ships, lock one simultaneous shot each round, and sink the enemy fleet first.",
       // ── Dominoes: lobby, board and match chrome ──────────────────────
       // One block for the whole game so a translator sees the vocabulary
       // together ("end", "pile", "pips", "round"). The values here are the
@@ -1302,6 +1308,8 @@ export const APP_TEXT_TRANSLATIONS = {
       glitch: {
         questsIntro:
           "Yo! Looking for more tokens? Your Quests are waiting! Complete challenges, play games, and stack up those token rewards. Don't leave free tokens on the table!",
+        dailySummary:
+          "Day {day} of {days}. Streak: {streak}. {remaining} rewards left this cycle.",
       },
     },
     onboarding: {
@@ -2058,6 +2066,12 @@ export const APP_TEXT_TRANSLATIONS = {
   fr: {
     quests: {
       title: "Quêtes",
+      // GLITCH dans la fenêtre des quêtes : ce qui est fait, ce qui reste à payer.
+      glitch: {
+        summaryClaimable: "Quêtes terminées : {done}/{total}. {amount} jetons sont prêts à récupérer maintenant.",
+        summaryOpen: "Quêtes terminées : {done}/{total}. Il reste {remaining} à finir — chacune paie des jetons.",
+        summaryComplete: "Les {total} quêtes sont terminées et payées. De nouvelles arrivent au prochain reset.",
+      },
       available: "{amount} pièces à réclamer",
       requiresHumanPvp:
         "La progression des quêtes ne compte que les matchs terminés contre de vrais joueurs. Les parties contre l'IA ou le bot d'entraînement ne comptent jamais.",
@@ -2750,7 +2764,7 @@ export const APP_TEXT_TRANSLATIONS = {
       hillstrike_name: "Hillstrike",
       hillstrike_desc: "Un duel d'artillerie de chars 1v1 gratuit et noté sur un champ de bataille en miroir. 100 PV chacun, un tour d'ouverture tiré au sort et des tours de trois actions — tirer, manœuvrer ou bâtir un abri — résolues par le serveur, les dégâts diminuant avec la distance de vol.",
       battleship_name: "Battleship",
-      battleship_desc: "Un duel naval 1v1 gratuit et noté sur deux grilles 10x10 cachées. Placez cinq navires, verrouillez un tir simultané à chaque tour et coulez la flotte adverse le premier.",
+      battleship_desc: "Un duel naval 1v1 gratuit et noté sur deux grilles 14x10 cachées. Placez six navires, verrouillez un tir simultané à chaque tour et coulez la flotte adverse le premier.",
       dominoes: {
         lobby_subtitle:
           "Dominos en bloc 1v1 gratuits : posez sur l'une des extrémités ouvertes, piochez quand vous ne pouvez pas, et videz votre main avant votre adversaire.",
@@ -3127,6 +3141,8 @@ export const APP_TEXT_TRANSLATIONS = {
       glitch: {
         questsIntro:
           "Yo ! Tu veux plus de jetons ? Tes quêtes t'attendent ! Relève des défis, joue, et empile les récompenses en jetons. Ne laisse pas filer des jetons gratuits sur la table !",
+        dailySummary:
+          "Jour {day} sur {days}. Série : {streak}. {remaining} récompenses restantes dans ce cycle.",
       },
     },
     onboarding: {
@@ -3854,6 +3870,12 @@ export const APP_TEXT_TRANSLATIONS = {
   es: {
     quests: {
       title: "Misiones",
+      // GLITCH dentro de la ventana de misiones: lo hecho y lo que queda por cobrar.
+      glitch: {
+        summaryClaimable: "Misiones completadas: {done}/{total}. {amount} fichas listas para reclamar ahora.",
+        summaryOpen: "Misiones completadas: {done}/{total}. Quedan {remaining} por terminar — cada una paga fichas.",
+        summaryComplete: "Las {total} misiones están completadas y pagadas. Llegan nuevas en el próximo reinicio.",
+      },
       available: "{amount} monedas disponibles",
       requiresHumanPvp:
         "El progreso de las misiones solo cuenta partidas completadas contra jugadores reales. Las partidas contra la IA o el bot de práctica nunca cuentan.",
@@ -4546,7 +4568,7 @@ export const APP_TEXT_TRANSLATIONS = {
       hillstrike_name: "Hillstrike",
       hillstrike_desc: "Un duelo de artillería de tanques 1v1 gratuito y puntuado en un campo de batalla simétrico. 100 PV cada uno, un turno inicial sorteado y turnos de tres acciones — disparar, maniobrar o construir cobertura — resueltas por el servidor, con daño que baja según la distancia de vuelo.",
       battleship_name: "Battleship",
-      battleship_desc: "Un duelo naval 1v1 gratuito y puntuado en dos tableros 10x10 ocultos. Coloca cinco barcos, fija un disparo simultáneo cada ronda y hunde la flota enemiga primero.",
+      battleship_desc: "Un duelo naval 1v1 gratuito y puntuado en dos tableros 14x10 ocultos. Coloca seis barcos, fija un disparo simultáneo cada ronda y hunde la flota enemiga primero.",
       dominoes: {
         lobby_subtitle:
           "Dominó en bloque 1v1 gratis: juega en cualquiera de los extremos abiertos, roba cuando no puedas y vacía tu mano antes que tu rival.",
@@ -4922,6 +4944,8 @@ export const APP_TEXT_TRANSLATIONS = {
       glitch: {
         questsIntro:
           "¡Hey! ¿Buscas más fichas? ¡Tus misiones te esperan! Completa desafíos, juega partidas y acumula recompensas en fichas. ¡No dejes fichas gratis sobre la mesa!",
+        dailySummary:
+          "Día {day} de {days}. Racha: {streak}. {remaining} recompensas restantes en este ciclo.",
       },
     },
     onboarding: {

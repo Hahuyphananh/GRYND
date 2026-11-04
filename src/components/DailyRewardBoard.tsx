@@ -45,6 +45,8 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { IconCheck, IconCoins, IconGift, IconLock, IconRefresh, IconX } from "@tabler/icons-react";
 import type { DailyRewardStatus, UseDailyReward } from "../hooks/useDailyReward";
+import { useTranslation } from "../hooks/useTranslation";
+import GlitchSay from "./mascot/GlitchSay";
 
 type Props = {
   open: boolean;
@@ -130,6 +132,7 @@ function Board({ status }: { status: DailyRewardStatus }) {
 }
 
 export default function DailyRewardBoard({ open, onClose, reward }: Props) {
+  const { t } = useTranslation();
   const { status, claiming, claimedNow, error, load, claim } = reward;
   const panelRef = useRef<HTMLDivElement | null>(null);
   const previouslyFocused = useRef<Element | null>(null);
@@ -162,6 +165,21 @@ export default function DailyRewardBoard({ open, onClose, reward }: Props) {
   // portal (the state starts closed).
   if (!open) return null;
   if (typeof document === "undefined") return null;
+
+  // ── GLITCH inside the board ─────────────────────────────────────────────
+  //
+  // Says what the player has banked so far (day and streak) and how much of the
+  // cycle is still payable. The numbers are the server's own status fields; the
+  // line is inline in the board's flow, so it cannot cover a tile or the claim
+  // button, and it is silent until the status has actually loaded.
+  const dailyGlitchLine = status
+    ? t("rewards.glitch.dailySummary", {
+        day: status.cycleDay,
+        days: status.cycleDays,
+        streak: status.streakDay,
+        remaining: Math.max(0, Number(status.cycleDays) - Number(status.cycleDay)),
+      })
+    : null;
 
   return createPortal(
     <div
@@ -217,6 +235,19 @@ export default function DailyRewardBoard({ open, onClose, reward }: Props) {
                 Day {status.cycleDay} of {status.cycleDays}
               </span>
             </div>
+
+            {dailyGlitchLine ? (
+              <div className="mb-4" data-testid="daily-reward-glitch">
+                <GlitchSay
+                  expression="wink"
+                  message={dailyGlitchLine}
+                  placement="inline"
+                  size="sm"
+                  dismissible
+                  dismissLabel={t("quests.close")}
+                />
+              </div>
+            ) : null}
 
             <Board status={status} />
 

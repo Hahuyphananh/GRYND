@@ -1,85 +1,82 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-labelledby="battleship-title">
-  <title id="battleship-title">Battleship — geometric block illustration</title>
+  <title id="battleship-title">Battleship — a 14×10 board with a six-ship fleet</title>
   <rect width="1200" height="630" fill="#030817"/>
   <g stroke="#12274d" stroke-width="2">
     <rect x="0" y="0" width="1200" height="630" fill="none"/>
   </g>
 
-  <!-- left board: the player's fleet -->
-  <g transform="translate(90 120)">
-    <g fill="#081530" stroke="#14315c">
-      <rect x="0" y="0" width="420" height="420" rx="14" fill="#061229" stroke="#14315c"/>
-    </g>
-    <g fill="#0a1a3d" stroke="#153a72">
-      <rect x="22" y="22" width="34" height="34" rx="4"/>
-      <rect x="64" y="22" width="34" height="34" rx="4"/>
-      <rect x="106" y="22" width="34" height="34" rx="4"/>
-      <rect x="148" y="22" width="34" height="34" rx="4"/>
-      <rect x="190" y="22" width="34" height="34" rx="4"/>
-      <rect x="22" y="64" width="34" height="34" rx="4"/>
-      <rect x="64" y="64" width="34" height="34" rx="4"/>
-      <rect x="106" y="64" width="34" height="34" rx="4"/>
-      <rect x="22" y="106" width="34" height="34" rx="4"/>
-      <rect x="64" y="106" width="34" height="34" rx="4"/>
-      <rect x="106" y="106" width="34" height="34" rx="4"/>
-      <rect x="22" y="148" width="34" height="34" rx="4"/>
-      <rect x="64" y="148" width="34" height="34" rx="4"/>
-      <rect x="22" y="190" width="34" height="34" rx="4"/>
-    </g>
-    <!-- ships, as blocks -->
-    <g fill="#2f6bff" stroke="#8ab4ff" stroke-width="2">
-      <rect x="22" y="22" width="202" height="34" rx="6" opacity="0.95"/>
-      <rect x="22" y="64" width="160" height="34" rx="6" opacity="0.9"/>
-      <rect x="22" y="106" width="118" height="34" rx="6" opacity="0.85"/>
-      <rect x="22" y="148" width="76" height="34" rx="6" opacity="0.8"/>
-    </g>
-    <rect x="22" y="190" width="76" height="34" rx="6" fill="#ef4444" stroke="#fecaca" stroke-width="2"/>
-  </g>
+  <!-- The board is 14 columns × 10 rows. One cell is 32px with a 3px gap, so a
+       grid track is 35px; 14 × 35 − 3 = 487 wide and 10 × 35 − 3 = 347 tall,
+       inside an 18px board padding. Both boards below use that geometry. -->
+  <defs>
+    <pattern id="bs-grid" width="35" height="35" patternUnits="userSpaceOnUse">
+      <rect width="32" height="32" rx="4" fill="#0a1a3d" stroke="#153a72" stroke-width="1.5"/>
+    </pattern>
+    <linearGradient id="bs-hull" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3f78ff"/>
+      <stop offset="1" stop-color="#2f6bff"/>
+    </linearGradient>
+  </defs>
 
-  <!-- right board: enemy waters, only shots revealed -->
-  <g transform="translate(690 120)">
-    <rect x="0" y="0" width="420" height="420" rx="14" fill="#061229" stroke="#14315c"/>
-    <g fill="#0a1a3d" stroke="#153a72">
-      <rect x="22" y="22" width="34" height="34" rx="4"/>
-      <rect x="64" y="22" width="34" height="34" rx="4"/>
-      <rect x="106" y="22" width="34" height="34" rx="4"/>
-      <rect x="148" y="22" width="34" height="34" rx="4"/>
-      <rect x="190" y="22" width="34" height="34" rx="4"/>
-      <rect x="232" y="22" width="34" height="34" rx="4"/>
-      <rect x="274" y="22" width="34" height="34" rx="4"/>
-      <rect x="22" y="64" width="34" height="34" rx="4"/>
-      <rect x="64" y="64" width="34" height="34" rx="4"/>
-      <rect x="106" y="64" width="34" height="34" rx="4"/>
-      <rect x="148" y="64" width="34" height="34" rx="4"/>
-      <rect x="190" y="64" width="34" height="34" rx="4"/>
-      <rect x="232" y="64" width="34" height="34" rx="4"/>
-      <rect x="22" y="106" width="34" height="34" rx="4"/>
-      <rect x="64" y="106" width="34" height="34" rx="4"/>
-      <rect x="106" y="106" width="34" height="34" rx="4"/>
-      <rect x="148" y="106" width="34" height="34" rx="4"/>
-      <rect x="190" y="106" width="34" height="34" rx="4"/>
-      <rect x="22" y="148" width="34" height="34" rx="4"/>
-      <rect x="64" y="148" width="34" height="34" rx="4"/>
-      <rect x="106" y="148" width="34" height="34" rx="4"/>
-      <rect x="148" y="148" width="34" height="34" rx="4"/>
-      <rect x="190" y="148" width="34" height="34" rx="4"/>
-      <rect x="22" y="190" width="34" height="34" rx="4"/>
-      <rect x="64" y="190" width="34" height="34" rx="4"/>
-      <rect x="106" y="190" width="34" height="34" rx="4"/>
+  <!-- left board: the player's fleet, all six ships -->
+  <g transform="translate(60 110)">
+    <rect x="0" y="0" width="523" height="383" rx="14" fill="#061229" stroke="#14315c" stroke-width="2"/>
+    <rect x="18" y="18" width="487" height="347" fill="url(#bs-grid)"/>
+    <!-- column labels A–N and row labels 1–10, as the game prints them -->
+    <g fill="#3d5a8a" font-family="Arial, Helvetica, sans-serif" font-size="9" font-weight="bold" text-anchor="middle">
+      <text x="34" y="12">A</text><text x="69" y="12">B</text><text x="104" y="12">C</text><text x="139" y="12">D</text><text x="174" y="12">E</text><text x="209" y="12">F</text><text x="244" y="12">G</text><text x="279" y="12">H</text><text x="314" y="12">I</text><text x="349" y="12">J</text><text x="384" y="12">K</text><text x="419" y="12">L</text><text x="454" y="12">M</text><text x="489" y="12">N</text>
     </g>
-    <!-- revealed results only: one hit, two misses, plus the selected target -->
-    <rect x="148" y="64" width="34" height="34" rx="4" fill="#ef4444" stroke="#fecaca" stroke-width="2"/>
-    <rect x="106" y="148" width="34" height="34" rx="4" fill="#ffffff"/>
-    <rect x="190" y="190" width="34" height="34" rx="4" fill="#ffffff"/>
-    <rect x="232" y="106" width="34" height="34" rx="4" fill="none" stroke="#ffec08" stroke-width="4"/>
+    <g fill="#3d5a8a" font-family="Arial, Helvetica, sans-serif" font-size="9" font-weight="bold" text-anchor="end">
+      <text x="12" y="40">1</text><text x="12" y="75">2</text><text x="12" y="110">3</text><text x="12" y="145">4</text><text x="12" y="180">5</text><text x="12" y="215">6</text><text x="12" y="250">7</text><text x="12" y="285">8</text><text x="12" y="320">9</text><text x="12" y="355">10</text>
+    </g>
+
+    <!-- Six ships: carrier 5, battleship 4, cruiser 3, submarine 3, frigate 3,
+         destroyer 2 — exactly the fleet the rules deal. -->
+    <g fill="url(#bs-hull)" stroke="#8ab4ff" stroke-width="2">
+      <!-- carrier, 5 cells, horizontal (A1–E1) -->
+      <rect x="18" y="18" width="172" height="32" rx="6"/>
+      <!-- battleship, 4 cells, horizontal (G2–J2) -->
+      <rect x="228" y="53" width="137" height="32" rx="6"/>
+      <!-- cruiser, 3 cells, vertical (J4–J6) -->
+      <rect x="333" y="123" width="32" height="102" rx="6"/>
+      <!-- submarine, 3 cells, horizontal (A5–C5) -->
+      <rect x="18" y="158" width="102" height="32" rx="6"/>
+      <!-- frigate, 3 cells, vertical (M7–M9) -->
+      <rect x="438" y="228" width="32" height="102" rx="6"/>
+    </g>
+    <!-- destroyer, 2 cells, horizontal (E8–F8) — hit, to keep the damage story -->
+    <rect x="158" y="263" width="67" height="32" rx="6" fill="#ef4444" stroke="#fecaca" stroke-width="2"/>
+  </g>
+  <text x="60" y="530" fill="#8ab4ff" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="bold" letter-spacing="4">14 × 10 · SIX SHIPS</text>
+
+  <!-- right board: enemy waters — only resolved shots, never a ship -->
+  <g transform="translate(617 110)">
+    <rect x="0" y="0" width="523" height="383" rx="14" fill="#061229" stroke="#14315c" stroke-width="2"/>
+    <rect x="18" y="18" width="487" height="347" fill="url(#bs-grid)"/>
+    <g fill="#3d5a8a" font-family="Arial, Helvetica, sans-serif" font-size="9" font-weight="bold" text-anchor="middle">
+      <text x="34" y="12">A</text><text x="69" y="12">B</text><text x="104" y="12">C</text><text x="139" y="12">D</text><text x="174" y="12">E</text><text x="209" y="12">F</text><text x="244" y="12">G</text><text x="279" y="12">H</text><text x="314" y="12">I</text><text x="349" y="12">J</text><text x="384" y="12">K</text><text x="419" y="12">L</text><text x="454" y="12">M</text><text x="489" y="12">N</text>
+    </g>
+    <g fill="#3d5a8a" font-family="Arial, Helvetica, sans-serif" font-size="9" font-weight="bold" text-anchor="end">
+      <text x="12" y="40">1</text><text x="12" y="75">2</text><text x="12" y="110">3</text><text x="12" y="145">4</text><text x="12" y="180">5</text><text x="12" y="215">6</text><text x="12" y="250">7</text><text x="12" y="285">8</text><text x="12" y="320">9</text><text x="12" y="355">10</text>
+    </g>
+
+    <!-- Resolved shots only: a hit, a sunk two-cell footprint, misses and the
+         target the captain is about to lock. No enemy hull is ever drawn. -->
+    <rect x="368" y="88" width="32" height="32" rx="4" fill="#ef4444" stroke="#fecaca" stroke-width="2"/>
+    <rect x="438" y="18" width="32" height="32" rx="4" fill="#991b1b" stroke="#ef4444" stroke-width="2"/>
+    <rect x="473" y="18" width="32" height="32" rx="4" fill="#991b1b" stroke="#ef4444" stroke-width="2"/>
+    <rect x="123" y="193" width="32" height="32" rx="4" fill="#ffffff"/>
+    <rect x="298" y="298" width="32" height="32" rx="4" fill="#ffffff"/>
+    <rect x="193" y="333" width="32" height="32" rx="4" fill="#ffffff"/>
+    <rect x="263" y="158" width="32" height="32" rx="4" fill="none" stroke="#ffec08" stroke-width="4"/>
   </g>
 
   <!-- accent + wordmark -->
-  <g transform="translate(90 560)">
+  <g transform="translate(60 560)">
     <rect x="0" y="0" width="120" height="10" rx="5" fill="#ffec08"/>
     <text x="140" y="12" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="bold" letter-spacing="10">BATTLESHIP</text>
   </g>
-  <g transform="translate(690 560)">
-    <text x="0" y="12" fill="#ffec08" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="bold" letter-spacing="6">GRYND</text>
+  <g transform="translate(1140 560)">
+    <text x="0" y="12" fill="#ffec08" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="bold" letter-spacing="6" text-anchor="end">GRYND</text>
   </g>
 </svg>

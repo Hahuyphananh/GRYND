@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { IconStar } from "@tabler/icons-react";
 import HexTroopCount from "./HexTroopCount";
 import { TROOP_DOT_COLUMNS, troopDotCount } from "../lib/hexBoardGeometry";
@@ -50,7 +50,36 @@ interface HexTileProps {
    * tile the player is acting on.
    */
   anchorKey?: string;
+  /** Troops this territory pays toward a pending upgrade (neighbour donor). */
+  fundingTake?: number;
+  /** Troops a pending upgrade borrows for this territory from its neighbours. */
+  fundingReceives?: number;
 }
+
+/**
+ * How each upgrade level is DRAWN, so two tiles of the same owner at different
+ * levels are never mistaken for each other:
+ *
+ *   L1 — no walls (the base tile, unchanged)
+ *   L2 — one thin violet wall line
+ *   L3 — a thicker indigo wall with merlons and corner towers
+ *   L4 — a heavy gold wall with merlons and towers
+ *
+ * Colour, weight and shape all change with the level (not colour alone), the
+ * level badge still prints L2/L3/L4, and everything here is decorative and
+ * aria-hidden — the tile's own text already states the level and ceiling.
+ */
+const LEVEL_WALLS: Record<
+  number,
+  { color: string; inset: number; thickness: number; merlons: boolean; towers: boolean }
+> = {
+  // Whole-pixel weights: browsers snap fractional borders, so 1.5/2/2.5 drew
+  // levels 3 and 4 identically heavy on a 1× display. 1/2/3 stay distinct at
+  // every device pixel ratio.
+  2: { color: "#a78bfa", inset: 8, thickness: 1, merlons: false, towers: false },
+  3: { color: "#818cf8", inset: 7, thickness: 2, merlons: true, towers: true },
+  4: { color: "#facc15", inset: 6, thickness: 3, merlons: true, towers: true },
+};
 
 const cellBorders: Record<TileOwner, { inner: string; outer: string; glow: string; bg: string }> = {
   player1: {
@@ -76,12 +105,30 @@ const cellBorders: Record<TileOwner, { inner: string; outer: string; glow: strin
 export default function HexTile({
   tile, isSelected, onClick, isValidMove, isPushTarget,
   recentlyCaptured, isTerritorySpread, isReinforceTarget,
-  isAttackTarget, isSourceTile, isDisplaceTarget, isChosenTarget, dotsMuted, anchorKey
+  isAttackTarget, isSourceTile, isDisplaceTarget, isChosenTarget, dotsMuted, anchorKey,
+  fundingTake, fundingReceives,
 }: HexTileProps) {
   const { owner, troops, capital, level, maxTroops } = tile;
   const border = cellBorders[owner];
   const [ripple, setRipple] = useState<{ x: number; y: number; id: number } | null>(null);
   const rippleId = useRef(0);
+
+  // The fortification is ERECTED when a territory is upgraded (level goes up),
+  // not when a tile is first drawn: loading a board that already has level 3
+  // tiles, or a capture that resets a tile to level 1, must not play the build.
+  // Short, decorative, and collapses to its end state under reduced motion.
+  const [wallJustBuilt, setWallJustBuilt] = useState(false);
+  const previousLevel = useRef<number | null>(null);
+
+  useEffect(() => {
+    const current = typeof level === "number" ? level : null;
+    const before = previousLevel.current;
+    previousLevel.current = current;
+    if (before === null || current === null || current <= before) return;
+    setWallJustBuilt(true);
+    const timer = window.setTimeout(() => setWallJustBuilt(false), 700);
+    return () => window.clearTimeout(timer);
+  }, [level]);
 
   const handleClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -94,6 +141,9 @@ export default function HexTile({
   }, [onClick]);
 
   const isOwned = owner === "player1" || owner === "player2";
+  // Level 1 draws nothing: an un-upgraded tile stays exactly as it was.
+  const wall =
+    isOwned && typeof level === "number" ? LEVEL_WALLS[level] ?? null : null;
   // One dot per troop (up to 100). Neutral territories never show an army.
   const troopDots = isOwned ? troopDotCount(troops) : 0;
   const dotColor = owner === "player2" ? "#ef4444" : "#22d3ee";
@@ -157,6 +207,104 @@ export default function HexTile({
           transition: "border-color 0.4s ease, opacity 0.4s ease",
         }}
       />
+
+      {/* ── Fortification walls — one visual step per upgrade ───────────
+          Drawn above the tile's own borders and below the troop dots and
+          counter (z-[4]), so it never hides the number. Purely decorative:
+          aria-hidden, pointer-events-none, and it changes no layout. */}
+      {wall && (
+        <span
+          aria-hidden="true"
+          data-hex-level-walls={level}
+          data-hex-wall-built={wallJustBuilt ? level : undefined}
+          className={`pointer-events-none absolute inset-0 z-[4] rounded-lg ${
+            wallJustBuilt ? "hex-wall-build" : ""
+          }`}
+        >
+          {/* The wall line itself — its thickness and colour are the level. */}
+          <span
+            className="absolute rounded-md"
+            style={{
+              inset: wall.inset,
+              border: `${wall.thickness}px solid ${wall.color}`,
+              opacity: 0.8,
+              boxShadow: `inset 0 0 10px ${wall.color}55, 0 0 6px ${wall.color}33`,
+            }}
+          />
+          {/* Merlons (crenellations) along the top wall. */}
+          {wall.merlons && (
+            <span
+              className="absolute flex justify-between"
+              style={{
+                left: wall.inset + 3,
+                right: wall.inset + 3,
+                top: wall.inset - 2.5,
+              }}
+            >
+              {[0, 1, 2].map((merlon) => (
+                <span
+                  key={merlon}
+                  style={{
+                    width: 4,
+                    height: 4,
+                    borderRadius: 1,
+                    background: wall.color,
+                    opacity: 0.9,
+                  }}
+                />
+              ))}
+            </span>
+          )}
+          {/* Corner towers on the top two levels. */}
+          {wall.towers && (
+            <>
+              {[
+                { left: wall.inset - 2, top: wall.inset - 2 },
+                { right: wall.inset - 2, top: wall.inset - 2 },
+                { left: wall.inset - 2, bottom: wall.inset - 2 },
+                { right: wall.inset - 2, bottom: wall.inset - 2 },
+              ].map((corner, index) => (
+                <span
+                  key={index}
+                  className="absolute"
+                  style={{
+                    ...corner,
+                    width: 5,
+                    height: 5,
+                    borderRadius: 1,
+                    background: wall.color,
+                    boxShadow: `0 0 4px ${wall.color}`,
+                  }}
+                />
+              ))}
+            </>
+          )}
+          {/* One expanding ring, so the new wall reads as an event and not a
+              repaint. Gone after 700ms with the build class. */}
+          {wallJustBuilt && (
+            <span
+              aria-hidden="true"
+              className="hex-wall-flash absolute inset-0 rounded-md"
+              style={{
+                border: `1px solid ${wall.color}`,
+                boxShadow: `inset 0 0 18px ${wall.color}88, 0 0 14px ${wall.color}66`,
+              }}
+            />
+          )}
+        </span>
+      )}
+
+      {/* A level shade over the whole tile, so the upgrade reads at a glance
+          even where the wall itself is thin. */}
+      {wall && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 rounded-lg"
+          style={{
+            background: `radial-gradient(circle at 50% 45%, ${wall.color}14, transparent 72%)`,
+          }}
+        />
+      )}
 
       {/* Valid move glow (yellow) */}
       {isValidMove && (
@@ -289,6 +437,52 @@ export default function HexTile({
         </span>
       )}
 
+      {/* ── Pending upgrade funding ─────────────────────────────────────
+          Shown BEFORE confirming: a neighbour that will pay is ringed and
+          labelled with what it gives up, and the territory being upgraded
+          shows how much it borrows. Painted and pointer-events-none, so it
+          can never change a tap target. */}
+      {(fundingTake ?? 0) > 0 && (
+        <>
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-[3px] z-[6] rounded-md"
+            style={{
+              border: "1.5px dashed rgba(192,132,252,0.8)",
+              boxShadow: "inset 0 0 12px rgba(168,85,247,0.2)",
+            }}
+          />
+          <span
+            aria-hidden="true"
+            data-hex-upgrade-donor={fundingTake}
+            className="pointer-events-none absolute bottom-0.5 left-0.5 z-20 rounded px-1 font-mono font-black leading-tight tabular-nums"
+            style={{
+              fontSize: "clamp(6px, 0.9vw, 9px)",
+              background: "rgba(88,28,135,0.85)",
+              color: "#e9d5ff",
+              border: "1px solid rgba(192,132,252,0.6)",
+            }}
+          >
+            −{fundingTake}
+          </span>
+        </>
+      )}
+      {(fundingReceives ?? 0) > 0 && (
+        <span
+          aria-hidden="true"
+          data-hex-upgrade-receives={fundingReceives}
+          className="pointer-events-none absolute bottom-0.5 right-0.5 z-20 rounded px-1 font-mono font-black leading-tight tabular-nums"
+          style={{
+            fontSize: "clamp(6px, 0.9vw, 9px)",
+            background: "rgba(88,28,135,0.85)",
+            color: "#e9d5ff",
+            border: "1px solid rgba(192,132,252,0.6)",
+          }}
+        >
+          +{fundingReceives}
+        </span>
+      )}
+
       {/* Territory level badge — level 1 is the unmarked default so the
           board does not gain noise on tiles that were never upgraded. */}
       {isOwned && typeof level === "number" && level > 1 && (
@@ -296,9 +490,10 @@ export default function HexTile({
           className="absolute right-1 top-1 z-10 rounded px-1 font-black leading-tight"
           style={{
             fontSize: "clamp(6px, 0.9vw, 9px)",
-            background: "rgba(168,85,247,0.22)",
-            color: "#d8b4fe",
-            border: "1px solid rgba(168,85,247,0.45)",
+            // Shades with the walls, so the badge and the fortification agree.
+            background: `${wall?.color ?? "#a855f7"}33`,
+            color: wall?.color ?? "#d8b4fe",
+            border: `1px solid ${wall?.color ?? "#a855f7"}77`,
           }}
         >
           L{level}

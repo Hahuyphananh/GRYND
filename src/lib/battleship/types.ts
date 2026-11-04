@@ -188,7 +188,7 @@ export interface PublicAttackEvent {
 
 /** One player's view of the ENEMY waters plus what they have learned. */
 export interface PublicPlayerBoardState {
-  /** 10×10, `board[y][x]` — never anything but unknown/miss/hit/sunk. */
+  /** 14×10, `board[y][x]` — never anything but unknown/miss/hit/sunk. */
   readonly board: readonly (readonly BoardCell[])[];
   readonly attacks: readonly PublicAttackEvent[];
   /** Enemy ships this player has destroyed (identities, never positions). */

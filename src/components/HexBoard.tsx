@@ -35,6 +35,22 @@ function centerIn(host: HTMLElement, el: HTMLElement): { x: number; y: number } 
   return { x, y };
 }
 
+/**
+ * The payment split for a pending upgrade, shown on the board before it is
+ * confirmed: which neighbours pay, how much each gives up, and how much the
+ * upgraded territory itself covers.
+ */
+export interface UpgradeFunding {
+  /** "x,y" of the territory being upgraded. */
+  targetKey: string;
+  /** Troops the territory itself pays. */
+  self: number;
+  /** Total troop cost of the upgrade. */
+  cost: number;
+  /** Troops each adjacent neighbour pays, keyed by "x,y". */
+  donors: Record<string, number>;
+}
+
 interface HexBoardProps {
   grid: HexTileData[][];
   selectedTile: { x: number; y: number } | null;
@@ -82,6 +98,8 @@ interface HexBoardProps {
   opponentColor?: string;
   localLabel?: string;
   opponentLabel?: string;
+  /** Payment split for a pending upgrade (null when none is being planned). */
+  upgradeFunding?: UpgradeFunding | null;
 }
 
 export default function HexBoard({
@@ -104,6 +122,7 @@ export default function HexBoard({
   actionTargetKey,
   actionArrow,
   troopAnimation,
+  upgradeFunding,
 }: HexBoardProps) {
   const [dims, setDims] = React.useState({ width: 90, height: 90 });
   const boardRef = React.useRef<HTMLDivElement>(null);
@@ -173,6 +192,17 @@ export default function HexBoard({
   const sourceHighlightSet = React.useMemo(
     () => new Set(sourceHighlightKeys ?? []),
     [sourceHighlightKeys]
+  );
+
+  // How much of a pending upgrade the neighbours cover in total. The donor map
+  // already excludes the upgraded tile, so the sum is the borrowed amount.
+  const fundingFromNeighbours = React.useMemo(
+    () =>
+      Object.values(upgradeFunding?.donors ?? {}).reduce(
+        (sum, troops) => sum + troops,
+        0,
+      ),
+    [upgradeFunding],
   );
 
   // ── Action arrow geometry ───────────────────────────────────────────
@@ -284,6 +314,20 @@ export default function HexBoard({
       }}
     >
       {/* ── GRID BOARD ─────────────────────────────────────────────────── */}
+      {upgradeFunding && fundingFromNeighbours > 0 && (
+        <div
+          data-hex-upgrade-funding=""
+          className="mb-2 rounded-lg border px-2.5 py-1 text-[10px] font-bold tabular-nums backdrop-blur-sm"
+          style={{
+            borderColor: "rgba(192,132,252,0.45)",
+            color: "#e9d5ff",
+            background: "rgba(88,28,135,0.35)",
+          }}
+        >
+          Upgrade cost {upgradeFunding.cost}: {upgradeFunding.self} here +{" "}
+          {fundingFromNeighbours} from neighbours
+        </div>
+      )}
       <div
         ref={frameRef}
         className="relative inline-block rounded-3xl p-2 sm:p-3
@@ -369,6 +413,12 @@ export default function HexBoard({
                     moveEffect !== null &&
                     (moveEffect.event.fromKey === `${tile.x},${tile.y}` ||
                       moveEffect.event.toKey === `${tile.x},${tile.y}`)
+                  }
+                  fundingTake={upgradeFunding?.donors[`${tile.x},${tile.y}`]}
+                  fundingReceives={
+                    upgradeFunding?.targetKey === `${tile.x},${tile.y}`
+                      ? fundingFromNeighbours
+                      : undefined
                   }
                 />
               ))}

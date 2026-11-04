@@ -252,7 +252,9 @@ export default function BattlePreview({
         </div>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      {/* One board per row, full width: side-by-side halved a 14-column board
+          into cells too small to read or tap. */}
+      <div className="grid gap-4">
         <div className="min-w-0 rounded-2xl border border-white/10 bg-[#061229]/70 p-3 sm:p-4">
           <BoardGrid
             title="My Fleet"
@@ -334,7 +336,7 @@ export default function BattlePreview({
           ) : null}
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:col-span-2">
+        <div className="grid gap-4 sm:grid-cols-2">
           <FleetStatus
             title="My Fleet"
             ships={view.you.fleet.ships}

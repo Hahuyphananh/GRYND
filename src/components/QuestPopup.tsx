@@ -44,6 +44,7 @@ import {
 import type { QuestView, UseQuests } from "../hooks/useQuests";
 import { useQuestText } from "../hooks/useQuests";
 import { useTranslation } from "../hooks/useTranslation";
+import GlitchSay from "./mascot/GlitchSay";
 
 type Props = {
   open: boolean;
@@ -102,6 +103,41 @@ export default function QuestPopup({ open, onClose, quests }: Props) {
   const daily = board?.daily ?? [];
   const weekly = board?.weekly ?? [];
   const total = daily.length + weekly.length;
+
+  // ── GLITCH inside the popup ─────────────────────────────────────────────
+  //
+  // The mascot states what the player has already done and what is still worth
+  // coins, in the popup's own flow (not a floating layer) — the dialog is
+  // `aria-modal`, where a floating message is suppressed anyway, and inline
+  // content can never cover a quest card, a progress bar or a claim button.
+  //
+  // Every number below comes from the board the SERVER sent: `completed` and
+  // `claimable` are its flags and `reward` is its amount. Nothing is derived
+  // that the board does not already say, and the line is silent while the read
+  // is loading, failed, or has no quests to summarise.
+  const allQuests = [...daily, ...weekly];
+  const completedCount = allQuests.filter((quest) => quest.completed).length;
+  const remainingCount = total - completedCount;
+  const claimableCoins = allQuests.reduce(
+    (sum, quest) => (quest.claimable ? sum + (Number(quest.reward) || 0) : sum),
+    0,
+  );
+  const glitchLine =
+    !board || error || total === 0
+      ? null
+      : claimableCoins > 0
+        ? t("quests.glitch.summaryClaimable", {
+            done: completedCount,
+            total,
+            amount: formatCoins(claimableCoins),
+          })
+        : remainingCount > 0
+          ? t("quests.glitch.summaryOpen", {
+              done: completedCount,
+              total,
+              remaining: remainingCount,
+            })
+          : t("quests.glitch.summaryComplete", { total });
 
   const renderQuest = (quest: QuestView) => {
     const id = Number(quest.id);
@@ -269,6 +305,19 @@ export default function QuestPopup({ open, onClose, quests }: Props) {
           <IconTrophy size={14} className="mt-0.5 shrink-0 text-[#ff4fd8]" aria-hidden="true" />
           <span>{t("quests.requiresHumanPvp")}</span>
         </p>
+
+        {glitchLine ? (
+          <div className="mb-3" data-testid="quest-widget-glitch">
+            <GlitchSay
+              expression="wink"
+              message={glitchLine}
+              placement="inline"
+              size="sm"
+              dismissible
+              dismissLabel={t("quests.close")}
+            />
+          </div>
+        ) : null}
 
         {claimedNow !== null && (
           <p

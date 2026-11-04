@@ -21,6 +21,7 @@ import { serializeFleet } from "../src/lib/battleship/fleet.ts";
 import {
   PLACEMENT_SECONDS,
   autoPlace,
+  clampPlacement,
   confirmPlacement,
   emptyPlacement,
   isPlaced,
@@ -81,9 +82,27 @@ test("a ship that overlaps another is refused with the shared cell named", () =>
 });
 
 test("a ship that leaves the board is refused", () => {
-  const out = placeShip(emptyPlacement(), carrierAt(6, 0)); // G..K
+  const out = placeShip(emptyPlacement(), carrierAt(10, 0)); // K..O
   assert.equal(out.ok, false);
   assert.equal(out.code, REJECTION.OUT_OF_BOUNDS);
+});
+
+test("a cell near the edge snaps the ship back onto the board", () => {
+  // Clicking the last column with a five-cell carrier slides it to J..N.
+  assert.deepEqual(clampPlacement(carrierAt(13, 3)), carrierAt(9, 3));
+  assert.deepEqual(
+    clampPlacement({ ship: "carrier", orientation: "vertical", x: 4, y: 9 }),
+    { ship: "carrier", orientation: "vertical", x: 4, y: 5 },
+  );
+
+  // A placement already inside the board is untouched.
+  assert.deepEqual(clampPlacement(carrierAt(2, 2)), carrierAt(2, 2));
+
+  // And the clamped placement is the one the model accepts, so tapping an edge
+  // cell places the ship rather than refusing the tap.
+  const result = placeShip(emptyPlacement(), clampPlacement(carrierAt(13, 3)));
+  assert.ok(result.ok, result.message);
+  assert.deepEqual(placementOf(result.state, "carrier"), carrierAt(9, 3));
 });
 
 test("placing the same ship again MOVES it", () => {
@@ -114,6 +133,7 @@ test("ships may touch, including diagonally, on the placement board", () => {
     { ship: "destroyer", orientation: "horizontal", x: 5, y: 1 }, // F2..G2 — corner contact only
     { ship: "battleship", orientation: "vertical", x: 0, y: 2 },
     { ship: "cruiser", orientation: "horizontal", x: 2, y: 4 },
+    { ship: "frigate", orientation: "horizontal", x: 4, y: 6 },
     { ship: "submarine", orientation: "vertical", x: 9, y: 5 },
   ]) {
     const result = placeShip(state, placement);
@@ -126,7 +146,7 @@ test("ships may touch, including diagonally, on the placement board", () => {
 test("auto place always deals a legal, complete fleet", () => {
   for (let seed = 1; seed <= 20; seed += 1) {
     const state = autoPlace(emptyPlacement(), mulberry32(seed));
-    assert.equal(state.ships.length, 5, `seed ${seed}`);
+    assert.equal(state.ships.length, 6, `seed ${seed}`);
     assert.equal(placementComplete(state), true, `seed ${seed}`);
     const fleet = toFleet(state);
     assert.ok(fleet);
@@ -140,16 +160,17 @@ test("auto place is deterministic from its random source", () => {
   assert.equal(serializeFleet(toFleet(first)), serializeFleet(toFleet(second)));
 });
 
-test("confirming returns the canonical fleet once all five ships are down", () => {
+test("confirming returns the canonical fleet once all six ships are down", () => {
   const state = autoPlace(emptyPlacement(), mulberry32(11));
   const confirmed = confirmPlacement(state);
   assert.ok(confirmed.ok);
-  assert.equal(confirmed.fleet.ships.length, 5);
+  assert.equal(confirmed.fleet.ships.length, 6);
   assert.deepEqual(confirmed.fleet.ships.map((ship) => ship.ship), [
     "carrier",
     "battleship",
     "cruiser",
     "submarine",
+    "frigate",
     "destroyer",
   ]);
 

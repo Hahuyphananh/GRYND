@@ -131,8 +131,10 @@ export type HexDuelMoveCheck =
 // ── Territory levels ──────────────────────────────────────────────────────
 //
 // Every territory has a permanent level from 1 to 4. The level decides the
-// tile's troop CEILING and what it costs (in troops, paid from the tile itself)
-// to reach the next level. `upgradeCost: null` marks the maximum level.
+// tile's troop CEILING and what it costs (in troops) to reach the next level.
+// The cost is paid by the territory and by its adjacent friendly territories —
+// see `getUpgradeInfo` — so fortifying a frontline tile does not require the
+// whole price to sit on it. `upgradeCost: null` marks the maximum level.
 //
 // Levels are permanent while ownership is unchanged, and any ownership change
 // resets the tile to level 1 (a conquest takes the territory at level 1).
@@ -175,10 +177,29 @@ export function upgradeCostFor(level: TerritoryLevel): number | null {
   return TERRITORY_LEVELS[normalizeTerritoryLevel(level)].upgradeCost;
 }
 
+/** One territory paying part of an upgrade, and how much of it. */
+export interface UpgradeContribution {
+  /** "x,y" of the territory that pays. */
+  key: string;
+  /** Troops taken from that territory. */
+  troops: number;
+  /** True when this is a neighbouring territory, not the upgraded tile. */
+  fromNeighbour: boolean;
+}
+
 /**
  * What upgrading `sourceKey` would cost and produce, and whether it is legal
  * for `seat`. The rulebook, the server validator, the engine and the panel all
  * read this one function, so the preview a player sees is the rule that runs.
+ *
+ * THE COST IS NOT PAID BY THE TERRITORY ALONE. An upgrade may draw on the
+ * territory itself AND on adjacent friendly territories (the same "nearby"
+ * relationship a displacement uses): each territory keeps at least one troop,
+ * the upgraded tile pays first, and the neighbours pay the rest in a stable
+ * order. That is what lets a player fortify a tile without parking the whole
+ * price on it, and it is deliberately deterministic: the reducer, the server's
+ * replay and the panel all recompute the same plan from the same board, so a
+ * recorded `upgrade` row (which carries only a tile) replays identically.
  */
 export interface UpgradeInfo {
   ok: boolean;
@@ -188,7 +209,7 @@ export interface UpgradeInfo {
   level: TerritoryLevel;
   /** Level after a successful upgrade, or null at the maximum. */
   nextLevel: TerritoryLevel | null;
-  /** Troops paid from this territory, or null at the maximum. */
+  /** Troops paid in total, or null at the maximum. */
   cost: number | null;
   /** Troop count before the upgrade. */
   troops: number;
@@ -196,8 +217,16 @@ export interface UpgradeInfo {
   maxTroops: number;
   /** Troop ceiling after the upgrade (unchanged at the maximum). */
   nextMaxTroops: number;
-  /** Troops remaining after paying the cost (never below 1 when legal). */
+  /** Troops left on the upgraded territory after paying (never below 1 when legal). */
   remainingTroops: number;
+  /** Troops taken from the upgraded territory itself. */
+  paidFromSelf: number;
+  /** Troops taken from adjacent friendly territories. */
+  paidFromNeighbours: number;
+  /** Every territory that pays, in the order the reducer applies it. */
+  contributions: UpgradeContribution[];
+  /** Troops the tile + its neighbours can spare (each keeps at least 1). */
+  available: number;
 }
 
 /** The slice of the board an upgrade decision needs. */
@@ -205,6 +234,19 @@ export interface TerritoryBoardView {
   capturedTiles: Record<string, DuelPlayer>;
   tileTroops: Record<string, number>;
   territoryLevels?: Record<string, TerritoryLevel>;
+}
+
+/** The adjacent tiles on the board, in a stable order (x, then y). */
+function neighbourKeysOf(key: string): string[] {
+  const [x, y] = key.split(",").map(Number);
+  return getHexNeighbors(x, y)
+    .map((n) => `${n.x},${n.y}`)
+    .filter(isTileKey)
+    .sort((a, b) => {
+      const [ax, ay] = a.split(",").map(Number);
+      const [bx, by] = b.split(",").map(Number);
+      return ax - bx || ay - by;
+    });
 }
 
 export function getUpgradeInfo(
@@ -219,6 +261,33 @@ export function getUpgradeInfo(
     cost === null ? null : ((level + 1) as TerritoryLevel);
   const nextMaxTroops = nextLevel === null ? territoryMaxTroops(level) : territoryMaxTroops(nextLevel);
 
+  // ── Who pays ─────────────────────────────────────────────────────────
+  // The upgraded tile always keeps one troop, and neighbours may only give
+  // what is above their own last troop. The upgraded tile pays first, so a
+  // plain single-tile upgrade behaves exactly as it always did, and only the
+  // shortfall reaches out to the neighbours.
+  const contributions: UpgradeContribution[] = [];
+  const paidFromSelf =
+    cost === null ? 0 : Math.min(Math.max(0, troops - 1), cost);
+  if (paidFromSelf > 0) {
+    contributions.push({ key: sourceKey, troops: paidFromSelf, fromNeighbour: false });
+  }
+
+  let outstanding = cost === null ? 0 : cost - paidFromSelf;
+  let paidFromNeighbours = 0;
+  if (cost !== null && state.capturedTiles[sourceKey] === seat) {
+    for (const key of neighbourKeysOf(sourceKey)) {
+      if (outstanding === 0) break;
+      if (state.capturedTiles[key] !== seat) continue;
+      const spare = Math.max(0, (state.tileTroops[key] ?? 1) - 1);
+      const take = Math.min(spare, outstanding);
+      if (take <= 0) continue;
+      contributions.push({ key, troops: take, fromNeighbour: true });
+      paidFromNeighbours += take;
+      outstanding -= take;
+    }
+  }
+
   const base = {
     level,
     nextLevel,
@@ -226,7 +295,11 @@ export function getUpgradeInfo(
     troops,
     maxTroops: territoryMaxTroops(level),
     nextMaxTroops,
-    remainingTroops: cost === null ? troops : troops - cost,
+    remainingTroops: cost === null ? troops : troops - paidFromSelf,
+    paidFromSelf,
+    paidFromNeighbours,
+    contributions,
+    available: paidFromSelf + paidFromNeighbours,
   };
 
   if (state.capturedTiles[sourceKey] !== seat) {
@@ -245,15 +318,34 @@ export function getUpgradeInfo(
       error: "This territory is already at the maximum level",
     };
   }
-  if (troops - cost < 1) {
+  if (outstanding > 0) {
     return {
       ...base,
       ok: false,
       code: "NOT_ENOUGH_TROOPS",
-      error: `Upgrading costs ${cost} troops and must leave at least 1 behind`,
+      error: `Upgrading costs ${cost} troops — this territory and its neighbours can spare ${paidFromSelf + paidFromNeighbours} (each keeps at least 1)`,
     };
   }
   return { ...base, ok: true };
+}
+
+/**
+ * Apply an upgrade's payment plan to a troop map.
+ *
+ * Exported so the reducer and any caller that needs to preview the result use
+ * the SAME subtraction. Contributions already leave at least one troop on each
+ * donor; the clamp is a backstop against a hand-built plan, never a rule.
+ */
+export function payUpgradeContributions(
+  tileTroops: Record<string, number>,
+  contributions: readonly UpgradeContribution[],
+): Record<string, number> {
+  if (contributions.length === 0) return tileTroops;
+  const next: Record<string, number> = { ...tileTroops };
+  for (const { key, troops } of contributions) {
+    next[key] = Math.max(1, (next[key] ?? 1) - troops);
+  }
+  return next;
 }
 
 // ── Initial positions ─────────────────────────────────────────────────────
@@ -559,10 +651,11 @@ export function coreReducer(
 
       const upgraded: CoreState = {
         ...state,
-        // Level up, pay the cost from this territory's own troops, keep at
-        // least one troop (guaranteed by `getUpgradeInfo`).
+        // Level up, then pay the cost through the plan the rulebook built:
+        // the territory first, then adjacent friendly territories, each
+        // keeping at least one troop (guaranteed by `getUpgradeInfo`).
         territoryLevels: { ...state.territoryLevels, [sourceKey]: info.nextLevel },
-        tileTroops: { ...state.tileTroops, [sourceKey]: info.troops - info.cost },
+        tileTroops: payUpgradeContributions(state.tileTroops, info.contributions),
         p1MoveCount,
         p2MoveCount,
         moveCount,
@@ -632,8 +725,9 @@ export function coreReducer(
 //   * displace — own tile → adjacent own tile, same troop rules (the source
 //                keeps at least 1 troop), and the destination may not exceed
 //                its level capacity.
-//   * upgrade  — own tile below level 4 with enough troops to pay the cost
-//                and still keep at least one.
+//   * upgrade  — own tile below level 4, affordable by drawing on the tile
+//                and its adjacent friendly territories (each keeps at least
+//                one troop).
 //   * endTurn / skipRound — always legal for the player to move.
 //
 // `seat` is the player the move is being checked FOR: the client passes

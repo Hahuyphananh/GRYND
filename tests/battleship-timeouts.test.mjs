@@ -55,14 +55,14 @@ const VERCEL = JSON.parse(read("vercel.json"));
 
 // ── Automatic coordinate selection ────────────────────────────────────────
 
-test("the board has 100 addresses and untried cells exclude every fired shot", () => {
-  assert.equal(allCoordinates().length, 100);
+test("the board has 140 addresses and untried cells exclude every fired shot", () => {
+  assert.equal(allCoordinates().length, 140);
   assert.equal(allCoordinates()[0], "A1");
-  assert.equal(allCoordinates()[99], "J10");
+  assert.equal(allCoordinates()[139], "N10");
 
   const attacked = ["A1", "b2", "J10"];
   const untried = untriedCoordinates(attacked);
-  assert.equal(untried.length, 97);
+  assert.equal(untried.length, 137);
   for (const cell of ["A1", "B2", "J10"]) assert.equal(untried.includes(cell), false);
   assert.equal(untried.includes("C3"), true);
 });

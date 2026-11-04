@@ -6,9 +6,9 @@
 //
 // ── THE RULES, EXACTLY ────────────────────────────────────────────────────
 //
-//   • A 10×10 board per player, cells addressed A1–J10 (`{ x, y }` internally).
-//   • Five ships — Carrier 5, Battleship 4, Cruiser 3, Submarine 3, Destroyer 2
-//     — for exactly 17 occupied cells. Ships may touch, including diagonally;
+//   • A 14×10 board per player, cells addressed A1–N10 (`{ x, y }` internally).
+//   • Six ships — Carrier 5, Battleship 4, Cruiser 3, Submarine 3, Frigate 3 and
+//     Destroyer 2 — for exactly 20 occupied cells. Ships may touch, including diagonally;
 //     only a shared CELL is illegal. Every ship is a straight run of its own
 //     length, horizontal or vertical, entirely inside the board.
 //   • Each round BOTH players lock exactly one attack coordinate. The two
@@ -16,7 +16,7 @@
 //   • A coordinate may be attacked once per player per match.
 //   • A shot on empty water is a MISS; on a ship that still has undamaged cells
 //     it is a HIT; on the ship's last undamaged cell it is SUNK.
-//   • The first player to destroy all five enemy ships wins. If both fleets are
+//   • The first player to destroy all six enemy ships wins. If both fleets are
 //     destroyed by the same round's two attacks, the match is a DRAW — no
 //     winner is invented.
 //
@@ -38,7 +38,8 @@
 
 import {
   BOARD_CELL,
-  BOARD_SIZE,
+  BOARD_COLUMNS,
+  BOARD_ROWS,
   COLUMNS,
   FLEET_CELL_COUNT,
   FLEET_SIZE,
@@ -46,6 +47,7 @@ import {
   MATCH_STATUS,
   ORIENTATIONS,
   REJECTION,
+  ROWS,
   SEATS,
   SEAT_RESULTS,
   SHIP_KEYS,
@@ -91,6 +93,15 @@ export class BattleshipRuleError extends Error {
   }
 }
 
+/**
+ * The printed-cell pattern, built from the board's own labels: widening the
+ * board widens what parses ("B7", "N10") with no second list to keep in sync.
+ */
+const ROW_ALTERNATION = [...ROWS]
+  .sort((a, b) => String(b).length - String(a).length)
+  .join("|");
+const COORDINATE_PATTERN = new RegExp(`^([${COLUMNS.join("")}])(${ROW_ALTERNATION})$`);
+
 // ── Seats ─────────────────────────────────────────────────────────────────
 
 export function otherSeat(seat: Seat): Seat {
@@ -106,7 +117,7 @@ export function parseCoordinate(input: CoordinateInput | null | undefined): Coor
   if (input === null || input === undefined) return null;
   if (typeof input === "string") {
     const text = input.trim().toUpperCase();
-    const match = /^([A-J])(10|[1-9])$/.exec(text);
+    const match = COORDINATE_PATTERN.exec(text);
     if (!match) return null;
     return { x: COLUMNS.indexOf(match[1] as (typeof COLUMNS)[number]), y: Number(match[2]) - 1 };
   }
@@ -131,14 +142,21 @@ export function cellKey(coordinate: Coordinate): string {
 export function inBounds(coordinate: Coordinate): boolean {
   if (!coordinate) return false;
   const { x, y } = coordinate;
-  return Number.isInteger(x) && Number.isInteger(y) && x >= 0 && y >= 0 && x < BOARD_SIZE && y < BOARD_SIZE;
+  return (
+    Number.isInteger(x) &&
+    Number.isInteger(y) &&
+    x >= 0 &&
+    y >= 0 &&
+    x < BOARD_COLUMNS &&
+    y < BOARD_ROWS
+  );
 }
 
 /** Every cell of the board, row by row (used by tests and the board UI). */
 export function allCells(): Coordinate[] {
   const cells: Coordinate[] = [];
-  for (let y = 0; y < BOARD_SIZE; y += 1) {
-    for (let x = 0; x < BOARD_SIZE; x += 1) cells.push({ x, y });
+  for (let y = 0; y < BOARD_ROWS; y += 1) {
+    for (let x = 0; x < BOARD_COLUMNS; x += 1) cells.push({ x, y });
   }
   return cells;
 }
@@ -197,7 +215,7 @@ export function validateShipPlacement(placement: ShipPlacement): PlacementVerdic
 }
 
 /**
- * Validates a WHOLE fleet: five ships, one of each, every one inside the board,
+ * Validates a WHOLE fleet: six ships, one of each, every one inside the board,
  * every one its required length, and no two sharing a cell.
  *
  * Touching — including diagonally — is legal and deliberately not checked.
@@ -671,10 +689,10 @@ export function resolveRound(
 
 // ── Public projections ────────────────────────────────────────────────────
 
-/** An empty 10×10 public board, `board[y][x]`, every cell unknown. */
+/** An empty public board, `board[y][x]`, every cell unknown. */
 export function emptyBoard(): BoardCell[][] {
-  return Array.from({ length: BOARD_SIZE }, () =>
-    Array.from({ length: BOARD_SIZE }, () => BOARD_CELL.UNKNOWN as BoardCell),
+  return Array.from({ length: BOARD_ROWS }, () =>
+    Array.from({ length: BOARD_COLUMNS }, () => BOARD_CELL.UNKNOWN as BoardCell),
   );
 }
 

@@ -42,7 +42,7 @@ export const TIMEOUT_FORFEIT_THRESHOLD = 2;
 /** Reconnection grace before an absent player forfeits, matching the platform. */
 export const DISCONNECT_GRACE_SECONDS = 30;
 
-/** Every printable cell, in board order ("A1" … "J10"). */
+/** Every printable cell, in board order ("A1" … "N10"). */
 export function allCoordinates(): string[] {
   const coordinates: string[] = [];
   for (const row of ROWS) {
@@ -65,7 +65,7 @@ export const serverRandomInt: RandomInt = (maxExclusive) => randomInt(0, maxExcl
 
 /**
  * One uniformly random coordinate this seat has never attacked, or null when
- * the board is exhausted (all 100 cells fired — a match that long has already
+ * the board is exhausted (every cell fired — a match that long has already
  * ended, so null is a guard, not a policy).
  */
 export function pickTimeoutCoordinate(

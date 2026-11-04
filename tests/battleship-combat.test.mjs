@@ -55,6 +55,7 @@ const FLEET_A = {
     { ship: "battleship", orientation: "horizontal", x: 0, y: 2 },
     { ship: "cruiser", orientation: "horizontal", x: 0, y: 4 },
     { ship: "submarine", orientation: "horizontal", x: 0, y: 6 },
+    { ship: "frigate", orientation: "horizontal", x: 0, y: 1 },
     { ship: "destroyer", orientation: "horizontal", x: 0, y: 8 },
   ],
 };
@@ -64,6 +65,7 @@ const FLEET_B = {
     { ship: "battleship", orientation: "horizontal", x: 5, y: 2 },
     { ship: "cruiser", orientation: "horizontal", x: 5, y: 4 },
     { ship: "submarine", orientation: "horizontal", x: 5, y: 6 },
+    { ship: "frigate", orientation: "horizontal", x: 5, y: 1 },
     { ship: "destroyer", orientation: "horizontal", x: 5, y: 8 },
   ],
 };
@@ -261,7 +263,7 @@ test("an old-round coordinate cannot be fired again", () => {
 });
 
 test("invalid and out-of-board coordinates are refused before anything is stored", () => {
-  for (const bad of ["Z99", "K1", "A0", "J11", "B7B", "", null]) {
+  for (const bad of ["Z99", "O1", "A0", "J11", "B7B", "", null]) {
     assert.equal(parseCoordinate(bad), null, `${String(bad)} must not parse`);
   }
   const out = both(fresh(), "Z99", "A1");
@@ -306,7 +308,7 @@ test("a reconnect rebuilds the exact pending state from the rows", () => {
   assert.ok(state);
   const view = matchViewForSeat(state, "player1");
   assert.equal("fleet" in view.opponent, false, "the opponent projection has no fleet field");
-  assert.equal(view.you.fleet.ships.length, 5, "the viewer still sees their own fleet");
+  assert.equal(view.you.fleet.ships.length, 6, "the viewer still sees their own fleet");
   assert.equal(view.round, 1);
 });
 

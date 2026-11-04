@@ -30,7 +30,7 @@ import {
   resolveAttackOutcome,
 } from "../src/lib/hex-duel/rules.ts";
 import { replayHexDuel } from "../src/lib/hex-duel/authority.ts";
-import { decideAIAction } from "../src/lib/hexDuelAI.ts";
+import { decideAIAction, scoreUpgrade } from "../src/lib/hexDuelAI.ts";
 
 const read = (p) => fs.readFileSync(p, "utf8");
 const CAP = HEX_DUEL_CAPITALS;
@@ -240,8 +240,31 @@ test("upgrade costs come from one table and are paid from the territory", () => 
   assert.equal(after.tileTroops[P1_CAP_KEY], 3, "7 - 5 cost + 1 growth");
   assert.equal(after.currentTurn, "player2");
 
+  // A tile that cannot pay alone may draw on an adjacent friendly territory.
   const poor = { ...opening(), tileTroops: { ...opening().tileTroops, [P1_CAP_KEY]: 4 } };
-  assert.equal(getUpgradeInfo(poor, "player1", P1_CAP_KEY).ok, false);
+  const funded = getUpgradeInfo(poor, "player1", P1_CAP_KEY);
+  assert.equal(funded.ok, true);
+  assert.equal(funded.paidFromNeighbours, 2, "the 3-troop neighbour gives 2 and keeps 1");
+
+  const afterFunded = coreReducer(
+    poor,
+    { type: "upgrade", sourceKey: P1_CAP_KEY, player: "player1" },
+    CAP,
+  );
+  assert.equal(afterFunded.territoryLevels[P1_CAP_KEY], 2);
+  assert.equal(afterFunded.tileTroops[P1_CAP_KEY], 2, "4 - 3 paid + 1 growth");
+  assert.equal(
+    afterFunded.tileTroops["1,0"],
+    2,
+    "the neighbour paid 2, kept 1, then grew 1 at the end of the turn",
+  );
+
+  // With no friendly neighbour there is nothing to draw on, so it is refused.
+  const alone = {
+    ...poor,
+    capturedTiles: { [P1_CAP_KEY]: "player1", [P2_CAP_KEY]: "player2" },
+  };
+  assert.equal(getUpgradeInfo(alone, "player1", P1_CAP_KEY).ok, false);
   const maxed = { ...rich, territoryLevels: { [P1_CAP_KEY]: 4 } };
   assert.equal(getUpgradeInfo(maxed, "player1", P1_CAP_KEY).code, "MAX_LEVEL");
 });
@@ -478,6 +501,130 @@ test("the AI takes exactly one action and can choose to upgrade", () => {
     );
     assert.ok(["attack", "displace", "upgrade", "endTurn"].includes(decision.type));
   }
+});
+
+const aiBoard = (overrides = {}) => ({
+  myPlayer: "player2",
+  enemyPlayer: "player1",
+  capturedTiles: {
+    "4,4": "player2", // capital
+    "1,1": "player2",
+    "1,2": "player2",
+    "0,0": "player1",
+  },
+  tileTroops: { "4,4": 10, "1,1": 4, "1,2": 6, "0,0": 5 },
+  capitals: HEX_DUEL_CAPITALS,
+  territoryLevels: { "1,2": 4 },
+  ...overrides,
+});
+
+test("the AI can fund an upgrade from neighbouring troops when its own are short", () => {
+  // "1,1" holds 4 troops, so it cannot pay the 5-troop level-1 price alone; its
+  // maxed-out neighbour "1,2" makes up the difference.
+  const funded = scoreUpgrade("1,1", aiBoard());
+  assert.ok(funded, "the short tile is upgraded with help");
+
+  // The same board with a neighbour that cannot spare a troop: no upgrade.
+  assert.equal(
+    scoreUpgrade(
+      "1,1",
+      aiBoard({ tileTroops: { "4,4": 10, "1,1": 4, "1,2": 1, "0,0": 5 } }),
+    ),
+    null,
+  );
+});
+
+test("the AI will not strip its own capital to pay for an upgrade", () => {
+  // Capital on 4, the tile next to it on 4: the 5-troop price takes 3 there
+  // and 2 from the capital, leaving the win condition on 2.
+  const short = aiBoard({
+    capturedTiles: { "4,4": "player2", "4,3": "player2", "0,0": "player1" },
+    tileTroops: { "4,4": 4, "4,3": 4, "0,0": 5 },
+    territoryLevels: {},
+  });
+  assert.equal(scoreUpgrade("4,3", short), null);
+
+  // A deeper capital can afford it...
+  const rich = aiBoard({
+    ...short,
+    tileTroops: { "4,4": 6, "4,3": 4, "0,0": 5 },
+  });
+  assert.ok(scoreUpgrade("4,3", rich));
+
+  // ...unless an enemy stands next to the capital, where five are kept back.
+  const threatened = aiBoard({
+    capturedTiles: {
+      "4,4": "player2",
+      "4,3": "player2",
+      "3,3": "player1",
+      "0,0": "player1",
+    },
+    tileTroops: { "4,4": 6, "4,3": 4, "3,3": 5, "0,0": 5 },
+    territoryLevels: {},
+  });
+  assert.equal(scoreUpgrade("4,3", threatened), null);
+});
+
+test("the AI banks troops on a threatened capital instead of spending them", () => {
+  const capitalKey = P2_CAP_KEY;
+  const threatened = aiBoard({
+    capturedTiles: {
+      [capitalKey]: "player2",
+      "4,3": "player2",
+      "3,4": "player1", // enemy standing next to the capital
+      "0,0": "player1",
+    },
+    tileTroops: { [capitalKey]: 6, "4,3": 8, "3,4": 3, "0,0": 5 },
+    territoryLevels: {},
+  });
+
+  const banking = decideAIAction(threatened, "hard");
+  assert.equal(banking.type, "displace");
+  assert.equal(banking.targetKey, capitalKey, "troops are moved INTO the capital");
+  assert.equal(banking.troopCount, 4, "as many as its level-1 ceiling can hold");
+
+  // The capital itself may only strike the tile threatening it (which it can
+  // conquer), never spend its garrison elsewhere.
+  assert.equal(scoreUpgrade(capitalKey, threatened), null, "no upgrade drains the garrison");
+
+  // With the threat gone the same board does not garrison the capital.
+  const safe = aiBoard({
+    capturedTiles: { [capitalKey]: "player2", "4,3": "player2", "0,0": "player1" },
+    tileTroops: { [capitalKey]: 6, "4,3": 8, "0,0": 5 },
+    territoryLevels: {},
+  });
+  const safeDecision = decideAIAction(safe, "hard");
+  assert.ok(
+    !(safeDecision.type === "displace" && safeDecision.targetKey === capitalKey),
+    "no banking needed when nothing threatens the capital",
+  );
+});
+
+test("an upgrade plays the fortify cue once, and the board shows who pays", () => {
+  const audio = read("src/lib/hexAudio.ts");
+  assert.match(audio, /playFortify/);
+  assert.match(audio, /playNoise\(0\.12, 0\.05\)/);
+
+  const page = read("src/app/casino/hex-duel/game/[matchId]/PageClient.tsx");
+  // Level-map driven: one cue per level that actually rose, never on mount.
+  assert.match(page, /const levelsForAudio = useRef<Record<string, number> \| null>\(null\)/);
+  assert.match(page, /if \(!previous\) return;/);
+  assert.match(page, /if \(raised\) audio\.playFortify\(\);/);
+
+  // The split reaches the board before confirmation, with donor keys flipped
+  // for the local perspective like every other board key.
+  assert.match(page, /const upgradeFunding = useMemo<UpgradeFunding \| null>/);
+  assert.match(page, /upgradeFunding=\{\s*upgradeFunding\s*\?/);
+  assert.match(page, /donors: Object\.fromEntries/);
+
+  const board = read("src/components/HexBoard.tsx");
+  assert.match(board, /data-hex-upgrade-funding=""/);
+  assert.match(board, /fundingTake=\{upgradeFunding\?\.donors\[/);
+  assert.match(board, /fundingReceives=\{/);
+
+  const tile = read("src/components/HexTile.tsx");
+  assert.match(tile, /data-hex-upgrade-donor=\{fundingTake\}/);
+  assert.match(tile, /data-hex-upgrade-receives=\{fundingReceives\}/);
 });
 
 test("the AI never proposes an illegal displacement or an unaffordable upgrade", () => {

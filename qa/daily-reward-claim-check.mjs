@@ -187,7 +187,9 @@ const check = (name, ok, extra = "") => {
   ok ? pass++ : fail++;
 };
 
-const browser = await chromium.launch();
+// Chrome is the browser this machine actually has; the bundled Chromium build
+// may not be downloaded. Same fallback the other harnesses use.
+const browser = await chromium.launch({ channel: "chrome" }).catch(() => chromium.launch());
 
 const NAV_COINS = '[data-testid="nav-coins"]';
 const PROBE = '[data-testid="probe-balance"]';
@@ -249,7 +251,7 @@ async function boot(world) {
     streakDay: 3,
     cycle: CYCLE,
     claimable: true,
-    playGateSatisfied: true,
+    winGateSatisfied: true,
     credited: CYCLE[2],
   };
   const wage = CYCLE[2];
@@ -272,6 +274,58 @@ async function boot(world) {
   await page.waitForSelector(BOARD, { timeout: 5000 });
   const opened = await boardText(page);
   check("the board lists every day of the cycle", opened.includes("Day 14"), opened);
+
+  // ── GLITCH states the day, the streak and what is still payable ───────
+  const GLITCH_IN_BOARD = '[data-testid="daily-reward-glitch"]';
+  check(
+    "GLITCH appears in the reward popup with what is banked and what is left",
+    (await page.locator(GLITCH_IN_BOARD).count()) === 1 &&
+      /Day 3 of 14\. Streak: 3\. 11 rewards left this cycle\./.test(
+        (await readText(page, GLITCH_IN_BOARD)) ?? "",
+      ),
+    await readText(page, GLITCH_IN_BOARD),
+  );
+  check(
+    "exactly one mascot is drawn in the reward popup",
+    (await page.locator(`${GLITCH_IN_BOARD} img`).count()) === 1,
+  );
+  check(
+    "the mascot never covers a day tile or the claim button",
+    await page.evaluate((glitchSel) => {
+      const bubble = document.querySelector(glitchSel)?.getBoundingClientRect();
+      if (!bubble) return false;
+      const targets = [
+        ...document.querySelectorAll(
+          '[data-testid^="daily-reward-day-"], [data-testid="daily-reward-claim"]',
+        ),
+      ];
+      return targets.every((target) => {
+        const rect = target.getBoundingClientRect();
+        return (
+          rect.bottom <= bubble.top + 1 ||
+          rect.top >= bubble.bottom - 1 ||
+          rect.right <= bubble.left + 1 ||
+          rect.left >= bubble.right - 1
+        );
+      });
+    }, GLITCH_IN_BOARD),
+  );
+  await page.locator(`${GLITCH_IN_BOARD} button`).click();
+  // The wrapper stays mounted (it is page flow); the BUBBLE and the MASCOT are
+  // what dismiss, so that is what has to disappear. The bubble fades through
+  // AnimatePresence, so poll rather than guess a duration.
+  await page
+    .waitForFunction(
+      (sel) => document.querySelectorAll(`${sel} button, ${sel} img`).length === 0,
+      GLITCH_IN_BOARD,
+      { timeout: 4000 },
+    )
+    .catch(() => {});
+  check(
+    "the reward mascot is dismissible",
+    (await page.locator(`${GLITCH_IN_BOARD} button`).count()) === 0 &&
+      (await page.locator(`${GLITCH_IN_BOARD} img`).count()) === 0,
+  );
 
   // The card lives inside a transformed wrapper (see the harness), so a board
   // rendered in place would be trapped in that box and could sit under the
@@ -348,7 +402,7 @@ async function boot(world) {
     streakDay: 14,
     cycle: CYCLE,
     claimable: true,
-    playGateSatisfied: true,
+    winGateSatisfied: true,
     credited: 30, // the claim resets the streak to day 1 and pays day 1
   };
   const { context, page } = await boot(world);
@@ -393,13 +447,19 @@ async function boot(world) {
     streakDay: 2,
     cycle: CYCLE,
     claimable: true,
-    playGateSatisfied: false,
+    winGateSatisfied: false,
     credited: 0,
   };
   const { context, page } = await boot(world);
 
   const card = await cardText(page);
-  check("an unplayed day shows the gate, not a claim button", /Play one game/.test(card || ""), card);
+  // The shipped gate reads "Win a match to unlock today's reward" — the check
+  // used to look for the older "Play one game" wording.
+  check(
+    "an unplayed day shows the gate, not a claim button",
+    /Win a match to unlock today's reward/.test(card || ""),
+    card,
+  );
 
   await page.click(CARD_OPEN);
   await page.waitForSelector(BOARD, { timeout: 5000 });

@@ -72,7 +72,7 @@ const RULES = {
   sections: [
     {
       heading: "Place your fleet",
-      body: "Five ships — carrier (5), battleship (4), cruiser (3), submarine (3) and destroyer (2) — go on your own 10×10 board. Ships may touch, but they can never share a cell. You have 60 seconds; the clock confirms a valid layout for you if it runs out.",
+      body: "Six ships — carrier (5), battleship (4), cruiser (3), submarine (3), frigate (3) and destroyer (2) — go on your own 14×10 board. Ships may touch, but they can never share a cell. You have 60 seconds; the clock confirms a valid layout for you if it runs out.",
     },
     {
       heading: "One shot each round",
@@ -80,7 +80,7 @@ const RULES = {
     },
     {
       heading: "Both shots resolve together",
-      body: "The server judges the round's two shots against the same pre-round board. A hit, a miss or a sunk ship is the server's answer, never the browser's. Sink all five enemy ships to win.",
+      body: "The server judges the round's two shots against the same pre-round board. A hit, a miss or a sunk ship is the server's answer, never the browser's. Sink all six enemy ships to win.",
     },
     {
       heading: "Ranked or free practice",
@@ -569,7 +569,7 @@ export default function BattleshipPageClient() {
       <div className="mx-auto w-full max-w-6xl px-3 py-5 sm:px-6 sm:py-8">
         <PvpLobby
           title="Battleship"
-          subtitle="A free 1v1 naval duel: two hidden 10×10 boards, one simultaneous shot each round, and every hit resolved by the server."
+          subtitle="A free 1v1 naval duel: two hidden 14×10 boards, one simultaneous shot each round, and every hit resolved by the server."
           icon={
             <IconAnchor className="h-9 w-9 flex-shrink-0 text-cyan-300 drop-shadow-[0_0_12px_rgba(34,211,238,0.55)] sm:h-10 sm:w-10" />
           }
@@ -606,7 +606,7 @@ export default function BattleshipPageClient() {
           lobbyMeta={(row: LobbyRow) => (
             <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
               <span>Host: {String(row.player1Id).slice(0, 12)}…</span>
-              <span>1v1 · 10×10</span>
+              <span>1v1 · 14×10</span>
               <span className="text-emerald-300">Free</span>
             </span>
           )}
@@ -649,7 +649,7 @@ export default function BattleshipPageClient() {
     </main>
     ) : (
     <main data-testid="battleship-page" className="min-h-screen bg-[#030817] text-white">
-      <div className="mx-auto w-full max-w-5xl px-3 py-5 sm:px-6 sm:py-8">
+      <div className="mx-auto w-full max-w-6xl px-3 py-5 sm:px-6 sm:py-8">
         <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#ffec08]/80">
@@ -657,7 +657,7 @@ export default function BattleshipPageClient() {
             </p>
             <h1 className="text-2xl font-black uppercase tracking-tight sm:text-3xl">Battleship</h1>
             <p className="mt-1 max-w-xl text-[11px] leading-snug text-white/50 sm:text-xs">
-              Ten by ten, five ships, one simultaneous shot every round. Find the enemy fleet before it
+              Fourteen by ten, six ships, one simultaneous shot every round. Find the enemy fleet before it
               finds yours.
             </p>
           </div>

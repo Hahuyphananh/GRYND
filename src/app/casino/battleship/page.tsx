@@ -7,7 +7,7 @@ import PageClient from "./PageClient";
 // its /games/<slug> landing page (not part of this phase).
 const title = "Battleship | GRYND";
 const description =
-  "Battleship on GRYND — a 1v1 naval duel on two hidden 10x10 boards. Place five ships, lock one shot each round, and sink the enemy fleet first.";
+  "Battleship on GRYND — a 1v1 naval duel on two hidden 14x10 boards. Place six ships, lock one shot each round, and sink the enemy fleet first.";
 
 export const metadata: Metadata = {
   title,

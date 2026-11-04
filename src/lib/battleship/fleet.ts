@@ -15,7 +15,7 @@
 //
 // RANDOM PLACEMENT IS BACKTRACKING, NOT RETRY-UNTIL-LUCKY
 //
-//   Five ships on a 10×10 board always fit, so a rejection loop would *usually*
+//   Six ships on a 14×10 board always fit, so a rejection loop would *usually*
 //   terminate — and occasionally draw a pathological sequence and spin. This is
 //   a depth-first search with an injectable shuffle: it tries the ships in the
 //   canonical order, tries each legal placement in a random order, and backtracks
@@ -34,7 +34,7 @@
 //   `deserializeFleet` re-validates whatever it parses, so a corrupted or
 //   tampered column can never become a playable fleet.
 
-import { ORIENTATIONS, REJECTION, SHIP_KEYS } from "./constants";
+import { BOARD_COLUMNS, BOARD_ROWS, ORIENTATIONS, REJECTION, SHIP_KEYS } from "./constants";
 import type { Fleet, ShipKey, ShipPlacement } from "./types";
 import {
   BattleshipRuleError,
@@ -50,8 +50,8 @@ import {
 export function placementsFor(ship: ShipKey): ShipPlacement[] {
   const placements: ShipPlacement[] = [];
   for (const orientation of ORIENTATIONS) {
-    for (let y = 0; y < 10; y += 1) {
-      for (let x = 0; x < 10; x += 1) {
+    for (let y = 0; y < BOARD_ROWS; y += 1) {
+      for (let x = 0; x < BOARD_COLUMNS; x += 1) {
         const placement: ShipPlacement = { ship, orientation, x, y };
         if (validateShipPlacement(placement).ok) placements.push(placement);
       }
@@ -72,7 +72,7 @@ function shuffle<T>(items: T[], random: () => number): void {
 }
 
 /**
- * Deals a legal fleet: five ships, no overlap, every ship its required length.
+ * Deals a legal fleet: six ships, no overlap, every ship its required length.
  *
  * `random` is injectable purely so a test can pin the deal. The search is
  * exhaustive with backtracking, so it always finds a fleet rather than retrying

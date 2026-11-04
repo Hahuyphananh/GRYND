@@ -2,7 +2,7 @@
 
 // src/components/games/battleship/FleetPlacement.tsx
 //
-// The placement screen: five ships, one board, and as many ways to place them as
+// The placement screen: six ships, one board, and as many ways to place them as
 // the platform's devices need.
 //
 //   * SELECT + TAP/CLICK — pick a ship in the list, then a cell. This is the
@@ -10,7 +10,7 @@
 //   * DRAG AND DROP (desktop) — drag a ship from the list onto a cell.
 //   * ROTATE — the button, or the R key, flips the selected ship.
 //   * AUTO PLACE / RESET — deal a legal fleet, or start over.
-//   * CONFIRM — enabled only when all five ships are down and legal.
+//   * CONFIRM — enabled only when all six ships are down and legal.
 //
 // Every placement decision is made by the PURE model in
 // src/lib/battleship/placement.ts; this component only renders it and prints the
@@ -20,11 +20,18 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { BOARD_CELL, FLEET_SPEC, SHIP_KEYS } from "../../../lib/battleship/constants";
+import {
+  BOARD_CELL,
+  BOARD_COLUMNS,
+  BOARD_ROWS,
+  FLEET_SPEC,
+  SHIP_KEYS,
+} from "../../../lib/battleship/constants";
 import type { Coordinate, Fleet, Orientation, ShipKey } from "../../../lib/battleship/types";
 import {
   PLACEMENT_SECONDS,
   autoPlace,
+  clampPlacement,
   emptyPlacement,
   isPlaced,
   placeShip,
@@ -39,8 +46,8 @@ import BoardGrid from "./BoardGrid";
 import ShipVisual from "./ShipVisual";
 
 /** The placement board never shows attack results, only the player's ships. */
-const EMPTY_CELLS = Array.from({ length: 10 }, () =>
-  Array.from({ length: 10 }, () => BOARD_CELL.UNKNOWN),
+const EMPTY_CELLS = Array.from({ length: BOARD_ROWS }, () =>
+  Array.from({ length: BOARD_COLUMNS }, () => BOARD_CELL.UNKNOWN),
 );
 
 export interface FleetPlacementProps {
@@ -89,7 +96,7 @@ export default function FleetPlacement({ onFleetConfirmed }: FleetPlacementProps
     if (confirmedRef.current) return;
     const fleet = toFleet(placementRef.current);
     if (!fleet) {
-      setError("Place all five ships before confirming your fleet.");
+      setError("Place all six ships before confirming your fleet.");
       return;
     }
     confirmedRef.current = true;
@@ -108,12 +115,15 @@ export default function FleetPlacement({ onFleetConfirmed }: FleetPlacementProps
   }, [secondsLeft, onFleetConfirmed]);
 
   const placeAt = useCallback((coordinate: Coordinate, ship: ShipKey) => {
-    const result = placeShip(placementRef.current, {
+    // A cell near the right or bottom edge still places the ship: the model
+    // slides the run back inside the board instead of refusing the tap, so the
+    // player can put a ship anywhere that is not already occupied.
+    const result = placeShip(placementRef.current, clampPlacement({
       ship,
       orientation: orientationRef.current,
       x: coordinate.x,
       y: coordinate.y,
-    });
+    }));
     if (result.ok === false) {
       setError(result.message);
       return;
@@ -125,8 +135,12 @@ export default function FleetPlacement({ onFleetConfirmed }: FleetPlacementProps
     if (next) setActiveShip(next);
   }, []);
 
+  // The preview is clamped into the board for the same reason the placement is:
+  // an out-of-bounds ghost would span past the grid's last track, which adds
+  // implicit tracks and makes the whole board (and the page) resize under the
+  // pointer — the shake this screen used to have.
   const previewPlacement = hover
-    ? { ship: activeShip, orientation, x: hover.x, y: hover.y }
+    ? clampPlacement({ ship: activeShip, orientation, x: hover.x, y: hover.y })
     : null;
   const previewValid =
     previewPlacement !== null && placeShip(placement, previewPlacement).ok === true;
@@ -272,7 +286,7 @@ export default function FleetPlacement({ onFleetConfirmed }: FleetPlacementProps
         <p className="mt-3 text-[10px] leading-snug text-white/35">
           {complete
             ? "Fleet ready. Confirm when you are happy with the layout."
-            : "All five ships must be placed before the fleet can be confirmed."}
+            : "All six ships must be placed before the fleet can be confirmed."}
         </p>
       </aside>
     </section>

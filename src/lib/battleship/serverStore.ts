@@ -71,8 +71,10 @@ import {
 import {
   BATTLESHIP_AI_PLAYER_ID,
   BATTLESHIP_LOCK_NAMESPACE,
+  COLUMNS,
   MATCH_PHASE,
   PLACEMENT_SECONDS,
+  ROWS,
   ROUND_SECONDS,
   SEATS,
   SHOT_RESULTS,
@@ -675,7 +677,8 @@ export async function submitAttack({
 }): Promise<AttackSubmitResult> {
   const parsed = parseCoordinate(typeof coordinate === "string" ? coordinate : null);
   if (!parsed || !inBounds(parsed)) {
-    return { error: "Pick a coordinate inside the board (A1-J10)", status: 400 };
+    const lastCell = `${COLUMNS[COLUMNS.length - 1]}${ROWS[ROWS.length - 1]}`;
+    return { error: `Pick a coordinate inside the board (A1-${lastCell})`, status: 400 };
   }
   const label = formatCoordinate(parsed);
 

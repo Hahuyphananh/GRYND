@@ -6,7 +6,7 @@
 //
 //   * own fleet   — every ship with its block visual and its state, so a player
 //                   can see which hulls are damaged or gone.
-//   * enemy fleet — `conceal`: the same five rows, but only the CELL COUNT and
+//   * enemy fleet — `conceal`: the same ship rows, but only the CELL COUNT and
 //                   whether the ship is sunk. No positions, no blocks, nothing
 //                   that could reveal where an enemy ship sits.
 

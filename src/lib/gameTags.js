@@ -258,7 +258,7 @@ export const GAME_CATALOG = [
     tags: ["pvp", "strategy", "skill", "competitive"],
   },
 
-  // Battleship is a 1v1 duel on two hidden 10x10 boards: you place your own
+  // Battleship is a 1v1 duel on two hidden 14x10 boards: you place your own
   // fleet, then both seats lock one shot per round and the server resolves them
   // together. Reading the board, probing for the enemy hulls and deciding where
   // a hit is worth pursuing is planning (strategy), and the outcome turns on

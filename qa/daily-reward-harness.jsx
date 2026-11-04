@@ -12,7 +12,7 @@
 //
 // The scripted world lives on `window.__dailyWorld`, set by addInitScript before
 // this bundle runs:
-//   { balance, streakDay, cycle, claimable, playGateSatisfied, credited }
+//   { balance, streakDay, cycle, claimable, winGateSatisfied, credited }
 //
 // `cycle` defaults to the SHIPPED 14-day curve, so the board under test is the
 // board the app renders.
@@ -40,7 +40,11 @@ world.cycle = world.cycle || [
   30, 35, 45, 50, 60, 70, 80, 90, 105, 120, 135, 155, 175, 200,
 ];
 world.claimable = world.claimable !== false;
-world.playGateSatisfied = world.playGateSatisfied !== false;
+// The status contract's own field name is `winGateSatisfied`
+// (hooks/useDailyReward.ts, lib/tokens/dailyReward.ts). Sending the old
+// `playGateSatisfied` name made the board read as locked while the scripted
+// server said claimable — the harness has to speak the shipping contract.
+world.winGateSatisfied = world.winGateSatisfied !== false;
 // The amount the SERVER actually credits, which the reported status may or may
 // not agree with — that disagreement is one of the things under test.
 world.credited = Number.isFinite(world.credited)
@@ -53,7 +57,7 @@ function dailyStatus() {
   return {
     success: true,
     claimable: world.claimable,
-    playGateSatisfied: world.playGateSatisfied,
+    winGateSatisfied: world.winGateSatisfied,
     streakDay: world.streakDay,
     cycleDay: ((world.streakDay - 1) % world.cycle.length) + 1,
     cycleDays: world.cycle.length,
@@ -71,13 +75,13 @@ function bodyFor(path, method) {
       if (!world.claimable) {
         return { status: 409, body: { success: false, error: "Already claimed today" } };
       }
-      if (!world.playGateSatisfied) {
+      if (!world.winGateSatisfied) {
         return {
           status: 403,
           body: {
             success: false,
             error: "Play a game to unlock today's reward",
-            playGateSatisfied: false,
+            winGateSatisfied: false,
           },
         };
       }

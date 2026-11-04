@@ -210,3 +210,49 @@ test("the expected-result text covers conquer, tie and failed attacks", () => {
   });
   assert.match(wiped.text, /neutral/);
 });
+
+// ── D. Upgrade level visuals ────────────────────────────────────────────
+
+const WALL_ENTRY =
+  /\r?\n {2}(\d): \{ color: "(#[0-9a-f]+)", inset: (\d+), thickness: ([\d.]+), merlons: (true|false), towers: (true|false) \},/g;
+
+test("every upgrade level has its own fortification, and level 1 has none", () => {
+  const tile = read("src/components/HexTile.tsx");
+
+  const walls = [...tile.matchAll(WALL_ENTRY)].map((m) => ({
+    level: Number(m[1]),
+    color: m[2],
+    inset: Number(m[3]),
+    thickness: Number(m[4]),
+    merlons: m[5] === "true",
+    towers: m[6] === "true",
+  }));
+
+  assert.deepEqual(
+    walls.map((w) => w.level),
+    [2, 3, 4],
+    "levels 2, 3 and 4 are drawn; level 1 keeps the plain tile",
+  );
+  assert.equal(new Set(walls.map((w) => w.color)).size, 3, "a different shade per level");
+  assert.ok(walls[0].thickness < walls[1].thickness, "the wall gets heavier as the level rises");
+  assert.ok(walls[1].thickness < walls[2].thickness);
+  assert.equal(walls[0].merlons, false, "a plain wall at level 2");
+  assert.equal(walls[0].towers, false);
+  assert.ok(walls[1].merlons && walls[1].towers, "level 3 adds merlons and towers");
+  assert.ok(walls[2].merlons && walls[2].towers, "level 4 keeps them, in gold");
+  assert.ok(walls[0].inset > walls[2].inset, "higher levels sit closer to the tile edge");
+});
+
+test("the fortification is decorative and only shows on owned tiles", () => {
+  const tile = read("src/components/HexTile.tsx");
+
+  // Neutral tiles never show a wall, whatever their level field says.
+  assert.match(tile, /const wall =\s*\n?\s*isOwned && typeof level === "number" \? LEVEL_WALLS\[level\] \?\? null : null;/);
+  assert.match(tile, /data-hex-level-walls=\{level\}/);
+  assert.match(tile, /aria-hidden="true"\s*\n\s*data-hex-level-walls=\{level\}/);
+  // Purely painted: no taps intercepted, no layout, and the troop counter
+  // (z above the wall) still reads the number.
+  assert.match(tile, /pointer-events-none absolute inset-0 z-\[4\] rounded-lg/);
+  assert.match(tile, /<HexTroopCount/);
+  assert.match(tile, /L\{level\}/);
+});

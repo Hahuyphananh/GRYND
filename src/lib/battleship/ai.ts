@@ -38,7 +38,8 @@ import {
   coerceAiDifficulty,
   type AiDifficulty,
 } from "../aiDifficulty";
-import { COLUMNS, SHIP_KEYS, SHIP_LENGTHS } from "./constants";
+import { BOARD_COLUMNS, BOARD_ROWS, COLUMNS, SHIP_KEYS, SHIP_LENGTHS } from "./constants";
+import { parseCoordinate } from "./rules";
 import {
   allCoordinates,
   serverRandomInt,
@@ -49,7 +50,7 @@ import type { AttackRecord, ShipKey } from "./types";
 
 /**
  * Hard tier's ceiling on placement checks per turn. The whole board enumeration
- * for five ships is well under this; the cap is a hard stop, not a target.
+ * for six ships is well under this; the cap is a hard stop, not a target.
  */
 export const AI_MAX_DENSITY_EVALS = 6000;
 
@@ -59,9 +60,10 @@ interface Cell {
 }
 
 function parseCell(label: string): Cell | null {
-  const match = /^([A-J])(10|[1-9])$/.exec(String(label).toUpperCase());
-  if (!match) return null;
-  return { x: COLUMNS.indexOf(match[1] as (typeof COLUMNS)[number]), y: Number(match[2]) - 1 };
+  // The rules engine owns the printed form, so the bot reads exactly the cells
+  // the board exposes — including after the board's width changed.
+  const coordinate = parseCoordinate(String(label));
+  return coordinate ? { x: coordinate.x, y: coordinate.y } : null;
 }
 
 function cellLabel(x: number, y: number): string {
@@ -82,7 +84,7 @@ function neighbours(label: string): string[] {
   for (const [dx, dy] of steps) {
     const x = cell.x + dx;
     const y = cell.y + dy;
-    if (x >= 0 && x < COLUMNS.length && y >= 0 && y < 10) out.push(cellLabel(x, y));
+    if (x >= 0 && x < BOARD_COLUMNS && y >= 0 && y < BOARD_ROWS) out.push(cellLabel(x, y));
   }
   return out;
 }
@@ -143,8 +145,8 @@ function densityMap({
   for (const ship of remaining) {
     const length = SHIP_LENGTHS[ship];
     for (const orientation of ["horizontal", "vertical"] as const) {
-      const maxX = orientation === "horizontal" ? 10 - length : 9;
-      const maxY = orientation === "horizontal" ? 9 : 10 - length;
+      const maxX = orientation === "horizontal" ? BOARD_COLUMNS - length : BOARD_COLUMNS - 1;
+      const maxY = orientation === "horizontal" ? BOARD_ROWS - 1 : BOARD_ROWS - length;
       for (let y = 0; y <= maxY; y += 1) {
         for (let x = 0; x <= maxX; x += 1) {
           evaluations += 1;

@@ -13,7 +13,7 @@
  *   2. HIDDEN INFORMATION — only the player's own fleet is ever passed to a
  *      board; the enemy board is rendered without a ships prop at all.
  *   3. PLACEMENT — 60-second clock, rotate, auto place, reset, confirm, drag and
- *      tap paths, and that all five ships are listed with their cell counts.
+ *      tap paths, and that all six ships are listed with their cell counts.
  *   4. COMBAT — opponent identity, round, countdown, lock, waiting state, fleet
  *      status and attack history, with no hidden selection revealed.
  *   5. MOBILE / WEBVIEW — fluid board sizing, square touch cells, coordinate
@@ -103,6 +103,7 @@ test("the artwork registry is empty and asks for no files", () => {
     battleship: "battleship.png",
     cruiser: "cruiser.png",
     submarine: "submarine.png",
+    frigate: "frigate.png",
     destroyer: "destroyer.png",
   });
 
@@ -171,7 +172,7 @@ test("placement offers every required affordance", () => {
   assert.match(PLACEMENT, /window\.addEventListener\("keydown"/, "R rotates");
 });
 
-test("all five ships are listed with their required cell counts", () => {
+test("all six ships are listed with their required cell counts", () => {
   assert.match(PLACEMENT, /FLEET_SPEC\.map/);
   assert.match(PLACEMENT, /ship\.length\} cells/);
   assert.match(PLACEMENT, /<ShipVisual ship=\{ship\.key\}/);
@@ -224,17 +225,21 @@ test("the combat screen renders the server's projection and owns its transport",
 
 test("boards are fluid, square and touch-friendly", () => {
   assert.match(BOARD, /aspect-square/);
-  assert.match(BOARD, /min-h-7/);
+  assert.match(BOARD, /min-h-4/);
   assert.match(BOARD, /touch-manipulation/);
-  assert.match(BOARD, /gridTemplateColumns: "1\.1rem repeat\(10, minmax\(0, 1fr\)\)"/);
+  assert.match(BOARD, /gridTemplateColumns: `1\.1rem repeat\(\$\{BOARD_COLUMNS\}, minmax\(0, 1fr\)\)`/);
   assert.match(BOARD, /COLUMNS\.map/);
   assert.match(BOARD, /ROWS\.map/);
   assert.match(BOARD, /sm:text-\[10px\]/, "labels scale up on wider screens");
   assert.equal(/w-\[\d{3,}px\]/.test(BOARD), false, "no fixed pixel board width");
   assert.match(PAGE_CLIENT, /min-h-screen/);
-  assert.match(PAGE_CLIENT, /max-w-5xl/);
+  assert.match(PAGE_CLIENT, /max-w-6xl/);
   assert.match(PLACEMENT, /lg:grid-cols-\[/, "desktop widens, mobile stacks");
-  assert.match(BATTLE, /lg:grid-cols-\[/, "boards stack on mobile");
+  assert.equal(
+    BATTLE.includes("lg:grid-cols-["),
+    false,
+    "the boards are full width, not squeezed side by side",
+  );
 });
 
 test("every cell is a real button with an accessible coordinate", () => {
@@ -284,18 +289,21 @@ const DEMO_FLEET = {
     { ship: "battleship", orientation: "horizontal", x: 0, y: 2 },
     { ship: "cruiser", orientation: "horizontal", x: 0, y: 4 },
     { ship: "submarine", orientation: "horizontal", x: 0, y: 6 },
+    { ship: "frigate", orientation: "horizontal", x: 0, y: 1 },
     { ship: "destroyer", orientation: "horizontal", x: 0, y: 8 },
   ],
 };
-const EMPTY_GRID = Array.from({ length: 10 }, () => Array.from({ length: 10 }, () => "unknown"));
+const EMPTY_GRID = Array.from({ length: 10 }, () =>
+  Array.from({ length: 14 }, () => "unknown"),
+);
 
-test("BoardGrid renders 100 labelled square cells and no ship unless given one", () => {
+test("BoardGrid renders 140 labelled square cells and no ship unless given one", () => {
   const bare = renderToStaticMarkup(
     React.createElement(BoardGrid, { title: "Enemy Waters", cells: EMPTY_GRID }),
   );
-  assert.equal((bare.match(/<button/g) ?? []).length, 100);
+  assert.equal((bare.match(/<button/g) ?? []).length, 140);
   assert.match(bare, />A</);
-  assert.match(bare, />J</);
+  assert.match(bare, />N</);
   assert.match(bare, />10</);
   assert.equal(/board-ship-/.test(bare), false, "an unpassed fleet draws nothing");
 
@@ -314,16 +322,16 @@ test("the placement screen renders its board, shelf, timer and controls", () => 
   const html = renderToStaticMarkup(
     React.createElement(FleetPlacement, { onFleetConfirmed: () => {} }),
   );
-  assert.equal((html.match(/data-testid="placement-board-cell-/g) ?? []).length, 100);
+  assert.equal((html.match(/data-testid="placement-board-cell-/g) ?? []).length, 140);
   assert.match(html, /data-testid="placement-timer"/);
   assert.match(html, /data-testid="placement-rotate"/);
   assert.match(html, /data-testid="placement-auto"/);
   assert.match(html, /data-testid="placement-reset"/);
   assert.match(html, /data-testid="placement-confirm"/);
-  for (const ship of ["carrier", "battleship", "cruiser", "submarine", "destroyer"]) {
+  for (const ship of ["carrier", "battleship", "cruiser", "submarine", "frigate", "destroyer"]) {
     assert.match(html, new RegExp(`data-testid="placement-ship-${ship}"`));
   }
-  assert.equal((html.match(/ship-visual-/g) ?? []).length, 5, "one block strip per ship in the shelf");
+  assert.equal((html.match(/ship-visual-/g) ?? []).length, 6, "one block strip per ship in the shelf");
 });
 
 test("the battle layout renders both live boards, with ships on the player's board only", () => {
@@ -338,7 +346,7 @@ test("the battle layout renders both live boards, with ships on the player's boa
       board: EMPTY_GRID,
       attacks: [],
       sunkShips: [],
-      enemyShipsRemaining: 5,
+      enemyShipsRemaining: 6,
     },
     opponent: {
       seat: "player2",
@@ -366,9 +374,9 @@ test("the battle layout renders both live boards, with ships on the player's boa
       onLeave: () => {},
     }),
   );
-  assert.equal((html.match(/data-testid="my-fleet-cell-/g) ?? []).length, 100);
-  assert.equal((html.match(/data-testid="enemy-waters-cell-/g) ?? []).length, 100);
-  assert.equal((html.match(/board-ship-/g) ?? []).length, 5, "only the player's five ships are drawn");
+  assert.equal((html.match(/data-testid="my-fleet-cell-/g) ?? []).length, 140);
+  assert.equal((html.match(/data-testid="enemy-waters-cell-/g) ?? []).length, 140);
+  assert.equal((html.match(/board-ship-/g) ?? []).length, 6, "only the player's six ships are drawn");
   assert.match(html, /data-testid="lock-attack"/);
   assert.match(html, /data-testid="history-empty"/);
   assert.equal(/waiting-opponent/.test(html), false, "nothing waits before an attack is locked");

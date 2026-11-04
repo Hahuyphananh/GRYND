@@ -93,9 +93,9 @@ test("the public landing page exists and its rules match the shipped engine", ()
   assert.equal(page.ogImage, "/images/battleship-card.svg");
 
   const rules = [...page.rules, ...page.howToPlay].join(" ");
-  assert.match(rules, /10×10/, "the board size is stated");
-  assert.match(rules, /Carrier 5, Battleship 4, Cruiser 3, Submarine 3 and Destroyer 2/);
-  assert.match(rules, /seventeen cells/);
+  assert.match(rules, /14×10/, "the board size is stated");
+  assert.match(rules, /Carrier 5, Battleship 4, Cruiser 3, Submarine 3, Frigate 3 and Destroyer 2/);
+  assert.match(rules, /twenty cells/);
   assert.match(rules, /simultaneous/i);
   assert.match(rules, /15-second/);
   assert.match(rules, /60-second/);

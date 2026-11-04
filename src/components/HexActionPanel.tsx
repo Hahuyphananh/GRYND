@@ -26,8 +26,14 @@ export interface UpgradePreview {
   key: string;
   currentLevel: number;
   nextLevel: number;
-  /** Troops sacrificed from the territory. */
+  /** Troops paid in total, drawn from the territory and its neighbours. */
   cost: number;
+  /** Troops taken from the territory itself (the rest comes from neighbours). */
+  paidFromSelf: number;
+  /** Of that cost, how much comes from adjacent friendly territories. */
+  paidFromNeighbours: number;
+  /** Every territory that pays, in the order the reducer applies it. */
+  contributions: { key: string; troops: number; fromNeighbour: boolean }[];
   /** Troops before the upgrade. */
   troops: number;
   /** Troops left after paying the cost. */
@@ -112,7 +118,8 @@ export default function HexActionPanel({
         id: "upgrade" as const,
         label: "Upgrade",
         icon: <IconArrowUpRight size={18} />,
-        description: "Spend troops to raise a territory's level and troop capacity",
+        description:
+          "Raise a territory's level with its troops and its neighbours' troops",
         accent: UPGRADE_COLOR,
       },
     ],
@@ -216,6 +223,18 @@ export default function HexActionPanel({
                 <dd className="text-right font-bold text-slate-200">
                   {upgradePreview.troops}
                 </dd>
+                <dt className="text-slate-500">From this tile</dt>
+                <dd className="text-right font-bold text-slate-200">
+                  {upgradePreview.paidFromSelf}
+                </dd>
+                {upgradePreview.paidFromNeighbours > 0 && (
+                  <>
+                    <dt className="text-slate-500">From neighbours</dt>
+                    <dd className="text-right font-bold text-purple-300">
+                      +{upgradePreview.paidFromNeighbours}
+                    </dd>
+                  </>
+                )}
                 <dt className="text-slate-500">Sacrifice</dt>
                 <dd className="text-right font-bold text-purple-300">
                   -{upgradePreview.cost}

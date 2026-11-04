@@ -4,18 +4,20 @@
  *
  * ── GEOMETRY ──────────────────────────────────────────────────────────────
  *
- *   * The board is 10×10. Columns are the letters A–J and rows are the numbers
- *     1–10, so a cell is addressed exactly the way the physical game prints it
- *     ("B7"). Internally a cell is `{ x, y }` with `0 ≤ x, y < BOARD_SIZE`,
- *     where `x` is the column index (A = 0) and `y` the row index (1 = 0) —
- *     the same top-left origin every other GRYND board uses.
+ *   * The board is 14×10 — a LANDSCAPE board. Columns are the letters A–N and
+ *     rows are the numbers 1–10, so a cell is addressed exactly the way the
+ *     physical game prints it ("B7"). Internally a cell is `{ x, y }` with
+ *     `0 ≤ x < BOARD_COLUMNS` and `0 ≤ y < BOARD_ROWS`, where `x` is the column
+ *     index (A = 0) and `y` the row index (1 = 0) — the same top-left origin
+ *     every other GRYND board uses.
  *   * A ship placement is addressed by its FIRST cell — the LEFTMOST cell when
  *     horizontal, the TOPMOST cell when vertical — plus its orientation, so a
  *     placement is unambiguous and its cells can never drift from it.
  *
  * ── FLEET ─────────────────────────────────────────────────────────────────
  *
- *   Carrier 5, Battleship 4, Cruiser 3, Submarine 3, Destroyer 2 = 17 cells.
+ *   Carrier 5, Battleship 4, Cruiser 3, Submarine 3, Frigate 3, Destroyer 2 =
+ *   20 cells.
  *
  * Ships MAY touch, orthogonally or diagonally: in the physical game the only
  * illegal contact is a shared cell. That is why `validateFleet` rejects overlap
@@ -25,11 +27,34 @@
  * None of this module touches React, HTTP, SQL or browser APIs.
  */
 
-/** Board edge length. Columns A–J, rows 1–10. */
-export const BOARD_SIZE = 10;
+/**
+ * Board size in cells: 14 columns × 10 rows. The extra columns are what make the
+ * board wider than it is tall — more water to hide a fleet in, with cells small
+ * enough that the whole board still fits the card it is drawn in.
+ */
+export const BOARD_COLUMNS = 14;
+export const BOARD_ROWS = 10;
+
+/** Every addressable cell on one board. */
+export const BOARD_CELL_COUNT = BOARD_COLUMNS * BOARD_ROWS;
 
 /** The column labels, in `x` order. */
-export const COLUMNS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"] as const;
+export const COLUMNS = [
+  "A",
+  "B",
+  "C",
+  "D",
+  "E",
+  "F",
+  "G",
+  "H",
+  "I",
+  "J",
+  "K",
+  "L",
+  "M",
+  "N",
+] as const;
 
 /** The row labels, in `y` order. */
 export const ROWS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
@@ -49,6 +74,7 @@ export const SHIP_KEYS = [
   "battleship",
   "cruiser",
   "submarine",
+  "frigate",
   "destroyer",
 ] as const;
 
@@ -57,6 +83,7 @@ export const SHIP_NAMES: Readonly<Record<(typeof SHIP_KEYS)[number], string>> = 
   battleship: "Battleship",
   cruiser: "Cruiser",
   submarine: "Submarine",
+  frigate: "Frigate",
   destroyer: "Destroyer",
 };
 
@@ -102,6 +129,7 @@ export const SHIP_LENGTHS: Readonly<Record<(typeof SHIP_KEYS)[number], number>> 
   battleship: 4,
   cruiser: 3,
   submarine: 3,
+  frigate: 3,
   destroyer: 2,
 };
 
@@ -112,10 +140,10 @@ export const FLEET_SPEC = SHIP_KEYS.map((key) => ({
   length: SHIP_LENGTHS[key],
 }));
 
-/** Exactly five ships. */
+/** Exactly six ships. */
 export const FLEET_SIZE = SHIP_KEYS.length;
 
-/** Exactly seventeen occupied cells. */
+/** Exactly twenty occupied cells. */
 export const FLEET_CELL_COUNT = SHIP_KEYS.reduce((sum, key) => sum + SHIP_LENGTHS[key], 0);
 
 /**

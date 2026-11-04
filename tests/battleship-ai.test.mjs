@@ -53,17 +53,22 @@ const log = (rows) =>
 
 // ── The AI fleet ──────────────────────────────────────────────────────────
 
-test("the bot's fleet is dealt by the engine: five ships, 17 cells, never visible", () => {
+test("the bot's fleet is dealt by the engine: six ships, 20 cells, never visible", () => {
   for (let run = 0; run < 25; run += 1) {
     const fleet = generateRandomFleet();
     const verdict = validateFleet(fleet);
     assert.equal(verdict.ok, true, "the engine's own fleet must validate");
-    assert.equal(fleet.ships.length, 5);
+    assert.equal(fleet.ships.length, 6);
     const cells = new Set();
     for (const placement of fleet.ships) {
-      const length = { carrier: 5, battleship: 4, cruiser: 3, submarine: 3, destroyer: 2 }[
-        placement.ship
-      ];
+      const length = {
+        carrier: 5,
+        battleship: 4,
+        cruiser: 3,
+        submarine: 3,
+        frigate: 3,
+        destroyer: 2,
+      }[placement.ship];
       const step = placement.orientation === "horizontal" ? [1, 0] : [0, 1];
       for (let i = 0; i < length; i += 1) {
         cells.add(`${placement.x + step[0] * i},${placement.y + step[1] * i}`);
@@ -209,10 +214,10 @@ test("hard is deterministic for the same inputs and finishes inside its budget",
 
   // A near-full board is the worst case and must stay fast.
   const allButOne = [];
-  for (const column of "ABCDEFGHIJ") {
+  for (const column of "ABCDEFGHIJKLMN") {
     for (let row = 1; row <= 10; row += 1) {
       const cell = `${column}${row}`;
-      if (cell !== "J10") allButOne.push([cell, "miss"]);
+      if (cell !== "N10") allButOne.push([cell, "miss"]);
     }
   }
   const started = Date.now();
@@ -222,13 +227,13 @@ test("hard is deterministic for the same inputs and finishes inside its budget",
     randomInt: firstIndex,
     random: neverSlip,
   });
-  assert.equal(pick, "J10");
+  assert.equal(pick, "N10");
   assert.ok(Date.now() - started < 500, "the bounded enumeration is milliseconds, not seconds");
 });
 
 test("every tier stops when the board is exhausted", () => {
   const exhausted = [];
-  for (const column of "ABCDEFGHIJ") {
+  for (const column of "ABCDEFGHIJKLMN") {
     for (let row = 1; row <= 10; row += 1) exhausted.push([`${column}${row}`, "miss"]);
   }
   for (const difficulty of ["easy", "normal", "hard"]) {
@@ -398,7 +403,7 @@ test("the difficulty preference uses the shared per-game storage key", () => {
   assert.match(picker, /storeAiDifficulty\(gameKey, next\)/);
 });
 
-test("the shared fleet table still has five ships / seventeen cells", () => {
-  assert.equal(SHIP_KEYS.length, 5);
-  assert.equal(FLEET_CELL_COUNT, 17);
+test("the shared fleet table still has six ships / twenty cells", () => {
+  assert.equal(SHIP_KEYS.length, 6);
+  assert.equal(FLEET_CELL_COUNT, 20);
 });

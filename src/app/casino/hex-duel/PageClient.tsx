@@ -296,9 +296,10 @@ export default function HexDuelLobbyPage() {
           body: (
             <>
               Every territory has a level from <b>1 to 4</b>, with a capacity of{" "}
-              <b>10, 20, 50 or 100</b> troops. Upgrading is paid from that
-              territory's own troops — <b>5, 10 and 25</b> — and a territory you
-              capture always starts again at level 1.
+              <b>10, 20, 50 or 100</b> troops. Upgrading needs <b>5, 10 and 25</b>{" "}
+              troops: the territory pays what it can, and the rest is drawn from
+              your <b>adjacent territories</b> — every contributor keeps at least
+              one troop. A territory you capture always starts again at level 1.
             </>
           ),
         },

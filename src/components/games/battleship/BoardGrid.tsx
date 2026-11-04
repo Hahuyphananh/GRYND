@@ -2,7 +2,7 @@
 
 // src/components/games/battleship/BoardGrid.tsx
 //
-// A 10×10 Battleship board with A–J / 1–10 labels, fluid sizing and ONE rule
+// A 14×10 landscape Battleship board with A–N / 1–10 labels, fluid sizing and ONE rule
 // about hidden information: ship sprites are only ever drawn when the caller
 // passes `ships`, and only the viewer's own fleet ever passes them. The enemy
 // board is therefore structurally incapable of showing a ship.
@@ -22,7 +22,14 @@
 import { Fragment } from "react";
 import { motion } from "framer-motion";
 
-import { BOARD_CELL, COLUMNS, ROWS, SHIP_LENGTHS } from "../../../lib/battleship/constants";
+import {
+  BOARD_CELL,
+  BOARD_COLUMNS,
+  BOARD_ROWS,
+  COLUMNS,
+  ROWS,
+  SHIP_LENGTHS,
+} from "../../../lib/battleship/constants";
 import type { BoardCell, Coordinate, ShipPlacement } from "../../../lib/battleship/types";
 import ShipVisual from "./ShipVisual";
 
@@ -64,6 +71,24 @@ function shipSpan(placement: ShipPlacement): number {
   return SHIP_LENGTHS[placement.ship];
 }
 
+/**
+ * True when every cell of the sprite is on the board.
+ *
+ * A sprite is a grid item spanning the cells it covers, so one whose run leaves
+ * the board would create implicit grid tracks: the board would grow past its
+ * container, the cells would shrink, and the pointer would land on a different
+ * cell — which is exactly the violent layout oscillation this guard prevents.
+ * A placement that does not fit is simply not drawn.
+ */
+function fitsOnBoard(placement: ShipPlacement): boolean {
+  const span = shipSpan(placement);
+  const lastX = placement.orientation === "vertical" ? placement.x : placement.x + span - 1;
+  const lastY = placement.orientation === "vertical" ? placement.y + span - 1 : placement.y;
+  return (
+    placement.x >= 0 && placement.y >= 0 && lastX < BOARD_COLUMNS && lastY < BOARD_ROWS
+  );
+}
+
 export default function BoardGrid({
   title,
   subtitle = null,
@@ -86,9 +111,18 @@ export default function BoardGrid({
         {subtitle ? <span className="text-[10px] text-white/40">{subtitle}</span> : null}
       </figcaption>
 
+      {/* A phone cannot give fourteen columns a tappable target inside its own
+          width: at 320px each cell would be ~16px. The board therefore keeps a
+          MINIMUM WIDTH at phone sizes and the strip scrolls sideways instead of
+          shrinking every cell into a sliver. From `sm` up the board fits its
+          card, the floor is released, and nothing scrolls. */}
       <div
-        className="grid w-full touch-manipulation select-none gap-[2px]"
-        style={{ gridTemplateColumns: "1.1rem repeat(10, minmax(0, 1fr))" }}
+        data-testid={testId ? `${testId}-scroll` : undefined}
+        className="w-full overflow-x-auto overflow-y-hidden pb-1"
+      >
+      <div
+        className="grid w-full min-w-[28rem] touch-manipulation select-none gap-[2px] sm:min-w-0"
+        style={{ gridTemplateColumns: `1.1rem repeat(${BOARD_COLUMNS}, minmax(0, 1fr))` }}
       >
         <span aria-hidden="true" />
         {COLUMNS.map((column) => (
@@ -102,7 +136,17 @@ export default function BoardGrid({
 
         {ROWS.map((row, y) => (
           <Fragment key={`row-${row}`}>
-            <span className="flex items-center justify-center text-[9px] font-bold leading-none text-white/45 sm:text-[10px]">
+            {/* Labels, cells and ship sprites are ALL placed explicitly. Ships are
+                definite grid items, so the CSS auto-placement algorithm lays them
+                out first and then flows auto-placed cells around them — which
+                pushed cells and row numbers out of their rows as soon as a fleet
+                was on the board. Giving every item its own slot makes the layout
+                independent of DOM order and of what is drawn on top. */}
+            <span
+              data-testid={testId ? `${testId}-row-${row}` : undefined}
+              style={{ gridColumn: 1, gridRow: y + 2 }}
+              className="sticky left-0 z-30 flex items-center justify-center bg-[#050f24] text-[9px] font-bold leading-none text-white/45 sm:text-[10px]"
+            >
               {row}
             </span>
             {COLUMNS.map((column, x) => {
@@ -141,7 +185,8 @@ export default function BoardGrid({
                   }
                   onMouseEnter={onCellHover ? () => onCellHover(coordinate) : undefined}
                   onMouseLeave={onCellHover ? () => onCellHover(null) : undefined}
-                  className={`relative aspect-square min-h-7 w-full rounded-[3px] border transition sm:min-h-8 ${
+                  style={{ gridColumn: x + 2, gridRow: y + 2 }}
+                  className={`relative aspect-square min-h-4 w-full rounded-[3px] border transition sm:min-h-6 ${
                     CELL_MARK_CLASS[mark]
                   } ${disabled ? "cursor-not-allowed opacity-50" : ""}`}
                 >
@@ -167,26 +212,32 @@ export default function BoardGrid({
           </Fragment>
         ))}
 
-        {ships.map(({ placement, damaged = [] }) => (
-          <div
-            key={`ship-${placement.ship}`}
-            aria-hidden="true"
-            data-testid={`board-ship-${placement.ship}`}
-            className="pointer-events-none z-10 p-[2px]"
-            style={{
-              gridColumn: `${placement.x + 2} / span ${
-                placement.orientation === "vertical" ? 1 : shipSpan(placement)
-              }`,
-              gridRow: `${placement.y + 2} / span ${
-                placement.orientation === "vertical" ? shipSpan(placement) : 1
-              }`,
-            }}
-          >
-            <ShipVisual ship={placement.ship} orientation={placement.orientation} damaged={damaged} />
-          </div>
-        ))}
+        {ships.map(({ placement, damaged = [] }) =>
+          fitsOnBoard(placement) ? (
+            <div
+              key={`ship-${placement.ship}`}
+              aria-hidden="true"
+              data-testid={`board-ship-${placement.ship}`}
+              className="pointer-events-none z-10 p-[2px]"
+              style={{
+                gridColumn: `${placement.x + 2} / span ${
+                  placement.orientation === "vertical" ? 1 : shipSpan(placement)
+                }`,
+                gridRow: `${placement.y + 2} / span ${
+                  placement.orientation === "vertical" ? shipSpan(placement) : 1
+                }`,
+              }}
+            >
+              <ShipVisual
+                ship={placement.ship}
+                orientation={placement.orientation}
+                damaged={damaged}
+              />
+            </div>
+          ) : null,
+        )}
 
-        {preview ? (
+        {preview && fitsOnBoard(preview.placement) ? (
           <div
             aria-hidden="true"
             data-testid="board-preview"
@@ -215,8 +266,19 @@ export default function BoardGrid({
           </div>
         ) : null}
       </div>
+      </div>
 
-      {footnote ? <p className="mt-2 text-[10px] leading-snug text-white/40">{footnote}</p> : null}
+      {/* The strip scrolls on phones, so say so — and only on phones, because
+          from `sm` up the whole board is already visible. */}
+      <p className="mt-1 text-[10px] leading-snug text-white/35 sm:hidden">
+        Swipe the board sideways for the far columns.
+      </p>
+
+      {/* A fixed height keeps the card from resizing when the footnote changes
+          between the hint and a rejection message. */}
+      {footnote ? (
+        <p className="mt-2 min-h-9 text-[10px] leading-snug text-white/40">{footnote}</p>
+      ) : null}
     </figure>
   );
 }

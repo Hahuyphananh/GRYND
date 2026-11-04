@@ -18,7 +18,8 @@ import assert from "node:assert/strict";
 
 import {
   BOARD_CELL,
-  BOARD_SIZE,
+  BOARD_COLUMNS,
+  BOARD_ROWS,
   FLEET_CELL_COUNT,
   FLEET_SIZE,
   FLEET_SPEC,
@@ -57,6 +58,7 @@ const FLEET_A = {
     { ship: "battleship", orientation: "horizontal", x: 0, y: 2 },
     { ship: "cruiser", orientation: "horizontal", x: 0, y: 4 },
     { ship: "submarine", orientation: "horizontal", x: 0, y: 6 },
+    { ship: "frigate", orientation: "horizontal", x: 0, y: 1 },
     { ship: "destroyer", orientation: "horizontal", x: 0, y: 8 },
   ],
 };
@@ -70,14 +72,15 @@ const FLEET_B = {
     { ship: "battleship", orientation: "horizontal", x: 5, y: 2 },
     { ship: "cruiser", orientation: "horizontal", x: 5, y: 4 },
     { ship: "submarine", orientation: "horizontal", x: 5, y: 6 },
+    { ship: "frigate", orientation: "horizontal", x: 5, y: 1 },
     { ship: "destroyer", orientation: "horizontal", x: 5, y: 8 },
   ],
 };
 
 /** Every cell of A, in fleet order. */
-const A_CELLS = ["A1", "B1", "C1", "D1", "E1", "A3", "B3", "C3", "D3", "A5", "B5", "C5", "A7", "B7", "C7", "A9", "B9"];
+const A_CELLS = ["A1", "B1", "C1", "D1", "E1", "A3", "B3", "C3", "D3", "A5", "B5", "C5", "A7", "B7", "C7", "A2", "B2", "C2", "A9", "B9"];
 /** Every cell of B, in fleet order. */
-const B_CELLS = ["F1", "G1", "H1", "I1", "J1", "F3", "G3", "H3", "I3", "F5", "G5", "H5", "F7", "G7", "H7", "F9", "G9"];
+const B_CELLS = ["F1", "G1", "H1", "I1", "J1", "F3", "G3", "H3", "I3", "F5", "G5", "H5", "F7", "G7", "H7", "F2", "G2", "H2", "F9", "G9"];
 
 const newState = () => createMatchState({ player1: FLEET_A, player2: FLEET_B });
 
@@ -102,28 +105,44 @@ function playRounds(state, player1Shots, player2Shots) {
 
 // ── Board geometry ────────────────────────────────────────────────────────
 
-test("the board is 10x10 and the fleet is five ships occupying 17 cells", () => {
-  assert.equal(BOARD_SIZE, 10);
-  assert.equal(FLEET_SIZE, 5);
-  assert.equal(FLEET_CELL_COUNT, 17);
-  assert.deepEqual(SHIP_KEYS, ["carrier", "battleship", "cruiser", "submarine", "destroyer"]);
+test("the board is 14x10 and the fleet is six ships occupying 20 cells", () => {
+  assert.equal(BOARD_COLUMNS, 14);
+  assert.equal(BOARD_ROWS, 10);
+  assert.equal(FLEET_SIZE, 6);
+  assert.equal(FLEET_CELL_COUNT, 20);
+  assert.deepEqual(SHIP_KEYS, [
+    "carrier",
+    "battleship",
+    "cruiser",
+    "submarine",
+    "frigate",
+    "destroyer",
+  ]);
   assert.deepEqual(
     FLEET_SPEC.map((ship) => [ship.key, ship.length]),
-    [["carrier", 5], ["battleship", 4], ["cruiser", 3], ["submarine", 3], ["destroyer", 2]],
+    [
+      ["carrier", 5],
+      ["battleship", 4],
+      ["cruiser", 3],
+      ["submarine", 3],
+      ["frigate", 3],
+      ["destroyer", 2],
+    ],
   );
-  assert.equal(FLEET_SPEC.reduce((sum, ship) => sum + ship.length, 0), 17);
-  assert.equal(emptyBoard().length, BOARD_SIZE);
-  assert.equal(emptyBoard()[0].length, BOARD_SIZE);
-  assert.equal(emptyBoard()[9][9], BOARD_CELL.UNKNOWN);
+  assert.equal(FLEET_SPEC.reduce((sum, ship) => sum + ship.length, 0), 20);
+  assert.equal(emptyBoard().length, BOARD_ROWS);
+  assert.equal(emptyBoard()[0].length, BOARD_COLUMNS);
+  assert.equal(emptyBoard()[BOARD_ROWS - 1][BOARD_COLUMNS - 1], BOARD_CELL.UNKNOWN);
 });
 
-test("coordinates parse as A1..J10 and print canonically", () => {
+test("coordinates parse as A1..N10 and print canonically", () => {
   assert.deepEqual(parseCoordinate("A1"), { x: 0, y: 0 });
   assert.deepEqual(parseCoordinate("j10"), { x: 9, y: 9 });
+  assert.deepEqual(parseCoordinate("n10"), { x: 13, y: 9 });
   assert.deepEqual(parseCoordinate(" b7 "), { x: 1, y: 6 });
   assert.deepEqual(parseCoordinate({ x: 2, y: 3 }), { x: 2, y: 3 });
 
-  for (const bad of ["K1", "A11", "A0", "A01", "1A", "", "  ", "AA1", null, undefined, 7]) {
+  for (const bad of ["O1", "A11", "A0", "A01", "1A", "", "  ", "AA1", null, undefined, 7]) {
     assert.equal(parseCoordinate(bad), null, `${String(bad)} must not parse`);
   }
   assert.equal(parseCoordinate({ x: 1.5, y: 2 }), null);
@@ -131,6 +150,7 @@ test("coordinates parse as A1..J10 and print canonically", () => {
 
   assert.equal(formatCoordinate({ x: 0, y: 0 }), "A1");
   assert.equal(formatCoordinate({ x: 9, y: 9 }), "J10");
+  assert.equal(formatCoordinate({ x: 13, y: 9 }), "N10");
 });
 
 // ── Placement ─────────────────────────────────────────────────────────────
@@ -165,9 +185,9 @@ test("horizontal and vertical placements are read from their first cell", () => 
 
 test("a placement that leaves the board is rejected", () => {
   const cases = [
-    { ship: "carrier", orientation: "horizontal", x: 6, y: 0 }, // G..K
+    { ship: "carrier", orientation: "horizontal", x: 10, y: 0 }, // K..O
     { ship: "carrier", orientation: "vertical", x: 0, y: 6 }, // rows 7..11
-    { ship: "destroyer", orientation: "horizontal", x: 9, y: 0 }, // J,K
+    { ship: "destroyer", orientation: "horizontal", x: 13, y: 0 }, // N,O
     { ship: "destroyer", orientation: "vertical", x: 0, y: 9 }, // rows 10,11
   ];
   for (const placement of cases) {
@@ -192,10 +212,10 @@ test("a placement with an unknown ship, orientation or cell is rejected", () => 
   );
 });
 
-test("a complete legal fleet validates with 17 occupied cells", () => {
+test("a complete legal fleet validates with 20 occupied cells", () => {
   const verdict = validateFleet(FLEET_A);
   assert.ok(verdict.ok);
-  assert.equal(Object.values(verdict.cells).reduce((sum, cells) => sum + cells.length, 0), 17);
+  assert.equal(Object.values(verdict.cells).reduce((sum, cells) => sum + cells.length, 0), 20);
   for (const ship of FLEET_SPEC) {
     assert.equal(verdict.cells[ship.key].length, ship.length);
   }
@@ -208,6 +228,7 @@ test("overlapping ships are rejected", () => {
       { ship: "battleship", orientation: "horizontal", x: 2, y: 0 }, // C1..F1 — shares C1
       { ship: "cruiser", orientation: "horizontal", x: 0, y: 2 },
       { ship: "submarine", orientation: "horizontal", x: 0, y: 4 },
+      { ship: "frigate", orientation: "horizontal", x: 0, y: 8 },
       { ship: "destroyer", orientation: "horizontal", x: 0, y: 6 },
     ],
   };
@@ -224,6 +245,7 @@ test("ships may touch orthogonally", () => {
       { ship: "battleship", orientation: "horizontal", x: 0, y: 1 }, // A2..D2, directly below
       { ship: "cruiser", orientation: "horizontal", x: 0, y: 3 },
       { ship: "submarine", orientation: "horizontal", x: 0, y: 5 },
+      { ship: "frigate", orientation: "horizontal", x: 0, y: 9 },
       { ship: "destroyer", orientation: "horizontal", x: 0, y: 7 },
     ],
   };
@@ -239,6 +261,7 @@ test("ships may touch diagonally", () => {
       { ship: "battleship", orientation: "horizontal", x: 0, y: 3 },
       { ship: "cruiser", orientation: "horizontal", x: 0, y: 5 },
       { ship: "submarine", orientation: "horizontal", x: 0, y: 7 },
+      { ship: "frigate", orientation: "horizontal", x: 5, y: 3 },
     ],
   };
   assert.ok(validateFleet(fleet).ok);
@@ -253,7 +276,7 @@ test("a fleet with the wrong number of ships is rejected", () => {
 test("a duplicated ship is rejected", () => {
   const verdict = validateFleet({
     ships: [
-      ...FLEET_A.ships.slice(0, 4),
+      ...FLEET_A.ships.slice(0, 5),
       { ship: "cruiser", orientation: "horizontal", x: 0, y: 8 },
     ],
   });
@@ -310,11 +333,11 @@ test("an unreadable or off-board attack is rejected and nothing is applied", () 
   const state = newState();
   const snapshot = JSON.stringify(state);
 
-  const unreadable = resolveRound(state, { player1: "K1", player2: "A1" });
+  const unreadable = resolveRound(state, { player1: "O1", player2: "A1" });
   assert.equal(unreadable.ok, false);
   assert.equal(unreadable.invalid.player1, REJECTION.INVALID_COORDINATE);
 
-  const offBoard = resolveRound(state, { player1: { x: 10, y: 0 }, player2: "A1" });
+  const offBoard = resolveRound(state, { player1: { x: 14, y: 0 }, player2: "A1" });
   assert.equal(offBoard.ok, false);
   assert.equal(offBoard.invalid.player1, REJECTION.OUT_OF_BOUNDS);
 
@@ -323,10 +346,14 @@ test("an unreadable or off-board attack is rejected and nothing is applied", () 
 
 // ── Resolution ────────────────────────────────────────────────────────────
 
-test("destroying all five enemy ships wins the match on that round", () => {
-  const { state, rounds } = playRounds(newState(), B_CELLS, A_CELLS.slice(0, 16).concat("J10"));
+test("destroying all six enemy ships wins the match on that round", () => {
+  const { state, rounds } = playRounds(
+    newState(),
+    B_CELLS,
+    A_CELLS.slice(0, A_CELLS.length - 1).concat("J10"),
+  );
 
-  for (let index = 0; index < 16; index += 1) {
+  for (let index = 0; index < B_CELLS.length - 1; index += 1) {
     assert.equal(rounds[index].outcome, null, `round ${index + 1} must continue`);
     assert.equal(rounds[index].status, MATCH_STATUS.PLAYING);
   }
@@ -335,17 +362,21 @@ test("destroying all five enemy ships wins the match on that round", () => {
   assert.equal(final.status, MATCH_STATUS.FINISHED);
   assert.deepEqual(final.destroyed, { player1: true, player2: false });
   assert.equal(state.winner, "player1");
-  assert.equal(state.round, 17, "a finished match stays on its deciding round");
+  assert.equal(state.round, B_CELLS.length, "a finished match stays on its deciding round");
   assert.equal(fleetDestroyed(FLEET_B, state.players.player1.attacks), true);
   assert.equal(fleetDestroyed(FLEET_A, state.players.player2.attacks), false);
 });
 
 test("both fleets destroyed by the same round is a DRAW, not a winner", () => {
-  // 16 rounds leave exactly one enemy cell standing on each board.
-  const { state } = playRounds(newState(), B_CELLS.slice(0, 16), A_CELLS.slice(0, 16));
+  // One cell short of each fleet: each board has a single enemy cell standing.
+  const { state } = playRounds(newState(), B_CELLS.slice(0, -1), A_CELLS.slice(0, -1));
   assert.equal(state.status, MATCH_STATUS.PLAYING);
 
-  const final = playRound(state, B_CELLS[16], A_CELLS[16]);
+  const final = playRound(
+    state,
+    B_CELLS[B_CELLS.length - 1],
+    A_CELLS[A_CELLS.length - 1],
+  );
   assert.equal(final.round.attacks.player1.result, SHOT_RESULTS.SUNK);
   assert.equal(final.round.attacks.player2.result, SHOT_RESULTS.SUNK);
   assert.deepEqual(final.round.destroyed, { player1: true, player2: true });
@@ -357,12 +388,16 @@ test("both fleets destroyed by the same round is a DRAW, not a winner", () => {
 });
 
 test("a losing player's own attack still resolves on the deciding round", () => {
-  const { state } = playRounds(newState(), B_CELLS.slice(0, 16), A_CELLS.slice(0, 16));
-  const final = playRound(state, B_CELLS[16], "J10");
+  const { state } = playRounds(newState(), B_CELLS.slice(0, -1), A_CELLS.slice(0, -1));
+  const final = playRound(state, B_CELLS[B_CELLS.length - 1], "J10");
 
   assert.equal(final.round.outcome, MATCH_OUTCOME.PLAYER1);
   assert.equal(final.round.attacks.player2.result, SHOT_RESULTS.MISS);
-  assert.equal(final.state.players.player2.attacks.length, 17, "the losing shot is recorded");
+  assert.equal(
+    final.state.players.player2.attacks.length,
+    B_CELLS.length,
+    "the losing shot is recorded",
+  );
   assert.equal(final.round.attacks.player2.coordinate, "J10");
 });
 
@@ -389,7 +424,11 @@ test("resolving a round never mutates the state it was given", () => {
 });
 
 test("a finished match accepts no further rounds", () => {
-  const { state } = playRounds(newState(), B_CELLS, A_CELLS.slice(0, 16).concat("J10"));
+  const { state } = playRounds(
+    newState(),
+    B_CELLS,
+    A_CELLS.slice(0, A_CELLS.length - 1).concat("J10"),
+  );
   const again = resolveRound(state, { player1: "A1", player2: "A1" });
   assert.equal(again.ok, false);
   assert.equal(again.code, REJECTION.MATCH_FINISHED);
@@ -458,7 +497,11 @@ test("invalid match states are refused", () => {
   unequalRounds.players.player2.attacks = [];
   assert.equal(validateMatchState(unequalRounds).code, REJECTION.INVALID_STATE);
 
-  const finished = playRounds(newState(), B_CELLS, A_CELLS.slice(0, 16).concat("J10")).state;
+  const finished = playRounds(
+    newState(),
+    B_CELLS,
+    A_CELLS.slice(0, A_CELLS.length - 1).concat("J10"),
+  ).state;
 
   const finishedWithoutOutcome = structuredClone(finished);
   finishedWithoutOutcome.outcome = null;
@@ -480,7 +523,7 @@ test("invalid match states are refused", () => {
 test("an off-board coordinate in a stored log is refused", () => {
   const seeded = playRound(newState(), "F1", "A10").state;
   const corrupt = structuredClone(seeded);
-  corrupt.players.player1.attacks[0].coordinate = "K1";
+  corrupt.players.player1.attacks[0].coordinate = "O1";
   assert.equal(validateMatchState(corrupt).code, REJECTION.INVALID_COORDINATE);
 });
 
@@ -507,7 +550,7 @@ test("the public match state carries no fleet positions at all", () => {
   assert.equal(serialized.includes("fleet"), false);
   assert.equal(serialized.includes('"H5"'), false);
   assert.equal(publicState.outcome, null);
-  assert.equal(publicState.boards.player1.enemyShipsRemaining, 5);
+  assert.equal(publicState.boards.player1.enemyShipsRemaining, 6);
 });
 
 test("a public board shows misses, hits and only the footprint of a sunk ship", () => {
@@ -524,7 +567,7 @@ test("a public board shows misses, hits and only the footprint of a sunk ship", 
   assert.equal(view.you.board[8][6], BOARD_CELL.SUNK, "G9 is part of the sunk destroyer");
   assert.equal(view.you.board[1][5], BOARD_CELL.UNKNOWN, "F2 was never attacked");
   assert.deepEqual(view.you.sunkShips, ["destroyer"]);
-  assert.equal(view.you.enemyShipsRemaining, 4);
+  assert.equal(view.you.enemyShipsRemaining, 5);
   assert.deepEqual(
     view.you.attacks.map((attack) => [attack.round, attack.coordinate, attack.result]),
     [
@@ -541,6 +584,6 @@ test("a public board shows misses, hits and only the footprint of a sunk ship", 
 });
 
 test("every cell of a ship's run is derived from its placement", () => {
-  const cells = shipCells(FLEET_B.ships[4]); // destroyer F9..G9
+  const cells = shipCells(FLEET_B.ships[5]); // destroyer F9..G9
   assert.deepEqual(cells.map(formatCoordinate), ["F9", "G9"]);
 });
