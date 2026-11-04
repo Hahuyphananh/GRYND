@@ -16,7 +16,7 @@ import FleetPlacement from "../src/components/games/battleship/FleetPlacement";
 function Arena() {
   return (
     <main data-testid="arena" className="min-h-screen bg-[#030817] text-white">
-      <div className="mx-auto w-full max-w-6xl px-3 py-5 sm:px-6 sm:py-8">
+      <div className="mx-auto w-full max-w-6xl px-2 py-3 sm:px-6 sm:py-4">
         <FleetPlacement onFleetConfirmed={() => {}} />
       </div>
     </main>

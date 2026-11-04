@@ -281,6 +281,15 @@ const API_ROUTE_LIMITS: Array<{ pattern: RegExp; config: LimitConfig }> = [
     pattern: /^\/api\/(keno-pvp)\//,
     config: { windowMs: 60_000, max: 300 },
   },
+  {
+    // Tower Arena's match screen reads GET /get-match on every socket push and
+    // in one bounded burst per stamped turn deadline (useDeadlineRead). A fast
+    // duel makes that legitimate pattern exceed the generic 120/min bucket, and
+    // the page used to render the resulting 429 as a dead match. Give the
+    // match traffic its own headroom; the per-user limit is half of this.
+    pattern: /^\/api\/tower-arena\//,
+    config: { windowMs: 60_000, max: 900 },
+  },
   { pattern: /^\/api\//, config: { windowMs: 60_000, max: 120 } },
 ];
 

@@ -838,7 +838,7 @@ export const APP_TEXT_TRANSLATIONS = {
         hint_choose_end: "Choose which open end to play it on.",
         hint_no_fit: "That tile fits neither open end — pick another.",
         hint_select: "Select a tile from your hand to play it.",
-        hint_draw: "Nothing in your hand fits — draw a tile.",
+        hint_draw: "Nothing fits — draw until you find a tile you can play.",
         hint_pass: "Nothing fits and the pile is empty — you have to pass.",
         play_left: "Play left",
         play_right: "Play right",
@@ -871,7 +871,7 @@ export const APP_TEXT_TRANSLATIONS = {
         board_rule_doubles:
           "Doubles. Both halves are the same; it matches normally, and it is marked on the chain so you can see it.",
         board_rule_draw:
-          "Draw when you cannot match. If nothing in your hand fits, draw one tile and keep the turn. Nothing is skipped.",
+          "Draw when you cannot match. One draw keeps taking tiles off the boneyard until one fits — you keep the turn, and nothing you could have played is skipped. If the pile runs out first, the turn passes.",
         board_rule_pass:
           "Pass only when the pile is empty and you still cannot play.",
         board_rule_win:
@@ -2895,7 +2895,7 @@ export const APP_TEXT_TRANSLATIONS = {
         hint_no_fit:
           "Cette tuile ne correspond à aucune extrémité — choisissez-en une autre.",
         hint_select: "Sélectionnez une tuile de votre main pour la poser.",
-        hint_draw: "Rien dans votre main ne correspond — piochez une tuile.",
+        hint_draw: "Rien ne correspond — piochez jusqu'à trouver une tuile jouable.",
         hint_pass: "Rien ne correspond et la pioche est vide — vous devez passer.",
         play_left: "Jouer à gauche",
         play_right: "Jouer à droite",
@@ -2929,7 +2929,7 @@ export const APP_TEXT_TRANSLATIONS = {
         board_rule_doubles:
           "Les doubles. Les deux moitiés sont identiques ; la tuile se pose normalement et elle est marquée sur la chaîne pour que vous la voyiez.",
         board_rule_draw:
-          "Piochez quand vous ne pouvez pas poser. Si rien dans votre main ne correspond, piochez une tuile et gardez la main. Rien n'est sauté.",
+          "Piochez quand vous ne pouvez pas poser. Une seule pioche prend des tuiles jusqu'à ce qu'une corresponde — vous gardez la main, et rien de jouable n'est sauté. Si la pioche s'épuise, la main passe.",
         board_rule_pass:
           "Passez seulement quand la pioche est vide et que vous ne pouvez toujours pas jouer.",
         board_rule_win:
@@ -4698,7 +4698,7 @@ export const APP_TEXT_TRANSLATIONS = {
         hint_choose_end: "Elige en qué extremo abierto jugarla.",
         hint_no_fit: "Esa ficha no encaja en ningún extremo — elige otra.",
         hint_select: "Selecciona una ficha de tu mano para jugarla.",
-        hint_draw: "Nada de tu mano encaja — roba una ficha.",
+        hint_draw: "Nada encaja — roba hasta encontrar una ficha jugable.",
         hint_pass: "Nada encaja y la pila está vacía — tienes que pasar.",
         play_left: "Jugar a la izquierda",
         play_right: "Jugar a la derecha",
@@ -4732,7 +4732,7 @@ export const APP_TEXT_TRANSLATIONS = {
         board_rule_doubles:
           "Los dobles. Ambas mitades son iguales; encaja con normalidad y se marca en la cadena para que lo veas.",
         board_rule_draw:
-          "Roba cuando no puedas encajar. Si nada de tu mano encaja, roba una ficha y conserva el turno. No se salta nada.",
+          "Roba cuando no puedas encajar. Una sola acción sigue robando fichas hasta que una encaje — conservas el turno y no te saltas nada jugable. Si la pila se vacía antes, el turno pasa.",
         board_rule_pass:
           "Pasa solo cuando la pila está vacía y sigues sin poder jugar.",
         board_rule_win:

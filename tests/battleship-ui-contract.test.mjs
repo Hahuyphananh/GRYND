@@ -235,11 +235,24 @@ test("boards are fluid, square and touch-friendly", () => {
   assert.match(PAGE_CLIENT, /min-h-screen/);
   assert.match(PAGE_CLIENT, /max-w-6xl/);
   assert.match(PLACEMENT, /lg:grid-cols-\[/, "desktop widens, mobile stacks");
-  assert.equal(
-    BATTLE.includes("lg:grid-cols-["),
-    false,
-    "the boards are full width, not squeezed side by side",
-  );
+  // The two boards keep their own single-column wrapper; the wide-screen grid
+  // only moves the fleet panels beside them, never puts a board columns-wide.
+  const boardsStart = BATTLE.indexOf('data-testid="battle-boards"');
+  const boardsTag = BATTLE.slice(boardsStart, BATTLE.indexOf(">", boardsStart));
+  assert.ok(boardsStart > -1, "the board wrapper must exist");
+  assert.equal(/grid-cols/.test(boardsTag), false, "the boards stay stacked, not side by side");
+  assert.match(BATTLE, /lg:grid-cols-\[minmax\(0,15rem\)/, "fleet panels use the side rails on wide screens");
+});
+
+test("both boards are height-capped so the arena fits one screen", () => {
+  // The combat boards are capped by the viewport height, stacked, and no longer
+  // keep a phone-only minimum width that forced a sideways swipe.
+  assert.match(BATTLE, /data-testid="battle-boards"/);
+  assert.match(BATTLE, /100dvh/);
+  assert.match(PLACEMENT, /100dvh/);
+  assert.equal(/min-w-\[28rem\]/.test(BOARD), false, "no board floor that hides columns behind a scroll");
+  assert.match(BOARD, /overflow-hidden/);
+  assert.equal(BOARD.includes("Swipe the board sideways"), false);
 });
 
 test("every cell is a real button with an accessible coordinate", () => {

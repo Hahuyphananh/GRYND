@@ -57,6 +57,8 @@ export interface BoardGridProps {
   isCellDisabled?: (coordinate: Coordinate) => boolean;
   testId?: string;
   footnote?: string | null;
+  /** Tighter caption/footnote spacing, for two boards on one screen. */
+  compact?: boolean;
 }
 
 const CELL_MARK_CLASS: Readonly<Record<BoardCell, string>> = {
@@ -103,25 +105,25 @@ export default function BoardGrid({
   isCellDisabled,
   testId,
   footnote = null,
+  compact = false,
 }: BoardGridProps) {
   return (
     <figure data-testid={testId} className="w-full min-w-0">
-      <figcaption className="mb-2 flex items-baseline justify-between gap-2">
+      <figcaption className={`${compact ? "mb-1" : "mb-2"} flex items-baseline justify-between gap-2`}>
         <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#ffec08]">{title}</span>
         {subtitle ? <span className="text-[10px] text-white/40">{subtitle}</span> : null}
       </figcaption>
 
-      {/* A phone cannot give fourteen columns a tappable target inside its own
-          width: at 320px each cell would be ~16px. The board therefore keeps a
-          MINIMUM WIDTH at phone sizes and the strip scrolls sideways instead of
-          shrinking every cell into a sliver. From `sm` up the board fits its
-          card, the floor is released, and nothing scrolls. */}
+      {/* The board always fits its card. It used to keep a 28rem floor on
+          phones and scroll sideways, which hid the far columns behind a swipe;
+          the arena now sizes the board from the viewport height, so the whole
+          14×10 grid is visible without a horizontal scroll on any device. */}
       <div
         data-testid={testId ? `${testId}-scroll` : undefined}
-        className="w-full overflow-x-auto overflow-y-hidden pb-1"
+        className="w-full overflow-hidden"
       >
       <div
-        className="grid w-full min-w-[28rem] touch-manipulation select-none gap-[2px] sm:min-w-0"
+        className="grid w-full touch-manipulation select-none gap-px"
         style={{ gridTemplateColumns: `1.1rem repeat(${BOARD_COLUMNS}, minmax(0, 1fr))` }}
       >
         <span aria-hidden="true" />
@@ -186,7 +188,7 @@ export default function BoardGrid({
                   onMouseEnter={onCellHover ? () => onCellHover(coordinate) : undefined}
                   onMouseLeave={onCellHover ? () => onCellHover(null) : undefined}
                   style={{ gridColumn: x + 2, gridRow: y + 2 }}
-                  className={`relative aspect-square min-h-4 w-full rounded-[3px] border transition sm:min-h-6 ${
+                  className={`relative aspect-square min-h-4 w-full rounded-[3px] border transition ${
                     CELL_MARK_CLASS[mark]
                   } ${disabled ? "cursor-not-allowed opacity-50" : ""}`}
                 >
@@ -268,16 +270,13 @@ export default function BoardGrid({
       </div>
       </div>
 
-      {/* The strip scrolls on phones, so say so — and only on phones, because
-          from `sm` up the whole board is already visible. */}
-      <p className="mt-1 text-[10px] leading-snug text-white/35 sm:hidden">
-        Swipe the board sideways for the far columns.
-      </p>
-
       {/* A fixed height keeps the card from resizing when the footnote changes
-          between the hint and a rejection message. */}
+          between the hint and a rejection message. `compact` drops it, because
+          two boards have to share one screen. */}
       {footnote ? (
-        <p className="mt-2 min-h-9 text-[10px] leading-snug text-white/40">{footnote}</p>
+        <p className={`${compact ? "mt-1 text-[9px]" : "mt-2 min-h-9 text-[10px]"} leading-snug text-white/40`}>
+          {footnote}
+        </p>
       ) : null}
     </figure>
   );

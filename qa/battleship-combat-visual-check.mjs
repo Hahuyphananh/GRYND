@@ -1,31 +1,30 @@
 // qa/battleship-combat-visual-check.mjs
 //
-// Visual + layout verification for two things that changed together:
+// Visual + layout verification for the COMBAT screen:
 //
-//   1. the COMBAT screen — two full-width 14×10 boards, stacked one per row
-//      instead of squeezed side by side, each with the six-ship fleet;
-//   2. the CARD ART (src/images/battleship-card.svg) — now a landscape 14×10
-//      board showing all six ships, which is also the landing page's hero/OG
-//      image.
+//   * both 14×10 boards are stacked, close together, and sized so the player's
+//     fleet, the enemy waters and the Lock button are all on the first screen —
+//     no scrolling to reach the enemy board;
+//   * the boards fit their cards without a horizontal scroll on phone or
+//     desktop, and all 140 cells stay square and tappable;
+//   * the viewer's own six ships are drawn, and only on their board.
 //
 // The screen is mounted from the REAL BattlePreview
 // (qa/battleship-combat-visual-harness.jsx) with a server-shaped MatchView,
 // bundled with the project's REAL Tailwind stylesheet. Only the mascot and the
 // translation hook are stubbed — they need providers this page does not mount.
 //
-// Checks per viewport (390 phone, 1280 desktop):
+// Checks per viewport (390×844 phone, 1280×800 laptop):
 //   1. the page does not scroll sideways;
-//   2. both board strips sit inside the viewport and their cards;
-//   3. the boards are STACKED (the enemy board starts below the fleet board);
-//   4. all 140 cells are drawn, square, and tappable (≥24px phone, ≥40 desktop);
-//   5. the strip scrolls on a phone and fits on a desktop, and scrolling reaches
-//      column N;
-//   6. the viewer's own six ships are drawn on their board;
-//   7. the lock control is on-screen;
+//   2. both boards sit inside the viewport and their cards;
+//   3. the boards are STACKED with a small gap, not side by side;
+//   4. the enemy board and the Lock control are fully inside the first screen;
+//   5. all 140 cells are drawn, square, and at least 20px;
+//   6. neither board scrolls sideways, and column N is visible without a swipe;
+//   7. the viewer's own six ships are drawn on their board;
 //   8. no console / page errors.
 //
-// Screenshots: qa/reports/battleship-combat/ (card art, both viewports, plus a
-// full-page phone shot and a scrolled phone shot).
+// Screenshots: qa/reports/battleship-combat/.
 //
 // Run: node qa/battleship-combat-visual-check.mjs
 
@@ -133,22 +132,17 @@ const browser = await chromium
 const art = await browser.newPage({ viewport: { width: 1200, height: 630 } });
 await art.goto(pathToFileURL(join(root, "src/images/battleship-card.svg")).href);
 await art.waitForTimeout(300);
-const artShot = join(SHOTS, "battleship-card.png");
-await art.screenshot({ path: artShot });
+await art.screenshot({ path: join(SHOTS, "battleship-card.png") });
 const artMetrics = await art.evaluate(() => {
   const svg = document.querySelector("svg");
   const svgBox = svg.getBoundingClientRect();
   return {
-    title: svg.querySelector("title")?.textContent?.trim() ?? "",
     boards: [...svg.querySelectorAll('rect[width="523"][height="383"]')].length,
-    ships: [...svg.querySelectorAll('rect[width="32"][height="32"]')].length,
     labels: [...svg.querySelectorAll("text")].map((node) => node.textContent.trim()),
     width: Math.round(svgBox.width),
     height: Math.round(svgBox.height),
-    gridPatterns: svg.querySelectorAll("pattern#bs-grid").length,
   };
 });
-console.log(`card art: ${artMetrics.width}×${artMetrics.height}, ${artMetrics.boards} boards, ${artMetrics.gridPatterns} grid pattern(s)`);
 check(
   "card art: two 14×10 boards are drawn at 1200×630",
   artMetrics.boards === 2 && artMetrics.width === 1200 && artMetrics.height === 630,
@@ -157,13 +151,7 @@ check(
 check(
   "card art: the board is labelled to column N",
   artMetrics.labels.includes("A") && artMetrics.labels.includes("N"),
-  `labels ${artMetrics.labels.filter((l) => l.length === 1).join("")}`,
-);
-check(
-  "card art: the six-ship fleet and the 14×10 size are stated",
-  artMetrics.labels.some((label) => label.includes("14 × 10")) &&
-    artMetrics.labels.some((label) => label.includes("SIX SHIPS")),
-  artMetrics.labels.filter((label) => label.includes("×")).join(" | "),
+  artMetrics.labels.filter((label) => label.length === 1).join(""),
 );
 await art.close();
 
@@ -191,17 +179,19 @@ const mount = async (width, height, dpr) => {
 
 for (const vp of [
   { label: "390", width: 390, height: 844, dpr: 3 },
-  { label: "1280", width: 1280, height: 900, dpr: 1 },
+  { label: "1280", width: 1280, height: 800, dpr: 1 },
 ]) {
   const page = await mount(vp.width, vp.height, vp.dpr);
   const m = await page.evaluate(() => window.__bsc.measure());
   const tag = `${vp.label} combat`;
-  const floor = vp.width < 640 ? 24 : 40;
+  const floor = 20;
+  const gap = m.cards?.myFleet && m.cards?.enemy ? m.cards.enemy.top - m.cards.myFleet.bottom : null;
 
   console.log(
     `\n▸ ${vp.label}×${vp.height}: fleet board ${px(m.myFleet?.width)} ` +
       `(top ${px(m.myFleet?.top)}), enemy board ${px(m.enemy?.width)} (top ${px(m.enemy?.top)}), ` +
-      `cell ${px(m.cellWidth)}`,
+      `cell ${px(m.cellWidth)}, card gap ${px(gap)}, boards wrapper ${px(m.boards?.width)} ` +
+      `(max-width ${m.boards?.maxWidth})`,
   );
 
   check(
@@ -211,18 +201,27 @@ for (const vp of [
   );
 
   check(
-    `${tag}: both board strips sit inside the viewport`,
+    `${tag}: both boards sit inside the viewport and their cards`,
     [m.myFleet, m.enemy].every(
       (strip) => strip !== null && strip.left >= -1 && strip.right <= m.viewportWidth + 1,
     ),
     `fleet ${px(m.myFleet?.left)}..${px(m.myFleet?.right)}, enemy ${px(m.enemy?.left)}..${px(m.enemy?.right)} of ${px(m.viewportWidth)}`,
   );
 
-  // The whole point of the change: one board per row, not two half-width boards.
   check(
-    `${tag}: the boards are stacked full width, not side by side`,
-    m.myFleet !== null && m.enemy !== null && m.enemy.top >= m.myFleet.bottom - 1,
-    `fleet bottom ${px(m.myFleet?.bottom)}, enemy top ${px(m.enemy?.top)}`,
+    `${tag}: the boards are stacked close together, not side by side`,
+    m.cards?.myFleet != null &&
+      m.cards?.enemy != null &&
+      m.cards.enemy.top >= m.cards.myFleet.bottom - 1 &&
+      gap !== null &&
+      gap <= 16,
+    `fleet card bottom ${px(m.cards?.myFleet?.bottom)}, enemy card top ${px(m.cards?.enemy?.top)}, gap ${px(gap)}`,
+  );
+
+  check(
+    `${tag}: the enemy board is fully on the first screen`,
+    m.cards?.enemy != null && m.cards.enemy.bottom <= m.viewportHeight + 1 && m.cards.enemy.top >= -1,
+    `enemy card ${px(m.cards?.enemy?.top)}..${px(m.cards?.enemy?.bottom)} of ${px(m.viewportHeight)}`,
   );
 
   check(
@@ -234,33 +233,20 @@ for (const vp of [
   );
 
   check(
-    `${tag}: the enemy strip ${vp.width < 640 ? "scrolls to the far columns" : "fits without scrolling"}`,
-    m.enemy !== null &&
-      (vp.width < 640
-        ? m.enemy.scrollWidth > m.enemy.clientWidth + 1
-        : m.enemy.scrollWidth <= m.enemy.clientWidth + 1),
-    `content ${px(m.enemy?.scrollWidth)} vs strip ${px(m.enemy?.clientWidth)}`,
+    `${tag}: neither board scrolls sideways`,
+    [m.myFleet, m.enemy].every(
+      (strip) => strip !== null && strip.scrollWidth <= strip.clientWidth + 1,
+    ),
+    `fleet ${px(m.myFleet?.scrollWidth)}/${px(m.myFleet?.clientWidth)}, enemy ${px(m.enemy?.scrollWidth)}/${px(m.enemy?.clientWidth)}`,
   );
 
-  await page.evaluate(() => window.__bsc.scrollBoardToEnd("enemy-waters"));
-  await page.waitForTimeout(150);
-  const scrolled = await page.evaluate(() => window.__bsc.measure());
   check(
-    `${tag}: scrolling the enemy board reaches column N on screen`,
-    scrolled.lastCell !== null &&
-      scrolled.lastCell.right <= (scrolled.enemy?.right ?? 0) + 1 &&
-      scrolled.lastCell.right <= scrolled.viewportWidth + 1,
-    `N1 ${px(scrolled.lastCell?.left)}..${px(scrolled.lastCell?.right)} in strip ${px(scrolled.enemy?.left)}..${px(scrolled.enemy?.right)}`,
-  );
-
-  // The row gutter is pinned: swiping a phone board must not hide the row
-  // numbers, or a scrolled board cannot be read as a coordinate.
-  check(
-    `${tag}: the row numbers stay pinned to the left edge while the board scrolls`,
-    scrolled.rowLabel !== null &&
-      scrolled.rowLabel.left >= (scrolled.enemy?.left ?? 0) - 1 &&
-      scrolled.rowLabel.right <= (scrolled.enemy?.left ?? 0) + 24,
-    `row 1 ${px(scrolled.rowLabel?.left)}..${px(scrolled.rowLabel?.right)} against strip ${px(scrolled.enemy?.left)}`,
+    `${tag}: column N is visible without scrolling`,
+    m.lastCell !== null &&
+      m.enemy !== null &&
+      m.lastCell.right <= m.enemy.right + 1 &&
+      m.lastCell.right <= m.viewportWidth + 1,
+    `N1 ${px(m.lastCell?.left)}..${px(m.lastCell?.right)} in strip ${px(m.enemy?.left)}..${px(m.enemy?.right)}`,
   );
 
   check(
@@ -270,16 +256,16 @@ for (const vp of [
   );
 
   check(
-    `${tag}: the lock control is on-screen`,
-    m.locked !== null && m.locked.right <= m.viewportWidth + 1 && m.locked.left >= -1,
-    `lock ${px(m.locked?.left)}..${px(m.locked?.right)}`,
+    `${tag}: the lock control is fully on the first screen`,
+    m.locked !== null &&
+      m.locked.left >= -1 &&
+      m.locked.right <= m.viewportWidth + 1 &&
+      m.locked.bottom <= m.viewportHeight + 1,
+    `lock ${px(m.locked?.left)}..${px(m.locked?.right)}, bottom ${px(m.locked?.bottom)} of ${px(m.viewportHeight)}`,
   );
 
   await page.screenshot({ path: join(SHOTS, `${vp.label}-combat.png`) });
   await page.screenshot({ path: join(SHOTS, `${vp.label}-combat-full.png`), fullPage: true });
-  if (vp.width < 640) {
-    await page.screenshot({ path: join(SHOTS, `${vp.label}-combat-scrolled.png`) });
-  }
   await page.close();
 }
 

@@ -28,9 +28,10 @@
  *      and the other half becomes the new open value.
  *   6. A tile can only be played by the seat on turn, from its own hand, in a
  *      live match. A playable tile can never be skipped.
- *   7. With nothing playable, a seat draws one tile at a time and KEEPS the
- *      turn; a drawn tile may be played at once, and an unplayable one means
- *      drawing again.
+ *   7. With nothing playable, a seat DRAWS FROM THE BONEYARD UNTIL IT CAN PLAY:
+ *      one action takes tiles off the pile until a playable one turns up (or the
+ *      pile runs out), and the seat keeps the turn throughout. There is no
+ *      "one tile at a time" turn — the draught is not a move the table watches.
  *   8. With the pile empty and nothing playable, the seat passes.
  *   9. SCORING — every seat scores the pips LEFT IN THE OTHER SEAT'S HAND.
  *      A hand that empties ends the round at once: its holder scores the
@@ -573,7 +574,10 @@ export function legalPlays(
   return actions;
 }
 
-/** The draw action, or `null` when a play exists, the pile is empty or the match is over. */
+/**
+ * The draw action, or `null` when a play exists, the pile is empty or the match
+ * is over. Applying it takes tiles until one can be played (rule 7).
+ */
 export function legalDraw(
   state: DominoesState,
   seat: Seat = state.turn,
@@ -995,18 +999,17 @@ export function applyAction(
   }
 
   if (action.type === ACTION_TYPES.DRAW) {
-    return drawNextTile(state, seat);
+    return drawUntilPlayable(state, seat);
   }
 
   return passTurn(state, seat);
 }
 
 /**
- * Take the front tile off the pile (rule 6). The seat keeps the turn.
+ * Take the front tile off the pile (rule 7). The seat keeps the turn.
  *
- * The pile is non-empty at every call site (the validator and `applyTimeout`
- * both guarantee it), and its ORDER is the shuffled order, so taking the front
- * is the deterministic replay of a persisted deal.
+ * The pile is non-empty at every call site, and its ORDER is the shuffled order,
+ * so taking the front is the deterministic replay of a persisted deal.
  *
  * One implementation, two callers: a player's draw and the clock's draw, so a
  * timeout can never resolve differently from a voluntary draw.
@@ -1017,7 +1020,7 @@ function drawNextTile(state: DominoesState, seat: Seat): DominoesState {
     seat,
     action: Object.freeze({ type: ACTION_TYPES.DRAW }) as DrawAction,
   });
-  const drawnState = freezeState({
+  return freezeState({
     ...state,
     ply: state.ply + 1,
     // A draw does NOT pass the turn: the seat keeps drawing until it can play.
@@ -1026,8 +1029,30 @@ function drawNextTile(state: DominoesState, seat: Seat): DominoesState {
     hands: { ...state.hands, [seat]: [...state.hands[seat], drawn] },
     lastAction: record,
   });
-  // The last draw can empty the pile while neither seat can play.
-  return finishIfBlocked(drawnState);
+}
+
+/**
+ * THE DRAUGHT (rule 7): one draw action keeps taking tiles off the boneyard
+ * until the seat holds something playable, or the pile runs out.
+ *
+ * This is the rule a real table plays: a player who cannot match picks up until
+ * they can, and nobody watches them do it one tile at a time. It is also what
+ * keeps the clock honest — a timeout resolves the whole draught, so a seat is
+ * never handed a turn it still cannot use.
+ *
+ * The ply advances once per tile taken, so the action log and the pile count
+ * still record every tile that changed hands, and the LAST draw is the recorded
+ * action. The terminal check runs once, after the draught: only an emptied pile
+ * can block a round.
+ */
+function drawUntilPlayable(state: DominoesState, seat: Seat): DominoesState {
+  let next = state;
+  // The validator guarantees the seat is stuck and the pile has tiles, so this
+  // loop always takes at least one; it stops at the first playable tile.
+  while (next.drawPile.length > 0 && !hasLegalPlay(next, seat)) {
+    next = drawNextTile(next, seat);
+  }
+  return finishIfBlocked(next);
 }
 
 /**
@@ -1090,7 +1115,9 @@ export function applyTimeout(
       { seat },
     );
   }
-  return state.drawPile.length > 0 ? drawNextTile(state, seat) : passTurn(state, seat);
+  return state.drawPile.length > 0
+    ? drawUntilPlayable(state, seat)
+    : passTurn(state, seat);
 }
 
 /**

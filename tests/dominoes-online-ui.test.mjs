@@ -1528,12 +1528,14 @@ test("dominoes css: the chain is a 2D table that scrolls as it snakes", () => {
   // felt (`position: absolute` inside the chain, not inside the surface).
   assert.match(table, /\.dominoes-end-chip \{[\s\S]*?position:\s*absolute/);
   assert.match(table, /\.dominoes-end-chip\.is-left \{[\s\S]*?left:\s*8px/);
-  // The felt FILLS the board it is given, and the board is bounded by the page:
-  // the chain is laid out to fit, so the table never grows past the felt.
-  assert.match(table, /min-height:\s*clamp\(/);
+  // The felt FILLS the board it is given and shrinks into it: no minimum height
+  // of its own means the table is laid out to fit the felt, and the page around
+  // it never has to grow.
+  assert.match(table, /min-height:\s*0;/);
   assert.match(table, /\.dominoes-chain-scroller \{[\s\S]*?flex: 1 1 auto/);
   const boardSized = css.slice(css.indexOf(".dominoes-layout {"), css.indexOf(".dominoes-main {"));
-  assert.match(boardSized, /height:\s*calc\(100dvh - var\(--dm-chrome\)\)/);
+  assert.match(boardSized, /grid-template-rows:\s*minmax\(0, 1fr\) auto;/);
+  assert.match(boardSized, /height:\s*100%/);
   // THE VALUES STAY UPRIGHT ON A TURNED TILE. The chain writes the INVERSE of a
   // tile's rotation onto its slot, and the tile's halves turn back to face the
   // reader — so a domino lying vertically still reads left-to-right.
@@ -1551,7 +1553,7 @@ test("dominoes css: the chain is a 2D table that scrolls as it snakes", () => {
   assert.match(chainForTurn, /dominoes-cell-probe/);
   // Tile size is one variable, clamped so a phone still shows readable halves.
   const board = css.slice(css.indexOf(".dominoes-board {"), css.indexOf(".dominoes-layout {"));
-  assert.match(board, /--dm-half:\s*clamp\(24px,/);
+  assert.match(board, /--dm-half:\s*clamp\(28px,/);
   // The hand scales itself up from the same variable.
   assert.match(css, /\.dominoes-hand \{[\s\S]*?--dm-half:\s*clamp\(/);
 });
@@ -1582,13 +1584,24 @@ test("dominoes ui: a move is audible, and the sound can be switched off", { skip
   assert.doesNotMatch(sound, /\.mp3|\.wav|\.ogg/);
 });
 
-test("dominoes css: the board fills the page, the hand and controls in the sidebar", () => {
+test("dominoes css: the board is the page, and the hand is docked inside it", () => {
   // Two columns: the felt first, the hand + controls second. The sidebar is wider
   // than it was because it now carries your tiles as well as the buttons.
   const layout = css.slice(css.indexOf(".dominoes-layout {"), css.indexOf(".dominoes-seat {"));
-  assert.match(layout, /grid-template-columns:\s*minmax\(0, 1fr\) 320px/);
+  assert.match(layout, /grid-template-columns:\s*minmax\(0, 1fr\);/);
+  assert.match(layout, /grid-template-rows:\s*minmax\(0, 1fr\) auto;/);
   // The board IS the page: the viewport minus the chrome the page wraps round it.
-  assert.match(layout, /height:\s*calc\(100dvh - var\(--dm-chrome\)\)/);
+  assert.match(layout, /height:\s*100%/);
+  // …and the card it lives in takes whatever the page leaves, so the felt is as
+  // tall as the screen rather than as tall as its contents.
+  const shell = css.slice(css.indexOf(".dominoes-board {"), css.indexOf(".dominoes-layout {"));
+  assert.match(shell, /flex:\s*1 1 auto/);
+  assert.match(shell, /overflow:\s*hidden/);
+  // The page around it is ONE SCREEN TALL — bound to the viewport and clipped —
+  // so your hand and the controls are never below the fold.
+  const page = read("src/app/casino/dominoes/[matchId]/PageClient.tsx");
+  assert.match(page, /h-\[100dvh\]/);
+  assert.match(page, /overflow-hidden/);
   // …and it stacks on a phone, so the sidebar never squeezes the board. The phone
   // block lives at the END of the section — it overrides base rules, and a media
   // query only wins on position — so it is read from its own slice.
@@ -1597,12 +1610,21 @@ test("dominoes css: the board fills the page, the hand and controls in the sideb
   assert.match(phone, /grid-template-rows:\s*minmax\(0, 1fr\) auto;/);
   assert.match(
     phone,
-    /height:\s*calc\(100dvh - var\(--dm-chrome\)\)/,
+    /height:\s*100%/,
     "the phone board is bound to the screen, not to its contents",
   );
   // The board is one column, and the HAND IS NOT IN IT any more.
   const main = css.slice(css.indexOf(".dominoes-main {"), css.indexOf(".dominoes-sidebar {"));
   assert.match(main, /flex-direction:\s*column/);
+  // …under a DOCK that reads left to right: the hand takes the width, the panel
+  // sits beside it, and the whole strip stays inside the board.
+  const dock = css.slice(css.indexOf(".dominoes-sidebar {"), css.indexOf("/* ── Seat cards"));
+  assert.match(dock, /flex-direction:\s*row/);
+  assert.match(dock, /overflow:\s*hidden/);
+  // The hand is one row of tiles that scrolls sideways, never a wrapped block: a
+  // second row of tiles costs the felt ~50px of rows it needs for the chain.
+  const hand = css.slice(css.indexOf(".dominoes-hand {"), css.indexOf(".dominoes-hand-empty {"));
+  assert.match(hand, /flex-wrap:\s*nowrap/);
   const viewSource = stripComments(read("src/components/dominoes/DominoMatchView.tsx"));
   const sidebarAt = viewSource.indexOf('<aside className="dominoes-sidebar">');
   const handAt = viewSource.indexOf("<DominoHand");

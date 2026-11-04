@@ -2588,10 +2588,11 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 }
 
 /* ── Dominoes (online 1v1 table) ─────────────────────────────────────────
-   TWO COLUMNS. On the left is the BOARD — the opponent card, the turn banner and
-   its 15-second clock, the shared chain laid out on a felt the size of the page,
-   and the draw pile. On the right is the SIDEBAR: your own hand, the open ends,
-   the selected tile and the three controls.
+   ONE BOARD, THE SIZE OF THE PAGE. On top is the TABLE — the scoreboard, the
+   opponent card, the clock and the shared chain, on a felt that takes every pixel
+   the chrome does not. Under it, INSIDE the same board, is the DOCK: your own
+   hand, the open ends and the three controls, in one strip along the bottom. The
+   page itself never scrolls — the felt shrinks into whatever the dock leaves.
 
    SIZING IS THE WHOLE DESIGN PROBLEM. A chain can hold all 28 tiles, so the felt
    is given the page and the CHAIN FITS ITSELF TO IT: the layout turns the line
@@ -2601,34 +2602,42 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
    never disagree about how big a cell is. Every tile is that one variable wide,
    so the hand can be larger than the chain (it is what you tap) without the two
    drifting apart, and the halves never drop below a value a phone can read. */
+/* THE BOARD IS THE PAGE. Everything the game needs — the felt, your hand and
+   every control — lives inside this one card, and the card is the viewport that
+   the match page hands it. Nothing on it is below the fold, so nothing scrolls. */
 .dominoes-board {
-  /* The felt is the page now, so a desktop cell is a palm-sized piece rather than
-     the phone size the board used to be squeezed to. A cell is also the unit the
-     board is MEASURED in, so the max is bounded by what the felt can hold: the
-     chrome above it was compacted (see .dominoes-main / the seat and scoreboard)
-     to buy the rows this needs. */
-  --dm-half: clamp(24px, 6.2vw, 42px);
+  /* A desktop cell is a palm-sized piece: the felt takes the whole page now, and
+     the layout is measured IN this unit, so a bigger cell is a bigger table. */
+  --dm-half: clamp(28px, 6.6vw, 56px);
   --dm-gap: clamp(4px, 1vw, 8px);
-  /* Everything the page puts AROUND the board: the navbar, the header and the
-     bottom breathing room. The board takes the rest of the viewport. */
-  --dm-chrome: 13rem;
+  /* The little the page keeps for itself: the navbar clearance and its one-line
+     header. Still subtracted, so "the whole page" means the whole page. */
+  --dm-chrome: 8rem;
   display: flex;
+  flex: 1 1 auto;
   min-height: 0;
   flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(124, 239, 255, 0.18);
+  border-radius: 18px;
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(0, 229, 255, 0.1), transparent 60%),
+    linear-gradient(160deg, rgba(6, 34, 58, 0.95), rgba(2, 12, 26, 0.98));
+  box-shadow: inset 0 0 60px rgba(0, 229, 255, 0.07);
+  padding: 7px;
 }
 
-/* The board and its sidebar. The sidebar is a fixed column so a growing hand can
-   never push the controls around, and it now holds the hand as well as the
-   actions — which is what frees the board to be the size of the page. */
+/* THE TABLE ABOVE, THE DOCK BELOW — one column, one card. The felt row is the
+   flexible one: the board takes the page and the dock takes only its own height,
+   so a growing hand can never squeeze the table off screen. */
 .dominoes-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
   align-items: stretch;
-  gap: 12px;
-  /* AS BIG AS THE PAGE: the viewport, minus the chrome the page wraps around it.
-     The felt's own limit is this box, so the table is bounded by what is visible. */
-  height: calc(100dvh - var(--dm-chrome));
-  min-height: 460px;
+  gap: 7px;
+  height: 100%;
+  min-height: 0;
 }
 
 .dominoes-main {
@@ -2637,26 +2646,27 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   /* The column may be shorter than its contents would like: the table shrinks
      into the space left, never the other way round. */
   min-height: 0;
+  overflow: hidden;
   flex-direction: column;
   /* EVERY ROW OF CHROME HERE IS FELT THE PLAYER CANNOT USE. The stack above the
      table is compact by design, so a full 26-tile chain still has the rows to
      snake through. */
-  gap: 6px;
+  gap: 4px;
 }
 
+/* THE DOCK — your hand and every control, inside the board, along its bottom.
+   A row: the hand takes the width, the panel sits beside it. Nothing here is
+   sticky or scrollable as a block; only the hand's own tile row scrolls. */
 .dominoes-sidebar {
-  position: sticky;
-  top: 76px;
   display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 7px;
   min-width: 0;
-  /* The hand lives here now, so on a short screen the column can be taller than
-     the board: it scrolls on its own instead of pushing the page around. */
-  max-height: calc(100dvh - 6rem);
-  flex-direction: column;
-  gap: 8px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
+  min-height: 0;
+  overflow: hidden;
+  border-top: 1px solid rgba(124, 239, 255, 0.16);
+  padding-top: 7px;
 }
 
 
@@ -2997,12 +3007,13 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 
 /* ── The chain and the pile ─────────────────────────────────────────── */
 .dominoes-table {
+  position: relative;
   display: flex;
   /* The table takes whatever height the column has left: that is the felt's. */
   flex: 1 1 auto;
   min-height: 0;
   flex-direction: column;
-  gap: 8px;
+  gap: 0;
 }
 
 /* THE TABLE — a felt board the chain is laid out on.
@@ -3029,7 +3040,10 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   min-width: 0;
   min-height: 0;
   flex-direction: column;
+  overflow: hidden;
   border-radius: 14px;
+  background:
+    radial-gradient(90% 70% at 50% 45%, rgba(0, 229, 255, 0.07), transparent 70%);
 }
 
 /* ONE CELL, FOR MEASURING. The chain reads its board in cells, and a cell is
@@ -3054,20 +3068,18 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
      block layout cannot do vertically. */
   display: flex;
   flex: 1 1 auto;
-  /* THE FELT IS GIVEN MORE OF THE PAGE. A chain that runs out of rows turns
-     earlier and folds tighter, so the rows are what stop a rotated tile from
-     being crowded by its neighbours above and below. The floor is raised enough
-     to hold a folded table of a dozen tiles on a laptop, and the cap grows with
-     the viewport instead of stopping at 420px. */
-  min-height: clamp(320px, 42vh, 560px);
+  /* THE FELT IS WHATEVER THE DOCK LEAVES. No floor of its own: the board is
+     bound to the page, so the table is laid out to fit exactly the rows it is
+     given and the felt never forces the page to grow. */
+  min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
   /* The top padding is the newest tile's badge's room: it floats above the felt,
      so the box has to leave space for it. It is also what the board's own size is
      measured from, so it is not costed twice. */
-  padding: 46px 22px 22px;
-  scroll-padding: 56px;
+  padding: 34px 16px 14px;
+  scroll-padding: 44px;
 }
 
 /* ONE ROW PER LAYOUT ROW, NOT A REFLOWED BLOCK: every tile is absolutely placed
@@ -3369,14 +3381,22 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   }
 }
 
+/* The draw pile is a BADGE ON THE FELT, not a row under it: its count is already
+   printed on the Draw button, so it earns no height of its own — and the felt
+   gets that height instead. */
 .dominoes-pile {
+  position: absolute;
+  z-index: 2;
+  left: 8px;
+  bottom: 8px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.03);
-  padding: 8px 10px;
+  background: rgba(2, 12, 26, 0.86);
+  padding: 5px 9px;
+  pointer-events: none;
 }
 
 .dominoes-pile-stack {
@@ -3528,23 +3548,32 @@ button.dominoes-tile:disabled {
    falls the same way whichever way it is lying. One animation, removed entirely
    under reduced motion. */
 .dominoes-tile.is-new {
-  animation: dominoes-tile-in 0.26s cubic-bezier(0.22, 1.18, 0.4, 1) both;
+  /* It is CARRIED IN and set down: it starts above the felt and slightly large,
+     lands a hair past its square, and settles. The two-stage overshoot is what
+     reads as a tile being placed rather than a rectangle fading in. */
+  animation: dominoes-tile-in 0.34s cubic-bezier(0.2, 1.3, 0.35, 1) both;
+  transform-origin: center;
 }
 
 @keyframes dominoes-tile-in {
   0% {
     opacity: 0;
-    transform: scale(1.22);
+    transform: translateY(calc(var(--dm-half) * -1.1)) scale(1.07);
+    box-shadow: 0 20px 32px rgba(0, 0, 0, 0.55);
   }
 
-  62% {
+  55% {
     opacity: 1;
-    transform: scale(0.96);
+    transform: translateY(calc(var(--dm-half) * 0.05)) scale(1.03);
+  }
+
+  78% {
+    transform: translateY(0) scale(0.985);
   }
 
   100% {
     opacity: 1;
-    transform: scale(1);
+    transform: translateY(0) scale(1);
   }
 }
 
@@ -3557,14 +3586,19 @@ button.dominoes-tile:disabled {
 
 /* ── The viewer's hand ──────────────────────────────────────────────── */
 .dominoes-hand {
-  --dm-half: clamp(30px, 8.2vw, 42px);
+  /* The hand is sized from the same variable, a little smaller than the felt: it
+     is a row of tiles inside the dock now, not the whole right-hand column. */
+  --dm-half: clamp(26px, 4.6vw, 40px);
   display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
   flex-direction: column;
-  gap: 8px;
+  justify-content: center;
+  gap: 5px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 14px;
   background: rgba(0, 0, 0, 0.34);
-  padding: 10px;
+  padding: 6px 9px;
 }
 
 .dominoes-hand-head {
@@ -3593,12 +3627,17 @@ button.dominoes-tile:disabled {
   color: rgba(165, 243, 252, 0.85);
 }
 
-/* Tiles wrap rather than scroll sideways: a horizontal scroller inside a page
-   that also scrolls vertically is where taps go missing on a phone. */
+/* ONE ROW, SCROLLED SIDEWAYS IF IT MUST. Wrapping a seven-tile hand onto a second
+   row costs ~50px of felt, and the page around the hand no longer scrolls — so a
+   sideways swipe here is unambiguous and the felt keeps the height. */
 .dominoes-hand-tiles {
   display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
+  flex-wrap: nowrap;
+  gap: 6px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
 }
 
 .dominoes-hand-empty {
@@ -3610,21 +3649,23 @@ button.dominoes-tile:disabled {
 /* ── The action sidebar ────────────────────────────────────────────────── */
 .dominoes-side-panel {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  flex: 0 1 440px;
+  min-width: 250px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 6px;
   border: 1px solid rgba(124, 239, 255, 0.2);
   border-radius: 14px;
   background: linear-gradient(180deg, rgba(6, 30, 52, 0.9), rgba(2, 10, 22, 0.94));
-  padding: 12px;
+  padding: 7px 9px;
 }
 
-.dominoes-side-title {
-  margin: 0;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: rgba(165, 243, 252, 0.85);
+/* The dock says it with the tiles and the buttons: a title line and a "selected
+   tile" box would each cost a row of felt the player would rather look at. */
+.dominoes-side-title,
+.dominoes-side-selected {
+  display: none;
 }
 
 /* The two open values, right above the buttons that attach to them. */
@@ -3680,14 +3721,16 @@ button.dominoes-tile:disabled {
 
 .dominoes-controls {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  flex: 1 1 100%;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .dominoes-action-button {
   display: inline-flex;
   min-height: 46px;
-  flex: 1 1 100%;
+  flex: 1 1 0;
   align-items: center;
   justify-content: center;
   gap: 7px;
@@ -3746,9 +3789,13 @@ button.dominoes-tile:disabled {
 
 .dominoes-hint {
   margin: 0;
-  min-height: 16px;
-  font-size: 11px;
-  line-height: 1.5;
+  flex: 1 1 100%;
+  min-height: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  line-height: 1.4;
   color: rgba(207, 250, 254, 0.8);
 }
 
@@ -3849,19 +3896,21 @@ button.dominoes-tile:disabled {
   .dominoes-board {
     /* The page's own chrome: navbar clearance plus header. The board gets the
        rest of the screen and no more. */
-    --dm-chrome: 12rem;
+    --dm-chrome: 6.5rem;
     /* Felt cells shrink a little on a phone: the felt is much shorter than a
        desktop's, and a 26-tile chain still has to snake through it. The numerals
        stay 13px, which is the smallest this board goes. */
-    --dm-half: clamp(20px, 5.2vw, 26px);
+    --dm-half: clamp(19px, 5vw, 26px);
+    padding: 5px;
   }
 
   .dominoes-layout {
     grid-template-columns: minmax(0, 1fr);
     /* The felt row flexes; the controls row keeps its natural height. */
     grid-template-rows: minmax(0, 1fr) auto;
-    height: calc(100dvh - var(--dm-chrome));
+    height: 100%;
     min-height: 0;
+    gap: 5px;
   }
 
   .dominoes-main {

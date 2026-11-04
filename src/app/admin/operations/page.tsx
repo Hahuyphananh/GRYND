@@ -1,11 +1,13 @@
 // src/app/admin/operations/page.tsx
 //
-// Read-only operations dashboard for the admin area.
+// Operations dashboard for the admin area.
 //
-// Deliberately NOT a control surface: there are no restart buttons here. The
-// Phase 6 design keeps privileged actions in the loopback-only Control Center,
-// so a stolen admin session cannot bounce production. This page only reads
-// files the deployment tooling already wrote.
+// Almost read-only by design: there are no restart or rollback controls. The
+// Phase 6 design keeps those privileged actions in the loopback-only Control
+// Center, so a stolen admin session cannot bounce production. The one control
+// here is the deploy button, and it never touches the host: it asks GitHub
+// Actions to run the same release workflow CI already uses (tests, build,
+// activate, health gate behind the grynd-production environment).
 //
 // Every value is rendered as text by React, never injected as HTML, and the
 // reader in src/lib/admin/operations.ts bounds and redacts what it returns.
@@ -13,6 +15,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import DeployLatestButton from "./DeployLatestButton";
+import { getDeployTarget } from "../../../lib/admin/deployLatest";
 import { buildMfaDiagnostics } from "../../../lib/admin/mfaDiagnostics";
 import {
   deploymentLog,
@@ -114,6 +118,9 @@ export default async function OperationsPage() {
   // deploy attempt. A history table of runs is not the question an operator asks
   // here ("what is live, and what did the deploy that did not land say").
   const live = snapshot.live;
+  // Which commit is newest on main, and whether it is already serving. A GitHub
+  // outage degrades to "could not check" rather than failing this page.
+  const deploy = await getDeployTarget(live?.commit ?? null);
   const latestDeployment = snapshot.deployments[0] ?? null;
   const latestIsLive = Boolean(
     live?.commit && latestDeployment?.commit === live.commit,
@@ -128,8 +135,9 @@ export default async function OperationsPage() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-white">Operations</h1>
             <p className="mt-1 text-sm text-[#7f9bbd]">
-              Read-only. The live commit comes from this deployment&apos;s own build metadata (or the host&apos;s active
-              release); the newest deploy attempt comes from the host state files written by the release tooling.
+              The live commit comes from this deployment&apos;s own build metadata (or the host&apos;s active release);
+              the newest deploy attempt comes from the host state files written by the release tooling. The deploy
+              button requests the newest commit from GitHub and never touches the host directly.
             </p>
           </div>
           <nav className="flex gap-2 text-sm">
@@ -374,6 +382,13 @@ export default async function OperationsPage() {
                     View the commit on GitHub ↗
                   </a>
                 )}
+                <DeployLatestButton
+                  liveCommit={live.commit}
+                  latest={deploy.latest}
+                  configured={deploy.configured}
+                  upToDate={deploy.upToDate}
+                  unavailableReason={deploy.reason}
+                />
               </div>
               {live.message && <p className="mt-2 max-w-3xl text-sm text-[#e6f7ff]">{live.message}</p>}
               <dl className="mt-3 grid gap-x-6 gap-y-1 text-xs text-[#7f9bbd] sm:grid-cols-2">
@@ -505,8 +520,8 @@ export default async function OperationsPage() {
         </section>
 
         <p className="mt-6 text-xs text-[#5f7794]">
-          Service restarts, rollbacks and configuration changes are not available here by design. Use the Control
-          Center over the SSH tunnel.
+          Service restarts, rollbacks and configuration changes are not available here by design. The deploy button
+          only dispatches the release workflow; use the Control Center over the SSH tunnel for the host itself.
         </p>
       </div>
     </main>

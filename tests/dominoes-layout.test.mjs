@@ -9,8 +9,11 @@
  *   * the chain grows from its OPENING tile in both directions;
  *   * a double lies CROSSWISE and the chain CARRIES STRAIGHT ON past it — an
  *     upright double is followed by flat tiles, never by an upright line;
- *   * the line turns at the edge of the BOARD it is given, so a bounded table
- *     snakes inside the felt instead of growing off it;
+ *   * the line turns at the edge of the BOARD it is given, PERPENDICULARLY to the
+ *     tile it attaches to, so a bounded table snakes inside the felt instead of
+ *     growing off it;
+ *   * a tile already on the table never moves as the chain grows — the table is
+ *     additive, which is what stops it contracting and twitching;
  *   * NO TWO TILES EVER OCCUPY THE SAME SQUARE — the invariant a real table must
  *     not break, checked over dozens of engine-played matches.
  *
@@ -177,7 +180,7 @@ test("layout: a double is crosswise and the chain carries straight on past it", 
   assert.ok(Math.abs(after.cx - double.cx - 1.5) < 1e-9);
 });
 
-test("layout: a run turns instead of running off the felt", () => {
+test("layout: a run turns at right angles instead of running off the felt", () => {
   // No doubles: the path must still bend, or the table would be one endless row.
   const chain = [{ id: "6-5", end: "left" }];
   const ids = ["6-1", "5-2", "4-3", "6-4", "6-0", "5-1", "4-2", "6-3", "5-4"];
@@ -194,6 +197,49 @@ test("layout: a run turns instead of running off the felt", () => {
     firstTurn.cx * TILE_LENGTH_CELLS >= RUN_CELLS - 1e-9,
     "the turn happens at the end of a band, not after one tile",
   );
+
+  // THE CORNER IS A REAL DOMINO CORNER: the turning tile is laid PERPENDICULAR
+  // to the tile it attaches to, so its LONG side meets that tile's end edge —
+  // not a second tile carrying on in line, and not one floating off the end.
+  const before = layout.tiles.find((tile) => tile.index === firstTurn.index - 1);
+  assert.ok(before, "the tile the corner attaches to is on the table");
+  const beforeUpright = before.rotation % 180 === 90;
+  const turnUpright = firstTurn.rotation % 180 === 90;
+  assert.notEqual(turnUpright, beforeUpright, "the turn is at right angles to the run");
+  assert.ok(
+    gapBetween(boxOf(before), boxOf(firstTurn)) < 0.01,
+    "and the two tiles are still joined at the corner",
+  );
+});
+
+test("layout: a tile never moves once it has been laid as the chain grows", () => {
+  // THE TWITCH. The table used to be re-planned from the whole chain every time a
+  // tile was added, so a longer line could retry into a different shape and shove
+  // every tile already on the felt. Seating is now decided tile by tile from the
+  // tiles before it, so a play only ever ADDS a square — checked over whole
+  // matches, at every step, for both ends.
+  let moved = 0;
+  for (let seed = 1; seed <= 12; seed += 1) {
+    let previous = null;
+    playMatch(seed, (chain) => {
+      const layout = layoutChain(chain);
+      if (previous && previous.pivot === layout.pivot) {
+        for (const tile of previous.tiles) {
+          const now = layout.tiles.find((candidate) => candidate.index === tile.index);
+          assert.ok(now, "a tile already on the table is still on the table");
+          if (now.cx !== tile.cx || now.cy !== tile.cy || now.rotation !== tile.rotation) {
+            moved += 1;
+            assert.fail(
+              `seed ${seed}: tile ${tile.index} moved from (${tile.cx}, ${tile.cy}) to ` +
+                `(${now.cx}, ${now.cy}) when the chain grew`,
+            );
+          }
+        }
+      }
+      previous = layout;
+    });
+  }
+  assert.equal(moved, 0);
 });
 
 /* -------------------------------------------------------------------------- *
@@ -366,8 +412,7 @@ test("layout: a double AFTER a bend lies across the run that led in", () => {
         // Only a double laid ON a run (not at the corner where the path turns):
         // the heading it lies across is then the one it was laid from.
         if (double.direction !== before.direction) continue;
-        // A genuine bend: the arriving run is perpendicular to the opening run.
-        if (!opening || axis(before.direction) === axis(opening.direction)) continue;
+        if (!opening) continue;
         found = { before, double, after };
         return;
       }
@@ -382,12 +427,24 @@ test("layout: a double AFTER a bend lies across the run that led in", () => {
   const runAxis =
     Math.abs(double.cx - before.cx) >= Math.abs(double.cy - before.cy) ? "x" : "y";
   assert.notEqual(longAxis(double.rotation), runAxis, "…across that run, not along it");
-  // …and the chain carries on past it, in the same direction it arrived.
-  assert.equal(
-    after.direction,
-    double.direction,
-    `the chain carries on past the double, in ${double.direction}`,
+  // …and the tile after it leaves from its leading LONG side: abreast of the
+  // double when the run carries on, or at right angles when this double was
+  // itself the corner that ended the shelf.
+  assert.ok(
+    gapBetween(boxOf(double), boxOf(after)) < 0.01,
+    "the join on the far side of a double holds",
   );
+  if (double.direction === after.direction) {
+    // The run carries on FLAT: the double is crosswise to it, so the tile after
+    // stands the other way round from the double itself.
+    assert.notEqual(
+      longAxis(after.rotation),
+      longAxis(double.rotation),
+      "a run that carries on past a double lies across the double's long side",
+    );
+  } else {
+    assert.notEqual(after.direction, double.direction, "otherwise it turns the shelf");
+  }
 });
 
 /* -------------------------------------------------------------------------- *

@@ -148,9 +148,12 @@ export default function FleetPlacement({ onFleetConfirmed }: FleetPlacementProps
   const clock = `${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")}`;
 
   return (
-    <section data-testid="fleet-placement" className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)]">
-      <div className="min-w-0 rounded-2xl border border-white/10 bg-[#061229]/70 p-3 sm:p-4">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+    <section
+      data-testid="fleet-placement"
+      className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,18rem)] lg:items-start"
+    >
+      <div className="min-w-0 rounded-xl border border-white/10 bg-[#061229]/70 p-2">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-sm font-black uppercase tracking-[0.18em] text-white">Deploy your fleet</h2>
             <p className="mt-1 text-[11px] text-white/45">
@@ -179,20 +182,29 @@ export default function FleetPlacement({ onFleetConfirmed }: FleetPlacementProps
           </div>
         </div>
 
-        <BoardGrid
-          title="My Fleet"
-          subtitle="Placement"
-          cells={EMPTY_CELLS}
-          ships={placement.ships.map((ship) => ({ placement: ship }))}
-          preview={previewPlacement ? { placement: previewPlacement, valid: previewValid } : null}
-          onCellClick={(coordinate) => placeAt(coordinate, activeShip)}
-          onCellDrop={(coordinate) => placeAt(coordinate, activeShipRef.current)}
-          onCellHover={setHover}
-          testId="placement-board"
-          footnote={error ?? "Ships may touch, including diagonally. They may never share a cell."}
-        />
+        {/* One board, so it can be larger than the combat boards — but still
+            capped by the viewport height, so the whole grid and the Confirm
+            button are on screen without scrolling. */}
+        <div
+          className="mx-auto w-full"
+          style={{ maxWidth: "min(100%, clamp(16rem, calc((100dvh - 12rem) * 0.9), 34rem))" }}
+        >
+          <BoardGrid
+            title="My Fleet"
+            subtitle="Placement"
+            cells={EMPTY_CELLS}
+            ships={placement.ships.map((ship) => ({ placement: ship }))}
+            preview={previewPlacement ? { placement: previewPlacement, valid: previewValid } : null}
+            onCellClick={(coordinate) => placeAt(coordinate, activeShip)}
+            onCellDrop={(coordinate) => placeAt(coordinate, activeShipRef.current)}
+            onCellHover={setHover}
+            testId="placement-board"
+            footnote={error ?? "Ships may touch, including diagonally. They may never share a cell."}
+            compact
+          />
+        </div>
 
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-2 flex flex-wrap gap-2">
           <button
             type="button"
             data-testid="placement-auto"
@@ -228,7 +240,7 @@ export default function FleetPlacement({ onFleetConfirmed }: FleetPlacementProps
         </div>
       </div>
 
-      <aside className="min-w-0 rounded-2xl border border-white/10 bg-[#061229]/70 p-3 sm:p-4">
+      <aside className="min-w-0 rounded-xl border border-white/10 bg-[#061229]/70 p-2">
         <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#ffec08]">Your ships</h2>
         <ul className="mt-3 space-y-2">
           {FLEET_SPEC.map((ship) => {

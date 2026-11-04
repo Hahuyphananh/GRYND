@@ -1,30 +1,26 @@
 // qa/battleship-placement-mobile-check.mjs
 //
-// Phone-presentation check for the Battleship PLACEMENT screen: the 14-column
-// board, the six-ship shelf, the timer/rotate controls and the confirm button,
-// mounted from the real component (qa/battleship-placement-mobile-harness.jsx)
-// with the project's REAL Tailwind CSS, so every number below is the shipped
-// layout.
+// Placement-screen check: the 14-column board, the six-ship shelf, the
+// timer/rotate controls and the confirm button, mounted from the real component
+// (qa/battleship-placement-mobile-harness.jsx) with the project's REAL Tailwind
+// CSS, so every number below is the shipped layout.
 //
-// Two requirements pull in opposite directions at phone width, and this check
-// pins the resolution:
+// The board now fits the viewport on every device:
 //
-//   * a TAPPABLE cell — 24 CSS px, the WCAG 2.2 SC 2.5.8 minimum target size;
-//   * no SIDEWAYS PAGE SCROLL — the page itself must never scroll horizontally.
-//
-// Fourteen columns at 24px need ~380px of board, which no 320px phone has, so
-// the board keeps a minimum width and scrolls inside its own strip. The page
-// still never scrolls; only the board strip does, and only where it must.
+//   * no horizontal scroll — the old 28rem phone floor is gone, so the whole
+//     A–N grid is visible without a swipe;
+//   * no vertical scroll to place — the board is capped by `100dvh`, and the
+//     Confirm button stays on the first screen;
+//   * cells stay at least 17px on the narrowest 320px phone and 20px from 360px
+//     up, so they remain tappable.
 //
 // Checks per viewport:
 //   1. the page does not scroll sideways;
 //   2. the board strip sits inside the viewport and its card;
-//   3. all 140 cells are drawn, square, and at least 24px wide (phone) / 40px
-//      (desktop);
-//   4. the strip scrolls on phones (the board is wider than the strip) and does
-//      NOT scroll on desktop (the floor is released once the card is wide);
-//   5. scrolling to the end really reveals the last column (N) on screen;
-//   6. no ship button, control or the confirm button is clipped off-screen;
+//   3. all 140 cells are drawn, square, and above the width-appropriate floor;
+//   4. the strip never scrolls sideways, and column N is visible;
+//   5. the board and the Confirm button are fully on the first screen;
+//   6. no ship button is clipped horizontally;
 //   7. no console / page errors.
 //
 // Screenshots land in qa/reports/battleship-placement-mobile/.
@@ -89,8 +85,6 @@ const check = (name, ok, extra = "") => {
 const px = (value) => (value == null ? "?" : `${Math.round(value * 10) / 10}px`);
 
 const fileUrl = pathToFileURL(join(outDir, "index.html")).href;
-// The machine has Chrome installed but Playwright's own download may not be;
-// prefer it when present and fall back to the bundled browser.
 const browser = await chromium
   .launch({ channel: "chrome" })
   .catch(() => chromium.launch());
@@ -105,7 +99,6 @@ const mount = async (width, height, dpr) => {
   page.on("pageerror", (error) => errors.push(`pageerror(${width}): ${error.message}`));
   page.on("console", (message) => {
     if (message.type() !== "error") return;
-    // A file:// page cannot fetch fonts; those failures are the harness, not the app.
     if (/Failed to load resource|fonts\.googleapis|net::ERR/.test(message.text())) return;
     errors.push(`console(${width}): ${message.text()}`);
   });
@@ -120,17 +113,16 @@ const mount = async (width, height, dpr) => {
 // 320 is the narrowest device the site supports, 360 / 390 are the common
 // Android and iPhone widths. 1280 is the desktop reference for the same board.
 const VIEWPORTS = [
-  { label: "320", width: 320, height: 568, dpr: 2, phone: true },
-  { label: "360", width: 360, height: 800, dpr: 2, phone: true },
-  { label: "390", width: 390, height: 844, dpr: 3, phone: true },
-  { label: "1280", width: 1280, height: 900, dpr: 1, phone: false },
+  { label: "320", width: 320, height: 568, dpr: 2, phone: true, floor: 17 },
+  { label: "360", width: 360, height: 800, dpr: 2, phone: true, floor: 20 },
+  { label: "390", width: 390, height: 844, dpr: 3, phone: true, floor: 20 },
+  { label: "1280", width: 1280, height: 900, dpr: 1, phone: false, floor: 24 },
 ];
 
 for (const vp of VIEWPORTS) {
   const page = await mount(vp.width, vp.height, vp.dpr);
   const m = await page.evaluate(() => window.__bs.measure());
   const tag = `${vp.label} wide`;
-  const floor = vp.phone ? 24 : 40;
 
   console.log(
     `\n▸ ${vp.label}×${vp.height}: board ${px(m.board?.width)}×${px(m.board?.height)}, ` +
@@ -153,59 +145,51 @@ for (const vp of VIEWPORTS) {
   );
 
   check(
-    `${tag}: every cell is drawn, square and at least ${floor}px`,
+    `${tag}: every cell is drawn, square and at least ${vp.floor}px`,
     m.cells === 140 &&
       Math.abs(m.cellWidth - m.cellHeight) <= 1.5 &&
-      m.cellWidth >= floor,
-    `${m.cells} cells, ${px(m.cellWidth)}×${px(m.cellHeight)} (floor ${floor}px)`,
+      m.cellWidth >= vp.floor,
+    `${m.cells} cells, ${px(m.cellWidth)}×${px(m.cellHeight)} (floor ${vp.floor}px)`,
   );
 
-  // The floor is the reason the strip exists: on a phone the board must be
-  // wider than the strip (so it scrolls), and on desktop it must not be.
   check(
-    `${tag}: the board strip ${vp.phone ? "scrolls to the far columns" : "fits without scrolling"}`,
-    m.scroller !== null &&
-      (vp.phone
-        ? m.scroller.scrollWidth > m.scroller.clientWidth + 1 && m.scroller.overflowX === "auto"
-        : m.scroller.scrollWidth <= m.scroller.clientWidth + 1),
-    `content ${px(m.scroller?.scrollWidth)} vs strip ${px(m.scroller?.clientWidth)} (overflow-x ${m.scroller?.overflowX})`,
+    `${tag}: the board never scrolls sideways`,
+    m.scroller !== null && m.scroller.scrollWidth <= m.scroller.clientWidth + 1,
+    `content ${px(m.scroller?.scrollWidth)} vs strip ${px(m.scroller?.clientWidth)}`,
   );
 
-  // And scrolling must actually reach column N — a clipped last column with a
-  // scrollbar that stops short would be worse than no scroll at all.
-  await page.evaluate(() => window.__bs.scrollBoardToEnd());
-  await page.waitForTimeout(150);
-  const scrolled = await page.evaluate(() => window.__bs.measure());
   check(
-    `${tag}: scrolling to the end reveals column N on screen`,
-    scrolled.lastCell !== null &&
-      scrolled.lastCell.left >= (scrolled.scroller?.left ?? 0) - 1 &&
-      scrolled.lastCell.right <= (scrolled.scroller?.right ?? 0) + 1 &&
-      scrolled.lastCell.right <= scrolled.viewportWidth + 1,
-    `N1 ${px(scrolled.lastCell?.left)}..${px(scrolled.lastCell?.right)} in strip ${px(scrolled.scroller?.left)}..${px(scrolled.scroller?.right)}`,
+    `${tag}: column N is visible without scrolling`,
+    m.lastCell !== null &&
+      m.scroller !== null &&
+      m.lastCell.right <= m.scroller.right + 1 &&
+      m.lastCell.right <= m.viewportWidth + 1,
+    `N1 ${px(m.lastCell?.left)}..${px(m.lastCell?.right)} in strip ${px(m.scroller?.left)}..${px(m.scroller?.right)}`,
   );
 
-  await page.screenshot({
-    path: join(SHOTS, `${vp.label}-placement.png`),
-    fullPage: false,
-  });
+  check(
+    `${tag}: the whole board is on the first screen`,
+    m.board !== null && m.board.top >= -1 && m.board.bottom <= m.viewportHeight + 1,
+    `board ${px(m.board?.top)}..${px(m.board?.bottom)} of ${px(m.viewportHeight)}`,
+  );
 
   check(
-    `${tag}: no ship button or board control is clipped off-screen`,
+    `${tag}: the Confirm button is on the first screen`,
+    m.confirm !== null && m.confirm.bottom <= m.viewportHeight + 1 && m.confirm.top >= -1,
+    `confirm ${px(m.confirm?.top)}..${px(m.confirm?.bottom)} of ${px(m.viewportHeight)}`,
+  );
+
+  await page.screenshot({ path: join(SHOTS, `${vp.label}-placement.png`) });
+
+  check(
+    `${tag}: no ship button is clipped off-screen horizontally`,
     m.shelfOverflow === 0 &&
       m.shelf.length === 6 &&
       [m.timer, m.rotate, m.confirm, m.auto].every(
         (control) => control !== null && control.right <= m.viewportWidth + 1 && control.left >= -1,
       ),
-    `${m.shelf.length} ships, ${m.shelfOverflow} clipped, timer right ${px(m.timer?.right)}`,
+    `${m.shelf.length} ships, ${m.shelfOverflow} clipped`,
   );
-
-  if (vp.phone) {
-    await page.screenshot({
-      path: join(SHOTS, `${vp.label}-placement-scrolled.png`),
-      fullPage: false,
-    });
-  }
 
   await page.close();
 }

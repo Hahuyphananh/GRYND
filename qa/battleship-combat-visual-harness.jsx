@@ -153,6 +153,7 @@ window.__bsc = {
     const cellBoxes = cells.map(box);
     const myFleetCard = document.querySelector('[data-testid="my-fleet"]')?.closest("div");
     const enemyCard = document.querySelector('[data-testid="enemy-waters"]')?.closest("div");
+    const boards = document.querySelector('[data-testid="battle-boards"]');
     const ships = document.querySelectorAll('[data-testid^="board-ship-"]');
 
     return {
@@ -163,6 +164,7 @@ window.__bsc = {
       myFleet: strip("my-fleet"),
       enemy: strip("enemy-waters"),
       cards: { myFleet: box(myFleetCard), enemy: box(enemyCard) },
+      boards: boards ? { ...box(boards), maxWidth: getComputedStyle(boards).maxWidth } : null,
       enemyCells: cells.length,
       cellWidth: Math.min(...cellBoxes.map((cell) => cell.width)),
       cellHeight: Math.min(...cellBoxes.map((cell) => cell.height)),

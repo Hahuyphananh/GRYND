@@ -580,18 +580,20 @@ export default function DominoesMatchPage() {
         data-testid="dominoes-match"
         data-status={status}
         data-viewer-seat={viewerSeat ?? ""}
-        className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001628] to-[#03040c] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8"
+        className="flex h-[100dvh] flex-col overflow-hidden bg-gradient-to-br from-[#001628] to-[#03040c] px-2 pb-2 pt-16 text-white sm:px-4"
       >
-        {/* The board is meant to be AS BIG AS THE PAGE: the felt gets the width
-            on wide screens, and the board's own CSS bounds the height. */}
-        <div className="mx-auto w-full max-w-[1500px]">
+        {/* THE BOARD IS THE PAGE, AND THE PAGE DOES NOT SCROLL. The shell is one
+            viewport tall and clips: the board below takes every pixel the header
+            does not, and the hand + controls live inside it, so a full 28-tile
+            table never asks the player to scroll to reach their own tiles. */}
+        <div className="mx-auto flex min-h-0 w-full max-w-[1600px] flex-1 flex-col">
           {/* ── Header ─────────────────────────────────────────────────── */}
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h1 className="logo-text flex items-center gap-2 text-2xl font-black uppercase tracking-[0.08em] text-[#7cefff] drop-shadow-[0_0_16px_rgba(0,229,255,0.45)] sm:text-3xl">
+              <h1 className="logo-text flex items-center gap-2 text-lg font-black uppercase tracking-[0.08em] text-[#7cefff] drop-shadow-[0_0_16px_rgba(0,229,255,0.45)] sm:text-2xl">
                 {t("games.dominoes_name")}
               </h1>
-              <p className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-widest text-white/55">
+              <p className="mt-0.5 hidden flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-white/55 sm:flex">
                 <span>{t("games.dominoes.subtitle")}</span>
                 <span className="rounded-full border border-emerald-400/40 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold tracking-wider text-emerald-200">
                   {t("games.dominoes.free")}
@@ -644,7 +646,7 @@ export default function DominoesMatchPage() {
 
           {moves.length > 0 ? (
             <div
-              className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-3"
+              className="mt-2 hidden shrink-0 rounded-2xl border border-white/10 bg-white/5 p-2 xl:block"
               data-testid="dominoes-move-log"
             >
               <h2 className="mb-2 text-xs font-bold uppercase tracking-wider text-white/60">

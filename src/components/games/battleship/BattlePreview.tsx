@@ -140,17 +140,17 @@ export default function BattlePreview({
   const tierLabel = aiDifficulty ? aiDifficulty[0].toUpperCase() + aiDifficulty.slice(1) : "Normal";
 
   return (
-    <section data-testid="battle-preview" className="space-y-4">
-      <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#061229]/70 p-3 sm:p-4">
-        <div className="flex items-center gap-3">
+    <section data-testid="battle-preview" className="space-y-2 sm:space-y-3">
+      <header className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-[#061229]/70 p-2 sm:p-2.5">
+        <div className="flex min-w-0 items-center gap-2">
           <span
             aria-hidden="true"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#ffec08]/50 bg-[#0a1a3d] text-sm font-black text-[#ffec08]"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#ffec08]/50 bg-[#0a1a3d] text-xs font-black text-[#ffec08]"
           >
             {displayName.slice(0, 2).toUpperCase()}
           </span>
           <div className="min-w-0">
-            <p className="truncate text-sm font-black text-white" data-testid="opponent-name">
+            <p className="truncate text-xs font-black text-white sm:text-sm" data-testid="opponent-name">
               {displayName}
             </p>
             <p className="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-wider text-white/45">
@@ -215,7 +215,7 @@ export default function BattlePreview({
         <div
           data-testid="battle-result"
           data-result={resultLabel.toLowerCase()}
-          className="rounded-2xl border border-[#ffec08]/40 bg-[#ffec08]/10 p-3 text-center text-sm font-black uppercase tracking-[0.2em] text-[#ffec08]"
+          className="rounded-xl border border-[#ffec08]/40 bg-[#ffec08]/10 p-2 text-center text-xs font-black uppercase tracking-[0.2em] text-[#ffec08] sm:text-sm"
         >
           {resultLabel}
           {resultMoment ? (
@@ -252,10 +252,30 @@ export default function BattlePreview({
         </div>
       ) : null}
 
-      {/* One board per row, full width: side-by-side halved a 14-column board
-          into cells too small to read or tap. */}
-      <div className="grid gap-4">
-        <div className="min-w-0 rounded-2xl border border-white/10 bg-[#061229]/70 p-3 sm:p-4">
+      {/* Both boards, stacked close together and sized from the viewport height.
+          A 14-column board is wide, so one full-width board per row pushed the
+          enemy waters — and the Lock button under them — below the fold. This
+          wrapper caps the board width by `100dvh`, so the fleet, the enemy
+          waters and the lock control are all on one screen without shrinking
+          the cells into slivers. On a wide screen the fleet panels move to the
+          side rails, which uses the width without adding height. */}
+      <div className="grid gap-2 lg:grid-cols-[minmax(0,15rem)_minmax(0,1fr)_minmax(0,15rem)] lg:items-start">
+        <div className="order-2 min-w-0 lg:order-none lg:col-start-1 lg:row-start-1">
+          <FleetStatus
+            title="My Fleet"
+            ships={view.you.fleet.ships}
+            sunk={damage.sunk}
+            damaged={damage.damaged}
+            testId="status-own"
+          />
+        </div>
+
+      <div
+        data-testid="battle-boards"
+        className="order-1 mx-auto grid w-full gap-1.5 lg:order-none lg:col-start-2 lg:row-start-1"
+        style={{ maxWidth: "min(100%, clamp(17.5rem, calc((100dvh - 18rem) * 0.7), 34rem))" }}
+      >
+        <div className="min-w-0 rounded-xl border border-white/10 bg-[#061229]/70 p-2">
           <BoardGrid
             title="My Fleet"
             subtitle="Incoming shots"
@@ -263,11 +283,11 @@ export default function BattlePreview({
             ships={ownShips}
             highlight={revealCells}
             testId="my-fleet"
-            footnote="Your ships stay visible here. Enemy hits show red."
+            compact
           />
         </div>
 
-        <div className="min-w-0 rounded-2xl border border-white/10 bg-[#061229]/70 p-3 sm:p-4">
+        <div className="min-w-0 rounded-xl border border-white/10 bg-[#061229]/70 p-2">
           {/* NO `ships` PROP — the enemy board can never draw a hidden ship. */}
           <BoardGrid
             title="Enemy Waters"
@@ -281,10 +301,10 @@ export default function BattlePreview({
             }}
             isCellDisabled={() => locked || Boolean(result) || busy}
             testId="enemy-waters"
-            footnote="Only shots already fired are shown. Enemy ships stay hidden."
+            compact
           />
 
-          <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             <button
               type="button"
               data-testid="lock-attack"
@@ -293,7 +313,7 @@ export default function BattlePreview({
                 if (!selected) return;
                 onAttack(selected);
               }}
-              className="rounded-lg border-b-4 border-[#b7a800] bg-[#ffec08] px-4 py-2 text-[11px] font-black uppercase tracking-wider text-[#0a1200] transition disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-lg border-b-4 border-[#b7a800] bg-[#ffec08] px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-[#0a1200] transition disabled:cursor-not-allowed disabled:opacity-40"
             >
               {locked ? "Locked" : selected ? `Lock ${formatCoordinate(selected)}` : "Lock attack"}
             </button>
@@ -336,14 +356,9 @@ export default function BattlePreview({
           ) : null}
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <FleetStatus
-            title="My Fleet"
-            ships={view.you.fleet.ships}
-            sunk={damage.sunk}
-            damaged={damage.damaged}
-            testId="status-own"
-          />
+      </div>
+
+        <div className="order-3 min-w-0 lg:order-none lg:col-start-3 lg:row-start-1">
           <FleetStatus
             title="Enemy Fleet"
             ships={enemyRows}

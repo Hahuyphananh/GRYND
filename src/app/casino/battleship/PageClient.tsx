@@ -649,19 +649,18 @@ export default function BattleshipPageClient() {
     </main>
     ) : (
     <main data-testid="battleship-page" className="min-h-screen bg-[#030817] text-white">
-      <div className="mx-auto w-full max-w-6xl px-3 py-5 sm:px-6 sm:py-8">
-        <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#ffec08]/80">
-              GRYND · 1v1 Naval Duel
-            </p>
-            <h1 className="text-2xl font-black uppercase tracking-tight sm:text-3xl">Battleship</h1>
-            <p className="mt-1 max-w-xl text-[11px] leading-snug text-white/50 sm:text-xs">
-              Fourteen by ten, six ships, one simultaneous shot every round. Find the enemy fleet before it
-              finds yours.
-            </p>
+      <div className="mx-auto w-full max-w-6xl px-2 py-3 sm:px-6 sm:py-4">
+        {/* Slim in-arena header: the placement and combat screens need the
+            vertical room for both boards, so the lobby-sized hero is not
+            repeated here. */}
+        <header className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 items-baseline gap-2">
+            <h1 className="text-lg font-black uppercase tracking-tight sm:text-xl">Battleship</h1>
+            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#ffec08]/70">
+              14×10 · 1v1
+            </span>
           </div>
-          <span className="rounded-full border border-[#ffec08]/40 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-[#ffec08]">
+          <span className="rounded-full border border-[#ffec08]/40 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-[#ffec08]">
             {practiceMode ? "Practice · unrated" : "Ranked · free to play"}
           </span>
         </header>

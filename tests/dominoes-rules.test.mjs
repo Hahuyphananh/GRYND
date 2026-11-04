@@ -7,7 +7,7 @@
  * seven each and fourteen face down; the highest double starts AND opens — the
  * deal places that double on the board, leaving its holder six tiles and the
  * other seat to play; a tile may only be played on an open end it matches; a
- * seat with nothing playable draws one tile at a time (keeping the turn) until
+ * seat with nothing playable draws until it can play (keeping the turn) — one
  * it can play, and passes only when the pile is empty; an empty hand wins at
  * once, and with the pile empty and neither seat able to play the fewer
  * remaining pips win (equal pips draw).
@@ -762,12 +762,14 @@ test("isChainConsistent catches a hand-built chain that does not join", () => {
  * Drawing
  * -------------------------------------------------------------------------- */
 
-test("with nothing playable, a draw takes exactly one tile and keeps the turn", () => {
+test("one draw keeps taking tiles until the seat can play, and keeps the turn", () => {
+  // Rule 7: a draught, not a single tile. A player who cannot match picks up
+  // until they can — one action, however many tiles it takes.
   const state = afterOpening({
     opening: "6-3",
     p1: ["0-0", "1-1"],
     p2: ["2-2"],
-    pile: ["4-4", "5-1"],
+    pile: ["4-4", "5-1", "6-6"],
     turn: SEATS[0],
   });
   assert.equal(hasLegalPlay(state, SEATS[0]), false);
@@ -775,19 +777,37 @@ test("with nothing playable, a draw takes exactly one tile and keeps the turn", 
   assert.deepEqual(legalDraw(state), { type: ACTION_TYPES.DRAW });
 
   const drawn = applyAction(state, SEATS[0], { type: ACTION_TYPES.DRAW });
-  assert.deepEqual(drawn.hands.player1, ["0-0", "1-1", "4-4"]);
-  assert.deepEqual(drawn.drawPile, ["5-1"]);
+  // 4-4 and 5-1 match neither 6 nor 3, so both come off the pile; 6-6 fits and
+  // stops the draught.
+  assert.deepEqual(drawn.hands.player1, ["0-0", "1-1", "4-4", "5-1", "6-6"]);
+  assert.deepEqual(drawn.drawPile, []);
   assert.equal(drawn.turn, SEATS[0], "drawing does not pass the turn");
-  assert.equal(drawn.ply, state.ply + 1);
+  assert.equal(drawn.ply, state.ply + 3, "one ply per tile taken");
   assert.equal(drawn.lastAction.action.type, ACTION_TYPES.DRAW);
+  assert.equal(hasLegalPlay(drawn, SEATS[0]), true, "the draught stops at a playable tile");
+  assert.deepEqual(legalPlays(drawn, SEATS[0]), [
+    { type: ACTION_TYPES.PLAY, tile: "6-6", end: CHAIN_ENDS[0] },
+  ]);
+});
 
-  // Still stuck (4-4 matches neither 6 nor 3) → draw again.
-  assert.deepEqual(legalActions(drawn), [{ type: ACTION_TYPES.DRAW }]);
-  const twice = applyAction(drawn, SEATS[0], { type: ACTION_TYPES.DRAW });
-  assert.deepEqual(twice.hands.player1, ["0-0", "1-1", "4-4", "5-1"]);
-  assert.deepEqual(twice.drawPile, []);
-  assert.equal(twice.turn, SEATS[0]);
-  assert.equal(twice.ply, state.ply + 2);
+test("a draught that empties the pile without a fit blocks the round", () => {
+  // The other end of the same rule: the pile runs out and the seat still cannot
+  // play, so the position is blocked — the stop is the ENGINE's, not a pass the
+  // player has to ask for.
+  const state = afterOpening({
+    opening: "6-3",
+    p1: ["0-0", "1-1"],
+    p2: ["2-2"],
+    pile: ["4-4", "5-1"],
+    turn: SEATS[0],
+  });
+  const drawn = applyAction(state, SEATS[0], { type: ACTION_TYPES.DRAW });
+  assert.deepEqual(drawn.hands.player1, ["0-0", "1-1", "4-4", "5-1"]);
+  assert.deepEqual(drawn.drawPile, []);
+  assert.equal(drawn.ply, state.ply + 2);
+  assert.equal(drawn.status, "finished");
+  assert.equal(drawn.outcome.reason, "blocked-pips");
+  assert.deepEqual(legalActions(drawn), []);
 });
 
 test("a drawn tile that fits may be played at once", () => {
@@ -1308,8 +1328,19 @@ test("randomised self-play preserves every invariant, for 40 seeds", () => {
       const action = menu[Math.floor(random() * menu.length)];
       const next = applyAction(state, state.turn, action);
 
-      // Ply advances by exactly one per accepted action.
-      assert.equal(next.ply, state.ply + 1, `seed ${seed}: ply must advance by one`);
+      // Ply counts every accepted action, and every TILE a draught takes off the
+      // pile (rule 7: one draw may move several tiles).
+      const drawnTiles = state.drawPile.length - next.drawPile.length;
+      const expectedPlys = action.type === ACTION_TYPES.DRAW ? drawnTiles : 1;
+      assert.ok(drawnTiles >= 0, `seed ${seed}: tiles appeared in the pile`);
+      if (action.type === ACTION_TYPES.DRAW) {
+        assert.ok(drawnTiles >= 1, `seed ${seed}: a draw must take at least one tile`);
+      }
+      assert.equal(
+        next.ply - state.ply,
+        expectedPlys,
+        `seed ${seed}: ply must count the action and every tile it drew`,
+      );
       // No tile is ever duplicated, lost or invented.
       const held = heldTiles(next);
       assert.equal(held.length, TILE_COUNT, `seed ${seed}: tile count drifted`);

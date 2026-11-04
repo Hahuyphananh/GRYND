@@ -44,6 +44,10 @@ import {
 } from "../../../../../lib/gameAudio";
 import { towerArenaDueRead } from "../../../../../lib/deadlineRead";
 import {
+  isRateLimitedMatchRead,
+  rateLimitRetryDelayMs,
+} from "../../../../../lib/tower-arena/matchFetch";
+import {
   createAiTurnGuard,
   fetchAiTurn,
   type AiTurnGuard,
@@ -956,6 +960,9 @@ export default function TowerArenaMatchPage() {
   // the deadline read below against the server's own instants.
   const serverNowEstimate = useServerClockEstimate();
   const loadRef = useRef<() => Promise<void>>(async () => {});
+  // One pending retry for a rate-limited read. A 429 is a pause, not a dead
+  // match: keep the board on screen and try again when the limiter resets.
+  const retryReadTimer = useRef<number | null>(null);
 
   // A ceiling-breaching block is not persisted in the tower. For the short
   // elimination animation, synthesize its visible cells from the placement.
@@ -1012,11 +1019,32 @@ export default function TowerArenaMatchPage() {
       const res = await fetch(`/api/tower-arena/get-match?matchId=${matchId}`, {
         cache: "no-store",
       });
-      const data = await res.json();
-      if (!data.ok) {
-        setError(data.message || "Could not load match");
+      const data = await res.json().catch(() => null);
+      // The match page reads in bursts (socket pushes + `useDeadlineRead`), so
+      // a fast duel can briefly exceed the per-user read budget. A 429 body has
+      // no `ok` flag; treating that as a dead match stranded the player for
+      // good. Keep the last authoritative board and retry once the limiter's
+      // window resets — a socket push that succeeds meanwhile clears the timer.
+      if (isRateLimitedMatchRead(res.status)) {
+        const retryAfter = data?.retryAfterSeconds ?? res.headers.get("Retry-After");
+        if (retryReadTimer.current) window.clearTimeout(retryReadTimer.current);
+        retryReadTimer.current = window.setTimeout(() => {
+          retryReadTimer.current = null;
+          void loadRef.current();
+        }, rateLimitRetryDelayMs(retryAfter));
         return;
       }
+      if (!res.ok || !data?.ok) {
+        setError(data?.message || "Could not load match");
+        return;
+      }
+      if (retryReadTimer.current) {
+        window.clearTimeout(retryReadTimer.current);
+        retryReadTimer.current = null;
+      }
+      // Recover from any earlier failure: a transient error must never leave a
+      // live match on its "Match unavailable" screen.
+      setError(null);
       setMatch(data.match);
       setLoaded(true);
       setPlayers(data.players || []);
@@ -1102,6 +1130,13 @@ export default function TowerArenaMatchPage() {
     }
   };
   loadRef.current = load;
+
+  useEffect(
+    () => () => {
+      if (retryReadTimer.current) window.clearTimeout(retryReadTimer.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     load();
