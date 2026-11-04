@@ -214,7 +214,7 @@
     "@opentelemetry/exporter-logs-otlp-http": "^0.300.0",
     "@opentelemetry/resources": "^2.8.0",
     "@opentelemetry/sdk-logs": "^0.219.0",
-    "@sentry/nextjs": "^10.75.2",
+    "@sentry/nextjs": "^10.78.0",
     "@supabase/supabase-js": "^2.118.0",
     "@tabler/icons-react": "^3.50.0",
     "@typescript-eslint/eslint-plugin": "^8.72.1",
@@ -293,7 +293,24 @@
     "socket.io-parser": "^4.2.7",
     "rollup@>=1.0.0 <3.30.0": "3.30.0",
     "workbox-build": {
-      "rollup": "2.80.0"
+      "rollup": "2.80.0",
+      "glob": "7.2.3"
+    },
+    "glob": "^14.0.3",
+    "minimatch@<11.0.1": "^11.0.4",
+    "del": {
+      "globby": {
+        "glob": "7.2.3"
+      },
+      "rimraf": {
+        "glob": "7.2.3"
+      }
+    },
+    "flat-cache": {
+      "glob": "7.2.3",
+      "rimraf": {
+        "glob": "7.2.3"
+      }
     }
   }
 }
