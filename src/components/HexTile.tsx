@@ -3,6 +3,7 @@
 import { useRef, useState, useCallback } from "react";
 import { IconStar } from "@tabler/icons-react";
 import HexTroopCount from "./HexTroopCount";
+import { TROOP_DOT_COLUMNS, troopDotCount } from "../lib/hexBoardGeometry";
 
 export type TileOwner = "neutral" | "player1" | "player2";
 
@@ -13,6 +14,10 @@ export interface HexTileData {
   troops: number;
   shield: number;
   capital?: boolean;
+  /** Permanent territory level (owned tiles only). */
+  level?: number;
+  /** Troop ceiling for that level. */
+  maxTroops?: number;
 }
 
 interface HexTileProps {
@@ -35,6 +40,10 @@ interface HexTileProps {
   isSourceTile?: boolean;
   /** Whether this tile is the CHOSEN displace target (the tile receiving troops) */
   isDisplaceTarget?: boolean;
+  /** Whether this tile is the CHOSEN destination of the pending action */
+  isChosenTarget?: boolean;
+  /** Hide the dot layer while a movement animation owns this tile. */
+  dotsMuted?: boolean;
   /**
    * Stable "x,y" identity for this tile, surfaced as `data-tile-key`. Action
    * popups (HexTroopPopup) locate this element to anchor themselves to the
@@ -67,9 +76,9 @@ const cellBorders: Record<TileOwner, { inner: string; outer: string; glow: strin
 export default function HexTile({
   tile, isSelected, onClick, isValidMove, isPushTarget,
   recentlyCaptured, isTerritorySpread, isReinforceTarget,
-  isAttackTarget, isSourceTile, isDisplaceTarget, anchorKey
+  isAttackTarget, isSourceTile, isDisplaceTarget, isChosenTarget, dotsMuted, anchorKey
 }: HexTileProps) {
-  const { owner, troops, capital } = tile;
+  const { owner, troops, capital, level, maxTroops } = tile;
   const border = cellBorders[owner];
   const [ripple, setRipple] = useState<{ x: number; y: number; id: number } | null>(null);
   const rippleId = useRef(0);
@@ -85,6 +94,10 @@ export default function HexTile({
   }, [onClick]);
 
   const isOwned = owner === "player1" || owner === "player2";
+  // One dot per troop (up to 100). Neutral territories never show an army.
+  const troopDots = isOwned ? troopDotCount(troops) : 0;
+  const dotColor = owner === "player2" ? "#ef4444" : "#22d3ee";
+  const DOT_SIZE = "clamp(2px, 0.5vw, 3.5px)";
   const troopColor = owner === "player1" ? "#22d3ee" : owner === "player2" ? "#ef4444" : "rgba(148,163,184,0.5)";
   const troopShadow = isOwned ? `0 0 8px ${owner === "player1" ? "rgba(34,211,238,0.5)" : "rgba(239,68,68,0.5)"}` : "none";
 
@@ -187,7 +200,7 @@ export default function HexTile({
       {/* Chosen displace target (yellow) — the friendly tile receiving
           troops. Rendered after the green source ring so it wins when both
           apply, and after the orange candidate ring on Displace. */}
-      {isDisplaceTarget && (
+      {(isDisplaceTarget || isChosenTarget) && (
         <div
           className="absolute inset-[2px] rounded-lg"
           style={{
@@ -248,6 +261,50 @@ export default function HexTile({
         />
       )}
 
+      {/* Troop dots — a compact 10-column formation, one dot per troop,
+          drawn behind the numbers so the counter and the level badge stay
+          readable. Absolutely positioned, so it never changes tile layout. */}
+      {troopDots > 0 && !dotsMuted && (
+        <span
+          data-hex-troop-dots={troopDots}
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-1 inset-y-1 z-[5] grid content-end justify-center gap-px"
+          style={{
+            gridTemplateColumns: `repeat(${TROOP_DOT_COLUMNS}, ${DOT_SIZE})`,
+            opacity: 0.75,
+          }}
+        >
+          {Array.from({ length: troopDots }, (_, i) => (
+            <span
+              key={i}
+              style={{
+                width: DOT_SIZE,
+                height: DOT_SIZE,
+                borderRadius: "9999px",
+                background: dotColor,
+                boxShadow: `0 0 2px ${dotColor}`,
+              }}
+            />
+          ))}
+        </span>
+      )}
+
+      {/* Territory level badge — level 1 is the unmarked default so the
+          board does not gain noise on tiles that were never upgraded. */}
+      {isOwned && typeof level === "number" && level > 1 && (
+        <span
+          className="absolute right-1 top-1 z-10 rounded px-1 font-black leading-tight"
+          style={{
+            fontSize: "clamp(6px, 0.9vw, 9px)",
+            background: "rgba(168,85,247,0.22)",
+            color: "#d8b4fe",
+            border: "1px solid rgba(168,85,247,0.45)",
+          }}
+        >
+          L{level}
+        </span>
+      )}
+
       {/* ── Tile content: troop count + capital indicator ────────── */}
       <span className="relative z-10 flex flex-col items-center justify-center gap-0">
         {capital && (
@@ -269,8 +326,18 @@ export default function HexTile({
           style={{
             fontSize: "clamp(16px, 3vw, 32px)",
             color: troopColor,
+            // Keeps the counter legible over the dot formation.
+            textShadow: "0 0 6px #020617, 0 0 2px #020617",
           }}
         />
+        {isOwned && typeof maxTroops === "number" && (
+          <span
+            className="font-mono leading-none mt-0.5"
+            style={{ fontSize: "clamp(5px, 0.85vw, 8px)", color: "rgba(148,163,184,0.65)" }}
+          >
+            /{maxTroops}
+          </span>
+        )}
         {isOwned && !capital && (
           <span
             className="font-bold leading-none mt-0.5 rounded-sm px-0.5"

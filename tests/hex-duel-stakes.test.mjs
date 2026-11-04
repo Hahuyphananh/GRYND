@@ -119,17 +119,24 @@ test("the move validator refuses everything the board would not offer", () => {
     assert.equal(check.ok, false, `${code} must be refused`);
     assert.equal(check.code, code);
   }
-  // No action points left is not a legal move either.
-  const exhausted = { ...statePrimedForCapture(), currentAP: 0 };
-  assert.equal(checkHexDuelMove(exhausted, "player1", CAPTURE).code, "NO_ACTION_POINTS");
+  // ONE ACTION PER TURN: once the seat has acted, the same seat cannot act
+  // again — and the rulebook says so with the turn rule (there is no
+  // action-point pool left to exhaust).
+  const afterActing = applyRecordedMove(statePrimedForCapture(), "player1", {
+    type: "attack",
+    sourceKey: "3,4",
+    targetKey: "2,3",
+    troopCount: 6,
+  });
+  assert.equal(afterActing.currentTurn, "player2", "the action ended the turn");
+  assert.equal(checkHexDuelMove(afterActing, "player1", CAPTURE).code, "NOT_YOUR_TURN");
 });
 
 test("the endTurn echo that the engine ignores is ignored by the replay too", () => {
-  // An attack that empties the action points auto-flips the turn AND makes the
-  // client echo an explicit endTurn. The receiver ignores that echo; the server
-  // must, or its replay would flip the turn twice and drift from both boards.
-  // One action point left, so the attack itself empties the turn.
-  const state = { ...statePrimedForCapture(), currentAP: 1 };
+  // Every successful action ends the turn. A client (or an old build) that also
+  // writes an explicit endTurn row must not flip it a second time, or the
+  // server's replay would drift away from both boards.
+  const state = statePrimedForCapture();
   const attacked = applyRecordedMove(state, "player1", {
     type: "attack",
     sourceKey: "3,4",

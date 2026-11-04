@@ -22,6 +22,9 @@ import { fleetDamage } from "../../../lib/battleship/combat";
 import { formatCoordinate } from "../../../lib/battleship/rules";
 import { seatResultLabel, secondsRemaining } from "../../../lib/battleship/view";
 import type { Coordinate, MatchView, Seat } from "../../../lib/battleship/types";
+import GlitchSay from "../../mascot/GlitchSay";
+import { glitchResultMoment } from "../../../lib/mascot/glitchMoments";
+import { useTranslation } from "../../../hooks/useTranslation";
 import BoardGrid from "./BoardGrid";
 import FleetStatus from "./FleetStatus";
 
@@ -71,6 +74,7 @@ export default function BattlePreview({
   onAttack,
   onLeave,
 }: BattlePreviewProps) {
+  const { t } = useTranslation();
   const [selected, setSelected] = useState<Coordinate | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(ROUND_SECONDS);
 
@@ -125,6 +129,12 @@ export default function BattlePreview({
   }, [roundDeadline]);
 
   const resultLabel = seatResultLabel(result, seat);
+  // The shared result moment decides GLITCH's face and line, so this end
+  // panel matches every other game's result screen instead of inventing its
+  // own mascot copy.
+  const resultMoment = resultLabel
+    ? glitchResultMoment(resultLabel === "Victory" ? "win" : resultLabel === "Draw" ? "draw" : "loss")
+    : null;
   const revealCells = reveal?.coordinates ?? [];
   const displayName = isAi ? "GRYND AI" : opponentName;
   const tierLabel = aiDifficulty ? aiDifficulty[0].toUpperCase() + aiDifficulty.slice(1) : "Normal";
@@ -208,6 +218,17 @@ export default function BattlePreview({
           className="rounded-2xl border border-[#ffec08]/40 bg-[#ffec08]/10 p-3 text-center text-sm font-black uppercase tracking-[0.2em] text-[#ffec08]"
         >
           {resultLabel}
+          {resultMoment ? (
+            <div className="mt-3 flex justify-center normal-case tracking-normal">
+              <GlitchSay
+                expression={resultMoment.expression}
+                message={t(resultMoment.messageKey)}
+                placement="inline"
+                size="sm"
+                eventId={resultMoment.eventId}
+              />
+            </div>
+          ) : null}
           {isAi && onRestart ? (
             <div className="mt-2 flex justify-center gap-2">
               <button

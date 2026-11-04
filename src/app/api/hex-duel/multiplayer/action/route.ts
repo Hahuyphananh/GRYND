@@ -8,7 +8,7 @@ import { logError } from "../../../../../lib/logError";
 import { applyRecordedMove, checkHexDuelMove, type HexDuelMoveType } from "../../../../../lib/hex-duel/rules";
 import { replayHexDuel, type StoredHexDuelAction } from "../../../../../lib/hex-duel/authority";
 
-const ALLOWED_ACTION_TYPES = ["attack", "displace", "endTurn", "skipRound"] as const;
+const ALLOWED_ACTION_TYPES = ["attack", "displace", "upgrade", "endTurn", "skipRound"] as const;
 type AllowedActionType = typeof ALLOWED_ACTION_TYPES[number];
 
 /**
@@ -27,10 +27,10 @@ type AllowedActionType = typeof ALLOWED_ACTION_TYPES[number];
  *      rulebook (`src/lib/hex-duel/rules.ts`) to rebuild the board the server
  *      believes in, then validate the incoming move against it with
  *      `checkHexDuelMove`. A move that is impossible there (a tile the caller
- *      does not hold, a non-adjacent hop, more troops than the tile has, no
- *      action points left) is REFUSED and nothing is written — so the recorded
- *      log is a legal game, and a client cannot fabricate a winning attack it
- *      could not have played.
+ *      does not hold, a non-adjacent hop, more troops than the tile has, or a
+ *      move from the seat that is not to act) is REFUSED and nothing is
+ *      written — so the recorded log is a legal game, and a client cannot
+ *      fabricate a winning attack it could not have played.
  *   5. Record the accepted action, and if it captured the opponent's capital,
  *      write the winner onto the game row. That column is what
  *      `/multiplayer/end` settles on; the end request no longer names a winner.
@@ -205,14 +205,10 @@ export async function POST(req: Request) {
         })
         .returning({ id: hexDuelActions.id, createdAt: hexDuelActions.createdAt });
 
-      // 5. Update the game row: `endTurn` / `skipRound` flips the turn;
-      //    intermediate moves (attack / displace) keep the turn on the
-      //    caller so the same player can do multiple actions in a row
-      //    before yielding. `last_action_seq` is always advanced so the
-      //    client polling can cheaply detect missed actions.
-      const flipsTurn =
-        (actionType as AllowedActionType) === "endTurn" ||
-        (actionType as AllowedActionType) === "skipRound";
+      // 5. Update the game row. ONE ACTION PER TURN: every accepted action —
+      //    attack, displace or skip — ends the caller's turn, so the recorded
+      //    turn and both boards advance together. `last_action_seq` is always
+      //    advanced so the client polling can cheaply detect missed actions.
       const nextTurn: "player1" | "player2" =
         callerSlot === "player1" ? "player2" : "player1";
 
@@ -223,15 +219,19 @@ export async function POST(req: Request) {
       const nextState = applyRecordedMove(replayed.state, callerSlot, move);
       const decidedWinner = nextState.winner;
 
+      // A deciding move (a capital capture) finishes the match on the caller's
+      // turn: there is no next turn to hand over.
+      const turnAfter = decidedWinner ? callerSlot : nextTurn;
+
       await tx
         .update(hexDuelGames)
         .set({
-          currentTurn: flipsTurn ? nextTurn : callerSlot,
+          currentTurn: turnAfter,
           lastActionSeq: action.id,
           // Keep the legacy `status` column in sync so the lobby /
           // spectate endpoints that filter by status continue to work
           // without needing to read `current_turn` for filtering.
-          status: flipsTurn ? `turn_${nextTurn}` : `turn_${callerSlot}`,
+          status: `turn_${turnAfter}`,
           ...(decidedWinner && game.winner === "pending"
             ? { winner: decidedWinner }
             : {}),

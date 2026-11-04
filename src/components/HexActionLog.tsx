@@ -3,6 +3,7 @@
 import { useMemo, useRef, useEffect, type ReactNode } from "react";
 import {
   IconArrowRight,
+  IconArrowUpRight,
   IconArrowsLeftRight,
   IconClock,
   IconHexagon,
@@ -27,6 +28,7 @@ const TYPE_META: Record<
   endTurn:    { icon: <IconRefresh size={12} />, label: "End Turn", color: "#facc15" },
   attack:     { icon: <IconSwords size={12} />, label: "Attack", color: "#f97316" },
   displace:   { icon: <IconArrowsLeftRight size={12} />, label: "Displace", color: "#22c55e" },
+  upgrade:    { icon: <IconArrowUpRight size={12} />, label: "Upgrade", color: "#a855f7" },
   troopGrowth:{ icon: <IconTrendingUp size={12} />, label: "Troop Growth", color: "#a855f7" },
 };
 
@@ -57,15 +59,6 @@ function LogEntryRow({ entry }: { entry: ActionLogEntry }) {
         {entry.label}
       </span>
 
-      {/* AP cost */}
-      {entry.apCost > 0 && (
-        <span
-          className="text-[10px] font-bold tabular-nums shrink-0"
-          style={{ color: meta.color }}
-        >
-          -{entry.apCost} AP
-        </span>
-      )}
     </div>
   );
 }
@@ -167,25 +160,29 @@ export default function HexActionLog({
         </div>
       </div>
 
-      {/* AP spent summary footer */}
+      {/* Action-count footer */}
       <LogSummaryFooter log={log} />
     </div>
   );
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  Footer summary — total AP spent per player
+//  Footer summary — total actions taken per player
 // ══════════════════════════════════════════════════════════════════════════
 
+// There is no action-point pool any more, so the footer counts the ACTIONS
+// each seat took instead of points spent. Growth rows are bookkeeping, not a
+// player's action, so they are skipped.
 function LogSummaryFooter({ log }: { log: ActionLogEntry[] }) {
   const summary = useMemo(() => {
-    let p1AP = 0;
-    let p2AP = 0;
+    let p1 = 0;
+    let p2 = 0;
     for (const entry of log) {
-      if (entry.player === "player1") p1AP += entry.apCost;
-      else p2AP += entry.apCost;
+      if (entry.type === "troopGrowth") continue;
+      if (entry.player === "player1") p1 += 1;
+      else p2 += 1;
     }
-    return { p1AP, p2AP };
+    return { p1, p2 };
   }, [log]);
 
   return (
@@ -194,17 +191,16 @@ function LogSummaryFooter({ log }: { log: ActionLogEntry[] }) {
         <span className="flex items-center gap-1">
           <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "#22d3ee" }} />
           <span className="text-[10px] text-slate-400">P1</span>
-          <span className="text-[10px] font-bold text-white tabular-nums">{summary.p1AP}</span>
+          <span className="text-[10px] font-bold text-white tabular-nums">{summary.p1}</span>
         </span>
-        <span className="text-[9px] text-slate-600">AP</span>
         <span className="flex items-center gap-1">
           <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "#ef4444" }} />
           <span className="text-[10px] text-slate-400">P2</span>
-          <span className="text-[10px] font-bold text-white tabular-nums">{summary.p2AP}</span>
+          <span className="text-[10px] font-bold text-white tabular-nums">{summary.p2}</span>
         </span>
       </div>
       <span className="text-[10px] text-slate-600 tabular-nums">
-        Total: {summary.p1AP + summary.p2AP} AP
+        {summary.p1 + summary.p2} actions
       </span>
     </div>
   );

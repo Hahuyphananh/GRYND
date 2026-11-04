@@ -4,37 +4,45 @@ import { useCallback, useMemo, useReducer, useRef, useState } from "react";
 import type { HexTileData } from "../components/HexTile";
 import { GRID_SIZE, getHexNeighbors } from "./hexGridUtils";
 import {
-  ATTACK_COST,
-  DISPLACE_COST,
   HEX_DUEL_CAPITALS,
   INITIAL_TROOPS,
-  MAX_AP,
-  REINFORCE_COST,
+  MAX_TERRITORY_LEVEL,
+  TERRITORY_LEVELS,
   areAdjacent,
   checkHexDuelMove,
   coreReducer,
+  getUpgradeInfo,
   makeInitialCore,
+  normalizeTerritoryLevel,
   otherPlayer,
   resolveAttackOutcome,
+  territoryLevelOf,
+  territoryMaxTroops,
+  upgradeCostFor,
   type AttackOutcome,
   type CoreState,
   type DuelPlayer,
   type ReducerAction,
+  type TerritoryLevel,
 } from "./hex-duel/rules";
+import { buildTroopMoveEvent, type TroopMoveEvent } from "./hexTroopAnimation";
 
 // The rulebook (initial position, attack resolution, troop growth, turn
 // switching, the reducer and move legality) lives in ./hex-duel/rules so the
 // SERVER can run the same rules a staked match settles on. Re-exported here
 // so every existing importer keeps its import path.
 export {
-  ATTACK_COST,
-  DISPLACE_COST,
-  MAX_AP,
-  REINFORCE_COST,
+  MAX_TERRITORY_LEVEL,
+  TERRITORY_LEVELS,
   areAdjacent,
   checkHexDuelMove,
+  getUpgradeInfo,
   otherPlayer,
+  territoryLevelOf,
+  territoryMaxTroops,
+  upgradeCostFor,
 };
+export type { TerritoryLevel };
 export type { AttackOutcome, CoreState, DuelPlayer, ReducerAction };
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -48,13 +56,19 @@ export interface ActionLogEntry {
   /** Which player acted */
   player: DuelPlayer;
   /** Type of action */
-  type: "move" | "push" | "reinforce" | "endTurn" | "attack" | "displace" | "troopGrowth";
+  type:
+    | "move"
+    | "push"
+    | "reinforce"
+    | "endTurn"
+    | "attack"
+    | "displace"
+    | "upgrade"
+    | "troopGrowth";
   /** Coordinates involved */
   target?: { x: number; y: number };
   /** Source coordinates (for attack/displace) */
   source?: { x: number; y: number };
-  /** How many AP this action cost */
-  apCost: number;
   /** Human-readable description */
   label: string;
 }
@@ -68,12 +82,10 @@ export interface HexDuelState {
   capitals: Record<string, DuelPlayer>;
   /** Troop counts per tile: "x,y" → number */
   tileTroops: Record<string, number>;
+  /** Permanent level per owned tile: "x,y" → 1..4 */
+  territoryLevels: Record<string, TerritoryLevel>;
   /** Whose turn it is */
   currentTurn: DuelPlayer;
-  /** Remaining AP for the current turn */
-  currentAP: number;
-  /** Maximum AP per turn */
-  maxAP: number;
   /** How many tiles player 1 has captured */
   p1Territory: number;
   /** How many tiles player 2 has captured */
@@ -107,6 +119,17 @@ function createBlankGrid(): HexTileData[][] {
   );
 }
 
+/** Normalize a snapshot's level map; a missing map means "all level 1". */
+function sanitizeLevels(raw: unknown): Record<string, TerritoryLevel> {
+  const out: Record<string, TerritoryLevel> = {};
+  if (raw && typeof raw === "object") {
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+      out[key] = normalizeTerritoryLevel(value);
+    }
+  }
+  return out;
+}
+
 // ── Hook ────────────────────────────────────────────────────────────────────
 
 export function useHexDuel(startingTurn: DuelPlayer = "player1") {
@@ -135,6 +158,19 @@ export function useHexDuel(startingTurn: DuelPlayer = "player1") {
     setActionLog(actionLogRef.current);
   }, []);
 
+  // ── Move animation feed (display only) ──────────────────────────────
+  // The board plays a troop-movement animation for the last applied attack or
+  // displacement. The event is built from the PRE-action state plus the
+  // outcome this engine already computed, so the overlay can only ever show
+  // the authoritative result. The monotonic id is what tells the board that a
+  // new animation should start.
+  const moveAnimationIdRef = useRef(0);
+  const [moveAnimation, setMoveAnimation] = useState<TroopMoveEvent | null>(null);
+  const publishMove = useCallback((event: Omit<TroopMoveEvent, "id">) => {
+    moveAnimationIdRef.current += 1;
+    setMoveAnimation({ ...event, id: moveAnimationIdRef.current });
+  }, []);
+
   // ── Derived: grid ──────────────────────────────────────────────────
 
   const grid = useMemo(() => {
@@ -144,6 +180,9 @@ export function useHexDuel(startingTurn: DuelPlayer = "player1") {
       if (g[cy]?.[cx]) {
         g[cy][cx].owner = owner;
         g[cy][cx].troops = state.tileTroops[key] ?? 1;
+        const level = territoryLevelOf(state, key);
+        g[cy][cx].level = level;
+        g[cy][cx].maxTroops = territoryMaxTroops(level);
         if (capitals[key]) {
           g[cy][cx].capital = true;
         }
@@ -154,11 +193,13 @@ export function useHexDuel(startingTurn: DuelPlayer = "player1") {
       if (g[cy]?.[cx] && !state.capturedTiles[key]) {
         g[cy][cx].owner = capitals[key] as "player1" | "player2";
         g[cy][cx].troops = state.tileTroops[key] ?? INITIAL_TROOPS;
+        g[cy][cx].level = 1;
+        g[cy][cx].maxTroops = territoryMaxTroops(1);
         g[cy][cx].capital = true;
       }
     }
     return g;
-  }, [state.capturedTiles, state.tileTroops, capitals]);
+  }, [state.capturedTiles, state.tileTroops, state.territoryLevels, capitals]);
 
   // ── Derived: territory counts ────────────────────────────────────
 
@@ -240,10 +281,15 @@ export function useHexDuel(startingTurn: DuelPlayer = "player1") {
         .map((n) => {
           const nKey = `${n.x},${n.y}`;
           const troops = state.tileTroops[nKey] ?? 1;
+          // The destination's level capacity caps what it can take, on top of
+          // the troop the source must leave behind.
+          const room =
+            territoryMaxTroops(territoryLevelOf(state, targetKey)) -
+            (state.tileTroops[targetKey] ?? 1);
           return {
             x: n.x,
             y: n.y,
-            maxTroops: troops - 1, // must leave at least 1
+            maxTroops: Math.min(troops - 1, room),
           };
         })
         .filter((s) => s.maxTroops > 0);
@@ -276,7 +322,6 @@ export function useHexDuel(startingTurn: DuelPlayer = "player1") {
           type: "attack",
           source: { x: sx, y: sy },
           target: { x: tx, y: ty },
-          apCost: ATTACK_COST,
           label: `Attack: sent ${troopCount} from (${sx},${sy}) → conquered (${tx},${ty}) (was ${targetWas}, ${outcome.remainingTroops} remain)`,
         });
       } else if (outcome.kind === "tie") {
@@ -285,7 +330,6 @@ export function useHexDuel(startingTurn: DuelPlayer = "player1") {
           type: "attack",
           source: { x: sx, y: sy },
           target: { x: tx, y: ty },
-          apCost: ATTACK_COST,
           label: `Attack: sent ${troopCount} from (${sx},${sy}) → mutual destruction! (${tx},${ty}) becomes neutral`,
         });
       } else {
@@ -294,7 +338,6 @@ export function useHexDuel(startingTurn: DuelPlayer = "player1") {
           type: "attack",
           source: { x: sx, y: sy },
           target: { x: tx, y: ty },
-          apCost: ATTACK_COST,
           label:
             outcome.defenderWipedOut
               ? `Attack: sent ${troopCount} from (${sx},${sy}) → wiped out defender! (${tx},${ty}) becomes neutral`
@@ -319,8 +362,20 @@ export function useHexDuel(startingTurn: DuelPlayer = "player1") {
         type: "displace",
         source: { x: sx, y: sy },
         target: { x: tx, y: ty },
-        apCost: DISPLACE_COST,
         label: `Displace: moved ${troopCount} from (${sx},${sy}) → (${tx},${ty})`,
+      });
+    },
+    [addActionLog],
+  );
+
+  const logUpgrade = useCallback(
+    (sourceKey: string, player: DuelPlayer, level: TerritoryLevel, cost: number) => {
+      const [x, y] = sourceKey.split(",").map(Number);
+      addActionLog({
+        player,
+        type: "upgrade",
+        target: { x, y },
+        label: `Upgrade: (${x},${y}) level ${level} → ${level + 1} (paid ${cost} troops)`,
       });
     },
     [addActionLog],
@@ -351,6 +406,18 @@ export function useHexDuel(startingTurn: DuelPlayer = "player1") {
         capitals,
       );
       logAttack(sourceKey, targetKey, troopCount, state.currentTurn, outcome);
+      publishMove(
+        buildTroopMoveEvent({
+          kind: "attack",
+          actor: state.currentTurn,
+          fromKey: sourceKey,
+          toKey: targetKey,
+          sent: troopCount,
+          board: state,
+          outcome,
+          capitals,
+        }),
+      );
 
       dispatch({
         type: "attack",
@@ -360,7 +427,7 @@ export function useHexDuel(startingTurn: DuelPlayer = "player1") {
         player: state.currentTurn,
       });
     },
-    [state, capitals, logAttack],
+    [state, capitals, logAttack, publishMove],
   );
 
   /** Local displace — validates then dispatches. */
@@ -376,6 +443,16 @@ export function useHexDuel(startingTurn: DuelPlayer = "player1") {
       if (!check.ok) return;
 
       logDisplace(sourceKey, targetKey, troopCount, state.currentTurn);
+      publishMove(
+        buildTroopMoveEvent({
+          kind: "displace",
+          actor: state.currentTurn,
+          fromKey: sourceKey,
+          toKey: targetKey,
+          sent: troopCount,
+          board: state,
+        }),
+      );
       dispatch({
         type: "displace",
         sourceKey,
@@ -384,7 +461,23 @@ export function useHexDuel(startingTurn: DuelPlayer = "player1") {
         player: state.currentTurn,
       });
     },
-    [state, logDisplace],
+    [state, logDisplace, publishMove],
+  );
+
+  /** Local upgrade — the rulebook owns the level table and the cost. */
+  const handleUpgrade = useCallback(
+    (sourceKey: string) => {
+      const check = checkHexDuelMove(state, state.currentTurn, {
+        type: "upgrade",
+        sourceKey,
+      });
+      if (!check.ok) return;
+      const info = getUpgradeInfo(state, state.currentTurn, sourceKey);
+      if (!info.ok || info.cost === null) return;
+      logUpgrade(sourceKey, state.currentTurn, info.level, info.cost);
+      dispatch({ type: "upgrade", sourceKey, player: state.currentTurn });
+    },
+    [state, logUpgrade],
   );
 
   /** Local end turn — applies troop growth then switches turns. */
@@ -397,14 +490,12 @@ export function useHexDuel(startingTurn: DuelPlayer = "player1") {
       addActionLog({
         player: state.currentTurn,
         type: "troopGrowth",
-        apCost: 0,
         label: `Troop growth: +1 on ${grownTiles.length} tile${grownTiles.length !== 1 ? "s" : ""}`,
       });
     }
     addActionLog({
       player: state.currentTurn,
       type: "endTurn",
-      apCost: 0,
       label: "Ended turn",
     });
     dispatch({
@@ -424,14 +515,12 @@ export function useHexDuel(startingTurn: DuelPlayer = "player1") {
       addActionLog({
         player: state.currentTurn,
         type: "troopGrowth",
-        apCost: 0,
         label: `Troop growth: +1 on ${grownTiles.length} tile${grownTiles.length !== 1 ? "s" : ""}`,
       });
     }
     addActionLog({
       player: state.currentTurn,
       type: "endTurn",
-      apCost: 0,
       label: "Skipped round",
     });
     dispatch({
@@ -481,6 +570,9 @@ export function useHexDuel(startingTurn: DuelPlayer = "player1") {
       switch (action.type) {
         case "attack": {
           if (!action.sourceKey || !action.targetKey || !action.troopCount) return;
+          // Duplicate/stale delivery: the action's turn has already been
+          // applied locally, so do not log or replay its animation.
+          if (state.currentTurn !== fromPlayer) return;
           const outcome = resolveAttackOutcome(
             state,
             action.sourceKey,
@@ -496,6 +588,18 @@ export function useHexDuel(startingTurn: DuelPlayer = "player1") {
             fromPlayer,
             outcome,
           );
+          publishMove(
+            buildTroopMoveEvent({
+              kind: "attack",
+              actor: fromPlayer,
+              fromKey: action.sourceKey,
+              toKey: action.targetKey,
+              sent: action.troopCount,
+              board: state,
+              outcome,
+              capitals,
+            }),
+          );
           dispatch({
             type: "attack",
             sourceKey: action.sourceKey,
@@ -507,17 +611,41 @@ export function useHexDuel(startingTurn: DuelPlayer = "player1") {
         }
         case "displace": {
           if (!action.sourceKey || !action.targetKey || !action.troopCount) return;
+          if (state.currentTurn !== fromPlayer) return;
           logDisplace(
             action.sourceKey,
             action.targetKey,
             action.troopCount,
             fromPlayer,
           );
+          publishMove(
+            buildTroopMoveEvent({
+              kind: "displace",
+              actor: fromPlayer,
+              fromKey: action.sourceKey,
+              toKey: action.targetKey,
+              sent: action.troopCount,
+              board: state,
+            }),
+          );
           dispatch({
             type: "displace",
             sourceKey: action.sourceKey,
             targetKey: action.targetKey,
             troopCount: action.troopCount,
+            player: fromPlayer,
+          });
+          break;
+        }
+        case "upgrade": {
+          if (!action.sourceKey) return;
+          const info = getUpgradeInfo(state, fromPlayer, action.sourceKey);
+          if (info.ok && info.cost !== null) {
+            logUpgrade(action.sourceKey, fromPlayer, info.level, info.cost);
+          }
+          dispatch({
+            type: "upgrade",
+            sourceKey: action.sourceKey,
             player: fromPlayer,
           });
           break;
@@ -530,10 +658,10 @@ export function useHexDuel(startingTurn: DuelPlayer = "player1") {
           // already been mirrored locally — re-applying would bounce the
           // turn back. This also catches the polling-driven synthetic
           // endTurn that arrives AFTER the local engine already auto-
-          // flipped on AP=0: when the synthetic lacks `action.player`,
-          // fromPlayer falls back to state.currentTurn (= whoever we
-          // are now), and this guard correctly identifies us as already
-          // past fromPlayer's intended flip.
+          // flipped when that successful action resolved: when the
+          // synthetic lacks `action.player`, fromPlayer falls back to
+          // state.currentTurn (= whoever we are now), and this guard
+          // correctly identifies us as already past the flip.
           //
           // With two DuelPlayer values, the second clause of the
           // earlier compound (`state.currentTurn !== fromPlayer`) is
@@ -579,7 +707,7 @@ export function useHexDuel(startingTurn: DuelPlayer = "player1") {
           return;
       }
     },
-    [state, capitals, logAttack, logDisplace],
+    [state, capitals, logAttack, logDisplace, logUpgrade, publishMove],
   );
 
   // ── Reset ─────────────────────────────────────────────────────────
@@ -597,7 +725,6 @@ export function useHexDuel(startingTurn: DuelPlayer = "player1") {
   const buildSyncSnapshot = useCallback(() => {
     return {
       currentTurn: state.currentTurn,
-      currentAP: state.currentAP,
       moveCount: state.moveCount,
       p1MoveCount: state.p1MoveCount,
       p2MoveCount: state.p2MoveCount,
@@ -606,6 +733,7 @@ export function useHexDuel(startingTurn: DuelPlayer = "player1") {
       winner: state.winner,
       capturedTiles: { ...state.capturedTiles },
       tileTroops: { ...state.tileTroops },
+      territoryLevels: { ...state.territoryLevels },
       actionLogId: actionIdRef.current,
     };
   }, [state, p1Territory, p2Territory]);
@@ -614,21 +742,21 @@ export function useHexDuel(startingTurn: DuelPlayer = "player1") {
   const applySyncSnapshot = useCallback(
     (snapshot: {
       currentTurn: DuelPlayer;
-      currentAP: number;
       moveCount: number;
       p1MoveCount: number;
       p2MoveCount: number;
       winner: DuelPlayer | null;
       capturedTiles: Record<string, DuelPlayer>;
       tileTroops: Record<string, number>;
+      territoryLevels?: Record<string, TerritoryLevel>;
     }) => {
       dispatch({
         type: "syncSnapshot",
         snapshot: {
           capturedTiles: snapshot.capturedTiles,
           tileTroops: snapshot.tileTroops,
+          territoryLevels: sanitizeLevels(snapshot.territoryLevels),
           currentTurn: snapshot.currentTurn,
-          currentAP: snapshot.currentAP,
           winner: snapshot.winner,
           p1MoveCount: snapshot.p1MoveCount,
           p2MoveCount: snapshot.p2MoveCount,
@@ -668,9 +796,8 @@ export function useHexDuel(startingTurn: DuelPlayer = "player1") {
     capturedTiles: state.capturedTiles,
     capitals,
     tileTroops: state.tileTroops,
+    territoryLevels: state.territoryLevels,
     currentTurn: state.currentTurn,
-    currentAP: state.currentAP,
-    maxAP: MAX_AP,
     p1Territory,
     p2Territory,
     p1MoveCount: state.p1MoveCount,
@@ -692,6 +819,8 @@ export function useHexDuel(startingTurn: DuelPlayer = "player1") {
     canPush,
     // Action log
     actionLog,
+    // Troop-movement animation (display only)
+    moveAnimation,
     // Existing exports (legacy stubs)
     handleTileClick,
     handleReinforceTile,
@@ -701,6 +830,7 @@ export function useHexDuel(startingTurn: DuelPlayer = "player1") {
     // New exports
     handleAttack,
     handleDisplace,
+    handleUpgrade,
     applyRemoteAction,
     attackableTargets,
     getAttackSources,

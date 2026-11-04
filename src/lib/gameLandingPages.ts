@@ -1369,15 +1369,16 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     howToPlay: [
       "Sign in, open the lobby and press Play to face a live opponent, or take a free practice match against the bot.",
       "Each player starts with a capital tile. Capturing your opponent's capital wins the match outright.",
-      "On your turn you spend a limited pool of action points. Capture neutral or enemy tiles to expand your territory.",
+      "On your turn you take exactly one action — capture a neutral or enemy tile, move troops between your own tiles, or upgrade a territory. Then the turn passes.",
       "Troops accumulate on the tiles you hold, so a stack you leave alone gets stronger over time.",
       "Attack when you can field more troops than the defender; reinforce to build a stack up before a push.",
       "Push toward the enemy capital — that, and only that, ends the match.",
     ],
     rules: [
       "Strictly 1v1 on a hexagonal grid, with players alternating turns.",
-      "Each turn gives the current player a limited pool of action points. Every action costs some of that pool, and the turn ends when you choose to end it or run out.",
-      "The available actions are movement, attack, push, reinforce, displacement and end turn.",
+      "Each turn gives the current player exactly one action, after which the turn passes automatically. Skipping is itself the action when you want to grow your army instead.",
+      "The available actions are attack, displace, upgrade and skip.",
+      "Every territory has a level from 1 to 4 with a troop capacity of 10, 20, 50 or 100. Upgrading costs 5, 10 or 25 troops from that territory.",
       "Tiles can be captured and owned by a player, and ownership is tracked per tile. Each owned tile holds a count of troops.",
       "Troops grow over time on the tiles their owner holds.",
       "Each player has exactly one capital tile, fixed at the start of the match.",
@@ -1391,13 +1392,13 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     strategy: [
       "Never lose sight of your own capital. It is the only tile whose loss ends the match, so a territorial lead that leaves your capital thin is not a lead at all.",
       "Mass before you attack. An attack that does not clearly outnumber the defender usually just trades troops and hands back the initiative.",
-      "Reinforce your front, not your back. Troops far from the fighting defend nothing, and your action points are a finite resource every turn.",
+      "Reinforce your front, not your back. Troops far from the fighting defend nothing, and you only get one action a turn.",
       "Expand toward your opponent, not away from them. Capturing neutral ground in the wrong direction grows your territory and your problem at the same time.",
-      "Mind your action-point budget. Every turn you must choose between capturing, attacking and reinforcing, and can only do some of them — so decide the turn's objective before you spend the first point.",
+      "Spend your one action deliberately. Every turn you must choose between attacking, displacing and upgrading, so decide the turn's objective before you commit.",
       "Watch troop growth. A stack left alone quietly becomes an army, so a tile your opponent has been ignoring is worth checking before you commit to a push elsewhere.",
     ],
     competitive:
-      "Hex Duel tests territorial planning and army sizing. It is a resource-allocation game: action points each turn, troops over time, and one capture that actually wins.",
+      "Hex Duel tests territorial planning and army sizing. It is a game of commitments: one action a turn, troops that grow toward a territory's capacity, and one capture that actually wins.",
     faq: [
       {
         q: "How do I win?",

@@ -12,6 +12,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import {
+  P2_CAP_KEY,
+  applyRecordedMove,
+  checkHexDuelMove,
+  makeInitialCore,
+} from "../src/lib/hex-duel/rules.ts";
+
 // ── Constants (from hexDuelEngine.ts) ──────────────────────────────────────
 const GRID_SIZE = 7;
 const INITIAL_TROOPS = 5;
@@ -255,138 +262,74 @@ test("Displace moves troops between friendly tiles", () => {
   assert.equal(newState.capturedTiles[tKey], "player1");
 });
 
-test("Multiple attacks in sequence (simulating a full turn)", () => {
-  const state = createInitialState({ x: 0, y: 0 }, { x: 6, y: 6 });
-  const neighbors = getHexNeighbors(0, 0);
+test("one attack ends the seat's turn and grows its tiles exactly once", () => {
+  const state = makeInitialCore();
+  const before = state.tileTroops["0,0"]; // 5
 
-  // Attack 1: (0,0) → (1,0) with 2 troops
-  const t1 = neighbors[0];
-  let s = applyAttackRaw(state, "0,0", key(t1.x, t1.y), 2, "player1");
-  
-  // Verify attack 1 results
-  assert.equal(s.tileTroops["0,0"], 3); // 5 - 2
-  assert.equal(s.capturedTiles[key(t1.x, t1.y)], "player1");
-  assert.equal(s.tileTroops[key(t1.x, t1.y)], 2); // conquered neutral
+  const after = applyRecordedMove(state, "player1", {
+    type: "attack",
+    sourceKey: "0,0",
+    targetKey: "1,0",
+    troopCount: 2,
+  });
 
-  // Attack 2: (0,0) → next neighbor with 1 troop
-  if (neighbors.length > 1) {
-    const t2 = neighbors[1];
-    s = applyAttackRaw(s, "0,0", key(t2.x, t2.y), 1, "player1");
-    
-    assert.equal(s.tileTroops["0,0"], 2); // 3 - 1
-    assert.equal(s.capturedTiles[key(t2.x, t2.y)], "player1");
-    assert.equal(s.tileTroops[key(t2.x, t2.y)], 1);
-  }
-});test("applyRemoteAction correctly handles attack that depletes AP without a follow-up endTurn", () => {
-  // The sender does NOT send a separate endTurn action when AP depletes — the
-  // attack action itself is self-sufficient. The receiver mirrors the sender's
-  // local auto-end flow: drop AP to 0, grow the sender's troops, add an endTurn
-  // log entry attributed to the sender, then switch the turn.
-  //
-  // Sender-side local flow (handleAttack):
-  //   applyTroopGrowth(sender) → +1 to sender tiles
-  //   addActionLog({ type: "endTurn", label: "Ended turn (AP depleted)" })
-  //   switchTurn()             → currentTurn = otherPlayer, AP = 1
-  //
-  // Receiver-side remote flow (applyRemoteAction 'attack', willDeplete):
-  //   setCurrentAP(0)
-  //   applyTroopGrowth(sender) → +1 to sender tiles (matches sender)
-  //   addActionLog({ type: "endTurn", label: "Ended turn (AP depleted)" })
-  //   switchTurn()             → currentTurn = otherPlayer, AP = 1
-
-  const state = createInitialState({ x: 0, y: 0 }, { x: 6, y: 6 });
-
-  let currentAP = 1; // Sender's last AP — attack will deplete it
-  let currentTurn = "player1";
-  const ATTACK_COST = 1;
-  const MAX_AP = 3;
-
-  // Process attack action (the receiver's applyRemoteAction('attack') branch)
-  const neighbors = getHexNeighbors(0, 0);
-  const target = neighbors[0];
-  const tKey = key(target.x, target.y);
-  let s = applyAttackRaw(state, "0,0", tKey, 2, "player1");
-
-  const willDeplete = currentAP <= ATTACK_COST;
-  if (willDeplete) {
-    currentAP = 0;
-    // Receiver mirrors the sender's auto-end:
-    s.tileTroops["0,0"] = (s.tileTroops["0,0"] ?? 1) + 1;
-    // switchTurn():
-    currentTurn = otherPlayer(currentTurn);
-    currentAP = Math.min(currentAP + 1, MAX_AP);
-  } else {
-    currentAP -= ATTACK_COST;
-  }
-
-  // Tile ownership updated
-  assert.equal(s.capturedTiles[tKey], "player1");
-  assert.equal(s.tileTroops[tKey], 2);
-  // Troop growth mirrored: source capital (5 - 2 sent + 1 grown = 4)
-  assert.equal(s.tileTroops["0,0"], 4);
-  // Turn switched on receiver
-  assert.equal(willDeplete, true);
-  assert.equal(currentTurn, "player2");
-  assert.equal(currentAP, 1);
+  // Spent 2 of 5 troops, then the ONE passive growth tick: 5 - 2 + 1 = 4.
+  assert.equal(after.tileTroops["0,0"], before - 2 + 1);
+  assert.equal(after.currentTurn, "player2", "the attack handed the turn over");
 });
 
-test("applyRemoteAction explicit endTurn action still grows + switches on receiver (legacy path)", () => {
-  // The explicit { type: 'endTurn' } remote action still works: sender grew
-  // their troops locally (skipTroopGrowthRef stays true on receiver), the
-  // receiver's endTurn() skips growth and switches the turn.
+test("a displacement also ends the turn", () => {
+  const state = makeInitialCore();
+  state.capturedTiles["1,0"] = "player1";
+  state.tileTroops["1,0"] = 1;
 
-  let skipTroopGrowth = true; // set by applyRemoteAction before calling endTurn
-  let currentAP = 0; // already at 0 (from previous attack)
-  let currentTurn = "player1";
-  const MAX_AP = 3;
+  const after = applyRecordedMove(state, "player1", {
+    type: "displace",
+    sourceKey: "0,0",
+    targetKey: "1,0",
+    troopCount: 2,
+  });
 
-  // endTurn() — applyTroopGrowth skips because skipTroopGrowth=true
-  if (skipTroopGrowth) skipTroopGrowth = false; // consumed
-  // switchTurn():
-  currentTurn = otherPlayer(currentTurn);
-  currentAP = Math.min(currentAP + 1, MAX_AP); // 0 + 1 = 1
-
-  assert.equal(skipTroopGrowth, false);
-  assert.equal(currentTurn, "player2");
-  assert.equal(currentAP, 1);
+  assert.equal(after.tileTroops["0,0"], 5 - 2 + 1);
+  assert.equal(after.tileTroops["1,0"], 1 + 2 + 1);
+  assert.equal(after.currentTurn, "player2");
 });
 
-test("applyRemoteAction correctly processes attack that does NOT deplete AP (no endTurn follows)", () => {
-  // Simulate: Player 1 has 3 AP, attacks once. AP goes from 3 to 2.
-  // No endTurn follows — skipTroopGrowth should be reset.
-  
-  let skipTroopGrowth = true; // set by applyRemoteAction before attack
-  let currentAP = 3;
-  const ATTACK_COST = 1;
+test("skipping passes the turn with the same single growth tick", () => {
+  const after = applyRecordedMove(makeInitialCore(), "player1", { type: "skipRound" });
 
-  const willDeplete = currentAP <= ATTACK_COST;
-  if (willDeplete) {
-    currentAP = 0;
-  } else {
-    currentAP -= ATTACK_COST;
-    skipTroopGrowth = false;
-  }
-
-  assert.equal(willDeplete, false);
-  assert.equal(currentAP, 2);
-  assert.equal(skipTroopGrowth, false); // reset because no endTurn follows
+  assert.equal(after.currentTurn, "player2");
+  assert.equal(after.tileTroops["0,0"], 6, "the skipping seat grew once");
+  assert.equal(after.tileTroops[P2_CAP_KEY], 5, "the other seat did not grow");
 });
 
-test("applyRemoteAction for attack that does NOT deplete AP", () => {
-  let skipTroopGrowth = true;
-  let currentAP = 3;
-  const ATTACK_COST = 1;
+test("a second action from the same seat is refused and cannot flip twice", () => {
+  const state = applyRecordedMove(makeInitialCore(), "player1", {
+    type: "attack",
+    sourceKey: "0,0",
+    targetKey: "1,0",
+    troopCount: 2,
+  });
+  const snapshot = JSON.stringify(state);
 
-  const willDeplete = currentAP <= ATTACK_COST;
-  if (willDeplete) {
-    currentAP = 0;
-  } else {
-    currentAP -= ATTACK_COST;
-    skipTroopGrowth = false;
-  }
+  const again = applyRecordedMove(state, "player1", {
+    type: "attack",
+    sourceKey: "0,0",
+    targetKey: "0,1",
+    troopCount: 1,
+  });
 
-  assert.equal(currentAP, 2);
-  assert.equal(skipTroopGrowth, false); // reset because no endTurn follows
+  assert.equal(JSON.stringify(again), snapshot, "the second action is a no-op");
+  assert.equal(again.currentTurn, "player2");
+  assert.equal(
+    checkHexDuelMove(state, "player1", {
+      type: "attack",
+      sourceKey: "0,0",
+      targetKey: "0,1",
+      troopCount: 1,
+    }).code,
+    "NOT_YOUR_TURN",
+  );
 });
 
 test("Troop counts stay consistent after conquer", () => {

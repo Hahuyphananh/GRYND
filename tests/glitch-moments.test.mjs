@@ -308,3 +308,26 @@ test("the lobby hint adds no request and no storage of its own", () => {
   assert.doesNotMatch(block, /fetch\(/);
   assert.doesNotMatch(block, /sessionStorage|localStorage/);
 });
+
+// ── Games that own their end panel ────────────────────────────────────────
+//
+// UNO draws its own end panel and Battleship ends inside its arena, so neither
+// mounts PvpResultScreen. They must place the SAME mascot, from the SAME
+// decision module — never a private Glitch and never a private line.
+
+const OWN_END_PANELS = [
+  "src/app/casino/uno/game/[gameId]/PageClient.jsx",
+  "src/components/games/battleship/BattlePreview.tsx",
+];
+
+test("games with their own end panel mount the shared result mascot", () => {
+  for (const file of OWN_END_PANELS) {
+    const source = read(file);
+    assert.match(source, /<GlitchSay/, `${file} does not render GLITCH`);
+    assert.match(source, /glitchResultMoment\(/, `${file} decides its own moment`);
+    assert.match(source, /expression=\{\w+\.expression\}/);
+    assert.match(source, /message=\{t\(\w+\.messageKey\)\}/);
+    assert.match(source, /placement="inline"/);
+    assert.match(source, /eventId=\{\w+\.eventId\}/);
+  }
+});

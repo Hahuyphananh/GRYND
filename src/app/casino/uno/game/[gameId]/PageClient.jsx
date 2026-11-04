@@ -37,6 +37,8 @@ import {
   PracticePauseOverlay,
 } from "../../../../../components/game/PracticePause";
 import { usePracticePause } from "../../../../../hooks/usePracticePause";
+import GlitchSay from "../../../../../components/mascot/GlitchSay";
+import { glitchResultMoment } from "../../../../../lib/mascot/glitchMoments";
 
 import {
   IconRobot,
@@ -873,6 +875,13 @@ export default function UnoGamePage() {
     setHistoryIndex((prev) =>
       prev === null ? null : prev >= turnHistory.length - 2 ? null : prev + 1
     );
+  // GLITCH reacts to the end panel exactly as he does on every other game's
+  // result screen: the shared moment decides the face and the line, so UNO
+  // cannot invent its own mascot copy. A resignation reads as a defeat.
+  const endMoment = endPopup
+    ? glitchResultMoment(endPopup.result === "win" ? "win" : "loss")
+    : null;
+
   const modalsNode = (
     <>
       {/* Post-match video. Offered when the player picks Replay / Return to
@@ -1005,6 +1014,19 @@ export default function UnoGamePage() {
                   Better luck next time!
                 </motion.p>
               )}
+              {/* The same result mascot the shared result screen shows,
+                  inline in the panel's own flow — never a second overlay. */}
+              {endMoment ? (
+                <div className="mt-4 flex justify-center">
+                  <GlitchSay
+                    expression={endMoment.expression}
+                    message={t(endMoment.messageKey)}
+                    placement="inline"
+                    size="sm"
+                    eventId={endMoment.eventId}
+                  />
+                </div>
+              ) : null}
               <motion.p
                 initial={{
                   y: 20,

@@ -314,6 +314,20 @@ test("practice creation is gated by the shared practice gate and validates the t
   }
 });
 
+test("practice creation stamps the lifecycle's queue time from its own clock", () => {
+  // The canonical lifecycle rejects a negative queue wait, so a `queued_at`
+  // taken AFTER the `forming`/`ready`/`started` instants made the shared helper
+  // throw "Queue lifecycle timestamps are out of order" and rolled the whole
+  // practice match back as a 500. The queue time must therefore be the same
+  // instant the transitions use.
+  const store = code(STORE);
+  const create = store.slice(store.indexOf("export async function createAiMatch"));
+  const queuedAt = create.indexOf("queuedAt: now");
+  const forming = create.indexOf('to: "forming"');
+  assert.ok(queuedAt > 0, "createMatchLifecycle must be given queuedAt: now");
+  assert.ok(forming > queuedAt, "queuedAt must be stamped before the transitions");
+});
+
 test("practice can never enter ranked: no Elo, trophies, payouts or matchmaking", () => {
   const store = code(STORE);
   assert.match(store, /mode: "practice"/);
@@ -352,10 +366,18 @@ test("a reconnect restores practice from the authoritative snapshot, not a reset
 
 test("the lobby offers both modes with the shared picker and an AI match screen", () => {
   const page = code("src/app/casino/battleship/PageClient.tsx");
-  assert.match(page, /data-testid="find-match"/);
-  assert.match(page, /data-testid="start-practice"/);
+  // Both modes come from the SHARED casino lobby, exactly like every other 1v1
+  // game — the online action is `onPlay`, practice is the violet `vsAi` action.
+  assert.match(page, /from "\.\.\/\.\.\/\.\.\/components\/lobby\/PvpLobby"/);
+  assert.match(page, /onPlay=\{\(\) => void joinQueue\(\)\}/);
+  assert.match(page, /playLabel="Find a Match"/);
+  assert.match(page, /vsAi=\{\{/);
+  assert.match(page, /onClick: \(\) => void startPractice\(\)/);
+  // The tier picker lives in the shared lobby's `children` slot, and the open
+  // lobby list is wired to the game's own endpoints.
   assert.match(page, /<AiDifficultyPicker\s+gameKey="battleship"/);
-  assert.match(page, /api\/battleship\/create-ai/);
+  assert.match(page, /\/api\/battleship\/create-ai/);
+  assert.match(page, /\/api\/battleship\/available/);
   assert.match(page, /onRestart=\{\(\) => void startPractice\(\)\}/);
 
   const preview = code("src/components/games/battleship/BattlePreview.tsx");

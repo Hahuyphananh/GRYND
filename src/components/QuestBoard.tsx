@@ -25,6 +25,7 @@
 // src/lib/quests/settle.ts). The note under the heading says so, because a
 // player who just beat the AI deserves to know why nothing moved.
 
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import {
   IconCalendarStats,
@@ -37,6 +38,7 @@ import {
 import { useQuests } from "../hooks/useQuests";
 import type { QuestView } from "../hooks/useQuests";
 import { useTranslation } from "../hooks/useTranslation";
+import { useGlitch } from "./mascot/GlitchProvider";
 
 const CARD =
   "rounded-xl border border-[#00e5ff]/20 bg-[#040d24]/70 p-5 backdrop-blur-sm sm:p-6";
@@ -65,6 +67,46 @@ export default function QuestBoard() {
     load,
     claim,
   } = useQuests();
+
+  // ── GLITCH: the quests nudge ─────────────────────────────────────────────
+  //
+  // ONE line, once the board is genuinely available, asking the player to go
+  // finish a quest for its token reward. It goes through the shared provider,
+  // so every rule already in src/lib/mascot/glitchCadence.js applies: one
+  // bubble at a time, the 90 s floor and the per-priority cooldown, three per
+  // session, and nothing over a match, a modal, an ad, a loading surface or an
+  // error notice. The stable event id is what makes THIS line unrepeatable for
+  // the rest of the session — including when the player leaves and reopens
+  // /rewards, which remounts this component.
+  //
+  // The floating layer is the provider's (`pointer-events-none` except the
+  // dismiss control), positioned in the bottom-left corner: the quests board is
+  // the lowest interactive section on the page, so the bubble sits beside it
+  // rather than over a card, a progress bar or a claim button. The page renders
+  // no inline mascot, so there is never an inline GLITCH for this to duplicate.
+  //
+  // IT NEVER SPEAKS TO AN ABSENT BOARD: signed out, still loading, or showing a
+  // failed read are all silent — the mascot does not advertise quests the
+  // player cannot see.
+  const { say: glitchSay, isAvailable: glitchAvailable } = useGlitch();
+  const questsGlitchAskedRef = useRef(false);
+  useEffect(() => {
+    if (!glitchAvailable || questsGlitchAskedRef.current) return;
+    if (!isLoaded || !isSignedIn || loading || error || !board) return;
+
+    const accepted = glitchSay({
+      expression: "wink",
+      message: t("rewards.glitch.questsIntro"),
+      placement: "bottom-left",
+      // An ordinary hint — never a milestone, so it can never displace one.
+      priority: 1,
+      eventId: "rewards-quests-intro",
+      dismissible: true,
+    });
+    // Only remember an ACCEPTED request: a declined one (a cooldown, a
+    // suppressed moment) must not consume this mount's chance.
+    if (accepted) questsGlitchAskedRef.current = true;
+  }, [glitchAvailable, glitchSay, board, error, isLoaded, isSignedIn, loading, t]);
 
   // Keyed translations with the server's own text as the fallback: a quest the
   // catalog adds before its locale strings land still reads correctly.

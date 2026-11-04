@@ -476,3 +476,63 @@ test("the widget's own copy exists in all three locales", () => {
   assert.match(widget, /t\("quests\.allDone"\)/);
   assert.match(popup, /t\("quests\.close"\)/);
 });
+
+// ════════════════════════════════════════════════════════════════════════
+// 9. GLITCH nudges the player toward the quests board
+// ════════════════════════════════════════════════════════════════════════
+
+test("the quests nudge goes through the one GLITCH provider, as a hint", () => {
+  const board = read(BOARD);
+
+  // The existing provider — never a new mascot component, never a local layer.
+  assert.match(board, /import \{ useGlitch \} from "\.\/mascot\/GlitchProvider"/);
+  assert.doesNotMatch(board, /<GlitchSay/, "the board must not draw its own mascot");
+  assert.doesNotMatch(board, /GlitchProvider>/, "the board must not mount a provider");
+  assert.match(board, /glitchSay\(\{/);
+
+  // Exactly the agreed dialogue: expression, key, event id, dismissible.
+  assert.match(board, /expression: "wink"/);
+  assert.match(board, /message: t\("rewards\.glitch\.questsIntro"\)/);
+  assert.match(board, /eventId: "rewards-quests-intro"/);
+  assert.match(board, /dismissible: true/);
+  // Priority 1 = an ordinary hint, so every cadence rule applies to it.
+  assert.match(board, /priority: 1/);
+
+  // A rerender cannot ask twice, and only an ACCEPTED request is remembered.
+  assert.match(board, /const questsGlitchAskedRef = useRef\(false\)/);
+  assert.match(board, /if \(!glitchAvailable \|\| questsGlitchAskedRef\.current\) return;/);
+  assert.match(board, /if \(accepted\) questsGlitchAskedRef\.current = true/);
+
+  // Silent while the board is loading, signed out, or showing a failed read.
+  assert.match(
+    board,
+    /if \(!isLoaded \|\| !isSignedIn \|\| loading \|\| error \|\| !board\) return;/,
+  );
+});
+
+test("the quests nudge copy is translated and promises only tokens", () => {
+  const lines = {};
+  for (const lang of ["en", "fr", "es"]) {
+    const line = APP_TEXT_TRANSLATIONS[lang]?.rewards?.glitch?.questsIntro;
+    assert.equal(typeof line, "string", `${lang}.rewards.glitch.questsIntro`);
+    assert.ok(line.length > 0, `${lang}.rewards.glitch.questsIntro must not be empty`);
+    // The mascot never mentions money, gift cards or a redemption that is not
+    // built — coins are virtual and have no cash value.
+    assert.doesNotMatch(
+      line,
+      /gift card|carte cadeau|tarjeta regalo|cash|argent réel|dinero real|espèces/i,
+      `${lang} promises a reward that does not exist`,
+    );
+    lines[lang] = line;
+  }
+
+  assert.equal(
+    lines.en,
+    "Yo! Looking for more tokens? Your Quests are waiting! Complete challenges, play games, and stack up those token rewards. Don't leave free tokens on the table!",
+  );
+  // Genuinely translated, not English copies.
+  assert.match(lines.fr, /quêtes/i);
+  assert.match(lines.fr, /jetons/i);
+  assert.match(lines.es, /misiones/i);
+  assert.match(lines.es, /fichas/i);
+});

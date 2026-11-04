@@ -1295,6 +1295,15 @@ export const APP_TEXT_TRANSLATIONS = {
         practiceFirst: "Practice first. Brag later.",
       },
     },
+    // /rewards — GLITCH points the player at the quests board (the one live
+    // place coins are earned) and says nothing about anything that does not
+    // exist: no gift cards, no cash, no redemption.
+    rewards: {
+      glitch: {
+        questsIntro:
+          "Yo! Looking for more tokens? Your Quests are waiting! Complete challenges, play games, and stack up those token rewards. Don't leave free tokens on the table!",
+      },
+    },
     onboarding: {
       // GLITCH (the mascot). Behaviour — which step, which expression, when it
       // may appear — lives in src/lib/mascot/glitchOnboarding.ts; only the
@@ -3111,6 +3120,15 @@ export const APP_TEXT_TRANSLATIONS = {
         practiceFirst: "Entraîne-toi d'abord. Tu frimeras après.",
       },
     },
+    // /rewards — GLITCH renvoie le joueur vers ses quêtes, le seul endroit où
+    // des jetons se gagnent. Aucune promesse hors du jeu (ni carte cadeau, ni
+    // argent réel, ni échange).
+    rewards: {
+      glitch: {
+        questsIntro:
+          "Yo ! Tu veux plus de jetons ? Tes quêtes t'attendent ! Relève des défis, joue, et empile les récompenses en jetons. Ne laisse pas filer des jetons gratuits sur la table !",
+      },
+    },
     onboarding: {
       glitch: {
         questionnaire: {
@@ -4895,6 +4913,15 @@ export const APP_TEXT_TRANSLATIONS = {
       lobby: {
         pickGame: "Elige un juego. Estaré mirando.",
         practiceFirst: "Primero practica. Ya presumirás.",
+      },
+    },
+    // /rewards — GLITCH manda al jugador a sus misiones, el único sitio donde
+    // se ganan fichas. Nada fuera del juego (ni tarjetas regalo, ni dinero
+    // real, ni canjes).
+    rewards: {
+      glitch: {
+        questsIntro:
+          "¡Hey! ¿Buscas más fichas? ¡Tus misiones te esperan! Completa desafíos, juega partidas y acumula recompensas en fichas. ¡No dejes fichas gratis sobre la mesa!",
       },
     },
     onboarding: {

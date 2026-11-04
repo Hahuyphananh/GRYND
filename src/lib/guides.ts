@@ -375,7 +375,7 @@ export const GUIDES: readonly Guide[] = [
       {
         heading: "The same habits work on Hex Duel",
         paragraphs: [
-          "Hex Duel is a turn-based conquest duel where the win condition is specific: you win by capturing your opponent's capital tile, not by owning the most ground. That punishes exactly the mistake chess punishes — expanding faster than you can defend. Troops grow over time on tiles their owner holds, and each turn gives you a limited pool of action points, so a territorial lead that leaves your capital thin is not a lead at all.",
+          "Hex Duel is a turn-based conquest duel where the win condition is specific: you win by capturing your opponent's capital tile, not by owning the most ground. That punishes exactly the mistake chess punishes — expanding faster than you can defend. Troops grow over time on tiles their owner holds, and each turn gives you a single action, so a territorial lead that leaves your capital thin is not a lead at all.",
           "The transferable habit is the one above: before every move, ask what your opponent can do about it. In Hex Duel that means checking your own capital before you push; in chess it means calculating the reply before you commit. Same skill, different board.",
         ],
       },

@@ -31,16 +31,23 @@ import { GRID_SIZE, getHexNeighbors } from "../hexGridUtils";
 
 export type DuelPlayer = "player1" | "player2";
 
+/** A territory's permanent level. 1 is the base, 4 the maximum. */
+export type TerritoryLevel = 1 | 2 | 3 | 4;
+
 /** Core game state managed by the reducer. */
 export interface CoreState {
   /** ownership per tile key */
   capturedTiles: Record<string, DuelPlayer>;
   /** troop count per tile key */
   tileTroops: Record<string, number>;
+  /**
+   * Permanent level per OWNED tile key. A key with no entry is level 1, which
+   * is also what a neutral tile is treated as — levels are only meaningful for
+   * a territory somebody holds.
+   */
+  territoryLevels: Record<string, TerritoryLevel>;
   /** whose turn it is */
   currentTurn: DuelPlayer;
-  /** remaining action points for the current turn */
-  currentAP: number;
   /** winner, or null if ongoing */
   winner: DuelPlayer | null;
   /** click+capture flash effect: tile just conquered */
@@ -77,6 +84,11 @@ export type ReducerAction =
       player: DuelPlayer;
     }
   | {
+      type: "upgrade";
+      sourceKey: string;
+      player: DuelPlayer;
+    }
+  | {
       type: "endTurn";
       player: DuelPlayer;
       /** When true, skip troop growth (the caller already applied it). */
@@ -86,8 +98,13 @@ export type ReducerAction =
   | { type: "reset" }
   | { type: "syncSnapshot"; snapshot: CoreState };
 
-/** The four move types a player can send over the wire. */
-export type HexDuelMoveType = "attack" | "displace" | "endTurn" | "skipRound";
+/** The move types a player can send over the wire. */
+export type HexDuelMoveType =
+  | "attack"
+  | "displace"
+  | "upgrade"
+  | "endTurn"
+  | "skipRound";
 
 /** One move as it travels (and as it is stored in `hex_duel_actions`). */
 export interface HexDuelMoveInput {
@@ -104,10 +121,140 @@ export type HexDuelMoveCheck =
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-export const MAX_AP = 3;
-export const REINFORCE_COST = 1; // reused for displace
-export const ATTACK_COST = 1;
-export const DISPLACE_COST = 1;
+// ONE ACTION PER TURN.
+//
+// There is deliberately NO action-point pool: no cost, no regeneration and no
+// "spend until empty" loop. A seat acts once (attack, displace, upgrade or skip)
+// and the turn passes with that action — which is also why a move from the seat
+// that is NOT to act is a no-op rather than a second action.
+
+// ── Territory levels ──────────────────────────────────────────────────────
+//
+// Every territory has a permanent level from 1 to 4. The level decides the
+// tile's troop CEILING and what it costs (in troops, paid from the tile itself)
+// to reach the next level. `upgradeCost: null` marks the maximum level.
+//
+// Levels are permanent while ownership is unchanged, and any ownership change
+// resets the tile to level 1 (a conquest takes the territory at level 1).
+
+export const MAX_TERRITORY_LEVEL: TerritoryLevel = 4;
+export const INITIAL_TERRITORY_LEVEL: TerritoryLevel = 1;
+
+export const TERRITORY_LEVELS: Record<
+  TerritoryLevel,
+  { maxTroops: number; upgradeCost: number | null }
+> = {
+  1: { maxTroops: 10, upgradeCost: 5 },
+  2: { maxTroops: 20, upgradeCost: 10 },
+  3: { maxTroops: 50, upgradeCost: 25 },
+  4: { maxTroops: 100, upgradeCost: null },
+};
+
+/** Clamp anything from the wire or an old snapshot onto a real level. */
+export function normalizeTerritoryLevel(value: unknown): TerritoryLevel {
+  const n = Number(value);
+  if (n === 2 || n === 3 || n === 4) return n;
+  return INITIAL_TERRITORY_LEVEL;
+}
+
+/** The level of a territory (a tile nobody upgraded is level 1). */
+export function territoryLevelOf(
+  state: { territoryLevels?: Record<string, TerritoryLevel> },
+  key: string,
+): TerritoryLevel {
+  return normalizeTerritoryLevel(state.territoryLevels?.[key]);
+}
+
+/** Troop ceiling for a level. */
+export function territoryMaxTroops(level: TerritoryLevel): number {
+  return TERRITORY_LEVELS[normalizeTerritoryLevel(level)].maxTroops;
+}
+
+/** Troops paid to reach the next level, or null at the maximum level. */
+export function upgradeCostFor(level: TerritoryLevel): number | null {
+  return TERRITORY_LEVELS[normalizeTerritoryLevel(level)].upgradeCost;
+}
+
+/**
+ * What upgrading `sourceKey` would cost and produce, and whether it is legal
+ * for `seat`. The rulebook, the server validator, the engine and the panel all
+ * read this one function, so the preview a player sees is the rule that runs.
+ */
+export interface UpgradeInfo {
+  ok: boolean;
+  code?: string;
+  error?: string;
+  /** Current level. */
+  level: TerritoryLevel;
+  /** Level after a successful upgrade, or null at the maximum. */
+  nextLevel: TerritoryLevel | null;
+  /** Troops paid from this territory, or null at the maximum. */
+  cost: number | null;
+  /** Troop count before the upgrade. */
+  troops: number;
+  /** Troop ceiling of the CURRENT level. */
+  maxTroops: number;
+  /** Troop ceiling after the upgrade (unchanged at the maximum). */
+  nextMaxTroops: number;
+  /** Troops remaining after paying the cost (never below 1 when legal). */
+  remainingTroops: number;
+}
+
+/** The slice of the board an upgrade decision needs. */
+export interface TerritoryBoardView {
+  capturedTiles: Record<string, DuelPlayer>;
+  tileTroops: Record<string, number>;
+  territoryLevels?: Record<string, TerritoryLevel>;
+}
+
+export function getUpgradeInfo(
+  state: TerritoryBoardView,
+  seat: DuelPlayer,
+  sourceKey: string,
+): UpgradeInfo {
+  const level = territoryLevelOf(state, sourceKey);
+  const cost = upgradeCostFor(level);
+  const troops = state.tileTroops[sourceKey] ?? 1;
+  const nextLevel =
+    cost === null ? null : ((level + 1) as TerritoryLevel);
+  const nextMaxTroops = nextLevel === null ? territoryMaxTroops(level) : territoryMaxTroops(nextLevel);
+
+  const base = {
+    level,
+    nextLevel,
+    cost,
+    troops,
+    maxTroops: territoryMaxTroops(level),
+    nextMaxTroops,
+    remainingTroops: cost === null ? troops : troops - cost,
+  };
+
+  if (state.capturedTiles[sourceKey] !== seat) {
+    return {
+      ...base,
+      ok: false,
+      code: "NOT_YOUR_TILE",
+      error: "You can only upgrade your own territories",
+    };
+  }
+  if (cost === null) {
+    return {
+      ...base,
+      ok: false,
+      code: "MAX_LEVEL",
+      error: "This territory is already at the maximum level",
+    };
+  }
+  if (troops - cost < 1) {
+    return {
+      ...base,
+      ok: false,
+      code: "NOT_ENOUGH_TROOPS",
+      error: `Upgrading costs ${cost} troops and must leave at least 1 behind`,
+    };
+  }
+  return { ...base, ok: true };
+}
 
 // ── Initial positions ─────────────────────────────────────────────────────
 
@@ -153,8 +300,12 @@ export function makeInitialCore(startingTurn: DuelPlayer = "player1"): CoreState
       [P1_CAP_KEY]: INITIAL_TROOPS,
       [P2_CAP_KEY]: INITIAL_TROOPS,
     },
+    // Starting capitals also start at level 1.
+    territoryLevels: {
+      [P1_CAP_KEY]: INITIAL_TERRITORY_LEVEL,
+      [P2_CAP_KEY]: INITIAL_TERRITORY_LEVEL,
+    },
     currentTurn: startingTurn,
-    currentAP: MAX_AP,
     winner: null,
     recentlyCaptured: [],
     combatFlash: [],
@@ -175,7 +326,7 @@ export function makeInitialCore(startingTurn: DuelPlayer = "player1"): CoreState
 // the server replay a recorded match one action at a time.
 
 export function resolveAttackOutcome(
-  state: CoreState,
+  state: TerritoryBoardView,
   sourceKey: string,
   targetKey: string,
   troopCount: number,
@@ -201,25 +352,44 @@ export function resolveAttackOutcome(
   return { kind: "failed", newDefenderTroops, defenderWipedOut };
 }
 
-/** Apply troop growth: +1 troop per owned tile for `player`. */
+/**
+ * Apply troop growth: +1 troop per owned tile for `player`, never past the
+ * tile's level capacity. A tile already at its ceiling simply does not grow.
+ */
 function growTroops(state: CoreState, player: DuelPlayer): CoreState {
   const tiles = state.tileTroops;
   const next: Record<string, number> = { ...tiles };
   for (const [key, owner] of Object.entries(state.capturedTiles)) {
     if (owner === player) {
-      next[key] = (next[key] ?? 1) + 1;
+      const capacity = territoryMaxTroops(territoryLevelOf(state, key));
+      next[key] = Math.min((next[key] ?? 1) + 1, capacity);
     }
   }
   return { ...state, tileTroops: next };
 }
 
-/** Switch turn and regenerate +1 AP (capped). Resets flash effects. */
+/** Drop a tile's level entry (it became neutral). */
+function withoutLevel(
+  levels: Record<string, TerritoryLevel>,
+  key: string,
+): Record<string, TerritoryLevel> {
+  if (levels[key] === undefined) return levels;
+  const next = { ...levels };
+  delete next[key];
+  return next;
+}
+
+/**
+ * Pass the turn to the other seat. Resets the flash effects.
+ *
+ * The ONLY turn transition in the rulebook: every successful action (attack,
+ * displace) and the skip action ends here, after the acting seat's passive
+ * growth has been applied once. No action-point bookkeeping happens here.
+ */
 function switchTurnCore(state: CoreState): CoreState {
-  const nextTurn = otherPlayer(state.currentTurn);
   return {
     ...state,
-    currentTurn: nextTurn,
-    currentAP: Math.min(state.currentAP + 1, MAX_AP),
+    currentTurn: otherPlayer(state.currentTurn),
     recentlyCaptured: [],
     combatFlash: [],
   };
@@ -240,6 +410,12 @@ export function coreReducer(
       if (state.winner) return state;
 
       const { sourceKey, targetKey, troopCount, player } = action;
+      // ONE ACTION PER TURN. A move arriving from the seat that is not to act
+      // has already been applied — a duplicate socket/poll delivery, an
+      // out-of-order snapshot replay, or a second click before React
+      // re-rendered — so it is ignored instead of applied, and it can never
+      // flip the turn a second time.
+      if (state.currentTurn !== player) return state;
       const sourceTroops = state.tileTroops[sourceKey] ?? 1;
       const outcome = resolveAttackOutcome(
         state,
@@ -256,19 +432,35 @@ export function coreReducer(
         [sourceKey]: sourceTroops - troopCount,
       };
       let capturedTiles = state.capturedTiles;
+      let territoryLevels = state.territoryLevels;
       let recentlyCaptured = state.recentlyCaptured;
       let combatFlash: string[];
 
       // 2. Outcome branches — all reads are from current `state` argument.
       if (outcome.kind === "conquer") {
         capturedTiles = { ...state.capturedTiles, [targetKey]: player };
-        tileTroops = { ...tileTroops, [targetKey]: outcome.remainingTroops };
+        // A newly conquered territory starts at level 1, so its ceiling is the
+        // level-1 capacity. `checkHexDuelMove` refuses an attack that would
+        // overflow it, so this clamp only ever guards a state that predates
+        // validation — it is the invariant, not the normal path.
+        tileTroops = {
+          ...tileTroops,
+          [targetKey]: Math.min(
+            outcome.remainingTroops,
+            territoryMaxTroops(INITIAL_TERRITORY_LEVEL),
+          ),
+        };
+        territoryLevels = {
+          ...state.territoryLevels,
+          [targetKey]: INITIAL_TERRITORY_LEVEL,
+        };
         recentlyCaptured = [targetKey];
         combatFlash = [sourceKey, targetKey];
       } else if (outcome.kind === "tie") {
         const next: Record<string, DuelPlayer> = { ...state.capturedTiles };
         delete next[targetKey];
         capturedTiles = next;
+        territoryLevels = withoutLevel(state.territoryLevels, targetKey);
         tileTroops = { ...tileTroops, [targetKey]: outcome.tileTroops };
         combatFlash = [sourceKey, targetKey];
       } else {
@@ -277,109 +469,108 @@ export function coreReducer(
           const next: Record<string, DuelPlayer> = { ...state.capturedTiles };
           delete next[targetKey];
           capturedTiles = next;
+          // Neutral again — no territory to carry a level.
+          territoryLevels = withoutLevel(state.territoryLevels, targetKey);
         }
         combatFlash = [sourceKey, targetKey];
       }
 
-      // 3. AP management based on outcome.
-      let { currentAP, currentTurn, winner, p1MoveCount, p2MoveCount, moveCount } =
-        state;
-
-      const moveIncrement = player === "player1" ? 1 : 0;
-      const moveIncrementP2 = player === "player2" ? 1 : 0;
-      p1MoveCount += moveIncrement;
-      p2MoveCount += moveIncrementP2;
+      // 3. Bookkeeping — move counts are stats only.
+      let { winner, p1MoveCount, p2MoveCount, moveCount } = state;
+      p1MoveCount += player === "player1" ? 1 : 0;
+      p2MoveCount += player === "player2" ? 1 : 0;
       moveCount += 1;
 
-      if (outcome.kind === "conquer" && outcome.conqueredCapital) {
-        // Game ends immediately — no AP switch, no troop growth for next player.
-        winner = player;
-      } else {
-        const newAP = currentAP - ATTACK_COST;
-        if (newAP <= 0) {
-          // AP depleted → grow sender's troops, switch turn.
-          // (Mirrors the sender's `handleAttack` auto-end-turn behavior.)
-          const grown = growTroops(
-            {
-              ...state,
-              capturedTiles,
-              tileTroops,
-              recentlyCaptured,
-              combatFlash,
-              p1MoveCount,
-              p2MoveCount,
-              moveCount,
-              currentAP: 0,
-            },
-            currentTurn,
-          );
-          return switchTurnCore(grown);
-        } else {
-          currentAP = newAP;
-        }
-      }
-
-      return {
+      const moved: CoreState = {
         ...state,
         capturedTiles,
         tileTroops,
+        territoryLevels,
         recentlyCaptured,
         combatFlash,
-        currentAP,
-        currentTurn,
         winner,
         p1MoveCount,
         p2MoveCount,
         moveCount,
       };
+
+      if (outcome.kind === "conquer" && outcome.conqueredCapital) {
+        // Capturing the enemy capital ends the match immediately: no growth,
+        // no turn switch, nothing else to apply.
+        return { ...moved, winner: player };
+      }
+
+      // ONE ACTION PER TURN: the acting seat's passive growth lands on the
+      // transition, exactly once, and the turn passes with the action.
+      return switchTurnCore(growTroops(moved, player));
     }
 
     case "displace": {
       if (state.winner) return state;
 
       const { sourceKey, targetKey, troopCount, player } = action;
+      // Same one-action guard as `attack` (duplicate / out-of-order delivery).
+      if (state.currentTurn !== player) return state;
       const sourceTroops = state.tileTroops[sourceKey] ?? 1;
+      const destTroops = state.tileTroops[targetKey] ?? 1;
+      // Capacity: a displacement may never push the destination past its
+      // level's ceiling. Refused outright (not clamped) so no troop is ever
+      // silently created or deleted; the validator reports the same rule.
+      if (destTroops + troopCount > territoryMaxTroops(territoryLevelOf(state, targetKey))) {
+        return state;
+      }
       // Apply troop moves.
       const tileTroops: Record<string, number> = {
         ...state.tileTroops,
         [sourceKey]: sourceTroops - troopCount,
-        [targetKey]: (state.tileTroops[targetKey] ?? 1) + troopCount,
+        [targetKey]: destTroops + troopCount,
       };
 
-      let { currentAP, currentTurn, p1MoveCount, p2MoveCount, moveCount } = state;
-      const moveIncrementP1 = player === "player1" ? 1 : 0;
-      const moveIncrementP2 = player === "player2" ? 1 : 0;
-      p1MoveCount += moveIncrementP1;
-      p2MoveCount += moveIncrementP2;
+      let { p1MoveCount, p2MoveCount, moveCount } = state;
+      p1MoveCount += player === "player1" ? 1 : 0;
+      p2MoveCount += player === "player2" ? 1 : 0;
       moveCount += 1;
 
-      const newAP = currentAP - DISPLACE_COST;
-      if (newAP <= 0) {
-        const grown = growTroops(
-          {
-            ...state,
-            tileTroops,
-            p1MoveCount,
-            p2MoveCount,
-            moveCount,
-            currentAP: 0,
-          },
-          currentTurn,
-        );
-        return switchTurnCore(grown);
-      } else {
-        currentAP = newAP;
-      }
-
-      return {
+      const moved: CoreState = {
         ...state,
         tileTroops,
-        currentAP,
         p1MoveCount,
         p2MoveCount,
         moveCount,
         combatFlash: [sourceKey, targetKey],
       };
+
+      // One action per turn — displace included: growth once, then the turn.
+      return switchTurnCore(growTroops(moved, player));
+    }
+
+    case "upgrade": {
+      if (state.winner) return state;
+      const { sourceKey, player } = action;
+      // One action per turn: an upgrade is an action like any other.
+      if (state.currentTurn !== player) return state;
+      const info = getUpgradeInfo(state, player, sourceKey);
+      if (!info.ok || info.nextLevel === null || info.cost === null) return state;
+
+      let { p1MoveCount, p2MoveCount, moveCount } = state;
+      p1MoveCount += player === "player1" ? 1 : 0;
+      p2MoveCount += player === "player2" ? 1 : 0;
+      moveCount += 1;
+
+      const upgraded: CoreState = {
+        ...state,
+        // Level up, pay the cost from this territory's own troops, keep at
+        // least one troop (guaranteed by `getUpgradeInfo`).
+        territoryLevels: { ...state.territoryLevels, [sourceKey]: info.nextLevel },
+        tileTroops: { ...state.tileTroops, [sourceKey]: info.troops - info.cost },
+        p1MoveCount,
+        p2MoveCount,
+        moveCount,
+        combatFlash: [sourceKey],
+      };
+
+      // Same transition as every other action: one growth tick, then the turn.
+      return switchTurnCore(growTroops(upgraded, player));
     }
 
     case "troopGrowth": {
@@ -389,6 +580,10 @@ export function coreReducer(
 
     case "endTurn": {
       if (state.winner) return state;
+      // The SKIP action (and a legacy endTurn row). A seat that is not to act
+      // cannot skip the other player's turn, and an obsolete echo of a turn a
+      // successful action already ended is a no-op.
+      if (state.currentTurn !== action.player) return state;
       // When skipTroopGrowth=true, this is a remote explicit endTurn.
       // The sender already applied troop growth + switched turns locally,
       // so we just need to mirror the side-effects — but with our own
@@ -408,9 +603,16 @@ export function coreReducer(
 
     case "syncSnapshot": {
       // Snapshots are explicit overrides — do not validate here. The
-      // snapshotted state is treated as authoritative.
+      // snapshotted state is treated as authoritative. `territoryLevels` is
+      // normalized because a snapshot from an older build (or a hostile one)
+      // may carry nothing usable: every tile then reads as level 1.
+      const levels: Record<string, TerritoryLevel> = {};
+      for (const [key, value] of Object.entries(action.snapshot.territoryLevels ?? {})) {
+        levels[key] = normalizeTerritoryLevel(value);
+      }
       return {
         ...action.snapshot,
+        territoryLevels: levels,
         recentlyCaptured: [],
         combatFlash: [],
       };
@@ -428,8 +630,10 @@ export function coreReducer(
 //   * attack   — own tile → adjacent tile you do not own (neutral or enemy),
 //                sending more than 0 troops and leaving at least 1 behind.
 //   * displace — own tile → adjacent own tile, same troop rules (the source
-//                keeps at least 1 troop, which is why `maxTroops = troops - 1`
-//                in the engine's displace picker).
+//                keeps at least 1 troop), and the destination may not exceed
+//                its level capacity.
+//   * upgrade  — own tile below level 4 with enough troops to pay the cost
+//                and still keep at least one.
 //   * endTurn / skipRound — always legal for the player to move.
 //
 // `seat` is the player the move is being checked FOR: the client passes
@@ -452,15 +656,25 @@ export function checkHexDuelMove(
     };
   }
 
+  // Skipping needs no payload: it is always legal for the seat that is to act.
   if (move.type === "endTurn" || move.type === "skipRound") return { ok: true };
 
-  const cost = move.type === "attack" ? ATTACK_COST : DISPLACE_COST;
-  if (state.currentAP < cost) {
-    return {
-      ok: false,
-      code: "NO_ACTION_POINTS",
-      error: `Not enough action points (${state.currentAP} left)`,
-    };
+  // Upgrades carry only a source tile: the level and the cost are read from
+  // the SERVER's board, never from the request, so a client cannot name the
+  // level it wants or the troops it would pay.
+  if (move.type === "upgrade") {
+    const upgradeKey = typeof move.sourceKey === "string" ? move.sourceKey : null;
+    if (!upgradeKey) {
+      return { ok: false, code: "BAD_TARGET", error: "Missing source" };
+    }
+    if (!isTileKey(upgradeKey)) {
+      return { ok: false, code: "BAD_TARGET", error: "Tile is off the board" };
+    }
+    const info = getUpgradeInfo(state, seat, upgradeKey);
+    if (!info.ok) {
+      return { ok: false, code: info.code ?? "UPGRADE_REFUSED", error: info.error ?? "Upgrade refused" };
+    }
+    return { ok: true };
   }
 
   const sourceKey = typeof move.sourceKey === "string" ? move.sourceKey : null;
@@ -514,6 +728,36 @@ export function checkHexDuelMove(
     };
   }
 
+  if (move.type === "displace") {
+    // The destination cannot take more than its level's ceiling.
+    const destTroops = state.tileTroops[targetKey] ?? 1;
+    const destCapacity = territoryMaxTroops(territoryLevelOf(state, targetKey));
+    if (destTroops + troopCount > destCapacity) {
+      return {
+        ok: false,
+        code: "CAPACITY",
+        error: `That territory holds at most ${destCapacity} troops`,
+      };
+    }
+  }
+
+  if (move.type === "attack") {
+    // A conquest takes the territory at level 1, so the survivors cannot exceed
+    // the level-1 ceiling. Refusing an over-large send is how the rulebook keeps
+    // "never silently delete excess troops" true: the player is told, and the
+    // reducer's clamp only backstops a state that predates this check.
+    const targetTroops = targetOwner === undefined ? 0 : state.tileTroops[targetKey] ?? 1;
+    const survivors = troopCount - targetTroops;
+    const conquestCapacity = territoryMaxTroops(INITIAL_TERRITORY_LEVEL);
+    if (survivors > conquestCapacity) {
+      return {
+        ok: false,
+        code: "CAPACITY",
+        error: `Only ${conquestCapacity} troops can hold a newly conquered territory (${survivors} would survive)`,
+      };
+    }
+  }
+
   return { ok: true };
 }
 
@@ -535,17 +779,19 @@ export function isTileKey(key: string): boolean {
 
 /**
  * Apply a RECORDED move to a state — the receiver's semantics, which the server
- * uses to replay a match it stored.
+ * uses to replay a match it stored, and which the engine's remote path mirrors.
  *
- * This is deliberately not the same entry point as `coreReducer`: it mirrors
- * `applyRemoteAction` in the engine, including its idempotency guard for turn
- * flips. A client that depleted its action points auto-flipped its own turn AND
- * echoes an explicit `endTurn`, and the receiver ignores that echo because it
- * has already advanced past the sender. The server must ignore it too, or its
- * replay would flip the turn twice and drift away from both boards.
+ * Both seats go through the SAME reducer, so replay, live play and the AI can
+ * never diverge: every successful action (including an upgrade, whose level
+ * and cost are recomputed from this state) applies its passive growth once and
+ * passes the turn once. The reducer's own turn guard is what makes an
+ * out-of-order or duplicate delivery (socket + poll + snapshot in any order) a
+ * no-op, and what makes an obsolete `endTurn` echo from a turn a successful
+ * action already ended a no-op too — no double growth, no double flip.
  *
- * Returns the state unchanged for a move it cannot apply (missing fields, or an
- * endTurn echo), so a replay can never throw on a malformed row.
+ * Returns the state unchanged for a move it cannot apply (missing fields, or a
+ * move whose seat is not to act), so a replay can never throw on a malformed
+ * row.
  */
 export function applyRecordedMove(
   state: CoreState,
@@ -570,11 +816,22 @@ export function applyRecordedMove(
         capitals,
       );
     }
+    case "upgrade": {
+      // The recorded row carries the tile only; the level and cost are always
+      // recomputed from the state this replay built.
+      if (!move.sourceKey) return state;
+      return coreReducer(
+        state,
+        { type: "upgrade", sourceKey: move.sourceKey, player: seat },
+        capitals,
+      );
+    }
     case "endTurn":
     case "skipRound": {
-      // Already past this seat's turn — the flip was mirrored by the move that
-      // emptied its action points, so this echo is a no-op.
-      if (state.currentTurn === otherPlayer(seat)) return state;
+      // The dedicated skip-turn action (both types are accepted so rows written
+      // before the action-point removal still replay). Growth + the single flip
+      // happen in the reducer; a row from the seat that is not to act —
+      // including an obsolete echo — is a no-op.
       return coreReducer(
         state,
         { type: "endTurn", player: seat, skipTroopGrowth: false },

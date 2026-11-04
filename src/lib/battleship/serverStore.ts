@@ -1490,11 +1490,19 @@ export async function createAiMatch({
 
     // Canonical lifecycle, marked `practice` so nothing can mistake it for a
     // ranked queue entry. The bot is present immediately, so the row starts.
+    //
+    // `queuedAt: now` is REQUIRED, not cosmetic: the helper defaults it to
+    // `new Date()`, which is LATER than the `now` captured above — so the
+    // `forming`/`ready`/`started` transitions below would carry an earlier
+    // `started_at` than `queued_at`. The canonical lifecycle rejects that
+    // ordering (`calculateQueueWaitMs` throws "Queue lifecycle timestamps are
+    // out of order"), which rolled the whole practice match back as a 500.
     await createMatchLifecycle({
       matchId: match.id,
       gameKey: GAME_KEY,
       mode: "practice",
       playerCount: 2,
+      queuedAt: now,
       tx,
     });
     await transitionMatchLifecycle({ matchId: match.id, to: "forming", playerCount: 2, at: now, tx });

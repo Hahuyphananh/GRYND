@@ -264,7 +264,7 @@ export default function HexDuelLobbyPage() {
   }, [aiDifficulty, busy, posthog, router]);
 
   // Rules copy for the shared How-to-Play modal. Every number here is read
-  // from the rulebook (3 AP per turn, 1 AP per action, 5 troops per capital)
+  // from the rulebook (one action per turn, 5 troops per capital)
   // rather than restated from memory, so the lobby cannot drift from the game.
   const rules = useMemo(
     () => ({
@@ -281,14 +281,24 @@ export default function HexDuelLobbyPage() {
           ),
         },
         {
-          heading: "Three actions a turn",
+          heading: "One action a turn",
           body: (
             <>
-              Every turn you get <b>3 action points</b>, and each action costs
-              one: <b>attack</b> an adjacent enemy tile, <b>displace</b> troops
-              between your own adjacent tiles, or <b>reinforce</b>. The board
-              shows what you can still do, and <b>End Turn</b> hands the rest of
-              your points over.
+              Each turn you take exactly <b>one action</b>: <b>attack</b> an
+              adjacent enemy or neutral tile, <b>displace</b> troops between
+              your own adjacent tiles, <b>upgrade</b> a territory, or{" "}
+              <b>skip</b>. Your turn then passes automatically.
+            </>
+          ),
+        },
+        {
+          heading: "Upgrade to hold more troops",
+          body: (
+            <>
+              Every territory has a level from <b>1 to 4</b>, with a capacity of{" "}
+              <b>10, 20, 50 or 100</b> troops. Upgrading is paid from that
+              territory's own troops — <b>5, 10 and 25</b> — and a territory you
+              capture always starts again at level 1.
             </>
           ),
         },

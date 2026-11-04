@@ -14,10 +14,18 @@ import { useHexAudio } from "../../../../../lib/hexAudio";
 import { useChessClock } from "../../../../../lib/useChessClock";
 import HexBoard from "../../../../../components/HexBoard";
 import HexTroopCount from "../../../../../components/HexTroopCount";
-import HexActionPanel, { type ActionType } from "../../../../../components/HexActionPanel";
+import HexActionPanel, { type ActionType, type UpgradePreview } from "../../../../../components/HexActionPanel";
 import HexActionLog from "../../../../../components/HexActionLog";
 import HexTroopPopup from "../../../../../components/HexTroopPopup";
 import { clampSendCount, sendableTroops } from "../../../../../lib/hexTroopCount";
+import {
+  INITIAL_TERRITORY_LEVEL,
+  getUpgradeInfo,
+  resolveAttackOutcome,
+  territoryLevelOf,
+  territoryMaxTroops,
+} from "../../../../../lib/hex-duel/rules";
+import { describeAttackPreview } from "../../../../../lib/hexBoardGeometry";
 import NavigationBar from "../../../../../components/navigation-bar";
 import { useRecordPlayedGame } from "../../../../../hooks/useRecordPlayedGame";
 import useActiveGamePresence from "../../../../../hooks/useActiveGamePresence";
@@ -54,12 +62,9 @@ import {
   IconFlag,
   IconClock,
   IconHourglass,
+  IconPlayerSkipForward,
   IconStar,
 } from "@tabler/icons-react";
-
-const ATTACK_COST = 1;
-const DISPLACE_COST = 1;
-const MOVE_COST = 1; // backward compat
 
 // ══════════════════════════════════════════════════════════════════════════
 //  CSS Keyframes (injected once)
@@ -156,34 +161,6 @@ const GLOBAL_KEYFRAMES = `
   to   { opacity: 1; }
 }
 `;
-
-// ══════════════════════════════════════════════════════════════════════════
-//  AP Pip
-// ══════════════════════════════════════════════════════════════════════════
-
-function APPips({ current, max, color, bonusCount }: { current: number; max: number; color: string; bonusCount?: number }) {
-  const baseMax = max - (bonusCount ?? 0);
-  return (
-    <div className="flex items-center gap-1">
-      {Array.from({ length: max }, (_, i) => {
-        const isBonus = i >= baseMax;
-        const pipColor = isBonus ? "#a855f7" : color;
-        const active = i < current;
-        return (
-          <span
-            key={i}
-            className="inline-block w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full transition-all duration-300"
-            style={{
-              backgroundColor: active ? pipColor : "transparent",
-              border: `1.5px solid ${active ? pipColor : "#334155"}`,
-              boxShadow: active ? `0 0 8px ${pipColor}66, 0 0 3px ${pipColor}44` : "none",
-            }}
-          />
-        );
-      })}
-    </div>
-  );
-}
 
 // ══════════════════════════════════════════════════════════════════════════
 //  Wager Modal
@@ -286,13 +263,13 @@ function TroopBar({ troops, maxTroops, color }: { troops: number; maxTroops: num
 // ══════════════════════════════════════════════════════════════════════════
 
 function PlayerCard({
-  player, label, isActive, isSelected, color, moves, territory, currentAP, maxAP, isWinner, isAI,
+  player, label, isActive, isSelected, color, moves, territory, isWinner, isAI,
   turnJustChanged, totalTroops, maxTroops, clockTime, isLocal,
   emoteBubble, emoteSide, iconKey, nameColor, profileFrame,
 }: {
   player: DuelPlayer; label: string;
   isActive: boolean; isSelected: boolean; color: string;
-  moves: number; territory: number; currentAP: number; maxAP: number;
+  moves: number; territory: number;
   isWinner: boolean; isAI?: boolean;
   turnJustChanged: boolean;
   totalTroops: number;
@@ -381,11 +358,8 @@ function PlayerCard({
 
       {isActive && (
         <div className="mt-3 pt-3 border-t border-white/10">
-          <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1.5">Action Points</p>
-          <div className="flex items-center gap-2">
-            <APPips current={currentAP} max={maxAP} color={color} />
-            <span className="text-xs font-bold text-white/80">{currentAP}/{maxAP}</span>
-          </div>
+          <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1.5">This turn</p>
+          <p className="text-xs font-bold text-white/80">1 action — attack, displace or skip</p>
         </div>
       )}
 
@@ -517,10 +491,10 @@ function TimerBar({ fraction, isUrgent, isCritical, isActive }: {
 }
 
 function StatusBar({
-  currentTurn, currentAP, maxAP, onEndTurn, isGameOver, aiThinking, aiEnabled,
+  currentTurn, onEndTurn, isGameOver, aiThinking, aiEnabled,
   showEndTurn = true, isLocalTurn,
 }: {
-  currentTurn: DuelPlayer; currentAP: number; maxAP: number;
+  currentTurn: DuelPlayer;
   onEndTurn: () => void;
   isGameOver: boolean; aiThinking: boolean; aiEnabled: boolean;
   showEndTurn?: boolean;
@@ -529,7 +503,7 @@ function StatusBar({
   // Determine turn color from the ACTIVE player's slot, not from the
   // local perspective. Previously this was `isLocalTurn ? cyan : red`,
   // which incorrectly painted a player2 (red) local user's "YOUR TURN"
-  // badge with cyan — the glow / AP pips / status dot all wore the
+  // badge with cyan — the glow, the status dot and the badge all wore the
   // opponent's color. Using `currentTurn` here keeps the active
   // player's accent consistent regardless of who's local.
   const turnColor = currentTurn === "player1" ? "#22d3ee" : "#ef4444";
@@ -547,13 +521,10 @@ function StatusBar({
     subMessage = "Choosing the best strategy";
   } else if (isAITurn) {
     message = "AI's turn. Auto-playing";
-    subMessage = "Attack (1 AP) or displace troops (1 AP)";
-  } else if (currentAP < ATTACK_COST) {
-    message = "No AP remaining";
-    subMessage = "End your turn to gain +1 AP";
+    subMessage = "One action, then it hands the turn back";
   } else {
-    message = "Choose an action";
-    subMessage = "Attack enemy tiles (1 AP) or Displace troops (1 AP)";
+    message = "Choose one action";
+    subMessage = "Attack, displace, upgrade or skip — the turn passes after it";
   }
 
   return (
@@ -579,14 +550,12 @@ function StatusBar({
       )}
 
       <div className="flex items-center justify-center gap-2">
-        <span className="text-[10px] text-slate-500 uppercase tracking-widest">AP</span>
-        <APPips current={currentAP} max={maxAP} color={isGameOver ? "#facc15" : turnColor} />
-        <span className="text-[10px] text-slate-500 uppercase tracking-widest ml-1">{currentAP}/{maxAP}</span>
+        <span className="text-[10px] text-slate-500 uppercase tracking-widest">1 action per turn</span>
       </div>
 
       <p className="text-xs text-slate-400" style={{ animation: "floatUp 0.3s ease-out" }}>{message}</p>
       {subMessage && (
-        <p className={`text-[10px] ${isGameOver ? "text-yellow-400/90 font-bold" : currentAP < ATTACK_COST ? "text-yellow-400/90 font-bold" : "text-yellow-400/70"}`}>
+        <p className={`text-[10px] ${isGameOver ? "text-yellow-400/90 font-bold" : "text-yellow-400/70"}`}>
           {subMessage}
         </p>
       )}
@@ -613,12 +582,10 @@ function StatusBar({
           className={`mt-2 h-[34px] px-5 rounded-lg text-xs font-bold uppercase tracking-[0.15em] duration-200 transition-[color,background-color,border-color,box-shadow,transform,filter] ${
             isAITurn || !showEndTurn
               ? "invisible"
-              : currentAP < ATTACK_COST
-              ? "bg-yellow-400 text-black shadow-[0_0_14px_rgba(250,204,21,0.5)] hover:bg-yellow-300 hover:scale-105 hover:shadow-[0_0_20px_rgba(250,204,21,0.7)] animate-pulse"
               : "border border-white/15 text-slate-400 hover:text-white hover:border-white/30 hover:bg-white/5"
           }`}
         >
-          {currentAP < ATTACK_COST ? <span className="inline-flex items-center gap-1"><IconBolt size={14} /> End Turn</span> : "End Turn"}
+          <span className="inline-flex items-center gap-1"><IconPlayerSkipForward size={14} /> Skip Turn</span>
         </button>
       )}
     </div>
@@ -633,7 +600,7 @@ type GameMode = "idle" | "for-fun" | "real" | "multiplayer";
 
 /** Multiplayer action sent/received via socket */
 interface MultiplayerAction {
-  type: 'attack' | 'displace' | 'endTurn' | 'skipRound';
+  type: 'attack' | 'displace' | 'upgrade' | 'endTurn' | 'skipRound';
   /**
    * The player whose turn the action originated from. The wire includes
    * this so the receiver can converge to the sender's intent even if the
@@ -686,14 +653,15 @@ export default function HexDuelPage() {
   const openingTurn: DuelPlayer = isAiMatch ? "player1" : "player2";
 
   const {
-    grid, currentTurn, currentAP, maxAP,
-    capturedTiles, capitals, tileTroops,
+    grid, currentTurn,
+    capturedTiles, capitals, tileTroops, territoryLevels,
     p1MoveCount, p2MoveCount, p1Territory, p2Territory,
     recentlyCaptured, selectedTile, winner,
     actionLog,
+    moveAnimation,
     attackableTargets, getAttackSources,
     displaceCandidates, getDisplaceSources,
-    handleAttack, handleDisplace, applyRemoteAction,
+    handleAttack, handleDisplace, handleUpgrade, applyRemoteAction,
     endTurn, skipRound, resetGame,
     buildSyncSnapshot, applySyncSnapshot,
   } = useHexDuel(openingTurn);
@@ -1489,6 +1457,8 @@ export default function HexDuelPage() {
   handleDisplaceRef.current = handleDisplace;
   const endTurnRef = useRef(endTurn);
   endTurnRef.current = endTurn;
+  const handleUpgradeRef = useRef(handleUpgrade);
+  handleUpgradeRef.current = handleUpgrade;
   const skipRoundRef = useRef(skipRound);
   skipRoundRef.current = skipRound;
   const isGameOverRef = useRef(false);
@@ -1643,10 +1613,9 @@ export default function HexDuelPage() {
     [p1TotalTroops, p2TotalTroops]
   );
 
-  // ── AI Turn Execution (event-driven: ONE move per invocation) ──
-  // Uses refs to avoid stale closure issues. The aiMoveTick counter
-  // triggers the useEffect after each move to cascade subsequent moves.
-  const [aiMoveTick, setAiMoveTick] = useState(0);
+  // ── AI Turn Execution (event-driven: ONE action per turn) ──
+  // Uses refs to avoid stale closure issues. One invocation is the AI's whole
+  // turn: the action it takes flips the turn back to the human.
   const aiCancelledRef = useRef(false);
   const aiEnabledRef = useRef(aiEnabled);
   aiEnabledRef.current = aiEnabled;
@@ -1654,23 +1623,18 @@ export default function HexDuelPage() {
   aiDifficultyRef.current = aiDifficulty;
 
   // Ref-based snapshot builder — always returns latest values
-  const aiSnapshotRef = useRef<AIStateSnapshot>({ myPlayer: "player2", enemyPlayer: "player1", capturedTiles, capitals, tileTroops, currentAP });
-  aiSnapshotRef.current = { myPlayer: "player2", enemyPlayer: "player1", capturedTiles, capitals, tileTroops, currentAP };
+  const aiSnapshotRef = useRef<AIStateSnapshot>({ myPlayer: "player2", enemyPlayer: "player1", capturedTiles, capitals, tileTroops, territoryLevels });
+  aiSnapshotRef.current = { myPlayer: "player2", enemyPlayer: "player1", capturedTiles, capitals, tileTroops, territoryLevels };
 
-  // Make ONE AI decision and execute it. Returns when the move is queued.
-  // setAiMoveTick triggers a cascade via the useEffect dep.
+  // Make ONE AI decision and execute it. Returns when the action is queued —
+  // the action itself ends the AI's turn, so there is nothing to cascade.
   const makeAIMove = useCallback(async () => {
     if (pausedRef.current || !aiEnabledRef.current || isGameOverRef.current || gameMode === "idle") return;
 
     const snap = aiSnapshotRef.current;
 
-    // No AP → end turn
-    if (snap.currentAP < ATTACK_COST) {
-      endTurnRef.current();
-      setAIAction({ type: "endTurn" });
-      setAIThinking(false);
-      return;
-    }
+    // ONE ACTION PER TURN: the single decision below is the AI's whole turn.
+    // There is no action-point budget to spend down, so nothing loops.
 
     // Get AI decision
     let action: AIAction;
@@ -1699,21 +1663,29 @@ export default function HexDuelPage() {
       handleAttackRef.current(action.sourceKey, action.targetKey, action.troopCount);
       await new Promise((r) => setTimeout(r, 150));
       if (aiCancelledRef.current) return;
-      // Cascade: may have remaining AP for further actions
-      setAiMoveTick((t) => t + 1);
+      // ONE ACTION PER TURN: that attack handed the turn to the human, so the
+      // AI stops here — no cascade, no second action.
+      setAIThinking(false);
     } else if (action.type === "displace") {
       // Execute AI displace
       handleDisplaceRef.current(action.sourceKey, action.targetKey, action.troopCount);
       await new Promise((r) => setTimeout(r, 150));
       if (aiCancelledRef.current) return;
-      // Cascade: may have remaining AP for further actions
-      setAiMoveTick((t) => t + 1);
+      // ONE ACTION PER TURN: the displacement ended the AI's turn.
+      setAIThinking(false);
+    } else if (action.type === "upgrade") {
+      // Execute AI upgrade — level and cost come from the shared rulebook,
+      // exactly like the human path, and it ends the AI's turn.
+      handleUpgradeRef.current(action.sourceKey);
+      await new Promise((r) => setTimeout(r, 150));
+      if (aiCancelledRef.current) return;
+      setAIThinking(false);
     }
   }, [gameMode]);  // stable deps — everything else via refs
 
   // ── AI Turn Orchestrator ─────────────────────────────────────
-  // Fires when currentTurn or aiMoveTick changes. Each tick triggers
-  // one AI move. The loop continues until AP depletes or game ends.
+  // Fires when the turn changes. The AI makes exactly ONE action and the
+  // reducer hands the turn back, so this effect runs once per AI turn.
   useEffect(() => {
     if (paused || !aiEnabled || currentTurn !== "player2" || isGameOverRef.current || gameMode === "idle") {
       setAIThinking(false);
@@ -1748,7 +1720,7 @@ export default function HexDuelPage() {
     run();
 
     return () => { aiCancelledRef.current = true; };
-  }, [paused, currentTurn, aiMoveTick, aiEnabled, gameMode, makeAIMove]);
+  }, [paused, currentTurn, aiEnabled, gameMode, makeAIMove]);
 
   // ── Chess clock derived values for StatusBar ──────────────────────
   const activeClockPlayer = !aiThinking ? currentTurn : null;
@@ -1762,7 +1734,42 @@ export default function HexDuelPage() {
   const handleToggleAI = useCallback(() => setAIEnabled((p) => { const n = !p; if (!n) { setAIThinking(false); setAIAction(null); } return n; }), []);
   const handleDifficultyChange = useCallback((diff: AIDifficulty) => setAIDifficulty(diff), []);
 
-  // Wrap endTurn to also send via socket in multiplayer AND update server turn state AND record action
+  // Choosing an action always starts that action from scratch: the pending
+  // target/source belong to the previous mode.
+  const handleSelectAction = useCallback((action: ActionType) => {
+    setSelectedAction(action);
+    setPendingActionPhase(null);
+    setPendingTarget(null);
+    setPendingSource(null);
+    setPendingTroopCount(1);
+  }, []);
+
+  // What the Upgrade panel shows for the tapped territory. It is computed by
+  // the same rulebook the server validates with, so the preview cannot promise
+  // an upgrade the engine would refuse.
+  const upgradePreview = useMemo<UpgradePreview | null>(() => {
+    if (selectedAction !== "upgrade" || !pendingTarget) return null;
+    const key = `${pendingTarget.x},${pendingTarget.y}`;
+    const info = getUpgradeInfo(
+      { capturedTiles, tileTroops, territoryLevels },
+      currentTurn,
+      key,
+    );
+    return {
+      key,
+      currentLevel: info.level,
+      nextLevel: info.nextLevel ?? info.level,
+      cost: info.cost ?? 0,
+      troops: info.troops,
+      remainingTroops: info.remainingTroops,
+      nextCapacity: info.nextMaxTroops,
+      canUpgrade: info.ok,
+      reason: info.ok ? null : info.error ?? null,
+    };
+  }, [selectedAction, pendingTarget, capturedTiles, tileTroops, territoryLevels, currentTurn]);
+
+  // The Skip Turn control: flips the turn locally, and in multiplayer also
+  // sends the skip and records it on the server.
   const handleEndTurn = useCallback(() => {
     // Defensive guard — in multiplayer, only the active local player can
     // call endTurn. If `isLocalTurn` is false (e.g. the engine just
@@ -1773,15 +1780,11 @@ export default function HexDuelPage() {
     const prevTurn = currentTurn;
     endTurn();
     if (gameMode === "multiplayer") {
-      // The `player` field tells the receiver unambiguously whose turn
-      // ended. Without it the receiver relies on mirror-state which can
-      // drift under load. The server-status POST is no longer needed
-      // here — the dedicated turn-change useEffect below handles ALL
-      // local-initiated turn transitions (explicit End Turn, Skip Round,
-      // AND the engine's AP=0 attack/displace auto-flip), eliminating a
-      // class of bounces where the sender's polling would otherwise
-      // re-fire a synthetic endTurn from a stale local state.
-      const action: MultiplayerAction = { type: "endTurn", player: prevTurn };
+      // The dedicated SKIP move: it carries no payload beyond the seat, and
+      // the server records it like any other action — one action per turn, so
+      // it also ends the turn. `player` pins whose turn ended even if the
+      // local mirror has drifted.
+      const action: MultiplayerAction = { type: "skipRound", player: prevTurn };
       sendMultiplayerAction(action);
       recordMultiplayerAction(action);
     }
@@ -1883,9 +1886,9 @@ export default function HexDuelPage() {
   }, [gameMode, socket, multiplayerGameId, currentTurn, isPlayer1, isGameOver]);
 
   // ── Status POST on local turn-change (prevents polling bounce) ───────
-  // Every dispatch that flips currentTurn on this client (explicit
-  // handleEndTurn, handleSkipRound, OR engine's AP=0 attack/displace
-  // auto-flip) needs to immediately POST the new currentTurn to the
+  // Every dispatch that flips currentTurn on this client (an explicit
+  // handleEndTurn / handleSkipRound, OR the auto-flip a resolved
+  // attack/displace produces) needs to immediately POST the new currentTurn to the
   // server so the polling fallback on both clients doesn't see a
   // local-ahead/server-stale mismatch. Without this, the client's own
   // polling cycle would fire a synthetic endTurn that re-flip the
@@ -1957,8 +1960,8 @@ export default function HexDuelPage() {
         }
 
         // Bail if local is AHEAD of server — local engine already
-        // pre-emptively flipped (e.g. local handleEndTurn or AP=0
-        // attack/displace auto-flip) and the POST to /status is
+        // pre-emptively flipped (e.g. a local handleEndTurn or a resolved
+        // attack) and the POST to /status is
         // in-flight. Server will reconcile shortly. Firing a synthetic
         // endTurn here is what was BOUNCING the player's UI back to
         // their own turn immediately after they ended it.
@@ -2277,19 +2280,45 @@ export default function HexDuelPage() {
       }
       return;
     }
+
+    // ── Upgrade action mode ───────────────────────────────────────────
+    // An upgrade has no troop count and no second tile: tap one of your own
+    // territories, review the preview in the panel, confirm.
+    if (selectedAction === "upgrade") {
+      if (capturedTiles[key] !== currentTurn) return;
+      setPendingTarget({ x, y });
+      setPendingSource(null);
+      setPendingActionPhase("inputTroops");
+      return;
+    }
   }, [selectedAction, pendingActionPhase, pendingTarget, attackableTargets, getAttackSources, getDisplaceSources, capturedTiles, currentTurn, tileTroops]);
 
 
 
   const handleConfirmAction = useCallback(() => {
+    if (selectedAction === "upgrade" && pendingTarget && upgradePreview?.canUpgrade) {
+      const sourceKey = `${pendingTarget.x},${pendingTarget.y}`;
+      handleUpgrade(sourceKey);
+      // One action per turn: the upgrade ends the turn, so no endTurn echo.
+      if (gameMode === "multiplayer") {
+        const action: MultiplayerAction = { type: "upgrade", sourceKey };
+        sendMultiplayerAction(action);
+        recordMultiplayerAction(action);
+      }
+      setPendingActionPhase(null);
+      setPendingTarget(null);
+      setPendingSource(null);
+      setSelectedAction(null);
+      setPendingTroopCount(1);
+      return;
+    }
     if (selectedAction === "attack" && pendingSource && pendingTarget && pendingActionPhase === "inputTroops") {
       const sourceKey = `${pendingSource.x},${pendingSource.y}`;
       const targetKey = `${pendingTarget.x},${pendingTarget.y}`;
       handleAttack(sourceKey, targetKey, pendingTroopCount);
-      // Send action to opponent in multiplayer AND record to server.
-      // Note: do NOT send a separate endTurn here — handleAttack auto-switches
-      // the turn when AP depletes, and the receiver's applyRemoteAction will
-      // also auto-switch. Sending an extra endTurn causes a double-switch bug.
+      // Send action to opponent in multiplayer AND record to server. The
+      // action itself ends the turn under the one-action rule, so no endTurn
+      // echo is sent — an extra flip would hand the turn back twice.
       if (gameMode === "multiplayer") {
         const action: MultiplayerAction = { type: "attack", sourceKey, targetKey, troopCount: pendingTroopCount };
         sendMultiplayerAction(action);
@@ -2305,10 +2334,9 @@ export default function HexDuelPage() {
       const sourceKey = `${pendingSource.x},${pendingSource.y}`;
       const targetKey = `${pendingTarget.x},${pendingTarget.y}`;
       handleDisplace(sourceKey, targetKey, pendingTroopCount);
-      // Send action to opponent in multiplayer AND record to server.
-      // Note: do NOT send a separate endTurn here — handleDisplace auto-switches
-      // the turn when AP depletes, and the receiver's applyRemoteAction will
-      // also auto-switch. Sending an extra endTurn causes a double-switch bug.
+      // Send action to opponent in multiplayer AND record to server. The
+      // action itself ends the turn under the one-action rule, so no endTurn
+      // echo is sent — an extra flip would hand the turn back twice.
       if (gameMode === "multiplayer") {
         const action: MultiplayerAction = { type: "displace", sourceKey, targetKey, troopCount: pendingTroopCount };
         sendMultiplayerAction(action);
@@ -2321,7 +2349,7 @@ export default function HexDuelPage() {
       setSelectedAction(null);
       setPendingTroopCount(1);
     }
-  }, [selectedAction, pendingSource, pendingTarget, pendingActionPhase, pendingTroopCount, handleAttack, handleDisplace, gameMode, sendMultiplayerAction, recordMultiplayerAction]);
+  }, [selectedAction, pendingSource, pendingTarget, pendingActionPhase, pendingTroopCount, handleAttack, handleDisplace, handleUpgrade, upgradePreview, gameMode, sendMultiplayerAction, recordMultiplayerAction]);
 
   const handleSelectUnit = useCallback(() => {
     // No-op in new system
@@ -2376,15 +2404,38 @@ export default function HexDuelPage() {
   }, [selectedAction, pendingActionPhase, pendingTarget, pendingSource, pendingTroopCount, tileTroops]);
 
   const hasPending = useMemo(
-    () => pendingActionPhase === "inputTroops",
-    [pendingActionPhase]
+    // The upgrade card is its own preview, so it never uses the generic
+    // pending block (and never opens the troop popup).
+    () => pendingActionPhase === "inputTroops" && selectedAction !== "upgrade",
+    [pendingActionPhase, selectedAction]
   );
 
   // Max troops available to send from the selected source (must leave 1 behind)
   const maxSendTroops = useMemo(() => {
     if (!pendingSource) return 0;
-    return sendableTroops(tileTroops[`${pendingSource.x},${pendingSource.y}`] ?? 1);
-  }, [pendingSource, tileTroops]);
+    const sourceKey = `${pendingSource.x},${pendingSource.y}`;
+    const sendable = sendableTroops(tileTroops[sourceKey] ?? 1);
+    if (!pendingTarget) return sendable;
+    const targetKey = `${pendingTarget.x},${pendingTarget.y}`;
+    if (selectedAction === "displace") {
+      // The destination's level capacity caps what it can take.
+      const room =
+        territoryMaxTroops(territoryLevelOf({ territoryLevels }, targetKey)) -
+        (tileTroops[targetKey] ?? 1);
+      return Math.max(0, Math.min(sendable, room));
+    }
+    if (selectedAction === "attack") {
+      // A conquest takes the tile at level 1, so the survivors (sent minus the
+      // defenders) must fit its ceiling.
+      const defenders =
+        capturedTiles[targetKey] === undefined ? 0 : tileTroops[targetKey] ?? 1;
+      return Math.max(
+        0,
+        Math.min(sendable, defenders + territoryMaxTroops(INITIAL_TERRITORY_LEVEL)),
+      );
+    }
+    return sendable;
+  }, [pendingSource, pendingTarget, selectedAction, tileTroops, capturedTiles, territoryLevels]);
 
   // ── Perspective-aware mapping ────────────────────────────────────────
   // Computed here after all dependencies (troop totals, clock) are declared.
@@ -2403,6 +2454,56 @@ export default function HexDuelPage() {
   const localDuelPlayer: DuelPlayer = localPlayerIsP1 ? "player1" : "player2";
   const opponentDuelPlayer: DuelPlayer = localPlayerIsP1 ? "player2" : "player1";
   const localColor = localDuelPlayer === "player1" ? "#22d3ee" : "#ef4444";
+
+  // ── Pending-action visuals ───────────────────────────────────────────
+  // The arrow only exists while the troop popup is open (source AND
+  // destination chosen); clearing or confirming the action resets that state,
+  // which removes the arrow with it.
+  const actionArrow = useMemo(() => {
+    if (selectedAction !== "attack" && selectedAction !== "displace") return null;
+    if (pendingActionPhase !== "inputTroops" || !pendingSource || !pendingTarget) {
+      return null;
+    }
+    return {
+      fromKey: `${pendingSource.x},${pendingSource.y}`,
+      toKey: `${pendingTarget.x},${pendingTarget.y}`,
+      color: localColor,
+      troopCount: pendingTroopCount,
+      mode: selectedAction,
+    };
+  }, [
+    selectedAction,
+    pendingActionPhase,
+    pendingSource,
+    pendingTarget,
+    pendingTroopCount,
+    localColor,
+  ]);
+
+  // Expected combat result for the current count — computed by the same
+  // rulebook the server validates with, never a client-side guess.
+  const attackPreview = useMemo(() => {
+    if (selectedAction !== "attack" || !pendingSource || !pendingTarget) return null;
+    return describeAttackPreview(
+      resolveAttackOutcome(
+        { capturedTiles, tileTroops },
+        `${pendingSource.x},${pendingSource.y}`,
+        `${pendingTarget.x},${pendingTarget.y}`,
+        pendingTroopCount,
+        currentTurn,
+        capitals,
+      ),
+    );
+  }, [
+    selectedAction,
+    pendingSource,
+    pendingTarget,
+    pendingTroopCount,
+    capturedTiles,
+    tileTroops,
+    currentTurn,
+    capitals,
+  ]);
   const opponentColor = opponentDuelPlayer === "player1" ? "#22d3ee" : "#ef4444";
 
   // ── View-layer perspective swap ──────────────────────────────────────
@@ -2594,7 +2695,7 @@ export default function HexDuelPage() {
           {showGame && (
             <div className="mb-6">
               <StatusBar
-                currentTurn={currentTurn} currentAP={currentAP} maxAP={maxAP}
+                currentTurn={currentTurn}
                 onEndTurn={handleEndTurn}                isGameOver={isGameOver}
                 aiThinking={aiThinking} aiEnabled={aiEnabled}
                 showEndTurn={!isSpectator && (gameMode !== "multiplayer" || isLocalTurn)}
@@ -2611,7 +2712,6 @@ export default function HexDuelPage() {
                   player={localDuelPlayer} label={localLabel}
                   isActive={localIsActive} isSelected={false}
                   color={localColor} moves={localMoves} territory={localTerritory}
-                  currentAP={localIsActive ? currentAP : 0} maxAP={maxAP}
                   isWinner={localIsWinner} isLocal={true} turnJustChanged={turnJustChanged}
                   totalTroops={localTotalTroops} maxTroops={maxTroops}
                   clockTime={localClockTime}
@@ -2621,13 +2721,12 @@ export default function HexDuelPage() {
                 {showGame && !isSpectator && (gameMode !== "multiplayer" || isPlayer1) && (
                   <HexActionPanel
                     currentTurn={currentTurn}
-                    currentAP={currentAP}
-                    maxAP={maxAP}
                     selectedUnit={selectedUnit}
                     validMoves={validMoves}
                     selectedAction={selectedAction}
-                    onSelectAction={setSelectedAction}
+                    onSelectAction={handleSelectAction}
                     onSelectUnit={handleSelectUnit}
+                    upgradePreview={upgradePreview}
                     pendingDescription={pendingDescription}
                     hasPending={hasPending}
                     onConfirm={handleConfirmAction}
@@ -2637,7 +2736,6 @@ export default function HexDuelPage() {
                     playerColor={localColor}
                     isActive={isLocalTurn && localIsActive && !aiThinking}
                     isAITurn={false}
-                    onEndTurn={handleEndTurn}
                     onSkipRound={handleSkipRound}
                   />
                 )}
@@ -2682,7 +2780,7 @@ export default function HexDuelPage() {
                         two-line one occupy the same space at narrow widths. */}
                     <p className="mt-1.5 min-h-[14px] text-[10px] text-slate-500">
                       {isLocalTurn
-                        ? "Attack enemy tiles (1 AP) or displace troops (1 AP)"
+                        ? "One action this turn — attack, displace, upgrade or skip"
                         : opponentReady
                         ? `${opponentLabel} is planning their next move`
                         : `Connecting to ${opponentLabel}...`}
@@ -2723,6 +2821,15 @@ export default function HexDuelPage() {
     ? undefined
     : flipKey(`${pendingTarget.x},${pendingTarget.y}`)
 }
+                  troopAnimation={moveAnimation}
+                  actionTargetKey={
+  isGameOver || (aiThinking && currentTurn === "player2") || !pendingTarget
+    ? undefined
+    : flipKey(`${pendingTarget.x},${pendingTarget.y}`)
+}
+                  actionArrow={
+  isGameOver || (aiThinking && currentTurn === "player2") ? null : actionArrow
+}
                 />
               </div>
               </div>
@@ -2735,7 +2842,6 @@ export default function HexDuelPage() {
                   player={opponentDuelPlayer} label={opponentLabel}
                   isActive={opponentIsActive} isSelected={false}
                   color={opponentColor} moves={opponentMoves} territory={opponentTerritory}
-                  currentAP={opponentIsActive ? currentAP : 0} maxAP={maxAP}
                   isWinner={opponentIsWinner} isAI={aiEnabled} isLocal={false} turnJustChanged={turnJustChanged}
                   totalTroops={opponentTotalTroops} maxTroops={maxTroops}
                   clockTime={opponentClockTime}
@@ -2757,13 +2863,12 @@ export default function HexDuelPage() {
                   // user: blue local → left, red local → right.
                   <HexActionPanel
                     currentTurn={currentTurn}
-                    currentAP={currentAP}
-                    maxAP={maxAP}
                     selectedUnit={selectedUnit}
                     validMoves={validMoves}
                     selectedAction={selectedAction}
-                    onSelectAction={setSelectedAction}
+                    onSelectAction={handleSelectAction}
                     onSelectUnit={handleSelectUnit}
+                    upgradePreview={upgradePreview}
                     pendingDescription={pendingDescription}
                     hasPending={hasPending}
                     onConfirm={handleConfirmAction}
@@ -2773,7 +2878,6 @@ export default function HexDuelPage() {
                     playerColor={localColor}
                     isActive={isLocalTurn && localIsActive && !aiThinking}
                     isAITurn={false}
-                    onEndTurn={handleEndTurn}
                     onSkipRound={handleSkipRound}
                   />
                 )}
@@ -2851,6 +2955,28 @@ export default function HexDuelPage() {
         value={pendingTroopCount}
         max={maxSendTroops}
         color={localColor}
+        sourceKey={`${pendingSource!.x},${pendingSource!.y}`}
+        sourceTroops={tileTroops[`${pendingSource!.x},${pendingSource!.y}`] ?? 1}
+        destinationKey={`${pendingTarget!.x},${pendingTarget!.y}`}
+        destinationTroops={
+          capturedTiles[`${pendingTarget!.x},${pendingTarget!.y}`] === undefined
+            ? 0
+            : tileTroops[`${pendingTarget!.x},${pendingTarget!.y}`] ?? 1
+        }
+        destinationCapacity={
+          selectedAction === "displace"
+            ? territoryMaxTroops(
+                territoryLevelOf(
+                  { territoryLevels },
+                  `${pendingTarget!.x},${pendingTarget!.y}`,
+                ),
+              )
+            : undefined
+        }
+        expected={selectedAction === "attack" ? attackPreview?.text ?? null : null}
+        expectedConquers={
+          selectedAction === "attack" ? attackPreview?.conquers ?? false : false
+        }
         onChange={setPendingTroopCount}
         onConfirm={handleConfirmAction}
         onCancel={handleClearAction}
@@ -3045,13 +3171,13 @@ export default function HexDuelPage() {
             <div className="flex flex-wrap items-center justify-center gap-3 text-[10px] text-slate-500">
               <span className="flex items-center gap-1"><span className="text-cyan-400">1.</span> Start with 5 troops on your <IconStar size={10} className="inline text-yellow-400" /> capital</span>
               <span className="text-slate-700">→</span>
-              <span className="flex items-center gap-1"><span className="text-yellow-400">2.</span> Select Attack (1 AP) to conquer adjacent enemy tiles</span>
+              <span className="flex items-center gap-1"><span className="text-yellow-400">2.</span> Select Attack to conquer an adjacent neutral or enemy tile — it ends your turn</span>
               <span className="text-slate-700">→</span>
               <span className="flex items-center gap-1"><span className="text-cyan-400">3.</span> Need 1 more troop than defender to conquer</span>
               <span className="text-slate-700">→</span>
-              <span className="flex items-center gap-1"><span className="text-green-400">4.</span> Use Displace (1 AP) to move troops between tiles</span>
+              <span className="flex items-center gap-1"><span className="text-green-400">4.</span> Use Displace to move troops between your own tiles — it ends your turn</span>
               <span className="text-slate-700">→</span>
-              <span className="flex items-center gap-1"><span className="text-purple-400">5.</span> Each end-turn: +1 troop on all tiles, +1 AP (max 3)</span>
+              <span className="flex items-center gap-1"><span className="text-purple-400">5.</span> Each turn end: +1 troop on every tile you own, then the turn passes</span>
               <span className="text-slate-700">→</span>
               <span className="flex items-center gap-1"><span className="text-red-400">6.</span> Conquer the enemy&apos;s <IconStar size={10} className="inline text-yellow-400" /> capital to win!</span>
             </div>

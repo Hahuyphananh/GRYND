@@ -4,6 +4,36 @@ import React from "react";
 import { IconStar } from "@tabler/icons-react";
 import HexTile, { type HexTileData } from "./HexTile";
 import HexParticles from "./HexParticles";
+import { arrowGeometry, type ArrowGeometry } from "../lib/hexBoardGeometry";
+import HexMoveAnimation from "./HexMoveAnimation";
+import type { TroopMoveEvent } from "../lib/hexTroopAnimation";
+
+/** A pending attack/displacement, drawn as a source→destination arrow. */
+export interface ActionArrow {
+  fromKey: string;
+  toKey: string;
+  color: string;
+  troopCount: number;
+  mode: "attack" | "displace";
+}
+
+/**
+ * Centre of `el` in `host`'s layout pixels. Uses offsetLeft/offsetTop rather
+ * than getBoundingClientRect so the result is immune to the board's CSS scale,
+ * page scrolling and the horizontal scroller — exactly what an overlay child of
+ * the same frame needs.
+ */
+function centerIn(host: HTMLElement, el: HTMLElement): { x: number; y: number } {
+  let x = el.offsetLeft + el.offsetWidth / 2;
+  let y = el.offsetTop + el.offsetHeight / 2;
+  let node = el.offsetParent as HTMLElement | null;
+  while (node && node !== host) {
+    x += node.offsetLeft;
+    y += node.offsetTop;
+    node = node.offsetParent as HTMLElement | null;
+  }
+  return { x, y };
+}
 
 interface HexBoardProps {
   grid: HexTileData[][];
@@ -27,6 +57,20 @@ interface HexBoardProps {
    * tiles around it.
    */
   displaceTargetKey?: string;
+  /**
+   * The CHOSEN destination of the pending action (attack, displace or
+   * upgrade) — painted with the same ring as a displace target so the end of
+   * the arrow is always visible as the destination.
+   */
+  actionTargetKey?: string;
+  /** Source→destination arrow, shown while a troop count is being chosen. */
+  actionArrow?: ActionArrow | null;
+  /**
+   * The last applied attack/displacement, published by the engine. Purely
+   * presentational: the board animates the troops that already moved, using
+   * the authoritative survivors/owners in the event.
+   */
+  troopAnimation?: TroopMoveEvent | null;
   /**
    * Optional perspective-aware legend props.
    * When passed, the legend shows perspective-relative labels + colors so the
@@ -57,6 +101,9 @@ export default function HexBoard({
   localLabel,
   opponentLabel,
   displaceTargetKey,
+  actionTargetKey,
+  actionArrow,
+  troopAnimation,
 }: HexBoardProps) {
   const [dims, setDims] = React.useState({ width: 90, height: 90 });
   const boardRef = React.useRef<HTMLDivElement>(null);
@@ -128,6 +175,102 @@ export default function HexBoard({
     [sourceHighlightKeys]
   );
 
+  // ── Action arrow geometry ───────────────────────────────────────────
+  // The overlay is a child of the board frame, so tile centres are measured in
+  // the frame's own layout pixels. That keeps the arrow aligned under the
+  // board's responsive scale, while the page scrolls and while the horizontal
+  // scroller moves — and it never adds layout (absolute inset-0).
+  const frameRef = React.useRef<HTMLDivElement>(null);
+  const [arrow, setArrow] = React.useState<ArrowGeometry | null>(null);
+
+  React.useEffect(() => {
+    if (!actionArrow) {
+      setArrow(null);
+      return;
+    }
+    const frame = frameRef.current;
+    if (!frame) return;
+    let raf = 0;
+
+    const measure = () => {
+      const fromEl = frame.querySelector<HTMLElement>(
+        `[data-tile-key="${actionArrow.fromKey}"]`,
+      );
+      const toEl = frame.querySelector<HTMLElement>(
+        `[data-tile-key="${actionArrow.toKey}"]`,
+      );
+      if (!fromEl || !toEl) {
+        setArrow(null);
+        return;
+      }
+      setArrow(
+        arrowGeometry(centerIn(frame, fromEl), centerIn(frame, toEl), {
+          startInset: fromEl.offsetWidth * 0.42,
+          endInset: toEl.offsetWidth * 0.5,
+          headLength: Math.max(9, toEl.offsetWidth * 0.16),
+          headWidth: Math.max(6, toEl.offsetWidth * 0.12),
+        }),
+      );
+    };
+
+    measure();
+    raf = requestAnimationFrame(measure);
+    window.addEventListener("resize", measure);
+    const observer =
+      typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    observer?.observe(frame);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", measure);
+      observer?.disconnect();
+    };
+  }, [actionArrow?.fromKey, actionArrow?.toKey, actionArrow?.mode, actionArrow?.color, width]);
+
+  // ── Troop movement animation ────────────────────────────────────────
+  // Completely separate from the arrow: that one previews a pending action,
+  // this one replays an action the engine already resolved. Dots of the two
+  // participating tiles are muted while it runs, so the formation revealed at
+  // the end is the real authoritative one.
+  const [reducedMotion, setReducedMotion] = React.useState(false);
+  const [moveEffect, setMoveEffect] = React.useState<{
+    event: TroopMoveEvent;
+    from: { x: number; y: number };
+    to: { x: number; y: number };
+    radius: number;
+  } | null>(null);
+
+  React.useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setReducedMotion(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+
+  React.useEffect(() => {
+    if (!troopAnimation) {
+      setMoveEffect(null);
+      return;
+    }
+    const frame = frameRef.current;
+    if (!frame) return;
+    const fromEl = frame.querySelector<HTMLElement>(
+      `[data-tile-key="${troopAnimation.fromKey}"]`,
+    );
+    const toEl = frame.querySelector<HTMLElement>(
+      `[data-tile-key="${troopAnimation.toKey}"]`,
+    );
+    if (!fromEl || !toEl) return;
+    setMoveEffect({
+      event: troopAnimation,
+      from: centerIn(frame, fromEl),
+      to: centerIn(frame, toEl),
+      radius: Math.max(fromEl.offsetWidth, toEl.offsetWidth) / 2,
+    });
+  }, [troopAnimation?.id, width]);
+
+  const handleMoveDone = React.useCallback(() => setMoveEffect(null), []);
+
   return (
     <div
       ref={boardRef}
@@ -142,6 +285,7 @@ export default function HexBoard({
     >
       {/* ── GRID BOARD ─────────────────────────────────────────────────── */}
       <div
+        ref={frameRef}
         className="relative inline-block rounded-3xl p-2 sm:p-3
           border border-white/10
           bg-[#050a18]
@@ -216,11 +360,97 @@ export default function HexBoard({
                     displaceTargetKey !== undefined &&
                     displaceTargetKey === `${tile.x},${tile.y}`
                   }
+                  isChosenTarget={
+                    actionTargetKey !== undefined &&
+                    actionTargetKey === `${tile.x},${tile.y}`
+                  }
+                  dotsMuted={
+                    !reducedMotion &&
+                    moveEffect !== null &&
+                    (moveEffect.event.fromKey === `${tile.x},${tile.y}` ||
+                      moveEffect.event.toKey === `${tile.x},${tile.y}`)
+                  }
                 />
               ))}
             </div>
           ))}
         </div>
+
+        {/* Directional arrow overlay — purely visual. It is absolutely
+            positioned inside the board frame (no layout shift), drawn in the
+            acting player's colour, dashed for a displacement, and
+            pointer-events-none so it can never intercept a tile click. */}
+        {actionArrow && arrow && (
+          <div
+            data-hex-action-overlay=""
+            className="pointer-events-none absolute inset-0 z-20"
+          >
+            <svg
+              data-hex-action-arrow={actionArrow.mode}
+              className="pointer-events-none h-full w-full"
+              role="img"
+              aria-label={`${actionArrow.troopCount} troops ${
+                actionArrow.mode === "attack" ? "attacking" : "displacing"
+              }`}
+            >
+              <line
+                x1={arrow.start.x}
+                y1={arrow.start.y}
+                x2={arrow.end.x}
+                y2={arrow.end.y}
+                stroke="#020617"
+                strokeWidth={7}
+                strokeLinecap="round"
+                opacity={0.6}
+              />
+              <line
+                x1={arrow.start.x}
+                y1={arrow.start.y}
+                x2={arrow.end.x}
+                y2={arrow.end.y}
+                stroke={actionArrow.color}
+                strokeWidth={3}
+                strokeLinecap="round"
+                strokeDasharray={actionArrow.mode === "displace" ? "7 5" : undefined}
+              />
+              <polygon
+                points={arrow.head}
+                fill={actionArrow.color}
+                stroke="#020617"
+                strokeWidth={1.5}
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span
+              data-hex-arrow-label=""
+              className="pointer-events-none absolute rounded-md border px-1.5 py-0.5 text-[10px] font-black tabular-nums backdrop-blur-sm"
+              style={{
+                left: arrow.label.x,
+                top: arrow.label.y,
+                transform: "translate(-50%, -50%)",
+                color: actionArrow.color,
+                borderColor: `${actionArrow.color}66`,
+                background: "rgba(2,6,23,0.85)",
+                boxShadow: `0 0 10px ${actionArrow.color}33`,
+              }}
+            >
+              {actionArrow.troopCount}
+            </span>
+          </div>
+        )}
+
+        {/* Troop-movement / battle overlay — visual only, never blocks a
+            click and never changes layout. */}
+        {moveEffect && !reducedMotion && (
+          <HexMoveAnimation
+            key={moveEffect.event.id}
+            event={moveEffect.event}
+            from={moveEffect.from}
+            to={moveEffect.to}
+            radius={moveEffect.radius}
+            onDone={handleMoveDone}
+          />
+        )}
 
         {/* Corner decorative elements */}
         <div className="absolute top-0 left-0 w-5 h-5 sm:w-7 sm:h-7 border-t border-l border-cyan-400/20 rounded-tl-xl" />

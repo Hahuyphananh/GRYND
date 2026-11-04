@@ -52,6 +52,7 @@ export interface HexDuelReplay {
 export const HEX_DUEL_MOVE_TYPES: readonly HexDuelMoveType[] = [
   "attack",
   "displace",
+  "upgrade",
   "endTurn",
   "skipRound",
 ];

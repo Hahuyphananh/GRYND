@@ -38,6 +38,20 @@ interface HexTroopPopupProps {
   max: number;
   /** Accent colour of the acting player. */
   color: string;
+  /** Source territory key, for the compact action summary. */
+  sourceKey?: string;
+  /** Troops on the source before the send (authoritative). */
+  sourceTroops?: number;
+  /** Destination territory key. */
+  destinationKey?: string;
+  /** Troops on the destination (0 for neutral). */
+  destinationTroops?: number;
+  /** Destination's troop ceiling, when it has one (displacement). */
+  destinationCapacity?: number;
+  /** One-line expected combat result (attack only). */
+  expected?: string | null;
+  /** Whether that expectation is a conquest (drives the colour). */
+  expectedConquers?: boolean;
   /**
    * Side to try first. Hex Duel passes the side facing AWAY from the target
    * tile so the popup never covers the territory the troops are going to;
@@ -76,6 +90,13 @@ export default function HexTroopPopup({
   value,
   max,
   color,
+  sourceKey,
+  sourceTroops,
+  destinationKey,
+  destinationTroops,
+  destinationCapacity,
+  expected,
+  expectedConquers,
   preferPlacement,
   onChange,
   onConfirm,
@@ -253,6 +274,48 @@ export default function HexTroopPopup({
 
         <p className={`font-mono text-[9px] text-slate-500 ${tip ? "mb-0.5" : "mb-2"}`}>{hint}</p>
         {tip && <p className="mb-2 text-[8px] leading-tight text-slate-600">{tip}</p>}
+
+        {/* Source / destination / remaining — the same numbers the rulebook
+            will apply, read from the authoritative game state. Compact on
+            purpose: the popup floats over the board. */}
+        {typeof sourceTroops === "number" && (
+          <dl className="mb-2 space-y-0.5 font-mono text-[9px]">
+            <div className="flex items-center justify-between gap-2">
+              <dt className="text-slate-500">{sourceKey ?? "Source"}</dt>
+              <dd className="text-slate-300">
+                {sourceTroops} →{" "}
+                <span style={{ color }}>{Math.max(0, sourceTroops - value)}</span>
+              </dd>
+            </div>
+            {destinationKey && typeof destinationTroops === "number" && (
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-slate-500">{destinationKey}</dt>
+                <dd className="text-slate-300">
+                  {destinationTroops}
+                  {typeof destinationCapacity === "number"
+                    ? ` / ${destinationCapacity}`
+                    : ""}
+                </dd>
+              </div>
+            )}
+            <div className="flex items-center justify-between gap-2">
+              <dt className="text-slate-500">Sending</dt>
+              <dd className="font-bold" style={{ color }}>
+                {value}
+              </dd>
+            </div>
+          </dl>
+        )}
+
+        {expected && (
+          <p
+            data-hex-attack-preview=""
+            className="mb-2 text-[9px] font-bold leading-tight"
+            style={{ color: expectedConquers ? "#4ade80" : "#fca5a5" }}
+          >
+            {expected}
+          </p>
+        )}
 
         {/* Troop count */}
         <div className="flex items-center gap-1.5">
