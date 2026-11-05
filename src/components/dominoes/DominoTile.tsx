@@ -60,6 +60,8 @@ export type DominoTileProps = {
   playable?: boolean;
   /** The tile was just played — the restrained placement animation hook. */
   isNew?: boolean;
+  /** The tile was just DRAWN into the hand — the picking animation hook. */
+  isDrawn?: boolean;
   /** Rendered as a button and clickable. */
   interactive?: boolean;
   disabled?: boolean;
@@ -93,6 +95,7 @@ export default function DominoTile({
   selected = false,
   playable = false,
   isNew = false,
+  isDrawn = false,
   interactive = false,
   disabled = false,
   onClick,
@@ -122,6 +125,7 @@ export default function DominoTile({
     playable ? "is-playable" : "",
     isDouble ? "is-double" : "",
     isNew ? "is-new" : "",
+    isDrawn ? "is-drawn" : "",
     seat ? `seat-${seat}` : "",
     disabled ? "is-disabled" : "",
     className,
@@ -152,6 +156,7 @@ export default function DominoTile({
     "data-selected": selected ? "true" : "false",
     "data-playable": playable ? "true" : "false",
     "data-draggable": draggable ? "true" : "false",
+    "data-drawn": isDrawn ? "true" : "false",
   } as const;
 
   if (!interactive) {

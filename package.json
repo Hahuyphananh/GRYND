@@ -138,6 +138,7 @@
     "verify:game-primitives": "node qa/game-primitives-check.mjs",
     "test:tokens": "node --test tests/game-visual-tokens.test.mjs tests/light-theme-palette.test.mjs",
     "test:game-overlays": "node --test tests/game-overlay-centering.test.mjs",
+    "test:result-delay": "node --test tests/game-result-reveal-delay.test.mjs",
     "verify:board-fit": "node qa/board-fit-check.mjs",
     "verify:card-visuals": "node qa/card-number-visual-check.mjs",
     "verify:tic-tac-toe-mobile": "node qa/tic-tac-toe-mega-mobile-check.mjs",

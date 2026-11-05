@@ -10,6 +10,7 @@ import { db } from "../../../../../../db";
 import { users } from "../../../../../../db/schema";
 import {
   USER_MFA_COOKIE,
+  mfaCookieOptions,
   verifyUserMfaToken,
 } from "../../../../../../lib/auth/adminMfa";
 import { hasRecentMfa } from "../../../../../../lib/auth/requireMfa";
@@ -51,12 +52,6 @@ export async function POST(req: NextRequest) {
   auditLog("user_mfa_disabled", { userId, ip: null });
 
   const res = NextResponse.json({ success: true, mfaEnabled: false });
-  res.cookies.set(USER_MFA_COOKIE, "", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 0,
-  });
+  res.cookies.set(USER_MFA_COOKIE, "", mfaCookieOptions(req, 0));
   return res;
 }

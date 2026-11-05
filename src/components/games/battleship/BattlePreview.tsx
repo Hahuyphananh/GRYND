@@ -22,11 +22,19 @@ import { fleetDamage } from "../../../lib/battleship/combat";
 import { formatCoordinate } from "../../../lib/battleship/rules";
 import { seatResultLabel, secondsRemaining } from "../../../lib/battleship/view";
 import type { Coordinate, MatchView, Seat } from "../../../lib/battleship/types";
+import { IconHeartHandshake, IconTrophy, IconX } from "@tabler/icons-react";
 import GlitchSay from "../../mascot/GlitchSay";
 import { glitchResultMoment } from "../../../lib/mascot/glitchMoments";
 import { useTranslation } from "../../../hooks/useTranslation";
 import BoardGrid from "./BoardGrid";
 import FleetStatus from "./FleetStatus";
+
+// The match-ending beat. The server's verdict arrives with the last snapshot,
+// but the victory / defeat popup is held back this long so the final boards
+// (the two cells the last round revealed) are what the player reads first.
+// Battleship draws its own end popup instead of mounting the shared result
+// screen, so it holds its own beat here.
+export const BATTLE_RESULT_DELAY_MS = 2_000;
 
 export interface BattlePreviewProps {
   /** The server's per-seat projection — never a hidden fleet. */
@@ -55,6 +63,23 @@ export interface BattlePreviewProps {
   onLeave: () => void;
 }
 
+// The popup's palette: a win reads green, a loss red, a draw neutral — the
+// same language the shared result screen uses, in a compact card.
+const RESULT_PANEL_STYLES: Record<string, string> = {
+  Victory:
+    "border-emerald-400/60 bg-gradient-to-b from-[#0d2b1a] via-[#072014] to-[#04170e] shadow-[0_0_40px_rgba(52,211,153,0.3)]",
+  Defeat:
+    "border-red-500/50 bg-gradient-to-b from-[#2a0f14] via-[#1d0a0e] to-[#140608] shadow-[0_0_36px_rgba(239,68,68,0.24)]",
+  Draw:
+    "border-cyan-400/50 bg-gradient-to-b from-[#0a1a33] via-[#08142a] to-[#050d1c] shadow-[0_0_36px_rgba(34,211,238,0.24)]",
+};
+
+const RESULT_ICON_STYLES: Record<string, string> = {
+  Victory: "text-emerald-300",
+  Defeat: "text-red-300",
+  Draw: "text-cyan-300",
+};
+
 export default function BattlePreview({
   view,
   round,
@@ -76,6 +101,18 @@ export default function BattlePreview({
 }: BattlePreviewProps) {
   const { t } = useTranslation();
   const [selected, setSelected] = useState<Coordinate | null>(null);
+  // The result the player is ALLOWED to see yet (null during the hold). The
+  // server verdict in `result` still shuts the boards down immediately; only
+  // the panel waits.
+  const [revealedResult, setRevealedResult] = useState<string | null>(null);
+  useEffect(() => {
+    if (!result) {
+      setRevealedResult(null);
+      return undefined;
+    }
+    const timer = setTimeout(() => setRevealedResult(result), BATTLE_RESULT_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [result]);
   const [secondsLeft, setSecondsLeft] = useState(ROUND_SECONDS);
 
   const damage = useMemo(
@@ -128,7 +165,7 @@ export default function BattlePreview({
     return () => clearInterval(timer);
   }, [roundDeadline]);
 
-  const resultLabel = seatResultLabel(result, seat);
+  const resultLabel = seatResultLabel(revealedResult, seat);
   // The shared result moment decides GLITCH's face and line, so this end
   // panel matches every other game's result screen instead of inventing its
   // own mascot copy.
@@ -137,6 +174,13 @@ export default function BattlePreview({
     : null;
   const revealCells = reveal?.coordinates ?? [];
   const displayName = isAi ? "GRYND AI" : opponentName;
+  // One line of real match data under the verdict — never an invented reward.
+  const resultLine =
+    resultLabel === "Victory"
+      ? `You sank all six of ${displayName}'s ships.`
+      : resultLabel === "Defeat"
+        ? `${displayName} sank your fleet.`
+        : "Both fleets went down in the same round.";
   const tierLabel = aiDifficulty ? aiDifficulty[0].toUpperCase() + aiDifficulty.slice(1) : "Normal";
 
   return (
@@ -211,44 +255,91 @@ export default function BattlePreview({
         </div>
       </header>
 
+      {/* The match-ending popup. A COMPACT centred card — no wide panel, no
+          full-screen result page — sized so it fits a phone viewport without
+          scrolling (the max-height is a guard, not the normal state). It is
+          held back `BATTLE_RESULT_DELAY_MS` after the server's verdict so the
+          last round's revealed cells are read before the result covers them. */}
       {resultLabel ? (
         <div
-          data-testid="battle-result"
-          data-result={resultLabel.toLowerCase()}
-          className="rounded-xl border border-[#ffec08]/40 bg-[#ffec08]/10 p-2 text-center text-xs font-black uppercase tracking-[0.2em] text-[#ffec08] sm:text-sm"
+          data-testid="battle-result-overlay"
+          className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-black/75 px-4 py-4 backdrop-blur-sm"
         >
-          {resultLabel}
-          {resultMoment ? (
-            <div className="mt-3 flex justify-center normal-case tracking-normal">
-              <GlitchSay
-                expression={resultMoment.expression}
-                message={t(resultMoment.messageKey)}
-                placement="inline"
-                size="sm"
-                eventId={resultMoment.eventId}
-              />
-            </div>
-          ) : null}
-          {isAi && onRestart ? (
-            <div className="mt-2 flex justify-center gap-2">
-              <button
-                type="button"
-                data-testid="practice-restart"
-                onClick={onRestart}
-                className="rounded-lg border-b-4 border-[#b7a800] bg-[#ffec08] px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-[#0a1200]"
-              >
-                Play again
-              </button>
-              <button
-                type="button"
-                data-testid="practice-lobby"
-                onClick={onLeave}
-                className="rounded-lg border border-white/20 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-white/70"
-              >
-                Back to lobby
-              </button>
-            </div>
-          ) : null}
+          <div
+            data-testid="battle-result"
+            data-result={resultLabel.toLowerCase()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="battle-result-title"
+            className={`max-h-[calc(100dvh-2rem)] w-full max-w-[20rem] overflow-y-auto rounded-2xl border-2 p-4 text-center ${RESULT_PANEL_STYLES[resultLabel]}`}
+          >
+            <span
+              aria-hidden="true"
+              className={`mx-auto flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-black/30 ${RESULT_ICON_STYLES[resultLabel]}`}
+            >
+              {resultLabel === "Victory" ? (
+                <IconTrophy size={24} />
+              ) : resultLabel === "Defeat" ? (
+                <IconX size={24} />
+              ) : (
+                <IconHeartHandshake size={24} />
+              )}
+            </span>
+            <p className="mt-2 text-[9px] font-black uppercase tracking-[0.3em] text-white/45">
+              Battleship
+            </p>
+            <h2
+              id="battle-result-title"
+              className={`text-2xl font-black uppercase tracking-wide ${RESULT_ICON_STYLES[resultLabel]}`}
+            >
+              {resultLabel}
+            </h2>
+            <p className="mx-auto mt-1 max-w-[16rem] text-[11px] leading-snug text-white/70">
+              {resultLine}
+            </p>
+            {resultMoment ? (
+              <div className="mt-2 flex justify-center normal-case tracking-normal">
+                <GlitchSay
+                  expression={resultMoment.expression}
+                  message={t(resultMoment.messageKey)}
+                  placement="inline"
+                  size="sm"
+                  eventId={resultMoment.eventId}
+                />
+              </div>
+            ) : null}
+            {isAi && onRestart ? (
+              <div className="mt-3 flex flex-col gap-2">
+                <button
+                  type="button"
+                  data-testid="practice-restart"
+                  onClick={onRestart}
+                  className="rounded-lg border-b-4 border-[#b7a800] bg-[#ffec08] px-3 py-2 text-[10px] font-black uppercase tracking-wider text-[#0a1200]"
+                >
+                  Play again
+                </button>
+                <button
+                  type="button"
+                  data-testid="practice-lobby"
+                  onClick={onLeave}
+                  className="rounded-lg border border-white/20 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-white/70"
+                >
+                  Back to lobby
+                </button>
+              </div>
+            ) : (
+              <div className="mt-3">
+                <button
+                  type="button"
+                  data-testid="battle-result-leave"
+                  onClick={onLeave}
+                  className="w-full rounded-lg border border-white/20 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-white/70"
+                >
+                  Leave match
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       ) : null}
 

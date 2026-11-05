@@ -193,6 +193,9 @@ const MOUNTS = [
     node: (
       <PvpResultScreen
         open
+        // Static render for the tap audit: the panel's 3s reveal hold is a
+        // real-match beat, so this harness mounts it already revealed.
+        revealDelayMs={0}
         outcome="win"
         headline="You won"
         subline="Well played."

@@ -14,6 +14,8 @@ import { hasRecentMfa } from "./lib/auth/requireMfa";
 import {
   ADMIN_MFA_COOKIE,
   USER_MFA_COOKIE,
+  adminMfaCookieOptions,
+  issueAdminMfaToken,
   verifyAdminMfaToken,
   verifyUserMfaToken,
 } from "./lib/auth/adminMfa";
@@ -923,11 +925,13 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
   // `/admin/mfa-required` itself is exempt so the gate page can render.
   // Note: /api/admin paths are handled earlier (before the public-route
   // branch) and never reach this point.
+  let renewAdminMfa = false;
   if (pathname.startsWith("/admin") && pathname !== "/admin/mfa-required") {
     const adminMfaToken = req.cookies.get(ADMIN_MFA_COOKIE)?.value;
     const userMfaToken = req.cookies.get(USER_MFA_COOKIE)?.value;
+    const clerkMfa = hasRecentMfa(factorVerificationAge);
     if (
-      !hasRecentMfa(factorVerificationAge) &&
+      !clerkMfa &&
       !(await verifyAdminMfaToken(adminMfaToken, userId)) &&
       !(await verifyUserMfaToken(userMfaToken, userId))
     ) {
@@ -936,6 +940,11 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
         NextResponse.redirect(new URL("/admin/mfa-required", req.url))
       );
     }
+    // The step-up was satisfied by our own marker cookie, so slide its expiry
+    // forward: one verification per signed-in session. Without this the marker
+    // expired 24h after the code was entered even for an admin who opens the
+    // dashboard every day, and they were asked again.
+    renewAdminMfa = !clerkMfa;
   }
 
   // User-level MFA gate for protected app routes (reuses the auth result
@@ -946,7 +955,15 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
   });
   if (mfaGate) return mfaGate;
 
-  return applySecurityHeaders(NextResponse.next());
+  const response = NextResponse.next();
+  if (renewAdminMfa) {
+    response.cookies.set(
+      ADMIN_MFA_COOKIE,
+      await issueAdminMfaToken(userId),
+      adminMfaCookieOptions(req),
+    );
+  }
+  return applySecurityHeaders(response);
 };
 
 const clerkProtectedMiddleware = clerkMiddleware(middlewareHandler);

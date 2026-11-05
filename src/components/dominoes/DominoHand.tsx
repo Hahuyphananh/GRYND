@@ -15,6 +15,15 @@
 // screen size and never move as the hand grows or shrinks. This component owns
 // only what belongs to the hand itself — the tiles and their count.
 //
+// ── PICKING A TILE UP OFF THE PILE ────────────────────────────────────────
+//
+// Drawing is the one action whose only trace on screen was a tile appearing in
+// the row. The hand therefore compares the tiles it had with the tiles it has: a
+// draw is exactly ONE new tile and no tile gone (a play removes one, a new round
+// replaces them all), and that tile rises out of the pile with a small turn before
+// it settles. Nothing here is authoritative — it reads the server's hand and only
+// decides how the addition is drawn.
+
 // A tile is selectable whenever the board is live and it is the viewer's turn;
 // which tiles are PLAYABLE is read off public information plus the viewer's own
 // hand (`playOptionsFor` in lib/dominoes/ui) and marked with `is-playable`. That
@@ -34,6 +43,8 @@
 // what makes the ends it fits light up as places to put it. A drag is therefore
 // never a second, parallel notion of "what I am holding" — it is the same one,
 // expressed with the pointer.
+
+import { useEffect, useRef, useState } from "react";
 
 import DominoTile from "./DominoTile";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -78,6 +89,29 @@ export default function DominoHand({
   const tiles = Array.isArray(hand) ? hand : [];
   const options = playOptionsFor(tiles, openEnds, chainEmpty);
   const canSelect = Boolean(isLive) && Boolean(isViewerTurn) && !pending;
+
+  // The tile that was just drawn (null at every other moment). The comparison is
+  // against the PREVIOUS render's hand, so the first paint of a hand never plays
+  // the animation: a reconnect that arrives with seven tiles is not seven draws.
+  const signature = tiles.join("|");
+  const previousHand = useRef<string[] | null>(null);
+  const [drawn, setDrawn] = useState<string | null>(null);
+  useEffect(() => {
+    const previous = previousHand.current;
+    previousHand.current = tiles;
+    if (!previous) {
+      setDrawn(null);
+      return;
+    }
+    const added = tiles.filter((tile) => !previous.includes(tile));
+    const gone = previous.filter((tile) => !tiles.includes(tile));
+    // One new tile and nothing lost is a draw. A play removes one; a fresh round
+    // replaces the hand; neither is a pick, so neither animates.
+    setDrawn(added.length === 1 && gone.length === 0 ? added[0] : null);
+    // `signature` is the hand's contents; the array identity changes on every
+    // snapshot even when the tiles did not, which would restart the animation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature]);
 
   return (
     <section
@@ -124,6 +158,7 @@ export default function DominoHand({
                 interactive
                 playable={playable && isLive}
                 selected={selected === tile}
+                isDrawn={drawn === tile}
                 disabled={!canSelect}
                 onClick={() => onSelect?.(selected === tile ? null : tile)}
                 draggable={draggable}

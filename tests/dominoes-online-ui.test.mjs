@@ -543,7 +543,11 @@ test("dominoes ui: an open end places the selected tile when it is tapped", { sk
   const viewSource = stripComments(read("src/components/dominoes/DominoMatchView.tsx"));
   assert.match(viewSource, /playOptionsFor\(hand, openEnds, chainEmpty\)/);
   assert.match(viewSource, /tappableEnds=\{selectedEnds\}/);
-  assert.match(viewSource, /onPlay\?\.\(selected, end\)/, "a tap sends the sidebar's own intent");
+  assert.match(
+    viewSource,
+    /if \(selected && selectedEnds\.includes\(end\)\) playTile\(selected, end\)/,
+    "a tap sends the sidebar's own intent",
+  );
 
   // The tap target is styled as one, and the affordance is motion-safe.
   const table = css.slice(css.indexOf(".dominoes-end-chip {"), css.lastIndexOf(".dominoes-pile {"));
@@ -627,12 +631,20 @@ test("dominoes ui: a tap and a drop carry ONE placement intent", () => {
     [...chainSource.matchAll(/onPlace\?\.\(end\)/g)].length >= 2,
     "a tap and a drop cannot diverge",
   );
-  // …and the view turns both into the one `{tile, end}` the sidebar sends.
+  // …and the view turns both into the one `{tile, end}` the sidebar sends. Every
+  // way of placing a tile funnels through `playTile`, which reports the intent
+  // unchanged and remembers where the tile was so the chain can fly it home.
   const viewSource = stripComments(read("src/components/dominoes/DominoMatchView.tsx"));
   assert.match(
     viewSource,
-    /if \(selected && selectedEnds\.includes\(end\)\) onPlay\?\.\(selected, end\)/,
+    /if \(selected && selectedEnds\.includes\(end\)\) playTile\(selected, end\)/,
   );
+  assert.match(viewSource, /onPlay=\{playTile\}/, "the sidebar sends the same single intent");
+  assert.match(viewSource, /onPlay\?\.\(tile, end\)/, "…and the wrapper reports it unchanged");
+  // The tile travels from the hand instead of appearing on the felt.
+  assert.match(viewSource, /arrival=\{flight\}/, "the chain is told where the tile came from");
+  assert.match(chainSource, /slot\.animate\(/, "the newest tile is moved, not replaced");
+  assert.match(chainSource, /data-domino-latest="1"/);
 });
 
 test("dominoes ui: a selection is cleared when the turn moves on", { skip: SKIP_REASON }, () => {
@@ -806,7 +818,7 @@ test("dominoes ui: the felt next to an open end takes a dropped tile", { skip: S
 
   // The drop reports the same intent a tap does, so the two can never disagree.
   const viewSourceDrag = stripComments(read("src/components/dominoes/DominoMatchView.tsx"));
-  assert.match(viewSourceDrag, /onPlace=\{\(end\) => \{[\s\S]*?onPlay\?\.\(selected, end\)/);
+  assert.match(viewSourceDrag, /onPlace=\{\(end\) => \{[\s\S]*?playTile\(selected, end\)/);
 
   // The affordance is painted: a dashed slot on the accepting end, and a brighter
   // one while the tile is carried over it.
@@ -1533,8 +1545,10 @@ test("dominoes css: the chain is a 2D table that scrolls as it snakes", () => {
   // it never has to grow.
   assert.match(table, /min-height:\s*0;/);
   assert.match(table, /\.dominoes-chain-scroller \{[\s\S]*?flex: 1 1 auto/);
-  const boardSized = css.slice(css.indexOf(".dominoes-layout {"), css.indexOf(".dominoes-main {"));
-  assert.match(boardSized, /grid-template-rows:\s*minmax\(0, 1fr\) auto;/);
+  const boardSized = css.slice(css.indexOf(".dominoes-layout {"), css.indexOf(".dominoes-topbar {"));
+  // THE FELT IS THE ONLY FLEXIBLE ROW. The info bar and the controls are sized by
+  // their contents, so no tile, no move and no log entry can shrink the table.
+  assert.match(boardSized, /grid-template-rows:\s*auto auto minmax\(0, 1fr\);/);
   assert.match(boardSized, /height:\s*100%/);
   // THE VALUES STAY UPRIGHT ON A TURNED TILE. The chain writes the INVERSE of a
   // tile's rotation onto its slot, and the tile's halves turn back to face the
@@ -1589,7 +1603,7 @@ test("dominoes css: the board is the page, and the hand is docked inside it", ()
   // than it was because it now carries your tiles as well as the buttons.
   const layout = css.slice(css.indexOf(".dominoes-layout {"), css.indexOf(".dominoes-seat {"));
   assert.match(layout, /grid-template-columns:\s*minmax\(0, 1fr\);/);
-  assert.match(layout, /grid-template-rows:\s*minmax\(0, 1fr\) auto;/);
+  assert.match(layout, /grid-template-rows:\s*auto auto minmax\(0, 1fr\);/);
   // The board IS the page: the viewport minus the chrome the page wraps round it.
   assert.match(layout, /height:\s*100%/);
   // …and the card it lives in takes whatever the page leaves, so the felt is as
@@ -1607,15 +1621,24 @@ test("dominoes css: the board is the page, and the hand is docked inside it", ()
   // query only wins on position — so it is read from its own slice.
   const phone = css.slice(css.lastIndexOf("@media (max-width: 900px)"));
   assert.match(phone, /grid-template-columns:\s*minmax\(0, 1fr\);/);
-  assert.match(phone, /grid-template-rows:\s*minmax\(0, 1fr\) auto;/);
+  assert.match(phone, /grid-template-rows:\s*auto auto minmax\(0, 1fr\);/);
   assert.match(
     phone,
     /height:\s*100%/,
     "the phone board is bound to the screen, not to its contents",
   );
-  // The board is one column, and the HAND IS NOT IN IT any more.
-  const main = css.slice(css.indexOf(".dominoes-main {"), css.indexOf(".dominoes-sidebar {"));
-  assert.match(main, /flex-direction:\s*column/);
+  // The info bar is one wrapping row, and it never grows with the game.
+  const topbar = css.slice(css.indexOf(".dominoes-topbar {"), css.indexOf(".dominoes-sidebar {"));
+  assert.match(topbar, /flex-wrap:\s*wrap/);
+  // THE CONTROLS SIT ABOVE THE TABLE. The dock is the second row of the grid and
+  // the felt the third, in the markup as well as on screen, so a thumb reaching
+  // for a tile is never over the board.
+  const viewMarkup = stripComments(read("src/components/dominoes/DominoMatchView.tsx"));
+  assert.ok(
+    viewMarkup.indexOf('<aside className="dominoes-sidebar">') <
+      viewMarkup.indexOf('<div className="dominoes-table">'),
+    "the hand and its controls are placed above the felt",
+  );
   // …under a DOCK that reads left to right: the hand takes the width, the panel
   // sits beside it, and the whole strip stays inside the board.
   const dock = css.slice(css.indexOf(".dominoes-sidebar {"), css.indexOf("/* ── Seat cards"));
@@ -1646,7 +1669,11 @@ test("dominoes css: tap targets, small screens and reduced motion", () => {
   assert.match(css, /\.dominoes-action-button \{\s*flex-basis: calc\(50% - 3px\);/);
   // Reduced motion removes the placement animation AND the lift on selection.
   const reduced = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
-  assert.match(reduced, /\.dominoes-tile\.is-new \{\s*animation: none;/);
+  assert.match(
+    reduced,
+    /\.dominoes-tile\.is-new,\s*\.dominoes-tile\.is-drawn \{\s*animation: none;/,
+  );
+  assert.match(reduced, /\.dominoes-pile\.is-dealing \{\s*animation: none;/);
   assert.match(reduced, /button\.dominoes-tile\.is-selected \{\s*transform: none;/);
 });
 

@@ -117,6 +117,33 @@ const DEFAULT_LIMITS: ChainLimits = { cols: 24, rows: 12 };
 /** No window is so small that the table cannot hold a chain of this many cells. */
 const MIN_LIMIT_CELLS = 4;
 
+/**
+ * How long a hand tile's screen position is still worth flying from.
+ *
+ * The flight starts when the player commits a play and lands when the server's
+ * snapshot puts the tile on the table; a stale request (a refusal, a very slow
+ * round trip) must not animate the wrong tile later, so the source position
+ * expires instead of being kept forever.
+ */
+const ARRIVAL_MAX_AGE_MS = 2_500;
+
+/**
+ * Where a tile was in the hand when it was played, in viewport coordinates.
+ *
+ * Captured by the board from the tile's own box the instant the play is
+ * committed, and used once, by the chain, to fly the new tile from there to its
+ * square. It is presentation only: nothing about the placement reads it.
+ */
+export type DominoFlight = {
+  tile: string;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  /** `Date.now()` at the moment the play was committed. */
+  at: number;
+};
+
 /** One tile of the engine's chain, as the projection sends it. */
 export type ChainTileLike = LayoutChainTileLike & {
   left?: unknown;
@@ -141,6 +168,11 @@ export type DominoChainProps = {
   /** Place the selected tile on `end`. Only ever reachable for a tappable end. */
   onPlace?: (end: ChainEnd) => void;
   /**
+   * Where the tile the viewer just played was sitting in their hand. The newest
+   * tile then travels from there to its square instead of appearing on the felt.
+   */
+  arrival?: DominoFlight | null;
+  /**
    * The end a dragged hand tile is currently hovering over, or null. Owned by the
    * board, not by this file: the chain paints the highlight it is told to paint.
    */
@@ -163,6 +195,7 @@ export default function DominoChain({
   selected = null,
   tappableEnds = null,
   onPlace,
+  arrival = null,
   dropOverEnd = null,
   onDragEnterEnd,
   onDragLeaveEnd,
@@ -238,6 +271,14 @@ export default function DominoChain({
   // the highest index, so it is the one flagged latest below.
   const newestIndex = tiles.length - 1;
 
+  // Is the newest tile the one that just left the viewer's hand? Then it flies
+  // into place (see the effect above) instead of dropping in from above.
+  const arriving =
+    arrival !== null &&
+    newest !== null &&
+    String(newest.id ?? "") === arrival.tile &&
+    Date.now() - arrival.at <= ARRIVAL_MAX_AGE_MS;
+
   // Follow the newest tile as the chain grows (including after a reconnect, when
   // the whole table arrives at once and the end is what matters). `block` and
   // `inline` are both "nearest", so the page around the board never jumps.
@@ -252,6 +293,50 @@ export default function DominoChain({
     // keep re-scrolling under the player's finger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tiles.length]);
+
+  /**
+   * THE TILE TRAVELS FROM THE HAND TO ITS SQUARE.
+   *
+   * When the player commits a play, the board records where that tile was in the
+   * hand; when the server's snapshot puts it on the table, the newest slot is
+   * animated FROM that position instead of dropping in from above. The movement
+   * is the one a piece makes on a board — the same tile, now somewhere else — so
+   * the eye follows the move rather than finding a new tile.
+   *
+   * It runs on the SLOT, not the tile: the slot is axis-aligned and carries no
+   * rotation, so the travel is measured on screen even when the domino lands
+   * crosswise or on a turned shelf. It is skipped entirely under reduced motion,
+   * and it never runs when there is no captured source (an opponent's play, a
+   * reconnect) — those keep the existing "set down" cue.
+   */
+  useEffect(() => {
+    if (!arrival) return;
+    const slot = scrollerRef.current?.querySelector<HTMLElement>('[data-domino-latest="1"]');
+    if (!slot || typeof slot.animate !== "function") return;
+    if (String(newest?.id ?? "") !== arrival.tile) return;
+    if (Date.now() - arrival.at > ARRIVAL_MAX_AGE_MS) return;
+    if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      return;
+    }
+    const target = slot.getBoundingClientRect();
+    if (!target.width || !arrival.width) return;
+    const dx = arrival.left + arrival.width / 2 - (target.left + target.width / 2);
+    const dy = arrival.top + arrival.height / 2 - (target.top + target.height / 2);
+    // A hand tile and a chain tile can be a little different in size; starting
+    // from the hand's own scale keeps the first frame the size the player let go of.
+    const scale = Math.min(1.3, Math.max(0.4, arrival.width / target.width));
+    const flight = slot.animate(
+      [
+        { transform: `translate(${dx}px, ${dy}px) scale(${scale})`, opacity: 0.9 },
+        { transform: "translate(0px, 0px) scale(1)", opacity: 1 },
+      ],
+      { duration: 360, easing: "cubic-bezier(0.2, 0.85, 0.25, 1)" },
+    );
+    flight.finished?.catch(() => {});
+    // Only a NEW chain length or a new captured position starts a flight; the
+    // countdown ticking must not restart it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tiles.length, arrival]);
 
   const left = openEnds?.left ?? null;
   const right = openEnds?.right ?? null;
@@ -510,6 +595,7 @@ export default function DominoChain({
       data-rows={layout.rows}
       data-legal-ends={acceptingEnds.join(" ")}
       data-preview-end={previewEnd ?? ""}
+      data-arrival={arriving ? "true" : "false"}
     >
       {/* One cell, MEASURED rather than assumed (see the effect above). It is out
           of the flow and out of the way: nothing on the board can see it. */}
@@ -623,7 +709,7 @@ export default function DominoChain({
                       left={facedLeft}
                       right={facedRight}
                       seat={seat}
-                      isNew={isLatest}
+                      isNew={isLatest && !arriving}
                       testId="dominoes-chain-tile"
                       // The name follows the FACE, so what is announced is what
                       // is drawn: a tile attached the other way round is "3–6".

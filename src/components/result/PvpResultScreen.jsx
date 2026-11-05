@@ -95,6 +95,15 @@ function rememberGlitchResultEvent(eventId) {
 
 const CONFETTI_COLORS = ["#00e5ff", "#f5ff3b", "#ff4fd8", "#a855f7", "#34d399"];
 
+// ── The match-ending beat ─────────────────────────────────────────────
+// Every win / loss / draw popup in the platform mounts through this
+// component, so the reveal hold lives here ONCE instead of in every game:
+// the panel is held back 3s after the match ends, so the finished board (the
+// winning line, the last ball, the losing tile…) is what the player reads
+// first, and the result then lands on top of it. Exported so a game (and the
+// test that pins this) can reason about the beat without repeating it.
+export const RESULT_REVEAL_DELAY_MS = 3_000;
+
 function formatDuration(totalSeconds) {
   const s = Math.max(0, Math.round(Number(totalSeconds) || 0));
   const m = Math.floor(s / 60);
@@ -162,6 +171,10 @@ const panelMotion = {
 
 export default function PvpResultScreen({
   open,
+  // How long the panel is held back after `open` flips — the match-ending
+  // beat. Defaults to the platform-wide 3s; a game may shorten it, never
+  // remove it.
+  revealDelayMs = RESULT_REVEAL_DELAY_MS,
   outcome,
   headline,
   subline = null,
@@ -235,6 +248,27 @@ export default function PvpResultScreen({
   const shouldReduce = useReducedMotion();
   const { t } = useTranslation();
   const router = useRouter();
+  // THE RESULT BEAT. `open` is the game's own finished-state flag; the
+  // overlay itself waits `revealDelayMs` so the ending stays readable before
+  // the panel covers it. Everything that belongs to the VISIBLE result
+  // (confetti, the back-gesture guard, the overlay itself) keys off
+  // `revealed`, while the progression fetches start on `open` so the numbers
+  // are already there when it lands.
+  const [revealed, setRevealed] = useState(false);
+  useEffect(() => {
+    if (!open) {
+      setRevealed(false);
+      return undefined;
+    }
+    const hold = Number(revealDelayMs);
+    if (!Number.isFinite(hold) || hold <= 0) {
+      setRevealed(true);
+      return undefined;
+    }
+    setRevealed(false);
+    const timer = setTimeout(() => setRevealed(true), hold);
+    return () => clearTimeout(timer);
+  }, [open, revealDelayMs]);
   // Decided ONCE, from synchronous props only. The result screen's numbers are
   // still free to arrive (or animate) afterwards without ever re-deciding: a
   // reaction that appeared and then withdrew as a fetch landed would be worse
@@ -276,7 +310,7 @@ export default function PvpResultScreen({
   // Celebrate a win once when the screen appears (respects reduced motion —
   // no animation at all then; confetti is skipped too).
   useEffect(() => {
-    if (!open || outcome !== "win") return;
+    if (!revealed || outcome !== "win") return;
     if (shouldReduce) return;
     fireConfetti({ particleCount: 90, spread: 100, origin: { x: 0.5, y: 0.35 }, colors: CONFETTI_COLORS });
     const t1 = setTimeout(
@@ -293,7 +327,7 @@ export default function PvpResultScreen({
       clearTimeout(t1);
       clearTimeout(t2);
     };
-  }, [open, outcome, shouldReduce]);
+  }, [revealed, outcome, shouldReduce]);
 
   // A win against the AI can unlock today's daily reward. Announce it so any
   // daily-reward surface mounted on this origin re-reads its status without a
@@ -372,7 +406,7 @@ export default function PvpResultScreen({
       : onDismiss;
 
   useEffect(() => {
-    if (!open || compact || !backExitRef.current) return;
+    if (!revealed || compact || !backExitRef.current) return;
     const onPopState = () => {
       // The entry was already popped: put the result back first, so the
       // player stays on it while the ad runs, and when there is none.
@@ -383,7 +417,7 @@ export default function PvpResultScreen({
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, [open, compact, navigating]);
+  }, [revealed, compact, navigating]);
 
   // Live progression — real numbers from the platform's own endpoints,
   // fetched only when the game didn't pass its own values. Fire-and-forget:
@@ -521,7 +555,7 @@ export default function PvpResultScreen({
 
   return (
     <AnimatePresence>
-      {open && (
+      {revealed && (
         <motion.div
           {...withReducedMotion(shouldReduce, {
             // Short backdrop fade so the final board (with the scoring bucket

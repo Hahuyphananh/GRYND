@@ -13,18 +13,20 @@
 //
 // ── WHAT IS ON SCREEN, AND WHERE ──────────────────────────────────────────
 //
-// The table is a two-column layout: the BOARD (left) and the SIDEBAR (right).
+// THREE ROWS, TOP TO BOTTOM: THE INFO BAR, THE CONTROLS, THE TABLE.
 //
-//   board      opponent seat (name/avatar + TILE COUNT only), the turn banner
-//              and the 15-second window, the shared chain laid out on a felt the
-//              size of the page, and the draw pile. The felt is BOUNDED: the
+//   info bar   the match scoreboard, the opponent seat (name/avatar + TILE COUNT
+//              only), the turn sentence and the 15-second window. One wrapping
+//              row, so however the game is going it never costs the table a row.
+//   controls   the viewer's OWN HAND first, then the open ends, the selected tile
+//              and the three actions (play on an end, draw, pass), plus sound,
+//              resign and the rules. They sit ABOVE the table, in their own row,
+//              so a finger reaching for a tile never lands on the felt.
+//   table      the shared chain laid out on a felt THE SIZE OF THE PAGE, and the
+//              draw pile. The felt is the ONLY flexible row: its bounds are
+//              measured from itself, so it is the same size on every ply and the
 //              chain turns when it reaches the board's edge instead of growing
 //              off-screen (see DominoChain and lib/dominoes/layout).
-//   sidebar    the viewer's OWN HAND first, then the open ends, the selected
-//              tile and the three actions (play on an end, draw, pass), plus
-//              sound, resign and the rules. Your tiles and the controls that
-//              play them share one column, so neither moves as the chain grows;
-//              on a narrow screen the sidebar stacks under the board.
 //
 // PLACING A TILE: a selected tile can be committed either from the sidebar (Play
 // left / Play right), by tapping the open-value chip the tile fits, or — on a
@@ -56,11 +58,11 @@
 // match page), so losing it costs freshness, never the ability to play: the
 // notice appears and the controls stay live.
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { IconVolume, IconVolumeOff } from "@tabler/icons-react";
 
 import DominoActions from "./DominoActions";
-import DominoChain, { type ChainTileLike } from "./DominoChain";
+import DominoChain, { type ChainTileLike, type DominoFlight } from "./DominoChain";
 import DominoHand from "./DominoHand";
 import SeatAvatar from "../game/SeatAvatar";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -274,6 +276,66 @@ export default function DominoMatchView({
   // cancel, an Escape) clears it — so the highlight cannot outlive the gesture.
   const [dropOverEnd, setDropOverEnd] = useState<ChainEnd | null>(null);
 
+  // ── THE TILE TRAVELS OUT OF THE HAND ──────────────────────────────────
+  // The screen position of the tile the player just committed, so the chain can
+  // fly the new tile from there to its square. Captured before the action is
+  // reported (the tile leaves the hand the moment the server answers), and
+  // scoped to one play: the chain only uses it for a matching newest tile within
+  // a couple of seconds.
+  const [flight, setFlight] = useState<DominoFlight | null>(null);
+  const flightTimer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (flightTimer.current !== null) window.clearTimeout(flightTimer.current);
+    },
+    [],
+  );
+
+  /**
+   * Report a play — and remember where the tile was when it was let go.
+   *
+   * Every way of placing a tile (the two end buttons, the open button, the board's
+   * end chips and a drop on the felt) funnels through here, so the hand-to-table
+   * movement is the same gesture however the tile was committed. Nothing about the
+   * action changes: it reports the same `{ tile, end }` intent it always did.
+   */
+  const playTile = (tile: string, end?: "left" | "right") => {
+    if (typeof document !== "undefined") {
+      const node = document.querySelector<HTMLElement>(
+        `[data-testid="dominoes-hand-tile"][data-tile="${tile}"]`,
+      );
+      const box = node?.getBoundingClientRect();
+      if (box && box.width > 0) {
+        setFlight({
+          tile,
+          left: box.left,
+          top: box.top,
+          width: box.width,
+          height: box.height,
+          at: Date.now(),
+        });
+        if (flightTimer.current !== null) window.clearTimeout(flightTimer.current);
+        flightTimer.current = window.setTimeout(() => setFlight(null), 2_500);
+      }
+    }
+    onPlay?.(tile, end);
+  };
+
+  // ── THE PILE HANDS A TILE OVER ───────────────────────────────────────
+  // Its count dropping is a draw (by either seat), so the stack gives a short hop
+  // while the drawn tile rises into the hand. Visual only: the count printed here
+  // is the server's.
+  const [pilePulse, setPilePulse] = useState(false);
+  const previousPile = useRef(drawPileCount);
+  useEffect(() => {
+    const previous = previousPile.current;
+    previousPile.current = drawPileCount;
+    if (drawPileCount >= previous) return undefined;
+    setPilePulse(true);
+    const timer = window.setTimeout(() => setPilePulse(false), 460);
+    return () => window.clearTimeout(timer);
+  }, [drawPileCount]);
+
   // ── The round result clears ITSELF ────────────────────────────────────
   // The next round is already dealt by the server before this panel can appear:
   // `roundResultFor` answers only while `roundNumber === lastRound.roundNumber + 1`,
@@ -315,8 +377,8 @@ export default function DominoMatchView({
       </h2>
 
       <div className="dominoes-layout">
-        {/* ══ THE BOARD ══════════════════════════════════════════════════ */}
-        <div className="dominoes-main">
+        {/* ══ THE INFO BAR — the match, the seat, the turn and the clock ═ */}
+        <div className="dominoes-topbar">
           {/* ── The MATCH scoreboard: cumulative points, target and round ─── */}
           <div
             className="dominoes-scoreboard"
@@ -528,49 +590,9 @@ export default function DominoMatchView({
             </section>
           ) : null}
 
-          {/* ── The shared chain, which grows like a real table ──────────── */}
-          <div className="dominoes-table">
-            <DominoChain
-              chain={chain}
-              openEnds={openEnds}
-              isLive={isLive}
-              selected={selected}
-              tappableEnds={selectedEnds}
-              onPlace={(end) => {
-                if (selected && selectedEnds.includes(end)) onPlay?.(selected, end);
-              }}
-              dropOverEnd={dropOverEnd}
-              onDragEnterEnd={(end) => {
-                if (selectedEnds.includes(end)) setDropOverEnd(end);
-              }}
-              onDragLeaveEnd={(end) => {
-                setDropOverEnd((current) => (current === end ? null : current));
-              }}
-            />
-
-            <div className="dominoes-pile" data-testid="dominoes-pile">
-              <span className="dominoes-pile-stack" aria-hidden="true">
-                <span />
-                <span />
-                <span />
-              </span>
-              <span className="dominoes-pile-body">
-                <span className="dominoes-pile-title">{t("games.dominoes.draw_pile")}</span>
-                <span className="dominoes-pile-count" data-testid="dominoes-pile-count">
-                  {t(
-                    drawPileCount === 1
-                      ? "games.dominoes.tiles_count_one"
-                      : "games.dominoes.tiles_count",
-                    { count: drawPileCount },
-                  )}
-                </span>
-              </span>
-            </div>
-          </div>
-
         </div>
 
-        {/* ══ THE SIDEBAR — your hand, and the actions ═══════════════════ */}
+        {/* ══ THE CONTROLS — your hand, and the actions that play it ═════ */}
         <aside className="dominoes-sidebar">
           {/* The viewer's own tiles. They live in the sidebar, next to the
               controls that play them, so the felt is free to be the size of the
@@ -596,7 +618,7 @@ export default function DominoMatchView({
           <DominoActions
             hand={hand}
             selected={selected}
-            onPlay={onPlay}
+            onPlay={playTile}
             onDraw={onDraw}
             onPass={onPass}
             openEnds={openEnds}
@@ -665,6 +687,50 @@ export default function DominoMatchView({
             </ul>
           </details>
         </aside>
+
+        {/* ══ THE TABLE — the shared chain, on the whole page ═════════════ */}
+        <div className="dominoes-table">
+          <DominoChain
+            chain={chain}
+            openEnds={openEnds}
+            isLive={isLive}
+            selected={selected}
+            tappableEnds={selectedEnds}
+            onPlace={(end) => {
+              if (selected && selectedEnds.includes(end)) playTile(selected, end);
+            }}
+            arrival={flight}
+            dropOverEnd={dropOverEnd}
+            onDragEnterEnd={(end) => {
+              if (selectedEnds.includes(end)) setDropOverEnd(end);
+            }}
+            onDragLeaveEnd={(end) => {
+              setDropOverEnd((current) => (current === end ? null : current));
+            }}
+          />
+
+          <div
+            className={`dominoes-pile ${pilePulse ? "is-dealing" : ""}`}
+            data-testid="dominoes-pile"
+          >
+            <span className="dominoes-pile-stack" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </span>
+            <span className="dominoes-pile-body">
+              <span className="dominoes-pile-title">{t("games.dominoes.draw_pile")}</span>
+              <span className="dominoes-pile-count" data-testid="dominoes-pile-count">
+                {t(
+                  drawPileCount === 1
+                    ? "games.dominoes.tiles_count_one"
+                    : "games.dominoes.tiles_count",
+                  { count: drawPileCount },
+                )}
+              </span>
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   );

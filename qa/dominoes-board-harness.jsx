@@ -151,7 +151,7 @@ window.__dm = {
     const scroller = document.querySelector(".dominoes-chain-scroller");
     const surface = document.querySelector(".dominoes-chain-surface");
     const sidebar = document.querySelector(".dominoes-sidebar");
-    const main = document.querySelector(".dominoes-main");
+    const topbar = document.querySelector(".dominoes-topbar");
     const hand = document.querySelector(".dominoes-hand");
     const half = document.querySelector(".dominoes-hand .dominoes-tile-half");
     return {
@@ -183,7 +183,7 @@ window.__dm = {
         length: Number(document.querySelector(".dominoes-chain")?.dataset.chainLength ?? 0),
       },
       sidebar: rectOf(sidebar),
-      main: rectOf(main),
+      topbar: rectOf(topbar),
       hand: rectOf(hand),
       handTileHeight: half ? Math.round(half.getBoundingClientRect().height) : 0,
       cssHalf: parseFloat(getComputedStyle(document.body).getPropertyValue("--dm-half")) || null,
@@ -212,7 +212,7 @@ window.__dm = {
       resign: '[data-testid="dominoes-resign"]',
       rules: ".dominoes-rules",
       sidebar: ".dominoes-sidebar",
-      main: ".dominoes-main",
+      topbar: ".dominoes-topbar",
       board: ".dominoes-board",
       page: "#root > div",
     };

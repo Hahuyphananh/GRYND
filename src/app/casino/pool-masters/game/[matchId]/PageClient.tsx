@@ -437,7 +437,8 @@ export default function Page() {
       }
     : null;
 
-  // Show win/loss popup when winner is determined
+  // Show win/loss popup when winner is determined. The settled-table beat is
+  // the shared result screen's own 3s hold, so no extra delay stacks here.
   useEffect(() => {
     if (winner && !showWinLossPopup) {
       // Confetti is handled by the shared PvpResultScreen.
@@ -446,9 +447,7 @@ export default function Page() {
       } else {
         playDefeat();
       }
-      // Small delay so the final ball positions render before the popup
-      const timer = setTimeout(() => setShowWinLossPopup(true), 600);
-      return () => clearTimeout(timer);
+      setShowWinLossPopup(true);
     }
   }, [winner, showWinLossPopup]);
 

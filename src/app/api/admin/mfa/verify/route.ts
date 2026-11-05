@@ -10,7 +10,7 @@ import { verifyOtp } from "../../../../../lib/auth/adminOtp";
 import { verifyTotp } from "../../../../../lib/auth/totp";
 import {
   ADMIN_MFA_COOKIE,
-  ADMIN_MFA_MAX_AGE_SECONDS,
+  adminMfaCookieOptions,
   issueAdminMfaToken,
 } from "../../../../../lib/auth/adminMfa";
 import { adminAuditLog } from "../../../../../lib/security/adminAuditLog";
@@ -123,12 +123,7 @@ export async function POST(req: NextRequest) {
   }).catch(() => {});
 
   const res = NextResponse.json({ success: true });
-  res.cookies.set(ADMIN_MFA_COOKIE, await issueAdminMfaToken(userId), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: ADMIN_MFA_MAX_AGE_SECONDS,
-  });
+  // `Secure` follows the request scheme, not NODE_ENV — see isHttpsRequest().
+  res.cookies.set(ADMIN_MFA_COOKIE, await issueAdminMfaToken(userId), adminMfaCookieOptions(req));
   return res;
 }

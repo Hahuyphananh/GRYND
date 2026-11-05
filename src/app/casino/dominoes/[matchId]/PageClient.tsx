@@ -586,7 +586,7 @@ export default function DominoesMatchPage() {
             viewport tall and clips: the board below takes every pixel the header
             does not, and the hand + controls live inside it, so a full 28-tile
             table never asks the player to scroll to reach their own tiles. */}
-        <div className="mx-auto flex min-h-0 w-full max-w-[1600px] flex-1 flex-col">
+        <div className="relative mx-auto flex min-h-0 w-full max-w-[1600px] flex-1 flex-col">
           {/* ── Header ─────────────────────────────────────────────────── */}
           <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
             <div>
@@ -644,9 +644,13 @@ export default function DominoesMatchPage() {
             </p>
           ) : null}
 
+          {/* THE LOG FLOATS, IT DOES NOT TAKE A ROW. It used to be a block under
+              the board in the same one-screen column, so every move added a line
+              and every line took height off the felt — the board shrank as the
+              game went on. Absolutely positioned, it costs the board nothing. */}
           {moves.length > 0 ? (
             <div
-              className="mt-2 hidden shrink-0 rounded-2xl border border-white/10 bg-white/5 p-2 xl:block"
+              className="absolute right-2 bottom-2 z-20 hidden max-h-[38vh] w-64 overflow-y-auto rounded-2xl border border-white/10 bg-[#04121a]/95 p-2 shadow-[0_18px_40px_rgba(0,0,0,0.55)] xl:block"
               data-testid="dominoes-move-log"
             >
               <h2 className="mb-2 text-xs font-bold uppercase tracking-wider text-white/60">

@@ -724,11 +724,14 @@ export default function KenoPvpMatchPage({ params }) {
         }
       }
 
-      // Result modal is held back ~1.2s so the final board + the winning
-      // flash are visible before the overlay covers the screen.
+      // The result modal is the shared PvpResultScreen, which holds itself
+      // back 3s (RESULT_REVEAL_DELAY_MS) before it covers the screen — so the
+      // final board and the winning flash are what the player reads when the
+      // match ends. No extra hold here, or the two would stack.
       if (m.status === "finished" && lastStatusRef.current?.status !== "finished") {
         if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
-        resultTimerRef.current = setTimeout(() => setShowResult(true), 1200);
+        resultTimerRef.current = null;
+        setShowResult(true);
       } else if (m.status !== "finished") {
         if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
         setShowResult(false);

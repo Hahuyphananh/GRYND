@@ -15,6 +15,49 @@ export const ADMIN_MFA_COOKIE = "admin_mfa";
 export const ADMIN_MFA_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 export const ADMIN_MFA_MAX_AGE_SECONDS = Math.floor(ADMIN_MFA_MAX_AGE_MS / 1000);
 
+/**
+ * True when the request reached us over HTTPS, directly or through a proxy
+ * (Vercel/nginx set `x-forwarded-proto`).
+ *
+ * Cookie `Secure` has to follow the actual scheme, not `NODE_ENV`: a
+ * production build served over plain HTTP (a LAN/VM address, `next start` on
+ * localhost) would otherwise have its Set-Cookie dropped by the browser, so
+ * the step-up marker never stuck and every single visit asked for a code
+ * again.
+ */
+export function isHttpsRequest(req: { headers: Headers; url: string }): boolean {
+  const forwarded = req.headers
+    .get("x-forwarded-proto")
+    ?.split(",")[0]
+    ?.trim()
+    .toLowerCase();
+  if (forwarded) return forwarded === "https";
+  try {
+    return new URL(req.url).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/** Attributes shared by every second-factor marker cookie. */
+export function mfaCookieOptions(
+  req: { headers: Headers; url: string },
+  maxAge: number,
+) {
+  return {
+    httpOnly: true,
+    secure: isHttpsRequest(req),
+    sameSite: "lax" as const,
+    path: "/",
+    maxAge,
+  };
+}
+
+/** Attributes for the admin_mfa cookie (24h sliding marker). */
+export function adminMfaCookieOptions(req: { headers: Headers; url: string }) {
+  return mfaCookieOptions(req, ADMIN_MFA_MAX_AGE_SECONDS);
+}
+
 type FactorVerificationAge = [number, number] | null;
 
 function getSecret(): string {

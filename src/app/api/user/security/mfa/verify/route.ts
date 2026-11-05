@@ -10,8 +10,9 @@ import { users } from "../../../../../../db/schema";
 import { verifyOtp } from "../../../../../../lib/auth/adminOtp";
 import {
   USER_MFA_COOKIE,
-  USER_MFA_MAX_AGE_SECONDS,
   issueUserMfaToken,
+  mfaCookieOptions,
+  USER_MFA_MAX_AGE_SECONDS,
 } from "../../../../../../lib/auth/adminMfa";
 import { cacheDelete } from "../../../../../../lib/redis/cache";
 import { CacheKeys } from "../../../../../../lib/redis/keys";
@@ -53,12 +54,10 @@ export async function POST(req: Request) {
   auditLog("user_mfa_enabled", { userId, ip: null });
 
   const res = NextResponse.json({ success: true, mfaEnabled: true });
-  res.cookies.set(USER_MFA_COOKIE, await issueUserMfaToken(userId), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: USER_MFA_MAX_AGE_SECONDS,
-  });
+  res.cookies.set(
+    USER_MFA_COOKIE,
+    await issueUserMfaToken(userId),
+    mfaCookieOptions(req, USER_MFA_MAX_AGE_SECONDS),
+  );
   return res;
 }

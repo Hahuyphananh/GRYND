@@ -53,6 +53,12 @@ import {
   IconHistory,
 } from "@tabler/icons-react";
 import { useTranslation } from "../../../../../hooks/useTranslation";
+// The match-ending beat. The end panel must not slam over the final table: it
+// is held back 3s after the match ends — the same beat every other game gets
+// from the shared result screen's `RESULT_REVEAL_DELAY_MS` (UNO draws its own
+// panel, so it holds here instead).
+const END_PANEL_DELAY_MS = 3_000;
+
 export default function UnoGamePage() {
   const { gameId } = useParams();
   const router = useRouter();
@@ -93,6 +99,19 @@ export default function UnoGamePage() {
   }, [firstVisitRules]);
   const [isResigning, setIsResigning] = useState(false);
   const [endPopup, setEndPopup] = useState(null);
+  // Whether the held-back end panel is allowed on screen yet. `endPopup`
+  // itself is stamped the moment the match ends (it drives `gameOver`, the ad
+  // gate and the replay window), while this flag is what the panel renders
+  // from, so the table stays visible for the hold.
+  const [endPopupVisible, setEndPopupVisible] = useState(false);
+  useEffect(() => {
+    if (!endPopup) {
+      setEndPopupVisible(false);
+      return undefined;
+    }
+    const timer = setTimeout(() => setEndPopupVisible(true), END_PANEL_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [endPopup]);
   // The post-match video is offered when the player LEAVES the end panel: the
   // chosen action is parked and released once the slot settles (played, closed
   // or unavailable). Nothing plays before that click.
@@ -280,7 +299,9 @@ export default function UnoGamePage() {
   }, [socket, game?.id, gameMode, endPopup]);
   useEffect(() => {
     if (!endPopup) return;
-    const deadline = endPopup.openedAt + 15000;
+    // The replay window starts when the panel is actually on screen, so the
+    // 3s hold never eats into the player's 15s.
+    const deadline = endPopup.openedAt + END_PANEL_DELAY_MS + 15000;
     const id = setInterval(() => {
       const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
       setReplaySecondsLeft(remaining);
@@ -890,7 +911,7 @@ export default function UnoGamePage() {
           because its end panel is its own. */}
       {endPopup && adPending && <PostMatchAdSlot onDone={handleAdSettled} />}
       <AnimatePresence>
-        {endPopup && (
+        {endPopup && endPopupVisible && (
           <motion.div
             {...gameOverModal.backdrop}
             className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-black/80 px-4 py-4 backdrop-blur-sm"

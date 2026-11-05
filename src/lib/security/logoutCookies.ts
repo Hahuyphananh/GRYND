@@ -24,10 +24,12 @@ export const LOGOUT_COOKIES = [
   "csrf_token",
 ] as const;
 
-export function logoutCookieClearOptions() {
+export function logoutCookieClearOptions(
+  secure = process.env.NODE_ENV === "production",
+) {
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure,
     sameSite: "lax" as const,
     path: "/",
     maxAge: 0,
@@ -44,8 +46,11 @@ export interface LogoutCookieJar {
  * immediate deletion). Idempotent — clearing a cookie that is absent is a
  * no-op.
  */
-export function applyLogoutCookieDeletions(jar: LogoutCookieJar): void {
-  const options = logoutCookieClearOptions();
+export function applyLogoutCookieDeletions(
+  jar: LogoutCookieJar,
+  secure?: boolean,
+): void {
+  const options = logoutCookieClearOptions(secure);
   for (const name of LOGOUT_COOKIES) {
     jar.set(name, "", options);
   }
