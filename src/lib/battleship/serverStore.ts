@@ -88,6 +88,7 @@ import {
   canCancelMatch,
   canConfirmFleet,
   canJoinLobby,
+  canResign,
   canSubmitAttack,
   phaseForFleetReadiness,
   requireSeat,
@@ -112,6 +113,7 @@ export type CreateOrJoinResult = { match: MatchRow; joined: boolean } | StoreErr
 export type FetchMatchResult = { dto: MatchDto; events?: TimeoutEvent[] } | StoreError;
 export type ConfirmFleetResult = { dto: MatchDto; confirmed: boolean } | StoreError;
 export type CancelMatchResult = { dto: MatchDto } | StoreError;
+export type ResignMatchResult = { match: MatchRow; winnerSeat: Seat } | StoreError;
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -551,6 +553,50 @@ export async function cancelMatch({
 
     const seat = seatForUser(updated, userId);
     return { dto: matchDto(updated, seat ?? "player1", null) };
+  });
+}
+
+/**
+ * Resigns the caller's LIVE match.
+ *
+ * The seat and the winner are derived here, never supplied by the request: the
+ * caller's session resolves to a seat and the other seat receives the win. The
+ * match is finalised through the same `finishMatchTx` path as a timeout or a
+ * disconnect, so rated settlement, lifecycle and idempotency are identical.
+ *
+ * A waiting lobby is cancelled, not resigned; a settled match is a 409; and a
+ * practice row is refused so the bot cannot enter the ranked-looking path.
+ */
+export async function resignMatch({
+  userId,
+  matchId,
+}: {
+  userId: string;
+  matchId: string;
+}): Promise<ResignMatchResult> {
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .select()
+      .from(battleshipMatches)
+      .where(eq(battleshipMatches.id, matchId))
+      .for("update");
+
+    if (!row) return { error: "Match not found", status: 404 };
+
+    const can = canResign({
+      phase: row.phase,
+      seats: row,
+      userId,
+      isAi: row.isAi === true,
+    });
+    if (can.ok === false) return { error: can.message, status: can.status };
+
+    const now = new Date();
+    const winnerSeat = otherSeat(can.seat);
+    const updated = await finishMatchTx(tx, row, winnerSeat, "resigned", now);
+    if (!updated) return { error: "This match is already over", status: 409 };
+
+    return { match: updated, winnerSeat };
   });
 }
 
@@ -1158,7 +1204,7 @@ async function finishMatchTx(
   tx: any,
   row: MatchRow,
   winnerSeat: Seat,
-  reason: "placement_timeout" | "timeout_forfeit" | "abandoned",
+  reason: "placement_timeout" | "timeout_forfeit" | "abandoned" | "resigned",
   now: Date,
 ): Promise<MatchRow | null> {
   const [updated] = await tx

@@ -201,6 +201,41 @@ export function canCancelMatch(input: {
   return { ok: true };
 }
 
+export type ResignVerdict =
+  | { readonly ok: true; readonly seat: Seat }
+  | { readonly ok: false; readonly status: number; readonly message: string };
+
+/**
+ * May this user resign this match?
+ *
+ * Resignation is a LIVE-MATCH action: a waiting lobby is cancelled through the
+ * lobby route, a settled match accepts nothing, and practice is left through
+ * the practice UI rather than touching a ranked-looking settlement path. The
+ * winner is always derived by the store from the caller's seat.
+ */
+export function canResign(input: {
+  readonly phase: string;
+  readonly seats: Seats;
+  readonly userId: string;
+  readonly isAi?: boolean;
+}): ResignVerdict {
+  const access = requireSeat(input.seats, input.userId);
+  if (access.ok === false) return access;
+  if (isTerminalPhase(input.phase)) {
+    return { ok: false, status: 409, message: "This match is over" };
+  }
+  if (input.isAi === true) {
+    return { ok: false, status: 409, message: "Practice matches cannot be resigned" };
+  }
+  if (input.phase === MATCH_PHASE.WAITING) {
+    return { ok: false, status: 409, message: "There is no active match to resign" };
+  }
+  if (input.phase !== MATCH_PHASE.PLACEMENT && input.phase !== MATCH_PHASE.COMBAT) {
+    return { ok: false, status: 409, message: "This match cannot be resigned" };
+  }
+  return { ok: true, seat: access.seat };
+}
+
 /** FINISHED and CANCELLED accept nothing further. */
 export function isTerminalPhase(phase: string | null | undefined): boolean {
   return phase === MATCH_PHASE.FINISHED || phase === MATCH_PHASE.CANCELLED;

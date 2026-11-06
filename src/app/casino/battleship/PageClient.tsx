@@ -108,6 +108,7 @@ export default function BattleshipPageClient() {
   // does not read as "searching for an opponent" in the shared lobby.
   const [aiBusy, setAiBusy] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [resigning, setResigning] = useState(false);
   const [lobbies, setLobbies] = useState<LobbyRow[]>([]);
   const [lobbiesLoading, setLobbiesLoading] = useState(true);
   const [myOpenId, setMyOpenId] = useState<string | null>(null);
@@ -432,6 +433,34 @@ export default function BattleshipPageClient() {
     [cancelling, fetchLobbies, matchId, pokeLobby],
   );
 
+  const resign = useCallback(async () => {
+    // Practice leaves through its own exit; only a live ranked match can be
+    // resigned, and the opponent is awarded the win by the server.
+    if (!matchId || practiceMode || resigning) return;
+    const confirmed =
+      typeof window === "undefined" ||
+      window.confirm("Resign this match? Your opponent will be awarded the win.");
+    if (!confirmed) return;
+
+    setResigning(true);
+    setNotice(null);
+    try {
+      const res = await fetch(`/api/battleship/match/${matchId}/resign`, {
+        method: "POST",
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        setNotice(String(data?.error || "Unable to resign this match"));
+        return;
+      }
+      await refresh();
+    } catch {
+      setNotice("Network error — could not resign.");
+    } finally {
+      setResigning(false);
+    }
+  }, [matchId, practiceMode, refresh, resigning]);
+
   const leave = useCallback(() => {
     setMatchId(null);
     setSnapshot(null);
@@ -449,6 +478,13 @@ export default function BattleshipPageClient() {
   const phase = snapshot?.phase ?? null;
   const view = snapshot?.combat ?? null;
   const over = isMatchOver(phase);
+  const finishedLabel = snapshot
+    ? snapshot.result === "draw"
+      ? "Draw"
+      : snapshot.result === snapshot.you.seat
+        ? "Victory"
+        : "Defeat"
+    : "Match over";
 
   let body: React.ReactNode = null;
 
@@ -534,6 +570,31 @@ export default function BattleshipPageClient() {
         onAttack={(coordinate) => void submitAttack(coordinate)}
         onLeave={leave}
       />
+    );
+  } else if (over) {
+    // A resignation can land during placement, before both fleets produce a
+    // combat view. The match is still final, so show its result rather than a
+    // loading line that would never resolve.
+    body = (
+      <div
+        data-testid="match-finished"
+        className="rounded-2xl border border-white/10 bg-[#061229]/70 p-6 text-center"
+      >
+        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#ffec08]/70">
+          Battleship
+        </p>
+        <p className="mt-2 text-2xl font-black uppercase tracking-wide text-white">
+          {finishedLabel}
+        </p>
+        <p className="mt-2 text-[11px] text-white/50">This match is over.</p>
+        <button
+          type="button"
+          onClick={leave}
+          className="mt-4 rounded-lg border border-white/20 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-white/70"
+        >
+          Back to lobby
+        </button>
+      </div>
     );
   } else {
     body = (
@@ -660,9 +721,32 @@ export default function BattleshipPageClient() {
               14×10 · 1v1
             </span>
           </div>
-          <span className="rounded-full border border-[#ffec08]/40 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-[#ffec08]">
-            {practiceMode ? "Practice · unrated" : "Ranked · free to play"}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="rounded-full border border-[#ffec08]/40 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-[#ffec08]">
+              {practiceMode ? "Practice · unrated" : "Ranked · free to play"}
+            </span>
+            {matchId && !over && phase && phase !== "waiting" ? (
+              practiceMode ? (
+                <button
+                  type="button"
+                  onClick={leave}
+                  className="rounded-lg border border-white/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white/60 transition hover:border-white/40 hover:text-white"
+                >
+                  Leave
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  data-testid="battleship-resign"
+                  onClick={() => void resign()}
+                  disabled={resigning}
+                  className="rounded-lg border border-red-400/40 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-red-200 transition hover:border-red-300 hover:text-white disabled:cursor-wait disabled:opacity-50"
+                >
+                  {resigning ? "Resigning…" : "Resign"}
+                </button>
+              )
+            ) : null}
+          </div>
         </header>
 
         {practiceNotice ? (

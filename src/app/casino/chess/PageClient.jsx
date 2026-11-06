@@ -1,5 +1,6 @@
 "use client";
 import { useMatchRouter } from "../../../hooks/useMatchRouter";
+import Link from "next/link";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
 import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
@@ -324,7 +325,15 @@ export default function ChessLobby() {
     <div className="min-h-screen overflow-x-clip bg-[#07080b] text-white">
       <div className="mx-auto w-full max-w-6xl px-4 pb-16 pt-20 sm:px-6 md:pb-10">
       <NavigationBar currentPath="/casino" />
-      <p className="mt-4 text-[11px] font-black uppercase tracking-[0.42em] text-cyan-300/70">
+      <div className="mt-4 flex justify-center">
+        <Link
+          href="/games"
+          className="inline-flex h-9 items-center justify-center rounded-lg border border-white/15 bg-white/[0.03] px-3 text-[11px] font-bold text-white/60 transition hover:border-white/30 hover:text-white"
+        >
+          ← Back to games
+        </Link>
+      </div>
+      <p className="mt-3 text-[11px] font-black uppercase tracking-[0.42em] text-cyan-300/70">
         GRYND &middot; 1v1 duel
       </p>
       <h1 className="mt-3 flex flex-wrap items-center justify-center gap-3 text-4xl font-black leading-[0.95] tracking-tight text-white sm:text-5xl lg:text-6xl">

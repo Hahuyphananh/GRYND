@@ -64,7 +64,7 @@ export function publishTimeoutNotice(matchId: string, round: number, seats: Seat
 export interface ForfeitNotice {
   readonly matchId: string;
   readonly seat: Seat | null;
-  readonly reason: "placement_timeout" | "timeout_forfeit" | "abandoned";
+  readonly reason: "placement_timeout" | "timeout_forfeit" | "abandoned" | "resigned";
   readonly cancelled: boolean;
 }
 

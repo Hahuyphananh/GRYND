@@ -28,6 +28,7 @@ import {
   canCancelMatch,
   canConfirmFleet,
   canJoinLobby,
+  canResign,
   isCombatPhase,
   isParticipant,
   isTerminalPhase,
@@ -235,6 +236,28 @@ test("a seated match cannot be cancelled through the lobby route", () => {
   assert.equal(verdict.ok, false);
   assert.equal(verdict.status, 409);
   assert.match(verdict.message, /waiting lobby/i);
+});
+
+test("only a live seated match can be resigned, and the caller is never the winner", () => {
+  assert.deepEqual(
+    canResign({ phase: MATCH_PHASE.PLACEMENT, seats: SEATED, userId: HOST }),
+    { ok: true, seat: "player1" },
+  );
+  assert.deepEqual(
+    canResign({ phase: MATCH_PHASE.COMBAT, seats: SEATED, userId: GUEST }),
+    { ok: true, seat: "player2" },
+  );
+
+  // A third user cannot resign someone else's match.
+  assert.equal(canResign({ phase: MATCH_PHASE.COMBAT, seats: SEATED, userId: THIRD }).status, 403);
+
+  // A waiting lobby, a settled match and practice all refuse the action.
+  assert.equal(canResign({ phase: MATCH_PHASE.WAITING, seats: LOBBY, userId: HOST }).status, 409);
+  assert.equal(canResign({ phase: MATCH_PHASE.FINISHED, seats: SEATED, userId: HOST }).status, 409);
+  assert.equal(
+    canResign({ phase: MATCH_PHASE.COMBAT, seats: SEATED, userId: HOST, isAi: true }).status,
+    409,
+  );
 });
 
 // ── Two authenticated sessions on one row ─────────────────────────────────

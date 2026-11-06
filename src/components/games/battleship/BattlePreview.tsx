@@ -245,13 +245,6 @@ export default function BattlePreview({
           >
             0:{String(secondsLeft).padStart(2, "0")}
           </span>
-          <button
-            type="button"
-            onClick={onLeave}
-            className="rounded-lg border border-white/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white/60 transition hover:border-white/40 hover:text-white"
-          >
-            Leave
-          </button>
         </div>
       </header>
 
@@ -335,7 +328,7 @@ export default function BattlePreview({
                   onClick={onLeave}
                   className="w-full rounded-lg border border-white/20 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-white/70"
                 >
-                  Leave match
+                  Back to lobby
                 </button>
               </div>
             )}

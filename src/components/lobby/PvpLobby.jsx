@@ -526,7 +526,7 @@ export function PvpLobby({
               href="/games"
               className={`inline-flex h-12 items-center justify-center rounded-xl px-5 text-sm font-bold transition ${PALETTE.ghost}`}
             >
-              All games
+              ← Back to games
             </Link>
             <span className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-[11px] font-semibold text-white/40">
               <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-emerald-400" />

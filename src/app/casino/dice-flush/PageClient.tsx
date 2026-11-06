@@ -7,6 +7,7 @@ import { usePostHog } from "posthog-js/react";
 import { useSocket } from "../../../context/SocketProvider";
 import GameEmoteLayer from "../../../components/game/emotes/GameEmoteLayer";
 import useGameEmotes from "../../../hooks/useGameEmotes";
+import Link from "next/link";
 import NavigationBar from "../../../components/navigation-bar";
 import MatchWaiting from "../../../components/lobby/MatchWaiting";
 import Footer from "../../../components/Footer";
@@ -882,6 +883,14 @@ export default function DiceFlushPage() {
 
       <div className="min-h-screen bg-gradient-to-b from-[#030817] via-[#081a3d] to-[#003b8e] px-3 pb-24 pt-20 text-white"><NavigationBar currentPath="/casino" />
     <div className="mx-auto mt-4 max-w-5xl">
+      <div className="mb-3 flex justify-center">
+        <Link
+          href="/games"
+          className="inline-flex h-9 items-center justify-center rounded-lg border border-white/15 bg-white/[0.03] px-3 text-[11px] font-bold text-white/60 transition hover:border-white/30 hover:text-white"
+        >
+          ← Back to games
+        </Link>
+      </div>
       {/* ────── TITLE ────── */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}

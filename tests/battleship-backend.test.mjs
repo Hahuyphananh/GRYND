@@ -45,6 +45,7 @@ const ROUTES = {
   fleet: "src/app/api/battleship/match/[matchId]/fleet/route.ts",
   attack: "src/app/api/battleship/match/[matchId]/attack/route.ts",
   cancel: "src/app/api/battleship/match/[matchId]/cancel/route.ts",
+  resign: "src/app/api/battleship/match/[matchId]/resign/route.ts",
 };
 
 /** Comments are documentation, not behaviour: assertions run on code only. */
@@ -373,7 +374,7 @@ test("Battleship moves no coins", () => {
 
 // ── Route surface ─────────────────────────────────────────────────────────
 
-test("the API surface is matchmaking, lobby, snapshot, fleet, attack, cancel and the practice entry", () => {
+test("the API surface is matchmaking, lobby, snapshot, fleet, attack, cancel, resign and the practice entry", () => {
   const apiRoot = path.join(process.cwd(), "src/app/api/battleship");
   const files = [];
   const walk = (dir) => {
@@ -392,9 +393,21 @@ test("the API surface is matchmaking, lobby, snapshot, fleet, attack, cancel and
     "src/app/api/battleship/match/[matchId]/attack/route.ts",
     "src/app/api/battleship/match/[matchId]/cancel/route.ts",
     "src/app/api/battleship/match/[matchId]/fleet/route.ts",
+    "src/app/api/battleship/match/[matchId]/resign/route.ts",
     "src/app/api/battleship/match/[matchId]/route.ts",
     "src/app/api/battleship/practice/[matchId]/attack/route.ts",
     "src/app/api/battleship/practice/[matchId]/fleet/route.ts",
     "src/app/api/battleship/practice/[matchId]/route.ts",
   ]);
+});
+
+test("resignation is server-authoritative and settles through the shared finish path", () => {
+  const source = stripComments(read(ROUTES.resign));
+  assert.match(source, /await resignMatch\(\{ userId, matchId \}\)/);
+  assert.match(source, /reason: "resigned"/);
+  assert.doesNotMatch(source, /req\.json|body\./, "a resign request carries no client fields");
+
+  assert.match(STORE, /canResign\(/);
+  assert.match(STORE, /const winnerSeat = otherSeat\(can\.seat\)/);
+  assert.match(STORE, /finishMatchTx\(tx, row, winnerSeat, "resigned", now\)/);
 });
