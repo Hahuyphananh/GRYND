@@ -14,7 +14,6 @@
 // created later, by the game's own store, when the host starts it
 // (`POST /api/rooms/[roomId]/start`). See docs/PRIVATE_ROOMS.md.
 
-import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { parseAndValidateJson } from "../../../lib/security/validation";
 import { getMembershipTier } from "../../../lib/stripe/subscriptions";
@@ -24,6 +23,7 @@ import {
   enforceRateLimit,
   failureResponse,
   requireRoomActor,
+  requireRoomViewer,
 } from "../../../lib/rooms/api";
 import { ROOM_GAMES, getRoomGame } from "../../../lib/rooms/catalog";
 import { createRoom, listRoomsFor } from "../../../lib/rooms/store";
@@ -32,8 +32,10 @@ export const dynamic = "force-dynamic";
 
 /** GET /api/rooms — the caller's own rooms and invitations. */
 export async function GET() {
-  const { userId } = await auth();
-  if (!userId) return apiError(401, "unauthenticated", "Unauthorized");
+  // Account or verified guest: the id is resolved from the session only.
+  const actor = await requireRoomViewer();
+  if (actor.response) return actor.response;
+  const userId = actor.userId;
 
   try {
     const result = await listRoomsFor({ userId });
@@ -80,8 +82,10 @@ export async function POST(req: Request) {
       return apiError(400, "unknown_game", "Unsupported game for a private room");
     }
 
-    // Server-resolved membership: the request body cannot claim a tier.
-    const tier = await getMembershipTier(userId);
+    // Server-resolved tier: the request body cannot claim one. A guest is
+    // never looked up in Stripe — its tier is the constant "guest", and the
+    // pure rule permits only a free room for a guest-eligible game.
+    const tier = actor.isGuest ? "guest" : await getMembershipTier(userId);
 
     const created = await createRoom({
       hostUserId: userId,

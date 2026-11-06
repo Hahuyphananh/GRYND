@@ -34,7 +34,9 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ matchId: string }> },
 ) {
-  const gate = await requirePracticePlayer();
+  // Embedded platform sessions may move in their OWN match; the token is
+  // scoped to tic-tac-toe, and the store still authorises by seat.
+  const gate = await requirePracticePlayer({ platformGame: "tic-tac-toe" });
   if (gate.response) return gate.response;
   const userId = gate.playerId;
   if (!userId) {

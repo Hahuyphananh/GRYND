@@ -21,6 +21,8 @@ import ChooseEmotesModal from "../../components/ChooseEmotesModal";
 import UpgradeProButton from "../../components/UpgradeProButton";
 import EmoteLoadoutStrip from "../../components/EmoteLoadoutStrip";
 import UserStatsTabs from "../../components/UserStatsTabs";
+import GuestProgressPanel from "../../components/guest/GuestProgressPanel";
+import GuestClaimPanel from "../../components/guest/GuestClaimPanel";
 import RoomsPanel, { ChallengeFriendDialog } from "../../components/rooms/RoomsPanel";
 import { clearSessionArtifacts } from "../../lib/security/sessionCleanup";
 import { fetchDeduped } from "../../lib/dedupeFetch";
@@ -1185,19 +1187,36 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
   }
 
   if (!isSignedIn) {
+    // Signed-out visitors get the SAME page chrome and their own guest
+    // practice record, resolved from the HMAC-signed guest cookie by
+    // /api/guest/progress. This replaces the old sign-in dead end only; the
+    // account profile below is untouched (Phase 2F).
     return (
-      <div className="flex h-screen items-center justify-center bg-[#003366]">
-        <div className="text-center">
-          <p className="mb-4 text-xl text-gray-300">
-            {t("profile.signedOut.prompt", "Sign in to view your profile")}
-          </p>
-          <a
-            href="/sign-in?redirect_url=/profil"
-            className="rounded-lg bg-[#FFD700] px-6 py-3 text-[#003366] hover:bg-[#FFD700]/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#003366]"
-          >
-            {t("profile.signedOut.signIn", "Sign in")}
-          </a>
+      <div
+        className="min-h-screen text-white"
+        style={{
+          backgroundImage: "linear-gradient(135deg, #001933 0%, #000d1a 100%)",
+        }}
+      >
+        <div className="mx-auto max-w-6xl px-4 pb-20 pt-24 sm:px-6">
+          <NavigationBar currentPath="/profil" />
+          <header className="mb-6">
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#00e5ff]">
+              {t("guestProgress.eyebrow", "Guest profile")}
+            </p>
+            <h1 className="mt-1 text-3xl font-black text-white sm:text-4xl">
+              {t("guestProgress.title", "Your guest progress")}
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm text-[#9dd8ff]/80">
+              {t(
+                "guestProgress.subtitle",
+                "Your free practice record. No account needed, and nothing here is ranked.",
+              )}
+            </p>
+          </header>
+          <GuestProgressPanel />
         </div>
+        <Footer />
       </div>
     );
   }
@@ -1224,6 +1243,11 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
         >
           {t("profile.title", "Your Profile")}
         </h1>
+
+        {/* Guest→account conversion (Phase 4): renders only while this
+            browser has an unclaimed guest practice record, or to confirm a
+            claim already made. Nothing changes for accounts without one. */}
+        <GuestClaimPanel />
 
         {/* GRYND PRO — shows "Manage Subscription" for subscribers and the
             upgrade CTA for everyone else; the status is read from the server

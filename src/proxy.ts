@@ -26,6 +26,7 @@ import { cacheGet, cacheSet } from "./lib/redis/cache";
 import { CacheKeys, CacheTTL } from "./lib/redis/keys";
 import { isGameLandingSlug } from "./lib/gameLandingPages";
 import { isGuideSlug } from "./lib/guides";
+import { applyEmbedFramePolicy } from "./lib/platform/framing";
 
 /**
  * A path with no route behind it, used only as a rewrite target so that an
@@ -159,6 +160,11 @@ const isPublicRoute = createRouteMatcher([
   "/games",
   "/sync",
   "/thank-you",
+  // External platform embeds (Phase 5). The embed page is public because its
+  // own server component validates the short-lived platform session; the game
+  // APIs it calls accept ONLY that bearer token. The framing policy for these
+  // paths is applied separately and narrowly (see lib/platform/framing).
+  "/embed(.*)",
   // /welcome is the first-time onboarding flow shown to brand-new accounts
   // right after /sync. Like /sync and /thank-you it must stay reachable
   // BEFORE the user has set their age (/complete-profile gate) — the page
@@ -982,6 +988,15 @@ export default async function proxy(req: NextRequest, event: NextFetchEvent) {
 
   try {
     const response = await clerkProtectedMiddleware(req, event);
+    // Embeds are the ONLY paths whose framing policy is relaxed, and only to
+    // the explicit platform origin allowlist. Every other response keeps the
+    // global `frame-ancestors 'self'` + SAMEORIGIN set in applySecurityHeaders.
+    if (response) {
+      applyEmbedFramePolicy(
+        response as unknown as Parameters<typeof applyEmbedFramePolicy>[0],
+        req.nextUrl?.pathname,
+      );
+    }
     // Clerk rewrites to the request's OWN url to hand its `x-clerk-auth-*`
     // headers to the render. On the Node runtime Next would proxy that absolute
     // url to this same server and loop until the 30s proxy timeout, so the

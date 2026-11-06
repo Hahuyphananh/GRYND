@@ -159,6 +159,49 @@ const io = new Server(httpServer, {
 });
 
 
+// ── Guest socket identity (Phase 3F) ─────────────────────────────────
+// A signed-out visitor holds the SAME HMAC-signed `grynd_guest` cookie the
+// Next.js guest session issues. Identity is derived from that cookie ONLY: no
+// handshake field, query string or payload can name a guest.
+//
+// This middleware runs BEFORE the Clerk one and only handles the no-token
+// path, so registered authentication is unchanged.
+//
+// The cookie verification itself lives in ./guestAuth.js, where it is tested
+// directly without booting this server.
+const {
+  readCookieValue,
+  verifyGuestCookie,
+} = require("./guestAuth");
+
+// One join budget per guest socket: reconnects get a new socket (and a fresh
+// cookie-checked identity), so this bounds brute-force room poking.
+const guestJoinWindows = new WeakMap();
+function allowGuestRoomJoin(socket) {
+  if (!socket.data.isGuest) return true;
+  const now = Date.now();
+  const win = guestJoinWindows.get(socket) || { start: now, count: 0 };
+  if (now - win.start > 60000) {
+    win.start = now;
+    win.count = 0;
+  }
+  win.count += 1;
+  guestJoinWindows.set(socket, win);
+  return win.count <= 60;
+}
+
+io.use(async (socket, next) => {
+  if (socket.handshake.auth?.token) return next();
+  const guestId = verifyGuestCookie(
+    readCookieValue(socket.handshake.headers?.cookie, "grynd_guest"),
+  );
+  if (!guestId) return next(new Error("Authentication token missing"));
+  socket.data.userId = guestId;
+  socket.data.isGuest = true;
+  socket.data.clerkToken = null;
+  return next();
+});
+
 io.use(async (socket, next) => {
   try {
     const token = socket.handshake.auth?.token;
@@ -1636,6 +1679,13 @@ io.on("connection", (socket) => {
     // Same rule for the per-user rooms: only `user:join` below may enter one,
     // and it uses the verified subject rather than the requested id.
     if (String(roomId).startsWith(USER_ROOM_PREFIX)) return;
+    // A verified GUEST may only enter its own game's match rooms (Phase 3F).
+    // The game handlers still authorise every event by seat id, so this is a
+    // narrowing, not the authorization itself.
+    if (socket.data.isGuest) {
+      if (!allowGuestRoomJoin(socket)) return;
+      if (!String(roomId).startsWith("dominoes:match:")) return;
+    }
     socket.join(String(roomId));
     trackPrecisionJoin(String(roomId), socket.data.userId);
     trackPlinkoJoin(String(roomId), socket.data.userId);

@@ -20,6 +20,7 @@ import {
   doublePrecision,
   primaryKey,
   unique,
+  check,
 } from "drizzle-orm/pg-core";
 import { relations, sql, desc } from "drizzle-orm";
 
@@ -4844,5 +4845,152 @@ export const battleshipAttacks = pgTable(
       table.coordinate,
     ),
     matchIdx: index("battleship_attacks_match_idx").on(table.matchId, table.round),
+  }),
+);
+
+// ── GUEST PROGRESSION (Phase 2B) ───────────────────────────────────────────
+//
+// A signed-out visitor is a `guest_<32 hex>` identity carried in an HMAC-signed
+// cookie (src/lib/auth/guestSession.ts) and has NO `users` row. These two tables
+// are the entire persistent footprint of that identity:
+//
+//   guest_profiles         one row per guest who actually FINISHED a supported
+//                          practice match. Created lazily — never on a page
+//                          view, never on match creation — so the table cannot
+//                          grow with anonymous traffic.
+//   guest_practice_results one row per settled practice match, keyed by
+//                          (game_key, match_id) so a retried settlement can
+//                          never record the same match twice. It deliberately
+//                          stores NO counters: every number the progress
+//                          endpoint reports is derived from these rows, so
+//                          there is no counter that could double-increment.
+//
+// Nothing here is read by rating, trophy, statistic, token or leaderboard code,
+// and `player_ratings` / `player_trophies` / `user_stats` are keyed by an
+// INTEGER `users.id` — a guest cannot enter a ranked ladder by construction.
+export const guestProfiles = pgTable(
+  "guest_profiles",
+  {
+    /** The signed `guest_<32 hex>` id itself — never a Clerk id, never a users row. */
+    guestId: varchar("guest_id", { length: 64 }).primaryKey(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    /** Refreshed on every recorded result; the progress read reports it back. */
+    lastSeenAt: timestamp("last_seen_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // The same shape `isGuestId` enforces in code (src/lib/guestIdentity.ts):
+    // the prefix, then at most 58 id characters inside varchar(64).
+    guestIdFormat: check(
+      "guest_profiles_guest_id_format",
+      sql`${table.guestId} ~ '^guest_[A-Za-z0-9_-]{1,58}$'`,
+    ),
+  }),
+);
+
+export const guestPracticeResults = pgTable(
+  "guest_practice_results",
+  {
+    id: serial("id").primaryKey(),
+    guestId: varchar("guest_id", { length: 64 })
+      .notNull()
+      .references(() => guestProfiles.guestId, { onDelete: "cascade" }),
+    /** Canonical game key (RATED_GAMES vocabulary), e.g. "tic-tac-toe". */
+    gameKey: varchar("game_key", { length: 32 }).notNull(),
+    /** The match's own id as text: uuid (36 chars) today, headroom to 64. */
+    matchId: varchar("match_id", { length: 64 }).notNull(),
+    result: varchar("result", { length: 8 }).notNull(),
+    aiDifficulty: varchar("ai_difficulty", { length: 16 }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // IDEMPOTENCY: one result per settled match, even if the settle retries.
+    gameMatchUnique: unique("guest_practice_results_game_match_unique").on(
+      table.gameKey,
+      table.matchId,
+    ),
+    guestHistoryIdx: index("guest_practice_results_guest_idx").on(
+      table.guestId,
+      desc(table.createdAt),
+    ),
+    resultValid: check(
+      "guest_practice_results_result_valid",
+      sql`${table.result} IN ('win','loss','draw')`,
+    ),
+  }),
+);
+
+// ── GUEST → ACCOUNT CONVERSION (Phase 4) ───────────────────────────────────
+//
+// One row per guest practice record that a signed-in player has claimed. It is
+// a link + provenance, never a transfer of rows: `guest_practice_results` keeps
+// its original `guest_id`, timestamps and outcomes, so a claimed practice
+// record stays visibly separate from the account's rated results.
+//
+//   guest_id PRIMARY KEY           one guest, one claim, one account, forever.
+//   UNIQUE (claimed_by_user_id)   one account, one claimed guest record.
+//
+// The snapshot counts are written once at claim time so the UI can say what was
+// preserved without re-reading the history; nothing increments them later.
+export const guestClaims = pgTable(
+  "guest_claims",
+  {
+    guestId: varchar("guest_id", { length: 64 })
+      .primaryKey()
+      .references(() => guestProfiles.guestId, { onDelete: "cascade" }),
+    claimedByUserId: varchar("claimed_by_user_id", { length: 255 })
+      .notNull()
+      .references(() => users.clerkId, { onDelete: "cascade" }),
+    claimedAt: timestamp("claimed_at").notNull().defaultNow(),
+    /** Practice matches present at claim time — immutable snapshot. */
+    matchCount: integer("match_count").notNull().default(0),
+    winCount: integer("win_count").notNull().default(0),
+    lossCount: integer("loss_count").notNull().default(0),
+    drawCount: integer("draw_count").notNull().default(0),
+  },
+  (table) => ({
+    oneGuestPerAccount: unique("guest_claims_one_guest_per_account").on(
+      table.claimedByUserId,
+    ),
+    countsValid: check(
+      "guest_claims_counts_valid",
+      sql`${table.matchCount} >= 0 AND ${table.winCount} >= 0 AND ${table.lossCount} >= 0 AND ${table.drawCount} >= 0 AND (${table.winCount} + ${table.lossCount} + ${table.drawCount}) = ${table.matchCount}`,
+    ),
+  }),
+);
+
+// ── EXTERNAL PLATFORM EMBED SESSIONS (Phase 5) ─────────────────────────────
+//
+// A platform's BACKEND mints one of these with its own secret and embeds the
+// returned opaque token in an iframe URL. The row is scoped to exactly one
+// platform, one supported game and one allowed platform origin, and it carries
+// a server-minted guest id — never a Clerk id. The raw token is never stored,
+// only its SHA-256 hash, so a database leak cannot be replayed.
+export const platformSessions = pgTable(
+  "platform_sessions",
+  {
+    tokenHash: varchar("token_hash", { length: 64 }).primaryKey(),
+    /** Allowlisted platform slug, from server config — never from a request. */
+    platform: varchar("platform", { length: 32 }).notNull(),
+    /** The single game this session may play. */
+    gameKey: varchar("game_key", { length: 32 }).notNull(),
+    /** Exact https origin allowed to frame the game (also used for CSP). */
+    platformOrigin: varchar("platform_origin", { length: 255 }).notNull(),
+    /** Server-minted `guest_<32 hex>` identity, scoped to this session. */
+    guestId: varchar("guest_id", { length: 64 }).notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    expiresAt: timestamp("expires_at").notNull(),
+    /** Set by revoke/close; validation rejects ended rows. */
+    endedAt: timestamp("ended_at"),
+  },
+  (table) => ({
+    guestIdFormat: check(
+      "platform_sessions_guest_id_format",
+      sql`${table.guestId} ~ '^guest_[A-Za-z0-9_-]{1,58}$'`,
+    ),
+    expiryAfterCreation: check(
+      "platform_sessions_expiry_after_creation",
+      sql`${table.expiresAt} > ${table.createdAt}`,
+    ),
+    expiryIdx: index("platform_sessions_expiry_idx").on(table.expiresAt),
   }),
 );

@@ -2,6 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { db } from "../db";
 import { quickQueueAssignments, quickQueueRequests } from "../db/schema";
 import { normalizeQuickQueueRequest } from "./quickQueue";
+import { isGuestId } from "./guestIdentity";
 import { getMembershipTier } from "./stripe/subscriptions";
 
 export async function createQuickQueueRequest(input: unknown) {
@@ -19,11 +20,15 @@ export async function createQuickQueueRequest(input: unknown) {
   // worker re-resolves active members from the subscription table when it
   // pairs, so a lapsed subscription loses priority immediately. A failure to
   // read membership here just leaves the snapshot false; it can never grant it.
+  // A guest owns no account, so membership is never read for one: the premium
+  // column stays false and no subscription lookup runs with a synthetic id.
   let premium = false;
-  try {
-    premium = (await getMembershipTier(request.userId)) === "pro";
-  } catch (error) {
-    console.error("[quick-queue] failed to read membership for the queue row", error);
+  if (!isGuestId(request.userId)) {
+    try {
+      premium = (await getMembershipTier(request.userId)) === "pro";
+    } catch (error) {
+      console.error("[quick-queue] failed to read membership for the queue row", error);
+    }
   }
 
   const [created] = await db

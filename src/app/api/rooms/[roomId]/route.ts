@@ -11,8 +11,13 @@
 // the list endpoint derives everything from the caller's own membership rows.
 
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
-import { apiError, failureResponse, readRoomId, requireRoomActor } from "../../../../lib/rooms/api";
+import {
+  apiError,
+  failureResponse,
+  readRoomId,
+  requireRoomActor,
+  requireRoomViewer,
+} from "../../../../lib/rooms/api";
 import { cancelRoom, getRoomForViewer } from "../../../../lib/rooms/store";
 
 export const dynamic = "force-dynamic";
@@ -21,10 +26,12 @@ export async function GET(
   _req: Request,
   context: { params: Promise<{ roomId: string }> },
 ) {
-  // Reading only needs a session: a signed-in player may look at the room they
-  // were invited to even before they answer (the 18+ gate applies to playing).
-  const { userId } = await auth();
-  if (!userId) return apiError(401, "unauthenticated", "Unauthorized");
+  // Reading needs a verified session (account or guest cookie): a participant
+  // may look at the room they were invited to before they answer. The room id
+  // is still not a permission — `decideViewRoom` answers 403 to non-members.
+  const actor = await requireRoomViewer();
+  if (actor.response) return actor.response;
+  const userId = actor.userId;
 
   const { roomId } = await context.params;
 

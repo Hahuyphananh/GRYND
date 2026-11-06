@@ -479,7 +479,11 @@ export async function createRoom({
   tier: string;
   rawSettings?: unknown;
 }): Promise<RoomResult> {
-  const gate = decideCreateRoom({ kind, tier });
+  // The rules decide with the room's SERVER-VALIDATED game and stake, so a
+  // guest can never turn a request field into a different game or a stake.
+  const requestedStake =
+    Number((rawSettings as { stake?: unknown } | null | undefined)?.stake) || 0;
+  const gate = decideCreateRoom({ kind, tier, gameKey, stake: requestedStake });
   if (!gate.ok) return failure(gate);
 
   const game = getRoomGame(gameKey);

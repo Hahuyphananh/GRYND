@@ -1,6 +1,7 @@
 import { getNeonSql } from "../db/neon";
 import { invalidateOnGameSettlement } from "./redis/invalidation";
 import { sendLossStreakEmail } from "./emails/behavior";
+import { isGuestSeat } from "./pvp/guestMatch";
 
 let _sql = null;
 function getSql() {
@@ -50,7 +51,8 @@ export async function applyLeaderboardCounters({
   // Only a real settled result moves a counter. AI/bot matches are filtered by
   // the caller (they must not touch leaderboards), and a missing/invalid
   // outcome is a no-op rather than a guess.
-  if (!clerkId || (!isWin && !isLoss)) return;
+  // A guest owns no account and never enters competitive progression.
+  if (!clerkId || isGuestSeat(clerkId) || (!isWin && !isLoss)) return;
 
   // The daily login reward is gated on an online win today. The rating writer
   // stamps this too, but not every PvP result goes through Elo (UNO and Hex

@@ -87,6 +87,23 @@ export function isRoomGame(key: unknown): key is RoomGameKey {
   return getRoomGame(key) !== null;
 }
 
+/**
+ * THE GUEST ROOM ALLOWLIST (Phase 3D).
+ *
+ * A verified guest may create or join a private room ONLY for a game whose
+ * match it can legitimately play. It is deliberately the same closed list the
+ * quick queue uses (`GUEST_PVP_GAME_KEYS` in src/lib/quickQueue.ts), and a test
+ * pins the two together: dominoes is free, server-authoritative and has no
+ * stake/escrow column, so a guest room there can never move money.
+ */
+export const GUEST_ROOM_GAME_KEYS: readonly string[] = Object.freeze(["dominoes"]);
+
+/** True when a guest may host or join a room for this game. */
+export function isGuestRoomGame(key: unknown): boolean {
+  const wanted = String(key ?? "").trim().toLowerCase();
+  return GUEST_ROOM_GAME_KEYS.includes(wanted);
+}
+
 // ── Room lifetime and limits ────────────────────────────────────────────────
 //
 // A room (and a challenge) is time-boxed: an invitation that nobody answers

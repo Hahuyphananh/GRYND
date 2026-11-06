@@ -105,6 +105,11 @@ import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
 import { markDailyRewardWin } from "../dailyRewardWin";
 import { coerceAiDifficulty } from "../aiDifficulty";
+import { isGuestId } from "../guestIdentity";
+import {
+  GUEST_PRACTICE_DOMINOES_GAME_KEY,
+  recordGuestPracticeResultSafely,
+} from "../guest/practiceProgress";
 import { chooseAiAction } from "./ai";
 import {
   ACTION_TYPES,
@@ -2002,6 +2007,25 @@ export async function forfeitMatchOnDisconnect({
  * exactly like every other duel: a progression failure must never un-finish a
  * decided match.
  */
+/**
+ * A settled MATCH result, seen from the guest's own seat.
+ *
+ * Pure and exported so the mapping is tested directly instead of by grep:
+ * `RESULT` names the SEAT that won the match, and a guest's practice outcome
+ * depends on which seat it occupied. An unrecognised result (including the
+ * `null` a caller could hand settlement) maps to `null` — an unknown outcome is
+ * never recorded as a draw.
+ */
+export function practiceOutcomeForSeat(
+  result: string | null,
+  guestSeat: Seat,
+): "win" | "loss" | "draw" | null {
+  if (result === RESULT.DRAW) return "draw";
+  if (result !== RESULT.PLAYER1 && result !== RESULT.PLAYER2) return null;
+  const winningSeat: Seat = result === RESULT.PLAYER1 ? SEATS[0] : SEATS[1];
+  return winningSeat === guestSeat ? "win" : "loss";
+}
+
 async function settleMatch(
   tx: any,
   match: MatchRow,
@@ -2026,12 +2050,45 @@ async function settleMatch(
     ) {
       await markDailyRewardWin(tx, winnerId).catch(() => {});
     }
+
+    // GUEST PROGRESSION (Phase 2C). A signed-out visitor plays the bot as a
+    // `guest_<32 hex>` id (src/lib/auth/guestSession.ts) and owns no `users`
+    // row. Both inputs are already authoritative by the time settlement runs:
+    // the row was locked and claimed above, and `outcome` is the store's own
+    // match verdict — no request field reaches this call. A registered account
+    // seats no guest id, so their practice match writes nothing here.
+    const guestId = [match.player1Id, match.player2Id].find(
+      (id): id is string => Boolean(id) && isGuestId(id),
+    );
+    if (guestId) {
+      const guestSeat: Seat = match.player1Id === guestId ? SEATS[0] : SEATS[1];
+      const practiceResult = practiceOutcomeForSeat(outcome.result, guestSeat);
+      if (practiceResult) {
+        // The SAFE writer: it cannot throw and cannot abort this transaction,
+        // so a guest-progression hiccup never un-finishes a decided match.
+        await recordGuestPracticeResultSafely(tx, {
+          guestId,
+          // Canonical key from the guest writer's closed list — a constant, like
+          // the Tic-Tac-Toe pilot, so this is not a fifth rated call site.
+          gameKey: GUEST_PRACTICE_DOMINOES_GAME_KEY,
+          matchId: String(match.id),
+          result: practiceResult,
+          aiDifficulty: match.aiDifficulty,
+        });
+      }
+    }
     return;
   }
 
   const player1 = match.player1Id;
   const player2 = match.player2Id;
   if (String(player1) === String(player2)) return;
+
+  // GUEST PVP IS UNRATED (Phase 3E). If either seat is a guest the match may
+  // move NO account progression at all: the W/L counters below are skipped
+  // here, and the shared rating/trophy writers refuse guest seats on their
+  // own. The verdict itself is still written to the match row.
+  if (isGuestId(player1) || isGuestId(player2)) return;
 
   const matchId = String(match.id);
 

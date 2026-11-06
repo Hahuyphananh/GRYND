@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
 import { requirePracticePlayer } from "../../../../../lib/auth/guestSession";
 import { db } from "../../../../../db/client";
 import { oddsGames } from "../../../../../db/schema";
 import { eq } from "drizzle-orm";
+import { settleGuestOddsPracticeTx } from "../../../../../lib/odds/guestSettlement";
 import { markDailyRewardWin } from "../../../../../lib/dailyRewardWin";
 import {
   initInteractiveOddsGame,
@@ -15,9 +15,8 @@ export async function POST(req: Request) {
     const gate = await requirePracticePlayer();
     if (gate.response) return gate.response;
 
-    const { userId } = await auth();
-    if (!userId)
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Signed-in player or verified guest — the practice gate resolved both.
+    const userId = gate.playerId as string;
 
     const body = await req.json();
     const gameId = Number(body.gameId);
@@ -85,6 +84,10 @@ export async function POST(req: Request) {
           endedAt: new Date(),
         })
         .where(eq(oddsGames.id, gameId));
+
+      // Guest progression from the state this transaction just finalised. An
+      // account seat, a non-AI row or a missing verdict writes nothing.
+      await settleGuestOddsPracticeTx(tx, game, finalState);
 
       // AI games are free play (wager is never deducted) — skip the stats
       // pipeline entirely so beating the AI no longer records a phantom

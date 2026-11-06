@@ -147,8 +147,13 @@ test("Battleship is in the ONE rating/trophy registry, settled by the shared wri
   assert.match(store, /import \{ applyTrophyResult \} from "\.\.\/trophyStore"/);
   assert.match(store, /gameKey: "battleship"/);
   assert.match(store, /gameKey: "battleship",[\s\S]{0,200}applyTrophyResult|applyTrophyResult\(\{[\s\S]{0,80}gameKey: "battleship"/);
-  // Practice and lobbies can never settle.
-  assert.match(store, /if \(row\.isAi \|\| !row\.player2Id\) return;/);
+  // Practice and lobbies can never settle a ladder: an AI row records only the
+  // guest practice result (Phase 2D) and returns; a lobby has no second seat.
+  assert.match(
+    store,
+    /if \(row\.isAi\) \{[\s\S]{0,160}?await settleGuestPracticeTx\(tx, row, winnerSeat\);\s*return;/,
+  );
+  assert.match(store, /if \(!row\.player2Id\) return;/);
   // The account W/L counters use the same shared columns, and a draw touches
   // neither — the platform's own rule.
   assert.match(store, /gamesWon: sql`\$\{users\.gamesWon\} \+ 1`/);

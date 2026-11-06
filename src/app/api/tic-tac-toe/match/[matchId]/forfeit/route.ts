@@ -18,7 +18,7 @@ export async function POST(
   _req: Request,
   { params }: { params: Promise<{ matchId: string }> },
 ) {
-  const gate = await requirePracticePlayer();
+  const gate = await requirePracticePlayer({ platformGame: "tic-tac-toe" });
   if (gate.response) return gate.response;
   const userId = gate.playerId;
   if (!userId) {

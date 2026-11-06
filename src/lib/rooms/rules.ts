@@ -23,11 +23,13 @@
 //                   what lets a free player challenge a friend without gaining
 //                   standalone room-creation privileges.
 
+import { isGuestId } from "../guestIdentity";
 import {
   CHALLENGE_TTL_MS,
   ROOM_MAX_INVITES,
   ROOM_TTL_MS,
   getRoomGame,
+  isGuestRoomGame,
 } from "./catalog";
 
 export type RoomKind = "room" | "challenge";
@@ -179,14 +181,42 @@ export function isStaleClaim(
 export function decideCreateRoom({
   kind,
   tier,
+  gameKey,
+  stake = 0,
 }: {
   kind: string;
-  /** The caller's server-resolved membership tier. */
+  /** The caller's server-resolved membership tier. "guest" only for cookies. */
   tier: string;
+  /** The room's server-validated game key. */
+  gameKey?: string;
+  /** The room's server-validated stake. */
+  stake?: number;
 }): Decision {
   if (kind !== "room" && kind !== "challenge") {
     return deny(400, "invalid_kind", "Unknown room kind");
   }
+
+  // GUEST HOSTS (Phase 3D). `tier === "guest"` is resolved by the room route
+  // from the verified cookie, never from the body. A guest gets a shareable
+  // room only for a free game it can actually play; a guest match is unrated by
+  // rule, so a stake is refused too (no economy may ride on it).
+  if (tier === "guest") {
+    if (kind !== "room") {
+      return deny(
+        403,
+        "guest_challenge_unsupported",
+        "Guests can create a room, not a friend challenge",
+      );
+    }
+    if (!isGuestRoomGame(gameKey)) {
+      return deny(403, "guest_game_unsupported", "Guests can only host supported guest games");
+    }
+    if ((Number(stake) || 0) > 0) {
+      return deny(403, "guest_free_only", "Guest rooms are free play only");
+    }
+    return ALLOW;
+  }
+
   if (kind === "challenge") return ALLOW;
   if (tier !== "pro") {
     return deny(403, "pro_required", "GRYND PRO members can create private rooms");
@@ -275,6 +305,11 @@ export function decideInvite({
   now?: Date | number;
 }): Decision {
   if (!hostUserId) return deny(401, "unauthenticated", "Sign in to invite a friend");
+  // A guest owns no account and no friends list, so it can never be the host
+  // who invites (Phase 3D). Join-by-code is its only route into another room.
+  if (isGuestId(hostUserId)) {
+    return deny(403, "guest_cannot_invite", "Guests cannot invite players");
+  }
   if (!inviteeUserId) return deny(400, "missing_invitee", "Choose a friend to invite");
   if (hostUserId !== room.hostUserId) {
     return deny(403, "not_the_host", "Only the room's host can invite players");
@@ -338,6 +373,11 @@ export function decideJoinByCode({
   now?: Date | number;
 }): Decision {
   if (!userId) return deny(401, "unauthenticated", "Sign in to join this room");
+  // A GUEST may join only a room for a guest-eligible game (Phase 3D). The game
+  // is the room's own server-written key, never a request field.
+  if (isGuestId(userId) && !isGuestRoomGame(room.gameKey)) {
+    return deny(403, "guest_game_unsupported", "This room's game is not open to guests");
+  }
   if (room.kind !== "room") {
     return deny(403, "challenge_not_joinable", "This challenge was not shared with you");
   }

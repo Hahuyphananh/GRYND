@@ -1541,6 +1541,41 @@
       "when": 1800000082000,
       "tag": "0238_battleship_ai",
       "breakpoints": true
+    },
+    {
+      "idx": 220,
+      "version": "7",
+      "when": 1800000083000,
+      "tag": "0239_guest_profiles",
+      "breakpoints": true
+    },
+    {
+      "idx": 221,
+      "version": "7",
+      "when": 1800000084000,
+      "tag": "0240_guest_practice_results",
+      "breakpoints": true
+    },
+    {
+      "idx": 222,
+      "version": "7",
+      "when": 1800000085000,
+      "tag": "0241_guest_claims",
+      "breakpoints": true
+    },
+    {
+      "idx": 223,
+      "version": "7",
+      "when": 1800000086000,
+      "tag": "0242_platform_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 224,
+      "version": "7",
+      "when": 1800000087000,
+      "tag": "0243_guest_and_platform_rls",
+      "breakpoints": true
     }
   ]
 }

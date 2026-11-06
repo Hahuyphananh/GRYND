@@ -20,7 +20,9 @@
 //   join      30 / minute — the guard on guessing a room code.
 
 import { NextResponse } from "next/server";
-import { requireAgeVerifiedUser } from "../auth/requireAgeVerified";
+import { auth } from "@clerk/nextjs/server";
+import { readGuestId } from "../auth/guestSession";
+import { requirePvpPlayer } from "../auth/guestPvp";
 import { consumeRateLimit, type LimitConfig } from "../security/rateLimit";
 
 /** The uniform failure body. `code` is stable; `error` is a fallback string. */
@@ -45,19 +47,52 @@ export function failureResponse(failure: FailureLike) {
 }
 
 /**
- * Authenticate + age-verify a mutating room request.
+ * Authenticate a mutating room request.
  *
- * Returns either a `response` to return as-is, or the verified `userId`.
+ * TWO verified identities are admitted (Phase 3D):
+ *   * an ACCOUNT — Clerk session + the same 18+ age gate as before;
+ *   * a GUEST   — the HMAC-signed `grynd_guest` cookie, read by
+ *                 `requirePvpPlayer` from the cookie store only. A body,
+ *                 query or header id is never an identity.
+ *
+ * Account-only room actions (inviting a friend, friend challenges) re-check
+ * `actor.isGuest` in their routes; the rules module refuses them as well.
  */
 export async function requireRoomActor(): Promise<
-  { response: Response; userId: null } | { response: null; userId: string }
+  | { response: Response; userId: null; isGuest: false }
+  | { response: null; userId: string; isGuest: boolean }
 > {
-  const gate = await requireAgeVerifiedUser();
-  if (gate.response) return { response: gate.response, userId: null };
-  if (!gate.userId) {
-    return { response: apiError(401, "unauthenticated", "Unauthorized"), userId: null };
+  const player = await requirePvpPlayer();
+  if (player.response) {
+    return { response: player.response, userId: null, isGuest: false };
   }
-  return { response: null, userId: gate.userId };
+  return { response: null, userId: player.playerId as string, isGuest: player.isGuest };
+}
+
+/**
+ * Authenticate a room READ.
+ *
+ * Accounts keep exactly the old read rule — any Clerk session, no age gate (the
+ * 18+ gate applies to playing, and a player may read an invitation before
+ * answering it). Guests may read with their signed cookie. Neither path can
+ * name another identity.
+ */
+export async function requireRoomViewer(): Promise<
+  | { response: Response; userId: null; isGuest: false }
+  | { response: null; userId: string; isGuest: boolean }
+> {
+  const { userId } = await auth();
+  if (userId) return { response: null, userId, isGuest: false };
+
+  const guestId = await readGuestId();
+  if (!guestId) {
+    return {
+      response: apiError(401, "unauthenticated", "Unauthorized"),
+      userId: null,
+      isGuest: false,
+    };
+  }
+  return { response: null, userId: guestId, isGuest: true };
 }
 
 /**

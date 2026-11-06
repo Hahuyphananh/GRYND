@@ -34,6 +34,10 @@ export async function POST(
 ) {
   const actor = await requireRoomActor();
   if (actor.response) return actor.response;
+  // Inviting is account-only: a guest has no friends list to invite from.
+  if (actor.isGuest) {
+    return apiError(403, "guest_cannot_invite", "Guests cannot invite players");
+  }
   const userId = actor.userId;
 
   const limited = await enforceRateLimit(`rooms:invite:${userId}`, ROOM_LIMITS.invite);

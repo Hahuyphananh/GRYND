@@ -27,6 +27,27 @@ async function hasCompletedOnboarding() {
   }
 }
 
+/**
+ * Guest→account conversion offer (Phase 4).
+ *
+ * True only when this browser still holds an UNCLAIMED guest practice record
+ * and the signed-in account has nothing claimed yet. A failure returns false:
+ * a claim offer must never block or delay the normal sign-in destination.
+ */
+async function hasClaimableGuestRecord() {
+  try {
+    const res = await fetch("/api/guest/claim", {
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return data?.success === true && data?.data?.status === "unclaimed";
+  } catch {
+    return false;
+  }
+}
+
 export default function SyncPage() {
   const [status, setStatus] = useState("Syncing your account...");
   const replacedRef = useRef(false);
@@ -97,10 +118,16 @@ export default function SyncPage() {
           // tutorial; trusting the message would send it back through the
           // questionnaire and the tutorial again. Only enter onboarding when
           // the account has genuinely not completed it.
-          const target =
+          const baseTarget =
             isNewUser && !(await hasCompletedOnboarding())
               ? "/welcome/questionnaire"
               : "/";
+          // Offer the guest claim once, before the normal destination. The
+          // offer page links on to `baseTarget`, so onboarding is still one
+          // step away — never repeated, never skipped by accident.
+          const target = (await hasClaimableGuestRecord())
+            ? `/welcome/claim?next=${encodeURIComponent(baseTarget)}`
+            : baseTarget;
           window.location.replace(target);
         }
       } catch (err) {

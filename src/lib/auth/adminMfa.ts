@@ -39,6 +39,26 @@ export function isHttpsRequest(req: { headers: Headers; url: string }): boolean 
   }
 }
 
+/**
+ * The same trusted-proxy rule as `isHttpsRequest`, for callers that only hold
+ * the async Next header store (`headers()`) instead of a `Request`.
+ *
+ * `x-forwarded-proto` is authoritative: a reverse proxy overwrites it with the
+ * scheme it actually served, and when no proxy set it Next fills it in from the
+ * socket (`base-server`: `req.headers['x-forwarded-proto'] ??= isHttps ? 'https'
+ * : 'http'`). So this reports the real request scheme for a direct HTTP host as
+ * well as for one behind TLS termination. Returns null when the runtime gave us
+ * nothing usable, so the caller can keep its own default instead of guessing.
+ */
+export function httpsFromForwardedProto(
+  get: (name: string) => string | null,
+): boolean | null {
+  const forwarded = get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
+  if (forwarded === "https") return true;
+  if (forwarded === "http") return false;
+  return null;
+}
+
 /** Attributes shared by every second-factor marker cookie. */
 export function mfaCookieOptions(
   req: { headers: Headers; url: string },

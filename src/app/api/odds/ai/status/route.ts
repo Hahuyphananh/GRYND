@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
 import { requirePracticePlayer } from "../../../../../lib/auth/guestSession";
 import { db } from "../../../../../db/client";
 import { oddsGames } from "../../../../../db/schema";
@@ -12,9 +11,8 @@ export async function GET() {
     const gate = await requirePracticePlayer();
     if (gate.response) return gate.response;
 
-    const { userId } = await auth();
-    if (!userId)
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Guests hold the same seat identity a signed-in practice player does.
+    const userId = gate.playerId as string;
 
     if (!process.env.DATABASE_URL) {
       return NextResponse.json({

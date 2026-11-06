@@ -52,6 +52,7 @@
 
 import { sql } from "drizzle-orm";
 import { db } from "../db";
+import { isGuestPvpMatch } from "./pvp/guestMatch";
 import { identityHashForEmail } from "./rating";
 import { recordSettledMatch } from "./quests/settle";
 import {
@@ -775,6 +776,12 @@ export async function applyTrophyResult({
   }
   if (!isValidTrophyOutcome(outcome)) {
     return { applied: false, reason: "invalid-outcome" };
+  }
+
+  // MANDATORY RULE: no official trophies for either seat of a Guest match.
+  // Inert for account-vs-account settlement.
+  if (isGuestPvpMatch([winnerClerkId, loserClerkId])) {
+    return { applied: false, reason: "guest-unrated" };
   }
 
   const winnerSeat = { clerkId: String(winnerClerkId), outcome };

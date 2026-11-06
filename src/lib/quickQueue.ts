@@ -1,3 +1,27 @@
+import { isGuestId } from "./guestIdentity";
+
+/**
+ * The games a GUEST may queue for (Phase 3C).
+ *
+ * Deliberately a closed allowlist, and deliberately short: a guest pairing is
+ * UNRATED, so it may only enter a game that is
+ *
+ *   * free (no stake column and no escrow — nothing to charge a guest who owns
+ *     no wallet), and
+ *   * server-authoritative end to end (the queue worker only calls the game's
+ *     own `createOrJoin`, and the store settles from its locked rows).
+ *
+ * Dominoes is the only game whose match routes were already opened to the
+ * verified practice/guest identity in Phase 2C; adding another game here
+ * requires auditing ITS gameplay routes first, which is why this list grows one
+ * game at a time.
+ */
+export const GUEST_PVP_GAME_KEYS = ["dominoes"] as const;
+
+export function isGuestPvpGameKey(value: unknown): boolean {
+  return typeof value === "string" && (GUEST_PVP_GAME_KEYS as readonly string[]).includes(value);
+}
+
 export const QUICK_QUEUE_GAME_KEYS = [
   "keno-pvp",
   "mines-pvp",
@@ -65,6 +89,16 @@ export interface QuickQueueRequest {
    * overrides a game/mode/region constraint. Absent/false = no priority.
    */
   memberPriority?: boolean;
+  /**
+   * True when the request row belongs to a VERIFIED GUEST. Derived on the
+   * server from the id alone (`guest_` prefix) — never from a request field.
+   */
+  isGuest?: boolean;
+  /**
+   * False when a Guest sits in the pair. A Guest-involved match is unrated for
+   * BOTH participants, so the queue records it that way before any match exists.
+   */
+  rated?: boolean;
 }
 
 export interface QuickQueueCandidate {
@@ -316,9 +350,25 @@ export function normalizeQuickQueueRequest(input: unknown): QuickQueueRequest {
     throw new Error("maxWaitMs must be a positive integer");
   }
 
+  // GUEST PAIRINGS ARE UNRATED, BY CONSTRUCTION.
+  //
+  // Guest-ness comes from the server-resolved id, never from the body. A guest
+  // may only queue for the closed guest allowlist; asking for a rated game is a
+  // rejection, not a silent downgrade to a rated match.
+  const isGuest = isGuestId(userId);
+  let guestGames = preferredGames;
+  if (isGuest) {
+    guestGames = preferredGames.filter((game) => isGuestPvpGameKey(game));
+    if (guestGames.length === 0) {
+      throw new Error("Guests can only queue for supported guest PvP games");
+    }
+  }
+
   return {
     userId,
-    preferredGames: [...new Set(preferredGames)],
+    isGuest,
+    rated: !isGuest,
+    preferredGames: [...new Set(guestGames)],
     preferredModes: [...new Set(preferredModes)],
     region: value.region == null ? null : String(value.region).trim() || null,
     playerCount,
@@ -333,6 +383,10 @@ export function findCompatibleQuickQueueCandidate(
 ): QuickQueueCandidate | null {
   const eligible = candidates.filter((candidate) => {
     if (!candidate.available || candidate.userId === request.userId) return false;
+    // A guest request only ever holds guest-eligible games (enforced in
+    // normalizeQuickQueueRequest), so a rated-only game can never be paired
+    // with a guest seat.
+    if (request.isGuest === true && !isGuestPvpGameKey(candidate.gameKey)) return false;
     if (!request.preferredGames.includes(candidate.gameKey)) return false;
     if (request.preferredModes.length > 0 && !request.preferredModes.includes(candidate.mode)) return false;
     if (request.region && candidate.region && request.region !== candidate.region) return false;

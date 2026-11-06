@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
 import { requirePracticePlayer } from "../../../../../lib/auth/guestSession";
 import { db } from "../../../../../db/client";
 import { oddsGames, users } from "../../../../../db/schema";
@@ -16,9 +15,11 @@ export async function POST(req: Request) {
     const gate = await requirePracticePlayer({ create: true });
     if (gate.response) return gate.response;
 
-    const { userId } = await auth();
-    if (!userId)
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // The practice gate already resolved the caller: a Clerk id for a signed-in
+    // player, a verified `guest_<hex>` id for a signed-out visitor. Reading the
+    // identity from `gate` (instead of a second `auth()` call) is what makes the
+    // guest branch reachable — it used to 401 every guest right here.
+    const userId = gate.playerId as string;
 
     const body = await req.json();
     // STAKES ARE RETIRED (src/lib/games/stakes.js): an AI match is free play.

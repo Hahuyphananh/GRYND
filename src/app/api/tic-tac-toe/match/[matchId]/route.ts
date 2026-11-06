@@ -41,7 +41,10 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ matchId: string }> },
 ) {
-  const gate = await requirePracticePlayer();
+  // Embedded platform sessions may read their OWN match with a bearer token;
+  // the token is scoped to tic-tac-toe by the gate. Seat checks below are
+  // unchanged, so a platform token can never read another match.
+  const gate = await requirePracticePlayer({ platformGame: "tic-tac-toe" });
   if (gate.response) return gate.response;
   const userId = gate.playerId;
   if (!userId) {

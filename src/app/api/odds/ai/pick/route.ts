@@ -15,11 +15,11 @@
 // leaderboard/Elo/trophy row is written.
 
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
 import { requirePracticePlayer } from "../../../../../lib/auth/guestSession";
 import { db } from "../../../../../db/client";
 import { oddsGames } from "../../../../../db/schema";
 import { eq } from "drizzle-orm";
+import { settleGuestOddsPracticeTx } from "../../../../../lib/odds/guestSettlement";
 import {
   isCurrentOddsState,
   parsePrediction,
@@ -33,9 +33,9 @@ export async function POST(req: Request) {
     const gate = await requirePracticePlayer();
     if (gate.response) return gate.response;
 
-    const { userId } = await auth();
-    if (!userId)
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // A signed-in player and a verified guest both arrive through the practice
+    // gate; `gate.playerId` is the seat identity in either case.
+    const userId = gate.playerId as string;
 
     const body = await req.json();
     const gameId = Number(body.gameId);
@@ -121,6 +121,10 @@ export async function POST(req: Request) {
             endedAt: new Date(),
           })
           .where(eq(oddsGames.id, gameId));
+
+        // Guest progression: the verdict is the engine's own (this transaction
+        // just wrote it), never a request value. Accounts write nothing here.
+        await settleGuestOddsPracticeTx(tx, game, updatedState);
 
         return {
           round,

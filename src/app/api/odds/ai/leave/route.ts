@@ -22,7 +22,6 @@
 // (button + unload beacon) are safe.
 
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
 import { requirePracticePlayer } from "../../../../../lib/auth/guestSession";
 import { db } from "../../../../../db/client";
 import { oddsGames } from "../../../../../db/schema";
@@ -35,9 +34,8 @@ export async function POST(req: Request) {
     const gate = await requirePracticePlayer();
     if (gate.response) return gate.response;
 
-    const { userId } = await auth();
-    if (!userId)
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // The caller's own seat: a Clerk id, or a verified guest id. Never the body.
+    const userId = gate.playerId as string;
 
     if (!process.env.DATABASE_URL) {
       return NextResponse.json(

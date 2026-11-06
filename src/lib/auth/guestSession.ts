@@ -24,7 +24,8 @@
 // drive another visitor's practice match).
 
 import { auth } from "@clerk/nextjs/server";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
+import { httpsFromForwardedProto } from "./adminMfa";
 import { requireAgeVerifiedUser } from "./requireAgeVerified";
 import {
   GUEST_COOKIE,
@@ -32,6 +33,7 @@ import {
   GUEST_ID_PREFIX,
   isGuestId,
 } from "../guestIdentity";
+import { readPlatformGuest } from "../platform/session";
 
 export { GUEST_COOKIE, isGuestId };
 
@@ -108,18 +110,71 @@ function newGuestId(): string {
 }
 
 /**
- * Read the caller's existing guest id, or null when they hold none (or the
- * cookie was forged). Never mutates the request.
+ * Attributes of the guest cookie: HttpOnly, SameSite=Lax, Path=/ and the same
+ * 30-day lifetime as before. Only `Secure` varies, and it follows the request
+ * scheme (see `guestCookieSecure`) instead of `NODE_ENV`: a production build
+ * served over plain HTTP used to be handed a `Secure` cookie the browser
+ * dropped, so every request minted a NEW guest id and the same visitor could
+ * not hold one practice seat.
  */
-export async function readGuestId(): Promise<string | null> {
-  const store = await cookies();
-  const raw = store.get(GUEST_COOKIE)?.value;
+export function guestCookieOptions(secure: boolean) {
+  return {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure,
+    path: "/",
+    maxAge: GUEST_COOKIE_MAX_AGE_SECONDS,
+  };
+}
+
+/**
+ * True when the guest cookie must carry `Secure`: HTTPS requests always,
+ * plain-HTTP requests never (the browser refuses a `Secure` cookie from an
+ * insecure origin, and a non-`Secure` one from a secure origin is rejected
+ * too, so the flag has to follow the actual scheme).
+ *
+ * The scheme comes from the same trusted-proxy rule the auth helpers use
+ * (`httpsFromForwardedProto` in ./adminMfa). `NODE_ENV === "production"` is
+ * kept only as the fallback for a runtime that reports no scheme at all, so a
+ * deployment that cannot be observed is never silently downgraded.
+ */
+export async function guestCookieSecure(): Promise<boolean> {
+  try {
+    const store = await headers();
+    const detected = httpsFromForwardedProto((name) => store.get(name));
+    if (detected !== null) return detected;
+  } catch {
+    // No request scope (only route handlers call this). Use the old default.
+  }
+  return process.env.NODE_ENV === "production";
+}
+
+/** The signed cookie value for a guest id: `<guest id>.<hmac>`. */
+export async function serializeGuestCookie(guestId: string): Promise<string> {
+  return `${guestId}.${await sign(guestId)}`;
+}
+
+/**
+ * Validate a raw `grynd_guest` value. Returns the guest id only when the id is
+ * well formed AND its HMAC matches; anything else — tampered, invented, wrong
+ * prefix, truncated — is null. Never mints, never mutates.
+ */
+export async function readGuestIdFromCookieValue(raw: unknown): Promise<string | null> {
   if (!raw || typeof raw !== "string" || !raw.includes(".")) return null;
 
   const [id, signature] = raw.split(".");
   if (!isGuestId(id)) return null;
   if (!(await verifySignature(id, signature))) return null;
   return id;
+}
+
+/**
+ * Read the caller's existing guest id, or null when they hold none (or the
+ * cookie was forged). Never mutates the request.
+ */
+export async function readGuestId(): Promise<string | null> {
+  const store = await cookies();
+  return readGuestIdFromCookieValue(store.get(GUEST_COOKIE)?.value);
 }
 
 /**
@@ -138,13 +193,11 @@ export async function resolveGuestId({ create = false }: { create?: boolean } = 
 
   const id = newGuestId();
   const store = await cookies();
-  store.set(GUEST_COOKIE, `${id}.${await sign(id)}`, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: GUEST_COOKIE_MAX_AGE_SECONDS,
-  });
+  store.set(
+    GUEST_COOKIE,
+    await serializeGuestCookie(id),
+    guestCookieOptions(await guestCookieSecure()),
+  );
   return id;
 }
 
@@ -152,15 +205,23 @@ export async function resolveGuestId({ create = false }: { create?: boolean } = 
  * The gate for FREE PRACTICE (vs AI) routes.
  *
  * Signed in  → the caller goes through the normal 18+ age gate, unchanged.
+ * Embedded  → a verified platform bearer token, ONLY when the route names the
+ *             game it belongs to (`platformGame`). The token is checked against
+ *             the platform_sessions row: expiry, revocation and game scope.
  * Signed out → the caller is issued a guest identity and allowed in.
  *
  * `create` must be true only on the route that STARTS a practice match; every
  * follow-up route of that match reads the cookie instead of minting a new one,
  * so a stray request can never spawn a second guest identity.
+ *
+ * `platformGame` must be set ONLY on routes of an embedded game. Without it a
+ * platform token is ignored entirely, so unrelated practice APIs cannot be
+ * driven by an embed session.
  */
 export async function requirePracticePlayer({
   create = false,
-}: { create?: boolean } = {}): Promise<PracticePlayer> {
+  platformGame,
+}: { create?: boolean; platformGame?: string } = {}): Promise<PracticePlayer> {
   const { userId } = await auth();
   if (userId) {
     const gate = await requireAgeVerifiedUser();
@@ -168,6 +229,16 @@ export async function requirePracticePlayer({
       return { response: gate.response, playerId: null, isGuest: false };
     }
     return { response: null, playerId: gate.userId ?? userId, isGuest: false };
+  }
+
+  // Embedded session: bearer token, never a cookie. Checked BEFORE any guest
+  // cookie is read or minted, so an embed can never touch the browser's
+  // standalone guest identity (and therefore never claim its progression).
+  if (platformGame) {
+    const platform = await readPlatformGuest(platformGame);
+    if (platform) {
+      return { response: null, playerId: platform.guestId, isGuest: true };
+    }
   }
 
   const guestId = await resolveGuestId({ create });

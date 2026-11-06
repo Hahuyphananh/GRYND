@@ -1,5 +1,8 @@
-import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
+import {
+  PVP_GUEST_RATE_LIMITS,
+  requirePvpPlayer,
+} from "../../../lib/auth/guestPvp";
 import {
   cancelQuickQueueRequest,
   createQuickQueueRequest,
@@ -17,21 +20,32 @@ function disabled() {
 }
 
 export async function GET() {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  // Account or verified guest — the identity ALWAYS comes from the session.
+  const player = await requirePvpPlayer({
+    rateLimit: { name: "queue-read", config: PVP_GUEST_RATE_LIMITS.read },
+  });
+  if (player.response) return player.response;
   if (!enabled()) return disabled();
-  const requests = await listQuickQueueRequests(userId);
+  const requests = await listQuickQueueRequests(player.playerId as string);
   return NextResponse.json({ success: true, requests });
 }
 
 export async function POST(req: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  const player = await requirePvpPlayer({
+    create: true,
+    rateLimit: { name: "queue-write", config: PVP_GUEST_RATE_LIMITS.write },
+  });
+  if (player.response) return player.response;
   if (!enabled()) return disabled();
 
   try {
     const body = await req.json().catch(() => ({}));
-    const request = await createQuickQueueRequest({ ...body, userId });
+    // `userId` is written LAST so a body field can never override the session
+    // identity — the same discipline the previous Clerk version had.
+    const request = await createQuickQueueRequest({
+      ...body,
+      userId: player.playerId as string,
+    });
     return NextResponse.json({ success: true, request }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Invalid request" }, { status: 400 });
@@ -39,12 +53,16 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  const player = await requirePvpPlayer({
+    rateLimit: { name: "queue-write", config: PVP_GUEST_RATE_LIMITS.write },
+  });
+  if (player.response) return player.response;
   if (!enabled()) return disabled();
   const requestId = req.nextUrl.searchParams.get("requestId") ?? "";
   if (!requestId) return NextResponse.json({ success: false, error: "requestId is required" }, { status: 400 });
-  const request = await cancelQuickQueueRequest(userId, requestId);
+  // Cancellation is scoped to the caller's own request id in the store, so one
+  // identity can never cancel another's queue entry.
+  const request = await cancelQuickQueueRequest(player.playerId as string, requestId);
   if (!request) return NextResponse.json({ success: false, error: "Queue request not found or already cancelled" }, { status: 404 });
   return NextResponse.json({ success: true, request });
 }

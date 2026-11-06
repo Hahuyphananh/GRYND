@@ -36,6 +36,11 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const actor = await requireRoomActor();
   if (actor.response) return actor.response;
+  // A challenge is addressed to a FRIEND, and a guest has no account to be
+  // friends with. Guests use a shareable room code instead (Phase 3D).
+  if (actor.isGuest) {
+    return apiError(403, "guest_challenge_unsupported", "Guests cannot send friend challenges");
+  }
   const userId = actor.userId;
 
   const limited = await enforceRateLimit(`rooms:challenge:${userId}`, ROOM_LIMITS.challenge);

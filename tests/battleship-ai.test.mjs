@@ -352,7 +352,14 @@ test("practice can never enter ranked: no Elo, trophies, payouts or matchmaking"
   }
   // The STORE does settle ranked PvP (Phase 7 registers the game in RATED_GAMES),
   // but only through the shared writers and only past the practice guard.
-  assert.match(store, /if \(row\.isAi \|\| !row\.player2Id\) return;/, "practice never settles");
+  // Practice never settles a ladder: an AI row records only the guest practice
+  // result (Phase 2D) and returns before the writers; a lobby has no opponent.
+  assert.match(
+    store,
+    /if \(row\.isAi\) \{[\s\S]{0,160}?await settleGuestPracticeTx\(tx, row, winnerSeat\);\s*return;/,
+    "practice never settles",
+  );
+  assert.match(store, /if \(!row\.player2Id\) return;/, "practice never settles");
   assert.doesNotMatch(store, /escrowMatchWagers|settlePayout|markDailyRewardWin/);
   // No fake human account: the bot is a sentinel id in the seat column only.
   assert.match(code("src/lib/battleship/constants.ts"), /BATTLESHIP_AI_PLAYER_ID = "battleship_ai_bot"/);

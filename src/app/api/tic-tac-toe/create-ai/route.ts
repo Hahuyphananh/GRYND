@@ -21,7 +21,13 @@ export async function POST(req: Request) {
   // Tic-Tac-Toe route that mints a guest identity. Online play
   // (/api/tic-tac-toe/create-or-join) keeps the age gate, and every follow-up
   // route authorises by seat, so a guest can only ever drive its own match.
-  const gate = await requirePracticePlayer({ create: true });
+  //
+  // `platformGame` opts this route into embedded sessions (Phase 5): a valid
+  // bearer token for THIS game may act instead of a browser guest cookie.
+  const gate = await requirePracticePlayer({
+    create: true,
+    platformGame: "tic-tac-toe",
+  });
   if (gate.response) return gate.response;
   const userId = gate.playerId;
   if (!userId) {

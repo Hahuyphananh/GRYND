@@ -18,6 +18,7 @@
 // wrappers over this file, so every game agrees on the same rules.
 
 import { PVP_WINNER_SHARE } from "../games/economy";
+import { isGuestSeat } from "../pvp/guestMatch";
 import { refundMatchWagers, settlePayout } from "./wager";
 
 /** What a win pays: the pot (both seats' stakes) minus the shared rake. */
@@ -41,6 +42,9 @@ export async function payPvpPot({
   winnerClerkId: string | null | undefined;
   stake: unknown;
 }): Promise<number> {
+  // No economic reward can be triggered by a Guest-involved match. A guest owns
+  // no wallet and no ledger row, so this is also the only safe answer.
+  if (isGuestSeat(winnerClerkId)) return 0;
   const payout = pvpPotPayout(stake);
   if (payout <= 0 || !winnerClerkId) return 0;
   // Annotated rather than inferred: `strict` is off in this project, where a

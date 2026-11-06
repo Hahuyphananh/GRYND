@@ -51,6 +51,7 @@
 import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
+import { isGuestPvpMatch } from "./pvp/guestMatch";
 import { recordSettledMatch } from "./quests/settle";
 import {
   STARTING_RATING,
@@ -827,6 +828,14 @@ export async function applyRatingResult({
     return { applied: false, reason: "same-player" };
   }
   if (!isValidOutcome(outcome)) return { applied: false, reason: "invalid-outcome" };
+
+  // MANDATORY RULE (Phase 3E): a match with a Guest seat is UNRATED for BOTH
+  // participants. Checked here, at the only writer of `player_ratings`, so no
+  // caller can forget it — and the check is inert for account-vs-account
+  // matches, whose behaviour is unchanged.
+  if (isGuestPvpMatch([winnerClerkId, loserClerkId])) {
+    return { applied: false, reason: "guest-unrated" };
+  }
 
   const run = async (txc) => {
     // ── 2. Resolve both app users ────────────────────────────────────

@@ -38,6 +38,11 @@ import { applyTrophyResult } from "../trophyStore";
 import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
 import { isPracticePaused } from "../practicePause";
 import { markDailyRewardWin } from "../dailyRewardWin";
+import { isGuestId } from "../guestIdentity";
+import {
+  GUEST_PRACTICE_GAME_KEY,
+  recordGuestPracticeResultSafely,
+} from "../guest/practiceProgress";
 import { PVP_WINNER_SHARE } from "../games/economy";
 import {
   escrowMatchWagers,
@@ -1153,9 +1158,53 @@ async function settleMatch(
     if (outcome.result !== RESULT.TIE && winnerId && winnerId !== TIC_TAC_TOE_AI_PLAYER_ID) {
       await markDailyRewardWin(tx, winnerId);
     }
+
+    // GUEST PROGRESSION (Phase 2B). A signed-out visitor holds a `guest_<32 hex>`
+    // seat (src/lib/auth/guestSession.ts) and has no `users` row. Everything this
+    // write depends on is already authoritative: the guest id comes from the
+    // ROW LOCKED above (never from a request), and the outcome is the server's
+    // own `computeMatchResult` result handed to `settleMatch` — a client cannot
+    // submit a winner here. The human may occupy EITHER seat (createAiMatch
+    // seats them by their chosen mark), so the guest id is resolved from both.
+    //
+    // A registered player's practice match resolves no guest id and writes
+    // nothing, so the account path above is untouched. The writer is the safe
+    // one: it cannot throw and cannot abort this transaction.
+    const guestId = [match.player1Id, match.player2Id].find(
+      (id): id is string => Boolean(id) && isGuestId(id),
+    );
+    if (guestId) {
+      const practiceResult =
+        outcome.result === RESULT.TIE
+          ? "draw"
+          : outcome.winnerSeat === "player1"
+            ? match.player1Id === guestId
+              ? "win"
+              : "loss"
+            : match.player2Id === guestId
+              ? "win"
+              : "loss";
+      await recordGuestPracticeResultSafely(tx, {
+        guestId,
+        // The canonical key, from the guest writer's closed list (the same
+        // literal `RATED_GAMES` uses). Not a rating/trophy/ledger call site, so
+        // it is a constant rather than one of the deliberate literals below.
+        gameKey: GUEST_PRACTICE_GAME_KEY,
+        matchId: match.id,
+        result: practiceResult,
+        aiDifficulty: match.aiDifficulty,
+      });
+    }
     return;
   }
   if (!match.player2Id) return;
+
+  // MANDATORY RULE (Phase 3E/6): a match involving a Guest seat is UNRATED for
+  // BOTH participants. Tic-Tac-Toe's ranked entry route is account-gated, so a
+  // guest should never reach here — but settlement must enforce the invariant
+  // itself rather than rely on every present and future caller. This mirrors
+  // Dominoes and stops before any W/L counter, rating, trophy or payout.
+  if (isGuestId(match.player1Id) || isGuestId(match.player2Id)) return;
 
   const matchId = String(match.id);
   const seatIds = [match.player1Id, match.player2Id];

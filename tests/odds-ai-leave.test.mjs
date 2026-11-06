@@ -45,10 +45,12 @@ test("leave route exists and is a POST endpoint", () => {
   assert.match(route, /export async function POST\s*\(/);
 });
 
-test("leave route takes identity from the Clerk session, never the body", () => {
+test("leave route takes identity from the practice session, never the body", () => {
   const route = code(ROUTE);
-  assert.match(route, /from "@clerk\/nextjs\/server"/);
-  assert.match(route, /auth\(\)/);
+  // Free practice is open to verified guests (Phase 2E), so the seat comes from
+  // the practice gate: a Clerk id when signed in, a guest id otherwise.
+  assert.match(route, /requirePracticePlayer\(/);
+  assert.match(route, /const userId = gate\.playerId/);
   assert.match(route, /eq\(oddsGames\.player1Id, userId\)/);
   // No request-supplied player/user id may ever be read.
   assert.doesNotMatch(route, /body\??\.(playerId|userId|clerkId)\b/);

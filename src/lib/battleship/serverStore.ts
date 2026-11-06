@@ -47,6 +47,11 @@ import {
 import { createMatchLifecycle, transitionMatchLifecycle } from "../matchLifecycleStore";
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
+import { isGuestId } from "../guestIdentity";
+import {
+  GUEST_PRACTICE_BATTLESHIP_GAME_KEY,
+  recordGuestPracticeResultSafely,
+} from "../guest/practiceProgress";
 import { deserializeFleet, generateRandomFleet, serializeFleet } from "./fleet";
 import { chooseAiAttack } from "./ai";
 import { DEFAULT_AI_DIFFICULTY, coerceAiDifficulty, type AiDifficulty } from "../aiDifficulty";
@@ -1008,12 +1013,84 @@ async function applyAutoAttacksTx(
   return { seats };
 }
 
+// ── Guest progression ─────────────────────────────────────────────────────
+//
+// Phase 2D. A signed-out visitor plays the bot as a `guest_<hex>` id
+// (src/lib/auth/guestSession.ts) that owns no `users` row. Their finished
+// practice match is recorded in the shared guest tables by the shared writer —
+// never a local table, and never through the rated path below.
+
 /**
- * Ranked settlement for a COMPLETED online match — the shared Elo and trophy
- * writers, inside the transaction that finalises the match. Never a second
+ * A settled PRACTICE result, seen from the guest's own seat.
+ *
+ * Pure and exported so the mapping is tested directly instead of by grep. The
+ * caller passes the winner the STORE resolved — the engine's `winner`, or the
+ * seat named by a timeout/abandonment forfeit. `null` is the store's draw (both
+ * fleets destroyed in one round, or both seats timing out); an unrecognised seat
+ * maps to `null`, so an unknown outcome is never recorded as a draw.
+ */
+export function practiceOutcomeForSeat(
+  winnerSeat: Seat | null,
+  guestSeat: Seat,
+): "win" | "loss" | "draw" | null {
+  if (winnerSeat === null) return "draw";
+  if (winnerSeat !== SEATS[0] && winnerSeat !== SEATS[1]) return null;
+  return winnerSeat === guestSeat ? "win" : "loss";
+}
+
+/** The columns settlement reads. A locked match row always satisfies this. */
+type PracticeSettlementRow = Pick<
+  MatchRow,
+  "id" | "player1Id" | "player2Id" | "aiDifficulty"
+>;
+
+/**
+ * Records ONE guest practice result inside the caller's transaction.
+ *
+ * Every terminal path funnels through `settleRatedMatchTx`, so this runs exactly
+ * once per completed practice match — after the match row and its result are
+ * already written to FINISHED. Both inputs are server-side: the row was locked by
+ * the caller and `winnerSeat` is the store's own verdict, so a client can never
+ * submit a winner, a board or an outcome.
+ *
+ * Writes nothing unless a seat holds a guest id: a signed-in player's practice
+ * match and a bot-vs-bot row both leave the table untouched, which is what keeps
+ * account-based Battleship behaviour unchanged. The SAFE writer contains a
+ * database failure, so progression can never un-finish a decided match.
+ */
+export async function settleGuestPracticeTx(
+  tx: any,
+  row: PracticeSettlementRow,
+  winnerSeat: Seat | null,
+): Promise<void> {
+  // The identity comes from the ROW's seats, never from the caller.
+  const guestId = [row.player1Id, row.player2Id].find(
+    (id): id is string => Boolean(id) && isGuestId(id),
+  );
+  if (!guestId) return;
+
+  const guestSeat: Seat = row.player1Id === guestId ? SEATS[0] : SEATS[1];
+  const practiceResult = practiceOutcomeForSeat(winnerSeat, guestSeat);
+  if (!practiceResult) return;
+
+  await recordGuestPracticeResultSafely(tx, {
+    guestId,
+    // Canonical key from the guest writer's closed list — a constant, so the
+    // guest vocabulary cannot drift from the game key this store settles under.
+    gameKey: GUEST_PRACTICE_BATTLESHIP_GAME_KEY,
+    matchId: String(row.id),
+    result: practiceResult,
+    aiDifficulty: row.aiDifficulty,
+  });
+}
+
+/**
+ * Terminal settlement for a COMPLETED match — the shared Elo and trophy writers,
+ * inside the transaction that finalises the match. Never a second
  * implementation, and never for practice:
  *
- *   * `is_ai` rows return immediately, so AI practice cannot touch a ladder;
+ *   * `is_ai` rows record only the Phase 2D GUEST practice result (no rating, no
+ *     trophy, no win counter) and return, so AI practice cannot touch a ladder;
  *   * a lobby with no second seat has no opponent to rate against;
  *   * `result: "draw"` uses the writers' own draw path (it moves Elo, awards no
  *     trophies, and is the deterministic outcome when both fleets are destroyed
@@ -1030,7 +1107,13 @@ async function settleRatedMatchTx(
   row: MatchRow,
   winnerSeat: Seat | null,
 ): Promise<void> {
-  if (row.isAi || !row.player2Id) return;
+  // PRACTICE — and therefore the only place a guest can sit. One private
+  // practice record, then the ranked path below is never entered.
+  if (row.isAi) {
+    await settleGuestPracticeTx(tx, row, winnerSeat);
+    return;
+  }
+  if (!row.player2Id) return;
   const player1 = row.player1Id;
   const player2 = row.player2Id;
   const draw = winnerSeat === null;

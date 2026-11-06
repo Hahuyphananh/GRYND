@@ -1,5 +1,56 @@
 export const APP_TEXT_TRANSLATIONS = {
   en: {
+    // /profil for a signed-out visitor (Phase 2F): their own guest practice
+    // record. Deliberately no rating, trophy or reward vocabulary — a guest
+    // practice result is a private, cosmetic record.
+    guestProgress: {
+      eyebrow: "Guest profile",
+      title: "Your guest progress",
+      subtitle:
+        "Your free practice record. No account needed, and nothing here is ranked.",
+      badge: "Guest",
+      sessionNote:
+        "Practice results saved in this browser — not an account, and never ranked.",
+      keepProgress: "Keep my progress",
+      totals: {
+        matches: "Matches",
+        wins: "Wins",
+        losses: "Losses",
+        draws: "Draws",
+      },
+      games: {
+        title: "By game",
+        note: "Practice matches only. Values are counted from your finished games.",
+        empty: "No finished practice matches yet.",
+        game: "Game",
+        matches: "Matches",
+        record: "W–L–D",
+        winRate: "Win rate",
+      },
+      history: {
+        title: "Recent matches",
+        empty: "No practice matches yet — play one to start your record.",
+        difficulty: "Difficulty: {value}",
+        versusBot: "vs bot",
+      },
+      outcome: { win: "Win", loss: "Loss", draw: "Draw" },
+      empty: {
+        title: "No practice matches yet",
+        body: "Play any free vs-AI match and it appears here — wins, losses, draws and the games you played, all kept in this browser.",
+        cta: "Play a practice match",
+      },
+      noSession: {
+        title: "No guest record in this browser",
+        body: "Guest progress is stored in a signed cookie for 30 days. If it expired, was cleared, or you have not played a practice match here yet, start one and it will be saved automatically.",
+        cta: "Find a practice game",
+      },
+      invite: {
+        title: "Want to keep your record?",
+        body: "An account saves your practice results across devices and unlocks ranked play. Guest progress lives in this browser for 30 days.",
+        cta: "Create a free account",
+      },
+      discover: "Discover other GRYND games",
+    },
     quests: {
       title: "Quests",
       // GLITCH inside the quest popup: what is done, what is still payable.
@@ -2064,6 +2115,54 @@ export const APP_TEXT_TRANSLATIONS = {
     },
   },
   fr: {
+    guestProgress: {
+      eyebrow: "Profil invité",
+      title: "Votre progression d'invité",
+      subtitle:
+        "Votre historique d'entraînement gratuit. Aucun compte requis, et rien ici n'est classé.",
+      badge: "Invité",
+      sessionNote:
+        "Résultats d'entraînement enregistrés dans ce navigateur — pas un compte, jamais classés.",
+      keepProgress: "Conserver ma progression",
+      totals: {
+        matches: "Parties",
+        wins: "Victoires",
+        losses: "Défaites",
+        draws: "Nuls",
+      },
+      games: {
+        title: "Par jeu",
+        note: "Matchs d'entraînement uniquement. Les valeurs proviennent de vos parties terminées.",
+        empty: "Aucun match d'entraînement terminé pour l'instant.",
+        game: "Jeu",
+        matches: "Parties",
+        record: "V–D–N",
+        winRate: "Taux de victoire",
+      },
+      history: {
+        title: "Matchs récents",
+        empty: "Aucun match d'entraînement — jouez-en un pour commencer.",
+        difficulty: "Difficulté : {value}",
+        versusBot: "contre le bot",
+      },
+      outcome: { win: "Victoire", loss: "Défaite", draw: "Nul" },
+      empty: {
+        title: "Aucun match d'entraînement",
+        body: "Jouez un match gratuit contre l'IA et il apparaîtra ici — victoires, défaites, nuls et jeux joués, conservés dans ce navigateur.",
+        cta: "Jouer un match d'entraînement",
+      },
+      noSession: {
+        title: "Aucun profil invité dans ce navigateur",
+        body: "La progression d'invité est stockée dans un cookie signé pendant 30 jours. S'il a expiré, a été effacé, ou si vous n'avez pas encore joué ici, lancez une partie : elle sera enregistrée automatiquement.",
+        cta: "Trouver un jeu d'entraînement",
+      },
+      invite: {
+        title: "Envie de conserver votre historique ?",
+        body: "Un compte conserve vos résultats d'entraînement sur tous vos appareils et débloque le jeu classé. La progression d'invité reste dans ce navigateur pendant 30 jours.",
+        cta: "Créer un compte gratuit",
+      },
+      discover: "Découvrir d'autres jeux GRYND",
+    },
     quests: {
       title: "Quêtes",
       // GLITCH dans la fenêtre des quêtes : ce qui est fait, ce qui reste à payer.
@@ -3868,6 +3967,54 @@ export const APP_TEXT_TRANSLATIONS = {
     },
   },
   es: {
+    guestProgress: {
+      eyebrow: "Perfil de invitado",
+      title: "Tu progreso como invitado",
+      subtitle:
+        "Tu historial de práctica gratuito. No necesitas cuenta y nada de esto es clasificatorio.",
+      badge: "Invitado",
+      sessionNote:
+        "Resultados de práctica guardados en este navegador: no es una cuenta y nunca son clasificatorios.",
+      keepProgress: "Conservar mi progreso",
+      totals: {
+        matches: "Partidas",
+        wins: "Victorias",
+        losses: "Derrotas",
+        draws: "Empates",
+      },
+      games: {
+        title: "Por juego",
+        note: "Solo partidas de práctica. Los valores se cuentan de tus partidas terminadas.",
+        empty: "Aún no hay partidas de práctica terminadas.",
+        game: "Juego",
+        matches: "Partidas",
+        record: "V–D–E",
+        winRate: "Tasa de victorias",
+      },
+      history: {
+        title: "Partidas recientes",
+        empty: "Aún no hay partidas de práctica: juega una para empezar.",
+        difficulty: "Dificultad: {value}",
+        versusBot: "contra el bot",
+      },
+      outcome: { win: "Victoria", loss: "Derrota", draw: "Empate" },
+      empty: {
+        title: "Aún no hay partidas de práctica",
+        body: "Juega cualquier partida gratis contra la IA y aparecerá aquí: victorias, derrotas, empates y los juegos que jugaste, todo en este navegador.",
+        cta: "Jugar una partida de práctica",
+      },
+      noSession: {
+        title: "No hay registro de invitado en este navegador",
+        body: "El progreso de invitado se guarda en una cookie firmada durante 30 días. Si caducó, se borró o aún no has jugado aquí, empieza una partida y se guardará automáticamente.",
+        cta: "Buscar un juego de práctica",
+      },
+      invite: {
+        title: "¿Quieres conservar tu historial?",
+        body: "Una cuenta guarda tus resultados de práctica en todos tus dispositivos y desbloquea el juego clasificatorio. El progreso de invitado vive en este navegador durante 30 días.",
+        cta: "Crear una cuenta gratis",
+      },
+      discover: "Descubrir otros juegos de GRYND",
+    },
     quests: {
       title: "Misiones",
       // GLITCH dentro de la ventana de misiones: lo hecho y lo que queda por cobrar.
