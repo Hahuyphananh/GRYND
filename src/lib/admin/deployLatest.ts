@@ -58,6 +58,8 @@ export type DeployTarget = {
   latest: CommitInfo | null;
   upToDate: boolean;
   reason: string | null;
+  /** Public workflow page, available even when the token is absent. */
+  workflowUrl: string;
 };
 
 export type DeployOutcome =
@@ -108,6 +110,11 @@ export function readDeployConfig(env: NodeJS.ProcessEnv = process.env): DeployCo
 /** The message the dashboard shows while the token is absent — no secret names. */
 export function notConfiguredMessage(): string {
   return "Deploying from the dashboard needs GITHUB_DEPLOY_TOKEN (Actions: write, Contents: read) and GITHUB_DEPLOY_REPO on the host.";
+}
+
+/** The public workflow page; this is safe to render without a token. */
+export function deployWorkflowUrl(repo: string | null = DEFAULT_DEPLOY_REPO): string {
+  return `https://github.com/${repo ?? DEFAULT_DEPLOY_REPO}/actions/workflows/${DEPLOY_WORKFLOW}`;
 }
 
 function authHeaders(token: string): HeadersInit {
@@ -324,7 +331,7 @@ export async function deployLatest({
     status: "dispatched",
     commit: latest.commit,
     shortCommit: latest.shortCommit,
-    workflowUrl: `https://github.com/${config.repo}/actions/workflows/${config.workflow}`,
+    workflowUrl: deployWorkflowUrl(config.repo),
     message: `Deploy requested for ${latest.shortCommit}. The workflow builds and then activates it behind the production environment.`,
   };
 }
@@ -341,8 +348,9 @@ export async function getDeployTarget(
   { env = process.env, fetchImpl = fetch }: { env?: NodeJS.ProcessEnv; fetchImpl?: FetchLike } = {},
 ): Promise<DeployTarget> {
   const config = readDeployConfig(env);
+  const workflowUrl = deployWorkflowUrl(config.repo);
   if (!config.token || !config.repo) {
-    return { configured: false, latest: null, upToDate: false, reason: notConfiguredMessage() };
+    return { configured: false, latest: null, upToDate: false, reason: notConfiguredMessage(), workflowUrl };
   }
 
   try {
@@ -352,6 +360,7 @@ export async function getDeployTarget(
       latest,
       upToDate: Boolean(liveCommit && liveCommit.toLowerCase() === latest.commit),
       reason: null,
+      workflowUrl,
     };
   } catch (error) {
     return {
@@ -359,6 +368,7 @@ export async function getDeployTarget(
       latest: null,
       upToDate: false,
       reason: error instanceof DeployError ? error.message : "The newest commit could not be read from GitHub.",
+      workflowUrl,
     };
   }
 }

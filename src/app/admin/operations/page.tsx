@@ -388,6 +388,7 @@ export default async function OperationsPage() {
                   configured={deploy.configured}
                   upToDate={deploy.upToDate}
                   unavailableReason={deploy.reason}
+                  workflowUrl={deploy.workflowUrl}
                 />
               </div>
               {live.message && <p className="mt-2 max-w-3xl text-sm text-[#e6f7ff]">{live.message}</p>}

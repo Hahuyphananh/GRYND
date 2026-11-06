@@ -27,6 +27,7 @@ type Props = {
   configured: boolean;
   upToDate: boolean;
   unavailableReason: string | null;
+  workflowUrl: string;
 };
 
 const BUTTON =
@@ -43,15 +44,30 @@ function GitHubLink({ href, children }: { href: string | null | undefined; child
   );
 }
 
-export default function DeployLatestButton({ liveCommit, latest, configured, upToDate, unavailableReason }: Props) {
+export default function DeployLatestButton({
+  liveCommit,
+  latest,
+  configured,
+  upToDate,
+  unavailableReason,
+  workflowUrl,
+}: Props) {
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<DeployResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   if (!configured) {
     return (
-      <span className="text-xs text-[#7f9bbd]" title={unavailableReason ?? undefined}>
-        deploy button: not configured
+      <span
+        className="flex flex-wrap items-center gap-2 text-xs text-[#7f9bbd]"
+        title={
+          unavailableReason ??
+          "One-click deploy is not configured on this server. This link opens the release workflow; sign in and run it with deploy=true."
+        }
+        data-admin-deploy-latest-fallback
+      >
+        <span>deploy button: not configured</span>
+        <GitHubLink href={workflowUrl}>run the workflow on GitHub ↗</GitHubLink>
       </span>
     );
   }
@@ -61,7 +77,12 @@ export default function DeployLatestButton({ liveCommit, latest, configured, upT
   }
 
   if (!latest) {
-    return <span className="text-xs text-amber-300">{unavailableReason ?? "the newest commit could not be read"}</span>;
+    return (
+      <span className="flex flex-wrap items-center gap-2 text-xs text-amber-300" data-admin-deploy-latest-fallback>
+        <span>{unavailableReason ?? "the newest commit could not be read"}</span>
+        <GitHubLink href={workflowUrl}>open the workflow on GitHub ↗</GitHubLink>
+      </span>
+    );
   }
 
   const deploy = async () => {

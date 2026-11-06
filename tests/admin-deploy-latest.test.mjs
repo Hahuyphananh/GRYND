@@ -276,6 +276,10 @@ test("deploy target: the page learns configured, newest and up-to-date without a
   const unconfigured = await getDeployTarget(OTHER, { env: {} });
   assert.equal(unconfigured.configured, false);
   assert.equal(unconfigured.latest, null);
+  assert.equal(
+    unconfigured.workflowUrl,
+    `https://github.com/${DEFAULT_DEPLOY_REPO}/actions/workflows/${DEPLOY_WORKFLOW}`,
+  );
 });
 
 // ── static guarantees ─────────────────────────────────────────────────────
@@ -296,6 +300,7 @@ test("operations page: the deploy button sits beside the live commit", async () 
   assert.match(page, /requireAdminPage\(\)/);
   assert.match(page, /getDeployTarget\(live\?\.commit \?\? null\)/);
   assert.match(page, /<DeployLatestButton/);
+  assert.match(page, /workflowUrl=\{deploy\.workflowUrl\}/);
   assert.match(page, /Live commit/);
 });
 
@@ -305,4 +310,6 @@ test("deploy button: the client never reads the GitHub token", async () => {
   assert.ok(!button.includes("GITHUB_DEPLOY_TOKEN"), "the token is server-only");
   assert.match(button, /\/api\/admin\/deploy-latest/);
   assert.match(button, /startsWith\("https:\/\/github\.com\/"\)/, "only GitHub URLs are linked");
+  assert.match(button, /data-admin-deploy-latest-fallback/);
+  assert.match(button, /run the workflow on GitHub/);
 });
