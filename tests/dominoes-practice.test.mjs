@@ -156,11 +156,14 @@ test("the store seats the bot on player2, answers it inline and settles unrated"
   assert.match(store, /isAi: true,/);
   assert.match(store, /aiDifficulty: tier,/);
 
-  // The bot answers inside the caller's transaction — after a human action…
+  // The bot answers inside the caller's transaction — after a human action,
+  // ONE action at a time so its draws stay visible…
   assert.match(
     store,
-    /const finalState =\s*\n?\s*match\.isAi && next\.status === MATCH_STATUS\.PLAYING\s*\n?\s*\? await playAiTurns\(tx, match, next\)/,
+    /const finalState =\s*\n?\s*match\.isAi && next\.status === MATCH_STATUS\.PLAYING\s*\n?\s*\? await playAiTurn\(tx, match, next\)/,
   );
+  // …and the read path can take one paced step while it is still the bot's turn.
+  assert.match(store, /advanceBot &&[\s\S]*?state\.turn === aiSeat/);
   // …and after a timeout that hands it the turn.
   assert.match(store, /match\.isAi && timedOutState\.status === MATCH_STATUS\.PLAYING/);
 

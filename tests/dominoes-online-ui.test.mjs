@@ -325,7 +325,7 @@ test("dominoes ui: draw is offered only when nothing fits, pass only when the pi
   });
   assert.equal(isDisabled(stuck, "dominoes-draw"), false, "drawing must be offered");
   assert.equal(isDisabled(stuck, "dominoes-pass"), true, "passing before the pile is empty is not");
-  assert.match(stuck, /Nothing in your hand fits/);
+  assert.match(stuck, /Nothing fits — draw a tile/);
 
   // Same hand, empty pile: the pass is the only option.
   const dry = renderView({
@@ -1176,7 +1176,10 @@ test("dominoes ui: a completed round announces pips, points and who starts next"
   const panel = tagWith(html, "dominoes-round-result");
   assert.ok(panel, "the round result must be announced");
   assert.match(panel, /data-round="2"/);
-  assert.match(panel, /role="status"/);
+  assert.match(panel, /role="dialog"/);
+  assert.match(panel, /aria-modal="true"/);
+  assert.match(html, /data-testid="dominoes-round-result-next"/);
+  assert.match(html, /Next round in 5s/);
   assert.match(html, /Round 2 complete/);
   // The round winner, seat-relative.
   assert.match(html, /You won the round/);
@@ -1305,6 +1308,8 @@ test("dominoes ui: the scoreboard and round result fit a phone without overflowi
     boardCss,
     /\.dominoes-round-result-grid \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\)/,
   );
+  assert.match(boardCss, /\.dominoes-round-overlay \{[\s\S]*?position:\s*fixed/);
+  assert.match(boardCss, /\.dominoes-round-result-next-button \{[\s\S]*?width:\s*100%/);
   // Long names truncate, and no RULE sets a fixed pixel width that could
   // overflow. (The `max-width` in the media query is a breakpoint, not a
   // layout width, so it is not what this guards against.)
@@ -1314,9 +1319,8 @@ test("dominoes ui: the scoreboard and round result fit a phone without overflowi
     .filter((line) => !line.trim().startsWith("@media"))
     .filter((line) => /(^|[^-])width:\s*\d+px/.test(line));
   assert.deepEqual(fixedWidths, [], "a fixed width would force a horizontal scroll");
-  // The panel is inline (not a modal): the next round's clock is already running.
-  assert.equal(/position:\s*fixed/.test(boardCss), false);
-  assert.match(boardCss, /flex-wrap: wrap/);
+  // The result is a real modal over the board, with its own next-round gate.
+  assert.match(boardCss, /position:\s*fixed/);
   // A tighter type scale on the narrowest phones.
   assert.match(boardCss, /@media \(max-width: 420px\)/);
 });
@@ -1394,8 +1398,10 @@ test("dominoes online: no polling — one reconnect read, one deadline read", ()
   // The deadline read is armed on the SERVER's instant, and only while live.
   assert.ok(pageCode.includes("useDeadlineRead(isLive ? match?.turnDeadlineAt"));
   assert.ok(pageCode.includes("useTurnCountdown("));
-  // …and the client never resolves the turn itself: no timer submits anything.
-  assert.equal(/setTimeout\([\s\S]*submit\(/.test(pageCode), false);
+  // …and the client never resolves the turn itself: the only timer asks for a
+  // paced practice-bot step, it does not submit an action for either seat.
+  assert.equal(/setTimeout\([^)]*submit\(/.test(pageCode), false);
+  assert.ok(pageCode.includes("refresh(true)"));
 });
 
 test("dominoes online: the room vocabulary matches the realtime server exactly", () => {
@@ -1546,10 +1552,11 @@ test("dominoes css: the chain is a 2D table that scrolls as it snakes", () => {
   assert.match(table, /min-height:\s*0;/);
   assert.match(table, /\.dominoes-chain-scroller \{[\s\S]*?flex: 1 1 auto/);
   const boardSized = css.slice(css.indexOf(".dominoes-layout {"), css.indexOf(".dominoes-topbar {"));
-  // THE FELT IS THE ONLY FLEXIBLE ROW. The info bar and the controls are sized by
-  // their contents, so no tile, no move and no log entry can shrink the table.
-  assert.match(boardSized, /grid-template-rows:\s*auto auto minmax\(0, 1fr\);/);
+  // THE FELT IS THE LAYOUT. The info bar and the dock are overlays inside it,
+  // so no tile, no move and no log entry can shrink the table.
+  assert.match(boardSized, /display:\s*block;/);
   assert.match(boardSized, /height:\s*100%/);
+  assert.match(css, /\.dominoes-table \{[\s\S]*?position:\s*absolute;[\s\S]*?inset:\s*0;/);
   // THE VALUES STAY UPRIGHT ON A TURNED TILE. The chain writes the INVERSE of a
   // tile's rotation onto its slot, and the tile's halves turn back to face the
   // reader — so a domino lying vertically still reads left-to-right.
@@ -1599,53 +1606,33 @@ test("dominoes ui: a move is audible, and the sound can be switched off", { skip
 });
 
 test("dominoes css: the board is the page, and the hand is docked inside it", () => {
-  // Two columns: the felt first, the hand + controls second. The sidebar is wider
-  // than it was because it now carries your tiles as well as the buttons.
-  const layout = css.slice(css.indexOf(".dominoes-layout {"), css.indexOf(".dominoes-seat {"));
-  assert.match(layout, /grid-template-columns:\s*minmax\(0, 1fr\);/);
-  assert.match(layout, /grid-template-rows:\s*auto auto minmax\(0, 1fr\);/);
-  // The board IS the page: the viewport minus the chrome the page wraps round it.
+  const layout = css.slice(css.indexOf(".dominoes-layout {"), css.indexOf(".dominoes-topbar {"));
+  // The felt is the whole card; the top bar and dock are overlays inside it.
+  assert.match(layout, /display:\s*block;/);
   assert.match(layout, /height:\s*100%/);
-  // …and the card it lives in takes whatever the page leaves, so the felt is as
-  // tall as the screen rather than as tall as its contents.
+  // The board itself is edge to edge and fills the space the page gives it.
   const shell = css.slice(css.indexOf(".dominoes-board {"), css.indexOf(".dominoes-layout {"));
   assert.match(shell, /flex:\s*1 1 auto/);
+  assert.match(shell, /width:\s*100%/);
+  assert.match(shell, /height:\s*100%/);
   assert.match(shell, /overflow:\s*hidden/);
-  // The page around it is ONE SCREEN TALL — bound to the viewport and clipped —
-  // so your hand and the controls are never below the fold.
+  assert.match(shell, /padding:\s*0;/);
+  // The page around it is the viewport left under the fixed nav bar, clipped, so
+  // the hand and controls are never below the fold.
   const page = read("src/app/casino/dominoes/[matchId]/PageClient.tsx");
-  assert.match(page, /h-\[100dvh\]/);
+  assert.match(page, /h-\[calc\(100dvh-68px-var\(--safe-top\)\)\]/);
+  assert.match(page, /sm:h-\[calc\(100dvh-4rem-var\(--safe-top\)\)\]/);
   assert.match(page, /overflow-hidden/);
-  // …and it stacks on a phone, so the sidebar never squeezes the board. The phone
-  // block lives at the END of the section — it overrides base rules, and a media
-  // query only wins on position — so it is read from its own slice.
-  const phone = css.slice(css.lastIndexOf("@media (max-width: 900px)"));
-  assert.match(phone, /grid-template-columns:\s*minmax\(0, 1fr\);/);
-  assert.match(phone, /grid-template-rows:\s*auto auto minmax\(0, 1fr\);/);
-  assert.match(
-    phone,
-    /height:\s*100%/,
-    "the phone board is bound to the screen, not to its contents",
-  );
-  // The info bar is one wrapping row, and it never grows with the game.
+  // The info bar and the dock float inside the felt, not above it.
   const topbar = css.slice(css.indexOf(".dominoes-topbar {"), css.indexOf(".dominoes-sidebar {"));
+  assert.match(topbar, /position:\s*absolute/);
   assert.match(topbar, /flex-wrap:\s*wrap/);
-  // THE CONTROLS SIT ABOVE THE TABLE. The dock is the second row of the grid and
-  // the felt the third, in the markup as well as on screen, so a thumb reaching
-  // for a tile is never over the board.
-  const viewMarkup = stripComments(read("src/components/dominoes/DominoMatchView.tsx"));
-  assert.ok(
-    viewMarkup.indexOf('<aside className="dominoes-sidebar">') <
-      viewMarkup.indexOf('<div className="dominoes-table">'),
-    "the hand and its controls are placed above the felt",
-  );
-  // …under a DOCK that reads left to right: the hand takes the width, the panel
-  // sits beside it, and the whole strip stays inside the board.
   const dock = css.slice(css.indexOf(".dominoes-sidebar {"), css.indexOf("/* ── Seat cards"));
+  assert.match(dock, /position:\s*absolute/);
+  assert.match(dock, /inset:\s*auto 0 0 0/);
   assert.match(dock, /flex-direction:\s*row/);
   assert.match(dock, /overflow:\s*hidden/);
-  // The hand is one row of tiles that scrolls sideways, never a wrapped block: a
-  // second row of tiles costs the felt ~50px of rows it needs for the chain.
+  // The hand is one row of tiles that scrolls sideways, never a wrapped block.
   const hand = css.slice(css.indexOf(".dominoes-hand {"), css.indexOf(".dominoes-hand-empty {"));
   assert.match(hand, /flex-wrap:\s*nowrap/);
   const viewSource = stripComments(read("src/components/dominoes/DominoMatchView.tsx"));
@@ -1655,6 +1642,10 @@ test("dominoes css: the board is the page, and the hand is docked inside it", ()
   assert.ok(sidebarAt > -1, "the sidebar is still there");
   assert.ok(handAt > sidebarAt, "the viewer's hand belongs to the sidebar");
   assert.ok(actionsAt > handAt, "the tiles sit above the controls that play them");
+  assert.ok(
+    viewSource.indexOf('<div className="dominoes-table">') > sidebarAt,
+    "the felt is painted underneath the dock",
+  );
 });
 
 test("dominoes css: tap targets, small screens and reduced motion", () => {

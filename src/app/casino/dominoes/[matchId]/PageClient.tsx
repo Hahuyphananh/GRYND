@@ -23,9 +23,9 @@
 // The socket room (`dominoes:match:<id>`) carries `lobby:updated` notifications
 // from the existing relay. A notification means "something changed, re-read" —
 // the board is ONLY ever drawn from the authoritative GET that follows. There is
-// NO recurring poll: `useMatchSync` performs exactly one read when the socket
-// reconnects and one when the tab becomes visible again, which covers the two
-// edges where a push can genuinely have been missed.
+// no recurring poll: `useMatchSync` performs exactly one read when the socket
+// reconnects and one when the tab becomes visible again. The one extra read is a
+// one-shot practice-bot step, armed only while the bot is on turn (see below).
 //
 // ── THE CLOCK ─────────────────────────────────────────────────────────────
 //
@@ -176,10 +176,13 @@ export default function DominoesMatchPage() {
    * ---------------------------------------------------------------------- */
 
   const fetchSnapshot = useCallback(
-    async (signal?: AbortSignal) => {
+    async (signal?: AbortSignal, botStep = false) => {
       if (!matchId) return;
       try {
-        const res = await fetch(apiMatch, { cache: "no-store", signal });
+        const res = await fetch(botStep ? `${apiMatch}?botStep=1` : apiMatch, {
+          cache: "no-store",
+          signal,
+        });
         if (signal?.aborted) return;
         const data = await res.json().catch(() => null);
         if (signal?.aborted) return;
@@ -208,12 +211,15 @@ export default function DominoesMatchPage() {
     [apiMatch, matchId, t],
   );
 
-  const refresh = useCallback(() => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    void fetchSnapshot(controller.signal);
-  }, [fetchSnapshot]);
+  const refresh = useCallback(
+    (botStep = false) => {
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      void fetchSnapshot(controller.signal, botStep);
+    },
+    [fetchSnapshot],
+  );
 
   useEffect(() => {
     if (!matchId) return undefined;
@@ -276,7 +282,8 @@ export default function DominoesMatchPage() {
   });
 
   // Exactly one read on socket reconnect and one when the tab becomes visible
-  // again. There is no interval anywhere in this page.
+  // again. There is no interval anywhere in this page; the practice-bot step
+  // below is a single delayed read per bot action, not a poll.
   useMatchSync(refresh, socket, Boolean(matchId) && Boolean(match) && !ended);
 
   /* ---------------------------------------------------------------------- *
@@ -289,6 +296,18 @@ export default function DominoesMatchPage() {
   // When the stamped instant passes, the SERVER resolves the turn. One bounded
   // read brings that back; the page never acts for the seat.
   useDeadlineRead(isLive ? match?.turnDeadlineAt ?? null : null, refresh);
+
+  // ── THE PRACTICE BOT'S OWN PACE ─────────────────────────────────────────
+  // The bot has no second client to move for it. After the player's move the
+  // store takes ONE bot action; if that action was a draw it is still the bot's
+  // turn, so this asks for one more step after a beat. Every step draws or plays
+  // a single tile, which keeps the pile animation readable instead of resolving
+  // a whole draught at once. It stops the moment the turn or the match changes.
+  useEffect(() => {
+    if (!match?.isAi || !isLive || match.isViewerTurn || pending) return undefined;
+    const timer = window.setTimeout(() => refresh(true), 900);
+    return () => window.clearTimeout(timer);
+  }, [match?.isAi, match?.isLive, match?.isViewerTurn, match?.version, pending, refresh]);
 
   /* ---------------------------------------------------------------------- *
    * Submission
@@ -580,27 +599,22 @@ export default function DominoesMatchPage() {
         data-testid="dominoes-match"
         data-status={status}
         data-viewer-seat={viewerSeat ?? ""}
-        className="flex h-[100dvh] flex-col overflow-hidden bg-gradient-to-br from-[#001628] to-[#03040c] px-2 pb-2 pt-16 text-white sm:px-4"
+        className="flex h-[calc(100dvh-68px-var(--safe-top))] w-full flex-col overflow-hidden bg-gradient-to-br from-[#001628] to-[#03040c] text-white sm:h-[calc(100dvh-4rem-var(--safe-top))]"
       >
-        {/* THE BOARD IS THE PAGE, AND THE PAGE DOES NOT SCROLL. The shell is one
-            viewport tall and clips: the board below takes every pixel the header
-            does not, and the hand + controls live inside it, so a full 28-tile
-            table never asks the player to scroll to reach their own tiles. */}
-        <div className="relative mx-auto flex min-h-0 w-full max-w-[1600px] flex-1 flex-col">
-          {/* ── Header ─────────────────────────────────────────────────── */}
-          <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h1 className="logo-text flex items-center gap-2 text-lg font-black uppercase tracking-[0.08em] text-[#7cefff] drop-shadow-[0_0_16px_rgba(0,229,255,0.45)] sm:text-2xl">
+        {/* THE BOARD IS THE PAGE, AND THE PAGE DOES NOT SCROLL. The shell is the
+            viewport left under the fixed navigation bar and clips: the board
+            takes every pixel, the felt runs edge to edge, and the hand + controls
+            float inside it. A full 28-tile table never asks the player to scroll
+            to reach their own tiles. */}
+        <div className="relative flex min-h-0 w-full flex-1 flex-col">
+          {/* ── Header ── a floating label, never a row of the board ─────── */}
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-40 flex flex-wrap items-start justify-between gap-2 px-3 pt-2">
+            <div className="pointer-events-auto">
+              <h1 className="logo-text flex items-center gap-2 text-base font-black uppercase tracking-[0.08em] text-[#7cefff] drop-shadow-[0_0_16px_rgba(0,229,255,0.45)] sm:text-xl">
                 {t("games.dominoes_name")}
               </h1>
-              <p className="mt-0.5 hidden flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-white/55 sm:flex">
-                <span>{t("games.dominoes.subtitle")}</span>
-                <span className="rounded-full border border-emerald-400/40 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold tracking-wider text-emerald-200">
-                  {t("games.dominoes.free")}
-                </span>
-              </p>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-2">
               <GameEmoteLayer
                 gameId="dominoes"
                 compact
@@ -609,16 +623,16 @@ export default function DominoesMatchPage() {
                 onSend={(emote) => sendEmote(emote)}
                 opponentLabel={opponentName}
               />
-            <span
-              className="rounded-full border border-cyan-400/40 bg-cyan-500/10 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-cyan-200"
-              data-testid="match-status"
-            >
-              {status === "playing" ? t("games.dominoes.status_playing") : null}
-              {finished ? t("games.dominoes.status_finished") : null}
-              {cancelled ? t("games.dominoes.status_cancelled") : null}
-              {waiting ? t("games.dominoes.status_waiting") : null}
-              {!status ? t("games.dominoes.status_loading") : null}
-            </span>
+              <span
+                className="rounded-full border border-cyan-400/40 bg-cyan-500/10 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-cyan-200"
+                data-testid="match-status"
+              >
+                {status === "playing" ? t("games.dominoes.status_playing") : null}
+                {finished ? t("games.dominoes.status_finished") : null}
+                {cancelled ? t("games.dominoes.status_cancelled") : null}
+                {waiting ? t("games.dominoes.status_waiting") : null}
+                {!status ? t("games.dominoes.status_loading") : null}
+              </span>
             </div>
           </div>
 
@@ -650,7 +664,7 @@ export default function DominoesMatchPage() {
               game went on. Absolutely positioned, it costs the board nothing. */}
           {moves.length > 0 ? (
             <div
-              className="absolute right-2 bottom-2 z-20 hidden max-h-[38vh] w-64 overflow-y-auto rounded-2xl border border-white/10 bg-[#04121a]/95 p-2 shadow-[0_18px_40px_rgba(0,0,0,0.55)] xl:block"
+              className="absolute right-2 top-16 z-20 hidden max-h-[32vh] w-64 overflow-y-auto rounded-2xl border border-white/10 bg-[#04121a]/95 p-2 shadow-[0_18px_40px_rgba(0,0,0,0.55)] xl:block"
               data-testid="dominoes-move-log"
             >
               <h2 className="mb-2 text-xs font-bold uppercase tracking-wider text-white/60">

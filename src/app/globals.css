@@ -2611,76 +2611,87 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
      the layout is measured IN this unit, so a bigger cell is a bigger table. */
   --dm-half: clamp(28px, 6.6vw, 56px);
   --dm-gap: clamp(4px, 1vw, 8px);
-  /* The little the page keeps for itself: the navbar clearance and its one-line
-     header. Still subtracted, so "the whole page" means the whole page. */
-  --dm-chrome: 8rem;
-  /* The round result and the reconnect notice float over the board rather than
-     taking a row of the felt, so the board is the anchor they are placed against. */
+  /* THE BOARD IS THE PAGE — edge to edge, top to bottom. No page padding, no
+     card margin: the felt is the viewport the match page gives it. */
   position: relative;
   display: flex;
   flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid rgba(124, 239, 255, 0.18);
-  border-radius: 18px;
+  border: 0;
+  border-radius: 0;
   background:
     radial-gradient(120% 90% at 50% 0%, rgba(0, 229, 255, 0.1), transparent 60%),
     linear-gradient(160deg, rgba(6, 34, 58, 0.95), rgba(2, 12, 26, 0.98));
   box-shadow: inset 0 0 60px rgba(0, 229, 255, 0.07);
-  padding: 7px;
+  padding: 0;
 }
 
-/* THE TABLE ABOVE, THE DOCK BELOW — one column, one card. The felt row is the
-   flexible one: the board takes the page and the dock takes only its own height,
-   so a growing hand can never squeeze the table off screen. */
+/* THE FELT OWNS THE WHOLE CARD. The info bar and the controls are overlays
+   inside this box, so the table can run under them and the page never grows. */
 .dominoes-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  /* INFO BAR, CONTROLS, TABLE. The first two rows are sized by their own contents
-     (which do not change as the game is played); the third takes everything left,
-     which is what makes the felt the size of the page on every ply. */
-  grid-template-rows: auto auto minmax(0, 1fr);
-  align-items: stretch;
-  gap: 7px;
+  position: relative;
+  display: block;
   height: 100%;
   min-height: 0;
 }
 
-/* THE INFO BAR — everything above the controls: the match scoreboard, the
-   opponent seat, the turn sentence and the clock. ONE WRAPPING ROW, and it never
-   grows with the game: no tile, no move and no log entry adds a row here, so the
-   felt below is never squeezed. */
+/* THE INFO BAR — the match scoreboard, the opponent seat, the turn and the
+   clock — floats along the TOP EDGE of the felt. Its 52px top padding leaves
+   room for the page's floating game label, not for a layout row. ONE WRAPPING
+   ROW that never grows with the game. */
 .dominoes-topbar {
+  position: absolute;
+  /* Below the page's floating label (40) and the dock (30). */
+  z-index: 20;
+  inset: 0 0 auto 0;
   display: flex;
   min-width: 0;
   flex-direction: row;
   flex-wrap: wrap;
   align-items: center;
   gap: 4px 8px;
+  padding: 52px 10px 10px;
+  background: linear-gradient(
+    180deg,
+    rgba(2, 12, 26, 0.94) 0%,
+    rgba(2, 12, 26, 0.78) 72%,
+    rgba(2, 12, 26, 0) 100%
+  );
+  pointer-events: none;
 }
 
-/* Each piece of the bar keeps its own weight (see the child rules next to the
-   scoreboard, the seat card, the banner and the clock): the scoreboard and the
-   clock take the leftover width, the seat card sits at its natural size. */
+.dominoes-topbar > * {
+  pointer-events: auto;
+}
 
-/* THE DOCK — your hand and every control, inside the board, along its bottom.
-   A row: the hand takes the width, the panel sits beside it. Nothing here is
-   sticky or scrollable as a block; only the hand's own tile row scrolls. */
+/* THE DOCK — your hand and every control, floating INSIDE the felt along its
+   bottom edge. It is an overlay, not a grid row, so the table still gets the
+   whole board; only the hand's own tile row scrolls. */
 .dominoes-sidebar {
+  position: absolute;
+  z-index: 30;
+  inset: auto 0 0 0;
   display: flex;
   flex-direction: row;
-  /* The hand, the actions and the small buttons share the strip; on a narrow
-     desktop they wrap into a second row of the DOCK — never into the felt, which
-     is a row of the layout below. */
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: stretch;
   gap: 7px;
   min-width: 0;
   min-height: 0;
+  max-height: 46%;
   overflow: hidden;
-  border-bottom: 1px solid rgba(124, 239, 255, 0.16);
-  padding-bottom: 7px;
+  border-top: 1px solid rgba(124, 239, 255, 0.16);
+  background: linear-gradient(
+    0deg,
+    rgba(2, 12, 26, 0.98) 0%,
+    rgba(2, 12, 26, 0.92) 76%,
+    rgba(2, 12, 26, 0) 100%
+  );
+  padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
 }
 
 
@@ -2863,84 +2874,68 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 }
 
 /* ── The round result (the series goes on) ────────────────────────────
-   A SMALL FLOATING PANEL over the felt's top-right corner, not a row of the
-   board. It used to sit inline above the table, which meant every round close
-   pushed the felt down a couple of hundred pixels and then pulled it back — and
-   the table has to be the same size on every ply. The next round is already dealt
-   and its clock is already running, so this is a read, not a gate. */
-.dominoes-round-result {
-  position: absolute;
-  z-index: 6;
-  /* Anchored to the FELT'S corner, not the info bar's: the score and the clock
-     stay readable while the points are announced. */
-  right: 8px;
-  bottom: 8px;
+   A REAL POPUP: a dimmed overlay over the whole match and a centred card that
+   states both players' points for the round. The next round is already dealt
+   underneath, so the card is a read with two exits — the Next round button, or
+   the five-second countdown that clears it automatically. */
+.dominoes-round-overlay {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
   display: flex;
-  width: min(360px, calc(100% - 16px));
-  max-height: min(320px, calc(100% - 80px));
-  overflow-y: auto;
-  min-width: 0;
-  flex-direction: column;
-  gap: 6px;
-  border: 1px solid rgba(245, 255, 59, 0.6);
-  border-radius: 12px;
-  background: rgba(6, 24, 38, 0.97);
-  padding: 10px 12px;
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55);
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(1, 7, 16, 0.72);
+  backdrop-filter: blur(6px);
 }
 
-.dominoes-round-result-head {
+.dominoes-round-result {
+  width: min(92vw, 460px);
+  max-height: 86dvh;
+  overflow-y: auto;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid rgba(245, 255, 59, 0.65);
+  border-radius: 20px;
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(245, 255, 59, 0.12), transparent 60%),
+    linear-gradient(170deg, #0a2438, #04111e);
+  padding: 22px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(124, 239, 255, 0.12);
+}
+
+.dominoes-round-result-eyebrow {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(165, 243, 252, 0.75);
 }
 
 .dominoes-round-result-title {
   margin: 0;
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: clamp(20px, 5vw, 26px);
+  font-weight: 900;
+  line-height: 1.15;
   color: #f5ff3b;
-}
-
-.dominoes-round-result-dismiss {
-  flex: 0 0 auto;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  background: rgba(255, 255, 255, 0.08);
-  padding: 3px 10px;
-  font-size: 10px;
-  font-weight: 700;
-  color: rgba(255, 255, 255, 0.85);
-  cursor: pointer;
-}
-
-.dominoes-round-result-dismiss:hover {
-  background: rgba(255, 255, 255, 0.16);
-}
-
-.dominoes-round-result-outcome {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 700;
-  color: #fff;
 }
 
 .dominoes-round-result-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 6px;
+  gap: 8px;
 }
 
 .dominoes-round-result-cell {
   min-width: 0;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(0, 0, 0, 0.25);
-  padding: 6px 8px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.3);
+  padding: 12px;
 }
 
 .dominoes-round-result-cell-name {
@@ -2956,24 +2951,57 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 }
 
 .dominoes-round-result-cell-points {
-  margin: 0;
+  margin: 4px 0 0;
   font-variant-numeric: tabular-nums;
-  font-size: 15px;
+  font-size: clamp(26px, 7vw, 34px);
   font-weight: 900;
+  line-height: 1;
   color: #7cefff;
 }
 
 .dominoes-round-result-cell-pips {
-  margin: 0;
-  font-size: 10px;
+  margin: 4px 0 0;
+  font-size: 11px;
   color: rgba(255, 255, 255, 0.6);
 }
 
 .dominoes-round-result-next,
 .dominoes-round-result-score {
   margin: 0;
-  font-size: 11px;
+  font-size: 12px;
   color: rgba(255, 255, 255, 0.7);
+}
+
+.dominoes-round-result-next-button {
+  width: 100%;
+  min-height: 50px;
+  border-radius: 13px;
+  border: 1px solid rgba(245, 255, 59, 0.7);
+  background: linear-gradient(180deg, #f5ff3b, #d6e400);
+  padding: 12px 16px;
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  color: #07121c;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.dominoes-round-result-next-button:hover {
+  filter: brightness(1.06);
+}
+
+.dominoes-round-result-next-button:focus-visible {
+  outline: 2px solid #a5f3fc;
+  outline-offset: 3px;
+}
+
+.dominoes-round-result-countdown {
+  margin: 0;
+  text-align: center;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.5);
 }
 
 @media (max-width: 420px) {
@@ -3064,10 +3092,11 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 
 /* ── The chain and the pile ─────────────────────────────────────────── */
 .dominoes-table {
-  position: relative;
+  /* THE FELT IS THE BOARD. Absolute, so the floating top bar and dock sit
+     over it without taking a single cell away from the table. */
+  position: absolute;
+  inset: 0;
   display: flex;
-  /* The table takes whatever height the column has left: that is the felt's. */
-  flex: 1 1 auto;
   min-height: 0;
   flex-direction: column;
   gap: 0;
@@ -3135,7 +3164,9 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   /* The top padding is the newest tile's badge's room: it floats above the felt,
      so the box has to leave space for it. It is also what the board's own size is
      measured from, so it is not costed twice. */
-  padding: 34px 16px 14px;
+  /* Clear the floating scoreboard (top) and the dock (bottom). The layout is
+     measured from this padding, so the chain still fits between them. */
+  padding: 112px 16px 160px;
   scroll-padding: 44px;
 }
 
@@ -3445,7 +3476,9 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   position: absolute;
   z-index: 2;
   left: 8px;
-  bottom: 8px;
+  /* Above the floating dock, under the top bar. */
+  top: 122px;
+  bottom: auto;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -4011,35 +4044,28 @@ button.dominoes-tile:disabled {
    extra weight in CSS — only its position in the sheet does. */
 @media (max-width: 900px) {
   .dominoes-board {
-    /* The page's own chrome: navbar clearance plus header. The board gets the
-       rest of the screen and no more. */
-    --dm-chrome: 6.5rem;
     /* Felt cells shrink a little on a phone: the felt is much shorter than a
        desktop's, and a 26-tile chain still has to snake through it. The numerals
        stay 13px, which is the smallest this board goes. */
     --dm-half: clamp(19px, 5vw, 26px);
-    padding: 5px;
+    padding: 0;
   }
 
   .dominoes-layout {
-    grid-template-columns: minmax(0, 1fr);
-    /* Info bar, controls, felt — the felt is still the only row that flexes, so
-       the board is the same size on every ply on a phone too. */
-    grid-template-rows: auto auto minmax(0, 1fr);
     height: 100%;
     min-height: 0;
-    gap: 5px;
   }
 
   .dominoes-topbar {
     min-height: 0;
     gap: 5px;
+    padding: 44px 8px 8px;
   }
 
   /* The felt shrinks into whatever is left instead of forcing a scrollbar. */
   .dominoes-chain-scroller {
     min-height: 0;
-    padding: 26px 10px 10px;
+    padding: 116px 10px 214px;
   }
 
   /* The pile's count is printed on the Draw button, so this strip is a row of
@@ -4102,13 +4128,16 @@ button.dominoes-tile:disabled {
   }
 
   .dominoes-sidebar {
-    position: static;
-    max-height: none;
-    overflow: visible;
-    /* Two columns, so the two secondary buttons share a row… */
+    /* Still an overlay inside the felt, now a compact two-column dock. It may
+       scroll internally on a very short phone; the page never does. */
+    position: absolute;
+    inset: auto 0 0 0;
+    max-height: 54%;
+    overflow-y: auto;
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 6px;
+    padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
   }
 
   .dominoes-hand,

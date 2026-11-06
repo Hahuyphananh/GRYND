@@ -474,9 +474,9 @@ test("authority: the store settles exactly once, through the shared writers", ()
   assert.match(store, /set\(\{ gamesLost: sql`\$\{users\.gamesLost\} \+ 1` \}\)/);
   // Every terminal path claims the row with a conditional write before it
   // settles: the ply-conditional action write, the clock resolution, the
-  // resignation, the disconnect forfeit and a practice match whose opening
-  // bot turn ends it.
-  assert.equal((store.match(/await settleMatch\(/g) ?? []).length, 5);
+  // resignation, the disconnect forfeit, a practice match whose opening bot
+  // turn ends it, and a paced bot step that finishes it on a later read.
+  assert.equal((store.match(/await settleMatch\(/g) ?? []).length, 6);
   assert.ok((store.match(/if \(!updated\) \{/g) ?? []).length >= 3);
 });
 

@@ -181,6 +181,7 @@ export default function DominoMatchView({
   reconnecting = false,
 }: DominoMatchViewProps) {
   const headingId = useId();
+  const roundTitleId = useId();
   const { t } = useTranslation();
   // The table's sound is a device preference, read after mount so the server and
   // the first client render agree (localStorage does not exist on the server).
@@ -191,6 +192,11 @@ export default function DominoMatchView({
   // The round result is announced once per completed round: dismissing it is a
   // local preference, and a NEW round result re-opens it (a different key).
   const [dismissedRound, setDismissedRound] = useState<number | null>(null);
+  // The popup's own countdown to the next round. The server has already dealt
+  // it, so this is the visible wait before the overlay clears itself.
+  const [roundSeconds, setRoundSeconds] = useState(
+    Math.ceil(ROUND_RESULT_AUTO_DISMISS_MS / 1000),
+  );
 
   // A SELECTION NEVER OUTLIVES THE TURN IT WAS MADE IN. The ends it fits are
   // already withheld off-turn (`selectedEnds` below), but a lifted tile would
@@ -346,11 +352,19 @@ export default function DominoMatchView({
   const roundResultNumber = roundResult?.round ?? null;
   useEffect(() => {
     if (!showRoundResult || roundResultNumber === null) return undefined;
+    setRoundSeconds(Math.ceil(ROUND_RESULT_AUTO_DISMISS_MS / 1000));
+    const interval = window.setInterval(
+      () => setRoundSeconds((seconds) => Math.max(0, seconds - 1)),
+      1_000,
+    );
     const timer = window.setTimeout(
       () => setDismissedRound(roundResultNumber),
       ROUND_RESULT_AUTO_DISMISS_MS,
     );
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearInterval(interval);
+      window.clearTimeout(timer);
+    };
   }, [showRoundResult, roundResultNumber]);
 
   // The countdown only exists while the server says a turn is running: a
@@ -527,69 +541,6 @@ export default function DominoMatchView({
             </p>
           ) : null}
 
-          {/* ── The round that just closed (the series continues) ─────────── */}
-          {showRoundResult && roundResult ? (
-            <section
-              className="dominoes-round-result"
-              data-testid="dominoes-round-result"
-              data-round={roundResult.round}
-              role="status"
-              aria-live="polite"
-              aria-label={t("games.dominoes.round_result_aria", { round: roundResult.round })}
-            >
-              <div className="dominoes-round-result-head">
-                <h3 className="dominoes-round-result-title">
-                  {t("games.dominoes.round_result_title", { round: roundResult.round })}
-                </h3>
-                <button
-                  type="button"
-                  className="dominoes-round-result-dismiss"
-                  data-testid="dominoes-round-result-dismiss"
-                  onClick={() => setDismissedRound(roundResult.round)}
-                >
-                  {t("games.dominoes.round_result_dismiss")}
-                </button>
-              </div>
-              <p className="dominoes-round-result-outcome">{roundWinnerText}</p>
-              <div className="dominoes-round-result-grid">
-                <div className="dominoes-round-result-cell" data-testid="dominoes-round-you">
-                  <p className="dominoes-round-result-cell-name">{t("games.dominoes.you")}</p>
-                  <p className="dominoes-round-result-cell-points">
-                    {t("games.dominoes.round_result_points_value", {
-                      points: roundResult.viewerPoints,
-                    })}
-                  </p>
-                  <p className="dominoes-round-result-cell-pips">
-                    {t("games.dominoes.round_result_pips_value", { pips: roundResult.viewerPips })}
-                  </p>
-                </div>
-                <div
-                  className="dominoes-round-result-cell"
-                  data-testid="dominoes-round-opponent"
-                >
-                  <p className="dominoes-round-result-cell-name">{opponentName}</p>
-                  <p className="dominoes-round-result-cell-points">
-                    {t("games.dominoes.round_result_points_value", {
-                      points: roundResult.opponentPoints,
-                    })}
-                  </p>
-                  <p className="dominoes-round-result-cell-pips">
-                    {t("games.dominoes.round_result_pips_value", {
-                      pips: roundResult.opponentPips,
-                    })}
-                  </p>
-                </div>
-              </div>
-              {roundNextText ? <p className="dominoes-round-result-next">{roundNextText}</p> : null}
-              <p className="dominoes-round-result-score">
-                {t("games.dominoes.round_result_score", {
-                  you: scoreboard.viewerScore,
-                  opponent: scoreboard.opponentScore,
-                })}
-              </p>
-            </section>
-          ) : null}
-
         </div>
 
         {/* ══ THE CONTROLS — your hand, and the actions that play it ═════ */}
@@ -731,6 +682,77 @@ export default function DominoMatchView({
             </span>
           </div>
         </div>
+
+        {/* ── The round that just closed (the series continues) ─────────── */}
+        {showRoundResult && roundResult ? (
+          <div className="dominoes-round-overlay" data-testid="dominoes-round-overlay">
+            <section
+              className="dominoes-round-result"
+              data-testid="dominoes-round-result"
+              data-round={roundResult.round}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={roundTitleId}
+              aria-label={t("games.dominoes.round_result_aria", { round: roundResult.round })}
+            >
+              <p className="dominoes-round-result-eyebrow">
+                {t("games.dominoes.round_result_title", { round: roundResult.round })}
+              </p>
+              <h3 id={roundTitleId} className="dominoes-round-result-title">
+                {roundWinnerText}
+              </h3>
+              <div className="dominoes-round-result-grid">
+                <div className="dominoes-round-result-cell" data-testid="dominoes-round-you">
+                  <p className="dominoes-round-result-cell-name">{t("games.dominoes.you")}</p>
+                  <p className="dominoes-round-result-cell-points">
+                    {t("games.dominoes.round_result_points_value", {
+                      points: roundResult.viewerPoints,
+                    })}
+                  </p>
+                  <p className="dominoes-round-result-cell-pips">
+                    {t("games.dominoes.round_result_pips_value", { pips: roundResult.viewerPips })}
+                  </p>
+                </div>
+                <div
+                  className="dominoes-round-result-cell"
+                  data-testid="dominoes-round-opponent"
+                >
+                  <p className="dominoes-round-result-cell-name">{opponentName}</p>
+                  <p className="dominoes-round-result-cell-points">
+                    {t("games.dominoes.round_result_points_value", {
+                      points: roundResult.opponentPoints,
+                    })}
+                  </p>
+                  <p className="dominoes-round-result-cell-pips">
+                    {t("games.dominoes.round_result_pips_value", { pips: roundResult.opponentPips })}
+                  </p>
+                </div>
+              </div>
+              {roundNextText ? <p className="dominoes-round-result-next">{roundNextText}</p> : null}
+              <p className="dominoes-round-result-score">
+                {t("games.dominoes.round_result_score", {
+                  you: scoreboard.viewerScore,
+                  opponent: scoreboard.opponentScore,
+                })}
+              </p>
+              <button
+                type="button"
+                className="dominoes-round-result-next-button"
+                data-testid="dominoes-round-result-next"
+                onClick={() => setDismissedRound(roundResult.round)}
+              >
+                {t("games.dominoes.round_result_next_button")}
+              </button>
+              <p
+                className="dominoes-round-result-countdown"
+                data-testid="dominoes-round-countdown"
+                aria-live="off"
+              >
+                {t("games.dominoes.round_result_auto", { seconds: roundSeconds })}
+              </p>
+            </section>
+          </div>
+        ) : null}
       </div>
     </div>
   );

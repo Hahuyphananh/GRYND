@@ -28,10 +28,9 @@
  *      and the other half becomes the new open value.
  *   6. A tile can only be played by the seat on turn, from its own hand, in a
  *      live match. A playable tile can never be skipped.
- *   7. With nothing playable, a seat DRAWS FROM THE BONEYARD UNTIL IT CAN PLAY:
- *      one action takes tiles off the pile until a playable one turns up (or the
- *      pile runs out), and the seat keeps the turn throughout. There is no
- *      "one tile at a time" turn — the draught is not a move the table watches.
+ *   7. With nothing playable, a seat DRAWS FROM THE BONEYARD ONE TILE AT A TIME:
+ *      one action takes exactly one tile off the pile (or the pile runs out),
+ *      and the seat keeps the turn. If the tile does not fit, it draws again.
  *   8. With the pile empty and nothing playable, the seat passes.
  *   9. SCORING — every seat scores the pips LEFT IN THE OTHER SEAT'S HAND.
  *      A hand that empties ends the round at once: its holder scores the
@@ -999,7 +998,9 @@ export function applyAction(
   }
 
   if (action.type === ACTION_TYPES.DRAW) {
-    return drawUntilPlayable(state, seat);
+    // ONE tile per draw. If it still does not fit, the seat keeps the turn and
+    // must choose to draw again — the pile is never emptied in one click.
+    return finishIfBlocked(drawNextTile(state, seat));
   }
 
   return passTurn(state, seat);
@@ -1023,7 +1024,8 @@ function drawNextTile(state: DominoesState, seat: Seat): DominoesState {
   return freezeState({
     ...state,
     ply: state.ply + 1,
-    // A draw does NOT pass the turn: the seat keeps drawing until it can play.
+    // A draw does NOT pass the turn: the seat may draw again (or play the tile
+    // it just picked up).
     turn: seat,
     drawPile: rest,
     hands: { ...state.hands, [seat]: [...state.hands[seat], drawn] },
@@ -1032,27 +1034,16 @@ function drawNextTile(state: DominoesState, seat: Seat): DominoesState {
 }
 
 /**
- * THE DRAUGHT (rule 7): one draw action keeps taking tiles off the boneyard
- * until the seat holds something playable, or the pile runs out.
+ * A voluntary draw takes EXACTLY ONE tile (rule 7).
  *
- * This is the rule a real table plays: a player who cannot match picks up until
- * they can, and nobody watches them do it one tile at a time. It is also what
- * keeps the clock honest — a timeout resolves the whole draught, so a seat is
- * never handed a turn it still cannot use.
- *
- * The ply advances once per tile taken, so the action log and the pile count
- * still record every tile that changed hands, and the LAST draw is the recorded
- * action. The terminal check runs once, after the draught: only an emptied pile
- * can block a round.
+ * The seat keeps the turn whether or not the new tile fits: if it does not, the
+ * Draw control stays available and the player chooses to draw again. This is
+ * what lets the hand animate one tile at a time instead of a whole draught
+ * appearing at once. A draw that empties the pile still runs the terminal check,
+ * so a blocked round finishes immediately.
  */
-function drawUntilPlayable(state: DominoesState, seat: Seat): DominoesState {
-  let next = state;
-  // The validator guarantees the seat is stuck and the pile has tiles, so this
-  // loop always takes at least one; it stops at the first playable tile.
-  while (next.drawPile.length > 0 && !hasLegalPlay(next, seat)) {
-    next = drawNextTile(next, seat);
-  }
-  return finishIfBlocked(next);
+function drawOneTile(state: DominoesState, seat: Seat): DominoesState {
+  return finishIfBlocked(drawNextTile(state, seat));
 }
 
 /**
@@ -1116,7 +1107,7 @@ export function applyTimeout(
     );
   }
   return state.drawPile.length > 0
-    ? drawUntilPlayable(state, seat)
+    ? drawOneTile(state, seat)
     : passTurn(state, seat);
 }
 

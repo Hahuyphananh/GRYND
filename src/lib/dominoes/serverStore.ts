@@ -793,7 +793,7 @@ export async function createAiMatch({
     // After the opening placement the turn belongs to the other seat, so the bot
     // may still owe a turn. Play it now, in the same transaction, so the returned
     // row is never "waiting on the bot".
-    const afterBot = await playAiTurns(tx, match, state);
+    const afterBot = await playAiTurn(tx, match, state);
     if (afterBot === state) return { match, state } as const;
 
     const roundEnded = afterBot.status === MATCH_STATUS.FINISHED;
@@ -829,48 +829,42 @@ export async function createAiMatch({
 }
 
 /**
- * Play the bot's turns from `state` until it is the human's turn again or the
- * match is decided, logging each accepted action like a human move.
+ * Take ONE bot action, logging it like a human move.
  *
- * Runs INSIDE the caller's transaction, so a practice turn can never be skipped
- * by a client that forgets to poll: the snapshot the caller gets back already
- * contains the bot's answer. A draw keeps the bot on turn (the engine's rule),
- * which is why this is a loop — the guard only exists so a future engine change
- * cannot spin here forever.
+ * A draw keeps the bot on turn, so the caller gets a position that still needs
+ * another action. The client asks for the next one through a paced read (see
+ * `advanceBot` in `fetchMatch`), which is what lets a drawn tile land on screen
+ * before the bot draws again or plays. It also means no request can silently
+ * resolve a whole draught and then a play in the same frame.
+ *
+ * Runs INSIDE the caller's transaction. The engine's action is re-validated by
+ * `applyAction`, and the move log's unique (match_id, ply) still backstops a
+ * duplicated write.
  */
-async function playAiTurns(
+async function playAiTurn(
   tx: any,
   match: MatchRow,
   state: DominoesState,
 ): Promise<DominoesState> {
   const aiSeat = seatForUser(seatsFromRow(match), DOMINOES_AI_PLAYER_ID);
   if (!aiSeat) return state;
+  if (state.status !== MATCH_STATUS.PLAYING || state.turn !== aiSeat) return state;
 
-  let current = state;
-  let guard = 0;
-  while (
-    current.status === MATCH_STATUS.PLAYING &&
-    current.turn === aiSeat &&
-    guard < 64
-  ) {
-    guard += 1;
-    const action = chooseAiAction({
-      state: current,
-      seat: aiSeat,
-      difficulty: match.aiDifficulty,
-    });
-    if (!action) break;
+  const action = chooseAiAction({
+    state,
+    seat: aiSeat,
+    difficulty: match.aiDifficulty,
+  });
+  if (!action) return state;
 
-    const next = applyAction(current, aiSeat, action);
-    await tx.insert(dominoesMoves).values({
-      matchId: match.id,
-      ply: current.ply,
-      playerId: DOMINOES_AI_PLAYER_ID,
-      ...logValuesFrom(next, false),
-    });
-    current = next;
-  }
-  return current;
+  const next = applyAction(state, aiSeat, action);
+  await tx.insert(dominoesMoves).values({
+    matchId: match.id,
+    ply: state.ply,
+    playerId: DOMINOES_AI_PLAYER_ID,
+    ...logValuesFrom(next, false),
+  });
+  return next;
 }
 
 /* -------------------------------------------------------------------------- *
@@ -893,10 +887,18 @@ export async function fetchMatch({
   userId,
   matchId,
   nowMs = Date.now(),
+  advanceBot = false,
 }: {
   userId: string;
   matchId: string;
   nowMs?: number;
+  /**
+   * Take ONE practice-bot action when it is the bot's turn. The match page asks
+   * for this on a short delay while the bot is thinking, so its draught is shown
+   * one tile at a time. Never set on ordinary reads: a reconnect must not move
+   * the bot behind the player's back.
+   */
+  advanceBot?: boolean;
 }) {
   return await db.transaction(async (tx) => {
     const [match] = await tx
@@ -913,7 +915,59 @@ export async function fetchMatch({
     }
 
     const resolved = await resolveDueTurn(tx, match, nowMs);
-    const current = resolved.match;
+    let current = resolved.match;
+    let botMoved = false;
+
+    // A PACED BOT STEP. Practice matches have no second client to act for the
+    // bot, so the player's page asks for one action at a time while it is the
+    // bot's turn. If the bot draws and still cannot play, this read returns a
+    // position that still needs another step; the page waits, then asks again.
+    // A clock resolution already took its own action, so it is never doubled.
+    if (
+      advanceBot &&
+      !resolved.timedOut &&
+      current.isAi &&
+      current.status === MATCH_STATUS.PLAYING
+    ) {
+      const state = stateOf(current);
+      const seats = seatsFromRow(current);
+      const aiSeat = seatForUser(seats, DOMINOES_AI_PLAYER_ID);
+      if (state && aiSeat && state.status === MATCH_STATUS.PLAYING && state.turn === aiSeat) {
+        const afterBot = await playAiTurn(tx, current, state);
+        if (afterBot !== state) {
+          const roundEnded = afterBot.status === MATCH_STATUS.FINISHED;
+          const plan = roundEnded
+            ? await advanceAfterRound({ tx, match: current, state: afterBot, seats, nowMs })
+            : null;
+          const [updated] = await tx
+            .update(dominoesMatches)
+            .set(
+              plan
+                ? plan.columns
+                : {
+                    ...stateColumns(afterBot),
+                    ply: afterBot.ply,
+                    status: MATCH_STATUS.PLAYING,
+                    currentTurnUserId: userIdForSeat(seats, afterBot.turn),
+                    turnDeadlineAt: new Date(nowMs + TURN_WINDOW_MS),
+                    updatedAt: new Date(nowMs),
+                  },
+            )
+            .where(eq(dominoesMatches.id, current.id))
+            .returning();
+          if (updated) {
+            current = updated;
+            botMoved = true;
+            if (plan?.matchFinished) {
+              await settleMatch(tx, updated, {
+                result: plan.result,
+                reason: plan.reason,
+              });
+            }
+          }
+        }
+      }
+    }
 
     // The last COMPLETED round, for the round-result announcement. Pips and
     // points were public the moment the round closed; no hand, no pile.
@@ -945,6 +999,8 @@ export async function fetchMatch({
       dto: matchToDto(current, userId, lastRound),
       /** True when this read itself advanced the clock (the route may push). */
       timedOut: resolved.timedOut,
+      /** True when this read took one paced practice-bot action. */
+      botMoved,
     } as const;
   });
 }
@@ -1257,7 +1313,7 @@ async function advanceAfterRound({
     let next = cloneState({ ...deal, ply: current.ply + deal.ply });
     // Free practice: when the bid landed on the bot's seat it answers at once, in
     // this transaction, so the new round never opens on a stale bot turn/deadline.
-    if (match.isAi) next = await playAiTurns(tx, match, next);
+    if (match.isAi) next = await playAiTurn(tx, match, next);
     roundNumber += 1;
     startingSeat = starter;
     return next;
@@ -1414,7 +1470,7 @@ async function resolveDueTurn(
   // human action.
   const afterBot =
     match.isAi && timedOutState.status === MATCH_STATUS.PLAYING
-      ? await playAiTurns(tx, match, timedOutState)
+      ? await playAiTurn(tx, match, timedOutState)
       : timedOutState;
 
   const roundEnded = afterBot.status === MATCH_STATUS.FINISHED;
@@ -1665,7 +1721,7 @@ export async function move({
       // the caller gets back already reflects it.
       const finalState =
         match.isAi && next.status === MATCH_STATUS.PLAYING
-          ? await playAiTurns(tx, match, next)
+          ? await playAiTurn(tx, match, next)
           : next;
 
       const roundEnded = finalState.status === MATCH_STATUS.FINISHED;

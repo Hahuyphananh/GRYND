@@ -37,9 +37,9 @@
  *      halves are equal: it is displayed crosswise but matches like any other.
  *   6. Turn — a tile may only be played by the seat on turn, only from that
  *      seat's own hand, and only when the match is still `playing`.
- *   7. Draw — a seat with NO legal tile DRAWS FROM THE BONEYARD UNTIL IT CAN
- *      PLAY: one draw action keeps taking tiles off the pile until a playable
- *      one turns up, and the seat keeps the turn throughout. Drawing is legal
+ *   7. Draw — a seat with NO legal tile DRAWS ONE TILE from the boneyard and
+ *      keeps the turn. If it still cannot play, it draws again: one click, one
+ *      tile, so every pick-up is visible. Drawing is legal
  *      only when nothing in hand is playable, and a playable tile may never be
  *      skipped.
  *   8. Pass — the pile is empty and the seat still cannot play.

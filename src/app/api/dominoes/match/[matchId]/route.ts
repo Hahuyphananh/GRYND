@@ -17,9 +17,11 @@
 // THIS READ CAN ADVANCE THE CLOCK. An elapsed turn is resolved inside the
 // store's row-locked read (`applyTimeout`: draw one tile if the pile allows,
 // otherwise pass), which is the platform's documented pattern for clocked
-// games (src/lib/deadlineRead.ts) — there is no polling loop and no cron. When
-// it happens, the opponent is notified with a bare invalidation poke; the
-// payload carries no position, only the fact that the row moved.
+// games (src/lib/deadlineRead.ts) — there is no polling loop and no cron. A
+// practice row may also take ONE bot action when the page asks with
+// `?botStep=1`, so the bot's draws are paced instead of resolving a whole
+// draught at once. Either way the opponent is notified with a bare invalidation
+// poke; the payload carries no position, only the fact that the row moved.
 //
 // It is also the RECONNECT path: a refreshed tab or a new device re-reads the
 // same row, and the deal is restored from the columns rather than re-minted, so
@@ -37,7 +39,7 @@ import {
 import { broadcastMatchUpdate } from "../../../../../lib/dominoes/rooms";
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ matchId: string }> },
 ) {
   const gate = await requirePracticePlayer();
@@ -60,7 +62,11 @@ export async function GET(
   }
 
   try {
-    const result = await fetchMatch({ userId, matchId });
+    // The practice bot has no client of its own. The match page asks for one
+    // paced step at a time with `?botStep=1`, which keeps its draws visible
+    // instead of resolving a whole draught (and the following play) at once.
+    const advanceBot = new URL(req.url).searchParams.get("botStep") === "1";
+    const result = await fetchMatch({ userId, matchId, advanceBot });
     if ("error" in result) {
       return NextResponse.json(
         { success: false, error: result.error },
@@ -87,12 +93,13 @@ export async function GET(
 
     // A read that resolved the turn clock is news to the OTHER seat too. The
     // payload is a hint (status + version + who is on turn), never a position.
-    if (result.timedOut) {
+    if (result.timedOut || result.botMoved) {
       broadcastMatchUpdate(matchId, {
         status: match.status,
         version: match.ply,
         currentTurnUserId: match.currentTurnUserId ?? null,
-        timedOut: true,
+        timedOut: result.timedOut === true,
+        botMoved: result.botMoved === true,
       });
     }
 
@@ -104,6 +111,8 @@ export async function GET(
         moves,
         /** True when this read resolved an expired turn. */
         timedOut: result.timedOut === true,
+        /** True when this read took one paced practice-bot action. */
+        botMoved: result.botMoved === true,
       },
     });
   } catch (error) {

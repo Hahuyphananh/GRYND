@@ -841,6 +841,8 @@ export const APP_TEXT_TRANSLATIONS = {
         round_result_next_opponent: "{name} starts the next round.",
         round_result_score: "Match {you}–{opponent}",
         round_result_dismiss: "Continue",
+        round_result_next_button: "Next round",
+        round_result_auto: "Next round in {seconds}s…",
         reason_match_target_win: "You reached {target} points first.",
         reason_match_target_loss: "Your opponent reached {target} points first.",
         result_label: "Result",
@@ -889,7 +891,7 @@ export const APP_TEXT_TRANSLATIONS = {
         hint_choose_end: "Choose which open end to play it on.",
         hint_no_fit: "That tile fits neither open end — pick another.",
         hint_select: "Select a tile from your hand to play it.",
-        hint_draw: "Nothing fits — draw until you find a tile you can play.",
+        hint_draw: "Nothing fits — draw a tile. If it still doesn't fit, draw again.",
         hint_pass: "Nothing fits and the pile is empty — you have to pass.",
         play_left: "Play left",
         play_right: "Play right",
@@ -922,7 +924,7 @@ export const APP_TEXT_TRANSLATIONS = {
         board_rule_doubles:
           "Doubles. Both halves are the same; it matches normally, and it is marked on the chain so you can see it.",
         board_rule_draw:
-          "Draw when you cannot match. One draw keeps taking tiles off the boneyard until one fits — you keep the turn, and nothing you could have played is skipped. If the pile runs out first, the turn passes.",
+          "Draw when you cannot match. Each draw takes ONE tile off the boneyard, and you keep the turn — if it does not fit, press Draw again. If the pile runs out first, the turn passes.",
         board_rule_pass:
           "Pass only when the pile is empty and you still cannot play.",
         board_rule_win:
@@ -2944,6 +2946,8 @@ export const APP_TEXT_TRANSLATIONS = {
         round_result_next_opponent: "{name} commence la manche suivante.",
         round_result_score: "Match {you}–{opponent}",
         round_result_dismiss: "Continuer",
+        round_result_next_button: "Manche suivante",
+        round_result_auto: "Manche suivante dans {seconds} s…",
         reason_match_target_win: "Vous avez atteint {target} points en premier.",
         reason_match_target_loss:
           "Votre adversaire a atteint {target} points en premier.",
@@ -2994,7 +2998,8 @@ export const APP_TEXT_TRANSLATIONS = {
         hint_no_fit:
           "Cette tuile ne correspond à aucune extrémité — choisissez-en une autre.",
         hint_select: "Sélectionnez une tuile de votre main pour la poser.",
-        hint_draw: "Rien ne correspond — piochez jusqu'à trouver une tuile jouable.",
+        hint_draw:
+          "Rien ne correspond — piochez une tuile. Si elle ne correspond toujours pas, piochez encore.",
         hint_pass: "Rien ne correspond et la pioche est vide — vous devez passer.",
         play_left: "Jouer à gauche",
         play_right: "Jouer à droite",
@@ -3028,7 +3033,7 @@ export const APP_TEXT_TRANSLATIONS = {
         board_rule_doubles:
           "Les doubles. Les deux moitiés sont identiques ; la tuile se pose normalement et elle est marquée sur la chaîne pour que vous la voyiez.",
         board_rule_draw:
-          "Piochez quand vous ne pouvez pas poser. Une seule pioche prend des tuiles jusqu'à ce qu'une corresponde — vous gardez la main, et rien de jouable n'est sauté. Si la pioche s'épuise, la main passe.",
+          "Piochez quand vous ne pouvez pas poser. Chaque pioche prend UNE tuile, et vous gardez la main — si elle ne correspond pas, piochez encore. Si la pioche s'épuise, la main passe.",
         board_rule_pass:
           "Passez seulement quand la pioche est vide et que vous ne pouvez toujours pas jouer.",
         board_rule_win:
@@ -4796,6 +4801,8 @@ export const APP_TEXT_TRANSLATIONS = {
         round_result_next_opponent: "{name} empieza la siguiente ronda.",
         round_result_score: "Partida {you}–{opponent}",
         round_result_dismiss: "Continuar",
+        round_result_next_button: "Siguiente ronda",
+        round_result_auto: "Siguiente ronda en {seconds} s…",
         reason_match_target_win: "Has llegado a {target} puntos primero.",
         reason_match_target_loss: "Tu rival ha llegado a {target} puntos primero.",
         result_label: "Resultado",
@@ -4845,7 +4852,8 @@ export const APP_TEXT_TRANSLATIONS = {
         hint_choose_end: "Elige en qué extremo abierto jugarla.",
         hint_no_fit: "Esa ficha no encaja en ningún extremo — elige otra.",
         hint_select: "Selecciona una ficha de tu mano para jugarla.",
-        hint_draw: "Nada encaja — roba hasta encontrar una ficha jugable.",
+        hint_draw:
+          "Nada encaja — roba una ficha. Si sigue sin encajar, vuelve a robar.",
         hint_pass: "Nada encaja y la pila está vacía — tienes que pasar.",
         play_left: "Jugar a la izquierda",
         play_right: "Jugar a la derecha",
@@ -4879,7 +4887,7 @@ export const APP_TEXT_TRANSLATIONS = {
         board_rule_doubles:
           "Los dobles. Ambas mitades son iguales; encaja con normalidad y se marca en la cadena para que lo veas.",
         board_rule_draw:
-          "Roba cuando no puedas encajar. Una sola acción sigue robando fichas hasta que una encaje — conservas el turno y no te saltas nada jugable. Si la pila se vacía antes, el turno pasa.",
+          "Roba cuando no puedas encajar. Cada robo toma UNA ficha y conservas el turno — si no encaja, vuelve a robar. Si la pila se vacía antes, el turno pasa.",
         board_rule_pass:
           "Pasa solo cuando la pila está vacía y sigues sin poder jugar.",
         board_rule_win:
