@@ -25,7 +25,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -66,17 +66,21 @@ const ALL_UI = [PLACEMENT, BATTLE, BOARD, VISUAL, FLEET_STATUS, PAGE_CLIENT].joi
 
 // ── 1. Visuals and block rendering ────────────────────────────────────────
 
-test("ShipVisual renders one block per cell, in the ship's orientation", () => {
-  const carrier = renderToStaticMarkup(React.createElement(ShipVisual, { ship: "carrier" }));
-  assert.match(carrier, /data-variant="blocks"/);
-  assert.equal((carrier.match(/data-cell=/g) ?? []).length, 5);
-  assert.equal((carrier.match(/<img/g) ?? []).length, 0, "no image while the artwork registry is empty");
+test("ShipVisual renders one block per cell for a ship without artwork", () => {
+  // The Frigate has no illustration, so it is the block fallback — and the
+  // guard is what keeps it request-free.
+  const frigate = renderToStaticMarkup(React.createElement(ShipVisual, { ship: "frigate" }));
+  assert.match(frigate, /data-variant="blocks"/);
+  assert.equal((frigate.match(/data-cell=/g) ?? []).length, 3);
+  assert.equal((frigate.match(/<img/g) ?? []).length, 0, "no image for a ship without artwork");
 
-  const destroyer = renderToStaticMarkup(React.createElement(ShipVisual, { ship: "destroyer" }));
-  assert.equal((destroyer.match(/data-cell=/g) ?? []).length, 2);
+  const destroyer = renderToStaticMarkup(
+    React.createElement(ShipVisual, { ship: "frigate", orientation: "vertical" }),
+  );
+  assert.equal((destroyer.match(/data-cell=/g) ?? []).length, 3);
 
   const vertical = renderToStaticMarkup(
-    React.createElement(ShipVisual, { ship: "cruiser", orientation: "vertical" }),
+    React.createElement(ShipVisual, { ship: "frigate", orientation: "vertical" }),
   );
   assert.match(vertical, /data-orientation="vertical"/);
   assert.match(vertical, /flex-col/);
@@ -84,18 +88,29 @@ test("ShipVisual renders one block per cell, in the ship's orientation", () => {
 
 test("damaged ship cells render red, undamaged cells blue", () => {
   const html = renderToStaticMarkup(
-    React.createElement(ShipVisual, { ship: "destroyer", damaged: [true, false] }),
+    React.createElement(ShipVisual, { ship: "frigate", damaged: [true, false, false] }),
   );
   assert.equal((html.match(/data-damaged="true"/g) ?? []).length, 1);
-  assert.equal((html.match(/data-damaged="false"/g) ?? []).length, 1);
+  assert.equal((html.match(/data-damaged="false"/g) ?? []).length, 2);
   assert.match(html, /bg-\[#ef4444\]/, "damage is red");
   assert.match(html, /bg-\[#2f6bff\]/, "an intact hull is blue");
 });
 
-test("the artwork registry is empty and asks for no files", () => {
-  assert.deepEqual(Object.keys(SHIP_ARTWORK), []);
-  for (const ship of Object.keys(SHIP_ARTWORK_FILE_NAMES)) {
-    assert.equal(shipArtworkFor(ship), null, `${ship} must fall back to blocks`);
+test("the registry maps exactly the ships whose artwork ships, and the Frigate falls back", () => {
+  assert.deepEqual(Object.keys(SHIP_ARTWORK).sort(), [
+    "battleship",
+    "carrier",
+    "cruiser",
+    "destroyer",
+    "submarine",
+  ]);
+  assert.equal(shipArtworkFor("frigate"), null, "the Frigate keeps its CSS blocks");
+  for (const ship of ["carrier", "battleship", "cruiser", "submarine", "destroyer"]) {
+    assert.equal(
+      shipArtworkFor(ship),
+      `/images/battleship/ships/${ship}.png`,
+      `${ship} must point at its public asset`,
+    );
   }
   assert.equal(SHIP_ARTWORK_DIRECTORY, "public/images/battleship/ships");
   assert.deepEqual(SHIP_ARTWORK_FILE_NAMES, {
@@ -107,9 +122,52 @@ test("the artwork registry is empty and asks for no files", () => {
     destroyer: "destroyer.png",
   });
 
-  // The directory documents the assets but ships no image yet.
-  const files = readdirSync(new URL("../public/images/battleship/ships/", import.meta.url));
-  assert.deepEqual(files.filter((file) => /\.(png|jpe?g|webp|svg|gif)$/i.test(file)), []);
+  // Every registered URL is a file that exists, and the directory ships no
+  // image the registry does not use: neither can produce a 404.
+  const dir = new URL("../public/images/battleship/ships/", import.meta.url);
+  const onDisk = readdirSync(dir)
+    .filter((file) => /\.(png|jpe?g|webp|svg|gif)$/i.test(file))
+    .sort();
+  const registered = Object.values(SHIP_ARTWORK).map((url) => url.split("/").pop()).sort();
+  assert.deepEqual(onDisk, registered);
+  for (const file of onDisk) assert.ok(existsSync(new URL(file, dir)), `${file} must exist`);
+});
+
+test("artwork is portrait for a vertical ship and rotated onto the run for a horizontal one", () => {
+  const vertical = renderToStaticMarkup(
+    React.createElement(ShipVisual, { ship: "carrier", orientation: "vertical" }),
+  );
+  assert.match(vertical, /data-variant="artwork"/);
+  assert.match(vertical, /src="\/images\/battleship\/ships\/carrier\.png"/);
+  assert.equal(/rotate-90/.test(vertical), false, "a vertical ship keeps the bow-up portrait");
+  assert.equal((vertical.match(/<img/g) ?? []).length, 1);
+  // Its length is the footprint's own height, measured by the size container —
+  // a percentage height would resolve against the auto grid row instead.
+  assert.match(vertical, /container-type:size/);
+  assert.match(vertical, /height:100cqh/);
+
+  const horizontal = renderToStaticMarkup(
+    React.createElement(ShipVisual, { ship: "carrier", orientation: "horizontal" }),
+  );
+  assert.match(horizontal, /rotate-90/, "a horizontal ship is rotated onto its run");
+  // The rotated frame is as long as the run, so a 5-cell carrier fills it
+  // instead of shrinking to one cell.
+  assert.match(horizontal, /container-type:size/);
+  assert.match(horizontal, /height:100cqw/);
+  assert.match(horizontal, /max-w-none/, "the sprite is not capped to one cell");
+});
+
+test("an artwork ship marks its damaged cells so hits stay visible", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(ShipVisual, { ship: "destroyer", damaged: [true, false] }),
+  );
+  assert.equal((html.match(/data-hit-cell=/g) ?? []).length, 1);
+  assert.match(html, /bg-\[#ef4444\]/);
+
+  const intact = renderToStaticMarkup(
+    React.createElement(ShipVisual, { ship: "destroyer", damaged: [false, false] }),
+  );
+  assert.equal(/data-hit-cell=/.test(intact), false);
 });
 
 test("ShipVisual only emits an <img> behind the artwork guard", () => {
@@ -324,10 +382,10 @@ test("BoardGrid renders 140 labelled square cells and no ship unless given one",
     React.createElement(BoardGrid, {
       title: "My Fleet",
       cells: EMPTY_GRID,
-      ships: [{ placement: DEMO_FLEET.ships[0] }],
+      ships: [{ placement: DEMO_FLEET.ships[4] }],
     }),
   );
-  assert.match(withShip, /data-testid="board-ship-carrier"/);
+  assert.match(withShip, /data-testid="board-ship-frigate"/);
   assert.match(withShip, /data-variant="blocks"/);
 });
 

@@ -1,12 +1,7 @@
-# Battleship ship artwork — placeholder directory
+# Battleship ship artwork
 
-No ship artwork exists yet. The game renders ships as **CSS blocks**
-(`src/components/games/battleship/ShipVisual.tsx`) and this directory stays empty
-on purpose: `ShipVisual` only creates an `<img>` when
-`src/components/games/battleship/shipArtwork.ts` has a URL for that ship, so an
-empty registry means no request and no broken-image icon.
-
-When the real art is ready, drop these files here and map them in that registry:
+The five generated ship illustrations live here and are registered in
+`src/components/games/battleship/shipArtwork.ts`; `ShipVisual` renders them.
 
 | File | Ship | Cells |
 |---|---|---|
@@ -16,11 +11,20 @@ When the real art is ready, drop these files here and map them in that registry:
 | `submarine.png` | Submarine | 3 |
 | `destroyer.png` | Destroyer | 2 |
 
-Suggested public URL once the file exists:
+There is **no `frigate.png`**: the Frigate keeps the CSS-block rendering, which
+is also the fallback for any ship the registry does not map. `ShipVisual` only
+creates an `<img>` for a ship that has a URL, so a missing file can never become
+a broken-image icon.
 
-```
-/images/battleship/ships/carrier.png
-```
+## The files are portrait, and the source art was not transparent
 
-Nothing outside `ShipVisual` needs to change: the same component draws the art
-inside the cell footprint it already occupies.
+Every illustration is **portrait, top-down, bow UP, stern DOWN**. `ShipVisual`
+draws a vertical ship as-is and rotates a horizontal ship 90° onto its run, so
+never re-crop one of these into a landscape image.
+
+The generated PNGs were delivered on an **opaque white backdrop**. The committed
+files are the same art with that backdrop keyed to transparency (flood-filled
+from the frame, so light pixels inside a hull survive) and trimmed to the hull,
+exported 512 px tall. That is what lets them sit on the dark board without a
+white box covering the cells and grid lines. Keep that property if you replace
+them: transparent PNG, trimmed, portrait.

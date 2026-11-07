@@ -33,9 +33,10 @@ import postcss from "postcss";
 import tailwindcss from "tailwindcss";
 import autoprefixer from "autoprefixer";
 import { chromium } from "playwright";
-import { mkdtempSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, existsSync, createReadStream } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
+import { join, dirname, extname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -52,6 +53,20 @@ const STUBS = {
     export function useTranslation() {
       return { t: (key, fallback) => (typeof fallback === "string" ? fallback : key), language: "en" };
     }
+  `,
+  // Next's client entry points pull in bundled Node shims the browser build
+  // cannot resolve; the result card only needs the hooks' shape.
+  "next-stub": `
+    const Link = ({ children, ...rest }) => <a {...rest}>{children}</a>;
+    export default Link;
+    export { Link };
+    export function useRouter() { return { push() {}, replace() {}, refresh() {}, back() {} }; }
+    export function usePathname() { return "/"; }
+    export function useSearchParams() { return new URLSearchParams(); }
+    export function useParams() { return {}; }
+    export function cookies() { return { get() {}, getAll: () => [], has: () => false, set() {}, delete() {} }; }
+    export function headers() { return new Headers(); }
+    export function draftMode() { return { isEnabled: false, enable() {}, disable() {} }; }
   `,
 };
 const stubKeys = Object.keys(STUBS);
@@ -83,6 +98,7 @@ await esbuild.build({
     {
       name: "bs-combat-stubs",
       setup(build) {
+        build.onResolve({ filter: /^next(\/|$)/ }, () => ({ path: "next-stub", namespace: "bs-stub" }));
         build.onResolve({ filter: /.*/ }, (args) => {
           const key = matchStubKey(args.path, args.resolveDir);
           if (!key) return null;
@@ -115,6 +131,26 @@ writeFileSync(
 <body><div id="root"></div><script src="./harness.js"></script></body></html>`,
 );
 console.log(`compiled stylesheet: ${(generated.css.length / 1024).toFixed(0)}KB\n`);
+
+// Serve the harness over HTTP so the ship art (a public URL) actually loads.
+const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png" };
+const server = createServer((req, res) => {
+  const url = (req.url || "/").split("?")[0];
+  const path = [
+    join(outDir, url === "/" ? "index.html" : url.slice(1)),
+    join(root, "public", url.slice(1)),
+  ].find((candidate) => existsSync(candidate));
+  if (!path) {
+    res.statusCode = 404;
+    res.end("not found");
+    return;
+  }
+  res.setHeader("content-type", TYPES[extname(path)] ?? "application/octet-stream");
+  createReadStream(path).pipe(res);
+});
+await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+server.unref();
+const base = `http://127.0.0.1:${server.address().port}/`;
 
 let pass = 0;
 let fail = 0;
@@ -169,7 +205,7 @@ const mount = async (width, height, dpr) => {
     if (/Failed to load resource|fonts\.googleapis|net::ERR/.test(message.text())) return;
     errors.push(`console(${width}): ${message.text()}`);
   });
-  await page.goto(pathToFileURL(join(outDir, "index.html")).href);
+  await page.goto(base);
   await page.waitForFunction(() => !!window.__bsc?.mount, null, { timeout: 20000 });
   await page.evaluate(() => window.__bsc.mount());
   await page.waitForSelector('[data-testid="enemy-waters-cell-A1"]', { timeout: 15000 });

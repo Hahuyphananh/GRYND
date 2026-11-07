@@ -32,9 +32,10 @@ import postcss from "postcss";
 import tailwindcss from "tailwindcss";
 import autoprefixer from "autoprefixer";
 import { chromium } from "playwright";
-import { mkdtempSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, existsSync, createReadStream } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
+import { join, dirname, extname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -75,6 +76,28 @@ writeFileSync(
 );
 console.log(`compiled stylesheet: ${(generated.css.length / 1024).toFixed(0)}KB\n`);
 
+// ── 2b. Serve it over HTTP ────────────────────────────────────────────────
+// The ship art is referenced by its public URL, which a file:// page cannot
+// resolve — without this the shelf screenshots show blank ships.
+const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png" };
+const server = createServer((req, res) => {
+  const url = (req.url || "/").split("?")[0];
+  const path = [
+    join(outDir, url === "/" ? "index.html" : url.slice(1)),
+    join(root, "public", url.slice(1)),
+  ].find((candidate) => existsSync(candidate));
+  if (!path) {
+    res.statusCode = 404;
+    res.end("not found");
+    return;
+  }
+  res.setHeader("content-type", TYPES[extname(path)] ?? "application/octet-stream");
+  createReadStream(path).pipe(res);
+});
+await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+server.unref();
+const base = `http://127.0.0.1:${server.address().port}/`;
+
 // ── 3. Reporting ───────────────────────────────────────────────────────────
 let pass = 0;
 let fail = 0;
@@ -84,7 +107,6 @@ const check = (name, ok, extra = "") => {
 };
 const px = (value) => (value == null ? "?" : `${Math.round(value * 10) / 10}px`);
 
-const fileUrl = pathToFileURL(join(outDir, "index.html")).href;
 const browser = await chromium
   .launch({ channel: "chrome" })
   .catch(() => chromium.launch());
@@ -102,7 +124,7 @@ const mount = async (width, height, dpr) => {
     if (/Failed to load resource|fonts\.googleapis|net::ERR/.test(message.text())) return;
     errors.push(`console(${width}): ${message.text()}`);
   });
-  await page.goto(fileUrl);
+  await page.goto(base);
   await page.waitForFunction(() => !!window.__bs?.mount, null, { timeout: 20000 });
   await page.evaluate(() => window.__bs.mount());
   await page.waitForSelector('[data-testid="placement-board-cell-A1"]', { timeout: 15000 });
