@@ -114,6 +114,17 @@ qa/reports/**/*.jpeg
 qa/reports/**/*.webp
 qa/reports/**/*.gif
 
+# --- Portal exports ---
+# `npm run portal:export` writes per-portal launcher + manifest bundles here.
+# They are release artifacts for a specific deployment origin, regenerated per
+# release, so they are never source. See docs/portal-export.md.
+/portal-exports/
+
+# --- Standalone HTML5 portal build (Vite) ---
+# `npm run build:portal:solitaire` writes the uploadable package here
+# (index.html at ITS root + hashed assets). Generated per release, never source.
+/dist/portal/solitaire-duel/
+
 # --- Screenshot workflow ---
 # Local visual captures (see .agents/skills/screenshot-workflow).
 .screenshots/

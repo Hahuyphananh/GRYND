@@ -35,7 +35,8 @@
 // progression this page animates is a mini-board resolving and the match ending.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
+import { useMatchRouter } from "../../../../hooks/useMatchRouter";
 import { AnimatePresence, motion } from "framer-motion";
 import { useUser } from "@clerk/nextjs";
 import {
@@ -125,7 +126,9 @@ export default function TicTacToeMatchPage({
   postMatchAdFree?: boolean;
 } = {}) {
   const params = useParams<{ matchId: string }>();
-  const router = useRouter();
+  // Portal-aware: on /play/<game>[/<id>] this keeps "back to lobby" and a
+  // rematch on the framable path instead of jumping to /casino/<game>.
+  const router = useMatchRouter();
   const { socket } = useSocket();
   const { user } = useUser();
   const matchId = params?.matchId;
@@ -1014,6 +1017,7 @@ export default function TicTacToeMatchPage({
             gameName="Ultimate Tic-Tac-Toe"
             onReturnToLobby={() => router.push("/casino/tic-tac-toe")}
             gameKey="tic-tac-toe"
+            guestGameKey="tic-tac-toe"
             durationSeconds={durationSeconds(match.startedAt, match.endedAt)}
             opponent={{
               name: opponentName,

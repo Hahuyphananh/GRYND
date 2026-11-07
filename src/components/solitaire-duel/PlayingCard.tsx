@@ -59,6 +59,8 @@ export type PlayingCardProps = {
   /** Accessible name; falls back to the card's own identity. */
   label?: string;
   testId?: string;
+  /** Extra `data-*` attributes (the board uses these to identify drag sources). */
+  dataAttrs?: Record<string, string>;
   onClick?: () => void;
 };
 
@@ -73,6 +75,7 @@ export default function PlayingCard({
   className = "",
   label,
   testId,
+  dataAttrs,
   onClick,
 }: PlayingCardProps) {
   const red = faceUp && card ? isRedSuit(card.suit) : false;
@@ -107,6 +110,7 @@ export default function PlayingCard({
         aria-label={label || "Face-down card"}
         data-testid={testId}
         data-face-up="false"
+        {...dataAttrs}
         style={style}
         className={`gr-focusable relative flex h-full w-full select-none items-center justify-center overflow-hidden rounded-[6px] border-2 border-[color:var(--gr-outline)] bg-gradient-to-br from-[#1d3a63] via-[#16294a] to-[#0f1d36] shadow-[0_1px_2px_rgba(3,8,20,0.55)] transition focus-visible:z-10 ${stateClasses} ${dim} ${
           interactive ? "cursor-pointer hover:brightness-125" : "cursor-default"
@@ -130,11 +134,14 @@ export default function PlayingCard({
       data-testid={testId}
       data-face-up="true"
       data-card={`${card.suit}-${card.rank}`}
+      {...dataAttrs}
       style={style}
       className={`gr-focusable relative flex h-full w-full select-none flex-col overflow-hidden rounded-[6px] border-2 border-[color:var(--gr-outline)] bg-gradient-to-b from-white to-[#e8ecf3] text-left shadow-[0_2px_0_-1px_rgba(3,8,20,0.8),0_1px_3px_rgba(0,0,0,0.4)] transition focus-visible:z-10 ${
         red ? "text-[#d81f3a]" : "text-[#141a24]"
       } ${stateClasses} ${dim} ${
-        interactive ? "cursor-pointer hover:brightness-105" : "cursor-default"
+        // `touch-none` on a playable card is what lets a touch drag begin on it
+        // instead of turning into a page scroll.
+        interactive ? "cursor-pointer touch-none hover:brightness-105" : "cursor-default"
       } ${className}`}
     >
       {/* Rank + pip live in the TOP-LEFT corner on purpose: in a fanned column

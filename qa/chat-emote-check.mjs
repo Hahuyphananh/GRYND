@@ -376,6 +376,88 @@ async function runViewport(width, height) {
   await page.click("[data-chat-toggle]");
   await page.waitForSelector("[data-chat-emotes]");
 
+  // ── The launcher is the player's to place ────────────────────────────────
+  // On game pages it used to sit over the board and could not be moved.
+  await page.click("[data-chat-toggle]");
+  await page.waitForTimeout(200);
+  check(`${tag}: tapping the launcher closes the panel`, (await page.$("[data-chat-panel]")) === null);
+
+  const dragLauncherTo = async (toX, toY) => {
+    const start = await boxOf("[data-chat-toggle]");
+    const fromX = start.x + start.w / 2;
+    const fromY = start.y + start.h / 2;
+    await page.mouse.move(fromX, fromY);
+    await page.mouse.down();
+    await page.mouse.move(toX, toY, { steps: 12 });
+    await page.mouse.up();
+    await page.waitForTimeout(250);
+    return { from: { x: fromX, y: fromY }, box: await boxOf("[data-chat-toggle]") };
+  };
+
+  const beforeDrag = await boxOf("[data-chat-toggle]");
+  const dropX = Math.min(width - 80, beforeDrag.x + beforeDrag.w / 2 + 140);
+  const dropY = Math.max(120, beforeDrag.y - 260);
+  const dragged = await dragLauncherTo(dropX, dropY);
+  check(
+    `${tag}: dragging moves the launcher with the pointer`,
+    dragged.box &&
+      Math.abs(dragged.box.x + dragged.box.w / 2 - dropX) <= 3 &&
+      Math.abs(dragged.box.y + dragged.box.h / 2 - dropY) <= 3,
+    JSON.stringify({ beforeDrag, afterDrag: dragged.box, dropX, dropY }),
+  );
+  check(
+    `${tag}: a drag is not a tap (the panel stays shut)`,
+    (await page.$("[data-chat-panel]")) === null,
+  );
+
+  // Dragging past the edge parks it on screen instead of half outside.
+  const clamped = await dragLauncherTo(width + 300, height + 300);
+  check(
+    `${tag}: the launcher cannot be dragged off screen`,
+    clamped.box &&
+      clamped.box.x >= 0 &&
+      clamped.box.y >= 0 &&
+      clamped.box.right <= width + 1 &&
+      clamped.box.bottom <= height + 1,
+    JSON.stringify(clamped.box),
+  );
+
+  // A parked spot is remembered, so the fix survives the next page load.
+  const parked = clamped.box;
+  const storedSpot = await page.evaluate(() => {
+    try {
+      return window.localStorage.getItem("grynd:chat-launcher-position");
+    } catch {
+      return null;
+    }
+  });
+  check(`${tag}: the parked spot is remembered`, storedSpot !== null, String(storedSpot));
+
+  await page.reload();
+  await page.waitForFunction(() => window.__chatReady === true, null, { timeout: 30000 });
+  await page.waitForTimeout(300);
+  const afterReload = await boxOf("[data-chat-toggle]");
+  check(
+    `${tag}: the parked spot survives a reload`,
+    afterReload && Math.abs(afterReload.x - parked.x) <= 2 && Math.abs(afterReload.y - parked.y) <= 2,
+    JSON.stringify({ afterReload, parked }),
+  );
+
+  // Wherever it ends up, tapping it still opens a panel that is fully visible.
+  await page.click("[data-chat-toggle]");
+  await page.waitForSelector("[data-chat-panel]");
+  await page.waitForTimeout(300);
+  const movedPanel = await boxOf("[data-chat-panel]");
+  check(
+    `${tag}: the panel fits the viewport from a moved launcher`,
+    movedPanel &&
+      movedPanel.y >= 0 &&
+      movedPanel.x >= 0 &&
+      movedPanel.bottom <= height + 1 &&
+      movedPanel.right <= width + 1,
+    JSON.stringify({ movedPanel, parked }),
+  );
+
   check(`${tag}: no page errors`, pageErrors.length === 0, pageErrors.slice(0, 3).join(" | "));
 
   await context.close();

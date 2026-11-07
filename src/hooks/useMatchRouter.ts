@@ -12,19 +12,27 @@
 // Call sites keep reading `router.push(...)` / `router.replace(...)`, and the
 // decision is made on the RESOLVED href, so template-built match URLs
 // (`matchPath(id)`, `matchHref(id)`) are covered too.
+//
+// PORTAL SURFACE: while the document is /play/<game>[/<id>], a link to that
+// game's own lobby or board is rewritten to the /play mirror first
+// (lib/portal/routes). Without that, "Play vs AI" navigated to
+// /casino/<game>/<id> — a path a portal frame is not allowed to render — and
+// the frame went blank at the first move.
 
 import { useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   hasAdCodeLoaded,
   resolveMatchNavigation,
 } from "../lib/matchNavigation";
+import { portalAwareHref } from "../lib/portal/routes";
 
 type AppRouter = ReturnType<typeof useRouter>;
 type NavigateOptions = Parameters<AppRouter["push"]>[1];
 
 export function useMatchRouter(): AppRouter {
   const router = useRouter();
+  const pathname = usePathname();
 
   return useMemo(() => {
     const enter = (
@@ -32,13 +40,15 @@ export function useMatchRouter(): AppRouter {
       href: string,
       options?: NavigateOptions,
     ) => {
-      if (resolveMatchNavigation(href, hasAdCodeLoaded()) === "document") {
-        if (mode === "replace") window.location.replace(href);
-        else window.location.assign(href);
+      // Stay on the framable path when we are already on it.
+      const target = portalAwareHref(href, pathname);
+      if (resolveMatchNavigation(target, hasAdCodeLoaded()) === "document") {
+        if (mode === "replace") window.location.replace(target);
+        else window.location.assign(target);
         return;
       }
-      if (mode === "replace") router.replace(href, options);
-      else router.push(href, options);
+      if (mode === "replace") router.replace(target, options);
+      else router.push(target, options);
     };
 
     return {
@@ -47,5 +57,5 @@ export function useMatchRouter(): AppRouter {
       replace: (href: string, options?: NavigateOptions) =>
         enter("replace", href, options),
     } as AppRouter;
-  }, [router]);
+  }, [pathname, router]);
 }

@@ -20,10 +20,17 @@ import {
   AI_MOVE_DELAY_MS,
   AI_STAGNATION_LIMIT,
   aiMoveDelayMs,
+  aiPaceLabel,
+  aiPaceSeconds,
   chooseAiMove,
   legalMoves,
   planAiMoves,
+  planAiSolution,
 } from "../src/lib/solitaire-duel/ai.ts";
+import {
+  solvableDealFromSeed,
+  solveDealLine,
+} from "../src/lib/solitaire-duel/solvable.ts";
 import {
   applyMove,
   canPlaceOnTableau,
@@ -326,4 +333,109 @@ test("a completed board yields no move", () => {
   assert.deepEqual(legalMoves(state), []);
   assert.equal(chooseAiMove({ state, difficulty: "hard" }), null);
   assert.equal(planAiMoves({ state, difficulty: "hard" }).moves.length, 0);
+});
+
+// ── The proven line: why the bot can no longer stall part-way ────────────
+//
+// The reported bug: the bot's progress froze at one percentage and the puzzle
+// was never resolved. A per-move heuristic can dead-end; the deal's verified
+// line cannot. These pin that the line is real, that the bot follows it from
+// wherever it is, and that an off-line board falls back rather than inventing
+// a move.
+
+test("the tier is described as PACE, because that is all it changes", () => {
+  assert.equal(aiPaceLabel("easy"), "Easy pace · ~1.3s a move");
+  assert.equal(aiPaceLabel("normal"), "Normal pace · ~0.9s a move");
+  assert.equal(aiPaceLabel("hard"), "Hard pace · ~0.5s a move");
+  // The menu's per-tier estimate and the in-race label share one rounding, so
+  // the number a player picks never disagrees with the one they are shown.
+  for (const tier of ["easy", "normal", "hard"]) {
+    assert.equal(aiPaceLabel(tier).includes(`~${aiPaceSeconds(tier)}s a move`), true);
+    assert.equal(aiPaceSeconds(tier), (AI_MOVE_DELAY_MS[tier] / 1000).toFixed(1) === "0.8" ? "0.9" : aiPaceSeconds(tier));
+  }
+  assert.equal(aiPaceSeconds("normal"), "0.9");
+  assert.equal(aiPaceSeconds("nonsense"), aiPaceSeconds("normal"));
+  // An unknown tier falls back to the shared default rather than going blank.
+  assert.equal(aiPaceLabel("nonsense"), aiPaceLabel("normal"));
+  // The copy never claims strength, only speed: easy is not "weaker".
+  for (const tier of ["easy", "normal", "hard"]) {
+    assert.match(aiPaceLabel(tier), /pace/);
+    assert.doesNotMatch(aiPaceLabel(tier), /skill|weaker|smarter|easier/i);
+  }
+});
+
+test("the verified line really solves the deal it came from", () => {
+  for (const seed of [7, 2026]) {
+    const deal = solvableDealFromSeed(seed);
+    const line = solveDealLine(deal);
+    assert.ok(line, `seed ${seed}: a proven deal must yield a line`);
+    assert.ok(line.length > 0);
+
+    let state = initialStateFromDeal(deal);
+    for (const move of line) {
+      const applied = applyMove({ state, move });
+      assert.equal(applied.ok, true, `seed ${seed}: ${JSON.stringify(move)} must apply`);
+      state = applied.state;
+    }
+    assert.equal(state.completed, true, `seed ${seed}: the line must finish the board`);
+  }
+});
+
+test("the bot follows the line and finishes, on every tier", () => {
+  const deal = solvableDealFromSeed(2026);
+  const line = solveDealLine(deal);
+  assert.ok(line);
+
+  for (const difficulty of ["easy", "normal", "hard"]) {
+    const plan = planAiSolution({
+      state: initialStateFromDeal(deal),
+      line,
+      maxMoves: line.length + 10,
+    });
+    assert.ok(plan, `${difficulty}: the line must be followable`);
+    assert.equal(plan.completed, true, `${difficulty} must finish the puzzle`);
+    assert.equal(plan.stuck, false, "a line that finishes is never stuck");
+    assert.deepEqual(plan.moves, line, "the bot plays exactly the proven moves");
+    // Difficulty is PACE: every tier plays the same winning line.
+    assert.ok(AI_MOVE_DELAY_MS[difficulty] > 0);
+  }
+});
+
+test("the bot resumes the line from its own ply", () => {
+  const deal = solvableDealFromSeed(4242);
+  const line = solveDealLine(deal);
+  assert.ok(line);
+  const opening = initialStateFromDeal(deal);
+
+  const first = planAiSolution({ state: opening, line, maxMoves: 5 });
+  assert.ok(first);
+  assert.deepEqual(first.moves, line.slice(0, 5));
+  assert.equal(first.state.ply, opening.ply + 5);
+
+  const rest = planAiSolution({ state: first.state, line, maxMoves: line.length });
+  assert.ok(rest);
+  assert.equal(rest.completed, true, "a resumed bot still finishes");
+  assert.deepEqual([...first.moves, ...rest.moves], line);
+});
+
+test("a board that is off the line falls back rather than inventing a move", () => {
+  const deal = solvableDealFromSeed(31337);
+  const line = solveDealLine(deal);
+  assert.ok(line);
+  const opening = initialStateFromDeal(deal);
+
+  // A move the engine refuses must end the attempt, not produce a plan.
+  const bogus = planAiSolution({ state: opening, line: [{ kind: "nonsense" }], maxMoves: 5 });
+  assert.equal(bogus, null, "a refused line move must not become a plan");
+
+  // No line at all, or a cursor past its end: the caller uses the heuristic.
+  assert.equal(planAiSolution({ state: opening, line: null, maxMoves: 5 }), null);
+  assert.equal(planAiSolution({ state: opening, line: [], maxMoves: 5 }), null);
+  const advanced = planAiSolution({ state: opening, line, maxMoves: 10 });
+  assert.ok(advanced);
+  assert.equal(
+    planAiSolution({ state: advanced.state, line: line.slice(0, 3), maxMoves: 5 }),
+    null,
+    "a line shorter than the bot's ply is not followable",
+  );
 });

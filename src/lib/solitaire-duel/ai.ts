@@ -19,11 +19,21 @@
 //   3. empty a tableau column       (frees a King slot)
 //   4. otherwise draw / redeal      (surfacing a usable card)
 //
-// The tier only changes how often the bot takes its best move (the shared
-// `AI_SKILL` slip), and how long it waits between moves — so `easy` is both
-// slower and sloppier, which is what actually makes it beatable.
+// THE TIER IS PACE, THE LINE IS THE GUARANTEE. The bot's primary plan is the
+// deal's PROVEN solution (`solveDealLine`), replayed move for move — the deal
+// generator only serves boards whose line it verified through the engine — so
+// the puzzle is always finished. The heuristic below is the fallback for a board
+// that is off that line; when it is used, the tier also changes how often the
+// bot takes its best move (the shared `AI_SKILL` slip). Either way the tier
+// changes how long it waits between moves, which is what makes `easy` beatable:
+// it solves the same deal, just later.
 
-import { chooseAiOption, coerceAiDifficulty, type AiDifficulty } from "../aiDifficulty";
+import {
+  AI_DIFFICULTY_LABELS,
+  chooseAiOption,
+  coerceAiDifficulty,
+  type AiDifficulty,
+} from "../aiDifficulty";
 import { SUITS } from "./constants";
 import {
   applyMove,
@@ -53,6 +63,31 @@ export const AI_MOVE_DELAY_MS: Record<AiDifficulty, number> = {
 /** The delay for a tier, defaulting to the shared `normal` tier. */
 export function aiMoveDelayMs(difficulty: unknown): number {
   return AI_MOVE_DELAY_MS[coerceAiDifficulty(difficulty)];
+}
+
+/**
+ * The tier in words, as PACE — the only thing a tier changes.
+ *
+ * The bot replays the deal's proven line at every tier, so saying "easy bot"
+ * would be a lie about strength; what a player is actually picking is how long
+ * it waits between moves. Shared by the arena and the standalone build so the
+ * two cannot describe the same tier differently.
+ */
+/**
+ * The tier's delay in seconds, as a reader rounds it.
+ *
+ * Rounded to a tenth explicitly: `(850 / 1000).toFixed(1)` is "0.8" because of
+ * binary floating point, and the menu's per-tier estimate has to agree with the
+ * label shown during the race.
+ */
+export function aiPaceSeconds(difficulty: unknown): string {
+  const tier = coerceAiDifficulty(difficulty);
+  return (Math.round(AI_MOVE_DELAY_MS[tier] / 100) / 10).toFixed(1);
+}
+
+export function aiPaceLabel(difficulty: unknown): string {
+  const tier = coerceAiDifficulty(difficulty);
+  return `${AI_DIFFICULTY_LABELS[tier]} pace · ~${aiPaceSeconds(tier)}s a move`;
 }
 
 /** Every legal move for `state` (never a move `applyMove` would reject). */
@@ -365,6 +400,49 @@ export function planAiMoves({
   }
 
   return { moves, state: current, completed: Boolean(current.completed), stuck };
+}
+
+/**
+ * Follow a PROVEN solution line from wherever the bot's board is.
+ *
+ * `line` is `solveDealLine(deal)` — real engine moves, verified from the deal's
+ * opening position. Every applied move is exactly one ply (`applyMove`), so a
+ * bot that has always followed the line sits at `state.ply` and the next move is
+ * `line[state.ply]`.
+ *
+ * Returns null — never a guess — when there is no line, the cursor is past its
+ * end, or a line move is refused (a board that is off the line, e.g. one the
+ * old heuristic played before this existed). The caller then falls back to
+ * `planAiMoves`, so a desync can never invent an illegal move.
+ */
+export function planAiSolution({
+  state,
+  line,
+  maxMoves = 64,
+}: {
+  state: SolitaireState;
+  line: readonly SolitaireMove[] | null | undefined;
+  maxMoves?: number;
+}): { moves: SolitaireMove[]; state: SolitaireState; completed: boolean; stuck: boolean } | null {
+  if (!state || state.completed || !line || line.length === 0) return null;
+
+  const cursor = Math.max(0, Math.trunc(Number(state.ply) || 0));
+  if (cursor >= line.length) return null;
+
+  const moves: SolitaireMove[] = [];
+  let current = state;
+  const end = Math.min(cursor + Math.max(1, Math.floor(maxMoves)), line.length);
+
+  for (let index = cursor; index < end && !current.completed; index += 1) {
+    const applied = applyMove({ state: current, move: line[index] });
+    // Off the line: report nothing and let the caller use the heuristic from
+    // the board it actually has.
+    if (!applied.ok) return null;
+    current = applied.state as SolitaireState;
+    moves.push(line[index]);
+  }
+
+  return { moves, state: current, completed: Boolean(current.completed), stuck: false };
 }
 
 /** The suit of the top waste card, exposed for tests and diagnostics. */

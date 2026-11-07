@@ -24,6 +24,8 @@ import { seatResultLabel, secondsRemaining } from "../../../lib/battleship/view"
 import type { Coordinate, MatchView, Seat } from "../../../lib/battleship/types";
 import { IconHeartHandshake, IconTrophy, IconX } from "@tabler/icons-react";
 import GlitchSay from "../../mascot/GlitchSay";
+import GuestPostMatchCta from "../../guest/GuestPostMatchCta";
+import { PORTAL_MATCH_FINISHED_EVENT } from "../../../lib/portal/crazygames";
 import { glitchResultMoment } from "../../../lib/mascot/glitchMoments";
 import { useTranslation } from "../../../hooks/useTranslation";
 import BoardGrid from "./BoardGrid";
@@ -61,6 +63,8 @@ export interface BattlePreviewProps {
   onRestart?: () => void;
   onAttack: (coordinate: Coordinate) => void;
   onLeave: () => void;
+  /** This match's id, so the guest invitation is offered once per match. */
+  matchId?: string | null;
 }
 
 // The popup's palette: a win reads green, a loss red, a draw neutral — the
@@ -98,6 +102,7 @@ export default function BattlePreview({
   onRestart,
   onAttack,
   onLeave,
+  matchId = null,
 }: BattlePreviewProps) {
   const { t } = useTranslation();
   const [selected, setSelected] = useState<Coordinate | null>(null);
@@ -113,6 +118,15 @@ export default function BattlePreview({
     const timer = setTimeout(() => setRevealedResult(result), BATTLE_RESULT_DELAY_MS);
     return () => clearTimeout(timer);
   }, [result]);
+  // Portal SDK: Battleship draws its own end card instead of mounting the shared
+  // result screen, so it announces the same "play stopped" beat here. The
+  // bridge on /play/<gameKey> listens; everywhere else this is inert.
+  useEffect(() => {
+    if (!revealedResult || typeof window === "undefined") return;
+    window.dispatchEvent(
+      new CustomEvent(PORTAL_MATCH_FINISHED_EVENT, { detail: { gameKey: "battleship" } }),
+    );
+  }, [revealedResult]);
   const [secondsLeft, setSecondsLeft] = useState(ROUND_SECONDS);
 
   const damage = useMemo(
@@ -301,6 +315,17 @@ export default function BattlePreview({
                 />
               </div>
             ) : null}
+            {/* Guest → account invitation (Phase 5). Battleship draws its own
+                end card instead of the shared result screen, so the shared
+                invitation is mounted here too — after the result hero and
+                before the actions, inside the card's own scroll. A signed-in
+                player, or a match that is not actually over, sees nothing. */}
+            <GuestPostMatchCta
+              gameKey="battleship"
+              matchId={matchId}
+              matchFinished={Boolean(resultLabel)}
+            />
+
             {isAi && onRestart ? (
               <div className="mt-3 flex flex-col gap-2">
                 <button

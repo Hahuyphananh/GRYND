@@ -361,6 +361,44 @@ test("board: the server's view is rendered as given, never dealt locally", () =>
   );
 });
 
+test("board: cards are draggable, and click-to-place is kept as an equal path", () => {
+  const board = code(BOARD);
+
+  // ONE delegated pointer handler set on the board — no drag state per card.
+  for (const handler of ["onPointerDown", "onPointerMove", "onPointerUp", "onPointerCancel"]) {
+    assert.match(board, new RegExp(handler), `${handler} must be wired`);
+  }
+  // The drag source is marked on the card; the drop slot is marked on the pile.
+  assert.match(board, /data-drag-slot/);
+  assert.match(board, /data-drop-kind/);
+  // A drop is built by the SAME engine-checked builder a click uses...
+  assert.match(board, /moveForTarget\(board, session\.selection, slot\.drop\)/);
+  // The ghost snaps to the slot the card would land on, in the DOM, and only
+  // when that slot would ACCEPT the card.
+  assert.match(board, /landingPoint/);
+  assert.match(board, /const accepted = slot && board \? moveForTarget/);
+  // ...and is only ever PROPOSED through the same seam as a click.
+  assert.match(board, /onMove\(move\)/);
+  // The click model still exists, and a finished drag never doubles as a click.
+  assert.match(board, /resolveClick\(board, selection, target\)/);
+  assert.match(board, /suppressClickRef/);
+  // The run under the pointer is the engine's own movable run, never a guess.
+  assert.match(board, /cards: found\.run/);
+  // A refused drop does not blink out: the card eases back to the pile it came
+  // from, and the timer that lets it go is cleaned up on unmount.
+  assert.match(board, /flyHome/);
+  assert.match(board, /GHOST_RETURN_MS/);
+  assert.match(board, /returnTimerRef/);
+  // An ACCEPTED drop settles onto its pile before the move is sent, and a new
+  // gesture commits a still-settling drop rather than dropping it.
+  assert.match(board, /GHOST_SETTLE_MS/);
+  assert.match(board, /settleDrop/);
+  assert.match(board, /const commitSettle = useCallback/);
+  assert.match(board, /if \(settleMoveRef\.current !== null\) commitSettle\(\)/);
+  // The ease is a position transition only, so following the pointer stays exact.
+  assert.match(board, /transition: dragGhost\.easing/);
+});
+
 test("board: it proposes moves and owns no competitive state", () => {
   const board = code(BOARD);
   assert.match(board, /onMove: \(move: SolitaireMove\) => void/);

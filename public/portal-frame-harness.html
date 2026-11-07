@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>GRYND portal frame harness</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        margin: 0;
+        background: #05070d;
+        color: #d8fbff;
+        font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      header {
+        padding: 12px 16px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 13px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: #67f9ff;
+        font-weight: 800;
+      }
+      p {
+        margin: 4px 0;
+        font-size: 12px;
+        color: rgba(216, 251, 255, 0.6);
+      }
+      a {
+        color: #67f9ff;
+      }
+      code {
+        font-size: 11px;
+        color: #ffec08;
+      }
+      #status {
+        font-size: 12px;
+        font-weight: 700;
+      }
+      #status[data-state="ok"] {
+        color: #00ffa6;
+      }
+      #status[data-state="blocked"] {
+        color: #ff8b8b;
+      }
+      .frame {
+        height: calc(100vh - 116px);
+        padding: 8px 16px 16px;
+        box-sizing: border-box;
+      }
+      iframe {
+        display: block;
+        width: 100%;
+        height: 100%;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
+        background: #000d1a;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      LOCAL HARNESS — the portal surface inside a real iframe.
+
+      Open it from the app's own origin, e.g.:
+        http://localhost:3000/portal-frame-harness.html
+        http://localhost:3000/portal-frame-harness.html?game=odds&portal=poki
+        http://localhost:3000/portal-frame-harness.html?origin=https://www.grynd.dedyn.io
+
+      WHY IT SERVES FROM /public AND FRAMES THE SAME ORIGIN: the frame's own
+      policy is `frame-ancestors 'self'` + `X-Frame-Options: SAMEORIGIN` unless
+      GRYND_PORTAL_FRAME_ORIGINS names the parent. A same-origin parent is
+      therefore allowed with NO configuration, which is what makes this a
+      zero-setup check of the surface itself: no nav, no chat, no quests, the
+      practice-only lobby, and (with portal=poki) the post-match home button once
+      a match ends.
+
+      It is NOT a substitute for the framing policy check. That one needs a real
+      external origin in GRYND_PORTAL_FRAME_ORIGINS and a parent page served over
+      https from it — see docs/portal-export.md §5.1. The status line below only
+      distinguishes "the frame loaded and I can read it" from "the browser
+      refused the frame".
+    -->
+    <header>
+      <h1>Portal frame harness</h1>
+      <p id="target"></p>
+      <p id="status" data-state="loading">Loading the frame…</p>
+      <p>
+        Same-origin frame — allowed by <code>frame-ancestors 'self'</code> without
+        any env var. For an external-origin check, set
+        <code>GRYND_PORTAL_FRAME_ORIGINS</code> and serve this page from that
+        origin instead.
+      </p>
+    </header>
+
+    <div class="frame">
+      <iframe
+        id="frame"
+        title="GRYND portal surface"
+        allow="fullscreen; autoplay; gamepad; clipboard-write"
+        referrerpolicy="strict-origin-when-cross-origin"
+        loading="eager"
+      ></iframe>
+    </div>
+
+    <script>
+      (function () {
+        var params = new URLSearchParams(location.search);
+        var game = params.get("game") || "dominoes";
+        var portal = params.get("portal") || "poki";
+        var origin = params.get("origin") || location.origin;
+
+        var url = origin.replace(/\/+$/, "") + "/play/" + encodeURIComponent(game) + "?portal=" + encodeURIComponent(portal);
+
+        var frame = document.getElementById("frame");
+        var status = document.getElementById("status");
+        document.getElementById("target").textContent = url;
+
+        var settled = false;
+        function settle(state, message) {
+          if (settled) return;
+          settled = true;
+          status.dataset.state = state;
+          status.textContent = message;
+        }
+
+        frame.addEventListener("load", function () {
+          // A same-origin frame is readable; a blocked/framed-elsewhere document
+          // is not. This is the one thing the harness can assert on its own.
+          try {
+            var doc = frame.contentDocument;
+            if (doc && doc.body) {
+              var heading = doc.querySelector("h1, h2, [data-testid='portal-play']");
+              settle(
+                "ok",
+                "Frame loaded and is readable" +
+                  (heading ? " — first heading: " + heading.textContent.trim().slice(0, 60) : ""),
+              );
+              return;
+            }
+          } catch (error) {
+            // cross-origin parent (origin=… given): expected, not an error
+          }
+          settle(
+            "ok",
+            "Frame reported load (cross-origin: body is not inspectable from here).",
+          );
+        });
+
+        // No navigation from the harness itself.
+        frame.src = url;
+        setTimeout(function () {
+          settle(
+            "blocked",
+            "No load event. The frame is probably refused by frame-ancestors / X-Frame-Options — check GRYND_PORTAL_FRAME_ORIGINS or open this page from the app's own origin.",
+          );
+        }, 8000);
+      })();
+    </script>
+  </body>
+</html>

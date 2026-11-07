@@ -643,16 +643,33 @@ function cycleToWasteTop(
  * engine moves played when the board finishes, or null if any move is refused
  * or the board does not end solved.
  */
-function replayActions(deal: SolitaireDeal, actions: SolveAction[]): number | null {
+/**
+ * Expand a compact witness into the REAL engine moves that play it.
+ *
+ * The line returned is the witness, in order, with every pool play preceded by
+ * the draws that cycle that card to the waste top — so replaying it from
+ * `initialStateFromDeal(deal)` through `applyMove` finishes the board. It is the
+ * only form of the witness that an AI or a player can actually follow: the
+ * search reasons about a pool, the game deals with a stock.
+ *
+ * Returns null the moment the engine refuses a move or the board does not end
+ * solved, so a line is never trusted on the search's own bookkeeping.
+ */
+function expandActions(deal: SolitaireDeal, actions: SolveAction[]): SolitaireMove[] | null {
   let state = initialStateFromDeal(deal);
-  let moves = 0;
+  const moves: SolitaireMove[] = [];
 
   const play = (move: SolitaireMove): boolean => {
     const applied = applyMove({ state, move });
     if (!applied.ok) return false;
     state = applied.state;
-    moves += 1;
+    moves.push(move);
     return true;
+  };
+
+  /** The draws that bring a pool card to the waste top are real moves too. */
+  const playDraws = (draws: number): void => {
+    for (let draw = 0; draw < draws; draw += 1) moves.push({ kind: "draw" });
   };
 
   for (const action of actions) {
@@ -670,19 +687,25 @@ function replayActions(deal: SolitaireDeal, actions: SolveAction[]): number | nu
       const cycled = cycleToWasteTop(state, card);
       if (!cycled) return null;
       state = cycled.state;
-      moves += cycled.draws;
+      playDraws(cycled.draws);
       if (!play({ kind: "waste-to-foundation", suit: card.suit })) return null;
     } else {
       const card = { suit: indexSuit(action.card), rank: indexRank(action.card) } as Card;
       const cycled = cycleToWasteTop(state, card);
       if (!cycled) return null;
       state = cycled.state;
-      moves += cycled.draws;
+      playDraws(cycled.draws);
       if (!play({ kind: "waste-to-tableau", toColumn: action.to })) return null;
     }
   }
 
   return isComplete(state) ? moves : null;
+}
+
+/** Replay a compact witness through the engine; its length, or null if refused. */
+function replayActions(deal: SolitaireDeal, actions: SolveAction[]): number | null {
+  const moves = expandActions(deal, actions);
+  return moves ? moves.length : null;
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -691,6 +714,94 @@ function replayActions(deal: SolitaireDeal, actions: SolveAction[]): number | nu
 
 /** The search budget a single public `solveDeal` call may spend. */
 const SOLVE_NODE_BUDGET = 60_000;
+
+/** How many solved deals' lines are kept, so a polling bot never re-searches. */
+const LINE_CACHE_LIMIT = 64;
+const lineCache = new Map<string, readonly SolitaireMove[] | null>();
+
+/**
+ * A stable key for a deal's line, built here rather than imported.
+ *
+ * Only identity matters: two boards with the same cards, in the same order, with
+ * the same face-up flags, have the same solution. The stock order is part of the
+ * key because a single-card draw makes it part of the puzzle.
+ */
+function lineCacheKey(deal: SolitaireDeal): string {
+  const parts: string[] = [];
+  for (const column of deal?.tableau ?? []) {
+    parts.push(
+      column
+        .map((pile) => `${pile.faceUp ? "+" : "-"}${pile.card?.suit?.[0] ?? "?"}${pile.card?.rank ?? 0}`)
+        .join(","),
+    );
+  }
+  parts.push(
+    `stock:${(deal?.stock ?? [])
+      .map((card) => `${card?.suit?.[0] ?? "?"}${card?.rank ?? 0}`)
+      .join(",")}`,
+  );
+  return parts.join("|");
+}
+
+/**
+ * The verified winning LINE for a deal, as real engine moves.
+ *
+ * This is what the practice bot follows (see `planAiSolution` in `./ai`): the
+ * generator only ever serves a deal whose line it proved and replayed, so
+ * replaying that line at the tier's pace is what makes the bot ALWAYS finish the
+ * puzzle — where a per-move heuristic could dead-end part-way and leave the
+ * board sitting at one percentage for the rest of the race.
+ *
+ * Costs one search per unique deal (the result is cached), and never claims a
+ * line the engine has not just accepted move by move.
+ */
+/**
+ * Keep a witness the generator has ALREADY found, so nothing has to search the
+ * same deal twice. `solvableDealFromSeed` calls this on the deal it returns; the
+ * bot's first move then hits the cache instead of paying for a second search
+ * (which, on the server, would happen inside the match row's lock).
+ */
+function rememberDealLine(deal: SolitaireDeal, actions: SolveAction[] | null): void {
+  if (!actions) return;
+  const line = expandActions(deal, actions);
+  if (!line) return;
+  const key = lineCacheKey(deal);
+  if (lineCache.size >= LINE_CACHE_LIMIT) {
+    const oldest = lineCache.keys().next().value;
+    if (oldest !== undefined) lineCache.delete(oldest);
+  }
+  lineCache.set(key, Object.freeze([...line]));
+}
+
+export function solveDealLine(deal: SolitaireDeal): SolitaireMove[] | null {
+  if (!deal) return null;
+
+  let key = "";
+  try {
+    key = lineCacheKey(deal);
+  } catch {
+    key = "";
+  }
+
+  if (key && lineCache.has(key)) {
+    const cached = lineCache.get(key) ?? null;
+    return cached ? [...cached] : null;
+  }
+
+  const counter = { nodes: 0 };
+  const actions = search(deal, counter, SOLVE_NODE_BUDGET);
+  const line = actions ? expandActions(deal, actions) : null;
+
+  if (key) {
+    if (lineCache.size >= LINE_CACHE_LIMIT) {
+      const oldest = lineCache.keys().next().value;
+      if (oldest !== undefined) lineCache.delete(oldest);
+    }
+    lineCache.set(key, line ? Object.freeze([...line]) : null);
+  }
+
+  return line;
+}
 
 // ──────────────────────────────────────────────────────────────────────────
 // Live-position solvability — the re-deal trigger
@@ -849,10 +960,7 @@ function compactCanBePlayed(state: CompactState): boolean {
  * attempts so one call to `solvableDealFromSeed` stays bounded.
  */
 export function solveDeal(deal: SolitaireDeal): number | null {
-  const counter = { nodes: 0 };
-  const actions = search(deal, counter, SOLVE_NODE_BUDGET);
-  if (!actions) return null;
-  return replayActions(deal, actions);
+  return solveDealLine(deal)?.length ?? null;
 }
 
 /** True when `deal` has a verified winning line (see `solveDeal`). */
@@ -892,6 +1000,9 @@ export function solvableDealFromSeed(seed: number): SolitaireDeal {
     // decision are "laid out" and are never served.
     if (greedySolveDeal(deal) !== null) continue;
 
+    // The winning line is already in hand — hand it to the cache so the bot can
+    // follow it without searching this deal again.
+    rememberDealLine(deal, actions);
     return deal;
   }
 

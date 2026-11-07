@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
+import { useMatchRouter } from "../../../../../hooks/useMatchRouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../../../components/navigation-bar";
@@ -153,7 +154,9 @@ function MatchHeader({
   isPractice: boolean;
   matchId: number | null;
 }) {
-  const router = useRouter();
+  // Portal-aware: on /play/odds[/<id>] this keeps "back to lobby" and a rematch
+  // on the framable path instead of jumping to /casino/odds.
+  const router = useMatchRouter();
   return (
     <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
       <button
@@ -176,7 +179,9 @@ function MatchHeader({
 
 /** A URL that names no game (a truncated link, a typo). */
 function InvalidMatch() {
-  const router = useRouter();
+  // Portal-aware: on /play/odds[/<id>] this keeps "back to lobby" and a rematch
+  // on the framable path instead of jumping to /casino/odds.
+  const router = useMatchRouter();
   return (
     <div className={`${LOBBY_CARD} p-8 text-center`}>
       <p className="text-lg font-bold text-amber-300">That link doesn&apos;t name a game.</p>
@@ -204,7 +209,9 @@ function AIOddsGame({
 }) {
   // The result popup's practice-only lobby exit (a live PvP match never
   // passes one): AIOddsGame is its own route, so it navigates itself.
-  const router = useRouter();
+  // Portal-aware: on /play/odds[/<id>] this keeps "back to lobby" and a rematch
+  // on the framable path instead of jumping to /casino/odds.
+  const router = useMatchRouter();
   // Every odds animation below is decoration around server state; with
   // reduced motion each one collapses to its settled frame.
   const reduce = useReducedMotionSafe();
@@ -716,7 +723,9 @@ function AIOddsGame({
 // ─── PvP Mode (Interactive) ───────────────────────────────────────────────
 function PvPOddsGame({ audio, matchId }: { audio: ReturnType<typeof useOddsAudio>; matchId: number }) {
   const PICK_TIMER_SECONDS = 15;
-  const router = useRouter();
+  // Portal-aware: on /play/odds[/<id>] this keeps "back to lobby" and a rematch
+  // on the framable path instead of jumping to /casino/odds.
+  const router = useMatchRouter();
   const { socket } = useSocket();
   const reduce = useReducedMotionSafe();
 
@@ -1970,6 +1979,8 @@ function OddsGameDisplay({
           open
           outcome={userWon ? "win" : userDrew ? "draw" : "loss"}
           gameName="Odds"
+          // Odds practice results are persisted for guests.
+          guestGameKey="odds"
           onReturnToLobby={onReturnToLobby}
           headline={
             userWon

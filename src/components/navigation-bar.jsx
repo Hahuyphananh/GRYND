@@ -4,6 +4,8 @@ import { useUser } from "@clerk/nextjs";
 import { SignOutButton } from "./SignOutButton";
 import { motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { isPortalPlayPath } from "../lib/portal/framing";
 import ThemeToggle from "./ThemeToggle";
 import { useTranslation } from "../hooks/useTranslation";
 import { fadeUp, hoverScale, withReducedMotion, stagger } from "../lib/animations";
@@ -45,7 +47,7 @@ const NAV_TRANSLATION_KEYS = {
 // before. The map is empty for those paths, so nothing about them changes.
 const NAV_ICONS = { "/rewards": <IconGift size={15} className="shrink-0" /> };
 
-function NavigationBar({ currentPath = "" }) {
+function NavigationBarInner({ currentPath = "" }) {
   const { isLoaded, isSignedIn, user } = useUser();
   const { t } = useTranslation();
   const shouldReduceMotion = useReducedMotion();
@@ -882,4 +884,21 @@ function NavigationBar({ currentPath = "" }) {
   );
 }
 
-export default NavigationBar;
+/**
+ * THE PORTAL SURFACE HAS NO NAVBAR.
+ *
+ * /play/<gameKey> is the chrome-free page a games portal frames (see
+ * app/play/[gameKey]). The navbar is mounted PER PAGE — the shared lobby
+ * renders it — so the gate has to live here: components/SiteChrome can drop the
+ * chrome the layout owns, but not a component a game renders itself.
+ *
+ * The check is a wrapper rather than an early return inside the navbar so the
+ * hook order stays fixed. `usePathname()` is resolved during the server render
+ * too, so the first paint already omits the navbar — it never flashes and then
+ * disappears on the portal page.
+ */
+export default function NavigationBar(props) {
+  const pathname = usePathname();
+  if (isPortalPlayPath(pathname)) return null;
+  return <NavigationBarInner {...props} />;
+}

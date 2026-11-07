@@ -1,5 +1,17 @@
 export const APP_TEXT_TRANSLATIONS = {
   en: {
+    // Portal surface (/play/<gameKey>). Only a visit that arrives with
+    // ?portal=<slug> ever renders the home button, and only for the portals in
+    // lib/portal/home.ts — a normal visit never sees any of this copy.
+    portal: {
+      home: {
+        aria: "Keep playing on GRYND",
+        title: "Want to keep playing?",
+        body: "More games, real opponents and your progress saved.",
+        cta: "Play on GRYND",
+        dismissAria: "Dismiss",
+      },
+    },
     // /profil for a signed-out visitor (Phase 2F): their own guest practice
     // record. Deliberately no rating, trophy or reward vocabulary — a guest
     // practice result is a private, cosmetic record.
@@ -9,6 +21,20 @@ export const APP_TEXT_TRANSLATIONS = {
       subtitle:
         "Your free practice record. No account needed, and nothing here is ranked.",
       badge: "Guest",
+      // The results-screen invitation (Phase 5). It never implies progress is
+      // missing — the guest record is already saved, and the account only
+      // attaches it to a profile.
+      postMatch: {
+        eyebrow: "Guest",
+        title: "Keep your progress. Create your GRYND account.",
+        body: "Your guest progress is already saved. Create an account to attach it to your profile and keep it when you switch devices.",
+        saved: "Practice results saved in this browser: {count}",
+        primary: "Create Free Account",
+        free: "Free to create — no payment, no card",
+        secondary: "Already have an account? Sign in",
+        dismiss: "Maybe later",
+        dismissAria: "Dismiss the account invitation",
+      },
       sessionNote:
         "Practice results saved in this browser — not an account, and never ranked.",
       keepProgress: "Keep my progress",
@@ -2117,12 +2143,32 @@ export const APP_TEXT_TRANSLATIONS = {
     },
   },
   fr: {
+    portal: {
+      home: {
+        aria: "Continuez à jouer sur GRYND",
+        title: "Envie de continuer à jouer ?",
+        body: "Plus de jeux, de vrais adversaires et votre progression conservée.",
+        cta: "Jouer sur GRYND",
+        dismissAria: "Ignorer",
+      },
+    },
     guestProgress: {
       eyebrow: "Profil invité",
       title: "Votre progression d'invité",
       subtitle:
         "Votre historique d'entraînement gratuit. Aucun compte requis, et rien ici n'est classé.",
       badge: "Invité",
+      postMatch: {
+        eyebrow: "Invité",
+        title: "Conservez votre progression. Créez votre compte GRYND.",
+        body: "Votre progression d'invité est déjà enregistrée. Créez un compte pour la rattacher à votre profil et la conserver lorsque vous changez d'appareil.",
+        saved: "Résultats d'entraînement enregistrés dans ce navigateur : {count}",
+        primary: "Créer un compte gratuit",
+        free: "Création gratuite — aucun paiement, aucune carte",
+        secondary: "Vous avez déjà un compte ? Se connecter",
+        dismiss: "Plus tard",
+        dismissAria: "Ignorer l'invitation à créer un compte",
+      },
       sessionNote:
         "Résultats d'entraînement enregistrés dans ce navigateur — pas un compte, jamais classés.",
       keepProgress: "Conserver ma progression",
@@ -3972,12 +4018,32 @@ export const APP_TEXT_TRANSLATIONS = {
     },
   },
   es: {
+    portal: {
+      home: {
+        aria: "Sigue jugando en GRYND",
+        title: "¿Quieres seguir jugando?",
+        body: "Más juegos, rivales reales y tu progreso guardado.",
+        cta: "Jugar en GRYND",
+        dismissAria: "Descartar",
+      },
+    },
     guestProgress: {
       eyebrow: "Perfil de invitado",
       title: "Tu progreso como invitado",
       subtitle:
         "Tu historial de práctica gratuito. No necesitas cuenta y nada de esto es clasificatorio.",
       badge: "Invitado",
+      postMatch: {
+        eyebrow: "Invitado",
+        title: "Conserva tu progreso. Crea tu cuenta de GRYND.",
+        body: "Tu progreso como invitado ya está guardado. Crea una cuenta para vincularlo a tu perfil y conservarlo cuando cambies de dispositivo.",
+        saved: "Resultados de práctica guardados en este navegador: {count}",
+        primary: "Crear cuenta gratis",
+        free: "Creación gratuita — sin pagos ni tarjeta",
+        secondary: "¿Ya tienes una cuenta? Inicia sesión",
+        dismiss: "Quizá más tarde",
+        dismissAria: "Descartar la invitación para crear una cuenta",
+      },
       sessionNote:
         "Resultados de práctica guardados en este navegador: no es una cuenta y nunca son clasificatorios.",
       keepProgress: "Conservar mi progreso",

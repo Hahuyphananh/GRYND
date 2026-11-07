@@ -137,6 +137,36 @@ test("every common desktop viewport fits, without over-shrinking", () => {
   assert.equal(cardWidthFor({ vw: 1920, vh: 1080 }), 92);
 });
 
+test("the drag ghost inherits the board's card sizing, so a gesture cannot fight the fit", () => {
+  // A ghost sized by hand (or by a fixed px) would either be the wrong size at
+  // the 34-44px phone clamp or push the board around. It is OUT OF FLOW and
+  // sized from the same CARD_W/CARD_H the board uses, so dragging is neutral by
+  // construction — at every viewport the clamp produces.
+  const at = BOARD.indexOf('data-testid="solitaire-drag-ghost"');
+  assert.ok(at > 0, "the drag ghost must exist");
+  const ghost = BOARD.slice(at - 500, at + 1200);
+
+  assert.match(ghost, /fixed/, "the ghost must be out of flow");
+  assert.match(ghost, /pointer-events-none/, "the ghost must never shadow a drop slot");
+  assert.match(ghost, /width: CARD_W/, "the ghost must use the board's card width");
+  assert.match(ghost, /height: CARD_H/, "the ghost must use the board's card height");
+  // No pixel or rem size of its own: the clamp stays the single source of size.
+  assert.doesNotMatch(ghost, /width: \d+(px)?\b/);
+  assert.doesNotMatch(ghost, /height: \d+(px)?\b/);
+
+  // …and the cards it renders are the board's own PlayingCard, so a snap is
+  // measured from the same geometry rather than a second set of constants.
+  assert.match(ghost, /<PlayingCard/);
+});
+
+test("the snap measures the live DOM, at whatever size the clamp produced", () => {
+  // The ghost lands one fan step below the last card in a column, computed from
+  // the measured rect — so the same code is correct at 34px and at 92px.
+  assert.match(BOARD, /function landingPoint\(slot: HTMLElement\)/);
+  assert.match(BOARD, /getBoundingClientRect\(\)/);
+  assert.match(BOARD, /rect\.height - \(faceUp \? 0\.72 : 0\.86\) \* rect\.width/);
+});
+
 test("mobile sizing is untouched", () => {
   // The 34px floor has to keep governing phones, where the width term is below
   // it anyway — so the height term must never shrink a phone's cards.

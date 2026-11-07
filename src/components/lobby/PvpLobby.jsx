@@ -33,6 +33,7 @@ import MatchWaiting from "./MatchWaiting";
 import { usePlatformQuickQueue } from "./PlatformQuickQueue";
 import DailyLossGuard from "../DailyLossGuard";
 import { GLOBAL_MAX_BET } from "../../lib/games/economy";
+import { isPortalPlayPath } from "../../lib/portal/framing";
 import SessionGuard from "../SessionGuard";
 import {
   IconRefresh,
@@ -395,6 +396,19 @@ export function PvpLobby({
   children = null,
   // trailing content after the lobbies card (e.g. rules box)
   after = null,
+  // PRACTICE-ONLY MODE.
+  //
+  // Renders the lobby as a practice entry point: no stake picker, no online
+  // Play button, no open-lobby list, no quick queue, no route to sign-in and no
+  // outbound site link. The game's own practice action (`vsAi`, or whatever the
+  // page passes through `extraActions`) is the only way to start, which is
+  // exactly what a portal visitor can do: they have no account and no age
+  // record, so an online action could only ever bounce them.
+  //
+  // `undefined` (the default) means "decide from the route": practice-only on
+  // the portal surface (/play/<gameKey>), normal everywhere else. Passing true
+  // or false overrides that, which is what a test or a future game may want.
+  practiceOnly = undefined,
 }) {
   const [showRules, setShowRules] = useState(false);
   const firstVisit = useFirstVisitRules(rulesKey);
@@ -426,6 +440,10 @@ export function PvpLobby({
   const router = useRouter();
   const pathname = usePathname();
   const signedOut = isLoaded && !isSignedIn;
+  // The portal surface is chrome-free and account-free by design (see
+  // src/app/play and components/SiteChrome), so the shared lobby renders its
+  // practice-only form there without every game having to opt in.
+  const practiceMode = practiceOnly === undefined ? isPortalPlayPath(pathname) : Boolean(practiceOnly);
   const handlePlay = () => {
     if (!signedOut) {
       onPlay?.();
@@ -470,7 +488,7 @@ export function PvpLobby({
             transition={{ duration: 0.3 }}
             className={`text-[11px] font-black uppercase tracking-[0.42em] ${PALETTE.kicker}`}
           >
-            GRYND · 1v1 duel
+            {practiceMode ? "GRYND · practice" : "GRYND · 1v1 duel"}
           </motion.p>
           {title && (
             <motion.h1
@@ -490,21 +508,24 @@ export function PvpLobby({
           {/* The action row. Same order and weights as every lobby: solid
               cyan primary, violet secondary, a ghost exit, then the mode. */}
           <div className="mt-6 flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={handlePlay}
-              disabled={busy || (!canPlay && !signedOut)}
-              className={`inline-flex h-12 items-center justify-center gap-2 rounded-xl px-6 text-sm font-black uppercase tracking-[0.14em] transition disabled:cursor-not-allowed disabled:opacity-50 ${PALETTE.play}`}
-            >
-              {busy ? (
-                <>
-                  <LoadingDotsIcon className="h-4 w-4 animate-pulse text-black" />
-                  <span>{playBusyLabel}</span>
-                </>
-              ) : (
-                <span>{signedOut ? "Sign in to play" : playLabel}</span>
-              )}
-            </button>
+            {/* Online matchmaking — never in practice-only mode. */}
+            {!practiceMode && (
+              <button
+                type="button"
+                onClick={handlePlay}
+                disabled={busy || (!canPlay && !signedOut)}
+                className={`inline-flex h-12 items-center justify-center gap-2 rounded-xl px-6 text-sm font-black uppercase tracking-[0.14em] transition disabled:cursor-not-allowed disabled:opacity-50 ${PALETTE.play}`}
+              >
+                {busy ? (
+                  <>
+                    <LoadingDotsIcon className="h-4 w-4 animate-pulse text-black" />
+                    <span>{playBusyLabel}</span>
+                  </>
+                ) : (
+                  <span>{signedOut ? "Sign in to play" : playLabel}</span>
+                )}
+              </button>
+            )}
             {vsAi && (
               <button
                 type="button"
@@ -522,15 +543,23 @@ export function PvpLobby({
               </button>
             )}
             {extraActions}
-            <Link
-              href="/games"
-              className={`inline-flex h-12 items-center justify-center rounded-xl px-5 text-sm font-bold transition ${PALETTE.ghost}`}
-            >
-              ← Back to games
-            </Link>
+            {/* No route back into the site from a portal surface: a portal
+                frame must not offer outbound navigation. */}
+            {!practiceMode && (
+              <Link
+                href="/games"
+                className={`inline-flex h-12 items-center justify-center rounded-xl px-5 text-sm font-bold transition ${PALETTE.ghost}`}
+              >
+                ← Back to games
+              </Link>
+            )}
             <span className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-[11px] font-semibold text-white/40">
               <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              {wager ? "Coin · both stakes escrowed" : "Free play · no tokens at stake"}
+              {practiceMode
+                ? "Practice · unrated"
+                : wager
+                  ? "Coin · both stakes escrowed"
+                  : "Free play · no tokens at stake"}
             </span>
           </div>
 
@@ -541,7 +570,9 @@ export function PvpLobby({
             </div>
           )}
 
-          {wager && (
+          {/* The stake picker is an online-money control: it has no meaning to
+              a visitor who cannot stake anything. */}
+          {wager && !practiceMode && (
             <div className="mt-5">
               <CoinWagerPicker {...wager} />
             </div>
@@ -576,7 +607,7 @@ export function PvpLobby({
 
           {/* Your own open match notification */}
           <AnimatePresence>
-            {myOpenId !== null && myOpenId !== undefined && (
+            {!practiceMode && myOpenId !== null && myOpenId !== undefined && (
               <motion.div
                 initial={{ opacity: 0, y: -6 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -611,12 +642,20 @@ export function PvpLobby({
           </AnimatePresence>
 
           <dl className="mt-4 space-y-3 text-sm">
-            {[
-              ["Entry", wager ? `${formatTokens(wager?.value ?? 0)} coins` : "Free"],
-              ["Opponent", "Live player"],
-              ["Winner", wager ? "Takes 1.8× the stake" : "Nothing wagered"],
-              ["Draw", "Both seats refunded"],
-            ].map(([label, value]) => (
+            {(practiceMode
+              ? [
+                  ["Entry", "Free"],
+                  ["Opponent", "The bot"],
+                  ["Rated", "No"],
+                  ["Progress", "Saved in this browser"],
+                ]
+              : [
+                  ["Entry", wager ? `${formatTokens(wager?.value ?? 0)} coins` : "Free"],
+                  ["Opponent", "Live player"],
+                  ["Winner", wager ? "Takes 1.8× the stake" : "Nothing wagered"],
+                  ["Draw", "Both seats refunded"],
+                ]
+            ).map(([label, value]) => (
               <div
                 key={label}
                 className="flex items-center justify-between border-b border-white/[0.06] pb-2.5"
@@ -628,7 +667,13 @@ export function PvpLobby({
           </dl>
 
           <p className="mt-4 text-xs leading-relaxed text-white/40">
-            {wager ? (
+            {practiceMode ? (
+              <>
+                Practice against the bot. Nothing is wagered, no opponent is
+                matched, and the result is unrated — no coins, trophies or
+                ranking change.
+              </>
+            ) : wager ? (
               <>
                 Coins are energy: both stakes are escrowed on match-up and the
                 winner takes <b className="text-white/70">1.8× their stake</b>{" "}
@@ -640,7 +685,7 @@ export function PvpLobby({
             )}
           </p>
 
-          {quickQueue && (
+          {quickQueue && !practiceMode && (
             <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -687,6 +732,9 @@ export function PvpLobby({
       {/* ── Open lobbies ─────────────────────────────────────────────── */}
       {/* The casino lobby's section rhythm: a small uppercase header with the
           secondary controls on the right, then flat cards — no heavy panel. */}
+      {/* Online matchmaking board — nothing here can be used without an
+          account, so practice-only mode does not render it at all. */}
+      {!practiceMode && (
       <section className="mt-12 lg:mt-16">
         <div className="flex items-baseline justify-between">
           <h2 className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.32em] text-white/40">
@@ -772,6 +820,7 @@ export function PvpLobby({
           </div>
         )}
       </section>
+      )}
 
       {showRules && rules && (
         <RulesModal
@@ -792,12 +841,21 @@ export function PvpLobby({
 export default function PvpLobbyPage(props) {
   const quickQueueReadinessBody = props.quickQueueReadinessBody;
   const quickQueue = usePlatformQuickQueue({ readinessBody: quickQueueReadinessBody });
+  // Same rule as the lobby itself: on the portal surface the page loses the
+  // site's footer (outbound links) and the navbar's top offset.
+  const pathname = usePathname();
+  const practiceMode =
+    props.practiceOnly === undefined ? isPortalPlayPath(pathname) : Boolean(props.practiceOnly);
   return (
-    <div className={`min-h-screen overflow-x-clip px-4 pb-24 pt-20 text-white sm:px-6 md:pb-8 ${PALETTE.page}`}>
+    <div
+      className={`min-h-screen overflow-x-clip px-4 pb-24 text-white sm:px-6 md:pb-8 ${
+        practiceMode ? "pt-4" : "pt-20"
+      } ${PALETTE.page}`}
+    >
       <NavigationBar currentPath="/casino" />
       <div className="mx-auto mt-4 max-w-6xl sm:mt-8">
         <PvpLobby {...props} quickQueue={props.quickQueue ? { ...quickQueue, ...props.quickQueue } : { ...quickQueue, preferences: props.quickQueuePreferences }} />
-        <Footer />
+        {!practiceMode && <Footer />}
       </div>
     </div>
   );

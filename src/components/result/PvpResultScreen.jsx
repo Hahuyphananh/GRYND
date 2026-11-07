@@ -56,6 +56,10 @@ import { fireConfetti, withReducedMotion } from "../../lib/animations";
 import { notifyDailyRewardWin } from "../../lib/practiceWinClient";
 import FrameAvatar from "../FrameAvatar";
 import PostMatchAdSlot from "../ads/PostMatchAdSlot";
+import GuestPostMatchCta from "../guest/GuestPostMatchCta";
+import { PORTAL_MATCH_FINISHED_EVENT } from "../../lib/portal/crazygames";
+import { isPortalPlayPath } from "../../lib/portal/framing";
+import { usePathname } from "next/navigation";
 import { useTranslation } from "../../hooks/useTranslation";
 import GlitchSay from "../mascot/GlitchSay";
 import { selectGlitchResultReaction } from "../../lib/mascot/glitchMoments";
@@ -238,6 +242,12 @@ export default function PvpResultScreen({
   // the player and "Run it back"), and suppressed in compact mode so Creator
   // Mode recordings never carry an ad.
   postMatchAd = null,
+  // Canonical key of THIS game when a guest's practice results are persisted
+  // for it (tic-tac-toe, dominoes, battleship, odds). Passing it mounts the
+  // shared guest → account invitation below the actions; the component itself
+  // decides whether this visitor is a guest, so an account sees nothing and a
+  // game that does not record guest progress passes nothing at all.
+  guestGameKey = null,
   // GLITCH's reaction to this result, inline under the outcome hero. On by
   // default — every result screen is a legitimate place for the character to
   // react — and switched OFF by the one screen that already renders its own
@@ -246,6 +256,11 @@ export default function PvpResultScreen({
   showGlitch = true,
 }) {
   const shouldReduce = useReducedMotion();
+  // PORTAL SURFACE (/play/<gameKey>[/<matchId>]): a games portal forbids an
+  // external account system, an outbound link and anyone else's advertising
+  // inside the frame. So this screen offers no GRYND account invitation and no
+  // GRYND post-match ad there — the portal's own SDK owns the ad break.
+  const portalSurface = isPortalPlayPath(usePathname());
   const { t } = useTranslation();
   const router = useRouter();
   // THE RESULT BEAT. `open` is the game's own finished-state flag; the
@@ -255,6 +270,17 @@ export default function PvpResultScreen({
   // `revealed`, while the progression fetches start on `open` so the numbers
   // are already there when it lands.
   const [revealed, setRevealed] = useState(false);
+  // Portal SDK: a finished match is the moment the player stopped playing, and
+  // the only moment an ad break is allowed. The bridge on /play/<gameKey>
+  // listens; outside a portal visit nothing listens and this is inert.
+  useEffect(() => {
+    if (!revealed || typeof window === "undefined") return;
+    window.dispatchEvent(
+      new CustomEvent(PORTAL_MATCH_FINISHED_EVENT, {
+        detail: { gameKey: guestGameKey ?? null },
+      }),
+    );
+  }, [revealed, guestGameKey]);
   useEffect(() => {
     if (!open) {
       setRevealed(false);
@@ -359,6 +385,13 @@ export default function PvpResultScreen({
     // waiting for a settle that can never arrive. Those screens navigate at
     // once; everyone else meets the shared slot.
     if (!compact && !postMatchAd && !adAttemptedRef.current) {
+      // Skip the surface entirely on the portal path: run the exit action now
+      // rather than holding it until an ad that must never play reports back.
+      if (portalSurface) {
+        setNavigating(true);
+        fn();
+        return;
+      }
       adAttemptedRef.current = true;
       pendingExitRef.current = fn;
       adOpenRef.current = true;
@@ -1076,6 +1109,21 @@ export default function PvpResultScreen({
               </div>
             )}
 
+            {/* Guest → account invitation. In the panel's own flow, BELOW the
+                actions, so it never covers the outcome, the score or the
+                retry/lobby controls. The component is inert for an account and
+                for a game without guest progression; `revealed` is only true
+                once the match has actually finished, so nothing can appear
+                during play, matchmaking, loading or a cancelled match. */}
+            {!compact && !portalSurface && guestGameKey ? (
+              <div className="mx-auto mt-5 w-full max-w-xs">
+                <GuestPostMatchCta
+                  gameKey={guestGameKey}
+                  matchFinished={revealed}
+                />
+              </div>
+            ) : null}
+
             {/* Post-match advertisement. It is NOT mounted over the result any
                 more: the guard above opens it when the player picks an exit
                 action, and that action runs once it reports back. A game that
@@ -1086,7 +1134,7 @@ export default function PvpResultScreen({
             {!compact && postMatchAd && (
               <div className="mx-auto mt-5 w-full max-w-xs">{postMatchAd}</div>
             )}
-            {!compact && adOpen && !postMatchAd && (
+            {!compact && !portalSurface && adOpen && !postMatchAd && (
               <div className="mx-auto mt-5 w-full max-w-xs">
                 <PostMatchAdSlot onDone={handleAdSettled} />
               </div>

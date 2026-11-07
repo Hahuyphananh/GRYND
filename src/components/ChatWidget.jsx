@@ -15,6 +15,17 @@ import { useActiveEmoteChannel } from "./game/emotes/emoteChannel";
 
 const GLOBAL_ROUTES = new Set(["/", "/casino", "/games", "/classement", "/rankings"]);
 
+// The launcher belongs to the player: how close to an edge it may sit, how far
+// a press has to travel before it is a drag rather than a tap, and where that
+// spot is remembered between visits.
+const LAUNCHER_EDGE_GAP = 8;
+const LAUNCHER_DRAG_SLOP = 4;
+const LAUNCHER_POSITION_KEY = "grynd:chat-launcher-position";
+
+function clampToRange(value, min, max) {
+  return Math.min(Math.max(value, min), Math.max(min, max));
+}
+
 function formatParts(text) {
   const tokens = [];
   const regex = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g;
@@ -137,6 +148,150 @@ export default function ChatWidget() {
   useEffect(() => {
     openRef.current = isOpen;
   }, [isOpen]);
+
+  // ── Draggable launcher ────────────────────────────────────────────────────
+  // On game pages the icon sat on top of the play area (the Dominoes board,
+  // for one) and could not be moved. It now follows the pointer and keeps the
+  // spot it was left in, so every player parks it out of their own way.
+  const launcherRef = useRef(null);
+  const dragRef = useRef(null);
+  const suppressClickRef = useRef(false);
+  // {x, y} from the viewport's top-left. Null until the player moves it, which
+  // leaves the default CSS corner in charge.
+  const [launcherPos, setLauncherPos] = useState(null);
+  const [viewport, setViewport] = useState(null); // {w, h}, measured on the client
+  const [panelAnchor, setPanelAnchor] = useState(null); // launcher box while the panel is open
+  const [isDragging, setIsDragging] = useState(false);
+
+  const measureLauncher = useCallback(() => {
+    const rect = launcherRef.current?.getBoundingClientRect();
+    return rect
+      ? { x: rect.left, y: rect.top, w: rect.width, h: rect.height }
+      : null;
+  }, []);
+
+  // Wherever the player parks it, the icon stays fully on screen.
+  const clampLauncher = useCallback((x, y) => {
+    const rect = launcherRef.current?.getBoundingClientRect();
+    const w = rect?.width || 56;
+    const h = rect?.height || 56;
+    return {
+      x: clampToRange(x, LAUNCHER_EDGE_GAP, window.innerWidth - w - LAUNCHER_EDGE_GAP),
+      y: clampToRange(y, LAUNCHER_EDGE_GAP, window.innerHeight - h - LAUNCHER_EDGE_GAP),
+    };
+  }, []);
+
+  // Restore a previously parked spot, re-clamped in case the screen shrank
+  // since it was stored.
+  useEffect(() => {
+    setViewport({ w: window.innerWidth, h: window.innerHeight });
+    let stored = null;
+    try {
+      stored = JSON.parse(
+        window.localStorage.getItem(LAUNCHER_POSITION_KEY) || "null",
+      );
+    } catch {
+      stored = null;
+    }
+    if (Number.isFinite(stored?.x) && Number.isFinite(stored?.y)) {
+      setLauncherPos(clampLauncher(stored.x, stored.y));
+    }
+  }, [clampLauncher]);
+
+  // A rotation, a resized window or a mobile URL bar appearing moves the de-
+  // line of the viewport: the icon and its open panel follow it back on screen.
+  useEffect(() => {
+    const handleViewportChange = () => {
+      setViewport({ w: window.innerWidth, h: window.innerHeight });
+      setLauncherPos((prev) => (prev ? clampLauncher(prev.x, prev.y) : prev));
+      setPanelAnchor((prev) => (prev ? measureLauncher() || prev : prev));
+    };
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("orientationchange", handleViewportChange);
+    return () => {
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("orientationchange", handleViewportChange);
+    };
+  }, [clampLauncher, measureLauncher]);
+
+  // Measured before the panel opens so its first painted frame is already in
+  // the right place, instead of jumping once after mount.
+  const capturePanelAnchor = useCallback(() => {
+    setPanelAnchor(measureLauncher());
+  }, [measureLauncher]);
+
+  function handleLauncherPointerDown(event) {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    const rect = measureLauncher();
+    if (!rect) return;
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: rect.x,
+      originY: rect.y,
+      width: rect.w,
+      height: rect.h,
+      moved: false,
+      settled: null,
+    };
+    suppressClickRef.current = false;
+    // Capture the pointer so the drag keeps tracking when it outruns the icon.
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+
+  function handleLauncherPointerMove(event) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    // A tap wobbles by a pixel or two; only real travel starts a drag.
+    if (
+      !drag.moved &&
+      Math.abs(dx) < LAUNCHER_DRAG_SLOP &&
+      Math.abs(dy) < LAUNCHER_DRAG_SLOP
+    ) {
+      return;
+    }
+    if (!drag.moved) {
+      drag.moved = true;
+      setIsDragging(true);
+    }
+    const settled = clampLauncher(drag.originX + dx, drag.originY + dy);
+    drag.settled = settled;
+    setLauncherPos(settled);
+    // An open panel travels with its launcher instead of staying behind.
+    if (openRef.current) {
+      setPanelAnchor({
+        x: settled.x,
+        y: settled.y,
+        w: drag.width,
+        h: drag.height,
+      });
+    }
+  }
+
+  function handleLauncherPointerEnd(event) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setIsDragging(false);
+    if (!drag.moved || !drag.settled) return;
+    // The pointer sequence still ends with a click on this button: that was a
+    // move, not a request to open the panel.
+    suppressClickRef.current = true;
+    try {
+      window.localStorage.setItem(
+        LAUNCHER_POSITION_KEY,
+        JSON.stringify(drag.settled),
+      );
+    } catch {
+      // No storage (private mode): the spot simply is not remembered.
+    }
+  }
 
   const bumpUnread = useCallback((id) => {
     if (id != null) {
@@ -372,23 +527,87 @@ export default function ChatWidget() {
   }
 
   function toggleChat() {
+    // A drag ends with a click on the same button — that was a move, not a tap.
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
     // Opening clears the badge; closing it leaves zero (nothing was unread
     // while you were looking at the room). Also fold the emote grid away.
+    const opening = !isOpen;
     setUnread(0);
     setEmotesOpen(false);
-    setIsOpen((v) => !v);
+    // Measure before opening so the panel's first frame is already placed.
+    if (opening) capturePanelAnchor();
+    setIsOpen(opening);
   }
+
+  // The panel is placed from the launcher's measured box, so an icon parked in
+  // any corner still opens a panel that is fully on screen: it clamps
+  // horizontally and flips above the icon when there is no room below.
+  const panelBox = (() => {
+    if (!isOpen || !panelAnchor || !viewport) return null;
+    const gap = 8;
+    const width = Math.min(
+      420,
+      Math.max(240, viewport.w - LAUNCHER_EDGE_GAP * 2),
+    );
+    const left = clampToRange(
+      panelAnchor.x,
+      LAUNCHER_EDGE_GAP,
+      viewport.w - width - LAUNCHER_EDGE_GAP,
+    );
+    const spaceBelow =
+      viewport.h - (panelAnchor.y + panelAnchor.h) - gap - LAUNCHER_EDGE_GAP;
+    const spaceAbove = panelAnchor.y - gap - LAUNCHER_EDGE_GAP;
+    const opensUp = spaceBelow < 280 && spaceAbove > spaceBelow;
+    const available = Math.max(160, opensUp ? spaceAbove : spaceBelow);
+    return {
+      left: `${left}px`,
+      width: `${width}px`,
+      maxHeight: `${Math.min(608, available)}px`,
+      ...(opensUp
+        ? { bottom: `${viewport.h - panelAnchor.y + gap}px` }
+        : { top: `${panelAnchor.y + panelAnchor.h + gap}px` }),
+    };
+  })();
 
   if (!room) return null;
 
   return (
-    <div className="fixed bottom-20 left-3 z-[70] sm:bottom-4 sm:left-4">
+    <div
+      ref={launcherRef}
+      className={`fixed z-[70] ${
+        launcherPos ? "" : "bottom-20 left-3 sm:bottom-4 sm:left-4"
+      }`}
+      style={
+        launcherPos
+          ? {
+              left: `${launcherPos.x}px`,
+              top: `${launcherPos.y}px`,
+              right: "auto",
+              bottom: "auto",
+            }
+          : undefined
+      }
+    >
       <button
         type="button"
         onClick={toggleChat}
+        onKeyDown={() => {
+          // Keyboard activation is never the tail of a drag.
+          suppressClickRef.current = false;
+        }}
+        onPointerDown={handleLauncherPointerDown}
+        onPointerMove={handleLauncherPointerMove}
+        onPointerUp={handleLauncherPointerEnd}
+        onPointerCancel={handleLauncherPointerEnd}
         data-chat-toggle=""
+        data-chat-dragging={isDragging ? "" : undefined}
         data-chat-unread-count={unread}
-        className="relative h-14 w-14 touch-manipulation rounded-full bg-gradient-to-br from-cyan-400 via-fuchsia-500 to-purple-600 text-2xl text-black shadow-[0_0_25px_rgba(34,211,238,0.5)] transition-all hover:scale-110 hover:shadow-[0_0_40px_rgba(217,70,239,0.7)] active:scale-95 animate-neonButton sm:h-16 sm:w-16 sm:text-3xl"
+        className={`relative h-14 w-14 touch-none rounded-full bg-gradient-to-br from-cyan-400 via-fuchsia-500 to-purple-600 text-2xl text-black shadow-[0_0_25px_rgba(34,211,238,0.5)] transition-all hover:scale-110 hover:shadow-[0_0_40px_rgba(217,70,239,0.7)] active:scale-95 animate-neonButton sm:h-16 sm:w-16 sm:text-3xl ${
+          isDragging ? "cursor-grabbing" : "cursor-grab"
+        }`}
         aria-label={
           unread > 0
             ? `Open chat, ${unread} unread message${unread === 1 ? "" : "s"}`
@@ -414,6 +633,16 @@ export default function ChatWidget() {
       {isOpen ? (
         <div
           data-chat-panel=""
+          style={{
+            // Fixed to the viewport even while it lives inside the launcher:
+            // an icon dragged into a corner must not push its panel off screen.
+            // Inline values win over the position/size utility classes below.
+            position: "fixed",
+            zIndex: 70,
+            margin: 0,
+            ...panelBox,
+            ...(emotesOpen && panelBox ? { height: panelBox.maxHeight } : null),
+          }}
           className={`relative mt-2 flex w-[calc(100vw-1.5rem)] max-w-[420px] flex-col overflow-hidden rounded-xl border border-cyan-400/30 bg-black/70 p-3 text-sm text-cyan-50 shadow-[0_0_35px_rgba(34,211,238,0.25)] backdrop-blur-xl animate-neonPulse sm:p-4 ${
             emotesOpen ? "h-[min(78dvh,38rem)]" : "max-h-[min(78dvh,38rem)]"
           }`}

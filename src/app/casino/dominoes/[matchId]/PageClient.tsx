@@ -44,7 +44,8 @@
 // server's deal is restored from its columns — never re-shuffled.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
+import { useMatchRouter } from "../../../../hooks/useMatchRouter";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { IconAlertTriangle } from "@tabler/icons-react";
 
@@ -118,7 +119,9 @@ type Action =
 export default function DominoesMatchPage() {
   const { t } = useTranslation();
   const params = useParams<{ matchId: string }>();
-  const router = useRouter();
+  // Portal-aware: on /play/<game>[/<id>] this keeps "back to lobby" and a
+  // rematch on the framable path instead of jumping to /casino/<game>.
+  const router = useMatchRouter();
   const { socket } = useSocket();
   const shouldReduce = useReducedMotion();
 
@@ -754,6 +757,9 @@ export default function DominoesMatchPage() {
                 : t("games.dominoes.result_match_lost")
           }
           subline={reasonText(outcome)}
+          // Dominoes' guest practice results are persisted, so a signed-out
+          // player finishing a match is offered the account invitation.
+          guestGameKey="dominoes"
           // The final cumulative score, both sides, on the shared comparison.
           sides={[
             {

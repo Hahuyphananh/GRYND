@@ -562,6 +562,7 @@ export default function BattleshipPageClient() {
         error={notice}
         opponentName={opponentNameFor(snapshot)}
         result={over ? snapshot.result : null}
+        matchId={matchId}
         seat={snapshot.you.seat}
         reveal={reveal}
         isAi={practiceMode}

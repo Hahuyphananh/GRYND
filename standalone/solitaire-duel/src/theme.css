@@ -1,0 +1,79 @@
+/*
+ * standalone/solitaire-duel/src/theme.css
+ *
+ * The ONLY styling the standalone build ships.
+ *
+ * `SolitaireBoard` and `PlayingCard` are shared with the app, so their markup
+ * must be satisfied exactly: the utilities come from Tailwind, and the six
+ * `--gr-*` custom properties below are copied verbatim from the app's token
+ * block (`src/app/globals.css`, "GRYND GAME VISUAL TOKENS"). They are copied
+ * rather than imported because that file is ~4,600 lines of site chrome.
+ *
+ * If a token ever changes in globals.css, change it here too — the board's
+ * whole palette (slot borders, the selected ring, the legal-move highlight) is
+ * these values.
+ *
+ * NO WEB FONTS. The app sets Orbitron for display text; a portal build must not
+ * request a font from anywhere, so the system UI stack is used instead and the
+ * identity is carried by weight, tracking and colour.
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* ── Copied from the app's token block ─────────────────────────────── */
+  --gr-brand-cyan: #00e5ff;
+  --gr-ink-subtle: rgba(255, 255, 255, 0.45);
+  --gr-hairline: rgba(255, 255, 255, 0.1);
+  --gr-border: rgba(255, 255, 255, 0.18);
+  --gr-outline: #05101f;
+  --gr-outline-width: 2px;
+  --gr-legal-move: #eaf6ff;
+  --gr-selected: #f5ff3b;
+  --gr-selected-style: dashed;
+  --gr-focus-ring: #9dd8ff;
+  --gr-focus-ring-width: 2px;
+
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #04070f;
+  color: #fff;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  /* The board is a fixed-height layout; a rubber-banding page on a phone makes
+     a card feel like it slid while the finger was still down. */
+  overscroll-behavior-y: contain;
+}
+
+/* ── The two shared classes the components reference ───────────────────
+   Copied from globals.css (`.gr-selected`, `.gr-focusable`). The selected card
+   gets a DASHED ring and a legal target a SOLID one, so the two states differ
+   in shape as well as hue. */
+
+.gr-selected {
+  outline: var(--gr-outline-width) var(--gr-selected-style) var(--gr-selected);
+  outline-offset: 2px;
+}
+
+.gr-focusable:focus-visible {
+  outline: var(--gr-focus-ring-width) solid var(--gr-focus-ring);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gr-focusable {
+    transition-duration: 0s;
+  }
+}

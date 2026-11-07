@@ -27,6 +27,7 @@ import { CacheKeys, CacheTTL } from "./lib/redis/keys";
 import { isGameLandingSlug } from "./lib/gameLandingPages";
 import { isGuideSlug } from "./lib/guides";
 import { applyEmbedFramePolicy } from "./lib/platform/framing";
+import { applyPortalFramePolicy } from "./lib/portal/framing";
 
 /**
  * A path with no route behind it, used only as a rewrite target so that an
@@ -165,6 +166,13 @@ const isPublicRoute = createRouteMatcher([
   // APIs it calls accept ONLY that bearer token. The framing policy for these
   // paths is applied separately and narrowly (see lib/platform/framing).
   "/embed(.*)",
+  // The portal surface: the chrome-free single-game page a games portal frames
+  // (/play/<gameKey>, see src/app/play). Public because a portal visitor is a
+  // guest with no GRYND account and no way to sign in inside a third-party
+  // frame. The page itself only accepts the exportable practice keys, and the
+  // games' APIs keep their own guest rules. Its framing policy is relaxed to
+  // GRYND_PORTAL_FRAME_ORIGINS only (lib/portal/framing).
+  "/play(.*)",
   // /welcome is the first-time onboarding flow shown to brand-new accounts
   // right after /sync. Like /sync and /thank-you it must stay reachable
   // BEFORE the user has set their age (/complete-profile gate) — the page
@@ -983,7 +991,15 @@ const hasClerkSecretKey = Boolean(process.env.CLERK_SECRET_KEY);
 // with MIDDLEWARE_INVOCATION_FAILED after the Neon → Supabase migration.
 export default async function proxy(req: NextRequest, event: NextFetchEvent) {
   if (!hasClerkSecretKey) {
-    return applySecurityHeaders(NextResponse.next());
+    const response = applySecurityHeaders(NextResponse.next());
+    // Local/dev without Clerk still serves /play, so its framing policy has to
+    // be applied here too — otherwise the surface would behave differently in
+    // dev than in production.
+    applyPortalFramePolicy(
+      response as unknown as Parameters<typeof applyPortalFramePolicy>[0],
+      req.nextUrl?.pathname,
+    );
+    return response;
   }
 
   try {
@@ -994,6 +1010,14 @@ export default async function proxy(req: NextRequest, event: NextFetchEvent) {
     if (response) {
       applyEmbedFramePolicy(
         response as unknown as Parameters<typeof applyEmbedFramePolicy>[0],
+        req.nextUrl?.pathname,
+      );
+      // The portal surface gets its OWN allowlist (GRYND_PORTAL_FRAME_ORIGINS),
+      // never the platform one: a public game page and a token-authenticated
+      // embed must not share a framing policy. No-op for every other path, and
+      // no-op for /play unless the env var names at least one origin.
+      applyPortalFramePolicy(
+        response as unknown as Parameters<typeof applyPortalFramePolicy>[0],
         req.nextUrl?.pathname,
       );
     }

@@ -53,8 +53,8 @@ import {
   VARIANT,
   VARIANT_VERSION,
 } from "./constants";
-import { aiMoveDelayMs, legalMoves, planAiMoves } from "./ai";
-import { solvableDealFromSeed, stateSolvableVerdict } from "./solvable";
+import { aiMoveDelayMs, legalMoves, planAiMoves, planAiSolution } from "./ai";
+import { solvableDealFromSeed, solveDealLine, stateSolvableVerdict } from "./solvable";
 import {
   cloneState,
   failureOf,
@@ -909,11 +909,19 @@ export async function advanceAiMatch({
     if (maxMoves <= 0) return { match, advanced: false } as const;
 
     const startPly = state.ply;
-    const plan = planAiMoves({
-      state,
-      difficulty: match.aiDifficulty,
-      maxMoves,
-    });
+    // THE PROVEN LINE, not a per-move guess: the deal was served only after a
+    // search found a winning line and the engine replayed it, so following that
+    // line is what makes the bot always finish the puzzle. The tier decides only
+    // WHEN (how many moves it has earned by now). The heuristic stays as the
+    // fallback for a board that is off the line (a match created before this).
+    const deal = (match.deal ?? null) as SolitaireDeal | null;
+    const plan =
+      planAiSolution({ state, line: deal ? solveDealLine(deal) : null, maxMoves }) ??
+      planAiMoves({
+        state,
+        difficulty: match.aiDifficulty,
+        maxMoves,
+      });
     // The BOT's own seat is re-dealt when its planner has run out of road —
     // `stuck` means no legal move at all, or `AI_STAGNATION_LIMIT` moves that
     // changed nothing (a deal its heuristic cannot advance). This is

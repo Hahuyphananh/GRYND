@@ -45,7 +45,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -64,6 +64,7 @@ import NavigationBar from "../../../../components/navigation-bar";
 import GameSessionHost from "../../../../components/GameSessionHost";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
+import { useMatchRouter } from "../../../../hooks/useMatchRouter";
 import SeatAvatar from "../../../../components/game/SeatAvatar";
 import SolitaireBoard from "../../../../components/solitaire-duel/SolitaireBoard";
 import { useSocket } from "../../../../context/SocketProvider";
@@ -82,6 +83,7 @@ import {
   solitaireDuelMatchRoom,
 } from "../../../../lib/solitaire-duel/rooms";
 import { INACTIVITY_COUNTDOWN_MS } from "../../../../lib/solitaire-duel/constants";
+import { aiMoveDelayMs, aiPaceLabel } from "../../../../lib/solitaire-duel/ai";
 import {
   clockLabel,
   durationSeconds,
@@ -252,7 +254,9 @@ function Meter({
 
 export default function SolitaireDuelMatchPage() {
   const params = useParams<{ matchId: string }>();
-  const router = useRouter();
+  // Portal-aware: on /play/solitaire-duel/<id> this keeps "back to lobby" and a
+  // rematch on the framable path instead of jumping to /casino/...
+  const router = useMatchRouter();
   const { socket } = useSocket();
   const { user } = useUser();
   const matchId = params?.matchId;
@@ -801,6 +805,21 @@ export default function SolitaireDuelMatchPage() {
                 <span>Same deal for both seats</span>
                 <span aria-hidden="true">·</span>
                 <span>First to solve it wins</span>
+                {/* Practice only: the tier is PACE. The bot replays the deal's
+                    proven line at every tier, so the picker never changes
+                    whether the puzzle gets solved — only how soon. */}
+                {isPractice && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span
+                      data-testid="solitaire-solver-pace"
+                      data-delay-ms={aiMoveDelayMs(match?.aiDifficulty)}
+                      title="The difficulty changes only how fast the bot plays — it solves this same deal at every tier."
+                    >
+                      {aiPaceLabel(match?.aiDifficulty)}
+                    </span>
+                  </>
+                )}
               </p>
             </div>
 

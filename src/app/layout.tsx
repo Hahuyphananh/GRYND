@@ -1,24 +1,22 @@
 import "./globals.css";
 import { headers } from "next/headers";
 import { Providers } from "./providers";
-import ClerkSafeChatWidget from "../components/ClerkSafeChatWidget";
-import CookieConsentBanner from "../components/CookieConsentBanner";
 import ConsentModeDefault from "../components/ConsentModeDefault";
-import CmpConsentBridge from "../components/CmpConsentBridge";
-import GoogleAnalytics from "../components/GoogleAnalytics";
+// The visible chrome (analytics, skip link, splash, navbar offset, mascot, chat,
+// consent) lives behind ONE pathname gate so the portal surface can drop it.
+// See components/SiteChrome.tsx.
+import SiteChrome from "../components/SiteChrome";
 import { countryFromHeaders, requiresGoogleCmp } from "../lib/consentRegions";
 import { ORGANIZATION_ID, buildWebsiteJsonLd } from "../lib/reviewJsonLd";
 import DisableInspect from "../components/DisableInspect";
 import CsrfFetchGuard from "../components/CsrfFetchGuard";
 import HostCanonicalizer from "../components/HostCanonicalizer";
-import SplashScreen from "../components/SplashScreen";
 import MatchEntryGuard from "../components/MatchEntryGuard";
 import NativeLifecycleBridge from "../components/native/NativeLifecycleBridge";
 import NativeBackButton from "../components/native/NativeBackButton";
 import NativeSystemBars from "../components/native/NativeSystemBars";
 import NativeKeyboard from "../components/native/NativeKeyboard";
 import { ToastProvider } from "../components/toast/ToastProvider";
-import GlitchProvider from "../components/mascot/GlitchProvider";
 import { ogImageUrl, SITE_URL } from "../lib/ogImages";
 
 export const dynamic = "force-dynamic";
@@ -189,21 +187,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             theme is settled before anything is painted. Verified: the first
             paint after a reload is already the stored theme. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
-        {/* Google Analytics 4 (gtag.js) — on every page, from this one place.
-            Consent-gated: it only loads after the visitor accepts the cookie
-            banner (see the component for why). */}
-        <GoogleAnalytics />
-
-        {/* Skip to content — accessibility */}
-        <a
-          href="#main-content"
-          className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[9999] focus:rounded-lg focus:border focus:border-[#00e5ff] focus:bg-[#030817] focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-[#00e5ff] focus:shadow-[0_0_20px_rgba(0,229,255,0.4)] focus:outline-none"
-        >
-          Skip to main content
-        </a>
-
-        {/* SPLASH SCREEN MUST GO HERE */}
-        <SplashScreen />
+        {/* Analytics, the skip link, the splash overlay, the navbar offset and
+            every floating widget now live in <SiteChrome> below, because the
+            portal surface (/play/<gameKey>) must render the game and none of
+            them. Everything rendered here is functional and invisible. */}
 
         {/* Match entries that happen by clicking a link (a private room's
             "Open the match" on the profile, for one) must also leave a document
@@ -234,27 +221,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <HostCanonicalizer />
             <CsrfFetchGuard />
             <DisableInspect />
-            {/* The fixed navigation bar clears the status bar with its own
-                `.safe-top` padding, so the page offset below adds the same
-                inset — one source of truth (`--safe-top`), no double padding,
-                and 0px everywhere the platform reports no inset. */}
-            <main
-              id="main-content"
-              className="pt-[calc(68px_+_var(--safe-top))] sm:pt-[calc(4rem_+_var(--safe-top))]"
-            >{children}</main>
-            {/* GLITCH's floating layer — the ONLY mount of the mascot provider.
-                Its own decisions (cadence, suppression, session limits) come
-                from lib/mascot/glitchCadence.js; this only states that the
-                layer exists. Inside ToastProvider so a toast always wins, and
-                before the chat widget so bottom-left stays free. Renders
-                nothing until something calls useGlitch().say(). */}
-            <GlitchProvider />
-            <ClerkSafeChatWidget />
-            {/* Mirrors Google's CMP decision into the local consent record so
-                the existing gating (GA, PostHog, Sentry) keeps working for
-                EEA/UK/Swiss visitors. No-op elsewhere. */}
-            <CmpConsentBridge enabled={requiresCmp} />
-            <CookieConsentBanner suppressForCmp={requiresCmp} />
+            {/* The site's own chrome, or the bare game on the portal surface —
+                decided once, by pathname, in components/SiteChrome.tsx. */}
+            <SiteChrome requiresCmp={requiresCmp}>{children}</SiteChrome>
           </ToastProvider>
         </Providers>
       </body>
