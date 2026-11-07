@@ -338,10 +338,14 @@ function walk(dir) {
   return out;
 }
 
-test("the provider is mounted exactly once, in the root layout", () => {
-  const layout = read("src/app/layout.tsx");
-  assert.equal((layout.match(/<GlitchProvider\s*\/>/g) ?? []).length, 1);
-  assert.match(layout, /import GlitchProvider from "\.\.\/components\/mascot\/GlitchProvider"/);
+test("the provider is mounted exactly once, in the site chrome", () => {
+  // The mount moved into SiteChrome with the rest of the visible chrome, so the
+  // root layout can render a bare game for the portal surface. SiteChrome still
+  // renders it on every site route, so the mascot behaves as before.
+  const chrome = read("src/components/SiteChrome.tsx");
+  assert.equal((chrome.match(/<GlitchProvider\s*\/>/g) ?? []).length, 1);
+  assert.match(chrome, /import GlitchProvider from "\.\/mascot\/GlitchProvider"/);
+  assert.match(read("src/app/layout.tsx"), /<SiteChrome/, "the layout mounts the chrome");
 
   // Nothing else in src may import or mount the floating provider: a second
   // mount would mean a second session budget and two bubbles. (A comment that
@@ -350,7 +354,7 @@ test("the provider is mounted exactly once, in the root layout", () => {
     .filter((file) => /import\s+GlitchProvider|import\s*\{[^}]*\bGlitchProvider\b|<GlitchProvider/.test(readFileSync(file, "utf8")))
     .map((file) => relative(root, file).split(sep).join("/"))
     .sort();
-  assert.deepEqual(referencing, ["src/app/layout.tsx"]);
+  assert.deepEqual(referencing, ["src/components/SiteChrome.tsx"]);
 });
 
 test("no game BOARD mounts the floating provider itself", () => {

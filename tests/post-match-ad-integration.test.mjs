@@ -335,7 +335,7 @@ test("the ad is offered on the way out, never over the result", () => {
 
   // The slot hangs off the exit guard's state: the player reads the result and
   // meets the ad when they choose where to go next, not before.
-  const adIndex = source.indexOf("{!compact && adOpen && !postMatchAd && (");
+  const adIndex = source.indexOf("{!compact && !portalSurface && adOpen && !postMatchAd && (");
   assert.ok(adIndex > -1, "the shared screen renders the node");
   assert.match(
     source,
@@ -392,7 +392,7 @@ test("nothing is offered before a match is definitively over", () => {
 
 test("reward and progression paths never depend on the ad", () => {
   const source = read(RESULT_SCREEN);
-  const adIndex = source.indexOf("{!compact && adOpen && !postMatchAd && (");
+  const adIndex = source.indexOf("{!compact && !portalSurface && adOpen && !postMatchAd && (");
   const actionsIndex = source.indexOf("{/* Actions */}");
 
   assert.ok(actionsIndex > -1 && actionsIndex < adIndex, "the ad follows the actions");
@@ -493,7 +493,7 @@ test("practice results can offer the ad without a server match row", () => {
 test("every result screen offers the ad through one shared slot", () => {
   const shared = read(RESULT_SCREEN);
   assert.match(shared, /import PostMatchAdSlot from "\.\.\/ads\/PostMatchAdSlot"/);
-  assert.match(shared, /\{!compact && adOpen && !postMatchAd && \(/);
+  assert.match(shared, /\{!compact && !portalSurface && adOpen && !postMatchAd && \(/);
   // A game that wired its own node still wins; every other game gets the slot,
   // which now opens on the exit action and reports back once it settles so the
   // navigation the player asked for can run.

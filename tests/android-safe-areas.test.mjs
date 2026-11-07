@@ -35,6 +35,7 @@ const exists = (relative) => fs.existsSync(path.join(ROOT, relative));
 const LAYOUT = "src/app/layout.tsx";
 const CSS = "src/app/globals.css";
 const NAV = "src/components/navigation-bar.jsx";
+const SITE_CHROME = "src/components/SiteChrome.tsx";
 const SYSTEM_BARS = "src/components/native/NativeSystemBars.tsx";
 
 /** Comments in these files explain what must NOT happen, so scan code only. */
@@ -92,15 +93,26 @@ test("the fixed navigation bar clears the status bar without moving its backgrou
 });
 
 test("the page offset below the bar adds the same inset, and nothing else", () => {
+  // The offset moved with the chrome it belongs to: SiteChrome renders the
+  // <main> for the site and a bare <main> for the portal surface (which has no
+  // navbar to clear), so the root layout stays a document shell.
   const layout = read(LAYOUT);
+  assert.match(layout, /<SiteChrome/, "the root layout delegates its chrome");
+  assert.ok(!/pt-\[calc\(68px/.test(layout), "and adds no offset of its own");
+
+  const chrome = read(SITE_CHROME);
 
   // `calc` needs real spaces; in a Tailwind arbitrary value those are written
   // as underscores. A literal `calc(68px+var(...))` is invalid CSS and would be
   // dropped silently, which is the bug this assertion exists to catch.
-  assert.match(layout, /pt-\[calc\(68px_\+_var\(--safe-top\)\)\]/);
-  assert.match(layout, /sm:pt-\[calc\(4rem_\+_var\(--safe-top\)\)\]/);
+  assert.match(chrome, /pt-\[calc\(68px_\+_var\(--safe-top\)\)\]/);
+  assert.match(chrome, /sm:pt-\[calc\(4rem_\+_var\(--safe-top\)\)\]/);
 
-  const mainTag = layout.match(/<main[\s\S]{0,400}?>/)[0];
+  // Comments name `<main>` in prose, so only a real opening tag counts.
+  const mains = [...chrome.matchAll(/<main\s[\s\S]{0,400}?>/g)].map((match) => match[0]);
+  assert.equal(mains.length, 2, "one <main> for the site, one for the portal surface");
+  const mainTag = mains.find((tag) => /pt-\[calc/.test(tag));
+  assert.ok(mainTag, "the site <main> is the one that carries the offset");
   assert.ok(!/safe-area-inset/.test(mainTag), "insets are read through the variable only");
   assert.ok(!/pb-\[/.test(mainTag), "no global bottom padding: per-screen bars own their own");
 });
@@ -109,7 +121,7 @@ test("no device-specific pixel values were introduced for insets", () => {
   const css = read(CSS);
   const layout = read(LAYOUT);
 
-  for (const source of [css, layout]) {
+  for (const source of [css, layout, read(SITE_CHROME)]) {
     // Nothing may hardcode a status-bar height (24/48px), an iPhone inset, etc.
     assert.ok(!/padding-top:\s*\d+px;?\s*\/\*\s*safe/.test(source));
   }
