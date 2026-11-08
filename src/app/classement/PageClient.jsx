@@ -19,6 +19,8 @@ import ReportEntryButton from "../../components/reports/ReportEntryButton";
 
 const TABS = [
   "trophies",
+  "peak",
+  "trophy-gains",
   "all-time",
   "overall",
   "per-game",
@@ -200,6 +202,17 @@ function isTrophyTab(tab) {
   return tab === "trophies";
 }
 
+// The all-time PEAK trophies board: each player's summed per-game high-water
+// mark, so a bad run can never erase the best total they ever reached.
+function isPeakTab(tab) {
+  return tab === "peak";
+}
+
+// The weekly / monthly / yearly TROPHY-GAIN board, from the settlement journal.
+function isGainTab(tab) {
+  return tab === "trophy-gains";
+}
+
 function getMetricValue(item, tab, category) {
   if (isStreakTab(tab)) {
     const field =
@@ -226,6 +239,16 @@ function getMetricValue(item, tab, category) {
       const trophies = formatNumber(item.overallTrophies ?? item.overall_trophies);
       const games = formatNumber(item.gamesPlayed ?? item.games_played);
       return `${trophies} Trophies · ${games} games`;
+    }
+    case "peak": {
+      const peak = formatNumber(item.peakTrophies ?? item.peak_trophies);
+      const games = formatNumber(item.gamesPlayed ?? item.games_played);
+      return `${peak} Peak Trophies · ${games} games`;
+    }
+    case "gains": {
+      const gain = formatNumber(item.trophyGain ?? item.trophy_gain);
+      const matches = formatNumber(item.matches);
+      return `+${gain} Trophies · ${matches} matches`;
     }
     case "overall": {
       // The aggregate Elo and how many different games qualified for it —
@@ -330,7 +353,11 @@ function Podium({ items, myClerkId, tab, category }) {
   const order = items.length === 1 ? [0] : items.length === 2 ? [1, 0] : [1, 0, 2];
   const metricLabel = isTrophyTab(tab)
     ? "Trophies"
-    : isPerGameTab(tab)
+    : isPeakTab(tab)
+      ? "Peak Trophies"
+      : isGainTab(tab)
+        ? "Trophies Gained"
+        : isPerGameTab(tab)
       ? "Elo"
       : isOverallTab(tab)
         ? "Overall Elo"
@@ -422,6 +449,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
   const [tab, setTab] = useState("all-time");
   const [category, setCategory] = useState("wins");
   const [game, setGame] = useState("chess");
+  const [gainPeriod, setGainPeriod] = useState("week");
 
   // Deep link: the casino lobby's per-game shortcut
   // (/classement?game=<leaderboardKey>) opens that game's Elo board directly.
@@ -450,15 +478,24 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
     ? "rating"
     : isTrophyTab(tab)
       ? "trophies"
-      : isOverallTab(tab)
-        ? "overall"
-        : category;
+      : isPeakTab(tab)
+        ? "peak"
+        : isGainTab(tab)
+          ? "gains"
+          : isOverallTab(tab)
+            ? "overall"
+            : category;
   const myClerkId = isSignedIn ? user?.id : null;
 
   const endpoint = useMemo(() => {
     // The cross-game Overall Trophies board — the headline competitive board,
     // ranked by each player's summed per-game trophies.
     if (tab === "trophies") return `/api/leaderboard/trophy-overall?limit=50`;
+    // All-time high-water marks, one row per player (sum of per-game peaks).
+    if (tab === "peak") return `/api/leaderboard/trophy-peak?limit=50`;
+    // Positive trophy movement inside the CURRENT UTC week/month/year.
+    if (tab === "trophy-gains")
+      return `/api/leaderboard/trophy-gains?period=${gainPeriod}&limit=50`;
     // The cross-game Overall Elo board — an aggregate of established game
     // ratings, restricted to players with enough different games.
     if (tab === "overall") return `/api/leaderboard/overall?limit=50`;
@@ -474,7 +511,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
     if (tab === "weekly-best")
       return `/api/leaderboard/daily-streak?type=weekly-best&limit=50`;
     return `/api/leaderboard/all-time?limit=50&category=${category}`;
-  }, [tab, category, game]);
+  }, [tab, category, game, gainPeriod]);
 
   // Cache-first: the board paints immediately from the persisted SWR cache
   // and refreshes in the background (and again automatically on reconnect).
@@ -552,7 +589,11 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
               >
                 {x === "trophies"
                   ? "Trophies"
-                  : x === "all-time"
+                  : x === "peak"
+                    ? "Peak Trophies"
+                    : x === "trophy-gains"
+                      ? "Trophy Gains"
+                      : x === "all-time"
                   ? "All-Time"
                   : x === "overall"
                     ? "Overall Elo"
@@ -588,7 +629,9 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
         ) : (
           !isStreakTab(tab) &&
           !isOverallTab(tab) &&
-          !isTrophyTab(tab) && (
+          !isTrophyTab(tab) &&
+          !isPeakTab(tab) &&
+          !isGainTab(tab) && (
             <div className="mb-4 -mx-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
               <div className="flex w-max min-w-full gap-2 sm:flex-wrap sm:justify-center">
                 {(tab === "all-time" ? ALL_TIME_CATEGORIES : WEEKLY_CATEGORIES).map((x) => (
@@ -610,13 +653,50 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
           <p className="mb-4 text-center text-xs text-cyan-200/70">
             Ranked by{" "}
             <span className="font-bold text-[#f5ff3b]">total trophies</span>{" "}
-            — the sum of every rated game. A win is +30, a loss −30. Players
-            need trophies in at least{" "}
+            — the sum of every rated game. A win is +30, a loss −30, adjusted by
+            the opponent&apos;s trophy count (up to ±20). Players need trophies in at
+            least{" "}
             <span className="font-bold text-[#f5ff3b]">
               {Number(board.data?.minGames || 3)} different games
             </span>{" "}
             to qualify.
           </p>
+        )}
+
+        {isPeakTab(tab) && (
+          <p className="mb-4 text-center text-xs text-cyan-200/70">
+            Ranked by the{" "}
+            <span className="font-bold text-[#f5ff3b]">highest trophy total ever reached</span>{" "}
+            — each game&apos;s peak, summed across at least{" "}
+            <span className="font-bold text-[#f5ff3b]">
+              {Number(board.data?.minGames || 3)} different games
+            </span>
+            . A losing run never lowers it.
+          </p>
+        )}
+
+        {isGainTab(tab) && (
+          <div className="mb-4 flex flex-col items-center gap-2">
+            <p className="text-center text-xs text-cyan-200/70">
+              Ranked by{" "}
+              <span className="font-bold text-[#f5ff3b]">positive trophies gained</span>{" "}
+              in the current UTC {gainPeriod}. Every ranked game counts; losses
+              do not subtract from this board.
+            </p>
+            <div className="flex gap-2">
+              {["week", "month", "year"].map((period) => (
+                <button
+                  key={period}
+                  type="button"
+                  onClick={() => setGainPeriod(period)}
+                  aria-pressed={gainPeriod === period}
+                  className={`rounded-md px-3 py-1 text-xs font-semibold capitalize focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] ${gainPeriod === period ? "bg-[#f5ff3b] text-[#06152c]" : "bg-[#0a214d] text-[#00e5ff]"}`}
+                >
+                  {period}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
 
         {isPerGameTab(tab) && (
@@ -688,6 +768,21 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                     {formatNumber(me.gamesPlayed)}{" "}
                     {Number(me.gamesPlayed) === 1 ? "game" : "games"}
                   </p>
+                ) : isPeakTab(tab) ? (
+                  <p className="mt-0.5 text-sm text-cyan-200/80">
+                    <span className="font-bold text-[#f5ff3b]">
+                      {formatNumber(me.peakTrophies)} Peak Trophies
+                    </span>
+                    {" · "}
+                    {formatNumber(me.overallTrophies)} current
+                  </p>
+                ) : isGainTab(tab) ? (
+                  <p className="mt-0.5 text-sm text-cyan-200/80">
+                    <span className="font-bold text-[#f5ff3b]">
+                      +{formatNumber(me.trophyGain)} Trophies
+                    </span>{" "}
+                    this {gainPeriod}
+                  </p>
                 ) : isOverallTab(tab) ? (
                   <p className="mt-0.5 text-sm text-cyan-200/80">
                     <span className="font-bold text-[#f5ff3b]">
@@ -699,6 +794,13 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                   </p>
                 ) : (
                   <RecordLine item={me} />
+                )}
+                {(isPeakTab(tab) || isGainTab(tab)) && me && (
+                  <p className="mt-3 text-center text-xs text-cyan-200/80">
+                    {isPeakTab(tab)
+                      ? `Your all-time peak: ${formatNumber(me.peakTrophies)} trophies across ${formatNumber(me.gamesPlayed)} games.`
+                      : `Your ${gainPeriod} gain: +${formatNumber(me.trophyGain)} trophies from ${formatNumber(me.matches)} ranked matches.`}
+                  </p>
                 )}
                 {isPerGameTab(tab) && me.provisional && (
                   <p className="mt-2 text-xs text-amber-300">
@@ -870,7 +972,11 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                     <th className="px-2 py-2 text-right text-xs uppercase tracking-wider sm:px-3 sm:text-left">
                       {isTrophyTab(tab)
                         ? "Trophies"
-                        : isStreakTab(tab)
+                        : isPeakTab(tab)
+                          ? "Peak Trophies"
+                          : isGainTab(tab)
+                            ? "Trophies Gained"
+                            : isStreakTab(tab)
                           ? "Days"
                           : isPerGameTab(tab)
                             ? "Elo"
@@ -917,11 +1023,16 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                                 >
                                   {item.user?.name || item.name}
                                   <ProvisionalChip item={item} />
-                                  {!isOverallTab(tab) && !isTrophyTab(tab) && (
-                                    <OverallEloBadge item={item} />
-                                  )}
+                                  {!isOverallTab(tab) &&
+                                    !isTrophyTab(tab) &&
+                                    !isPeakTab(tab) &&
+                                    !isGainTab(tab) && (
+                                      <OverallEloBadge item={item} />
+                                    )}
                                 </span>
-                                <RecordLine item={item} />
+                                {!isPeakTab(tab) && !isGainTab(tab) && (
+                                  <RecordLine item={item} />
+                                )}
                               </span>
                             </Link>
                             {isMe ? (

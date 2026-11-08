@@ -25,7 +25,12 @@
 import { maxStakeFor } from "../games/stakes";
 
 /** Canonical keys of the games that support rooms today. */
-export type RoomGameKey = "precision" | "pool" | "tower-arena" | "dominoes";
+export type RoomGameKey =
+  | "precision"
+  | "pool"
+  | "tower-arena"
+  | "dominoes"
+  | "solitaire-duel";
 
 export interface RoomGameDef {
   key: RoomGameKey;
@@ -56,7 +61,10 @@ function cap(key: RoomGameKey): number {
   // stake/escrow/pot column at all (src/db/migrations/0227_dominoes.sql), by
   // design. A staked Dominoes room would therefore be a match that structurally
   // cannot settle a wager, so the ceiling pins it to free play.
-  if (key === "pool" || key === "dominoes") return 0;
+  // Solitaire Duel is a free ranked game by construction: its match row has a
+  // stake column, but the competitive reward is rating/trophies, and a private
+  // room must never be the way a wager enters a game that does not use one.
+  if (key === "pool" || key === "dominoes" || key === "solitaire-duel") return 0;
   return global;
 }
 
@@ -68,6 +76,10 @@ export const ROOM_GAMES: readonly RoomGameDef[] = Object.freeze([
   // public lobby, via `createDominoesMatchForPair` (src/lib/dominoes/serverStore).
   // Free play only — see `cap`.
   { key: "dominoes", label: "Dominoes", mode: "pvp", seats: 2, maxStake: cap("dominoes") },
+  // Solitaire Duel joins on its own `createSolitaireMatchForPair` primitive:
+  // the same server seed → solvable deal → two independent boards as its public
+  // lobby, seeded directly for the named pair. Free play only — see `cap`.
+  { key: "solitaire-duel", label: "Solitaire Duel", mode: "pvp", seats: 2, maxStake: cap("solitaire-duel") },
 ]);
 
 /** Every supported key, for server-side membership tests. */

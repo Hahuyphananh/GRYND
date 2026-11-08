@@ -436,8 +436,12 @@ export async function createOrJoin({
     );
 
     // Only a lobby AT THE CALLER'S STAKE is joinable, so two players never
-    // escrow different sums into one pot.
-    const [open] = await tx
+    // escrow different sums into one pot. Up to 20 open lobbies are locked and
+    // then ranked by TROPHY PROXIMITY: the caller joins the closest ladder
+    // match, not merely the oldest open seat. Equal trophy counts are therefore
+    // paired with each other, and a 1,000-trophy player is never dropped into a
+    // beginner's lobby just because it was created first.
+    const candidates = await tx
       .select()
       .from(solitaireDuelMatches)
       .where(
@@ -448,13 +452,57 @@ export async function createOrJoin({
         ),
       )
       .orderBy(sql`${solitaireDuelMatches.createdAt} ASC`)
-      .limit(1)
+      .limit(20)
       .for("update");
 
-    if (open) {
+    if (candidates.length > 0) {
       // The caller's own lobby — return it rather than creating a second.
-      if (open.player1Id === userId) return { match: open, joined: false } as const;
-      return await joinExistingMatch(tx, open.id, userId, nowMs, stakeAmount);
+      const own = candidates.find((candidate) => candidate.player1Id === userId);
+      if (own) return { match: own, joined: false } as const;
+
+      const playerIds = [
+        ...new Set(candidates.map((candidate) => candidate.player1Id)),
+      ];
+      let trophiesByClerkId = new Map<string, number>();
+      if (playerIds.length > 0) {
+        const rows = await tx.execute(sql`
+          SELECT u.clerk_id AS "clerkId", t.trophies
+            FROM users u
+            LEFT JOIN player_trophies t
+              ON t.user_id = u.id AND t.game_key = 'solitaire-duel'
+           WHERE u.clerk_id IN (${sql.join(
+             playerIds.map((id) => sql`${id}`),
+             sql`, `,
+           )})
+        `);
+        const list = (
+          Array.isArray(rows) ? rows : ((rows as any).rows ?? [])
+        ) as any[];
+        trophiesByClerkId = new Map(
+          list
+            .filter((row) => Number.isFinite(Number(row.trophies)))
+            .map((row) => [String(row.clerkId), Number(row.trophies)]),
+        );
+      }
+
+      const callerTrophies = trophiesByClerkId.get(userId);
+      const ranked = [...candidates].sort((a, b) => {
+        const gap = (candidate: typeof a) => {
+          const theirs = trophiesByClerkId.get(candidate.player1Id);
+          // A player with no trophy row (never ranked) has no signal. They are
+          // placed after known-trophy candidates rather than treated as 0.
+          if (callerTrophies == null || theirs == null) {
+            return Number.MAX_SAFE_INTEGER;
+          }
+          return Math.abs(callerTrophies - theirs);
+        };
+        return (
+          gap(a) - gap(b) ||
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
+      });
+
+      return await joinExistingMatch(tx, ranked[0].id, userId, nowMs, stakeAmount);
     }
 
     return await createWaitingMatch(tx, userId, nowMs, stakeAmount);
@@ -518,6 +566,91 @@ async function createWaitingMatch(tx: any, userId: string, nowMs: number, stakeA
   });
 
   return { match, joined: false } as const;
+}
+
+/**
+ * Create a PRIVATE room / friend-challenge match for one NAMED pair.
+ *
+ * This is the room adapter's primitive (src/lib/rooms/games.ts), not a second
+ * matchmaker: it seeds the SAME server seed → solvable deal → two independent
+ * boards as the public lobby, and starts immediately with the same synchronized
+ * GO instant. The row is never `waiting`, so the public queue can never join it
+ * and no third player can see the deal.
+ *
+ * No stake is accepted. Solitaire Duel is free ranked play; the room catalog
+ * pins it to free play, and a private match must not be a back door into a
+ * wager the game's own flow never takes.
+ */
+export async function createSolitaireMatchForPair({
+  hostUserId,
+  opponentUserId,
+  nowMs = Date.now(),
+}: {
+  hostUserId: string;
+  opponentUserId: string;
+  nowMs?: number;
+}) {
+  if (!hostUserId || !opponentUserId) {
+    return { ok: false, status: 400, message: "Both players are required" } as const;
+  }
+  if (String(hostUserId) === String(opponentUserId)) {
+    return { ok: false, status: 400, message: "A match needs two different players" } as const;
+  }
+
+  const serverSeed = randomHex(32);
+  const serverSeedHash = getServerSeedHash(serverSeed);
+  const dealSeed = deriveDealSeed({ serverSeed, variantVersion: VARIANT_VERSION });
+  const deal: SolitaireDeal = solvableDealFromSeed(dealSeed);
+  const opening = initialStateFromDeal(deal);
+  const openingProgress = progressOf(opening);
+  const goAtMs = nowMs + READY_COUNTDOWN_MS;
+
+  try {
+    const [match] = await db
+      .insert(solitaireDuelMatches)
+      .values({
+        variant: VARIANT,
+        variantVersion: VARIANT_VERSION,
+        player1Id: hostUserId,
+        player2Id: opponentUserId,
+        status: MATCH_STATUS.PLAYING,
+        isAi: false,
+        stakeAmount: "0",
+        serverSeed,
+        serverSeedHash,
+        dealSeed,
+        deal,
+        p1State: opening,
+        p2State: cloneState(opening),
+        p1Ply: 0,
+        p2Ply: 0,
+        p1PeakFoundation: opening.peakFoundation,
+        p2PeakFoundation: opening.peakFoundation,
+        p1Revealed: openingProgress.revealedTableau,
+        p2Revealed: openingProgress.revealedTableau,
+        goAt: new Date(goAtMs),
+        startedAt: new Date(nowMs),
+        p1LastActionAt: new Date(goAtMs),
+        p2LastActionAt: new Date(goAtMs),
+        updatedAt: new Date(nowMs),
+      })
+      .returning();
+
+    mirrorQueueCreated({
+      gameKey: "solitaire-duel",
+      matchId: match.id,
+      playerCount: 2,
+      queuedAt: new Date(nowMs),
+    });
+
+    return { ok: true, matchId: String(match.id) } as const;
+  } catch (error) {
+    console.error(
+      "[solitaire-duel] private pair match failed:",
+      error instanceof Error ? error.message : error,
+    );
+    return { ok: false, status: 500, message: "Unable to create the match" } as const;
+  }
 }
 
 /**

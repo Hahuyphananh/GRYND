@@ -128,6 +128,7 @@ test("only the games with a seat-this-pair primitive are offered", () => {
     "dominoes",
     "pool",
     "precision",
+    "solitaire-duel",
     "tower-arena",
   ]);
   for (const game of ROOM_GAMES) {
@@ -148,7 +149,6 @@ test("create-or-join games are NOT offered (they cannot seat a named pair)", () 
     "mines-pvp",
     "speed-typing",
     "sudoku-duel",
-    "solitaire-duel",
     "crash-arena",
   ];
   for (const key of unsupported) {
@@ -163,7 +163,7 @@ test("create-or-join games are NOT offered (they cannot seat a named pair)", () 
 test("every offered game's room ceiling comes from the platform wager policy", () => {
   // A game whose lobby flow carries no escrow pins the ceiling to 0 instead of
   // taking the platform maximum: a staked room there could never settle a wager.
-  const FREE_ONLY = new Set(["pool", "dominoes"]);
+  const FREE_ONLY = new Set(["pool", "dominoes", "solitaire-duel"]);
   for (const game of ROOM_GAMES) {
     assert.equal(
       game.maxStake,
@@ -175,6 +175,8 @@ test("every offered game's room ceiling comes from the platform wager policy", (
   // has no stake column at all.
   assert.equal(getRoomGame("pool").maxStake, 0);
   assert.equal(getRoomGame("dominoes").maxStake, 0);
+  // Solitaire Duel is free ranked play; a private room must not add a wager.
+  assert.equal(getRoomGame("solitaire-duel").maxStake, 0);
   assert.ok(getRoomGame("precision").maxStake > 0);
   assert.ok(getRoomGame("tower-arena").maxStake > 0);
 });
@@ -280,6 +282,14 @@ test("Pool Masters rooms are free-play only, refused server-side", () => {
   assert.equal(staked.ok, false);
   assert.equal(staked.status, 400);
   assert.match(String(staked.message), /free-play only/i);
+});
+
+test("Solitaire Duel rooms are free-play only, refused server-side", () => {
+  const staked = resolveRoomSettings("solitaire-duel", { stake: 10 });
+  assert.equal(staked.ok, false);
+  assert.equal(staked.status, 400);
+  assert.match(String(staked.message), /free-play only/i);
+  assert.equal(resolveRoomSettings("solitaire-duel", {}).settings.stake, 0);
 });
 
 test("an unsupported game can never be given settings", () => {

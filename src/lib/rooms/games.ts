@@ -34,6 +34,7 @@
 import { createDominoesMatchForPair } from "../dominoes/serverStore";
 import { createPoolMatchForPair } from "../pool/lobbyJoin";
 import { createPrecisionMatchForPair } from "../precision/matchmaking";
+import { createSolitaireMatchForPair } from "../solitaire-duel/serverStore";
 import { createTowerArenaMatchForPair } from "../tower-arena/serverStore";
 import { getRoomGame, type RoomGameDef } from "./catalog";
 import type { RoomSettings } from "./settings";
@@ -67,6 +68,8 @@ export function matchUrlFor(gameKey: string, matchId: string): string {
       // The canonical public match URL — the same one the lobby navigates to
       // and the same one `/games/:slug/:path+` rewrites to the match page.
       return `/games/dominoes/${matchId}`;
+    case "solitaire-duel":
+      return `/casino/solitaire-duel/${matchId}`;
     default:
       // Unreachable: `getRoomGame` gated every room before this point. Returning
       // null rather than a guessed URL keeps a bad room from sending players to
@@ -195,6 +198,29 @@ export async function createPairMatch({
           ok: false,
           status: failed.status || 500,
           message: failed.message || "Unable to create the match",
+        };
+      }
+      const created = result as { matchId: string };
+      return {
+        ok: true,
+        matchId: created.matchId,
+        matchUrl: matchUrlFor(game.key, created.matchId),
+      };
+    }
+
+    case "solitaire-duel": {
+      // No stake is passed: the catalog pins Solitaire rooms to free play, and
+      // the store's pair primitive takes no stake at all.
+      const result = await createSolitaireMatchForPair({
+        hostUserId,
+        opponentUserId,
+      });
+      if (!result.ok) {
+        const failed = result as { status?: number; message?: string };
+        return {
+          ok: false,
+          status: failed.status ?? 400,
+          message: failed.message ?? "Unable to create the match",
         };
       }
       const created = result as { matchId: string };

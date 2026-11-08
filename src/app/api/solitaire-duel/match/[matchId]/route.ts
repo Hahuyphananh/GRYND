@@ -27,6 +27,7 @@ import { NextResponse } from "next/server";
 import { requirePracticePlayer } from "../../../../../lib/auth/guestSession";
 import { logError } from "../../../../../lib/logError";
 import { getSeatIdentity } from "../../../../../lib/seatIdentity";
+import { getTrophyMapsForUsers } from "../../../../../lib/trophyStore";
 import { fetchMatch, isMatchId } from "../../../../../lib/solitaire-duel/serverStore";
 
 export const dynamic = "force-dynamic";
@@ -68,6 +69,31 @@ export async function GET(
         result.match.player1Id,
         result.match.player2Id ?? null,
       );
+      // Per-game trophies for the two seats, so the match view can show the
+      // ladder count next to each name. Real `user_*` accounts only (the bot
+      // sentinel has no trophy row and must never be given one), and a failed
+      // trophy read never fails the match payload.
+      const ids = [result.match.player1Id, result.match.player2Id]
+        .filter((id): id is string => typeof id === "string" && id.startsWith("user_"));
+      if (ids.length > 0 && players) {
+        const trophyMaps = await getTrophyMapsForUsers(ids);
+        players = {
+          player1: players.player1
+            ? {
+                ...players.player1,
+                trophies: trophyMaps[result.match.player1Id]?.["solitaire-duel"] ?? null,
+              }
+            : players.player1,
+          player2:
+            players.player2 && result.match.player2Id
+              ? {
+                  ...players.player2,
+                  trophies:
+                    trophyMaps[result.match.player2Id]?.["solitaire-duel"] ?? null,
+                }
+              : players.player2,
+        };
+      }
     } catch {
       players = null;
     }

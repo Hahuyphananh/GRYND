@@ -40,6 +40,10 @@ import {
   applyTrophyDelta,
   applyTrophyChange,
   computeMatchTrophies,
+  duelTrophyDelta,
+  trophyAdjustmentForOpponent,
+  TROPHY_ADJUSTMENT_MAX,
+  trophyGainPeriodStart,
   computePlacementTrophies,
   placementLadder,
   placementDeltaForRank,
@@ -410,20 +414,80 @@ test("clampTrophies: floor and garbage input (unbounded above)", () => {
 // 3. A whole match
 // ════════════════════════════════════════════════════════════════════════
 
-test("computeMatchTrophies: a win moves +30 / −30 independently of the gap", () => {
-  const r = computeMatchTrophies({ winnerTrophies: 100, loserTrophies: 300 });
+test("computeMatchTrophies: equal trophies pay +30 / −30", () => {
+  const r = computeMatchTrophies({ winnerTrophies: 100, loserTrophies: 100 });
   assert.equal(r.result, "win");
   assert.equal(r.winner.delta, 30);
   assert.equal(r.winner.after, 130);
   assert.equal(r.loser.delta, -30);
-  assert.equal(r.loser.after, 270);
-  // A flat rule ignores the size of the gap — unlike Elo. A 9000-gap win still
-  // pays exactly +30, and a loser already at 0 cannot go negative.
+  assert.equal(r.loser.after, 70);
+});
+
+test("computeMatchTrophies: the opponent gap adjusts the ±30 (Clash-Royale style)", () => {
+  // Beating a player 200 trophies higher is worth the full +20 adjustment.
+  const upset = computeMatchTrophies({ winnerTrophies: 100, loserTrophies: 300 });
+  assert.equal(upset.winner.delta, 50);
+  assert.equal(upset.winner.after, 150);
+  assert.equal(upset.loser.delta, -50);
+  assert.equal(upset.loser.after, 250);
+  // …and the two nominal deltas are exactly zero-sum.
+  assert.equal(upset.winner.nominalDelta + upset.loser.nominalDelta, 0);
+
+  // Losing to a player 200 lower costs the full 50; beating them pays only 10.
+  const favouriteLoses = computeMatchTrophies({
+    winnerTrophies: 300,
+    loserTrophies: 100,
+  });
+  assert.equal(favouriteLoses.winner.delta, 10);
+  // The lower player loses to a 200-higher opponent: −30 + 20 = −10.
+  assert.equal(favouriteLoses.loser.delta, -10);
+  assert.equal(
+    favouriteLoses.winner.nominalDelta + favouriteLoses.loser.nominalDelta,
+    0,
+  );
+
+  // The adjustment caps at ±20 even for a 9,000-trophy gap.
+  assert.equal(
+    trophyAdjustmentForOpponent({ playerTrophies: 0, opponentTrophies: 9000 }),
+    TROPHY_ADJUSTMENT_MAX,
+  );
+  assert.equal(
+    trophyAdjustmentForOpponent({ playerTrophies: 9000, opponentTrophies: 0 }),
+    -TROPHY_ADJUSTMENT_MAX,
+  );
   const lopsided = computeMatchTrophies({ winnerTrophies: 900, loserTrophies: 0 });
-  assert.equal(lopsided.winner.delta, 30);
-  assert.equal(lopsided.winner.after, 930);
-  assert.equal(lopsided.loser.delta, 0);
+  assert.equal(lopsided.winner.delta, 10);
+  assert.equal(lopsided.winner.after, 910);
+  assert.equal(lopsided.loser.delta, 0); // floored at 0, never negative
   assert.equal(lopsided.loser.after, 0);
+});
+
+test("duelTrophyDelta: draws are always 0 whatever the gap", () => {
+  assert.equal(
+    duelTrophyDelta({ playerTrophies: 0, opponentTrophies: 9000, outcome: "draw" }),
+    0,
+  );
+  assert.equal(
+    duelTrophyDelta({ playerTrophies: 9000, opponentTrophies: 0, outcome: "draw" }),
+    0,
+  );
+});
+
+test("trophyGainPeriodStart: UTC calendar week/month/year windows", () => {
+  // Wednesday 2026-11-04 12:00 UTC → Monday 2026-11-02 00:00 UTC.
+  assert.equal(
+    trophyGainPeriodStart("week", Date.UTC(2026, 10, 4, 12)),
+    Date.UTC(2026, 10, 2),
+  );
+  assert.equal(
+    trophyGainPeriodStart("month", Date.UTC(2026, 10, 4, 12)),
+    Date.UTC(2026, 10, 1),
+  );
+  assert.equal(
+    trophyGainPeriodStart("year", Date.UTC(2026, 10, 4, 12)),
+    Date.UTC(2026, 0, 1),
+  );
+  assert.equal(trophyGainPeriodStart("season"), null);
 });
 
 test("computeMatchTrophies: a draw moves neither side", () => {
@@ -536,7 +600,9 @@ test("WRITER: a second match uses the stored count, not 0 again", async () => {
     matchId: "match-2",
   });
   assert.equal(second.winner.trophiesBefore, 30);
-  assert.equal(second.winner.trophiesAfter, 60);
+  // The loser is still on 0, so the winner is 30 trophies higher: the
+  // opponent-gap adjustment trims the win to +27 (30 − 3).
+  assert.equal(second.winner.trophiesAfter, 57);
   assert.equal(db.state.trophies.get("11:chess").games_rated, 2);
 });
 
@@ -1281,8 +1347,10 @@ test("WRITER: a win at the old 1,000 ceiling keeps climbing", async () => {
   const result = await applyTrophyResult({ tx: db.tx, ...WIN_ARGS });
   assert.equal(result.applied, true);
   assert.equal(result.winner.trophiesBefore, 1000);
-  assert.equal(result.winner.trophiesAfter, 1030); // +30 — no ceiling
-  assert.equal(result.winner.delta, 30);
+  // The opponent is on 0, so the adaptive rule trims the win to +10 — but the
+  // count still climbs above the old 1,000 ceiling with no cap.
+  assert.equal(result.winner.trophiesAfter, 1010);
+  assert.equal(result.winner.delta, 10);
 });
 
 // ════════════════════════════════════════════════════════════════════════
@@ -1298,11 +1366,12 @@ test("TEST RESET PREVENTION: re-registering restores the trophy count", async ()
       matchId: `m-${i}`,
     });
   }
-  assert.equal(first.state.trophies.get("11:chess").trophies, 150);
+  // The opponent stays on 0, so the adaptive rule trims each successive win.
+  assert.equal(first.state.trophies.get("11:chess").trophies, 123);
 
   // The identity ledger holds the snapshot keyed by the email digest.
   const winnerHash = identityHashForEmail("winner@grynd.test");
-  assert.equal(first.state.identities.get(`${winnerHash}:chess`).trophies, 150);
+  assert.equal(first.state.identities.get(`${winnerHash}:chess`).trophies, 123);
 
   // "Delete + re-register": a brand-new users row, same email (the opponent
   // is a fresh account too, since the match still needs two distinct users).
@@ -1321,8 +1390,9 @@ test("TEST RESET PREVENTION: re-registering restores the trophy count", async ()
     loserClerkId: "user_rival",
   });
   assert.equal(restored.applied, true);
-  assert.equal(restored.winner.trophiesBefore, 150); // restored, not 0
-  assert.equal(restored.winner.trophiesAfter, 180);
+  assert.equal(restored.winner.trophiesBefore, 123); // restored, not 0
+  // New opponent on 0 is 123 lower → adjustment −12, so the win pays +18.
+  assert.equal(restored.winner.trophiesAfter, 141);
 });
 
 // ════════════════════════════════════════════════════════════════════════

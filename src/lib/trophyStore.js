@@ -59,11 +59,15 @@ import {
   OVERALL_TROPHIES_LABEL,
   OVERALL_TROPHY_MIN_GAMES,
   TROPHY_GAMES,
+  TROPHY_GAIN_PERIODS,
   TROPHY_START,
   applyTrophyChange,
   clampTrophies,
   computePlacementTrophies,
+  duelTrophyDelta,
+  isTrophyGainPeriod,
   trophyDeltaForOutcome,
+  trophyGainPeriodStart,
   getTrophyGameLabel,
   isTrophyGame,
   isValidTrophyOutcome,
@@ -302,6 +306,10 @@ export async function fetchOverallTrophyLeaderboard({
   limit = 50,
   offset = 0,
   clerkId = null,
+  // "current" ranks the sum of CURRENT counts; "peak" ranks the sum of each
+  // player's all-time high-water mark. Both values travel on every row so a
+  // board can show the other number without a second query.
+  metric = "current",
 } = {}) {
   const lim = Math.min(100, Math.max(1, Number(limit) || 20));
   const off = Math.max(0, Number(offset) || 0);
@@ -311,6 +319,7 @@ export async function fetchOverallTrophyLeaderboard({
       SELECT
         t.user_id,
         SUM(t.trophies)::int AS overall_trophies,
+        SUM(t.peak_trophies)::int AS overall_peak_trophies,
         COUNT(*)::int AS games_played
       FROM player_trophies t
       GROUP BY t.user_id
@@ -319,12 +328,13 @@ export async function fetchOverallTrophyLeaderboard({
     ranked AS (
       SELECT
         ROW_NUMBER() OVER (
-          ORDER BY e.overall_trophies DESC, u.id ASC
+          ORDER BY ${metric === "peak" ? sql`e.overall_peak_trophies` : sql`e.overall_trophies`} DESC, u.id ASC
         )::int AS rank,
         u.clerk_id AS clerk_id,
         u.name AS name,
         u.selected_icon AS icon_key,
         e.overall_trophies AS overall_trophies,
+        e.overall_peak_trophies AS overall_peak_trophies,
         e.games_played AS games_played,
         json_build_object('name', u.name, 'icon_key', u.selected_icon) AS "user"
       FROM eligible e
@@ -356,9 +366,92 @@ export function toOverallTrophyShape(row) {
     ...row,
     label: OVERALL_TROPHIES_LABEL,
     overallTrophies: Number(row.overallTrophies ?? row.overall_trophies ?? 0),
+    // The all-time high-water mark, summed across games. Monotonic on each
+    // `player_trophies` row, so it can never fall after a bad run.
+    peakTrophies: Number(
+      row.peakTrophies ?? row.overallPeakTrophies ?? row.overall_peak_trophies ??
+        row.overallTrophies ?? row.overall_trophies ?? 0,
+    ),
     gamesPlayed: Number(row.gamesPlayed ?? row.games_played ?? 0),
   };
 }
+
+/**
+ * The TROPHY-GAIN board for the CURRENT UTC calendar week, month or year.
+ *
+ * Ranks the SUM OF POSITIVE deltas each player earned inside the window, read
+ * from `trophy_events` (the same journal that makes settlement idempotent), so
+ * a gain board can never be fabricated or edited by a client. Losses are
+ * deliberately not netted here: the board answers "who climbed the most this
+ * week/month/year", not "who has the best net". Peak trophies and current
+ * trophies have their own boards.
+ *
+ * `{ items, me, period, since }` mirrors the other trophy readers.
+ */
+export async function fetchTrophyGainLeaderboard({
+  period = "week",
+  limit = 50,
+  offset = 0,
+  clerkId = null,
+} = {}) {
+  const chosenPeriod = isTrophyGainPeriod(period) ? String(period) : "week";
+  const sinceMs = trophyGainPeriodStart(chosenPeriod);
+  if (sinceMs == null) return { items: [], me: null, period: chosenPeriod, since: null };
+
+  const lim = Math.min(100, Math.max(1, Number(limit) || 20));
+  const off = Math.max(0, Number(offset) || 0);
+  const since = new Date(sinceMs);
+
+  const rows = await getSql().execute(sql`
+    WITH gains AS (
+      SELECT
+        e.user_id,
+        SUM(GREATEST(e.delta, 0))::int AS trophy_gain,
+        COUNT(*)::int AS matches
+      FROM trophy_events e
+      WHERE e.created_at >= ${since}
+      GROUP BY e.user_id
+    ),
+    ranked AS (
+      SELECT
+        ROW_NUMBER() OVER (
+          ORDER BY g.trophy_gain DESC, u.id ASC
+        )::int AS rank,
+        u.clerk_id AS clerk_id,
+        u.name AS name,
+        u.selected_icon AS icon_key,
+        g.trophy_gain AS trophy_gain,
+        g.matches AS matches,
+        json_build_object('name', u.name, 'icon_key', u.selected_icon) AS "user"
+      FROM gains g
+      INNER JOIN users u ON u.id = g.user_id
+    ),
+    paged AS (
+      SELECT * FROM ranked ORDER BY rank ASC LIMIT ${lim} OFFSET ${off}
+    )
+    SELECT
+      COALESCE(json_agg(paged ORDER BY rank ASC), '[]'::json) AS items,
+      (SELECT row_to_json(ranked) FROM ranked WHERE clerk_id = ${clerkId} LIMIT 1) AS me
+    FROM paged
+  `);
+
+  const row = rows.rows?.[0] ?? rows[0] ?? {};
+  const items = Array.isArray(row.items) ? row.items : [];
+  const shape = (item) => ({
+    ...item,
+    trophyGain: Number(item.trophyGain ?? item.trophy_gain ?? 0),
+    matches: Number(item.matches ?? 0),
+  });
+  return {
+    items: items.map(shape),
+    me: row.me ? shape(row.me) : null,
+    period: chosenPeriod,
+    since: since.toISOString(),
+  };
+}
+
+/** Re-exported so routes/tests read one period list. */
+export { TROPHY_GAIN_PERIODS, isTrophyGainPeriod };
 
 /**
  * The full set of trophy games as `{ key, label }`, so the UI never hardcodes
@@ -801,6 +894,28 @@ export async function applyTrophyResult({
       userIds[String(clerkId) === String(winnerClerkId)
         ? String(loserClerkId)
         : String(winnerClerkId)] ?? null,
+    // ±30 at equal trophy counts, adjusted by the OTHER seat's count. Computed
+    // HERE, from the rows locked inside the transaction, so a stale read can
+    // never decide a match's trophy swing.
+    nominalDeltasFor: (lockedSeats) => {
+      const byClerkId = new Map(
+        lockedSeats.map((seat) => [String(seat.clerkId), seat]),
+      );
+      return lockedSeats.map((seat) => {
+        if (seat.outcome === "draw") return 0;
+        const opponentClerkId =
+          String(seat.clerkId) === String(winnerClerkId)
+            ? String(loserClerkId)
+            : String(winnerClerkId);
+        const opponent = byClerkId.get(opponentClerkId);
+        if (!opponent) return trophyDeltaForOutcome(seat.outcome);
+        return duelTrophyDelta({
+          playerTrophies: seat.trophies,
+          opponentTrophies: opponent.trophies,
+          outcome: seat.outcome,
+        });
+      });
+    },
   });
   if (!settled.applied) return settled;
 

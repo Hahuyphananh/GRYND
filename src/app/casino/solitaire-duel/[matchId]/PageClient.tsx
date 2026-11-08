@@ -58,6 +58,7 @@ import {
   IconHourglassHigh,
   IconRefresh,
   IconSwords,
+  IconTrophy,
 } from "@tabler/icons-react";
 
 import NavigationBar from "../../../../components/navigation-bar";
@@ -106,6 +107,8 @@ type SeatIdentity = {
   iconKey?: string | null;
   nameColor?: string | null;
   profileFrame?: unknown;
+  /** Per-game trophy count for this seat, or null for a bot/unranked seat. */
+  trophies?: number | null;
   /** True for a signed-out free-play visitor (renders the "G" guest badge). */
   isGuest?: boolean;
 } | null;
@@ -227,6 +230,18 @@ function Meter({
           <span className="truncate text-xs font-bold uppercase tracking-wider text-white/75">
             {label}
           </span>
+          {/* The ladder count travels with the seat identity, so both names are
+              introduced with the number their matchmaking was based on. */}
+          {identity?.trophies != null && Number.isFinite(Number(identity.trophies)) && (
+            <span
+              data-testid={`solitaire-trophies-${tone}`}
+              title={`${Number(identity.trophies).toLocaleString()} Solitaire Duel trophies`}
+              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-400/40 bg-amber-400/10 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-200"
+            >
+              <IconTrophy size={11} aria-hidden="true" />
+              {Number(identity.trophies).toLocaleString()}
+            </span>
+          )}
           {completed && (
             <span className="shrink-0 rounded-full border border-emerald-400/50 bg-emerald-400/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-300">
               Solved

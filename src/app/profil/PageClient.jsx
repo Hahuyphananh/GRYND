@@ -1246,6 +1246,51 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
           {t("profile.title", "Your Profile")}
         </h1>
 
+        <div
+          className="mt-8 bg-[#0b224f]/85 border border-[#00e5ff]/30 
+rounded-xl p-6 
+shadow-[0_0_24px_rgba(0,229,255,0.15)]"
+        >
+          <h2 className="text-xl text-[#00e5ff] mb-4">
+            {t("profile.stats.title", "User Statistics")}
+          </h2>
+          {statsError && <p className="text-red-400 mb-4">{statsError}</p>}
+          {/* Tabbed stat panel — mirrors the /classement leaderboard
+              (record / weekly / streaks) instead of a flat grid. */}
+          {/* Per-game Elo ratings come from /api/user-stats (read fresh on
+              every request, outside its stats cache) and render as the
+              "Game Ratings" tab. */}
+          <UserStatsTabs
+            record={stats?.record}
+            ratings={stats?.ratings}
+            overall={stats}
+          />
+
+          {/* Pointer to the GRYND PRO performance dashboard. It is a LINK, not
+              an embedded dashboard: the advanced analytics are gated on the
+              server (/api/stats/performance), so a free player sees the upsell
+              there rather than a second empty panel here. */}
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#f5ff3b]/30 bg-[#f5ff3b]/5 p-4">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#00e5ff]">
+                {t("profile.stats.advanced_badge", "GRYND PRO")}
+              </p>
+              <p className="mt-0.5 text-sm text-[#d8fbff]">
+                {t(
+                  "profile.stats.advanced",
+                  "Performance dashboard — win rates, Elo and trophy graphs, and your overall ranking over time.",
+                )}
+              </p>
+            </div>
+            <Link
+              href="/stats"
+              className="shrink-0 rounded-lg border border-[#f5ff3b]/50 bg-[#f5ff3b]/10 px-4 py-2 text-sm font-semibold text-[#f5ff3b] transition hover:bg-[#f5ff3b]/20"
+            >
+              {t("profile.stats.advanced_open", "Open dashboard")}
+            </Link>
+          </div>
+        </div>
+
         {/* Guest→account conversion (Phase 4): renders only while this
             browser has an unclaimed guest practice record, or to confirm a
             claim already made. Nothing changes for accounts without one. */}
@@ -2429,51 +2474,6 @@ hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 f
             </div>
           </div>
         )}
-
-        <div
-          className="mt-8 bg-[#0b224f]/85 border border-[#00e5ff]/30 
-rounded-xl p-6 
-shadow-[0_0_24px_rgba(0,229,255,0.15)]"
-        >
-          <h2 className="text-xl text-[#00e5ff] mb-4">
-            {t("profile.stats.title", "User Statistics")}
-          </h2>
-          {statsError && <p className="text-red-400 mb-4">{statsError}</p>}
-          {/* Tabbed stat panel — mirrors the /classement leaderboard
-              (record / weekly / streaks) instead of a flat grid. */}
-          {/* Per-game Elo ratings come from /api/user-stats (read fresh on
-              every request, outside its stats cache) and render as the
-              "Game Ratings" tab. */}
-          <UserStatsTabs
-            record={stats?.record}
-            ratings={stats?.ratings}
-            overall={stats}
-          />
-
-          {/* Pointer to the GRYND PRO performance dashboard. It is a LINK, not
-              an embedded dashboard: the advanced analytics are gated on the
-              server (/api/stats/performance), so a free player sees the upsell
-              there rather than a second empty panel here. */}
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#f5ff3b]/30 bg-[#f5ff3b]/5 p-4">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#00e5ff]">
-                {t("profile.stats.advanced_badge", "GRYND PRO")}
-              </p>
-              <p className="mt-0.5 text-sm text-[#d8fbff]">
-                {t(
-                  "profile.stats.advanced",
-                  "Performance dashboard — win rates, Elo and trophy graphs, and your overall ranking over time.",
-                )}
-              </p>
-            </div>
-            <Link
-              href="/stats"
-              className="shrink-0 rounded-lg border border-[#f5ff3b]/50 bg-[#f5ff3b]/10 px-4 py-2 text-sm font-semibold text-[#f5ff3b] transition hover:bg-[#f5ff3b]/20"
-            >
-              {t("profile.stats.advanced_open", "Open dashboard")}
-            </Link>
-          </div>
-        </div>
 
         <div
           className="mt-12 bg-[#0b224f]/85 border border-[#00e5ff]/30 

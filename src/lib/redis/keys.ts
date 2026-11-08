@@ -104,6 +104,20 @@ export const CacheKeys = {
     /** Every page of the cross-game Overall Trophies board. */
     overallAll: `${PREFIX}:trophy:overall:*`,
 
+    /** grynd:trophy:peak:{limit}:{offset} — all-time high-water marks. */
+    peak: (limit: number, offset: number) =>
+      `${PREFIX}:trophy:peak:${limit}:${offset}`,
+
+    /** Every page of the all-time peak trophy board. */
+    peakAll: `${PREFIX}:trophy:peak:*`,
+
+    /** grynd:trophy:gains:{period}:{limit}:{offset} */
+    gains: (period: string, limit: number, offset: number) =>
+      `${PREFIX}:trophy:gains:${period}:${limit}:${offset}`,
+
+    /** Every page of the weekly/monthly/yearly trophy-gain boards. */
+    gainsAll: `${PREFIX}:trophy:gains:*`,
+
     /** Wildcard pattern for eviction of ALL trophy boards. */
     all: `${PREFIX}:trophy:*`,
   },

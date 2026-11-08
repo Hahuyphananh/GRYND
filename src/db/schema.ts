@@ -1179,8 +1179,10 @@ export const ratingIdentities = pgTable(
 // reads as "no trophies yet" instead of a fabricated row. Every player starts
 // at TROPHY_START (0) on their first ranked match in a game.
 //
-// THE RULE (src/lib/trophies.js): win = +30, loss = −30, draw = 0, floored at 0
-// and otherwise UNBOUNDED per game. Together with the per-game Elo rating these
+// THE RULE (src/lib/trophies.js): win = +30, loss = −30 at EQUAL trophy counts,
+// adjusted up to ±20 by the opponent's trophy count (beating a higher player
+// pays more; losing to one costs less), draw = 0, floored at 0 and otherwise
+// UNBOUNDED per game. Together with the per-game Elo rating these
 // are the two matchmaking signals (src/lib/quickQueue.ts).
 //
 // Written ONLY from server-side match settlement via applyTrophyResult under
