@@ -6,13 +6,18 @@
 # Safety model
 #   * Push to main BUILDS ONLY unless repository variable GRYND_DEPLOY_ENABLED
 #     is exactly "true". Nothing here deploys by default.
-#   * A manual dispatch can deploy, but only from refs/heads/main, only with
-#     deploy=true, and only after the `grynd-production` environment's protection
-#     rules (required reviewers) approve the job.
+#   * A manual dispatch can deploy an allowlisted branch only with deploy=true,
+#     and only after the `grynd-production` environment's protection rules
+#     (required reviewers) approve the job. The allowlist is
+#     main + solitaire-first: a push can only ever deploy main, and a
+#     non-default branch needs the human dispatch (and its approval).
 #   * Two guards stop an older queued run overwriting a newer release:
-#       - preflight compares the built commit to main before the deploy job starts;
-#       - the deploy job re-checks main AND the active release immediately before
-#         activation.
+#       - preflight compares the built commit to the SELECTED BRANCH HEAD before
+#         the deploy job starts;
+#       - the deploy job re-checks that branch head AND the active release
+#         immediately before activation.
+#     A commit that is not the selected branch head is stale/diverged and is
+#     refused unless the separate allow_out_of_order recovery input is set.
 #   * The deploy job has a concurrency group, so two activations cannot overlap.
 #   * No value from a commit message, PR, branch name or workflow input is ever
 #     placed into a shell command. The host-side operation is one fixed script
@@ -85,6 +90,9 @@ jobs:
       release_id: ${{ steps.identity.outputs.release_id }}
       commit: ${{ steps.identity.outputs.commit }}
       short_commit: ${{ steps.identity.outputs.short_commit }}
+      # The branch this artifact was built from, carried into the release
+      # manifest and the deployment audit record.
+      source_branch: ${{ github.ref_name }}
       build_id: ${{ steps.build.outputs.build_id }}
       built_at: ${{ steps.manifest.outputs.built_at }}
       artifact_hash: ${{ steps.manifest.outputs.artifact_hash }}
@@ -301,12 +309,14 @@ jobs:
         env:
           RELEASE_ID: ${{ steps.identity.outputs.release_id }}
           COMMIT: ${{ steps.identity.outputs.commit }}
+          SOURCE_BRANCH: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           node deploy/build-manifest.mjs \
             --dist "dist/$RELEASE_ID" \
             --id "$RELEASE_ID" \
             --commit "$COMMIT" \
+            --branch "$SOURCE_BRANCH" \
             --arch "$EXPECTED_ARCH" \
             --workflow release.yml \
             --run-id "$GITHUB_RUN_ID" \
@@ -376,6 +386,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET: ${{ needs.build.outputs.commit }}
+          SOURCE_BRANCH: ${{ needs.build.outputs.source_branch }}
           EVENT_NAME: ${{ github.event_name }}
           GITHUB_REF: ${{ github.ref }}
           ALLOW_OUT_OF_ORDER: ${{ inputs.allow_out_of_order == true }}
@@ -391,21 +402,21 @@ jobs:
           fi
 
           set +e
-          main_status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$TARGET...main" --jq .status 2>/dev/null)
+          head_status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$TARGET...$SOURCE_BRANCH" --jq .status 2>/dev/null)
           api_code=$?
           set -e
-          if [ "$api_code" -ne 0 ] || [ -z "$main_status" ]; then main_status="unavailable"; fi
+          if [ "$api_code" -ne 0 ] || [ -z "$head_status" ]; then head_status="unavailable"; fi
 
           decision=$(node deploy/deployment-guard.mjs \
             --event="$EVENT_NAME" \
             --branch="$GITHUB_REF" \
-            --target-to-main="$main_status" \
+            --target-to-head="$head_status" \
             --allow-out-of-order="$ALLOW_OUT_OF_ORDER")
           proceed=$(jq -r '.proceed' <<<"$decision")
           reason=$(jq -r '.reason' <<<"$decision")
           echo "proceed=$proceed" >> "$GITHUB_OUTPUT"
           echo "reason=$reason" >> "$GITHUB_OUTPUT"
-          echo "main compare: $main_status → proceed=$proceed ($reason)"
+          echo "$SOURCE_BRANCH compare: $head_status → proceed=$proceed ($reason)"
           if [ "$proceed" != "true" ]; then
             echo "::warning::deployment skipped: $reason"
           fi
@@ -435,6 +446,7 @@ jobs:
       BUILD_ID: ${{ needs.build.outputs.build_id }}
       BUILT_AT: ${{ needs.build.outputs.built_at }}
       ARTIFACT_HASH: ${{ needs.build.outputs.artifact_hash }}
+      SOURCE_BRANCH: ${{ needs.build.outputs.source_branch }}
       EXPECTED_ARCH: ${{ vars.RELEASE_ARCH || 'arm64' }}
       DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
       DEPLOY_USER: ${{ vars.DEPLOY_USER || 'grynd-deploy' }}
@@ -560,15 +572,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           ACTIVE_COMMIT: ${{ steps.active.outputs.active_commit }}
+          SOURCE_BRANCH: ${{ needs.build.outputs.source_branch }}
           EVENT_NAME: ${{ github.event_name }}
           GITHUB_REF: ${{ github.ref }}
         run: |
           set -euo pipefail
           set +e
-          main_status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$COMMIT...main" --jq .status 2>/dev/null)
-          main_code=$?
+          head_status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$COMMIT...$SOURCE_BRANCH" --jq .status 2>/dev/null)
+          api_code=$?
           set -e
-          if [ "$main_code" -ne 0 ] || [ -z "$main_status" ]; then main_status="unavailable"; fi
+          if [ "$api_code" -ne 0 ] || [ -z "$head_status" ]; then head_status="unavailable"; fi
 
           active_status=""
           if [ -n "$ACTIVE_COMMIT" ]; then
@@ -582,14 +595,14 @@ jobs:
           decision=$(node deploy/deployment-guard.mjs \
             --event="$EVENT_NAME" \
             --branch="$GITHUB_REF" \
-            --target-to-main="$main_status" \
+            --target-to-head="$head_status" \
             --target-to-active="$active_status" \
             --allow-out-of-order="$ALLOW_OUT_OF_ORDER")
           proceed=$(jq -r '.proceed' <<<"$decision")
           reason=$(jq -r '.reason' <<<"$decision")
           echo "proceed=$proceed" >> "$GITHUB_OUTPUT"
           echo "reason=$reason" >> "$GITHUB_OUTPUT"
-          echo "main=$main_status active=${active_status:-none} → proceed=$proceed ($reason)"
+          echo "$SOURCE_BRANCH head=$head_status active=${active_status:-none} → proceed=$proceed ($reason)"
           if [ "$proceed" != "true" ]; then
             echo "::warning::activation skipped: $reason"
           fi
@@ -612,6 +625,7 @@ jobs:
             --outcome=skipped \
             --skip-reason="$SKIP_REASON" \
             --commit="$COMMIT" \
+            --source-branch="$SOURCE_BRANCH" \
             --release-id="$RELEASE_ID" \
             --build-id="$BUILD_ID" \
             --built-at="$BUILT_AT" \
@@ -653,6 +667,7 @@ jobs:
           jq -n \
             --arg releaseId "$RELEASE_ID" \
             --arg commit "$COMMIT" \
+            --arg sourceBranch "$SOURCE_BRANCH" \
             --arg buildId "$BUILD_ID" \
             --arg runId "$RUN_ID" \
             --argjson runAttempt "$RUN_ATTEMPT" \
@@ -664,7 +679,7 @@ jobs:
             --arg requestedBy "$REQUESTED_BY" \
             --arg reason "$REASON" \
             --arg artifactHash "$ARTIFACT_HASH" \
-            '{releaseId:$releaseId, commit:$commit, buildId:$buildId, runId:$runId, runAttempt:$runAttempt, workflow:$workflow, event:$event, target:$target, builtAt:$builtAt, startedAt:$startedAt, requestedBy:$requestedBy, reason:$reason, artifactHash:$artifactHash}' \
+            '{releaseId:$releaseId, commit:$commit, sourceBranch:$sourceBranch, buildId:$buildId, runId:$runId, runAttempt:$runAttempt, workflow:$workflow, event:$event, target:$target, builtAt:$builtAt, startedAt:$startedAt, requestedBy:$requestedBy, reason:$reason, artifactHash:$artifactHash}' \
             > deploy-request.json
 
       - name: Install, activate, verify and record
@@ -710,6 +725,7 @@ jobs:
             --stage=unknown \
             --skip-reason="the host-side deployment runner did not return a record" \
             --commit="$COMMIT" \
+            --source-branch="$SOURCE_BRANCH" \
             --release-id="$RELEASE_ID" \
             --build-id="$BUILD_ID" \
             --built-at="$BUILT_AT" \
@@ -741,6 +757,7 @@ jobs:
             echo "| field | value |"
             echo "|---|---|"
             echo "| release id | \`$RELEASE_ID\` |"
+            echo "| branch | \`$SOURCE_BRANCH\` |"
             echo "| commit | \`$COMMIT\` |"
             echo "| guard | ${GUARD_PROCEED:-none} — ${GUARD_REASON:-not evaluated} |"
             echo "| runner exit | ${RUNNER_EXIT:-not run} |"

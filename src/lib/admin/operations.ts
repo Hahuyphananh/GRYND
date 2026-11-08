@@ -51,6 +51,8 @@ export type ActiveRelease = {
   commit: string | null;
   shortCommit: string | null;
   buildId: string | null;
+  /** The branch the release was built from (recorded in release.json). */
+  sourceBranch: string | null;
   activatedAt: string | null;
   actor: string | null;
   reason: string | null;
@@ -88,6 +90,7 @@ export type DeploymentRecord = {
   runId: string | null;
   commit: string | null;
   shortCommit: string | null;
+  sourceBranch: string | null;
   releaseId: string | null;
   buildId: string | null;
   builtAt: string | null;
@@ -316,6 +319,7 @@ function normaliseActive(value: unknown): ActiveRelease | null {
     commit,
     shortCommit: commit ? commit.slice(0, 7) : null,
     buildId: safeText(record.buildId, 120),
+    sourceBranch: safeText(record.sourceBranch, 100),
     activatedAt: isoOrNull(record.activatedAt),
     actor: safeText(record.actor, 100),
     reason: safeText(record.reason, 200),
@@ -343,6 +347,7 @@ function normaliseDeployment(value: unknown): DeploymentRecord | null {
     runId: safeText(record.runId, 20),
     commit,
     shortCommit: commit.slice(0, 7),
+    sourceBranch: safeText(record.sourceBranch, 100),
     releaseId: safeText(record.releaseId, 80),
     buildId: safeText(record.buildId, 120),
     builtAt: isoOrNull(record.builtAt),
@@ -502,7 +507,7 @@ function liveFromActiveRelease(active: ActiveRelease | null): LiveBuild | null {
     commit: active.commit,
     shortCommit: active.shortCommit ?? active.commit.slice(0, 7),
     message: null,
-    ref: null,
+    ref: active.sourceBranch ?? null,
     repo: null,
     deploymentId: active.releaseId,
     environment: null,
@@ -535,6 +540,7 @@ export function deploymentLog(record: DeploymentRecord): string[] {
 
   push("run", record.runId);
   push("commit", record.commit);
+  push("branch", record.sourceBranch);
   push("release", record.releaseId);
   push("build", record.buildId);
   push("event", record.event);

@@ -388,6 +388,7 @@ export async function activateRelease({
     releaseId: id,
     commit: manifest.commit,
     buildId: manifest.buildId,
+    sourceBranch: manifest.sourceBranch ?? null,
     activatedAt,
     kind,
     actor,

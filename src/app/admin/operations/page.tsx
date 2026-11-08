@@ -15,8 +15,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import DeployLatestButton from "./DeployLatestButton";
-import { getDeployTarget } from "../../../lib/admin/deployLatest";
+import DeployBranchSelector from "./DeployBranchSelector";
+import { DEFAULT_DEPLOY_BRANCH, getDeployTargets } from "../../../lib/admin/deployLatest";
 import { buildMfaDiagnostics } from "../../../lib/admin/mfaDiagnostics";
 import {
   deploymentLog,
@@ -118,9 +118,10 @@ export default async function OperationsPage() {
   // deploy attempt. A history table of runs is not the question an operator asks
   // here ("what is live, and what did the deploy that did not land say").
   const live = snapshot.live;
-  // Which commit is newest on main, and whether it is already serving. A GitHub
-  // outage degrades to "could not check" rather than failing this page.
-  const deploy = await getDeployTarget(live?.commit ?? null);
+  // Which commit is newest on each allowlisted branch, and whether it is already
+  // serving. A GitHub outage degrades to "could not check" rather than failing
+  // this page.
+  const deployTargets = await getDeployTargets(live?.commit ?? null);
   const latestDeployment = snapshot.deployments[0] ?? null;
   const latestIsLive = Boolean(
     live?.commit && latestDeployment?.commit === live.commit,
@@ -137,7 +138,7 @@ export default async function OperationsPage() {
             <p className="mt-1 text-sm text-[#7f9bbd]">
               The live commit comes from this deployment&apos;s own build metadata (or the host&apos;s active release);
               the newest deploy attempt comes from the host state files written by the release tooling. The deploy
-              button requests the newest commit from GitHub and never touches the host directly.
+              control requests the newest commit of an allowlisted branch from GitHub and never touches the host directly.
             </p>
           </div>
           <nav className="flex gap-2 text-sm">
@@ -207,6 +208,10 @@ export default async function OperationsPage() {
               commit{" "}
               <span className="font-mono text-[#c9f7ff]">{snapshot.active?.shortCommit ?? "—"}</span>
               {snapshot.active?.buildId ? ` · build ${snapshot.active.buildId.slice(0, 10)}` : ""}
+            </div>
+            <div className="mt-1 text-xs text-[#7f9bbd]">
+              source branch{" "}
+              <span className="font-mono text-[#c9f7ff]">{snapshot.active?.sourceBranch ?? "—"}</span>
             </div>
             <div className="mt-1 text-xs text-[#7f9bbd]">activated {fmtTime(snapshot.active?.activatedAt ?? null)}</div>
             {snapshot.active?.health && (
@@ -382,14 +387,6 @@ export default async function OperationsPage() {
                     View the commit on GitHub ↗
                   </a>
                 )}
-                <DeployLatestButton
-                  liveCommit={live.commit}
-                  latest={deploy.latest}
-                  configured={deploy.configured}
-                  upToDate={deploy.upToDate}
-                  unavailableReason={deploy.reason}
-                  workflowUrl={deploy.workflowUrl}
-                />
               </div>
               {live.message && <p className="mt-2 max-w-3xl text-sm text-[#e6f7ff]">{live.message}</p>}
               <dl className="mt-3 grid gap-x-6 gap-y-1 text-xs text-[#7f9bbd] sm:grid-cols-2">
@@ -419,6 +416,20 @@ export default async function OperationsPage() {
               <code className="font-mono">/api/version</code> from the live host.
             </p>
           )}
+        </section>
+
+        <section className="mt-4 rounded-xl border border-[#1b2a4a] bg-[#0d1830]">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1b2a4a] px-5 py-3">
+            <h2 className="text-sm font-semibold text-white">Deployment target</h2>
+            <span className="text-xs text-[#7f9bbd]">
+              the branch is re-validated on the server; only the allowlist can be deployed
+            </span>
+          </div>
+          <DeployBranchSelector
+            liveCommit={live?.commit ?? null}
+            targets={deployTargets}
+            defaultBranch={DEFAULT_DEPLOY_BRANCH}
+          />
         </section>
 
         <section className="mt-4 rounded-xl border border-[#1b2a4a] bg-[#0d1830]">

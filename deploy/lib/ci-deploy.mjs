@@ -26,6 +26,7 @@ import {
 } from "./workflow-records.mjs";
 
 const COMMIT_RE = /^[0-9a-f]{40}$/;
+const BRANCH_RE = /^[A-Za-z0-9._/-]{1,100}$/;
 const RUN_ID_RE = /^[0-9]{1,20}$/;
 const BUILD_ID_RE = /^[A-Za-z0-9_-]{1,120}$/;
 const HASH_RE = /^sha256:[0-9a-f]{64}$/;
@@ -63,6 +64,8 @@ export function sanitizeDeploymentRequest(input) {
   return {
     releaseId,
     commit: input.commit,
+    sourceBranch:
+      typeof input.sourceBranch === "string" && BRANCH_RE.test(input.sourceBranch) ? input.sourceBranch : null,
     buildId: typeof input.buildId === "string" && BUILD_ID_RE.test(input.buildId) ? input.buildId : null,
     runId: input.runId,
     runAttempt:

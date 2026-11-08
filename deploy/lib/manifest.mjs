@@ -40,6 +40,7 @@ export const REQUIRED_REALTIME_PATHS = [
 
 const SHA_RE = /^[0-9a-f]{40}$/;
 const SHORT_SHA_RE = /^[0-9a-f]{7,40}$/;
+const BRANCH_RE = /^[A-Za-z0-9._/-]{1,100}$/;
 const HASH_RE = /^sha256:[0-9a-f]{64}$/;
 const SEMVER_RE = /^\d+\.\d+\.\d+/;
 
@@ -64,6 +65,14 @@ export function validateManifest(manifest, { id } = {}) {
   need(typeof manifest.shortCommit === "string" && SHORT_SHA_RE.test(manifest.shortCommit), "shortCommit must be 7-40 hex characters");
   if (typeof manifest.commit === "string" && typeof manifest.shortCommit === "string") {
     need(manifest.commit.startsWith(manifest.shortCommit), "shortCommit must be a prefix of commit");
+  }
+  // Which branch the artifact was built from. Optional so a locally built
+  // fixture still validates, but never believed when it is not a branch name.
+  if (manifest.sourceBranch !== undefined && manifest.sourceBranch !== null) {
+    need(
+      typeof manifest.sourceBranch === "string" && BRANCH_RE.test(manifest.sourceBranch),
+      "sourceBranch is not a valid branch name",
+    );
   }
   need(typeof manifest.buildId === "string" && manifest.buildId.length > 0 && manifest.buildId.length <= 128, "buildId is missing or too long");
   need(typeof manifest.createdAt === "string" && !Number.isNaN(Date.parse(manifest.createdAt)), "createdAt must be an ISO timestamp");

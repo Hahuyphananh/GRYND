@@ -14,7 +14,11 @@ import { Readable } from "node:stream";
 
 import { layout } from "../lib/layout.mjs";
 import { ensureLayout } from "../lib/state.mjs";
-import { evaluateDeploymentGuard } from "../lib/deployment-guard.mjs";
+import {
+  DEPLOY_BRANCHES,
+  branchNameFromRef,
+  evaluateDeploymentGuard,
+} from "../lib/deployment-guard.mjs";
 import {
   MAX_DEPLOYMENT_RECORDS,
   appendDeploymentRecord,
@@ -91,16 +95,24 @@ async function installFixture(root, id) {
 
 // ── guard ──────────────────────────────────────────────────────────────────
 
+test("guard: only main and solitaire-first may ever be deployed", () => {
+  assert.deepEqual(DEPLOY_BRANCHES, ["main", "solitaire-first"]);
+  assert.equal(branchNameFromRef("refs/heads/solitaire-first"), "solitaire-first");
+  assert.equal(branchNameFromRef("refs/tags/v1"), "refs/tags/v1");
+  assert.equal(branchNameFromRef("refs/heads/../main"), null);
+  assert.equal(branchNameFromRef(42), null);
+});
+
 test("guard: a push run may deploy only while its commit is main and not older than active", () => {
-  assert.equal(evaluateDeploymentGuard({ event: "push", targetToMain: "identical" }).code, "CURRENT");
-  assert.equal(evaluateDeploymentGuard({ event: "push", targetToMain: "ahead" }).proceed, false);
-  assert.equal(evaluateDeploymentGuard({ event: "push", targetToMain: "behind" }).proceed, false);
-  assert.equal(evaluateDeploymentGuard({ event: "push", targetToMain: "diverged" }).proceed, false);
-  assert.equal(evaluateDeploymentGuard({ event: "push", targetToMain: "unavailable" }).proceed, false);
+  assert.equal(evaluateDeploymentGuard({ event: "push", targetToHead: "identical" }).code, "CURRENT");
+  assert.equal(evaluateDeploymentGuard({ event: "push", targetToHead: "ahead" }).proceed, false);
+  assert.equal(evaluateDeploymentGuard({ event: "push", targetToHead: "behind" }).proceed, false);
+  assert.equal(evaluateDeploymentGuard({ event: "push", targetToHead: "diverged" }).proceed, false);
+  assert.equal(evaluateDeploymentGuard({ event: "push", targetToHead: "unavailable" }).proceed, false);
 
   const older = evaluateDeploymentGuard({
     event: "push",
-    targetToMain: "identical",
+    targetToHead: "identical",
     targetToActive: "ahead",
   });
   assert.equal(older.proceed, false);
@@ -108,7 +120,7 @@ test("guard: a push run may deploy only while its commit is main and not older t
 
   const same = evaluateDeploymentGuard({
     event: "push",
-    targetToMain: "identical",
+    targetToHead: "identical",
     targetToActive: "identical",
   });
   assert.equal(same.proceed, true);
@@ -116,23 +128,61 @@ test("guard: a push run may deploy only while its commit is main and not older t
 
   const forward = evaluateDeploymentGuard({
     event: "push",
-    targetToMain: "identical",
+    targetToHead: "identical",
     targetToActive: "behind",
   });
   assert.equal(forward.proceed, true);
 });
 
+test("guard: solitaire-first needs a manual run at its own head", () => {
+  const manual = evaluateDeploymentGuard({
+    event: "workflow_dispatch",
+    branch: "refs/heads/solitaire-first",
+    targetToHead: "identical",
+  });
+  assert.equal(manual.proceed, true);
+
+  // A push trigger never reaches a non-default branch, even an allowlisted one.
+  const push = evaluateDeploymentGuard({
+    event: "push",
+    branch: "refs/heads/solitaire-first",
+    targetToHead: "identical",
+  });
+  assert.equal(push.proceed, false);
+  assert.equal(push.code, "PUSH_NOT_DEFAULT_BRANCH");
+
+  // Stale or diverged commits are refused without the recovery input.
+  for (const status of ["ahead", "behind", "diverged"]) {
+    const stale = evaluateDeploymentGuard({
+      event: "workflow_dispatch",
+      branch: "refs/heads/solitaire-first",
+      targetToHead: status,
+    });
+    assert.equal(stale.proceed, false, status);
+    assert.equal(stale.code, "STALE", status);
+  }
+
+  const recovered = evaluateDeploymentGuard({
+    event: "workflow_dispatch",
+    branch: "refs/heads/solitaire-first",
+    targetToHead: "behind",
+    allowOutOfOrder: true,
+  });
+  assert.equal(recovered.proceed, true);
+  assert.equal(recovered.code, "OUT_OF_ORDER");
+});
+
 test("guard: only an explicit manual dispatch may bypass ordering", () => {
   const blocked = evaluateDeploymentGuard({
     event: "workflow_dispatch",
-    targetToMain: "ahead",
+    targetToHead: "ahead",
     targetToActive: "ahead",
   });
   assert.equal(blocked.proceed, false);
 
   const manual = evaluateDeploymentGuard({
     event: "workflow_dispatch",
-    targetToMain: "ahead",
+    targetToHead: "ahead",
     targetToActive: "ahead",
     allowOutOfOrder: true,
   });
@@ -142,25 +192,27 @@ test("guard: only an explicit manual dispatch may bypass ordering", () => {
   // A push can never opt into out-of-order deployment.
   const push = evaluateDeploymentGuard({
     event: "push",
-    targetToMain: "ahead",
+    targetToHead: "ahead",
     allowOutOfOrder: true,
   });
   assert.equal(push.proceed, false);
 });
 
-test("guard: a non-main ref or unverifiable comparison fails closed", () => {
+test("guard: an unlisted ref or unverifiable comparison fails closed", () => {
   assert.equal(
-    evaluateDeploymentGuard({ event: "push", branch: "refs/heads/feature", targetToMain: "identical" }).code,
-    "NOT_MAIN",
+    evaluateDeploymentGuard({ event: "workflow_dispatch", branch: "refs/heads/feature", targetToHead: "identical" })
+      .code,
+    "BRANCH_NOT_ALLOWED",
   );
   assert.equal(
-    evaluateDeploymentGuard({ event: "push", targetToMain: "not-a-status" }).code,
-    "MAIN_UNKNOWN",
+    evaluateDeploymentGuard({ event: "push", branch: "refs/heads/..", targetToHead: "identical" }).code,
+    "INVALID_BRANCH",
   );
+  assert.equal(evaluateDeploymentGuard({ event: "push", targetToHead: "not-a-status" }).code, "HEAD_UNKNOWN");
   assert.equal(
     evaluateDeploymentGuard({
       event: "push",
-      targetToMain: "identical",
+      targetToHead: "identical",
       targetToActive: "not-a-status",
     }).proceed,
     false,
@@ -192,6 +244,16 @@ function validRecord(overrides = {}) {
     ...overrides,
   };
 }
+
+test("records: the source branch is recorded and bounded", () => {
+  const record = sanitizeDeploymentRecord(validRecord({ sourceBranch: "solitaire-first" }));
+  assert.equal(record.sourceBranch, "solitaire-first");
+  assert.equal(
+    sanitizeDeploymentRecord(validRecord({ sourceBranch: "refs/heads/main; rm -rf /" })).sourceBranch,
+    null,
+  );
+  assert.equal(sanitizeDeploymentRecord(validRecord()).sourceBranch, null);
+});
 
 test("records: unknown and secret-shaped fields are dropped", () => {
   const record = sanitizeDeploymentRecord(
