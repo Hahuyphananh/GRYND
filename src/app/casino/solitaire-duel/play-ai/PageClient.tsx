@@ -28,6 +28,7 @@ import BotAvatar from "../../../../components/solitaire-duel/BotAvatar";
 import { useMatchRouter } from "../../../../hooks/useMatchRouter";
 import {
   SOLITAIRE_BOTS,
+  solitaireBotStats,
   type SolitaireBot,
   type SolitaireBotId,
 } from "../../../../lib/solitaire-duel/bots";
@@ -55,6 +56,33 @@ function Progression({ bot }: { bot: SolitaireBot }) {
         Difficulty {bot.order} of 6
       </p>
     </div>
+  );
+}
+
+// The two facts a player actually chooses on: how long this opponent needs to
+// finish the deal, and how often it gets a move wrong. Both are derived from
+// the bot's own profile (see `solitaireBotStats`) — nothing is hard-coded here.
+function DifficultyFacts({ bot }: { bot: SolitaireBot }) {
+  const stats = solitaireBotStats(bot);
+  return (
+    <dl className="mt-3 grid grid-cols-2 gap-2" aria-label={`${bot.name} strengths`}>
+      <div className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-2">
+        <dt className="text-[9px] font-bold uppercase tracking-[0.12em] text-white/35">
+          Typical finish
+        </dt>
+        <dd className="mt-0.5 text-sm font-extrabold text-white/80">
+          {stats.finishLabel}
+        </dd>
+      </div>
+      <div className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-2">
+        <dt className="text-[9px] font-bold uppercase tracking-[0.12em] text-white/35">
+          Bad moves
+        </dt>
+        <dd className="mt-0.5 text-sm font-extrabold text-white/80">
+          {stats.mistakeLabel}
+        </dd>
+      </div>
+    </dl>
   );
 }
 
@@ -208,6 +236,8 @@ export default function SolitairePlayAiPage() {
                 <p className="mt-3 min-h-[3.25rem] text-xs leading-relaxed text-white/55">
                   {bot.description}
                 </p>
+
+                <DifficultyFacts bot={bot} />
 
                 <Progression bot={bot} />
 

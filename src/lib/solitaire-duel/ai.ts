@@ -233,6 +233,12 @@ function immediateScore(
       return 1_080 * profile.foundationWeight;
     case "waste-to-tableau": {
       const top = tableauTop(state, move.toColumn);
+      const wasteTop = state.waste?.[state.waste.length - 1];
+      // Reserving an empty column for a King is basic Klondike: spending the
+      // last empty column on a low card is how a greedy player walls itself in.
+      // Priced below a draw, so the bot flips cards instead (and comes back to
+      // it if that is genuinely the only option).
+      if (!top && wasteTop && wasteTop.rank !== 13) return 0;
       return (
         650 * profile.structureWeight +
         (top ? 0 : 90 * profile.emptyColumnWeight)
@@ -247,15 +253,27 @@ function immediateScore(
       const targetTop = tableauTop(state, move.toColumn);
       // Moving an entire column onto another empty column changes nothing.
       if (index === 0 && !targetTop) return 0;
+      const reveals = revealsHiddenCard(state, move);
+      const frees = emptiesColumn(state, move);
+      // A shuffle that neither uncovers a card nor frees a column changes
+      // nothing a player can see. It used to score a flat bonus, which made a
+      // bot ping-pong one run between two columns forever and never flip the
+      // stock — the exact loop that left the strong profiles frozen at one
+      // foundation card. A draw is now always worth more than a no-op shuffle.
+      if (!reveals && !frees) return 0;
       return (
-        (revealsHiddenCard(state, move) ? 680 * profile.revealWeight : 0) +
-        (emptiesColumn(state, move) ? 560 * profile.emptyColumnWeight : 0) +
+        (reveals ? 680 * profile.revealWeight : 0) +
+        (frees ? 560 * profile.emptyColumnWeight : 0) +
         (targetTop ? 40 * profile.structureWeight : 0)
       );
     }
     case "foundation-to-tableau":
-      // Pulling a card back off a foundation makes no permanent progress.
-      return 0;
+      // Pulling a card back off a foundation GIVES PROGRESS BACK. Priced below
+      // a draw so it is never a neutral choice, and its lookahead is cut (see
+      // `searchScore`): a deeper profile used to see the same card go straight
+      // back up and score the round trip as a huge gain, which is how the
+      // strongest bots ended up gyring an Ace on and off its foundation forever.
+      return -140 * profile.foundationWeight;
     case "draw":
     default: {
       // A draw is valued as an INFORMATION OPPORTUNITY, not by peeking at the
@@ -285,6 +303,7 @@ function searchScore(
   if (
     depth <= 0 ||
     move.kind === "draw" ||
+    move.kind === "foundation-to-tableau" ||
     revealsHiddenCard(state, move) ||
     budget.nodes >= budget.max
   ) {
@@ -369,12 +388,80 @@ function foundationCountOf(state: SolitaireState): number {
   );
 }
 
+const clampUnit = (value: number) => Math.min(1, Math.max(0, Number(value) || 0));
+
+/**
+ * A move a beginner would actually make: legal, but it advances nothing.
+ *
+ * The pool is drawn from the engine's own `legalMoves`, never guessed:
+ *
+ *  - DRAWING AGAIN while a productive move is sitting on the table (the classic
+ *    "keep flipping the deck" loop),
+ *  - pushing a card back OFF A FOUNDATION onto the tableau (progress given back),
+ *  - moving a whole column onto an empty column, which changes nothing,
+ *  - any run shuffle that neither reveals a face-down card nor frees a column.
+ *
+ * Returns null when the board offers no such move, so a blunder can never
+ * invent an illegal move — the caller falls back to the normal slip.
+ */
+function pickBlunderMove(
+  state: SolitaireState,
+  moves: SolitaireMove[],
+  bestMove: SolitaireMove,
+  random: () => number,
+): SolitaireMove | null {
+  const hasProductiveMove = moves.some((move) => move.kind !== "draw");
+  const pool: SolitaireMove[] = [];
+
+  for (const move of moves) {
+    // `bestMove` is one of `moves` (the scoring pass keeps the same objects),
+    // so reference equality is the exact "is this the good move" test.
+    if (move === bestMove) continue;
+    if (move.kind === "draw") {
+      if (hasProductiveMove) pool.push(move);
+      continue;
+    }
+    if (move.kind === "foundation-to-tableau") {
+      pool.push(move);
+      continue;
+    }
+    if (move.kind === "tableau-to-tableau") {
+      const column = state.tableau?.[move.fromColumn] ?? [];
+      const index = column.findIndex(
+        (pile) => pile.faceUp && sameCard(pile.card, move.card),
+      );
+      const targetTop = tableauTop(state, move.toColumn);
+      if (index === 0 && !targetTop) {
+        pool.push(move);
+      } else if (
+        !revealsHiddenCard(state, move) &&
+        !emptiesColumn(state, move)
+      ) {
+        pool.push(move);
+      }
+    }
+  }
+
+  if (pool.length === 0) return null;
+  return pool[Math.floor(random() * pool.length) % pool.length];
+}
+
 /**
  * The bot's next move, or null when the board has none.
  *
  * `random` is injectable so the tier behaviour is testable. The result is
  * ALWAYS a member of `legalMoves(state)` — a slip only picks a lower-scoring
  * legal move, never an illegal one.
+ *
+ * ONE roll decides between the profile's two failure modes and the correct
+ * move, so the effective weakness is exactly `blunderRate + mistakeRate`:
+ *
+ *  - BLUNDER (`blunderRate`) — a move that makes no progress at all. This is
+ *    what actually costs a weak bot the race: it burns plies, not just quality.
+ *  - SLIP (`mistakeRate`) — a worse but still productive move, bounded by
+ *    `slipFloor` so it stays believable.
+ *
+ * Perfect has both rates at 0, which makes the roll a no-op for it.
  */
 export function chooseAiMove({
   state,
@@ -404,8 +491,17 @@ export function chooseAiMove({
 
   const best = scored[0];
   if (!best) return moves[0];
-  // Perfect never rolls: `mistakeRate` 0 makes the first branch unconditional.
-  if (profile.mistakeRate <= 0 || random() >= profile.mistakeRate) {
+
+  const roll = random();
+  const blunderRate = clampUnit(profile.blunderRate);
+  const mistakeRate = clampUnit(profile.mistakeRate);
+
+  // Perfect never rolls: both rates are 0, so the correct move always wins.
+  if (blunderRate > 0 && roll < blunderRate) {
+    const blunder = pickBlunderMove(state, moves, best.move, random);
+    if (blunder) return blunder;
+  }
+  if (mistakeRate <= 0 || roll >= blunderRate + mistakeRate) {
     return best.move;
   }
 

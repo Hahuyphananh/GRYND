@@ -463,6 +463,11 @@ test("bots: the picker renders the roster and starts the selected opponent", () 
   assert.match(page, /Advanced/);
   assert.match(page, /Final challenge/);
   assert.match(page, /Difficulty \{bot\.order\} of 6/);
+  // Each card states the two facts the picker is chosen on, both derived from
+  // the bot's own profile rather than hard-coded per card.
+  assert.match(page, /solitaireBotStats/);
+  assert.match(page, /Typical finish/);
+  assert.match(page, /Bad moves/);
   // Practice is explicitly separate from ranked progression.
   assert.match(page, /unrated/i);
   assert.match(page, /never touch\s+ranked/i);

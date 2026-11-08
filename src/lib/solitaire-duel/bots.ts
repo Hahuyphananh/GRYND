@@ -49,6 +49,15 @@ export type SolitaireBotAiProfile = {
   slipPool: number;
   /** A slip never falls below this fraction of the best move's score. */
   slipFloor: number;
+  /**
+   * How often the bot plays a move that makes NO progress at all (0–1):
+   * recycling the stock while a real move is available, giving a card back
+   * from a foundation, or shuffling a run sideways. This is the beginner's
+   * error — a `mistakeRate` slip is still a productive move, so it costs a
+   * little quality but no time. A blunder costs plies, which is what makes
+   * the weak bots genuinely slow to finish.
+   */
+  blunderRate: number;
   /** Visible-move plies searched before choosing. 0 = evaluate one move. */
   searchDepth: number;
   /** How many child moves are expanded at each searched node. */
@@ -83,14 +92,27 @@ export type SolitaireBot = {
   audienceLabel: string;
   /** 1 (weakest) → 6 (Perfect). Drives the progression marker. */
   order: number;
+  /**
+   * Typical plies a solve takes for this profile, measured by the difficulty
+   * benchmark in `tests/solitaire-duel-bots.test.mjs` over proven-solvable
+   * practice deals.
+   *
+   * Calibration for the lobby's finish estimate only — the clock always uses
+   * `ai.moveDelayMs`, never this.
+   */
+  expectedSolveMoves: number;
   ai: SolitaireBotAiProfile;
 };
 
 const PROFILE = {
+  // Rookie is the BAD player, deliberately: it recycles the stock, gives cards
+  // back off the foundations and dithers — and it is paced like someone reading
+  // the board for the first time. A casual player should always beat it.
   rookie: {
-    mistakeRate: 0.55,
+    mistakeRate: 0.5,
     slipPool: 6,
-    slipFloor: 0.35,
+    slipFloor: 0.3,
+    blunderRate: 0.22,
     searchDepth: 0,
     beamWidth: 0,
     searchBudget: 1,
@@ -98,14 +120,15 @@ const PROFILE = {
     revealWeight: 0.35,
     emptyColumnWeight: 0.25,
     structureWeight: 0.55,
-    drawWeight: 1.15,
+    drawWeight: 1.35,
     planningWeight: 0,
-    moveDelayMs: 1_100,
+    moveDelayMs: 2_600,
   },
   felix: {
-    mistakeRate: 0.28,
+    mistakeRate: 0.26,
     slipPool: 5,
     slipFloor: 0.4,
+    blunderRate: 0.12,
     searchDepth: 0,
     beamWidth: 0,
     searchBudget: 1,
@@ -115,12 +138,13 @@ const PROFILE = {
     structureWeight: 0.72,
     drawWeight: 1,
     planningWeight: 0.12,
-    moveDelayMs: 900,
+    moveDelayMs: 2_300,
   },
   ace: {
     mistakeRate: 0.12,
     slipPool: 3,
     slipFloor: 0.55,
+    blunderRate: 0.05,
     searchDepth: 1,
     beamWidth: 6,
     searchBudget: 120,
@@ -130,12 +154,13 @@ const PROFILE = {
     structureWeight: 0.85,
     drawWeight: 0.95,
     planningWeight: 0.32,
-    moveDelayMs: 700,
+    moveDelayMs: 1_550,
   },
   professor: {
-    mistakeRate: 0.05,
+    mistakeRate: 0.04,
     slipPool: 2,
     slipFloor: 0.7,
+    blunderRate: 0.02,
     searchDepth: 2,
     beamWidth: 5,
     searchBudget: 240,
@@ -145,12 +170,13 @@ const PROFILE = {
     structureWeight: 0.96,
     drawWeight: 0.9,
     planningWeight: 0.5,
-    moveDelayMs: 600,
+    moveDelayMs: 1_150,
   },
   grandmaster: {
-    mistakeRate: 0.01,
+    mistakeRate: 0.008,
     slipPool: 2,
     slipFloor: 0.85,
+    blunderRate: 0.006,
     searchDepth: 3,
     beamWidth: 4,
     searchBudget: 420,
@@ -160,12 +186,13 @@ const PROFILE = {
     structureWeight: 1.05,
     drawWeight: 0.86,
     planningWeight: 0.66,
-    moveDelayMs: 450,
+    moveDelayMs: 820,
   },
   perfect: {
     mistakeRate: 0,
     slipPool: 0,
     slipFloor: 1,
+    blunderRate: 0,
     searchDepth: 3,
     beamWidth: 5,
     searchBudget: 700,
@@ -175,7 +202,7 @@ const PROFILE = {
     structureWeight: 1.15,
     drawWeight: 0.8,
     planningWeight: 0.8,
-    moveDelayMs: 320,
+    moveDelayMs: 560,
   },
 } satisfies Record<SolitaireBotId, SolitaireBotAiProfile>;
 
@@ -188,12 +215,13 @@ export const SOLITAIRE_BOTS: readonly SolitaireBot[] = Object.freeze([
     difficulty: "very-easy",
     difficultyLabel: "Very Easy",
     description:
-      "Just getting started. A relaxed opponent who makes plenty of mistakes.",
+      "Just getting started. Recycles the deck, second-guesses easy plays and takes their time.",
     initials: "RK",
     avatar: { src: null, alt: "Rookie avatar placeholder" },
     audience: "beginner",
     audienceLabel: "Beginner",
     order: 1,
+    expectedSolveMoves: 330,
     ai: PROFILE.rookie,
   },
   {
@@ -210,6 +238,7 @@ export const SOLITAIRE_BOTS: readonly SolitaireBot[] = Object.freeze([
     audience: "beginner",
     audienceLabel: "Beginner",
     order: 2,
+    expectedSolveMoves: 180,
     ai: PROFILE.felix,
   },
   {
@@ -226,6 +255,7 @@ export const SOLITAIRE_BOTS: readonly SolitaireBot[] = Object.freeze([
     audience: "intermediate",
     audienceLabel: "Intermediate",
     order: 3,
+    expectedSolveMoves: 155,
     ai: PROFILE.ace,
   },
   {
@@ -242,6 +272,7 @@ export const SOLITAIRE_BOTS: readonly SolitaireBot[] = Object.freeze([
     audience: "intermediate",
     audienceLabel: "Intermediate",
     order: 4,
+    expectedSolveMoves: 140,
     ai: PROFILE.professor,
   },
   {
@@ -258,6 +289,7 @@ export const SOLITAIRE_BOTS: readonly SolitaireBot[] = Object.freeze([
     audience: "advanced",
     audienceLabel: "Advanced",
     order: 5,
+    expectedSolveMoves: 135,
     ai: PROFILE.grandmaster,
   },
   {
@@ -274,6 +306,7 @@ export const SOLITAIRE_BOTS: readonly SolitaireBot[] = Object.freeze([
     audience: "advanced",
     audienceLabel: "Advanced",
     order: 6,
+    expectedSolveMoves: 135,
     ai: PROFILE.perfect,
   },
 ]);
@@ -335,6 +368,37 @@ export function solitaireBotIdFor(value: unknown): SolitaireBotId {
   return solitaireBotFor(value).id;
 }
 
+/**
+ * The player-facing facts about a bot: how long a solve takes, how often it
+ * gets it wrong, and how fast it moves.
+ *
+ * DERIVED, never a second source of truth: the numbers come from the profile's
+ * own measured ply count and `moveDelayMs`. The raw AI knobs stay in `ai` and
+ * out of every public payload.
+ */
+export function solitaireBotStats(bot: SolitaireBot) {
+  const paceSeconds = Math.round(bot.ai.moveDelayMs / 100) / 10;
+  const finishMinutes =
+    Math.round((bot.expectedSolveMoves * bot.ai.moveDelayMs) / 600) / 100;
+  const mistakeRate = Math.min(
+    1,
+    Math.max(0, bot.ai.blunderRate + bot.ai.mistakeRate),
+  );
+  const mistakePercent = Math.round(mistakeRate * 1_000) / 10;
+
+  return {
+    /** Seconds between the bot's moves. */
+    paceSeconds,
+    paceLabel: `~${paceSeconds.toFixed(1)}s a move`,
+    /** Expected minutes to solve one practice deal. */
+    finishMinutes,
+    finishLabel: `~${finishMinutes.toFixed(1)} min`,
+    /** Share of decisions that are not the bot's best move (0–1). */
+    mistakeRate,
+    mistakeLabel: `${Number.isInteger(mistakePercent) ? mistakePercent : mistakePercent.toFixed(1)}%`,
+  };
+}
+
 /** The public slice of a bot — safe to put in a match DTO. */
 export function publicSolitaireBot(bot: SolitaireBot) {
   return {
@@ -350,6 +414,7 @@ export function publicSolitaireBot(bot: SolitaireBot) {
     audience: bot.audience,
     audienceLabel: bot.audienceLabel,
     order: bot.order,
+    stats: solitaireBotStats(bot),
   };
 }
 

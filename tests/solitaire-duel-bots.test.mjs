@@ -27,11 +27,14 @@ import {
   isSolitaireBotId,
   publicSolitaireBot,
   solitaireBotFor,
+  solitaireBotStats,
 } from "../src/lib/solitaire-duel/bots.ts";
 import {
+  aiMoveDelayMs,
   chooseAiMove,
   evaluateMoveForBot,
   legalMoves,
+  planAiMoves,
 } from "../src/lib/solitaire-duel/ai.ts";
 import {
   applyMove,
@@ -292,4 +295,225 @@ test("practice code does not consult the proven deal solution", () => {
   const standalone = strip("standalone/solitaire-duel/src/match.ts");
   assert.match(standalone, /planAiMoves\(\{/);
   assert.doesNotMatch(standalone, /planAiSolution|solveDealLine/);
+});
+
+// ── The ladder a player actually feels ───────────────────────────────────
+//
+// The bug this section pins: Rookie (200) solved the practice deal in about
+// five minutes — a normal casual pace — while being advertised as "Very Easy".
+// Strength is now separated on the two things a player experiences directly:
+// time per decision, and moves that go nowhere.
+
+const WASTED_KINDS = new Set(["draw", "foundation-to-tableau"]);
+
+/** Consecutive moves that put the board straight back where it was. */
+function undoPairs(moves) {
+  let count = 0;
+  for (let index = 1; index < moves.length; index += 1) {
+    const previous = moves[index - 1];
+    const next = moves[index];
+    if (
+      previous.kind === "tableau-to-tableau" &&
+      next.kind === "tableau-to-tableau" &&
+      previous.fromColumn === next.toColumn &&
+      previous.toColumn === next.fromColumn &&
+      sameMove(previous.card, next.card)
+    ) {
+      count += 1;
+    }
+    if (
+      (previous.kind === "tableau-to-foundation" &&
+        next.kind === "foundation-to-tableau" &&
+        previous.suit === next.suit) ||
+      (previous.kind === "foundation-to-tableau" &&
+        next.kind === "tableau-to-foundation" &&
+        previous.suit === next.suit)
+    ) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+test("the ladder is paced slow → fast, with a real gap at the bottom", () => {
+  const delays = BOT_ORDER.map((id) => SOLITAIRE_BOT_BY_ID[id].ai.moveDelayMs);
+  for (let index = 1; index < delays.length; index += 1) {
+    assert.ok(
+      delays[index - 1] > delays[index],
+      `${BOT_ORDER[index - 1]} must think longer than ${BOT_ORDER[index]}`,
+    );
+  }
+  // The reported complaint, as a contract: a 250-move solve is the low end of a
+  // real practice run, and Rookie must NOT be in a casual player's 5–10 min
+  // window. Perfect sits at the other end.
+  const estimated = (id) => SOLITAIRE_BOT_BY_ID[id].ai.moveDelayMs * 250;
+  assert.ok(
+    estimated("rookie") >= 10 * 60 * 1000,
+    `Rookie's 250-move solve must take 10+ minutes, got ${estimated("rookie")}ms`,
+  );
+  assert.ok(
+    estimated("perfect") <= 3 * 60 * 1000,
+    `Perfect's 250-move solve must take under 3 minutes, got ${estimated("perfect")}ms`,
+  );
+});
+
+test("only the weak profiles throw moves away, and Perfect never does", () => {
+  const rates = BOT_ORDER.map((id) => SOLITAIRE_BOT_BY_ID[id].ai.blunderRate);
+  for (let index = 1; index < rates.length; index += 1) {
+    assert.ok(
+      rates[index - 1] > rates[index],
+      `${BOT_ORDER[index - 1]} must waste more moves than ${BOT_ORDER[index]}`,
+    );
+  }
+  assert.ok(rates[0] >= 0.15, "Rookie must waste a visible share of its moves");
+  assert.equal(rates[rates.length - 1], 0, "Perfect never plays a wasted move");
+});
+
+test("a forced blunder is a legal move that goes nowhere", () => {
+  // A position with a productive move on the table AND a draw available: the
+  // exact moment a beginner keeps flipping the deck instead of playing.
+  const state = POSITIONS.find((position) => {
+    const moves = legalMoves(position);
+    return (
+      moves.some((move) => move.kind === "draw") &&
+      moves.some((move) => move.kind !== "draw")
+    );
+  });
+  assert.ok(state, "the fixed sample must contain a board with a draw available");
+
+  const best = chooseAiMove({ state, botId: "perfect", random: () => 1 });
+  const blunder = chooseAiMove({ state, botId: "rookie", random: () => 0 });
+  assert.ok(blunder, "a blunder is still a move");
+  assert.ok(
+    legalMoves(state).some((move) => sameMove(move, blunder)),
+    "a blunder only ever picks a legal move",
+  );
+  assert.ok(
+    evaluateMoveForBot(state, blunder, "perfect") <
+      evaluateMoveForBot(state, best, "perfect"),
+    "Rookie's forced slip must be worse than Perfect's move",
+  );
+});
+
+test("no profile shuttles one card back and forth (no gyre livelock)", () => {
+  // The old failure: a strong bot put an Ace on its foundation and the next
+  // search scored pulling it back off as a huge gain, so the bot looped there
+  // forever and finished the deal far behind the sloppy profiles.
+  for (const seed of [7, 2026, 4242, 31337]) {
+    const state = initialStateFromDeal(solvableDealFromSeed(seed));
+    const plan = planAiMoves({
+      state,
+      difficulty: "perfect",
+      maxMoves: 180,
+      random: () => 1,
+    });
+    assert.equal(
+      undoPairs(plan.moves),
+      0,
+      `seed ${seed}: Perfect must never undo its own last move`,
+    );
+  }
+});
+
+test("stronger profiles finish the practice deal in fewer moves", () => {
+  const plies = {};
+  for (const id of BOT_ORDER) {
+    let total = 0;
+    let runs = 0;
+    for (const seed of [7, 2026, 4242, 31337, 99, 104729]) {
+      const plan = planAiMoves({
+        state: initialStateFromDeal(solvableDealFromSeed(seed)),
+        difficulty: id,
+        maxMoves: 1_500,
+        random: rollFrom(seed),
+      });
+      if (!plan.completed) continue;
+      total += plan.moves.length;
+      runs += 1;
+    }
+    // A profile that never finishes is the weakest possible opponent, so its
+    // failure counts against it: no completion means no ply credit.
+    plies[id] = runs === 0 ? Infinity : total / runs;
+  }
+  assert.ok(Number.isFinite(plies.perfect), "Perfect must finish at least one deal");
+  assert.ok(
+    plies.rookie > plies.perfect,
+    `Rookie (${plies.rookie}) must need more moves than Perfect (${plies.perfect})`,
+  );
+  assert.ok(
+    plies.rookie > plies.ace,
+    `Rookie (${plies.rookie}) must need more moves than Ace (${plies.ace})`,
+  );
+});
+
+// ── What the lobby card promises ─────────────────────────────────────────
+
+test("each bot publishes a finish estimate and mistake rate for the lobby", () => {
+  const facts = SOLITAIRE_BOTS.map((bot) => ({
+    id: bot.id,
+    ...solitaireBotStats(bot),
+  }));
+
+  for (const fact of facts) {
+    assert.match(fact.finishLabel, /^~\d+\.\d min$/);
+    assert.match(fact.mistakeLabel, /^\d+(\.\d)?%$/);
+    assert.match(fact.paceLabel, /^~\d+\.\ds a move$/);
+    // The derived facts ship; the raw AI knobs never do.
+    const pub = publicSolitaireBot(SOLITAIRE_BOT_BY_ID[fact.id]);
+    assert.equal("ai" in pub, false, `${fact.id} must not leak its AI profile`);
+    assert.deepEqual(pub.stats, solitaireBotStats(SOLITAIRE_BOT_BY_ID[fact.id]));
+  }
+
+  // Every step up the ladder is both faster and cleaner — exactly what the card
+  // is telling the player.
+  for (let index = 1; index < facts.length; index += 1) {
+    const weaker = facts[index - 1];
+    const stronger = facts[index];
+    assert.ok(
+      weaker.finishMinutes > stronger.finishMinutes,
+      `${weaker.id} (${weaker.finishLabel}) must read slower than ${stronger.id} (${stronger.finishLabel})`,
+    );
+    assert.ok(
+      weaker.mistakeRate > stronger.mistakeRate,
+      `${weaker.id} (${weaker.mistakeLabel}) must read sloppier than ${stronger.id} (${stronger.mistakeLabel})`,
+    );
+  }
+
+  // The reported bug was a ~5 minute Rookie solve. The card may never claim a
+  // casual pace for the weakest opponent.
+  assert.ok(
+    facts[0].finishMinutes >= 10,
+    `Rookie's advertised finish is ${facts[0].finishLabel}`,
+  );
+});
+
+test("Rookie's simulated finish time on a fixed deal set matches its card", () => {
+  const deals = [7, 2026, 4242, 31337];
+  let plies = 0;
+  let solved = 0;
+  for (const seed of deals) {
+    const plan = planAiMoves({
+      state: initialStateFromDeal(solvableDealFromSeed(seed)),
+      difficulty: "rookie",
+      maxMoves: 1_500,
+      random: rollFrom(seed),
+    });
+    if (!plan.completed) continue;
+    solved += 1;
+    plies += plan.moves.length;
+  }
+
+  assert.ok(solved >= 2, `Rookie must finish the deals it is measured on, finished ${solved}`);
+  const simulated = ((plies / solved) * aiMoveDelayMs("rookie")) / 60_000;
+  assert.ok(
+    simulated >= 10,
+    `Rookie's simulated solve must take 10+ minutes, got ${simulated.toFixed(1)}`,
+  );
+
+  // The lobby number is derived from this benchmark, not invented for the UI.
+  const advertised = solitaireBotStats(SOLITAIRE_BOT_BY_ID.rookie).finishMinutes;
+  assert.ok(
+    Math.abs(advertised - simulated) <= 5,
+    `the card says ~${advertised} min but the simulation says ${simulated.toFixed(1)} min`,
+  );
 });
