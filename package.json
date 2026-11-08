@@ -99,6 +99,7 @@
     "dev:chess-ai": "vite --config standalone/chess-ai/vite.config.mts",
     "build:portal:chess-ai": "vite build --config standalone/chess-ai/vite.config.mts",
     "verify:portal:chess-ai": "node qa/chess-ai-standalone-check.mjs",
+    "verify:responsive:chess-ai": "node qa/chess-ai-responsive-check.mjs",
     "package:itch:chess-ai": "node scripts/package-itch-chess-ai.mjs",
     "verify:itch:chess-ai": "node scripts/verify-itch-chess-ai.mjs",
     "package:itch:memory-grid": "node scripts/package-itch-memory-grid.mjs",

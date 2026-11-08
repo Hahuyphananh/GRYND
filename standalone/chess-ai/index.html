@@ -4,13 +4,26 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#080d1a" />
+    <!-- The package is offline and has no network surface of its own, so the
+         policy is the tightest one the engine still runs under: same-origin
+         scripts and styles only, no framing of external content, no forms, no
+         plugins. `wasm-unsafe-eval` is required because Stockfish compiles its
+         bundled .wasm; `'unsafe-inline'` for styles is required by React's
+         inline style attributes. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="referrer" content="no-referrer" />
     <title>Chess vs Stockfish — play offline in your browser</title>
     <meta
       name="description"
       content="Play a full game of chess against Stockfish 16, offline. Three difficulty levels, clocks, undo and promotion — no account, no downloads."
     />
     <!-- Everything is bundled beside this file: the engine (Stockfish WASM), the
-         script and the styles. No fonts, no CDN, no analytics, no requests. -->
+         script and the styles. No fonts, no CDN, no analytics, no requests.
+         There is no server, so response headers cannot be set from here: the
+         policy above is the part a static package can carry. -->
   </head>
   <body>
     <div id="root"></div>

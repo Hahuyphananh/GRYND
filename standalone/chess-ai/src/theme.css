@@ -55,7 +55,9 @@ button {
 .shell {
   max-width: 1120px;
   margin: 0 auto;
-  padding: 20px clamp(12px, 3vw, 28px) 32px;
+  /* Keep content out of the notch and the home indicator on a phone. */
+  padding: calc(20px + env(safe-area-inset-top, 0px)) max(clamp(12px, 3vw, 28px), env(safe-area-inset-right, 0px))
+    calc(32px + env(safe-area-inset-bottom, 0px)) max(clamp(12px, 3vw, 28px), env(safe-area-inset-left, 0px));
 }
 
 /* ── header ───────────────────────────────────────────────────────────── */
@@ -425,7 +427,8 @@ button {
   inset: 0;
   display: grid;
   place-items: center;
-  padding: 20px;
+  padding: calc(20px + env(safe-area-inset-top, 0px)) max(20px, env(safe-area-inset-right, 0px))
+    calc(20px + env(safe-area-inset-bottom, 0px)) max(20px, env(safe-area-inset-left, 0px));
   background: rgba(2, 6, 23, 0.72);
   backdrop-filter: blur(4px);
   z-index: 20;
@@ -525,6 +528,18 @@ button {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  /* A stacked layout leaves the header free to be two lines instead of
+     squeezing the title and the engine state into one. */
+  .topbar {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .engine-state {
+    max-width: 100%;
+    text-align: left;
+  }
+
   .board-frame,
   .seat {
     max-width: 100%;
@@ -542,6 +557,30 @@ button {
 @media (max-height: 620px) and (min-width: 821px) {
   .board-frame,
   .seat {
-    max-width: min(66vh, 560px);
+    /* 66vh gave a landscape phone 32px squares — below the size a thumb can
+       hit reliably. 78vh keeps 38px squares and still clears the seat bars. */
+    max-width: min(78vh, 560px);
+  }
+}
+
+/* ── touch ────────────────────────────────────────────────────────────── */
+
+/* Fingers need a bigger target than a mouse pointer does. Only coarse
+   pointers grow, so the desktop density is unchanged. */
+@media (pointer: coarse) {
+  .segmented button {
+    min-height: 44px;
+  }
+
+  .actions button {
+    min-height: 44px;
+  }
+
+  .result-actions button {
+    min-height: 48px;
+  }
+
+  .seat {
+    padding: 10px 12px;
   }
 }
