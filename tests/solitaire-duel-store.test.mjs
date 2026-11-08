@@ -197,6 +197,9 @@ function createFakeDb() {
     insert,
     execute: async (query) => {
       state.locks.push(query);
+      // A realistic driver result shape. The store uses `execute` both for the
+      // advisory lock (result ignored) and for the trophy-proximity query.
+      return { rows: [] };
     },
   };
 
@@ -1142,7 +1145,7 @@ const practiceRow = (fake, overrides = {}) =>
   seedMatch(fake, {
     isAi: true,
     player2Id: SOLITAIRE_DUEL_AI_PLAYER_ID,
-    aiDifficulty: "hard",
+    aiDifficulty: "grandmaster",
     goAt: new Date(NOW - 120_000),
     ...overrides,
   });
@@ -1151,11 +1154,17 @@ test("practice: createAiMatch seats the bot, deals the same puzzle and starts th
   const fake = installMocks(t);
   const store = await loadStore();
 
-  const { match } = await store.createAiMatch({ userId: ALICE, difficulty: "hard", nowMs: NOW });
+  const { match } = await store.createAiMatch({ userId: ALICE, difficulty: "grandmaster", nowMs: NOW });
   assert.equal(match.player1Id, ALICE);
   assert.equal(match.player2Id, SOLITAIRE_DUEL_AI_PLAYER_ID);
   assert.equal(match.isAi, true);
-  assert.equal(match.aiDifficulty, "hard");
+  assert.equal(match.aiDifficulty, "grandmaster");
+  // The DTO carries the full public opponent identity, not just a tier.
+  const dto = store.matchToDto(match, ALICE, NOW);
+  assert.equal(dto.bot.id, "grandmaster");
+  assert.equal(dto.bot.name, "Grandmaster");
+  assert.equal(dto.bot.ratingLabel, "10,000");
+  assert.equal(dto.bot.difficultyLabel, "Expert");
   assert.equal(match.status, MATCH_STATUS.PLAYING);
   // One deal, two independent boards — the same shape a real join produces.
   assert.ok(match.deal);
@@ -1169,11 +1178,14 @@ test("practice: createAiMatch seats the bot, deals the same puzzle and starts th
   assert.equal(settlement.queue.length, 0);
 });
 
-test("practice: createAiMatch coerces an unknown difficulty onto the shared scale", { skip: SKIP_REASON }, async (t) => {
+test("practice: createAiMatch resolves an unknown bot onto the roster default", { skip: SKIP_REASON }, async (t) => {
   installMocks(t);
   const store = await loadStore();
   const { match } = await store.createAiMatch({ userId: ALICE, difficulty: "nonsense", nowMs: NOW });
-  assert.equal(match.aiDifficulty, "normal");
+  assert.equal(match.aiDifficulty, "ace");
+  // Legacy labels resolve to named bots too, so an old client gets a face.
+  const legacy = await store.createAiMatch({ userId: ALICE, difficulty: "easy", nowMs: NOW });
+  assert.equal(legacy.match.aiDifficulty, "rookie");
 });
 
 test("practice: advanceAiMatch plays the bot's own board from the server clock", { skip: SKIP_REASON }, async (t) => {
@@ -1416,7 +1428,7 @@ test("practice: the bot can solve the deal, and the win settles nothing", { skip
   seedMatch(fake, {
     isAi: true,
     player2Id: SOLITAIRE_DUEL_AI_PLAYER_ID,
-    aiDifficulty: "hard",
+    aiDifficulty: "grandmaster",
     goAt: new Date(NOW - 120_000),
     p2State: botBoard,
     p2Ply: 0,
@@ -1447,7 +1459,7 @@ test("practice: a human who solves the deal FIRST wins at once, unrated", { skip
   seedMatch(fake, {
     isAi: true,
     player2Id: SOLITAIRE_DUEL_AI_PLAYER_ID,
-    aiDifficulty: "hard",
+    aiDifficulty: "grandmaster",
     goAt: new Date(NOW - 1_000),
     p1State: boardOneMoveFromComplete(),
     p1Ply: 80,

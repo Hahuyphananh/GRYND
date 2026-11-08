@@ -36,7 +36,7 @@ import { payPvpPot, refundPvpPot } from "../tokens/pvpPot";
 import { applyTrophyResult } from "../trophyStore";
 import { markDailyRewardWin } from "../dailyRewardWin";
 import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
-import { coerceAiDifficulty } from "../aiDifficulty";
+import { publicSolitaireBot, solitaireBotFor } from "./bots";
 import { isPracticePaused } from "../practicePause";
 import {
   INACTIVITY_ALARM_MS,
@@ -53,8 +53,8 @@ import {
   VARIANT,
   VARIANT_VERSION,
 } from "./constants";
-import { aiMoveDelayMs, legalMoves, planAiMoves, planAiSolution } from "./ai";
-import { solvableDealFromSeed, solveDealLine, stateSolvableVerdict } from "./solvable";
+import { aiMoveDelayMs, legalMoves, planAiMoves } from "./ai";
+import { solvableDealFromSeed, stateSolvableVerdict } from "./solvable";
 import {
   cloneState,
   failureOf,
@@ -294,17 +294,18 @@ function seatFinishedPatchFor(seat: Seat, nowMs: number) {
  * both from the same server state, at the same moment.
  */
 /**
- * The practice bot's tier for a row, or null on a human duel.
+ * The named practice bot for a row, or null on a human duel.
  *
- * `NULL` on an AI row (a legacy practice match) reads back as the documented
- * default, exactly as `createAiMatch` writes it. A human duel carries no tier.
+ * `NULL` on an AI row (a legacy practice match) resolves to the documented
+ * default bot, so every practice row has a named opponent. A human duel carries
+ * no bot.
  */
 export function aiDifficultyForMatch(match: {
   aiDifficulty?: unknown;
   isAi?: boolean | null;
 }) {
   if (!match?.isAi) return null;
-  return coerceAiDifficulty(match.aiDifficulty);
+  return solitaireBotFor(match.aiDifficulty).id;
 }
 
 export function matchToDto(match: MatchRow, viewerId: string | null, nowMs = Date.now()) {
@@ -331,6 +332,11 @@ export function matchToDto(match: MatchRow, viewerId: string | null, nowMs = Dat
     // back through the practice path rather than the rated queue.
     isAi: Boolean(match.isAi),
     aiDifficulty: aiDifficultyForMatch(match),
+    // The public bot identity for a practice row: name, displayed rating,
+    // difficulty, copy and avatar placeholder. Null on a human duel.
+    bot: match.isAi
+      ? publicSolitaireBot(solitaireBotFor(match.aiDifficulty))
+      : null,
     // The commitment is public from creation; the seed itself is only revealed
     // once the match is terminal, so the deal can be verified after the fact.
     seedHash: match.serverSeedHash,
@@ -761,7 +767,8 @@ export async function createAiMatch({
   difficulty?: unknown;
   nowMs?: number;
 }) {
-  const tier = coerceAiDifficulty(difficulty);
+  // Resolve a named bot (or a legacy tier) once, and persist its STABLE id.
+  const bot = solitaireBotFor(difficulty);
 
   const serverSeed = randomHex(32);
   const serverSeedHash = getServerSeedHash(serverSeed);
@@ -783,7 +790,7 @@ export async function createAiMatch({
       player2Id: SOLITAIRE_DUEL_AI_PLAYER_ID,
       status: MATCH_STATUS.PLAYING,
       isAi: true,
-      aiDifficulty: tier,
+      aiDifficulty: bot.id,
       serverSeed,
       serverSeedHash,
       dealSeed,
@@ -831,7 +838,7 @@ export async function restartAiMatch({
   difficulty?: unknown;
   nowMs?: number;
 }) {
-  const tier = coerceAiDifficulty(difficulty);
+  const bot = solitaireBotFor(difficulty);
 
   const abandoned = await db.transaction(async (tx) => {
     const [match] = await tx
@@ -863,8 +870,8 @@ export async function restartAiMatch({
 
   if ("error" in abandoned) return abandoned;
 
-  // A brand new seed → a brand new deal.
-  const { match } = await createAiMatch({ userId, difficulty: tier, nowMs });
+  // A brand new seed → a brand new deal, against the SAME named bot.
+  const { match } = await createAiMatch({ userId, difficulty: bot.id, nowMs });
   return { match } as const;
 }
 
@@ -1042,19 +1049,15 @@ export async function advanceAiMatch({
     if (maxMoves <= 0) return { match, advanced: false } as const;
 
     const startPly = state.ply;
-    // THE PROVEN LINE, not a per-move guess: the deal was served only after a
-    // search found a winning line and the engine replayed it, so following that
-    // line is what makes the bot always finish the puzzle. The tier decides only
-    // WHEN (how many moves it has earned by now). The heuristic stays as the
-    // fallback for a board that is off the line (a match created before this).
-    const deal = (match.deal ?? null) as SolitaireDeal | null;
-    const plan =
-      planAiSolution({ state, line: deal ? solveDealLine(deal) : null, maxMoves }) ??
-      planAiMoves({
-        state,
-        difficulty: match.aiDifficulty,
-        maxMoves,
-      });
+    // THE BOT PLAYS FROM ITS OWN VISIBLE BOARD. The deal's proven solution is
+    // deliberately NOT consulted: it would give the bot the stock order and the
+    // identities of face-down cards the human cannot see. The named profile in
+    // `./ai` decides only from legal moves and visible structure.
+    const plan = planAiMoves({
+      state,
+      difficulty: match.aiDifficulty,
+      maxMoves,
+    });
     // The BOT's own seat is re-dealt when its planner has run out of road —
     // `stuck` means no legal move at all, or `AI_STAGNATION_LIMIT` moves that
     // changed nothing (a deal its heuristic cannot advance). This is

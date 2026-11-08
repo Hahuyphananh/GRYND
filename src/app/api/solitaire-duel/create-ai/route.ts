@@ -16,6 +16,10 @@ import { NextResponse } from "next/server";
 import { requirePracticePlayer } from "../../../../lib/auth/guestSession";
 import { logError } from "../../../../lib/logError";
 import { createAiMatch } from "../../../../lib/solitaire-duel/serverStore";
+import {
+  publicSolitaireBot,
+  solitaireBotFor,
+} from "../../../../lib/solitaire-duel/bots";
 
 export const dynamic = "force-dynamic";
 
@@ -30,15 +34,20 @@ export async function POST(req: Request) {
     );
   }
 
-  // The lobby's AI-difficulty pick. Absent/invalid coerces to the default so an
-  // older client still starts a practice match.
-  const body = (await req.json().catch(() => ({}))) as { difficulty?: unknown };
+  // The selected bot. `difficulty` stays accepted for older clients/legacy
+  // callers; an absent or unknown value resolves to the documented default.
+  const body = (await req.json().catch(() => ({}))) as {
+    bot?: unknown;
+    difficulty?: unknown;
+  };
+  const choice = body?.bot ?? body?.difficulty;
 
   try {
     const { match } = await createAiMatch({
       userId,
-      difficulty: body?.difficulty,
+      difficulty: choice,
     });
+    const bot = publicSolitaireBot(solitaireBotFor(match.aiDifficulty));
     return NextResponse.json({
       success: true,
       data: {
@@ -46,6 +55,7 @@ export async function POST(req: Request) {
         status: match.status,
         practice: true,
         aiDifficulty: match.aiDifficulty ?? null,
+        bot,
       },
     });
   } catch (error) {

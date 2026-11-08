@@ -32,7 +32,6 @@ import {
   aiMoveDelayMs,
   legalMoves,
   planAiMoves,
-  planAiSolution,
 } from "../../../src/lib/solitaire-duel/ai";
 import {
   MAX_MOVES_PER_SEAT,
@@ -51,7 +50,6 @@ import {
 } from "../../../src/lib/solitaire-duel/rules";
 import {
   solvableDealFromSeed,
-  solveDealLine,
   stateSolvableVerdict,
 } from "../../../src/lib/solitaire-duel/solvable";
 import type {
@@ -281,11 +279,11 @@ function botDeal(match: LocalMatch): SolitaireDeal {
  * this plays them until it has caught up. That is the store's exact rule (see
  * `advanceAiMatch` in serverStore.ts).
  *
- * WHAT IT PLAYS IS THE PROVEN LINE, not a per-move guess. The deal was served
- * only after a search found a winning line and the engine replayed it, so
- * following that line guarantees the bot finishes the puzzle; the tier decides
- * only WHEN, which is what makes Easy beatable instead of stuck. A board that is
- * off the line (an old match) falls back to the heuristic planner.
+ * WHAT IT PLAYS IS THE NAMED PROFILE'S DECISION, from its own visible board.
+ * The deal's proven solution is deliberately NOT read: it would hand the bot the
+ * stock order and the identities of face-down cards the player cannot see. The
+ * same fairness rule as the online store applies here, so a stronger tier wins
+ * by deciding better, never by seeing more.
  *
  * The completion INSTANT is the simulated instant of the completing move
  * (`GO + ply × delay`), never the instant this tick happened to run — that is
@@ -306,13 +304,11 @@ export function advanceAi(match: LocalMatch, nowMs = Date.now()): LocalMatch {
   if (maxMoves <= 0) return match;
 
   const startPly = match.ai.ply;
-  const plan =
-    planAiSolution({ state: match.ai, line: solveDealLine(match.deal), maxMoves }) ??
-    planAiMoves({
-      state: match.ai,
-      difficulty: match.difficulty,
-      maxMoves,
-    });
+  const plan = planAiMoves({
+    state: match.ai,
+    difficulty: match.difficulty,
+    maxMoves,
+  });
 
   // `stuck` is the planner's "this board has nothing left to give", NOT the
   // mere absence of moves inside the time it was allowed.

@@ -48,6 +48,8 @@ const LOBBY_COMPONENT = "src/components/solitaire-duel/SolitaireLobby.tsx";
 const LOBBY_ROUTE = "src/app/casino/solitaire-duel/page.tsx";
 const MATCH_PAGE = "src/app/casino/solitaire-duel/[matchId]/PageClient.tsx";
 const MATCH_PAGE_ROUTE = "src/app/casino/solitaire-duel/[matchId]/page.tsx";
+const PLAY_AI_PAGE = "src/app/casino/solitaire-duel/play-ai/PageClient.tsx";
+const PLAY_AI_ROUTE = "src/app/casino/solitaire-duel/play-ai/page.tsx";
 const BOARD = "src/components/solitaire-duel/SolitaireBoard.tsx";
 const CARD = "src/components/solitaire-duel/PlayingCard.tsx";
 const INTERACTIONS = "src/lib/solitaire-duel/interactions.ts";
@@ -245,7 +247,8 @@ test("client: a rematch asks the server for a brand new match", () => {
   assert.match(src, /playAgain=\{\{ label: isPractice \? "NEW DEAL" : "REMATCH", onClick: requeue \}\}/);
   // The shared result screen, and the platform's own exit actions.
   assert.match(src, /PvpResultScreen/);
-  assert.match(src, /href: "\/casino"/);
+  // The losing/exit action goes home, not to the games directory.
+  assert.match(src, /secondaryAction=\{\{ label: "Back to home", href: "\/" \}\}/);
   assert.match(src, /router\.push\("\/casino\/solitaire-duel"\)/);
 });
 
@@ -437,6 +440,44 @@ test("platform: the lobby and match routes mount the shared chrome", () => {
   assert.match(lobby, /\/api\/solitaire-duel\/create-or-join/);
   assert.match(lobby, /matchPath\(matchId\)/);
   assert.match(lobby, /`\/casino\/solitaire-duel\/\$\{matchId\}`/);
+  // Practice now has a dedicated named-bot picker rather than a tier button.
+  assert.match(lobby, /href="\/casino\/solitaire-duel\/play-ai"/);
+  assert.match(lobby, /Play vs Bots/);
+  assert.doesNotMatch(lobby, /\/api\/solitaire-duel\/create-ai/);
+});
+
+test("bots: the picker renders the roster and starts the selected opponent", () => {
+  assert.ok(fs.existsSync(PLAY_AI_ROUTE), "the Play vs Bots route must exist");
+  assert.match(read(PLAY_AI_ROUTE), /title: "Play vs Bots \| Solitaire Duel"/);
+
+  const page = code(PLAY_AI_PAGE);
+  assert.match(page, /SOLITAIRE_BOTS/);
+  assert.match(page, /Play vs Bots/);
+  assert.match(page, /Challenge/);
+  assert.match(page, /bot: bot\.id/);
+  assert.match(page, /solitaire-bot-\$\{bot\.id\}/);
+  assert.match(page, /solitaire-challenge-\$\{bot\.id\}/);
+  // All three player levels and the special final challenge are visible.
+  assert.match(page, /Beginner/);
+  assert.match(page, /Intermediate/);
+  assert.match(page, /Advanced/);
+  assert.match(page, /Final challenge/);
+  assert.match(page, /Difficulty \{bot\.order\} of 6/);
+  // Practice is explicitly separate from ranked progression.
+  assert.match(page, /unrated/i);
+  assert.match(page, /never touch\s+ranked/i);
+});
+
+test("bots: the live match states the selected bot and its rating", () => {
+  const src = code(MATCH_PAGE);
+  assert.match(src, /practiceBot\?\.name/);
+  assert.match(src, /practiceBot\.ratingLabel/);
+  assert.match(src, /practiceBot\.difficultyLabel/);
+  assert.match(src, /data-testid="solitaire-bot-rating"/);
+  assert.match(src, /data-testid="solitaire-bot-name"/);
+  assert.match(src, /Practice vs \$\{opponentName\}/);
+  // The old claim that difficulty only changes bot speed is gone.
+  assert.doesNotMatch(src, /solitaire-solver-pace|changes only how fast|AI_MOVE_DELAY_MS/);
 });
 
 test("platform: the match page reports through the shared session host", () => {
@@ -531,4 +572,18 @@ test("copy: the routes state the format", () => {
   const matchRoute = read(MATCH_PAGE_ROUTE);
   assert.match(matchRoute, /title: "Solitaire Duel Match \| GRYND"/);
   assert.match(matchRoute, /same Klondike deal/i);
+});
+
+// ── 7. Bots play fair ────────────────────────────────────────────────────
+
+test("bots: practice never consults the deal's proven solution", () => {
+  const store = code(STORE);
+  assert.match(store, /planAiMoves\(\{/);
+  assert.doesNotMatch(store, /planAiSolution|solveDealLine/);
+  assert.match(store, /bot: match\.isAi/);
+  assert.match(store, /publicSolitaireBot/);
+
+  const standalone = code("standalone/solitaire-duel/src/match.ts");
+  assert.match(standalone, /planAiMoves\(\{/);
+  assert.doesNotMatch(standalone, /planAiSolution|solveDealLine/);
 });

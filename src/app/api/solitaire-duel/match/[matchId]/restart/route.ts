@@ -17,6 +17,10 @@ import { NextResponse } from "next/server";
 import { requirePracticePlayer } from "../../../../../../lib/auth/guestSession";
 import { logError } from "../../../../../../lib/logError";
 import { isMatchId, restartAiMatch } from "../../../../../../lib/solitaire-duel/serverStore";
+import {
+  publicSolitaireBot,
+  solitaireBotFor,
+} from "../../../../../../lib/solitaire-duel/bots";
 
 export const dynamic = "force-dynamic";
 
@@ -37,16 +41,19 @@ export async function POST(
     return NextResponse.json({ success: false, error: "Invalid matchId" }, { status: 400 });
   }
 
-  // The only client-authored value is the bot tier, and only to carry the
-  // player's existing choice across the restart. Anything unrecognised coerces
-  // onto the shared scale inside the store.
-  const body = (await req.json().catch(() => ({}))) as { difficulty?: unknown };
+  // The only client-authored value is which named bot to keep facing. Anything
+  // unrecognised resolves to the documented default inside the store.
+  const body = (await req.json().catch(() => ({}))) as {
+    bot?: unknown;
+    difficulty?: unknown;
+  };
+  const choice = body?.bot ?? body?.difficulty;
 
   try {
     const result = await restartAiMatch({
       userId,
       matchId,
-      difficulty: body?.difficulty,
+      difficulty: choice,
     });
     if ("error" in result) {
       return NextResponse.json(
@@ -62,6 +69,7 @@ export async function POST(
         status: result.match.status,
         practice: true,
         aiDifficulty: result.match.aiDifficulty ?? null,
+        bot: publicSolitaireBot(solitaireBotFor(result.match.aiDifficulty)),
       },
     });
   } catch (error) {

@@ -26,12 +26,11 @@
 // the real state on screen and the decision (wait, cancel, practise) theirs.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useUser } from "@clerk/nextjs";
 import { IconCards, IconRobot } from "@tabler/icons-react";
 
 import PvpLobbyPage, { PvpLobby } from "../lobby/PvpLobby";
-import AiDifficultyPicker from "../lobby/AiDifficultyPicker";
-import { type AiDifficulty, readStoredAiDifficulty } from "../../lib/aiDifficulty";
 import { useMatchRouter } from "../../hooks/useMatchRouter";
 
 const LOBBY_POLL_MS = 15_000;
@@ -81,7 +80,6 @@ export default function SolitaireLobby({ variant = "home" }: { variant?: "home" 
   const router = useMatchRouter();
 
   const [rankedBusy, setRankedBusy] = useState(false);
-  const [aiBusy, setAiBusy] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<LobbySnapshot | null>(null);
@@ -89,9 +87,6 @@ export default function SolitaireLobby({ variant = "home" }: { variant?: "home" 
   // The waiting match we just created. The GET snapshot is the source of truth,
   // but between the POST and the next poll this keeps the panel honest.
   const [localWaitingId, setLocalWaitingId] = useState<string | null>(null);
-  const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
-    readStoredAiDifficulty("solitaire-duel"),
-  );
 
   const waitingId = snapshot?.myWaiting?.matchId ?? localWaitingId;
 
@@ -192,30 +187,6 @@ export default function SolitaireLobby({ variant = "home" }: { variant?: "home" 
       setRankedBusy(false);
     }
   }, [enterMatch, loadLobby, rankedBusy]);
-
-  const startPractice = useCallback(async () => {
-    if (aiBusy) return;
-    setAiBusy(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/solitaire-duel/create-ai", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ difficulty: aiDifficulty }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok || !data?.success) {
-        setError(data?.error || "Unable to start the practice match");
-        return;
-      }
-      enterMatch(String(data.data.matchId));
-    } catch {
-      setError("Unable to start the practice match");
-    } finally {
-      setAiBusy(false);
-    }
-  }, [aiDifficulty, aiBusy, enterMatch]);
 
   const cancelWaiting = useCallback(async () => {
     if (!waitingId || cancelling) return;
@@ -362,7 +333,7 @@ export default function SolitaireLobby({ variant = "home" }: { variant?: "home" 
     subtitle:
       variant === "page"
         ? "A rated 1v1 Solitaire race. Both players receive the exact same Klondike deal and play it simultaneously — solve the whole puzzle first, or lead on progress when the clock runs out."
-        : "Ranked Klondike against a real person: one deterministic deal, both seats, first to solve it wins. Or practise the same format against the bot, unrated.",
+        : "Ranked Klondike against a real person: one deterministic deal, both seats, first to solve it wins. Or play the same format against one of six named bots, unrated.",
     icon:
       variant === "page" ? (
         <IconCards className="h-9 w-9 flex-shrink-0 text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)] sm:h-10 sm:w-10" />
@@ -397,31 +368,16 @@ export default function SolitaireLobby({ variant = "home" }: { variant?: "home" 
     backHref: "/games/solitaire-duel",
     backLabel: "Solitaire rules",
     extraActions: (
-      <button
-        type="button"
-        onClick={startPractice}
-        disabled={aiBusy || rankedBusy}
-        className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-violet-400/40 bg-violet-400/10 px-5 text-sm font-black uppercase tracking-[0.14em] text-violet-200 transition hover:bg-violet-400/20 disabled:cursor-not-allowed disabled:opacity-40"
+      <Link
+        href="/casino/solitaire-duel/play-ai"
+        data-testid="solitaire-play-bots"
+        className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-violet-400/40 bg-violet-400/10 px-5 text-sm font-black uppercase tracking-[0.14em] text-violet-200 transition hover:bg-violet-400/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
       >
         <IconRobot size={16} className="opacity-70" />
-        {aiBusy ? "Starting…" : "Play vs AI"}
-      </button>
+        Play vs Bots
+      </Link>
     ),
-    children: (
-      <>
-        {queueStatus}
-        <AiDifficultyPicker
-          gameKey="solitaire-duel"
-          value={aiDifficulty}
-          onChange={setAiDifficulty}
-          hint={{
-            easy: "A slow, sloppy solver — beatable by anyone who plays carefully.",
-            normal: "A steady solver of the same deal. Beat it with a clean run.",
-            hard: "A fast, near-optimal solver of the shared deal.",
-          }}
-        />
-      </>
-    ),
+    children: queueStatus,
   };
 
   if (variant === "page") {

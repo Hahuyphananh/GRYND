@@ -68,6 +68,7 @@ import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import { useMatchRouter } from "../../../../hooks/useMatchRouter";
 import SeatAvatar from "../../../../components/game/SeatAvatar";
 import SolitaireBoard from "../../../../components/solitaire-duel/SolitaireBoard";
+import BotAvatar from "../../../../components/solitaire-duel/BotAvatar";
 import { useSocket } from "../../../../context/SocketProvider";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
 import GameEmoteLayer from "../../../../components/game/emotes/GameEmoteLayer";
@@ -84,7 +85,6 @@ import {
   solitaireDuelMatchRoom,
 } from "../../../../lib/solitaire-duel/rooms";
 import { INACTIVITY_COUNTDOWN_MS } from "../../../../lib/solitaire-duel/constants";
-import { aiMoveDelayMs, aiPaceLabel } from "../../../../lib/solitaire-duel/ai";
 import {
   clockLabel,
   durationSeconds,
@@ -113,6 +113,21 @@ type SeatIdentity = {
   isGuest?: boolean;
 } | null;
 
+type MatchBot = {
+  id: string;
+  name: string;
+  rating: number | null;
+  ratingLabel: string;
+  difficulty: string;
+  difficultyLabel: string;
+  description: string;
+  initials: string;
+  avatar: { src: string | null; alt: string };
+  audience: string;
+  audienceLabel: string;
+  order: number;
+};
+
 type MatchDto = {
   matchId: string;
   variant: string;
@@ -125,8 +140,10 @@ type MatchDto = {
   isParticipant: boolean;
   /** True for a free practice match against the bot (never rated). */
   isAi: boolean;
-  /** The bot's tier on a practice match, or null on a human duel. */
+  /** The stable id of the selected bot on a practice match. */
   aiDifficulty: string | null;
+  /** The public identity of that bot; null on a human duel. */
+  bot: MatchBot | null;
   goAtMs: number | null;
   /** The viewer's own inactivity alarm instant (15 min without a move). */
   inactivityAlarmAtMs: number | null;
@@ -186,6 +203,7 @@ function Meter({
   completed,
   identity,
   isAi = false,
+  ratingLabel,
 }: {
   label: string;
   percent: number;
@@ -195,6 +213,8 @@ function Meter({
   identity?: SeatIdentity;
   /** Bot seat: the GRYND mark stands in for a pfp it cannot have. */
   isAi?: boolean;
+  /** The bot's displayed opponent strength (never a player trophy). */
+  ratingLabel?: string | null;
 }) {
   const clamped = Math.max(0, Math.min(100, Math.round(percent)));
   // BOTH seats are identified the same way: a face and a name. A seat whose
@@ -230,6 +250,16 @@ function Meter({
           <span className="truncate text-xs font-bold uppercase tracking-wider text-white/75">
             {label}
           </span>
+          {ratingLabel && (
+            <span
+              data-testid={`solitaire-bot-rating-${tone}`}
+              title="Opponent strength rating — not a player trophy"
+              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-violet-400/40 bg-violet-400/10 px-1.5 py-0.5 font-mono text-[10px] font-bold text-violet-200"
+            >
+              <IconTrophy size={10} aria-hidden="true" />
+              {ratingLabel}
+            </span>
+          )}
           {/* The ladder count travels with the seat identity, so both names are
               introduced with the number their matchmaking was based on. */}
           {identity?.trophies != null && Number.isFinite(Number(identity.trophies)) && (
@@ -709,7 +739,11 @@ export default function SolitaireDuelMatchPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           ...(matchRef.current?.isAi
-            ? { body: JSON.stringify({ difficulty: matchRef.current?.aiDifficulty }) }
+            ? {
+                body: JSON.stringify({
+                  bot: matchRef.current?.bot?.id ?? matchRef.current?.aiDifficulty,
+                }),
+              }
             : {}),
         },
       );
@@ -738,7 +772,9 @@ export default function SolitaireDuelMatchPage() {
       const res = await fetch(`${apiMatch}/restart`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ difficulty: matchRef.current?.aiDifficulty }),
+        body: JSON.stringify({
+          bot: matchRef.current?.bot?.id ?? matchRef.current?.aiDifficulty,
+        }),
       });
       const data = await res.json().catch(() => null);
       if (res.ok && data?.success) {
@@ -758,8 +794,9 @@ export default function SolitaireDuelMatchPage() {
   const opponentProgress = liveOpponent ?? match?.opponent ?? null;
   const seatKeyForIdentity: Seat = mySeatKey === "player1" ? "player2" : "player1";
   const opponentIdentity: SeatIdentity = match?.players?.[seatKeyForIdentity] ?? null;
+  const practiceBot = match?.isAi ? match.bot : null;
   const opponentName = match?.isAi
-    ? "GRYND AI"
+    ? practiceBot?.name || "Bot"
     : opponentIdentity?.name || "Opponent";
   // The viewer's OWN seat, resolved the same way, so both sides of the race are
   // introduced by the same face and the same username rather than "You" vs a
@@ -815,26 +852,11 @@ export default function SolitaireDuelMatchPage() {
                 Solitaire Duel
               </h1>
               <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-semibold uppercase tracking-widest text-amber-200/60">
-                <span>{isPractice ? "Practice vs AI" : "Rated 1v1"}</span>
+                <span>{isPractice ? `Practice vs ${opponentName}` : "Rated 1v1"}</span>
                 <span aria-hidden="true">·</span>
                 <span>Same deal for both seats</span>
                 <span aria-hidden="true">·</span>
                 <span>First to solve it wins</span>
-                {/* Practice only: the tier is PACE. The bot replays the deal's
-                    proven line at every tier, so the picker never changes
-                    whether the puzzle gets solved — only how soon. */}
-                {isPractice && (
-                  <>
-                    <span aria-hidden="true">·</span>
-                    <span
-                      data-testid="solitaire-solver-pace"
-                      data-delay-ms={aiMoveDelayMs(match?.aiDifficulty)}
-                      title="The difficulty changes only how fast the bot plays — it solves this same deal at every tier."
-                    >
-                      {aiPaceLabel(match?.aiDifficulty)}
-                    </span>
-                  </>
-                )}
               </p>
             </div>
 
@@ -913,6 +935,45 @@ export default function SolitaireDuelMatchPage() {
 
           {match && (
             <div data-testid="solitaire-match" data-status={match.status}>
+              {/* The selected opponent, stated plainly during the match. The
+                  rating is the BOT's strength label; it is never awarded to the
+                  player, and practice never touches ranked progression. */}
+              {isPractice && practiceBot && (
+                <div
+                  data-testid="solitaire-bot-opponent"
+                  className="mt-2 flex items-center gap-3 rounded-xl border border-violet-400/25 bg-violet-400/[0.06] px-3 py-2"
+                >
+                  <BotAvatar bot={practiceBot} size="h-10 w-10" />
+                  <div className="min-w-0 flex-1">
+                    <p className="flex flex-wrap items-center gap-2">
+                      <span
+                        data-testid="solitaire-bot-name"
+                        className="text-sm font-black text-violet-100"
+                      >
+                        {practiceBot.name}
+                      </span>
+                      <span
+                        data-testid="solitaire-bot-rating"
+                        title="Opponent strength rating — not a player trophy"
+                        className="inline-flex items-center gap-1 rounded-full border border-amber-400/35 bg-amber-400/10 px-2 py-0.5 font-mono text-[10px] font-bold text-amber-200"
+                      >
+                        <IconTrophy size={10} aria-hidden="true" />
+                        {practiceBot.ratingLabel}
+                      </span>
+                      <span className="rounded-full border border-white/15 bg-white/[0.04] px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-white/55">
+                        {practiceBot.difficultyLabel}
+                      </span>
+                      <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-emerald-300/80">
+                        Unrated
+                      </span>
+                    </p>
+                    <p className="mt-0.5 truncate text-[11px] text-white/45">
+                      {practiceBot.description}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* The inactivity alarm: raised once the viewer's OWN seat has been
                   idle for 15 minutes, with the 20-minute forfeit counting down. */}
               {alarmActive && (
@@ -1008,6 +1069,7 @@ export default function SolitaireDuelMatchPage() {
                       completed={Boolean(opponentProgress?.completed)}
                       identity={opponentIdentity}
                       isAi={isPractice}
+                      ratingLabel={isPractice ? practiceBot?.ratingLabel : null}
                     />
                   </div>
 
@@ -1305,7 +1367,7 @@ export default function SolitaireDuelMatchPage() {
           },
         ]}
         playAgain={{ label: isPractice ? "NEW DEAL" : "REMATCH", onClick: requeue }}
-        secondaryAction={{ label: "Back to games", href: "/casino" }}
+        secondaryAction={{ label: "Back to home", href: "/" }}
       />
 
       <PracticePauseOverlay

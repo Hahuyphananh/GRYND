@@ -14,6 +14,8 @@
 // above the replay controls; and its copy never claims this match was saved or
 // transferred anywhere.
 
+import React from "react";
+
 import { progressLabel } from "../../../src/lib/solitaire-duel/ui";
 import type { SeatProgress } from "../../../src/lib/solitaire-duel/types";
 import type { PortalConfig } from "./portal-config";

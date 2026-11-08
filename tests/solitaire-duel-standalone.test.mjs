@@ -48,7 +48,6 @@ import {
 } from "../src/lib/solitaire-duel/ai.ts";
 import {
   DECK_SIZE,
-  MAX_MOVES_PER_SEAT,
   SEAT,
   TABLEAU_COLUMNS,
 } from "../src/lib/solitaire-duel/constants.ts";
@@ -161,26 +160,19 @@ test("an AI step updates only the AI's board, at the tier's pace", () => {
   assert.equal(early.ai.ply, 0);
 });
 
-test("the bot always solves the shared deal, on every tier, at its own pace", () => {
-  const finishes = [];
-
+test("the bot plays only from its own visible board, on every tier", () => {
   for (const tier of ["easy", "normal", "hard"]) {
     const match = matchAt(2026, tier);
     const delay = AI_MOVE_DELAY_MS[tier];
-    // Far enough ahead that the bot has earned its whole move budget: the point
-    // is that it FINISHES the puzzle, not how long that takes.
-    const solved = advanceAi(match, match.goAtMs + delay * MAX_MOVES_PER_SEAT);
+    const advanced = advanceAi(match, match.goAtMs + delay * 8);
 
-    assert.equal(solved.ai.completed, true, `${tier}: the bot must finish the deal`);
-    assert.equal(solved.result, SEAT.PLAYER2, `${tier}: finishing first wins the race`);
-    assert.equal(solved.resolution, "finish");
-    assert.ok(solved.ai.completedAtMs != null, `${tier}: the completion instant is stamped`);
-    finishes.push(solved.ai.completedAtMs);
+    assert.ok(advanced.ai.ply > 0, `${tier}: the bot must actually play`);
+    assert.equal(advanced.ai.completed, false, `${tier}: eight moves cannot finish a deal`);
+    assert.equal(advanced.result, null, `${tier}: the race is still live`);
+    // It plays its OWN board and never touches the human's. The deal's proven
+    // solution is not consulted, so no future information reaches the bot.
+    assert.deepEqual(advanced.player, match.player);
   }
-
-  // Difficulty is PACE on the same deal: the slower tier finishes later.
-  assert.ok(finishes[0] > finishes[1], "easy must finish after normal");
-  assert.ok(finishes[1] > finishes[2], "normal must finish after hard");
 });
 
 // ── 4. One rules engine ───────────────────────────────────────────────────
