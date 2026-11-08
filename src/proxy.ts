@@ -431,6 +431,7 @@ function getLimitForPath(pathname: string): LimitConfig | null {
 function applySecurityHeaders(response: NextResponse) {
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set("X-Frame-Options", "SAMEORIGIN");
+  response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
 
   // Keep CSP strict enough for safety but compatible with current UI.

@@ -312,6 +312,9 @@ const nextConfig = {
   async headers() {
     const securityHeaders = [
       { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+      // Browsers must not re-interpret a response as a type the server did not
+      // declare (an uploaded or user-influenced file rendered as HTML/SVG).
+      { key: "X-Content-Type-Options", value: "nosniff" },
       {
         key: "Permissions-Policy",
         value: "camera=(), microphone=(), geolocation=()"

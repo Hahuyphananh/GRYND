@@ -2,10 +2,19 @@ import { resend } from "../../../../lib/resend";
 import { db } from "../../../../db";
 import { emailEvents } from "../../../../db/schema";
 import { getFromAddress } from "../../../../lib/emails/base";
+import { verifyCronRequest } from "../../../../lib/security/cronAuth";
 
 // POST /api/email/test — Sends a verification test email via Resend.
 // Use this endpoint to validate backend email sending is configured correctly.
-export async function POST() {
+//
+// Sending mail is a side effect with a real cost, so it is authenticated like
+// every other job: an anonymous caller used to be able to trigger an email to
+// the hard-coded address on every request, which burns the Resend quota and
+// fills the inbox. Fail-secure when CRON_SECRET is unset.
+export async function POST(request: Request) {
+  const authError = verifyCronRequest(request);
+  if (authError) return authError;
+
   const to = "huyphananhha@gmail.com";
 
   const { data, error } = await resend.emails.send({
@@ -36,7 +45,11 @@ export async function POST() {
   return Response.json({ success: true, data });
 }
 
-// Keep GET for backwards compatibility
+// A state-changing GET can be triggered by an <img> tag or a link preview, so
+// the backwards-compatible GET is gone; callers must POST with the secret.
 export async function GET() {
-  return POST();
+  return Response.json(
+    { error: "Method Not Allowed" },
+    { status: 405, headers: { Allow: "POST" } },
+  );
 }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { verifyCronRequest } from "../../../../lib/security/cronAuth";
 import {
   sendDepositProcessingEmail,
   sendDepositSuccessEmail,
@@ -7,7 +8,12 @@ import {
 import { sendLossStreakEmail } from "../../../../lib/emails/behavior";
 import { sendLoginAlertEmail } from "../../../../lib/emails/security";
 
-export async function POST() {
+// Sends five real emails per call, so it is authenticated like the other
+// jobs. Left open, anyone could use it to mail the configured From address.
+export async function POST(request: Request) {
+  const authError = verifyCronRequest(request);
+  if (authError) return authError;
+
   const user = {
     clerkId: "demo_clerk",
     email: "demo@example.com",
