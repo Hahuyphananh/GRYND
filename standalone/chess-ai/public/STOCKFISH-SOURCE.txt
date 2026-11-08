@@ -1,0 +1,40 @@
+STOCKFISH 16 — SOURCE AND LICENCE POINTER
+=========================================
+
+This game includes Stockfish, the open-source chess engine, compiled to
+WebAssembly and shipped UNMODIFIED.
+
+Engine files in this package
+----------------------------
+  engine/stockfish-nnue-16-single.js
+  engine/stockfish-nnue-16-single.wasm
+
+These two files are byte-identical to the files published in the npm package
+"stockfish" version 16.0.0 (the single-threaded WebAssembly build). They have
+not been edited, patched, renamed or rebuilt. The SHA-256 of each file is in
+the release notes of the build that produced this package.
+
+Upstream
+--------
+  Project:  Stockfish
+  Source:   https://github.com/official-stockfish/Stockfish
+  Version:  16 (git tag sf_16)
+  Authors:  see AUTHORS upstream
+  Licence:  GNU General Public License, version 3
+
+The complete licence text is in LICENSE-STOCKFISH.txt beside this file.
+
+Corresponding source
+--------------------
+The corresponding source code for the engine is the upstream source at the tag
+above, together with the npm package contents the WebAssembly build came from:
+
+  https://github.com/official-stockfish/Stockfish/tree/sf_16
+  https://www.npmjs.com/package/stockfish/v/16.0.0
+
+Because the engine is shipped unmodified, no additional patch set is required.
+If you received this game as a download, the same source locations are
+available to you from those addresses.
+
+Everything else in this package (the board, the UI and the match rules) is
+original code and is not part of Stockfish.

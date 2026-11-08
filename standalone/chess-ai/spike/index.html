@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Chess AI — engine spike (Phase 1)</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: #0b1020;
+        color: #e6edf7;
+        font:
+          14px/1.5 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Consolas,
+          monospace;
+      }
+      h1 {
+        font-size: 18px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #fbbf24;
+      }
+      p {
+        color: #93a4bd;
+        margin: 0 0 16px;
+      }
+      #log div {
+        padding: 2px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      }
+      .ok {
+        color: #34d399;
+      }
+      .bad {
+        color: #f87171;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Chess AI — Stockfish-in-browser spike</h1>
+    <p>
+      Phase 1 gate: boot the single-threaded Stockfish 16 WASM build in a Web Worker, speak UCI, and
+      check every returned move against <code>chess.js</code>. This page is deliberately
+      dependency-free apart from the rules engine; no server is involved.
+    </p>
+    <div id="log"></div>
+    <script type="module" src="./spike.js"></script>
+  </body>
+</html>

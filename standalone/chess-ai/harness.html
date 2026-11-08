@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Chess AI — QA harness</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: #0b1020;
+        color: #e6edf7;
+        font:
+          14px/1.5 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Consolas,
+          monospace;
+      }
+      h1 {
+        font-size: 18px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #fbbf24;
+      }
+      #status {
+        color: #34d399;
+        margin: 8px 0 16px;
+      }
+      #log div {
+        padding: 2px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Chess AI — self-play harness</h1>
+    <div id="status">starting the engine…</div>
+    <div id="log"></div>
+    <script type="module" src="./src/harness.ts"></script>
+  </body>
+</html>

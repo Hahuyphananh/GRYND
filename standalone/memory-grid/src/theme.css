@@ -1,0 +1,87 @@
+/*
+ * standalone/memory-grid/src/theme.css
+ *
+ * The ONLY styling the standalone build ships.
+ *
+ * The tile markup carries the app's shared visual language, so the utilities
+ * come from Tailwind and the `--gr-*` custom properties below are copied
+ * verbatim from the app's token block (`src/app/globals.css`, "GRYND GAME VISUAL
+ * TOKENS"). They are copied rather than imported because that file is ~4,600
+ * lines of site chrome.
+ *
+ * If a token ever changes in globals.css, change it here too — the board's whole
+ * palette (the dark tile outline, the selected ring, the focus ring) is these
+ * values.
+ *
+ * NO WEB FONTS. A portal build must not request a font from anywhere, so the
+ * system UI stack is used and the identity is carried by weight, tracking and
+ * colour.
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* ── Copied from the app's token block ─────────────────────────────── */
+  --gr-brand-cyan: #00e5ff;
+  --gr-ink-subtle: rgba(255, 255, 255, 0.45);
+  --gr-hairline: rgba(255, 255, 255, 0.1);
+  --gr-border: rgba(255, 255, 255, 0.18);
+  --gr-outline: #05101f;
+  --gr-outline-width: 2px;
+  --gr-legal-move: #eaf6ff;
+  --gr-selected: #f5ff3b;
+  --gr-selected-style: dashed;
+  --gr-focus-ring: #9dd8ff;
+  --gr-focus-ring-width: 2px;
+
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #04070f;
+  color: #fff;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  /* The board is a fixed-height layout; a rubber-banding page on a phone makes
+     a tile feel like it slid while the finger was still down. */
+  overscroll-behavior-y: contain;
+}
+
+/* ── The shared classes the board references ───────────────────────────
+   Copied from globals.css (`.gr-selected`, `.gr-focusable`). A selected tile
+   gets a DASHED ring so selection is legible without relying on hue alone. */
+
+.gr-selected {
+  outline: var(--gr-outline-width) var(--gr-selected-style) var(--gr-selected);
+  outline-offset: 2px;
+}
+
+.gr-focusable:focus-visible {
+  outline: var(--gr-focus-ring-width) solid var(--gr-focus-ring);
+  outline-offset: 2px;
+}
+
+/* Desktop board cap, copied from globals.css. The grid is full-width inside the
+   shell below `lg`; from `lg` up this rule tightens the square board to the
+   viewport height so the controls underneath stay visible without scrolling. */
+@media (min-width: 1024px) {
+  .memory-board-frame {
+    max-width: max(260px, calc(100vh - 20rem));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gr-focusable {
+    transition-duration: 0s;
+  }
+}
