@@ -7,6 +7,13 @@
 // to name the game with ONE canonical id (`battleship`). These assertions are
 // source/registry contracts, which is the only way to prove the registries
 // actually agree without rendering the app.
+//
+// ARCHIVED SINCE THE SOLITAIRE-FIRST TRANSITION: Battleship is listed in
+// src/lib/gameAvailability.js, so the public product no longer discovers or
+// serves it. Nothing was deleted — catalogue entry, card art, engine, tables
+// and rating/trophy registration all stay — so the landing-page assertions
+// below pin the ARCHIVED state: the definition is retained, the public
+// projections drop it, and no other page links to it.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -14,12 +21,13 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { GAME_CATALOG, GAMES_BY_ID } from "../src/lib/gameTags.js";
-import { isGameAvailable } from "../src/lib/gameAvailability.js";
+import { isGameArchived, isGameAvailable } from "../src/lib/gameAvailability.js";
 import {
   GAME_CARDS,
   GAME_INDEX,
   GAME_LANDING_BY_SLUG,
   GAME_LANDING_PAGES,
+  relatedGames,
 } from "../src/lib/gameLandingPages.ts";
 import { resolveGameId } from "../src/lib/gamePresence.js";
 
@@ -82,7 +90,7 @@ test("the card-art registry carries the geometric illustration and it exists on 
   assert.doesNotMatch(svg, /<image|href="https?:/i);
 });
 
-test("the public landing page exists and its rules match the shipped engine", () => {
+test("the landing page is archived: definition retained, public projections drop it", () => {
   const page = GAME_LANDING_BY_SLUG[KEY];
   assert.ok(page, "Battleship must have a landing page");
   assert.equal(page.leaderboardKey, KEY);
@@ -104,10 +112,33 @@ test("the public landing page exists and its rules match the shipped engine", ()
   assert.match(rules, /sunk/i);
   assert.match(rules, /draw/i);
 
-  // Every related slug is a real page, and the projections include the game.
+  // Every related slug is still a real page — the definition is preserved for
+  // reactivation — but no public projection serves the game any more.
   for (const slug of page.related) assert.ok(GAME_LANDING_BY_SLUG[slug], `${slug} missing`);
-  assert.ok(GAME_CARDS.some((card) => card.slug === KEY));
-  assert.ok(GAME_INDEX.some((entry) => entry.slug === KEY));
+  assert.ok(
+    GAME_LANDING_PAGES.some((entry) => entry.slug === KEY),
+    "the catalogue keeps the entry so removing one line reactivates the game",
+  );
+  assert.equal(isGameArchived(KEY), true, "Battleship is archived");
+  assert.equal(isGameAvailable(KEY), false, "Battleship is not publicly available");
+  assert.equal(
+    GAME_CARDS.some((card) => card.slug === KEY),
+    false,
+    "the public catalogue must not advertise an archived game",
+  );
+  assert.equal(
+    GAME_INDEX.some((entry) => entry.slug === KEY),
+    false,
+    "no crawlable link may point at an archived landing page",
+  );
+  // The related rail filters archived games, so no other page cross-links it.
+  for (const other of GAME_LANDING_PAGES) {
+    assert.equal(
+      relatedGames(other.slug).some((entry) => entry.slug === KEY),
+      false,
+      `${other.slug} still links to archived Battleship`,
+    );
+  }
 });
 
 test("landing-page copy never claims anything is wagered", () => {
