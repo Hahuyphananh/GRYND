@@ -6,7 +6,13 @@ import Image from "next/image";
 import LogoSmiley from "../images/logo1.png";
 import SocialLinks, { REDDIT_COMMUNITY } from "./SocialLinks";
 import CookieSettingsLink from "./CookieSettingsLink";
-import { isGameAvailable } from "../lib/gameAvailability";
+
+// Solitaire-first footer: say what GRYND is now, keep every real destination
+// (play, ladder, rules, GRYND PRO, account), and keep Contact and FAQ one
+// click away beside the legal set.
+//
+// The old "Popular Games" column went with the multi-game product. Archived
+// games keep their routes and data; they are simply no longer advertised here.
 
 export default function Footer() {
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -24,209 +30,134 @@ export default function Footer() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const linkClass =
-    "block text-[#c9f7ff] transition-all duration-200 hover:translate-x-1 hover:text-[#f5ff3b] hover:drop-shadow-[0_0_6px_rgba(245,255,59,0.4)]";
+  const linkClass = "block text-sm text-white/55 transition-colors hover:text-white";
+  const heading = "mb-3 text-[11px] font-black uppercase tracking-[0.22em] text-white/35";
 
   return (
-    <footer className="border-t border-[#00e5ff]/20 bg-[#030712]">
-      <div className="mx-auto max-w-7xl px-4 py-12">
-
-        {/* TOP GRID */}
-        <div className="grid grid-cols-1 gap-10 md:grid-cols-4">
-
-          {/* BRAND */}
-          <div>
+    <footer className="mt-16 border-t border-white/10 bg-[#04060b]">
+      <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
+        <div className="grid grid-cols-2 gap-8 md:grid-cols-5">
+          <div className="col-span-2 md:col-span-1">
             <Link href="/" className="inline-block">
               <Image
                 src={LogoSmiley}
-                alt="GRYND Logo"
+                alt="GRYND"
                 width={150}
                 height={60}
-                className="w-[140px] object-contain drop-shadow-[0_0_10px_rgba(245,255,59,0.25)]"
+                className="w-[130px] object-contain"
               />
             </Link>
 
-            <p className="mt-4 text-sm leading-relaxed text-[#7dd3fc]">
-              Skill-based multiplayer games and competitive entertainment platform.
+            <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/50">
+              The competitive home of Klondike Solitaire. One deal, two players,
+              a free ranked ladder and results the server verifies.
             </p>
 
-            {/* SOCIALS — same component the contact page mounts, so the two
-                can't list different accounts. */}
             <SocialLinks testId="footer-social" className="mt-5" />
-
-            {/* Product Hunt featured badge — third-party badge image, so it is
-                a plain <img> rather than next/image (no remote-domain config). */}
-            <a
-              href="https://www.producthunt.com/products/grynd?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-grynd"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="GRYND on Product Hunt"
-              className="mt-5 inline-block"
-            >
-              <img
-                alt="GRYND - Competitive multiplayer games, built to outplay. | Product Hunt"
-                width={250}
-                height={54}
-                src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1251858&theme=dark&t=1789866264006"
-                className="h-[54px] w-[250px]"
-              />
-            </a>
           </div>
 
-          {/* NAVIGATION */}
           <div>
-            <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-[#f5ff3b]">
-              Navigation
-            </h2>
-
-            <div className="space-y-2 text-sm">
+            <h2 className={heading}>Play</h2>
+            <div className="space-y-2">
               <Link href="/" className={linkClass}>
-                Home
+                Play ranked
               </Link>
-
-              <Link href="/games" className={linkClass}>
-                Games
+              <Link href="/games/solitaire-duel" className={linkClass}>
+                Rules &amp; strategy
               </Link>
-
               <Link href="/classement" className={linkClass}>
-                Rankings
+                Leaderboard
               </Link>
+              <Link href="/upgrade-pro" className={linkClass}>
+                GRYND PRO
+              </Link>
+            </div>
+          </div>
 
+          <div>
+            <h2 className={heading}>Account</h2>
+            <div className="space-y-2">
               <Link href="/profil" className={linkClass}>
                 Profile
               </Link>
-
-              <Link href="/contact" className={linkClass}>
-                Contact
+              <Link href="/stats" className={linkClass}>
+                Statistics
               </Link>
-
+              <Link href="/settings" className={linkClass}>
+                Settings
+              </Link>
               <Link href="/reviews" className={linkClass}>
                 Reviews
               </Link>
+            </div>
+          </div>
 
-              {/* COMMUNITY — the subreddit is a destination rather than site
-                  navigation, so it opens in a new tab under the same
-                  rel="noopener noreferrer" the social row and the Product Hunt
-                  badge use. The URL is the shared social list's own entry, so
-                  the icon tile and this label can never point at different
-                  places. */}
+          <div>
+            <h2 className={heading}>Support</h2>
+            <div className="space-y-2">
+              <Link href="/faq" className={linkClass}>
+                FAQ
+              </Link>
+              <Link href="/contact" className={linkClass}>
+                Contact
+              </Link>
+              <Link href="/guides" className={linkClass}>
+                Guides
+              </Link>
               <a
                 href={REDDIT_COMMUNITY.href}
                 target="_blank"
                 rel="noopener noreferrer"
                 className={linkClass}
               >
-                Reddit Community
+                Reddit community
               </a>
             </div>
           </div>
 
-          {/* GAMES */}
           <div>
-            <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-[#f5ff3b]">
-              Popular Games
-            </h2>
-
-            <div className="space-y-2 text-sm">
-              {/* Neon Flush is archived today; the link returns automatically
-                  when its entry in src/lib/gameAvailability.js changes. */}
-              {isGameAvailable("uno") && (
-                <Link href="/games/neon-flush" className={linkClass}>
-                  Neon Flush
-                </Link>
-              )}
-
-              <Link href="/games/chess" className={linkClass}>
-                Chess
-              </Link>
-
-              <Link href="/games/pool-masters" className={linkClass}>
-                Pool Masters
-              </Link>
-
-              {/* Barrier Blitz (formerly Barricade) replaced Dice Flush in the
-                  catalogue; this slot used to link /games/dice-flush. The old
-                  dice-flush AND barricade URLs still 308-redirect here for old
-                  bookmarks and inbound links. */}
-              <Link href="/games/barrier-blitz" className={linkClass}>
-                Barrier Blitz
-              </Link>
-
-              <Link href="/games/precision" className={linkClass}>
-                Precision
-              </Link>
-
-              <Link
-                href="/games"
-                className="mt-3 inline-flex rounded-lg border border-[#00e5ff]/30 bg-[#00e5ff]/10 px-3 py-2 text-xs font-medium text-[#67f9ff] transition-all duration-200 hover:translate-x-1 hover:bg-[#00e5ff]/20 hover:shadow-[0_0_12px_rgba(0,229,255,0.3)]"
-              >
-                View All Games
-              </Link>
-            </div>
-          </div>
-
-          {/* LEGAL */}
-          <div>
-            <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-[#f5ff3b]">
-              Legal
-            </h2>
-
-            <div className="space-y-2 text-sm">
-              <Link href="/security-policy" className={linkClass}>
-                Security Policy
-              </Link>
-
-              <Link href="/privacy-policy" className={linkClass}>
-                Privacy Policy
-              </Link>
-
+            <h2 className={heading}>Legal</h2>
+            <div className="space-y-2">
               <Link href="/terms" className={linkClass}>
-                Terms & Conditions
+                Terms
               </Link>
-
+              <Link href="/privacy-policy" className={linkClass}>
+                Privacy
+              </Link>
               <Link href="/fair-play" className={linkClass}>
-                Fair Play
+                Fair play
               </Link>
-
+              <Link href="/security-policy" className={linkClass}>
+                Security
+              </Link>
               <Link href="/accessibility" className={linkClass}>
                 Accessibility
               </Link>
-
-              <Link href="/faq" className={linkClass}>
-                FAQ
-              </Link>
-
-              {/* Withdrawal entrypoint — GDPR art. 7(3) requires that a
-                  choice be as easy to change as it was to make. Reopens
-                  Google's CMP or our banner, whichever owns the visitor. */}
               <CookieSettingsLink className={linkClass} />
             </div>
           </div>
         </div>
 
-        {/* BOTTOM BAR */}
-        <div className="mt-10 border-t border-[#00e5ff]/10 pt-6">
-          <div className="flex flex-col items-center justify-between gap-3 text-xs text-[#6b91b3] md:flex-row">
+        <div className="mt-10 border-t border-white/10 pt-6">
+          <div className="flex flex-col items-center justify-between gap-3 text-xs text-white/35 md:flex-row">
             <div>© 2026 GRYND. All rights reserved.</div>
-
             <div className="flex items-center gap-2">
-              <Link href="/terms" className="transition-colors hover:text-[#f5ff3b]">
+              <Link href="/terms" className="transition-colors hover:text-white">
                 Terms
               </Link>
-              <span>&bull;</span>
-              <Link href="/fair-play" className="transition-colors hover:text-[#f5ff3b]">
+              <span aria-hidden="true">&bull;</span>
+              <Link href="/fair-play" className="transition-colors hover:text-white">
                 Play responsibly
               </Link>
             </div>
           </div>
         </div>
 
-        {/* BACK TO TOP BUTTON */}
         {showScrollTop && (
           <button
             onClick={scrollToTop}
             aria-label="Scroll to top"
-            className="fixed bottom-24 right-4 z-50 flex h-12 w-12 items-center justify-center rounded-full border border-[#00e5ff]/40 bg-[#030712]/90 text-[#00e5ff] shadow-[0_0_16px_rgba(0,229,255,0.3)] backdrop-blur-sm transition-all duration-300 hover:scale-110 hover:border-[#00e5ff]/70 hover:shadow-[0_0_24px_rgba(0,229,255,0.6)] active:scale-95 sm:bottom-6 sm:right-6"
+            className="fixed bottom-24 right-4 z-50 flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-[#04060b]/90 text-white/70 backdrop-blur-sm transition hover:border-white/30 hover:text-white sm:bottom-6 sm:right-6"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -234,7 +165,7 @@ export default function Footer() {
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
-              strokeWidth={2.5}
+              strokeWidth={2.2}
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
             </svg>

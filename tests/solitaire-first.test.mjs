@@ -26,7 +26,7 @@ const read = (path) => fs.readFileSync(path, "utf8");
 const nav = read("src/components/navigation-bar.jsx");
 const home = read("src/app/PageClient.jsx");
 const lobby = read("src/app/casino/PageClient.jsx");
-const solitaireLobby = read("src/app/casino/solitaire-duel/PageClient.tsx");
+const solitaireLobby = read("src/components/solitaire-duel/SolitaireLobby.tsx");
 const solitaireRoute = read("src/app/api/solitaire-duel/create-or-join/route.ts");
 const classement = read("src/app/classement/PageClient.jsx");
 
@@ -107,7 +107,9 @@ test("navigation is Solitaire-first and carries no coin, shop or rewards UI", ()
   assert.doesNotMatch(nav, /nav-coins/);
   assert.doesNotMatch(nav, /IconCoins/);
   assert.doesNotMatch(nav, /\/rewards/);
-  assert.doesNotMatch(nav, /\/upgrade-pro/);
+  // GRYND PRO is a membership, not a coin shop: it stays reachable from the
+  // public chrome, and the product keeps exactly one membership entry.
+  assert.match(nav, /\/upgrade-pro/);
   assert.doesNotMatch(nav, /QuestNavBadge/);
 });
 

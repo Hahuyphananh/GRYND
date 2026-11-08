@@ -4186,6 +4186,55 @@ export const solitaireDuelMoves = pgTable(
   })
 );
 
+// SOLO SOLITAIRE + DAILY CHALLENGE — single-player records.
+// ==============================================================================
+//
+// Deliberately SEPARATE from `solitaire_duel_matches`: a solo or daily result
+// must never be settlable as a ranked PvP match, and the ranked leaderboard,
+// Elo and trophy writers must never see these rows. Each row is one finished
+// attempt; the moves themselves are replayed server-side before the row is
+// written, so `completed` is a verified fact rather than a client claim.
+export const solitaireSoloResults = pgTable(
+  "solitaire_solo_results",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    // The client-generated deal seed; the server re-derives the deal from it.
+    seed: varchar("seed", { length: 20 }).notNull(),
+    completed: boolean("completed").notNull().default(false),
+    moves: integer("moves").notNull().default(0),
+    elapsedMs: integer("elapsed_ms").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    userIdx: index("solitaire_solo_results_user_idx").on(table.userId, table.createdAt),
+  })
+);
+
+// ONE official result per player per UTC calendar date. The unique index is the
+// anti-reroll backstop: a replayed or duplicated submission cannot inflate the
+// completion count or the streak.
+export const solitaireDailyResults = pgTable(
+  "solitaire_daily_results",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    // YYYY-MM-DD in UTC — the day the server dealt the challenge.
+    challengeDate: varchar("challenge_date", { length: 10 }).notNull(),
+    completed: boolean("completed").notNull().default(true),
+    moves: integer("moves").notNull().default(0),
+    elapsedMs: integer("elapsed_ms").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    userDateIdx: unique("solitaire_daily_results_user_date_unique").on(
+      table.userId,
+      table.challengeDate
+    ),
+    dateIdx: index("solitaire_daily_results_date_idx").on(table.challengeDate),
+  })
+);
+
 // SUDOKU DUEL — the 1v1 simultaneous Sudoku race.
 // ==============================================================================
 // ONE server-generated puzzle per match that BOTH seats solve from their own

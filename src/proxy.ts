@@ -219,6 +219,11 @@ const isPublicRoute = createRouteMatcher([
   // which is matched above.
   "/welcome/questionnaire(.*)",
   "/classement",
+  // Single-player Solitaire surfaces: guests must be able to play without an
+  // account (solo records then stay in their browser). No auth is required to
+  // VIEW them; the record APIs still require a signed-in user.
+  "/solitaire",
+  "/daily",
   "/profil(.*)",
   // Onboarding / auth / system pages that must stay reachable BEFORE a
   // player has an age record.

@@ -384,6 +384,10 @@ export function PvpLobby({
   joinLabel = "Join",
   onRefresh,
   historyHref = null,
+  // Where the ghost "back" action points. The homepage IS the lobby, so it
+  // sends the player to the rules rather than a games hub.
+  backHref = "/games",
+  backLabel = "← Back to games",
   // "your open lobby" banner
   myOpenId = null,
   onResume,
@@ -547,10 +551,10 @@ export function PvpLobby({
                 frame must not offer outbound navigation. */}
             {!practiceMode && (
               <Link
-                href="/games"
+                href={backHref}
                 className={`inline-flex h-12 items-center justify-center rounded-xl px-5 text-sm font-bold transition ${PALETTE.ghost}`}
               >
-                ← Back to games
+                {backLabel}
               </Link>
             )}
             <span className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-[11px] font-semibold text-white/40">
@@ -616,7 +620,7 @@ export function PvpLobby({
               >
                 <span className="flex items-center gap-2 text-xs text-cyan-100/80">
                   <LoadingDotsIcon className="h-4 w-4 animate-pulse text-cyan-200" />
-                  Lobby #{myOpenId} is waiting for an opponent…
+                  Your table is waiting for an opponent…
                 </span>
                 <div className="flex items-center gap-2">
                   {onResume && (
@@ -652,8 +656,8 @@ export function PvpLobby({
               : [
                   ["Entry", wager ? `${formatTokens(wager?.value ?? 0)} coins` : "Free"],
                   ["Opponent", "Live player"],
-                  ["Winner", wager ? "Takes 1.8× the stake" : "Nothing wagered"],
-                  ["Draw", "Both seats refunded"],
+                  ["Winner", wager ? "Takes 1.8× the stake" : "First to solve it"],
+                  ["Draw", wager ? "Both seats refunded" : "No rating change"],
                 ]
             ).map(([label, value]) => (
               <div

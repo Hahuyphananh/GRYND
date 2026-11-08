@@ -42,6 +42,9 @@ const code = (path) =>
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
 
 const LOBBY_PAGE = "src/app/casino/solitaire-duel/PageClient.tsx";
+// The lobby UI moved into one shared component that `/` also mounts; the route
+// is now a thin wrapper, so the UI contract is asserted against the component.
+const LOBBY_COMPONENT = "src/components/solitaire-duel/SolitaireLobby.tsx";
 const LOBBY_ROUTE = "src/app/casino/solitaire-duel/page.tsx";
 const MATCH_PAGE = "src/app/casino/solitaire-duel/[matchId]/PageClient.tsx";
 const MATCH_PAGE_ROUTE = "src/app/casino/solitaire-duel/[matchId]/page.tsx";
@@ -427,12 +430,13 @@ test("platform: the lobby and match routes mount the shared chrome", () => {
   // ...while a live board must never be framed by an ad.
   assert.doesNotMatch(matchRoute, /AdSenseScript|AdSlot/);
 
-  const lobby = code(LOBBY_PAGE);
-  assert.match(lobby, /import PvpLobbyPage from "\.\.\/\.\.\/\.\.\/components\/lobby\/PvpLobby"/);
+  const lobby = code(LOBBY_COMPONENT);
+  assert.match(lobby, /import PvpLobbyPage[^\n]*from "\.\.\/lobby\/PvpLobby"/);
   assert.match(lobby, /<PvpLobbyPage/);
-  assert.match(lobby, /rulesKey="solitaire-duel"/);
+  assert.match(lobby, /rulesKey: "solitaire-duel",/);
   assert.match(lobby, /\/api\/solitaire-duel\/create-or-join/);
-  assert.match(lobby, /router\.push\(`\/casino\/solitaire-duel\/\$\{data\.data\.matchId\}`\)/);
+  assert.match(lobby, /matchPath\(matchId\)/);
+  assert.match(lobby, /`\/casino\/solitaire-duel\/\$\{matchId\}`/);
 });
 
 test("platform: the match page reports through the shared session host", () => {
@@ -474,7 +478,7 @@ test("platform: no gambling surface exists anywhere in the game", () => {
     }
   }
   // Ranked Solitaire is free: no stake picker and no wager payload.
-  const lobby = code(LOBBY_PAGE);
+  const lobby = code(LOBBY_COMPONENT);
   assert.doesNotMatch(lobby, /wager=/);
   assert.doesNotMatch(lobby, /JSON\.stringify\(\{ stake \}\)/);
   assert.doesNotMatch(lobby, /place a bet|bet amount|wager amount/i);

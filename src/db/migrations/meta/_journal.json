@@ -1576,6 +1576,13 @@
       "when": 1800000087000,
       "tag": "0243_guest_and_platform_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 225,
+      "version": "7",
+      "when": 1800000088000,
+      "tag": "0244_solitaire_solo_daily",
+      "breakpoints": true
     }
   ]
 }

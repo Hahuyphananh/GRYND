@@ -4,7 +4,7 @@ export const metadata = {
   alternates: { canonical: "/contact" },
   title: "Contact Us | GRYND",
   description:
-    "Get in touch with the GRYND team. We're here to help with account, token, payment and gameplay questions.",
+    "Get in touch with the GRYND team about your account, a Solitaire match, GRYND PRO or a technical issue.",
 };
 
 export default function Page() {

@@ -36,6 +36,26 @@ const NAV_TRANSLATION_KEYS = {
 };
 const NAV_ICONS = {};
 
+// The public navigation is the product: play, the ladder, the rules and the
+// membership. Account destinations live in the account menu below.
+const ACCOUNT_ITEMS = [
+  { href: "/profil", label: "Profile" },
+  { href: "/stats", label: "Statistics" },
+  { href: "/profil", label: "Match history" },
+  { href: "/settings", label: "Settings" },
+  { href: "/upgrade-pro", label: "GRYND PRO" },
+];
+
+// Labels for the primary row. The existing translated keys keep their copy;
+// the Solitaire-specific entries name their destination explicitly.
+function navLabel(path, t) {
+  if (path === "/games/solitaire-duel/play") return "Play";
+  if (path === "/games/solitaire-duel") return "Rules";
+  if (path === "/upgrade-pro") return "GRYND PRO";
+  if (path === "/daily") return "Daily";
+  return t(NAV_TRANSLATION_KEYS[path]);
+}
+
 function NavigationBarInner({ currentPath = "" }) {
   const { isLoaded, isSignedIn, user } = useUser();
   const { t } = useTranslation();
@@ -460,7 +480,7 @@ function NavigationBarInner({ currentPath = "" }) {
               animate="animate"
               className="hidden items-center space-x-1 md:flex lg:space-x-4"
             >
-              {["/", "/games/solitaire-duel", "/classement"].map((path) => (
+              {["/", "/daily", "/games/solitaire-duel/play", "/classement", "/games/solitaire-duel", "/upgrade-pro"].map((path) => (
                 <motion.div
                   key={path}
                   initial={itemVariant.initial}
@@ -476,7 +496,7 @@ function NavigationBarInner({ currentPath = "" }) {
                         their label exactly as before (a bare text node) — the
                         conditional wrapper means adding the icon did not shift
                         any existing link by even a space. */}
-                    {t(NAV_TRANSLATION_KEYS[path])}
+                    {navLabel(path, t)}
                   </Link>
                 </motion.div>
               ))}
@@ -586,6 +606,33 @@ function NavigationBarInner({ currentPath = "" }) {
                         )}
                       </div>
                     </Link>
+                    <details className="relative">
+                      <summary
+                        aria-label="Account menu"
+                        className="list-none cursor-pointer rounded-lg border border-[#00e5ff]/30 bg-[#00e5ff]/10 px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-[#d8fbff] transition hover:bg-[#00e5ff]/20"
+                      >
+                        Account
+                      </summary>
+                      <div className="absolute right-0 z-50 mt-2 w-52 overflow-hidden rounded-xl border border-[#00e5ff]/30 bg-[#08142f] p-1.5 shadow-xl">
+                        {ACCOUNT_ITEMS.map((item) => (
+                          <Link
+                            key={item.href + item.label}
+                            href={item.href}
+                            className="block rounded-lg px-3 py-2 text-sm text-[#c9f7ff] transition hover:bg-[#00e5ff]/10 hover:text-white"
+                          >
+                            {item.label}
+                          </Link>
+                        ))}
+                        {isAdmin && (
+                          <Link
+                            href="/admin"
+                            className="block rounded-lg px-3 py-2 text-sm font-semibold text-[#f5ff3b] transition hover:bg-[#f5ff3b]/10"
+                          >
+                            Admin
+                          </Link>
+                        )}
+                      </div>
+                    </details>
                   </div>
                   <button
                     onClick={() => {
@@ -704,25 +751,29 @@ function NavigationBarInner({ currentPath = "" }) {
                     Admin dashboard
                   </Link>
                 )}
-                {["/", "/games/solitaire-duel", "/classement"].map((path) => (
+                {["/", "/daily", "/games/solitaire-duel/play", "/classement", "/games/solitaire-duel", "/upgrade-pro"].map((path) => (
                   <Link
                     key={path}
                     href={path}
                     onClick={() => setMobileMenuOpen(false)}
                     className="block rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff]"
                   >
-                    {t(NAV_TRANSLATION_KEYS[path])}
+                    {navLabel(path, t)}
                   </Link>
                 ))}
+                <p className="px-1 pt-2 text-[10px] font-black uppercase tracking-[0.2em] text-white/30">
+                  Account
+                </p>
+                {ACCOUNT_ITEMS.map((item) => (
                   <Link
-                    href="/settings"
+                    key={item.href + item.label}
+                    href={item.href}
                     onClick={() => setMobileMenuOpen(false)}
                     className="block rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff]"
                   >
-                    <span className="inline-flex items-center gap-1.5">
-                      <IconSettings size={15} className="shrink-0" /> {t("nav.settings")}
-                    </span>
+                    {item.label}
                   </Link>
+                ))}
                 {/* The same switch, as a labelled row — an icon-only button
                     would be the only unlabelled control in this menu. */}
                 <ThemeToggle

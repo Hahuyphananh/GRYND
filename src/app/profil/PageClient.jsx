@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useUser, useClerk } from "@clerk/nextjs";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
+import SolitaireModesPanel from "../../components/solitaire-duel/SolitaireModesPanel";
 import ContactMessageHistory from "../../components/ContactMessageHistory";
 import {
   DEFAULT_PROFILE_ACCENT,
@@ -1236,6 +1237,7 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
     >
       <div className="max-w-6xl mx-auto px-6 pt-24 pb-20">
         <NavigationBar currentPath="/profil" />
+        <SolitaireModesPanel />
         <h1
           className="text-4xl font-extrabold text-center mb-8 
   bg-gradient-to-r from-purple-400 to-pink-500 
