@@ -46,6 +46,7 @@ import {
   gameMatchPathPrefix,
   gamePlayPath,
 } from "../src/lib/gameLandingPages.ts";
+import { isGameAvailable } from "../src/lib/gameAvailability.js";
 import { PUBLIC_SEO_PATHS } from "../src/lib/seoPages.ts";
 import { GAME_CATALOG } from "../src/lib/gameTags.js";
 
@@ -125,10 +126,11 @@ test("catalog: the card projection is one card per game, art included", () => {
   // The FAQ's games directory renders one card per game, so the projection the
   // page consumes must cover the whole catalogue — the directory can never show
   // fewer games than the site publishes.
-  assert.equal(GAME_CARDS.length, GAME_LANDING_PAGES.length);
+  const availableSlugs = GAME_LANDING_SLUGS.filter((slug) => isGameAvailable(slug));
+  assert.equal(GAME_CARDS.length, availableSlugs.length);
   assert.deepEqual(
     [...GAME_CARDS.map((card) => card.slug)].sort(),
-    [...GAME_LANDING_SLUGS].sort(),
+    [...availableSlugs].sort(),
   );
   for (const card of GAME_CARDS) {
     const source = GAME_LANDING_BY_SLUG[card.slug];
@@ -342,16 +344,17 @@ test("indexing: the sitemap lists every landing page and no /play URL", () => {
   // so this compares the catalog to the emitted inventory rather than to
   // hand-written strings — a game added to the catalog is in the sitemap by
   // construction, and a game whose page was dropped leaves a URL behind.
-  const missing = GAME_LANDING_SLUGS.filter(
+  const availableSlugs = GAME_LANDING_SLUGS.filter((slug) => isGameAvailable(slug));
+  const missing = availableSlugs.filter(
     (slug) => !PUBLIC_SEO_PATHS.includes(gameLandingPath(slug)),
   );
-  assert.deepEqual(missing, [], "a landing page is missing from the sitemap");
+  assert.deepEqual(missing, [], "an available landing page is missing from the sitemap");
 
   const listedGames = PUBLIC_SEO_PATHS.filter((path) => path.startsWith("/games/"));
   assert.equal(
     listedGames.length,
-    GAME_LANDING_SLUGS.length,
-    "the sitemap must list exactly one URL per game landing page",
+    availableSlugs.length,
+    "the sitemap must list exactly one URL per available game landing page",
   );
   assert.doesNotMatch(
     listedGames.join("\n"),

@@ -6,6 +6,7 @@ import Image from "next/image";
 import LogoSmiley from "../images/logo1.png";
 import SocialLinks, { REDDIT_COMMUNITY } from "./SocialLinks";
 import CookieSettingsLink from "./CookieSettingsLink";
+import { isGameAvailable } from "../lib/gameAvailability";
 
 export default function Footer() {
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -127,9 +128,13 @@ export default function Footer() {
             </h2>
 
             <div className="space-y-2 text-sm">
-              <Link href="/games/neon-flush" className={linkClass}>
-                Neon Flush
-              </Link>
+              {/* Neon Flush is archived today; the link returns automatically
+                  when its entry in src/lib/gameAvailability.js changes. */}
+              {isGameAvailable("uno") && (
+                <Link href="/games/neon-flush" className={linkClass}>
+                  Neon Flush
+                </Link>
+              )}
 
               <Link href="/games/chess" className={linkClass}>
                 Chess

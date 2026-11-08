@@ -97,10 +97,10 @@ test("routes: every path exists and is a thin wrapper over the game's store", ()
     create,
     /import \{ createOrJoin \} from "\.\.\/\.\.\/\.\.\/\.\.\/lib\/solitaire-duel\/serverStore"/,
   );
-  // The one field the entry parses is the stake the pair is escrowed at; the
-  // seat identity still comes from the verified session.
-  assert.match(create, /requireStake\(body\?\.stake, "solitaire-duel"\)/);
-  assert.match(create, /await createOrJoin\(\{ userId, stake: required\.stake \}\)/);
+  // Ranked Solitaire is free: the entry parses no stake and opens a zero-stake
+  // match. The seat identity still comes from the verified session.
+  assert.doesNotMatch(create, /requireStake/);
+  assert.match(create, /await createOrJoin\(\{ userId, stake: 0 \}\)/);
 
   const match = code(ROUTE_FILES.match);
   assert.match(match, /fetchMatch/);
@@ -473,12 +473,12 @@ test("platform: no gambling surface exists anywhere in the game", () => {
       );
     }
   }
-  // The stake itself is the platform's shared picker: the lobby names the
-  // amount and the SERVER escrows both seats and pays the pot.
+  // Ranked Solitaire is free: no stake picker and no wager payload.
   const lobby = code(LOBBY_PAGE);
-  assert.match(lobby, /wager=\{\{ value: stake, onChange: setStake \}\}/);
-  assert.match(lobby, /body: JSON\.stringify\(\{ stake \}\)/);
+  assert.doesNotMatch(lobby, /wager=/);
+  assert.doesNotMatch(lobby, /JSON\.stringify\(\{ stake \}\)/);
   assert.doesNotMatch(lobby, /place a bet|bet amount|wager amount/i);
+  assert.match(lobby, /Free ranked play/);
 });
 
 // ── 5. The realtime vocabulary cannot drift ──────────────────────────────

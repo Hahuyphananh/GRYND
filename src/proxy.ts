@@ -25,6 +25,11 @@ import { eq } from "drizzle-orm";
 import { cacheGet, cacheSet } from "./lib/redis/cache";
 import { CacheKeys, CacheTTL } from "./lib/redis/keys";
 import { isGameLandingSlug } from "./lib/gameLandingPages";
+import {
+  GAME_UNAVAILABLE_MESSAGE,
+  isArchivedGameApiPath,
+  isArchivedGamePath,
+} from "./lib/gameAvailability";
 import { isGuideSlug } from "./lib/guides";
 import { applyEmbedFramePolicy } from "./lib/platform/framing";
 import { applyPortalFramePolicy } from "./lib/portal/framing";
@@ -52,6 +57,36 @@ const RETIRED_GAME_PATHS: readonly RegExp[] = [
   /^\/games\/last-run(\/|$)/,
   /^\/casino\/last-run(\/|$)/,
 ];
+
+/**
+ * ARCHIVED GAMES — temporarily deactivated games whose implementation is kept.
+ *
+ * Unlike a retired game, an archived one is not gone: its source, assets,
+ * tables and API routes remain so it can be reactivated by changing one entry
+ * in src/lib/gameAvailability.js. Until then, every page URL (public page,
+ * lobby, old bookmark, match link) is REWRITTEN to a real "unavailable" page,
+ * before any authentication or game code runs, and every game-specific API
+ * request is answered here with a plain 404 — so no engine mounts, no sockets
+ * open and no matchmaking request reaches a handler.
+ */
+const GAME_UNAVAILABLE_PATH = "/game-unavailable";
+
+/**
+ * PRODUCT SURFACES RETIRED WITH THE SOLITAIRE-FIRST TRANSITION.
+ *
+ * The coin shop, token rewards and paid membership are hidden from the public
+ * product, but their implementations, APIs, tables and history stay in the
+ * repository. A public visit goes to the one game the platform now offers, so
+ * an old bookmark lands somewhere useful instead of on a dead page.
+ */
+const RETIRED_PRODUCT_PATH = /^\/(?:rewards|shop|upgrade-pro|quests)(?:\/|$)/;
+
+/**
+ * APIs that belong to retired public features. They stay implemented for
+ * historical data and future reactivation, but no public client can reach
+ * them. Game-specific namespaces are handled separately below.
+ */
+const RETIRED_PRODUCT_API = /^\/api\/(?:quick-queue|coins|shop|rewards|quests)(?:\/|$)/;
 
 /**
  * Playable casino/game routes — the single source of truth for
@@ -199,6 +234,9 @@ const isPublicRoute = createRouteMatcher([
   // rewritten request falls back into the auth gate, gets 307'd to /sign-in and
   // the response becomes a 500 instead of the 404 the guard exists to emit.
   "/__unknown-game-slug",
+  // The rewrite target for an archived game's URL (see GAME_UNAVAILABLE_PATH
+  // above). Public and noindex, like the not-found sentinel.
+  "/game-unavailable",
 
   // Every playable casino/game route — declared once in GAME_ROUTE_PATTERNS
   // above. Explicitly public today (no behaviour change); the patterns are
@@ -613,6 +651,48 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
   if (RETIRED_GAME_PATHS.some((pattern) => pattern.test(pathname))) {
     return applySecurityHeaders(
       NextResponse.rewrite(new URL(NOT_FOUND_SENTINEL, req.url)),
+    );
+  }
+
+  // An ARCHIVED game's page URL answers with a simple "unavailable" page.
+  // A rewrite keeps the typed URL in the address bar and never mounts the
+  // game's route, so its client components, engine and assets are never sent.
+  if (RETIRED_PRODUCT_PATH.test(pathname)) {
+    return applySecurityHeaders(
+      NextResponse.redirect(new URL("/games/solitaire-duel", req.url)),
+    );
+  }
+
+  if (isArchivedGamePath(pathname)) {
+    return applySecurityHeaders(
+      NextResponse.rewrite(new URL(GAME_UNAVAILABLE_PATH, req.url)),
+    );
+  }
+
+  // An archived game's own API namespace is closed to every caller. This runs
+  // before rate limiting and before the route handler, so no game-specific
+  // query, matchmaking call or background process is started. Shared APIs
+  // (presence, quick queue, leaderboards, history) are intentionally excluded
+  // so historical data and the active catalogue keep working.
+  if (isArchivedGameApiPath(pathname)) {
+    return applySecurityHeaders(
+      NextResponse.json(
+        {
+          success: false,
+          gameUnavailable: true,
+          error: GAME_UNAVAILABLE_MESSAGE,
+        },
+        { status: 404 },
+      ),
+    );
+  }
+
+  if (RETIRED_PRODUCT_API.test(pathname)) {
+    return applySecurityHeaders(
+      NextResponse.json(
+        { success: false, error: "This feature is not available right now." },
+        { status: 404 },
+      ),
     );
   }
 

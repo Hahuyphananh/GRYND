@@ -10,18 +10,13 @@ GRYND covers dozens of arcade and table games, every one of them 1v1: playable a
 - [Mines](https://www.grynd.dedyn.io/games/mines-pvp): Risk-based tile reveal game, solo or PvP
 - [Barrier Blitz](https://www.grynd.dedyn.io/games/barrier-blitz): 1v1 strategy race — step your pawn or drop a barrier on a 9x9 board
 - [Coin Flip](https://www.grynd.dedyn.io/games/coin-flip): Fast coin-flip game, solo or PvP
-- [Keno](https://www.grynd.dedyn.io/games/keno): Number-draw payout game
-- [RPS](https://www.grynd.dedyn.io/games/rps): Rock-paper-scissors, solo or PvP
 - [Chess](https://www.grynd.dedyn.io/games/chess): Chess against AI or other players
 - [Four-In-A-Row](https://www.grynd.dedyn.io/games/four-in-a-row): Four-In-A-Row, solo or PvP
 - [Dots & Boxes](https://www.grynd.dedyn.io/games/dots-and-boxes): Classic dots-and-boxes, solo or PvP
 - [Pool Masters](https://www.grynd.dedyn.io/games/pool-masters): Physics-based pool, solo or PvP
 - [Precision](https://www.grynd.dedyn.io/games/precision): Aim-and-accuracy skill game, solo or PvP
-- [Neon Flush](https://www.grynd.dedyn.io/games/neon-flush): Neon-themed card game
 - [Hex Duel](https://www.grynd.dedyn.io/games/hex-duel): Turn-based board duel, solo or PvP
-- [Uno](https://www.grynd.dedyn.io/games/uno): Uno against AI or online players
 - [Farkle](https://www.grynd.dedyn.io/games/farkle): Classic dice-combination scoring game
-- [Lane Rush Duel](https://www.grynd.dedyn.io/games/lane-runner): PvP tower-climb duel on one shared tower — picks reveal together, so every safe pick by either player narrows the odds; first to BANK 1,000 points wins (banking locks your score and never ends your climb, so the race continues at reduced rates); 2 private peeks + 2 flags per match give each player a scarce hidden-information edge
 - [Odds](https://www.grynd.dedyn.io/games/odds): Odds-style betting games
 
 ## Platform

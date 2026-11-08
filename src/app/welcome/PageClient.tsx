@@ -48,6 +48,7 @@ import {
 import { useTranslation } from "../../hooks/useTranslation";
 import { shouldRouteWelcomeToQuestionnaire } from "../../lib/onboardingFlow";
 import { welcomeMessageKey } from "../../lib/gameRecommendations";
+import { isGameAvailable } from "../../lib/gameAvailability";
 import GlitchSay from "../../components/mascot/GlitchSay";
 import { glitchWelcomeLine } from "../../lib/mascot/glitchOnboarding";
 
@@ -57,7 +58,13 @@ const STEP_STORAGE_PREFIX = "grynd:welcome:step:";
 // The final step launches the player into the existing Free Play vs AI
 // tutorial match (reused as-is; no new game system). The first-match stage
 // is gated server-side by users.first_game_completed_at.
-const FIRST_GAME_URL = "/casino/rps/play-ai?onboarding=1";
+// The tutorial launches the first available free-practice game. Rock Paper
+// Scissors is the long-standing default; while it is archived (see
+// src/lib/gameAvailability.js) the flow lands on an active practice lobby
+// instead of a dead archived URL, so onboarding keeps working.
+const FIRST_GAME_URL = isGameAvailable("rps")
+  ? "/casino/rps/play-ai?onboarding=1"
+  : "/casino/mines-pvp";
 
 type Props = {
   /** ?replay=1 — opened from Settings → Help & Support; skips the "already

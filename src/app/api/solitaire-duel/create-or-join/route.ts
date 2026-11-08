@@ -5,21 +5,17 @@
 // Thin wrapper, exactly like every other game's: ALL matchmaking (the per-game
 // advisory lock, the `FOR UPDATE` candidate, the conditional claim) lives in
 // `createOrJoin` in src/lib/solitaire-duel/serverStore.ts, and NOTHING about the
-// puzzle is decided here. The route's only jobs are authenticating the caller,
-// returning the destination to navigate to, and — when this call filled the
-// second seat — pushing the server's absolute GO instant so both seats count to
-// one clock.
+// puzzle is decided here.
 //
-// There is no seed, no deal and no per-seat board in this file. The seed is
-// minted once, server-side, when the lobby row is created (see
-// `createWaitingMatch`), and the deal derived from it is already stored in BOTH
-// seats' columns by the time this route returns.
+// Ranked Solitaire is FREE. A match carries no stake, no escrow, no pot and no
+// payout; the competitive reward is the shared Elo rating and trophies. The
+// store already treats a zero stake as free play, and this route never reads a
+// client-supplied stake at all.
 
 import { NextResponse } from "next/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { logError } from "../../../../lib/logError";
 import { createOrJoin } from "../../../../lib/solitaire-duel/serverStore";
-import { requireStake } from "../../../../lib/games/stakes";
 import { READY_COUNTDOWN_MS } from "../../../../lib/solitaire-duel/constants";
 import {
   SOLITAIRE_DUEL_EVENTS,
@@ -27,7 +23,7 @@ import {
   broadcastMatchUpdate,
 } from "../../../../lib/solitaire-duel/rooms";
 
-export async function POST(req: Request) {
+export async function POST() {
   const gate = await requireAgeVerifiedUser();
   if (gate.response) return gate.response;
   const userId = gate.userId;
@@ -35,20 +31,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: false, error: "Unauthenticated" }, { status: 401 });
   }
 
-  // PvP is staked: a seat without a legal positive stake is refused rather
-  // than silently opening free play (the vs-AI path has its own route and
-  // stays free).
-  const body = await req.json().catch(() => ({}));
-  const required = requireStake(body?.stake, "solitaire-duel");
-  if (!required.ok) {
-    return NextResponse.json(
-      { success: false, error: required.error, code: required.code },
-      { status: required.status },
-    );
-  }
-
   try {
-    const result = await createOrJoin({ userId, stake: required.stake });
+    const result = await createOrJoin({ userId, stake: 0 });
     if ("error" in result) {
       return NextResponse.json(
         { success: false, error: result.error },
@@ -87,14 +71,6 @@ export async function POST(req: Request) {
       },
     });
   } catch (error) {
-    // An unfundable seat is a client error, not a crash.
-    const status = (error as any)?.status;
-    if (status && status < 500) {
-      return NextResponse.json(
-        { success: false, error: (error as Error).message },
-        { status },
-      );
-    }
     await logError({
       errorType: "solitaire_duel_create_or_join_error",
       errorMessage:

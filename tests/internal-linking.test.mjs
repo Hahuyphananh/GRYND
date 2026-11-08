@@ -46,6 +46,7 @@ import {
   gameLandingPath,
   gamePlayPath,
 } from "../src/lib/gameLandingPages.ts";
+import { isGameAvailable } from "../src/lib/gameAvailability.js";
 
 const read = (rel) => readFileSync(rel, "utf8");
 
@@ -118,11 +119,12 @@ function lobbyPopularSlugs() {
 test("the A–Z directory is the whole catalogue, not a hand-kept list", () => {
   // It is derived from GAME_LANDING_PAGES, so this is the derivation, not a
   // second list: adding a game to the catalogue adds it here.
-  assert.equal(GAME_INDEX.length, GAME_LANDING_PAGES.length);
+  const availableSlugs = GAME_LANDING_SLUGS.filter((slug) => isGameAvailable(slug));
+  assert.equal(GAME_INDEX.length, availableSlugs.length);
   assert.deepEqual(
     [...GAME_INDEX.map((game) => game.slug)].sort(),
-    [...GAME_LANDING_SLUGS].sort(),
-    "a game in the catalogue is missing from the crawlable index",
+    [...availableSlugs].sort(),
+    "an available game is missing from the crawlable index",
   );
   // A–Z, so the rendered order cannot churn between deploys.
   const names = GAME_INDEX.map((game) => game.name);
@@ -163,8 +165,8 @@ test("/games renders the whole catalogue as real links", () => {
       "directory is now load-bearing for games nobody noticed",
   );
   assert.ok(
-    GAME_INDEX.some((game) => game.slug === "uno"),
-    "the alias page must be in the A–Z directory",
+    !GAME_INDEX.some((game) => game.slug === "uno"),
+    "an archived alias page must not be in the A–Z directory",
   );
 });
 
@@ -278,19 +280,16 @@ test("gamePlayPath is the only public path into gameplay", () => {
 
 // ── 4. The home page ─────────────────────────────────────────────────────
 
-test("the home page links the popular games by name", () => {
+test("the home page leads with Solitaire and links its real pages", () => {
   const page = code(HOME_PAGE);
   const client = code(HOME_CLIENT);
 
-  assert.match(page, /import \{[\s\S]{0,120}HOMEPAGE_FEATURED_SLUGS/);
-  assert.match(page, /const popularGames = gameIndexFor\(HOMEPAGE_FEATURED_SLUGS\);/);
-  assert.match(page, /<PageClient[\s\S]{0,200}?popularGames=\{popularGames\}/);
-
-  const nav = client.slice(client.indexOf('aria-labelledby="home-popular-games"'));
-  assert.ok(nav.length > 0, "the home page popular-games nav must exist");
-  const block = nav.slice(0, nav.indexOf("</nav>"));
-  assert.match(block, /popularGames\.map\(\(game\) => \(/);
-  assert.match(block, /href=\{`\/games\/\$\{game\.slug\}`\}/);
+  // Solitaire-first: the home page no longer projects a multi-game catalogue.
+  assert.doesNotMatch(page, /HOMEPAGE_FEATURED_SLUGS/);
+  assert.doesNotMatch(client, /home-popular-games/);
+  assert.match(page, /The competitive home of Solitaire/);
+  assert.match(client, /href="\/games\/solitaire-duel"/);
+  assert.match(client, /href="\/classement"/);
 });
 
 test("the featured lists name real games and stay in sync with the lobby", () => {
@@ -340,11 +339,12 @@ test("the FAQ links every game's public page, in markup that exists before any c
 test("the FAQ directory is the whole catalogue, and links the INFO page not the lobby", () => {
   // Derived, not curated: the directory covers the catalogue exactly, so the
   // help surface can never become a stale subset of the games that exist.
-  assert.equal(GAME_CARDS.length, GAME_LANDING_PAGES.length);
+  const availableSlugs = GAME_LANDING_SLUGS.filter((slug) => isGameAvailable(slug));
+  assert.equal(GAME_CARDS.length, availableSlugs.length);
   assert.deepEqual(
     [...GAME_CARDS.map((card) => card.slug)].sort(),
-    [...GAME_LANDING_SLUGS].sort(),
-    "a game in the catalogue has no card on the FAQ",
+    [...availableSlugs].sort(),
+    "an available game has no card on the FAQ",
   );
   // A–Z, so the rendered order cannot churn between deploys.
   const names = GAME_CARDS.map((card) => card.name);
@@ -391,13 +391,6 @@ test("the new game links are anchors, not click handlers", () => {
   // surface the anchor is asserted in src/components/games/GameCard.jsx below.
   const surfaces = [
     ["hub A–Z directory", HUB_CLIENT, 'id="all-games-index-heading"', "</nav>", /<Link/],
-    [
-      "home popular games",
-      HOME_CLIENT,
-      'aria-labelledby="home-popular-games"',
-      "</nav>",
-      /<Link/,
-    ],
     ["FAQ games", FAQ_CLIENT, 'id="faq-games-heading"', "</section>", /<GameCard/],
   ];
   for (const [label, source, anchor, close, linkShape] of surfaces) {

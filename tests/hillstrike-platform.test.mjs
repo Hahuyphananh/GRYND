@@ -31,6 +31,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const { GAME_CATALOG, GAMES_BY_ID, supportsTokenWager } = await import("../src/lib/gameTags.js");
+const { isGameAvailable } = await import("../src/lib/gameAvailability.js");
 const { PRESENCE_GAME_IDS, isCanonicalGameId, isPresenceGame, resolveGameId } = await import(
   "../src/lib/gamePresence.js"
 );
@@ -201,8 +202,8 @@ test("public page: the landing entry is a real catalogue entry for this game", (
   assert.doesNotMatch(copy, /\bwagered\b(?!.*\bno\b)/i);
 });
 
-test("seo: the landing page is listed, the lobby and practice board are not", () => {
-  assert.ok(PUBLIC_SEO_PATHS.includes("/games/hillstrike"));
+test("seo: the landing page follows availability, the lobby and practice board are not listed", () => {
+  assert.equal(PUBLIC_SEO_PATHS.includes("/games/hillstrike"), isGameAvailable("hillstrike"));
   assert.equal(PUBLIC_SEO_PATHS.includes("/games/hillstrike/play"), false);
   assert.equal(PUBLIC_SEO_PATHS.includes("/casino/hillstrike/play-ai"), false);
   assert.ok(

@@ -328,7 +328,11 @@ test("the welcome hero shows it only on the hand-off from the questionnaire", ()
 test("the onboarding first game is still the unchanged RPS Free Play match", () => {
   // Same URL, same page-level gate, same endpoint. The one-time XP grant is
   // gone with the Battle Pass — the endpoint only records the completion flag.
-  assert.match(welcome, /const FIRST_GAME_URL = "\/casino\/rps\/play-ai\?onboarding=1";/);
+  // RPS remains the tutorial default; while it is archived the constant is
+  // availability-gated so onboarding lands on an active practice lobby rather
+  // than a dead URL, and reactivation restores the RPS URL automatically.
+  assert.match(welcome, /const FIRST_GAME_URL = isGameAvailable\("rps"\)/);
+  assert.match(welcome, /\/casino\/rps\/play-ai\?onboarding=1/);
   assert.match(source(RPS), /api\/onboarding\/first-game-complete/);
   assert.match(source(RPS), /if \(tutorial\.mode !== "active" \|\| !matchOver\) return;/);
   const firstGame = source(FIRST_GAME);

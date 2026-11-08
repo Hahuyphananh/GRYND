@@ -198,8 +198,8 @@ test("candidate matching filters a far-away opponent by Elo too", () => {
 test("a game with no data on either signal is never filtered (FIFO fallback)", () => {
   // The worker only attaches real `player_trophies` / `player_ratings` keys, so
   // a game with no data contributes no key — the opponent must still match.
-  const me = request({ preferredGames: ["uno"], trophies: {}, ratings: {} });
-  const opp = candidate({ gameKey: "uno", trophies: {}, ratings: {} });
+  const me = request({ preferredGames: ["chess"], trophies: {}, ratings: {} });
+  const opp = candidate({ gameKey: "chess", trophies: {}, ratings: {} });
   const found = findCompatibleQuickQueueCandidate(me, [opp], 1_000_000);
   assert.equal(found?.userId, "opp");
 });

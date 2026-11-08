@@ -21,9 +21,8 @@
 // off to the shared `PvpResultScreen` with the SNAPSHOT's verdict. Nothing on
 // either screen decides a result.
 //
-// PvP is a coin match: the player picks the stake above, both seats are
-// escrowed when the opponent joins, and the winner takes 1.8× (the house keeps
-// 10%). Practice against the bot stays free.
+// Ranked PvP is FREE: no stake, no escrow, no pot. A win moves the shared
+// Solitaire Elo rating and trophies. Practice against the bot is also free.
 
 import { useCallback, useMemo, useState } from "react";
 import { useMatchRouter } from "../../../hooks/useMatchRouter";
@@ -40,9 +39,6 @@ export default function SolitaireDuelLobbyPage() {
   const { isSignedIn } = useUser();
   const router = useMatchRouter();
 
-  // Coin wager: the player picks the stake the lobby opens at, and the server
-  // escrows BOTH seats when an opponent joins. vs-AI practice stays free.
-  const [stake, setStake] = useState<number>(10);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
@@ -57,8 +53,8 @@ export default function SolitaireDuelLobbyPage() {
       const res = await fetch("/api/solitaire-duel/create-or-join", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // Both seats are escrowed at this stake the moment an opponent joins.
-        body: JSON.stringify({ stake }),
+        // Ranked Solitaire is free — the server never asks for a stake.
+        body: JSON.stringify({}),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.success) {
@@ -163,12 +159,12 @@ export default function SolitaireDuelLobbyPage() {
           ),
         },
         {
-          heading: "Stakes, and pure skill",
+          heading: "Free ranked play, pure skill",
           body: (
             <>
-              PvP is played for coins: both seats stake the amount you pick, and
-              the winner takes <b>1.8×</b> (the house keeps 10%). Practice vs the
-              bot is free. Either way the outcome turns only on how fast and how
+              Ranked Solitaire is <b>free</b>: there is no stake, no entry fee and
+              no pot. A win moves your Solitaire Elo rating and trophies. Practice
+              vs the bot is free too. The outcome turns only on how fast and how
               accurately you solve the same puzzle your opponent is looking at.
             </>
           ),
@@ -187,13 +183,11 @@ export default function SolitaireDuelLobbyPage() {
       }
       rules={rules}
       rulesKey="solitaire-duel"
-      wager={{ value: stake, onChange: setStake }}
-      waitingSubtitle={`Pairing you at ${stake} coins — both stakes are escrowed on match-up.`}
       busy={busy}
       onPlay={createOrJoin}
       playLabel="Find a Match"
       playBusyLabel="Searching…"
-      canPlay={Boolean(isSignedIn) && stake >= 1}
+      canPlay={Boolean(isSignedIn)}
       children={
         <AiDifficultyPicker
           gameKey="solitaire-duel"

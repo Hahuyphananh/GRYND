@@ -4,6 +4,7 @@ import Footer from "../Footer";
 import JsonLd from "../seo/JsonLd";
 import { guidePath, type Guide } from "../../lib/guides";
 import { GAME_LANDING_BY_SLUG, gameLandingPath } from "../../lib/gameLandingPages";
+import { isGameAvailable } from "../../lib/gameAvailability";
 import { buildGuideStructuredData } from "../../lib/guideJsonLd";
 
 /**
@@ -26,7 +27,10 @@ export default function GuideArticle({ guide, related }: { guide: Guide; related
   // is authored against real games (tests/guides.test.mjs asserts it).
   const games = guide.gameSlugs
     .map((slug) => GAME_LANDING_BY_SLUG[slug])
-    .filter((game): game is NonNullable<typeof game> => Boolean(game));
+    .filter((game): game is NonNullable<typeof game> => Boolean(game))
+    // An archived game keeps its guide prose but is not linked from the guide
+    // rail while it is inactive.
+    .filter((game) => isGameAvailable(game.slug));
 
   return (
     <div className="relative min-h-screen overflow-x-clip pb-16">

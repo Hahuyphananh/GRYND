@@ -9,12 +9,12 @@ const migration = fs.readFileSync("src/db/migrations/0110_platform_quick_queue_r
 test("normalizes platform readiness to supported unique games", () => {
   const readiness = normalizeQuickQueueReadiness({
     userId: " user-1 ",
-    preferredGames: ["mines-pvp", "invalid", "mines-pvp"],
+    preferredGames: ["solitaire-duel", "invalid", "solitaire-duel"],
     preferredModes: [" pvp ", "pvp"],
     playerCount: 2,
     expiresAt: "2099-01-01T00:00:00.000Z",
   });
-  assert.deepEqual(readiness.preferredGames, ["mines-pvp"]);
+  assert.deepEqual(readiness.preferredGames, ["solitaire-duel"]);
   assert.deepEqual(readiness.preferredModes, ["pvp"]);
   assert.equal(readiness.userId, "user-1");
 });

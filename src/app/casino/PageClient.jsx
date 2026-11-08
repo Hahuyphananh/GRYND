@@ -1,4 +1,6 @@
 "use client";
+
+import { isGameAvailable } from "../../lib/gameAvailability";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
@@ -11,12 +13,8 @@ import Link from "next/link";
 import { useTranslation } from "../../hooks/useTranslation";
 import { useGlitch } from "../../components/mascot/GlitchProvider";
 import { glitchLobbyMoment } from "../../lib/mascot/glitchMoments";
-import UpgradeProButton from "../../components/UpgradeProButton";
 import { IconClock, IconSparkles } from "@tabler/icons-react";
 import StickyMobileCta from "../../components/StickyMobileCta";
-import DailyRewardWidget from "../../components/DailyRewardWidget";
-import QuestWidget from "../../components/QuestWidget";
-import GryndProWidget from "../../components/GryndProWidget";
 
 
 import { clearPlayedGames, getPlayedGames } from "../../lib/recentlyPlayed";
@@ -665,7 +663,10 @@ function MainComponent({ adSlot = null, hilltopSlot = null, gameIndex = [], disc
       nameKey: "games.battleship_name",
       pvpMode: "1v1",
     },
-  ];
+    // Archived games keep their entries above (source, art and history stay
+    // intact); this one filter is what removes them from the hub grid, search
+    // and every filter/sort derived from `games`.
+  ].filter((game) => isGameAvailable(game.leaderboardKey));
 
   // "For You": the engine ranks canonical game ids (leaderboardKey), so map
   // them back onto the real lobby entries — a plain lookup in the array we
@@ -883,18 +884,6 @@ function MainComponent({ adSlot = null, hilltopSlot = null, gameIndex = [], disc
 
       <NavigationBar currentPath="/casino" />
 
-      {/* Daily login reward — the same corner widget the home page carries
-          (top-right, under the navbar, inline below `md`). It sits on the hub
-          because the reward is gated on playing a game today, and this is the
-          page where a player picks one. Signed-out visitors render nothing. */}
-      <DailyRewardWidget />
-
-      {/* Quests — the same corner widget the home page carries, on the opposite
-          side (top-left from `md` up, inline beside the daily reward below it).
-          The hub is where a player picks the next match, and quest progress only
-          moves on a settled human-vs-human one, so the reminder belongs here. */}
-      <QuestWidget />
-
       <div className="mx-auto max-w-7xl px-3 py-6 sm:px-4 sm:py-12">
         <section className="mb-8 space-y-3 text-center">
           <h1 className="text-2xl font-black tracking-tight leading-tight sm:text-4xl md:text-6xl fade-slide-up">
@@ -926,14 +915,11 @@ function MainComponent({ adSlot = null, hilltopSlot = null, gameIndex = [], disc
           {user && <></>}
         </section>
 
-        {/* GRYND PRO — the games HUB (never an active match) is a legitimate
-            non-gameplay surface for the upgrade CTA. */}
-        <div className="mb-8 flex justify-center">
-          <UpgradeProButton variant="compact" />
-        </div>
-
         {/* First battle — only for accounts that abandoned onboarding */}
-        {firstBattle && (
+        {/* The "first battle" shortcut opens the RPS tutorial, so it is hidden
+            while that game is archived rather than sending a player to a dead
+            URL. */}
+        {firstBattle && isGameAvailable("rps") && (
           <div className="mb-8">
             <div className="relative overflow-hidden rounded-2xl border border-[#f5ff3b]/40 bg-gradient-to-r from-[#0a214d]/90 to-[#08142f]/90 px-5 py-4 shadow-[0_0_30px_rgba(245,255,59,0.12)]">
               <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">

@@ -26,7 +26,8 @@ import {
 const read = (path) => fs.readFileSync(path, "utf8");
 
 const NOW = 1_000_000_000;
-const GAME = "mines-pvp";
+// Solitaire Duel is the only active game on the Solitaire-first platform.
+const GAME = "solitaire-duel";
 
 /** A queue request with a trophy snapshot for GAME. */
 const request = (trophies, extra = {}) => ({

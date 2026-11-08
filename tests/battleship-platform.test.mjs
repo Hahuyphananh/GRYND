@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { GAME_CATALOG, GAMES_BY_ID } from "../src/lib/gameTags.js";
+import { isGameAvailable } from "../src/lib/gameAvailability.js";
 import {
   GAME_CARDS,
   GAME_INDEX,
@@ -201,6 +202,10 @@ test("every pre-existing game is still listed after the registration", () => {
   const expected = ["chess", "dominoes", "hillstrike", "barricade", "mini-golf", "speed-typing"];
   for (const id of expected) {
     assert.ok(GAMES_BY_ID[id], `${id} disappeared from the catalogue`);
-    assert.ok(GAME_CARDS.some((card) => card.leaderboardKey === id), `${id} lost its public page`);
+    assert.equal(
+      GAME_CARDS.some((card) => card.leaderboardKey === id),
+      isGameAvailable(id),
+      `${id}'s public page must follow the availability registry`,
+    );
   }
 });

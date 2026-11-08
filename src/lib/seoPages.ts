@@ -68,6 +68,7 @@ import {
   userStats,
 } from "../db/schema";
 import { GAME_LANDING_PAGES, gameLandingPath } from "./gameLandingPages";
+import { isGameAvailable } from "./gameAvailability";
 import { GUIDES, GUIDES_INDEX_PATH, guidePath } from "./guides";
 
 type ChangeFrequency = NonNullable<MetadataRoute.Sitemap[number]["changeFrequency"]>;
@@ -217,7 +218,9 @@ const INFO_PAGES: SeoPage[] = [
 export const PUBLIC_SEO_PAGES: SeoPage[] = [
   ...HOME_PAGES,
   ...HUB_PAGES,
-  ...GAME_PAGES,
+  // Archived games stay in GAME_LANDING_PAGES (their implementation and
+  // history are preserved) but are not advertised to crawlers.
+  ...GAME_PAGES.filter((page) => isGameAvailable(page.path.slice("/games/".length))),
   ...GUIDE_PAGES,
   ...INFO_PAGES,
 ];
@@ -254,6 +257,8 @@ export const EXCLUDED_FROM_SITEMAP: Record<string, string> = {
   "/casino/hex-duel/history": "per-player match history — user-specific data, never a landing page",
   "/casino/lane-runner/history": "per-player match history — user-specific data, never a landing page",
   "/casino/precision/test": "single-player timing sandbox with no unique content",
+  "/game-unavailable":
+    'the noindex "game temporarily unavailable" page an archived game URL is rewritten to — not a search surface',
 };
 
 /**

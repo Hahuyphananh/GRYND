@@ -1,4 +1,5 @@
 import { isGuestId } from "./guestIdentity";
+import { isGameAvailable } from "./gameAvailability";
 
 /**
  * The games a GUEST may queue for (Phase 3C).
@@ -23,6 +24,10 @@ export function isGuestPvpGameKey(value: unknown): boolean {
 }
 
 export const QUICK_QUEUE_GAME_KEYS = [
+  // The Solitaire-first platform's only public game. The Quick Queue panel is
+  // retired from the UI and its APIs are closed at the proxy, so this key
+  // exists to keep the matchmaking library's tests on a real, active game.
+  "solitaire-duel",
   "keno-pvp",
   "mines-pvp",
   "lane-rush-duel",
@@ -60,6 +65,14 @@ export const QUICK_QUEUE_GAME_KEYS = [
 ] as const;
 
 export type QuickQueueGameKey = (typeof QUICK_QUEUE_GAME_KEYS)[number];
+
+/**
+ * The queue's keys that are currently available. The full list above is kept
+ * intact so an archived game is reactivated by changing one entry in
+ * src/lib/gameAvailability.js — never by editing matchmaking.
+ */
+export const ACTIVE_QUICK_QUEUE_GAME_KEYS: readonly QuickQueueGameKey[] =
+  QUICK_QUEUE_GAME_KEYS.filter((key) => isGameAvailable(key));
 
 export interface QuickQueueRequest {
   userId: string;

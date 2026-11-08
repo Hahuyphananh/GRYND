@@ -685,7 +685,7 @@ export function PvpLobby({
             )}
           </p>
 
-          {quickQueue && !practiceMode && (
+          {quickQueue && quickQueue.hasGames !== false && !practiceMode && (
             <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>

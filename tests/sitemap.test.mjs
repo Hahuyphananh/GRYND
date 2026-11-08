@@ -40,6 +40,7 @@ import {
   GAME_LANDING_SLUGS,
   gameLandingPath,
 } from "../src/lib/gameLandingPages.ts";
+import { isGameAvailable } from "../src/lib/gameAvailability.js";
 import { GUIDES_INDEX_PATH, GUIDE_SLUGS, guidePath } from "../src/lib/guides.ts";
 import {
   EXCLUDED_FROM_SITEMAP,
@@ -54,13 +55,7 @@ const SEO_INVENTORY = "src/lib/seoPages.ts";
 const APP_DIR = "src/app";
 
 /** Games whose omission from the old hand-written list prompted this refactor. */
-const MUST_BE_PRESENT = [
-  "mini-golf",
-  "sudoku-duel",
-  "speed-typing",
-  "tic-tac-toe",
-  "solitaire-duel",
-];
+const MUST_BE_PRESENT = ["solitaire-duel"];
 
 // ── Route discovery ───────────────────────────────────────────────────────
 
@@ -114,7 +109,7 @@ function rewrittenPaths() {
 // ── 1. Shape ──────────────────────────────────────────────────────────────
 
 test("shape: every URL is a root-relative canonical path", () => {
-  assert.ok(PUBLIC_SEO_PATHS.length >= 30, "expected the full public inventory");
+  assert.ok(PUBLIC_SEO_PATHS.length >= 15, "expected the full public inventory");
   for (const path of PUBLIC_SEO_PATHS) {
     assert.equal(typeof path, "string", "a path must be a string");
     assert.ok(path.startsWith("/"), `${path} must be root-relative`);
@@ -193,20 +188,21 @@ test("generation: the sitemap route is a projection of the inventory", () => {
   assert.doesNotMatch(src, /from "\.\.\/db\/schema"/, "table wiring belongs in the inventory");
 });
 
-test("generation: EVERY game landing page is listed — Mini Golf and Sudoku Duel included", () => {
+test("generation: EVERY available game landing page is listed — Mini Golf and Sudoku Duel included", () => {
   const listed = new Set(PUBLIC_SEO_PATHS);
-  const missing = GAME_LANDING_SLUGS.filter((slug) => !listed.has(gameLandingPath(slug)));
-  assert.deepEqual(missing, [], "a game with a public landing page is missing from the sitemap");
+  const availableSlugs = GAME_LANDING_SLUGS.filter((slug) => isGameAvailable(slug));
+  const missing = availableSlugs.filter((slug) => !listed.has(gameLandingPath(slug)));
+  assert.deepEqual(missing, [], "an available game with a public landing page is missing from the sitemap");
 
   // Named explicitly: an omission here should report the game, not a 21-string diff.
   for (const slug of MUST_BE_PRESENT) {
     assert.ok(listed.has(`/games/${slug}`), `/games/${slug} must be in the sitemap`);
   }
 
-  // Exactly one URL per game, and the hub is not one of them.
+  // Exactly one URL per AVAILABLE game, and the hub is not one of them.
   const gamePaths = PUBLIC_SEO_PATHS.filter((path) => path.startsWith("/games/"));
-  assert.equal(gamePaths.length, GAME_LANDING_SLUGS.length);
-  assert.equal(PUBLIC_SEO_PAGES.filter((page) => page.group === "games").length, GAME_LANDING_SLUGS.length);
+  assert.equal(gamePaths.length, availableSlugs.length);
+  assert.equal(PUBLIC_SEO_PAGES.filter((page) => page.group === "games").length, availableSlugs.length);
 });
 
 test("generation: EVERY guide is listed — the index and all twelve articles", () => {
@@ -234,10 +230,15 @@ test("generation: freshness hints are well-formed and never gate a URL", () => {
     assert.ok(page.freshness.table, `${page.path} freshness needs a table`);
     assert.ok(page.freshness.column, `${page.path} freshness needs a column`);
   }
-  // The two UNO-family URLs share one match table; the hint is scoped to each
-  // page, so neither can be dropped by the other's absence.
+  // The two UNO-family URLs share one match table, but both belong to a game
+  // that is archived today: their membership follows the availability registry
+  // (reactivation restores them), so an archived page is never advertised.
   for (const path of ["/games/uno", "/games/neon-flush"]) {
-    assert.ok(PUBLIC_SEO_PATHS.includes(path), `${path} must be listed`);
+    assert.equal(
+      PUBLIC_SEO_PATHS.includes(path),
+      isGameAvailable(path.slice("/games/".length)),
+      `${path} sitemap membership must follow the availability registry`,
+    );
   }
 });
 

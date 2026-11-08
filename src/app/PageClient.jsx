@@ -1,864 +1,230 @@
 "use client";
-import React, { useState, useEffect } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { useRouter } from "next/navigation"; // add this at the top
+
+// src/app/PageClient.jsx
+//
+// GRYND's public home page, Solitaire-first.
+//
+// The platform now presents one competitive game: Solitaire Duel. This page
+// explains it, puts the Play action first, and links to the real Solitaire
+// rankings. Archived games keep their implementations and history; they are
+// simply not part of the public experience (src/lib/gameAvailability.js).
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useAuth, useUser } from "@clerk/nextjs";
 import NavigationBar from "../components/navigation-bar";
 import Footer from "../components/Footer";
-import SocialLinks from "../components/SocialLinks";
-import ReviewWall from "../components/reviews/ReviewWall";
 import InteractiveCasinoBg from "../components/InteractiveCasinoBg";
-import IconAvatar from "../components/IconAvatar";
-import ReportEntryButton from "../components/reports/ReportEntryButton";
 import { clearSessionArtifacts } from "../lib/security/sessionCleanup";
-import { useUser, useAuth } from "@clerk/nextjs";
-import {
-  fadeIn,
-  fadeUp,
-  hoverScale,
-  stagger,
-  withReducedMotion,
-} from "../lib/animations";
-import {
-  UIPro06PrimaryButton,
-  UIPro07SecondaryButton,
-  UIPro17ModalBackdrop,
-} from "../components/uipro";
-import { useTranslation } from "../hooks/useTranslation";
-import StickyMobileCta from "../components/StickyMobileCta";
-import UpgradeProButton from "../components/UpgradeProButton";
-import GryndProWidget from "../components/GryndProWidget";
-import DailyRewardWidget from "../components/DailyRewardWidget";
-import QuestWidget from "../components/QuestWidget";
-import AsyncState from "../components/states/AsyncState";
-import { SkeletonRows } from "../components/skeletons/Skeleton";
-import { useApiResource } from "../hooks/useApiResource";
-import useSharedPoll from "../hooks/useSharedPoll";
 
-// `adSlot` is a server-rendered <AdSlot /> handed down by app/page.jsx. It is
-// rendered above the footer and carries its OWN server-side entitlement check —
-// nothing about membership is passed from here.
-// `popularGames` is `[{ slug, name }]` for the site's most popular games,
-// resolved from the game catalogue by app/page.jsx. The home page renders it
-// as real links to /games/<slug> — the crawlable step between the home page
-// and the game landing pages, present in the HTML with no interaction. It is a
-// prop rather than an import because the catalogue also holds every game's
-// full prose and this module is a client component.
-//
-// `explainerSlot` is a SERVER-rendered block (src/components/home/HomeExplainer)
-// handed down by app/page.jsx. It explains what GRYND is, what it plays like
-// and how progression works — content that has to exist in the HTML for a
-// crawler and for a visitor without JavaScript, which is exactly why it is
-// rendered on the server instead of here.
-function MainComponent({ adSlot = null, hilltopSlot = null, popularGames = [], explainerSlot = null }) {
-  const router = useRouter();
+export default function MainComponent({ adSlot = null, hilltopSlot = null }) {
   const { isLoaded, isSignedIn, signOut } = useAuth();
   const { user } = useUser();
-  // Note: the balance lives in the navbar (single source of truth). The
-  // home page deliberately does NOT fetch /api/get-user-tokens itself — the
-  // navbar already does that on every page, and a duplicate fetch here was
-  // pure waste (its state was never read by any UI).
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [termsLoading, setTermsLoading] = useState(true);
-  const [liveStats, setLiveStats] = useState({ playersOnline: 0, gamesPlayedToday: 0 });
-  // Weekly leaderboard (top 5) — REAL data from /api/leaderboard/weekly,
-  // cache-first with background revalidation. We never fabricate ranks, wins
-  // or player counts, and the shared AsyncState owns the skeleton / offline /
-  // error / stale states.
-  const leaderboard = useApiResource("/api/leaderboard/weekly?limit=5&category=wins");
-  const leaderboardItems = Array.isArray(leaderboard.data?.items) ? leaderboard.data.items : [];
-  // First-match recovery nudge — shown to signed-in accounts that never
-  // finished onboarding (abandoned the /welcome flow mid-way). Real signal
-  // from /api/onboarding/status; dismissible per session.
-  const [firstMatchNudge, setFirstMatchNudge] = useState(false);
-  const { t } = useTranslation();
-  const shouldReduceMotion = useReducedMotion();
-  const fadeUpVariant = withReducedMotion(shouldReduceMotion, fadeUp);
-  const fadeInVariant = withReducedMotion(shouldReduceMotion, fadeIn);
 
-  // ── Check Terms & Conditions acceptance ──
   useEffect(() => {
     if (!isSignedIn || !isLoaded) return;
-
-    const checkTerms = async () => {
-      try {
-        setTermsLoading(true);
-        const res = await fetch("/api/user/terms-status");
-        const data = await res.json();
-        if (data.success && !data.termsAccepted) {
+    let cancelled = false;
+    fetch("/api/user/terms-status")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled && data.success && !data.termsAccepted) {
           setShowTermsModal(true);
         }
-      } catch (err) {
-        console.error("Failed to check terms status:", err);
-      } finally {
-        setTermsLoading(false);
-      }
-    };
-
-    checkTerms();
-  }, [isSignedIn, isLoaded]);
-
-  const handleAcceptTerms = async () => {
-    try {
-      const res = await fetch("/api/user/accept-terms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-      const data = await res.json();
-      if (data.success) {
-        setShowTermsModal(false);
-      }
-    } catch (err) {
-      console.error("Failed to accept terms:", err);
-    }
-  };
-
-  const handleRejectTerms = async () => {
-    // Sign the user out if they reject the terms
-    if (signOut) {
-      clearSessionArtifacts();
-      await signOut();
-    }
-    router.push("/");
-  };
-
-  const fetchLiveStats = async () => {
-    try {
-      const res = await fetch("/api/stats/live");
-      const data = await res.json();
-      if (data.success) {
-        return { playersOnline: data.playersOnline, gamesPlayedToday: data.gamesPlayedToday };
-      }
-    } catch {
-      // Silently fail — ticker is non-critical
-    }
-    return undefined;
-  };
-
-  // Live stats are a browser-wide shared poll: ONE request per refresh is made
-  // by whichever tab holds the lease, and the result is pushed to every other
-  // tab. Hidden tabs do no work. (The players-online number is a live presence
-  // COUNT and today's games are a 5-minute cached aggregate — neither can be
-  // published row-by-row, so the aggregate is what gets shared.)
-  const liveStatsPoll = useSharedPoll("live-stats", fetchLiveStats, {
-    intervalMs: 30000,
-  });
-  useEffect(() => {
-    if (liveStatsPoll.data) setLiveStats(liveStatsPoll.data);
-  }, [liveStatsPoll.data]);
-
-  // First-time recovery: a brand-new account that bailed out of the
-  // /welcome flow lands on the home page with no path back into their first
-  // match. If the server says onboarding isn't complete, surface a nudge
-  // that jumps straight into the free first match (that page re-checks the
-  // flag itself, so no false starts). Never shown to returning players.
-  useEffect(() => {
-    if (!isLoaded || !isSignedIn) {
-      setFirstMatchNudge(false);
-      return;
-    }
-    let cancelled = false;
-    const dismissKey = "grynd:first-match:nudge:dismissed";
-    try {
-      if (sessionStorage.getItem(dismissKey) === "1") {
-        setFirstMatchNudge(false);
-        return;
-      }
-    } catch {
-      // sessionStorage unavailable — still allow the nudge
-    }
-    fetch("/api/onboarding/status", { credentials: "include" })
-      .then((res) => res.json().catch(() => null))
-      .then((data) => {
-        if (cancelled) return;
-        setFirstMatchNudge(
-          Boolean(data?.success && data.onboardingCompleted === false),
-        );
       })
-      .catch(() => {
-        if (!cancelled) setFirstMatchNudge(false);
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setTermsLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [isLoaded, isSignedIn]);
+  }, [isSignedIn, isLoaded]);
 
-  const dismissFirstMatchNudge = () => {
-    setFirstMatchNudge(false);
+  const handleAcceptTerms = async () => {
     try {
-      sessionStorage.setItem("grynd:first-match:nudge:dismissed", "1");
+      const res = await fetch("/api/user/accept-terms", { method: "POST" });
+      const data = await res.json();
+      if (data.success) setShowTermsModal(false);
     } catch {
-      // ignore
+      // the gate simply persists until the next successful accept
     }
   };
 
-  const useRevealOnScroll = (deps = []) => {
-    useEffect(() => {
-      const elements = document.querySelectorAll(".reveal, .reveal-stagger");
-
-      const observer = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((entry) => {
-            if (entry.isIntersecting) {
-              entry.target.classList.add("visible");
-            }
-          });
-        },
-        {
-          threshold: 0.1,
-          rootMargin: "0px 0px -50px 0px", // triggers earlier
-        },
-      );
-
-      elements.forEach((el) => observer.observe(el));
-
-      return () => observer.disconnect();
-    }, deps);
+  const handleRejectTerms = async () => {
+    if (signOut) {
+      clearSessionArtifacts();
+      await signOut();
+    }
   };
 
-  useRevealOnScroll([]);
+  const features = [
+    {
+      title: "One deal, two players",
+      body: "The server generates one deterministic Klondike deal and gives both seats the exact same starting position. Nobody gets luckier cards.",
+    },
+    {
+      title: "Free ranked play",
+      body: "No stake, no entry fee, no tokens. Ranked Solitaire moves your Elo rating and your trophy ladder instead.",
+    },
+    {
+      title: "Server-authoritative",
+      body: "Every move, the clock, the progress and the result are validated and held by the server. The browser never decides a match.",
+    },
+  ];
+
+  const steps = [
+    { title: "Create a free account", body: "Your account carries your Solitaire rating, trophies and match history." },
+    { title: "Play the bot first", body: "An unrated practice match on the same deal, so your first ranked game is not a guess." },
+    { title: "Queue for a real duel", body: "Matchmaking pairs you with another player for the same deal." },
+    { title: "Solve it first", body: "The first player to put all 52 cards on the foundations wins. Progress decides if the clock runs out." },
+  ];
 
   return (
     <div className="relative min-h-screen cyberpunk-grid pb-32 md:pb-0">
       <NavigationBar currentPath="/" />
 
-      {/* Daily login reward — top-right, under the navbar (fixed there from
-          `md` up, inline at the top of the page below it). The full
-          explanation of the reward stays on /rewards; this is the actionable
-          summary, and it is the surface that tells a player the claim needs a
-          game played today. Signed-out visitors render nothing. */}
-      <DailyRewardWidget />
-
-      {/* Quests — the opposite corner (top-left from `md` up, inline beside the
-          daily reward below it). It opens the whole daily + weekly board in a
-          popup, so a claim never costs a navigation. Signed out renders
-          nothing, like the reward. */}
-      <QuestWidget />
-
-      <motion.section
-        initial={fadeInVariant.initial}
-        animate={fadeInVariant.animate}
-        transition={fadeInVariant.transition}
-        className="relative mt-4 px-4 sm:mt-8 sm:px-4 min-h-[52vh] sm:min-h-[65vh] md:min-h-[70vh] flex items-center overflow-hidden"
-      >
-        {/* Interactive SVG casino background — replaces the old static MP4.
-            Layered depth field with cursor parallax, press ripples, and a
-            magnetic orb. Includes its own mobile static fallback. */}
+      <section className="relative mt-4 flex min-h-[60vh] items-center overflow-hidden px-4 sm:mt-8">
         <InteractiveCasinoBg />
+        <div className="pointer-events-none absolute inset-0 z-10 bg-black/70" />
+        <div className="pointer-events-none absolute inset-0 z-10 bg-[radial-gradient(circle_at_30%_20%,rgba(0,229,255,0.15),transparent_60%)] mix-blend-screen" />
 
-        {/* Dark overlay for readability — pointer-events-none so the cursor
-            orb in InteractiveCasinoBg (z-0 underneath) still receives
-            pointermove events. The chips/cards/dice depth layer that used
-            to live here (AnimatedBgSvgs, 10 infinite framer-motion loops)
-            was removed: InteractiveCasinoBg already draws the same motif,
-            and this layer sat beneath the dark overlay so it was never
-            visible on top of it. */}
-        <div className="absolute inset-0 bg-black/70 z-10 pointer-events-none" />
-        <div className="absolute inset-0 z-10 pointer-events-none bg-[radial-gradient(circle_at_30%_20%,rgba(0,229,255,0.15),transparent_60%)] mix-blend-screen" />
-
-        <div className="relative z-20 mx-auto max-w-7xl text-center reveal">
-          <motion.h1
-            initial={fadeUpVariant.initial}
-            animate={fadeUpVariant.animate}
-            transition={fadeUpVariant.transition}
-            className="mb-4 text-[1.75rem] leading-[1.15] sm:text-5xl md:text-6xl font-black sm:font-extrabold tracking-[0.08em] sm:tracking-widest uppercase"
-          >
-            <span
-              className="block text-[#f5ff3b]"
-              style={{ textShadow: "0 0 14px rgba(255,215,0,0.45)" }}
-            >
-              {t("home.landing.title_line1")}
+        <div className="relative z-20 mx-auto max-w-4xl text-center">
+          <p className="mb-3 text-xs font-black uppercase tracking-[0.35em] text-[#00e5ff]">
+            GRYND
+          </p>
+          <h1 className="text-[2rem] font-black uppercase leading-[1.1] tracking-[0.06em] sm:text-6xl">
+            <span className="block text-[#f5ff3b]">The competitive home</span>
+            <span className="block bg-gradient-to-r from-[#00e5ff] via-[#7cefff] to-[#ff4fd8] bg-clip-text text-transparent">
+              of Solitaire
             </span>
-            <span
-              className="mt-1 block text-transparent bg-clip-text bg-gradient-to-r from-[#00e5ff] via-[#7cefff] to-[#ff4fd8]"
-              style={{ filter: "drop-shadow(0 0 14px rgba(0,229,255,0.5))" }}
+          </h1>
+          <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-[#d8fbff] sm:text-xl">
+            Classic Klondike, played one-on-one against a real person. The same
+            deal, the same clock, and a rating that moves only on validated
+            results.
+          </p>
+
+          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <Link
+              href="/games/solitaire-duel"
+              className="w-full rounded-lg border border-[#f5ff3b]/60 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-8 py-4 text-lg font-bold text-[#1f1700] shadow-[0_0_35px_rgba(245,255,59,0.5)] transition hover:shadow-[0_0_55px_rgba(245,255,59,0.8)] sm:w-auto"
             >
-              {t("home.landing.title_line2")}
-            </span>
-          </motion.h1>
-
-          <motion.p
-            initial={fadeUpVariant.initial}
-            animate={fadeUpVariant.animate}
-            transition={{
-              ...fadeUpVariant.transition,
-              delay: shouldReduceMotion ? 0 : 0.05,
-            }}
-            className="mb-7 mx-auto max-w-2xl text-base sm:text-xl text-[#d8fbff] drop-shadow-[0_0_8px_rgba(0,0,0,0.7)]"
-          >
-            {t("home.landing.subtitle")}
-          </motion.p>
-          <motion.div
-            variants={stagger}
-            initial="initial"
-            animate="animate"
-            className="flex flex-col items-center gap-4"
-          >
-            <div className="flex flex-col items-center gap-3 sm:flex-row sm:gap-4">
-            <motion.div
-              whileHover={
-                shouldReduceMotion ? undefined : hoverScale.whileHover
-              }
-              whileTap={shouldReduceMotion ? undefined : hoverScale.whileTap}
-              transition={hoverScale.transition}
-              className="w-full sm:w-auto"
+              Play Solitaire Duel
+            </Link>
+            <Link
+              href="/classement"
+              className="w-full rounded-lg border border-[#00e5ff]/50 bg-[#00e5ff]/10 px-8 py-4 text-base font-semibold text-[#d8fbff] transition hover:bg-[#00e5ff]/20 sm:w-auto"
             >
-              <UIPro06PrimaryButton
-                href="/sign-up"
-                className="inline-block w-full sm:w-auto rounded-lg border border-[#f5ff3b]/60 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-6 py-3.5 text-lg font-bold text-[#1f1700] transition-all shadow-[0_0_35px_rgba(245,255,59,0.5)] hover:shadow-[0_0_55px_rgba(245,255,59,0.8)] hover:scale-105 animate-primary-cta-pulse focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
-                aria-label={t("home.landing.start_betting")}
-              >
-                {t("home.landing.start_betting")}
-              </UIPro06PrimaryButton>
-            </motion.div>
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.15, duration: 0.3, ease: "easeOut" }}
-              whileHover={
-                shouldReduceMotion ? undefined : hoverScale.whileHover
-              }
-              whileTap={shouldReduceMotion ? undefined : hoverScale.whileTap}
+              View Rankings
+            </Link>
+          </div>
+
+          <p className="mt-5 text-xs font-semibold uppercase tracking-[0.18em] text-[#9dd8ff]">
+            Free ranked play · Real opponents · Trophies preserved
+          </p>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-4 py-12">
+        <div className="grid gap-4 sm:grid-cols-3">
+          {features.map((feature) => (
+            <div
+              key={feature.title}
+              className="rounded-2xl border border-[#00e5ff]/25 bg-[#040d24]/70 p-6 backdrop-blur-sm"
             >
-              <UIPro07SecondaryButton
-                href="/games"
-                className="inline-block w-full sm:w-auto rounded-lg border border-[#ff4fd8]/40 bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] px-6 py-3.5 text-base font-semibold text-[#041125] transition-all shadow-[0_0_35px_rgba(255,79,216,0.5)] hover:shadow-[0_0_55px_rgba(255,79,216,0.75)] hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff4fd8] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
-                aria-label={t("home.landing.discover_casino")}
-              >
-                {t("home.landing.discover_casino")}
-              </UIPro07SecondaryButton>
-            </motion.div>
-          </div>
-          {/* Trust / value signals — every claim maps to a real capability:
-              PvP duels, matchmaking + leaderboards, weekly ranks, free start. */}
-          <div className="mt-5 flex flex-wrap items-center justify-center gap-2 sm:gap-3">
-            {[
-              { key: "home.landing.trust_real_pvp", cls: "text-[#00e5ff] border-[#00e5ff]/40" },
-              { key: "home.landing.trust_compete", cls: "text-[#f5ff3b] border-[#f5ff3b]/40" },
-              { key: "home.landing.trust_climb", cls: "text-[#00ffa6] border-[#00ffa6]/40" },
-              { key: "home.landing.trust_free_start", cls: "text-[#ff4fd8] border-[#ff4fd8]/40" },
-            ].map((item) => (
-              <span
-                key={item.key}
-                className={`rounded-full border bg-black/40 px-3 py-1 text-[10px] sm:text-xs font-black uppercase tracking-[0.18em] backdrop-blur-sm ${item.cls}`}
-              >
-                {t(item.key)}
-              </span>
-            ))}
-          </div>
-
-          {/* Product Hunt featured badge — kept in the hero, under the CTAs,
-              so visitors actually see it (plain <a>/<img> embed; not routed
-              through next/image since it's a third-party badge image). */}
-          <div className="mt-6 flex justify-center">
-            <a
-              href="https://www.producthunt.com/products/grynd?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-grynd"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="GRYND on Product Hunt"
-            >
-              <img
-                alt="GRYND - Competitive multiplayer games, built to outplay. | Product Hunt"
-                width={250}
-                height={54}
-                src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1251858&theme=dark&t=1789866264006"
-                className="h-[54px] w-[250px]"
-              />
-            </a>
-          </div>
-          </motion.div>
-        </div>
-      </motion.section>
-
-      {/* GRYND PRO — the only paid membership, and the only place on the home
-          page that talks about it. Replaces the old Shop entry point; the CTA
-          is a reusable UpgradeProButton, so the price and the entitlement come
-          from the server, never from this markup. */}
-      <div className="mx-auto max-w-7xl px-4 pt-8 reveal">
-        <div className="relative overflow-hidden rounded-2xl border border-[#f5ff3b]/40 bg-gradient-to-r from-[#0a214d]/90 to-[#08142f]/90 px-5 py-5 shadow-[0_0_30px_rgba(245,255,59,0.12)]">
-          <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-[#00e5ff]">
-                ✦ Membership
-              </p>
-              <h2 className="mt-1 text-2xl font-black tracking-tight text-[#f5ff3b] sm:text-3xl">
-                GRYND PRO
-              </h2>
-              <p className="mt-1 max-w-2xl text-sm text-[#d8fbff]">
-                Compete without distractions: ad-free, with advanced statistics,
-                advanced performance analytics and detailed match history. Every
-                game, rank and reward stays free — PRO never changes your odds,
-                Elo or matchmaking.
-              </p>
-            </div>
-            <div className="w-full shrink-0 sm:w-auto">
-              <UpgradeProButton />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* First-match recovery — only for accounts that abandoned onboarding */}
-      {firstMatchNudge && (
-        <div className="mx-auto max-w-7xl px-4 py-4 reveal">
-          <div className="relative overflow-hidden rounded-2xl border border-[#f5ff3b]/40 bg-gradient-to-r from-[#0a214d]/90 to-[#08142f]/90 px-5 py-5 shadow-[0_0_30px_rgba(245,255,59,0.12)]">
-            <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-[#00e5ff]">
-                  ✦ {t("onboarding.welcome.kicker")}
-                </p>
-                <h2 className="mt-1 text-2xl font-black tracking-tight text-[#f5ff3b] sm:text-3xl">
-                  {t("onboarding.welcome.title")}
-                </h2>
-                <p className="mt-1 max-w-2xl text-sm text-[#d8fbff]">
-                  {t("onboarding.welcome.subtitle")}
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <Link
-                  href="/casino/rps/play-ai?onboarding=1"
-                  className="rounded-lg border border-[#f5ff3b]/60 bg-[#f5ff3b] px-5 py-2.5 text-sm font-bold text-[#041125] transition-all hover:bg-[#f5ff3b]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a214d]"
-                >
-                  {t("onboarding.firstMatch.homeCta")}
-                </Link>
-                <button
-                  type="button"
-                  onClick={dismissFirstMatchNudge}
-                  aria-label={t("onboarding.firstMatch.dismiss")}
-                  className="flex h-9 w-9 items-center justify-center rounded-full border border-[#00e5ff]/40 text-[#9dd8ff] transition hover:bg-[#00e5ff]/10 hover:text-[#d8fbff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Value Proposition Strip */}
-      <div className="mx-auto max-w-7xl px-4 py-6 reveal">          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div className="rounded-xl border border-[#00e5ff]/20 bg-[#040d24]/60 p-6 text-center backdrop-blur-sm transition-all hover:border-[#00e5ff]/35 hover:shadow-[0_0_20px_rgba(0,229,255,0.1)]">
-            <svg className="w-10 h-10 mx-auto mb-3 text-[#00e5ff]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
-            <h2 className="text-lg font-bold text-[#00e5ff] mb-1">{t("home.value_props.prove_skill_title")}</h2>
-            <p className="text-sm text-[#7dd3fc]">{t("home.value_props.prove_skill_desc")}</p>
-          </div>
-          <div className="rounded-xl border border-[#f5ff3b]/20 bg-[#040d24]/60 p-6 text-center backdrop-blur-sm transition-all hover:border-[#f5ff3b]/35 hover:shadow-[0_0_20px_rgba(245,255,59,0.1)]">
-            <svg className="w-10 h-10 mx-auto mb-3 text-[#f5ff3b]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-            <h2 className="text-lg font-bold text-[#f5ff3b] mb-1">{t("home.value_props.real_opponents_title")}</h2>
-            <p className="text-sm text-[#7dd3fc]">{t("home.value_props.real_opponents_desc")}</p>
-          </div>
-          <div className="rounded-xl border border-[#ff4fd8]/20 bg-[#040d24]/60 p-6 text-center backdrop-blur-sm transition-all hover:border-[#ff4fd8]/35 hover:shadow-[0_0_20px_rgba(255,79,216,0.1)]">
-            <svg className="w-10 h-10 mx-auto mb-3 text-[#ff4fd8]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v5a5 5 0 01-10 0V4z"/><path d="M7 3H4a2 2 0 00-2 2v0a4 4 0 005 3"/><path d="M17 3h3a2 2 0 012 2v0a4 4 0 01-5 3"/><path d="M12 4v5"/></svg>
-            <h2 className="text-lg font-bold text-[#ff4fd8] mb-1">{t("home.value_props.build_rep_title")}</h2>
-            <p className="text-sm text-[#7dd3fc]">{t("home.value_props.build_rep_desc")}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Live Stats Ticker */}
-      {(liveStats.playersOnline > 0 || liveStats.gamesPlayedToday > 0) && (
-        <div className="mx-auto max-w-7xl px-4 pb-4 reveal">
-          <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-8 rounded-xl border border-[#00e5ff]/20 bg-[#040d24]/50 px-6 py-3 backdrop-blur-sm">
-            <div className="flex items-center gap-2 text-sm text-[#9dd8ff]">
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span>
-                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500"></span>
-              </span>
-              <span className="font-semibold text-[#d8fbff]">{liveStats.playersOnline.toLocaleString()}</span>
-              {t("home.live_stats.players_online")}
-            </div>
-            <span className="hidden sm:inline text-[#00e5ff]/30">|</span>
-            <div className="flex items-center gap-2 text-sm text-[#9dd8ff]">
-              <svg className="w-4 h-4 text-[#f5ff3b]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
-              <span className="font-semibold text-[#d8fbff]">{liveStats.gamesPlayedToday.toLocaleString()}</span>
-              {t("home.live_stats.games_played_today")}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* How It Works */}
-      <div className="mx-auto max-w-7xl px-4 pb-8 reveal">
-        <h2 className="text-2xl font-bold text-center text-[#f5ff3b] mb-8">{t("home.how_it_works_title")}</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          {/* The badge colour is carried by CLASSES, not an inline `style`.
-              The light theme's remap layer (src/app/light-theme.css) can only
-              reach utility classes; an inline colour is invisible to it, so a
-              bright accent picked inline stays bright on a light ground and
-              the number drops to ~1.1:1. Same reason the trust badges below
-              carry a `cls` string. */}
-          {[
-            { num: "01", titleKey: "home.how_it_works_steps.pick_game_title", descKey: "home.how_it_works_steps.pick_game_desc", cls: "text-[#00e5ff] bg-[#00e5ff]/10 border-[#00e5ff]/40" },
-            { num: "02", titleKey: "home.how_it_works_steps.find_opponent_title", descKey: "home.how_it_works_steps.find_opponent_desc", cls: "text-[#f5ff3b] bg-[#f5ff3b]/10 border-[#f5ff3b]/40" },
-            { num: "03", titleKey: "home.how_it_works_steps.make_move_title", descKey: "home.how_it_works_steps.make_move_desc", cls: "text-[#ff4fd8] bg-[#ff4fd8]/10 border-[#ff4fd8]/40" },
-            { num: "04", titleKey: "home.how_it_works_steps.win_progress_title", descKey: "home.how_it_works_steps.win_progress_desc", cls: "text-[#00ffa6] bg-[#00ffa6]/10 border-[#00ffa6]/40" },
-            { num: "05", titleKey: "home.how_it_works_steps.run_it_back_title", descKey: "home.how_it_works_steps.run_it_back_desc", cls: "text-[#a855f7] bg-[#a855f7]/10 border-[#a855f7]/40" },
-          ].map((step) => (
-            <div key={step.num} className="flex flex-col items-center text-center p-4">
-              <div
-                className={`flex items-center justify-center w-12 h-12 rounded-full border text-xl font-bold mb-3 ${step.cls}`}
-              >
-                {step.num}
-              </div>
-              <h3 className="text-base font-semibold text-[#d8fbff] mb-1">{t(step.titleKey)}</h3>
-              <p className="text-sm text-[#7dd3fc]">{t(step.descKey)}</p>
+              <h2 className="text-lg font-black text-[#f5ff3b]">{feature.title}</h2>
+              <p className="mt-2 text-sm leading-relaxed text-[#c9f7ff]/90">{feature.body}</p>
             </div>
           ))}
         </div>
-      </div>
+      </section>
 
-      {/* Server-rendered explainer — what GRYND is, the games, competitive
-          play, progression and how to start. Part of the HTML, not deferred. */}
-      {explainerSlot}
+      <section className="mx-auto max-w-6xl px-4 pb-12">
+        <h2 className="text-2xl font-black text-[#f5ff3b]">How ranked Solitaire works</h2>
+        <ol className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {steps.map((step, index) => (
+            <li
+              key={step.title}
+              className="rounded-xl border border-[#00e5ff]/20 bg-[#061329] p-5"
+            >
+              <span className="flex h-8 w-8 items-center justify-center rounded-full border border-[#00e5ff]/50 bg-[#00e5ff]/10 text-sm font-bold text-[#00e5ff]">
+                {index + 1}
+              </span>
+              <p className="mt-3 font-bold text-[#d8fbff]">{step.title}</p>
+              <p className="mt-1 text-sm leading-relaxed text-[#9dd8ff]">{step.body}</p>
+            </li>
+          ))}
+        </ol>
 
-      {/* Advertising — inside the normal content column, AFTER the explainer
-          and BEFORE the games/leaderboard sections. That keeps it clear of the
-          hero's primary call to action above it (nothing here covers a button)
-          and clear of every featured game link below it, and it is nowhere near
-          the page's footer slot, so the two providers never form one dense
-          block. `hilltopSlot` is server-rendered and carries its own
-          entitlement check — nothing about membership is passed from here. */}
+        <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+          <Link href="/games/solitaire-duel" className="text-[#00e5ff] underline underline-offset-2">
+            Solitaire Duel rules and strategy
+          </Link>
+          <Link href="/classement" className="text-[#00e5ff] underline underline-offset-2">
+            Solitaire rankings
+          </Link>
+          <Link href="/guides" className="text-[#00e5ff] underline underline-offset-2">
+            Guides
+          </Link>
+          <Link href="/faq" className="text-[#00e5ff] underline underline-offset-2">
+            FAQ
+          </Link>
+        </div>
+      </section>
+
       {hilltopSlot}
 
-      <div className="mx-auto max-w-7xl px-4 py-8">
-        <section className="mb-16 reveal">
-          {/* The section's call to action. It used to sit under the featured
-              game card; with that card gone it is what the section leads
-              with, so the grid's extra top margin goes with it. */}
-          <div
-            className="flex justify-center reveal"
-            style={{ animationDelay: "0.2s" }}
-          >
-            <a
-              href="/games"
-              className="inline-block rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b] px-6 py-3 text-base font-semibold text-[#031026] transition-all glow-pulse more-hover cyber-glow-button shadow-[0_0_16px_rgba(245,255,59,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
-            >
-              {t("home.more_games")}
-            </a>
-          </div>
-
-          {/* Most popular games — plain links, not buttons and not a client
-              state machine. These are the catalogue's own popular entries, so
-              the home page links straight to their public pages and a crawler
-              finds the next level of the hierarchy (/games/<slug>) from the
-              root. */}
-          {popularGames.length > 0 && (
-            <nav
-              aria-labelledby="home-popular-games"
-              className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm"
-            >
-              <span id="home-popular-games" className="font-semibold text-[#7dd3fc]">
-                {t("home.popular_games")}
-              </span>
-              {popularGames.map((game) => (
-                <Link
-                  key={game.slug}
-                  href={`/games/${game.slug}`}
-                  className="text-[#d8fbff] underline underline-offset-2 transition-colors hover:text-[#f5ff3b]"
-                >
-                  {game.name}
-                </Link>
-              ))}
-            </nav>
-          )}
-        </section>
-
-        {/* Leaderboard — real weekly data, never fabricated */}
-        <section className="mb-16 reveal">
-          <div className="mb-6 flex items-end justify-between gap-4">
-            <div>
-              <h2 className="text-2xl font-bold text-[#f5ff3b]">
-                {t("home.best_of.title")}
-              </h2>
-              <p className="mt-1 text-sm text-[#7dd3fc]">
-                {t("home.best_of.subtitle")}
-              </p>
-            </div>
-            <Link
-              href="/classement"
-              className="hidden shrink-0 rounded-lg border border-[#00e5ff]/40 px-4 py-2 text-sm font-semibold text-[#00e5ff] transition-all hover:bg-[#00e5ff]/10 sm:inline-block"
-            >
-              {t("home.best_of.view_all")}
-            </Link>
-          </div>
-
-          <div className="overflow-hidden rounded-xl border border-[#00e5ff]/25 bg-[#040d24]/60 backdrop-blur-sm">
-            <AsyncState
-              isLoading={leaderboard.isLoading}
-              error={leaderboard.error}
-              hasData={leaderboard.hasData}
-              isEmpty={leaderboardItems.length === 0}
-              onRetry={async () => {
-                await leaderboard.refresh();
-              }}
-              cachedAt={leaderboard.cachedAt}
-              skeleton={<SkeletonRows rows={5} className="p-4" label="Loading leaderboard" />}
-              empty={
-                <div className="flex flex-col items-center gap-3 p-8 text-center">
-                  <p className="text-sm text-[#7dd3fc]/70">
-                    {t("home.best_of.error")}
-                  </p>
-                  <Link
-                    href="/classement"
-                    className="rounded-lg border border-[#00e5ff]/40 px-4 py-2 text-sm font-semibold text-[#00e5ff] transition-all hover:bg-[#00e5ff]/10"
-                  >
-                    {t("home.best_of.view_all")}
-                  </Link>
-                </div>
-              }
-            >
-              <ul className="divide-y divide-[#00e5ff]/10">
-                {leaderboardItems.map((item, i) => (
-                  <li
-                    key={item.clerk_id || `${item.rank}-${i}`}
-                    className="flex items-center gap-1 pr-3 transition-colors hover:bg-[#00e5ff]/5 sm:pr-4"
-                  >
-                    <Link
-                      href={`/profil/${encodeURIComponent(item.clerk_id)}`}
-                      className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 sm:px-6"
-                    >
-                      <span
-                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-black ${
-                          i === 0
-                            ? "border border-[#f5ff3b]/50 bg-[#f5ff3b]/20 text-[#f5ff3b]"
-                            : i === 1
-                              ? "border border-slate-300/40 bg-slate-300/10 text-slate-200"
-                              : i === 2
-                                ? "border border-amber-600/50 bg-amber-700/20 text-amber-400"
-                                : "border border-[#00e5ff]/30 bg-[#00e5ff]/10 text-[#00e5ff]"
-                        }`}
-                      >
-                        {item.rank}
-                      </span>
-                      <IconAvatar
-                        iconKey={item.icon_key || null}
-                        name={item.user?.name || item.name}
-                        size="h-9 w-9"
-                        showFrame={false}
-                        className="border border-white/20"
-                      />
-                      <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[#c9f7ff]">
-                        {item.user?.name || item.name}
-                      </span>
-                      <span className="shrink-0 text-sm font-bold text-green-300">
-                        {Number(item.weekly_wins || 0).toLocaleString()}{" "}
-                        {t("home.best_of.wins_label")}
-                      </span>
-                    </Link>
-                    {/* Any visitor can flag a ranked player; hidden on your
-                        own row. The username filter catches most of this at
-                        signup, this is the backstop for everything else. */}
-                    {item.clerk_id !== user?.id && (
-                      <ReportEntryButton
-                        reportedClerkId={item.clerk_id}
-                        reportedPlayerName={item.user?.name || item.name || "Player"}
-                        gameType="leaderboard"
-                        contextLabel="Leaderboard"
-                      />
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </AsyncState>
-          </div>
-
-          <div className="mt-4 flex justify-center sm:hidden">
-            <Link
-              href="/classement"
-              className="rounded-lg border border-[#00e5ff]/40 px-4 py-2 text-sm font-semibold text-[#00e5ff] transition-all hover:bg-[#00e5ff]/10"
-            >
-              {t("home.best_of.view_all")}
-            </Link>
-          </div>
-        </section>
-
-        {/* Player reviews — social proof */}
-        <section className="mb-16 reveal">
-          <div className="mb-6 flex items-end justify-between gap-4">
-            <div>
-              <h2 className="text-2xl font-bold text-[#f5ff3b]">
-                Player Reviews
-              </h2>
-              <p className="mt-1 text-sm text-[#7dd3fc]">
-                What our community says about GRYND
-              </p>
-            </div>
-            <Link
-              href="/reviews"
-              className="hidden shrink-0 rounded-lg border border-[#00e5ff]/40 px-4 py-2 text-sm font-semibold text-[#00e5ff] transition-all hover:bg-[#00e5ff]/10 sm:inline-block"
-            >
-              See all reviews
-            </Link>
-          </div>
-          <ReviewWall limit={6} />
-        </section>
-      </div>
-
-      {/* Social follow strip — placed after the reviews so the reader has just
-          seen other players talking about us, and closes the loop on "where do
-          I keep up with this?". Icons/labels come from the shared
-          SocialLinks component, never from a second list of URLs. */}
-      <section className="mx-auto max-w-7xl px-4 pb-4 reveal">
-        <div className="flex flex-col items-center gap-5 rounded-2xl border border-[#00e5ff]/20 bg-[#040d24]/60 px-6 py-8 text-center backdrop-blur-sm sm:flex-row sm:justify-between sm:text-left">
-          <div>
-            <h2 className="text-xl font-bold text-[#f5ff3b] sm:text-2xl">
-              {t("home.social.title")}
-            </h2>
-            <p className="mt-1 text-sm text-[#7dd3fc]">
-              {t("home.social.subtitle")}
-            </p>
-          </div>
-          <SocialLinks
-            size="lg"
-            testId="home-social"
-            className="shrink-0 justify-center"
-          />
-        </div>
-      </section>
-
-      {/* Final CTA — your GRYND starts now */}
-      <section className="mx-auto max-w-7xl px-4 py-16 reveal">
-        <div className="relative overflow-hidden rounded-2xl border border-[#00e5ff]/30 bg-gradient-to-br from-[#041125] to-[#0b1f45] px-6 py-14 text-center shadow-[0_0_50px_rgba(0,229,255,0.15)] sm:px-12">
-          <div className="pointer-events-none absolute -top-24 left-1/2 h-48 w-96 -translate-x-1/2 rounded-full bg-[#00e5ff]/15 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-24 right-1/4 h-40 w-72 rounded-full bg-[#ff4fd8]/10 blur-3xl" />
-          <h2 className="relative text-2xl font-black uppercase tracking-widest text-[#f5ff3b] drop-shadow-[0_0_18px_rgba(245,255,59,0.5)] sm:text-4xl">
-            {t("home.final_cta.title")}
-          </h2>
-          <p className="relative mx-auto mt-3 max-w-xl text-sm text-[#9dd8ff] sm:text-base">
-            {t("home.final_cta.subtitle")}
-          </p>
-          <div className="relative mt-8 flex justify-center">
-            <UIPro06PrimaryButton
-              href="/sign-up"
-              className="inline-block rounded-lg border border-[#f5ff3b]/60 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-10 py-4 text-lg font-bold text-[#1f1700] transition-all shadow-[0_0_35px_rgba(245,255,59,0.5)] hover:shadow-[0_0_55px_rgba(245,255,59,0.8)] hover:scale-105 animate-primary-cta-pulse focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
-              aria-label={t("home.final_cta.play")}
-            >
-              {t("home.final_cta.play")}
-            </UIPro06PrimaryButton>
-          </div>
-        </div>
-      </section>
-
-      {/* GRYND PRO widget — replaces the old Daily Reward claim button in
-          this corner. Free accounts see the membership pitch; PRO members
-          see a small status card. Also mounted by the game landing pages
-          (components/game-landing/GameLanding.tsx); never inside gameplay. */}
-      <GryndProWidget />
-
-      {/* ── Terms & Conditions Modal ── */}
-      <AnimatePresence>
-        {showTermsModal && (
-          <UIPro17ModalBackdrop className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              transition={{ duration: 0.3 }}
-            >
-              <div
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="terms-modal-title"
-                className="relative mx-4 max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-[#00e5ff]/30 bg-gradient-to-b from-[#030817] to-[#0a1a3d] p-6 shadow-[0_0_40px_rgba(0,229,255,0.15)] md:p-8"
-              >
-                {/* Header */}
-                <div className="mb-6 text-center">
-                  <h2 id="terms-modal-title" className="mb-2 text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#00e5ff] to-[#f5ff3b]">
-                    {t("home.terms.title")}
-                  </h2>
-                  <p className="text-sm text-[#9dd8ff]">
-                    {t("home.terms.subtitle")}
-                  </p>
-                </div>
-
-                {/* Terms Content */}
-                <div className="mb-6 space-y-4 rounded-lg border border-[#00e5ff]/10 bg-[#040d24]/60 p-4 text-sm leading-relaxed text-[#c9f7ff]/90 md:p-6">
-                  <p>
-                    <strong className="text-[#00e5ff]">{t("home.terms.welcome")}</strong> {t("home.terms.intro_lead")}
-                  </p>
-
-                  <div className="space-y-3">
-                    <div>
-                      <strong className="text-[#f5ff3b]">{t("home.terms.eligibility_label")}</strong> {t("home.terms.eligibility_body")}
-                    </div>
-                    <div>
-                      <strong className="text-[#f5ff3b]">{t("home.terms.account_label")}</strong> {t("home.terms.account_body")}
-                    </div>
-                    <div>
-                      <strong className="text-[#f5ff3b]">{t("home.terms.virtual_tokens_label")}</strong> {t("home.terms.virtual_tokens_body")}
-                    </div>
-                    <div>
-                      <strong className="text-[#f5ff3b]">{t("home.terms.fair_play_label")}</strong> {t("home.terms.fair_play_body")}
-                    </div>
-                    <div>
-                      <strong className="text-[#f5ff3b]">{t("home.terms.prohibited_label")}</strong> {t("home.terms.prohibited_body")}
-                    </div>
-                    <div>
-                      <strong className="text-[#f5ff3b]">{t("home.terms.privacy_label")}</strong> {t("home.terms.privacy_body")}
-                    </div>
-                    <div>
-                      <strong className="text-[#f5ff3b]">{t("home.terms.termination_label")}</strong> {t("home.terms.termination_body")}
-                    </div>
-                  </div>
-
-                  <p className="pt-2 text-xs text-[#6b91b3]">
-                    {t("home.terms.by_clicking_lead", { action: t("home.terms.i_agree") })}{" "}
-                    <Link href="/terms" className="text-[#00e5ff] underline hover:text-[#f5ff3b]">
-                      {t("home.terms.full_tos")}
-                    </Link>
-                    ,{" "}
-                    <Link href="/privacy-policy" className="text-[#00e5ff] underline hover:text-[#f5ff3b]">
-                      {t("home.terms.privacy_policy")}
-                    </Link>
-                    , and{" "}
-                    <Link href="/fair-play" className="text-[#00e5ff] underline hover:text-[#f5ff3b]">
-                      {t("home.terms.fair_play_policy")}
-                    </Link>
-                    , and{" "}
-                    <Link href="/accessibility" className="text-[#00e5ff] underline hover:text-[#f5ff3b]">
-                      {t("home.terms.accessibility_policy")}
-                    </Link>
-                    .
-                  </p>
-                </div>
-
-                {/* Buttons */}
-                <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
-                  <button
-                    onClick={handleAcceptTerms}
-                    className="rounded-lg border border-[#00e5ff]/40 bg-gradient-to-r from-[#00e5ff] to-[#00ffa6] px-6 py-3 text-base font-bold text-[#041125] transition-all hover:shadow-[0_0_30px_rgba(0,229,255,0.5)] hover:scale-105 shadow-[0_0_16px_rgba(0,255,166,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
-                  >
-                    {t("home.terms.i_agree")}
-                  </button>
-                  <button
-                    onClick={handleRejectTerms}
-                    className="rounded-lg border border-red-500/40 bg-red-500/10 px-6 py-3 text-base font-bold text-red-400 transition-all hover:bg-red-500/20 hover:shadow-[0_0_20px_rgba(239,68,68,0.3)] hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
-                  >
-                    {t("home.terms.i_disagree")}
-                  </button>
-                </div>
-
-                <p className="mt-4 text-center text-xs text-[#6b91b3]">
-                  {t("home.terms.must_accept")}
-                </p>
-              </div>
-            </motion.div>
-          </UIPro17ModalBackdrop>
-        )}
-      </AnimatePresence>
-      {/* Advertising for free accounts — last block before the footer, clear of
-          the hero, navigation and every control. */}
       {adSlot}
+
       <Footer />
-      <StickyMobileCta />
+
+      {showTermsModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="terms-modal-title"
+            className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-[#00e5ff]/30 bg-gradient-to-b from-[#030817] to-[#0a1a3d] p-6 md:p-8"
+          >
+            <h2 id="terms-modal-title" className="text-2xl font-black text-[#f5ff3b]">
+              Terms &amp; Conditions
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-[#c9f7ff]/90">
+              GRYND is a free competitive Solitaire platform. Play is for rating
+              and trophies only — there is no wagering, no entry fee and no
+              cash-out. By continuing you agree to the{" "}
+              <Link href="/terms" className="text-[#00e5ff] underline">
+                Terms of Service
+              </Link>{" "}
+              and{" "}
+              <Link href="/privacy-policy" className="text-[#00e5ff] underline">
+                Privacy Policy
+              </Link>
+              .
+            </p>
+            {termsLoading ? null : (
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={handleRejectTerms}
+                  className="rounded-lg border border-red-500/40 bg-red-500/10 px-5 py-2.5 text-sm font-bold text-red-300"
+                >
+                  Decline and sign out
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAcceptTerms}
+                  className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff] px-5 py-2.5 text-sm font-bold text-[#041125]"
+                >
+                  I agree
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
-export default MainComponent;

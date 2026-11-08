@@ -1,4 +1,8 @@
-import { QUICK_QUEUE_GAME_KEYS, type QuickQueueGameKey } from "./quickQueue";
+import {
+  ACTIVE_QUICK_QUEUE_GAME_KEYS,
+  QUICK_QUEUE_GAME_KEYS,
+  type QuickQueueGameKey,
+} from "./quickQueue";
 
 export interface QuickQueueReadinessInput {
   userId: string;
@@ -18,10 +22,11 @@ export function normalizeQuickQueueReadiness(input: unknown): QuickQueueReadines
   if (!userId) throw new Error("userId is required");
 
   const preferredGames = Array.isArray(value.preferredGames)
-    ? value.preferredGames.filter((game): game is QuickQueueGameKey =>
-        typeof game === "string" && (QUICK_QUEUE_GAME_KEYS as readonly string[]).includes(game),
-      )
-    : [...QUICK_QUEUE_GAME_KEYS];
+    ? value.preferredGames
+        .filter((game): game is QuickQueueGameKey =>
+          typeof game === "string" && (QUICK_QUEUE_GAME_KEYS as readonly string[]).includes(game),
+        )
+    : [...ACTIVE_QUICK_QUEUE_GAME_KEYS];
   const uniqueGames = [...new Set(preferredGames)];
   if (uniqueGames.length === 0) throw new Error("At least one supported game is required");
 

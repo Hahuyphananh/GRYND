@@ -31,6 +31,7 @@ import {
   normalizeTrophyGameKey,
 } from "../../../../lib/trophyStore";
 import { getTrophyGameLabel } from "../../../../lib/trophies";
+import { isGameArchived, isGameAvailable } from "../../../../lib/gameAvailability";
 import {
   clampLeaderboardLimit,
   normalizeLeaderboardOffset,
@@ -42,7 +43,18 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
-  const game = normalizeTrophyGameKey(searchParams.get("game"));
+  const requestedGame = searchParams.get("game");
+  // Archived games stay out of the public ranking surface; their historical
+  // trophy rows remain intact. A stale ?game= link falls back to the first
+  // active trophy board.
+  const trophyGames = listTrophyGames().filter((entry) =>
+    isGameAvailable(typeof entry === "string" ? entry : entry?.key),
+  );
+  const trophyGameKey = (entry) =>
+    typeof entry === "string" ? entry : entry?.key;
+  const game = isGameArchived(requestedGame)
+    ? trophyGameKey(trophyGames[0]) ?? normalizeTrophyGameKey(null)
+    : normalizeTrophyGameKey(requestedGame);
   const limit = clampLeaderboardLimit(searchParams.get("limit"));
   const offset = normalizeLeaderboardOffset(searchParams.get("offset"));
 
@@ -84,7 +96,7 @@ export async function GET(request) {
         label: getTrophyGameLabel(game),
         // The full set of trophy games, so the UI never hardcodes a list that
         // could drift from TROPHY_GAMES.
-        games: listTrophyGames(),
+        games: trophyGames,
         limit,
         offset,
       },

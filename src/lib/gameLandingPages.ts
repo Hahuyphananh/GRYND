@@ -46,6 +46,7 @@
 // a page can never be added for a game that does not exist.
 
 import { CANONICAL_SITE_URL } from "./siteUrl";
+import { isGameAvailable } from "./gameAvailability";
 
 /**
  * The canonical origin the public site is served from — www, the host the
@@ -1881,9 +1882,12 @@ export function gameLandingUrl(slug: string): string {
 export function relatedGames(slug: string): GameLandingPage[] {
   const game = GAME_LANDING_BY_SLUG[slug];
   if (!game) return [];
+  // A related rail must never point at an archived game: the catalogue keeps
+  // every entry so it can be reactivated, but public cross-links filter here.
   return game.related
     .map((relatedSlug) => GAME_LANDING_BY_SLUG[relatedSlug])
-    .filter((entry): entry is GameLandingPage => Boolean(entry));
+    .filter((entry): entry is GameLandingPage => Boolean(entry))
+    .filter((entry) => isGameAvailable(entry.slug));
 }
 
 /**
@@ -1919,7 +1923,9 @@ export type GameIndexEntry = {
 };
 
 /** Every public game, A–Z by display name. */
+/** Every public game that is currently available, A–Z by display name. */
 export const GAME_INDEX: readonly GameIndexEntry[] = [...GAME_LANDING_PAGES]
+  .filter(({ slug }) => isGameAvailable(slug))
   .map(({ slug, name }) => ({ slug, name }))
   .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -1981,6 +1987,7 @@ export type GameCardEntry = {
 
 /** Every public game as a card, A–Z by display name. */
 export const GAME_CARDS: readonly GameCardEntry[] = [...GAME_LANDING_PAGES]
+  .filter(({ slug }) => isGameAvailable(slug))
   .map(({ slug, name, shortDescription, leaderboardKey }) => ({
     slug,
     href: gameLandingPath(slug),

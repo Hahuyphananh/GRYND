@@ -12,14 +12,10 @@ import { fadeUp, hoverScale, withReducedMotion, stagger } from "../lib/animation
 import { UIPro01NavShell, UIPro02NavItem } from "./uipro";
 import useInstallPWA from "../hooks/useInstallPWA";
 import AdminBadge from "./AdminBadge";
-import QuestNavBadge from "./QuestNavBadge";
-import { IconCoins, IconDeviceMobile, IconFlame, IconGift, IconMenu, IconSettings, IconStar, IconTrophy, IconX } from "@tabler/icons-react";
+import { IconDeviceMobile, IconFlame, IconMenu, IconSettings, IconTrophy, IconX } from "@tabler/icons-react";
 import FrameAvatar from "./FrameAvatar";
 import { cosmeticEffectClass } from "../lib/profileCosmetics";
-import useDailyLoss from "../lib/useDailyLoss";
-import { DAILY_LOSS_CHIP_THRESHOLD } from "../lib/games/economy";
 import { triggerHaptic } from "../lib/native/haptics";
-import { COIN_BALANCE_EVENT } from "../hooks/useCoinBalance";
 import { fetchDeduped } from "../lib/dedupeFetch";
 
 // M1: sessionStorage TTL for the nav's equipped-title meta. Titles are
@@ -32,28 +28,18 @@ const NAV_META_TTL_MS = 5 * 60 * 1000;
 
 
 
+// Solitaire-first navigation: the game, its rankings, and the account.
 const NAV_TRANSLATION_KEYS = {
   "/": "nav.home",
-  "/games": "nav.casino",
+  "/games/solitaire-duel": "nav.casino",
   "/classement": "nav.leaderboard",
-  "/contact": "nav.contact",
-  "/faq": "nav.faq",
-  "/rewards": "nav.rewards",
 };
-
-// The one primary nav link that carries a glyph, keyed by its path. Rewards is
-// drawn with a gift icon from the project's existing Tabler set so it reads as
-// the rewards surface; every other primary link stays text-only, exactly as
-// before. The map is empty for those paths, so nothing about them changes.
-const NAV_ICONS = { "/rewards": <IconGift size={15} className="shrink-0" /> };
+const NAV_ICONS = {};
 
 function NavigationBarInner({ currentPath = "" }) {
   const { isLoaded, isSignedIn, user } = useUser();
   const { t } = useTranslation();
   const shouldReduceMotion = useReducedMotion();
-  // Today's net (responsible-play) chip — rendered on the home page (mobile
-  // menu) only, so it never duplicates the fixed lobby chip (DailyLossGuard).
-  const { loss: dailyLoss, loaded: dailyLossLoaded } = useDailyLoss();
   const [profile, setProfile] = useState(() => {
     // Seed the chip's two numbers from the last known values so a fresh mount
     // (the navbar remounts on every navigation) does NOT replay the change
@@ -96,7 +82,7 @@ function NavigationBarInner({ currentPath = "" }) {
       totalTrophies,
       // COIN BALANCE — the player's spendable coins, rendered UNDER the trophy
       // total. It is the same wallet every other surface reads (the lobby
-      // wager pickers via useCoinBalance, /rewards, the energy grant), never a
+      // legacy wallet readers), never a
       // second currency: /api/get-user-tokens is the one source, and null means
       // "not read yet" rather than 0.
       balance,
@@ -182,21 +168,12 @@ function NavigationBarInner({ currentPath = "" }) {
   useEffect(() => {
     const handler = () => fetchBalance({ includeMeta: false });
     const titleHandler = () => refreshTitleMeta();
-    // A credit the client already knows about — the daily reward claim, for
-    // one — announces itself through this event, so the coin number under the
-    // trophies re-reads instead of showing the pre-claim amount until the next
-    // navigation. Shares the metadata-free read above: the wallet answer is
-    // what changed, and re-fetching the title meta would be waste.
-    const balanceHandler = () => fetchBalance({ includeMeta: false });
-
     window.addEventListener("profileUpdated", handler);
     window.addEventListener("titleUpdated", titleHandler);
-    window.addEventListener(COIN_BALANCE_EVENT, balanceHandler);
     return () => {
       window.removeEventListener("profileUpdated", handler);
       window.removeEventListener("titleUpdated", titleHandler);
-      window.removeEventListener(COIN_BALANCE_EVENT, balanceHandler);
-    };
+      };
   }, []);
 
   // Official Grynd icon only. The avatar comes from the selected icon key in
@@ -410,9 +387,6 @@ function NavigationBarInner({ currentPath = "" }) {
     return () => clearInterval(interval);
   }, []);
 
-  const isCasinoPath =
-    currentPath.startsWith("/casino") || currentPath.startsWith("/games");
-
   // The equipped name glow: the same treatment the profile card gives the
   // display name — the catalog hex as the text colour plus its halo.
   // `undefined` (no glow equipped) leaves the stylesheet colour in place.
@@ -486,7 +460,7 @@ function NavigationBarInner({ currentPath = "" }) {
               animate="animate"
               className="hidden items-center space-x-1 md:flex lg:space-x-4"
             >
-              {["/", "/games", "/classement", "/rewards", "/faq"].map((path) => (
+              {["/", "/games/solitaire-duel", "/classement"].map((path) => (
                 <motion.div
                   key={path}
                   initial={itemVariant.initial}
@@ -496,25 +470,13 @@ function NavigationBarInner({ currentPath = "" }) {
                 >
                   <Link
                     href={path}
-                    className={`px-1 py-2 text-sm font-medium rounded lg:px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === path || (path === "/games" && isCasinoPath) ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
+                    className={`px-1 py-2 text-sm font-medium rounded lg:px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === path ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
                   >
                     {/* Only Rewards carries a glyph. Links without one render
                         their label exactly as before (a bare text node) — the
                         conditional wrapper means adding the icon did not shift
                         any existing link by even a space. */}
-                    {NAV_ICONS[path] ? (
-                      <span className="inline-flex items-center gap-1.5">
-                        {NAV_ICONS[path]} {t(NAV_TRANSLATION_KEYS[path])}
-                      </span>
-                    ) : path === "/games" ? (
-                      // The hub link is where a player picks what to play next,
-                      // so it is the one nav entry that flags claimable quests.
-                      <span className="inline-flex items-center gap-1.5">
-                        {t(NAV_TRANSLATION_KEYS[path])} <QuestNavBadge />
-                      </span>
-                    ) : (
-                      t(NAV_TRANSLATION_KEYS[path])
-                    )}
+                    {t(NAV_TRANSLATION_KEYS[path])}
                   </Link>
                 </motion.div>
               ))}
@@ -531,26 +493,6 @@ function NavigationBarInner({ currentPath = "" }) {
                 >
                   <span className="inline-flex items-center gap-1.5">
                     <IconSettings size={15} className="shrink-0" /> {t("nav.settings")}
-                  </span>
-                </Link>
-              </motion.div>
-              {/* GRYND PRO — replaced the old token Shop link. This is a link
-                  (not the UpgradeProButton) so the navbar stays a pure
-                  navigation surface; the upgrade CTA lives on the pages. */}
-              <motion.div
-                key="/upgrade-pro"
-                className="hidden 2xl:flex"
-                initial={itemVariant.initial}
-                animate={itemVariant.animate}
-                transition={itemVariant.transition}
-                whileHover={shouldReduceMotion ? undefined : hoverScale.whileHover}
-              >
-                <Link
-                  href="/upgrade-pro"
-                  className={`px-3 py-2 text-sm font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === "/upgrade-pro" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
-                >
-                  <span className="inline-flex items-center gap-1.5">
-                    <IconStar size={15} className="shrink-0" /> GRYND PRO
                   </span>
                 </Link>
               </motion.div>
@@ -586,7 +528,7 @@ function NavigationBarInner({ currentPath = "" }) {
                     href="/profil"
                     data-testid="nav-trophies"
                     className="hidden items-center gap-2 rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 px-3 py-1.5 transition-colors hover:bg-[#f5ff3b]/20 lg:flex"
-                    title="Your total trophies, with your coin balance underneath"
+                    title="Your total trophies"
                   >
                     <IconTrophy size={15} className="shrink-0 text-[#f5ff3b]" />
                     <span className="flex flex-col leading-tight">
@@ -609,18 +551,6 @@ function NavigationBarInner({ currentPath = "" }) {
                         </motion.span>
                         <span className="text-[10px] uppercase tracking-wider text-[#f5ff3b]/70">
                           Trophies
-                        </span>
-                      </span>
-                      <span
-                        data-testid="nav-coins"
-                        className="flex items-center gap-1 text-[11px] font-semibold text-[#ffd700]"
-                      >
-                        <IconCoins size={12} className="shrink-0" aria-hidden="true" />
-                        {profile.balance === null
-                          ? "—"
-                          : Number(profile.balance).toLocaleString()}
-                        <span className="text-[9px] uppercase tracking-wider text-[#ffd700]/70">
-                          Coins
                         </span>
                       </span>
                     </span>
@@ -759,33 +689,9 @@ function NavigationBarInner({ currentPath = "" }) {
                       <IconTrophy size={12} className="mb-0.5 mr-0.5 inline" />{" "}
                       {`${Number(profile.totalTrophies || 0).toLocaleString()} Trophies`}
                     </div>
-                    {/* The coin balance, directly under the trophies — the same
-                        pair the desktop chip shows. A dash means the wallet has
-                        not been read yet, never a fabricated 0. */}
-                    <div className="text-xs text-[#ffd700]" data-testid="nav-coins-mobile">
-                      <IconCoins size={12} className="mb-0.5 mr-0.5 inline" aria-hidden="true" />{" "}
-                      {`${
-                        profile.balance === null
-                          ? "—"
-                          : Number(profile.balance).toLocaleString()
-                      } Coins`}
-                    </div>
                   </div>
                 </Link>
               )}
-
-              {/* Responsible-play daily net chip (home only) */}
-              {isSignedIn &&
-                currentPath === "/" &&
-                dailyLossLoaded &&
-                dailyLoss > DAILY_LOSS_CHIP_THRESHOLD && (
-                  <div
-                    className="rounded-lg border border-amber-400/40 bg-black/60 px-3 py-2 text-sm font-bold text-amber-300"
-                    title="Your net loss today — take it easy"
-                  >
-                    ▼ {dailyLoss.toLocaleString()} today
-                  </div>
-                )}
 
               {/* NAV LINKS */}
               <div className="space-y-2">
@@ -798,24 +704,14 @@ function NavigationBarInner({ currentPath = "" }) {
                     Admin dashboard
                   </Link>
                 )}
-                {["/", "/games", "/classement", "/rewards", "/faq"].map((path) => (
+                {["/", "/games/solitaire-duel", "/classement"].map((path) => (
                   <Link
                     key={path}
                     href={path}
                     onClick={() => setMobileMenuOpen(false)}
                     className="block rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff]"
                   >
-                    {NAV_ICONS[path] ? (
-                      <span className="inline-flex items-center gap-1.5">
-                        {NAV_ICONS[path]} {t(NAV_TRANSLATION_KEYS[path])}
-                      </span>
-                    ) : path === "/games" ? (
-                      <span className="inline-flex items-center gap-1.5">
-                        {t(NAV_TRANSLATION_KEYS[path])} <QuestNavBadge />
-                      </span>
-                    ) : (
-                      t(NAV_TRANSLATION_KEYS[path])
-                    )}
+                    {t(NAV_TRANSLATION_KEYS[path])}
                   </Link>
                 ))}
                   <Link
@@ -825,15 +721,6 @@ function NavigationBarInner({ currentPath = "" }) {
                   >
                     <span className="inline-flex items-center gap-1.5">
                       <IconSettings size={15} className="shrink-0" /> {t("nav.settings")}
-                    </span>
-                  </Link>
-                  <Link
-                    href="/upgrade-pro"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="block rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff]"
-                  >
-                    <span className="inline-flex items-center gap-1.5">
-                      <IconStar size={15} className="shrink-0" /> GRYND PRO
                     </span>
                   </Link>
                 {/* The same switch, as a labelled row — an icon-only button

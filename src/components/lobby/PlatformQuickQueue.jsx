@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSocket } from "../../context/SocketProvider";
 import { useMatchRouter } from "../../hooks/useMatchRouter";
+import { isGameAvailable } from "../../lib/gameAvailability";
 import { QuickQueueStatus } from "./QuickQueueStatus";
 
 export const QUICK_QUEUE_GAME_OPTIONS = [
@@ -26,6 +27,12 @@ export const QUICK_QUEUE_GAME_OPTIONS = [
   ["dominoes", "Dominoes"],
   ["hillstrike", "Hillstrike"],
 ];
+
+// The offered games, minus any archived game. The option list above is kept
+// complete so reactivation restores the toggle without editing this component.
+const AVAILABLE_GAME_OPTIONS = QUICK_QUEUE_GAME_OPTIONS.filter(([key]) =>
+  isGameAvailable(key),
+);
 
 const EMPTY_READINESS_BODY = Object.freeze({});
 
@@ -66,11 +73,18 @@ export function quickQueueGameRoute(gameKey, matchId) {
 export function usePlatformQuickQueue(options = {}) {
   const { readinessBody } = options;
   const stableReadinessBody = readinessBody && typeof readinessBody === "object" ? readinessBody : EMPTY_READINESS_BODY;
-  const preferredGamesFromOptions = stableReadinessBody.preferredGames;
+  // Saved preferences can outlive a game's availability (or come from an older
+  // client). Keep only games that are selectable today; if that empties the
+  // list the player simply picks again instead of queueing for an archived one.
+  const preferredGamesFromOptions = Array.isArray(stableReadinessBody.preferredGames)
+    ? stableReadinessBody.preferredGames.filter((key) =>
+        AVAILABLE_GAME_OPTIONS.some(([optionKey]) => optionKey === key),
+      )
+    : stableReadinessBody.preferredGames;
   const preferredGamesKey = Array.isArray(preferredGamesFromOptions)
     ? preferredGamesFromOptions.join("\u0001")
     : "";
-  const defaultPreferredGames = useRef(QUICK_QUEUE_GAME_OPTIONS.map(([key]) => key)).current;
+  const defaultPreferredGames = useRef(AVAILABLE_GAME_OPTIONS.map(([key]) => key)).current;
   const [preferredGames, setPreferredGames] = useState(
     Array.isArray(preferredGamesFromOptions) ? preferredGamesFromOptions : defaultPreferredGames,
   );
@@ -168,10 +182,10 @@ export function usePlatformQuickQueue(options = {}) {
 
   const preferences = (
     <div className="mt-3">
-      <p className="mb-2 text-xs text-cyan-100/70">Monitoring {preferredGames.length} selected game{preferredGames.length === 1 ? "" : "s"}: {preferredGames.length > 0 ? QUICK_QUEUE_GAME_OPTIONS.filter(([key]) => preferredGames.includes(key)).map(([, label]) => label).join(", ") : "none"}</p>
+      <p className="mb-2 text-xs text-cyan-100/70">Monitoring {preferredGames.length} selected game{preferredGames.length === 1 ? "" : "s"}: {preferredGames.length > 0 ? AVAILABLE_GAME_OPTIONS.filter(([key]) => preferredGames.includes(key)).map(([, label]) => label).join(", ") : "none"}</p>
       <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-white/50">Games to include</p>
       <div className="flex flex-wrap gap-1.5">
-        {QUICK_QUEUE_GAME_OPTIONS.map(([key, label]) => {
+        {AVAILABLE_GAME_OPTIONS.map(([key, label]) => {
           const selected = preferredGames.includes(key);
           return <button key={key} type="button" aria-pressed={selected} onClick={() => toggleGame(key)} className={`rounded-full border px-2.5 py-1 text-[11px] font-bold transition ${selected ? "border-cyan-400 bg-cyan-500/20 text-cyan-200" : "border-gray-600 bg-gray-800/50 text-gray-400"}`}>{label}</button>;
         })}
@@ -179,5 +193,5 @@ export function usePlatformQuickQueue(options = {}) {
     </div>
   );
 
-  return { ready, busy, error, notification, preferences: <><QuickQueueStatus refreshKey={statusRefreshKey} />{preferences}</>, emptySelection: preferredGames.length === 0, onToggle: toggle };
+  return { ready, busy, error, notification, preferences: <><QuickQueueStatus refreshKey={statusRefreshKey} />{preferences}</>, emptySelection: preferredGames.length === 0, hasGames: false, onToggle: toggle };
 }

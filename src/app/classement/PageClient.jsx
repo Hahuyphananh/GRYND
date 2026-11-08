@@ -1,5 +1,7 @@
 "use client";
 
+import { isGameArchived, isGameAvailable } from "../../lib/gameAvailability";
+
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
@@ -58,6 +60,12 @@ const RATED_GAMES_FALLBACK = [
   { key: "hillstrike", label: "Hillstrike" },
   { key: "battleship", label: "Battleship" },
 ];
+
+/** The first-paint mirror the UI offers: archived games keep their rows in
+ *  the list above (so reactivation needs no edit here) but get no public tab. */
+const AVAILABLE_RATED_GAMES = RATED_GAMES_FALLBACK.filter((game) =>
+  isGameAvailable(game.key),
+);
 
 // Game-result categories the weekly/all-time boards rank by. Alongside the
 // skill boards (games won/lost, win rate, volume, streaks, PvP wins) are the
@@ -118,9 +126,9 @@ const LOBBY_GAME_ALIASES = {
  * showing an invented one).
  */
 function ratedGameFromParam(value) {
-  if (!value) return null;
+  if (!value || isGameArchived(value)) return null;
   const alias = LOBBY_GAME_ALIASES[value] || value;
-  return RATED_GAMES_FALLBACK.some((g) => g.key === alias) ? alias : null;
+  return AVAILABLE_RATED_GAMES.some((g) => g.key === alias) ? alias : null;
 }
 
 /**
@@ -481,7 +489,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
   const games =
     Array.isArray(board.data?.games) && board.data.games.length > 0
       ? board.data.games
-      : RATED_GAMES_FALLBACK;
+      : AVAILABLE_RATED_GAMES;
   const myStats = statsResource.data?.userStats || null;
   const loading = board.isLoading;
   const error = board.error
