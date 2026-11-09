@@ -28,6 +28,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 import SolitaireBoard from "./SolitaireBoard";
+import SolitaireThemePicker from "./SolitaireThemePicker";
+import AutoFinishAnimation, { type FlyingCard } from "./AutoFinishAnimation";
+import {
+  autoFinishPlan,
+  type AutoFinishStep,
+} from "../../lib/solitaire-duel/autoFinish";
 import { dealFromSeed } from "../../lib/solitaire-duel/deck";
 import {
   applyMove,
@@ -158,6 +164,37 @@ function appendLocalSolo(entry: { completed: boolean; moves: number; elapsedMs: 
   return records;
 }
 
+/**
+ * Where each finishing card sits right now, and where its foundation is.
+ *
+ * Measured ONCE, against the board as the player sees it, before the completed
+ * state paints: after that the source cards no longer exist. A missing rect
+ * simply drops that card from the cosmetic flight — the result is already
+ * recorded either way.
+ */
+function measureFinishCards(steps: AutoFinishStep[]): FlyingCard[] {
+  if (typeof document === "undefined") return [];
+  const flying: FlyingCard[] = [];
+  for (const step of steps) {
+    const source = document.querySelector(
+      `[data-card="${step.card.suit}-${step.card.rank}"]`,
+    );
+    const target = document.querySelector(
+      `[data-testid="solitaire-foundation-${step.suit}"]`,
+    );
+    if (!source || !target) continue;
+    const from = source.getBoundingClientRect();
+    const to = target.getBoundingClientRect();
+    if (!from.width || !to.width) continue;
+    flying.push({
+      card: step.card,
+      from: { x: from.left, y: from.top, width: from.width, height: from.height },
+      to: { x: to.left, y: to.top, width: to.width, height: to.height },
+    });
+  }
+  return flying;
+}
+
 export type SoloSolitaireGameProps = {
   mode: Mode;
   /** Daily only: the server-derived deal for `dateKey`. */
@@ -179,7 +216,21 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
     "idle" | "saving" | "saved" | "duplicate" | "local" | "failed"
   >("idle");
   const [personalBest, setPersonalBest] = useState(false);
+  // The cosmetic flight after an auto-finish, or null. The game is ALREADY
+  // complete and recorded when this is set; this only delays the victory panel.
+  const [finishing, setFinishing] = useState<FlyingCard[] | null>(null);
+  const pendingFinishRef = useRef<FlyingCard[] | null>(null);
   const submittedRef = useRef<string | null>(null);
+
+  // The finish is measured inside the state updater (while the old board is
+  // still on screen) and released here, so the overlay mounts on the commit
+  // that paints the completed board.
+  useEffect(() => {
+    if (!pendingFinishRef.current) return;
+    const cards = pendingFinishRef.current;
+    pendingFinishRef.current = null;
+    setFinishing(cards);
+  }, [session]);
 
   const dateKey = daily?.dateKey ?? null;
 
@@ -197,6 +248,7 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
     setSavedResult("idle");
     setPersonalBest(false);
     setError(null);
+    setFinishing(null);
     storeSession(next);
   }, []);
 
@@ -351,6 +403,35 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
           return current;
         }
         const entry: LogEntry = { kind: normalized.move.kind, move: normalized.move };
+
+        // AUTO-FINISH. The engine has just proved that every remaining card can
+        // go straight to a foundation, so the game is decided NOW: the clock
+        // stops at this instant, the log gets the whole legal sequence, and the
+        // result is recorded once. Everything after this — measuring, flying,
+        // skipping — is cosmetic and cannot change the time or the record.
+        const plan = autoFinishPlan(applied.state);
+        if (plan) {
+          const finishedAt = Date.now();
+          const flying = measureFinishCards(plan.steps);
+          if (flying.length > 0) pendingFinishRef.current = flying;
+          const next: Session = {
+            ...current,
+            state: plan.finalState,
+            // APPEND, never replace: the stored log is the whole game, and the
+            // result endpoint replays it from the deal to verify the win.
+            log: [
+              ...current.log,
+              entry,
+              ...plan.steps.map((step) => ({ kind: step.move.kind, move: step.move })),
+            ],
+            endedAtMs: finishedAt,
+            won: true,
+          };
+          storeSession(null);
+          void recordResult(next);
+          return next;
+        }
+
         const ended = applied.state.completed;
         const next: Session = {
           ...current,
@@ -407,6 +488,7 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
     setSavedResult("idle");
     setPersonalBest(false);
     setError(null);
+    setFinishing(null);
     submittedRef.current = null;
     storeSession(next);
   }, [abandonIfNeeded, session]);
@@ -424,6 +506,7 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
     setSavedResult("idle");
     setPersonalBest(false);
     setError(null);
+    setFinishing(null);
     submittedRef.current = null;
     storeSession(next);
   }, [daily]);
@@ -450,8 +533,7 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
               : "Classic Klondike with the ranked rules. Unrated: this never affects Elo or ranked history."}
           </p>
         </div>
-        <dl className="flex gap-2 text-center">
-          <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+        <dl className="flex gap-2 text-center">          <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
             <dt className="text-[10px] uppercase tracking-wider text-slate-400">Time</dt>
             <dd className="font-mono text-lg text-white" aria-live="off">
               {formatDuration(session ? Math.max(elapsedMs, 1000) : null)}
@@ -466,6 +548,14 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
             <dd className="font-mono text-lg text-white">{formatDuration(bestMs)}</dd>
           </div>
         </dl>
+      </div>
+
+      {/* The table selector. Solo and the Daily Challenge are the same
+          component, and the board reads this one preference in ranked and
+          practice play too. Collapsed by default: the board's height budget is
+          what keeps the whole tableau above the fold. */}
+      <div className="mb-4 flex justify-end">
+        <SolitaireThemePicker />
       </div>
 
       {!ready && <p className="py-16 text-center text-slate-400">Shuffling the deck…</p>}
@@ -543,20 +633,25 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
             onInvalid={() => setError("That card cannot move there.")}
           />
 
+          {finishing && (
+            <AutoFinishAnimation cards={finishing} onDone={() => setFinishing(null)} />
+          )}
+
           <div className="mt-4 flex flex-wrap items-center gap-2">
             {mode === "solo" ? (
-              <button type="button" onClick={newSoloGame} className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400">
+              <button type="button" onClick={newSoloGame} disabled={Boolean(finishing)} className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-40 hover:bg-emerald-400">
                 New game
               </button>
             ) : (
-              <button type="button" onClick={startDaily} className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400">
+              <button type="button" onClick={startDaily} disabled={Boolean(finishing)} className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-40 hover:bg-emerald-400">
                 New challenge
               </button>
             )}
             <button
               type="button"
               onClick={restart}
-              className="rounded-lg border border-white/15 px-4 py-2 text-sm text-slate-200 hover:bg-white/5"
+              disabled={Boolean(finishing)}
+              className="rounded-lg border border-white/15 px-4 py-2 text-sm text-slate-200 disabled:opacity-40 hover:bg-white/5"
             >
               Restart
             </button>
@@ -579,8 +674,8 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
             </p>
           )}
 
-          {session.won && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-slate-950/80 p-4 backdrop-blur-sm">
+          {session.won && !finishing && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-slate-950/80 p-4 backdrop-blur-xs">
               <div role="dialog" aria-label="Game complete" className="w-full max-w-md rounded-2xl border border-emerald-400/30 bg-slate-900 p-6 text-center shadow-2xl">
                 <p className="text-xs uppercase tracking-[0.25em] text-emerald-300">Solved</p>
                 <h3 className="mt-2 text-2xl font-semibold text-white">

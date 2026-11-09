@@ -18,9 +18,10 @@
  * identity is carried by weight, tracking and colour.
  */
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+/* Scoped build: the standalone config scans only this entry and the two shared
+   board components, so the package never ships the site's utility set. */
+@config "../tailwind.config.cjs";
 
 :root {
   /* ── Copied from the app's token block ─────────────────────────────── */

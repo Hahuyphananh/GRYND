@@ -56,7 +56,7 @@ export function PrecisionMatchHeader({
         {canReport && (
           <button
             onClick={onReport}
-            className="rounded border border-red-500/40 bg-red-500/10 px-4 py-2 font-bold text-red-300 transition hover:bg-red-500/25"
+            className="rounded-sm border border-red-500/40 bg-red-500/10 px-4 py-2 font-bold text-red-300 transition hover:bg-red-500/25"
           >
             <span className="inline-flex items-center gap-1">
               <IconFlag size={12} /> Report
@@ -66,7 +66,7 @@ export function PrecisionMatchHeader({
         {state?.phase === "active" && (
           <button
             onClick={onResign}
-            className="rounded bg-red-600 px-4 py-2 font-bold text-white hover:bg-red-500"
+            className="rounded-sm bg-red-600 px-4 py-2 font-bold text-white hover:bg-red-500"
           >
             {t("games.precision.resign")}
           </button>
@@ -87,13 +87,13 @@ export function PrecisionMatchStatus({ turnBanner, error }: PrecisionMatchStatus
   return (
     <>
       {turnBanner && (
-        <p className="mt-4 inline-block rounded border border-amber-300/40 bg-amber-300/10 px-3 py-1 text-sm font-bold uppercase tracking-widest text-amber-200">
+        <p className="mt-4 inline-block rounded-sm border border-amber-300/40 bg-amber-300/10 px-3 py-1 text-sm font-bold uppercase tracking-widest text-amber-200">
           {turnBanner}
         </p>
       )}
 
       {error && (
-        <p className="mt-4 rounded border border-red-400/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+        <p className="mt-4 rounded-sm border border-red-400/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
           {error}
         </p>
       )}

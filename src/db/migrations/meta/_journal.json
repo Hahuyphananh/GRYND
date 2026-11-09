@@ -1583,6 +1583,13 @@
       "when": 1800000088000,
       "tag": "0244_solitaire_solo_daily",
       "breakpoints": true
+    },
+    {
+      "idx": 226,
+      "version": "7",
+      "when": 1800000089000,
+      "tag": "0245_solitaire_board_theme",
+      "breakpoints": true
     }
   ]
 }

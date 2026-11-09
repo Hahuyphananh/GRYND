@@ -124,7 +124,7 @@ export default function DailyRewardWidget() {
                 type="button"
                 onClick={() => setOpen(true)}
                 data-testid="daily-reward-widget-open"
-                className="w-full rounded-lg border border-[#f5ff3b]/60 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-3 py-2 text-sm font-bold text-[#1f1700] shadow-[0_0_18px_rgba(245,255,59,0.3)] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
+                className="w-full rounded-lg border border-[#f5ff3b]/60 bg-linear-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-3 py-2 text-sm font-bold text-[#1f1700] shadow-[0_0_18px_rgba(245,255,59,0.3)] transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
               >
                 Claim day {status.cycleDay} — {formatCoins(status.reward)} coins
               </button>

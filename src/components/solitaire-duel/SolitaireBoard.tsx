@@ -34,6 +34,7 @@ import {
 } from "react";
 
 import PlayingCard, { cardLabel, suitGlyph } from "./PlayingCard";
+import { useSolitaireBoardTheme } from "../../hooks/useSolitaireBoardTheme";
 import { SUITS, TABLEAU_COLUMNS } from "../../lib/solitaire-duel/constants";
 import {
   canDraw,
@@ -136,8 +137,16 @@ type DragSession = {
 /** How far a pointer must travel before a press becomes a drag, in CSS pixels. */
 const DRAG_THRESHOLD_PX = 6;
 
-/** A drag that just ended must not also fire the click underneath it. */
-const CLICK_AFTER_DRAG_MS = 250;
+/**
+ * How long a gesture's own click stays swallowed.
+ *
+ * A press the board has already decided must not be decided again by the click
+ * the browser fires on release. That click normally arrives immediately, so the
+ * flag below is cleared by it; this window is only the safety net for a gesture
+ * that never produces one at all (a drag released outside the element, a
+ * cancelled pointer).
+ */
+const CLICK_SWALLOW_MS = 500;
 
 /** How long the ghost takes to snap onto a pile, and to fly back home. */
 const GHOST_EASE_MS = 150;
@@ -229,8 +238,8 @@ function EmptySlot({
         highlighted
           ? // An empty pile that will accept the held card: SOLID edge, while
             // the held card itself wears the dashed selection outline.
-            "border-solid border-[color:var(--gr-legal-move)] bg-[#eaf6ff]/10 text-[color:var(--gr-legal-move)] shadow-[0_0_12px_rgba(234,246,255,0.25)]"
-          : "border-dashed border-[color:var(--gr-border)] bg-[#040d24]/70 text-[color:var(--gr-ink-subtle)]"
+            "border-solid border-[color:var(--sol-legal)] bg-[color:var(--sol-slot-active)] text-[color:var(--sol-legal)] shadow-[0_0_12px_var(--sol-legal-glow)]"
+          : "border-dashed border-[color:var(--sol-slot-border)] bg-[color:var(--sol-slot)] text-[color:var(--sol-slot-ink)]"
       } ${interactive ? "cursor-pointer hover:border-white/30" : "cursor-default"}`}
     >
       <span aria-hidden="true" className="text-[clamp(13px,2vw,22px)] leading-none">
@@ -250,10 +259,19 @@ export default function SolitaireBoard({
   onMove,
   onInvalid,
 }: SolitaireBoardProps) {
+  // The table this board is played on. Every mode renders THIS component, so
+  // reading the shared theme here is what keeps solo, daily, practice and
+  // ranked identical; nothing is passed down per route.
+  const { theme } = useSolitaireBoardTheme();
   const [selection, setSelection] = useState<BoardSelection | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragSession | null>(null);
-  const suppressClickRef = useRef(0);
+  /**
+   * One gesture, one decision: a press resolved at `pointerdown` — or a drag that
+   * ended — must not also be resolved by the click that follows the release.
+   */
+  const swallowClickRef = useRef(false);
+  const swallowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const returnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const settleMoveRef = useRef<(() => void) | null>(null);
@@ -279,9 +297,20 @@ export default function SolitaireBoard({
     () => () => {
       if (returnTimerRef.current !== null) clearTimeout(returnTimerRef.current);
       if (settleTimerRef.current !== null) clearTimeout(settleTimerRef.current);
+      if (swallowTimerRef.current !== null) clearTimeout(swallowTimerRef.current);
     },
     [],
   );
+
+  /** Ignore the click this gesture is about to produce. */
+  const swallowNextClick = useCallback(() => {
+    swallowClickRef.current = true;
+    if (swallowTimerRef.current !== null) clearTimeout(swallowTimerRef.current);
+    swallowTimerRef.current = setTimeout(() => {
+      swallowTimerRef.current = null;
+      swallowClickRef.current = false;
+    }, CLICK_SWALLOW_MS);
+  }, []);
 
   // While a move is in flight only the stock stays live (so a rapid stock cycle
   // can be queued); every card interaction waits for the authoritative state.
@@ -323,8 +352,16 @@ export default function SolitaireBoard({
   const click = useCallback(
     (target: BoardTarget) => {
       if (!board) return;
-      // The click that ends a drag must not also select the card underneath it.
-      if (Date.now() - suppressClickRef.current < CLICK_AFTER_DRAG_MS) return;
+      // This gesture was already decided at pointerdown (or by the drag it
+      // became) — the trailing click must not decide it a second time.
+      if (swallowClickRef.current) {
+        swallowClickRef.current = false;
+        if (swallowTimerRef.current !== null) {
+          clearTimeout(swallowTimerRef.current);
+          swallowTimerRef.current = null;
+        }
+        return;
+      }
       const result = resolveClick(board, selection, target);
       if (result.type === "select") {
         setSelection(result.selection);
@@ -348,68 +385,135 @@ export default function SolitaireBoard({
   );
 
   /**
-   * The selection a pointer press would pick up, read from the card's own
-   * `data-drag-*` markers — so the board needs one handler, not one per card.
-   * A hidden card carries no markers and can never be lifted; a non-head card
-   * inside a run resolves to null through `selectionFor`, exactly as a click
-   * would.
+   * The press a pointerdown would make, read from the card's own `data-drag-*`
+   * markers — so the board needs one handler, not one per card. A hidden card
+   * carries no markers and can never be lifted; a non-head card inside a run
+   * resolves to null through `selectionFor`, exactly as a click would.
+   *
+   * The TARGET follows the same precedence the render uses: the top card of a
+   * lit column IS that column's drop slot, and anything else is the card's own
+   * run head. Keeping the two in step is what lets a press be decided at
+   * pointerdown without ever disagreeing with the click model.
+   *
+   * An EMPTY pile has no card to lift but is still a place to lay one down, so a
+   * press on an empty slot resolves to that slot's target with nothing to drag.
+   * Only the empty-slot BUTTONS qualify: pressing the bare space below a
+   * column's cards is not a placement.
    */
-  const selectionAtPointer = useCallback(
-    (target: EventTarget | null): { selection: BoardSelection; cards: Card[] } | null => {
+  const pressAtPointer = useCallback(
+    (
+      target: EventTarget | null,
+    ): { target: BoardTarget; selection: BoardSelection | null; cards: Card[] } | null => {
       if (!board) return null;
-      const element =
-        target instanceof Element ? target.closest<HTMLElement>("[data-drag-slot]") : null;
+      const element = target instanceof Element ? target : null;
       if (!element) return null;
+      const card = element.closest<HTMLElement>("[data-drag-slot]");
 
-      if (element.dataset.dragSlot === "waste") {
-        const found = selectionFor(board, { kind: "waste" });
-        const card = wasteTopCard(board);
-        return found && card ? { selection: found, cards: [card] } : null;
+      if (!card) {
+        const empty = element.closest<HTMLElement>("button[data-drop-kind]");
+        if (!empty) return null;
+        if (empty.dataset.dropKind === "column") {
+          const column = Number(empty.dataset.dropColumn);
+          return Number.isInteger(column)
+            ? { target: { kind: "column", column }, selection: null, cards: [] }
+            : null;
+        }
+        const suit = empty.dataset.dropSuit as Suit | undefined;
+        return suit
+          ? { target: { kind: "foundation", suit }, selection: null, cards: [] }
+          : null;
       }
 
-      if (element.dataset.dragSlot === "foundation") {
-        const suit = element.dataset.dragSuit as Suit | undefined;
+      if (card.dataset.dragSlot === "waste") {
+        const found = selectionFor(board, { kind: "waste" });
+        const top = wasteTopCard(board);
+        return found && top
+          ? { target: { kind: "waste" }, selection: found, cards: [top] }
+          : null;
+      }
+
+      if (card.dataset.dragSlot === "foundation") {
+        const suit = card.dataset.dragSuit as Suit | undefined;
         if (!suit) return null;
         const found = selectionFor(board, { kind: "foundation", suit });
-        const card = foundationTopCard(board, suit);
-        return found && card ? { selection: found, cards: [card] } : null;
+        const top = foundationTopCard(board, suit);
+        return found && top
+          ? { target: { kind: "foundation", suit }, selection: found, cards: [top] }
+          : null;
       }
 
-      if (element.dataset.dragSlot === "tableau") {
-        const column = Number(element.dataset.dragColumn);
-        const index = Number(element.dataset.dragIndex);
+      if (card.dataset.dragSlot === "tableau") {
+        const column = Number(card.dataset.dragColumn);
+        const index = Number(card.dataset.dragIndex);
         const pile = board.tableau?.[column];
         const slot = Number.isInteger(index) ? pile?.[index] : undefined;
         if (!Number.isInteger(column) || !slot?.faceUp || !slot.card) return null;
         const found = selectionFor(board, { kind: "tableau", column, card: slot.card });
-        return found?.kind === "tableau" ? { selection: found, cards: found.run } : null;
+        if (found?.kind !== "tableau") return null;
+        const isTop = index === pile.length - 1;
+        return {
+          target:
+            isTop && selection && targets.columns.includes(column)
+              ? { kind: "column", column }
+              : { kind: "tableau", column, card: slot.card },
+          selection: found,
+          cards: found.run,
+        };
       }
 
       return null;
     },
-    [board],
+    [board, selection, targets],
   );
 
   const onPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (!cardsInteractive) return;
       if (event.pointerType === "mouse" && event.button !== 0) return;
-      const found = selectionAtPointer(event.target);
+      const found = pressAtPointer(event.target);
       if (!found) return;
-      const source =
-        event.target instanceof Element
-          ? event.target.closest<HTMLElement>("[data-drag-slot]")
-          : null;
+      const source = found.cards.length > 0 && event.target instanceof Element
+        ? event.target.closest<HTMLElement>("[data-drag-slot]")
+        : null;
       const rect = source?.getBoundingClientRect();
 
       // A new gesture cancels a card still flying home from the last one, and
       // COMMITS a drop still settling (so its move is never lost).
-      if (settleMoveRef.current !== null) commitSettle();
+      const settling = settleMoveRef.current !== null;
+      if (settling) commitSettle();
       if (returnTimerRef.current !== null) {
         clearTimeout(returnTimerRef.current);
         returnTimerRef.current = null;
       }
       setDragGhost(null);
+
+      // ── The press IS the decision ───────────────────────────────────────
+      // Picking a card up, putting it back down and LAYING IT ON A PILE are all
+      // resolved HERE, on the press, instead of on the click that only arrives
+      // once the button comes back up. That release can be a full human press
+      // away, and it is the whole difference between a board that answers the
+      // instant it is touched and one that makes the player wait for their own
+      // mouse. A decision this gesture has already made is never made twice: the
+      // click it goes on to produce is swallowed (see `swallowNextClick`). A
+      // press that lands mid-settle is left to the click, because the board it
+      // would be decided against is one move out of date.
+      if (!settling) {
+        const decision = resolveClick(board, selection, found.target);
+        if (decision.type === "select" || decision.type === "clear") {
+          swallowNextClick();
+          setSelection(decision.type === "select" ? decision.selection : null);
+        } else if (decision.type === "move") {
+          // The pile has taken the card: no drag is started from this press,
+          // because the move already owns the gesture.
+          swallowNextClick();
+          setSelection(null);
+          onMove(decision.move);
+          return;
+        }
+      }
+
+      // An empty pile is a place to lay a card, not a card to lift.
+      if (found.cards.length === 0) return;
 
       dragRef.current = {
         pointerId: event.pointerId,
@@ -422,7 +526,7 @@ export default function SolitaireBoard({
         cards: found.cards,
       };
     },
-    [cardsInteractive, selectionAtPointer, commitSettle],
+    [cardsInteractive, pressAtPointer, commitSettle, board, selection, swallowNextClick, onMove],
   );
 
   const onPointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
@@ -483,7 +587,8 @@ export default function SolitaireBoard({
       // A press that never moved is a click: leave it to the click model.
       if (!session.active) return;
 
-      suppressClickRef.current = Date.now();
+      // The drag has decided this gesture; its release must not also click.
+      swallowNextClick();
       try {
         boardRef.current?.releasePointerCapture(event.pointerId);
       } catch {
@@ -509,7 +614,7 @@ export default function SolitaireBoard({
       flyHome(session);
       if (slot) onInvalid?.("That card cannot be placed there");
     },
-    [board, onInvalid, flyHome, settleDrop],
+    [board, onInvalid, flyHome, settleDrop, swallowNextClick],
   );
 
   const onPointerUp = useCallback(
@@ -578,9 +683,25 @@ export default function SolitaireBoard({
       style={
         {
           "--cw": `clamp(34px, min(10.4vw, calc((100vh - ${CHROME_REM}) / ${BOARD_CW})), 92px)`,
+          // ── The table (lib/solitaire-duel/boardThemes) ──────────────────
+          // One set of custom properties on the board root is what the empty
+          // piles and the legend below read. A theme change therefore repaints
+          // in place: no card, no column and no geometry is re-measured.
+          "--sol-slot": theme.slot.fill,
+          "--sol-slot-border": theme.slot.border,
+          "--sol-slot-ink": theme.slot.ink,
+          "--sol-slot-active": theme.slot.activeFill,
+          "--sol-legal": theme.legal.ink,
+          "--sol-legal-glow": theme.legal.glow,
+          "--sol-legend": theme.legend,
+          backgroundImage: theme.felt,
+          // The felt's edge is an INSET ring, never a border: a border would add
+          // 4px to the height the `--cw` budget above was computed against.
+          boxShadow: `inset 0 0 0 2px ${theme.frame}, 0 10px 30px rgba(3, 8, 20, 0.35)`,
         } as CSSProperties
       }
-      className="w-full touch-manipulation select-none"
+      data-solitaire-theme={theme.key}
+      className="w-full touch-manipulation select-none rounded-2xl"
     >
       {/* ── Top row: stock · waste · the four foundations ──────────────── */}
       <div className="flex items-start gap-1 sm:gap-2">
@@ -594,7 +715,7 @@ export default function SolitaireBoard({
             data-testid="solitaire-stock"
             data-remaining={stockCount}
             style={slotStyle()}
-            className={`gr-focusable relative flex select-none items-center justify-center overflow-hidden rounded-[6px] border-2 border-[color:var(--gr-outline)] bg-gradient-to-br from-[#1d3a63] via-[#16294a] to-[#0f1d36] shadow-[0_1px_2px_rgba(3,8,20,0.55)] transition ${
+            className={`gr-focusable relative flex select-none items-center justify-center overflow-hidden rounded-[6px] border-2 border-[color:var(--gr-outline)] bg-linear-to-br from-[#1d3a63] via-[#16294a] to-[#0f1d36] shadow-[0_1px_2px_rgba(3,8,20,0.55)] transition ${
               stockInteractive ? "cursor-pointer hover:brightness-125" : "cursor-default"
             }`}
           >
@@ -844,7 +965,7 @@ export default function SolitaireBoard({
       {/* A one-line legend instead of a tutorial: it states the only rule a
           Klondike player cannot see from the board itself (the automatic flip)
           and the current hold. */}
-      <p className="mt-2 text-center text-[11px] leading-relaxed text-white/45">
+      <p className="mt-2 text-center text-[11px] leading-relaxed text-[color:var(--sol-legend)]">
         {selection
           ? `Holding ${heldLabel} — drop it on a highlighted pile, or click one to place it.`
           : canRedeal

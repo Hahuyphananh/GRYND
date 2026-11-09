@@ -120,13 +120,13 @@ export default function RoomCard({
 
       {code && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className="rounded border border-white/20 bg-black/30 px-2 py-1 font-mono text-sm tracking-widest text-white">
+          <span className="rounded-sm border border-white/20 bg-black/30 px-2 py-1 font-mono text-sm tracking-widest text-white">
             {code}
           </span>
           <button
             type="button"
             onClick={() => copy(code)}
-            className="rounded bg-white/10 px-2 py-1 text-xs font-semibold text-white hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+            className="rounded-sm bg-white/10 px-2 py-1 text-xs font-semibold text-white hover:bg-white/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
           >
             {copied ? t("rooms.copied", "Copied") : t("rooms.copyCode", "Copy code")}
           </button>
@@ -135,7 +135,7 @@ export default function RoomCard({
             onClick={() =>
               copy(`${typeof window !== "undefined" ? window.location.origin : ""}${shareUrl}`)
             }
-            className="rounded bg-white/10 px-2 py-1 text-xs font-semibold text-white hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+            className="rounded-sm bg-white/10 px-2 py-1 text-xs font-semibold text-white hover:bg-white/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
           >
             {t("rooms.copyLink", "Copy invite link")}
           </button>
@@ -182,7 +182,7 @@ export default function RoomCard({
                 id={`invitee-${room.id}`}
                 value={invitee}
                 onChange={(event) => setInvitee(event.target.value)}
-                className="rounded border border-white/20 bg-[#08203f] px-2 py-1 text-xs text-white"
+                className="rounded-sm border border-white/20 bg-[#08203f] px-2 py-1 text-xs text-white"
               >
                 <option value="">{t("rooms.pickFriend", "Choose a friend")}</option>
                 {invitableFriends.map((friend) => (
@@ -195,7 +195,7 @@ export default function RoomCard({
                 type="button"
                 disabled={!invitee || pending("invite")}
                 onClick={() => onInvite(room.id, invitee)}
-                className="rounded bg-[#00e5ff] px-3 py-1 text-xs font-semibold text-[#003366] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                className="rounded-sm bg-[#00e5ff] px-3 py-1 text-xs font-semibold text-[#003366] disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
               >
                 {pending("invite")
                   ? t("rooms.inviting", "Inviting…")
@@ -209,7 +209,7 @@ export default function RoomCard({
               type="button"
               disabled={!room.canStart || pending("start")}
               onClick={() => onStart(room.id)}
-              className="rounded bg-[#FFD700] px-3 py-1 text-xs font-semibold text-[#003366] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+              className="rounded-sm bg-[#FFD700] px-3 py-1 text-xs font-semibold text-[#003366] disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-400"
             >
               {pending("start")
                 ? t("rooms.starting", "Starting…")
@@ -224,7 +224,7 @@ export default function RoomCard({
               type="button"
               disabled={pending("cancel")}
               onClick={() => onCancel(room.id)}
-              className="rounded bg-red-500/90 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+              className="rounded-sm bg-red-500/90 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-red-400"
             >
               {pending("cancel") ? t("rooms.closing", "Closing…") : t("rooms.cancel", "Close room")}
             </button>
@@ -242,7 +242,7 @@ export default function RoomCard({
               type="button"
               disabled={pending("respond")}
               onClick={() => onRespond(room.id, true)}
-              className="rounded bg-emerald-500 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+              className="rounded-sm bg-emerald-500 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-400"
             >
               {pending("respond")
                 ? t("rooms.accepting", "Accepting…")
@@ -252,7 +252,7 @@ export default function RoomCard({
               type="button"
               disabled={pending("respond")}
               onClick={() => onRespond(room.id, false)}
-              className="rounded bg-white/10 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+              className="rounded-sm bg-white/10 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white/40"
             >
               {t("rooms.decline", "Decline")}
             </button>
@@ -263,7 +263,7 @@ export default function RoomCard({
         <div className="mt-4">
           <Link
             href={room.matchUrl}
-            className="inline-block rounded bg-[#00e5ff] px-3 py-1 text-xs font-semibold text-[#003366] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+            className="inline-block rounded-sm bg-[#00e5ff] px-3 py-1 text-xs font-semibold text-[#003366] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
           >
             {t("rooms.openMatch", "Open the match")}
           </Link>

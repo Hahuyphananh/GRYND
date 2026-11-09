@@ -193,6 +193,12 @@ const PROFILE = {
     slipPool: 0,
     slipFloor: 1,
     blunderRate: 0,
+    // The strongest FAIR profile, and the reference the benchmark measures the
+    // others against. Deliberately NOT widened beyond this: a beam of 8 at the
+    // same depth (and a depth of 4) both reintroduced a gyre — Perfect undid its
+    // own move on seed 2026 and completed fewer deals — so the separation from
+    // Grandmaster is calibrated on Grandmaster's budget instead. The fairness
+    // rule in `searchScore` is unchanged: no hidden card is ever read.
     searchDepth: 3,
     beamWidth: 5,
     searchBudget: 700,
@@ -215,7 +221,7 @@ export const SOLITAIRE_BOTS: readonly SolitaireBot[] = Object.freeze([
     difficulty: "very-easy",
     difficultyLabel: "Very Easy",
     description:
-      "Just getting started. Recycles the deck, second-guesses easy plays and takes their time.",
+      "Just getting started. A relaxed opponent who makes plenty of mistakes.",
     initials: "RK",
     avatar: { src: null, alt: "Rookie avatar placeholder" },
     audience: "beginner",

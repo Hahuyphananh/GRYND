@@ -441,6 +441,13 @@ export const users = pgTable("users", {
     .default(
       sql`'{"promotions":true,"daily":true,"summary":true,"progress":true}'::jsonb`,
     ),
+  // Solitaire table theme: the key of one of BOARD_THEMES in
+  // src/lib/solitaire-duel/boardThemes. NULL = the player has never chosen a
+  // table (which lets a guest's local choice be uploaded on first sign-in);
+  // 'classic' is an explicit choice. Written only through
+  // /api/solitaire/board-theme after validating the key against the catalog,
+  // and cached in localStorage so guests and offline play need no round trip.
+  solitaireBoardTheme: varchar("solitaire_board_theme", { length: 20 }),
   // Per-game default wager (tokens), keyed by game key. An empty map (or a
   // missing key) means the game's built-in default. Written through
   // /api/user/default-wagers; consumed by src/hooks/useDefaultWager.js.

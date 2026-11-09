@@ -362,7 +362,7 @@ export default function TicTacToeLobbyPage() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
+            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 px-4 backdrop-blur-xs"
             onClick={() => !busy && setAiSetupOpen(false)}
           >
             <motion.div

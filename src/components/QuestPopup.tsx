@@ -193,8 +193,8 @@ export default function QuestPopup({ open, onClose, quests }: Props) {
               className={[
                 "h-full rounded-full transition-[width] duration-500",
                 quest.completed
-                  ? "bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800]"
-                  : "bg-gradient-to-r from-[#00e5ff] to-[#7ef9ff]",
+                  ? "bg-linear-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800]"
+                  : "bg-linear-to-r from-[#00e5ff] to-[#7ef9ff]",
               ].join(" ")}
               style={{ width: `${percent}%` }}
             />
@@ -213,7 +213,7 @@ export default function QuestPopup({ open, onClose, quests }: Props) {
               onClick={() => void claim(id)}
               disabled={claiming}
               data-testid={`quest-widget-claim-${id}`}
-              className="inline-flex w-fit items-center justify-center rounded-lg border border-[#f5ff3b]/60 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-3 py-1.5 text-xs font-bold text-[#1f1700] shadow-[0_0_18px_rgba(245,255,59,0.3)] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817] disabled:cursor-wait disabled:opacity-60"
+              className="inline-flex w-fit items-center justify-center rounded-lg border border-[#f5ff3b]/60 bg-linear-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-3 py-1.5 text-xs font-bold text-[#1f1700] shadow-[0_0_18px_rgba(245,255,59,0.3)] transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817] disabled:cursor-wait disabled:opacity-60"
             >
               {claiming
                 ? t("quests.claiming")
@@ -264,7 +264,7 @@ export default function QuestPopup({ open, onClose, quests }: Props) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm sm:p-6"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-3 backdrop-blur-xs sm:p-6"
       data-testid="quest-widget-overlay"
       onClick={onClose}
     >
@@ -276,7 +276,7 @@ export default function QuestPopup({ open, onClose, quests }: Props) {
         tabIndex={-1}
         data-testid="quest-widget-dialog"
         onClick={(event) => event.stopPropagation()}
-        className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-[#00e5ff]/40 bg-[#040d24] p-4 shadow-[0_0_40px_rgba(0,229,255,0.25)] outline-none sm:p-5"
+        className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-[#00e5ff]/40 bg-[#040d24] p-4 shadow-[0_0_40px_rgba(0,229,255,0.25)] outline-hidden sm:p-5"
       >
         <div className="mb-2 flex items-start justify-between gap-3">
           <div>
@@ -295,7 +295,7 @@ export default function QuestPopup({ open, onClose, quests }: Props) {
             onClick={onClose}
             aria-label={t("quests.close")}
             data-testid="quest-widget-close"
-            className="shrink-0 rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 p-2 text-[#d8fbff] transition hover:bg-[#00e5ff]/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b]"
+            className="shrink-0 rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 p-2 text-[#d8fbff] transition hover:bg-[#00e5ff]/25 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b]"
           >
             <IconX size={16} aria-hidden="true" />
           </button>

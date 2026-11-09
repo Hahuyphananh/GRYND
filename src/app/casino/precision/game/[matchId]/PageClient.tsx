@@ -778,7 +778,7 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
     // boundary has to be the page's PARENT to catch throws from this render
     // body (a bad server snapshot must degrade to a recoverable panel, never
     // a blank page).
-    <div className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#06120f] to-[#050816] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
+    <div className="min-h-screen overflow-x-clip bg-linear-to-b from-[#06120f] to-[#050816] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
 
       {/* The waiting room + NavBar above and the Footer/modals below stay

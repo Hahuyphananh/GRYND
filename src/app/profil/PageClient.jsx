@@ -351,7 +351,7 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
 
   const cyberButton =
     "relative overflow-hidden rounded-lg px-4 py-2 font-semibold text-white " +
-    "bg-gradient-to-r from-[#00e5ff] via-[#00ffcc] to-[#8a2be2] " +
+    "bg-linear-to-r from-[#00e5ff] via-[#00ffcc] to-[#8a2be2] " +
     "shadow-[0_0_10px_rgba(0,229,255,0.6)] " +
     "hover:shadow-[0_0_20px_rgba(138,43,226,0.9)] " +
     "hover:scale-105 active:scale-95 transition-all duration-300";
@@ -1240,7 +1240,7 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
         <SolitaireModesPanel />
         <h1
           className="text-4xl font-extrabold text-center mb-8 
-  bg-gradient-to-r from-purple-400 to-pink-500 
+  bg-linear-to-r from-purple-400 to-pink-500 
   bg-clip-text text-transparent"
         >
           {t("profile.title", "Your Profile")}
@@ -1334,7 +1334,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                   }}
                 className={
                   cyberButton +
-                  " text-sm px-3 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                  " text-sm px-3 py-1 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
                 }
               >
                 {t("profile.info.edit", "Edit Profile")}
@@ -1350,7 +1350,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                 aria-label={t("profile.info.changeIcon", "Change your Grynd icon")}
                 title={t("profile.info.changeIcon", "Change your Grynd icon")}
                 style={equippedFrame.style}
-                className={`group relative rounded-full ${equippedFrame.cssClass || ""} ${avatarEffectClass || ""} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]`}
+                className={`group relative rounded-full ${equippedFrame.cssClass || ""} ${avatarEffectClass || ""} focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]`}
               >
                 <IconAvatar
                   iconKey={profileInfo.selectedIcon}
@@ -1530,7 +1530,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                     "profile.membership.chatColorLabel",
                     "Custom chat color",
                   )}
-                  className="h-8 w-10 cursor-pointer rounded border border-white/20 bg-transparent"
+                  className="h-8 w-10 cursor-pointer rounded-sm border border-white/20 bg-transparent"
                 />
                 <input
                   type="text"
@@ -1541,11 +1541,11 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                     "profile.membership.chatColorHexLabel",
                     "Custom chat color hex value",
                   )}
-                  className="w-28 rounded border border-white/20 bg-[#0b224f]/60 px-2 py-1 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                  className="w-28 rounded-sm border border-white/20 bg-[#0b224f]/60 px-2 py-1 text-sm text-white focus:border-emerald-400 focus:outline-hidden"
                 />
               </div>
 
-              <div className="mb-4 flex items-center gap-2 rounded bg-black/30 px-3 py-2 text-sm">
+              <div className="mb-4 flex items-center gap-2 rounded-sm bg-black/30 px-3 py-2 text-sm">
                 <span className="text-gray-400">
                   {t("profile.membership.preview", "Preview:")}
                 </span>
@@ -1560,14 +1560,14 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                 <button
                   type="button"
                   onClick={handleSaveChatColor}
-                  className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-[#001a0e] transition hover:bg-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#052e1f]"
+                  className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-[#001a0e] transition hover:bg-emerald-400 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#052e1f]"
                 >
                   {t("profile.membership.save", "Save color")}
                 </button>
                 <button
                   type="button"
                   onClick={handleResetChatColor}
-                  className="rounded-lg border border-white/20 px-4 py-2 text-sm text-gray-300 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#052e1f]"
+                  className="rounded-lg border border-white/20 px-4 py-2 text-sm text-gray-300 transition hover:bg-white/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#052e1f]"
                 >
                   {t("profile.membership.reset", "Reset")}
                 </button>
@@ -1633,7 +1633,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                     "profile.customization.accentLabel",
                     "Custom accent color",
                   )}
-                  className="h-8 w-10 cursor-pointer rounded border border-white/20 bg-transparent"
+                  className="h-8 w-10 cursor-pointer rounded-sm border border-white/20 bg-transparent"
                 />
                 <input
                   type="text"
@@ -1644,7 +1644,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                     "profile.customization.accentHexLabel",
                     "Custom accent hex value",
                   )}
-                  className="w-28 rounded border border-white/20 bg-[#0b224f]/60 px-2 py-1 text-sm text-white focus:border-sky-400 focus:outline-none"
+                  className="w-28 rounded-sm border border-white/20 bg-[#0b224f]/60 px-2 py-1 text-sm text-white focus:border-sky-400 focus:outline-hidden"
                 />
               </div>
 
@@ -1652,7 +1652,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                 <button
                   type="button"
                   onClick={handleSaveCosmetics}
-                  className="rounded-lg bg-sky-500 px-4 py-2 text-sm font-semibold text-[#001a2e] transition hover:bg-sky-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#03203a]"
+                  className="rounded-lg bg-sky-500 px-4 py-2 text-sm font-semibold text-[#001a2e] transition hover:bg-sky-400 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#03203a]"
                 >
                   {t("profile.customization.save", "Save customization")}
                 </button>
@@ -1681,7 +1681,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
             <button
               type="button"
               onClick={() => setIsEmotesManagerOpen(true)}
-              className="rounded-lg bg-fuchsia-400 px-4 py-2 text-sm font-semibold text-[#001a2e] transition hover:bg-fuchsia-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-200 focus-visible:ring-offset-2 focus-visible:ring-offset-[#18071f]"
+              className="rounded-lg bg-fuchsia-400 px-4 py-2 text-sm font-semibold text-[#001a2e] transition hover:bg-fuchsia-300 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-fuchsia-200 focus-visible:ring-offset-2 focus-visible:ring-offset-[#18071f]"
             >
               {t("profile.emotes.manage", "Manage emotes")}
             </button>
@@ -1693,7 +1693,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
           <button
             type="button"
             onClick={() => setTitlesOpen((o) => !o)}
-            className="flex w-full items-center justify-between text-left focus-visible:outline-none"
+            className="flex w-full items-center justify-between text-left focus-visible:outline-hidden"
             aria-expanded={titlesOpen}
             aria-controls="titles-section-body"
           >
@@ -1716,7 +1716,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
               <div className="flex gap-2 mb-4">
                 <button
                   onClick={() => setTitlesView("special")}
-                  className={`rounded px-3 py-1 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d0a28] ${
+                  className={`rounded-sm px-3 py-1 text-sm transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-fuchsia-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d0a28] ${
                     titlesView === "special"
                       ? "bg-fuchsia-500 text-white"
                       : "bg-white/10 text-gray-300"
@@ -1727,7 +1727,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
 
                 <button
                   onClick={() => setTitlesView("vip")}
-                  className={`rounded px-3 py-1 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d0a28] ${
+                  className={`rounded-sm px-3 py-1 text-sm transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d0a28] ${
                     titlesView === "vip" ? "bg-cyan-500 text-white" : "bg-white/10 text-gray-300"
                   }`}
                 >
@@ -1735,7 +1735,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                 </button>
                 <button
                   onClick={() => setTitlesView("streak")}
-                  className={`rounded px-3 py-1 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d0a28] ${
+                  className={`rounded-sm px-3 py-1 text-sm transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d0a28] ${
                     titlesView === "streak"
                       ? "bg-amber-500 text-black"
                       : "bg-white/10 text-gray-300"
@@ -2043,7 +2043,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
           <input
             readOnly
             value={stats?.referralCode || ""}
-            className="w-full mb-4 rounded bg-[#08142f] border border-[#00e5ff]/30 
+            className="w-full mb-4 rounded-sm bg-[#08142f] border border-[#00e5ff]/30 
 focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 text-[#00e5ff]"
           />
 
@@ -2052,7 +2052,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 text-[#00e5ff]"
               onClick={handleCopyReferralCode}
               className={
                 cyberButton +
-                " focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                " focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
               }
             >
               {t("profile.referral.copy", "Copy Code")}
@@ -2063,7 +2063,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 text-[#00e5ff]"
               className="rounded-lg px-4 py-2 font-semibold text-white 
   border border-[#00e5ff] 
   hover:bg-[#00e5ff]/10 
-  shadow-[0_0_10px_rgba(0,229,255,0.4)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+  shadow-[0_0_10px_rgba(0,229,255,0.4)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
             >
               {t("profile.referral.share", "Share Code")}
             </button>
@@ -2078,12 +2078,12 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 text-[#00e5ff]"
               value={referralCodeInput}
               onChange={(e) => setReferralCodeInput(e.target.value)}
               placeholder={t("profile.referral.enterCode", "Enter referral code")}
-              className="flex-1 rounded bg-[#08142f] border border-[#00e5ff]/30 
-focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 outline-none focus:ring-2 focus:ring-[#FFD700]"
+              className="flex-1 rounded-sm bg-[#08142f] border border-[#00e5ff]/30 
+focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 outline-hidden focus:ring-2 focus:ring-[#FFD700]"
             />
             <button
               onClick={handleRedeemCode}
-              className="rounded bg-green-500 px-4 py-2 font-semibold hover:bg-green-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+              className="rounded-sm bg-green-500 px-4 py-2 font-semibold hover:bg-green-600 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
             >
               {t("profile.referral.redeem", "Redeem")}
             </button>
@@ -2112,13 +2112,13 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                 "profile.friends.searchPlaceholder",
                 "Type letters to search users (like Ctrl+F)",
               )}
-              className="flex-1 rounded bg-[#08142f] border border-[#00e5ff]/30 
+              className="flex-1 rounded-sm bg-[#08142f] border border-[#00e5ff]/30 
 focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
             />
             <button
               onClick={() => handleSearchFriends()}
               disabled={isSearchingFriends}
-              className="rounded bg-[#FFD700] px-4 py-2 text-[#003366] font-semibold disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+              className="rounded-sm bg-[#FFD700] px-4 py-2 text-[#003366] font-semibold disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
             >
               {isSearchingFriends
                 ? t("profile.friends.searching", "Searching...")
@@ -2130,7 +2130,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
             {friendSearchResults.map((person) => (
               <div
                 key={person.id}
-                className="flex items-center justify-between rounded border border-[#FFD700]/40 p-3"
+                className="flex items-center justify-between rounded-sm border border-[#FFD700]/40 p-3"
               >
                 <div className="flex items-center gap-3">
                   <IconAvatar
@@ -2143,9 +2143,9 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                 <button
                   onClick={() => handleInviteFriend(person.id)}
                   className="rounded-lg px-3 py-1 text-sm font-semibold text-white 
-bg-gradient-to-r from-[#00ffcc] to-[#00e5ff] 
+bg-linear-to-r from-[#00ffcc] to-[#00e5ff] 
 shadow-[0_0_10px_rgba(0,255,200,0.6)] 
-hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+hover:scale-105 transition-all focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
                 >
                   {t("profile.friends.add", "Add Friend")}
                 </button>
@@ -2176,7 +2176,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                 await loadFriendPresence();
                 await loadFriendInvites();
               }}
-              className="rounded bg-[#FFD700] px-3 py-1 text-sm font-semibold text-[#003366] hover:bg-[#ffd700]/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+              className="rounded-sm bg-[#FFD700] px-3 py-1 text-sm font-semibold text-[#003366] hover:bg-[#ffd700]/80 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
             >
               {t("profile.friends.refresh", "Refresh")}
             </button>
@@ -2184,13 +2184,13 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
           <div className="mb-4 flex gap-2">
             <button
               onClick={() => setActiveFriendsTab("friends")}
-              className={`rounded px-3 py-1 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f] ${activeFriendsTab === "friends" ? "bg-[#00e5ff] text-[#003366]" : "bg-white/10 text-white"}`}
+              className={`rounded-sm px-3 py-1 text-sm font-semibold focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f] ${activeFriendsTab === "friends" ? "bg-[#00e5ff] text-[#003366]" : "bg-white/10 text-white"}`}
             >
               {t("profile.friends.tabFriends", "Friends")}
             </button>
             <button
               onClick={() => setActiveFriendsTab("invites")}
-              className={`rounded px-3 py-1 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f] ${activeFriendsTab === "invites" ? "bg-[#00e5ff] text-[#003366]" : "bg-white/10 text-white"}`}
+              className={`rounded-sm px-3 py-1 text-sm font-semibold focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f] ${activeFriendsTab === "invites" ? "bg-[#00e5ff] text-[#003366]" : "bg-white/10 text-white"}`}
             >
               {t("profile.friends.tabInvites", "Invites")} (
               {receivedInvites.length})
@@ -2203,7 +2203,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                   <a
                     key={`${friend.id}-${friend.name}`}
                     href={`/profil/${encodeURIComponent(friend.clerk_id)}`}
-                    className="rounded border border-[#FFD700]/30 bg-white/5 p-3 flex items-center gap-3 hover:bg-white/10 transition-colors cursor-pointer"
+                    className="rounded-sm border border-[#FFD700]/30 bg-white/5 p-3 flex items-center gap-3 hover:bg-white/10 transition-colors cursor-pointer"
                   >
                     <IconAvatar
                       iconKey={friend.icon_key}
@@ -2276,7 +2276,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                             aria-label={t("profile.friends.spectateLabel", {
                               name: friend.name,
                             })}
-                            className="rounded bg-[#00e5ff] px-2 py-1 text-xs font-semibold text-[#003366] animate-pulse focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                            className="rounded-sm bg-[#00e5ff] px-2 py-1 text-xs font-semibold text-[#003366] animate-pulse focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
                           >
                             {t("profile.friends.spectate", "Spectate")}
                           </button>
@@ -2296,9 +2296,9 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                           name: friend.name,
                         })}
                         className="rounded-lg px-2 py-1 text-xs font-semibold text-[#003366] \
-bg-gradient-to-r from-[#00e5ff] to-[#0090c9] \
+bg-linear-to-r from-[#00e5ff] to-[#0090c9] \
 shadow-[0_0_10px_rgba(0,229,255,0.5)] \
-hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+hover:scale-105 transition-all focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
                       >
                         {t("profile.friends.challenge", "Challenge")}
                       </button>
@@ -2312,9 +2312,9 @@ hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 f
                           name: friend.name,
                         })}
                         className="rounded-lg px-2 py-1 text-xs font-semibold text-white 
-bg-gradient-to-r from-red-500 to-red-700 
+bg-linear-to-r from-red-500 to-red-700 
 shadow-[0_0_10px_rgba(255,0,0,0.6)] 
-hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+hover:scale-105 transition-all focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
                       >
                         {t("profile.friends.remove", "Remove")}
                       </button>
@@ -2334,7 +2334,7 @@ hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 f
                 receivedInvites.map((invite) => (
                   <div
                     key={invite.id}
-                    className="rounded border border-[#FFD700]/30 bg-white/5 p-3 flex items-center gap-3"
+                    className="rounded-sm border border-[#FFD700]/30 bg-white/5 p-3 flex items-center gap-3"
                   >
                     <IconAvatar
                       iconKey={invite.sender_icon_key}
@@ -2355,7 +2355,7 @@ hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 f
                         aria-label={t("profile.friends.acceptLabel", {
                           name: invite.sender_name,
                         })}
-                        className="rounded bg-green-500 px-2 py-1 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                        className="rounded-sm bg-green-500 px-2 py-1 text-xs font-semibold text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
                       >
                         {t("profile.friends.accept", "Accept")}
                       </button>
@@ -2364,7 +2364,7 @@ hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 f
                         aria-label={t("profile.friends.declineLabel", {
                           name: invite.sender_name,
                         })}
-                        className="rounded bg-red-500 px-2 py-1 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                        className="rounded-sm bg-red-500 px-2 py-1 text-xs font-semibold text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
                       >
                         {t("profile.friends.decline", "Decline")}
                       </button>
@@ -2418,7 +2418,7 @@ hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 f
                   setSpectateLoadError("");
                   setSpectateIsLoaded(false);
                 }}
-                className="absolute right-3 top-3 z-10 rounded bg-red-600 px-3 py-1 text-sm font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+                className="absolute right-3 top-3 z-10 rounded-sm bg-red-600 px-3 py-1 text-sm font-semibold text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black"
               >
                 {t("profile.friends.spectateClose", "Close Spectate")}
               </button>
@@ -2439,7 +2439,7 @@ hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 f
                       setSpectateIsLoaded(false);
                       setSpectateOverlayUrl((prev) => `${prev.split("#")[0]}#retry-${Date.now()}`);
                     }}
-                    className="rounded bg-[#00e5ff] px-3 py-1 text-xs font-semibold text-[#003366] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+                    className="rounded-sm bg-[#00e5ff] px-3 py-1 text-xs font-semibold text-[#003366] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black"
                   >
                     {t("profile.friends.spectateRetry", "Retry")}
                   </button>
@@ -2599,7 +2599,7 @@ shadow-[0_0_20px_rgba(255,0,0,0.15)] rounded-lg p-6"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="mt-2 w-full rounded border border-red-400/40 bg-red-900/20 px-4 py-2 outline-none focus:ring-2 focus:ring-red-500"
+            className="mt-2 w-full rounded-sm border border-red-400/40 bg-red-900/20 px-4 py-2 outline-hidden focus:ring-2 focus:ring-red-500"
             placeholder={t(
               "profile.danger.passwordPlaceholder",
               "Enter your password",
@@ -2609,7 +2609,7 @@ shadow-[0_0_20px_rgba(255,0,0,0.15)] rounded-lg p-6"
           <button
             onClick={handleDeleteAccount}
             disabled={!delayDone || !password || isDeleting}
-            className="mt-4 rounded bg-red-600 px-4 py-2 font-semibold hover:bg-red-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+            className="mt-4 rounded-sm bg-red-600 px-4 py-2 font-semibold hover:bg-red-700 disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
           >
             {isDeleting
               ? t("profile.danger.deleting", "Deleting...")
@@ -2644,7 +2644,7 @@ shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6"
                 value={editForm.name}
                 onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
                 placeholder={t("profile.edit.name", "Name")}
-                className="w-full rounded bg-[#08142f] border border-[#00e5ff]/30 
+                className="w-full rounded-sm bg-[#08142f] border border-[#00e5ff]/30 
 focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
               />
               <label htmlFor="profil-edit-email" className="sr-only">
@@ -2655,10 +2655,10 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                 value={editForm.email}
                 onChange={(e) => setEditForm((prev) => ({ ...prev, email: e.target.value }))}
                 placeholder={t("profile.edit.email", "Email")}
-                className="w-full rounded bg-[#08142f] border border-[#00e5ff]/30 
+                className="w-full rounded-sm bg-[#08142f] border border-[#00e5ff]/30 
 focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
               />
-              <div className="rounded bg-[#08142f] border border-[#00e5ff]/30 p-3">
+              <div className="rounded-sm bg-[#08142f] border border-[#00e5ff]/30 p-3">
                 <p className="mb-2 block text-sm text-gray-200">
                   {t("profile.edit.icon", "My Grynd Icon")}
                 </p>
@@ -2668,7 +2668,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                     setIsEditOpen(false);
                     setIsIconPickerOpen(true);
                   }}
-                  className="flex w-full items-center gap-3 rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-3 py-2.5 transition hover:bg-[#00e5ff]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                  className="flex w-full items-center gap-3 rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-3 py-2.5 transition hover:bg-[#00e5ff]/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
                 >
                   <IconAvatar
                     iconKey={profileInfo.selectedIcon}
@@ -2682,7 +2682,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-[#00e5ff]"><path d="M9 18l6-6-6-6"/></svg>
                 </button>
               </div>
-              <div className="rounded bg-[#08142f] border border-[#00e5ff]/30 p-3">
+              <div className="rounded-sm bg-[#08142f] border border-[#00e5ff]/30 p-3">
                 <p className="mb-2 block text-sm text-gray-200">
                   {t("profile.edit.glow", "My Name Glow")}
                 </p>
@@ -2692,7 +2692,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                     setIsEditOpen(false);
                     setIsGlowPickerOpen(true);
                   }}
-                  className="flex w-full items-center gap-3 rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-3 py-2.5 transition hover:bg-[#00e5ff]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                  className="flex w-full items-center gap-3 rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-3 py-2.5 transition hover:bg-[#00e5ff]/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
                 >
                   <span
                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/30 text-sm font-bold text-white/70"
@@ -2715,7 +2715,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-[#00e5ff]"><path d="M9 18l6-6-6-6"/></svg>
                 </button>
               </div>
-              <div className="rounded bg-[#08142f] border border-[#00e5ff]/30 p-3">
+              <div className="rounded-sm bg-[#08142f] border border-[#00e5ff]/30 p-3">
                 <p className="mb-2 block text-sm text-gray-200">
                   {t("profile.edit.frame", "My Profile Frame")}
                 </p>
@@ -2725,7 +2725,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                     setIsEditOpen(false);
                     setIsFramePickerOpen(true);
                   }}
-                  className="flex w-full items-center gap-3 rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-3 py-2.5 transition hover:bg-[#00e5ff]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                  className="flex w-full items-center gap-3 rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-3 py-2.5 transition hover:bg-[#00e5ff]/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
                 >
                   <span
                     aria-hidden="true"
@@ -2766,7 +2766,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                   "profile.edit.password",
                   "New password (optional)",
                 )}
-                className="w-full rounded bg-[#08142f] border border-[#00e5ff]/30 
+                className="w-full rounded-sm bg-[#08142f] border border-[#00e5ff]/30 
 focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
               />
             </div>
@@ -2776,7 +2776,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
             <div className="mt-5 flex justify-end gap-2">
               <button
                 onClick={() => setIsEditOpen(false)}
-                className="rounded border border-white/30 px-4 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                className="rounded-sm border border-white/30 px-4 py-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
               >
                 {t("profile.edit.close", "Close")}
               </button>
@@ -2785,7 +2785,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                 onClick={handleSaveEditProfile}
                 className={
                   cyberButton +
-                  " focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                  " focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
                 }
               >
                 {isSavingEdit

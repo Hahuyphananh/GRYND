@@ -34,7 +34,7 @@ const BUTTON =
   "rounded-lg bg-[#f5ff3b] px-3 py-1.5 text-xs font-semibold text-[#0a0f1e] transition hover:bg-[#e8f22e] disabled:cursor-not-allowed disabled:opacity-50";
 const LINK = "text-xs text-[#00e5ff] hover:underline";
 const SELECT =
-  "mt-1 rounded-lg border border-[#1b2a4a] bg-[#0a0f1e] px-2 py-1.5 text-sm text-[#e6f7ff] focus:border-[#f5ff3b] focus:outline-none";
+  "mt-1 rounded-lg border border-[#1b2a4a] bg-[#0a0f1e] px-2 py-1.5 text-sm text-[#e6f7ff] focus:border-[#f5ff3b] focus:outline-hidden";
 
 function GitHubLink({ href, children }: { href: string | null | undefined; children: ReactNode }) {
   // Only GitHub URLs are ever linked, whatever the API returns.

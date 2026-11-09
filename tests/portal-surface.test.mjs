@@ -482,9 +482,13 @@ test("the shared lobby hides every online surface in practice-only mode", () => 
   assert.match(lobby, /\{!practiceMode && \(\s*<button[\s\S]{0,700}?onClick=\{handlePlay\}/);
   assert.match(lobby, /\{\/\* The stake picker is an online-money control[\s\S]{0,400}?\{wager && !practiceMode && \(/);
   assert.match(lobby, /\{!practiceMode && \(\s*<section className="mt-12 lg:mt-16">/);
-  assert.match(lobby, /\{quickQueue && !practiceMode && \(/);
-  // No outbound link into the site from a portal frame.
-  assert.match(lobby, /\{!practiceMode && \(\s*<Link\s+href="\/games"/);
+  // The ready toggle also hides when the server reports that there are no games
+  // to queue for (`hasGames === false`); a refinement of this same block, added
+  // after the original assertion.
+  assert.match(lobby, /\{quickQueue && quickQueue\.hasGames !== false && !practiceMode && \(/);
+  // No outbound link into the site from a portal frame. The destination is a
+  // prop now (`backHref`), so the gate is asserted on the link itself.
+  assert.match(lobby, /\{!practiceMode && \(\s*<Link\s+href=\{backHref\}/);
   // The page chrome goes too: the footer links across the whole site.
   assert.match(lobby, /\{!practiceMode && <Footer \/>\}/);
 
@@ -494,17 +498,34 @@ test("the shared lobby hides every online surface in practice-only mode", () => 
 });
 
 test("every exportable game keeps a practice action in the lobby", () => {
-  for (const [gameKey, file] of Object.entries({
-    "tic-tac-toe": "src/app/casino/tic-tac-toe/PageClient.tsx",
-    dominoes: "src/app/casino/dominoes/PageClient.tsx",
-    battleship: "src/app/casino/battleship/PageClient.tsx",
-    odds: "src/app/casino/odds/PageClient.tsx",
-    "solitaire-duel": "src/app/casino/solitaire-duel/PageClient.tsx",
-  })) {
-    const source = read(file);
-    assert.ok(
-      /vsAi=\{\{/.test(source) || /extraActions=\{/.test(source),
-      `${gameKey} would have no way to start a match once online play is hidden`,
+  // Practice is the ONLY way to start a match once online play is hidden, so
+  // each game must still wire a free practice start. The entry points moved as
+  // the lobbies were refactored around the shared component: three games POST
+  // their create-AI route, odds routes into its AI game, solitaire links to the
+  // named-bot picker. Asserting the real call, not a prop name, catches a game
+  // losing its practice path for any reason.
+  const PRACTICE_ENTRY = {
+    "tic-tac-toe": [
+      "src/app/casino/tic-tac-toe/PageClient.tsx",
+      /fetch\("\/api\/tic-tac-toe\/create-ai"/,
+    ],
+    dominoes: ["src/app/casino/dominoes/PageClient.tsx", /fetch\("\/api\/dominoes\/create-ai"/],
+    battleship: [
+      "src/app/casino/battleship/PageClient.tsx",
+      /fetch\("\/api\/battleship\/create-ai"/,
+    ],
+    odds: ["src/app/casino/odds/PageClient.tsx", /\/casino\/odds\/game\/ai\?difficulty=/],
+    "solitaire-duel": [
+      "src/components/solitaire-duel/SolitaireLobby.tsx",
+      /href="\/casino\/solitaire-duel\/play-ai"/,
+    ],
+  };
+
+  for (const [gameKey, [file, pattern]] of Object.entries(PRACTICE_ENTRY)) {
+    assert.match(
+      read(file),
+      pattern,
+      `${gameKey} would have no way to start a practice match once online play is hidden`,
     );
   }
 });

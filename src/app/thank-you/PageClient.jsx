@@ -49,12 +49,12 @@ export default function ThankYouPage() {
         className="relative z-10 mb-8 flex flex-col items-center text-center"
       >
         <div className="mb-4 flex h-16 w-16 items-center justify-center">
-          <div className="h-14 w-14 rotate-45 rounded-lg border-2 border-[#00e5ff] bg-gradient-to-br from-[#FF2D9B]/20 to-[#00e5ff]/20 shadow-[0_0_30px_rgba(0,229,255,0.5)]" />
+          <div className="h-14 w-14 rotate-45 rounded-lg border-2 border-[#00e5ff] bg-linear-to-br from-[#FF2D9B]/20 to-[#00e5ff]/20 shadow-[0_0_30px_rgba(0,229,255,0.5)]" />
         </div>
         <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.3em] text-[#00e5ff]">
           ✦ {t("thankYou.subtitle")}
         </p>
-        <h1 className="bg-gradient-to-r from-[#FFD700] via-[#FFB300] to-[#FFD700] bg-clip-text text-4xl font-extrabold tracking-tight text-transparent drop-shadow-[0_0_20px_rgba(255,215,0,0.35)] sm:text-5xl md:text-6xl">
+        <h1 className="bg-linear-to-r from-[#FFD700] via-[#FFB300] to-[#FFD700] bg-clip-text text-4xl font-extrabold tracking-tight text-transparent drop-shadow-[0_0_20px_rgba(255,215,0,0.35)] sm:text-5xl md:text-6xl">
           {t("thankYou.title")}
         </h1>
       </motion.div>
@@ -85,7 +85,7 @@ export default function ThankYouPage() {
         <button
           type="button"
           onClick={() => window.location.assign("/games")}
-          className="rounded-2xl bg-gradient-to-r from-[#FFD700] to-[#FFB300] px-10 py-4 text-lg font-extrabold text-black shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all hover:brightness-110 active:scale-[0.98]"
+          className="rounded-2xl bg-linear-to-r from-[#FFD700] to-[#FFB300] px-10 py-4 text-lg font-extrabold text-black shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all hover:brightness-110 active:scale-[0.98]"
         >
           {t("thankYou.play")} →
         </button>

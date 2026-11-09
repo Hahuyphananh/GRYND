@@ -106,7 +106,7 @@ export default function MfaRequiredPage() {
           <button
             onClick={sendOtp}
             disabled={busy}
-            className="w-full rounded-lg border border-[#f5ff3b]/50 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-2.5 text-sm font-bold text-[#1f1700] shadow-[0_0_18px_rgba(245,255,59,0.4)] transition-all hover:shadow-[0_0_26px_rgba(245,255,59,0.65)] disabled:opacity-60"
+            className="w-full rounded-lg border border-[#f5ff3b]/50 bg-linear-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-2.5 text-sm font-bold text-[#1f1700] shadow-[0_0_18px_rgba(245,255,59,0.4)] transition-all hover:shadow-[0_0_26px_rgba(245,255,59,0.65)] disabled:opacity-60"
           >
             {busy ? "Sending…" : "Send code to my email"}
           </button>
@@ -120,13 +120,13 @@ export default function MfaRequiredPage() {
               placeholder="6-digit code"
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-              className="w-full rounded-lg border border-[#00e5ff]/40 bg-[#08142f] px-4 py-2.5 text-center text-lg tracking-[0.5em] text-[#ecf8ff] focus:outline-none focus:ring-2 focus:ring-[#00e5ff]"
+              className="w-full rounded-lg border border-[#00e5ff]/40 bg-[#08142f] px-4 py-2.5 text-center text-lg tracking-[0.5em] text-[#ecf8ff] focus:outline-hidden focus:ring-2 focus:ring-[#00e5ff]"
             />
             <div className="mt-3 flex gap-2">
               <button
                 onClick={verify}
                 disabled={busy}
-                className="flex-1 rounded-lg border border-[#f5ff3b]/50 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-2.5 text-sm font-bold text-[#1f1700] shadow-[0_0_18px_rgba(245,255,59,0.4)] transition-all hover:shadow-[0_0_26px_rgba(245,255,59,0.65)] disabled:opacity-60"
+                className="flex-1 rounded-lg border border-[#f5ff3b]/50 bg-linear-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-2.5 text-sm font-bold text-[#1f1700] shadow-[0_0_18px_rgba(245,255,59,0.4)] transition-all hover:shadow-[0_0_26px_rgba(245,255,59,0.65)] disabled:opacity-60"
               >
                 {busy ? "Verifying…" : "Verify"}
               </button>

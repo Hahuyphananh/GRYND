@@ -100,7 +100,7 @@ export default function ContactPage() {
 
       {/* Hero header */}
       <div className="relative overflow-hidden border-b border-white/5">
-        <div className="absolute inset-0 bg-gradient-to-b from-[#1a1f3e]/40 to-transparent pointer-events-none" />
+        <div className="absolute inset-0 bg-linear-to-b from-[#1a1f3e]/40 to-transparent pointer-events-none" />
         <div className="max-w-4xl mx-auto px-4 pt-16 sm:pt-20 pb-8 sm:pb-12">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -275,7 +275,7 @@ export default function ContactPage() {
                       value={name}
                       onChange={(e) => handleFieldChange(setName, e.target.value)}
                       placeholder="John Doe"
-                      className="w-full rounded-lg border border-white/10 bg-[#0a0f1e] px-4 py-2.5 text-sm text-white placeholder-[#c9f7ff]/30 outline-none transition-all focus:border-[#f5ff3b]/50 focus:bg-[#0d1428] focus:ring-1 focus:ring-[#f5ff3b]/20"
+                      className="w-full rounded-lg border border-white/10 bg-[#0a0f1e] px-4 py-2.5 text-sm text-white placeholder-[#c9f7ff]/30 outline-hidden transition-all focus:border-[#f5ff3b]/50 focus:bg-[#0d1428] focus:ring-1 focus:ring-[#f5ff3b]/20"
                     />
                   </div>
 
@@ -294,7 +294,7 @@ export default function ContactPage() {
                       value={email}
                       onChange={(e) => handleFieldChange(setEmail, e.target.value)}
                       placeholder="you@example.com"
-                      className="w-full rounded-lg border border-white/10 bg-[#0a0f1e] px-4 py-2.5 text-sm text-white placeholder-[#c9f7ff]/30 outline-none transition-all focus:border-[#f5ff3b]/50 focus:bg-[#0d1428] focus:ring-1 focus:ring-[#f5ff3b]/20"
+                      className="w-full rounded-lg border border-white/10 bg-[#0a0f1e] px-4 py-2.5 text-sm text-white placeholder-[#c9f7ff]/30 outline-hidden transition-all focus:border-[#f5ff3b]/50 focus:bg-[#0d1428] focus:ring-1 focus:ring-[#f5ff3b]/20"
                     />
                   </div>
 
@@ -314,7 +314,7 @@ export default function ContactPage() {
                       onChange={(e) => handleFieldChange(setMessage, e.target.value)}
                       placeholder="Tell us how we can help..."
                       maxLength={5000}
-                      className="w-full rounded-lg border border-white/10 bg-[#0a0f1e] px-4 py-2.5 text-sm text-white placeholder-[#c9f7ff]/30 outline-none transition-all focus:border-[#f5ff3b]/50 focus:bg-[#0d1428] focus:ring-1 focus:ring-[#f5ff3b]/20 resize-y min-h-[120px]"
+                      className="w-full rounded-lg border border-white/10 bg-[#0a0f1e] px-4 py-2.5 text-sm text-white placeholder-[#c9f7ff]/30 outline-hidden transition-all focus:border-[#f5ff3b]/50 focus:bg-[#0d1428] focus:ring-1 focus:ring-[#f5ff3b]/20 resize-y min-h-[120px]"
                     />
                     <p className="text-xs text-[#c9f7ff]/40 mt-1 text-right">
                       {message.length}/5000

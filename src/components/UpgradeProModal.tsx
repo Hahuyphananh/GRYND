@@ -56,7 +56,7 @@ export default function UpgradeProModal({
 
   return (
     <UIPro17ModalBackdrop
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-xs"
       role="dialog"
       aria-modal="true"
       aria-label="Upgrade to GRYND PRO"
@@ -67,7 +67,7 @@ export default function UpgradeProModal({
       <div
         ref={panelRef}
         tabIndex={-1}
-        className="w-full max-w-lg outline-none"
+        className="w-full max-w-lg outline-hidden"
       >
         <UIPro18ModalPanel className="max-h-[90vh] overflow-y-auto rounded-2xl">
           <UpgradeProContent

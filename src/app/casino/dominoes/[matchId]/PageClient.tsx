@@ -551,7 +551,7 @@ export default function DominoesMatchPage() {
 
   if (!match && loadError) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-gradient-to-b from-[#0d1226] to-[#04060f] px-6 text-center text-white">
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-linear-to-b from-[#0d1226] to-[#04060f] px-6 text-center text-white">
         <IconAlertTriangle className="h-8 w-8 text-amber-300" aria-hidden="true" />
         <p className="text-sm text-white/80">{loadError}</p>
         <button
@@ -602,7 +602,7 @@ export default function DominoesMatchPage() {
         data-testid="dominoes-match"
         data-status={status}
         data-viewer-seat={viewerSeat ?? ""}
-        className="flex h-[calc(100dvh-68px-var(--safe-top))] w-full flex-col overflow-hidden bg-gradient-to-br from-[#001628] to-[#03040c] text-white sm:h-[calc(100dvh-4rem-var(--safe-top))]"
+        className="flex h-[calc(100dvh-68px-var(--safe-top))] w-full flex-col overflow-hidden bg-linear-to-br from-[#001628] to-[#03040c] text-white sm:h-[calc(100dvh-4rem-var(--safe-top))]"
       >
         {/* THE BOARD IS THE PAGE, AND THE PAGE DOES NOT SCROLL. The shell is the
             viewport left under the fixed navigation bar and clips: the board

@@ -349,7 +349,7 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
   }, [tutorial, matchOver]);
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-gradient-to-b from-[#0a0118] to-[#061b3d] pb-28 pt-16 text-white md:pb-8">
+    <div className="min-h-screen overflow-x-hidden bg-linear-to-b from-[#0a0118] to-[#061b3d] pb-28 pt-16 text-white md:pb-8">
       <NavigationBar currentPath="/casino" />
 
       <GameSessionHost
@@ -361,7 +361,7 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
       {/* ── Left sidebar: rounds history ── */}
       <aside className="w-[95%] sm:w-full max-w-[420px] md:max-w-[340px] mx-auto md:mx-0 mb-6 md:mb-0 md:ml-4 md:self-start md:sticky md:top-20">
         <div className="rounded-2xl border border-amber-700/60 bg-black/40 p-4 backdrop-blur-xl shadow-[0_0_25px_rgba(251,191,36,0.12)]">
-          <h2 className="mb-3 flex items-center gap-2 text-lg font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-500">
+          <h2 className="mb-3 flex items-center gap-2 text-lg font-extrabold tracking-wide text-transparent bg-clip-text bg-linear-to-r from-amber-300 via-amber-400 to-yellow-500">
             <IconHistory size={18} /> Rounds History
           </h2>
 
@@ -443,7 +443,7 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
         transition={{ duration: 0.4, ease: "easeOut" }}
         className="flex-1 flex flex-col items-center justify-start md:justify-center gap-6 md:gap-8 ml-0 md:ml-6 w-full px-3 sm:px-4 pb-10"
       >
-        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-500 drop-shadow-[0_0_18px_rgba(251,191,36,0.5)] text-center">
+        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-wide text-transparent bg-clip-text bg-linear-to-r from-amber-300 via-amber-400 to-yellow-500 drop-shadow-[0_0_18px_rgba(251,191,36,0.5)] text-center">
           Rock Paper Scissors
         </h1>
 
@@ -479,7 +479,7 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
         {/* Onboarding tutorial — one contextual hint before the first throw,
             then it disappears and the real game teaches the rest. */}
         {tutorialActive && phase === "picking" && history.length === 0 && (
-          <div className="w-full max-w-md rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-center text-xs leading-relaxed text-amber-100/90 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-center text-xs leading-relaxed text-amber-100/90 backdrop-blur-xs">
             <span className="font-black uppercase tracking-wider text-amber-300">Free Play vs AI</span>
             <span className="mx-1.5 text-amber-200/40">·</span>No tokens at risk
             <span className="mx-1.5 text-amber-200/40">·</span>First to 4 wins
@@ -555,7 +555,7 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
               <motion.div
                 animate={{ scale: [1, 1.1, 1] }}
                 transition={{ duration: 1.5, repeat: Infinity }}
-                className="text-2xl sm:text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-[#a855f7] to-[#ff4fd8]"
+                className="text-2xl sm:text-3xl font-bold text-transparent bg-clip-text bg-linear-to-r from-[#a855f7] to-[#ff4fd8]"
               >
                 VS
               </motion.div>
@@ -606,7 +606,7 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
                     disabled={aiThinking}
                     className={`w-full px-4 py-3 rounded-xl font-bold text-sm sm:text-base transition-all duration-300 flex items-center justify-center gap-2 ${
                       playerChoice === choice
-                        ? "bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] text-white shadow-[0_0_25px_#ff4fd8] scale-105"
+                        ? "bg-linear-to-r from-[#a855f7] to-[#ff4fd8] text-white shadow-[0_0_25px_#ff4fd8] scale-105"
                         : "bg-[#020617] border border-[#00e5ff]/30 text-white hover:border-[#00e5ff] hover:shadow-[0_0_15px_rgba(0,229,255,0.6)]"
                     }`}
                   >
@@ -630,7 +630,7 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
 
             <div className="text-center">
               <p className="text-xl">
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] font-bold">
+                <span className="text-transparent bg-clip-text bg-linear-to-r from-[#a855f7] to-[#ff4fd8] font-bold">
                   Score:
                 </span>{" "}
                 <span className="text-blue-400 font-bold">{myWins}</span> –{" "}

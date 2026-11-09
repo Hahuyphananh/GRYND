@@ -371,7 +371,7 @@ export default function HillstrikePracticePage() {
 
   if (!match) {
     return (
-      <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
+      <div className="min-h-screen overflow-x-clip bg-linear-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
         <NavigationBar currentPath={LOBBY_PATH} />
         <div
           data-testid="hillstrike-loading"
@@ -392,7 +392,7 @@ export default function HillstrikePracticePage() {
     match.winner === HUMAN_SEAT ? "win" : match.winner === null ? "draw" : "loss";
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] text-white">
+    <div className="min-h-screen overflow-x-clip bg-linear-to-br from-[#001933] to-[#000d1a] text-white">
       <NavigationBar currentPath={LOBBY_PATH} />
 
       <div className="mx-auto flex max-w-[1800px] flex-col px-2 pb-6 pt-20 sm:px-3">

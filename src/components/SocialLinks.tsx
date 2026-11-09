@@ -100,7 +100,7 @@ export default function SocialLinks({
             rel="noopener noreferrer"
             aria-label={`GRYND on ${name}`}
             title={name}
-            className={`flex ${tile} items-center justify-center rounded-lg border border-[#00e5ff]/25 bg-[#00e5ff]/5 text-[#7dd3fc] transition-all duration-200 hover:-translate-y-0.5 hover:border-[#00e5ff]/60 hover:text-[#f5ff3b] hover:shadow-[0_0_12px_rgba(0,229,255,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]`}
+            className={`flex ${tile} items-center justify-center rounded-lg border border-[#00e5ff]/25 bg-[#00e5ff]/5 text-[#7dd3fc] transition-all duration-200 hover:-translate-y-0.5 hover:border-[#00e5ff]/60 hover:text-[#f5ff3b] hover:shadow-[0_0_12px_rgba(0,229,255,0.35)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]`}
           >
             <Icon size={icon} stroke={1.8} aria-hidden="true" />
           </a>

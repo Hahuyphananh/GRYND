@@ -437,7 +437,7 @@ export default function RPSPvpGamePage() {
 
   if (failed) {
     return (
-      <div className="flex min-h-screen flex-col bg-gradient-to-b from-[#0a0118] to-[#061b3d] text-white">
+      <div className="flex min-h-screen flex-col bg-linear-to-b from-[#0a0118] to-[#061b3d] text-white">
         <NavigationBar currentPath="/casino" />
         <div className="flex flex-1 items-center justify-center px-4">
           <div className="max-w-md rounded-2xl border border-red-500/30 bg-red-950/20 p-6 text-center">
@@ -453,7 +453,7 @@ export default function RPSPvpGamePage() {
   if (!loaded) return <MatchLoading />;
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-gradient-to-b from-[#0a0118] to-[#061b3d] pb-28 pt-16 text-white md:pb-8">
+    <div className="min-h-screen overflow-x-hidden bg-linear-to-b from-[#0a0118] to-[#061b3d] pb-28 pt-16 text-white md:pb-8">
       <NavigationBar currentPath="/casino" />
 
       {/* Only the actual game content is recorded — NavBar / Footer stay
@@ -469,7 +469,7 @@ export default function RPSPvpGamePage() {
       {/* ── Left sidebar: rounds history (replaces the old lobby/bet panel) ── */}
       <aside className="w-[95%] sm:w-full max-w-[420px] md:max-w-[340px] mx-auto md:mx-0 mb-6 md:mb-0 md:ml-4 md:self-start md:sticky md:top-20">
         <div className="rounded-2xl border border-amber-700/60 bg-black/40 p-4 backdrop-blur-xl shadow-[0_0_25px_rgba(251,191,36,0.12)]">
-          <h2 className="mb-3 flex items-center gap-2 text-lg font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-500">
+          <h2 className="mb-3 flex items-center gap-2 text-lg font-extrabold tracking-wide text-transparent bg-clip-text bg-linear-to-r from-amber-300 via-amber-400 to-yellow-500">
             <IconHistory size={18} /> Rounds History
           </h2>
 
@@ -546,7 +546,7 @@ export default function RPSPvpGamePage() {
         transition={{ duration: 0.4, ease: "easeOut" }}
         className="flex-1 flex flex-col items-center justify-start md:justify-center gap-6 md:gap-8 ml-0 md:ml-6 w-full px-3 sm:px-4 pb-10"
       >
-        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-500 drop-shadow-[0_0_18px_rgba(251,191,36,0.5)] text-center">
+        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-wide text-transparent bg-clip-text bg-linear-to-r from-amber-300 via-amber-400 to-yellow-500 drop-shadow-[0_0_18px_rgba(251,191,36,0.5)] text-center">
           Rock Paper Scissors
         </h1>
 
@@ -595,7 +595,7 @@ export default function RPSPvpGamePage() {
             <button
               onClick={cancelGame}
               disabled={actionLoading}
-              className="bg-red-600 hover:bg-red-700 px-6 py-3 rounded font-bold disabled:opacity-50"
+              className="bg-red-600 hover:bg-red-700 px-6 py-3 rounded-sm font-bold disabled:opacity-50"
             >
               Cancel Waiting Game
             </button>

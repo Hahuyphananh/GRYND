@@ -77,7 +77,7 @@ export default function RoomsPanel({
           <button
             type="button"
             onClick={() => setDialog("room")}
-            className="rounded bg-[#FFD700] px-3 py-1.5 text-sm font-semibold text-[#003366] hover:bg-[#ffd700]/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+            className="rounded-sm bg-[#FFD700] px-3 py-1.5 text-sm font-semibold text-[#003366] hover:bg-[#ffd700]/80 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-400"
           >
             {t("rooms.createCta", "Create private room")}
           </button>
@@ -105,21 +105,21 @@ export default function RoomsPanel({
             onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
             placeholder={t("rooms.joinCodePlaceholder", "ABCD234567")}
             maxLength={16}
-            className="mt-1 w-44 rounded border border-white/20 bg-[#08203f] px-3 py-1.5 font-mono text-sm tracking-widest text-white"
+            className="mt-1 w-44 rounded-sm border border-white/20 bg-[#08203f] px-3 py-1.5 font-mono text-sm tracking-widest text-white"
           />
         </div>
         <button
           type="button"
           disabled={!joinCode.trim() || rooms.busy === "join"}
           onClick={handleJoin}
-          className="rounded bg-[#00e5ff] px-3 py-1.5 text-sm font-semibold text-[#003366] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+          className="rounded-sm bg-[#00e5ff] px-3 py-1.5 text-sm font-semibold text-[#003366] disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
         >
           {rooms.busy === "join" ? t("rooms.joining", "Joining…") : t("rooms.join", "Join")}
         </button>
       </div>
 
       {rooms.feedback && !rooms.feedback.ok && (
-        <div className="mt-3 rounded border border-red-400/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+        <div className="mt-3 rounded-sm border border-red-400/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
           <p>{failureText(t, rooms.feedback.code, rooms.feedback.message)}</p>
           {rooms.feedback.code === "pro_required" && (
             <Link href="/upgrade-pro" className="mt-1 inline-block text-xs font-semibold text-[#FFD700] underline">
@@ -130,7 +130,7 @@ export default function RoomsPanel({
       )}
 
       {rooms.feedback?.ok && (
-        <p className="mt-3 rounded border border-emerald-400/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
+        <p className="mt-3 rounded-sm border border-emerald-400/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
           {t("rooms.actionDone", "Done.")}
         </p>
       )}

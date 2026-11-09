@@ -914,12 +914,12 @@ export default function UnoGamePage() {
         {endPopup && endPopupVisible && (
           <motion.div
             {...gameOverModal.backdrop}
-            className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-black/80 px-4 py-4 backdrop-blur-sm"
+            className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-black/80 px-4 py-4 backdrop-blur-xs"
             key={"uno-end-popup"}
           >
             <motion.div
               {...gameOverModal.panel}
-              className={`relative max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-3xl border-4 p-6 text-center shadow-2xl ${endPopup.result === "win" ? "border-amber-400 bg-gradient-to-b from-[#1a3a1a] to-[#0d2b0d] shadow-[0_0_60px_rgba(251,191,36,0.4)]" : "border-red-500 bg-gradient-to-b from-[#3a1a1a] to-[#2b0d0d] shadow-[0_0_60px_rgba(239,68,68,0.3)]"}`}
+              className={`relative max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-3xl border-4 p-6 text-center shadow-2xl ${endPopup.result === "win" ? "border-amber-400 bg-linear-to-b from-[#1a3a1a] to-[#0d2b0d] shadow-[0_0_60px_rgba(251,191,36,0.4)]" : "border-red-500 bg-linear-to-b from-[#3a1a1a] to-[#2b0d0d] shadow-[0_0_60px_rgba(239,68,68,0.3)]"}`}
               key={"uno-end-panel"}
             >
               <motion.div
@@ -1132,7 +1132,7 @@ export default function UnoGamePage() {
           // centred by `inset-x-0 mx-auto w-fit` instead.
           <motion.div
             {...turnBanner}
-            className="fixed inset-x-0 top-1/3 z-50 mx-auto w-fit max-w-[calc(100vw-1.5rem)] rounded-2xl border-4 border-amber-400 bg-gradient-to-r from-amber-700 to-orange-700 px-6 py-5 shadow-[0_0_60px_rgba(251,191,36,0.5)] sm:px-10 sm:py-6"
+            className="fixed inset-x-0 top-1/3 z-50 mx-auto w-fit max-w-[calc(100vw-1.5rem)] rounded-2xl border-4 border-amber-400 bg-linear-to-r from-amber-700 to-orange-700 px-6 py-5 shadow-[0_0_60px_rgba(251,191,36,0.5)] sm:px-10 sm:py-6"
             key={"turn-banner"}
           >
             <motion.div
@@ -1383,7 +1383,7 @@ export default function UnoGamePage() {
         <button
           onClick={drawCard}
           disabled={!isPlayerTurn || loading || historyIndex !== null}
-          className="rounded-xl border-2 border-[#38fcfc]/80 bg-gradient-to-r from-[#00e5ff] to-[#38fcfc] px-6 py-2.5 font-black uppercase tracking-wider text-[#031026] shadow-[0_0_18px_rgba(0,229,255,0.5)] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-xl border-2 border-[#38fcfc]/80 bg-linear-to-r from-[#00e5ff] to-[#38fcfc] px-6 py-2.5 font-black uppercase tracking-wider text-[#031026] shadow-[0_0_18px_rgba(0,229,255,0.5)] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {t("neonFlush.drawCard")}
         </button>
@@ -1460,7 +1460,7 @@ export default function UnoGamePage() {
       {headerNode}
       {!game ? null : (
         <div className="mb-16 flex w-full max-w-6xl items-stretch gap-4">
-          <div className="relative flex min-w-0 flex-1 flex-col items-center justify-between overflow-hidden rounded-3xl border-2 border-[#00e5ff]/30 bg-gradient-to-br from-[#001a33] via-[#000d1f] to-[#000814] p-3 shadow-[0_0_35px_rgba(0,229,255,0.15)] sm:p-4">
+          <div className="relative flex min-w-0 flex-1 flex-col items-center justify-between overflow-hidden rounded-3xl border-2 border-[#00e5ff]/30 bg-linear-to-br from-[#001a33] via-[#000d1f] to-[#000814] p-3 shadow-[0_0_35px_rgba(0,229,255,0.15)] sm:p-4">
             {tableNode}
             {controlsNode}
           </div>
@@ -1472,7 +1472,7 @@ export default function UnoGamePage() {
   if (!loaded) return <MatchLoading />;
 
   return (
-    <div className="page-enter mt-0 flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-[#0a0118] to-[#061b3d] px-3 pb-24 pt-20 text-white sm:px-4 md:pb-8">
+    <div className="page-enter mt-0 flex min-h-screen flex-col items-center justify-center bg-linear-to-b from-[#0a0118] to-[#061b3d] px-3 pb-24 pt-20 text-white sm:px-4 md:pb-8">
       <NavigationBar currentPath="/casino" />
       <div className="mt-2 flex w-full max-w-3xl justify-end px-1">
         <GameEmoteLayer

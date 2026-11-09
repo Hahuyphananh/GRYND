@@ -264,7 +264,7 @@ function TicTacToeBoard({
             // One focus language for every cell, from the shared token, so an
             // inert cell's focus ring is as visible as a playable one's (the
             // old 40%-white ring was the faintest thing on the board).
-            const base = `group relative flex aspect-square w-full items-center justify-center border outline-none transition focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-offset-[#070b16] ${
+            const base = `group relative flex aspect-square w-full items-center justify-center border outline-hidden transition focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-offset-[#070b16] ${
               compact ? "rounded-[5px] sm:rounded-md" : "rounded-lg sm:rounded-xl"
             }`;
             // Four looks, in priority order: a real mark, a cell the server

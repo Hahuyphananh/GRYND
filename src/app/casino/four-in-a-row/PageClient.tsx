@@ -262,7 +262,7 @@ export default function FourInARowLobbyPage() {
               <select
                 value={timerSeconds}
                 onChange={(e) => setTimerSeconds(Number(e.target.value))}
-                className="mt-1 w-full rounded-md border border-amber-600/50 bg-[#020617] px-2 py-1.5 text-xs text-white outline-none focus:border-amber-400"
+                className="mt-1 w-full rounded-md border border-amber-600/50 bg-[#020617] px-2 py-1.5 text-xs text-white outline-hidden focus:border-amber-400"
               >
                 {TIMER_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>

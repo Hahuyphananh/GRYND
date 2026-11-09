@@ -206,7 +206,7 @@ export default function CompleteProfilePage() {
         {/* Branding */}
         <Link
           href="/"
-          className="mx-auto block w-fit rounded-lg transition-transform duration-300 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
+          className="mx-auto block w-fit rounded-lg transition-transform duration-300 hover:scale-105 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
         >
           <Image
             src={LogoSmiley}
@@ -218,9 +218,9 @@ export default function CompleteProfilePage() {
           />
         </Link>
 
-        <div className="mt-6 overflow-hidden rounded-3xl border-2 border-[#00e5ff]/35 bg-[#0b224f]/85 shadow-[0_0_45px_rgba(0,229,255,0.18)] backdrop-blur-sm">
+        <div className="mt-6 overflow-hidden rounded-3xl border-2 border-[#00e5ff]/35 bg-[#0b224f]/85 shadow-[0_0_45px_rgba(0,229,255,0.18)] backdrop-blur-xs">
           {/* Accent strip — the 404 card's top rule. */}
-          <div className="h-1 bg-gradient-to-r from-[#00e5ff] via-[#f5ff3b] to-[#00e5ff]" />
+          <div className="h-1 bg-linear-to-r from-[#00e5ff] via-[#f5ff3b] to-[#00e5ff]" />
 
           <div className="px-5 py-6 text-center sm:px-9 sm:py-8">
             {/* Reel marker — the 404's slot styling, rolled down to the one
@@ -253,7 +253,7 @@ export default function CompleteProfilePage() {
             </div>
 
             <h1 className="mt-4 text-3xl font-extrabold tracking-tight sm:text-4xl">
-              <span className="animate-shimmer-elegant bg-gradient-to-r from-[#00e5ff] via-[#f5ff3b] to-[#00e5ff] bg-clip-text text-transparent">
+              <span className="animate-shimmer-elegant bg-linear-to-r from-[#00e5ff] via-[#f5ff3b] to-[#00e5ff] bg-clip-text text-transparent">
                 {t("completeProfile.title")}
               </span>
             </h1>
@@ -297,7 +297,7 @@ export default function CompleteProfilePage() {
                 aria-describedby="usernameHelp"
                 placeholder={t("completeProfile.usernamePlaceholder")}
                 required
-                className="mt-2 w-full rounded-2xl border-2 border-[#00e5ff]/30 bg-[#040d24] px-4 py-3.5 text-base font-semibold text-[#d8fbff] outline-none transition focus:border-[#00e5ff] focus:ring-2 focus:ring-[#00e5ff]/40 sm:text-lg"
+                className="mt-2 w-full rounded-2xl border-2 border-[#00e5ff]/30 bg-[#040d24] px-4 py-3.5 text-base font-semibold text-[#d8fbff] outline-hidden transition focus:border-[#00e5ff] focus:ring-2 focus:ring-[#00e5ff]/40 sm:text-lg"
               />
 
               <p id="usernameHelp" className="mt-2 text-xs text-[#6b91b3]">
@@ -322,7 +322,7 @@ export default function CompleteProfilePage() {
                 aria-invalid={Boolean(error)}
                 aria-describedby="birthDateHelp birthDateStatus"
                 required
-                className="mt-2 w-full rounded-2xl border-2 border-[#00e5ff]/30 bg-[#040d24] px-4 py-3.5 text-base font-semibold text-[#d8fbff] outline-none transition [color-scheme:dark] focus:border-[#00e5ff] focus:ring-2 focus:ring-[#00e5ff]/40 sm:text-lg"
+                className="mt-2 w-full rounded-2xl border-2 border-[#00e5ff]/30 bg-[#040d24] px-4 py-3.5 text-base font-semibold text-[#d8fbff] outline-hidden transition [color-scheme:dark] focus:border-[#00e5ff] focus:ring-2 focus:ring-[#00e5ff]/40 sm:text-lg"
               />
 
               {/* Live verdict — shown as soon as the picker yields a date. */}
@@ -359,7 +359,7 @@ export default function CompleteProfilePage() {
               <button
                 type="submit"
                 disabled={isSubmitting || !previewOk || !usernameOk}
-                className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#FFD700] px-7 py-4 text-base font-extrabold tracking-wide text-[#030817] shadow-[0_0_22px_rgba(255,215,0,0.45)] transition-all duration-200 hover:scale-[1.02] hover:bg-[#ffe14f] hover:shadow-[0_0_32px_rgba(255,215,0,0.65)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
+                className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#FFD700] px-7 py-4 text-base font-extrabold tracking-wide text-[#030817] shadow-[0_0_22px_rgba(255,215,0,0.45)] transition-all duration-200 hover:scale-[1.02] hover:bg-[#ffe14f] hover:shadow-[0_0_32px_rgba(255,215,0,0.65)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
               >
                 {isSubmitting && (
                   <span
@@ -383,7 +383,7 @@ export default function CompleteProfilePage() {
           {t("completeProfile.skip")}{" "}
           <Link
             href="/games"
-            className="font-medium text-[#00e5ff] underline-offset-4 transition-colors hover:text-[#f5ff3b] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+            className="font-medium text-[#00e5ff] underline-offset-4 transition-colors hover:text-[#f5ff3b] hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
           >
             {t("completeProfile.skipLink")}
           </Link>

@@ -1665,7 +1665,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
             <span className="text-xs">{showHistory ? "▲ Hide" : "▼ Show"}</span>
           </button>
           {showHistory && (
-            <div className="absolute right-0 top-full z-40 mt-2 max-h-56 w-[22rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg border border-white/10 bg-black/90 p-3 text-xs shadow-2xl backdrop-blur-sm">
+            <div className="absolute right-0 top-full z-40 mt-2 max-h-56 w-[22rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg border border-white/10 bg-black/90 p-3 text-xs shadow-2xl backdrop-blur-xs">
               {shotHistory.length === 0 ? (
                 <p className="text-center text-white/30 italic">No shots yet.</p>
               ) : (
@@ -1753,7 +1753,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
       {canShoot && (
         <div className="pointer-events-none absolute bottom-2 left-1/2 z-10 -translate-x-1/2">
           <span
-            className={`rounded-full border px-3 py-1 text-xs font-semibold backdrop-blur-sm shadow-lg ${
+            className={`rounded-full border px-3 py-1 text-xs font-semibold backdrop-blur-xs shadow-lg ${
               aimLocked
                 ? "border-green-400/60 bg-green-900/70 text-green-300"
                 : "border-white/20 bg-black/60 text-white/70"
@@ -1772,7 +1772,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
     <>
       {canShoot && turn === owner && (
         <div
-          className="absolute bottom-3 left-3 z-10 select-none rounded-full border-2 border-white/30 bg-black/55 p-1 shadow-lg backdrop-blur-sm"
+          className="absolute bottom-3 left-3 z-10 select-none rounded-full border-2 border-white/30 bg-black/55 p-1 shadow-lg backdrop-blur-xs"
           onMouseDown={(e) => {
             e.stopPropagation();
             const rect = e.currentTarget.getBoundingClientRect();
@@ -1856,7 +1856,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
   const visorOverlay = (
     <>
       {showOpponentVisor && turn !== owner && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-gradient-to-b from-black/60 via-transparent to-black/60 pointer-events-none">
+        <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-linear-to-b from-black/60 via-transparent to-black/60 pointer-events-none">
           <div className="absolute top-6 left-1/2 -translate-x-1/2 animate-pulse rounded-full border border-yellow-400/40 bg-yellow-500/10 px-6 py-2 backdrop-blur-md">
             <span className="text-sm font-bold text-yellow-300 drop-shadow-lg">
               <span className="inline-flex items-center gap-1.5"><IconTarget size={14} /> {oppName} is aiming...</span>
@@ -2031,7 +2031,7 @@ ${!canShoot ? "pointer-events-none" : ""}`}
         <IconNotebook size={13} /> History ({shotHistory.length}) {showHistory ? "▲" : "▼"}
       </button>
       {showHistory && (
-        <div className="absolute bottom-full left-1/2 mb-2 max-h-48 w-80 -translate-x-1/2 overflow-y-auto rounded-lg border border-white/10 bg-black/80 p-2 text-[11px] shadow-2xl backdrop-blur-sm">
+        <div className="absolute bottom-full left-1/2 mb-2 max-h-48 w-80 -translate-x-1/2 overflow-y-auto rounded-lg border border-white/10 bg-black/80 p-2 text-[11px] shadow-2xl backdrop-blur-xs">
           {shotHistory.length === 0 ? (
             <p className="text-center text-white/30 italic">No shots yet.</p>
           ) : (

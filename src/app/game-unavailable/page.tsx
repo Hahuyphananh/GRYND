@@ -33,7 +33,7 @@ export default function GameUnavailablePage() {
       </p>
       <Link
         href="/games"
-        className="mt-8 inline-flex items-center justify-center rounded-lg border border-[#00e5ff]/60 bg-[#00e5ff] px-6 py-3 text-base font-bold text-black transition-all hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+        className="mt-8 inline-flex items-center justify-center rounded-lg border border-[#00e5ff]/60 bg-[#00e5ff] px-6 py-3 text-base font-bold text-black transition-all hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
       >
         Browse the games catalogue
       </Link>

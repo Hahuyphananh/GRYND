@@ -232,7 +232,7 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null }) {
           <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
             <a
               href="#lobby"
-              className="inline-flex items-center gap-2 rounded-lg bg-cyan-400 px-5 py-2.5 font-bold text-[#04121a] transition hover:bg-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-2 focus-visible:ring-offset-[#05070d]"
+              className="inline-flex items-center gap-2 rounded-lg bg-cyan-400 px-5 py-2.5 font-bold text-[#04121a] transition hover:bg-cyan-300 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-2 focus-visible:ring-offset-[#05070d]"
             >
               Play ranked
             </a>
@@ -318,7 +318,7 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null }) {
         <section className="mt-4" aria-labelledby="daily-heading">
           <Link
             href="/daily"
-            className="flex flex-col gap-4 rounded-2xl border border-amber-300/30 bg-gradient-to-r from-amber-300/[0.10] via-amber-300/[0.04] to-transparent p-5 transition hover:border-amber-200/50 sm:flex-row sm:items-center sm:justify-between"
+            className="flex flex-col gap-4 rounded-2xl border border-amber-300/30 bg-linear-to-r from-amber-300/[0.10] via-amber-300/[0.04] to-transparent p-5 transition hover:border-amber-200/50 sm:flex-row sm:items-center sm:justify-between"
           >
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.28em] text-amber-300">
@@ -468,7 +468,7 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null }) {
               {!board ? (
                 <div className="mt-3 space-y-2" aria-busy="true">
                   {[0, 1, 2, 3, 4].map((i) => (
-                    <div key={i} className="h-7 animate-pulse rounded bg-white/5" />
+                    <div key={i} className="h-7 animate-pulse rounded-sm bg-white/5" />
                   ))}
                 </div>
               ) : board.items.length === 0 ? (
@@ -486,7 +486,7 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null }) {
                       >
                         <Link
                           href={`/profil/${encodeURIComponent(item.clerk_id)}`}
-                          className="flex min-w-0 items-center gap-2 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+                          className="flex min-w-0 items-center gap-2 rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300"
                         >
                           <span className="w-6 shrink-0 text-xs font-black tabular-nums text-white/35">
                             {item.rank}
@@ -552,7 +552,7 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null }) {
       <Footer />
 
       {showTermsModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 p-4 backdrop-blur-xs">
           <div
             role="dialog"
             aria-modal="true"

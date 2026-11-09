@@ -85,7 +85,7 @@ export default function ChooseGlowModal({ open, onClose, onEquipped }) {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-xs"
       onClick={() => !busy && onClose?.()}
       role="dialog"
       aria-modal="true"
@@ -95,7 +95,7 @@ export default function ChooseGlowModal({ open, onClose, onEquipped }) {
         className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-[#00e5ff]/40 bg-[#040d24] shadow-[0_0_40px_rgba(0,229,255,0.3)]"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="absolute left-0 top-0 h-0.5 w-full bg-gradient-to-r from-transparent via-[#00e5ff] to-transparent" />
+        <div className="absolute left-0 top-0 h-0.5 w-full bg-linear-to-r from-transparent via-[#00e5ff] to-transparent" />
         <div className="flex items-center justify-between border-b border-[#00e5ff]/20 px-5 py-4">
           <div>
             <h2 className="text-lg font-extrabold tracking-tight text-[#f5ff3b] sm:text-xl">

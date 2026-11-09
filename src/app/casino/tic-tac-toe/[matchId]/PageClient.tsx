@@ -513,7 +513,7 @@ export default function TicTacToeMatchPage({
 
   if (!match && loadError) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-gradient-to-b from-[#0d1226] to-[#04060f] px-6 text-center text-white">
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-linear-to-b from-[#0d1226] to-[#04060f] px-6 text-center text-white">
         <IconAlertTriangle className="h-8 w-8 text-amber-300" />
         <p className="text-sm text-white/80">{loadError}</p>
         <button
@@ -576,7 +576,7 @@ export default function TicTacToeMatchPage({
           // say than the window does. `overflow-y-auto` is the safety valve for
           // a very short window (e.g. a zoomed laptop) rather than clipping the
           // bottom row.
-          className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#0d1226] via-[#080d1c] to-[#04060f] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8 lg:flex lg:h-[100svh] lg:flex-col lg:overflow-y-auto lg:pb-4"
+          className="min-h-screen overflow-x-clip bg-linear-to-b from-[#0d1226] via-[#080d1c] to-[#04060f] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8 lg:flex lg:h-[100svh] lg:flex-col lg:overflow-y-auto lg:pb-4"
         >
           <div className="mx-auto w-full max-w-6xl lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
             {/* ── Header ────────────────────────────────────────────── */}
@@ -585,7 +585,7 @@ export default function TicTacToeMatchPage({
                 playable without scrolling. */}
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2 lg:shrink-0">
               <div>
-                <h1 className="flex items-center gap-2 text-xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-300 to-yellow-200 sm:text-2xl">
+                <h1 className="flex items-center gap-2 text-xl font-extrabold tracking-wide text-transparent bg-clip-text bg-linear-to-r from-amber-200 via-amber-300 to-yellow-200 sm:text-2xl">
                   <IconTicTac className="h-6 w-6 text-amber-400" />
                   Ultimate Tic-Tac-Toe
                 </h1>
@@ -960,7 +960,7 @@ export default function TicTacToeMatchPage({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
+                className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 px-4 backdrop-blur-xs"
                 onClick={(e) => {
                   if (e.target === e.currentTarget && !forfeiting) setShowForfeitConfirm(false);
                 }}

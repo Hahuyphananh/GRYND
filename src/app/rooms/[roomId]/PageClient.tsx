@@ -42,7 +42,7 @@ export default function RoomPageClient({
             </p>
             <Link
               href="/sign-in"
-              className="mt-3 inline-block rounded bg-[#00e5ff] px-4 py-2 text-sm font-semibold text-[#003366]"
+              className="mt-3 inline-block rounded-sm bg-[#00e5ff] px-4 py-2 text-sm font-semibold text-[#003366]"
             >
               {t("rooms.signIn", "Sign in")}
             </Link>

@@ -41,7 +41,7 @@ import { useTranslation } from "../hooks/useTranslation";
 import { useGlitch } from "./mascot/GlitchProvider";
 
 const CARD =
-  "rounded-xl border border-[#00e5ff]/20 bg-[#040d24]/70 p-5 backdrop-blur-sm sm:p-6";
+  "rounded-xl border border-[#00e5ff]/20 bg-[#040d24]/70 p-5 backdrop-blur-xs sm:p-6";
 
 function formatCoins(value: number) {
   return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
@@ -173,8 +173,8 @@ export default function QuestBoard() {
               className={[
                 "h-full rounded-full transition-[width] duration-500",
                 quest.completed
-                  ? "bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800]"
-                  : "bg-gradient-to-r from-[#00e5ff] to-[#7ef9ff]",
+                  ? "bg-linear-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800]"
+                  : "bg-linear-to-r from-[#00e5ff] to-[#7ef9ff]",
               ].join(" ")}
               style={{ width: `${percent}%` }}
             />
@@ -193,7 +193,7 @@ export default function QuestBoard() {
               onClick={() => void claim(id)}
               disabled={claiming}
               data-testid={`quest-claim-${id}`}
-              className="inline-flex w-fit items-center justify-center rounded-lg border border-[#f5ff3b]/60 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-4 py-2 text-xs font-bold text-[#1f1700] shadow-[0_0_18px_rgba(245,255,59,0.3)] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817] disabled:cursor-wait disabled:opacity-60"
+              className="inline-flex w-fit items-center justify-center rounded-lg border border-[#f5ff3b]/60 bg-linear-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-4 py-2 text-xs font-bold text-[#1f1700] shadow-[0_0_18px_rgba(245,255,59,0.3)] transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817] disabled:cursor-wait disabled:opacity-60"
             >
               {claiming
                 ? t("quests.claiming")

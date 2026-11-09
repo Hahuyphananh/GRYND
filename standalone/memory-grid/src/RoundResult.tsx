@@ -157,7 +157,7 @@ export default function RoundResult({ view, round, botName }: RoundResultProps) 
   return (
     <div data-testid="round-result">
       <div className="mb-5 text-center">
-        <h1 className="flex items-center justify-center gap-3 bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-500 bg-clip-text text-3xl font-extrabold tracking-wide text-transparent drop-shadow-[0_0_18px_rgba(251,191,36,0.5)]">
+        <h1 className="flex items-center justify-center gap-3 bg-linear-to-r from-amber-300 via-amber-400 to-yellow-500 bg-clip-text text-3xl font-extrabold tracking-wide text-transparent drop-shadow-[0_0_18px_rgba(251,191,36,0.5)]">
           Memory Grid
         </h1>
         <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-emerald-400/40 bg-emerald-950/40 px-4 py-1.5 text-sm font-black text-emerald-300">

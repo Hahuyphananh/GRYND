@@ -44,10 +44,17 @@ import {
   canPlaceOnTableau,
   faceUpRunFrom,
   foundationExpects,
+  initialStateFromDeal,
   sameCard,
   tableauTop,
 } from "./rules";
-import type { Card, SolitaireMove, SolitaireState, Suit } from "./types";
+import type {
+  Card,
+  SolitaireDeal,
+  SolitaireMove,
+  SolitaireState,
+  Suit,
+} from "./types";
 
 /**
  * How long each bot waits between accepted moves.
@@ -538,7 +545,7 @@ export function planAiMoves({
   state,
   difficulty = "normal",
   maxMoves = 64,
-  random = Math.random,
+  random,
 }: {
   state: SolitaireState;
   difficulty?: unknown;
@@ -558,7 +565,16 @@ export function planAiMoves({
   let stuck = false;
 
   while (moves.length < Math.max(1, Math.floor(maxMoves)) && !current.completed) {
-    const move = chooseAiMove({ state: current, botId: bot.id, random });
+    const move = chooseAiMove({
+      state: current,
+      botId: bot.id,
+      // A bot's own dice are derived from the move cursor, so the same board
+      // always produces the same decision. That is what lets a practice deal be
+      // verified as finishable by THIS profile before it is served, and why a
+      // clock-sliced plan plays out exactly as the verified one did. An
+      // injected `random` (tests, benchmarks) always wins.
+      random: random ?? (() => botRoll(current.ply)),
+    });
     if (!move) {
       stuck = true;
       break;
@@ -634,4 +650,56 @@ export function planAiSolution({
 export function wasteTopSuit(state: SolitaireState): Suit | null {
   const top = state.waste?.[state.waste.length - 1];
   return top ? top.suit : null;
+}
+
+/**
+ * A bot's own die for one decision, derived from the move cursor.
+ *
+ * Practice play is deterministic ON PURPOSE. The deal generator only serves
+ * boards that defeat naive play, so a fair heuristic finishes a minority of
+ * them; the store therefore verifies a candidate deal with the bot's OWN plan
+ * before serving it. That promise is only meaningful if the plan it verified is
+ * the plan the bot will actually play, which needs rolls that depend on the
+ * board (the ply) rather than on Math.random or on how the clock sliced the
+ * plan into reads.
+ *
+ * The mixer is a 32-bit integer hash (splitmix-style finalizer), so adjacent
+ * plies give well-spread values.
+ */
+export function botRoll(ply: number): number {
+  let x = (Math.trunc(Number(ply) || 0) + 0x9e37_79b9) >>> 0;
+  x = Math.imul(x ^ (x >>> 16), 0x21f0_aaad) >>> 0;
+  x = Math.imul(x ^ (x >>> 15), 0x735a_2d97) >>> 0;
+  x = (x ^ (x >>> 15)) >>> 0;
+  return x / 0x1_0000_0000;
+}
+
+/**
+ * Can THIS bot actually finish `deal` from its opening position?
+ *
+ * The generator's proof (`solvableDealFromSeed`) is about a perfect player; it
+ * says nothing about a named profile's fair, mistake-prone heuristic. A bot
+ * whose own board dead-ends is re-dealt mid-race (see the store), which is
+ * exactly the "it never completes the puzzle" experience. This runs the bot's
+ * real deterministic plan and answers the only question that matters for a
+ * practice opponent: will it reach the foundations?
+ *
+ * It never looks at a solution line and never sees anything a player cannot —
+ * it is the bot's own play, replayed.
+ */
+export function botCanFinishDeal({
+  deal,
+  difficulty,
+  maxMoves = 700,
+}: {
+  deal: SolitaireDeal;
+  difficulty?: unknown;
+  maxMoves?: number;
+}): boolean {
+  if (!deal) return false;
+  return planAiMoves({
+    state: initialStateFromDeal(deal),
+    difficulty,
+    maxMoves,
+  }).completed;
 }

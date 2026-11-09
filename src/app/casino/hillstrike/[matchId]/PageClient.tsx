@@ -534,7 +534,7 @@ export default function HillstrikeMatchPage() {
 
   if (!match && loadError) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-gradient-to-b from-[#0d1226] to-[#04060f] px-6 text-center text-white">
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-linear-to-b from-[#0d1226] to-[#04060f] px-6 text-center text-white">
         <IconAlertTriangle className="h-8 w-8 text-amber-300" />
         <p className="text-sm text-white/80">{loadError}</p>
         <a
@@ -619,7 +619,7 @@ export default function HillstrikeMatchPage() {
           data-status={status}
           data-turn={state?.turn ?? ""}
           data-version={match?.version ?? 0}
-          className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8"
+          className="min-h-screen overflow-x-clip bg-linear-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8"
         >
           <div className="mx-auto flex max-w-[1800px] flex-col px-1 pb-3 sm:px-2">
             {/* Header: the match, its clock, and both tanks. */}

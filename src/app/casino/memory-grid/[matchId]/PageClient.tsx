@@ -922,7 +922,7 @@ export default function MemoryGridMatchPage({
     <>
       {/* Round header */}
       <div className="mb-5 text-center">
-        <h1 className="flex items-center justify-center gap-3 text-3xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-500 drop-shadow-[0_0_18px_rgba(251,191,36,0.5)]">
+        <h1 className="flex items-center justify-center gap-3 text-3xl font-extrabold tracking-wide text-transparent bg-clip-text bg-linear-to-r from-amber-300 via-amber-400 to-yellow-500 drop-shadow-[0_0_18px_rgba(251,191,36,0.5)]">
           Memory Grid
         </h1>
         <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-emerald-400/40 bg-emerald-950/40 px-4 py-1.5 text-sm font-black text-emerald-300">
@@ -1222,7 +1222,7 @@ export default function MemoryGridMatchPage({
         />
       )}
 
-      <div className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#0a0118] to-[#061b3d] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
+      <div className="min-h-screen overflow-x-clip bg-linear-to-b from-[#0a0118] to-[#061b3d] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
       {/* Only the actual game content is recorded — the matchmaking
           takeover / NavBar above and the Footer + modals below sit
@@ -1251,7 +1251,7 @@ export default function MemoryGridMatchPage({
             other casino games) + a compact stake line + the round
             indicator (ROUND X/5). */}
         <div className="mb-5 text-center">
-          <h1 className="flex items-center justify-center gap-3 text-3xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-500 drop-shadow-[0_0_18px_rgba(251,191,36,0.5)]">
+          <h1 className="flex items-center justify-center gap-3 text-3xl font-extrabold tracking-wide text-transparent bg-clip-text bg-linear-to-r from-amber-300 via-amber-400 to-yellow-500 drop-shadow-[0_0_18px_rgba(251,191,36,0.5)]">
             Memory Grid
           </h1>
           <div className="mt-2 flex items-center justify-center gap-2">

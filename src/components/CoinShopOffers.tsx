@@ -53,11 +53,11 @@ import {
 } from "../lib/coinCheckoutClient";
 
 const CARD =
-  "rounded-xl border border-[#00e5ff]/20 bg-[#040d24]/70 p-5 backdrop-blur-sm sm:p-6";
+  "rounded-xl border border-[#00e5ff]/20 bg-[#040d24]/70 p-5 backdrop-blur-xs sm:p-6";
 const OFFER =
   "flex h-full flex-col rounded-lg border border-[#00e5ff]/15 bg-[#030817]/60 p-4";
 const CTA =
-  "mt-3 inline-flex items-center justify-center rounded-xl border border-[#f5ff3b]/60 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-4 py-2.5 text-sm font-bold text-[#1f1700] shadow-[0_0_20px_rgba(245,255,59,0.25)] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817] disabled:cursor-not-allowed disabled:opacity-60";
+  "mt-3 inline-flex items-center justify-center rounded-xl border border-[#f5ff3b]/60 bg-linear-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-4 py-2.5 text-sm font-bold text-[#1f1700] shadow-[0_0_20px_rgba(245,255,59,0.25)] transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817] disabled:cursor-not-allowed disabled:opacity-60";
 
 /** One offer exactly as the server resolved it. */
 type CoinOffer = {
@@ -249,7 +249,7 @@ export default function CoinShopOffers() {
           type="button"
           onClick={() => setPollKey((key) => key + 1)}
           data-testid="coin-purchase-retry"
-          className="inline-flex items-center gap-1 font-semibold text-[#00e5ff] underline underline-offset-2 hover:text-[#f5ff3b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+          className="inline-flex items-center gap-1 font-semibold text-[#00e5ff] underline underline-offset-2 hover:text-[#f5ff3b] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
         >
           <IconRefresh size={13} aria-hidden="true" /> {t("coins.retry")}
         </button>

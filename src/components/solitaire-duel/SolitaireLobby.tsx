@@ -371,7 +371,7 @@ export default function SolitaireLobby({ variant = "home" }: { variant?: "home" 
       <Link
         href="/casino/solitaire-duel/play-ai"
         data-testid="solitaire-play-bots"
-        className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-violet-400/40 bg-violet-400/10 px-5 text-sm font-black uppercase tracking-[0.14em] text-violet-200 transition hover:bg-violet-400/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+        className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-violet-400/40 bg-violet-400/10 px-5 text-sm font-black uppercase tracking-[0.14em] text-violet-200 transition hover:bg-violet-400/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
       >
         <IconRobot size={16} className="opacity-70" />
         Play vs Bots

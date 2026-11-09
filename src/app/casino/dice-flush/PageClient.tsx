@@ -145,7 +145,7 @@ const DiceFace = ({
         transition={{ duration: 1.5, repeat: Infinity }}
         data-df="die"
         className="relative h-16 w-16 rounded-2xl border-[3px] cursor-not-allowed
-          bg-gradient-to-br from-[#0a1628] to-[#030817]
+          bg-linear-to-br from-[#0a1628] to-[#030817]
           border-[#00e5ff]/30 shadow-[0_6px_0_rgba(0,0,0,0.5)]
           select-none flex items-center justify-center"
       >
@@ -173,7 +173,7 @@ const DiceFace = ({
       data-df="die"
       className={`
         relative h-16 w-16 rounded-2xl border-[3px] cursor-pointer
-        bg-gradient-to-br from-[#1a2940] to-[#0d1a2e]
+        bg-linear-to-br from-[#1a2940] to-[#0d1a2e]
         shadow-[0_6px_0_rgba(0,0,0,0.5)]
         select-none
         ${
@@ -306,7 +306,7 @@ function MoveHistoryPanel({ history, you, opponent }: { history: any[]; you: any
                   {g.actions.map((a, ai) => (
                     <div key={ai} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 pl-4 text-[11px] text-gray-300">
                       {/* Action type badge */}
-                      <span className={`rounded px-1.5 py-0.5 font-semibold ${
+                      <span className={`rounded-sm px-1.5 py-0.5 font-semibold ${
                         a.action === "roll" ? "bg-[#fbbf24]/20 text-[#fbbf24]" :
                         a.action === "hold_dice" ? "bg-[#f5ff3b]/20 text-[#f5ff3b]" :
                         a.action === "choose_category" ? "bg-[#00e5ff]/20 text-[#00e5ff]" :
@@ -326,7 +326,7 @@ function MoveHistoryPanel({ history, you, opponent }: { history: any[]; you: any
                       {a.dice && Array.isArray(a.dice) && (
                         <span className="flex items-center gap-0.5 font-mono">
                           {a.dice.map((d: number, di: number) => (
-                            <span key={di} className={`inline-flex h-4 w-4 items-center justify-center rounded-sm text-[9px] font-bold ${
+                            <span key={di} className={`inline-flex h-4 w-4 items-center justify-center rounded-xs text-[9px] font-bold ${
                               a.heldDice?.[di] ? "bg-[#f5ff3b]/20 text-[#f5ff3b]" : "bg-white/10 text-white"
                             }`}>{d}</span>
                           ))}
@@ -881,7 +881,7 @@ export default function DiceFlushPage() {
         />
       )}
 
-      <div className="min-h-screen bg-gradient-to-b from-[#030817] via-[#081a3d] to-[#003b8e] px-3 pb-24 pt-20 text-white"><NavigationBar currentPath="/casino" />
+      <div className="min-h-screen bg-linear-to-b from-[#030817] via-[#081a3d] to-[#003b8e] px-3 pb-24 pt-20 text-white"><NavigationBar currentPath="/casino" />
     <div className="mx-auto mt-4 max-w-5xl">
       <div className="mb-3 flex justify-center">
         <Link
@@ -1070,7 +1070,7 @@ export default function DiceFlushPage() {
         {waitingForOpponent && <div className="mb-4 flex items-center gap-1.5 rounded-lg border border-[#f5ff3b]/30 bg-[#f5ff3b]/5 p-2 text-sm text-[#f5ff3b]"><IconHourglass size={14} /> Waiting for opponent to join. You cannot roll yet.</div>}
 
         {/* ═══════ DICE FLUSH SCORECARD ═══════ */}
-<div data-df="board" className="mb-5 overflow-hidden rounded-[24px] border-2 border-[#00e5ff]/20 bg-gradient-to-b from-[#030817] to-[#0a1628] shadow-[0_0_40px_rgba(0,229,255,0.15)]">
+<div data-df="board" className="mb-5 overflow-hidden rounded-[24px] border-2 border-[#00e5ff]/20 bg-linear-to-b from-[#030817] to-[#0a1628] shadow-[0_0_40px_rgba(0,229,255,0.15)]">
 
   {/* ─── SHOT CLOCK (skill layer) ─── */}
   {game.state === "playing" && turnMsLeft !== null && (
@@ -1309,7 +1309,7 @@ export default function DiceFlushPage() {
         whileHover={selectedCategory && isYourTurn ? { scale: 1.05 } : {}}
         whileTap={{ scale: 0.95 }}
         onClick={confirmPlay}
-        className="rounded-xl bg-gradient-to-r from-[#f5ff3b] to-[#fbbf24] px-6 py-3 font-black text-black shadow-[0_0_20px_rgba(245,255,59,0.3)] transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:shadow-[0_0_30px_rgba(245,255,59,0.5)]"
+        className="rounded-xl bg-linear-to-r from-[#f5ff3b] to-[#fbbf24] px-6 py-3 font-black text-black shadow-[0_0_20px_rgba(245,255,59,0.3)] transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:shadow-[0_0_30px_rgba(245,255,59,0.5)]"
       >
         {aiCategoryHighlight ? (
           <span className="flex items-center gap-2">
@@ -1429,7 +1429,7 @@ export default function DiceFlushPage() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -50, scale: 0.8 }}
               transition={{ type: "spring", stiffness: 300, damping: 20 }}
-              className="fixed inset-x-0 top-1/3 z-50 mx-auto w-fit max-w-[calc(100vw-1.5rem)] rounded-2xl border-2 border-[#f5ff3b]/40 bg-gradient-to-r from-[#030817] to-[#081a3d] px-6 py-5 shadow-[0_0_60px_rgba(245,255,59,0.3)] backdrop-blur sm:px-10 sm:py-6"
+              className="fixed inset-x-0 top-1/3 z-50 mx-auto w-fit max-w-[calc(100vw-1.5rem)] rounded-2xl border-2 border-[#f5ff3b]/40 bg-linear-to-r from-[#030817] to-[#081a3d] px-6 py-5 shadow-[0_0_60px_rgba(245,255,59,0.3)] backdrop-blur sm:px-10 sm:py-6"
             >
               <motion.div
                 initial={{ scale: 0 }}

@@ -119,7 +119,7 @@ export default function GameBoard({ gameId, movesLeft, setMovesLeft }) {
         {board.flat().map((cell, idx) => (
           <div
             key={idx}
-            className={`tile w-20 h-20 flex items-center justify-center font-bold text-xl rounded ${getTileColor(cell)}`}
+            className={`tile w-20 h-20 flex items-center justify-center font-bold text-xl rounded-sm ${getTileColor(cell)}`}
           >
             {cell !== 0 ? cell : ""}
           </div>

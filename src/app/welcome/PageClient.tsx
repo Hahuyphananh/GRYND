@@ -346,7 +346,7 @@ export default function WelcomePageClient({
   );
 
   const cardCls =
-    "rounded-2xl border border-[#00e5ff]/25 bg-[#040d24]/80 backdrop-blur-sm";
+    "rounded-2xl border border-[#00e5ff]/25 bg-[#040d24]/80 backdrop-blur-xs";
 
   let content: React.ReactNode = null;
 
@@ -357,12 +357,12 @@ export default function WelcomePageClient({
         <div className="text-center">
           <GlitchGuide step={0} center />
           <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center">
-            <div className="h-14 w-14 rotate-45 rounded-lg border-2 border-[#00e5ff] bg-gradient-to-br from-[#FF2D9B]/20 to-[#00e5ff]/20 shadow-[0_0_30px_rgba(0,229,255,0.5)]" />
+            <div className="h-14 w-14 rotate-45 rounded-lg border-2 border-[#00e5ff] bg-linear-to-br from-[#FF2D9B]/20 to-[#00e5ff]/20 shadow-[0_0_30px_rgba(0,229,255,0.5)]" />
           </div>
           <p className="mb-1 text-sm font-bold uppercase tracking-[0.25em] text-[#00e5ff]">
             {t("onboarding.welcome.kicker")}
           </p>
-          <h1 className="logo-text mb-4 bg-gradient-to-r from-[#FFD700] via-[#FFB300] to-[#FFD700] bg-clip-text text-5xl font-bold tracking-tight text-transparent drop-shadow-[0_0_25px_rgba(255,215,0,0.35)] sm:text-6xl">
+          <h1 className="logo-text mb-4 bg-linear-to-r from-[#FFD700] via-[#FFB300] to-[#FFD700] bg-clip-text text-5xl font-bold tracking-tight text-transparent drop-shadow-[0_0_25px_rgba(255,215,0,0.35)] sm:text-6xl">
             {t("onboarding.welcome.title")}
           </h1>
           <p className="mx-auto max-w-md text-base leading-relaxed text-[#c9f7ff]/90 sm:text-lg">
@@ -377,7 +377,7 @@ export default function WelcomePageClient({
             <button
               type="button"
               onClick={() => goTo(1)}
-              className="w-full rounded-2xl bg-gradient-to-r from-[#FFD700] to-[#FFB300] px-10 py-4 text-lg font-extrabold text-black shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all hover:brightness-110 active:scale-[0.98] sm:w-auto"
+              className="w-full rounded-2xl bg-linear-to-r from-[#FFD700] to-[#FFB300] px-10 py-4 text-lg font-extrabold text-black shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all hover:brightness-110 active:scale-[0.98] sm:w-auto"
             >
               {t("onboarding.welcome.play")} →
             </button>
@@ -522,7 +522,7 @@ export default function WelcomePageClient({
       content = (
         <div>
           <GlitchGuide step={4} center />
-          <div className="mx-auto mb-5 max-w-md rounded-2xl border border-amber-500/40 bg-[#0a0f2e]/70 p-6 text-center shadow-[0_0_40px_rgba(255,215,0,0.14)] backdrop-blur-sm">
+          <div className="mx-auto mb-5 max-w-md rounded-2xl border border-amber-500/40 bg-[#0a0f2e]/70 p-6 text-center shadow-[0_0_40px_rgba(255,215,0,0.14)] backdrop-blur-xs">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-[#00e5ff]/50 bg-[#00e5ff]/10 shadow-[0_0_25px_rgba(0,229,255,0.25)]">
               <IconRobot size={34} className="text-[#7cefff]" />
             </div>
@@ -555,7 +555,7 @@ export default function WelcomePageClient({
               type="button"
               onClick={() => void launch()}
               disabled={saving}
-              className="rounded-2xl bg-gradient-to-r from-[#FFD700] to-[#FFB300] px-8 py-4 text-base font-extrabold text-black shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all hover:brightness-110 active:scale-[0.98] disabled:opacity-60 sm:px-10"
+              className="rounded-2xl bg-linear-to-r from-[#FFD700] to-[#FFB300] px-8 py-4 text-base font-extrabold text-black shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all hover:brightness-110 active:scale-[0.98] disabled:opacity-60 sm:px-10"
             >
               {saving ? t("ui.loading") : `${t("onboarding.firstMatch.cta")} →`}
             </button>
@@ -650,7 +650,7 @@ export default function WelcomePageClient({
           ref={contentRef}
           tabIndex={-1}
           onKeyDown={onKeyDown}
-          className="w-full max-w-2xl outline-none"
+          className="w-full max-w-2xl outline-hidden"
           role="group"
           aria-label={isWelcome ? t("onboarding.welcome.kicker") : `Step ${step + 1} of ${TOTAL_STEPS}`}
         >

@@ -1309,18 +1309,18 @@ export default function ConnectFourGamePage() {
             </h1>
             {isSpectator && (
               <div className="mt-2 flex items-center gap-2">
-                <span className="text-xs rounded bg-cyan-500/20 px-2 py-1">
+                <span className="text-xs rounded-sm bg-cyan-500/20 px-2 py-1">
                   Spectator mode
                 </span>
                 <button
                   onClick={() => setSpectatorFocus("host")}
-                  className="px-2 py-1 text-xs rounded bg-white/10"
+                  className="px-2 py-1 text-xs rounded-sm bg-white/10"
                 >
                   View Host
                 </button>
                 <button
                   onClick={() => setSpectatorFocus("guest")}
-                  className="px-2 py-1 text-xs rounded bg-white/10"
+                  className="px-2 py-1 text-xs rounded-sm bg-white/10"
                 >
                   View Guest
                 </button>
@@ -1461,7 +1461,7 @@ export default function ConnectFourGamePage() {
                 Color
               </span>
               <span
-                className={`inline-flex items-center gap-1.5 rounded-sm px-2 py-0.5 text-xs font-semibold ${
+                className={`inline-flex items-center gap-1.5 rounded-xs px-2 py-0.5 text-xs font-semibold ${
                   game?.role === "host"
                     ? "bg-green-500/15 text-green-300 border border-green-400/30"
                     : game?.role === "guest"

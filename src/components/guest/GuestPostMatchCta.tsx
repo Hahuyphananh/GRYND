@@ -150,7 +150,7 @@ export default function GuestPostMatchCta({
       aria-labelledby="guest-post-match-cta-title"
       // Inline in the result panel's own flow: it never covers the outcome,
       // the final score or the retry/lobby controls, and it never takes focus.
-      className="rounded-2xl border border-[#00e5ff]/30 bg-gradient-to-br from-[#062138] via-[#04122b] to-[#0a0f2a] p-4 text-left shadow-[0_0_30px_rgba(0,229,255,0.16)]"
+      className="rounded-2xl border border-[#00e5ff]/30 bg-linear-to-br from-[#062138] via-[#04122b] to-[#0a0f2a] p-4 text-left shadow-[0_0_30px_rgba(0,229,255,0.16)]"
     >
       <div className="flex items-start justify-between gap-2">
         <p className="inline-flex items-center gap-1.5 rounded-full border border-[#00ffa6]/40 bg-[#00ffa6]/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.18em] text-[#00ffa6]">

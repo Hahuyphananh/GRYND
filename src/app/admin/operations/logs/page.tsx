@@ -96,7 +96,7 @@ export default async function OperationsLogsPage({
             name="q"
             defaultValue={pick(params.q)}
             placeholder="Filter by event, actor or reason"
-            className="min-w-[220px] flex-1 rounded-lg border border-[#1b2a4a] bg-[#0d1830] px-3 py-1.5 text-sm text-[#e6f7ff] placeholder:text-[#5f7794] focus:border-[#f5ff3b] focus:outline-none"
+            className="min-w-[220px] flex-1 rounded-lg border border-[#1b2a4a] bg-[#0d1830] px-3 py-1.5 text-sm text-[#e6f7ff] placeholder:text-[#5f7794] focus:border-[#f5ff3b] focus:outline-hidden"
           />
           <input type="hidden" name="source" value={source} />
           <button

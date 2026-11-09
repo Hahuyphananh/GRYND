@@ -45,7 +45,7 @@ export default function PrecisionFinishedPanel({
             lastRoundWinnerSeat={lastRoundWinnerSeat}
           />
         )}
-        <p className="rounded border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-bold text-cyan-100">
+        <p className="rounded-sm border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-bold text-cyan-100">
           {t("games.precision.match_finished_short")}
         </p>
       </div>

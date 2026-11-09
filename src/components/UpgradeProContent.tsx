@@ -92,7 +92,7 @@ function BillingCard({
       data-testid={`pro-interval-${interval}`}
       data-selected={selected ? "true" : "false"}
       onClick={onSelect}
-      className={`relative flex h-full flex-col rounded-xl border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] ${
+      className={`relative flex h-full flex-col rounded-xl border p-3 text-left transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] ${
         selected
           ? "border-[#f5ff3b] bg-[#f5ff3b]/10 shadow-[0_0_22px_rgba(245,255,59,0.25)]"
           : "border-[#00e5ff]/25 bg-[#04122e]/70 hover:border-[#00e5ff]/50"
@@ -229,7 +229,7 @@ export default function UpgradeProContent({
           type="button"
           onClick={onDismiss}
           aria-label={t("pro.close")}
-          className="absolute right-3 top-3 z-10 rounded-lg border border-[#00e5ff]/30 bg-[#0b224f]/80 px-2 py-1 text-sm text-[#9dd8ff] transition hover:text-[#00e5ff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+          className="absolute right-3 top-3 z-10 rounded-lg border border-[#00e5ff]/30 bg-[#0b224f]/80 px-2 py-1 text-sm text-[#9dd8ff] transition hover:text-[#00e5ff] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
         >
           ✕
         </button>
@@ -316,7 +316,7 @@ export default function UpgradeProContent({
               onClick={handlePrimary}
               disabled={busy}
               data-testid="pro-primary-cta"
-              className="inline-flex items-center justify-center rounded-xl border border-[#f5ff3b]/60 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-2.5 font-bold text-[#1f1700] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] disabled:opacity-60"
+              className="inline-flex items-center justify-center rounded-xl border border-[#f5ff3b]/60 bg-linear-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-2.5 font-bold text-[#1f1700] transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] disabled:opacity-60"
             >
               {ctaLabel}
             </button>
@@ -325,7 +325,7 @@ export default function UpgradeProContent({
                 type="button"
                 onClick={onManage}
                 disabled={busy}
-                className="inline-flex items-center justify-center rounded-xl border border-[#00e5ff]/60 bg-[#00e5ff]/15 px-5 py-2.5 font-semibold text-[#00e5ff] transition hover:bg-[#00e5ff]/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] disabled:opacity-60"
+                className="inline-flex items-center justify-center rounded-xl border border-[#00e5ff]/60 bg-[#00e5ff]/15 px-5 py-2.5 font-semibold text-[#00e5ff] transition hover:bg-[#00e5ff]/25 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] disabled:opacity-60"
               >
                 {t("pro.cta.manage")}
               </button>

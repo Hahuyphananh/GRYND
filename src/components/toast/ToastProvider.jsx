@@ -97,7 +97,7 @@ function ToastItem({ toast, onDismiss, shouldReduce }) {
         type="button"
         onClick={() => onDismiss(toast.id)}
         aria-label="Dismiss notification"
-        className="-m-1 rounded-md p-1 text-[#7dd3fc] transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+        className="-m-1 rounded-md p-1 text-[#7dd3fc] transition hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
       >
         <IconX size={16} aria-hidden="true" />
       </button>

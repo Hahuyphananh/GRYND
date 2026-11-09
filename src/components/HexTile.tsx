@@ -161,7 +161,7 @@ export default function HexTile({
         hover:z-20
         active:scale-[0.93]
         ${isSelected ? "scale-105 z-10" : ""}
-        cursor-pointer outline-none
+        cursor-pointer outline-hidden
         rounded-lg
         select-none
       `}
@@ -455,7 +455,7 @@ export default function HexTile({
           <span
             aria-hidden="true"
             data-hex-upgrade-donor={fundingTake}
-            className="pointer-events-none absolute bottom-0.5 left-0.5 z-20 rounded px-1 font-mono font-black leading-tight tabular-nums"
+            className="pointer-events-none absolute bottom-0.5 left-0.5 z-20 rounded-sm px-1 font-mono font-black leading-tight tabular-nums"
             style={{
               fontSize: "clamp(6px, 0.9vw, 9px)",
               background: "rgba(88,28,135,0.85)",
@@ -471,7 +471,7 @@ export default function HexTile({
         <span
           aria-hidden="true"
           data-hex-upgrade-receives={fundingReceives}
-          className="pointer-events-none absolute bottom-0.5 right-0.5 z-20 rounded px-1 font-mono font-black leading-tight tabular-nums"
+          className="pointer-events-none absolute bottom-0.5 right-0.5 z-20 rounded-sm px-1 font-mono font-black leading-tight tabular-nums"
           style={{
             fontSize: "clamp(6px, 0.9vw, 9px)",
             background: "rgba(88,28,135,0.85)",
@@ -487,7 +487,7 @@ export default function HexTile({
           board does not gain noise on tiles that were never upgraded. */}
       {isOwned && typeof level === "number" && level > 1 && (
         <span
-          className="absolute right-1 top-1 z-10 rounded px-1 font-black leading-tight"
+          className="absolute right-1 top-1 z-10 rounded-sm px-1 font-black leading-tight"
           style={{
             fontSize: "clamp(6px, 0.9vw, 9px)",
             // Shades with the walls, so the badge and the fortification agree.
@@ -535,7 +535,7 @@ export default function HexTile({
         )}
         {isOwned && !capital && (
           <span
-            className="font-bold leading-none mt-0.5 rounded-sm px-0.5"
+            className="font-bold leading-none mt-0.5 rounded-xs px-0.5"
             style={{
               fontSize: "clamp(5px, 0.9vw, 9px)",
               color: owner === "player1" ? "rgba(34,211,238,0.5)" : "rgba(239,68,68,0.5)",

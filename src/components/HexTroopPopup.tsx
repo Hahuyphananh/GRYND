@@ -329,7 +329,7 @@ export default function HexTroopPopup({
             // input; tapping the field is opt-in.
             aria-label="Troops to send"
             onChange={(e) => onChange(clampSendCount(Number(e.target.value), safeMax))}
-            className="w-16 rounded-lg border border-white/15 bg-[#020617] px-2 py-1.5 text-center text-sm text-white outline-none transition focus:border-white/40"
+            className="w-16 rounded-lg border border-white/15 bg-[#020617] px-2 py-1.5 text-center text-sm text-white outline-hidden transition focus:border-white/40"
           />
           <span className="text-[10px] text-slate-400">/ {safeMax}</span>
         </div>

@@ -304,8 +304,8 @@ const SIDEBAR_ITEMS = [
 // crawlers, and it works with JavaScript disabled.
 function FaqItem({ q, a }) {
   return (
-    <details className="group rounded-lg border border-[#00e5ff]/15 bg-[#040d24]/60 backdrop-blur-sm transition-all hover:border-[#00e5ff]/30 open:border-[#00e5ff]/40">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]">
+    <details className="group rounded-lg border border-[#00e5ff]/15 bg-[#040d24]/60 backdrop-blur-xs transition-all hover:border-[#00e5ff]/30 open:border-[#00e5ff]/40">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-4 text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]">
         <h3 className="text-base font-semibold text-[#c9f7ff]">{q}</h3>
         <span
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[#00e5ff]/40 text-[#00e5ff] transition-transform duration-300 group-open:rotate-45"
@@ -328,7 +328,7 @@ export default function FaqPage({ gameCards = [] }) {
 
       <div className="mx-auto max-w-6xl px-4 py-10 sm:py-14">
         <header className="mb-6">
-          <h1 className="mb-4 text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#00e5ff] to-[#f5ff3b] sm:text-4xl">
+          <h1 className="mb-4 text-3xl font-extrabold text-transparent bg-clip-text bg-linear-to-r from-[#00e5ff] to-[#f5ff3b] sm:text-4xl">
             Frequently Asked Questions
           </h1>
           <p className="text-base text-[#9dd8ff] sm:text-lg">

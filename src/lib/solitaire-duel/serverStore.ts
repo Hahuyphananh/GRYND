@@ -36,7 +36,7 @@ import { payPvpPot, refundPvpPot } from "../tokens/pvpPot";
 import { applyTrophyResult } from "../trophyStore";
 import { markDailyRewardWin } from "../dailyRewardWin";
 import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
-import { publicSolitaireBot, solitaireBotFor } from "./bots";
+import { publicSolitaireBot, solitaireBotFor, type SolitaireBotId } from "./bots";
 import { isPracticePaused } from "../practicePause";
 import {
   INACTIVITY_ALARM_MS,
@@ -53,7 +53,7 @@ import {
   VARIANT,
   VARIANT_VERSION,
 } from "./constants";
-import { aiMoveDelayMs, legalMoves, planAiMoves } from "./ai";
+import { aiMoveDelayMs, botCanFinishDeal, legalMoves, planAiMoves } from "./ai";
 import { solvableDealFromSeed, stateSolvableVerdict } from "./solvable";
 import {
   cloneState,
@@ -758,6 +758,47 @@ async function joinExistingMatch(
  * player2. The only additions are the `playing` status and the synchronized
  * clock, so the human gets the identical countdown a joined lobby would have.
  */
+/** Candidate deals a practice match may verify before settling on one. */
+const AI_DEAL_ATTEMPTS = 6;
+/** Wall-clock cap on that search, so creating a practice match never hangs. */
+const AI_DEAL_SEARCH_MS = 800;
+
+/**
+ * A verified-solvable deal the given bot can ALSO finish itself.
+ *
+ * `solvableDealFromSeed` proves a perfect line exists, and the v3 generator
+ * deliberately rejects deals that naive play solves — which means most of them
+ * also dead-end a named bot's fair, mistake-prone heuristic. A practice bot on
+ * such a board is re-dealt mid-race instead of ever completing the puzzle, so
+ * the deal it is handed is chosen by replaying the bot's OWN deterministic plan
+ * on each candidate. Fair by construction: the check uses only the moves the bot
+ * would make from what a player can see, never the deal's solution.
+ *
+ * Bounded in both attempts and wall-clock time; the last candidate stands if
+ * none of them verifies, so a practice match always starts.
+ */
+function finishableDealFor(botId: SolitaireBotId): {
+  serverSeed: string;
+  serverSeedHash: string;
+  dealSeed: number;
+  deal: SolitaireDeal;
+} {
+  const startedAt = Date.now();
+  let serverSeed = randomHex(32);
+  let dealSeed = deriveDealSeed({ serverSeed, variantVersion: VARIANT_VERSION });
+  let deal = solvableDealFromSeed(dealSeed);
+
+  for (let attempt = 1; attempt < AI_DEAL_ATTEMPTS; attempt += 1) {
+    if (botCanFinishDeal({ deal, difficulty: botId })) break;
+    if (Date.now() - startedAt >= AI_DEAL_SEARCH_MS) break;
+    serverSeed = randomHex(32);
+    dealSeed = deriveDealSeed({ serverSeed, variantVersion: VARIANT_VERSION });
+    deal = solvableDealFromSeed(dealSeed);
+  }
+
+  return { serverSeed, serverSeedHash: getServerSeedHash(serverSeed), dealSeed, deal };
+}
+
 export async function createAiMatch({
   userId,
   difficulty,
@@ -770,12 +811,10 @@ export async function createAiMatch({
   // Resolve a named bot (or a legacy tier) once, and persist its STABLE id.
   const bot = solitaireBotFor(difficulty);
 
-  const serverSeed = randomHex(32);
-  const serverSeedHash = getServerSeedHash(serverSeed);
-  const dealSeed = deriveDealSeed({ serverSeed, variantVersion: VARIANT_VERSION });
-  // Practice deals are guaranteed solvable too: a bot match that can never be
-  // finished is just as bad an experience as an unrated duel that stalls.
-  const deal: SolitaireDeal = solvableDealFromSeed(dealSeed);
+  // A practice deal is guaranteed solvable AND finishable by this bot: a match
+  // whose bot can never complete its own board is the "it never finishes"
+  // experience, even though the human can still win.
+  const { serverSeed, serverSeedHash, dealSeed, deal } = finishableDealFor(bot.id);
 
   const opening = initialStateFromDeal(deal);
   const openingProgress = progressOf(opening);
@@ -904,9 +943,23 @@ async function redealSeatInTx(
   // is NOT written back to the row's shared `deal` column: that column is the
   // match's original committed deal, and a re-dealt seat's board is a deliberate
   // divergence from it (see the audit note on the impossible-board path).
-  const serverSeed = randomHex(32);
-  const dealSeed = deriveDealSeed({ serverSeed, variantVersion: VARIANT_VERSION });
-  const deal = solvableDealFromSeed(dealSeed);
+  let deal = solvableDealFromSeed(
+    deriveDealSeed({ serverSeed: randomHex(32), variantVersion: VARIANT_VERSION }),
+  );
+  // A BOT seat is re-dealt onto a board it can actually finish, so the re-deal
+  // does not simply move the same dead end to a new deal. The human's board is
+  // untouched by this and is never verified this way.
+  if (match.isAi && seat === SEAT.PLAYER2) {
+    const botId = aiDifficultyForMatch(match);
+    const startedAt = Date.now();
+    for (let attempt = 1; attempt < AI_DEAL_ATTEMPTS; attempt += 1) {
+      if (botCanFinishDeal({ deal, difficulty: botId })) break;
+      if (Date.now() - startedAt >= AI_DEAL_SEARCH_MS) break;
+      deal = solvableDealFromSeed(
+        deriveDealSeed({ serverSeed: randomHex(32), variantVersion: VARIANT_VERSION }),
+      );
+    }
+  }
   const opening = initialStateFromDeal(deal);
   opening.ply = previous?.ply ?? 0;
   opening.resetCount = (previous?.resetCount ?? 0) + 1;

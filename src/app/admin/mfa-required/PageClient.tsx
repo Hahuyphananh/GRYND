@@ -91,7 +91,7 @@ function FactorUnavailable({
       <p className="flex flex-wrap items-center gap-2 text-xs text-amber-100/80">
         <span>Configured through</span>
         {help.variables.map((name) => (
-          <code key={name} className="rounded bg-black/40 px-1.5 py-0.5 font-mono text-[#f5ff3b]">
+          <code key={name} className="rounded-sm bg-black/40 px-1.5 py-0.5 font-mono text-[#f5ff3b]">
             {name}
           </code>
         ))}
@@ -106,7 +106,7 @@ function FactorUnavailable({
           </p>
           {generatedTotp ? (
             <>
-              <code className="block break-all rounded bg-black/40 px-2 py-1 text-[#f5ff3b]">
+              <code className="block break-all rounded-sm bg-black/40 px-2 py-1 text-[#f5ff3b]">
                 ADMIN_TOTP_SECRET={generatedTotp}
               </code>
               <div className="flex flex-wrap gap-2">
@@ -389,7 +389,7 @@ export default function AdminMfaRequiredPage() {
                 setMessage(null);
               }}
               aria-pressed={active === m}
-              className={`rounded-lg px-3 py-2 text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] ${
+              className={`rounded-lg px-3 py-2 text-sm font-semibold transition-all focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] ${
                 active === m
                   ? "bg-[#f5ff3b] text-[#1f1700]"
                   : "border border-[#00e5ff]/30 bg-[#08142f] text-[#d8fbff] hover:bg-[#10234a]"
@@ -412,7 +412,7 @@ export default function AdminMfaRequiredPage() {
               <button
                 onClick={sendOtp}
                 disabled={busy}
-                className="w-full rounded-lg border border-[#f5ff3b]/50 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-2.5 text-sm font-bold text-[#1f1700] shadow-[0_0_18px_rgba(245,255,59,0.4)] transition-all hover:shadow-[0_0_26px_rgba(245,255,59,0.65)] disabled:opacity-60"
+                className="w-full rounded-lg border border-[#f5ff3b]/50 bg-linear-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-2.5 text-sm font-bold text-[#1f1700] shadow-[0_0_18px_rgba(245,255,59,0.4)] transition-all hover:shadow-[0_0_26px_rgba(245,255,59,0.65)] disabled:opacity-60"
               >
                 {busy ? "Sending…" : "Send code to my email"}
               </button>
@@ -426,13 +426,13 @@ export default function AdminMfaRequiredPage() {
                   placeholder="6-digit code"
                   value={code}
                   onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-                  className="w-full rounded-lg border border-[#00e5ff]/40 bg-[#08142f] px-4 py-2.5 text-center text-lg tracking-[0.5em] text-[#ecf8ff] focus:outline-none focus:ring-2 focus:ring-[#00e5ff]"
+                  className="w-full rounded-lg border border-[#00e5ff]/40 bg-[#08142f] px-4 py-2.5 text-center text-lg tracking-[0.5em] text-[#ecf8ff] focus:outline-hidden focus:ring-2 focus:ring-[#00e5ff]"
                 />
                 <div className="flex gap-2">
                   <button
                     onClick={() => verify("email")}
                     disabled={busy}
-                    className="flex-1 rounded-lg border border-[#f5ff3b]/50 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-2.5 text-sm font-bold text-[#1f1700] shadow-[0_0_18px_rgba(245,255,59,0.4)] transition-all hover:shadow-[0_0_26px_rgba(245,255,59,0.65)] disabled:opacity-60"
+                    className="flex-1 rounded-lg border border-[#f5ff3b]/50 bg-linear-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-2.5 text-sm font-bold text-[#1f1700] shadow-[0_0_18px_rgba(245,255,59,0.4)] transition-all hover:shadow-[0_0_26px_rgba(245,255,59,0.65)] disabled:opacity-60"
                   >
                     {busy ? "Verifying…" : "Verify"}
                   </button>
@@ -471,12 +471,12 @@ export default function AdminMfaRequiredPage() {
                   placeholder="6-digit code"
                   value={code}
                   onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-                  className="w-full rounded-lg border border-[#00e5ff]/40 bg-[#08142f] px-4 py-2.5 text-center text-lg tracking-[0.5em] text-[#ecf8ff] focus:outline-none focus:ring-2 focus:ring-[#00e5ff]"
+                  className="w-full rounded-lg border border-[#00e5ff]/40 bg-[#08142f] px-4 py-2.5 text-center text-lg tracking-[0.5em] text-[#ecf8ff] focus:outline-hidden focus:ring-2 focus:ring-[#00e5ff]"
                 />
                 <button
                   onClick={() => verify("totp")}
                   disabled={busy}
-                  className="w-full rounded-lg border border-[#f5ff3b]/50 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-2.5 text-sm font-bold text-[#1f1700] shadow-[0_0_18px_rgba(245,255,59,0.4)] transition-all hover:shadow-[0_0_26px_rgba(245,255,59,0.65)] disabled:opacity-60"
+                  className="w-full rounded-lg border border-[#f5ff3b]/50 bg-linear-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-2.5 text-sm font-bold text-[#1f1700] shadow-[0_0_18px_rgba(245,255,59,0.4)] transition-all hover:shadow-[0_0_26px_rgba(245,255,59,0.65)] disabled:opacity-60"
                 >
                   {busy ? "Verifying…" : "Verify"}
                 </button>
@@ -499,11 +499,11 @@ export default function AdminMfaRequiredPage() {
                     <p className="mb-1">
                       Scan the QR code, or add this secret manually:
                     </p>
-                    <code className="block break-all rounded bg-black/40 px-2 py-1 text-[#f5ff3b]">
+                    <code className="block break-all rounded-sm bg-black/40 px-2 py-1 text-[#f5ff3b]">
                       {totpSetup.secret}
                     </code>
                     <p className="mt-2 mb-1">Or use this URI:</p>
-                    <code className="block break-all rounded bg-black/40 px-2 py-1 text-[#9dd8ff]">
+                    <code className="block break-all rounded-sm bg-black/40 px-2 py-1 text-[#9dd8ff]">
                       {totpSetup.otpauthUrl}
                     </code>
                   </div>
@@ -529,12 +529,12 @@ export default function AdminMfaRequiredPage() {
                   placeholder="Admin passphrase"
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
-                  className="w-full rounded-lg border border-[#00e5ff]/40 bg-[#08142f] px-4 py-2.5 text-[#ecf8ff] focus:outline-none focus:ring-2 focus:ring-[#00e5ff]"
+                  className="w-full rounded-lg border border-[#00e5ff]/40 bg-[#08142f] px-4 py-2.5 text-[#ecf8ff] focus:outline-hidden focus:ring-2 focus:ring-[#00e5ff]"
                 />
                 <button
                   onClick={() => verify("passphrase")}
                   disabled={busy}
-                  className="w-full rounded-lg border border-[#f5ff3b]/50 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-2.5 text-sm font-bold text-[#1f1700] shadow-[0_0_18px_rgba(245,255,59,0.4)] transition-all hover:shadow-[0_0_26px_rgba(245,255,59,0.65)] disabled:opacity-60"
+                  className="w-full rounded-lg border border-[#f5ff3b]/50 bg-linear-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-2.5 text-sm font-bold text-[#1f1700] shadow-[0_0_18px_rgba(245,255,59,0.4)] transition-all hover:shadow-[0_0_26px_rgba(245,255,59,0.65)] disabled:opacity-60"
                 >
                   {busy ? "Verifying…" : "Verify"}
                 </button>

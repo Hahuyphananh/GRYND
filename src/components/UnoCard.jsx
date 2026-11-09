@@ -200,29 +200,29 @@ export default function UnoCard({
       {/* NEON BORDER WRAPPER */}
       <div
         className="relative rounded-lg p-[2px]
-        bg-gradient-to-r from-[#38fcfc] via-[#ff2d9b] to-[#38fcfc]
+        bg-linear-to-r from-[#38fcfc] via-[#ff2d9b] to-[#38fcfc]
         group-hover:shadow-[0_0_25px_rgba(255,45,155,0.55)] transition-shadow duration-300"
       >
         {/* BORDER FLOW ANIMATION */}
         <div className="absolute inset-0 pointer-events-none rounded-lg overflow-hidden">
           <div
             className="absolute h-[2px] w-full top-0
-            bg-gradient-to-r from-transparent via-[#38fcfc] to-transparent
+            bg-linear-to-r from-transparent via-[#38fcfc] to-transparent
             animate-borderFlowX"
           />
           <div
             className="absolute h-[2px] w-full bottom-0
-            bg-gradient-to-r from-transparent via-[#38fcfc] to-transparent
+            bg-linear-to-r from-transparent via-[#38fcfc] to-transparent
             animate-borderFlowX reverse"
           />
           <div
             className="absolute w-[2px] h-full left-0
-            bg-gradient-to-b from-transparent via-[#38fcfc] to-transparent
+            bg-linear-to-b from-transparent via-[#38fcfc] to-transparent
             animate-borderFlowY"
           />
           <div
             className="absolute w-[2px] h-full right-0
-            bg-gradient-to-b from-transparent via-[#38fcfc] to-transparent
+            bg-linear-to-b from-transparent via-[#38fcfc] to-transparent
             animate-borderFlowY reverse"
           />
         </div>

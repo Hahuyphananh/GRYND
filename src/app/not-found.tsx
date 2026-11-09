@@ -108,7 +108,7 @@ function Reel({ reel }: { reel: (typeof REELS)[number] }) {
         {reel.digits.map((d, i) => (
           <div
             key={i}
-            className={`flex h-24 w-20 items-center justify-center bg-gradient-to-b from-[#0b224f]/60 to-[#050d1f] text-5xl font-black ${reel.digitClass}`}
+            className={`flex h-24 w-20 items-center justify-center bg-linear-to-b from-[#0b224f]/60 to-[#050d1f] text-5xl font-black ${reel.digitClass}`}
           >
             {d}
           </div>
@@ -141,7 +141,7 @@ function Die({ duration, delay, lift }: { duration: string; delay: string; lift:
         {DIE_FACES.map((face, i) => (
           <div
             key={i}
-            className="dice-face absolute inset-0 rounded-xl border border-[#8fb3c9]/60 bg-gradient-to-br from-[#f7fbff] to-[#bcd6e8] shadow-[inset_0_2px_6px_rgba(255,255,255,0.8),inset_0_-2px_6px_rgba(11,34,79,0.25)]"
+            className="dice-face absolute inset-0 rounded-xl border border-[#8fb3c9]/60 bg-linear-to-br from-[#f7fbff] to-[#bcd6e8] shadow-[inset_0_2px_6px_rgba(255,255,255,0.8),inset_0_-2px_6px_rgba(11,34,79,0.25)]"
             style={{ transform: face.transform }}
           >
             <div className="grid h-full w-full grid-cols-3 grid-rows-3 p-2">
@@ -209,7 +209,7 @@ export default function NotFound() {
         {/* Branding */}
         <Link
           href="/"
-          className="inline-block rounded-lg transition-transform duration-300 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
+          className="inline-block rounded-lg transition-transform duration-300 hover:scale-105 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
         >
           <Image
             src={LogoSmiley}
@@ -221,19 +221,19 @@ export default function NotFound() {
         </Link>
 
         {/* Slot machine */}
-        <div className="mt-8 rounded-3xl border-2 border-[#00e5ff]/35 bg-[#0b224f]/85 px-6 py-7 shadow-[0_0_45px_rgba(0,229,255,0.2)] backdrop-blur-sm sm:px-10 sm:py-9">
-          <p className="animate-shimmer-elegant bg-gradient-to-r from-[#00e5ff] via-[#f5ff3b] to-[#00e5ff] bg-clip-text text-sm font-black uppercase tracking-[0.35em] text-transparent">
+        <div className="mt-8 rounded-3xl border-2 border-[#00e5ff]/35 bg-[#0b224f]/85 px-6 py-7 shadow-[0_0_45px_rgba(0,229,255,0.2)] backdrop-blur-xs sm:px-10 sm:py-9">
+          <p className="animate-shimmer-elegant bg-linear-to-r from-[#00e5ff] via-[#f5ff3b] to-[#00e5ff] bg-clip-text text-sm font-black uppercase tracking-[0.35em] text-transparent">
             Off the Board
           </p>
 
           <div className="mt-5 flex items-center justify-center gap-3 sm:gap-4">
-            <div className="h-px w-8 bg-gradient-to-r from-transparent to-[#00e5ff]/70 sm:w-12" />
+            <div className="h-px w-8 bg-linear-to-r from-transparent to-[#00e5ff]/70 sm:w-12" />
             <div className="flex gap-2.5 sm:gap-3">
               {REELS.map((reel, i) => (
                 <Reel key={i} reel={reel} />
               ))}
             </div>
-            <div className="h-px w-8 bg-gradient-to-l from-transparent to-[#00e5ff]/70 sm:w-12" />
+            <div className="h-px w-8 bg-linear-to-l from-transparent to-[#00e5ff]/70 sm:w-12" />
           </div>
         </div>
 
@@ -245,7 +245,7 @@ export default function NotFound() {
 
         <h1 className="mt-8 text-4xl font-extrabold tracking-tight sm:text-5xl">
           <span className="sr-only">404 · </span>
-          <span className="animate-shimmer-elegant bg-gradient-to-r from-[#00e5ff] via-[#f5ff3b] to-[#00e5ff] bg-clip-text text-transparent">
+          <span className="animate-shimmer-elegant bg-linear-to-r from-[#00e5ff] via-[#f5ff3b] to-[#00e5ff] bg-clip-text text-transparent">
             Page Not Found
           </span>
         </h1>
@@ -259,7 +259,7 @@ export default function NotFound() {
         <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <Link
             href="/"
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#FFD700] px-7 py-3 font-bold text-[#030817] shadow-[0_0_18px_rgba(255,215,0,0.45)] transition-all duration-200 hover:scale-[1.04] hover:bg-[#ffe14f] hover:shadow-[0_0_30px_rgba(255,215,0,0.7)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f] active:scale-95 sm:w-auto"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#FFD700] px-7 py-3 font-bold text-[#030817] shadow-[0_0_18px_rgba(255,215,0,0.45)] transition-all duration-200 hover:scale-[1.04] hover:bg-[#ffe14f] hover:shadow-[0_0_30px_rgba(255,215,0,0.7)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f] active:scale-95 sm:w-auto"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -275,7 +275,7 @@ export default function NotFound() {
           </Link>
           <Link
             href="/games"
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#00e5ff]/50 bg-[#00e5ff]/10 px-7 py-3 font-bold text-[#00e5ff] transition-all duration-200 hover:bg-[#00e5ff]/20 hover:shadow-[0_0_20px_rgba(0,229,255,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f] active:scale-95 sm:w-auto"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#00e5ff]/50 bg-[#00e5ff]/10 px-7 py-3 font-bold text-[#00e5ff] transition-all duration-200 hover:bg-[#00e5ff]/20 hover:shadow-[0_0_20px_rgba(0,229,255,0.35)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f] active:scale-95 sm:w-auto"
           >
             Explore the Games
             <svg
@@ -301,7 +301,7 @@ export default function NotFound() {
               <Link
                 key={l.href}
                 href={l.href}
-                className="rounded-full border border-[#00e5ff]/25 bg-[#08142f] px-3.5 py-1.5 text-xs font-medium text-[#c9f7ff] transition-colors duration-200 hover:border-[#00e5ff]/60 hover:text-[#f5ff3b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                className="rounded-full border border-[#00e5ff]/25 bg-[#08142f] px-3.5 py-1.5 text-xs font-medium text-[#c9f7ff] transition-colors duration-200 hover:border-[#00e5ff]/60 hover:text-[#f5ff3b] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
               >
                 {l.label}
               </Link>

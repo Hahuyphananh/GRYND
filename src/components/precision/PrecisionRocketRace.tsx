@@ -131,7 +131,7 @@ function LaneView({
 
       {/* Exhaust trail — grows with the rocket. */}
       <div
-        className={`absolute left-1/2 w-1 -translate-x-1/2 rounded-full bg-gradient-to-t ${palette.trail} transition-none`}
+        className={`absolute left-1/2 w-1 -translate-x-1/2 rounded-full bg-linear-to-t ${palette.trail} transition-none`}
         style={{ height: `${pct}%` }}
       />
 
@@ -282,7 +282,7 @@ export default function PrecisionRocketRace({
                     {lane.isSelf && (
                       <span
                         data-testid={`precision-race-you-${lane.seat}`}
-                        className="shrink-0 rounded bg-white/15 px-1 py-px text-[9px] tracking-wide text-white"
+                        className="shrink-0 rounded-sm bg-white/15 px-1 py-px text-[9px] tracking-wide text-white"
                       >
                         {t("games.precision.you_tag")}
                       </span>
@@ -326,7 +326,7 @@ export default function PrecisionRocketRace({
                 data-testid="precision-race-threshold"
               >
                 <div className="border-t-2 border-dashed border-yellow-300/80" />
-                <span className="absolute -top-2.5 left-1.5 rounded bg-yellow-300 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-black">
+                <span className="absolute -top-2.5 left-1.5 rounded-sm bg-yellow-300 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-black">
                   {t("games.precision.target_label")} {((targetMs as number) / 1000).toFixed(2)}s
                 </span>
               </div>

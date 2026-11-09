@@ -602,7 +602,7 @@ export default function PvpResultScreen({
           role="dialog"
           aria-modal="true"
           aria-label={`Match result — ${style.label}`}
-          className={`fixed inset-0 z-[95] overflow-y-auto bg-black/80 px-3 py-4 backdrop-blur-sm sm:px-4 ${
+          className={`fixed inset-0 z-[95] overflow-y-auto bg-black/80 px-3 py-4 backdrop-blur-xs sm:px-4 ${
             compact ? "!px-2 !py-3" : ""
           }`}
         >
@@ -626,7 +626,7 @@ export default function PvpResultScreen({
                     ? { duration: 0.3, ease: "easeOut" }
                     : panelMotion.transition,
             })}
-            className={`relative w-full rounded-2xl border-2 bg-gradient-to-b text-center ${style.gradient} ${
+            className={`relative w-full rounded-2xl border-2 bg-linear-to-b text-center ${style.gradient} ${
               compact
                 ? "max-w-[22rem] p-3.5"
                 : "max-w-md p-5 sm:p-6"

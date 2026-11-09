@@ -116,7 +116,7 @@ export default function OfflineBanner() {
                   }
                 }}
                 aria-label={t("states.retryNow", "Retry now")}
-                className="rounded-full p-0.5 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b]"
+                className="rounded-full p-0.5 transition hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b]"
               >
                 <IconRefresh size={13} aria-hidden="true" />
               </button>

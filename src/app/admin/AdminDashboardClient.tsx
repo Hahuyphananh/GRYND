@@ -929,7 +929,7 @@ export default function AdminDashboardClient({
             </div>
             <div className="h-4 w-full bg-white/10 rounded-full overflow-hidden">
               <div
-                className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full transition-all duration-500"
+                className="h-full bg-linear-to-r from-emerald-500 to-emerald-400 rounded-full transition-all duration-500"
                 style={{
                   width:
                     stats.summary.totalRequests > 0
@@ -1173,7 +1173,7 @@ export default function AdminDashboardClient({
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleUserSearch();
                 }}
-                className="flex-1 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-gray-200 placeholder-gray-500 outline-none focus:border-blue-400/40"
+                className="flex-1 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-gray-200 placeholder-gray-500 outline-hidden focus:border-blue-400/40"
               />
               <button
                 onClick={handleUserSearch}
@@ -1303,7 +1303,7 @@ export default function AdminDashboardClient({
                     onKeyDown={(e) => {
                       if (e.key === "Enter") handleResetTokens();
                     }}
-                    className="flex-1 rounded-lg border border-amber-500/30 bg-white/5 px-4 py-2 text-sm text-gray-200 placeholder-gray-500 outline-none focus:border-amber-400/50"
+                    className="flex-1 rounded-lg border border-amber-500/30 bg-white/5 px-4 py-2 text-sm text-gray-200 placeholder-gray-500 outline-hidden focus:border-amber-400/50"
                     min={0}
                     step="any"
                   />
@@ -1432,7 +1432,7 @@ export default function AdminDashboardClient({
                             onClick={() => handleRenameUser(r)}
                             disabled={banLoading === "rename-" + r.id}
                             title="Assign this player a new, neutral display name"
-                            className="px-2.5 py-1 rounded text-[10px] font-medium bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/25 transition-colors disabled:opacity-50"
+                            className="px-2.5 py-1 rounded-sm text-[10px] font-medium bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/25 transition-colors disabled:opacity-50"
                           >
                             {banLoading === "rename-" + r.id ? "..." : "Rename"}
                           </button>
@@ -1440,7 +1440,7 @@ export default function AdminDashboardClient({
                             onClick={() => handleToggleBan(r.reported_clerk_id, !r.reported_is_banned)}
                             disabled={banLoading === r.reported_clerk_id}
                             className={
-                              "px-2.5 py-1 rounded text-[10px] font-medium transition-colors border disabled:opacity-50 " +
+                              "px-2.5 py-1 rounded-sm text-[10px] font-medium transition-colors border disabled:opacity-50 " +
                               (r.reported_is_banned
                                 ? "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/30"
                                 : "bg-red-500/20 hover:bg-red-500/30 text-red-300 border-red-500/30")
@@ -1455,14 +1455,14 @@ export default function AdminDashboardClient({
                           <button
                             onClick={() => handleResolveReport(r.id, "dismissed")}
                             disabled={banLoading === String(r.id)}
-                            className="px-2.5 py-1 rounded text-[10px] font-medium bg-white/5 hover:bg-white/10 text-gray-400 border border-white/10 transition-colors disabled:opacity-50"
+                            className="px-2.5 py-1 rounded-sm text-[10px] font-medium bg-white/5 hover:bg-white/10 text-gray-400 border border-white/10 transition-colors disabled:opacity-50"
                           >
                             Dismiss
                           </button>
                           <button
                             onClick={() => handleResolveReport(r.id, "resolved")}
                             disabled={banLoading === String(r.id)}
-                            className="px-2.5 py-1 rounded text-[10px] font-medium bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/20 transition-colors disabled:opacity-50"
+                            className="px-2.5 py-1 rounded-sm text-[10px] font-medium bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/20 transition-colors disabled:opacity-50"
                           >
                             Resolve
                           </button>
@@ -1670,7 +1670,7 @@ export default function AdminDashboardClient({
               onChange={(e) => setReplyText(e.target.value)}
               placeholder="Write your reply..."
               maxLength={5000}
-              className="w-full rounded-lg border border-white/10 bg-[#0d1830] px-4 py-2.5 text-sm text-white placeholder-gray-500 outline-none focus:border-[#f5ff3b]/50 resize-y mb-3"
+              className="w-full rounded-lg border border-white/10 bg-[#0d1830] px-4 py-2.5 text-sm text-white placeholder-gray-500 outline-hidden focus:border-[#f5ff3b]/50 resize-y mb-3"
             />
             <div className="flex items-center justify-between gap-3">
               <span className="text-xs text-gray-500">

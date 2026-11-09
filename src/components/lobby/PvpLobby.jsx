@@ -175,7 +175,7 @@ export function CoinWagerPicker({
           value={Number.isFinite(stake) ? stake : ""}
           onChange={(event) => onChange(Number(event.target.value))}
           aria-label="Custom stake in coins"
-          className="w-20 rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1 text-xs font-bold tabular-nums text-white focus:border-cyan-400/60 focus:outline-none"
+          className="w-20 rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1 text-xs font-bold tabular-nums text-white focus:border-cyan-400/60 focus:outline-hidden"
         />
       </div>
       <p
@@ -204,7 +204,7 @@ export function RulesModal({ title = "How to Play", sections = [], onClose }) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-xs"
       onClick={onClose}
     >
       <motion.div
@@ -215,7 +215,7 @@ export function RulesModal({ title = "How to Play", sections = [], onClose }) {
         className="relative w-full max-w-lg max-h-[88vh] overflow-hidden rounded-2xl border border-white/10 bg-[#0b0d12] shadow-[0_40px_120px_-40px_rgba(34,211,238,0.35)]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-cyan-400/60 to-transparent" />
 
         <div className="relative flex items-center justify-between border-b border-white/[0.07] px-6 pb-4 pt-6">
           <div>
@@ -325,7 +325,7 @@ function LobbyTitle({ title }) {
   const words = title.trim().split(/\s+/);
   if (words.length < 2) {
     return (
-      <span className="bg-gradient-to-r from-cyan-300 to-violet-300 bg-clip-text text-transparent">
+      <span className="bg-linear-to-r from-cyan-300 to-violet-300 bg-clip-text text-transparent">
         {title}
       </span>
     );
@@ -334,7 +334,7 @@ function LobbyTitle({ title }) {
   return (
     <>
       <span>{words.join(" ")}</span>
-      <span className="bg-gradient-to-r from-cyan-300 to-violet-300 bg-clip-text text-transparent">
+      <span className="bg-linear-to-r from-cyan-300 to-violet-300 bg-clip-text text-transparent">
         {accent}
       </span>
     </>
@@ -605,7 +605,7 @@ export function PvpLobby({
           transition={{ duration: 0.35 }}
           className={`relative overflow-hidden rounded-2xl border p-5 shadow-[0_30px_80px_-50px_rgba(34,211,238,0.55)] ${PALETTE.card}`}
         >
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-cyan-400/60 to-transparent" />
 
           <p className="text-[11px] font-black uppercase tracking-[0.28em] text-white/35">The match</p>
 
@@ -775,8 +775,8 @@ export function PvpLobby({
                 className={`flex items-center justify-between rounded-2xl border p-4 ${PALETTE.row}`}
               >
                 <div className="space-y-2">
-                  <div className="h-3.5 w-32 animate-pulse rounded bg-white/10" />
-                  <div className="h-2.5 w-20 animate-pulse rounded bg-white/5" />
+                  <div className="h-3.5 w-32 animate-pulse rounded-sm bg-white/10" />
+                  <div className="h-2.5 w-20 animate-pulse rounded-sm bg-white/5" />
                 </div>
                 <div className="h-7 w-16 animate-pulse rounded-lg bg-white/10" />
               </div>

@@ -84,7 +84,7 @@ export default function PrecisionArmedPanel({
           </p>
           <button
             onClick={onResign}
-            className="mt-4 rounded bg-red-600 px-6 py-2 font-bold text-white hover:bg-red-500"
+            className="mt-4 rounded-sm bg-red-600 px-6 py-2 font-bold text-white hover:bg-red-500"
           >
             {t("games.precision.resign")}
           </button>

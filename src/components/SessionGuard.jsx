@@ -112,13 +112,13 @@ export default function SessionGuard() {
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-xs"
       role="dialog"
       aria-modal="true"
       aria-label="Break reminder"
     >
-      <div className="relative w-full max-w-md overflow-hidden rounded-3xl border-2 border-cyan-400/50 bg-gradient-to-b from-[#041a2e] to-[#040d24] p-6 shadow-[0_0_60px_rgba(0,229,255,0.2)]">
-        <div className="absolute left-0 top-0 h-[2px] w-full bg-gradient-to-r from-transparent via-cyan-400 to-transparent" />
+      <div className="relative w-full max-w-md overflow-hidden rounded-3xl border-2 border-cyan-400/50 bg-linear-to-b from-[#041a2e] to-[#040d24] p-6 shadow-[0_0_60px_rgba(0,229,255,0.2)]">
+        <div className="absolute left-0 top-0 h-[2px] w-full bg-linear-to-r from-transparent via-cyan-400 to-transparent" />
         <button
           type="button"
           onClick={dismiss}

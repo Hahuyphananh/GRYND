@@ -339,7 +339,7 @@ export default function ChessLobby() {
       <h1 className="mt-3 flex flex-wrap items-center justify-center gap-3 text-4xl font-black leading-[0.95] tracking-tight text-white sm:text-5xl lg:text-6xl">
         <IconChess size={32} className="text-cyan-300" />
         <span>Chess</span>
-        <span className="bg-gradient-to-r from-cyan-300 to-violet-300 bg-clip-text text-transparent">
+        <span className="bg-linear-to-r from-cyan-300 to-violet-300 bg-clip-text text-transparent">
           Arena
         </span>
       </h1>
@@ -402,7 +402,7 @@ export default function ChessLobby() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           {/* Stake card (crash-style) */}
           <div className="relative p-5 flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-[#00e5ff] to-transparent opacity-70" />
+            <div className="absolute top-0 left-0 w-full h-[2px] bg-linear-to-r from-transparent via-[#00e5ff] to-transparent opacity-70" />
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-xs uppercase tracking-widest text-cyan-100/60">
@@ -445,7 +445,7 @@ export default function ChessLobby() {
                   max={1000000}
                   step="0.01"
                   placeholder="1"
-                  className="flex-1 bg-transparent px-2 py-3 text-white text-lg font-bold outline-none text-center"
+                  className="flex-1 bg-transparent px-2 py-3 text-white text-lg font-bold outline-hidden text-center"
                 />
               </div>
             </div>
@@ -490,7 +490,7 @@ export default function ChessLobby() {
 
             {/* Pot preview */}
             {stakeNum > 0 && selectedTimer && (
-              <div className="mt-1 w-full bg-emerald-900/20 border border-emerald-400/30 text-emerald-300 p-2 rounded text-sm text-center">
+              <div className="mt-1 w-full bg-emerald-900/20 border border-emerald-400/30 text-emerald-300 p-2 rounded-sm text-sm text-center">
                 Pot: ${(stakeNum * 2).toLocaleString()} · Winner gets ~${(stakeNum * 2 * 0.9).toLocaleString(undefined, { maximumFractionDigits: 2 })} (after 10% platform fee)
               </div>
             )}
@@ -499,7 +499,7 @@ export default function ChessLobby() {
 
           {/* Timer card (crash-style) */}
           <div className="relative p-5 flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-violet-300 to-transparent opacity-70" />
+            <div className="absolute top-0 left-0 w-full h-[2px] bg-linear-to-r from-transparent via-violet-300 to-transparent opacity-70" />
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-xs uppercase tracking-widest text-cyan-100/60">
@@ -536,13 +536,13 @@ export default function ChessLobby() {
               onPointerUp={onTimerPointerUp}
               onPointerCancel={onTimerPointerUp}
               onKeyDown={onTimerKeyDown}
-              className="relative h-10 select-none touch-none cursor-grab active:cursor-grabbing outline-none"
+              className="relative h-10 select-none touch-none cursor-grab active:cursor-grabbing outline-hidden"
             >
               {/* Track line */}
               <div className="absolute top-1/2 left-0 right-0 h-1 -translate-y-1/2 rounded-full bg-[#0a1a3a] border border-[#00e5ff]/20" />
               {/* Filled portion */}
               <div
-                className="absolute top-1/2 left-0 h-1 -translate-y-1/2 rounded-full bg-gradient-to-r from-[#00e5ff] to-[#FFD700]"
+                className="absolute top-1/2 left-0 h-1 -translate-y-1/2 rounded-full bg-linear-to-r from-[#00e5ff] to-[#FFD700]"
                 style={{ width: `${(displayIndex / (TIMER_OPTIONS.length - 1)) * 100}%` }}
               />
               {/* Tick stops */}
@@ -559,7 +559,7 @@ export default function ChessLobby() {
               ))}
               {/* Draggable handle */}
               <div
-                className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-gradient-to-br from-[#00e5ff] to-[#FFD700] border-2 border-white/40 shadow-[0_0_12px_rgba(0,229,255,0.6)]"
+                className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-linear-to-br from-[#00e5ff] to-[#FFD700] border-2 border-white/40 shadow-[0_0_12px_rgba(0,229,255,0.6)]"
                 style={{ left: `${(displayIndex / (TIMER_OPTIONS.length - 1)) * 100}%` }}
               />
             </div>
@@ -580,7 +580,7 @@ export default function ChessLobby() {
         </div>
 
         {error && (
-          <div className="mb-4 bg-red-900/30 border border-red-400/40 text-red-300 p-2 rounded text-sm text-center">
+          <div className="mb-4 bg-red-900/30 border border-red-400/40 text-red-300 p-2 rounded-sm text-sm text-center">
             {error}
           </div>
         )}
@@ -738,7 +738,7 @@ export default function ChessLobby() {
             <div className="flex justify-between">
               <button
                 onClick={() => setShowBetPopup(false)}
-                className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.35)]"
+                className="bg-red-600 text-white px-4 py-2 rounded-sm hover:bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.35)]"
               >
                 Cancel
               </button>
@@ -746,7 +746,7 @@ export default function ChessLobby() {
               <button
                 onClick={startAIGame}
                 disabled={aiGameLoading}
-                className="bg-[#FFD700] text-[#030817] px-4 py-2 rounded hover:bg-[#ffe14f] disabled:bg-[#7f8520] disabled:text-[#c6c6c6]"
+                className="bg-[#FFD700] text-[#030817] px-4 py-2 rounded-sm hover:bg-[#ffe14f] disabled:bg-[#7f8520] disabled:text-[#c6c6c6]"
               >
                 {aiGameLoading ? "Creating..." : "Start Game"}
               </button>

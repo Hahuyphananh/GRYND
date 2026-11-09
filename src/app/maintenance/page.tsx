@@ -13,9 +13,9 @@ export default function MaintenancePage() {
       <InteractiveCasinoBg variant="subtle" />
 
       <div className="relative z-10 mx-auto max-w-xl px-4 py-16 text-center">
-        <div className="rounded-lg border border-[#00e5ff]/20 bg-[#040d24]/80 p-10 backdrop-blur-sm">
+        <div className="rounded-lg border border-[#00e5ff]/20 bg-[#040d24]/80 p-10 backdrop-blur-xs">
           <div className="mb-4 text-5xl">🛠️</div>
-          <h1 className="mb-3 text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#00e5ff] to-[#f5ff3b]">
+          <h1 className="mb-3 text-3xl font-extrabold text-transparent bg-clip-text bg-linear-to-r from-[#00e5ff] to-[#f5ff3b]">
             We&apos;ll be right back
           </h1>
           <p className="mb-6 text-[#c9f7ff]/90">

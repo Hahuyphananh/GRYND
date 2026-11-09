@@ -32,6 +32,9 @@ import GoogleAnalytics from "./GoogleAnalytics";
 import SplashScreen from "./SplashScreen";
 import GlitchProvider from "./mascot/GlitchProvider";
 import { isPortalPlayPath } from "../lib/portal/framing";
+import GryndProWidget from "./GryndProWidget";
+import { shouldShowProWidget } from "../lib/proWidget";
+import { useSolitaireBoardThemeSync } from "../hooks/useSolitaireBoardThemeSync";
 
 export default function SiteChrome({
   children,
@@ -42,6 +45,10 @@ export default function SiteChrome({
   requiresCmp: boolean;
 }) {
   const pathname = usePathname();
+  // The Solitaire table is a site-wide preference, not a page one: reconcile
+  // it with the account once here, so the choice follows a signed-in player
+  // between devices. Site-only — the portal keeps its purely local store.
+  useSolitaireBoardThemeSync();
 
   // ── Portal surface ──────────────────────────────────────────────────────
   // The game is the whole page. `<main>` stays (it is the landmark the app and
@@ -67,7 +74,7 @@ export default function SiteChrome({
       {/* Skip to content — accessibility */}
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[9999] focus:rounded-lg focus:border focus:border-[#00e5ff] focus:bg-[#030817] focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-[#00e5ff] focus:shadow-[0_0_20px_rgba(0,229,255,0.4)] focus:outline-none"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[9999] focus:rounded-lg focus:border focus:border-[#00e5ff] focus:bg-[#030817] focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-[#00e5ff] focus:shadow-[0_0_20px_rgba(0,229,255,0.4)] focus:outline-hidden"
       >
         Skip to main content
       </a>
@@ -96,6 +103,11 @@ export default function SiteChrome({
           board is an uninvited interruption in someone else's product. */}
       <GlitchProvider />
       <ClerkSafeChatWidget />
+      {/* GRYND PRO — restored as ONE floating card for the whole site (it used
+          to be mounted separately by the casino hub and the game landing
+          pages). lib/proWidget owns the route gate, so it never sits over a
+          live board, the upgrade page it points at, or a sign-in form. */}
+      {shouldShowProWidget(pathname) && <GryndProWidget />}
       {/* Mirrors Google's CMP decision into the local consent record so the
           existing gating (GA, PostHog, Sentry) keeps working for EEA/UK/Swiss
           visitors. No-op elsewhere. */}

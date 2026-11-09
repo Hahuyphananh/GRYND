@@ -56,7 +56,7 @@ export default async function ReviewsPage() {
             Back to Home
           </Link>
         </div>
-        <h1 className="mb-2 text-center text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#00e5ff] to-[#f5ff3b]">
+        <h1 className="mb-2 text-center text-4xl font-extrabold text-transparent bg-clip-text bg-linear-to-r from-[#00e5ff] to-[#f5ff3b]">
           Player Reviews
         </h1>
         <p className="mb-12 text-center text-lg text-[#c9f7ff]/80">

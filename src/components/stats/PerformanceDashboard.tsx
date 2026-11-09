@@ -236,7 +236,7 @@ export default function PerformanceDashboard({
                 setGame(event.target.value);
                 setPages(1);
               }}
-              className="rounded-lg border border-[#00e5ff]/30 bg-[#04122b] px-3 py-2 text-sm font-medium text-white focus:border-[#00e5ff] focus:outline-none"
+              className="rounded-lg border border-[#00e5ff]/30 bg-[#04122b] px-3 py-2 text-sm font-medium text-white focus:border-[#00e5ff] focus:outline-hidden"
             >
               <option value="all">{t("stats.filters.all_games")}</option>
               {gameOptions.map((option) => (

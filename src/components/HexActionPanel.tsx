@@ -129,7 +129,7 @@ export default function HexActionPanel({
   if (isGameOver || !isActive || isAITurn) return null;
 
   return (
-    <div className="mt-3 rounded-xl border border-white/10 bg-gradient-to-b from-[#071230]/80 to-[#0a1a3f]/60 p-3 backdrop-blur-sm transition-all duration-500">
+    <div className="mt-3 rounded-xl border border-white/10 bg-linear-to-b from-[#071230]/80 to-[#0a1a3f]/60 p-3 backdrop-blur-xs transition-all duration-500">
       {/* Header — no AP counter: one action, then the turn passes. */}
       <div className="mb-2.5 flex items-center justify-between">
         <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
@@ -180,7 +180,7 @@ export default function HexActionPanel({
                   <span className="text-xs font-bold text-slate-200">
                     {action.label}
                   </span>
-                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-white/10 text-slate-300">
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm bg-white/10 text-slate-300">
                     Ends your turn
                   </span>
                 </div>

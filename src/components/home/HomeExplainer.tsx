@@ -29,7 +29,7 @@ export default function HomeExplainer() {
 
   return (
     <section aria-labelledby="home-explainer-heading" className="mx-auto max-w-7xl px-4 pb-10">
-      <div className="rounded-2xl border border-[#00e5ff]/25 bg-[#040d24]/70 p-6 backdrop-blur-sm sm:p-8">
+      <div className="rounded-2xl border border-[#00e5ff]/25 bg-[#040d24]/70 p-6 backdrop-blur-xs sm:p-8">
         <h2
           id="home-explainer-heading"
           className="text-2xl font-black tracking-tight text-[#f5ff3b] sm:text-3xl"

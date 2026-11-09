@@ -152,7 +152,7 @@ export default function MatchWaiting({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.25 }}
-      className="fixed inset-0 z-[80] flex items-center justify-center overflow-hidden bg-gradient-to-b from-[#0a0118] via-[#050d1f] to-[#061b3d] px-4"
+      className="fixed inset-0 z-[80] flex items-center justify-center overflow-hidden bg-linear-to-b from-[#0a0118] via-[#050d1f] to-[#061b3d] px-4"
       role="status"
       aria-live="polite"
     >

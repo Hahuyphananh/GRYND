@@ -57,7 +57,7 @@ export default function PortalHomeButton({ portal }: { portal?: string | null })
       data-testid="portal-home-button"
       role="region"
       aria-label={t("portal.home.aria", "Keep playing on GRYND")}
-      className="fixed inset-x-0 bottom-0 z-[70] border-t border-[#00e5ff]/30 bg-[#04122b]/95 px-3 py-3 backdrop-blur-sm"
+      className="fixed inset-x-0 bottom-0 z-[70] border-t border-[#00e5ff]/30 bg-[#04122b]/95 px-3 py-3 backdrop-blur-xs"
     >
       <div className="mx-auto flex w-full max-w-md items-center gap-3">
         <div className="min-w-0 flex-1">

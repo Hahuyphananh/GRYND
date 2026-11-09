@@ -48,7 +48,7 @@ export default class PrecisionMatchErrorBoundary extends React.Component<
     if (!this.state.hasError) return this.props.children;
 
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-[#06120f] to-[#050816] px-4 text-white">
+      <div className="flex min-h-screen items-center justify-center bg-linear-to-b from-[#06120f] to-[#050816] px-4 text-white">
         <div className="w-full max-w-md rounded-2xl border border-red-400/40 bg-red-500/10 p-6 text-center">
           <p className="text-3xl">⚠️</p>
           <h1 className="mt-3 text-xl font-black text-red-200">

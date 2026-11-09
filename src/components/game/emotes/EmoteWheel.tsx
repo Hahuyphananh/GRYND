@@ -91,7 +91,7 @@ export default function EmoteWheel({
             type="button"
             onClick={onClose}
             aria-label="Close emotes"
-            className="rounded-md px-1 text-xs font-bold text-white/50 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+            className="rounded-md px-1 text-xs font-bold text-white/50 transition hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
           >
             ✕
           </button>

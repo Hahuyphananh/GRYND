@@ -14,12 +14,14 @@
 // progress value, a completion, a completion time, a score, a winner, a result,
 // an Elo value or a trophy.
 //
-// There is no local prediction of the board either: a move is drawn from the
-// snapshot the server answers with. The client cannot even render an optimistic
-// flip, because a face-down identity is not in its view until the server names
-// it in `revealed`. That is a deliberate simplification — the authoritative
-// state IS the response — and it is why a rejected move can never leave the
-// local board ahead of the server's.
+// The player's OWN move is drawn before the server answers, so a click never
+// waits for a round trip: `applyMoveToView` rewrites the projected board for a
+// move that touches only visible cards, and the snapshot replaces it moments
+// later. Two things are deliberately NOT predicted — a `draw` (the stock order
+// is the server's secret) and the identity a face-down card flips to (it arrives
+// in `revealed`) — so those appear when the snapshot lands. Every prediction is
+// dropped the moment the server refuses a move, which is what keeps the board
+// from ever drifting ahead of the authority.
 //
 // ── FLOW ────────────────────────────────────────────────────────────────
 //
@@ -28,7 +30,8 @@
 //   socket `solitaire-duel:opponent-progress`   → the opponent's bar, instantly
 //   socket `solitaire-duel:countdown`/`match-started` → the server's GO instant
 //   socket `solitaire-duel:match-finished`      → refetch the settled row
-//   click a card, click a target → POST /move → adopt the returned snapshot
+//   click a card, click a target → draw it locally → queue POST /move → adopt
+//   the returned snapshot (a refusal drops the prediction and resyncs)
 //   the inactivity clock runs out → STOP; the server resolves and this page
 //   renders the result it is handed (fetchMatch resolves an idle match on read)
 //
@@ -68,6 +71,7 @@ import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import { useMatchRouter } from "../../../../hooks/useMatchRouter";
 import SeatAvatar from "../../../../components/game/SeatAvatar";
 import SolitaireBoard from "../../../../components/solitaire-duel/SolitaireBoard";
+import { applyMoveToView } from "../../../../lib/solitaire-duel/optimistic";
 import BotAvatar from "../../../../components/solitaire-duel/BotAvatar";
 import { useSocket } from "../../../../context/SocketProvider";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
@@ -167,6 +171,10 @@ type OpponentProgressPayload = OpponentProgress & { matchId?: string };
 
 /** How long the "GO" flash stays up once the countdown reaches zero. */
 const GO_FLASH_MS = 700;
+// How many moves may be drawn ahead of the server's confirmation. Enough for a
+// fast run of stock cycles or a quick two-card combination, bounded so a stuck
+// request can never grow an unbounded local queue.
+const MOVE_QUEUE_LIMIT = 12;
 /** How long an invalid-move notice lingers. */
 const NOTICE_MS = 2200;
 
@@ -286,8 +294,8 @@ function Meter({
         <div
           className={
             tone === "mine"
-              ? "h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300 transition-[width] duration-200"
-              : "h-full rounded-full bg-gradient-to-r from-sky-500 to-[#00e5ff] transition-[width] duration-200"
+              ? "h-full rounded-full bg-linear-to-r from-amber-500 to-amber-300 transition-[width] duration-200"
+              : "h-full rounded-full bg-linear-to-r from-sky-500 to-[#00e5ff] transition-[width] duration-200"
           }
           style={{ width: `${clamped}%` }}
         />
@@ -322,6 +330,8 @@ export default function SolitaireDuelMatchPage() {
   const [goAtOverride, setGoAtOverride] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  // The board as the player's own move draws it, before the server answers.
+  const [optimisticView, setOptimisticView] = useState<SolitaireView | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [goFlash, setGoFlash] = useState(false);
   const [showResign, setShowResign] = useState(false);
@@ -341,9 +351,15 @@ export default function SolitaireDuelMatchPage() {
   // carries `serverNow`, so the countdown and the timer are anchored to the
   // server's timeline rather than to the local clock.
   const skewRef = useRef(0);
-  const inFlightRef = useRef(false);
-  const queuedDrawsRef = useRef(0);
-  const sendMoveRef = useRef<(move: SolitaireMove) => void>(() => {});
+  // Outbound moves are QUEUED and serialized: the board is drawn optimistically
+  // the instant a move is made, while the requests themselves stay ordered and
+  // one-at-a-time so the server's ply cursor is never raced.
+  const queueRef = useRef<{ move: SolitaireMove }[]>([]);
+  const drainingRef = useRef(false);
+  const optimisticRef = useRef<SolitaireView | null>(null);
+  const authoritativeViewRef = useRef<SolitaireView | null>(null);
+  const rebuildRef = useRef<() => void>(() => {});
+  const drainRef = useRef<() => void>(() => {});
   const loadRef = useRef<() => void>(() => {});
   // The reset counter of the last snapshot this page has seen. `null` until the
   // FIRST snapshot, so reconnecting into an already-re-dealt match never fires a
@@ -394,8 +410,11 @@ export default function SolitaireDuelMatchPage() {
     resetSeenRef.current = null;
     loadedRef.current = false;
     skewRef.current = 0;
-    inFlightRef.current = false;
-    queuedDrawsRef.current = 0;
+    queueRef.current = [];
+    drainingRef.current = false;
+    optimisticRef.current = null;
+    authoritativeViewRef.current = null;
+    setOptimisticView(null);
     setLoading(true);
   }, [matchId]);
 
@@ -412,7 +431,18 @@ export default function SolitaireDuelMatchPage() {
     // here is what stops a stray (or forged) countdown instant from pinning the
     // board in the countdown phase — the next authoritative read always wins.
     if (snapshot.goAtMs != null) setGoAtOverride(null);
+    // The cursor every queued move is validated against: the newest board the
+    // server has actually confirmed (a re-deal always wins over a ply).
+    const incomingPly = Number(snapshot.view?.ply ?? -1);
+    const heldPly = Number(authoritativeViewRef.current?.ply ?? -1);
+    const incomingReset = Number(snapshot.view?.resetCount ?? 0);
+    const heldReset = Number(authoritativeViewRef.current?.resetCount ?? 0);
+    if (snapshot.view && (incomingPly >= heldPly || incomingReset > heldReset)) {
+      authoritativeViewRef.current = snapshot.view;
+    }
     setMatch((prev) => (isStaleSnapshot(prev, snapshot) ? prev : { ...(prev ?? {}), ...snapshot }));
+    // Anything still queued is rebased on the board the server just confirmed.
+    rebuildRef.current();
     // The snapshot is authoritative for the opponent too, so a socket-only
     // progress value is retired as soon as one arrives.
     setLiveOpponent(null);
@@ -451,7 +481,7 @@ export default function SolitaireDuelMatchPage() {
   const cancelled = status === "cancelled";
   const terminal = TERMINAL.has(status);
   const seat: Seat | null = match?.seat ?? null;
-  const view = match?.view ?? null;
+  const view = optimisticView ?? match?.view ?? null;
   const serverNowMs = now + skewRef.current;
   const goAtMs = goAtOverride ?? match?.goAtMs ?? null;
   // The match is untimed, so the clock is the VIEWER'S OWN inactivity clock:
@@ -609,75 +639,93 @@ export default function SolitaireDuelMatchPage() {
   }, [socket, matchId, mySeatKey]);
 
   // ── Sending: the ONLY thing this page ever tells the server ────────────
-  const sendMove = useCallback(
-    async (move: SolitaireMove) => {
-      const current = matchRef.current;
-      if (!matchId || !current || pausedRef.current) return;
-      const expectedPly = Number(current.view?.ply ?? 0);
-
-      inFlightRef.current = true;
-      setPending(true);
-      setNotice(null);
-      try {
-        const res = await fetch(`${apiMatch}/move`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          // The whole request: a move and this seat's own cursor.
-          body: JSON.stringify({ move, expectedPly }),
-        });
-        const data = await res.json().catch(() => null);
-        if (!res.ok || !data?.success) {
-          // Refused by the server (a stale cursor, the clock, a finished seat)
-          // — say so quietly, drop any queued draws and resync rather than
-          // guessing at a board.
-          queuedDrawsRef.current = 0;
-          setNotice(data?.error || "That move was refused");
-          void load();
-          return;
-        }
-        adopt(data.data.match as MatchDto);
-        // A bare nudge so the opponent's view refreshes immediately; the
-        // realtime server only relays the match id.
-        socket?.emit(SOLITAIRE_DUEL_EVENTS.READY, { matchId });
-        if (data.data.completed || data.data.raceResolved) void load();
-      } catch {
-        queuedDrawsRef.current = 0;
-        setNotice("Connection hiccup — resyncing");
-        void load();
-      } finally {
-        inFlightRef.current = false;
-        setPending(false);
-        // Drain one queued stock click, so cycling the deck stays responsive
-        // without ever sending two moves at once.
-        if (queuedDrawsRef.current > 0) {
-          queuedDrawsRef.current -= 1;
-          sendMoveRef.current({ kind: "draw" });
-        }
-      }
-    },
-    [adopt, apiMatch, load, matchId, socket],
-  );
+  //
+  // A move is drawn and sent at once. The board is the projected view, so a move
+  // that touches only visible cards is applied optimistically
+  // (`applyMoveToView`) and the server's snapshot replaces it a round trip
+  // later; a draw is the one move that cannot be predicted, because the card it
+  // turns over is the server's to name. Requests are serialized behind the
+  // scenes, in order, with the ply cursor taken from the last snapshot the
+  // server confirmed — so a fast player never waits for a verification and never
+  // races their own cursor.
+  const rebuildOptimistic = useCallback(() => {
+    let next: SolitaireView | null = authoritativeViewRef.current;
+    for (const entry of queueRef.current) {
+      next = applyMoveToView(next, entry.move);
+      if (!next) break;
+    }
+    optimisticRef.current = next;
+    setOptimisticView(next);
+  }, []);
 
   useEffect(() => {
-    sendMoveRef.current = (move: SolitaireMove) => void sendMove(move);
-  }, [sendMove]);
+    rebuildRef.current = rebuildOptimistic;
+  }, [rebuildOptimistic]);
 
-  const canPlayNow = phase === "racing" && !expired && !pending && !paused;
+  const drainQueue = useCallback(async () => {
+    if (drainingRef.current) return;
+    const entry = queueRef.current[0];
+    if (!entry || !matchId) return;
+    drainingRef.current = true;
+    setPending(true);
+    setNotice(null);
+    try {
+      const expectedPly = Number(authoritativeViewRef.current?.ply ?? 0);
+      const res = await fetch(`${apiMatch}/move`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // The whole request: a move and this seat's own cursor.
+        body: JSON.stringify({ move: entry.move, expectedPly }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        // Refused by the server (a stale cursor, the clock, a finished seat) —
+        // drop every prediction and resync rather than guessing at a board.
+        queueRef.current = [];
+        optimisticRef.current = null;
+        setOptimisticView(null);
+        setNotice(data?.error || "That move was refused");
+        void load();
+        return;
+      }
+      queueRef.current.shift();
+      adopt(data.data.match as MatchDto);
+      rebuildOptimistic();
+      // A bare nudge so the opponent's view refreshes immediately; the
+      // realtime server only relays the match id.
+      socket?.emit(SOLITAIRE_DUEL_EVENTS.READY, { matchId });
+      if (data.data.completed || data.data.raceResolved) void load();
+    } catch {
+      queueRef.current = [];
+      optimisticRef.current = null;
+      setOptimisticView(null);
+      setNotice("Connection hiccup — resyncing");
+      void load();
+    } finally {
+      drainingRef.current = false;
+      setPending(false);
+      // Drain the next queued move, in order, without ever sending two at once.
+      if (queueRef.current.length > 0) drainRef.current();
+    }
+  }, [adopt, apiMatch, load, matchId, rebuildOptimistic, socket]);
+
+  useEffect(() => {
+    drainRef.current = () => void drainQueue();
+  }, [drainQueue]);
+
+  // A move in flight no longer locks the board: the optimistic view already
+  // shows the result, and the queue orders whatever the player does next.
+  const canPlayNow = phase === "racing" && !expired && !paused;
 
   const onMove = useCallback(
     (move: SolitaireMove) => {
       if (phase !== "racing" || expired || pausedRef.current) return;
-      if (inFlightRef.current) {
-        // A stock cycle is the one action worth queuing: it is the only move a
-        // player makes in rapid succession, and each one is applied in order.
-        if (move.kind === "draw") {
-          queuedDrawsRef.current = Math.min(queuedDrawsRef.current + 1, 8);
-        }
-        return;
-      }
-      void sendMove(move);
+      if (queueRef.current.length >= MOVE_QUEUE_LIMIT) return;
+      queueRef.current.push({ move });
+      rebuildOptimistic();
+      drainRef.current();
     },
-    [expired, phase, sendMove],
+    [expired, phase, rebuildOptimistic],
   );
 
   // ── Exits ──────────────────────────────────────────────────────────────
@@ -840,14 +888,14 @@ export default function SolitaireDuelMatchPage() {
       autoStop={terminal}
       gameLabel="solitaire-duel"
     >
-      <div className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#100c02] via-[#0b0902] to-[#070502] px-2 pb-24 pt-20 text-white sm:px-6 md:pb-8">
+      <div className="min-h-screen overflow-x-clip bg-linear-to-b from-[#100c02] via-[#0b0902] to-[#070502] px-2 pb-24 pt-20 text-white sm:px-6 md:pb-8">
         <NavigationBar currentPath="/casino" />
 
         <div className="mx-auto mt-4 w-full max-w-4xl">
           {/* ── Header: identity · clock ─────────────────────────────── */}
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/25 bg-white/[0.04] px-3 py-2.5 sm:px-4">
             <div className="min-w-0">
-              <h1 className="flex items-center gap-2 text-lg font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-300 to-yellow-200 sm:text-2xl">
+              <h1 className="flex items-center gap-2 text-lg font-extrabold tracking-wide text-transparent bg-clip-text bg-linear-to-r from-amber-200 via-amber-300 to-yellow-200 sm:text-2xl">
                 <IconCards className="h-6 w-6 shrink-0 text-amber-400 sm:h-7 sm:w-7" />
                 Solitaire Duel
               </h1>
@@ -1078,7 +1126,6 @@ export default function SolitaireDuelMatchPage() {
                     <SolitaireBoard
                       view={view}
                       interactive={canPlayNow}
-                      pending={pending}
                       onMove={onMove}
                       onInvalid={(message) => setNotice(message)}
                     />
@@ -1123,7 +1170,7 @@ export default function SolitaireDuelMatchPage() {
                         : expired
                           ? "The clock has run out — waiting for the server's verdict."
                           : pending
-                            ? "Verifying your move…"
+                            ? "Syncing your last move…"
                             : phase === "racing"
                               ? "Race for the foundations — fastest solve takes it."
                               : "Waiting for the countdown…"}

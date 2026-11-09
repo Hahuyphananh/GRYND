@@ -71,11 +71,11 @@ export interface BattlePreviewProps {
 // same language the shared result screen uses, in a compact card.
 const RESULT_PANEL_STYLES: Record<string, string> = {
   Victory:
-    "border-emerald-400/60 bg-gradient-to-b from-[#0d2b1a] via-[#072014] to-[#04170e] shadow-[0_0_40px_rgba(52,211,153,0.3)]",
+    "border-emerald-400/60 bg-linear-to-b from-[#0d2b1a] via-[#072014] to-[#04170e] shadow-[0_0_40px_rgba(52,211,153,0.3)]",
   Defeat:
-    "border-red-500/50 bg-gradient-to-b from-[#2a0f14] via-[#1d0a0e] to-[#140608] shadow-[0_0_36px_rgba(239,68,68,0.24)]",
+    "border-red-500/50 bg-linear-to-b from-[#2a0f14] via-[#1d0a0e] to-[#140608] shadow-[0_0_36px_rgba(239,68,68,0.24)]",
   Draw:
-    "border-cyan-400/50 bg-gradient-to-b from-[#0a1a33] via-[#08142a] to-[#050d1c] shadow-[0_0_36px_rgba(34,211,238,0.24)]",
+    "border-cyan-400/50 bg-linear-to-b from-[#0a1a33] via-[#08142a] to-[#050d1c] shadow-[0_0_36px_rgba(34,211,238,0.24)]",
 };
 
 const RESULT_ICON_STYLES: Record<string, string> = {
@@ -270,7 +270,7 @@ export default function BattlePreview({
       {resultLabel ? (
         <div
           data-testid="battle-result-overlay"
-          className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-black/75 px-4 py-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-black/75 px-4 py-4 backdrop-blur-xs"
         >
           <div
             data-testid="battle-result"

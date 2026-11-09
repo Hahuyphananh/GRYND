@@ -149,7 +149,7 @@ export default function QuestWidget() {
               aria-label={t("quests.progressBarLabel", { title: nextQuest.title })}
             >
               <div
-                className="h-full rounded-full bg-gradient-to-r from-[#00e5ff] to-[#7ef9ff] transition-[width] duration-500"
+                className="h-full rounded-full bg-linear-to-r from-[#00e5ff] to-[#7ef9ff] transition-[width] duration-500"
                 style={{ width: `${Math.round(completionOf(nextQuest) * 100)}%` }}
               />
             </div>
@@ -172,7 +172,7 @@ export default function QuestWidget() {
             type="button"
             onClick={() => setOpen(true)}
             data-testid="quest-widget-open"
-            className="mt-2.5 w-full rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#d8fbff] transition hover:bg-[#00e5ff]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
+            className="mt-2.5 w-full rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#d8fbff] transition hover:bg-[#00e5ff]/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
           >
             {t("quests.viewAll")}
           </button>

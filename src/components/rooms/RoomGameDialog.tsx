@@ -102,7 +102,7 @@ export default function RoomGameDialog({
                       setStake(0);
                     }}
                     aria-pressed={option.key === gameKey}
-                    className={`rounded-lg border px-3 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] ${
+                    className={`rounded-lg border px-3 py-2 text-sm font-semibold focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] ${
                       option.key === gameKey
                         ? "border-[#00e5ff] bg-[#00e5ff]/15 text-white"
                         : "border-white/15 bg-white/5 text-gray-200 hover:bg-white/10"
@@ -139,7 +139,7 @@ export default function RoomGameDialog({
                     const next = Number(event.target.value);
                     setStake(Number.isFinite(next) ? Math.max(0, Math.min(maxStake, Math.trunc(next))) : 0);
                   }}
-                  className="mt-1 w-full rounded border border-white/20 bg-[#08203f] px-3 py-2 text-sm text-white disabled:opacity-50"
+                  className="mt-1 w-full rounded-sm border border-white/20 bg-[#08203f] px-3 py-2 text-sm text-white disabled:opacity-50"
                 />
                 <p className="mt-1 text-[11px] text-gray-300">
                   {stakeOffered
@@ -155,7 +155,7 @@ export default function RoomGameDialog({
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded bg-white/10 px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                className="rounded-sm bg-white/10 px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white/40"
               >
                 {t("rooms.dialogCancel", "Cancel")}
               </button>
@@ -163,7 +163,7 @@ export default function RoomGameDialog({
                 type="button"
                 disabled={!game || busy}
                 onClick={() => game && onConfirm(game.key, stakeOffered ? stake : 0)}
-                className="rounded bg-[#FFD700] px-3 py-1.5 text-sm font-semibold text-[#003366] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+                className="rounded-sm bg-[#FFD700] px-3 py-1.5 text-sm font-semibold text-[#003366] disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-400"
               >
                 {busy
                   ? t("rooms.creating", "Working…")

@@ -29,8 +29,8 @@ export default function BotAvatar({
   className?: string;
 }) {
   const frame = perfect
-    ? "border-amber-300/60 bg-gradient-to-br from-amber-300/20 via-[#101a35] to-violet-400/15"
-    : "border-white/15 bg-gradient-to-br from-white/[0.08] via-[#0a1930] to-black/40";
+    ? "border-amber-300/60 bg-linear-to-br from-amber-300/20 via-[#101a35] to-violet-400/15"
+    : "border-white/15 bg-linear-to-br from-white/[0.08] via-[#0a1930] to-black/40";
 
   if (bot.avatar.src) {
     return (

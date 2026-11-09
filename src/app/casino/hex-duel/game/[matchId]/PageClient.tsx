@@ -177,10 +177,10 @@ function ResignConfirmation({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Confirm Resign">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" style={{ animation: "victoryFadeIn 0.3s ease-out" }} />
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-xs" style={{ animation: "victoryFadeIn 0.3s ease-out" }} />
       <div
         className="relative z-10 w-full max-w-sm rounded-2xl p-6 text-center
-          bg-gradient-to-b from-[#071230] via-[#0a1a3f] to-[#050d24]
+          bg-linear-to-b from-[#071230] via-[#0a1a3f] to-[#050d24]
           border border-red-500/30 shadow-[0_0_40px_rgba(239,68,68,0.15)]"
         style={{ animation: "victoryPopIn 0.35s cubic-bezier(0.34,1.56,0.64,1) forwards" }}
       >
@@ -304,7 +304,7 @@ function PlayerCard({
     <div
       className={`
         rounded-xl border-2 p-4 transition-all duration-500
-        bg-gradient-to-b ${bgColor} backdrop-blur-sm
+        bg-linear-to-b ${bgColor} backdrop-blur-xs
         ${isActive ? `${borderColor} ${glowColor}` : "border-white/10 opacity-60"}
         ${isWinner ? "ring-2 ring-yellow-400 scale-[1.02]" : ""}
         ${turnJustChanged ? "animate-[turnSlideIn_0.4s_ease-out]" : ""}
@@ -2661,7 +2661,7 @@ export default function HexDuelPage() {
             cancelLabel="Cancel match"
           />
         )}
-        <main className="min-h-screen bg-gradient-to-br from-[#010510] via-[#031634] to-[#030916] p-4 pt-20 text-white">
+        <main className="min-h-screen bg-linear-to-br from-[#010510] via-[#031634] to-[#030916] p-4 pt-20 text-white">
           <NavigationBar currentPath="/casino" />
           {/* Connection banner on waiting screen too */}
           <ConnectionBanner
@@ -2700,7 +2700,7 @@ export default function HexDuelPage() {
                   <div className="mb-6">
                     <span className="inline-block w-16 h-16 rounded-full border-4 border-cyan-400/30 border-t-cyan-400 animate-spin" />
                   </div>
-                  <h2 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-blue-400 mb-2">
+                  <h2 className="text-xl font-black text-transparent bg-clip-text bg-linear-to-r from-cyan-300 to-blue-400 mb-2">
                     Waiting for Opponent
                   </h2>
                   <p className="text-sm text-slate-400 mb-4">
@@ -2798,7 +2798,7 @@ export default function HexDuelPage() {
                 {gameMode === "multiplayer" && !isGameOver && (
                   <div
                     data-hex-turn-band=""
-                    className={`relative z-20 mb-3 w-full max-w-md mx-auto rounded-xl border bg-gradient-to-b from-[#071230]/90 to-[#0a1a3f]/80 backdrop-blur-md p-4 text-center ${
+                    className={`relative z-20 mb-3 w-full max-w-md mx-auto rounded-xl border bg-linear-to-b from-[#071230]/90 to-[#0a1a3f]/80 backdrop-blur-md p-4 text-center ${
                       isLocalTurn ? "border-cyan-400/20" : "border-red-500/20"
                     }`}
                     style={isLocalTurn ? undefined : { animation: "waitingFadeIn 0.4s ease-out, waitingPulse 2s ease-in-out infinite" }}
@@ -3039,7 +3039,7 @@ export default function HexDuelPage() {
       {/* Global keyframes */}
       <style>{GLOBAL_KEYFRAMES}</style>
 
-      <main className="min-h-screen bg-gradient-to-br from-[#010510] via-[#031634] to-[#030916] p-4 pt-20 text-white">
+      <main className="min-h-screen bg-linear-to-br from-[#010510] via-[#031634] to-[#030916] p-4 pt-20 text-white">
         <NavigationBar currentPath="/casino" />
         {/* Connection banner — pulsing red indicator for disconnects */}
         {gameMode === "multiplayer" && (
@@ -3060,7 +3060,7 @@ export default function HexDuelPage() {
           {/* ── Premium Header ──────────────────────────────────────── */}
           <div className="mb-4 text-center">
             <h1
-              className="text-3xl sm:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-blue-400 to-fuchsia-400"
+              className="text-3xl sm:text-4xl font-black text-transparent bg-clip-text bg-linear-to-r from-cyan-300 via-blue-400 to-fuchsia-400"
               style={{ animation: "headerGlow 3s ease-in-out infinite" }}
             >
               HEX DUEL
@@ -3068,9 +3068,9 @@ export default function HexDuelPage() {
             <p className="mt-1 text-sm text-slate-400 uppercase tracking-[0.2em]">Tactical Hex Arena</p>
 
             {showGame && gameMode === "real" && (
-              <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-white/[0.04] border border-white/10 px-4 py-1.5 backdrop-blur-sm">
+              <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-white/[0.04] border border-white/10 px-4 py-1.5 backdrop-blur-xs">
                 <span className="text-[10px] text-slate-500 uppercase tracking-widest">Balance</span>
-                <span className="text-sm font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-yellow-500">
+                <span className="text-sm font-black text-transparent bg-clip-text bg-linear-to-r from-yellow-300 to-yellow-500">
                   {balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
                 <span className="text-[9px] text-slate-500">tokens</span>

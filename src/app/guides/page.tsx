@@ -72,7 +72,7 @@ export default function GuidesIndexPage() {
             <li key={guide.slug}>
               <Link
                 href={guidePath(guide.slug)}
-                className="block rounded-2xl border border-[#00e5ff]/30 bg-[#040d24] p-5 transition-all hover:-translate-y-0.5 hover:border-[#00e5ff]/60 hover:shadow-[0_0_24px_rgba(0,229,255,0.2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                className="block rounded-2xl border border-[#00e5ff]/30 bg-[#040d24] p-5 transition-all hover:-translate-y-0.5 hover:border-[#00e5ff]/60 hover:shadow-[0_0_24px_rgba(0,229,255,0.2)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
               >
                 <span className="block text-lg font-black tracking-tight text-[#f5ff3b]">
                   {guide.title}

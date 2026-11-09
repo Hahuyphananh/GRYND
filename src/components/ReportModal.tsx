@@ -126,11 +126,11 @@ export default function ReportModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Report Player">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={handleClose} />
+      <div className="absolute inset-0 bg-black/75 backdrop-blur-xs" onClick={handleClose} />
 
       {/* Modal */}
       <div className="relative z-10 w-full max-w-md rounded-2xl border border-white/10 p-6
-        bg-gradient-to-b from-[#0f172a] via-[#1e293b] to-[#0f172a]
+        bg-linear-to-b from-[#0f172a] via-[#1e293b] to-[#0f172a]
         shadow-[0_0_60px_rgba(239,68,68,0.15)]">
         {submitted ? (
           /* ── Success state ── */
@@ -234,7 +234,7 @@ export default function ReportModal({
                   rows={4}
                   maxLength={500}
                   className="w-full rounded-xl bg-[#020617] border border-white/15 px-4 py-3 text-white text-sm
-                    focus:border-red-400/50 focus:ring-1 focus:ring-red-400/30 outline-none transition resize-none
+                    focus:border-red-400/50 focus:ring-1 focus:ring-red-400/30 outline-hidden transition resize-none
                     placeholder:text-slate-500"
                 />
                 <p className="text-[10px] text-slate-500 mt-1 text-right">{details.length}/500</p>

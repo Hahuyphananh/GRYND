@@ -490,7 +490,7 @@ function NavigationBarInner({ currentPath = "" }) {
                 >
                   <Link
                     href={path}
-                    className={`px-1 py-2 text-sm font-medium rounded lg:px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === path ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
+                    className={`px-1 py-2 text-sm font-medium rounded-sm lg:px-3 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === path ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
                   >
                     {/* Only Rewards carries a glyph. Links without one render
                         their label exactly as before (a bare text node) — the
@@ -509,7 +509,7 @@ function NavigationBarInner({ currentPath = "" }) {
               >
                 <Link
                   href="/settings"
-                  className={`px-1 py-2 text-sm font-medium rounded lg:px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === "/settings" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
+                  className={`px-1 py-2 text-sm font-medium rounded-sm lg:px-3 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === "/settings" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
                 >
                   <span className="inline-flex items-center gap-1.5">
                     <IconSettings size={15} className="shrink-0" /> {t("nav.settings")}
@@ -694,7 +694,7 @@ function NavigationBarInner({ currentPath = "" }) {
           </div>
         </UIPro01NavShell>
         {mobileMenuOpen && (
-          <div id="mobile-nav-menu" className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm">
+          <div id="mobile-nav-menu" className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs">
             {/* SIDEBAR */}
             <div className="absolute left-0 top-0 h-full w-72 bg-[#08142f] border-r border-[#00e5ff]/30 p-4 space-y-4">
               {/* CLOSE */}
@@ -778,7 +778,7 @@ function NavigationBarInner({ currentPath = "" }) {
                     would be the only unlabelled control in this menu. */}
                 <ThemeToggle
                   showLabel
-                  className="flex w-full items-center rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff] transition-colors hover:text-[#00e5ff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                  className="flex w-full items-center rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff] transition-colors hover:text-[#00e5ff] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
                 />
             </div>
               {!isSignedIn && (

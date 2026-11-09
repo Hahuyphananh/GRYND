@@ -107,13 +107,13 @@ export default function DailyLossGuard({ children }) {
 
       {showWarning && (
         <div
-          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm"
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-xs"
           role="dialog"
           aria-modal="true"
           aria-label="Responsible play warning"
         >
-          <div className="relative w-full max-w-md overflow-hidden rounded-3xl border-2 border-red-500/50 bg-gradient-to-b from-[#16040a] to-[#040d24] p-6 shadow-[0_0_60px_rgba(239,68,68,0.25)]">
-            <div className="absolute left-0 top-0 h-[2px] w-full bg-gradient-to-r from-transparent via-red-400 to-transparent" />
+          <div className="relative w-full max-w-md overflow-hidden rounded-3xl border-2 border-red-500/50 bg-linear-to-b from-[#16040a] to-[#040d24] p-6 shadow-[0_0_60px_rgba(239,68,68,0.25)]">
+            <div className="absolute left-0 top-0 h-[2px] w-full bg-linear-to-r from-transparent via-red-400 to-transparent" />
             <button
               type="button"
               onClick={acknowledge}
@@ -151,7 +151,7 @@ export default function DailyLossGuard({ children }) {
       )}
 
       {showChip && (
-        <div className="fixed left-1/2 top-20 z-[150] -translate-x-1/2 rounded-full border border-amber-400/40 bg-black/70 px-4 py-1.5 text-xs font-bold text-amber-300 shadow-[0_0_18px_rgba(245,255,59,0.15)] backdrop-blur-sm">
+        <div className="fixed left-1/2 top-20 z-[150] -translate-x-1/2 rounded-full border border-amber-400/40 bg-black/70 px-4 py-1.5 text-xs font-bold text-amber-300 shadow-[0_0_18px_rgba(245,255,59,0.15)] backdrop-blur-xs">
           Down {loss.toLocaleString()} tokens today
         </div>
       )}

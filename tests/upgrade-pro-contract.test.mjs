@@ -365,9 +365,8 @@ test("every dynamic PRO string resolves in all three languages", async () => {
 });
 
 test("the upgrade CTA sits on non-gameplay pages only", () => {
+  // Pages that still sell PRO inline keep their button.
   for (const path of [
-    "src/app/PageClient.jsx",
-    "src/app/casino/PageClient.jsx",
     "src/app/classement/PageClient.jsx",
     "src/app/profil/PageClient.jsx",
     "src/app/settings/PageClient.jsx",
@@ -377,6 +376,24 @@ test("the upgrade CTA sits on non-gameplay pages only", () => {
       `${path} should render the upgrade CTA`,
     );
   }
+
+  // The home page and the casino hub no longer carry an inline CTA — the
+  // Solitaire-first redesign removed it. What replaced it is the GRYND PRO
+  // card, mounted ONCE in SiteChrome and therefore present on every browsing
+  // page including "/". That card is now the home page's upgrade entry point,
+  // so it must exist, stay route-gated, and point at the real purchase page.
+  const chrome = read("src/components/SiteChrome.tsx");
+  assert.match(
+    chrome,
+    /shouldShowProWidget\(pathname\) && <GryndProWidget \/>/,
+    "the site chrome must mount the gated GRYND PRO card",
+  );
+  const widget = read("src/components/GryndProWidget.tsx");
+  assert.match(widget, /linkToPage/, "the card's CTA must open the upgrade page");
+  assert.match(widget, /UPGRADE_PRO_PATH/);
+  const gate = read("src/lib/proWidget.ts");
+  assert.match(gate, /"\/upgrade-pro"/, "the upgrade page itself must be excluded");
+  assert.match(gate, /"\/solitaire"/, "gameplay must be excluded");
 
   // Nothing under a match/board route may render the CTA: those paths are the
   // active-gameplay surfaces (the games hub itself is fine).

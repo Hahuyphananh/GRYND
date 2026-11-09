@@ -135,7 +135,7 @@ export default function PrecisionActiveRoundPanel({
                   ? "w-full cursor-default rounded-lg border-2 border-emerald-300/50 bg-emerald-400/20 px-1 py-3 text-[11px] font-black leading-tight tracking-widest text-emerald-100"
                   : stopSubmitting
                     ? "w-full cursor-wait rounded-lg border-2 border-yellow-300/50 bg-yellow-400/20 px-1 py-3 text-[11px] font-black leading-tight tracking-widest text-yellow-100"
-                    : "w-full rounded-lg border-2 border-red-400/70 bg-gradient-to-b from-red-500 to-red-600 px-1 py-3 text-[11px] font-black leading-tight tracking-widest text-white shadow-[0_0_18px_rgba(239,68,68,0.6)] transition active:scale-95 hover:from-red-400 hover:to-red-500 animate-pulse"
+                    : "w-full rounded-lg border-2 border-red-400/70 bg-linear-to-b from-red-500 to-red-600 px-1 py-3 text-[11px] font-black leading-tight tracking-widest text-white shadow-[0_0_18px_rgba(239,68,68,0.6)] transition active:scale-95 hover:from-red-400 hover:to-red-500 animate-pulse"
               }
             >
               {selfStopPending

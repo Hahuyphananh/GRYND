@@ -954,7 +954,7 @@ export default function FourInARowVsAiPage() {
         <div className="flex gap-2">
           <button
             onClick={resetGame}
-            className="rounded-sm border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-white/20"
+            className="rounded-xs border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-white/20"
           >
             New Game
           </button>
@@ -1060,7 +1060,7 @@ export default function FourInARowVsAiPage() {
   );
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
+    <div className="min-h-screen overflow-x-clip bg-linear-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
       <div className="four-in-a-row-viewport mx-auto mt-2 max-w-3xl sm:mt-3 pb-4">
         <GameSessionHost

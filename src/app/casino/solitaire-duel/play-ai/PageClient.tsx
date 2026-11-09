@@ -45,7 +45,7 @@ function Progression({ bot }: { bot: SolitaireBot }) {
             className={`h-1 flex-1 rounded-full ${
               index < bot.order
                 ? bot.id === "perfect"
-                  ? "bg-gradient-to-r from-amber-400 to-violet-300"
+                  ? "bg-linear-to-r from-amber-400 to-violet-300"
                   : "bg-cyan-400/70"
                 : "bg-white/10"
             }`}
@@ -136,13 +136,13 @@ export default function SolitairePlayAiPage() {
   );
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-[#07101f] via-[#06152c] to-[#040b17] px-4 pb-20 pt-20 text-white sm:px-6">
+    <main className="min-h-screen bg-linear-to-b from-[#07101f] via-[#06152c] to-[#040b17] px-4 pb-20 pt-20 text-white sm:px-6">
       <NavigationBar currentPath={LOBBY_PATH} />
 
       <div className="mx-auto mt-5 w-full max-w-6xl">
         <Link
           href={LOBBY_PATH}
-          className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-[0.16em] text-cyan-200/70 transition hover:text-cyan-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+          className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-[0.16em] text-cyan-200/70 transition hover:text-cyan-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
         >
           <IconArrowLeft size={14} aria-hidden="true" />
           Solitaire Duel
@@ -153,7 +153,7 @@ export default function SolitairePlayAiPage() {
             <p className="text-[10px] font-black uppercase tracking-[0.28em] text-amber-300/70">
               Unrated practice
             </p>
-            <h1 className="mt-1 flex items-center gap-2 text-3xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-cyan-100 to-violet-200 sm:text-4xl">
+            <h1 className="mt-1 flex items-center gap-2 text-3xl font-extrabold tracking-tight text-transparent bg-clip-text bg-linear-to-r from-amber-200 via-cyan-100 to-violet-200 sm:text-4xl">
               <IconRobot className="h-8 w-8 shrink-0 text-amber-300" aria-hidden="true" />
               Play vs Bots
             </h1>
@@ -196,7 +196,7 @@ export default function SolitairePlayAiPage() {
                 data-testid={`solitaire-bot-${bot.id}`}
                 className={`relative flex h-full flex-col rounded-2xl border p-4 transition ${
                   perfect
-                    ? "border-amber-300/55 bg-gradient-to-br from-amber-400/[0.12] via-[#0b224f]/95 to-violet-500/[0.08] shadow-[0_0_28px_rgba(251,191,36,0.14)]"
+                    ? "border-amber-300/55 bg-linear-to-br from-amber-400/[0.12] via-[#0b224f]/95 to-violet-500/[0.08] shadow-[0_0_28px_rgba(251,191,36,0.14)]"
                     : "border-[#00e5ff]/20 bg-[#0b224f]/85 shadow-[0_0_18px_rgba(0,229,255,0.06)] hover:border-[#00e5ff]/40"
                 }`}
               >
@@ -247,9 +247,9 @@ export default function SolitairePlayAiPage() {
                   disabled={Boolean(challengingId)}
                   aria-busy={busy || undefined}
                   data-testid={`solitaire-challenge-${bot.id}`}
-                  className={`mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border px-4 text-xs font-black uppercase tracking-[0.14em] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] disabled:cursor-not-allowed disabled:opacity-50 ${
+                  className={`mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border px-4 text-xs font-black uppercase tracking-[0.14em] transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] disabled:cursor-not-allowed disabled:opacity-50 ${
                     perfect
-                      ? "border-amber-300/60 bg-gradient-to-r from-amber-400/25 to-violet-400/20 text-amber-100 hover:from-amber-400/35 hover:to-violet-400/30"
+                      ? "border-amber-300/60 bg-linear-to-r from-amber-400/25 to-violet-400/20 text-amber-100 hover:from-amber-400/35 hover:to-violet-400/30"
                       : "border-cyan-300/40 bg-cyan-400/10 text-cyan-100 hover:bg-cyan-400/20"
                   }`}
                 >

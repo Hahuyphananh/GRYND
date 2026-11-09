@@ -92,7 +92,7 @@ export default function GameDiscovery() {
                 <li key={game.slug}>
                   <Link
                     href={gameLandingPath(game.slug)}
-                    className="block rounded-lg px-2 py-1.5 transition-colors hover:bg-[#00e5ff]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                    className="block rounded-lg px-2 py-1.5 transition-colors hover:bg-[#00e5ff]/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
                   >
                     <span className="font-bold text-[#d8fbff]">{game.name}</span>
                     <span className="mt-0.5 block text-xs leading-relaxed text-[#9dd8ff]">

@@ -22,7 +22,7 @@ export default function MatchLoading({
   currentPath?: string;
 }) {
   return (
-    <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
+    <div className="min-h-screen overflow-x-clip bg-linear-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath={currentPath} />
       <div
         role="status"

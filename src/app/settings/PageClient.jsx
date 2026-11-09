@@ -404,7 +404,7 @@ export default function SettingsPageClient() {
         <NavigationBar currentPath="/settings" />
         <h1
           className="text-4xl font-extrabold text-center mb-8
-  bg-gradient-to-r from-purple-400 to-pink-500
+  bg-linear-to-r from-purple-400 to-pink-500
   bg-clip-text text-transparent"
         >
           Settings
@@ -454,7 +454,7 @@ export default function SettingsPageClient() {
                     key={lang.value}
                     onClick={() => setLanguage(lang.value)}
                     aria-pressed={language === lang.value}
-                    className={`cursor-pointer rounded-lg border px-4 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f] ${
+                    className={`cursor-pointer rounded-lg border px-4 py-2 text-sm font-medium focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f] ${
                       language === lang.value
                         ? "border-[#f5ff3b]/60 bg-[#f5ff3b]/15 text-[#f5ff3b]"
                         : "border-[#00e5ff]/50 bg-[#091737] text-[#c9f7ff] hover:bg-[#00e5ff]/10"
@@ -505,7 +505,7 @@ export default function SettingsPageClient() {
                       min={1}
                       value={lossLimitDraft}
                       onChange={(e) => setLossLimitDraft(e.target.value)}
-                      className="w-44 rounded-md border border-amber-600/50 bg-[#020617] px-2 py-1.5 text-sm text-white outline-none focus:border-amber-400"
+                      className="w-44 rounded-md border border-amber-600/50 bg-[#020617] px-2 py-1.5 text-sm text-white outline-hidden focus:border-amber-400"
                       aria-label="Custom daily loss limit in tokens"
                     />
                   </label>
@@ -589,7 +589,7 @@ export default function SettingsPageClient() {
                           placeholder="6-digit code"
                           value={mfaCode}
                           onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, ""))}
-                          className="w-40 rounded-lg border border-[#00e5ff]/40 bg-[#08142f] px-3 py-2 text-center text-lg tracking-[0.4em] text-[#ecf8ff] focus:outline-none focus:ring-2 focus:ring-[#00e5ff]"
+                          className="w-40 rounded-lg border border-[#00e5ff]/40 bg-[#08142f] px-3 py-2 text-center text-lg tracking-[0.4em] text-[#ecf8ff] focus:outline-hidden focus:ring-2 focus:ring-[#00e5ff]"
                         />
                         <button
                           type="button"
@@ -650,7 +650,7 @@ export default function SettingsPageClient() {
                       aria-checked={Boolean(prefs[opt.key])}
                       aria-label={opt.label}
                       onClick={() => setPrefs((p) => ({ ...p, [opt.key]: !p[opt.key] }))}
-                      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] ${
+                      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] ${
                         prefs[opt.key] ? "bg-[#00e5ff]" : "bg-gray-600"
                       }`}
                     >
@@ -757,7 +757,7 @@ export default function SettingsPageClient() {
                   </dl>
                   <Link
                     href="/welcome/questionnaire?from=settings"
-                    className="inline-flex items-center gap-2 rounded-lg border border-[#00e5ff]/60 bg-[#00e5ff]/15 px-4 py-3 text-sm font-bold text-[#00e5ff] transition hover:bg-[#00e5ff]/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                    className="inline-flex items-center gap-2 rounded-lg border border-[#00e5ff]/60 bg-[#00e5ff]/15 px-4 py-3 text-sm font-bold text-[#00e5ff] transition hover:bg-[#00e5ff]/25 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
                   >
                     <IconWand size={15} /> {t("onboarding.preferences.update")}
                   </Link>
@@ -776,7 +776,7 @@ export default function SettingsPageClient() {
                   </p>
                   <Link
                     href="/welcome/questionnaire?from=settings"
-                    className="inline-flex items-center gap-2 rounded-lg border-b-4 border-[#0087a8] bg-[#00e5ff] px-4 py-3 text-sm font-extrabold text-[#001a2e] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                    className="inline-flex items-center gap-2 rounded-lg border-b-4 border-[#0087a8] bg-[#00e5ff] px-4 py-3 text-sm font-extrabold text-[#001a2e] transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
                   >
                     <IconWand size={15} /> {t("onboarding.preferences.cta")}
                   </Link>

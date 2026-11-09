@@ -116,7 +116,7 @@ export default function AccessDeniedPage() {
         {/* Branding */}
         <Link
           href="/"
-          className="mx-auto block w-fit rounded-lg transition-transform duration-300 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
+          className="mx-auto block w-fit rounded-lg transition-transform duration-300 hover:scale-105 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
         >
           <Image
             src={LogoSmiley}
@@ -128,9 +128,9 @@ export default function AccessDeniedPage() {
           />
         </Link>
 
-        <div className="mt-6 overflow-hidden rounded-3xl border-2 border-[#ff5d8f]/40 bg-[#0b224f]/85 shadow-[0_0_45px_rgba(255,93,143,0.16)] backdrop-blur-sm">
+        <div className="mt-6 overflow-hidden rounded-3xl border-2 border-[#ff5d8f]/40 bg-[#0b224f]/85 shadow-[0_0_45px_rgba(255,93,143,0.16)] backdrop-blur-xs">
           {/* Accent strip — the denial palette, same rule as the sibling card. */}
-          <div className="h-1 bg-gradient-to-r from-[#ff5d8f] via-[#f5ff3b] to-[#ff5d8f]" />
+          <div className="h-1 bg-linear-to-r from-[#ff5d8f] via-[#f5ff3b] to-[#ff5d8f]" />
 
           <div className="px-5 py-6 text-center sm:px-9 sm:py-8">
             {/* Slashed 18+ marker: the family's reel styling, stopped. */}
@@ -168,7 +168,7 @@ export default function AccessDeniedPage() {
             </div>
 
             <h1 className="mt-4 text-3xl font-extrabold tracking-tight sm:text-4xl">
-              <span className="animate-shimmer-elegant bg-gradient-to-r from-[#ff5d8f] via-[#f5ff3b] to-[#ff5d8f] bg-clip-text text-transparent">
+              <span className="animate-shimmer-elegant bg-linear-to-r from-[#ff5d8f] via-[#f5ff3b] to-[#ff5d8f] bg-clip-text text-transparent">
                 {t("accessDenied.title")}
               </span>
             </h1>
@@ -198,7 +198,7 @@ export default function AccessDeniedPage() {
                 support leads; signing out is the quiet alternative. */}
             <Link
               href="/contact"
-              className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#FFD700] px-7 py-4 text-base font-extrabold tracking-wide text-[#030817] shadow-[0_0_22px_rgba(255,215,0,0.45)] transition-all duration-200 hover:scale-[1.02] hover:bg-[#ffe14f] hover:shadow-[0_0_32px_rgba(255,215,0,0.65)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f] active:scale-95"
+              className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#FFD700] px-7 py-4 text-base font-extrabold tracking-wide text-[#030817] shadow-[0_0_22px_rgba(255,215,0,0.45)] transition-all duration-200 hover:scale-[1.02] hover:bg-[#ffe14f] hover:shadow-[0_0_32px_rgba(255,215,0,0.65)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f] active:scale-95"
             >
               <IconLifebuoy size={18} aria-hidden />
               {t("accessDenied.contact")}
@@ -208,7 +208,7 @@ export default function AccessDeniedPage() {
             <SignOutButton>
               <button
                 type="button"
-                className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-[#ff5d8f]/50 bg-[#ff5d8f]/10 px-7 py-3.5 text-base font-bold text-[#ffb3c9] transition-colors duration-200 hover:bg-[#ff5d8f]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff5d8f] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f] active:scale-[0.98]"
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-[#ff5d8f]/50 bg-[#ff5d8f]/10 px-7 py-3.5 text-base font-bold text-[#ffb3c9] transition-colors duration-200 hover:bg-[#ff5d8f]/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#ff5d8f] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f] active:scale-[0.98]"
               >
                 <IconLogout size={18} aria-hidden />
                 {t("accessDenied.signOut")}
@@ -219,7 +219,7 @@ export default function AccessDeniedPage() {
               {t("accessDenied.footnote")}{" "}
               <Link
                 href="/terms"
-                className="font-medium text-[#00e5ff] underline-offset-4 transition-colors hover:text-[#f5ff3b] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                className="font-medium text-[#00e5ff] underline-offset-4 transition-colors hover:text-[#f5ff3b] hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
               >
                 {t("accessDenied.termsLink")}
               </Link>

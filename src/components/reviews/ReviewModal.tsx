@@ -48,7 +48,7 @@ export default function ReviewModal({ open, onClose, game, existing }: ReviewMod
 
   return (
     <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-xs"
       onClick={onClose}
     >
       <motion.div
@@ -119,7 +119,7 @@ export default function ReviewModal({ open, onClose, game, existing }: ReviewMod
               onChange={(e) => setTitle(e.target.value)}
               maxLength={120}
               placeholder="Summary (optional)"
-              className="mb-3 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-white placeholder:text-white/30 focus:border-[#00e5ff]/50 focus:outline-none"
+              className="mb-3 w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-white placeholder:text-white/30 focus:border-[#00e5ff]/50 focus:outline-hidden"
             />
             <textarea
               value={body}
@@ -127,7 +127,7 @@ export default function ReviewModal({ open, onClose, game, existing }: ReviewMod
               maxLength={2000}
               rows={4}
               placeholder="What do you love, and what could be better? (optional)"
-              className="mb-4 w-full resize-none rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-white placeholder:text-white/30 focus:border-[#00e5ff]/50 focus:outline-none"
+              className="mb-4 w-full resize-none rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-white placeholder:text-white/30 focus:border-[#00e5ff]/50 focus:outline-hidden"
             />
 
             <div className="flex gap-3">
@@ -140,7 +140,7 @@ export default function ReviewModal({ open, onClose, game, existing }: ReviewMod
               <button
                 onClick={submit}
                 disabled={submitting || rating === 0}
-                className="flex-1 rounded-lg bg-gradient-to-r from-[#00e5ff] to-[#00a8cc] px-4 py-2 font-bold text-[#00131a] disabled:opacity-40"
+                className="flex-1 rounded-lg bg-linear-to-r from-[#00e5ff] to-[#00a8cc] px-4 py-2 font-bold text-[#00131a] disabled:opacity-40"
               >
                 {submitting ? "Submitting..." : existing ? "Update review" : "Submit review"}
               </button>

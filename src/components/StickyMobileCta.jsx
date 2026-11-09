@@ -48,7 +48,7 @@ export default function StickyMobileCta({ playHref = "/casino" }) {
       <div className="px-4 py-3">
         <Link
           href={href}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-yellow-300 to-amber-500 px-6 py-3 text-base font-extrabold text-black shadow-[0_0_22px_rgba(255,255,51,0.55)] transition-transform active:scale-[0.98]"
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-yellow-300 to-amber-500 px-6 py-3 text-base font-extrabold text-black shadow-[0_0_22px_rgba(255,255,51,0.55)] transition-transform active:scale-[0.98]"
         >
           {label}
         </Link>

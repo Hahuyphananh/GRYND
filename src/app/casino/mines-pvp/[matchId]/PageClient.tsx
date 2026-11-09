@@ -1127,7 +1127,7 @@ export default function MinesPvpMatchPage({
   // ── Loading / error / non-participant ──────────────────────────
   if (loading) {
     return (
-      <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
+      <div className="min-h-screen overflow-x-clip bg-linear-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
         <NavigationBar currentPath="/casino" />
         <div className="mx-auto mt-12 flex max-w-3xl items-center justify-center gap-3 text-cyan-200">
           <LoadingDotsIcon className="w-6 h-6 text-cyan-300 animate-pulse" />
@@ -1139,7 +1139,7 @@ export default function MinesPvpMatchPage({
 
   if (!match) {
     return (
-      <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
+      <div className="min-h-screen overflow-x-clip bg-linear-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
         <NavigationBar currentPath="/casino" />
         <div className="mx-auto mt-12 max-w-3xl rounded-2xl border border-red-400/40 bg-red-900/30 p-6 text-red-200">
           <div className="flex items-center gap-2">
@@ -1154,7 +1154,7 @@ export default function MinesPvpMatchPage({
 
   if (!isParticipant) {
     return (
-      <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
+      <div className="min-h-screen overflow-x-clip bg-linear-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
         <NavigationBar currentPath="/casino" />
         <div className="mx-auto mt-12 max-w-3xl rounded-2xl border border-red-400/40 bg-red-900/30 p-6 text-red-200">
           <div className="flex items-center gap-2">
@@ -1187,7 +1187,7 @@ export default function MinesPvpMatchPage({
         transition: { duration: 0.4 },
       })}
     >
-      <h1 className="flex items-center justify-center gap-3 text-center text-2xl sm:text-3xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-cyan-200 via-cyan-300 to-fuchsia-300 drop-shadow-[0_0_18px_rgba(0,229,255,0.55)]">
+      <h1 className="flex items-center justify-center gap-3 text-center text-2xl sm:text-3xl font-extrabold tracking-wide text-transparent bg-clip-text bg-linear-to-r from-cyan-200 via-cyan-300 to-fuchsia-300 drop-shadow-[0_0_18px_rgba(0,229,255,0.55)]">
         <MineIcon className="w-7 h-7 sm:w-8 sm:h-8 text-cyan-300 drop-shadow-[0_0_12px_rgba(0,229,255,0.65)] flex-shrink-0" />
         <span>Mines Duel · Match #{matchId}</span>
       </h1>
@@ -1323,7 +1323,7 @@ export default function MinesPvpMatchPage({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-1 rounded-2xl bg-[#00111f]/85 backdrop-blur-sm"
+            className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-1 rounded-2xl bg-[#00111f]/85 backdrop-blur-xs"
           >
             <span className="flex items-center gap-2 text-2xl font-black uppercase tracking-widest text-emerald-300 drop-shadow-[0_0_18px_rgba(52,211,153,0.6)] sm:text-3xl">
               <IconTrophy size={26} className="text-emerald-300" />
@@ -1515,7 +1515,7 @@ export default function MinesPvpMatchPage({
         />
       )}
 
-      <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
+      <div className="min-h-screen overflow-x-clip bg-linear-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
         <NavigationBar currentPath="/casino" />
 
         <div className="mx-auto mt-4 max-w-3xl sm:mt-8 lg:mt-4 lg:max-w-5xl">

@@ -1791,7 +1791,7 @@ export default function TowerArenaMatchPage() {
         <div className="mx-auto mt-6 max-w-lg sm:mt-10">
           <div className="mb-6 text-center">
             <IconBuildingSkyscraper className="mx-auto h-12 w-12 text-cyan-400" />
-            <h1 className="mt-3 bg-gradient-to-r from-cyan-300 to-cyan-500 bg-clip-text text-3xl font-black text-transparent">
+            <h1 className="mt-3 bg-linear-to-r from-cyan-300 to-cyan-500 bg-clip-text text-3xl font-black text-transparent">
               Tower Arena
             </h1>
             <p className="mt-1 text-sm text-white/60">Drop blocks onto a tiny floating platform — don't let yours fall into the void.</p>
@@ -2087,7 +2087,7 @@ export default function TowerArenaMatchPage() {
       <div className="flex items-center gap-3">
         <IconBuildingSkyscraper className="h-7 w-7 text-cyan-400" />
         <div>
-          <h1 className="bg-gradient-to-r from-cyan-300 to-cyan-500 bg-clip-text text-xl font-black text-transparent">
+          <h1 className="bg-linear-to-r from-cyan-300 to-cyan-500 bg-clip-text text-xl font-black text-transparent">
             Tower Arena
           </h1>
           <p className="text-[11px] uppercase tracking-widest text-white/50">
@@ -2167,7 +2167,7 @@ export default function TowerArenaMatchPage() {
                         : "Active"}
                   </p>
                 </div>
-                <span className="rounded bg-black/40 px-1.5 py-0.5 font-mono text-[10px] text-white/50">
+                <span className="rounded-sm bg-black/40 px-1.5 py-0.5 font-mono text-[10px] text-white/50">
                   #{p.seat}
                 </span>
               </div>
@@ -2208,7 +2208,7 @@ export default function TowerArenaMatchPage() {
     <div>
       {topBarNode}
       <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
-        <div className="rounded-2xl border border-cyan-800 bg-gradient-to-b from-[#040d24] to-[#071626] p-4">
+        <div className="rounded-2xl border border-cyan-800 bg-linear-to-b from-[#040d24] to-[#071626] p-4">
           {towerStageNode(false)}
         </div>
         <div>{turnControlsNode}</div>
@@ -2524,7 +2524,7 @@ function PlacementControls(props: any) {
               </span>
             </button>
           ))}
-        <span className="ml-auto rounded bg-black/40 px-2 py-1 font-mono text-[11px] text-cyan-200/80">
+        <span className="ml-auto rounded-sm bg-black/40 px-2 py-1 font-mono text-[11px] text-cyan-200/80">
           {poolTotal} blocks left
         </span>
       </div>

@@ -1776,7 +1776,7 @@ export default function KenoPvpMatchPage({ params }) {
       onClick={() => setShowRules(true)}
       aria-label={label}
       title={label}
-      className="h-8 w-8 shrink-0 rounded-lg border border-[#00e5ff]/40 bg-[#0b224f]/70 text-sm font-bold text-[#7cefff] transition hover:border-[#00e5ff]/80 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+      className="h-8 w-8 shrink-0 rounded-lg border border-[#00e5ff]/40 bg-[#0b224f]/70 text-sm font-bold text-[#7cefff] transition hover:border-[#00e5ff]/80 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
     >
       ?
     </button>
@@ -1789,7 +1789,7 @@ export default function KenoPvpMatchPage({ params }) {
       aria-expanded={detailsOpen}
       aria-controls="keno-match-details"
       aria-label={detailsOpen ? "Close match details" : "Match details"}
-      className="shrink-0 rounded-lg border border-[#00e5ff]/40 bg-[#0b224f]/70 px-2.5 py-1.5 text-[11px] font-bold text-[#7cefff] transition hover:border-[#00e5ff]/80 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] lg:hidden"
+      className="shrink-0 rounded-lg border border-[#00e5ff]/40 bg-[#0b224f]/70 px-2.5 py-1.5 text-[11px] font-bold text-[#7cefff] transition hover:border-[#00e5ff]/80 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] lg:hidden"
     >
       {detailsOpen ? "Close" : "Details"}
     </button>
@@ -1829,7 +1829,7 @@ export default function KenoPvpMatchPage({ params }) {
   if (!isLive && !isFinished) {
     return (
       <>
-        <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-16 text-white sm:px-6 sm:pt-20 md:pb-8 md:pt-24">
+        <div className="min-h-screen overflow-x-clip bg-linear-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-16 text-white sm:px-6 sm:pt-20 md:pb-8 md:pt-24">
           <NavigationBar currentPath="/casino" />
           <GameSessionHost
             autoStart={false}
@@ -1878,7 +1878,7 @@ export default function KenoPvpMatchPage({ params }) {
   // takes every pixel that is left and the tiles are sized from BOTH axes.
   return (
     <>
-      <div className="relative flex h-[100dvh] flex-col overflow-hidden bg-gradient-to-br from-[#001933] to-[#000d1a] text-white">
+      <div className="relative flex h-[100dvh] flex-col overflow-hidden bg-linear-to-br from-[#001933] to-[#000d1a] text-white">
         <NavigationBar currentPath="/casino" />
         <GameSessionHost
           autoStart={isLive}
@@ -2081,7 +2081,7 @@ export default function KenoPvpMatchPage({ params }) {
                 type="button"
                 onClick={() => setDetailsOpen(false)}
                 aria-label="Close match details"
-                className="rounded-lg border border-white/15 px-2 py-1 text-[11px] font-bold text-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                className="rounded-lg border border-white/15 px-2 py-1 text-[11px] font-bold text-white/70 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
               >
                 Close
               </button>
@@ -2142,7 +2142,7 @@ function RulesModal({ onClose }) {
         animate: { opacity: 1 },
         exit: { opacity: 0 },
       })}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4"
       onClick={onClose}
     >
       <motion.div

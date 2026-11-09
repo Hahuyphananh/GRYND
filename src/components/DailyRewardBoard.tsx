@@ -183,7 +183,7 @@ export default function DailyRewardBoard({ open, onClose, reward }: Props) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm sm:p-6"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-3 backdrop-blur-xs sm:p-6"
       data-testid="daily-reward-board-overlay"
       onClick={onClose}
     >
@@ -195,7 +195,7 @@ export default function DailyRewardBoard({ open, onClose, reward }: Props) {
         tabIndex={-1}
         data-testid="daily-reward-board-dialog"
         onClick={(event) => event.stopPropagation()}
-        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-[#f5ff3b]/40 bg-[#040d24] p-4 shadow-[0_0_40px_rgba(245,255,59,0.25)] outline-none sm:p-6"
+        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-[#f5ff3b]/40 bg-[#040d24] p-4 shadow-[0_0_40px_rgba(245,255,59,0.25)] outline-hidden sm:p-6"
       >
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>
@@ -215,7 +215,7 @@ export default function DailyRewardBoard({ open, onClose, reward }: Props) {
             onClick={onClose}
             aria-label="Close daily reward"
             data-testid="daily-reward-board-close"
-            className="shrink-0 rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 p-2 text-[#d8fbff] transition hover:bg-[#00e5ff]/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b]"
+            className="shrink-0 rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 p-2 text-[#d8fbff] transition hover:bg-[#00e5ff]/25 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b]"
           >
             <IconX size={16} aria-hidden="true" />
           </button>
@@ -293,7 +293,7 @@ export default function DailyRewardBoard({ open, onClose, reward }: Props) {
                   onClick={claim}
                   disabled={claiming}
                   data-testid="daily-reward-claim"
-                  className="inline-flex w-full items-center justify-center rounded-xl border border-[#f5ff3b]/60 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-3 text-base font-bold text-[#1f1700] shadow-[0_0_25px_rgba(245,255,59,0.35)] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817] disabled:opacity-60 sm:w-auto"
+                  className="inline-flex w-full items-center justify-center rounded-xl border border-[#f5ff3b]/60 bg-linear-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-3 text-base font-bold text-[#1f1700] shadow-[0_0_25px_rgba(245,255,59,0.35)] transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817] disabled:opacity-60 sm:w-auto"
                 >
                   {claiming
                     ? "Claiming…"

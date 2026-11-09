@@ -31,7 +31,7 @@ export default function ProAnalyticsLocked({
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-[#f5ff3b]/40 bg-gradient-to-b from-[#0a214d]/90 to-[#04122b]/90 p-6 shadow-[0_0_28px_rgba(245,255,59,0.12)]">
+      <div className="rounded-2xl border border-[#f5ff3b]/40 bg-linear-to-b from-[#0a214d]/90 to-[#04122b]/90 p-6 shadow-[0_0_28px_rgba(245,255,59,0.12)]">
         <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#00e5ff]">
           GRYND PRO
         </p>
@@ -62,14 +62,14 @@ export default function ProAnalyticsLocked({
           {signedIn ? (
             <Link
               href="/upgrade-pro"
-              className="rounded-xl bg-[#f5ff3b] px-5 py-2.5 font-bold text-[#04122b] transition hover:bg-yellow-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#04122b]"
+              className="rounded-xl bg-[#f5ff3b] px-5 py-2.5 font-bold text-[#04122b] transition hover:bg-yellow-300 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#04122b]"
             >
               {t("stats.locked.cta")}
             </Link>
           ) : (
             <Link
               href="/sign-in"
-              className="rounded-xl bg-[#00e5ff] px-5 py-2.5 font-bold text-[#04122b] transition hover:bg-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#04122b]"
+              className="rounded-xl bg-[#00e5ff] px-5 py-2.5 font-bold text-[#04122b] transition hover:bg-cyan-300 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#04122b]"
             >
               {t("stats.locked.signin")}
             </Link>
@@ -83,15 +83,15 @@ export default function ProAnalyticsLocked({
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" aria-hidden>
         {[0, 1, 2, 3].map((index) => (
           <div key={index} className={`${FRAME} h-24 p-4`}>
-            <div className="h-3 w-20 rounded bg-white/10" />
-            <div className="mt-3 h-6 w-16 rounded bg-white/5" />
+            <div className="h-3 w-20 rounded-sm bg-white/10" />
+            <div className="mt-3 h-6 w-16 rounded-sm bg-white/5" />
           </div>
         ))}
       </div>
 
       <div className={`${FRAME} p-6`} aria-hidden>
-        <div className="h-3 w-40 rounded bg-white/10" />
-        <div className="mt-4 h-40 rounded bg-gradient-to-r from-transparent via-white/5 to-transparent" />
+        <div className="h-3 w-40 rounded-sm bg-white/10" />
+        <div className="mt-4 h-40 rounded-sm bg-linear-to-r from-transparent via-white/5 to-transparent" />
       </div>
 
       <p className="text-xs text-[#9dd8ff]/60">

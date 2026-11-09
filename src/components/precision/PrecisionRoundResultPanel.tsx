@@ -84,8 +84,8 @@ function outcomeCard(
     return {
       glow: "shadow-[0_0_60px_rgba(16,185,129,0.5)]",
       ring: "border-emerald-300/80",
-      bg: "bg-gradient-to-b from-[#04251a] to-[#02150e]",
-      accent: "bg-gradient-to-r from-emerald-500 via-emerald-300 to-teal-300",
+      bg: "bg-linear-to-b from-[#04251a] to-[#02150e]",
+      accent: "bg-linear-to-r from-emerald-500 via-emerald-300 to-teal-300",
       heading: "text-emerald-200",
       iconColor: "text-emerald-300",
       icon: <IconTrophy size={54} stroke={1.75} aria-hidden="true" />,
@@ -97,8 +97,8 @@ function outcomeCard(
     return {
       glow: "shadow-[0_0_60px_rgba(239,68,68,0.45)]",
       ring: "border-red-400/80",
-      bg: "bg-gradient-to-b from-[#2a0a0f] to-[#150305]",
-      accent: "bg-gradient-to-r from-red-600 via-rose-400 to-orange-400",
+      bg: "bg-linear-to-b from-[#2a0a0f] to-[#150305]",
+      accent: "bg-linear-to-r from-red-600 via-rose-400 to-orange-400",
       heading: "text-red-200",
       iconColor: "text-red-300",
       icon: <IconMoodSad size={54} stroke={1.75} aria-hidden="true" />,
@@ -111,8 +111,8 @@ function outcomeCard(
   return {
     glow: "shadow-[0_0_60px_rgba(245,158,11,0.45)]",
     ring: "border-amber-300/80",
-    bg: "bg-gradient-to-b from-[#2a1e05] to-[#161003]",
-    accent: "bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500",
+    bg: "bg-linear-to-b from-[#2a1e05] to-[#161003]",
+    accent: "bg-linear-to-r from-amber-400 via-yellow-300 to-amber-500",
     heading: "text-amber-200",
     iconColor: "text-amber-300",
     icon: <IconHeartHandshake size={54} stroke={1.75} aria-hidden="true" />,
@@ -186,7 +186,7 @@ function PrecisionRoundResultPanelImpl({
         data-winner-seat={roundWinnerSeat === null ? "" : String(roundWinnerSeat)}
         data-local-seat={String(localSeat)}
         data-decision={decision}
-        className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
+        className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 px-4 backdrop-blur-xs"
       >
         <motion.div
           {...gameOverModal.panel}

@@ -140,14 +140,14 @@ export default function TermsPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
         >
-          <h1 className="mb-4 text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#00e5ff] to-[#f5ff3b]">
+          <h1 className="mb-4 text-4xl font-extrabold text-transparent bg-clip-text bg-linear-to-r from-[#00e5ff] to-[#f5ff3b]">
             Terms & Conditions
           </h1>
           <p className="mb-8 text-lg text-[#9dd8ff]">
             Last updated: September 4, 2026
           </p>
 
-          <div className="mb-8 rounded-lg border border-[#00e5ff]/20 bg-[#040d24]/80 p-6 backdrop-blur-sm">
+          <div className="mb-8 rounded-lg border border-[#00e5ff]/20 bg-[#040d24]/80 p-6 backdrop-blur-xs">
             <p className="leading-relaxed text-[#c9f7ff]">
               Welcome to GRYND. These Terms & Conditions govern your use of
               our skill-based gaming platform. Please read them carefully before
@@ -163,7 +163,7 @@ export default function TermsPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: index * 0.05 }}
-              className="rounded-lg border border-[#00e5ff]/15 bg-[#040d24]/60 p-6 backdrop-blur-sm transition-all hover:border-[#00e5ff]/30 hover:shadow-[0_0_15px_rgba(0,229,255,0.1)]"
+              className="rounded-lg border border-[#00e5ff]/15 bg-[#040d24]/60 p-6 backdrop-blur-xs transition-all hover:border-[#00e5ff]/30 hover:shadow-[0_0_15px_rgba(0,229,255,0.1)]"
             >
               <h2 className="mb-3 text-xl font-bold text-[#00e5ff]">
                 {section.title}

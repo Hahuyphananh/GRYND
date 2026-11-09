@@ -1102,7 +1102,7 @@ export default function ChessGamePage() {
               </div>
 
               {/* BOARD */}
-              <div className={`chess-board-frame relative p-[2px] rounded-2xl bg-gradient-to-r from-cyan-400 via-fuchsia-500 to-cyan-400 shadow-[0_0_35px rgba(0,255,255,0.35)] w-full aspect-square mx-auto ${boardShake ? "animate-board-shake" : ""}`}>
+              <div className={`chess-board-frame relative p-[2px] rounded-2xl bg-linear-to-r from-cyan-400 via-fuchsia-500 to-cyan-400 shadow-[0_0_35px rgba(0,255,255,0.35)] w-full aspect-square mx-auto ${boardShake ? "animate-board-shake" : ""}`}>
                 {/* Capture flash overlay */}
                 <AnimatePresence>
                   {captureFlash && (
@@ -1126,7 +1126,7 @@ export default function ChessGamePage() {
                       transition={{ duration: 0.15 }}
                       role="dialog"
                       aria-label="Choose a promotion piece"
-                      className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-[#03081f]/85 backdrop-blur-sm"
+                      className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-[#03081f]/85 backdrop-blur-xs"
                     >
                       <div className="flex gap-2 rounded-xl border border-cyan-400/40 bg-[#071531] p-3 shadow-[0_0_25px_rgba(0,229,255,.35)]">
                         {PROMOTION_PIECES.map((option) => (
@@ -1244,20 +1244,20 @@ export default function ChessGamePage() {
                 <button
                   onClick={() => setMoveIndex(Math.max(-1, moveIndex - 1))}
                   disabled={moveIndex <= -1}
-                  className="flex-1 px-2 py-1 text-xs rounded bg-white/10 hover:bg-white/20 disabled:opacity-30 transition"
+                  className="flex-1 px-2 py-1 text-xs rounded-sm bg-white/10 hover:bg-white/20 disabled:opacity-30 transition"
                 >
                   ◀ Prev
                 </button>
                 <button
                   onClick={() => setMoveIndex(-1)}
-                  className={`flex-1 px-2 py-1 text-xs rounded transition ${moveIndex === -1 ? "bg-cyan-500/30 text-cyan-300" : "bg-white/10 hover:bg-white/20"}`}
+                  className={`flex-1 px-2 py-1 text-xs rounded-sm transition ${moveIndex === -1 ? "bg-cyan-500/30 text-cyan-300" : "bg-white/10 hover:bg-white/20"}`}
                 >
                   Live
                 </button>
                 <button
                   onClick={() => setMoveIndex(Math.min(moves.length - 1, moveIndex + 1))}
                   disabled={moveIndex >= moves.length - 1}
-                  className="flex-1 px-2 py-1 text-xs rounded bg-white/10 hover:bg-white/20 disabled:opacity-30 transition"
+                  className="flex-1 px-2 py-1 text-xs rounded-sm bg-white/10 hover:bg-white/20 disabled:opacity-30 transition"
                 >
                   Next ▶
                 </button>
@@ -1460,7 +1460,7 @@ export default function ChessGamePage() {
           <motion.div
             key="turn-banner"
             {...turnBannerAnim}
-            className="fixed inset-x-0 top-1/3 z-50 mx-auto w-fit max-w-[calc(100vw-1.5rem)] rounded-2xl border-4 border-amber-400 bg-gradient-to-r from-amber-700 to-orange-700 px-6 py-5 shadow-[0_0_60px_rgba(251,191,36,0.5)] sm:px-10 sm:py-6"
+            className="fixed inset-x-0 top-1/3 z-50 mx-auto w-fit max-w-[calc(100vw-1.5rem)] rounded-2xl border-4 border-amber-400 bg-linear-to-r from-amber-700 to-orange-700 px-6 py-5 shadow-[0_0_60px_rgba(251,191,36,0.5)] sm:px-10 sm:py-6"
           >
             <motion.div
               initial={{ scale: 0 }}

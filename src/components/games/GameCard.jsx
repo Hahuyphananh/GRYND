@@ -55,7 +55,7 @@ export default function GameCard({
     <div className="group relative flex h-full flex-col overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:border-[#00e5ff]/60 hover:shadow-[0_0_30px_rgba(0,229,255,0.4)] focus-within:ring-2 focus-within:ring-[#00e5ff] focus-within:ring-offset-2 focus-within:ring-offset-[#040d24]">
       <Link
         href={game.href}
-        className="block cursor-pointer focus-visible:outline-none"
+        className="block cursor-pointer focus-visible:outline-hidden"
         aria-label={`Play ${title}`}
       >
         <div className="mb-3 relative aspect-video overflow-hidden rounded-lg">
@@ -72,7 +72,7 @@ export default function GameCard({
           />
           {/* PvP badge — real product data: every GRYND game is a competitive
               1v1 duel (the shared multiplayer tables were retired). */}
-          <span className="absolute left-2 top-2 rounded-full border border-[#00e5ff]/60 bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#00e5ff] shadow-[0_0_10px_rgba(0,229,255,0.45)] backdrop-blur-sm">
+          <span className="absolute left-2 top-2 rounded-full border border-[#00e5ff]/60 bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#00e5ff] shadow-[0_0_10px_rgba(0,229,255,0.45)] backdrop-blur-xs">
             {t("home.pvp_badge")}
           </span>
           {/* Popular / New badges — brand neon pills over the card art.
@@ -84,7 +84,7 @@ export default function GameCard({
           {isNewest && (
             <span
               aria-hidden="true"
-              className="absolute right-2 top-2 rounded-full border border-[#00e5ff]/60 bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#00e5ff] shadow-[0_0_10px_rgba(0,229,255,0.45)] backdrop-blur-sm"
+              className="absolute right-2 top-2 rounded-full border border-[#00e5ff]/60 bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#00e5ff] shadow-[0_0_10px_rgba(0,229,255,0.45)] backdrop-blur-xs"
             >
               {t("home.casino_lobby.badge_new")}
             </span>
@@ -92,7 +92,7 @@ export default function GameCard({
           {game.popular && !isNewest && (
             <span
               aria-hidden="true"
-              className="absolute right-2 top-2 rounded-full border border-[#f5ff3b]/60 bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#f5ff3b] shadow-[0_0_10px_rgba(245,255,59,0.45)] backdrop-blur-sm"
+              className="absolute right-2 top-2 rounded-full border border-[#f5ff3b]/60 bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#f5ff3b] shadow-[0_0_10px_rgba(245,255,59,0.45)] backdrop-blur-xs"
             >
               {t("home.casino_lobby.badge_hot")}
             </span>
@@ -101,7 +101,7 @@ export default function GameCard({
               the image's bottom-right so it never fights the PvP badge
               (top-left) or the NEW/HOT pills (top-right). */}
           {recommended && (
-            <span className="absolute bottom-2 right-2 rounded-full border border-[#f0abfc]/60 bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#f0abfc] shadow-[0_0_10px_rgba(240,171,252,0.4)] backdrop-blur-sm">
+            <span className="absolute bottom-2 right-2 rounded-full border border-[#f0abfc]/60 bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#f0abfc] shadow-[0_0_10px_rgba(240,171,252,0.4)] backdrop-blur-xs">
               {t("home.casino_lobby.recommended_badge")}
             </span>
           )}
@@ -134,7 +134,7 @@ export default function GameCard({
         {presence}
         <Link
           href={`/classement?game=${game.leaderboardKey}`}
-          className="text-xs text-[#00e5ff] underline underline-offset-2 hover:text-[#d8fbff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24] rounded"
+          className="text-xs text-[#00e5ff] underline underline-offset-2 hover:text-[#d8fbff] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24] rounded-sm"
         >
           {t("home.view_leaderboard")} {title}
         </Link>

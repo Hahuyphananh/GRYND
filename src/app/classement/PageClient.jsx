@@ -585,7 +585,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                 key={x}
                 onClick={() => selectTab(x)}
                 aria-pressed={tab === x}
-                className={`shrink-0 whitespace-nowrap rounded-lg border px-4 py-2 text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f] ${tab === x ? "border-[#f5ff3b]/60 bg-[#f5ff3b] text-[#041125]" : "border-[#00e5ff]/50 bg-[#0a214d] text-[#00e5ff] hover:bg-[#123b82]"}`}
+                className={`shrink-0 whitespace-nowrap rounded-lg border px-4 py-2 text-sm font-semibold transition-all focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f] ${tab === x ? "border-[#f5ff3b]/60 bg-[#f5ff3b] text-[#041125]" : "border-[#00e5ff]/50 bg-[#0a214d] text-[#00e5ff] hover:bg-[#123b82]"}`}
               >
                 {x === "trophies"
                   ? "Trophies"
@@ -619,7 +619,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                   key={g.key}
                   onClick={() => setGame(g.key)}
                   aria-pressed={game === g.key}
-                  className={`shrink-0 whitespace-nowrap rounded-md px-4 py-2 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f] ${game === g.key ? "bg-[#f5ff3b] text-[#06152c]" : "bg-[#0a214d] text-[#00e5ff] hover:bg-[#123b82]"}`}
+                  className={`shrink-0 whitespace-nowrap rounded-md px-4 py-2 text-xs font-semibold focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f] ${game === g.key ? "bg-[#f5ff3b] text-[#06152c]" : "bg-[#0a214d] text-[#00e5ff] hover:bg-[#123b82]"}`}
                 >
                   {g.label}
                 </button>
@@ -639,7 +639,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                     key={x}
                     onClick={() => setCategory(x)}
                     aria-pressed={category === x}
-                    className={`shrink-0 whitespace-nowrap rounded-md px-4 py-2 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f] ${category === x ? "bg-[#f5ff3b] text-[#06152c]" : "bg-[#0a214d] text-[#00e5ff]"}`}
+                    className={`shrink-0 whitespace-nowrap rounded-md px-4 py-2 text-xs font-semibold focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f] ${category === x ? "bg-[#f5ff3b] text-[#06152c]" : "bg-[#0a214d] text-[#00e5ff]"}`}
                   >
                     {CATEGORY_LABELS[x]}
                   </button>
@@ -690,7 +690,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                   type="button"
                   onClick={() => setGainPeriod(period)}
                   aria-pressed={gainPeriod === period}
-                  className={`rounded-md px-3 py-1 text-xs font-semibold capitalize focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] ${gainPeriod === period ? "bg-[#f5ff3b] text-[#06152c]" : "bg-[#0a214d] text-[#00e5ff]"}`}
+                  className={`rounded-md px-3 py-1 text-xs font-semibold capitalize focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] ${gainPeriod === period ? "bg-[#f5ff3b] text-[#06152c]" : "bg-[#0a214d] text-[#00e5ff]"}`}
                 >
                   {period}
                 </button>
@@ -824,13 +824,13 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <Link
                 href="/casino"
-                className="rounded-lg border border-[#f5ff3b]/60 bg-[#f5ff3b] px-4 py-2 text-sm font-bold text-[#041125] transition-all hover:bg-[#f5ff3b]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a214d]"
+                className="rounded-lg border border-[#f5ff3b]/60 bg-[#f5ff3b] px-4 py-2 text-sm font-bold text-[#041125] transition-all hover:bg-[#f5ff3b]/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a214d]"
               >
                 {me ? climbCtaLabel : "PLAY NOW"}
               </Link>
               <Link
                 href="/profil"
-                className="rounded-lg border border-[#00e5ff]/50 bg-[#0a214d] px-4 py-2 text-sm font-semibold text-[#00e5ff] transition-all hover:bg-[#123b82] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a214d]"
+                className="rounded-lg border border-[#00e5ff]/50 bg-[#0a214d] px-4 py-2 text-sm font-semibold text-[#00e5ff] transition-all hover:bg-[#123b82] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a214d]"
               >
                 {t("leaderboard.my_profile")}
               </Link>
@@ -932,10 +932,10 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                 <div key={i} className="flex animate-pulse items-center gap-3 rounded-md px-2 py-3">
                   <div className="h-8 w-8 shrink-0 rounded-full bg-white/10" />
                   <div className="flex-1 space-y-1.5">
-                    <div className="h-3.5 w-2/5 rounded bg-white/10" />
-                    <div className="h-2.5 w-1/3 rounded bg-white/5" />
+                    <div className="h-3.5 w-2/5 rounded-sm bg-white/10" />
+                    <div className="h-2.5 w-1/3 rounded-sm bg-white/5" />
                   </div>
-                  <div className="h-4 w-12 shrink-0 rounded bg-white/10" />
+                  <div className="h-4 w-12 shrink-0 rounded-sm bg-white/10" />
                 </div>
               ))}
             </div>
@@ -951,7 +951,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
               </p>
               <Link
                 href="/casino"
-                className="mt-1 rounded-lg border border-[#f5ff3b]/60 bg-[#f5ff3b] px-5 py-2.5 text-sm font-bold text-[#041125] transition-all hover:bg-[#f5ff3b]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f]"
+                className="mt-1 rounded-lg border border-[#f5ff3b]/60 bg-[#f5ff3b] px-5 py-2.5 text-sm font-bold text-[#041125] transition-all hover:bg-[#f5ff3b]/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f]"
               >
                 PLAY NOW
               </Link>
@@ -1007,7 +1007,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                           <div className="flex items-center gap-2.5">
                             <Link
                               href={`/profil/${encodeURIComponent(item.clerk_id)}`}
-                              className="flex min-w-0 items-center gap-2.5 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f]"
+                              className="flex min-w-0 items-center gap-2.5 rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f]"
                               title={`View ${item.user?.name || item.name}'s profile`}
                             >
                               <FrameAvatar
@@ -1062,7 +1062,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
 
         {/* Competitive CTA — the board should make you want to play. */}
         {!loading && !error && (
-          <div className="mx-auto mt-6 flex max-w-2xl flex-col items-center gap-4 rounded-lg border border-[#f5ff3b]/30 bg-gradient-to-br from-[#0a214d] to-[#08142f] p-6 text-center shadow-[0_0_24px_rgba(245,255,59,0.1)] sm:flex-row sm:justify-between sm:text-left">
+          <div className="mx-auto mt-6 flex max-w-2xl flex-col items-center gap-4 rounded-lg border border-[#f5ff3b]/30 bg-linear-to-br from-[#0a214d] to-[#08142f] p-6 text-center shadow-[0_0_24px_rgba(245,255,59,0.1)] sm:flex-row sm:justify-between sm:text-left">
             <div>
               <h2 className="text-lg font-bold uppercase tracking-wide text-[#f5ff3b]">
                 {t("leaderboard.climb_ranks")}
@@ -1073,7 +1073,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
             </div>
             <Link
               href="/casino"
-              className="shrink-0 rounded-lg border border-[#00e5ff]/50 bg-[#00e5ff] px-5 py-2.5 text-sm font-bold text-[#001933] transition-all hover:bg-[#00e5ff]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f]"
+              className="shrink-0 rounded-lg border border-[#00e5ff]/50 bg-[#00e5ff] px-5 py-2.5 text-sm font-bold text-[#001933] transition-all hover:bg-[#00e5ff]/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f]"
             >
               PLAY NOW
             </Link>

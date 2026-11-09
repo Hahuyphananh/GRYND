@@ -85,7 +85,7 @@ export default function GlitchBubble({
             aria-label={dismissLabel}
             // 44 × 44 hit area kept compact by the negative margins, so the
             // controls comply without inflating the bubble.
-            className="-my-2 -mr-2 -ml-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-mascot-ink/55 transition hover:bg-mascot-ink/10 hover:text-mascot-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mascot-ink/60"
+            className="-my-2 -mr-2 -ml-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-mascot-ink/55 transition hover:bg-mascot-ink/10 hover:text-mascot-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-mascot-ink/60"
           >
             <IconX size={15} aria-hidden="true" />
           </button>

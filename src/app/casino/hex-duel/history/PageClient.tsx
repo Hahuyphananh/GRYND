@@ -98,7 +98,7 @@ export default function HexDuelHistoryPage() {
 
   if (!isLoaded) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#010510] via-[#031634] to-[#030916] flex items-center justify-center">
+      <div className="min-h-screen bg-linear-to-br from-[#010510] via-[#031634] to-[#030916] flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-cyan-400/30 border-t-cyan-400 rounded-full animate-spin" />
       </div>
     );
@@ -107,13 +107,13 @@ export default function HexDuelHistoryPage() {
   if (!isSignedIn) return null;
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-[#010510] via-[#031634] to-[#030916] p-4 pt-20 text-white">
+    <main className="min-h-screen bg-linear-to-br from-[#010510] via-[#031634] to-[#030916] p-4 pt-20 text-white">
       <NavigationBar currentPath="/casino" />
 
       <div className="mx-auto max-w-4xl">
         {/* Header */}
         <div className="mb-6 text-center">
-          <h1 className="text-3xl sm:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-blue-400 to-fuchsia-400"
+          <h1 className="text-3xl sm:text-4xl font-black text-transparent bg-clip-text bg-linear-to-r from-cyan-300 via-blue-400 to-fuchsia-400"
             style={{ filter: "drop-shadow(0 0 12px rgba(34,211,238,0.3))" }}>
             HEX DUEL: Match History
           </h1>
@@ -142,20 +142,20 @@ export default function HexDuelHistoryPage() {
           cachedAt={history.cachedAt}
           skeleton={<SkeletonRows rows={6} label="Loading match history" />}
           empty={
-            <div className="text-center py-16 rounded-xl border border-white/5 bg-white/[0.02] backdrop-blur-sm">
+            <div className="text-center py-16 rounded-xl border border-white/5 bg-white/[0.02] backdrop-blur-xs">
             <p className="mb-3 flex justify-center"><IconNotebook size={48} className="text-cyan-400/60" /></p>
             <p className="text-lg font-bold text-slate-300">No games played yet</p>
             <p className="text-sm text-slate-500 mt-1">Play a game of Hex Duel and your history will appear here</p>
             <button
               onClick={() => router.push("/casino/hex-duel")}
-              className="mt-4 px-5 py-2 rounded-lg text-xs font-bold uppercase tracking-[0.12em] bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:shadow-[0_0_20px_rgba(34,211,238,0.4)] transition-all duration-200"
+              className="mt-4 px-5 py-2 rounded-lg text-xs font-bold uppercase tracking-[0.12em] bg-linear-to-r from-cyan-500 to-blue-600 text-white hover:shadow-[0_0_20px_rgba(34,211,238,0.4)] transition-all duration-200"
             >
               Play Now
             </button>
             </div>
           }
         >
-            <div className="rounded-xl border border-white/5 bg-white/[0.02] overflow-hidden backdrop-blur-sm">
+            <div className="rounded-xl border border-white/5 bg-white/[0.02] overflow-hidden backdrop-blur-xs">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>

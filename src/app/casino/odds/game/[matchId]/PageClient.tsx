@@ -94,7 +94,7 @@ function randomPrediction(): OddsPrediction {
 const LOBBY_CARD =
   "rounded-2xl border border-amber-700/60 bg-black/40 shadow-[0_0_30px_rgba(251,191,36,0.12)] backdrop-blur-xl";
 const LOBBY_TITLE =
-  "text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-500 drop-shadow-[0_0_18px_rgba(251,191,36,0.5)]";
+  "text-transparent bg-clip-text bg-linear-to-r from-amber-300 via-amber-400 to-yellow-500 drop-shadow-[0_0_18px_rgba(251,191,36,0.5)]";
 const LOBBY_PLAY =
   "border-amber-700 bg-amber-500 text-black hover:brightness-110 shadow-[0_0_25px_rgba(251,191,36,0.4)]";
 
@@ -130,7 +130,7 @@ export default function OddsGamePage() {
   const audio = useOddsAudio();
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#0a0118] to-[#061b3d] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
+    <div className="min-h-screen overflow-x-clip bg-linear-to-b from-[#0a0118] to-[#061b3d] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
       <div className="mx-auto mt-4 max-w-5xl sm:mt-8">
         <MatchHeader isPractice={isPractice} matchId={matchId} />
@@ -1856,7 +1856,7 @@ function OddsGameDisplay({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: motionSeconds(reduce, 0.25) }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
           >
             <motion.div
               initial={reduce ? false : { opacity: 0, scale: 0.8, y: 30 }}

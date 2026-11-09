@@ -855,14 +855,14 @@ export default function SudokuDuelMatchPage() {
       autoStop={terminal}
       gameLabel="sudoku-duel"
     >
-      <div className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#100c02] via-[#0b0902] to-[#070502] px-2 pb-24 pt-20 text-white sm:px-6 md:pb-8">
+      <div className="min-h-screen overflow-x-clip bg-linear-to-b from-[#100c02] via-[#0b0902] to-[#070502] px-2 pb-24 pt-20 text-white sm:px-6 md:pb-8">
         <NavigationBar currentPath="/casino" />
 
         <div className="mx-auto mt-4 w-full max-w-5xl">
           {/* ── Header: identity · lobby ─────────────────────────────── */}
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/25 bg-white/[0.04] px-3 py-2.5 sm:px-4">
             <div className="min-w-0">
-              <h1 className="flex items-center gap-2 text-lg font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-300 to-yellow-200 sm:text-2xl">
+              <h1 className="flex items-center gap-2 text-lg font-extrabold tracking-wide text-transparent bg-clip-text bg-linear-to-r from-amber-200 via-amber-300 to-yellow-200 sm:text-2xl">
                 <IconGridDots className="h-6 w-6 shrink-0 text-amber-400 sm:h-7 sm:w-7" />
                 Sudoku Duel
               </h1>

@@ -38,7 +38,7 @@ export default function PrecisionLobbyClient() {
         </p>
         <button
           onClick={() => router.push("/casino/precision")}
-          className="mt-4 rounded bg-fuchsia-500 px-4 py-2 font-bold text-black"
+          className="mt-4 rounded-sm bg-fuchsia-500 px-4 py-2 font-bold text-black"
         >
           {t("games.precision.open_lobby")}
         </button>

@@ -69,7 +69,7 @@ function MessageText({ content }) {
             if (part.type === "italic") return <em key={pIdx}>{part.value}</em>;
             if (part.type === "code")
               return (
-                <code key={pIdx} className="rounded bg-slate-700 px-1">
+                <code key={pIdx} className="rounded-sm bg-slate-700 px-1">
                   {part.value}
                 </code>
               );
@@ -605,7 +605,7 @@ export default function ChatWidget() {
         data-chat-toggle=""
         data-chat-dragging={isDragging ? "" : undefined}
         data-chat-unread-count={unread}
-        className={`relative h-14 w-14 touch-none rounded-full bg-gradient-to-br from-cyan-400 via-fuchsia-500 to-purple-600 text-2xl text-black shadow-[0_0_25px_rgba(34,211,238,0.5)] transition-all hover:scale-110 hover:shadow-[0_0_40px_rgba(217,70,239,0.7)] active:scale-95 animate-neonButton sm:h-16 sm:w-16 sm:text-3xl ${
+        className={`relative h-14 w-14 touch-none rounded-full bg-linear-to-br from-cyan-400 via-fuchsia-500 to-purple-600 text-2xl text-black shadow-[0_0_25px_rgba(34,211,238,0.5)] transition-all hover:scale-110 hover:shadow-[0_0_40px_rgba(217,70,239,0.7)] active:scale-95 animate-neonButton sm:h-16 sm:w-16 sm:text-3xl ${
           isDragging ? "cursor-grabbing" : "cursor-grab"
         }`}
         aria-label={
@@ -623,7 +623,7 @@ export default function ChatWidget() {
           <span
             data-chat-unread=""
             role="status"
-            className="absolute -right-1 -top-1 z-10 flex h-5 min-w-5 items-center justify-center rounded-full border border-black/60 bg-gradient-to-br from-rose-500 to-fuchsia-500 px-1 text-[11px] font-black leading-none text-white shadow-[0_0_10px_rgba(244,63,94,0.85)]"
+            className="absolute -right-1 -top-1 z-10 flex h-5 min-w-5 items-center justify-center rounded-full border border-black/60 bg-linear-to-br from-rose-500 to-fuchsia-500 px-1 text-[11px] font-black leading-none text-white shadow-[0_0_10px_rgba(244,63,94,0.85)]"
           >
             {unread > 9 ? "9+" : unread}
           </span>
@@ -651,13 +651,13 @@ export default function ChatWidget() {
           <div className="pointer-events-none absolute inset-0 z-0 opacity-[0.08] mix-blend-overlay bg-[repeating-linear-gradient(0deg,black,black_2px,transparent_2px,transparent_4px)] animate-scanlines" />
           <div className="mb-2 flex items-center justify-between gap-2 text-cyan-300">
             <div className="flex items-center gap-1 rounded-lg border border-cyan-400/25 bg-black/40 p-1">
-              <span className="rounded bg-cyan-400/20 px-2 py-1 text-[12px] font-medium text-cyan-100">
+              <span className="rounded-sm bg-cyan-400/20 px-2 py-1 text-[12px] font-medium text-cyan-100">
                 {room.title}
               </span>
               <Link
                 href="/contact"
                 onClick={() => setIsOpen(false)}
-                className="rounded px-2 py-1 text-[12px] font-medium text-cyan-300/70 transition hover:bg-cyan-500/10 hover:text-cyan-200"
+                className="rounded-sm px-2 py-1 text-[12px] font-medium text-cyan-300/70 transition hover:bg-cyan-500/10 hover:text-cyan-200"
               >
                 Support
               </Link>
@@ -666,7 +666,7 @@ export default function ChatWidget() {
               <button
                 type="button"
                 onClick={handleRefresh}
-                className="rounded border border-cyan-400/30 bg-cyan-500/10 px-2 py-1 text-[11px] text-cyan-200 hover:bg-cyan-400/20"
+                className="rounded-sm border border-cyan-400/30 bg-cyan-500/10 px-2 py-1 text-[11px] text-cyan-200 hover:bg-cyan-400/20"
               >
                 Refresh
               </button>
@@ -676,7 +676,7 @@ export default function ChatWidget() {
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
-                className="ml-1 rounded px-1.5 py-0.5 text-sm text-cyan-300 hover:bg-fuchsia-500/20 hover:text-fuchsia-200"
+                className="ml-1 rounded-sm px-1.5 py-0.5 text-sm text-cyan-300 hover:bg-fuchsia-500/20 hover:text-fuchsia-200"
                 aria-label="Close chat"
                 title="Close chat"
               >
@@ -691,7 +691,7 @@ export default function ChatWidget() {
                 role="region"
                 aria-label="Chat messages"
                 tabIndex={0}
-                className="mb-2 min-h-40 flex-1 basis-0 overflow-y-auto rounded border border-cyan-400/20 bg-black/60 p-2 shadow-inner shadow-cyan-500/10"
+                className="mb-2 min-h-40 flex-1 basis-0 overflow-y-auto rounded-sm border border-cyan-400/20 bg-black/60 p-2 shadow-inner shadow-cyan-500/10"
               >
                 {messages.length === 0 ? (
                   <p className="text-cyan-400/40">No messages yet.</p>
@@ -699,7 +699,7 @@ export default function ChatWidget() {
                   messages.map((msg) => (
                     <div
                       key={msg.id}
-                      className={`mb-2 rounded border border-cyan-400/10 bg-gradient-to-r from-black/60 to-cyan-950/20 px-2 py-1 hover:border-cyan-400/30 transition ${
+                      className={`mb-2 rounded-sm border border-cyan-400/10 bg-linear-to-r from-black/60 to-cyan-950/20 px-2 py-1 hover:border-cyan-400/30 transition ${
                         msg.pending ? "opacity-60" : ""
                       }`}
                     >
@@ -787,12 +787,12 @@ export default function ChatWidget() {
                     rows={3}
                     maxLength={500}
                     placeholder="Say something... Emojis and formatting **bold** *italic* `code`"
-                    className="w-full resize-none rounded border border-cyan-400/20 bg-black/60 p-2 text-sm text-cyan-50 outline-none focus:border-fuchsia-400 focus:shadow-[0_0_12px_rgba(217,70,239,0.4)]"
+                    className="w-full resize-none rounded-sm border border-cyan-400/20 bg-black/60 p-2 text-sm text-cyan-50 outline-hidden focus:border-fuchsia-400 focus:shadow-[0_0_12px_rgba(217,70,239,0.4)]"
                   />
                   <button
                     type="submit"
                     disabled={isSending}
-                    className="w-full rounded bg-gradient-to-r from-cyan-500 to-fuchsia-500 py-1 font-medium text-black hover:from-fuchsia-500 hover:to-cyan-500 shadow-[0_0_20px_rgba(34,211,238,0.4)] disabled:opacity-60"
+                    className="w-full rounded-sm bg-linear-to-r from-cyan-500 to-fuchsia-500 py-1 font-medium text-black hover:from-fuchsia-500 hover:to-cyan-500 shadow-[0_0_20px_rgba(34,211,238,0.4)] disabled:opacity-60"
                   >
                     {isSending ? "Sending..." : "Send"}
                   </button>

@@ -275,8 +275,8 @@ function ProgressBar({
         <div
           className={
             tone === "mine"
-              ? "h-full rounded-full bg-gradient-to-r from-amber-400 to-yellow-300 transition-[width] duration-150"
-              : "h-full rounded-full bg-gradient-to-r from-sky-400 to-cyan-300 transition-[width] duration-150"
+              ? "h-full rounded-full bg-linear-to-r from-amber-400 to-yellow-300 transition-[width] duration-150"
+              : "h-full rounded-full bg-linear-to-r from-sky-400 to-cyan-300 transition-[width] duration-150"
           }
           style={{ width: `${clamped}%` }}
         />
@@ -768,10 +768,10 @@ export default function SpeedTypingMatchPage() {
       autoStop={finished}
       gameLabel="speed-typing"
     >
-      <div className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#100c02] via-[#0b0902] to-[#070502] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
+      <div className="min-h-screen overflow-x-clip bg-linear-to-b from-[#100c02] via-[#0b0902] to-[#070502] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
         <NavigationBar currentPath="/casino" />
         <div className="mx-auto mt-6 max-w-4xl">
-          <h1 className="flex items-center gap-2 text-2xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-300 to-yellow-200 sm:text-3xl">
+          <h1 className="flex items-center gap-2 text-2xl font-extrabold tracking-wide text-transparent bg-clip-text bg-linear-to-r from-amber-200 via-amber-300 to-yellow-200 sm:text-3xl">
             <IconKeyboardShow className="h-7 w-7 text-amber-400" />
             Speed Typing
           </h1>
@@ -933,7 +933,7 @@ export default function SpeedTypingMatchPage() {
                       // The REAL input, kept invisible: the passage above IS the
                       // display, so the browser's own caret never competes with
                       // the highlight. It must stay focusable for mobile.
-                      className="absolute inset-0 h-full w-full resize-none bg-transparent p-4 text-transparent caret-transparent outline-none sm:p-6"
+                      className="absolute inset-0 h-full w-full resize-none bg-transparent p-4 text-transparent caret-transparent outline-hidden sm:p-6"
                       aria-label="Type the passage"
                       autoCorrect="off"
                       autoCapitalize="off"

@@ -39,7 +39,7 @@ import { IconCheck, IconGift, IconLock, IconRefresh } from "@tabler/icons-react"
 import { useDailyReward } from "../hooks/useDailyReward";
 import DailyRewardBoard from "./DailyRewardBoard";
 
-const CARD = "rounded-xl border border-[#00e5ff]/20 bg-[#040d24]/70 p-5 backdrop-blur-sm sm:p-6";
+const CARD = "rounded-xl border border-[#00e5ff]/20 bg-[#040d24]/70 p-5 backdrop-blur-xs sm:p-6";
 
 function formatCoins(value: number) {
   return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
@@ -139,7 +139,7 @@ export default function DailyRewardCard() {
                 type="button"
                 onClick={() => setOpen(true)}
                 data-testid="daily-reward-open"
-                className="inline-flex items-center justify-center rounded-xl border border-[#f5ff3b]/60 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-3 text-base font-bold text-[#1f1700] shadow-[0_0_25px_rgba(245,255,59,0.35)] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
+                className="inline-flex items-center justify-center rounded-xl border border-[#f5ff3b]/60 bg-linear-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-3 text-base font-bold text-[#1f1700] shadow-[0_0_25px_rgba(245,255,59,0.35)] transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
               >
                 {status.claimable
                   ? `Daily reward — day ${status.cycleDay} (${formatCoins(status.reward)} coins)`

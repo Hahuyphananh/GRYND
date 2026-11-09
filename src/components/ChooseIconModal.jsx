@@ -123,7 +123,7 @@ export default function ChooseIconModal({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-xs"
       onClick={handleClose}
       role="dialog"
       aria-modal="true"
@@ -134,7 +134,7 @@ export default function ChooseIconModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Neon top edge */}
-        <div className="absolute top-0 left-0 h-0.5 w-full bg-gradient-to-r from-transparent via-[#00e5ff] to-transparent" />
+        <div className="absolute top-0 left-0 h-0.5 w-full bg-linear-to-r from-transparent via-[#00e5ff] to-transparent" />
 
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#00e5ff]/20 px-5 py-4">
@@ -191,7 +191,7 @@ export default function ChooseIconModal({
                       equipped
                         ? "border-[#00e5ff] bg-[#00e5ff]/10 shadow-[0_0_16px_rgba(0,229,255,0.4)]"
                         : "border-white/10 bg-white/[0.03] hover:border-[#00e5ff]/50 hover:bg-[#00e5ff]/5"
-                    } ${busy ? "opacity-60" : ""} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24]`}
+                    } ${busy ? "opacity-60" : ""} focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24]`}
                   >
                     <span className="relative">
                       <IconAvatar

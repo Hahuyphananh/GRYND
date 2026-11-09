@@ -1,9 +1,29 @@
 @import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700&display=swap");
+@import "tailwindcss";
 @import "./light-theme.css";
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Tailwind v4 is CSS-first, but this app's palette, animations and radii live in
+   the JS config the token tests read (`tailwind.config.js`), so the stylesheet
+   points at it rather than duplicating it in an `@theme` block. */
+@config "../../tailwind.config.js";
+
+/* v4 resolves `dark:` from a custom variant, not from `darkMode` in the config.
+   Same `.dark`-ancestor semantics the app had under v3. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  /* v3's preflight defaulted every border to gray-200. v4 defaults to
+     `currentColor`, which would repaint any `border` that relies on that
+     default (and would turn light borders into the text colour). Restore the
+     v3 default so the migration changes no border anywhere. */
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentColor);
+  }
+}
 
 html,
 body {

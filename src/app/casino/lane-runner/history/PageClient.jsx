@@ -70,7 +70,7 @@ export default function LaneRushDuelHistoryPage() {
 
   if (!isLoaded) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#001933] to-[#000d1a]">
+      <div className="flex min-h-screen items-center justify-center bg-linear-to-br from-[#001933] to-[#000d1a]">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-cyan-400/30 border-t-cyan-400" />
       </div>
     );
@@ -79,14 +79,14 @@ export default function LaneRushDuelHistoryPage() {
   if (!isSignedIn) return null;
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-[#001933] via-[#011b36] to-[#000d1a] p-4 pt-20 text-white">
+    <main className="min-h-screen bg-linear-to-br from-[#001933] via-[#011b36] to-[#000d1a] p-4 pt-20 text-white">
       <NavigationBar currentPath="/casino" />
 
       <div className="mx-auto max-w-4xl">
         {/* Header */}
         <div className="mb-6 text-center">
           <h1
-            className="bg-clip-text text-3xl font-black text-transparent bg-gradient-to-r from-cyan-300 via-cyan-400 to-fuchsia-400 sm:text-4xl"
+            className="bg-clip-text text-3xl font-black text-transparent bg-linear-to-r from-cyan-300 via-cyan-400 to-fuchsia-400 sm:text-4xl"
             style={{ filter: "drop-shadow(0 0 12px rgba(34,211,238,0.3))" }}
           >
             LANE RUSH: Match History
@@ -114,7 +114,7 @@ export default function LaneRushDuelHistoryPage() {
           cachedAt={history.cachedAt}
           skeleton={<SkeletonRows rows={6} label="Loading match history" />}
           empty={
-            <div className="rounded-xl border border-white/5 bg-white/[0.02] py-16 text-center backdrop-blur-sm">
+            <div className="rounded-xl border border-white/5 bg-white/[0.02] py-16 text-center backdrop-blur-xs">
             <p className="mb-3 flex justify-center">
               <IconNotebook size={48} className="text-cyan-400/60" />
             </p>
@@ -127,14 +127,14 @@ export default function LaneRushDuelHistoryPage() {
             </p>
             <button
               onClick={() => router.push("/casino/lane-runner")}
-              className="mt-4 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 px-5 py-2 text-xs font-bold uppercase tracking-[0.12em] text-white transition-all duration-200 hover:shadow-[0_0_20px_rgba(34,211,238,0.4)]"
+              className="mt-4 rounded-lg bg-linear-to-r from-cyan-500 to-blue-600 px-5 py-2 text-xs font-bold uppercase tracking-[0.12em] text-white transition-all duration-200 hover:shadow-[0_0_20px_rgba(34,211,238,0.4)]"
             >              Play Now
             </button>
             </div>
           }
         >
 
-            <div className="overflow-hidden rounded-xl border border-white/5 bg-white/[0.02] backdrop-blur-sm">
+            <div className="overflow-hidden rounded-xl border border-white/5 bg-white/[0.02] backdrop-blur-xs">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -242,7 +242,7 @@ export default function LaneRushDuelHistoryPage() {
                                so the legacy progress chips would read 0/10. */
                             <span className="inline-flex items-center gap-1 text-xs text-slate-300">
                               <span
-                                className={`rounded bg-cyan-500/15 px-1.5 py-0.5 font-bold text-cyan-300${
+                                className={`rounded-sm bg-cyan-500/15 px-1.5 py-0.5 font-bold text-cyan-300${
                                   (Number(g.myPoints) || 0) >= WIN_SCORE
                                     ? " ring-1 ring-amber-300/50"
                                     : ""
@@ -253,7 +253,7 @@ export default function LaneRushDuelHistoryPage() {
                               </span>
                               <span className="text-slate-600">–</span>
                               <span
-                                className={`rounded bg-rose-500/15 px-1.5 py-0.5 font-bold text-rose-300${
+                                className={`rounded-sm bg-rose-500/15 px-1.5 py-0.5 font-bold text-rose-300${
                                   (Number(g.oppPoints) || 0) >= WIN_SCORE
                                     ? " ring-1 ring-amber-300/50"
                                     : ""
@@ -269,7 +269,7 @@ export default function LaneRushDuelHistoryPage() {
                                match left broken. */
                             <span className="inline-flex items-center gap-1 text-xs text-slate-300">
                               <span
-                                className={`rounded bg-cyan-500/15 px-1.5 py-0.5 font-bold text-cyan-300${
+                                className={`rounded-sm bg-cyan-500/15 px-1.5 py-0.5 font-bold text-cyan-300${
                                   g.myRow >= 10 ? " ring-1 ring-amber-300/50" : ""
                                 }`}
                                 title={`You: ${g.myRow}/10 rows`}
@@ -280,7 +280,7 @@ export default function LaneRushDuelHistoryPage() {
                                 <>
                                   <IconFlag size={11} className="text-white/30" />
                                   <span
-                                    className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-300"
+                                    className="rounded-sm bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-300"
                                     title={`${g.brokenCount} tile(s) broken`}
                                   >
                                     {g.brokenCount} broken
@@ -288,7 +288,7 @@ export default function LaneRushDuelHistoryPage() {
                                 </>
                               )}
                               <span
-                                className={`rounded bg-rose-500/15 px-1.5 py-0.5 font-bold text-rose-300${
+                                className={`rounded-sm bg-rose-500/15 px-1.5 py-0.5 font-bold text-rose-300${
                                   g.oppRow >= 10 ? " ring-1 ring-amber-300/50" : ""
                                 }`}
                                 title={`Opponent: ${g.oppRow}/10 rows`}

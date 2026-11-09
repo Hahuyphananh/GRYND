@@ -1046,7 +1046,7 @@ export default function MiniGolfMatchPage() {
 
   if (!match && loadError) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-gradient-to-b from-[#04170e] to-[#03150c] px-6 text-center text-white">
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-linear-to-b from-[#04170e] to-[#03150c] px-6 text-center text-white">
         <IconAlertTriangle className="h-8 w-8 text-amber-300" />
         <p className="text-sm text-white/80">{loadError}</p>
         <button
@@ -1102,7 +1102,7 @@ export default function MiniGolfMatchPage() {
       >
         <div
           data-testid="mini-golf-match"
-          className="flex min-h-[calc(100svh-68px)] flex-col overflow-x-clip bg-gradient-to-b from-[#04170e] via-[#03150c] to-[#020f08] text-white sm:min-h-[calc(100svh-4rem)]"
+          className="flex min-h-[calc(100svh-68px)] flex-col overflow-x-clip bg-linear-to-b from-[#04170e] via-[#03150c] to-[#020f08] text-white sm:min-h-[calc(100svh-4rem)]"
         >
           {/* The app navbar every other game page renders. The root layout
               reserves top padding for it (pt-[68px] / sm:pt-16), which is why
@@ -1114,7 +1114,7 @@ export default function MiniGolfMatchPage() {
                 the viewport. */}
             <div className="flex shrink-0 flex-wrap items-center justify-between gap-1.5 sm:gap-2">
               <div>
-                <h1 className="flex items-center gap-1.5 text-lg font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 via-emerald-400 to-lime-300 sm:text-xl">
+                <h1 className="flex items-center gap-1.5 text-lg font-extrabold tracking-wide text-transparent bg-clip-text bg-linear-to-r from-emerald-300 via-emerald-400 to-lime-300 sm:text-xl">
                   <IconGolf className="h-5 w-5 text-emerald-400" />
                   Mini Golf
                 </h1>
@@ -1333,7 +1333,7 @@ export default function MiniGolfMatchPage() {
                       the board too. This is what replaces the old bottom
                       control panel. */}
                   <div className="pointer-events-none absolute right-2 top-2 z-20 flex flex-wrap items-center justify-end gap-1.5">
-                    <span className="rounded-full bg-black/55 px-2.5 py-1 text-[10px] font-semibold text-white/75 backdrop-blur-sm">
+                    <span className="rounded-full bg-black/55 px-2.5 py-1 text-[10px] font-semibold text-white/75 backdrop-blur-xs">
                       <span className="inline-flex items-center gap-1">
                         <IconTargetArrow size={11} /> Angle{" "}
                         <span className="font-mono text-white">{Math.round(aim.angle)}°</span>
@@ -1344,7 +1344,7 @@ export default function MiniGolfMatchPage() {
                     <span
                       data-testid="aim-state"
                       data-locked={aimLocked ? "true" : "false"}
-                      className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider backdrop-blur-sm ${
+                      className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider backdrop-blur-xs ${
                         aimLocked
                           ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-200"
                           : "border-white/15 bg-black/45 text-white/55"
@@ -1362,7 +1362,7 @@ export default function MiniGolfMatchPage() {
                       data-testid="bot-turn-summary"
                       role="status"
                       aria-live="polite"
-                      className="absolute bottom-12 left-2 z-20 max-w-[min(24rem,calc(100%-1rem))] rounded-lg border border-cyan-500/25 bg-black/70 px-3 py-1.5 text-[10px] text-cyan-100 backdrop-blur-sm"
+                      className="absolute bottom-12 left-2 z-20 max-w-[min(24rem,calc(100%-1rem))] rounded-lg border border-cyan-500/25 bg-black/70 px-3 py-1.5 text-[10px] text-cyan-100 backdrop-blur-xs"
                     >
                       <span className="font-bold uppercase tracking-wider text-cyan-300">
                         {AI_DIFFICULTY_LABELS[botDifficulty]} bot's turn
@@ -1381,7 +1381,7 @@ export default function MiniGolfMatchPage() {
 
                   {/* ── Soft dim while the opponent plays ─────────────── */}
                   {!finished && !cancelled && !isMyTurn && !anim && !holeOverlay && (
-                    <div className="pointer-events-none absolute inset-0 z-10 bg-gradient-to-b from-black/35 via-transparent to-black/35" />
+                    <div className="pointer-events-none absolute inset-0 z-10 bg-linear-to-b from-black/35 via-transparent to-black/35" />
                   )}
 
                   {/* ── Power rail + status, along the bottom edge ────── */}
@@ -1397,7 +1397,7 @@ export default function MiniGolfMatchPage() {
                         }}
                       />
                     </div>
-                    <span className="rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold text-white/70 backdrop-blur-sm">
+                    <span className="rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold text-white/70 backdrop-blur-xs">
                       {anim
                         ? "Ball rolling…"
                         : match.viewerHasHoledOut
@@ -1413,7 +1413,7 @@ export default function MiniGolfMatchPage() {
                   </div>
 
                   {loadError && (
-                    <p className="absolute inset-x-2 bottom-9 z-20 rounded-lg border border-amber-400/30 bg-black/70 px-2 py-1 text-center text-[10px] text-amber-200 backdrop-blur-sm">
+                    <p className="absolute inset-x-2 bottom-9 z-20 rounded-lg border border-amber-400/30 bg-black/70 px-2 py-1 text-center text-[10px] text-amber-200 backdrop-blur-xs">
                       {loadError}
                     </p>
                   )}
@@ -1564,7 +1564,7 @@ export default function MiniGolfMatchPage() {
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.2 }}
                 data-testid="hole-result"
-                className="fixed inset-0 z-[85] flex items-center justify-center bg-black/65 px-4 backdrop-blur-sm"
+                className="fixed inset-0 z-[85] flex items-center justify-center bg-black/65 px-4 backdrop-blur-xs"
                 role="status"
                 aria-live="polite"
               >
@@ -1572,7 +1572,7 @@ export default function MiniGolfMatchPage() {
                   initial={{ scale: 0.9, y: 18, opacity: 0 }}
                   animate={{ scale: 1, y: 0, opacity: 1 }}
                   transition={{ type: "spring", stiffness: 280, damping: 22 }}
-                  className="w-full max-w-sm rounded-2xl border-2 border-emerald-400/50 bg-gradient-to-b from-[#06291a] to-[#04170e] p-5 text-center shadow-[0_0_50px_rgba(16,185,129,0.35)]"
+                  className="w-full max-w-sm rounded-2xl border-2 border-emerald-400/50 bg-linear-to-b from-[#06291a] to-[#04170e] p-5 text-center shadow-[0_0_50px_rgba(16,185,129,0.35)]"
                 >
                   <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-300/80">
                     Hole {holeOverlay.hole} complete
@@ -1603,7 +1603,7 @@ export default function MiniGolfMatchPage() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
+                className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 px-4 backdrop-blur-xs"
                 onClick={(e) => {
                   if (e.target === e.currentTarget && !forfeiting) setShowForfeitConfirm(false);
                 }}

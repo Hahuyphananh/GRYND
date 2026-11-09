@@ -86,7 +86,7 @@ export default function JoinRoomPageClient({ signedIn }: { signedIn: boolean }) 
             </p>
             <Link
               href="/sign-in"
-              className="mt-3 inline-block rounded bg-[#00e5ff] px-4 py-2 text-sm font-semibold text-[#003366]"
+              className="mt-3 inline-block rounded-sm bg-[#00e5ff] px-4 py-2 text-sm font-semibold text-[#003366]"
             >
               {t("rooms.signIn", "Sign in")}
             </Link>
@@ -102,13 +102,13 @@ export default function JoinRoomPageClient({ signedIn }: { signedIn: boolean }) 
                 value={code}
                 onChange={(event) => setCode(event.target.value.toUpperCase())}
                 maxLength={16}
-                className="w-48 rounded border border-white/20 bg-[#08203f] px-3 py-2 font-mono text-sm tracking-widest text-white"
+                className="w-48 rounded-sm border border-white/20 bg-[#08203f] px-3 py-2 font-mono text-sm tracking-widest text-white"
               />
               <button
                 type="button"
                 onClick={submit}
                 disabled={busy || !code.trim()}
-                className="rounded bg-[#00e5ff] px-4 py-2 text-sm font-semibold text-[#003366] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                className="rounded-sm bg-[#00e5ff] px-4 py-2 text-sm font-semibold text-[#003366] disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
               >
                 {busy ? t("rooms.joining", "Joining…") : t("rooms.join", "Join")}
               </button>
@@ -127,7 +127,7 @@ export default function JoinRoomPageClient({ signedIn }: { signedIn: boolean }) 
             )}
 
             {errorCode && (
-              <p className="mt-4 rounded border border-red-400/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+              <p className="mt-4 rounded-sm border border-red-400/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
                 {t(`rooms.error_${errorCode}`, errorMessage || t("rooms.joinFailed", "Could not join that room."))}
               </p>
             )}

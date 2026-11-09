@@ -406,8 +406,8 @@ function Menu({
         </div>
 
         <p className="mt-2 text-[10px] leading-snug text-white/35">
-          Difficulty sets the bot&apos;s pace only — it solves this same deal at every
-          tier.
+          Each tier is a different bot: stronger opponents plan further ahead, and
+          move faster.
         </p>
 
         <button

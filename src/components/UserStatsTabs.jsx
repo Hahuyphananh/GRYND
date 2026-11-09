@@ -103,7 +103,7 @@ function TabBar({ tabs, tab, setTab }) {
         <button
           key={t.key}
           onClick={() => setTab(t.key)}
-          className={`rounded-md px-4 py-1.5 text-xs font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f] ${
+          className={`rounded-md px-4 py-1.5 text-xs font-semibold transition-all focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f] ${
             tab === t.key
               ? "bg-[#f5ff3b] text-[#06152c]"
               : "bg-[#0a214d] text-[#00e5ff] hover:bg-[#123b82]"

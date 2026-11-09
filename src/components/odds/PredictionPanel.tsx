@@ -181,7 +181,7 @@ export default function PredictionPanel({
                 onClick={() => switchMode(option)}
                 disabled={disabled}
                 aria-pressed={isActive}
-                className={`odds-label rounded px-2.5 py-1 transition ${
+                className={`odds-label rounded-sm px-2.5 py-1 transition ${
                   isActive
                     ? "bg-[#f5ff3b] text-black"
                     : "text-white/50 hover:text-cyan-100"
@@ -199,7 +199,7 @@ export default function PredictionPanel({
             onClick={() => setZoom((current) => clampZoom(current - 1))}
             disabled={disabled || zoom === 0}
             aria-label="Zoom out"
-            className="rounded border border-white/15 bg-black/30 p-1.5 text-white/60 transition hover:border-cyan-400/50 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-30"
+            className="rounded-sm border border-white/15 bg-black/30 p-1.5 text-white/60 transition hover:border-cyan-400/50 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-30"
           >
             <IconMinus size={13} />
           </button>
@@ -211,7 +211,7 @@ export default function PredictionPanel({
             onClick={() => setZoom((current) => clampZoom(current + 1))}
             disabled={disabled || zoom === 2}
             aria-label="Zoom in"
-            className="rounded border border-white/15 bg-black/30 p-1.5 text-white/60 transition hover:border-cyan-400/50 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-30"
+            className="rounded-sm border border-white/15 bg-black/30 p-1.5 text-white/60 transition hover:border-cyan-400/50 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-30"
           >
             <IconPlus size={13} />
           </button>
@@ -356,7 +356,7 @@ export default function PredictionPanel({
               onClick={() => applyPreset(preset)}
               disabled={disabled}
               aria-pressed={isActive}
-              className={`odds-label shrink-0 rounded border px-2 py-1 transition ${
+              className={`odds-label shrink-0 rounded-sm border px-2 py-1 transition ${
                 isActive
                   ? "border-[#f5ff3b] bg-[#f5ff3b] text-black"
                   : "border-white/12 bg-white/[0.04] text-white/55 hover:border-cyan-400/50 hover:text-cyan-100"
@@ -376,7 +376,7 @@ export default function PredictionPanel({
           type="button"
           onClick={clear}
           disabled={disabled || !value}
-          className="odds-label inline-flex items-center gap-1 rounded border border-white/12 px-2 py-1 text-white/45 transition hover:border-red-400/50 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-30"
+          className="odds-label inline-flex items-center gap-1 rounded-sm border border-white/12 px-2 py-1 text-white/45 transition hover:border-red-400/50 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-30"
         >
           <IconX size={11} /> clear
         </button>

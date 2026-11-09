@@ -131,7 +131,7 @@ export default function HexActionLog({
 
   return (
     <div
-      className="rounded-xl border border-white/10 bg-white/[0.03] backdrop-blur-sm overflow-hidden"
+      className="rounded-xl border border-white/10 bg-white/[0.03] backdrop-blur-xs overflow-hidden"
     >
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">

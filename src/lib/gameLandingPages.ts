@@ -682,7 +682,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
     rules: [
       "Both seats start identically: two Tier 1 cars in the garage, 4 Scrap, 0 Fuel, 0 Tech and 0 points.",
       "Action points reset to 2 every round, never accumulate and never go negative. Every action is validated by the server.",
-      "A finished car scores tier base points × the lane multiplier, rounded once: Compact 12, Sport 28, Supercar 65, Hypercar 150.",
+      "A finished car scores tier base points × the lane multiplier, rounded-sm once: Compact 12, Sport 28, Supercar 65, Hypercar 150.",
       "A successful run also pays its lane chip: +1 Scrap on Safe, +1 Fuel on Sprint, +1 Tech on Risk.",
       "A DNF scores nothing, pays no chip, and returns the car to the garage damaged. Damaged cars cannot race, merge or be re-deployed until repaired.",
       "Purchases are Tier 1 only. A merge consumes both cars and creates one car of the next tier; Tier 4 is the maximum. A seat can own at most 8 cars and race at most 4 in one round.",
@@ -690,7 +690,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
       "Points are cumulative. The first seat to 1,000 wins; if both cross in the same round the higher total wins, and an exact tie is a draw.",
     ],
     scoring: [
-      "Only finished runs score: tier base points × lane multiplier (Safe 1.0×, Sprint 1.5×, Risk 2.2×), rounded once.",
+      "Only finished runs score: tier base points × lane multiplier (Safe 1.0×, Sprint 1.5×, Risk 2.2×), rounded-sm once.",
       "The match ends at 1,000 cumulative points. If both cross it in the same round the higher total wins, and an exact tie is a draw.",
       "A ranked result moves your per-game rating and your trophies for this game.",
     ],
@@ -1339,7 +1339,7 @@ export const GAME_LANDING_PAGES: readonly GameLandingPage[] = [
       },
       {
         q: "What does a range pay?",
-        a: "100 divided by its width, rounded, with a minimum of 1 point. A 10-wide call pays 10 if the target is inside it and nothing if it is not.",
+        a: "100 divided by its width, rounded-sm, with a minimum of 1 point. A 10-wide call pays 10 if the target is inside it and nothing if it is not.",
       },
       {
         q: "What if the scores are tied after five rounds?",

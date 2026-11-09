@@ -54,7 +54,7 @@ function MainComponent({
           setShow(false);
           onClose?.();
         }}
-        className="ml-4 text-white hover:text-gray-200 focus:outline-none"
+        className="ml-4 text-white hover:text-gray-200 focus:outline-hidden"
       >
         <i className="fas fa-times"></i>
       </button>
@@ -105,25 +105,25 @@ function StoryComponent() {
       <div className="mt-8 space-x-4">
         <button
           onClick={() => setShowSuccess(true)}
-          className="rounded bg-green-500 px-4 py-2 text-white hover:bg-green-600"
+          className="rounded-sm bg-green-500 px-4 py-2 text-white hover:bg-green-600"
         >
           Show Success
         </button>
         <button
           onClick={() => setShowError(true)}
-          className="rounded bg-red-500 px-4 py-2 text-white hover:bg-red-600"
+          className="rounded-sm bg-red-500 px-4 py-2 text-white hover:bg-red-600"
         >
           Show Error
         </button>
         <button
           onClick={() => setShowInfo(true)}
-          className="rounded bg-[#f5ff3b] px-4 py-2 text-white hover:bg-[#f5ff3b]"
+          className="rounded-sm bg-[#f5ff3b] px-4 py-2 text-white hover:bg-[#f5ff3b]"
         >
           Show Info
         </button>
         <button
           onClick={() => setShowWarning(true)}
-          className="rounded bg-yellow-500 px-4 py-2 text-white hover:bg-yellow-600"
+          className="rounded-sm bg-yellow-500 px-4 py-2 text-white hover:bg-yellow-600"
         >
           Show Warning
         </button>

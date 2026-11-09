@@ -72,7 +72,7 @@ export default function StateShell({
 
 /** Shared primary/secondary action styling for the three states. */
 export const statePrimaryAction =
-  "inline-flex items-center justify-center gap-2 rounded-lg border border-[#f5ff3b]/60 bg-[#f5ff3b] px-5 py-2.5 text-sm font-bold text-[#041125] transition-all hover:bg-[#f5ff3b]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f] active:scale-95 disabled:opacity-60";
+  "inline-flex items-center justify-center gap-2 rounded-lg border border-[#f5ff3b]/60 bg-[#f5ff3b] px-5 py-2.5 text-sm font-bold text-[#041125] transition-all hover:bg-[#f5ff3b]/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f] active:scale-95 disabled:opacity-60";
 
 export const stateSecondaryAction =
-  "inline-flex items-center justify-center gap-2 rounded-lg border border-[#00e5ff]/50 bg-[#0a214d] px-5 py-2.5 text-sm font-semibold text-[#00e5ff] transition-all hover:bg-[#123b82] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f] active:scale-95 disabled:opacity-60";
+  "inline-flex items-center justify-center gap-2 rounded-lg border border-[#00e5ff]/50 bg-[#0a214d] px-5 py-2.5 text-sm font-semibold text-[#00e5ff] transition-all hover:bg-[#123b82] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f] active:scale-95 disabled:opacity-60";

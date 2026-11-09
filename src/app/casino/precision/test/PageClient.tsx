@@ -416,14 +416,14 @@ useEffect(() => {
         <button
           data-testid="precision-test-back-to-lobby"
           onClick={handleLeave}
-          className="rounded bg-[#f5ff3b] px-4 py-2 font-bold text-black"
+          className="rounded-sm bg-[#f5ff3b] px-4 py-2 font-bold text-black"
         >
           {t("games.precision.lobby_button")}
         </button>
         {phase !== "idle" && phase !== "finished" && (
           <button
             onClick={handleRestart}
-            className="rounded bg-cyan-400 px-4 py-2 font-bold text-black"
+            className="rounded-sm bg-cyan-400 px-4 py-2 font-bold text-black"
           >
             {t("games.precision.restart")}
           </button>
@@ -507,7 +507,7 @@ useEffect(() => {
   return (
     <div
       data-testid="precision-test-page"
-      className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#06120f] to-[#050816] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8"
+      className="min-h-screen overflow-x-clip bg-linear-to-b from-[#06120f] to-[#050816] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8"
     >
       <NavigationBar currentPath="/casino" />
 
@@ -588,7 +588,7 @@ function IdleStartScreen({ onStart, personalBest, t }: { onStart: () => void; pe
         <button
           data-testid="precision-test-start-button"
           onClick={onStart}
-          className="mt-7 w-full rounded-2xl bg-gradient-to-b from-cyan-400 to-cyan-500 px-6 py-5 text-2xl font-black tracking-widest text-black shadow-[0_0_30px_rgba(34,211,238,0.5)] transition active:scale-95 hover:from-cyan-300 hover:to-cyan-400"
+          className="mt-7 w-full rounded-2xl bg-linear-to-b from-cyan-400 to-cyan-500 px-6 py-5 text-2xl font-black tracking-widest text-black shadow-[0_0_30px_rgba(34,211,238,0.5)] transition active:scale-95 hover:from-cyan-300 hover:to-cyan-400"
         >
           {t("games.precision.start_test_button")}
         </button>
@@ -717,7 +717,7 @@ function ActivePanel({
           type="button"
           data-testid="precision-test-stop-button"
           onClick={onStop}
-          className="w-full rounded-2xl border-2 border-red-400/60 bg-gradient-to-b from-red-500 to-red-600 px-6 py-7 text-3xl font-black tracking-widest text-white shadow-[0_0_30px_rgba(239,68,68,0.65)] transition active:scale-95 hover:from-red-400 hover:to-red-500 animate-pulse"
+          className="w-full rounded-2xl border-2 border-red-400/60 bg-linear-to-b from-red-500 to-red-600 px-6 py-7 text-3xl font-black tracking-widest text-white shadow-[0_0_30px_rgba(239,68,68,0.65)] transition active:scale-95 hover:from-red-400 hover:to-red-500 animate-pulse"
         >
           STOP
         </button>
@@ -911,7 +911,7 @@ function FinishedSummaryPanel({
         <button
           data-testid="precision-test-play-again"
           onClick={onRestart}
-          className="flex-1 rounded-2xl bg-gradient-to-b from-cyan-400 to-cyan-500 px-6 py-4 text-xl font-black tracking-widest text-black shadow-[0_0_30px_rgba(34,211,238,0.5)] transition active:scale-95 hover:from-cyan-300 hover:to-cyan-400"
+          className="flex-1 rounded-2xl bg-linear-to-b from-cyan-400 to-cyan-500 px-6 py-4 text-xl font-black tracking-widest text-black shadow-[0_0_30px_rgba(34,211,238,0.5)] transition active:scale-95 hover:from-cyan-300 hover:to-cyan-400"
         >
           {t("games.precision.play_again_button")}
         </button>
@@ -972,7 +972,7 @@ function RankBars({
       <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-cyan-100/90">
         {stack.map((s) => (
           <span key={s.label} className="flex items-center gap-1">
-            <span className={`inline-block h-2.5 w-2.5 rounded-sm ${s.bg}`} />
+            <span className={`inline-block h-2.5 w-2.5 rounded-xs ${s.bg}`} />
             <span className={`inline-flex items-center gap-1 font-bold ${s.textColor}`}>
               <PrecisionRankIcon label={s.label} size={11} /> {s.label}
             </span>{" "}

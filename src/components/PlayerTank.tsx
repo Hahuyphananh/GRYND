@@ -42,7 +42,7 @@ export default function PlayerTank({
     >
       {playerName && (
         <div
-          className="absolute -top-6 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded bg-black/70 text-white text-[10px] font-semibold whitespace-nowrap"
+          className="absolute -top-6 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-sm bg-black/70 text-white text-[10px] font-semibold whitespace-nowrap"
           style={{
             maxWidth: 120,
             overflow: "hidden",
@@ -68,14 +68,14 @@ export default function PlayerTank({
         )}
         {/* Barrel (shorter now) */}
         <div
-          className="w-2 h-6 bg-black absolute top-0 left-1/2 -translate-x-1/2 rounded"
+          className="w-2 h-6 bg-black absolute top-0 left-1/2 -translate-x-1/2 rounded-sm"
           style={{ transformOrigin: "bottom center" }}
         />
 
         {/* Health Bar (inside tank, below barrel) */}
-        <div className="absolute top-[30px] left-2 right-2 h-3 bg-gray-700 rounded">
+        <div className="absolute top-[30px] left-2 right-2 h-3 bg-gray-700 rounded-sm">
           <div
-            className="h-3 bg-red-500 rounded"
+            className="h-3 bg-red-500 rounded-sm"
             style={{ width: `${(health / maxHealth) * 100}%` }}
           />
         </div>

@@ -317,7 +317,7 @@ export default function HexBoard({
       {upgradeFunding && fundingFromNeighbours > 0 && (
         <div
           data-hex-upgrade-funding=""
-          className="mb-2 rounded-lg border px-2.5 py-1 text-[10px] font-bold tabular-nums backdrop-blur-sm"
+          className="mb-2 rounded-lg border px-2.5 py-1 text-[10px] font-bold tabular-nums backdrop-blur-xs"
           style={{
             borderColor: "rgba(192,132,252,0.45)",
             color: "#e9d5ff",
@@ -473,7 +473,7 @@ export default function HexBoard({
             </svg>
             <span
               data-hex-arrow-label=""
-              className="pointer-events-none absolute rounded-md border px-1.5 py-0.5 text-[10px] font-black tabular-nums backdrop-blur-sm"
+              className="pointer-events-none absolute rounded-md border px-1.5 py-0.5 text-[10px] font-black tabular-nums backdrop-blur-xs"
               style={{
                 left: arrow.label.x,
                 top: arrow.label.y,
@@ -515,7 +515,7 @@ export default function HexBoard({
           <>
             <span className="flex items-center gap-1.5">
               <span
-                className="w-2.5 h-2.5 rounded-sm"
+                className="w-2.5 h-2.5 rounded-xs"
                 style={{
                   backgroundColor: `${localColor}99`,
                   boxShadow: `0 0 6px ${localColor}55`,
@@ -525,7 +525,7 @@ export default function HexBoard({
             </span>
             <span className="flex items-center gap-1.5">
               <span
-                className="w-2.5 h-2.5 rounded-sm"
+                className="w-2.5 h-2.5 rounded-xs"
                 style={{
                   backgroundColor: `${opponentColor}99`,
                   boxShadow: `0 0 6px ${opponentColor}55`,
@@ -537,21 +537,21 @@ export default function HexBoard({
         ) : (
           <>
             <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm bg-cyan-400/60 shadow-[0_0_6px_rgba(34,211,238,0.3)]" />
+              <span className="w-2.5 h-2.5 rounded-xs bg-cyan-400/60 shadow-[0_0_6px_rgba(34,211,238,0.3)]" />
               P1
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm bg-red-400/60 shadow-[0_0_6px_rgba(239,68,68,0.3)]" />
+              <span className="w-2.5 h-2.5 rounded-xs bg-red-400/60 shadow-[0_0_6px_rgba(239,68,68,0.3)]" />
               P2
             </span>
           </>
         )}
         <span className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-sm bg-slate-700/40 border border-slate-600/30" />
+          <span className="w-2.5 h-2.5 rounded-xs bg-slate-700/40 border border-slate-600/30" />
           Empty
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-sm bg-yellow-500/60 shadow-[0_0_6px_rgba(250,204,21,0.3)]" />
+          <span className="w-2.5 h-2.5 rounded-xs bg-yellow-500/60 shadow-[0_0_6px_rgba(250,204,21,0.3)]" />
           <IconStar size={12} className="text-yellow-500" /> Capital
         </span>
       </div>

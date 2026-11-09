@@ -840,12 +840,12 @@ const prefersReducedMotion = useReducedMotion();
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, ease: "easeOut" }}
-        className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8"
+        className="min-h-screen overflow-x-clip bg-linear-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8"
       >
       <div className="max-w-5xl mx-auto relative overflow-hidden rounded-2xl">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-amber-400 to-yellow-500 drop-shadow-[0_0_18px_rgba(251,191,36,0.5)]">
+            <h1 className="text-3xl font-extrabold text-transparent bg-clip-text bg-linear-to-r from-orange-400 via-amber-400 to-yellow-500 drop-shadow-[0_0_18px_rgba(251,191,36,0.5)]">
               {t("games.dots_and_boxes.match_title", { gameId })}
             </h1>
           </div>
@@ -1159,7 +1159,7 @@ const prefersReducedMotion = useReducedMotion();
                 setShowForfeitConfirm(false);
               }
             }}
-            className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 backdrop-blur-sm px-4"
+            className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 backdrop-blur-xs px-4"
           >
             <motion.div
               initial={{ scale: 0.92, opacity: 0, y: 10 }}
@@ -1226,7 +1226,7 @@ const prefersReducedMotion = useReducedMotion();
                 router.push("/casino/dots-and-boxes");
               }
             }}
-            className="fixed inset-0 z-[80] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+            className="fixed inset-0 z-[80] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4"
           >
             <motion.div
               {...gameOverModalAnim.panel}

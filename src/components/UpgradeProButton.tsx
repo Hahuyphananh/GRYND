@@ -51,10 +51,10 @@ export type UpgradeProButtonProps = {
 };
 
 const CTA_CLASS =
-  "inline-flex w-full items-center justify-center rounded-xl border border-[#f5ff3b]/60 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-3 text-base font-bold text-[#1f1700] shadow-[0_0_25px_rgba(245,255,59,0.35)] transition hover:brightness-110 hover:shadow-[0_0_40px_rgba(245,255,59,0.55)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817] disabled:opacity-60 sm:w-auto";
+  "inline-flex w-full items-center justify-center rounded-xl border border-[#f5ff3b]/60 bg-linear-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-3 text-base font-bold text-[#1f1700] shadow-[0_0_25px_rgba(245,255,59,0.35)] transition hover:brightness-110 hover:shadow-[0_0_40px_rgba(245,255,59,0.55)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817] disabled:opacity-60 sm:w-auto";
 
 const COMPACT_CLASS =
-  "inline-flex items-center justify-center rounded-lg border border-[#f5ff3b]/50 bg-[#f5ff3b]/10 px-3 py-1.5 text-sm font-semibold text-[#f5ff3b] transition hover:bg-[#f5ff3b]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817] disabled:opacity-60";
+  "inline-flex items-center justify-center rounded-lg border border-[#f5ff3b]/50 bg-[#f5ff3b]/10 px-3 py-1.5 text-sm font-semibold text-[#f5ff3b] transition hover:bg-[#f5ff3b]/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817] disabled:opacity-60";
 
 export default function UpgradeProButton({
   variant = "cta",

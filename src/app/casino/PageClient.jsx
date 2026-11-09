@@ -888,7 +888,7 @@ function MainComponent({ adSlot = null, hilltopSlot = null, gameIndex = [], disc
         <section className="mb-8 space-y-3 text-center">
           <h1 className="text-2xl font-black tracking-tight leading-tight sm:text-4xl md:text-6xl fade-slide-up">
             <span className="text-[#f5ff3b]">{t("home.title_line1")}</span>{" "}
-            <span className="bg-gradient-to-r from-[#00e5ff] to-[#f0abfc] bg-clip-text text-transparent">
+            <span className="bg-linear-to-r from-[#00e5ff] to-[#f0abfc] bg-clip-text text-transparent">
               {t("home.title_line2")}
             </span>
           </h1>
@@ -921,7 +921,7 @@ function MainComponent({ adSlot = null, hilltopSlot = null, gameIndex = [], disc
             URL. */}
         {firstBattle && isGameAvailable("rps") && (
           <div className="mb-8">
-            <div className="relative overflow-hidden rounded-2xl border border-[#f5ff3b]/40 bg-gradient-to-r from-[#0a214d]/90 to-[#08142f]/90 px-5 py-4 shadow-[0_0_30px_rgba(245,255,59,0.12)]">
+            <div className="relative overflow-hidden rounded-2xl border border-[#f5ff3b]/40 bg-linear-to-r from-[#0a214d]/90 to-[#08142f]/90 px-5 py-4 shadow-[0_0_30px_rgba(245,255,59,0.12)]">
               <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <h2 className="text-lg font-black tracking-tight text-[#f5ff3b] sm:text-xl">
@@ -934,7 +934,7 @@ function MainComponent({ adSlot = null, hilltopSlot = null, gameIndex = [], disc
                 <div className="flex shrink-0 items-center gap-2">
                   <Link
                     href="/casino/rps/play-ai?onboarding=1"
-                    className="rounded-lg border border-[#f5ff3b]/60 bg-[#f5ff3b] px-5 py-2.5 text-sm font-bold text-[#041125] transition-all hover:bg-[#f5ff3b]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a214d]"
+                    className="rounded-lg border border-[#f5ff3b]/60 bg-[#f5ff3b] px-5 py-2.5 text-sm font-bold text-[#041125] transition-all hover:bg-[#f5ff3b]/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a214d]"
                   >
                     {t("onboarding.firstMatch.lobbyCta")}
                   </Link>
@@ -952,7 +952,7 @@ function MainComponent({ adSlot = null, hilltopSlot = null, gameIndex = [], disc
                       }
                     }}
                     aria-label={t("onboarding.firstMatch.dismiss")}
-                    className="flex h-9 w-9 items-center justify-center rounded-full border border-[#00e5ff]/40 text-[#9dd8ff] transition hover:bg-[#00e5ff]/10 hover:text-[#d8fbff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-[#00e5ff]/40 text-[#9dd8ff] transition hover:bg-[#00e5ff]/10 hover:text-[#d8fbff] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
                   >
                     ✕
                   </button>
@@ -968,7 +968,7 @@ function MainComponent({ adSlot = null, hilltopSlot = null, gameIndex = [], disc
             server-side so it cannot nag. */}
         {questionnaireInvite && (
           <div className="mb-8">
-            <div className="relative overflow-hidden rounded-2xl border border-[#00e5ff]/40 bg-gradient-to-r from-[#08142f]/95 to-[#0a214d]/95 px-5 py-4 shadow-[0_0_30px_rgba(0,229,255,0.12)]">
+            <div className="relative overflow-hidden rounded-2xl border border-[#00e5ff]/40 bg-linear-to-r from-[#08142f]/95 to-[#0a214d]/95 px-5 py-4 shadow-[0_0_30px_rgba(0,229,255,0.12)]">
               <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <h2 className="text-lg font-black tracking-tight text-[#f5ff3b] sm:text-xl">
@@ -987,14 +987,14 @@ function MainComponent({ adSlot = null, hilltopSlot = null, gameIndex = [], disc
                 <div className="flex shrink-0 flex-wrap items-center gap-2">
                   <Link
                     href="/welcome/questionnaire?from=lobby"
-                    className="rounded-lg border border-[#00e5ff]/60 bg-[#00e5ff] px-5 py-2.5 text-sm font-bold text-black transition-all hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a214d]"
+                    className="rounded-lg border border-[#00e5ff]/60 bg-[#00e5ff] px-5 py-2.5 text-sm font-bold text-black transition-all hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a214d]"
                   >
                     {t("onboarding.questionnaire.invite.primary")}
                   </Link>
                   <button
                     type="button"
                     onClick={dismissQuestionnaireInvite}
-                    className="rounded-lg border border-[#00e5ff]/35 px-4 py-2.5 text-sm font-semibold text-[#9dd8ff] transition hover:bg-[#00e5ff]/10 hover:text-[#d8fbff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                    className="rounded-lg border border-[#00e5ff]/35 px-4 py-2.5 text-sm font-semibold text-[#9dd8ff] transition hover:bg-[#00e5ff]/10 hover:text-[#d8fbff] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
                   >
                     {t("onboarding.questionnaire.invite.secondary")}
                   </button>
@@ -1029,7 +1029,7 @@ function MainComponent({ adSlot = null, hilltopSlot = null, gameIndex = [], disc
               placeholder={t("home.search_placeholder")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-xl border border-[#00e5ff]/45 bg-[#040d24] py-3 pl-12 pr-4 text-[#ecf8ff] placeholder-[#6aa4d8] transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#00e5ff]"
+              className="w-full rounded-xl border border-[#00e5ff]/45 bg-[#040d24] py-3 pl-12 pr-4 text-[#ecf8ff] placeholder-[#6aa4d8] transition-all duration-200 focus:outline-hidden focus:ring-2 focus:ring-[#00e5ff]"
             />
           </div>
         </div>
@@ -1052,7 +1052,7 @@ function MainComponent({ adSlot = null, hilltopSlot = null, gameIndex = [], disc
                   key={btn.key}
                   onClick={() => setActiveFilter(btn.key)}
                   aria-pressed={activeFilter === btn.key}
-                  className={`rounded-xl px-3 py-2 text-sm font-semibold transition-all duration-200 sm:px-5 sm:text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24] ${
+                  className={`rounded-xl px-3 py-2 text-sm font-semibold transition-all duration-200 sm:px-5 sm:text-base focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24] ${
                     activeFilter === btn.key
                       ? "bg-[#00e5ff] text-black shadow-[0_0_15px_rgba(0,229,255,0.7)]"
                       : "bg-[#08142f] text-[#d8fbff] border border-[#00e5ff]/30 hover:bg-[#10234a]"
@@ -1082,7 +1082,7 @@ function MainComponent({ adSlot = null, hilltopSlot = null, gameIndex = [], disc
                   key={btn.key}
                   onClick={() => setSortOrder(btn.key)}
                   aria-pressed={sortOrder === btn.key}
-                  className={`rounded-xl px-3 py-2 text-sm font-semibold transition-all duration-200 sm:px-5 sm:text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24] ${
+                  className={`rounded-xl px-3 py-2 text-sm font-semibold transition-all duration-200 sm:px-5 sm:text-base focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24] ${
                     sortOrder === btn.key
                       ? "bg-[#f5ff3b] text-[#041125] shadow-[0_0_15px_rgba(245,255,59,0.6)]"
                       : "bg-[#08142f] text-[#e8e4c8] border border-[#f5ff3b]/30 hover:bg-[#10234a]"
@@ -1147,7 +1147,7 @@ function MainComponent({ adSlot = null, hilltopSlot = null, gameIndex = [], disc
                     clearPlayedGames();
                     setRecentGames([]);
                   }}
-                  className="rounded-md px-2 py-1 text-xs font-medium text-[#9dd8ff] transition hover:text-[#d8fbff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                  className="rounded-md px-2 py-1 text-xs font-medium text-[#9dd8ff] transition hover:text-[#d8fbff] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
                 >
                   {t("home.casino_lobby.clear_recent")}
                 </button>
@@ -1160,7 +1160,7 @@ function MainComponent({ adSlot = null, hilltopSlot = null, gameIndex = [], disc
                     <Link
                       key={label}
                       href={game.href}
-                      className="group w-40 shrink-0 overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_24px_rgba(0,229,255,0.4)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24]"
+                      className="group w-40 shrink-0 overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_24px_rgba(0,229,255,0.4)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24]"
                       aria-label={`${t("home.casino_lobby.play_again")}: ${game.nameKey ? t(game.nameKey) : game.name}`}
                     >
                       <div className="relative aspect-video overflow-hidden">
@@ -1172,7 +1172,7 @@ function MainComponent({ adSlot = null, hilltopSlot = null, gameIndex = [], disc
                           sizes="160px"
                           className="h-full w-full object-cover object-center transition-transform group-hover:scale-110"
                         />
-                        <span className="absolute left-2 top-2 rounded-full border border-[#00e5ff]/60 bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#00e5ff] shadow-[0_0_10px_rgba(0,229,255,0.45)] backdrop-blur-sm">
+                        <span className="absolute left-2 top-2 rounded-full border border-[#00e5ff]/60 bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#00e5ff] shadow-[0_0_10px_rgba(0,229,255,0.45)] backdrop-blur-xs">
                           {t("home.pvp_badge")}
                         </span>
                       </div>
@@ -1234,7 +1234,7 @@ function MainComponent({ adSlot = null, hilltopSlot = null, gameIndex = [], disc
                   setSearch("");
                   setActiveFilter("all");
                 }}
-                className="mt-5 rounded-lg border border-[#00e5ff]/50 bg-[#0a214d] px-5 py-2.5 text-sm font-semibold text-[#00e5ff] transition-all hover:bg-[#123b82] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24]"
+                className="mt-5 rounded-lg border border-[#00e5ff]/50 bg-[#0a214d] px-5 py-2.5 text-sm font-semibold text-[#00e5ff] transition-all hover:bg-[#123b82] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24]"
               >
                 Clear search & filters
               </button>
@@ -1318,11 +1318,6 @@ function MainComponent({ adSlot = null, hilltopSlot = null, gameIndex = [], disc
           animation-delay: calc(0.08s * var(--i));
         }
       `}</style>
-      {/* GRYND PRO widget — the same fixed bottom-right card the home page and
-          the game landing pages mount. The hub is a browsing surface, not an
-          active match, so it belongs here too; it renders nothing for a
-          signed-out visitor and only a status card for an active member. */}
-      <GryndProWidget />
       {adSlot}
       <Footer />
       <StickyMobileCta playHref="/casino/mines-pvp" />

@@ -154,7 +154,7 @@ export default function ReviewWall({
 
         <button
           onClick={openReviewFlow}
-          className="rounded-lg bg-gradient-to-r from-[#00e5ff] to-[#00a8cc] px-5 py-2.5 font-bold text-[#00131a] transition-transform hover:scale-[1.02]"
+          className="rounded-lg bg-linear-to-r from-[#00e5ff] to-[#00a8cc] px-5 py-2.5 font-bold text-[#00131a] transition-transform hover:scale-[1.02]"
         >
           {mine?.submitted
             ? mine.status === "approved"
@@ -187,7 +187,7 @@ export default function ReviewWall({
           {reviews.map((r) => (
             <div
               key={r.id}
-              className="rounded-xl border border-[#00e5ff]/15 bg-[#040d24]/70 p-5 backdrop-blur-sm"
+              className="rounded-xl border border-[#00e5ff]/15 bg-[#040d24]/70 p-5 backdrop-blur-xs"
             >
               <div className="mb-2 flex items-center justify-between gap-2">
                 <Stars value={r.rating} />
@@ -210,7 +210,7 @@ export default function ReviewWall({
                 />
                 <span className="font-semibold text-[#c9f7ff]/80">{r.username || "Player"}</span>
                 <span className="ml-auto flex items-center gap-1.5">
-                  <span className="rounded bg-green-500/15 px-1.5 py-0.5 text-[10px] text-green-400">
+                  <span className="rounded-sm bg-green-500/15 px-1.5 py-0.5 text-[10px] text-green-400">
                     Verified player
                   </span>
                   {/* Never offer a report button on your own review — the API

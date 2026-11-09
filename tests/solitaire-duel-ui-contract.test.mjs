@@ -159,7 +159,7 @@ test("client: the only request body this game sends is a move", () => {
   const src = code(MATCH_PAGE);
 
   // The one POST that carries gameplay.
-  assert.match(src, /body: JSON\.stringify\(\{ move, expectedPly \}\)/);
+  assert.match(src, /body: JSON\.stringify\(\{ move: entry\.move, expectedPly \}\)/);
   // ...and the bare invalidation poke.
   assert.match(src, /SOLITAIRE_DUEL_EVENTS\.READY, \{ matchId \}/);
 
@@ -212,10 +212,14 @@ test("client: gameplay is gated on the server's GO instant, never on mount", () 
   const src = code(MATCH_PAGE);
   assert.match(
     src,
-    /const canPlayNow = phase === "racing" && !expired && !pending/,
+    /const canPlayNow = phase === "racing" && !expired && !paused/,
     "the board is interactive only while the server says the race is live",
   );
   assert.match(src, /interactive=\{canPlayNow\}/);
+  // The move itself is drawn instantly (`applyMoveToView`) and queued, so an
+  // in-flight request must never disable the board.
+  assert.doesNotMatch(src, /pending=\{pending\}/);
+  assert.match(src, /MOVE_QUEUE_LIMIT/);
   // The move gate repeats the same conditions, including the practice pause:
   // a paused match must not accept a move behind the frozen overlay.
   assert.match(src, /if \(phase !== "racing" \|\| expired \|\| pausedRef\.current\) return;/);
@@ -223,13 +227,23 @@ test("client: gameplay is gated on the server's GO instant, never on mount", () 
   assert.match(src, /Math\.max\(0, goAtMs - serverNowMs\)/);
 });
 
-test("client: a rejected move resyncs rather than keeping a local guess", () => {
+test("client: a rejected move drops its prediction and resyncs", () => {
   const src = code(MATCH_PAGE);
   assert.match(src, /setNotice\(data\?\.error \|\| "That move was refused"\)/);
   assert.match(src, /void load\(\);/, "a refusal must resync from the server");
-  // No optimistic board mutation: the board is only ever set from a snapshot.
-  assert.doesNotMatch(src, /applyMove/, "the page never applies a move locally");
-  assert.doesNotMatch(src, /setView\(/, "there is no local board state to drift");
+  // The move is DRAWN before the server answers (that is what makes it instant),
+  // but the prediction is only ever the viewer's own visible board and is thrown
+  // away — with the whole queue — the moment the server refuses it.
+  assert.match(src, /applyMoveToView/);
+  assert.match(
+    src,
+    /queueRef\.current = \[\];[\s\S]{0,200}setOptimisticView\(null\)/,
+    "a refusal clears the queue and the predicted board",
+  );
+  // The cursor sent is still the server's own, never a locally incremented one.
+  assert.match(src, /expectedPly = Number\(authoritativeViewRef\.current\?\.ply \?\? 0\)/);
+  // The page never invents a finished race.
+  assert.doesNotMatch(src, /completed: true/);
 });
 
 test("client: a rematch asks the server for a brand new match", () => {
@@ -243,7 +257,8 @@ test("client: a rematch asks the server for a brand new match", () => {
   // A new match id resets every per-match value, so nothing is inherited.
   assert.match(src, /loadedRef\.current = false;/);
   assert.match(src, /skewRef\.current = 0;/);
-  assert.match(src, /queuedDrawsRef\.current = 0;/);
+  assert.match(src, /queueRef\.current = \[\];/);
+  assert.match(src, /setOptimisticView\(null\);/);
   assert.match(src, /playAgain=\{\{ label: isPractice \? "NEW DEAL" : "REMATCH", onClick: requeue \}\}/);
   // The shared result screen, and the platform's own exit actions.
   assert.match(src, /PvpResultScreen/);
@@ -387,7 +402,7 @@ test("board: cards are draggable, and click-to-place is kept as an equal path", 
   assert.match(board, /onMove\(move\)/);
   // The click model still exists, and a finished drag never doubles as a click.
   assert.match(board, /resolveClick\(board, selection, target\)/);
-  assert.match(board, /suppressClickRef/);
+  assert.match(board, /swallowClickRef/);
   // The run under the pointer is the engine's own movable run, never a guess.
   assert.match(board, /cards: found\.run/);
   // A refused drop does not blink out: the card eases back to the pile it came
@@ -400,7 +415,7 @@ test("board: cards are draggable, and click-to-place is kept as an equal path", 
   assert.match(board, /GHOST_SETTLE_MS/);
   assert.match(board, /settleDrop/);
   assert.match(board, /const commitSettle = useCallback/);
-  assert.match(board, /if \(settleMoveRef\.current !== null\) commitSettle\(\)/);
+  assert.match(board, /if \(settling\) commitSettle\(\)/);
   // The ease is a position transition only, so following the pointer stays exact.
   assert.match(board, /transition: dragGhost\.easing/);
 });

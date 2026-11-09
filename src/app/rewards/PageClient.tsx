@@ -94,7 +94,7 @@ function CoinBalanceCard() {
   return (
     <section
       aria-label="Your coin balance"
-      className="mb-10 rounded-xl border border-[#00e5ff]/20 bg-[#040d24]/70 p-5 backdrop-blur-sm sm:p-6"
+      className="mb-10 rounded-xl border border-[#00e5ff]/20 bg-[#040d24]/70 p-5 backdrop-blur-xs sm:p-6"
     >
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -156,7 +156,7 @@ export default function RewardsPage() {
           <span className="mb-3 inline-flex items-center gap-2 rounded-full border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#f5ff3b]">
             <IconGift size={14} aria-hidden="true" /> Rewards
           </span>
-          <h1 className="mb-4 text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#00e5ff] to-[#f5ff3b] sm:text-4xl">
+          <h1 className="mb-4 text-3xl font-extrabold text-transparent bg-clip-text bg-linear-to-r from-[#00e5ff] to-[#f5ff3b] sm:text-4xl">
             Rewards
           </h1>
           <p className="max-w-2xl text-base text-[#9dd8ff] sm:text-lg">
@@ -191,7 +191,7 @@ export default function RewardsPage() {
         {/* ── How rewards work ──────────────────────────────────────── */}
         <motion.section
           aria-labelledby="rewards-note-heading"
-          className="rounded-xl border border-[#00e5ff]/20 bg-[#040d24]/70 p-6 backdrop-blur-sm"
+          className="rounded-xl border border-[#00e5ff]/20 bg-[#040d24]/70 p-6 backdrop-blur-xs"
           {...rise(0.15)}
         >
           <h2

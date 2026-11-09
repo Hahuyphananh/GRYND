@@ -412,7 +412,7 @@ export default function BarricadePracticePage({
   );
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
+    <div className="min-h-screen overflow-x-clip bg-linear-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath={LOBBY_PATH} />
       <div className="mx-auto mt-2 max-w-5xl">
         <GameSessionHost autoStart={!matchOver} autoStop={matchOver} gameLabel="barricade-ai">

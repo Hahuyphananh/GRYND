@@ -73,7 +73,7 @@ function RouteChips({ car, disabled, disabledReason, onRoute }) {
             disabled={disabled}
             title={disabled ? disabledReason : `${config.blurb} — ${config.name}`}
             aria-pressed={active}
-            className={`rounded-lg border px-2 py-1 text-[10px] font-black uppercase tracking-wide transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 disabled:cursor-not-allowed disabled:opacity-40 ${
+            className={`rounded-lg border px-2 py-1 text-[10px] font-black uppercase tracking-wide transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 disabled:cursor-not-allowed disabled:opacity-40 ${
               active
                 ? "border-cyan-300/80 bg-cyan-400/20 text-cyan-50"
                 : "border-white/15 bg-white/[0.04] text-white/65 hover:border-cyan-300/50 hover:text-white"
@@ -308,7 +308,7 @@ export default function RaceGarage({
           onClick={onBuy}
           disabled={!canBuy}
           title={canBuy ? "Add a Tier 1 car to your garage" : buyReason}
-          className="flex flex-1 items-center justify-between gap-2 rounded-xl border border-cyan-300/40 bg-cyan-400/10 px-3 py-2 text-left text-[11px] font-black uppercase tracking-wide text-cyan-100 transition hover:bg-cyan-400/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.03] disabled:text-white/40"
+          className="flex flex-1 items-center justify-between gap-2 rounded-xl border border-cyan-300/40 bg-cyan-400/10 px-3 py-2 text-left text-[11px] font-black uppercase tracking-wide text-cyan-100 transition hover:bg-cyan-400/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.03] disabled:text-white/40"
         >
           <span className="inline-flex items-center gap-1.5">
             <IconShoppingCart size={14} />
@@ -325,7 +325,7 @@ export default function RaceGarage({
           onClick={() => onMerge(mergeSelection)}
           disabled={!canMerge}
           title={canMerge ? "Merge the two selected cars" : mergeReason}
-          className="flex flex-1 items-center justify-between gap-2 rounded-xl border border-fuchsia-300/40 bg-fuchsia-400/10 px-3 py-2 text-left text-[11px] font-black uppercase tracking-wide text-fuchsia-100 transition hover:bg-fuchsia-400/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.03] disabled:text-white/40"
+          className="flex flex-1 items-center justify-between gap-2 rounded-xl border border-fuchsia-300/40 bg-fuchsia-400/10 px-3 py-2 text-left text-[11px] font-black uppercase tracking-wide text-fuchsia-100 transition hover:bg-fuchsia-400/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-fuchsia-300 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.03] disabled:text-white/40"
         >
           <span className="inline-flex items-center gap-1.5">
             <IconSparkles size={14} />

@@ -100,8 +100,8 @@ function Meter({
         <div
           className={`h-full rounded-full transition-[width] duration-300 ${
             tone === "mine"
-              ? "bg-gradient-to-r from-amber-500 to-amber-300"
-              : "bg-gradient-to-r from-sky-500 to-[#00e5ff]"
+              ? "bg-linear-to-r from-amber-500 to-amber-300"
+              : "bg-linear-to-r from-sky-500 to-[#00e5ff]"
           }`}
           style={{ width: `${clamped}%` }}
         />
