@@ -475,7 +475,9 @@ test("dto: once racing, both seats receive the identical puzzle", { skip: SKIP_R
   assert.equal(fromBob.seat, "player2");
   assert.equal(fromAlice.view.tableau.flat().filter((slot) => slot.faceUp).length, 7);
   assert.equal(fromAlice.view.tableau.flat().filter((slot) => !slot.faceUp).length, 21);
-  assert.equal(identitiesIn(fromAlice.view).size, 7, "only the seven face-up cards");
+  // Seven face-up tableau cards plus the ONE card a draw would turn over.
+  // That peek is the price of an instant stock draw; the order stays secret.
+  assert.equal(identitiesIn(fromAlice.view).size, 8, "seven face-up cards plus the draw peek");
 
   // The opponent appears as counts and status, never as a board.
   assert.equal(fromAlice.opponent.seatKey, "player2");
@@ -861,6 +863,70 @@ test("completion: the server detects it, decides the winner and settles once", {
     settlement.queue.map((entry) => [entry.kind, entry.gameKey]),
     [["transition", "solitaire-duel"]],
   );
+});
+
+test("auto-finish: the server plays out a formality in the same move", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  const run = (suit, count) =>
+    Array.from({ length: count }, (_, index) => card(suit, index + 1));
+  const board = openBoard();
+  board.foundations = {
+    spades: run("spades", 10),
+    hearts: run("hearts", 13),
+    diamonds: run("diamonds", 13),
+    clubs: run("clubs", 13),
+  };
+  board.stock = [];
+  board.waste = [];
+  board.tableau = Array.from({ length: 7 }, () => []);
+  board.tableau[0] = [{ card: card("spades", 11), faceUp: true }];
+  board.tableau[1] = [{ card: card("spades", 12), faceUp: true }];
+  board.tableau[2] = [{ card: card("spades", 13), faceUp: true }];
+  board.ply = 80;
+  board.peakFoundation = 49;
+  board.completed = false;
+  board.completedAtMs = null;
+
+  const row = seedMatch(fake, { p1State: board, p1Ply: 80, p1PeakFoundation: 49 });
+
+  const result = await store.submitMove({
+    userId: ALICE,
+    matchId: MATCH_ID,
+    expectedPly: 80,
+    nowMs: NOW,
+    move: {
+      kind: "tableau-to-foundation",
+      fromColumn: 0,
+      card: card("spades", 11),
+      suit: "spades",
+    },
+  });
+
+  assert.equal("error" in result, false, result.error);
+  assert.equal(result.completed, true);
+  assert.equal(result.autoFinish.length, 2, "Q and K are played by the server");
+  assert.deepEqual(
+    result.autoFinish.map((step) => step.card.rank),
+    [12, 13],
+  );
+  assert.equal(result.progress.foundationCards, 52);
+  assert.equal(row.p1State.ply, 83, "one sent move plus two auto-finish moves");
+  assert.equal(row.p1State.completed, true);
+  assert.equal(row.p1State.completedAtMs, NOW);
+  assert.equal(row.status, MATCH_STATUS.FINISHED);
+
+  // The log stays a literal replay: every auto-finished card has its own row.
+  const log = fake.rowsOf(solitaireDuelMoves);
+  assert.deepEqual(
+    log.map((entry) => [entry.ply, entry.kind]),
+    [
+      [80, "tableau-to-foundation"],
+      [81, "tableau-to-foundation"],
+      [82, "tableau-to-foundation"],
+    ],
+  );
+  assert.equal(settlement.rating.length, 1);
 });
 
 test("completion: an already-finished match never settles twice", { skip: SKIP_REASON }, async (t) => {

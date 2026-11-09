@@ -159,6 +159,24 @@ test("the animation has a hard 5s ceiling and honours reduced motion", () => {
   assert.doesNotMatch(source, /autoFinishPlan\(|recordResult|applyMove\(/);
 });
 
+test("the finish wears the active table theme, but the cards keep their own palette", () => {
+  const source = fs.readFileSync(
+    "src/components/solitaire-duel/AutoFinishAnimation.tsx",
+    "utf8",
+  );
+  // One shared theme store: the overlay cannot disagree with the board it covers.
+  assert.match(source, /useSolitaireBoardTheme/);
+  assert.match(source, /const \{ theme \} = useSolitaireBoardTheme\(\)/);
+  assert.match(source, /data-solitaire-theme=\{theme\.key\}/);
+  assert.match(source, /backgroundImage: theme\.felt/);
+  assert.match(source, /theme\.legal\.ink/);
+  assert.match(source, /theme\.slot\.activeFill/);
+  assert.match(source, /theme\.legend/);
+  // The theme paints the furniture, never the card face.
+  const card = source.slice(source.indexOf("<PlayingCard"), source.indexOf("</div>", source.indexOf("<PlayingCard")));
+  assert.equal(card.includes("--sol-"), false, "PlayingCard must not read a theme variable");
+});
+
 test("time stops before the animation and the result is recorded once", () => {
   const source = fs.readFileSync(
     "src/components/solitaire-duel/SoloSolitaireGame.tsx",

@@ -55,6 +55,7 @@ import {
 } from "./constants";
 import { aiMoveDelayMs, botCanFinishDeal, legalMoves, planAiMoves } from "./ai";
 import { solvableDealFromSeed, stateSolvableVerdict } from "./solvable";
+import { autoFinishPlan, type AutoFinishStep } from "./autoFinish";
 import {
   cloneState,
   failureOf,
@@ -1306,6 +1307,8 @@ export type MoveResult =
       revealed: Card[];
       completed: boolean;
       raceResolved: boolean;
+      /** The from-the-table formality the server played after the sent move. */
+      autoFinish: AutoFinishStep[];
     }
   | StoreError;
 
@@ -1438,7 +1441,17 @@ export async function submitMove({
         return err(rejection.error, rejection.code === "ALREADY_COMPLETE" ? 409 : 422);
       }
 
-      const nextState = applied.state as SolitaireState;
+      // AUTO-FINISH. Once the player has no decision left — stock and waste
+      // empty, every tableau card face up, and each remaining top card is the
+      // next card of its foundation — the rest of the game is a formality. The
+      // engine plays it HERE, inside the same locked transaction, so the seat
+      // completes in one request and the completion instant is still the
+      // server's. The steps are real `tableau-to-foundation` moves and are
+      // appended to the log, so the stored game stays a literal replay.
+      const appliedState = applied.state as SolitaireState;
+      const autoPlan = autoFinishPlan(appliedState);
+      const nextState = autoPlan ? autoPlan.finalState : appliedState;
+      const autoSteps = autoPlan?.steps ?? [];
       const completedNow = nextState.completed && !state.completed;
       if (completedNow) {
         // The completion INSTANT is stamped here, on the server's clock — it is
@@ -1456,6 +1469,16 @@ export async function submitMove({
         kind: normalized.move.kind,
         move: normalized.move,
       });
+      // One row per auto-finished card, at the ply it was actually played.
+      for (let index = 0; index < autoSteps.length; index += 1) {
+        await tx.insert(solitaireDuelMoves).values({
+          matchId: match.id,
+          seat,
+          ply: state.ply + 1 + index,
+          kind: autoSteps[index].move.kind,
+          move: autoSteps[index].move,
+        });
+      }
 
       const [updated] = await tx
         .update(solitaireDuelMatches)
@@ -1488,6 +1511,7 @@ export async function submitMove({
         revealed: applied.revealed ?? [],
         completed: Boolean(nextState.completed),
         raceResolved: Boolean(outcome),
+        autoFinish: autoSteps,
       } as const;
     });
   } catch (error) {

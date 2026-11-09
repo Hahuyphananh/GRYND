@@ -99,8 +99,7 @@ export type SolitaireBoardProps = {
   view: SolitaireView | null;
   /** False before GO, once the clock expires, and once a result has landed. */
   interactive: boolean;
-  /** A move is in flight. Only the stock keeps responding (queued draws). */
-  pending?: boolean;
+
   onMove: (move: SolitaireMove) => void;
   /** A click that could not become a move — surfaced as an unobtrusive notice. */
   onInvalid?: (message: string) => void;
@@ -151,8 +150,7 @@ const CLICK_SWALLOW_MS = 500;
 /** How long the ghost takes to snap onto a pile, and to fly back home. */
 const GHOST_EASE_MS = 150;
 const GHOST_RETURN_MS = 190;
-/** How long an ACCEPTED drop settles onto its pile before the move is sent. */
-const GHOST_SETTLE_MS = 160;
+
 
 /**
  * Where a held card would come to rest in a slot, in viewport coordinates.
@@ -255,7 +253,6 @@ function EmptySlot({
 export default function SolitaireBoard({
   view,
   interactive,
-  pending = false,
   onMove,
   onInvalid,
 }: SolitaireBoardProps) {
@@ -273,8 +270,8 @@ export default function SolitaireBoard({
   const swallowClickRef = useRef(false);
   const swallowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const returnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const settleMoveRef = useRef<(() => void) | null>(null);
+
+
   const [dragGhost, setDragGhost] = useState<DragGhost | null>(null);
 
   const board = view ?? null;
@@ -296,7 +293,6 @@ export default function SolitaireBoard({
   useEffect(
     () => () => {
       if (returnTimerRef.current !== null) clearTimeout(returnTimerRef.current);
-      if (settleTimerRef.current !== null) clearTimeout(settleTimerRef.current);
       if (swallowTimerRef.current !== null) clearTimeout(swallowTimerRef.current);
     },
     [],
@@ -312,41 +308,26 @@ export default function SolitaireBoard({
     }, CLICK_SWALLOW_MS);
   }, []);
 
-  // While a move is in flight only the stock stays live (so a rapid stock cycle
-  // can be queued); every card interaction waits for the authoritative state.
-  const cardsInteractive = interactive && !pending;
+  // A move in flight never locks the board. The parent draws the player's own
+  // move optimistically, so the next gesture is made against the board the
+  // player can already see; the server's snapshot replaces it when it lands.
+  const cardsInteractive = interactive;
   const stockInteractive = interactive && canDraw(board);
 
   const targets = useMemo(() => dropTargetsFor(board, selection), [board, selection]);
 
-  /** Land a settling drop now: clear the ghost and send its move. */
-  const commitSettle = useCallback(() => {
-    const commit = settleMoveRef.current;
-    settleMoveRef.current = null;
-    if (settleTimerRef.current !== null) {
-      clearTimeout(settleTimerRef.current);
-      settleTimerRef.current = null;
-    }
-    setDragGhost(null);
-    commit?.();
-  }, []);
-
   /**
-   * An accepted drop SETTLES: the ghost eases onto the pile the card is going to
-   * and the move is sent only once it has arrived. Committing at the moment of
-   * release would flash two copies of the same card.
+   * An accepted drop is sent the moment it is released. There is deliberately no
+   * settle timer in front of the move: the parent draws it optimistically, so
+   * the ghost is cleared in the same commit and the card is already on the pile
+   * — waiting for a snap animation would only add latency to the click.
    */
   const settleDrop = useCallback(
-    (session: DragSession, at: { x: number; y: number }, move: SolitaireMove) => {
-      setDragGhost({ x: at.x, y: at.y, cards: session.cards, easing: true });
-      settleMoveRef.current = () => onMove(move);
-      if (settleTimerRef.current !== null) clearTimeout(settleTimerRef.current);
-      settleTimerRef.current = setTimeout(() => {
-        settleTimerRef.current = null;
-        commitSettle();
-      }, GHOST_SETTLE_MS);
+    (move: SolitaireMove) => {
+      setDragGhost(null);
+      onMove(move);
     },
-    [commitSettle, onMove],
+    [onMove],
   );
 
   const click = useCallback(
@@ -477,10 +458,7 @@ export default function SolitaireBoard({
         : null;
       const rect = source?.getBoundingClientRect();
 
-      // A new gesture cancels a card still flying home from the last one, and
-      // COMMITS a drop still settling (so its move is never lost).
-      const settling = settleMoveRef.current !== null;
-      if (settling) commitSettle();
+      // A new gesture cancels a card still flying home from the last one.
       if (returnTimerRef.current !== null) {
         clearTimeout(returnTimerRef.current);
         returnTimerRef.current = null;
@@ -494,10 +472,8 @@ export default function SolitaireBoard({
       // away, and it is the whole difference between a board that answers the
       // instant it is touched and one that makes the player wait for their own
       // mouse. A decision this gesture has already made is never made twice: the
-      // click it goes on to produce is swallowed (see `swallowNextClick`). A
-      // press that lands mid-settle is left to the click, because the board it
-      // would be decided against is one move out of date.
-      if (!settling) {
+      // click it goes on to produce is swallowed (see `swallowNextClick`).
+      if (board) {
         const decision = resolveClick(board, selection, found.target);
         if (decision.type === "select" || decision.type === "clear") {
           swallowNextClick();
@@ -526,7 +502,7 @@ export default function SolitaireBoard({
         cards: found.cards,
       };
     },
-    [cardsInteractive, pressAtPointer, commitSettle, board, selection, swallowNextClick, onMove],
+    [cardsInteractive, pressAtPointer, board, selection, swallowNextClick, onMove],
   );
 
   const onPointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
@@ -606,7 +582,7 @@ export default function SolitaireBoard({
       setSelection(null);
 
       if (move && slot) {
-        settleDrop(session, slot, move);
+        settleDrop(move);
         return;
       }
       // Refused (or dropped on nothing at all): the card flies back to where it

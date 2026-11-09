@@ -127,6 +127,10 @@ export async function POST(
         // identities, so this is the only way the flip can be rendered — and
         // the server is the only thing that can name them.
         revealed: result.revealed ?? [],
+        // The exact legal sequence the server played after this move when the
+        // board was a formality. It is already APPLIED; this only lets the
+        // client animate cards whose positions it still has on screen.
+        autoFinish: result.autoFinish ?? [],
         completed: result.completed === true,
         raceResolved: result.raceResolved === true,
       },

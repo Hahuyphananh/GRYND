@@ -289,7 +289,7 @@ test("secrecy: a client DTO is projected field by field, never spread", () => {
   assert.match(dto, /opponentProgressFor\(opponentSeat, otherState\)/);
 });
 
-test("secrecy: the view strips face-down identities and the stock order", () => {
+test("secrecy: the view strips face-down identities and hides the stock order behind one card", () => {
   const rules = code(files.rules);
   const view = rules.slice(
     rules.indexOf("export function viewForState"),
@@ -297,6 +297,10 @@ test("secrecy: the view strips face-down identities and the stock order", () => 
   );
   assert.match(view, /return \{ faceUp: false, card: null \}/);
   assert.match(view, /stockCount: state\.stock\?\.length \?\? 0/);
+  // A draw may see the single card it would turn over, never the positions
+  // behind it: the peek reads only the last stock entry.
+  assert.match(view, /nextStockCard:/);
+  assert.match(view, /state\.stock\[state\.stock\.length - 1\]/);
   // The opponent shape is counts and status only.
   const opponent = rules.slice(
     rules.indexOf("export function opponentProgressFor"),

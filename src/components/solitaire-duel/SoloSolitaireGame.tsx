@@ -29,10 +29,10 @@ import Link from "next/link";
 
 import SolitaireBoard from "./SolitaireBoard";
 import SolitaireThemePicker from "./SolitaireThemePicker";
-import AutoFinishAnimation, { type FlyingCard } from "./AutoFinishAnimation";
+import AutoFinishAnimation from "./AutoFinishAnimation";
+import { measureFinishCards, type FlyingCard } from "./measureFinishCards";
 import {
   autoFinishPlan,
-  type AutoFinishStep,
 } from "../../lib/solitaire-duel/autoFinish";
 import { dealFromSeed } from "../../lib/solitaire-duel/deck";
 import {
@@ -164,36 +164,6 @@ function appendLocalSolo(entry: { completed: boolean; moves: number; elapsedMs: 
   return records;
 }
 
-/**
- * Where each finishing card sits right now, and where its foundation is.
- *
- * Measured ONCE, against the board as the player sees it, before the completed
- * state paints: after that the source cards no longer exist. A missing rect
- * simply drops that card from the cosmetic flight — the result is already
- * recorded either way.
- */
-function measureFinishCards(steps: AutoFinishStep[]): FlyingCard[] {
-  if (typeof document === "undefined") return [];
-  const flying: FlyingCard[] = [];
-  for (const step of steps) {
-    const source = document.querySelector(
-      `[data-card="${step.card.suit}-${step.card.rank}"]`,
-    );
-    const target = document.querySelector(
-      `[data-testid="solitaire-foundation-${step.suit}"]`,
-    );
-    if (!source || !target) continue;
-    const from = source.getBoundingClientRect();
-    const to = target.getBoundingClientRect();
-    if (!from.width || !to.width) continue;
-    flying.push({
-      card: step.card,
-      from: { x: from.left, y: from.top, width: from.width, height: from.height },
-      to: { x: to.left, y: to.top, width: to.width, height: to.height },
-    });
-  }
-  return flying;
-}
 
 export type SoloSolitaireGameProps = {
   mode: Mode;

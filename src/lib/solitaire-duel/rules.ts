@@ -690,6 +690,14 @@ export function viewForState(state: SolitaireState): SolitaireView {
     // Count only: the stock's order is a secret the client must not hold, or a
     // player could plan around cards they have never legitimately exposed.
     stockCount: state.stock?.length ?? 0,
+    // The one card a draw would turn over. The ORDER is still the server's
+    // secret, so this exposes exactly the information a single draw needs and
+    // no more — that is what lets the client paint the draw without a round
+    // trip. Both seats carry their own view of the same deal.
+    nextStockCard:
+      (state.stock?.length ?? 0) > 0
+        ? { ...state.stock[state.stock.length - 1] }
+        : null,
     waste: (state.waste ?? []).map((card) => ({ suit: card.suit, rank: card.rank })),
     foundations: {
       spades: (state.foundations?.spades ?? []).map((c) => ({ suit: c.suit, rank: c.rank })),

@@ -84,11 +84,46 @@ test("a predictable move draws exactly the board the engine produces", () => {
   assert.ok(kinds.size >= 3, `expected several move kinds, got ${[...kinds].join(",")}`);
 });
 
-test("a draw is refused, never guessed", () => {
-  const drawSample = SAMPLES.find((sample) => sample.move.kind === "draw");
-  assert.ok(drawSample, "the sample must contain a draw");
-  assert.equal(applyMoveToView(drawSample.view, { kind: "draw" }), null);
-  assert.equal(isPredictable({ kind: "draw" }), false);
+test("a draw paints the next card instantly from the view's one-card peek", () => {
+  const drawSample = SAMPLES.find(
+    (sample) => sample.move.kind === "draw" && sample.view.stockCount > 0,
+  );
+  assert.ok(drawSample, "the sample must contain a stock draw");
+  assert.ok(drawSample.view.nextStockCard, "the view must carry the next card");
+
+  const painted = applyMoveToView(drawSample.view, { kind: "draw" });
+  assert.ok(painted);
+  assert.deepEqual(painted.waste.at(-1), drawSample.view.nextStockCard);
+  assert.equal(painted.stockCount, drawSample.view.stockCount - 1);
+  assert.equal(painted.nextStockCard, null, "only one card is guessed ahead");
+  assert.equal(isPredictable({ kind: "draw" }), true);
+});
+
+test("a draw without a next-card peek is refused, never invented", () => {
+  const sample = SAMPLES.find((entry) => entry.move.kind === "draw");
+  assert.ok(sample);
+  const view = { ...sample.view, stockCount: 3, nextStockCard: null };
+  assert.equal(applyMoveToView(view, { kind: "draw" }), null);
+});
+
+test("a redeal is predicted exactly from the visible waste", () => {
+  const sample = SAMPLES[0];
+  const view = {
+    ...sample.view,
+    stockCount: 0,
+    waste: [
+      { suit: "hearts", rank: 1 },
+      { suit: "clubs", rank: 2 },
+      { suit: "diamonds", rank: 3 },
+    ],
+    nextStockCard: null,
+  };
+  const painted = applyMoveToView(view, { kind: "draw" });
+  assert.ok(painted, "a redeal touches only visible cards");
+  assert.equal(painted.stockCount, 3);
+  assert.deepEqual(painted.waste, []);
+  // The stock is the reversed waste, so the next draw is the waste's first card.
+  assert.deepEqual(painted.nextStockCard, { suit: "hearts", rank: 1 });
 });
 
 test("a move that exposes a hidden card is still drawn, without the flip", () => {

@@ -15,18 +15,22 @@
 //   * 5× plays it at 2.5× the rate (~1.4s).
 //   * A hard 5s deadline from mount ALWAYS wins, however late the speed changes.
 //   * Reduced motion skips straight to the completed board.
+//
+// THEME CONTRACT. The overlay reads the same active table theme as the board
+// (`useSolitaireBoardTheme`), so its panel is a miniature of the felt the player
+// just finished on and the controls use that theme's ink. The CARDS are never
+// themed — `PlayingCard` owns their palette — because a table theme must not
+// restyle a card face.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import PlayingCard from "./PlayingCard";
+import type { FlyingCard } from "./measureFinishCards";
 import { AUTO_FINISH_MAX_MS } from "../../lib/solitaire-duel/autoFinish";
-import type { Card } from "../../lib/solitaire-duel/types";
+import { useSolitaireBoardTheme } from "../../hooks/useSolitaireBoardTheme";
 
-export type FlyingCard = {
-  card: Card;
-  from: { x: number; y: number; width: number; height: number };
-  to: { x: number; y: number; width: number; height: number };
-};
+
+
 
 /** The virtual milliseconds a full journey takes at 2×. */
 const BASE_MS = 3_600;
@@ -45,6 +49,7 @@ export default function AutoFinishAnimation({
   cards: FlyingCard[];
   onDone: () => void;
 }) {
+  const { theme } = useSolitaireBoardTheme();
   const [speed, setSpeed] = useState<2 | 5>(2);
   const [progress, setProgress] = useState(0);
   const speedRef = useRef<2 | 5>(2);
@@ -104,6 +109,7 @@ export default function AutoFinishAnimation({
   return (
     <div
       data-testid="solitaire-auto-finish"
+      data-solitaire-theme={theme.key}
       data-speed={speed}
       data-progress={progress.toFixed(2)}
       className="pointer-events-none fixed inset-0 z-[70]"
@@ -143,9 +149,19 @@ export default function AutoFinishAnimation({
         <div
           role="status"
           aria-live="polite"
-          className="flex items-center gap-2 rounded-2xl border border-white/15 bg-slate-950/90 px-3 py-2 text-white shadow-2xl backdrop-blur-sm"
+          style={{
+            // The same felt the finished board is painted with, on the little
+            // panel: the finish is part of the table, not a detached dialog.
+            backgroundImage: theme.felt,
+            backgroundColor: theme.base,
+            boxShadow: `inset 0 0 0 1px ${theme.frame}, 0 18px 40px rgba(0, 0, 0, 0.45)`,
+          }}
+          className="flex items-center gap-2 rounded-2xl px-3 py-2 text-white backdrop-blur-sm"
         >
-          <span className="px-1 text-[11px] font-bold uppercase tracking-[0.16em] text-emerald-300">
+          <span
+            className="px-1 text-[11px] font-bold uppercase tracking-[0.16em]"
+            style={{ color: theme.legal.ink }}
+          >
             Finishing
           </span>
           <div className="flex items-center gap-1" role="group" aria-label="Animation speed">
@@ -155,11 +171,12 @@ export default function AutoFinishAnimation({
                 type="button"
                 onClick={() => chooseSpeed(option)}
                 aria-pressed={speed === option}
-                className={`rounded-lg px-2.5 py-1 text-xs font-bold transition ${
+                className="rounded-lg px-2.5 py-1 text-xs font-bold transition hover:brightness-125"
+                style={
                   speed === option
-                    ? "bg-emerald-400 text-slate-950"
-                    : "bg-white/10 text-white/70 hover:bg-white/20"
-                }`}
+                    ? { backgroundColor: theme.legal.ink, color: theme.base }
+                    : { backgroundColor: theme.slot.activeFill, color: theme.legend }
+                }
               >
                 {option}×
               </button>
@@ -168,7 +185,8 @@ export default function AutoFinishAnimation({
           <button
             type="button"
             onClick={finish}
-            className="rounded-lg border border-white/20 px-3 py-1 text-xs font-bold text-white/85 hover:bg-white/10"
+            className="rounded-lg border px-3 py-1 text-xs font-bold transition hover:brightness-125"
+            style={{ borderColor: theme.slot.border, color: theme.legend }}
           >
             Skip animation
           </button>

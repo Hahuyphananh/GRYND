@@ -12,19 +12,19 @@
 //
 // ── WHAT CAN AND CANNOT BE PREDICTED ────────────────────────────────────
 //
-// Four of the six move kinds touch only cards the viewer can already see, so
-// they are exact. Two cannot be predicted from a client view, and are refused
-// here rather than guessed:
+// Every move kind touches only cards the viewer can already see, so each is
+// exact — including `draw`, because the view carries the ONE card the next draw
+// would turn over (`nextStockCard`). That peek is what makes a stock click
+// instant; the order behind it is still the server's alone.
 //
-//   * `draw` — the next stock card's identity is deliberately not in the view
-//     (and neither is the order), so there is nothing honest to show.
-//   * a move that EXPOSES a face-down card — the revealed identity is the
-//     server's to name (it arrives as `revealed` in the move response). The
-//     card itself is still moved here; the exposed position simply stays
-//     face-down until the snapshot lands.
+// What cannot be exact is a move that EXPOSES a face-down card: the revealed
+// identity is the server's to name (it arrives as `revealed` in the move
+// response). The card itself is still moved here; the exposed position simply
+// stays face-down until the snapshot lands.
 //
-// A refused prediction is normal, never an error: the caller keeps the
-// authoritative board on screen and the move is still sent. Nothing in this
+// A refused prediction is normal, never an error: `applyMoveToView` returns
+// null, the caller keeps the authoritative board on screen, and the move is
+// still sent. Nothing in this
 // module decides legality, progress for the match, completion or a winner —
 // `completed` stays false even when the last card lands, because only the
 // store may finish a race.
@@ -62,12 +62,12 @@ export function applyMoveToView(
   move: SolitaireMove | null | undefined,
 ): SolitaireView | null {
   if (!view || !move) return null;
-  if (move.kind === "draw") return null;
 
   const tableau: ViewPileCard[][] = (view.tableau ?? []).map((column) =>
     column.map((pile) => ({ ...pile })),
   );
-  const waste: Card[] = (view.waste ?? []).map((card) => ({ ...card }));
+  // A redeal empties the waste and refills the stock, so this is replaced.
+  let waste: Card[] = (view.waste ?? []).map((card) => ({ ...card }));
   const foundations = {
     spades: (view.foundations?.spades ?? []).map((card) => ({ ...card })),
     hearts: (view.foundations?.hearts ?? []).map((card) => ({ ...card })),
@@ -75,8 +75,26 @@ export function applyMoveToView(
     clubs: (view.foundations?.clubs ?? []).map((card) => ({ ...card })),
   };
   let stockCount = Math.max(0, Math.trunc(Number(view.stockCount) || 0));
+  let nextStockCard = view.nextStockCard ? { ...view.nextStockCard } : null;
 
-  if (move.kind === "waste-to-foundation") {
+  if (move.kind === "draw") {
+    if (stockCount > 0) {
+      // The view carries exactly one card ahead; only that draw is predicted.
+      // After it, the next identity is unknown until the snapshot lands.
+      if (!nextStockCard) return null;
+      waste.push(nextStockCard);
+      stockCount -= 1;
+      nextStockCard = null;
+    } else if (waste.length > 0) {
+      // Redeal: the stock becomes the reversed waste, so the next draw is the
+      // waste's FIRST card — which is already visible, hence exactly known.
+      nextStockCard = waste[0] ? { ...waste[0] } : null;
+      stockCount = waste.length;
+      waste = [];
+    } else {
+      return null;
+    }
+  } else if (move.kind === "waste-to-foundation") {
     const card = waste.pop();
     if (!card || card.suit !== move.suit) return null;
     foundations[move.suit].push(card);
@@ -118,6 +136,7 @@ export function applyMoveToView(
     waste,
     foundations,
     stockCount,
+    nextStockCard,
     ply: (Number(view.ply) || 0) + 1,
     progress: {
       foundationCards: foundationCount({ ...view, foundations }),
@@ -130,9 +149,14 @@ export function applyMoveToView(
   };
 }
 
-/** True for the one kind this module deliberately never predicts. */
+/**
+ * True when a move is worth drawing ahead. Every kind is attempted now that a
+ * draw carries its one-card peek; `applyMoveToView` still returns null when a
+ * particular prediction has no honest board to draw (a draw whose peek has not
+ * arrived, a stale card), and the caller falls back to the authoritative view.
+ */
 export function isPredictable(move: SolitaireMove | null | undefined): boolean {
-  return Boolean(move) && move!.kind !== "draw";
+  return Boolean(move);
 }
 
 /** A face-down card that an optimistic move just exposed stays hidden. */

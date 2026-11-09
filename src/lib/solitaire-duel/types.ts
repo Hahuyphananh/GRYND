@@ -179,6 +179,13 @@ export type SolitaireView = {
   tableau: ViewPileCard[][];
   /** Count only — the order and the identities stay on the server. */
   stockCount: number;
+  /**
+   * The identity of the card a `draw` would turn over right now, or null when
+   * the stock is empty. Only the NEXT card is exposed, never the order, so a
+   * stock click can be drawn without a round trip while the rest of the deck
+   * stays the server's secret.
+   */
+  nextStockCard: Card | null;
   waste: Card[];
   foundations: FoundationPiles;
   ply: number;

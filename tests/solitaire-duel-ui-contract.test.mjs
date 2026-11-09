@@ -215,11 +215,14 @@ test("client: gameplay is gated on the server's GO instant, never on mount", () 
     /const canPlayNow = phase === "racing" && !expired && !paused/,
     "the board is interactive only while the server says the race is live",
   );
-  assert.match(src, /interactive=\{canPlayNow\}/);
+  assert.match(src, /interactive=\{canPlayNow && !finishing\}/);
   // The move itself is drawn instantly (`applyMoveToView`) and queued, so an
   // in-flight request must never disable the board.
   assert.doesNotMatch(src, /pending=\{pending\}/);
   assert.match(src, /MOVE_QUEUE_LIMIT/);
+  // Auto-finish is applied by the server and only ANIMATED here.
+  assert.match(src, /AutoFinishAnimation/);
+  assert.match(src, /autoFinish/);
   // The move gate repeats the same conditions, including the practice pause:
   // a paused match must not accept a move behind the frozen overlay.
   assert.match(src, /if \(phase !== "racing" \|\| expired \|\| pausedRef\.current\) return;/);
@@ -410,12 +413,13 @@ test("board: cards are draggable, and click-to-place is kept as an equal path", 
   assert.match(board, /flyHome/);
   assert.match(board, /GHOST_RETURN_MS/);
   assert.match(board, /returnTimerRef/);
-  // An ACCEPTED drop settles onto its pile before the move is sent, and a new
-  // gesture commits a still-settling drop rather than dropping it.
-  assert.match(board, /GHOST_SETTLE_MS/);
+  // An ACCEPTED drop is sent on release: no settle timer stands between the
+  // gesture and the engine, and the board never locks while a move is in flight.
   assert.match(board, /settleDrop/);
-  assert.match(board, /const commitSettle = useCallback/);
-  assert.match(board, /if \(settling\) commitSettle\(\)/);
+  assert.match(board, /setDragGhost\(null\);\s*onMove\(move\);/);
+  assert.doesNotMatch(board, /GHOST_SETTLE_MS/);
+  assert.doesNotMatch(board, /commitSettle/);
+  assert.match(board, /const cardsInteractive = interactive;/);
   // The ease is a position transition only, so following the pointer stays exact.
   assert.match(board, /transition: dragGhost\.easing/);
 });

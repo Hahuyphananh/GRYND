@@ -71,6 +71,11 @@ import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import { useMatchRouter } from "../../../../hooks/useMatchRouter";
 import SeatAvatar from "../../../../components/game/SeatAvatar";
 import SolitaireBoard from "../../../../components/solitaire-duel/SolitaireBoard";
+import AutoFinishAnimation from "../../../../components/solitaire-duel/AutoFinishAnimation";
+import {
+  measureFinishCards,
+  type FlyingCard,
+} from "../../../../components/solitaire-duel/measureFinishCards";
 import { applyMoveToView } from "../../../../lib/solitaire-duel/optimistic";
 import BotAvatar from "../../../../components/solitaire-duel/BotAvatar";
 import { useSocket } from "../../../../context/SocketProvider";
@@ -330,6 +335,10 @@ export default function SolitaireDuelMatchPage() {
   const [goAtOverride, setGoAtOverride] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  // The cosmetic flight over a board the SERVER has already finished. It owns
+  // no progress, no completion and no result; it only delays the result screen.
+  const [finishing, setFinishing] = useState<FlyingCard[] | null>(null);
+  const finishingRef = useRef(false);
   // The board as the player's own move draws it, before the server answers.
   const [optimisticView, setOptimisticView] = useState<SolitaireView | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -415,6 +424,8 @@ export default function SolitaireDuelMatchPage() {
     optimisticRef.current = null;
     authoritativeViewRef.current = null;
     setOptimisticView(null);
+    setFinishing(null);
+    finishingRef.current = false;
     setLoading(true);
   }, [matchId]);
 
@@ -684,21 +695,42 @@ export default function SolitaireDuelMatchPage() {
         queueRef.current = [];
         optimisticRef.current = null;
         setOptimisticView(null);
+        finishingRef.current = false;
+        setFinishing(null);
         setNotice(data?.error || "That move was refused");
         void load();
         return;
       }
       queueRef.current.shift();
+      // AUTO-FINISH. The server plays the formality inside the same locked
+      // move — one legal `tableau-to-foundation` per remaining card — and hands
+      // the sequence back so it can be drawn. Measure the cards while the
+      // PRE-finish board is still on screen.
+      const steps = Array.isArray(data.data.autoFinish) ? data.data.autoFinish : [];
+      const flying = steps.length > 0 ? measureFinishCards(steps) : [];
+      const settled = Boolean(data.data.completed || data.data.raceResolved);
+      if (settled) {
+        // Nothing queued against the old board can survive a settled match.
+        queueRef.current = [];
+        optimisticRef.current = null;
+      }
       adopt(data.data.match as MatchDto);
       rebuildOptimistic();
+      if (settled) setOptimisticView(null);
+      if (flying.length > 0) {
+        finishingRef.current = true;
+        setFinishing(flying);
+      }
       // A bare nudge so the opponent's view refreshes immediately; the
       // realtime server only relays the match id.
       socket?.emit(SOLITAIRE_DUEL_EVENTS.READY, { matchId });
-      if (data.data.completed || data.data.raceResolved) void load();
+      if (settled) void load();
     } catch {
       queueRef.current = [];
       optimisticRef.current = null;
       setOptimisticView(null);
+      finishingRef.current = false;
+      setFinishing(null);
       setNotice("Connection hiccup — resyncing");
       void load();
     } finally {
@@ -720,6 +752,7 @@ export default function SolitaireDuelMatchPage() {
   const onMove = useCallback(
     (move: SolitaireMove) => {
       if (phase !== "racing" || expired || pausedRef.current) return;
+      if (finishingRef.current) return;
       if (queueRef.current.length >= MOVE_QUEUE_LIMIT) return;
       queueRef.current.push({ move });
       rebuildOptimistic();
@@ -1125,7 +1158,7 @@ export default function SolitaireDuelMatchPage() {
                   <div className="relative rounded-2xl border-2 border-[color:var(--gr-outline)] bg-black/45 p-2 shadow-[0_10px_0_-2px_rgba(3,8,20,0.85),inset_0_2px_0_rgba(255,255,255,0.06)] sm:p-4">
                     <SolitaireBoard
                       view={view}
-                      interactive={canPlayNow}
+                      interactive={canPlayNow && !finishing}
                       onMove={onMove}
                       onInvalid={(message) => setNotice(message)}
                     />
@@ -1363,7 +1396,7 @@ export default function SolitaireDuelMatchPage() {
       {/* The authoritative result: the outcome, the winner and the duration are
           all read off the settled row. Nothing here is computed. */}
       <PvpResultScreen
-        open={phase === "result" && finished}
+        open={phase === "result" && finished && !finishing}
         outcome={outcome}
         headline={
           outcome === "draw"
@@ -1416,6 +1449,16 @@ export default function SolitaireDuelMatchPage() {
         playAgain={{ label: isPractice ? "NEW DEAL" : "REMATCH", onClick: requeue }}
         secondaryAction={{ label: "Back to home", href: "/" }}
       />
+
+      {finishing && (
+        <AutoFinishAnimation
+          cards={finishing}
+          onDone={() => {
+            finishingRef.current = false;
+            setFinishing(null);
+          }}
+        />
+      )}
 
       <PracticePauseOverlay
         paused={paused}
