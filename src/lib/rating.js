@@ -53,6 +53,7 @@ import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { isGuestPvpMatch } from "./pvp/guestMatch";
 import { recordSettledMatch } from "./quests/settle";
+import { toPlayerLevelShape } from "./playerLevel";
 import {
   STARTING_RATING,
   OVERALL_MIN_GAMES,
@@ -506,6 +507,9 @@ export async function fetchRatingLeaderboard({
         r.draws,
         r.last_delta AS last_delta,
         r.last_rated_at AS last_rated_at,
+        -- Permanent progression high-water mark, so a rating board row always
+        -- carries the player's earned level/rank badge.
+        u.peak_total_trophies AS peak_total_trophies,
         -- Non-token W/L line for the board row (the leaderboard UI renders
         -- the same record line as every other board).
         CASE
@@ -550,11 +554,13 @@ export async function fetchRatingLeaderboard({
   // raw Overall badge columns are normalized to camelCase and dropped when
   // absent, so a client never sees the internal SQL aliases.
   const shape = (item) => {
-    const { overall_elo, overall_games, ...rest } = item;
+    const { overall_elo, overall_games, peak_total_trophies, ...rest } = item;
     const elo = Number(overall_elo);
     return {
       ...rest,
       ...toRatingShape(gameKey, item),
+      peakTotalTrophies: Number(peak_total_trophies) || 0,
+      playerLevel: toPlayerLevelShape(peak_total_trophies),
       ...(Number.isFinite(elo) && elo > 0
         ? { overallElo: elo, overallGames: Number(overall_games) || 0 }
         : {}),

@@ -7,6 +7,7 @@ import { DEFAULT_ICON_KEY, isIconKey } from "../../../../lib/iconAssets";
 import { getIconByKey } from "../../../../lib/icons";
 import { getCosmeticByKey, resolveEquippedCosmetic } from "../../../../lib/cosmetics";
 import { getTrophiesForUser } from "../../../../lib/trophyStore";
+import { getPlayerProgression } from "../../../../lib/playerLevel";
 import {
   getRatingsForUser,
   overallEloFromRatingsMap,
@@ -47,6 +48,7 @@ export async function GET(req: NextRequest) {
         // resolved + exposed below; other slots stay private to the owner.
         equippedCosmetics: users.equippedCosmetics,
         level: users.level,
+        peakTotalTrophies: users.peakTotalTrophies,
         xp: users.xp,
         gamesWon: users.gamesWon,
         gamesLost: users.gamesLost,
@@ -150,6 +152,12 @@ export async function GET(req: NextRequest) {
       (sum, entry) => sum + (Number(entry?.trophies) || 0),
       0,
     );
+    // Permanent trophy-derived level/rank. The high-water mark is maintained
+    // server-side (migration 0247); no client value is ever accepted.
+    const playerLevel = getPlayerProgression({
+      totalTrophies,
+      peakTrophies: user.peakTotalTrophies,
+    });
     // Overall Elo — server-derived aggregate of the established ratings
     // above. Null until at least OVERALL_MIN_GAMES different games are
     // established; provisional games never count. Never stored, never
@@ -167,6 +175,11 @@ export async function GET(req: NextRequest) {
         profileGlow,
         trophies,
         totalTrophies,
+        // The retired stored `level` is overridden for display with the
+        // trophy-derived level; `playerLevel` carries rank + permanent peak.
+        level: playerLevel.level,
+        playerLevel,
+        peakTotalTrophies: playerLevel.peakTrophies,
         // gameKey → { rating, peakRating, gamesRated, wins, losses, draws,
         // lastDelta, lastRatedAt, provisional }. Server-derived only.
         ratings,

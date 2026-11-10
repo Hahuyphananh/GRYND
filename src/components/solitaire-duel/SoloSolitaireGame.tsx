@@ -75,7 +75,11 @@ type Session = {
 
 const SESSION_KEY = "grynd.solitaire.session.v1";
 const LOCAL_SOLO_KEY = "grynd.solitaire.solo.records.v1";
+const LOCAL_COMPLETED_KEY = "grynd.solitaire.completed.v1";
 const MAX_LOCAL_RECORDS = 100;
+// A guest's completed games are kept on the device so they stay reconstructable
+// after the active session is cleared. A bounded ring: a log is ~10–40 KB.
+const MAX_LOCAL_COMPLETED = 20;
 
 function randomSeed(): number {
   if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
@@ -162,6 +166,39 @@ function appendLocalSolo(entry: { completed: boolean; moves: number; elapsedMs: 
     // ignore quota failures
   }
   return records;
+}
+
+/**
+ * Keep a guest's COMPLETED game (seed/date + ordered log), not a board.
+ *
+ * The server path does this in `solitaire_solo_results` / `_daily_results`; a
+ * guest has no account row, so the browser is the store. The log is exactly the
+ * one the server would have replayed — after undo, it is the final log — and the
+ * deal is re-derived from the seed (solo) or the UTC date (daily). Only a win is
+ * kept: an abandoned attempt stays a summary record, never a "review".
+ */
+function appendLocalCompleted(game: {
+  mode: Mode;
+  seed: number;
+  dateKey: string | null;
+  log: LogEntry[];
+  startedAtMs: number;
+  endedAtMs: number;
+  elapsedMs: number;
+}) {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = window.localStorage.getItem(LOCAL_COMPLETED_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    const records = Array.isArray(parsed) ? parsed : [];
+    records.push({ ...game, won: true, savedAtMs: Date.now() });
+    window.localStorage.setItem(
+      LOCAL_COMPLETED_KEY,
+      JSON.stringify(records.slice(-MAX_LOCAL_COMPLETED)),
+    );
+  } catch {
+    // Storage full or disabled: the result is still shown, only replay is lost.
+  }
 }
 
 
@@ -320,6 +357,19 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
         });
         if (response.status === 401) {
           setSavedResult("local");
+          if (finished.won) {
+            // Guest practice: retain the game itself (seed + final log), so a
+            // refresh or a later visit can rebuild this exact board.
+            appendLocalCompleted({
+              mode: finished.mode,
+              seed: finished.seed,
+              dateKey: finished.dateKey,
+              log: finished.log,
+              startedAtMs: finished.startedAtMs,
+              endedAtMs: finished.endedAtMs ?? Date.now(),
+              elapsedMs,
+            });
+          }
           if (finished.mode === "solo") {
             setSummary(summariseSolo(appendLocalSolo({
               completed: finished.won,
@@ -599,6 +649,7 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
           <SolitaireBoard
             view={viewForState(session.state)}
             interactive={!session.endedAtMs && !session.won}
+            holdHeight={finishing?.[0]?.board.height}
             onMove={playMove}
             onInvalid={() => setError("That card cannot move there.")}
           />

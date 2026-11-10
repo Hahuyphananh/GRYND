@@ -25,6 +25,7 @@ import {
   viewForState,
 } from "../src/lib/solitaire-duel/rules.ts";
 import { solvableDealFromSeed } from "../src/lib/solitaire-duel/solvable.ts";
+import { flightFrame, flightWindows } from "../src/components/solitaire-duel/measureFinishCards.ts";
 
 const SUITS = ["spades", "hearts", "diamonds", "clubs"];
 
@@ -157,6 +158,131 @@ test("the animation has a hard 5s ceiling and honours reduced motion", () => {
   assert.match(source, /now - startedAt >= AUTO_FINISH_MAX_MS/);
   // The animation owns no rules: it never plans moves or records a result.
   assert.doesNotMatch(source, /autoFinishPlan\(|recordResult|applyMove\(/);
+});
+
+test("the flight is aimed at the pile as it is on screen, not at a stale snapshot", () => {
+  const animation = fs.readFileSync(
+    "src/components/solitaire-duel/AutoFinishAnimation.tsx",
+    "utf8",
+  );
+  const measure = fs.readFileSync(
+    "src/components/solitaire-duel/measureFinishCards.ts",
+    "utf8",
+  );
+  // The completed board paints under the flight and its collapse can move the
+  // page, so the foundations are re-read WHILE the cards fly…
+  assert.match(animation, /syncGeometry\(\);/);
+  assert.match(animation, /measureFoundationTargets\(\)/);
+  assert.match(animation, /targetsRef\.current\[entry\.card\.suit\] \?\? entry\.to/);
+  // …and the whole flight is drawn in the board's LIVE frame, so a collapsing
+  // tableau or a clamped scroll can never strand the cards above the pile.
+  assert.match(animation, /measureBoardOrigin\(\)/);
+  assert.match(animation, /flightFrame\(entry, to, boardOriginRef\.current, t\)/);
+  assert.match(measure, /export function measureBoardOrigin/);
+  assert.match(measure, /export function measureFoundationTargets/);
+  assert.match(measure, /flying\.push\(\{ card: step\.card, from, to, board \}\)/);
+});
+
+test("the finished board can move under the flight and the cards still land on the pile", () => {
+  // A flight measured on the pre-finish board: the Ace of spades sat low in the
+  // tableau and the spade foundation sat near the top.
+  const entry = {
+    card: { suit: "spades", rank: 1 },
+    from: { x: 40, y: 700, width: 92, height: 130 },
+    to: { x: 300, y: 100, width: 92, height: 130 },
+    board: { x: 20, y: 40, height: 620 },
+  };
+  // The tableau collapsed, the finished board is a shorter page, and the clamped
+  // scroll pushed the table 550px DOWN — the old bug: cards stopped 550px high.
+  const liveBoard = { x: 20, y: 590 };
+  const liveFoundation = { x: 300, y: 650, width: 92, height: 130 };
+
+  const landed = flightFrame(entry, liveFoundation, liveBoard, 1);
+  assert.deepEqual(landed, liveFoundation, "the last frame is the pile itself");
+
+  // The source rides the board's movement, so the card does not teleport.
+  const departed = flightFrame(entry, liveFoundation, liveBoard, 0);
+  assert.deepEqual(
+    { x: departed.x, y: departed.y },
+    { x: 40, y: 700 + 550 },
+    "the card leaves from where the board put it",
+  );
+
+  // A frozen snapshot is exactly the reported bug: finishing above the pile.
+  const frozen = flightFrame(entry, entry.to, null, 1);
+  assert.equal(liveFoundation.y - frozen.y, 550);
+
+  // A resized pile is landed on, not just its top-left corner.
+  const resized = flightFrame(entry, { x: 300, y: 650, width: 60, height: 86 }, liveBoard, 1);
+  assert.equal(resized.width, 60);
+  assert.equal(resized.height, 86);
+});
+
+test("cards are queued per foundation, so each suit lands as one tidy stack", () => {
+  const card = (suit, rank) => ({
+    card: { suit, rank },
+    from: { x: 0, y: 0, width: 92, height: 130 },
+    to: { x: 0, y: 0, width: 92, height: 130 },
+    board: { x: 0, y: 0, height: 600 },
+  });
+  // The plan's global order interleaves nothing here — the point is that the
+  // QUEUES are per suit, and each suit keeps the order the plan plays it in.
+  const cards = [
+    card("spades", 11),
+    card("spades", 12),
+    card("spades", 13),
+    card("hearts", 12),
+    card("hearts", 13),
+  ];
+  const windows = flightWindows(cards);
+
+  // Both piles start together instead of the table waiting its turn…
+  assert.equal(windows[0].start, 0);
+  assert.ok(Math.abs(windows[0].end - 0.5) < 1e-9);
+  assert.equal(windows[3].start, 0, "the second suit's first card also leaves at once");
+
+  // …each suit's cards leave one after another, in plan order…
+  for (const [first, second, third] of [
+    [windows[0], windows[1], windows[2]],
+    [windows[3], windows[4]],
+  ]) {
+    assert.ok(first.start < second.start, "a pile's queue is ordered");
+    if (third) assert.ok(second.start < third.start);
+  }
+  // …and the whole flight still fits the one shared timeline, inside the cap.
+  for (const window of windows) {
+    assert.ok(window.start >= 0 && window.start <= 0.55);
+    assert.ok(window.end > window.start && window.end <= 1);
+  }
+  // The last card of the LONGEST queue is the last to leave.
+  assert.equal(windows[2].start, Math.max(...windows.map((w) => w.start)));
+});
+
+test("the board holds its pre-finish height until the flight is over", () => {
+  const board = fs.readFileSync(
+    "src/components/solitaire-duel/SolitaireBoard.tsx",
+    "utf8",
+  );
+  const solo = fs.readFileSync(
+    "src/components/solitaire-duel/SoloSolitaireGame.tsx",
+    "utf8",
+  );
+  const duel = fs.readFileSync(
+    "src/app/casino/solitaire-duel/[matchId]/PageClient.tsx",
+    "utf8",
+  );
+  const measure = fs.readFileSync(
+    "src/components/solitaire-duel/measureFinishCards.ts",
+    "utf8",
+  );
+  // The height is measured with the flight, then held on the board root…
+  assert.match(measure, /export function measureBoardHeight/);
+  assert.match(measure, /height: measureBoardHeight\(\)/);
+  assert.match(board, /holdHeight\?: number/);
+  assert.match(board, /minHeight: `\$\{holdHeight\}px`/);
+  // …by BOTH finishes, for as long as the overlay is mounted.
+  assert.match(solo, /holdHeight=\{finishing\?\.\[0\]\?\.board\.height\}/);
+  assert.match(duel, /holdHeight=\{finishing\?\.\[0\]\?\.board\.height\}/);
 });
 
 test("the finish wears the active table theme, but the cards keep their own palette", () => {

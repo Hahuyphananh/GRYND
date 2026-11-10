@@ -118,7 +118,19 @@ test("the roster is the six named opponents, with stable short ids", () => {
     assert.equal(bot.difficultyLabel, expected[bot.id][2], `${bot.id} difficulty`);
     assert.equal(bot.audienceLabel, expected[bot.id][3], `${bot.id} audience`);
     assert.ok(bot.description.length > 20, `${bot.id} needs real copy`);
-    assert.equal(bot.avatar.src, null, "no external or generated avatar yet");
+    // Every bot ships a LOCAL square asset, and the five animals use their own
+    // file. Perfect is the exception: its avatar is Glitch, the mascot art.
+    assert.match(bot.avatar.src, /^\/images\//, `${bot.id} must use a local avatar`);
+    assert.ok(
+      fs.existsSync(`public${bot.avatar.src}`),
+      `${bot.id}'s avatar file must exist: public${bot.avatar.src}`,
+    );
+    if (bot.id === "perfect") {
+      assert.equal(bot.avatar.src, "/images/mascot/glitch-idle.webp");
+      assert.match(bot.avatar.alt, /Glitch/);
+    } else {
+      assert.equal(bot.avatar.src, `/images/solitaire-bots/${bot.id}.webp`);
+    }
     assert.ok(bot.avatar.alt.length > 0);
     assert.ok(bot.id.length <= 16, "the stable id fits the existing varchar(16)");
     assert.equal(isSolitaireBotId(bot.id), true);

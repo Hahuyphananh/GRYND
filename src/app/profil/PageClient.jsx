@@ -29,6 +29,8 @@ import { clearSessionArtifacts } from "../../lib/security/sessionCleanup";
 import { fetchDeduped } from "../../lib/dedupeFetch";
 import { runOptimistically } from "../../lib/optimistic";
 import { useTranslation } from "../../hooks/useTranslation";
+import PlayerLevelBadge from "../../components/player-level/PlayerLevelBadge";
+import PlayerLevelProgressCard from "../../components/player-level/PlayerLevelProgressCard";
 
 // GRYND PRO chat color palette (matches the neon casino aesthetic).
 const CHAT_COLORS = [
@@ -1246,6 +1248,15 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
           {t("profile.title", "Your Profile")}
         </h1>
 
+        {/* Permanent trophy-derived level + rank. Every number is the server's
+            `/api/user-stats` progression payload (peak-protected). */}
+        {stats?.playerLevel && (
+          <PlayerLevelProgressCard
+            progression={stats.playerLevel}
+            className="mb-8"
+          />
+        )}
+
         <div
           className="mt-8 bg-[#0b224f]/85 border border-[#00e5ff]/30 
 rounded-xl p-6 
@@ -1379,6 +1390,14 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                         t("profile.info.unknownUser", "Unknown user")}
                     </span>
                   </p>
+                  {stats?.playerLevel && (
+                    <PlayerLevelBadge
+                      level={stats.playerLevel.level}
+                      rankKey={stats.playerLevel.rankKey}
+                      size="compact"
+                      showLabel
+                    />
+                  )}
                   {membership?.active && (
                     <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-300">
                       {membership.title ||

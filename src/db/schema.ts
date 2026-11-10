@@ -325,6 +325,13 @@ export const users = pgTable("users", {
   peakBalance: numeric("peak_balance", { precision: 30, scale: 2 })
     .default("0.00")
     .notNull(),
+  // Highest TOTAL trophy count ever held — the permanent basis of the
+  // player level (src/lib/playerLevel.js). Unlike summing each game's own
+  // peak, this is the peak of the sum, so it is a total the player actually
+  // held at one moment. Maintained server-side by the
+  // `player_trophies_sync_peak_total` trigger (migration 0247); never
+  // client-writable. Backfilled to the current total for existing players.
+  peakTotalTrophies: integer("peak_total_trophies").default(0).notNull(),
   gamesWon: integer("games_won").default(0),
   gamesLost: integer("games_lost").default(0),
   referralCode: varchar("referral_code", { length: 30 }).unique(),
@@ -485,6 +492,19 @@ export const users = pgTable("users", {
   // invitation). Independent of questionnaireCompletedAt: declining is not
   // answering.
   questionnaireDismissedAt: timestamp("questionnaire_dismissed_at"),
+  // ── Solitaire onboarding progress (migration 0246, additive) ──────────────
+  // Fine-grained progress for the Solitaire-first flow, tracked SEPARATELY
+  // from onboarding_completed_at above. All nullable with no backfill, so
+  // existing accounts keep NULL and are never re-onboarded. Written only by
+  // /api/onboarding/progress, each guarded with IS NULL so the first event
+  // wins and repeated views cannot inflate anything.
+  //
+  // tutorial_completed_at and tutorial_skipped_at are deliberately DISTINCT:
+  // a skipped tutorial must never be readable as a completed one.
+  onboardingStartedAt: timestamp("onboarding_started_at"),
+  tutorialStartedAt: timestamp("tutorial_started_at"),
+  tutorialCompletedAt: timestamp("tutorial_completed_at"),
+  tutorialSkippedAt: timestamp("tutorial_skipped_at"),
   isAdmin: boolean("is_admin").notNull().default(false),
   isBanned: boolean("is_banned").notNull().default(false),
 });
@@ -4213,10 +4233,25 @@ export const solitaireSoloResults = pgTable(
     completed: boolean("completed").notNull().default(false),
     moves: integer("moves").notNull().default(0),
     elapsedMs: integer("elapsed_ms").notNull().default(0),
+    // GAME REVIEW SOURCE: the canonical, server-verified move log for a
+    // COMPLETED attempt. NULL for an abandoned attempt and for legacy rows, so
+    // an incomplete game can never be presented as a complete review.
+    moveLog: jsonb("move_log"),
+    // SHA-256 of the ordered canonical log. The unique index below makes a
+    // retried completed submission idempotent; NULLs (abandoned attempts) are
+    // distinct in Postgres, so they keep recording exactly as before.
+    logDigest: varchar("log_digest", { length: 64 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
     userIdx: index("solitaire_solo_results_user_idx").on(table.userId, table.createdAt),
+    // One row per user + deal + exact move log. A different log for the same
+    // seed is a different attempt, never an update to the existing row.
+    userLogIdx: unique("solitaire_solo_results_user_seed_log_unique").on(
+      table.userId,
+      table.seed,
+      table.logDigest,
+    ),
   })
 );
 
@@ -4233,6 +4268,12 @@ export const solitaireDailyResults = pgTable(
     completed: boolean("completed").notNull().default(true),
     moves: integer("moves").notNull().default(0),
     elapsedMs: integer("elapsed_ms").notNull().default(0),
+    // GAME REVIEW SOURCE: the canonical log of the one official completion.
+    // The (user_id, challenge_date) unique index above already guarantees one
+    // row per day, and the route never updates it, so a second submission with
+    // different moves cannot attach itself to the recorded result.
+    moveLog: jsonb("move_log"),
+    logDigest: varchar("log_digest", { length: 64 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
@@ -4242,6 +4283,58 @@ export const solitaireDailyResults = pgTable(
     ),
     dateIdx: index("solitaire_daily_results_date_idx").on(table.challengeDate),
   })
+);
+
+// SOLITAIRE GAME REVIEW — one cached, versioned analysis per game.
+// ==============================================================================
+//
+// The analysis is a pure function of {deal, moves} and ANALYSIS_VERSION, so it
+// is cached once instead of being recomputed in the browser on every review.
+//
+// The identity is (game_kind, game_id, log_digest, engine_version): the digest
+// is SHA-256 of the canonical ordered log and the version is ANALYSIS_VERSION,
+// so changing either makes the old row unreachable. The unique index is the
+// claim key — `onConflictDoUpdate({ target: [...] })` resolves concurrent first
+// views onto one record, exactly like `evaluation_results`.
+//
+// `analysis` holds ONLY the compact analysis (ratings, tags, numeric scores,
+// summary). No deal, no move log, no board snapshot and no commentary prose.
+//
+// There is deliberately no foreign key: `game_id` is polymorphic (a duel match,
+// a solo result or a daily result), so one FK cannot express it. The retention
+// sweep deletes rows whose parent game is gone, and account deletion removes
+// rows for that player's games.
+export const solitaireAnalysisCache = pgTable(
+  "solitaire_analysis_cache",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    // duel | solo | daily — the same vocabulary as ReviewGameKind.
+    gameKind: varchar("game_kind", { length: 8 }).notNull(),
+    // The game's own id as text: uuid today, 64 chars leaves headroom.
+    gameId: varchar("game_id", { length: 64 }).notNull(),
+    // SHA-256 of the canonical ordered move log.
+    logDigest: varchar("log_digest", { length: 64 }).notNull(),
+    // ANALYSIS_VERSION that produced this payload.
+    engineVersion: integer("engine_version").notNull(),
+    // Compact GameAnalysis JSON — never the deal, the log or prose.
+    analysis: jsonb("analysis").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // THE claim key: one analysis per game + exact log + engine version.
+    identityIdx: uniqueIndex("solitaire_analysis_cache_identity_unique").on(
+      table.gameKind,
+      table.gameId,
+      table.logDigest,
+      table.engineVersion,
+    ),
+    // Retention's orphan lookup and one-game diagnostics.
+    gameIdx: index("solitaire_analysis_cache_game_idx").on(
+      table.gameKind,
+      table.gameId,
+    ),
+    createdIdx: index("solitaire_analysis_cache_created_idx").on(table.createdAt),
+  }),
 );
 
 // SUDOKU DUEL — the 1v1 simultaneous Sudoku race.

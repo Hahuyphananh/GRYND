@@ -9,11 +9,22 @@
 // `dealFromSeed` the client used and replays every move. `completed` is read
 // from the replayed board, never from the body, so a client cannot claim a win.
 //
+// GAME REVIEW HISTORY: a COMPLETED attempt also stores the canonical log, so the
+// game can be reviewed after the browser session is gone. An incomplete attempt
+// still records its summary (existing statistics are unchanged) but stores no
+// move log, so an abandoned game can never be presented as a complete review.
+//
+// IDEMPOTENCY: a completed submission is keyed by (user, seed, digest of the
+// ordered canonical log). Retrying the same request conflicts and writes
+// nothing; the route never updates a row, so a different log can never be
+// attached to an existing result.
+//
 // Nothing here touches Elo, trophies, the ranked queue or `solitaire_duel_*`
 // rows: solo rows live in `solitaire_solo_results`, which no ranked query reads.
 //
-// Signed-out play is fully supported in the browser and its records stay in
-// localStorage; this endpoint is only the authenticated persistence path.
+// Signed-out play remains fully supported in the browser and its records stay in
+// localStorage (now including the completed game itself); this endpoint is only
+// the authenticated persistence path.
 
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -25,6 +36,10 @@ import { logError } from "../../../../lib/logError";
 import { summariseSolo } from "../../../../lib/solitaire-duel/soloStats.js";
 import { dealFromSeed } from "../../../../lib/solitaire-duel/deck";
 import { replayMoves } from "../../../../lib/solitaire-duel/rules";
+import {
+  canonicalMoveLog,
+  moveLogDigest,
+} from "../../../../lib/solitaire-duel/soloPersistence";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -117,19 +132,54 @@ export async function POST(req: Request) {
       );
     }
 
-    await db.insert(solitaireSoloResults).values({
-      userId,
-      seed: String(seed),
-      completed: replayed.state.completed,
-      moves: moves.length,
-      elapsedMs: clampElapsed(body?.elapsedMs),
-    });
+    // The replay proved every move legal, so this pass only rebuilds the log in
+    // the engine's canonical shape. If it ever disagrees, persist nothing.
+    const canonical = canonicalMoveLog(moves);
+    if (!canonical.ok) {
+      return NextResponse.json(
+        { success: false, error: "The submitted moves are not legal for that deal" },
+        { status: 422 },
+      );
+    }
+
+    // A win is the engine's fact, never the client's. Only a completed board
+    // earns a stored log; an abandoned attempt keeps its summary row and stops.
+    const completed = replayed.state.completed === true;
+    const moveLog = completed ? canonical.log : null;
+    const logDigest = moveLog ? moveLogDigest(moveLog) : null;
+    const elapsedMs = clampElapsed(body?.elapsedMs);
+
+    const inserted = await db
+      .insert(solitaireSoloResults)
+      .values({
+        userId,
+        seed: String(seed),
+        completed,
+        moves: moves.length,
+        elapsedMs,
+        moveLog,
+        logDigest,
+      })
+      .onConflictDoNothing({
+        target: [
+          solitaireSoloResults.userId,
+          solitaireSoloResults.seed,
+          solitaireSoloResults.logDigest,
+        ],
+      })
+      .returning({ id: solitaireSoloResults.id });
+
+    const duplicate = inserted.length === 0;
 
     return NextResponse.json({
       success: true,
       data: {
-        completed: replayed.state.completed,
+        completed,
         moves: moves.length,
+        recorded: !duplicate,
+        duplicate,
+        // A stored log is the only thing a review can be built from.
+        reviewable: Boolean(moveLog),
         summary: await summaryFor(userId),
       },
     });

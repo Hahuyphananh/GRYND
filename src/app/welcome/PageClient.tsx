@@ -1,110 +1,115 @@
 "use client";
 
-// /welcome — first-time-user onboarding flow.
+// /welcome — Solitaire-first onboarding for brand-new accounts.
 //
-// A five-step, game-styled walkthrough shown to brand-new accounts (routed
-// here from /sync) and re-runnable from Settings → Help & Support via
-// ?replay=1. Steps: welcome → what is Grynd → how tokens work → how PvP
-// works → "your first match is free". The final step completes onboarding
-// (server-authoritative via users.onboarding_completed_at, written through
-// /api/onboarding/complete) and launches the player straight into the
-// EXISTING Free Play vs AI tutorial match (Rock Paper Scissors — reused
-// as-is, no duplicate game), whose finish records the one-time onboarding
-// completion flag.
+// Six steps, one guide (Glitch, inline), and a real first game:
 //
-// This page only renders the flow, it never decides "is this user new" on
-// its own. Refreshing resumes the current step (sessionStorage, per user +
-// tab); completing or skipping marks the account done permanently, so
-// logout/login, refresh and other tabs can never re-trigger onboarding.
+//   0  Welcome to GRYND          — what the platform is now: Solitaire
+//   1  Meet the Solitaire board  — stock · waste · tableau · foundations
+//   2  Learn the rules           — the actual Klondike rules, in plain words
+//   3  Interactive first game    — a REAL deal played through the REAL engine
+//   4  Competitive Solitaire     — Solo · Daily · Bots · Ranked PvP
+//   5  Completion                — Glitch's send-off + the lobby CTA
 //
-// The copy reuses the repo's actual token/PvP terminology (see
-// src/lib/appTextTranslations.js → onboarding.*).
+// There is deliberately no token, RPS, Mines or multi-game-catalogue copy in
+// this flow: GRYND is a competitive Solitaire platform, and the first game the
+// player touches is Solitaire.
 //
-// Order inside the onboarding flow (see src/lib/onboardingFlow.js for the
-// loop-safety rules): the questionnaire comes FIRST for a brand-new account,
-// so an unanswered new visitor is handed to /welcome/questionnaire instead of
-// starting the tutorial. Existing accounts (onboarding_completed_at already
-// set) can never take that branch, `?replay=1` always shows the tutorial, and
-// `?from=questionnaire` opts out — so questionnaire ↔ welcome can never loop.
+// State model (unchanged from the previous flow, so existing users are safe):
+//   * `users.onboarding_completed_at` (via /api/onboarding/complete) is the
+//     server-authoritative "onboarded" flag. Existing users already have it, so
+//     they are never re-onboarded unless they open ?replay=1 from Settings.
+//   * The current step is mirrored in sessionStorage per user + tab, so a
+//     refresh resumes mid-flow (step 0 always restarts).
+//   * Completion is only ever written by the final CTA or Skip — opening the
+//     page never marks anything complete.
+//
+// Tutorial tracking (started / completed / skipped) is best-effort and goes to
+// /api/onboarding/progress; a failure there never blocks the player.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { useUser } from "@clerk/nextjs";
 import {
   IconArrowLeft,
   IconArrowRight,
-  IconBolt,
-  IconCoins,
-  IconDeviceGamepad2,
-  IconRobot,
-  IconStar,
+  IconCards,
+  IconCheck,
+  IconClock,
   IconSwords,
   IconTarget,
   IconTrophy,
-  IconUser,
-  IconUsers,
 } from "@tabler/icons-react";
 import { useTranslation } from "../../hooks/useTranslation";
 import { shouldRouteWelcomeToQuestionnaire } from "../../lib/onboardingFlow";
-import { welcomeMessageKey } from "../../lib/gameRecommendations";
-import { isGameAvailable } from "../../lib/gameAvailability";
+import { GAME_ROUTE } from "../../lib/solitaire-duel/constants";
+import {
+  MODE_LABEL_KEYS,
+  recommendedMode,
+  recommendationReasonKey,
+  SOLITAIRE_MODES,
+  tutorialToneMessageKey,
+  wantsRankedExplainer,
+} from "../../lib/solitairePersonalization";
+import PlayingCard from "../../components/solitaire-duel/PlayingCard";
+import SolitaireTutorial from "../../components/solitaire-duel/SolitaireTutorial";
 import GlitchSay from "../../components/mascot/GlitchSay";
 import { glitchWelcomeLine } from "../../lib/mascot/glitchOnboarding";
 
-const TOTAL_STEPS = 5;
+const TOTAL_STEPS = 6;
 const STEP_STORAGE_PREFIX = "grynd:welcome:step:";
 
-// The final step launches the player into the existing Free Play vs AI
-// tutorial match (reused as-is; no new game system). The first-match stage
-// is gated server-side by users.first_game_completed_at.
-// The tutorial launches the first available free-practice game. Rock Paper
-// Scissors is the long-standing default; while it is archived (see
-// src/lib/gameAvailability.js) the flow lands on an active practice lobby
-// instead of a dead archived URL, so onboarding keeps working.
-const FIRST_GAME_URL = isGameAvailable("rps")
-  ? "/casino/rps/play-ai?onboarding=1"
-  : "/casino/mines-pvp";
+/** The real Solitaire lobby (never a guessed or archived route). */
+const LOBBY_URL = GAME_ROUTE;
 
 type Props = {
-  /** ?replay=1 — opened from Settings → Help & Support; skips the "already
-   *  completed" bounce so the user can walk the tutorial again. */
+  /** ?replay=1 — opened from Settings; skips the "already completed" bounce. */
   replay?: boolean;
-  /** ?from=questionnaire — the questionnaire just sent the player here, so
-   *  don't hand them back to it. */
+  /** ?from=questionnaire — the questionnaire just handed the player here. */
   fromQuestionnaire?: boolean;
 };
 
-export default function WelcomePageClient({
-  replay = false,
-  fromQuestionnaire = false,
-}: Props) {
+type Answers = Record<string, string | string[]>;
+
+export default function WelcomePageClient({ replay = false, fromQuestionnaire = false }: Props) {
   const { isLoaded, isSignedIn, user } = useUser();
   const { t } = useTranslation();
 
-  // status: "loading" → checking server flag | "ready" → show flow |
-  // "error" → server flag couldn't be read (graceful retry).
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
-  // One personalized line under the welcome hero, picked from the answers the
-  // player just gave (null = no questionnaire data → the hero is unchanged).
-  const [welcomeLine, setWelcomeLine] = useState<string | null>(null);
+  const [answers, setAnswers] = useState<Answers>({});
   const contentRef = useRef<HTMLDivElement>(null);
 
   const storageKey = user?.id ? `${STEP_STORAGE_PREFIX}${user.id}` : null;
-  const doneTarget = replay ? "/settings" : "/games";
+  const doneTarget = replay ? "/settings" : LOBBY_URL;
+  const recommended = useMemo(() => recommendedMode(answers), [answers]);
 
   const clearStepStorage = useCallback(() => {
-    if (storageKey) {
-      try {
-        sessionStorage.removeItem(storageKey);
-      } catch {
-        // sessionStorage unavailable — harmless.
-      }
+    if (!storageKey) return;
+    try {
+      sessionStorage.removeItem(storageKey);
+    } catch {
+      // sessionStorage unavailable — harmless.
     }
   }, [storageKey]);
+
+  /** Fire-and-forget tutorial tracking; never blocks the flow. */
+  const track = useCallback((event: "welcome_started" | "tutorial_started" | "tutorial_completed" | "tutorial_skipped") => {
+    try {
+      void fetch("/api/onboarding/progress", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event }),
+        keepalive: true,
+      }).catch(() => {});
+    } catch {
+      // fetch unavailable — the flow still works
+    }
+  }, []);
 
   // 1) Check the server-side completion flag once Clerk is ready.
   const checkStatus = useCallback(async () => {
@@ -116,19 +121,15 @@ export default function WelcomePageClient({
       if (!res.ok || data?.success !== true) throw new Error("bad status response");
 
       if (data.onboardingCompleted === true && !replay) {
-        // Already onboarded (existing user, or completed in another tab).
-        // Existing users must never be dropped into onboarding — go home,
-        // exactly like the returning-user /sync path.
+        // Existing user (or completed elsewhere). Never re-onboard them.
         window.location.replace("/");
         return;
       }
 
-      // Brand-new account that hasn't answered (or declined) the questionnaire
-      // yet: onboarding order is questionnaire → tutorial, so hand them to the
-      // questionnaire first. Existing accounts can't reach this branch
-      // (onboarding_completed_at was backfilled), replay always shows the
-      // tutorial, and a player arriving from the questionnaire is exempt —
-      // which is what keeps the two pages from looping.
+      // Brand-new account that hasn't answered (or declined) the Solitaire
+      // questionnaire yet: questionnaire first, then this flow. Existing
+      // accounts cannot reach this branch; replay and the questionnaire
+      // hand-off are exempt, so the two pages can never loop.
       if (
         shouldRouteWelcomeToQuestionnaire({
           onboardingCompleted: data.onboardingCompleted === true,
@@ -142,33 +143,23 @@ export default function WelcomePageClient({
         return;
       }
 
-      // Arriving straight from the questionnaire: add ONE warm follow-up line
-      // derived from those answers (welcomeMessageKey — deterministic, and
-      // null for anything incomplete). Only this hand-off fetches the answers,
-      // and the request is best-effort: if it fails the step renders exactly
-      // as it always has, so nobody is ever blocked by personalization.
-      if (fromQuestionnaire && data.questionnaireCompleted === true) {
-        try {
-          const answersRes = await fetch("/api/onboarding/questionnaire", {
-            credentials: "include",
-          });
-          const answersData = await answersRes.json();
-          if (answersRes.ok && answersData?.success === true) {
-            setWelcomeLine(welcomeMessageKey(answersData.answers));
-          }
-        } catch {
-          // no personalized line — the tutorial is unaffected
+      // Personalization is optional and best-effort: it only decides which
+      // mode is highlighted and which tutorial framing Glitch uses.
+      try {
+        const answersRes = await fetch("/api/onboarding/questionnaire", {
+          credentials: "include",
+        });
+        const answersData = await answersRes.json();
+        if (answersRes.ok && answersData?.success === true && answersData.answers) {
+          setAnswers(answersData.answers as Answers);
         }
+      } catch {
+        // no answers — Solo practice is the default
       }
 
-      // New account (or replay). Resume where the user left off if they
-      // refreshed mid-flow; replay always restarts from the beginning.
       if (!replay && storageKey) {
         try {
           const saved = Number(sessionStorage.getItem(storageKey));
-          // Resume any step the user reached (including the final screen,
-          // e.g. when the completion POST failed and they refreshed). Step 0
-          // is never restored — a fresh visit starts the walkthrough over.
           if (Number.isInteger(saved) && saved > 0 && saved <= TOTAL_STEPS - 1) {
             setStep(saved);
           }
@@ -177,21 +168,20 @@ export default function WelcomePageClient({
         }
       }
       setStatus("ready");
+      track("welcome_started");
     } catch (err) {
       console.error("[WELCOME_STATUS_ERROR]", err);
       setStatus("error");
     }
-  }, [isLoaded, isSignedIn, replay, fromQuestionnaire, storageKey]);
+  }, [isLoaded, isSignedIn, replay, fromQuestionnaire, storageKey, track]);
 
   useEffect(() => {
     if (!isLoaded) return;
-    // Signed-out visitors can't complete onboarding — send them to the
-    // public home (which owns the sign-in/up CTAs).
     if (!isSignedIn) {
       window.location.replace("/");
       return;
     }
-    checkStatus();
+    void checkStatus();
   }, [isLoaded, isSignedIn, checkStatus]);
 
   // 2) Persist the in-progress step so a refresh doesn't restart onboarding.
@@ -209,13 +199,10 @@ export default function WelcomePageClient({
     if (status === "ready") contentRef.current?.focus();
   }, [step, status]);
 
-  const goTo = useCallback(
-    (next: number) => {
-      setSaveFailed(false);
-      setStep(Math.max(0, Math.min(TOTAL_STEPS - 1, next)));
-    },
-    [],
-  );
+  const goTo = useCallback((next: number) => {
+    setSaveFailed(false);
+    setStep(Math.max(0, Math.min(TOTAL_STEPS - 1, next)));
+  }, []);
 
   const completeOnboarding = useCallback(async () => {
     const res = await fetch("/api/onboarding/complete", {
@@ -233,8 +220,6 @@ export default function WelcomePageClient({
     try {
       await completeOnboarding();
       clearStepStorage();
-      // Full navigation (not router.replace): back/refresh can't resubmit
-      // and the destination gets a clean mount.
       window.location.replace(doneTarget);
     } catch (err) {
       console.error("[WELCOME_COMPLETE_ERROR]", err);
@@ -243,32 +228,6 @@ export default function WelcomePageClient({
     }
   }, [completeOnboarding, clearStepStorage, doneTarget]);
 
-  const skip = useCallback(() => {
-    void finish();
-  }, [finish]);
-
-  // Final-step primary CTA: completes onboarding (server flag), clears the
-  // in-progress step, then hands over to the Free Play vs AI tutorial match.
-  // A failed completion POST shows the retry/continue state instead of
-  // silently dropping the user — the game page itself also backfills the
-  // flag when the match finishes, so nothing can be lost permanently.
-  const launch = useCallback(async () => {
-    setSaving(true);
-    setSaveFailed(false);
-    try {
-      await completeOnboarding();
-      clearStepStorage();
-      // Full navigation (not router.replace): back/refresh can't resubmit
-      // and the game page gets a clean mount.
-      window.location.replace(FIRST_GAME_URL);
-    } catch (err) {
-      console.error("[WELCOME_LAUNCH_ERROR]", err);
-      setSaving(false);
-      setSaveFailed(true);
-    }
-  }, [completeOnboarding, clearStepStorage]);
-
-  // Arrow-key navigation between steps (Back/Next are the visible controls).
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (status !== "ready") return;
@@ -283,11 +242,8 @@ export default function WelcomePageClient({
     [status, step, goTo],
   );
 
-  // ── Loading / error shells ────────────────────────────────────────────
-  // The root layout reserves pt-[68px] sm:pt-16 for the fixed navbar, but
-  // /welcome is a standalone flow without one (like /sync and /thank-you).
-  // Pull the wrapper up over that padding so the page is truly full-bleed.
   const fullBleed = "-mt-[68px] min-h-screen sm:-mt-16";
+  const recommendedLabel = t(MODE_LABEL_KEYS[recommended]);
 
   if (!isLoaded || status === "loading") {
     return (
@@ -327,7 +283,7 @@ export default function WelcomePageClient({
               {t("onboarding.error.retry")}
             </button>
             <Link
-              href="/games"
+              href={LOBBY_URL}
               className="text-sm font-semibold text-[#9dd8ff]/80 underline-offset-4 transition hover:text-[#d8fbff] hover:underline"
             >
               {t("onboarding.error.continue")} →
@@ -338,242 +294,342 @@ export default function WelcomePageClient({
     );
   }
 
-  // ── Step content ──────────────────────────────────────────────────────
   const eyebrow = (text: string) => (
-    <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.3em] text-[#00e5ff]">
-      ✦ {text}
-    </p>
+    <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.3em] text-[#00e5ff]">✦ {text}</p>
   );
-
-  const cardCls =
-    "rounded-2xl border border-[#00e5ff]/25 bg-[#040d24]/80 backdrop-blur-xs";
+  const cardCls = "rounded-2xl border border-[#00e5ff]/25 bg-[#040d24]/80 backdrop-blur-xs";
 
   let content: React.ReactNode = null;
 
   switch (step) {
-    // 0 — Welcome hero.
+    // 0 — Welcome to GRYND.
     case 0: {
       content = (
         <div className="text-center">
           <GlitchGuide step={0} center />
-          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center">
-            <div className="h-14 w-14 rotate-45 rounded-lg border-2 border-[#00e5ff] bg-linear-to-br from-[#FF2D9B]/20 to-[#00e5ff]/20 shadow-[0_0_30px_rgba(0,229,255,0.5)]" />
-          </div>
           <p className="mb-1 text-sm font-bold uppercase tracking-[0.25em] text-[#00e5ff]">
-            {t("onboarding.welcome.kicker")}
+            {t("onboarding.solitaire.welcome.kicker")}
           </p>
-          <h1 className="logo-text mb-4 bg-linear-to-r from-[#FFD700] via-[#FFB300] to-[#FFD700] bg-clip-text text-5xl font-bold tracking-tight text-transparent drop-shadow-[0_0_25px_rgba(255,215,0,0.35)] sm:text-6xl">
-            {t("onboarding.welcome.title")}
+          <h1 className="logo-text mb-4 bg-linear-to-r from-[#FFD700] via-[#FFB300] to-[#FFD700] bg-clip-text text-4xl font-bold tracking-tight text-transparent drop-shadow-[0_0_25px_rgba(255,215,0,0.35)] sm:text-6xl">
+            {t("onboarding.solitaire.welcome.title")}
           </h1>
           <p className="mx-auto max-w-md text-base leading-relaxed text-[#c9f7ff]/90 sm:text-lg">
-            {t("onboarding.welcome.subtitle")}
+            {t("onboarding.solitaire.welcome.subtitle")}
           </p>
-          {welcomeLine && (
-            <p className="mx-auto mt-3 max-w-md text-sm font-semibold text-[#00e5ff] sm:text-base">
-              {t(welcomeLine)}
-            </p>
-          )}
+          <div className="mx-auto mt-6 flex max-w-md flex-wrap items-center justify-center gap-2">
+            {(["solo_practice", "daily_challenge", "play_vs_bots", "ranked_pvp"] as const).map(
+              (mode) => (
+                <span
+                  key={mode}
+                  className={`${cardCls} inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white/90`}
+                >
+                  {t(MODE_LABEL_KEYS[mode])}
+                </span>
+              ),
+            )}
+          </div>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <button
               type="button"
               onClick={() => goTo(1)}
               className="w-full rounded-2xl bg-linear-to-r from-[#FFD700] to-[#FFB300] px-10 py-4 text-lg font-extrabold text-black shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all hover:brightness-110 active:scale-[0.98] sm:w-auto"
             >
-              {t("onboarding.welcome.play")} →
-            </button>
-            <button
-              type="button"
-              onClick={skip}
-              disabled={saving}
-              className="w-full rounded-2xl border border-[#00e5ff]/40 px-8 py-4 text-sm font-bold text-[#9dd8ff] transition hover:bg-[#00e5ff]/10 hover:text-[#d8fbff] disabled:opacity-60 sm:w-auto"
-            >
-              {t("onboarding.welcome.skip")}
-            </button>
-          </div>
-          {saveFailed && <SaveError onRetry={finish} targetLabel={t("onboarding.error.continue")} targetHref={doneTarget} />}
-        </div>
-      );
-      break;
-    }
-
-    // 1 — What is Grynd? Play / Outplay / Progress.
-    case 1: {
-      const pillars = [
-        { icon: IconSwords, title: t("onboarding.what.playTitle"), desc: t("onboarding.what.playDesc"), color: "#00e5ff" },
-        { icon: IconTarget, title: t("onboarding.what.outplayTitle"), desc: t("onboarding.what.outplayDesc"), color: "#FF2D9B" },
-        { icon: IconTrophy, title: t("onboarding.what.progressTitle"), desc: t("onboarding.what.progressDesc"), color: "#FFD700" },
-      ];
-      content = (
-        <div>
-          <GlitchGuide step={1} />
-          {eyebrow(t("onboarding.what.kicker"))}
-          <h2 className="mb-6 text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
-            {t("onboarding.what.title")}
-          </h2>
-          <div className="grid gap-3 sm:grid-cols-3">
-            {pillars.map((p) => (
-              <div key={p.title} className={`${cardCls} p-5 text-center`}>
-                <p.icon
-                  size={30}
-                  className="mx-auto mb-3"
-                  style={{ color: p.color, filter: `drop-shadow(0 0 10px ${p.color}66)` }}
-                />
-                <h3 className="mb-1.5 text-lg font-extrabold text-white">{p.title}</h3>
-                <p className="text-sm leading-relaxed text-[#9dd8ff]">{p.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      );
-      break;
-    }
-
-    // 2 — How tokens work (real terminology: balance chip top-right, wager to
-    // enter matches, free AI practice).
-    case 2: {
-      const rows = [
-        { icon: IconCoins, title: t("onboarding.tokens.areTitle"), desc: t("onboarding.tokens.areDesc"), color: "#FFD700" },
-        { icon: IconUser, title: t("onboarding.tokens.whereTitle"), desc: t("onboarding.tokens.whereDesc"), color: "#00e5ff" },
-        { icon: IconSwords, title: t("onboarding.tokens.usedTitle"), desc: t("onboarding.tokens.usedDesc"), color: "#FF2D9B" },
-        { icon: IconDeviceGamepad2, title: t("onboarding.tokens.freeTitle"), desc: t("onboarding.tokens.freeDesc"), color: "#00FFA3" },
-      ];
-      content = (
-        <div>
-          <GlitchGuide step={2} />
-          {eyebrow(t("onboarding.tokens.kicker"))}
-          <h2 className="mb-2 text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
-            {t("onboarding.tokens.title")}
-          </h2>
-          <p className="mb-6 text-base text-[#9dd8ff]">{t("onboarding.tokens.lead")}</p>
-          <div className="space-y-3">
-            {rows.map((r) => (
-              <div key={r.title} className={`${cardCls} flex items-start gap-4 p-4`}>
-                <div
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
-                  style={{ backgroundColor: `${r.color}1a`, border: `1px solid ${r.color}55` }}
-                >
-                  <r.icon size={22} style={{ color: r.color }} />
-                </div>
-                <div>
-                  <h3 className="mb-0.5 font-extrabold text-white">{r.title}</h3>
-                  <p className="text-sm leading-relaxed text-[#9dd8ff]">{r.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      );
-      break;
-    }
-
-    // 3 — How PvP / matchmaking works.
-    case 3: {
-      const steps = [
-        { icon: IconUsers, title: t("onboarding.pvp.s1Title"), desc: t("onboarding.pvp.s1Desc"), color: "#00e5ff" },
-        { icon: IconBolt, title: t("onboarding.pvp.s2Title"), desc: t("onboarding.pvp.s2Desc"), color: "#FFD700" },
-        { icon: IconSwords, title: t("onboarding.pvp.s3Title"), desc: t("onboarding.pvp.s3Desc"), color: "#FF2D9B" },
-        { icon: IconTrophy, title: t("onboarding.pvp.s4Title"), desc: t("onboarding.pvp.s4Desc"), color: "#00FFA3" },
-      ];
-      content = (
-        <div>
-          <GlitchGuide step={3} />
-          {eyebrow(t("onboarding.pvp.kicker"))}
-          <h2 className="mb-2 text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
-            {t("onboarding.pvp.title")}
-          </h2>
-          <p className="mb-6 text-base text-[#9dd8ff]">{t("onboarding.pvp.lead")}</p>
-          <div className="space-y-3">
-            {steps.map((s, i) => (
-              <div key={s.title} className="flex items-start gap-4">
-                <div className="flex flex-col items-center">
-                  <div
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
-                    style={{ backgroundColor: `${s.color}1a`, border: `1px solid ${s.color}66`, boxShadow: `0 0 14px ${s.color}33` }}
-                  >
-                    <s.icon size={20} style={{ color: s.color }} />
-                  </div>
-                  {i < steps.length - 1 && <div className="my-1 h-5 w-px bg-[#00e5ff]/30" />}
-                </div>
-                <div className={`${cardCls} flex-1 p-4`}>
-                  <h3 className="mb-0.5 font-extrabold text-white">
-                    <span className="mr-1.5 text-[#00e5ff]/70">{i + 1}.</span>
-                    {s.title}
-                  </h3>
-                  <p className="text-sm leading-relaxed text-[#9dd8ff]">{s.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      );
-      break;
-    }
-
-    // 4 — "Your first match is free": the transition screen. It completes
-    // onboarding and launches the player into the existing Free Play vs AI
-    // tutorial match (the first-match stage is gated server-side by
-    // users.first_game_completed_at — see /api/onboarding/first-game-complete).
-    default: {
-      const points = [
-        { icon: IconTarget, text: t("onboarding.firstMatch.point1"), color: "#00e5ff" },
-        { icon: IconRobot, text: t("onboarding.firstMatch.point2"), color: "#FFD700" },
-        { icon: IconStar, text: t("onboarding.firstMatch.point3"), color: "#00FFA3" },
-      ];
-      content = (
-        <div>
-          <GlitchGuide step={4} center />
-          <div className="mx-auto mb-5 max-w-md rounded-2xl border border-amber-500/40 bg-[#0a0f2e]/70 p-6 text-center shadow-[0_0_40px_rgba(255,215,0,0.14)] backdrop-blur-xs">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-[#00e5ff]/50 bg-[#00e5ff]/10 shadow-[0_0_25px_rgba(0,229,255,0.25)]">
-              <IconRobot size={34} className="text-[#7cefff]" />
-            </div>
-            {eyebrow(t("onboarding.firstMatch.kicker"))}
-            <span className="inline-block rounded-full border border-[#00FFA3]/50 bg-[#00FFA3]/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-[#00FFA3]">
-              Free Play · VS AI
-            </span>
-            <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
-              {t("onboarding.firstMatch.title")}
-            </h2>
-            <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-[#c9f7ff]/90 sm:text-base">
-              {t("onboarding.firstMatch.lead")}
-            </p>
-          </div>
-
-          <div className="mx-auto mb-7 flex max-w-md flex-wrap items-center justify-center gap-2">
-            {points.map((p) => (
-              <span
-                key={p.text}
-                className={`${cardCls} inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white/90`}
-              >
-                <p.icon size={15} style={{ color: p.color }} aria-hidden="true" />
-                {p.text}
-              </span>
-            ))}
-          </div>
-
-          <div className="mx-auto flex max-w-md flex-col items-stretch gap-3 sm:flex-row sm:justify-center">
-            <button
-              type="button"
-              onClick={() => void launch()}
-              disabled={saving}
-              className="rounded-2xl bg-linear-to-r from-[#FFD700] to-[#FFB300] px-8 py-4 text-base font-extrabold text-black shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all hover:brightness-110 active:scale-[0.98] disabled:opacity-60 sm:px-10"
-            >
-              {saving ? t("ui.loading") : `${t("onboarding.firstMatch.cta")} →`}
+              {t("onboarding.solitaire.welcome.play")} →
             </button>
             <button
               type="button"
               onClick={() => void finish()}
               disabled={saving}
-              className="rounded-2xl border border-[#00e5ff]/40 px-8 py-4 text-sm font-bold text-[#9dd8ff] transition hover:bg-[#00e5ff]/10 hover:text-[#d8fbff] disabled:opacity-60"
+              className="w-full rounded-2xl border border-[#00e5ff]/40 px-8 py-4 text-sm font-bold text-[#9dd8ff] transition hover:bg-[#00e5ff]/10 hover:text-[#d8fbff] disabled:opacity-60 sm:w-auto"
             >
-              {saving ? t("ui.loading") : t("onboarding.firstMatch.alt")}
+              {saving ? t("ui.loading") : t("onboarding.controls.skip")}
             </button>
           </div>
+          {saveFailed && <SaveError onRetry={() => void finish()} targetLabel={t("onboarding.error.continue")} targetHref={doneTarget} />}
+        </div>
+      );
+      break;
+    }
+
+    // 1 — Meet the board: stock, waste, tableau, foundations.
+    case 1: {
+      const areas = [
+        { key: "stock", icon: IconCards, accent: "#00e5ff" },
+        { key: "waste", icon: IconCards, accent: "#FF2D9B" },
+        { key: "tableau", icon: IconTarget, accent: "#FFD700" },
+        { key: "foundations", icon: IconTrophy, accent: "#00FFA3" },
+      ] as const;
+      content = (
+        <div>
+          <GlitchGuide step={1} />
+          {eyebrow(t("onboarding.solitaire.board.kicker"))}
+          <h2 className="mb-2 text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
+            {t("onboarding.solitaire.board.title")}
+          </h2>
+          <p className="mb-5 text-sm leading-relaxed text-[#9dd8ff] sm:text-base">
+            {t("onboarding.solitaire.board.lead")}
+          </p>
+
+          {/* A real card face + real board slots, so the lesson looks like the
+              board the player is about to use. */}
+          <div className="mb-5 rounded-2xl border border-[#00e5ff]/20 bg-[#02101f]/80 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="flex flex-col items-center gap-1">
+                  <PlayingCard card={null} faceUp={false} style={{ width: 44, height: 62 }} />
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-[#9dd8ff]/70">
+                    {t("onboarding.solitaire.board.stock")}
+                  </span>
+                </div>
+                <div className="flex flex-col items-center gap-1">
+                  <PlayingCard
+                    card={{ suit: "spades", rank: 13 }}
+                    faceUp
+                    style={{ width: 44, height: 62 }}
+                  />
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-[#9dd8ff]/70">
+                    {t("onboarding.solitaire.board.waste")}
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-start gap-1.5">
+                {(["spades", "hearts", "diamonds", "clubs"] as const).map((suit, index) => (
+                  <div
+                    key={suit}
+                    className="flex flex-col items-center gap-1"
+                    aria-hidden="true"
+                  >
+                    <div
+                      className="flex items-center justify-center rounded-md border-2 border-dashed border-[#00e5ff]/35 bg-white/[0.03] text-sm text-[#9dd8ff]"
+                      style={{ width: 44, height: 62 }}
+                    >
+                      {["♠", "♥", "♦", "♣"][index]}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <p className="mt-2 text-center text-[9px] font-bold uppercase tracking-wider text-[#9dd8ff]/70">
+              {t("onboarding.solitaire.board.foundations")}
+            </p>
+            <div className="mt-4 flex items-end justify-center gap-2">
+              {[
+                { rank: 9, suit: "hearts" as const, offset: 0 },
+                { rank: 6, suit: "clubs" as const, offset: 14 },
+                { rank: 5, suit: "diamonds" as const, offset: 28 },
+              ].map((column) => (
+                <div key={`${column.suit}-${column.rank}`} className="flex flex-col items-center">
+                  <div className="relative" style={{ height: 62, width: 44 }}>
+                    <div style={{ marginTop: column.offset }}>
+                      <PlayingCard
+                        card={{ suit: column.suit, rank: column.rank as 5 | 6 | 9 }}
+                        faceUp
+                        style={{ width: 44, height: 62 }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="mt-2 text-center text-[9px] font-bold uppercase tracking-wider text-[#9dd8ff]/70">
+              {t("onboarding.solitaire.board.tableau")}
+            </p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            {areas.map((area) => (
+              <div key={area.key} className={`${cardCls} flex items-start gap-3 p-4`}>
+                <div
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                  style={{ backgroundColor: `${area.accent}1a`, border: `1px solid ${area.accent}55` }}
+                >
+                  <area.icon size={20} style={{ color: area.accent }} aria-hidden="true" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-white">
+                    {t(`onboarding.solitaire.board.${area.key}Title`)}
+                  </h3>
+                  <p className="mt-0.5 text-xs leading-relaxed text-[#9dd8ff]">
+                    {t(`onboarding.solitaire.board.${area.key}Desc`)}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+      break;
+    }
+
+    // 2 — The actual Klondike rules, in plain language.
+    case 2: {
+      const rules = [
+        { key: "descending", icon: IconCards, accent: "#00e5ff" },
+        { key: "alternate", icon: IconTarget, accent: "#FF2D9B" },
+        { key: "runs", icon: IconSwords, accent: "#FFD700" },
+        { key: "reveal", icon: IconCheck, accent: "#00FFA3" },
+        { key: "aces", icon: IconTrophy, accent: "#f0abfc" },
+        { key: "draw", icon: IconClock, accent: "#7cefff" },
+      ] as const;
+      content = (
+        <div>
+          <GlitchGuide step={2} />
+          {eyebrow(t("onboarding.solitaire.rules.kicker"))}
+          <h2 className="mb-2 text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
+            {t("onboarding.solitaire.rules.title")}
+          </h2>
+          <p className="mb-5 text-sm leading-relaxed text-[#9dd8ff] sm:text-base">
+            {t("onboarding.solitaire.rules.lead")}
+          </p>
+          <ol className="space-y-2.5">
+            {rules.map((rule, index) => (
+              <li key={rule.key} className={`${cardCls} flex items-start gap-3 p-3.5`}>
+                <span
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[11px] font-black"
+                  style={{ backgroundColor: `${rule.accent}1a`, color: rule.accent, border: `1px solid ${rule.accent}55` }}
+                  aria-hidden="true"
+                >
+                  {index + 1}
+                </span>
+                <div>
+                  <h3 className="text-sm font-extrabold text-white">
+                    {t(`onboarding.solitaire.rules.${rule.key}Title`)}
+                  </h3>
+                  <p className="mt-0.5 text-xs leading-relaxed text-[#9dd8ff]">
+                    {t(`onboarding.solitaire.rules.${rule.key}Desc`)}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
+      );
+      break;
+    }
+
+    // 3 — The interactive first game (real engine, real deal).
+    case 3: {
+      content = (
+        <div>
+          <GlitchGuide step={3} messageKey={tutorialToneMessageKey(answers)} />
+          {eyebrow(t("onboarding.solitaire.tutorial.kicker"))}
+          <h2 className="mb-2 text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
+            {t("onboarding.solitaire.tutorial.ledeTitle")}
+          </h2>
+          <p className="mb-4 text-sm leading-relaxed text-[#9dd8ff] sm:text-base">
+            {t("onboarding.solitaire.tutorial.lead")}
+          </p>
+          <SolitaireTutorial
+            onStarted={() => track("tutorial_started")}
+            onComplete={() => {
+              track("tutorial_completed");
+              goTo(4);
+            }}
+            onSkip={() => {
+              track("tutorial_skipped");
+              goTo(4);
+            }}
+            recommendedLabel={recommendedLabel}
+          />
+        </div>
+      );
+      break;
+    }
+
+    // 4 — The four competitive Solitaire modes.
+    case 4: {
+      const modes = SOLITAIRE_MODES.map((mode) => ({ mode, key: MODE_LABEL_KEYS[mode] }));
+      content = (
+        <div>
+          <GlitchGuide step={4} />
+          {eyebrow(t("onboarding.solitaire.modes.kicker"))}
+          <h2 className="mb-2 text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
+            {t("onboarding.solitaire.modes.title")}
+          </h2>
+          <p className="mb-5 text-sm leading-relaxed text-[#9dd8ff] sm:text-base">
+            {t("onboarding.solitaire.modes.lead")}
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {modes.map(({ mode, key }) => {
+              const isRecommended = mode === recommended;
+              return (
+                <div
+                  key={mode}
+                  className={`${cardCls} p-4 ${isRecommended ? "border-[#FFD700]/60 shadow-[0_0_22px_rgba(255,215,0,0.16)]" : ""}`}
+                >
+                  <div className="mb-1 flex items-center gap-2">
+                    <h3 className="text-sm font-extrabold text-white">{t(key)}</h3>
+                    {isRecommended && (
+                      <span className="rounded-full border border-[#FFD700]/50 bg-[#FFD700]/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-[#FFD700]">
+                        {t("onboarding.solitaire.modes.recommended")}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs leading-relaxed text-[#9dd8ff]">
+                    {t(`onboarding.solitaire.modes.${mode}.desc`)}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+          <p className="mt-3 text-xs font-semibold text-[#FFD700]/90">
+            {t(recommendationReasonKey(answers))}
+          </p>
+          <div className="mt-4 space-y-2">
+            <p className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] leading-relaxed text-[#9dd8ff]">
+              {t("onboarding.solitaire.modes.botsNote")}
+            </p>
+            <p className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] leading-relaxed text-[#9dd8ff]">
+              {wantsRankedExplainer(answers)
+                ? t("onboarding.solitaire.modes.rankedNote")
+                : t("onboarding.solitaire.modes.rankedNoteShort")}
+            </p>
+          </div>
+        </div>
+      );
+      break;
+    }
+
+    // 5 — Completion.
+    default: {
+      content = (
+        <div className="text-center">
+          <GlitchGuide step={5} center />
+          <div className="mx-auto mb-5 max-w-md rounded-2xl border border-[#00FFA3]/35 bg-[#00FFA3]/5 p-6">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-[#00FFA3]/50 bg-[#00FFA3]/10">
+              <IconCheck size={28} className="text-[#b6ffe0]" aria-hidden="true" />
+            </div>
+            {eyebrow(t("onboarding.solitaire.done.kicker"))}
+            <h2 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
+              {t("onboarding.solitaire.done.title")}
+            </h2>
+            <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-[#c9f7ff]/90">
+              {t("onboarding.solitaire.done.lead")}
+            </p>
+            <p className="mt-3 text-xs font-semibold text-[#FFD700]">
+              {t("onboarding.solitaire.done.recommended", { mode: recommendedLabel })}
+            </p>
+          </div>
+          <div className="mx-auto flex max-w-md flex-col items-stretch gap-3 sm:flex-row sm:justify-center">
+            <button
+              type="button"
+              onClick={() => void finish()}
+              disabled={saving}
+              className="rounded-2xl bg-linear-to-r from-[#FFD700] to-[#FFB300] px-8 py-4 text-base font-extrabold text-black shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all hover:brightness-110 active:scale-[0.98] disabled:opacity-60 sm:px-10"
+            >
+              {saving ? t("ui.loading") : `${t("onboarding.solitaire.done.cta")} →`}
+            </button>
+            {replay && (
+              <Link
+                href="/settings"
+                className="rounded-2xl border border-[#00e5ff]/40 px-8 py-4 text-sm font-bold text-[#9dd8ff] transition hover:bg-[#00e5ff]/10 hover:text-[#d8fbff]"
+              >
+                {t("onboarding.solitaire.done.backToSettings")}
+              </Link>
+            )}
+          </div>
           {saveFailed && (
-            <SaveError
-              onRetry={() => void launch()}
-              targetLabel={t("onboarding.error.continue")}
-              targetHref="/games"
-            />
+            <SaveError onRetry={() => void finish()} targetLabel={t("onboarding.error.continue")} targetHref={doneTarget} />
           )}
         </div>
       );
@@ -589,12 +645,10 @@ export default function WelcomePageClient({
       className={`relative flex flex-col items-center overflow-hidden px-4 py-6 ${fullBleed}`}
       style={{ background: "linear-gradient(135deg, #001933 0%, #000d1f 50%, #000814 100%)" }}
     >
-      {/* Ambient neon glows */}
       <div className="pointer-events-none absolute -top-40 left-1/2 h-96 w-[42rem] -translate-x-1/2 rounded-full bg-[#00e5ff]/10 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-48 left-1/4 h-96 w-96 rounded-full bg-[#FF2D9B]/10 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-40 right-1/4 h-72 w-72 rounded-full bg-[#00FFA3]/10 blur-3xl" />
 
-      {/* Progress header (hidden on the full-bleed welcome hero) */}
       {!isWelcome && (
         <div className="relative z-10 mb-6 flex w-full max-w-2xl items-center justify-between gap-3">
           <button
@@ -607,7 +661,6 @@ export default function WelcomePageClient({
             <IconArrowLeft size={18} />
           </button>
 
-          {/* Dots + step counter */}
           <div className="flex flex-col items-center gap-1.5" aria-hidden="true">
             <div className="flex items-center gap-1.5">
               {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
@@ -634,7 +687,7 @@ export default function WelcomePageClient({
           {!isLast && (
             <button
               type="button"
-              onClick={skip}
+              onClick={() => void finish()}
               disabled={saving}
               className="h-10 rounded-full px-3 text-xs font-bold text-[#9dd8ff]/70 underline-offset-4 transition hover:text-[#d8fbff] hover:underline disabled:opacity-40"
             >
@@ -644,7 +697,6 @@ export default function WelcomePageClient({
         </div>
       )}
 
-      {/* Step body */}
       <div className="relative z-10 flex w-full flex-1 items-center justify-center">
         <div
           ref={contentRef}
@@ -652,7 +704,7 @@ export default function WelcomePageClient({
           onKeyDown={onKeyDown}
           className="w-full max-w-2xl outline-hidden"
           role="group"
-          aria-label={isWelcome ? t("onboarding.welcome.kicker") : `Step ${step + 1} of ${TOTAL_STEPS}`}
+          aria-label={isWelcome ? t("onboarding.solitaire.welcome.kicker") : `Step ${step + 1} of ${TOTAL_STEPS}`}
         >
           <AnimatePresence mode="wait">
             <motion.div
@@ -668,7 +720,6 @@ export default function WelcomePageClient({
         </div>
       </div>
 
-      {/* Footer controls (hidden on welcome hero + final step) */}
       {!isWelcome && !isLast && (
         <div className="relative z-10 mt-8 w-full max-w-2xl">
           <button
@@ -676,10 +727,7 @@ export default function WelcomePageClient({
             onClick={() => goTo(step + 1)}
             className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#00e5ff] px-8 py-4 text-base font-extrabold text-[#001a2e] shadow-[0_0_25px_rgba(0,229,255,0.45)] transition hover:brightness-110 active:scale-[0.99]"
           >
-            {/* On the PvP step the next control is the "Let's Play" that
-                leads into the free-match transition screen. */}
-            {step === 3 ? t("onboarding.welcome.play") : t("onboarding.controls.next")}{" "}
-            <IconArrowRight size={18} />
+            {t("onboarding.controls.next")} <IconArrowRight size={18} />
           </button>
         </div>
       )}
@@ -688,19 +736,23 @@ export default function WelcomePageClient({
 }
 
 /**
- * GLITCH's line for one tutorial step, INLINE in the page.
+ * Glitch's line for one onboarding step, INLINE in the page.
  *
  * Inline, never floating: the mascot is part of the step, so it can never
- * cover the heading, the progress dots or the Back/Next/Skip controls — it
- * takes layout space instead of overlapping anything. Every step in the
- * existing five-step walkthrough gets one line; the expression and the copy
- * come from src/lib/mascot/glitchOnboarding.ts → appTextTranslations
- * (`onboarding.glitch.welcome.*`, en/fr/es).
- *
- * It renders nothing when a step has no line, so adding a sixth step cannot
- * leave a stray empty box behind.
+ * cover the heading, the progress dots or the Back/Next/Skip controls. The
+ * expression and copy come from src/lib/mascot/glitchOnboarding.ts →
+ * appTextTranslations (`onboarding.glitch.welcome.*`, en/fr/es).
  */
-function GlitchGuide({ step, center = false }: { step: number; center?: boolean }) {
+function GlitchGuide({
+  step,
+  center = false,
+  messageKey,
+}: {
+  step: number;
+  center?: boolean;
+  /** Overrides the step's default line (e.g. the tutorial tone by experience). */
+  messageKey?: string;
+}) {
   const { t } = useTranslation();
   const line = glitchWelcomeLine(step);
   if (!line) return null;
@@ -708,10 +760,8 @@ function GlitchGuide({ step, center = false }: { step: number; center?: boolean 
     <div className={center ? "mb-5 flex justify-center" : "mb-5"}>
       <GlitchSay
         expression={line.expression}
-        message={t(line.messageKey)}
+        message={t(messageKey ?? line.messageKey)}
         placement="inline"
-        // The hero has room to introduce the character; the content steps stay
-        // compact so the cards keep their place on a phone.
         size={step === 0 ? "md" : "sm"}
       />
     </div>
@@ -721,11 +771,11 @@ function GlitchGuide({ step, center = false }: { step: number; center?: boolean 
 function SaveError({
   onRetry,
   targetLabel,
-  targetHref = "/games",
+  targetHref,
 }: {
   onRetry: () => void;
   targetLabel: string;
-  targetHref?: string;
+  targetHref: string;
 }) {
   const { t } = useTranslation();
   return (
@@ -739,10 +789,7 @@ function SaveError({
         >
           {t("onboarding.error.retry")}
         </button>
-        <Link
-          href={targetHref}
-          className="text-xs font-semibold text-red-200/80 underline-offset-4 hover:underline"
-        >
+        <Link href={targetHref} className="text-xs font-semibold text-red-200/80 underline-offset-4 hover:underline">
           {targetLabel} →
         </Link>
       </div>

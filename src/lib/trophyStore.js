@@ -56,6 +56,10 @@ import { isGuestPvpMatch } from "./pvp/guestMatch";
 import { identityHashForEmail } from "./rating";
 import { recordSettledMatch } from "./quests/settle";
 import {
+  getPlayerProgression,
+  toPlayerLevelShape,
+} from "./playerLevel";
+import {
   OVERALL_TROPHIES_LABEL,
   OVERALL_TROPHY_MIN_GAMES,
   TROPHY_GAMES,
@@ -159,6 +163,31 @@ export async function getTotalTrophiesForUser(clerkId) {
   return Number(row?.total) || 0;
 }
 
+/**
+ * The player's trophy-derived progression: current total, permanent peak and
+ * the level/rank computed from `max(current, peak)`.
+ *
+ * The peak column is maintained inside Postgres by the trigger added in
+ * migration 0247, so a ranked loss can never lower the earned level. Reading
+ * 0 for a brand-new player is the documented level 1 / Rookie state.
+ */
+export async function getTotalTrophyProgressForUser(clerkId) {
+  if (!clerkId) return getPlayerProgression();
+  const rows = await getSql().execute(sql`
+    SELECT COALESCE(SUM(t.trophies), 0)::int AS total,
+           COALESCE(u.peak_total_trophies, 0)::int AS peak
+      FROM users u
+      LEFT JOIN player_trophies t ON t.user_id = u.id
+     WHERE u.clerk_id = ${clerkId}
+     GROUP BY u.id, u.peak_total_trophies
+  `);
+  const row = rows.rows?.[0] ?? rows[0];
+  return getPlayerProgression({
+    totalTrophies: row?.total ?? 0,
+    peakTrophies: row?.peak ?? 0,
+  });
+}
+
 // ── Bulk read (matchmaking) ───────────────────────────────────────────────
 
 /**
@@ -231,6 +260,7 @@ export async function fetchTrophyLeaderboard({
         u.selected_icon AS icon_key,
         t.trophies,
         t.peak_trophies AS peak_trophies,
+        u.peak_total_trophies AS peak_total_trophies,
         t.games_rated AS games_rated,
         t.wins,
         t.losses,
@@ -276,11 +306,16 @@ export async function fetchTrophyLeaderboard({
   // Same shape as a profile trophy row, plus the normalised Overall badge.
   // Raw snake_case aggregate columns never leave the server.
   const shape = (item) => {
-    const { overall_trophies, overall_games, ...rest } = item;
+    const { overall_trophies, overall_games, peak_total_trophies, ...rest } =
+      item;
     const overall = Number(overall_trophies);
     return {
       ...rest,
       ...toTrophyShape(gameKey, item),
+      // Permanent level/rank for the board row, derived from the trophy
+      // high-water mark (never from a client value).
+      peakTotalTrophies: Number(peak_total_trophies) || 0,
+      playerLevel: toPlayerLevelShape(peak_total_trophies, item.trophies),
       ...(Number.isFinite(overall) && overall > 0
         ? { overallTrophies: overall, overallGames: Number(overall_games) || 0 }
         : {}),
@@ -336,6 +371,7 @@ export async function fetchOverallTrophyLeaderboard({
         e.overall_trophies AS overall_trophies,
         e.overall_peak_trophies AS overall_peak_trophies,
         e.games_played AS games_played,
+        u.peak_total_trophies AS peak_total_trophies,
         json_build_object('name', u.name, 'icon_key', u.selected_icon) AS "user"
       FROM eligible e
       INNER JOIN users u ON u.id = e.user_id
@@ -362,10 +398,20 @@ export async function fetchOverallTrophyLeaderboard({
  * `gamesPlayed` are server-computed; the client can never supply them.
  */
 export function toOverallTrophyShape(row) {
+  const overallTrophies = Number(
+    row.overallTrophies ?? row.overall_trophies ?? 0,
+  );
+  const peakTotalTrophies = Number(
+    row.peakTotalTrophies ?? row.peak_total_trophies ?? 0,
+  );
   return {
     ...row,
     label: OVERALL_TROPHIES_LABEL,
-    overallTrophies: Number(row.overallTrophies ?? row.overall_trophies ?? 0),
+    // Permanent level/rank, based on the peak of the TOTAL — not a sum of
+    // per-game peaks. Present on every overall/trophy board row.
+    peakTotalTrophies,
+    playerLevel: toPlayerLevelShape(peakTotalTrophies, overallTrophies),
+    overallTrophies,
     // The all-time high-water mark, summed across games. Monotonic on each
     // `player_trophies` row, so it can never fall after a bad run.
     peakTrophies: Number(

@@ -22,12 +22,17 @@
 //      completed run of the day, and a replay of an already-recorded day is
 //      returned with `duplicate: true`.
 //
+// GAME REVIEW HISTORY: the recorded row stores the canonical, server-verified
+// log, so the official game can be reconstructed later. The route only ever
+// INSERTS: a duplicate submission cannot attach a different log to the existing
+// result, because the existing row is never updated.
+//
 // No Elo, ratings, trophies or queue rows are touched here. Daily results live
 // in their own table, so ranked queries cannot see them.
 
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 import { db } from "../../../../db/client";
 import { solitaireDailyResults } from "../../../../db/schema";
@@ -35,6 +40,10 @@ import { logError } from "../../../../lib/logError";
 import { dailyDateKey, summariseDaily } from "../../../../lib/solitaire-duel/soloStats.js";
 import { dailyDealFor } from "../../../../lib/solitaire-duel/daily";
 import { replayMoves } from "../../../../lib/solitaire-duel/rules";
+import {
+  canonicalMoveLog,
+  moveLogDigest,
+} from "../../../../lib/solitaire-duel/soloPersistence";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -138,6 +147,17 @@ export async function POST(req: Request) {
       );
     }
 
+    // Verified above: every move is legal and the board is solved. Store the
+    // normalised log, never the raw body, and only through an INSERT.
+    const canonical = canonicalMoveLog(moves);
+    if (!canonical.ok) {
+      return NextResponse.json(
+        { success: false, error: "The submitted moves are not legal for today's deal" },
+        { status: 422 },
+      );
+    }
+    const elapsedMs = clampElapsed(body?.elapsedMs);
+
     const inserted = await db
       .insert(solitaireDailyResults)
       .values({
@@ -145,22 +165,44 @@ export async function POST(req: Request) {
         challengeDate: dateKey,
         completed: true,
         moves: moves.length,
-        elapsedMs: clampElapsed(body?.elapsedMs),
+        elapsedMs,
+        moveLog: canonical.log,
+        logDigest: moveLogDigest(canonical.log),
       })
       .onConflictDoNothing({
         target: [solitaireDailyResults.userId, solitaireDailyResults.challengeDate],
       })
       .returning({ id: solitaireDailyResults.id });
 
+    const duplicate = inserted.length === 0;
+
+    // On a duplicate, report whether the EXISTING row has a stored log. Never
+    // read the submitted log into that answer: this submission was ignored.
+    let reviewable = true;
+    if (duplicate) {
+      const existing = await db
+        .select({ moveLog: solitaireDailyResults.moveLog })
+        .from(solitaireDailyResults)
+        .where(
+          and(
+            eq(solitaireDailyResults.userId, userId),
+            eq(solitaireDailyResults.challengeDate, dateKey),
+          ),
+        )
+        .limit(1);
+      reviewable = Boolean(existing[0]?.moveLog);
+    }
+
     const summary = await statsFor(userId, dateKey);
     return NextResponse.json({
       success: true,
       data: {
         dateKey,
-        recorded: inserted.length > 0,
-        duplicate: inserted.length === 0,
+        recorded: !duplicate,
+        duplicate,
+        reviewable,
         moves: moves.length,
-        elapsedMs: clampElapsed(body?.elapsedMs),
+        elapsedMs,
         summary,
       },
     });

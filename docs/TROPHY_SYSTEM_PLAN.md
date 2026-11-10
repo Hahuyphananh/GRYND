@@ -174,3 +174,28 @@ calculation are untouched.
 4. **Excluded games** — hex-duel trusts a client-supplied winner; uno and
    tower-arena are multi-player. They are not rated and therefore not trophy
    eligible until their winners are server-derived.
+
+## Player levels and rank badges (this batch)
+
+- **One source of truth** — `src/lib/playerLevel.js`. The level is derived from
+  TOTAL trophies: 100 trophies per level, level 1 at 0, level 100 at the top of
+  the ladder (10,000-trophy ceiling). There is no second XP currency and the
+  retired `users.level` / `users.xp` counters are not read.
+- **Seven ranks** — Rookie 1–14, Contender 15–29, Challenger 30–44, Elite
+  45–59, Master 60–74, Grandmaster 75–89, Legend 90–100. Each tier carries the
+  material colours used by the shared SVG emblem set, so the ladder and its
+  visuals cannot drift.
+- **Permanent progression** — migration `0247_user_peak_total_trophies.sql`
+  adds `users.peak_total_trophies` and a trigger on `player_trophies` that keeps
+  the high-water mark of the SUM (never a sum of per-game peaks). Existing
+  players are backfilled to their current total, so nobody loses a badge they
+  can prove today. The level reads max(current, peak), so a ranked loss never
+  removes an earned rank.
+- **Surfaces** — `PlayerLevelBadge` + `PlayerLevelProgressCard` under
+  `src/components/player-level/`; the progression card is on both profiles, and
+  compact badges are on every `/classement` row (trophy, peak, gain, Elo,
+  overall and streak boards). APIs expose a server-computed `playerLevel`
+  object; no route accepts a level, rank or peak from the client.
+- **Untouched** — trophy award/removal maths, Elo, matchmaking, Battle Pass
+  history and all earned rewards. The stored `users.level` still drives the
+  legacy level-milestone titles exactly as before.

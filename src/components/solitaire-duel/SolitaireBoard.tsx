@@ -99,6 +99,23 @@ export type SolitaireBoardProps = {
   view: SolitaireView | null;
   /** False before GO, once the clock expires, and once a result has landed. */
   interactive: boolean;
+  /**
+   * Keep the board this tall while the auto-finish cards fly.
+   *
+   * The finished board has an empty tableau, so it is much shorter than the
+   * board the player just finished on. Letting it collapse mid-animation shrinks
+   * the page, clamps the scroll and drags the foundations out from under the
+   * cards. Holding the measured height keeps the table still until the flight
+   * (and the victory panel) is done.
+   */
+  holdHeight?: number;
+
+  /**
+   * Game Review: draw the authoritative position with no play affordance and
+   * a review-specific legend. Interaction is already off via `interactive`;
+   * this only changes what the table SAYS.
+   */
+  readOnly?: boolean;
 
   onMove: (move: SolitaireMove) => void;
   /** A click that could not become a move — surfaced as an unobtrusive notice. */
@@ -253,6 +270,8 @@ function EmptySlot({
 export default function SolitaireBoard({
   view,
   interactive,
+  holdHeight,
+  readOnly = false,
   onMove,
   onInvalid,
 }: SolitaireBoardProps) {
@@ -670,6 +689,9 @@ export default function SolitaireBoard({
           "--sol-legal": theme.legal.ink,
           "--sol-legal-glow": theme.legal.glow,
           "--sol-legend": theme.legend,
+          // The felt keeps the height of the board the player finished on until
+          // the finish animation releases it (`holdHeight`).
+          ...(holdHeight && holdHeight > 0 ? { minHeight: `${holdHeight}px` } : null),
           backgroundImage: theme.felt,
           // The felt's edge is an INSET ring, never a border: a border would add
           // 4px to the height the `--cw` budget above was computed against.
@@ -942,11 +964,13 @@ export default function SolitaireBoard({
           Klondike player cannot see from the board itself (the automatic flip)
           and the current hold. */}
       <p className="mt-2 text-center text-[11px] leading-relaxed text-[color:var(--sol-legend)]">
-        {selection
-          ? `Holding ${heldLabel} — drop it on a highlighted pile, or click one to place it.`
-          : canRedeal
-            ? "Stock empty — click the \u21bb slot to turn the waste back over."
-            : "Drag a card (or a face-up run) onto a pile — or click it, then click where it should go. A face-down card flips by itself when the card above it leaves."}
+        {readOnly
+          ? "Review mode — step through the move timeline or use the arrow keys. Play is disabled."
+          : selection
+            ? `Holding ${heldLabel} — drop it on a highlighted pile, or click one to place it.`
+            : canRedeal
+              ? "Stock empty — click the \u21bb slot to turn the waste back over."
+              : "Drag a card (or a face-up run) onto a pile — or click it, then click where it should go. A face-down card flips by itself when the card above it leaves."}
       </p>
     </div>
   );

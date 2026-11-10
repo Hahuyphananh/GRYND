@@ -1159,6 +1159,7 @@ export default function SolitaireDuelMatchPage() {
                     <SolitaireBoard
                       view={view}
                       interactive={canPlayNow && !finishing}
+                      holdHeight={finishing?.[0]?.board.height}
                       onMove={onMove}
                       onInvalid={(message) => setNotice(message)}
                     />

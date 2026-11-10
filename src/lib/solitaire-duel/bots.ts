@@ -7,10 +7,11 @@
 // plays. The profile lives here, next to the identity, so a lobby card can never
 // advertise a difficulty the engine does not deliver.
 //
-// AVATARS: `avatar.src` is intentionally null for this version. A local asset
-// path can be dropped in later (for example `/images/bots/rookie.webp`) without
-// touching any page: the placeholder component reads this field. No remote or
-// generated URL belongs here.
+// AVATARS: every bot points at a local, square 384×384 asset under
+// `/images/...`; the one shared `BotAvatar` frame crops all of them identically.
+// No remote or generated URL belongs here. Perfect deliberately wears the
+// existing GLITCH mascot as its avatar — the final challenge, not a seventh
+// character.
 //
 // PERFECT has no numeric trophy rating. `rating: null` is deliberate — the UI
 // renders `ratingLabel` ("PERFECT"), and nothing awards these ratings to the
@@ -223,7 +224,10 @@ export const SOLITAIRE_BOTS: readonly SolitaireBot[] = Object.freeze([
     description:
       "Just getting started. A relaxed opponent who makes plenty of mistakes.",
     initials: "RK",
-    avatar: { src: null, alt: "Rookie avatar placeholder" },
+    avatar: {
+      src: "/images/solitaire-bots/rookie.webp",
+      alt: "Rookie, a raccoon wearing a headset",
+    },
     audience: "beginner",
     audienceLabel: "Beginner",
     order: 1,
@@ -240,7 +244,10 @@ export const SOLITAIRE_BOTS: readonly SolitaireBot[] = Object.freeze([
     description:
       "A little more experienced. Knows the basics and spots obvious opportunities.",
     initials: "FX",
-    avatar: { src: null, alt: "Felix avatar placeholder" },
+    avatar: {
+      src: "/images/solitaire-bots/felix.webp",
+      alt: "Felix, a fox wearing a headset",
+    },
     audience: "beginner",
     audienceLabel: "Beginner",
     order: 2,
@@ -257,7 +264,10 @@ export const SOLITAIRE_BOTS: readonly SolitaireBot[] = Object.freeze([
     description:
       "A competitive player who plans ahead and makes fewer mistakes.",
     initials: "AC",
-    avatar: { src: null, alt: "Ace avatar placeholder" },
+    avatar: {
+      src: "/images/solitaire-bots/ace.webp",
+      alt: "Ace, a grey wolf wearing a headset",
+    },
     audience: "intermediate",
     audienceLabel: "Intermediate",
     order: 3,
@@ -274,7 +284,10 @@ export const SOLITAIRE_BOTS: readonly SolitaireBot[] = Object.freeze([
     description:
       "Patient and calculated. Carefully evaluates available moves.",
     initials: "PR",
-    avatar: { src: null, alt: "Professor avatar placeholder" },
+    avatar: {
+      src: "/images/solitaire-bots/professor.webp",
+      alt: "Professor, a purple owl wearing a headset",
+    },
     audience: "intermediate",
     audienceLabel: "Intermediate",
     order: 4,
@@ -291,7 +304,10 @@ export const SOLITAIRE_BOTS: readonly SolitaireBot[] = Object.freeze([
     description:
       "An elite opponent who considers long-term consequences.",
     initials: "GM",
-    avatar: { src: null, alt: "Grandmaster avatar placeholder" },
+    avatar: {
+      src: "/images/solitaire-bots/grandmaster.webp",
+      alt: "Grandmaster, a black panther wearing a headset",
+    },
     audience: "advanced",
     audienceLabel: "Advanced",
     order: 5,
@@ -308,7 +324,12 @@ export const SOLITAIRE_BOTS: readonly SolitaireBot[] = Object.freeze([
     description:
       "No intentional mistakes. The ultimate Solitaire challenge.",
     initials: "PF",
-    avatar: { src: null, alt: "Perfect avatar placeholder" },
+    // Perfect's avatar IS Glitch: the existing GRYND mascot artwork, reused as
+    // the final challenge's face rather than a new character.
+    avatar: {
+      src: "/images/mascot/glitch-idle.webp",
+      alt: "Glitch, the GRYND mascot, as the Perfect challenge",
+    },
     audience: "advanced",
     audienceLabel: "Advanced",
     order: 6,

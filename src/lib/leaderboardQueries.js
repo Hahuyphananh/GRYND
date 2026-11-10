@@ -1,5 +1,6 @@
 import { getNeonSql } from "../db/neon";
 import { getFrameDecorations } from "./cosmetics";
+import { toPlayerLevelShape } from "./playerLevel";
 import { OVERALL_MIN_GAMES, PROVISIONAL_GAMES } from "./elo";
 
 // Reusable SQL for the Overall Elo badge shown next to a player's name on
@@ -29,6 +30,24 @@ function decorateOverallElo(item) {
   const elo = Number(overall_elo);
   if (!Number.isFinite(elo) || elo <= 0) return rest;
   return { ...rest, overallElo: elo, overallGames: Number(overall_games) || 0 };
+}
+
+/**
+ * Attach the permanent player level/rank to a board row. The level comes from
+ * `users.peak_total_trophies` — the server-maintained high-water mark — so a
+ * bad run never strips a badge off a leaderboard row. A schema without the
+ * column (pre-migration) reads 0, which is the documented Rookie / level 1
+ * state rather than an error.
+ */
+function decoratePlayerLevel(item) {
+  if (!item) return item;
+  const { peak_total_trophies, ...rest } = item;
+  const peak = Number(peak_total_trophies) || 0;
+  return {
+    ...rest,
+    peakTotalTrophies: peak,
+    playerLevel: toPlayerLevelShape(peak),
+  };
 }
 
 let _sql = null;
@@ -449,6 +468,8 @@ async function fetchRankedRows({
   const nameField = userIdentityField(columns, "name", "'Unknown'");
   const iconKeyField = userIdentityField(columns, "selected_icon", "NULL");
   const equippedField = userIdentityField(columns, "equipped_cosmetics", "NULL");
+  // Permanent progression. Reads 0 on a schema that predates migration 0247.
+  const peakTotalField = userIdentityField(columns, "peak_total_trophies", "0");
   const params = clerkId ? [limit, offset, clerkId] : [limit, offset];
   // Drop hand-seeded, impossible records from every board (see the helper).
   const conditions = [whereClause, recordSanityClause(columns)].filter(Boolean);
@@ -467,6 +488,7 @@ async function fetchRankedRows({
           ${nameField} AS name,
           ${iconKeyField} AS icon_key,
           ${equippedField} AS equipped_cosmetics,
+          ${peakTotalField} AS peak_total_trophies,
           o.overall_elo AS overall_elo,
           COALESCE(o.overall_games, 0) AS overall_games,
           json_build_object(
@@ -495,7 +517,7 @@ async function fetchRankedRows({
 
   const row = result?.[0];
 
-  const decorate = (item) => decorateOverallElo(item);
+  const decorate = (item) => decoratePlayerLevel(decorateOverallElo(item));
   const items = Array.isArray(row?.items) ? row.items.map(decorate) : [];
   const me = row?.me ? decorate(row.me) : null;
 

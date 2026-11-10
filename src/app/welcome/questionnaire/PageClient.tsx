@@ -197,8 +197,11 @@ export default function QuestionnairePageClient({ from }: Props) {
     [answers]
   );
 
-  const allAnswered = useMemo(
-    () => QUESTIONNAIRE_QUESTIONS.every((q) => isAnswered(q)),
+  // Only REQUIRED questions gate progress. Every personalization question in
+  // the Solitaire catalog is optional, so a player who declines to answer still
+  // reaches the board — skipping is recorded as skipping, never as an answer.
+  const allRequiredAnswered = useMemo(
+    () => QUESTIONNAIRE_QUESTIONS.every((q) => q.optional === true || isAnswered(q)),
     [isAnswered]
   );
 
@@ -210,7 +213,7 @@ export default function QuestionnairePageClient({ from }: Props) {
   // when nothing is loading, saving or retrying.
   const questionGlitch = glitchQuestionnaireLine(step);
   const isLast = step === TOTAL - 1;
-  const canAdvance = isAnswered(question);
+  const canAdvance = isAnswered(question) || question.optional === true;
 
   const toggleOption = useCallback(
     (questionKey: string, type: "single" | "multi", value: string) => {
@@ -268,8 +271,9 @@ export default function QuestionnairePageClient({ from }: Props) {
   }, [destination]);
 
   const submit = useCallback(async () => {
-    // Guard: never submit a partially answered questionnaire.
-    if (!QUESTIONNAIRE_QUESTIONS.every((q) => isAnswered(q))) return;
+    // Guard: every REQUIRED question must be answered. Optional ones may be
+    // blank — the API normalizes them to [] and never invents a value.
+    if (!QUESTIONNAIRE_QUESTIONS.every((q) => q.optional === true || isAnswered(q))) return;
     setSaving(true);
     setSaveFailed(false);
     try {
@@ -302,17 +306,34 @@ export default function QuestionnairePageClient({ from }: Props) {
     goTo(step + 1);
   }, [canAdvance, goTo, step]);
 
+
   // Finish: if anything is still unanswered, jump to that question instead of
   // submitting an incomplete payload — the API validates too.
   const finish = useCallback(() => {
-    if (!allAnswered) {
-      const firstMissing = QUESTIONNAIRE_QUESTIONS.findIndex((q) => !isAnswered(q));
+    if (!allRequiredAnswered) {
+      const firstMissing = QUESTIONNAIRE_QUESTIONS.findIndex(
+        (q) => q.optional !== true && !isAnswered(q)
+      );
       setShowValidation(true);
       if (firstMissing !== -1 && firstMissing !== step) setStep(firstMissing);
       return;
     }
     void submit();
-  }, [allAnswered, isAnswered, step, submit]);
+  }, [allRequiredAnswered, isAnswered, step, submit]);
+
+  // "Skip this question" — offered only on optional questions and writes NO
+  // value: the answer stays absent, so it can never be mistaken for a
+  // preference the player expressed. On the last question it finishes, which
+  // is how a questionnaire whose optional answers were all skipped is
+  // submitted as an empty optional set (the one required question is first).
+  const skipQuestion = useCallback(() => {
+    if (question.optional !== true) return;
+    if (isLast) {
+      finish();
+      return;
+    }
+    goTo(step + 1);
+  }, [finish, goTo, isLast, question, step]);
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -495,11 +516,19 @@ export default function QuestionnairePageClient({ from }: Props) {
               >
                 {t(question.titleKey)}
               </h1>
-              <p className="mb-6 text-sm leading-relaxed text-[#9dd8ff] sm:text-base">
+              <p
+                className={`${question.optional === true ? "mb-2" : "mb-6"} text-sm leading-relaxed text-[#9dd8ff] sm:text-base`}
+              >
+                {t(question.hintKey)}
                 {question.type === "multi"
-                  ? t("onboarding.questionnaire.multiHint")
-                  : t(question.hintKey)}
+                  ? ` · ${t("onboarding.questionnaire.multiHint")}`
+                  : ""}
               </p>
+              {question.optional === true && (
+                <p className="mb-6 text-xs font-semibold text-[#9dd8ff]/60">
+                  {t("onboarding.solitaire.questionnaire.optionalHint")}
+                </p>
+              )}
 
               {question.type === "single" ? (
                 <div
@@ -619,6 +648,16 @@ export default function QuestionnairePageClient({ from }: Props) {
 
       {/* Footer controls */}
       <div className="relative z-10 mt-8 w-full max-w-2xl">
+        {question.optional === true && !isAnswered(question) && (
+          <button
+            type="button"
+            onClick={skipQuestion}
+            disabled={saving}
+            className="mb-3 h-11 w-full rounded-xl border border-[#00e5ff]/30 text-xs font-bold text-[#9dd8ff]/80 transition hover:bg-[#00e5ff]/10 hover:text-[#d8fbff] disabled:opacity-40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+          >
+            {t("onboarding.solitaire.questionnaire.skipQuestion")}
+          </button>
+        )}
         {!isLast ? (
           <button
             type="button"

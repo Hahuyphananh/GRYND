@@ -111,6 +111,31 @@ export async function GET(request: Request) {
     deletedByTable["user_game_presence"] = -1;
   }
 
+  // ── Game Review analysis cache: no orphaned analyses ─────────────────
+  // A cached analysis is only meaningful while its game exists. Duel matches
+  // are purged above after 45 days; solo/daily rows are retained until account
+  // deletion (which also removes their cached analyses). This sweep covers the
+  // gap: any analysis whose parent row is gone is deleted. Runs AFTER the
+  // match purge so a duel that was just removed is cleaned in the same pass.
+  //
+  // `game_id` is a polymorphic text id, hence three NOT EXISTS probes rather
+  // than one foreign key. The (game_kind, game_id) index serves the lookup.
+  try {
+    const res = await sql.query(
+      `DELETE FROM solitaire_analysis_cache c
+       WHERE (c.game_kind = 'duel' AND NOT EXISTS (
+                SELECT 1 FROM solitaire_duel_matches m WHERE m.id::text = c.game_id))
+          OR (c.game_kind = 'solo' AND NOT EXISTS (
+                SELECT 1 FROM solitaire_solo_results r WHERE r.id::text = c.game_id))
+          OR (c.game_kind = 'daily' AND NOT EXISTS (
+                SELECT 1 FROM solitaire_daily_results r WHERE r.id::text = c.game_id))`,
+    );
+    deletedByTable["solitaire_analysis_cache"] = res.rowCount ?? 0;
+  } catch (err) {
+    console.error("[retention] purge failed for solitaire_analysis_cache:", err);
+    deletedByTable["solitaire_analysis_cache"] = -1;
+  }
+
   // A table that could not be purged (for example a renamed or dropped one) is
   // recorded as -1 above. Returning `ok: true` regardless is how a stale table
   // name can keep failing on every run while the job reports success — the

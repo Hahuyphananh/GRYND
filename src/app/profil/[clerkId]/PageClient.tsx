@@ -14,6 +14,10 @@ import InteractiveCasinoBg from "../../../components/InteractiveCasinoBg";
 import ErrorState from "../../../components/states/ErrorState";
 import { cosmeticFrameRing, cosmeticEffectClass } from "../../../lib/profileCosmetics";
 import { useApiResource } from "../../../hooks/useApiResource";
+import PlayerLevelBadge from "../../../components/player-level/PlayerLevelBadge";
+import PlayerLevelProgressCard, {
+  type PlayerProgression,
+} from "../../../components/player-level/PlayerLevelProgressCard";
 
 type PublicUser = {
   clerkId: string;
@@ -35,6 +39,9 @@ type PublicUser = {
     | { key: string; name: string; visual: { cssClass?: string; color?: string } }
     | null;
   level: number;
+  // Permanent trophy-derived progression (server-computed).
+  playerLevel: PlayerProgression;
+  peakTotalTrophies: number;
   xp: number;
   gamesWon: number;
   gamesLost: number;
@@ -278,6 +285,14 @@ export default function PublicProfilePage() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className={`text-2xl font-bold ${usernameEffectClass || ""}`}>{profile.name}</h1>
+                {profile.playerLevel && (
+                  <PlayerLevelBadge
+                    level={profile.playerLevel.level}
+                    rankKey={profile.playerLevel.rankKey}
+                    size="compact"
+                    showLabel
+                  />
+                )}
                 {(profile.selectedSpecialTitle || profile.selectedTitle) && (
                   <span className="rounded-full border border-[#f5ff3b]/60 bg-[#f5ff3b]/10 px-2 py-0.5 text-xs text-[#f5ff3b]">
                     {profile.selectedSpecialTitle || profile.selectedTitle}
@@ -321,6 +336,18 @@ export default function PublicProfilePage() {
             </div>
           </div>
         </motion.div>
+
+        {/* ── PERMANENT RANK PROGRESSION ── */}
+        {profile.playerLevel && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.15 }}
+            className="mb-8"
+          >
+            <PlayerLevelProgressCard progression={profile.playerLevel} />
+          </motion.div>
+        )}
 
         {/* ── STATS ── */}
         <motion.div

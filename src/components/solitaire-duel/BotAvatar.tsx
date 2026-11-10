@@ -2,15 +2,15 @@
 //
 // The reusable bot avatar slot.
 //
-// This version deliberately renders a NEUTRAL PLACEHOLDER: a quiet square with
-// the bot's initials and a small robot mark. No generated character art and no
-// stock images are bundled. When a local image is ready, set `avatar.src` on the
-// bot in `src/lib/solitaire-duel/bots.ts` (for example
-// `/images/solitaire-bots/rookie.webp`) and this component renders it instead —
-// no page changes required.
+// Every bot ships a local square image (`avatar.src` in
+// `src/lib/solitaire-duel/bots.ts`), so this component renders it inside ONE
+// frame: a square box, centred `object-cover` crop and the same rounded border.
+// That keeps all six portraits the same size and position regardless of the
+// artwork's framing. The initials block remains only as a defensive fallback for
+// a bot added without an image yet.
 //
-// The Perfect card uses `perfect` only for its border treatment; the avatar
-// itself stays neutral.
+// The Perfect card uses `perfect` only for its border treatment; its avatar is
+// Glitch, supplied by the roster like any other bot.
 
 import { IconRobot } from "@tabler/icons-react";
 
@@ -38,8 +38,10 @@ export default function BotAvatar({
       <img
         src={bot.avatar.src}
         alt={bot.avatar.alt}
+        width={384}
+        height={384}
         data-testid="solitaire-bot-avatar-image"
-        className={`shrink-0 rounded-xl border object-cover ${frame} ${size} ${className}`}
+        className={`aspect-square shrink-0 rounded-xl border object-cover object-center ${frame} ${size} ${className}`}
       />
     );
   }

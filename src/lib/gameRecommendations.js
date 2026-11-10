@@ -86,7 +86,7 @@
 // `onboarding.personalization.*` — never literal English — so the UI can
 // localize without knowing anything about scoring.
 
-import { QUESTIONNAIRE_QUESTIONS, getAllowedAnswers } from "./onboardingQuestionnaire";
+import { getAllowedAnswers } from "./onboardingQuestionnaire";
 import { GAME_CATALOG, supportsTokenWager } from "./gameTags";
 
 /** Weights are exported so the rules are testable and documentable rather
@@ -282,22 +282,45 @@ export function rankGamesForPreferences(preferences) {
 }
 
 /**
- * Is this a complete questionnaire submission?
+ * The keys this LEGACY engine reads: the retired version-1 questionnaire.
  *
- * True only when every question in the catalog has at least one valid answer —
- * the same bar PUT/POST /api/onboarding/questionnaire enforces, and checking
- * it against the raw answers (rather than the normalized preferences) means
- * the analytics-only question still counts toward completeness, exactly as it
- * does at write time.
+ * Deliberately NOT the current Solitaire catalog. Existing accounts still
+ * have version-1 rows stored (`onboarding_responses` was never rewritten), and
+ * the lobby's "For You" strip is built on those keys. Judging compatibility
+ * against the new catalog would mark every existing player incomplete and
+ * silently switch their section off — so completeness here stays scoped to
+ * the answers this engine can actually rank with.
+ *
+ * `getAllowedAnswers` still exposes the retired values for exactly this use
+ * (see src/lib/onboardingQuestionnaire.js → LEGACY_ALLOWED_ANSWERS).
+ */
+const LEGACY_COMPLETENESS_KEYS = [
+  "motivation",
+  "game_types",
+  "experience",
+  "priorities",
+  "discovery",
+];
+
+/**
+ * Is this a complete version-1 questionnaire submission?
+ *
+ * True only when every legacy question has at least one valid answer — the
+ * same bar the old write API enforced. Checking the raw answers (rather than
+ * the normalized preferences) means the analytics-only question still counts
+ * toward completeness, exactly as it did when it was required.
+ *
+ * New Solitaire answers (version 2) are NOT complete here by design: this
+ * engine cannot rank them. Onboarding does not consult it.
  */
 export function questionnaireCompleteness(answers) {
   const source = answers && typeof answers === "object" ? answers : {};
-  const missingQuestionKeys = QUESTIONNAIRE_QUESTIONS.filter((question) => {
-    const raw = source[question.key];
+  const missingQuestionKeys = LEGACY_COMPLETENESS_KEYS.filter((key) => {
+    const allowed = getAllowedAnswers(key);
+    const raw = source[key];
     const values = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
-    const allowed = question.options.map((option) => option.value);
     return !values.some((value) => allowed.includes(value));
-  }).map((question) => question.key);
+  });
   return { complete: missingQuestionKeys.length === 0, missingQuestionKeys };
 }
 

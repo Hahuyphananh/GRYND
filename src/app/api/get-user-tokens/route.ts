@@ -10,7 +10,8 @@ import {
 } from "../../../lib/iconAssets";
 import { getIconByKey } from "../../../lib/icons";
 import { getOverallEloForUser } from "../../../lib/rating";
-import { getTotalTrophiesForUser } from "../../../lib/trophyStore";
+import { getTotalTrophyProgressForUser } from "../../../lib/trophyStore";
+import { getPlayerProgression } from "../../../lib/playerLevel";
 import { OVERALL_MIN_GAMES } from "../../../lib/elo";
 import {
   claimEnergyGrant,
@@ -147,9 +148,14 @@ export async function POST(req: Request) {
     // the headline competitive number the navbar shows and one of the two
     // numbers ranked matchmaking matches on. Read-only, never client-supplied;
     // a failure degrades to 0 rather than breaking the navbar.
+    //
+    // The same read returns the permanent trophy peak and the trophy-derived
+    // level/rank, so the navbar and profile cannot disagree about either.
     let totalTrophies = 0;
+    let playerLevel = getPlayerProgression();
     try {
-      totalTrophies = await getTotalTrophiesForUser(clerkId);
+      playerLevel = await getTotalTrophyProgressForUser(clerkId);
+      totalTrophies = playerLevel.currentTrophies;
     } catch (error) {
       console.error(" Error computing total trophies in /api/get-user-tokens:", error);
     }
@@ -213,6 +219,10 @@ export async function POST(req: Request) {
           // Total trophies — the headline number the navbar renders in the
           // space the token balance used to occupy. 0 for a new player.
           totalTrophies,
+          // Permanent level/rank (trophy-derived; peak protected by the DB
+          // high-water mark). Never a client-supplied value.
+          playerLevel,
+          peakTotalTrophies: playerLevel.peakTrophies,
           // Overall Elo — kept for other consumers; null until the player has
           // an established rating in OVERALL_MIN_GAMES different games.
           overallElo: overall.overallElo,

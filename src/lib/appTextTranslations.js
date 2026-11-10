@@ -1,5 +1,32 @@
 export const APP_TEXT_TRANSLATIONS = {
   en: {
+    // Trophy-derived player levels and the seven permanent rank tiers. The
+    // level itself is computed on the server (src/lib/playerLevel.js); these
+    // strings only label it.
+    playerLevel: {
+      level: "Level {level}",
+      levelShort: "Lv {level}",
+      badgeTitle: "{rank} — Level {level}",
+      progressionTitle: "Rank progression",
+      peakTrophies: "Best trophy total",
+      currentTrophies: "Current total: {trophies} trophies",
+      progressLabel: "Progress to Level {level}",
+      progressNumbers: "{current} / {next} trophies",
+      trophiesToNext: "{trophies} trophies to Level {level}",
+      maxLevel: "Maximum level reached",
+      maxLevelBody: "Legend, Level 100 — the top of the GRYND ladder.",
+      protected:
+        "Best total: {trophies} trophies. Your rank badge is permanent and never drops after a loss.",
+      ranks: {
+        rookie: "Rookie",
+        contender: "Contender",
+        challenger: "Challenger",
+        elite: "Elite",
+        master: "Master",
+        grandmaster: "Grandmaster",
+        legend: "Legend",
+      },
+    },
     // Portal surface (/play/<gameKey>). Only a visit that arrives with
     // ?portal=<slug> ever renders the home button, and only for the portals in
     // lib/portal/home.ts — a normal visit never sees any of this copy.
@@ -1379,6 +1406,83 @@ export const APP_TEXT_TRANSLATIONS = {
         pickGame: "Pick a game. I'll be watching.",
         practiceFirst: "Practice first. Brag later.",
       },
+      review: {
+        brilliant: {
+          unlock:
+            "Okay, that was clever. You just unlocked a sequence that could completely change this game.",
+          unlock2:
+            "Now that's a highlight. Column open, sequence free — this board just got a lot bigger.",
+          unlock3:
+            "See that? One move, a new column and a whole run with somewhere to go. Take the win.",
+          generic: "Brilliant. That was the one move on the board that changed everything.",
+          generic2: "Okay, show-off. That was the best move available and you found it.",
+          generic3: "That's the move I'd have picked. Don't let it go to your head.",
+        },
+        great: {
+          opened:
+            "Now THAT was a smart move! You opened a new column and gave yourself more options.",
+          opened2: "Good call. New space on the tableau means fewer dead ends later.",
+          opened3:
+            "That's how you build a board. More options now, fewer problems in ten moves.",
+          unlocked:
+            "Quiet move, big effect. A King-led run can move now — that's a real door opening.",
+          unlocked2: "You found the unlock. A whole sequence just became movable.",
+          unlocked3: "No flash, but that freed a run. Remember this when the board gets tight.",
+          cascade: "Two foundation plays set up at once. Those are the moves that snowball.",
+          cascade2: "A cascade! One move and suddenly two cards want the foundations.",
+          cascade3: "That's the snowball starting. Two foundation options from one move.",
+          reveal:
+            "Nice! That flip was the best available — hidden cards are the real currency here.",
+          reveal2: "Clean reveal. You picked the move that turned up the most information.",
+          reveal3: "There it is. Best move on the table, and a face-down card paid for it.",
+          foundation:
+            "Straight to the foundation. That's real progress, and you took the best route to it.",
+          foundation2: "Foundation card, no hesitation. That's the cleanest kind of progress.",
+          foundation3:
+            "That's the move. Every foundation card is one less thing to fight later.",
+          generic: "Best move on the board. You're reading this deal well.",
+          generic2: "That was the right call — the engine agrees with you.",
+          generic3: "Good instinct. That's the strongest line available right now.",
+        },
+        mistake: {
+          foundation:
+            "Careful! Pulling a card back off the foundation usually costs more than it fixes.",
+          foundation2:
+            "Hmm, that foundation card was doing work where it was. Check what you're buying.",
+          foundation3:
+            "I'd leave the foundation alone there. There was a better option on the table.",
+          shuffle:
+            "Careful! That shuffle moved a card without unlocking anything. Look for the move that opens something.",
+          shuffle2:
+            "That one just rearranged the furniture. No reveal, no space gained — there was a better move.",
+          shuffle3:
+            "Hmm, that shuffle went nowhere. Check the column you could have opened instead.",
+          generic:
+            "Careful! You had a better opportunity there. Look at what that column could have opened.",
+          generic2:
+            "Not your best. A stronger move was sitting right there — worth a second look.",
+          generic3: "That one slipped. The engine saw a better option; can you spot it?",
+        },
+        blunder: {
+          foundation:
+            "Ouch! Pulling from the foundation cost you serious progress. Check what you're blocking.",
+          foundation2: "Big one. That foundation card had to stay. That mistake is expensive.",
+          foundation3: "No, no, not the foundation. That undoes work you already paid for.",
+          generic:
+            "Ouch! That move closed off an important possibility. Remember to check what you're blocking.",
+          generic2: "That one hurt. The best move was right there and this cost you.",
+          generic3: "Ouch. Big swing the wrong way — check the board before the next one.",
+        },
+        structure: {
+          sequence:
+            "Keep an eye on this: a King-led run could use an empty column now. That's a real door opening.",
+          sequence2: "Quiet move, real consequence. A sequence just became movable.",
+          sequence3: "No flash, but that unlocked a run. Worth remembering later.",
+          cascade: "That move set up two foundation plays at once. Those are the ones that snowball.",
+          cascade2: "Two foundation cards available now. That's a cascade — ride it.",
+          cascade3: "See that? One move, two foundation options. That's how a game turns.",
+        },
+      },
     },
     // /rewards — GLITCH points the player at the quests board (the one live
     // place coins are earned) and says nothing about anything that does not
@@ -1644,6 +1748,212 @@ export const APP_TEXT_TRANSLATIONS = {
         dismiss: "Dismiss",
       },
       replay: "Replay tutorial",
+      // ── Solitaire-first onboarding (the ACTIVE flow) ─────────────────────
+      // Everything the Solitaire welcome flow, its questionnaire, the real
+      // interactive tutorial and Glitch's reactions say. Deliberately a NEW
+      // namespace: no retired token / RPS / multi-game copy can leak into the
+      // active onboarding, and stored v1 answers can never collide with it.
+      solitaire: {
+        welcome: {
+          kicker: "Welcome to GRYND",
+          title: "SOLITAIRE STARTS NOW",
+          subtitle:
+            "Glitch will show you the board, teach you the rules, and walk you through your first real deal — then it's straight into solo, daily, bot and ranked Solitaire.",
+          play: "Show me the board",
+        },
+        board: {
+          kicker: "The board",
+          title: "Four places. That's the whole game.",
+          lead: "Every Klondike deal uses the same four areas. Learn them once and you can read any board.",
+          stock: "Stock",
+          waste: "Waste",
+          tableau: "Tableau",
+          foundations: "Foundations",
+          stockTitle: "Stock",
+          stockDesc: "Your draw pile. Tap it to turn cards into the waste.",
+          wasteTitle: "Waste",
+          wasteDesc: "Cards you've drawn. The top one is always playable.",
+          tableauTitle: "Tableau",
+          tableauDesc: "Seven columns. Build each one down in alternating colours.",
+          foundationsTitle: "Foundations",
+          foundationsDesc:
+            "Four piles, one per suit, built from Ace to King. Finish these to win.",
+        },
+        rules: {
+          kicker: "The rules",
+          title: "Klondike in six lines",
+          lead: "No memorising — you'll learn these by playing in a second.",
+          descendingTitle: "Build down",
+          descendingDesc:
+            "In the tableau, each card goes on the one above it in rank: 9, 8, 7…",
+          alternateTitle: "Alternate colours",
+          alternateDesc: "Red on black, black on red. A red 7 can only sit on a black 8.",
+          runsTitle: "Move runs",
+          runsDesc:
+            "A correct descending, alternating run moves together — not one card at a time.",
+          revealTitle: "Reveal cards",
+          revealDesc:
+            "Moving a face-up card uncovers the card underneath. Free cards when you can.",
+          acesTitle: "Aces first",
+          acesDesc:
+            "Send every Ace to its foundation, then build each suit up: A, 2, 3 … King.",
+          drawTitle: "Draw when stuck",
+          drawDesc:
+            "No useful move? Tap the stock. Drawn cards go to the waste and can be played.",
+        },
+        tutorial: {
+          kicker: "Your first deal",
+          ledeTitle: "Play it for real",
+          lead: "This is a genuine Klondike deal, played with the same engine as every GRYND match. Nothing moves unless you move it. Glitch will nudge, not play.",
+          title: "Guided first game",
+          restart: "Restart",
+          showHint: "Hint",
+          skip: "Skip tutorial",
+          completeTitle: "That's a real Solitaire turn — you did it.",
+          completeHint: "Your recommended start: {mode}",
+          "step.ace": "Move the Ace of hearts to the hearts foundation.",
+          "step.two": "Now the 2 of hearts — foundations build up in suit.",
+          "step.reveal":
+            "Move the 7 of diamonds onto the 8 of clubs to uncover the card beneath.",
+          "step.draw": "Nothing else to play? Tap the stock to draw into the waste.",
+          "hint.revealed":
+            "A face-down card is showing now. Playable cards are always the top of a column.",
+          "hint.select":
+            "Tap a face-up card to pick it up. Legal destinations light up — tap one to place it.",
+        },
+        modes: {
+          kicker: "Competitive Solitaire",
+          title: "Four ways to play",
+          lead: "Same rules, same engine. Pick the pace that fits you — you can switch any time.",
+          recommended: "Recommended",
+          botsNote:
+            "Bots are AI practice opponents, never a stand-in for a human. Their matches never change your rating.",
+          rankedNote:
+            "Ranked pairs you with real players only — matchmaking never silently falls back to AI. The tutorial is always available, whatever you choose.",
+          rankedNoteShort:
+            "Ranked matches affect your existing rating. Practice and bot matches never do.",
+          solo_practice: {
+            title: "Solo practice",
+            desc: "Take your time. Track your completion time and move efficiency.",
+          },
+          daily_challenge: {
+            title: "Daily Challenge",
+            desc: "One shared deal each day. Finish it to keep your streak alive.",
+          },
+          play_vs_bots: {
+            title: "Play vs bots",
+            desc: "Six opponents, from Rookie to Perfect. Unrated practice, no rating at stake.",
+          },
+          ranked_pvp: {
+            title: "Ranked PvP",
+            desc: "Real human opponents, the same deal for both players, and the existing rating ladder.",
+          },
+          reason: {
+            solo_practice: "Start with solo: you'll learn the board at your own pace.",
+            daily_challenge: "Start with the Daily Challenge: one deal, one streak.",
+            play_vs_bots:
+              "Start against the bots: real Solitaire pressure, no rating at risk.",
+            ranked_pvp:
+              "Start with Ranked PvP when you're ready — the tutorial is still there if you want it.",
+          },
+        },
+        done: {
+          kicker: "You're set",
+          title: "Your next deal is waiting",
+          lead: "Practice, take today's challenge, or face a real opponent. Whatever you pick, Glitch will be around if you need a hint.",
+          recommended: "Recommended for you: {mode}",
+          cta: "Enter the Solitaire lobby",
+          backToSettings: "Back to settings",
+        },
+        glitch: {
+          questionnaire: {
+            q1: "No wrong answers. Promise.",
+            q3: "What you pick here only changes what I put first.",
+            q5: "Last one. This one actually matters.",
+          },
+          welcome: {
+            step0:
+              "Welcome to GRYND! I'm Glitch. I'll show you the board, the rules, and your first deal — then you can take on real players.",
+            step1: "Stock, waste, tableau, foundations. Four areas, one game. Let's meet them.",
+            step2:
+              "Down in rank, alternating colours, Aces to the foundations. That's most of Klondike already.",
+            step3:
+              "Your deal is live. Move a card and I'll tell you what just happened — I won't move anything for you.",
+            step3Guided:
+              "First deal, no rush. I'll point at the next useful card; you make the move.",
+            step3Quick:
+              "You know the basics, so play it your way. I'll only step in if you ask.",
+            step4:
+              "Four modes: solo, daily, bots, ranked. Bots are practice; ranked is humans only.",
+            step5:
+              "You're ready! Practice, take today's challenge, or compete against real players. Your next move starts here.",
+          },
+          tutorial: {
+            ace: "Ace on the foundation. That's exactly how a suit starts.",
+            progress: "Good move — that's a real legal play.",
+            reveal: "There it is! Moving a run uncovered a face-down card.",
+            invalid:
+              "That one isn't legal yet. Check the colour and the rank — or tap Hint and I'll point one out.",
+            stuck: "Still thinking? Tap Hint and I'll show you a move that works right now.",
+            complete: "Tutorial complete. Four real moves, no help needed. Let's find your mode.",
+          },
+        },
+        questionnaire: {
+          optionalHint: "Optional — skip anything you'd rather not answer.",
+          skipQuestion: "Skip this question",
+          q1: {
+            title: "How experienced are you with Solitaire?",
+            hint: "Be honest — it only changes how much guidance you get.",
+            options: {
+              complete_beginner: "Complete beginner",
+              know_basics: "I know the basics",
+              experienced: "Experienced",
+              expert: "Expert",
+            },
+          },
+          q2: {
+            title: "What would you like to play?",
+            hint: "Pick as many as you like. You can change this later.",
+            options: {
+              solo_practice: "Solo practice",
+              daily_challenge: "Daily Challenge",
+              play_vs_bots: "Play against bots",
+              ranked_pvp: "Ranked PvP",
+            },
+          },
+          q3: {
+            title: "What's your main goal?",
+            hint: "This decides which mode we put first.",
+            options: {
+              learn_the_game: "Learn the game",
+              improve_skills: "Improve my skills",
+              beat_opponents: "Beat challenging opponents",
+              climb_leaderboard: "Climb the leaderboard",
+            },
+          },
+          q4: {
+            title: "What difficulty do you prefer?",
+            hint: "A starting point, not a rating — nothing here changes matchmaking.",
+            options: {
+              beginner: "Beginner",
+              intermediate: "Intermediate",
+              advanced: "Advanced",
+            },
+          },
+          q5: {
+            title: "How did you discover GRYND?",
+            hint: "Pick one — it helps us make better first impressions.",
+            options: {
+              tiktok: "TikTok",
+              instagram: "Instagram",
+              youtube: "YouTube",
+              friend: "Friend",
+              google_search: "Google / Search",
+              other: "Other",
+            },
+          },
+        },
+      },
     },
     // /complete-profile — the one-field age gate between sign-up and the rest
     // of onboarding. Copy follows the 404 page's tone: short, confident, and
@@ -2143,6 +2453,30 @@ export const APP_TEXT_TRANSLATIONS = {
     },
   },
   fr: {
+    playerLevel: {
+      level: "Niveau {level}",
+      levelShort: "Niv. {level}",
+      badgeTitle: "{rank} — Niveau {level}",
+      progressionTitle: "Progression de rang",
+      peakTrophies: "Meilleur total de trophées",
+      currentTrophies: "Total actuel : {trophies} trophées",
+      progressLabel: "Progression vers le niveau {level}",
+      progressNumbers: "{current} / {next} trophées",
+      trophiesToNext: "{trophies} trophées avant le niveau {level}",
+      maxLevel: "Niveau maximum atteint",
+      maxLevelBody: "Légende, niveau 100 — le sommet de l'échelle GRYND.",
+      protected:
+        "Meilleur total : {trophies} trophées. Ton badge de rang est permanent et ne baisse jamais après une défaite.",
+      ranks: {
+        rookie: "Recrue",
+        contender: "Prétendant",
+        challenger: "Challenger",
+        elite: "Élite",
+        master: "Maître",
+        grandmaster: "Grand Maître",
+        legend: "Légende",
+      },
+    },
     portal: {
       home: {
         aria: "Continuez à jouer sur GRYND",
@@ -3283,6 +3617,83 @@ export const APP_TEXT_TRANSLATIONS = {
         pickGame: "Choisis un jeu. Je regarde.",
         practiceFirst: "Entraîne-toi d'abord. Tu frimeras après.",
       },
+      review: {
+        brilliant: {
+          unlock:
+            "Ok, ça, c'était malin. Tu viens de libérer une suite qui peut complètement changer cette partie.",
+          unlock2:
+            "Voilà un coup de classe. Une colonne ouverte, une suite libre — le plateau vient de s'agrandir.",
+          unlock3:
+            "Tu as vu ? Un seul coup, une nouvelle colonne et toute une suite à placer. Profites-en.",
+          generic: "Brillant. C'était le seul coup du plateau qui changeait tout.",
+          generic2: "Ok, frimeur. C'était le meilleur coup possible et tu l'as trouvé.",
+          generic3: "C'est le coup que j'aurais joué. Ne prends pas la grosse tête.",
+        },
+        great: {
+          opened: "Là, c'était un bon coup ! Tu as ouvert une nouvelle colonne et gagné des options.",
+          opened2: "Bien vu. De l'espace en plus sur le tableau, c'est moins d'impasses plus tard.",
+          opened3:
+            "C'est comme ça qu'on construit un plateau. Plus d'options maintenant, moins de problèmes dans dix coups.",
+          unlocked:
+            "Coup discret, gros effet. Une suite menée par un Roi peut bouger maintenant — une vraie porte s'ouvre.",
+          unlocked2: "Tu as trouvé la clé. Toute une suite vient de devenir déplaçable.",
+          unlocked3:
+            "Rien de spectaculaire, mais une suite est libérée. Souviens-t'en quand le plateau se resserre.",
+          cascade:
+            "Deux poses en fondation préparées d'un coup. Ce sont ces coups qui font boule de neige.",
+          cascade2: "Une cascade ! Un coup et soudain deux cartes veulent les fondations.",
+          cascade3: "La boule de neige démarre. Deux options de fondation pour un seul coup.",
+          reveal:
+            "Joli ! Ce retournement était le meilleur dispo — les cartes cachées, c'est la vraie monnaie ici.",
+          reveal2: "Révélation propre. Tu as choisi le coup qui donnait le plus d'information.",
+          reveal3: "Et voilà. Meilleur coup du plateau, payé par une carte face cachée.",
+          foundation: "Direct aux fondations. Vraie progression, et tu as pris le meilleur chemin.",
+          foundation2: "Carte de fondation, sans hésiter. C'est la progression la plus propre.",
+          foundation3:
+            "C'était le coup. Chaque carte en fondation, c'est un problème en moins plus tard.",
+          generic: "Meilleur coup du plateau. Tu lis bien cette donne.",
+          generic2: "C'était le bon choix — le moteur est d'accord avec toi.",
+          generic3: "Bon instinct. C'est la ligne la plus forte disponible.",
+        },
+        mistake: {
+          foundation:
+            "Attention ! Reprendre une carte aux fondations coûte souvent plus que ça ne répare.",
+          foundation2:
+            "Hmm, cette carte de fondation était bien mieux là où elle était. Regarde ce que tu gagnes.",
+          foundation3: "Je laisserais les fondations tranquilles. Il y avait mieux sur le plateau.",
+          shuffle:
+            "Attention ! Ce déplacement n'a rien libéré. Cherche le coup qui ouvre quelque chose.",
+          shuffle2:
+            "Celui-là a juste déplacé les meubles. Pas de révélation, pas d'espace gagné — il y avait mieux.",
+          shuffle3:
+            "Hmm, ce déplacement ne mène nulle part. Regarde la colonne que tu pouvais ouvrir.",
+          generic:
+            "Attention ! Tu avais une meilleure occasion. Regarde ce que cette colonne pouvait ouvrir.",
+          generic2:
+            "Pas ton meilleur coup. Un coup plus fort était juste là — ça vaut un second regard.",
+          generic3: "Celui-là t'a échappé. Le moteur a vu mieux ; tu le repères ?",
+        },
+        blunder: {
+          foundation:
+            "Aïe ! Reprendre cette carte aux fondations t'a coûté gros. Vérifie ce que tu bloques.",
+          foundation2: "Gros coup dur. Cette carte de fondation devait rester. L'erreur coûte cher.",
+          foundation3: "Non, pas les fondations. Tu défais un travail déjà payé.",
+          generic:
+            "Aïe ! Ce coup a fermé une possibilité importante. Pense à vérifier ce que tu bloques.",
+          generic2: "Celui-là fait mal. Le meilleur coup était là et ça t'a coûté.",
+          generic3: "Aïe. Gros virage dans le mauvais sens — vérifie le plateau avant le prochain.",
+        },
+        structure: {
+          sequence:
+            "Garde un œil là-dessus : une suite menée par un Roi peut utiliser une colonne vide maintenant. Une vraie porte s'ouvre.",
+          sequence2: "Coup discret, vraie conséquence. Une suite vient de devenir déplaçable.",
+          sequence3: "Pas spectaculaire, mais ça libère une suite. À retenir.",
+          cascade:
+            "Ce coup a préparé deux poses en fondation d'un coup. C'est ça qui fait boule de neige.",
+          cascade2: "Deux cartes de fondation disponibles maintenant. Une cascade — profites-en.",
+          cascade3: "Tu vois ? Un coup, deux options de fondation. C'est comme ça qu'une partie bascule.",
+        },
+      },
     },
     // /rewards — GLITCH renvoie le joueur vers ses quêtes, le seul endroit où
     // des jetons se gagnent. Aucune promesse hors du jeu (ni carte cadeau, ni
@@ -3532,6 +3943,208 @@ export const APP_TEXT_TRANSLATIONS = {
         dismiss: "Fermer",
       },
       replay: "Rejouer le tutoriel",
+      // ── Onboarding Solitaire (le flux ACTIF) ─────────────────────────────
+      solitaire: {
+        welcome: {
+          kicker: "Bienvenue sur GRYND",
+          title: "LE SOLITAIRE COMMENCE",
+          subtitle:
+            "Glitch te montre le plateau, t'explique les règles et te guide dans ta première vraie donne — puis tu passes au solo, au défi quotidien, aux bots et au Solitaire classé.",
+          play: "Montre-moi le plateau",
+        },
+        board: {
+          kicker: "Le plateau",
+          title: "Quatre zones. Tout le jeu est là.",
+          lead: "Chaque donne de Klondike utilise les mêmes quatre zones. Apprends-les une fois et tu liras n'importe quel plateau.",
+          stock: "Pioche",
+          waste: "Défausse",
+          tableau: "Tableau",
+          foundations: "Fondations",
+          stockTitle: "Pioche",
+          stockDesc: "Ta pile de pioche. Touche-la pour retourner des cartes vers la défausse.",
+          wasteTitle: "Défausse",
+          wasteDesc: "Les cartes piochées. Celle du dessus est toujours jouable.",
+          tableauTitle: "Tableau",
+          tableauDesc: "Sept colonnes. Construis chaque colonne vers le bas en alternant les couleurs.",
+          foundationsTitle: "Fondations",
+          foundationsDesc:
+            "Quatre piles, une par couleur, de l'As au Roi. Termine-les pour gagner.",
+        },
+        rules: {
+          kicker: "Les règles",
+          title: "Le Klondike en six lignes",
+          lead: "Rien à mémoriser — tu les apprends en jouant dans une seconde.",
+          descendingTitle: "Construis vers le bas",
+          descendingDesc:
+            "Dans le tableau, chaque carte se pose sur la suivante en rang : 9, 8, 7…",
+          alternateTitle: "Alterne les couleurs",
+          alternateDesc: "Rouge sur noir, noir sur rouge. Un 7 rouge ne se pose que sur un 8 noir.",
+          runsTitle: "Déplace des suites",
+          runsDesc:
+            "Une suite correcte (descendante et alternée) se déplace ensemble, pas carte par carte.",
+          revealTitle: "Révèle des cartes",
+          revealDesc:
+            "Déplacer une carte face visible découvre celle du dessous. Libère des cartes dès que tu peux.",
+          acesTitle: "Les As d'abord",
+          acesDesc:
+            "Envoie chaque As sur sa fondation, puis monte couleur par couleur : A, 2, 3 … Roi.",
+          drawTitle: "Pioche si tu bloques",
+          drawDesc:
+            "Aucun coup utile ? Touche la pioche. Les cartes piochées vont à la défausse et sont jouables.",
+        },
+        tutorial: {
+          kicker: "Ta première donne",
+          ledeTitle: "Joue pour de vrai",
+          lead: "C'est une vraie donne de Klondike, jouée avec le même moteur que chaque partie GRYND. Rien ne bouge tant que tu ne bouges pas. Glitch te guide, il ne joue pas.",
+          title: "Première partie guidée",
+          restart: "Recommencer",
+          showHint: "Indice",
+          skip: "Passer le tutoriel",
+          completeTitle: "C'est un vrai tour de Solitaire — tu l'as fait.",
+          completeHint: "Ton départ recommandé : {mode}",
+          "step.ace": "Place l'As de cœur sur la fondation de cœur.",
+          "step.two": "Maintenant le 2 de cœur — les fondations se construisent par couleur.",
+          "step.reveal":
+            "Place le 7 de carreau sur le 8 de trèfle pour découvrir la carte dessous.",
+          "step.draw": "Rien d'autre à jouer ? Touche la pioche pour tirer vers la défausse.",
+          "hint.revealed":
+            "Une carte face cachée est visible. Les cartes jouables sont toujours en haut d'une colonne.",
+          "hint.select":
+            "Touche une carte face visible pour la prendre. Les destinations légales s'illuminent — touche-en une pour la poser.",
+        },
+        modes: {
+          kicker: "Solitaire compétitif",
+          title: "Quatre façons de jouer",
+          lead: "Mêmes règles, même moteur. Choisis ton rythme — tu peux changer à tout moment.",
+          recommended: "Recommandé",
+          botsNote:
+            "Les bots sont des adversaires d'entraînement IA, jamais un remplaçant pour un humain. Leurs parties ne changent jamais ton classement.",
+          rankedNote:
+            "Le classé ne t'oppose qu'à de vrais joueurs — le matchmaking ne bascule jamais silencieusement vers l'IA. Le tutoriel reste disponible, quel que soit ton choix.",
+          rankedNoteShort:
+            "Les parties classées affectent ton classement existant. L'entraînement et les bots, jamais.",
+          solo_practice: {
+            title: "Solo",
+            desc: "Prends ton temps. Suis ton temps de complétion et ton efficacité en coups.",
+          },
+          daily_challenge: {
+            title: "Défi quotidien",
+            desc: "Une donne partagée chaque jour. Termine-la pour garder ta série.",
+          },
+          play_vs_bots: {
+            title: "Jouer contre les bots",
+            desc: "Six adversaires, de Rookie à Perfect. Entraînement non classé, aucun classement en jeu.",
+          },
+          ranked_pvp: {
+            title: "PvP classé",
+            desc: "De vrais adversaires humains, la même donne pour les deux, et l'échelle de classement existante.",
+          },
+          reason: {
+            solo_practice: "Commence par le solo : tu apprendras le plateau à ton rythme.",
+            daily_challenge: "Commence par le Défi quotidien : une donne, une série.",
+            play_vs_bots:
+              "Commence contre les bots : la pression du vrai Solitaire, sans risquer ton classement.",
+            ranked_pvp:
+              "Commence le PvP classé quand tu es prêt — le tutoriel reste là si tu veux.",
+          },
+        },
+        done: {
+          kicker: "Tout est prêt",
+          title: "Ta prochaine donne t'attend",
+          lead: "Entraîne-toi, relève le défi du jour ou affronte un vrai adversaire. Quel que soit ton choix, Glitch sera là pour un indice.",
+          recommended: "Recommandé pour toi : {mode}",
+          cta: "Entrer dans le lobby Solitaire",
+          backToSettings: "Retour aux réglages",
+        },
+        glitch: {
+          questionnaire: {
+            q1: "Pas de mauvaise réponse. Promis.",
+            q3: "Ce que tu choisis ici change seulement ce que je mets en premier.",
+            q5: "La dernière. Celle-ci compte vraiment.",
+          },
+          welcome: {
+            step0:
+              "Bienvenue sur GRYND ! Je suis Glitch. Je te montre le plateau, les règles et ta première donne — ensuite tu affronteras de vrais joueurs.",
+            step1: "Pioche, défausse, tableau, fondations. Quatre zones, un seul jeu. Allons les voir.",
+            step2:
+              "Descendre en rang, alterner les couleurs, les As aux fondations. Tu connais déjà l'essentiel du Klondike.",
+            step3:
+              "Ta donne est prête. Bouge une carte et je te dis ce qui vient de se passer — je ne bouge rien pour toi.",
+            step3Guided:
+              "Première donne, pas de pression. Je pointe la prochaine carte utile ; c'est toi qui joues.",
+            step3Quick:
+              "Tu connais les bases, joue à ta façon. J'interviens seulement si tu me le demandes.",
+            step4:
+              "Quatre modes : solo, quotidien, bots, classé. Les bots, c'est l'entraînement ; le classé, ce sont des humains.",
+            step5:
+              "Tu es prêt ! Entraîne-toi, relève le défi du jour ou affronte de vrais joueurs. Ton prochain coup commence ici.",
+          },
+          tutorial: {
+            ace: "As sur la fondation. C'est exactement comme ça qu'une couleur démarre.",
+            progress: "Bon coup — c'est un vrai coup légal.",
+            reveal: "Et voilà ! Déplacer une suite a découvert une carte face cachée.",
+            invalid:
+              "Ce coup n'est pas encore légal. Vérifie la couleur et le rang — ou touche Indice et je t'en montre un.",
+            stuck: "Tu réfléchis encore ? Touche Indice et je te montre un coup qui marche tout de suite.",
+            complete: "Tutoriel terminé. Quatre vrais coups, sans aide. Trouvons ton mode.",
+          },
+        },
+        questionnaire: {
+          optionalHint: "Facultatif — passe ce que tu préfères ne pas répondre.",
+          skipQuestion: "Passer cette question",
+          q1: {
+            title: "Quel est ton niveau au Solitaire ?",
+            hint: "Sois honnête — ça change seulement le niveau de guidance.",
+            options: {
+              complete_beginner: "Débutant complet",
+              know_basics: "Je connais les bases",
+              experienced: "Expérimenté",
+              expert: "Expert",
+            },
+          },
+          q2: {
+            title: "À quoi veux-tu jouer ?",
+            hint: "Choisis-en autant que tu veux. Tu pourras changer plus tard.",
+            options: {
+              solo_practice: "Solo",
+              daily_challenge: "Défi quotidien",
+              play_vs_bots: "Jouer contre les bots",
+              ranked_pvp: "PvP classé",
+            },
+          },
+          q3: {
+            title: "Quel est ton objectif principal ?",
+            hint: "C'est ce qui décide du mode mis en avant.",
+            options: {
+              learn_the_game: "Apprendre le jeu",
+              improve_skills: "Améliorer mon niveau",
+              beat_opponents: "Battre des adversaires coriaces",
+              climb_leaderboard: "Grimper au classement",
+            },
+          },
+          q4: {
+            title: "Quelle difficulté préfères-tu ?",
+            hint: "Un point de départ, pas une note — rien ici ne change le matchmaking.",
+            options: {
+              beginner: "Débutant",
+              intermediate: "Intermédiaire",
+              advanced: "Avancé",
+            },
+          },
+          q5: {
+            title: "Comment as-tu découvert GRYND ?",
+            hint: "Choisis-en un — ça nous aide à mieux accueillir les nouveaux.",
+            options: {
+              tiktok: "TikTok",
+              instagram: "Instagram",
+              youtube: "YouTube",
+              friend: "Un ami",
+              google_search: "Google / Recherche",
+              other: "Autre",
+            },
+          },
+        },
+      },
     },
     completeProfile: {
       badge: "Vérification d'âge",
@@ -4018,6 +4631,30 @@ export const APP_TEXT_TRANSLATIONS = {
     },
   },
   es: {
+    playerLevel: {
+      level: "Nivel {level}",
+      levelShort: "Niv. {level}",
+      badgeTitle: "{rank} — Nivel {level}",
+      progressionTitle: "Progresión de rango",
+      peakTrophies: "Mejor total de trofeos",
+      currentTrophies: "Total actual: {trophies} trofeos",
+      progressLabel: "Progreso al nivel {level}",
+      progressNumbers: "{current} / {next} trofeos",
+      trophiesToNext: "{trophies} trofeos para el nivel {level}",
+      maxLevel: "Nivel máximo alcanzado",
+      maxLevelBody: "Leyenda, nivel 100 — la cima de la escalera GRYND.",
+      protected:
+        "Mejor total: {trophies} trofeos. Tu insignia de rango es permanente y nunca baja tras una derrota.",
+      ranks: {
+        rookie: "Novato",
+        contender: "Contendiente",
+        challenger: "Retador",
+        elite: "Élite",
+        master: "Maestro",
+        grandmaster: "Gran Maestro",
+        legend: "Leyenda",
+      },
+    },
     portal: {
       home: {
         aria: "Sigue jugando en GRYND",
@@ -5157,6 +5794,85 @@ export const APP_TEXT_TRANSLATIONS = {
         pickGame: "Elige un juego. Estaré mirando.",
         practiceFirst: "Primero practica. Ya presumirás.",
       },
+      review: {
+        brilliant: {
+          unlock:
+            "Vale, eso fue listo. Acabas de liberar una secuencia que puede cambiar esta partida por completo.",
+          unlock2:
+            "Menudo golpe. Columna abierta, secuencia libre: el tablero acaba de crecer.",
+          unlock3:
+            "¿Lo ves? Un solo movimiento, una columna nueva y toda una escalera con sitio. Aprovéchalo.",
+          generic: "Brillante. Era el único movimiento del tablero que lo cambiaba todo.",
+          generic2: "Vale, presumido. Era el mejor movimiento posible y lo encontraste.",
+          generic3: "Es el movimiento que habría elegido yo. No se te suba a la cabeza.",
+        },
+        great: {
+          opened:
+            "¡Ese sí fue un buen movimiento! Abriste una columna nueva y te diste más opciones.",
+          opened2:
+            "Buena decisión. Más espacio en el tablero significa menos callejones sin salida después.",
+          opened3:
+            "Así se construye un tablero. Más opciones ahora, menos problemas dentro de diez jugadas.",
+          unlocked:
+            "Jugada discreta, gran efecto. Una escalera encabezada por un Rey ya puede moverse: se abre una puerta.",
+          unlocked2: "Encontraste la llave. Toda una secuencia acaba de volverse movible.",
+          unlocked3:
+            "Nada vistoso, pero liberaste una escalera. Recuérdalo cuando el tablero se apriete.",
+          cascade:
+            "Dos jugadas de fundación preparadas a la vez. Esas son las que hacen efecto bola de nieve.",
+          cascade2: "¡Una cascada! Un movimiento y de pronto dos cartas quieren ir a la fundación.",
+          cascade3: "La bola de nieve arranca. Dos opciones de fundación con un solo movimiento.",
+          reveal:
+            "¡Bien! Ese volteo era el mejor disponible: las cartas ocultas son la moneda real aquí.",
+          reveal2: "Volteo limpio. Elegiste el movimiento que más información daba.",
+          reveal3: "Ahí está. Mejor movimiento de la mesa, y lo pagó una carta boca abajo.",
+          foundation: "Directo a la fundación. Progreso de verdad, y tomaste la mejor ruta.",
+          foundation2: "Carta a la fundación, sin dudar. Es el progreso más limpio.",
+          foundation3:
+            "Ese era el movimiento. Cada carta en la fundación es un problema menos luego.",
+          generic: "Mejor movimiento del tablero. Estás leyendo bien este reparto.",
+          generic2: "Era la decisión correcta: el motor está de acuerdo contigo.",
+          generic3: "Buen instinto. Es la línea más fuerte disponible.",
+        },
+        mistake: {
+          foundation:
+            "¡Cuidado! Sacar una carta de la fundación suele costar más de lo que arregla.",
+          foundation2:
+            "Mmm, esa carta de la fundación estaba mejor donde estaba. Mira qué estás comprando.",
+          foundation3: "Yo dejaría la fundación quieta. Había una opción mejor sobre la mesa.",
+          shuffle:
+            "¡Cuidado! Ese movimiento no desbloqueó nada. Busca el que abre algo.",
+          shuffle2: "Ese solo movió los muebles. Ni volteo ni espacio ganado: había uno mejor.",
+          shuffle3:
+            "Mmm, ese movimiento no lleva a ningún lado. Mira la columna que podías abrir.",
+          generic:
+            "¡Cuidado! Tenías una oportunidad mejor. Mira lo que esa columna podía abrir.",
+          generic2:
+            "No fue tu mejor jugada. Había una más fuerte justo ahí; vale la pena mirarla otra vez.",
+          generic3: "Esa se te escapó. El motor vio algo mejor, ¿lo ves tú?",
+        },
+        blunder: {
+          foundation:
+            "¡Ay! Sacar esa carta de la fundación te costó mucho. Revisa qué estás bloqueando.",
+          foundation2: "Jugada dura. Esa carta tenía que quedarse en la fundación. El error sale caro.",
+          foundation3: "No, no, la fundación no. Acabas de deshacer trabajo que ya habías pagado.",
+          generic:
+            "¡Ay! Ese movimiento cerró una posibilidad importante. Acuérdate de revisar qué bloqueas.",
+          generic2: "Esa dolió. El mejor movimiento estaba ahí y este te costó.",
+          generic3:
+            "Ay. Giro grande hacia el lado equivocado: revisa el tablero antes de la siguiente.",
+        },
+        structure: {
+          sequence:
+            "Fíjate en esto: una escalera encabezada por un Rey ya puede usar una columna vacía. Se abre una puerta de verdad.",
+          sequence2: "Jugada discreta, consecuencia real. Una secuencia acaba de volverse movible.",
+          sequence3: "Nada vistoso, pero desbloqueó una escalera. Merece recordarse.",
+          cascade:
+            "Ese movimiento preparó dos jugadas de fundación a la vez. Esas hacen efecto bola de nieve.",
+          cascade2: "Dos cartas de fundación disponibles ahora. Una cascada: aprovéchala.",
+          cascade3: "¿Ves? Un movimiento, dos opciones de fundación. Así es como cambia una partida.",
+        },
+      },
     },
     // /rewards — GLITCH manda al jugador a sus misiones, el único sitio donde
     // se ganan fichas. Nada fuera del juego (ni tarjetas regalo, ni dinero
@@ -5405,6 +6121,208 @@ export const APP_TEXT_TRANSLATIONS = {
         dismiss: "Cerrar",
       },
       replay: "Repetir tutorial",
+      // ── Onboarding de Solitario (el flujo ACTIVO) ─────────────────────────
+      solitaire: {
+        welcome: {
+          kicker: "Bienvenido a GRYND",
+          title: "EL SOLITARIO EMPIEZA YA",
+          subtitle:
+            "Glitch te enseña el tablero, las reglas y tu primera partida real — y después pasas al solitario, al reto diario, a los bots y al Solitario clasificatorio.",
+          play: "Enséñame el tablero",
+        },
+        board: {
+          kicker: "El tablero",
+          title: "Cuatro zonas. Todo el juego está ahí.",
+          lead: "Cada reparto de Klondike usa las mismas cuatro zonas. Apréndelas una vez y sabrás leer cualquier tablero.",
+          stock: "Mazo",
+          waste: "Descarte",
+          tableau: "Tableau",
+          foundations: "Fundaciones",
+          stockTitle: "Mazo",
+          stockDesc: "Tu pila de robo. Tócala para pasar cartas al descarte.",
+          wasteTitle: "Descarte",
+          wasteDesc: "Las cartas que has robado. La de arriba siempre se puede jugar.",
+          tableauTitle: "Tableau",
+          tableauDesc: "Siete columnas. Construye cada una hacia abajo alternando colores.",
+          foundationsTitle: "Fundaciones",
+          foundationsDesc:
+            "Cuatro pilas, una por palo, del As al Rey. Termínalas para ganar.",
+        },
+        rules: {
+          kicker: "Las reglas",
+          title: "El Klondike en seis líneas",
+          lead: "Nada que memorizar: lo aprenderás jugando en un segundo.",
+          descendingTitle: "Construye hacia abajo",
+          descendingDesc:
+            "En el tableau, cada carta va sobre la anterior en rango: 9, 8, 7…",
+          alternateTitle: "Alterna colores",
+          alternateDesc: "Rojo sobre negro, negro sobre rojo. Un 7 rojo solo va sobre un 8 negro.",
+          runsTitle: "Mueve secuencias",
+          runsDesc:
+            "Una secuencia correcta (descendente y alterna) se mueve entera, no carta a carta.",
+          revealTitle: "Revela cartas",
+          revealDesc:
+            "Mover una carta boca arriba descubre la de debajo. Libera cartas siempre que puedas.",
+          acesTitle: "Los Ases primero",
+          acesDesc:
+            "Manda cada As a su fundación y sube palo por palo: A, 2, 3 … Rey.",
+          drawTitle: "Roba si te bloqueas",
+          drawDesc:
+            "¿Sin jugada útil? Toca el mazo. Las cartas robadas van al descarte y se pueden jugar.",
+        },
+        tutorial: {
+          kicker: "Tu primer reparto",
+          ledeTitle: "Juega de verdad",
+          lead: "Es un reparto real de Klondike, jugado con el mismo motor que cada partida de GRYND. Nada se mueve si no lo mueves tú. Glitch te orienta, no juega por ti.",
+          title: "Primera partida guiada",
+          restart: "Reiniciar",
+          showHint: "Pista",
+          skip: "Saltar tutorial",
+          completeTitle: "Ese es un turno real de Solitario: lo hiciste tú.",
+          completeHint: "Tu inicio recomendado: {mode}",
+          "step.ace": "Lleva el As de corazones a la fundación de corazones.",
+          "step.two": "Ahora el 2 de corazones: las fundaciones suben por palo.",
+          "step.reveal":
+            "Pon el 7 de diamantes sobre el 8 de tréboles para descubrir la carta de debajo.",
+          "step.draw": "¿Nada más que jugar? Toca el mazo para robar al descarte.",
+          "hint.revealed":
+            "Ahora se ve una carta boca abajo. Las cartas jugables siempre están arriba de una columna.",
+          "hint.select":
+            "Toca una carta boca arriba para cogerla. Los destinos legales se iluminan: toca uno para colocarla.",
+        },
+        modes: {
+          kicker: "Solitario competitivo",
+          title: "Cuatro formas de jugar",
+          lead: "Mismas reglas, mismo motor. Elige tu ritmo: puedes cambiar cuando quieras.",
+          recommended: "Recomendado",
+          botsNote:
+            "Los bots son rivales de práctica con IA, nunca un sustituto de un humano. Sus partidas nunca cambian tu clasificación.",
+          rankedNote:
+            "El clasificatorio solo te empareja con personas reales: el matchmaking nunca recurre a la IA en silencio. El tutorial sigue disponible elijas lo que elijas.",
+          rankedNoteShort:
+            "Las partidas clasificatorias afectan a tu clasificación actual. La práctica y los bots, nunca.",
+          solo_practice: {
+            title: "Solitario solo",
+            desc: "Ve a tu ritmo. Sigue tu tiempo de finalización y tu eficiencia de movimientos.",
+          },
+          daily_challenge: {
+            title: "Reto diario",
+            desc: "Un reparto compartido cada día. Termínalo para mantener tu racha.",
+          },
+          play_vs_bots: {
+            title: "Jugar contra bots",
+            desc: "Seis rivales, de Rookie a Perfect. Práctica sin clasificación, sin clasificación en juego.",
+          },
+          ranked_pvp: {
+            title: "PvP clasificatorio",
+            desc: "Rivales humanos reales, el mismo reparto para ambos y la escala de clasificación existente.",
+          },
+          reason: {
+            solo_practice: "Empieza en solo: aprenderás el tablero a tu ritmo.",
+            daily_challenge: "Empieza con el Reto diario: un reparto, una racha.",
+            play_vs_bots:
+              "Empieza contra los bots: presión de Solitario real, sin arriesgar tu clasificación.",
+            ranked_pvp:
+              "Empieza el PvP clasificatorio cuando estés listo — el tutorial sigue ahí si lo quieres.",
+          },
+        },
+        done: {
+          kicker: "Todo listo",
+          title: "Tu próximo reparto te espera",
+          lead: "Practica, acepta el reto del día o enfréntate a un rival real. Elijas lo que elijas, Glitch estará cerca si necesitas una pista.",
+          recommended: "Recomendado para ti: {mode}",
+          cta: "Entrar al lobby de Solitario",
+          backToSettings: "Volver a ajustes",
+        },
+        glitch: {
+          questionnaire: {
+            q1: "No hay respuestas incorrectas. Lo prometo.",
+            q3: "Lo que elijas aquí solo cambia lo que pongo primero.",
+            q5: "La última. Esta sí importa.",
+          },
+          welcome: {
+            step0:
+              "¡Bienvenido a GRYND! Soy Glitch. Te enseño el tablero, las reglas y tu primer reparto — y luego podrás enfrentarte a jugadores reales.",
+            step1: "Mazo, descarte, tableau, fundaciones. Cuatro zonas, un solo juego. Vamos a verlas.",
+            step2:
+              "Bajar en rango, alternar colores, Ases a las fundaciones. Ya sabes casi todo el Klondike.",
+            step3:
+              "Tu reparto está listo. Mueve una carta y te digo qué acaba de pasar — no moveré nada por ti.",
+            step3Guided:
+              "Primer reparto, sin prisa. Te señalo la siguiente carta útil; tú haces el movimiento.",
+            step3Quick:
+              "Conoces lo básico, juega a tu manera. Solo intervendré si me lo pides.",
+            step4:
+              "Cuatro modos: solo, diario, bots, clasificatorio. Los bots son práctica; el clasificatorio son humanos.",
+            step5:
+              "¡Estás listo! Practica, acepta el reto de hoy o compite contra jugadores reales. Tu próximo movimiento empieza aquí.",
+          },
+          tutorial: {
+            ace: "As en la fundación. Así empieza exactamente un palo.",
+            progress: "Buen movimiento: es una jugada legal de verdad.",
+            reveal: "¡Ahí está! Mover una secuencia descubrió una carta boca abajo.",
+            invalid:
+              "Ese movimiento aún no es legal. Revisa el color y el rango — o toca Pista y te señalo uno.",
+            stuck: "¿Pensando todavía? Toca Pista y te muestro un movimiento que funciona ahora mismo.",
+            complete: "Tutorial completado. Cuatro movimientos reales, sin ayuda. Busquemos tu modo.",
+          },
+        },
+        questionnaire: {
+          optionalHint: "Opcional: salta lo que prefieras no responder.",
+          skipQuestion: "Saltar esta pregunta",
+          q1: {
+            title: "¿Cuánta experiencia tienes con el Solitario?",
+            hint: "Sé sincero: solo cambia cuánta orientación recibes.",
+            options: {
+              complete_beginner: "Principiante total",
+              know_basics: "Conozco lo básico",
+              experienced: "Con experiencia",
+              expert: "Experto",
+            },
+          },
+          q2: {
+            title: "¿A qué te gustaría jugar?",
+            hint: "Elige todos los que quieras. Puedes cambiarlo luego.",
+            options: {
+              solo_practice: "Solitario solo",
+              daily_challenge: "Reto diario",
+              play_vs_bots: "Jugar contra bots",
+              ranked_pvp: "PvP clasificatorio",
+            },
+          },
+          q3: {
+            title: "¿Cuál es tu objetivo principal?",
+            hint: "Esto decide qué modo ponemos primero.",
+            options: {
+              learn_the_game: "Aprender el juego",
+              improve_skills: "Mejorar mi nivel",
+              beat_opponents: "Vencer a rivales difíciles",
+              climb_leaderboard: "Subir en la clasificación",
+            },
+          },
+          q4: {
+            title: "¿Qué dificultad prefieres?",
+            hint: "Un punto de partida, no una nota: nada aquí cambia el matchmaking.",
+            options: {
+              beginner: "Principiante",
+              intermediate: "Intermedio",
+              advanced: "Avanzado",
+            },
+          },
+          q5: {
+            title: "¿Cómo descubriste GRYND?",
+            hint: "Elige uno: nos ayuda a causar una mejor primera impresión.",
+            options: {
+              tiktok: "TikTok",
+              instagram: "Instagram",
+              youtube: "YouTube",
+              friend: "Un amigo",
+              google_search: "Google / Búsqueda",
+              other: "Otro",
+            },
+          },
+        },
+      },
     },
     completeProfile: {
       badge: "Verificación de edad",

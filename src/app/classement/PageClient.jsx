@@ -16,6 +16,7 @@ import { useApiResource } from "../../hooks/useApiResource";
 import AsyncState from "../../components/states/AsyncState";
 import UpgradeProButton from "../../components/UpgradeProButton";
 import ReportEntryButton from "../../components/reports/ReportEntryButton";
+import PlayerLevelBadge from "../../components/player-level/PlayerLevelBadge";
 
 const TABS = [
   "trophies",
@@ -407,6 +408,14 @@ function Podium({ items, myClerkId, tab, category }) {
             >
               {item.user?.name || item.name}
             </span>
+            {item.playerLevel && (
+              <PlayerLevelBadge
+                level={item.playerLevel.level}
+                rankKey={item.playerLevel.rankKey}
+                size="compact"
+                className="mt-1"
+              />
+            )}
             <ProvisionalChip item={item} className="mt-0.5" />
             {!isOverallTab(tab) && !isTrophyTab(tab) && (
               <OverallEloBadge item={item} className="mt-0.5" />
@@ -1022,6 +1031,14 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                                   className={`block max-w-[9rem] truncate font-semibold text-[#c9f7ff] transition-colors hover:text-[#00e5ff] hover:underline sm:max-w-none ${cosmeticEffectClass(item.profileFrame?.usernameEffect?.visual) || ""}`}
                                 >
                                   {item.user?.name || item.name}
+                                  {item.playerLevel && (
+                                    <PlayerLevelBadge
+                                      level={item.playerLevel.level}
+                                      rankKey={item.playerLevel.rankKey}
+                                      size="compact"
+                                      className="ml-1.5"
+                                    />
+                                  )}
                                   <ProvisionalChip item={item} />
                                   {!isOverallTab(tab) &&
                                     !isTrophyTab(tab) &&

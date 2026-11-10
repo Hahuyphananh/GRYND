@@ -4,9 +4,9 @@ import PageClient from "./PageClient";
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
 
-  title: "Personalize your GRYND | GRYND",
+  title: "Personalize your Solitaire | GRYND",
   description:
-    "Tell us what kind of games you like and GRYND will personalize your experience. Five quick questions, under a minute.",
+    "Five quick Solitaire questions so GRYND can put the right mode first. Under a minute, and every question can be skipped.",
 };
 
 export default async function Page({

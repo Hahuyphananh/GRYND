@@ -2,7 +2,10 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db";
 import { users, userStats } from "../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
-import { getTrophiesForUser } from "../../../../lib/trophyStore";
+import {
+  getTotalTrophyProgressForUser,
+  getTrophiesForUser,
+} from "../../../../lib/trophyStore";
 import {
   RATED_GAMES,
   getRatingGameLabel,
@@ -64,6 +67,10 @@ export async function GET() {
     (sum, entry) => sum + (Number(entry?.trophies) || 0),
     0,
   );
+  // Permanent trophy-derived level/rank. The peak comes from the
+  // server-maintained high-water mark (migration 0247), so a losing run never
+  // removes an earned badge. Never accepted from the client.
+  const playerLevel = await getTotalTrophyProgressForUser(row.clerkId);
 
   // Per-game Elo ratings (read-only). Only games the player has actually
   // completed a rated match in appear in `ratings`, so an unplayed game
@@ -96,6 +103,11 @@ export async function GET() {
       // Per-game trophies + the overall trophy total.
       trophies,
       totalTrophies,
+      // Stored `level`/`xp` are retired Battle Pass counters; override `level`
+      // with the authoritative trophy-derived level for display.
+      level: playerLevel.level,
+      playerLevel,
+      peakTotalTrophies: playerLevel.peakTrophies,
       overallElo: overall.overallElo,
       overallEligibleGames: overall.eligibleGames,
       overallEligible: overall.eligible,

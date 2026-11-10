@@ -26,6 +26,10 @@ const { QUESTIONNAIRE_QUESTIONS, getAllowedAnswers, validateQuestionnaireAnswers
 
 const { GAME_CATALOG } = await import("../src/lib/gameTags.js");
 
+const { recommendedMode, recommendedRoute, recommendationReasonKey } = await import(
+  "../src/lib/solitairePersonalization.js"
+);
+
 const {
   isQuestionnaireSettled,
   questionnaireDestination,
@@ -193,34 +197,24 @@ test("saving replaces the previous answers and can't create duplicate rows", () 
     route,
     /export async function PUT\(request: Request\) \{\n\s+return submit\(request\);/
   );
-  // …and a submission is never partial.
+  // …and a submission is never partial for the REQUIRED questions (optional
+  // Solitaire questions may be skipped without blocking the player).
   assert.match(
     questionnaire,
-    /if \(!QUESTIONNAIRE_QUESTIONS\.every\(\(q\) => isAnswered\(q\)\)\) return;/
+    /if \(!QUESTIONNAIRE_QUESTIONS\.every\(\(q\) => q\.optional === true \|\| isAnswered\(q\)\)\) return;/
   );
-  assert.match(questionnaire, /if \(!allAnswered\) \{/);
+  assert.match(questionnaire, /if \(!allRequiredAnswered\) \{/);
 });
 
-test("validation rejects anything the catalog doesn't offer", () => {
+test("validation rejects anything the Solitaire catalog doesn't offer", () => {
   const rejected = [
+    [{ solitaire_experience: "wizard" }, "invalid_answer"],
+    [{ solitaire_modes: ["solo_practice"] }, "missing_answer"],
+    [{ solitaire_experience: "expert", extra: ["x"] }, "unknown_question"],
     [
-      {
-        motivation: ["nope"],
-        game_types: ["strategy"],
-        experience: "new",
-        priorities: ["fun"],
-        discovery: "tiktok",
-      },
-      "invalid_answer",
+      { solitaire_experience: "expert", solitaire_modes: ["solo_practice", "solo_practice"] },
+      "duplicate_answer",
     ],
-    [{ game_types: ["strategy"] }, "missing_answer"],
-    [{ ...FULL_ANSWERS, extra: ["x"] }, "unknown_question"],
-    [{ ...FULL_ANSWERS, game_types: ["strategy", "strategy"] }, "duplicate_answer"],
-    [
-      { ...FULL_ANSWERS, game_types: ["strategy", "pvp_duels", "casual", "fast_paced"] },
-      "too_many_answers",
-    ],
-    [{ ...FULL_ANSWERS, experience: "wizard" }, "invalid_answer"],
     [null, "invalid_payload"],
     ["nope", "invalid_payload"],
   ];
@@ -231,11 +225,13 @@ test("validation rejects anything the catalog doesn't offer", () => {
   }
   // A valid multi-select answer is accepted, normalized to catalog order.
   const ok = validateQuestionnaireAnswers({
-    ...FULL_ANSWERS,
-    game_types: ["competitive", "pvp_duels"],
+    solitaire_experience: "expert",
+    solitaire_modes: ["ranked_pvp", "solo_practice"],
   });
   assert.equal(ok.ok, true);
-  assert.deepEqual(ok.answers.game_types, ["pvp_duels", "competitive"]);
+  assert.deepEqual(ok.answers.solitaire_modes, ["solo_practice", "ranked_pvp"]);
+  // Skipped optional questions are stored empty, never invented.
+  assert.deepEqual(ok.answers.solitaire_goal, []);
 });
 
 // ── 3. The existing-user invitation ──────────────────────────────────────
@@ -300,39 +296,33 @@ test("one warm follow-up line, decided deterministically by the answers", () => 
   assert.equal(welcomeMessageKey(undefined), null);
 });
 
-test("the welcome hero shows it only on the hand-off from the questionnaire", () => {
-  assert.match(
-    welcome,
-    /const \[welcomeLine, setWelcomeLine\] = useState<string \| null>\(null\);/
-  );
-  assert.match(welcome, /if \(fromQuestionnaire && data\.questionnaireCompleted === true\) \{/);
-  assert.match(welcome, /setWelcomeLine\(welcomeMessageKey\(answersData\.answers\)\);/);
-  // Best-effort: a failure leaves the step exactly as it was.
-  assert.match(welcome, /\/\/ no personalized line — the tutorial is unaffected/);
-  assert.match(welcome, /\{welcomeLine && \(/);
-  // English copy for the examples the product asked for.
-  assert.equal(t("en", WELCOME_MESSAGE_KEYS.competitive), "Let's get you into the action.");
-  assert.equal(t("en", WELCOME_MESSAGE_KEYS.beginner), "Let's get you comfortable with GRYND.");
-  assert.equal(t("en", WELCOME_MESSAGE_KEYS.rewards), "Let's find some games you'll enjoy.");
-  // Nothing about profiling, analytics or "we noticed you…" copy.
+test("the welcome flow highlights the Solitaire recommendation, not a game list", () => {
+  // The recommendation is computed from the server answers, best-effort.
+  assert.match(welcome, /const recommended = useMemo\(\(\) => recommendedMode\(answers\), \[answers\]\);/);
+  assert.match(welcome, /fetch\("\/api\/onboarding\/questionnaire", \{/);
+  // It is shown as a badge + reason on the modes step and on the finish step.
+  assert.match(welcome, /t\("onboarding\.solitaire\.modes\.recommended"\)/);
+  assert.match(welcome, /recommendationReasonKey\(answers\)/);
+  assert.match(welcome, /onboarding\.solitaire\.done\.recommended/);
+  // No game ranking, no fabricated rating, no "we noticed you…" copy.
+  const rendered = welcome.replace(/\/\/.*$/gm, "");
+  assert.doesNotMatch(rendered, /elo|skill rating|matchmaking rating/i);
+  assert.doesNotMatch(rendered, /recommendGames|For You/);
   for (const locale of LOCALES) {
-    for (const key of Object.values(WELCOME_MESSAGE_KEYS)) {
-      const copy = t(locale, key).toLowerCase();
-      assert.doesNotMatch(copy, /profil|analytic|track|we noticed|hidden/, `${locale} ${key}`);
-    }
+    const copy = t(locale, recommendationReasonKey({ solitaire_modes: ["solo_practice"] })).toLowerCase();
+    assert.doesNotMatch(copy, /profil|analytic|track|we noticed|hidden/, `${locale} reason`);
   }
 });
 
 // ── 5. The RPS first-game flow is untouched ──────────────────────────────
 
-test("the onboarding first game is still the unchanged RPS Free Play match", () => {
-  // Same URL, same page-level gate, same endpoint. The one-time XP grant is
-  // gone with the Battle Pass — the endpoint only records the completion flag.
-  // RPS remains the tutorial default; while it is archived the constant is
-  // availability-gated so onboarding lands on an active practice lobby rather
-  // than a dead URL, and reactivation restores the RPS URL automatically.
-  assert.match(welcome, /const FIRST_GAME_URL = isGameAvailable\("rps"\)/);
-  assert.match(welcome, /\/casino\/rps\/play-ai\?onboarding=1/);
+test("the onboarding first game is Solitaire; the legacy RPS surface is untouched", () => {
+  // The first thing a new player touches is the real Klondike deal.
+  assert.match(welcome, /<SolitaireTutorial/);
+  assert.match(welcome, /const LOBBY_URL = GAME_ROUTE;/);
+  assert.doesNotMatch(welcome, /casino\/rps/);
+  // The legacy RPS onboarding match still exists and still reports its result
+  // through the same one-time endpoint — this work did not modify it.
   assert.match(source(RPS), /api\/onboarding\/first-game-complete/);
   assert.match(source(RPS), /if \(tutorial\.mode !== "active" \|\| !matchOver\) return;/);
   const firstGame = source(FIRST_GAME);
@@ -666,7 +656,7 @@ test("touch targets are at least ~44px on the questionnaire and the Settings car
   assert.match(questionnaire, /rounded-2xl bg-\[#00e5ff\] px-8 py-4 text-base/);
   assert.match(
     questionnaire,
-    /rounded-2xl bg-gradient-to-r from-\[#FFD700\] to-\[#FFB300\] px-8 py-4/
+    /rounded-2xl bg-(?:linear|gradient)-to-r from-\[#FFD700\] to-\[#FFB300\] px-8 py-4/
   );
   // Icon-only back button, skip and cancel are h-11 (44px).
   assert.match(questionnaire, /flex h-11 w-11 items-center justify-center rounded-full/);
@@ -737,9 +727,9 @@ test("the catalog is the only source of question and option ids", () => {
   // The stable ids the API validates against are the ones the UI renders.
   for (const question of QUESTIONNAIRE_QUESTIONS) {
     assert.equal(getAllowedAnswers(question.key).length, question.options.length);
-    assert.ok(question.titleKey.startsWith("onboarding.questionnaire."));
+    assert.ok(question.titleKey.startsWith("onboarding.solitaire.questionnaire."));
     for (const option of question.options) {
-      assert.ok(option.labelKey.startsWith("onboarding.questionnaire."));
+      assert.ok(option.labelKey.startsWith("onboarding.solitaire.questionnaire."));
     }
   }
 });
