@@ -25,6 +25,8 @@ import {
 
 import NavigationBar from "../../../../components/navigation-bar";
 import BotAvatar from "../../../../components/solitaire-duel/BotAvatar";
+import BotSpeech from "../../../../components/solitaire-duel/BotSpeech";
+import { solitaireResultLine } from "../../../../lib/solitaire-duel/dialogueDirector";
 import { useMatchRouter } from "../../../../hooks/useMatchRouter";
 import {
   SOLITAIRE_BOTS,
@@ -190,6 +192,15 @@ export default function SolitairePlayAiPage() {
           {SOLITAIRE_BOTS.map((bot) => {
             const perfect = bot.id === "perfect";
             const busy = challengingId === bot.id;
+            // RESULT PREVIEW: the exact ending dialog this opponent speaks when
+            // you win, rendered by the same component the result popup uses.
+            // The portrait is the card's own — the same roster art and the same
+            // name/rating the result will show.
+            const resultPreview = solitaireResultLine({
+              botId: bot.id,
+              matchId: `preview:${bot.id}`,
+              botWon: false,
+            });
             return (
               <article
                 key={bot.id}
@@ -236,6 +247,21 @@ export default function SolitairePlayAiPage() {
                 <p className="mt-3 min-h-[3.25rem] text-xs leading-relaxed text-white/55">
                   {bot.description}
                 </p>
+
+                <div
+                  data-testid={`solitaire-result-preview-${bot.id}`}
+                  className="mt-3 rounded-xl border border-violet-400/20 bg-violet-400/[0.05] px-3 py-2"
+                >
+                  <p className="text-[9px] font-black uppercase tracking-[0.16em] text-violet-200/50">
+                    Result preview
+                  </p>
+                  <BotSpeech
+                    bot={bot}
+                    line={resultPreview}
+                    showAvatar={false}
+                    testId={`solitaire-bot-preview-${bot.id}`}
+                  />
+                </div>
 
                 <DifficultyFacts bot={bot} />
 

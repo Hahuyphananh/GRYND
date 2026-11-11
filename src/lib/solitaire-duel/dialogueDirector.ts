@@ -124,6 +124,41 @@ export type DialogueDirector = {
   getState(): DialogueDirectorState;
 };
 
+/**
+ * THE ENDING LINE FOR A SETTLED PRACTICE RESULT.
+ *
+ * The director is event-driven, so the last line it selected can be an ordinary
+ * one — and a poll that lands after the match settled never sees the ending
+ * transition at all. The result popup must not show a silent opponent, so the
+ * settled outcome resolves the character's own win/loss line directly, from the
+ * same library and with the same deterministic index the director uses. It
+ * never invents speech: `win` is the bot's victory, `loss` is the bot's defeat.
+ */
+export function solitaireResultLine({
+  botId,
+  matchId,
+  botWon,
+}: {
+  botId: SolitaireBotId;
+  matchId: string;
+  botWon: boolean;
+}): SolitaireBotDialogueLine | null {
+  const dialogue = SOLITAIRE_BOT_DIALOGUE[botId];
+  if (!dialogue) return null;
+
+  const event: DialogueEventType = botWon ? "win" : "loss";
+  const keys = dialogue.lines[event];
+  if (!keys || keys.length === 0) return null;
+
+  return {
+    botId,
+    key: keys[dialogueLineIndex(`${matchId}:${event}:result`, keys.length)],
+    event,
+    id: `${matchId}:${event}:result`,
+    durationMs: DIALOGUE_DIRECTOR_DEFAULTS.endingDurationMs,
+  };
+}
+
 export function createDialogueDirector(options: {
   config?: Partial<DialogueDirectorConfig>;
 } = {}): DialogueDirector {

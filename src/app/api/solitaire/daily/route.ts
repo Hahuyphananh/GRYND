@@ -179,9 +179,10 @@ export async function POST(req: Request) {
     // On a duplicate, report whether the EXISTING row has a stored log. Never
     // read the submitted log into that answer: this submission was ignored.
     let reviewable = true;
+    let resultId: string | null = inserted[0]?.id ?? null;
     if (duplicate) {
       const existing = await db
-        .select({ moveLog: solitaireDailyResults.moveLog })
+        .select({ id: solitaireDailyResults.id, moveLog: solitaireDailyResults.moveLog })
         .from(solitaireDailyResults)
         .where(
           and(
@@ -191,6 +192,9 @@ export async function POST(req: Request) {
         )
         .limit(1);
       reviewable = Boolean(existing[0]?.moveLog);
+      // The existing row is this player's own recorded game, so its id is the
+      // right analysis entry point (a legacy row without a log gets none).
+      resultId = reviewable ? existing[0]?.id ?? null : null;
     }
 
     const summary = await statsFor(userId, dateKey);
@@ -200,6 +204,7 @@ export async function POST(req: Request) {
         dateKey,
         recorded: !duplicate,
         duplicate,
+        id: resultId,
         reviewable,
         moves: moves.length,
         elapsedMs,

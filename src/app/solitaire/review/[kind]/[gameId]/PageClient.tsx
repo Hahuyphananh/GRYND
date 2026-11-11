@@ -45,6 +45,10 @@ import SolitaireBoard from "../../../../../components/solitaire-duel/SolitaireBo
 import { useSolitaireReviewAnalysis } from "../../../../../hooks/useSolitaireReviewAnalysis";
 import { useTranslation } from "../../../../../hooks/useTranslation";
 import { buildGlitchReviewReactions } from "../../../../../lib/mascot/glitchReview";
+import {
+  buildLocalReview,
+  isLocalReviewGameId,
+} from "../../../../../lib/solitaire-duel/localReview";
 import { formatDuration } from "../../../../../lib/solitaire-duel/soloStats.js";
 import type {
   ReviewGameKind,
@@ -187,6 +191,22 @@ export default function SolitaireReviewPageClient({
     setError(null);
     setData(null);
     setSelectedPly(0);
+
+    // A guest's completed solo game lives in this browser (localReview.ts).
+    // Its local-only id is never sent to the server; the review is rebuilt
+    // from the stored seed + final log instead.
+    if (kind !== "duel" && isLocalReviewGameId(gameId)) {
+      const review = buildLocalReview(gameId);
+      if (review) setData(review);
+      else
+        setError(
+          "This game was saved on another device, so it cannot be reviewed here.",
+        );
+      setLoading(false);
+      return () => {
+        alive = false;
+      };
+    }
 
     const url =
       kind === "duel"

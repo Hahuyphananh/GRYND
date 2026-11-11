@@ -38,6 +38,13 @@ import {
 } from "../../lib/solitaire-duel/autoFinish";
 import { dealFromSeed } from "../../lib/solitaire-duel/deck";
 import {
+  LOCAL_COMPLETED_KEY,
+  MAX_LOCAL_COMPLETED,
+  localCompletedReviewId,
+  readLocalCompletedGames,
+  type LocalCompletedGame,
+} from "../../lib/solitaire-duel/localReview";
+import {
   applyMove,
   initialStateFromDeal,
   normalizeMove,
@@ -63,6 +70,25 @@ type DailySummary = {
   today: { completed: boolean; moves: number; elapsedMs: number | null } | null;
 };
 
+type ServerHistoryGame = {
+  id: string;
+  gameKind: Mode;
+  dateKey: string | null;
+  moves: number;
+  elapsedMs: number | null;
+  completedAt: string | null;
+};
+
+type HistoryRow = {
+  key: string;
+  mode: Mode;
+  id: string;
+  moves: number;
+  elapsedMs: number | null;
+  endedAtMs: number | null;
+  dateKey: string | null;
+};
+
 type Session = {
   mode: Mode;
   seed: number;
@@ -77,11 +103,10 @@ type Session = {
 
 const SESSION_KEY = "grynd.solitaire.session.v1";
 const LOCAL_SOLO_KEY = "grynd.solitaire.solo.records.v1";
-const LOCAL_COMPLETED_KEY = "grynd.solitaire.completed.v1";
 const MAX_LOCAL_RECORDS = 100;
 // A guest's completed games are kept on the device so they stay reconstructable
-// after the active session is cleared. A bounded ring: a log is ~10–40 KB.
-const MAX_LOCAL_COMPLETED = 20;
+// after the active session is cleared — including by Game Review (see
+// `localReview.ts`, which owns the ring and its key).
 
 function randomSeed(): number {
   if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
@@ -176,30 +201,51 @@ function appendLocalSolo(entry: { completed: boolean; moves: number; elapsedMs: 
  * The server path does this in `solitaire_solo_results` / `_daily_results`; a
  * guest has no account row, so the browser is the store. The log is exactly the
  * one the server would have replayed — after undo, it is the final log — and the
- * deal is re-derived from the seed (solo) or the UTC date (daily). Only a win is
+ * deal comes from the seed (solo) or is stored with the game (daily, because
+ * only the server can derive that one from the date). Only a win is
  * kept: an abandoned attempt stays a summary record, never a "review".
  */
 function appendLocalCompleted(game: {
   mode: Mode;
   seed: number;
   dateKey: string | null;
+  /** Daily only: the server-derived deal, kept because it cannot be re-derived here. */
+  deal?: SolitaireDeal | null;
   log: LogEntry[];
   startedAtMs: number;
   endedAtMs: number;
   elapsedMs: number;
-}) {
-  if (typeof window === "undefined") return;
+}): string | null {
+  if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(LOCAL_COMPLETED_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
     const records = Array.isArray(parsed) ? parsed : [];
-    records.push({ ...game, won: true, savedAtMs: Date.now() });
+    const savedAtMs = Date.now();
+    const id = localCompletedReviewId(savedAtMs, game.log.length);
+    records.push({
+      mode: game.mode,
+      seed: game.seed,
+      dateKey: game.dateKey,
+      // A solo deal is a pure function of its seed, so only a daily game has to
+      // carry the deal itself.
+      deal: game.mode === "daily" ? game.deal ?? null : null,
+      log: game.log,
+      startedAtMs: game.startedAtMs,
+      endedAtMs: game.endedAtMs,
+      elapsedMs: game.elapsedMs,
+      id,
+      won: true,
+      savedAtMs,
+    });
     window.localStorage.setItem(
       LOCAL_COMPLETED_KEY,
       JSON.stringify(records.slice(-MAX_LOCAL_COMPLETED)),
     );
+    return id;
   } catch {
     // Storage full or disabled: the result is still shown, only replay is lost.
+    return null;
   }
 }
 
@@ -224,6 +270,15 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
   const [savedResult, setSavedResult] = useState<
     "idle" | "saving" | "saved" | "duplicate" | "local" | "failed"
   >("idle");
+  // The id of the recorded game, so the result popup can offer its analysis.
+  // Server row id when signed in, local-only id for a guest's completed game.
+  const [reviewGameId, setReviewGameId] = useState<string | null>(null);
+  // Completed games this browser kept, oldest last. Read from the same ring the
+  // guest review uses, so the Solo page can reopen any of them later.
+  const [history, setHistory] = useState<LocalCompletedGame[]>([]);
+  // The account's own list, when signed in. `null` = not fetched (or the read
+  // failed), in which case the device ring is shown instead.
+  const [serverHistory, setServerHistory] = useState<ServerHistoryGame[] | null>(null);
   const [personalBest, setPersonalBest] = useState(false);
   // The cosmetic flight after an auto-finish, or null. The game is ALREADY
   // complete and recorded when this is set; this only delays the victory panel.
@@ -238,6 +293,35 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
   const [pendingExit, setPendingExit] = useState<string | null>(null);
   const pendingExitRef = useRef<(() => void) | null>(null);
   const adAttemptedRef = useRef(false);
+
+  // A finished game is appended exactly once; re-reading on every save-result
+  // transition keeps the history list in step without a second store.
+  useEffect(() => {
+    setHistory(readLocalCompletedGames());
+  }, [savedResult]);
+
+  // ACCOUNT HISTORY: a signed-in player's list follows the account, not this
+  // browser. Re-read after every save so the game that just finished appears.
+  useEffect(() => {
+    if (!signedIn) {
+      setServerHistory(null);
+      return undefined;
+    }
+    let cancelled = false;
+    fetch("/api/solitaire/history?limit=12", { credentials: "same-origin" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (cancelled) return;
+        const games = payload?.data?.games;
+        setServerHistory(Array.isArray(games) ? (games as ServerHistoryGame[]) : null);
+      })
+      .catch(() => {
+        if (!cancelled) setServerHistory(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [signedIn, savedResult]);
 
   // The finish is measured inside the state updater (while the old board is
   // still on screen) and released here, so the overlay mounts on the commit
@@ -263,6 +347,7 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
     });
     setSession(next);
     setSavedResult("idle");
+    setReviewGameId(null);
     setPersonalBest(false);
     setError(null);
     setFinishing(null);
@@ -353,6 +438,21 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
       if (submittedRef.current === key) return;
       submittedRef.current = key;
       setSavedResult("saving");
+      setReviewGameId(null);
+
+      // The record every path below can keep locally: the deal (or seed) and
+      // the FINAL log, never a board snapshot. A guest's review and the Solo
+      // page's history both read this ring.
+      const localGame = {
+        mode: finished.mode,
+        seed: finished.seed,
+        dateKey: finished.dateKey,
+        deal: finished.deal,
+        log: finished.log,
+        startedAtMs: finished.startedAtMs,
+        endedAtMs: finished.endedAtMs ?? Date.now(),
+        elapsedMs,
+      };
 
       try {
         const endpoint = finished.mode === "daily" ? "/api/solitaire/daily" : "/api/solitaire/solo";
@@ -369,17 +469,12 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
         if (response.status === 401) {
           setSavedResult("local");
           if (finished.won) {
-            // Guest practice: retain the game itself (seed + final log), so a
-            // refresh or a later visit can rebuild this exact board.
-            appendLocalCompleted({
-              mode: finished.mode,
-              seed: finished.seed,
-              dateKey: finished.dateKey,
-              log: finished.log,
-              startedAtMs: finished.startedAtMs,
-              endedAtMs: finished.endedAtMs ?? Date.now(),
-              elapsedMs,
-            });
+            // Guest practice: retain the game itself (its deal or seed, plus
+            // the final log), so a refresh or a later visit can rebuild this
+            // exact board. Solo derives its deal from the seed; a daily game
+            // carries the server's deal because only the server derives it.
+            const localReviewId = appendLocalCompleted(localGame);
+            if (localReviewId) setReviewGameId(localReviewId);
           }
           if (finished.mode === "solo") {
             setSummary(summariseSolo(appendLocalSolo({
@@ -395,6 +490,12 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
           return;
         }
         const payload = await response.json();
+        // The server returns the recorded row's id so the popup can offer the
+        // analysis of exactly this game. A duplicate submission has no id and
+        // therefore no entry point.
+        setReviewGameId(
+          typeof payload?.data?.id === "string" ? payload.data.id : null,
+        );
         if (finished.mode === "daily") {
           const next = payload?.data?.summary as DailySummary | undefined;
           if (next) {
@@ -517,6 +618,7 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
     });
     setSession(next);
     setSavedResult("idle");
+    setReviewGameId(null);
     setPersonalBest(false);
     setError(null);
     setFinishing(null);
@@ -536,6 +638,7 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
     });
     setSession(next);
     setSavedResult("idle");
+    setReviewGameId(null);
     setPersonalBest(false);
     setError(null);
     setFinishing(null);
@@ -578,6 +681,37 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
   const bestMs = mode === "daily" ? dailyStats?.bestMs ?? null : summary?.bestMs ?? null;
   const todayRecorded = Boolean(dailyStats?.today?.completed);
   const isPracticeReplay = mode === "daily" && todayRecorded && !session?.won;
+
+  // The list under BOTH single-player modes. Signed in: the account's games
+  // (which follow the player across devices). Guest: the games this browser
+  // kept, the same ring a guest's review is rebuilt from.
+  const historyRows: HistoryRow[] = serverHistory
+    ? serverHistory
+        .filter((game) => typeof game?.id === "string" && game.id)
+        .map((game) => ({
+          key: `account:${game.gameKind}:${game.id}`,
+          mode: game.gameKind === "daily" ? "daily" : "solo",
+          id: game.id,
+          moves: Number(game.moves) || 0,
+          elapsedMs: Number.isFinite(Number(game.elapsedMs))
+            ? Number(game.elapsedMs)
+            : null,
+          endedAtMs: game.completedAt ? Date.parse(game.completedAt) : null,
+          dateKey: game.dateKey ?? null,
+        }))
+    : history
+        .filter((row) => typeof row?.id === "string" && row.id)
+        .slice(-12)
+        .reverse()
+        .map((row) => ({
+          key: `device:${row.id}`,
+          mode: row.mode === "daily" ? "daily" : "solo",
+          id: row.id,
+          moves: Array.isArray(row.log) ? row.log.length : 0,
+          elapsedMs: Number.isFinite(Number(row.elapsedMs)) ? Number(row.elapsedMs) : null,
+          endedAtMs: Number.isFinite(Number(row.endedAtMs)) ? Number(row.endedAtMs) : null,
+          dateKey: row.dateKey ?? null,
+        }));
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6">
@@ -765,6 +899,23 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
                   </p>
                 )}
                 <div className="mt-5 flex flex-wrap justify-center gap-2">
+                  {reviewGameId && (
+                    <Link
+                      href={`/solitaire/review/${session.mode}/${encodeURIComponent(reviewGameId)}`}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        guardExit("analysis", () =>
+                          router.push(
+                            `/solitaire/review/${session.mode}/${encodeURIComponent(reviewGameId)}`,
+                          ),
+                        );
+                      }}
+                      data-testid="solitaire-analysis"
+                      className="inline-flex items-center justify-center rounded-lg border border-cyan-300/40 bg-cyan-300/10 px-4 py-2 text-sm font-semibold text-cyan-200 hover:bg-cyan-300/20"
+                    >
+                      Match analysis
+                    </Link>
+                  )}
                   <button
                     type="button"
                     onClick={() => guardExit("playAgain", restart)}
@@ -822,6 +973,53 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
             />
           )}
         </div>
+      )}
+
+      {historyRows.length > 0 && (
+        <section
+          data-testid="solitaire-review-history"
+          className="mt-6 rounded-2xl border border-white/10 bg-slate-900/50 p-4"
+        >
+          <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-white/50">
+            Past games
+          </h3>
+          <p className="mt-1 text-[11px] text-slate-500">
+            {serverHistory
+              ? "Completed games saved to your account. Open one to replay it move by move."
+              : "Completed games kept in this browser. Open one to replay it move by move."}
+          </p>
+          <ul className="mt-3 divide-y divide-white/5">
+            {historyRows.map((row) => (
+                <li
+                  key={row.key}
+                  className="flex flex-wrap items-center justify-between gap-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm text-white/80">
+                      {row.mode === "daily" ? `Daily · ${row.dateKey ?? "Today"}` : "Solo"}
+                      <span className="text-slate-500">
+                        {" · "}
+                        {row.moves} moves{" · "}
+                        {formatDuration(row.elapsedMs)}
+                      </span>
+                    </p>
+                    {row.endedAtMs !== null && Number.isFinite(row.endedAtMs) && (
+                      <p className="text-[11px] text-slate-500">
+                        {new Date(row.endedAtMs).toLocaleString()}
+                      </p>
+                    )}
+                  </div>
+                  <Link
+                    href={`/solitaire/review/${row.mode}/${encodeURIComponent(row.id)}`}
+                    data-testid={`solitaire-history-review-${row.id}`}
+                    className="rounded-lg border border-cyan-300/40 bg-cyan-300/10 px-3 py-1.5 text-xs font-semibold text-cyan-200 hover:bg-cyan-300/20"
+                  >
+                    Review
+                  </Link>
+                </li>
+              ))}
+          </ul>
+        </section>
       )}
 
       {mode === "solo" && summary && (

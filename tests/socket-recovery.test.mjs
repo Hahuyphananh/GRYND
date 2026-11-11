@@ -411,7 +411,7 @@ test("the existing Socket.IO configuration is preserved", () => {
   assert.match(socket, /reconnectionAttempts: 10/);
   assert.match(socket, /reconnectionDelay: 1000/);
   assert.match(socket, /reconnectionDelayMax: 4000/);
-  assert.match(socket, /transports: \["websocket", "polling"\]/);
+  assert.match(socket, /transports: \["polling", "websocket"\]/);
   assert.match(socket, /auth: \{\s*token,?\s*\}/);
 
   // The revive path recovery depends on: same instance, refreshed auth.

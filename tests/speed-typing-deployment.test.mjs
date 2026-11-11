@@ -348,11 +348,15 @@ test("deploy: no production host is hardcoded in the Speed Typing code", () => {
 // 1, 2, 5. The two hops: browser→Vercel and browser→Render
 // ════════════════════════════════════════════════════════════════════════
 
-test("deploy: the browser reaches Render by one public variable, with a token, over ws+polling", () => {
+test("deploy: the browser reaches Render by one public variable, with a token, over polling+ws", () => {
   // The Render URL is PUBLIC configuration (it is in the browser's bundle);
   // the token that authenticates it comes from Clerk, never from the bundle.
   assert.match(CLIENT_SOCKET, /io\(socketUrl, \{/);
-  assert.match(CLIENT_SOCKET, /transports: \["websocket", "polling"\]/, "Render sits behind a proxy: polling is the fallback");
+  assert.match(
+    CLIENT_SOCKET,
+    /transports: \["polling", "websocket"\]/,
+    "Render sits behind a proxy: polling must come first, the websocket is the upgrade",
+  );
   assert.match(CLIENT_SOCKET, /auth:\s*\{\s*token,?\s*\}/);
   assert.match(CLIENT_SOCKET, /socketUrl\.trim\(\)\.replace\(\/\\\/\$\/, ""\)/, "a trailing slash in the env var must not break the URL");
   assert.match(SOCKET_PROVIDER, /const token = await getToken\(\)/);

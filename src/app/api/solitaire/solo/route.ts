@@ -178,6 +178,9 @@ export async function POST(req: Request) {
         moves: moves.length,
         recorded: !duplicate,
         duplicate,
+        // The recorded game's id, so the result popup can link straight to its
+        // analysis. A duplicate submission wrote nothing and returns no id.
+        id: inserted[0]?.id ?? null,
         // A stored log is the only thing a review can be built from.
         reviewable: Boolean(moveLog),
         summary: await summaryFor(userId),

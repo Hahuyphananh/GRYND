@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import SolitaireBoard from "../../../src/components/solitaire-duel/SolitaireBoard";
+import SolitaireThemePicker from "../../../src/components/solitaire-duel/SolitaireThemePicker";
 import {
   AI_DIFFICULTIES,
   AI_DIFFICULTY_LABELS,
@@ -256,7 +257,14 @@ export default function App() {
                 {aiPaceLabel(match.difficulty)} — it solves the deal either way
               </p>
 
-              <div className="mt-3 rounded-2xl border border-white/10 bg-black/40 p-2 shadow-[0_18px_35px_rgba(3,8,23,0.55)] sm:p-3">
+              {/* The same table selector as the app: the portal renders the
+                  shared board, so it must not be the only Solitaire surface
+                  where the player's table is fixed to Classic Green. */}
+              <div className="mt-3 flex justify-end">
+                <SolitaireThemePicker />
+              </div>
+
+              <div className="mt-2 rounded-2xl border border-white/10 bg-black/40 p-2 shadow-[0_18px_35px_rgba(3,8,23,0.55)] sm:p-3">
                 <SolitaireBoard
                   view={view}
                   interactive={!match.result && now >= match.goAtMs}

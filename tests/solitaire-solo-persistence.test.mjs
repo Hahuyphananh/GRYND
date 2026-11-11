@@ -550,6 +550,110 @@ test("another player cannot fetch the game, and an unlogged row is not reviewabl
   assert.equal((await GET(reviewGet("solo", row.id))).status, 401);
 });
 
+// ── Account review history ──────────────────────────────────────────────────
+
+const historyRoute = () => import("../src/app/api/solitaire/history/route.ts");
+
+const historyGet = (query = "") =>
+  new Request(`http://grynd.test/api/solitaire/history${query}`);
+
+test("the review history requires an account", async () => {
+  reset({ userId: null });
+  const { GET } = await historyRoute();
+  assert.equal((await GET(historyGet())).status, 401);
+});
+
+test("the history lists only the caller's reviewable games, newest first", async () => {
+  reset();
+  const solo = await soloRoute();
+  const soloRecord = await (
+    await solo.POST(post("/api/solitaire/solo", { seed: SEED, moves: SOLO_LOG, elapsedMs: 61_000 }))
+  ).json();
+  const soloId = soloRecord.data.id;
+
+  const daily = await dailyRoute();
+  const dailyRecord = await (
+    await daily.POST(post("/api/solitaire/daily", { moves: SOLO_LOG, elapsedMs: 42_000 }))
+  ).json();
+  const dailyId = dailyRecord.data.id;
+
+  // Rows that must NOT appear: an abandoned attempt, a legacy completed row
+  // with no stored log, and another player's reviewable game.
+  fake.state.solo.push(
+    {
+      id: randomUUID(), userId: USER, seed: String(SEED), completed: false,
+      moves: 3, elapsedMs: 1_000, moveLog: null, logDigest: null, createdAt: new Date(),
+    },
+    {
+      id: randomUUID(), userId: USER, seed: String(SEED + 2), completed: true,
+      moves: 10, elapsedMs: 9_000, moveLog: null, logDigest: null, createdAt: new Date(),
+    },
+    {
+      id: randomUUID(), userId: "user_somebody_else", seed: String(SEED), completed: true,
+      moves: SOLO_LOG.length, elapsedMs: 5_000, moveLog: SOLO_LOG,
+      logDigest: "f".repeat(64), createdAt: new Date(),
+    },
+  );
+
+  const { GET } = await historyRoute();
+  const response = await GET(historyGet());
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(
+    payload.data.games.map((game) => game.id).sort(),
+    [soloId, dailyId].sort(),
+    "exactly the two recorded games, and nobody else's",
+  );
+
+  const soloGame = payload.data.games.find((game) => game.gameKind === "solo");
+  const dailyGame = payload.data.games.find((game) => game.gameKind === "daily");
+  assert.equal(soloGame.seed, SEED);
+  assert.equal(soloGame.moves, SOLO_LOG.length);
+  assert.equal(soloGame.elapsedMs, 61_000);
+  assert.equal(soloGame.dateKey, null);
+  const { dailyDateKey } = await import("../src/lib/solitaire-duel/soloStats.js");
+  assert.equal(dailyGame.dateKey, dailyDateKey());
+  assert.equal(dailyGame.seed, null);
+
+  // A directory, never a log: no game data moves through the list.
+  for (const game of payload.data.games) {
+    assert.equal("moveLog" in game, false);
+    assert.equal("deal" in game, false);
+    assert.equal("moves" in game, true);
+  }
+  const times = payload.data.games.map((game) => Date.parse(game.completedAt));
+  assert.deepEqual(times, [...times].sort((a, b) => b - a));
+});
+
+test("the history honours and clamps its limit", async () => {
+  reset();
+  for (let index = 0; index < 5; index += 1) {
+    fake.state.solo.push({
+      id: randomUUID(), userId: USER, seed: String(SEED), completed: true,
+      moves: 10, elapsedMs: 1_000 + index, moveLog: [{ kind: "draw", move: { kind: "draw" } }],
+      logDigest: String(index).padStart(64, "0"),
+      createdAt: new Date(Date.parse("2026-11-01T00:00:00.000Z") + index * 1_000),
+    });
+  }
+
+  const { GET } = await historyRoute();
+  const one = await (await GET(historyGet("?limit=1"))).json();
+  assert.equal(one.data.games.length, 1, "a one-game page is exactly one game");
+
+  // The merge is ordered newest-first on ONE timeline. The fake database does
+  // not execute SQL ordering, so this also proves the route's own sort.
+  const all = await (await GET(historyGet("?limit=999"))).json();
+  assert.equal(all.data.games.length, 5, "the cap and the row count agree");
+  assert.deepEqual(
+    all.data.games.map((game) => game.elapsedMs),
+    [1_004, 1_003, 1_002, 1_001, 1_000],
+  );
+
+  const nonsense = await (await GET(historyGet("?limit=abc"))).json();
+  assert.equal(nonsense.data.games.length, 5, "a nonsense limit falls back, never fails");
+});
+
 // ── Guest flow, contracts, migration ───────────────────────────────────────
 
 test("guest practice retains the completed game locally instead of uploading it", () => {

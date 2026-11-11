@@ -12,7 +12,7 @@ import { fadeUp, hoverScale, withReducedMotion, stagger } from "../lib/animation
 import { UIPro01NavShell, UIPro02NavItem } from "./uipro";
 import useInstallPWA from "../hooks/useInstallPWA";
 import AdminBadge from "./AdminBadge";
-import { IconDeviceMobile, IconFlame, IconMenu, IconSettings, IconTrophy, IconX } from "@tabler/icons-react";
+import { IconDeviceMobile, IconFlame, IconMenu, IconTrophy, IconX } from "@tabler/icons-react";
 import FrameAvatar from "./FrameAvatar";
 import { cosmeticEffectClass } from "../lib/profileCosmetics";
 import { triggerHaptic } from "../lib/native/haptics";
@@ -53,6 +53,7 @@ function navLabel(path, t) {
   if (path === "/games/solitaire-duel") return "Rules";
   if (path === "/upgrade-pro") return "GRYND PRO";
   if (path === "/daily") return "Daily";
+  if (path === "/solitaire") return "Solo";
   return t(NAV_TRANSLATION_KEYS[path]);
 }
 
@@ -480,7 +481,7 @@ function NavigationBarInner({ currentPath = "" }) {
               animate="animate"
               className="hidden items-center space-x-1 md:flex lg:space-x-4"
             >
-              {["/", "/daily", "/games/solitaire-duel/play", "/classement", "/games/solitaire-duel", "/upgrade-pro"].map((path) => (
+              {["/", "/daily", "/solitaire", "/games/solitaire-duel/play", "/classement", "/games/solitaire-duel", "/upgrade-pro"].map((path) => (
                 <motion.div
                   key={path}
                   initial={itemVariant.initial}
@@ -500,22 +501,6 @@ function NavigationBarInner({ currentPath = "" }) {
                   </Link>
                 </motion.div>
               ))}
-              <motion.div
-                key="/settings"
-                initial={itemVariant.initial}
-                animate={itemVariant.animate}
-                transition={itemVariant.transition}
-                whileHover={shouldReduceMotion ? undefined : hoverScale.whileHover}
-              >
-                <Link
-                  href="/settings"
-                  className={`px-1 py-2 text-sm font-medium rounded-sm lg:px-3 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === "/settings" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
-                >
-                  <span className="inline-flex items-center gap-1.5">
-                    <IconSettings size={15} className="shrink-0" /> {t("nav.settings")}
-                  </span>
-                </Link>
-              </motion.div>
             </motion.div>
 
             {/* shrink-0: the right-side cluster must never be squeezed off
@@ -751,7 +736,7 @@ function NavigationBarInner({ currentPath = "" }) {
                     Admin dashboard
                   </Link>
                 )}
-                {["/", "/daily", "/games/solitaire-duel/play", "/classement", "/games/solitaire-duel", "/upgrade-pro"].map((path) => (
+                {["/", "/daily", "/solitaire", "/games/solitaire-duel/play", "/classement", "/games/solitaire-duel", "/upgrade-pro"].map((path) => (
                   <Link
                     key={path}
                     href={path}

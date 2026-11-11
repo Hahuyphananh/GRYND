@@ -253,4 +253,14 @@ test("the homepage and navigation expose all four ways to play", () => {
   const nav = read("src/components/navigation-bar.jsx");
   assert.match(nav, /"\/daily"/);
   assert.match(nav, /"\/classement"/);
+  // Solo mode is first-class navigation: it was only reachable from a home-page
+  // card, so players could not find or start it. Settings, by contrast, moved
+  // into the account menu (ACCOUNT_ITEMS) and must not be a primary link.
+  assert.match(nav, /"\/solitaire"/, "the primary nav must link to solo");
+  assert.match(nav, /if \(path === "\/solitaire"\) return "Solo"/);
+  assert.doesNotMatch(
+    nav,
+    /href="\/settings"/,
+    "Settings lives in the account menu, not the primary row",
+  );
 });

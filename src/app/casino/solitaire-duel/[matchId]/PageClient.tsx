@@ -71,6 +71,7 @@ import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import { useMatchRouter } from "../../../../hooks/useMatchRouter";
 import SeatAvatar from "../../../../components/game/SeatAvatar";
 import SolitaireBoard from "../../../../components/solitaire-duel/SolitaireBoard";
+import SolitaireThemePicker from "../../../../components/solitaire-duel/SolitaireThemePicker";
 import AutoFinishAnimation from "../../../../components/solitaire-duel/AutoFinishAnimation";
 import {
   measureFinishCards,
@@ -79,6 +80,7 @@ import {
 import { applyMoveToView } from "../../../../lib/solitaire-duel/optimistic";
 import BotAvatar from "../../../../components/solitaire-duel/BotAvatar";
 import BotSpeech from "../../../../components/solitaire-duel/BotSpeech";
+import { solitaireResultLine } from "../../../../lib/solitaire-duel/dialogueDirector";
 import { useSolitaireBotDialogue } from "../../../../hooks/useSolitaireBotDialogue";
 import { isSolitaireBotId } from "../../../../lib/solitaire-duel/bots";
 import type { SolitaireDialogueSnapshot } from "../../../../lib/solitaire-duel/dialogueEvents";
@@ -929,6 +931,22 @@ export default function SolitaireDuelMatchPage() {
   const myPercent = myProgress?.progressPercent ?? 0;
   const opponentPercent = opponentProgress?.progressPercent ?? 0;
   const outcome = viewerOutcome(seat, match?.result) ?? "draw";
+  // THE BOT'S LAST WORD. A practice result ALWAYS shows the opponent's ending
+  // line: the dialogue hook's latest line may be an ordinary one (or the ending
+  // transition may have happened between polls), so the settled outcome
+  // resolves the character's own win/loss line from the same library. The bot
+  // is the opponent here — Glitch only speaks on a ranked result.
+  const botResultLine =
+    botLine && (botLine.event === "win" || botLine.event === "loss")
+      ? botLine
+      : isPractice && practiceBotId && match && (outcome === "win" || outcome === "loss")
+        ? solitaireResultLine({
+            botId: practiceBotId,
+            matchId: match.matchId,
+            // The bot won exactly when the viewer lost.
+            botWon: outcome === "loss",
+          })
+        : null;
   const countdownSeconds =
     countdownMs == null ? 0 : Math.max(0, Math.ceil(countdownMs / 1000));
   const showCountdown = phase === "countdown" || goFlash;
@@ -1191,6 +1209,17 @@ export default function SolitaireDuelMatchPage() {
                     />
                   </div>
 
+                  {/* Table customization. Ranked and practice matches read the
+                      SAME local preference as solo and the Daily Challenge (the
+                      board itself owns the paint), so the selector belongs here
+                      too — otherwise the only way to change the table would be
+                      to leave a live match. It sits ABOVE the board rather than
+                      floating over it: an expanded panel must never cover a
+                      face-up card during a timed duel. */}
+                  <div className="flex justify-end">
+                    <SolitaireThemePicker />
+                  </div>
+
                   {/* ── The board (the main focus) ─────────────────── */}
                   <div className="relative rounded-2xl border-2 border-[color:var(--gr-outline)] bg-black/45 p-2 shadow-[0_10px_0_-2px_rgba(3,8,20,0.85),inset_0_2px_0_rgba(255,255,255,0.06)] sm:p-4">
                     <SolitaireBoard
@@ -1451,6 +1480,12 @@ export default function SolitaireDuelMatchPage() {
           name: opponentName,
           iconKey: opponentIdentity?.iconKey ?? null,
           profileFrame: opponentIdentity?.profileFrame ?? null,
+          // Practice has no account behind the opponent: it is the roster bot,
+          // so the result shows its own portrait and names it without an "@".
+          isAi: isPractice,
+          imageSrc: isPractice ? practiceBot?.avatar?.src ?? null : null,
+          imageAlt: isPractice ? practiceBot?.avatar?.alt ?? null : null,
+          ratingLabel: isPractice ? practiceBot?.ratingLabel ?? null : null,
         }}
         gameName="Solitaire Duel"
         onReturnToLobby={() => router.push("/casino/solitaire-duel")}
@@ -1459,13 +1494,12 @@ export default function SolitaireDuelMatchPage() {
         // own reactions to rated duels. Never two voices on one result.
         showGlitch={!isPractice}
         extraContent={
-          isPractice &&
-          practiceBot &&
-          botLine &&
-          (botLine.event === "win" || botLine.event === "loss") ? (
+          isPractice && practiceBot && botResultLine ? (
             <BotSpeech
               bot={practiceBot}
-              line={botLine}
+              line={botResultLine}
+              // The result hero above already shows this bot's portrait; this
+              // row is the bot's dialog, not a second avatar.
               showAvatar={false}
               testId="solitaire-bot-result-speech"
             />
@@ -1501,6 +1535,17 @@ export default function SolitaireDuelMatchPage() {
           },
         ]}
         playAgain={{ label: isPractice ? "NEW DEAL" : "REMATCH", onClick: requeue }}
+        // The review API serves this seat's own validated log, including a
+        // forfeited or resigned match (it is marked forfeit, not scored).
+        // Nothing opens it automatically — the player picks it here.
+        analysisAction={
+          match
+            ? {
+                label: "Match analysis",
+                href: `/solitaire/review/duel/${encodeURIComponent(match.matchId)}`,
+              }
+            : null
+        }
         secondaryAction={{ label: "Back to home", href: "/" }}
       />
 

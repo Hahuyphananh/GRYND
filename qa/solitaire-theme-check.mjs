@@ -127,6 +127,26 @@ try {
   assert.ok(fallback.cards > 0, "the deal must still render");
   note(`defaults to ${fallback.theme}, felt painted, ${fallback.cards} cards dealt`);
 
+  // The portal must expose the SAME selector as the app — painting a stored
+  // theme is not enough if a portal player can never change it.
+  const pickerLabel = await page.$eval(
+    '[data-testid="solitaire-theme-picker"] summary',
+    (node) => node.textContent.replace(/\s+/g, " ").trim(),
+  );
+  assert.match(pickerLabel, /Table · Classic Green/, "the portal must render the shared table picker");
+  await page.click('[data-testid="solitaire-theme-picker"] summary');
+  await page.click('[data-theme-key="sand"]');
+  await sleep(150);
+  const portalPicked = await page.evaluate((key) => ({
+    theme: document.querySelector('[data-testid="solitaire-board"]').getAttribute("data-solitaire-theme"),
+    stored: localStorage.getItem(key),
+  }), STORAGE_KEY);
+  assert.equal(portalPicked.theme, "sand", "picking a preset must repaint the portal board");
+  assert.equal(portalPicked.stored, "sand", "the portal choice must persist locally");
+  note("the portal's picker repaints the board and persists the choice");
+  // Leave the next step a clean slate.
+  await page.evaluate((key) => localStorage.removeItem(key), STORAGE_KEY);
+
   // ── 2. A stored preset applies ───────────────────────────────────────
   console.log("\n2. with a stored preset");
   const sand = await open("sand");
@@ -182,6 +202,51 @@ try {
   assert.equal(ocean.face.replace(/\s/g, ""), fallback.cardBackground.replace(/\s/g, ""), "the card face is identical on every felt");
   assert.notEqual(ocean.slotBackground, fallback.slotBackground, "the empty pile DOES follow the theme");
   note("card faces and backs identical; the empty pile follows the theme");
+
+  // ── 6. The portal's MOBILE picker is the same bottom sheet ────────────
+  console.log("\n6. the mobile table sheet in the portal");
+  await page.setViewport({ width: 390, height: 844 });
+  await page.evaluate((key) => window.localStorage.removeItem(key), STORAGE_KEY);
+  await page.reload({ waitUntil: "networkidle2" });
+  const startMobile = await page.$('[data-testid="start-race"]');
+  if (startMobile) await startMobile.click();
+  await page.waitForSelector('[data-testid="solitaire-board"]', { timeout: 30_000 });
+  await sleep(400);
+  await page.click('[data-testid="solitaire-theme-picker"] summary');
+  await sleep(150);
+
+  const sheet = await page.evaluate(() => {
+    const panel = document.querySelector('[data-testid="solitaire-theme-panel"]');
+    const board = document.querySelector('[data-testid="solitaire-board"]');
+    const picker = document.querySelector('[data-testid="solitaire-theme-picker"]');
+    const rect = (node) => {
+      const box = node.getBoundingClientRect();
+      return { x: box.x, y: box.y, right: box.right, bottom: box.bottom, w: box.width, h: box.height };
+    };
+    return {
+      panel: rect(panel),
+      board: rect(board),
+      open: picker.open,
+      viewport: { w: window.innerWidth, h: window.innerHeight },
+      overflow: document.documentElement.scrollWidth - window.innerWidth,
+    };
+  });
+  assert.equal(sheet.open, true, "the picker must open on a phone");
+  assert.ok(Math.abs(sheet.panel.bottom - sheet.viewport.h) <= 2, "the phone picker must be pinned to the bottom edge");
+  assert.ok(Math.abs(sheet.panel.x) <= 1 && Math.abs(sheet.panel.right - sheet.viewport.w) <= 1, "the sheet spans the phone width");
+  assert.ok(sheet.panel.y >= sheet.board.bottom - 1, "the sheet must sit below the board, never over it");
+  assert.ok(sheet.overflow <= 1, "the sheet must not add horizontal overflow");
+  note("the portal's phone picker is a bottom sheet below the board");
+
+  await page.click('[data-theme-key="ocean"]');
+  await sleep(150);
+  const mobileTheme = await page.evaluate(() => document.querySelector('[data-testid="solitaire-board"]').getAttribute("data-solitaire-theme"));
+  assert.equal(mobileTheme, "ocean", "the sheet must repaint the portal board");
+  await page.click('[data-testid="solitaire-theme-sheet-done"]');
+  await sleep(120);
+  const sheetClosed = await page.evaluate(() => document.querySelector('[data-testid="solitaire-theme-picker"]').open);
+  assert.equal(sheetClosed, false, "Done must close the sheet");
+  note("the sheet repaints the board and Done closes it");
 
   assert.deepEqual(pageErrors, [], `no uncaught page errors: ${pageErrors.join("; ")}`);
   console.log(`\n${notes.length} theme assertions passed.`);

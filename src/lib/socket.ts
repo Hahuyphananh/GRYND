@@ -40,7 +40,16 @@ export async function createSocketConnection(
 
   socketInstance = io(socketUrl, {
     autoConnect: true,
-    transports: ["websocket", "polling"],
+    // Long-polling first, then the normal upgrade to a websocket.
+    //
+    // The service sits behind a reverse proxy, and requiring a websocket as the
+    // FIRST transport made the whole connection fail — with a browser-level
+    // "WebSocket connection … failed" error on every load — whenever that hop
+    // did not carry the Upgrade header. Starting on polling still reaches the
+    // same Socket.IO endpoint over ordinary HTTPS, and Socket.IO upgrades to
+    // the websocket as soon as the handshake succeeds. A websocket-only failure
+    // now costs one polling round-trip instead of the entire connection.
+    transports: ["polling", "websocket"],
     // Connect timeout: fail fast on a bad network node instead of hanging.
     // Real websocket handshakes complete in well under a second when healthy;
     // 10s is plenty and prevents the UI from feeling frozen while we retry.

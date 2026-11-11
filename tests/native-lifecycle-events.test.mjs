@@ -493,6 +493,6 @@ test("Socket.IO behaviour and configuration are untouched", () => {
   assert.ok(!/grynd:app-state-change|grynd:network-status-change/.test(socket));
   assert.match(socket, /reconnectionAttempts: 10/);
   assert.match(socket, /reconnectionDelayMax: 4000/);
-  assert.match(socket, /transports: \["websocket", "polling"\]/);
+  assert.match(socket, /transports: \["polling", "websocket"\]/);
   assert.match(socket, /auth: \{\s*token,?\s*\}/);
 });

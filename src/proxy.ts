@@ -525,7 +525,13 @@ function applySecurityHeaders(response: NextResponse) {
       // pages, so it stays an allow-list rather than `https:`. The banner is
       // off by default; without this host a switched-on banner could never
       // paint, and it would collapse instead of showing a blank box.
-      "frame-src 'self' https://challenges.cloudflare.com https://*.clerk.com https://*.clerk.accounts.dev https://js.stripe.com https://checkout.stripe.com https://*.stripe.com https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://fundingchoicesmessages.google.com https://juvenilechoice.com; " +
+      //
+      // adtrafficquality.google is AdSense's own traffic-quality check (ep1/
+      // ep2.adtrafficquality.google). Google's ad code frames it on every ad
+      // page, so leaving it out produces a CSP violation on each impression —
+      // the unit still paints, but the console fills with errors and Google
+      // loses the invalid-traffic signal it uses to protect the publisher.
+      "frame-src 'self' https://challenges.cloudflare.com https://*.clerk.com https://*.clerk.accounts.dev https://js.stripe.com https://checkout.stripe.com https://*.stripe.com https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://fundingchoicesmessages.google.com https://*.adtrafficquality.google https://juvenilechoice.com; " +
       // The post-match video ad (components/ads/PostMatchVideoAd.tsx) plays a
       // provider-supplied creative in a native <video>. With no `media-src`,
       // media falls back to `default-src 'self'` and every ad video is blocked

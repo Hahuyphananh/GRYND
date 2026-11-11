@@ -198,6 +198,11 @@ export default function PvpResultScreen({
   // this for a one-off cross-page destination
   // instead of each game inventing its own button.
   secondaryAction = null,
+  // Optional "analyse this match" action, rendered above the generic
+  // secondaryAction. Pass `{ label, href }` to open the read-only analysis
+  // page for exactly this match. It exists as a PLAYER choice only: a result
+  // never navigates to an analysis on its own.
+  analysisAction = null,
   onReturnToLobby = null,
   onDismiss = null,
   dismissLabel = "View Match Results",
@@ -329,6 +334,23 @@ export default function PvpResultScreen({
   // their choice registered: it carries a small inline spinner until the ad
   // settles (played, skipped, or unavailable).
   const [pendingExit, setPendingExit] = useState(null);
+
+  // A RESULT SCREEN CAN OUTLIVE A RESULT. A rematch or a re-deal navigates to a
+  // NEW match on the SAME route, where React keeps this component instance
+  // alive. Per-result state therefore has to be reset when a result opens, or
+  // the next match inherits the previous one's flags: `adAttemptedRef` would
+  // already be spent (so the video is never offered again) and `navigating`
+  // would still be true (so every exit button is disabled). One attempt per
+  // RESULT, not one attempt per mounted component.
+  useEffect(() => {
+    if (!open) return;
+    adAttemptedRef.current = false;
+    adOpenRef.current = false;
+    pendingExitRef.current = null;
+    setAdOpen(false);
+    setPendingExit(null);
+    setNavigating(false);
+  }, [open]);
 
   const style = OUTCOME_STYLES[outcome] || OUTCOME_STYLES.draw;
   const OutcomeIcon = style.icon;
@@ -586,6 +608,23 @@ export default function PvpResultScreen({
   ];
   const hasDetails = allDetails.length > 0 || detailsContent !== null;
 
+  // A BOT OPPONENT IS A CHARACTER, NOT A HANDLE. Its hero shows the roster
+  // portrait the player just raced instead of an "@name" handle, because there
+  // is no account behind it. Real players keep the handle treatment.
+  const opponentPortrait = opponent?.imageSrc ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={opponent.imageSrc}
+      alt={opponent.imageAlt || `${opponent.name || "Opponent"} portrait`}
+      width={compact ? 64 : 80}
+      height={compact ? 64 : 80}
+      data-testid="result-opponent-image"
+      className={`aspect-square shrink-0 rounded-2xl border border-white/15 bg-black/30 object-cover object-center ${
+        compact ? "h-16 w-16" : "h-20 w-20"
+      }`}
+    />
+  ) : null;
+
   return (
     <AnimatePresence>
       {revealed && (
@@ -714,6 +753,74 @@ export default function PvpResultScreen({
                   >
                     @{opponent.name}
                   </p>
+                  {headline && headline !== style.tagline && (
+                    <p className={`mt-1.5 text-white/75 ${compact ? "text-[11px]" : "text-sm"}`}>
+                      {headline}
+                    </p>
+                  )}
+                </>
+              ) : outcome === "win" && opponent?.isAi && opponent.name ? (
+                <>
+                  <p
+                    className={`font-black uppercase tracking-[0.15em] text-emerald-300 drop-shadow-[0_0_12px_rgba(52,211,153,0.6)] ${
+                      compact ? "mt-2 text-sm" : "mt-2 text-lg sm:text-xl"
+                    }`}
+                  >
+                    You beat
+                  </p>
+                  {/* The bot's face, with its name and strength rating beside
+                      it — the three things the player actually raced. */}
+                  <div className="mt-2 flex items-center justify-center gap-3 text-left">
+                    {opponentPortrait}
+                    <div className="min-w-0">
+                      <p
+                        className={`truncate font-black text-[#f5ff3b] drop-shadow-[0_0_16px_rgba(255,215,0,0.55)] ${
+                          compact ? "text-2xl" : "text-3xl sm:text-4xl"
+                        }`}
+                      >
+                        {opponent.name}
+                      </p>
+                      {opponent.ratingLabel && (
+                        <p className="mt-1 inline-flex items-center gap-1 rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 font-mono text-[11px] font-bold text-amber-200">
+                          <IconTrophy size={11} aria-hidden="true" />
+                          {opponent.ratingLabel}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  {headline && headline !== style.tagline && (
+                    <p className={`mt-1.5 text-white/75 ${compact ? "text-[11px]" : "text-sm"}`}>
+                      {headline}
+                    </p>
+                  )}
+                </>
+              ) : outcome === "loss" && opponent?.isAi && opponent.name ? (
+                <>
+                  <p
+                    className={`font-black uppercase tracking-[0.15em] text-red-300 drop-shadow-[0_0_12px_rgba(248,113,113,0.55)] ${
+                      compact ? "mt-2 text-sm" : "mt-2 text-lg sm:text-xl"
+                    }`}
+                  >
+                    Defeated by
+                  </p>
+                  <div className="mt-2 flex items-center justify-center gap-3 text-left">
+                    {opponentPortrait}
+                    <div className="min-w-0">
+                      <p
+                        className={`truncate font-black text-white/95 ${
+                          compact ? "text-2xl" : "text-3xl sm:text-4xl"
+                        }`}
+                      >
+                        {opponent.name}
+                      </p>
+                      {opponent.ratingLabel && (
+                        <p className="mt-1 inline-flex items-center gap-1 rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 font-mono text-[11px] font-bold text-amber-200">
+                          <IconTrophy size={11} aria-hidden="true" />
+                          {opponent.ratingLabel}
+                        </p>
+                      )}
+                    </div>
+                  </div>
                   {headline && headline !== style.tagline && (
                     <p className={`mt-1.5 text-white/75 ${compact ? "text-[11px]" : "text-sm"}`}>
                       {headline}
@@ -975,6 +1082,17 @@ export default function PvpResultScreen({
                     name={opponent.name}
                     size="h-11 w-11"
                   />
+                ) : opponent.imageSrc ? (
+                  // A bot's roster portrait — same artwork the player raced.
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={opponent.imageSrc}
+                    alt={opponent.imageAlt || `${opponent.name || "Opponent"} portrait`}
+                    width={44}
+                    height={44}
+                    data-testid="result-opponent-strip-image"
+                    className="h-11 w-11 shrink-0 rounded-xl border border-white/15 bg-black/30 object-cover object-center"
+                  />
                 ) : (
                   <div className="flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-white/10 text-lg font-black text-[#d8fbff]">
                     {(opponent.name || "?").charAt(0).toUpperCase()}
@@ -1015,6 +1133,7 @@ export default function PvpResultScreen({
             {/* Actions */}
             {(playAgain ||
               rematch ||
+              analysisAction ||
               secondaryAction ||
               onReturnToLobby ||
               onDismiss) && (
@@ -1046,6 +1165,21 @@ export default function PvpResultScreen({
                     )}
                     {rematch.label || "Rematch"}
                   </button>
+                )}
+                {/* Match analysis. A deliberate departure from the result,
+                    requested by the player — never opened automatically — so
+                    it goes through the same exit gate as every other control. */}
+                {analysisAction && analysisAction.href && (
+                  <Link
+                    href={analysisAction.href}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      guard("analysis", () => router.push(analysisAction.href))();
+                    }}
+                    className="flex w-full items-center justify-center rounded-xl border border-cyan-300/40 bg-cyan-300/10 px-5 py-3 text-sm font-bold text-cyan-200 transition hover:bg-cyan-300/20"
+                  >
+                    {analysisAction.label || "Match analysis"}
+                  </Link>
                 )}
                 {/* Generic extra action — navigation (href) uses the router link
                     so it prefetches like any other in-app route; an in-page

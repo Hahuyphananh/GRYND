@@ -210,6 +210,12 @@ test("picker: a radiogroup of swatches with a reset, labelled for assistive tech
   assert.match(picker, /✓/);
   // Collapsed by default so the board keeps its height budget.
   assert.match(picker, /<details/);
+  // Phones get a bottom sheet (pinned, measured against the board) instead of a
+  // dropdown that covers the top row of a timed match; >= sm keeps the popover.
+  assert.match(picker, /fixed inset-x-0 bottom-0/, "the phone panel is pinned to the bottom");
+  assert.match(picker, /sm:absolute/, "the wider-screen panel is the existing popover");
+  assert.match(picker, /solitaire-board/, "the sheet measures the board it must not cover");
+  assert.match(picker, /solitaire-theme-sheet-done/, "the sheet has an explicit way out");
 });
 
 test("modes: solo, daily, practice and ranked all render the one themed board", () => {
@@ -221,12 +227,26 @@ test("modes: solo, daily, practice and ranked all render the one themed board", 
   const daily = code("src/app/daily/PageClient.tsx");
   assert.match(daily, /<SoloSolitaireGame[\s\S]*mode="daily"/);
 
-  // Ranked PvP and practice both go through the match page's shared board.
+  // Ranked PvP and practice both go through the match page's shared board, so
+  // the selector has to be reachable there too — not only on solo/daily — or a
+  // player would have to leave a live match to change the table.
   assert.match(code(MATCH), /<SolitaireBoard/);
+  assert.match(
+    code(MATCH),
+    /import SolitaireThemePicker from "\.\.\/\.\.\/\.\.\/\.\.\/components\/solitaire-duel\/SolitaireThemePicker"/,
+    "the match page must import the shared selector",
+  );
+  assert.match(code(MATCH), /<SolitaireThemePicker \/>/, "ranked and practice host the selector");
   assert.match(code("src/app/casino/solitaire-duel/play-ai/PageClient.tsx"), /create-ai|play-ai|solitaire-duel/, "practice enters through the same match page");
 
-  // The portal build mounts the same component, so a theme applies there too.
+  // The portal build mounts the same components, so a theme applies there too.
   assert.match(code(STANDALONE), /<SolitaireBoard/);
+  assert.match(
+    code(STANDALONE),
+    /import SolitaireThemePicker from "\.\.\/\.\.\/\.\.\/src\/components\/solitaire-duel\/SolitaireThemePicker"/,
+    "the portal must import the shared selector, not reimplement it",
+  );
+  assert.match(code(STANDALONE), /<SolitaireThemePicker \/>/, "the portal hosts the selector");
 
   // No page paints its own felt: the board owns every table surface.
   for (const path of [SOLO, MATCH, "src/app/solitaire/PageClient.tsx", "src/app/daily/PageClient.tsx"]) {

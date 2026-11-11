@@ -300,6 +300,13 @@ test("the CSP lets AdSense's ad frames through", () => {
     /fundingchoicesmessages\.google\.com/,
     "the consent message is served from fundingchoicesmessages.google.com",
   );
+  // AdSense frames this on every impression to score traffic quality; without
+  // it the unit still paints but every page reports a CSP violation.
+  assert.match(
+    frameSrc[0],
+    /adtrafficquality\.google/,
+    "AdSense's traffic-quality frame is served from adtrafficquality.google",
+  );
 });
 
 test("public/ads.txt authorises this exact publisher as a direct seller", () => {
@@ -332,13 +339,22 @@ test("EEA, UK and Swiss visitors get Google's CMP instead of our banner", () => 
     LAYOUT.includes("requiresGoogleCmp(countryFromHeaders(requestHeaders))"),
     "the layout must decide the region on the server from the request headers",
   );
+  // The layout decides the region once; the components themselves moved into
+  // <SiteChrome> so the portal surface can drop the whole chrome. Both the
+  // hand-off and the props are asserted, so neither half can drift silently.
   assert.match(
     LAYOUT,
+    /<SiteChrome requiresCmp=\{requiresCmp\}>/,
+    "the CMP decision must reach the chrome that renders the consent UI",
+  );
+  const CHROME = read("src/components/SiteChrome.tsx");
+  assert.match(
+    CHROME,
     /<CookieConsentBanner suppressForCmp=\{requiresCmp\} \/>/,
     "our banner must stand aside where Google's CMP applies",
   );
   assert.match(
-    LAYOUT,
+    CHROME,
     /<CmpConsentBridge enabled=\{requiresCmp\} \/>/,
     "the CMP decision must be mirrored back for the local consent record",
   );
