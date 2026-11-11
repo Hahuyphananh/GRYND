@@ -646,6 +646,56 @@ export function planAiSolution({
   return { moves, state: current, completed: Boolean(current.completed), stuck: false };
 }
 
+/**
+ * Follow a PROVEN solution line from an explicit cursor.
+ *
+ * `planAiSolution` assumes the line cursor equals `state.ply`, which is only
+ * true for a bot that has followed the line from the opening. A RECOVERING bot
+ * carries its `ply` forward across a re-deal (the move log must stay unique),
+ * so its line position is persisted separately as `aiLineCursor` and passed
+ * here. Every move is replayed through `applyMove`; a refused move returns null
+ * so the caller can fall back instead of inventing a move.
+ */
+export function planAiLine({
+  state,
+  line,
+  cursor = 0,
+  maxMoves = 64,
+}: {
+  state: SolitaireState;
+  line: readonly SolitaireMove[] | null | undefined;
+  cursor?: number;
+  maxMoves?: number;
+}): {
+  moves: SolitaireMove[];
+  state: SolitaireState;
+  completed: boolean;
+  cursor: number;
+} | null {
+  if (!state || state.completed || !line || line.length === 0) return null;
+
+  let index = Math.max(0, Math.trunc(Number(cursor) || 0));
+  if (index >= line.length) return null;
+
+  const moves: SolitaireMove[] = [];
+  let current = state;
+  const end = Math.min(index + Math.max(1, Math.floor(maxMoves)), line.length);
+
+  for (; index < end && !current.completed; index += 1) {
+    const applied = applyMove({ state: current, move: line[index] });
+    if (!applied.ok) return null;
+    current = applied.state as SolitaireState;
+    moves.push(line[index]);
+  }
+
+  return {
+    moves,
+    state: current,
+    completed: Boolean(current.completed),
+    cursor: index,
+  };
+}
+
 /** The suit of the top waste card, exposed for tests and diagnostics. */
 export function wasteTopSuit(state: SolitaireState): Suit | null {
   const top = state.waste?.[state.waste.length - 1];

@@ -86,7 +86,7 @@ test("an unverifiable deal is simply not claimed", () => {
   assert.equal(typeof honest, "boolean");
 });
 
-test("practice matches are dealt a finishable board, and bot re-deals re-verify", () => {
+test("practice matches are dealt a finishable board, and a stall recovers", () => {
   const strip = (path) =>
     fs
       .readFileSync(path, "utf8")
@@ -102,6 +102,9 @@ test("practice matches are dealt a finishable board, and bot re-deals re-verify"
   // The bot's mid-race re-deal must use the same guarantee, not a fresh random
   // proven-solvable board that dead-ends it again.
   assert.match(store, /match\.isAi && seat === SEAT\.PLAYER2/);
-  // and it must still never consult the deal's proven solution
-  assert.doesNotMatch(store, /planAiSolution|solveDealLine/);
+  // A stalled heuristic is recovered onto the committed deal's proven line, so
+  // the bot always finishes instead of spinning on a dead end.
+  assert.match(store, /planAiLine\(/);
+  assert.match(store, /solveDealLine\(matchDeal\)/);
+  assert.match(store, /aiStagnant/);
 });

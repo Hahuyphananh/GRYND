@@ -195,6 +195,12 @@ export function cloneState(state: SolitaireState): SolitaireState {
     peakFoundation: state.peakFoundation,
     completed: state.completed,
     completedAtMs: state.completedAtMs,
+    // Server-only practice-bot recovery bookkeeping. Carried through every move
+    // so a clock-sliced plan keeps its line cursor and stall count. Copied only
+    // when present, so an ordinary board keeps exactly its old shape.
+    ...(state.aiLineActive !== undefined ? { aiLineActive: state.aiLineActive } : null),
+    ...(state.aiLineCursor !== undefined ? { aiLineCursor: state.aiLineCursor } : null),
+    ...(state.aiStagnant !== undefined ? { aiStagnant: state.aiStagnant } : null),
   };
 }
 

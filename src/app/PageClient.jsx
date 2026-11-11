@@ -26,6 +26,7 @@ import NavigationBar from "../components/navigation-bar";
 import Footer from "../components/Footer";
 import SolitaireLobby from "../components/solitaire-duel/SolitaireLobby";
 import ReportEntryButton from "../components/reports/ReportEntryButton";
+import HeroCard3D from "../components/home/HeroCard3D";
 import { clearSessionArtifacts } from "../lib/security/sessionCleanup";
 
 const formatDate = (ms) => {
@@ -53,6 +54,8 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null }) {
 
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [termsLoading, setTermsLoading] = useState(true);
+  const [termsSaving, setTermsSaving] = useState(false);
+  const [termsError, setTermsError] = useState("");
   const [stats, setStats] = useState(null);
   const [trophies, setTrophies] = useState(null);
   const [board, setBoard] = useState(null);
@@ -141,12 +144,27 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null }) {
   }, [isSignedIn]);
 
   const handleAcceptTerms = async () => {
+    setTermsSaving(true);
+    setTermsError("");
     try {
-      const res = await fetch("/api/user/accept-terms", { method: "POST" });
-      const data = await res.json();
-      if (data.success) setShowTermsModal(false);
+      // The API middleware rejects mutations without an application/json
+      // content type, so the acceptance must be sent as a (empty) JSON body.
+      const res = await fetch("/api/user/accept-terms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+        credentials: "same-origin",
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success) {
+        setShowTermsModal(false);
+        return;
+      }
+      setTermsError(data?.error || "Could not save your acceptance. Please try again.");
     } catch {
-      // the gate persists until the next successful accept
+      setTermsError("Could not save your acceptance. Please try again.");
+    } finally {
+      setTermsSaving(false);
     }
   };
 
@@ -216,6 +234,8 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null }) {
       <main className="mx-auto max-w-6xl px-4 pt-24 sm:px-6 md:pt-28">
         {/* ── Hero ──────────────────────────────────────────────────────── */}
         <section className="border-b border-white/10 pb-8 pt-4 sm:pb-10">
+          <div className="grid items-center gap-8 lg:grid-cols-[minmax(0,1fr)_18rem] xl:grid-cols-[minmax(0,1fr)_21rem]">
+            <div className="min-w-0">
           <p className="text-[11px] font-black uppercase tracking-[0.4em] text-cyan-300/80">
             GRYND · competitive Solitaire
           </p>
@@ -252,6 +272,16 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null }) {
           <p className="mt-4 text-xs font-semibold uppercase tracking-[0.16em] text-white/35">
             Real opponents · Free ranked ladder · Server-verified results
           </p>
+            </div>
+
+            {/* The visual is its own grid column: it can never cover the
+                heading, copy, CTA or nav. On mobile it follows the copy. */}
+            <div className="relative flex justify-center lg:justify-end">
+              <div className="w-[10.5rem] sm:w-[12.5rem] lg:w-[15rem] xl:w-[16.5rem]">
+                <HeroCard3D />
+              </div>
+            </div>
+          </div>
         </section>
 
         {/* ── Three ways to play ────────────────────────────────────────── */}
@@ -566,31 +596,54 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null }) {
               GRYND is a free competitive Solitaire platform. Play is for rating
               and trophies only — there is no wagering, no entry fee and no
               cash-out. By continuing you agree to the{" "}
-              <Link href="/terms" className="text-cyan-300 underline">
+              {/* Opened in a new tab so reading the policies never leaves
+                  this page: the pending acceptance survives and the player
+                  comes back to the same gate rather than a fresh load. */}
+              <Link
+                href="/terms"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-cyan-300 underline"
+              >
                 Terms of Service
+                <span className="sr-only"> (opens in a new tab)</span>
               </Link>{" "}
               and{" "}
-              <Link href="/privacy-policy" className="text-cyan-300 underline">
+              <Link
+                href="/privacy-policy"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-cyan-300 underline"
+              >
                 Privacy Policy
+                <span className="sr-only"> (opens in a new tab)</span>
               </Link>
               .
             </p>
             {termsLoading ? null : (
-              <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  onClick={handleRejectTerms}
-                  className="rounded-lg border border-red-500/40 bg-red-500/10 px-5 py-2.5 text-sm font-bold text-red-300"
-                >
-                  Decline and sign out
-                </button>
-                <button
-                  type="button"
-                  onClick={handleAcceptTerms}
-                  className="rounded-lg bg-cyan-400 px-5 py-2.5 text-sm font-bold text-[#04121a]"
-                >
-                  I agree
-                </button>
+              <div className="mt-6">
+                {termsError ? (
+                  <p className="mb-3 text-sm font-semibold text-red-300" role="alert">
+                    {termsError}
+                  </p>
+                ) : null}
+                <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={handleRejectTerms}
+                    className="rounded-lg border border-red-500/40 bg-red-500/10 px-5 py-2.5 text-sm font-bold text-red-300"
+                  >
+                    Decline and sign out
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAcceptTerms}
+                    disabled={termsSaving}
+                    className="rounded-lg bg-cyan-400 px-5 py-2.5 text-sm font-bold text-[#04121a] disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {termsSaving ? "Saving…" : "I agree"}
+                  </button>
+                </div>
               </div>
             )}
           </div>

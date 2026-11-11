@@ -26,7 +26,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
+import PostMatchAdSlot from "../ads/PostMatchAdSlot";
 import SolitaireBoard from "./SolitaireBoard";
 import SolitaireThemePicker from "./SolitaireThemePicker";
 import AutoFinishAnimation from "./AutoFinishAnimation";
@@ -228,6 +230,14 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
   const [finishing, setFinishing] = useState<FlyingCard[] | null>(null);
   const pendingFinishRef = useRef<FlyingCard[] | null>(null);
   const submittedRef = useRef<string | null>(null);
+  const router = useRouter();
+  // The post-match ad is offered once per finished game, when the player picks
+  // an exit action — never over the result itself. The chosen action is parked
+  // until the slot reports back, so an unavailable ad cannot strand the panel.
+  const [adOpen, setAdOpen] = useState(false);
+  const [pendingExit, setPendingExit] = useState<string | null>(null);
+  const pendingExitRef = useRef<(() => void) | null>(null);
+  const adAttemptedRef = useRef(false);
 
   // The finish is measured inside the state updater (while the old board is
   // still on screen) and released here, so the overlay mounts on the commit
@@ -256,6 +266,7 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
     setPersonalBest(false);
     setError(null);
     setFinishing(null);
+    adAttemptedRef.current = false;
     storeSession(next);
   }, []);
 
@@ -510,6 +521,7 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
     setError(null);
     setFinishing(null);
     submittedRef.current = null;
+    adAttemptedRef.current = false;
     storeSession(next);
   }, [abandonIfNeeded, session]);
 
@@ -528,8 +540,38 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
     setError(null);
     setFinishing(null);
     submittedRef.current = null;
+    adAttemptedRef.current = false;
     storeSession(next);
   }, [daily]);
+
+  // ── Post-match ad ────────────────────────────────────────────────────────
+  // Every exit on the win panel goes through this guard. The finished game
+  // earns one attempt: the action is parked and the slot decides whether a
+  // creative plays. When it reports back (played or unavailable) the parked
+  // action runs. A game that is still in progress exits immediately.
+  const guardExit = (key: string, action: () => void) => {
+    if (!session?.won || finishing) {
+      action();
+      return;
+    }
+    if (pendingExitRef.current || adOpen) return;
+    if (adAttemptedRef.current) {
+      action();
+      return;
+    }
+    adAttemptedRef.current = true;
+    pendingExitRef.current = action;
+    setPendingExit(key);
+    setAdOpen(true);
+  };
+
+  const handleAdSettled = useCallback(() => {
+    const next = pendingExitRef.current;
+    pendingExitRef.current = null;
+    setPendingExit(null);
+    setAdOpen(false);
+    next?.();
+  }, []);
 
   const elapsedMs = session ? Math.max(0, (session.endedAtMs ?? nowMs) - session.startedAtMs) : 0;
   const moves = session?.log.length ?? 0;
@@ -723,15 +765,43 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
                   </p>
                 )}
                 <div className="mt-5 flex flex-wrap justify-center gap-2">
-                  <button type="button" onClick={restart} className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400">
+                  <button
+                    type="button"
+                    onClick={() => guardExit("playAgain", restart)}
+                    disabled={Boolean(pendingExit)}
+                    aria-busy={pendingExit === "playAgain"}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400 disabled:opacity-60"
+                  >
+                    {pendingExit === "playAgain" && (
+                      <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    )}
                     Play again
                   </button>
                   {mode === "solo" ? (
-                    <button type="button" onClick={newSoloGame} className="rounded-lg border border-white/15 px-4 py-2 text-sm text-white">
+                    <button
+                      type="button"
+                      onClick={() => guardExit("newDeal", newSoloGame)}
+                      disabled={Boolean(pendingExit)}
+                      aria-busy={pendingExit === "newDeal"}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/15 px-4 py-2 text-sm text-white disabled:opacity-60"
+                    >
+                      {pendingExit === "newDeal" && (
+                        <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                      )}
                       New deal
                     </button>
                   ) : (
-                    <Link href="/" className="rounded-lg border border-white/15 px-4 py-2 text-sm text-white">
+                    <Link
+                      href="/"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        guardExit("lobby", () => router.push("/"));
+                      }}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/15 px-4 py-2 text-sm text-white"
+                    >
+                      {pendingExit === "lobby" && (
+                        <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                      )}
                       Back to lobby
                     </Link>
                   )}
@@ -743,6 +813,13 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
                 )}
               </div>
             </div>
+          )}
+
+          {adOpen && (
+            <PostMatchAdSlot
+              matchId={`solitaire:${session.mode}:${session.dateKey ?? session.seed}:${session.endedAtMs ?? "finished"}`}
+              onDone={handleAdSettled}
+            />
           )}
         </div>
       )}

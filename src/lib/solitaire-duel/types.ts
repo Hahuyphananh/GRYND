@@ -75,6 +75,20 @@ export type SolitaireState = {
   completed: boolean;
   /** Server instant the seat completed, or null. */
   completedAtMs: number | null;
+  /**
+   * SERVER-ONLY practice-bot recovery state.
+   *
+   * When the bot's visible-information heuristic dead-ends, the store resets
+   * its seat onto the committed deal's opening and follows that deal's proven
+   * line. `aiLineActive` marks that mode and `aiLineCursor` indexes the line;
+   * the move log still uses `ply`, which is carried forward. `aiStagnant`
+   * counts consecutive non-progressing moves across clock-sliced reads, so a
+   * stall cannot hide between polls. None of these fields is projected by
+   * `viewForState`.
+   */
+  aiLineActive?: boolean;
+  aiLineCursor?: number;
+  aiStagnant?: number;
 };
 
 /**

@@ -87,6 +87,19 @@ const FACE_DOWN_ADVANCE = CARD_RATIO - 0.86; // 0.56
 const BOARD_CW = (CARD_RATIO + (CARD_RATIO + 6 * FACE_UP_ADVANCE)).toFixed(2); // "7.04"
 
 /**
+ * The felt's floor: the height of a full table, in card widths.
+ *
+ * Once the last card reaches a foundation the tableau is empty, so the board's
+ * content is only the top row. Without a floor the felt collapses under the
+ * finish animation (and again when the animation unmounts and the victory panel
+ * takes over), pulling the page and the foundations around. This minimum is
+ * derived from the same geometry as the height budget, so it scales with the
+ * card clamp on every viewport. There is deliberately NO maximum: the felt may
+ * still grow past the floor with its content.
+ */
+const MIN_BOARD_HEIGHT = `calc(var(--cw) * ${BOARD_CW})`;
+
+/**
  * Everything stacked ABOVE the tableau, in rem: the page's top padding, the
  * navigation bar, the header block, the two progress meters and the board's own
  * bordered frame. This is what the height term has to leave room for — the
@@ -689,9 +702,14 @@ export default function SolitaireBoard({
           "--sol-legal": theme.legal.ink,
           "--sol-legal-glow": theme.legal.glow,
           "--sol-legend": theme.legend,
-          // The felt keeps the height of the board the player finished on until
-          // the finish animation releases it (`holdHeight`).
-          ...(holdHeight && holdHeight > 0 ? { minHeight: `${holdHeight}px` } : null),
+          // The felt never collapses below a full table, even after the finish
+          // animation releases its measured pre-finish height. When that
+          // measurement is taller, max() keeps it; there is no maximum, so the
+          // board remains free to expand with its content.
+          minHeight:
+            holdHeight && holdHeight > 0
+              ? `max(${holdHeight}px, ${MIN_BOARD_HEIGHT})`
+              : MIN_BOARD_HEIGHT,
           backgroundImage: theme.felt,
           // The felt's edge is an INSET ring, never a border: a border would add
           // 4px to the height the `--cw` budget above was computed against.

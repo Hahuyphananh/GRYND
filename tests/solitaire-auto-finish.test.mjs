@@ -279,7 +279,12 @@ test("the board holds its pre-finish height until the flight is over", () => {
   assert.match(measure, /export function measureBoardHeight/);
   assert.match(measure, /height: measureBoardHeight\(\)/);
   assert.match(board, /holdHeight\?: number/);
-  assert.match(board, /minHeight: `\$\{holdHeight\}px`/);
+  // …and the felt has a full-table floor derived from its own geometry, so the
+  // empty tableau cannot collapse it while the flight or the victory panel is up.
+  assert.match(board, /const MIN_BOARD_HEIGHT = `calc\(var\(--cw\) \* \$\{BOARD_CW\}\)`/);
+  assert.match(board, /minHeight:\s*\n?\s*holdHeight && holdHeight > 0\s*\n?\s*\? `max\(\$\{holdHeight\}px, \$\{MIN_BOARD_HEIGHT\}\)`\s*\n?\s*: MIN_BOARD_HEIGHT/);
+  // No maximum: the floor must never stop the board expanding with its content.
+  assert.doesNotMatch(board, /maxHeight/);
   // …by BOTH finishes, for as long as the overlay is mounted.
   assert.match(solo, /holdHeight=\{finishing\?\.\[0\]\?\.board\.height\}/);
   assert.match(duel, /holdHeight=\{finishing\?\.\[0\]\?\.board\.height\}/);

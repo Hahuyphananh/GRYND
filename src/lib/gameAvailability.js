@@ -172,5 +172,11 @@ const ARCHIVED_API_PATH =
 
 /** True for a game-specific API request that belongs to an archived game. */
 export function isArchivedGameApiPath(pathname) {
-  return ARCHIVED_API_PATH.test(normalizeGameKey(pathname));
+  const path = normalizeGameKey(pathname);
+  // The vs-AI pause route is shared by EVERY practice surface, including
+  // Solitaire Duel, and does not belong to any one archived game's namespace.
+  // Leaving it in the archived `practice` group made Pause a silent 404 on
+  // every live practice page.
+  if (path === "/api/practice/pause") return false;
+  return ARCHIVED_API_PATH.test(path);
 }

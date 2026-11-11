@@ -53,8 +53,23 @@ import {
   VARIANT,
   VARIANT_VERSION,
 } from "./constants";
-import { aiMoveDelayMs, botCanFinishDeal, legalMoves, planAiMoves } from "./ai";
-import { solvableDealFromSeed, stateSolvableVerdict } from "./solvable";
+import {
+  AI_STAGNATION_LIMIT,
+  aiMoveDelayMs,
+  botCanFinishDeal,
+  legalMoves,
+  planAiLine,
+  planAiMoves,
+} from "./ai";
+import {
+  summarizeAiDialogueEvents,
+  type AiDialogueEventSummary,
+} from "./aiDialogueEvents";
+import {
+  solvableDealFromSeed,
+  solveDealLine,
+  stateSolvableVerdict,
+} from "./solvable";
 import { autoFinishPlan, type AutoFinishStep } from "./autoFinish";
 import {
   cloneState,
@@ -309,7 +324,12 @@ export function aiDifficultyForMatch(match: {
   return solitaireBotFor(match.aiDifficulty).id;
 }
 
-export function matchToDto(match: MatchRow, viewerId: string | null, nowMs = Date.now()) {
+export function matchToDto(
+  match: MatchRow,
+  viewerId: string | null,
+  nowMs = Date.now(),
+  aiEvents: AiDialogueEventSummary | null = null,
+) {
   const seats = seatsFromRow(match);
   const seat = seatForUser(seats, viewerId);
   const terminal = TERMINAL_STATUSES.includes(match.status);
@@ -358,6 +378,10 @@ export function matchToDto(match: MatchRow, viewerId: string | null, nowMs = Dat
     /** Server clock, so a client can render an accurate timer without trusting its own. */
     serverNow: nowMs,
     view: revealed && ownState ? viewForState(ownState) : null,
+    // ADDITIVE and optional: a compact, count-only summary of the bot's most
+    // recent planner batch. Null everywhere except the read that advanced a
+    // practice bot, and never a card, a column layout or a stock order.
+    aiEvents,
     progress: ownState ? progressOf(ownState) : null,
     opponent:
       revealed && otherState && opponentSeat
@@ -1082,15 +1106,15 @@ export async function advanceAiMatch({
 
     if (!match) return err("Match not found", 404);
     if (!match.isAi || match.status !== MATCH_STATUS.PLAYING || !match.player2Id) {
-      return { match, advanced: false } as const;
+      return { match, aiEvents: null, advanced: false } as const;
     }
 
     const goAtMs = instantMs(match.goAt);
-    if (goAtMs == null || nowMs < goAtMs) return { match, advanced: false } as const;
+    if (goAtMs == null || nowMs < goAtMs) return { match, aiEvents: null, advanced: false } as const;
     const seat = SEAT.PLAYER2;
     let state = stateForSeat(match, seat);
     if (!state || !isWellFormedState(state) || state.completed) {
-      return { match, advanced: false } as const;
+      return { match, aiEvents: null, advanced: false } as const;
     }
 
     const delayMs = aiMoveDelayMs(match.aiDifficulty);
@@ -1100,32 +1124,110 @@ export async function advanceAiMatch({
       0,
       Math.min(allowedPly - state.ply, MAX_MOVES_PER_SEAT - state.ply),
     );
-    if (maxMoves <= 0) return { match, advanced: false } as const;
+    if (maxMoves <= 0) return { match, aiEvents: null, advanced: false } as const;
 
     const startPly = state.ply;
-    // THE BOT PLAYS FROM ITS OWN VISIBLE BOARD. The deal's proven solution is
-    // deliberately NOT consulted: it would give the bot the stock order and the
-    // identities of face-down cards the human cannot see. The named profile in
-    // `./ai` decides only from legal moves and visible structure.
-    const plan = planAiMoves({
-      state,
-      difficulty: match.aiDifficulty,
-      maxMoves,
-    });
-    // The BOT's own seat is re-dealt when its planner has run out of road —
-    // `stuck` means no legal move at all, or `AI_STAGNATION_LIMIT` moves that
-    // changed nothing (a deal its heuristic cannot advance). This is
-    // deliberately NOT the human gate above: a bot that merely sits on a board
-    // it cannot progress would spin there for the rest of the race, so giving
-    // it a fresh SOLVABLE deal is what keeps it racing. It only ever rewrites
-    // the bot's own seat (see `redealSeatInTx`), so the human's board, the GO
-    // instant and both clocks are untouched.
-    const stuck = !plan.completed && plan.stuck;
+    const beforeState = state;
+    // JSONB is untyped in the row; the generator wrote a real SolitaireDeal.
+    const matchDeal = (match.deal ?? null) as SolitaireDeal | null;
+
+    // A bot that has already run out of heuristic road follows the deal's
+    // PROVEN line. `solveDealLine` is the generator's own replayed witness, so
+    // this path always reaches 52 cards instead of stalling on a dead end.
+    const lineActive = Boolean(state.aiLineActive);
+    const line = lineActive && matchDeal ? solveDealLine(matchDeal) : null;
+    const linePlan =
+      lineActive && line
+        ? planAiLine({
+            state,
+            line,
+            cursor: state.aiLineCursor ?? 0,
+            maxMoves,
+          })
+        : null;
+
+    // THE BOT PLAYS FROM ITS OWN VISIBLE BOARD while the heuristic has a road.
+    // The named profile in `./ai` decides only from legal moves and visible
+    // structure; the proven line is a dead-end RECOVERY path only.
+    const plan = linePlan
+      ? {
+          moves: linePlan.moves,
+          state: linePlan.state,
+          completed: linePlan.completed,
+          stuck: false,
+        }
+      : planAiMoves({
+          state,
+          difficulty: match.aiDifficulty,
+          maxMoves,
+        });
+
+    // Cross-read stagnation. `planAiMoves` counts stagnation inside ONE read,
+    // but the store plans clock-sliced batches, so a bot cycling the stock
+    // between beats reset that counter forever and never tripped its stall
+    // guard. This count lives in the seat's own state instead.
+    const beforeProgress = progressOf(beforeState);
+    const plannedProgress = progressOf(plan.state);
+    const progressed =
+      plannedProgress.foundationCards > beforeProgress.foundationCards ||
+      plannedProgress.revealedTableau > beforeProgress.revealedTableau;
+    const stagnant = linePlan
+      ? 0
+      : progressed
+        ? 0
+        : (beforeState.aiStagnant ?? 0) + plan.moves.length;
+    // A stalled board is recovered onto the deal's proven line. It is never
+    // left spinning: a bot that cannot progress must still finish the puzzle,
+    // at its normal per-move pace.
+    const stuck =
+      !linePlan &&
+      !plan.completed &&
+      (plan.stuck || stagnant >= AI_STAGNATION_LIMIT);
     if (plan.moves.length === 0 && !stuck) {
-      return { match, advanced: false } as const;
+      return { match, aiEvents: null, advanced: false } as const;
     }
 
     state = plan.state;
+    state.aiStagnant = stagnant;
+    if (linePlan) {
+      state.aiLineActive = true;
+      state.aiLineCursor = linePlan.cursor;
+    } else if (lineActive) {
+      // A legacy/corrupted line that no longer replays: drop back to the
+      // heuristic rather than freezing the seat on an unusable plan.
+      state.aiLineActive = false;
+      state.aiLineCursor = 0;
+    }
+    // Derived AFTER planning from the three things the planner already
+    // produced. Read-only, count-only, and suppressed on a recovery tick.
+    const aiEvents = summarizeAiDialogueEvents({
+      before: beforeState,
+      moves: plan.moves,
+      after: state,
+      suppressed: stuck,
+    });
+
+    // THE RECOVERY. The bot's board is reset onto the SAME committed deal's
+    // opening and the proven line is followed from its first move. The ply
+    // cursor is carried forward (it is the move log's key) and `resetCount`
+    // signals the replacement, exactly like the old re-deal. This guarantees
+    // every profile can finish the puzzle while the clock still paces each
+    // line move at `moveDelayMs`.
+    let recovery = false;
+    if (stuck) {
+      const recoveryLine = matchDeal ? solveDealLine(matchDeal) : null;
+      if (matchDeal && recoveryLine && recoveryLine.length > 0) {
+        const opening = initialStateFromDeal(matchDeal);
+        opening.ply = state.ply;
+        opening.resetCount = (state.resetCount ?? 0) + 1;
+        opening.peakFoundation = state.peakFoundation ?? 0;
+        opening.aiLineActive = true;
+        opening.aiLineCursor = 0;
+        opening.aiStagnant = 0;
+        state = opening;
+        recovery = true;
+      }
+    }
     const completedNow = plan.completed && !state.completedAtMs;
     if (completedNow) {
       // The simulated instant of the completing move, never the read instant.
@@ -1163,10 +1265,9 @@ export async function advanceAiMatch({
       .returning();
 
     let changed = updated ?? match;
-    // A stalled bot board is replaced with a fresh solvable deal, carrying the
-    // bot's move cursor and reset count forward and leaving every other field
-    // (the human's board, the clock, the last-action stamps) untouched.
-    if (stuck) {
+    // Only a board with no replayed line at all falls back to the legacy
+    // random re-deal; every normal stall was recovered above.
+    if (stuck && !recovery) {
       changed = await redealSeatInTx(tx, changed, seat, nowMs);
     }
 
@@ -1177,15 +1278,24 @@ export async function advanceAiMatch({
     });
     if (outcome) finalRow = await finalizeMatch(tx, changed, outcome, nowMs);
 
-    return { match: finalRow, advanced: true } as const;
+    return { match: finalRow, aiEvents, advanced: true } as const;
   });
 }
 
 /** Advance the bot (when the row is a practice match) and return the row. */
-async function advanceAiIfPractice(match: MatchRow, nowMs: number): Promise<MatchRow> {
-  if (!match.isAi || match.status !== MATCH_STATUS.PLAYING) return match;
+async function advanceAiIfPractice(
+  match: MatchRow,
+  nowMs: number,
+): Promise<{
+  match: MatchRow;
+  aiEvents: AiDialogueEventSummary | null;
+}> {
+  if (!match.isAi || match.status !== MATCH_STATUS.PLAYING) {
+    return { match, aiEvents: null };
+  }
   const advanced = await advanceAiMatch({ matchId: match.id, nowMs });
-  return "error" in advanced ? match : advanced.match;
+  if ("error" in advanced) return { match, aiEvents: null };
+  return { match: advanced.match, aiEvents: advanced.aiEvents };
 }
 
 // ── Reads ─────────────────────────────────────────────────────────────────
@@ -1232,7 +1342,11 @@ export async function fetchMatch({
   // For a practice match the bot is advanced to NOW first, so every poll shows
   // its live board progress (and finalizes the match the instant it solves the
   // deal). A human row is untouched by this step.
-  match = await advanceAiIfPractice(match, nowMs);
+  const advancedRead = await advanceAiIfPractice(match, nowMs);
+  match = advancedRead.match;
+  // Retained for THIS response only. A later re-deal or inactivity resolution
+  // does not rewrite it, but the summary describes only the bot's batch.
+  let aiEvents = advancedRead.aiEvents;
 
   // An UNWINNABLE position is resolved on READ too. A player is only ever shown
   // their OWN board, so only the reader's own seat is inspected — and only when
@@ -1269,7 +1383,7 @@ export async function fetchMatch({
       .where(eq(solitaireDuelMatches.id, matchId));
   }
 
-  return { match, dto: matchToDto(match, userId, nowMs) } as const;
+  return { match, dto: matchToDto(match, userId, nowMs, aiEvents) } as const;
 }
 
 /** The append-only move log for one seat, oldest first. */

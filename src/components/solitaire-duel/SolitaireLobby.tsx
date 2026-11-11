@@ -365,6 +365,9 @@ export default function SolitaireLobby({ variant = "home" }: { variant?: "home" 
     error,
     waitingSubtitle:
       "Pairing you with another player on the same free ranked ladder. Nothing is wagered.",
+    // Solitaire never shows the "you've been playing for N minutes" popup:
+    // reminding a player of elapsed time here is a nag, not a safeguard.
+    sessionReminder: false,
     backHref: "/games/solitaire-duel",
     backLabel: "Solitaire rules",
     extraActions: (

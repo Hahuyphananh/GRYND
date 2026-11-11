@@ -302,9 +302,10 @@ test("client: a live PRACTICE match polls, because the bot only moves when it is
   assert.match(store, /async function advanceAiIfPractice/, "the read-time advance must exist");
   assert.match(
     store,
-    /match = await advanceAiIfPractice\(match, nowMs\)/,
+    /const advancedRead = await advanceAiIfPractice\(match, nowMs\)/,
     "fetchMatch is what advances the bot — a read IS the bot's clock",
   );
+  assert.match(store, /match = advancedRead\.match;/);
   assert.match(code(REALTIME_SERVER), /solitaire-duel:ready/);
   // …and there is no server-side scheduler that could advance it instead: the
   // realtime server only RELAYS events, it never drives a bot.
@@ -600,10 +601,14 @@ test("copy: the routes state the format", () => {
 
 // ── 7. Bots play fair ────────────────────────────────────────────────────
 
-test("bots: practice never consults the deal's proven solution", () => {
+test("bots: practice plays the heuristic, then recovers on the proven line", () => {
   const store = code(STORE);
   assert.match(store, /planAiMoves\(\{/);
-  assert.doesNotMatch(store, /planAiSolution|solveDealLine/);
+  // A stalled bot follows the committed deal's proven line so it can always
+  // finish the board; the line is a dead-end recovery, never the first-choice
+  // decision path (normal play is still the visible-information heuristic).
+  assert.match(store, /planAiLine\(\{/);
+  assert.match(store, /solveDealLine\(matchDeal\)/);
   assert.match(store, /bot: match\.isAi/);
   assert.match(store, /publicSolitaireBot/);
 

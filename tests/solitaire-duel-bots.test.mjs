@@ -34,13 +34,17 @@ import {
   chooseAiMove,
   evaluateMoveForBot,
   legalMoves,
+  planAiLine,
   planAiMoves,
 } from "../src/lib/solitaire-duel/ai.ts";
 import {
   applyMove,
   initialStateFromDeal,
 } from "../src/lib/solitaire-duel/rules.ts";
-import { solvableDealFromSeed } from "../src/lib/solitaire-duel/solvable.ts";
+import {
+  solvableDealFromSeed,
+  solveDealLine,
+} from "../src/lib/solitaire-duel/solvable.ts";
 
 const BOT_ORDER = ["rookie", "felix", "ace", "professor", "grandmaster", "perfect"];
 
@@ -290,9 +294,9 @@ test("Perfect's decision is invariant to hidden cards and stock order", () => {
   }
 });
 
-// ── The server/standalone never hand the bot the solution ────────────────
+// ── The server plays the heuristic, then recovers on the proven line ──────
 
-test("practice code does not consult the proven deal solution", () => {
+test("practice code only consults the proven line as a dead-end recovery", () => {
   const strip = (path) =>
     fs
       .readFileSync(path, "utf8")
@@ -301,12 +305,36 @@ test("practice code does not consult the proven deal solution", () => {
       .replace(/(^|[^:])\/\/.*$/gm, "$1");
 
   const store = strip("src/lib/solitaire-duel/serverStore.ts");
+  // The normal path is still the fair, visible-information heuristic.
   assert.match(store, /planAiMoves\(\{/);
-  assert.doesNotMatch(store, /planAiSolution|solveDealLine/);
+  // A stalled bot is recovered onto the committed deal's proven line, so it
+  // can always finish the board instead of spinning on a dead end.
+  assert.match(store, /planAiLine\(\{/);
+  assert.match(store, /solveDealLine\(matchDeal\)/);
 
   const standalone = strip("standalone/solitaire-duel/src/match.ts");
   assert.match(standalone, /planAiMoves\(\{/);
-  assert.doesNotMatch(standalone, /planAiSolution|solveDealLine/);
+});
+
+test("a proven line always finishes a served deal (the recovery guarantee)", () => {
+  for (const seed of [7, 2026, 4242, 31337, 99, 104729]) {
+    const deal = solvableDealFromSeed(seed);
+    const line = solveDealLine(deal);
+    assert.ok(line && line.length > 0, `seed ${seed}: a proven line exists`);
+
+    let state = initialStateFromDeal(deal);
+    let cursor = 0;
+    let plies = 0;
+    while (!state.completed && plies < 2_000) {
+      const plan = planAiLine({ state, line, cursor, maxMoves: 64 });
+      assert.ok(plan, `seed ${seed}: line move ${cursor} must replay legally`);
+      state = plan.state;
+      cursor = plan.cursor;
+      plies += plan.moves.length;
+    }
+
+    assert.equal(state.completed, true, `seed ${seed}: the line must finish the board`);
+  }
 });
 
 // ── The ladder a player actually feels ───────────────────────────────────

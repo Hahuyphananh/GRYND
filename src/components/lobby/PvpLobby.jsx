@@ -342,6 +342,10 @@ function LobbyTitle({ title }) {
 }
 
 export function PvpLobby({
+  // The responsible-play break reminder. It is ON everywhere except Solitaire,
+  // which opts out through `sessionReminder={false}`: a lobby that reports
+  // elapsed play time is a nag on a game people drop into for a quick deal.
+  sessionReminder = true,
   // identity
   title,
   subtitle,
@@ -458,7 +462,7 @@ export function PvpLobby({
 
   return (
     <DailyLossGuard>
-      <SessionGuard />
+      {sessionReminder && <SessionGuard />}
       {/* Unified full-screen "Searching for a match…" takeover — shown
           whenever a Play / Join / vs-AI action is in flight. Every game
           that renders this shared lobby gets the identical waiting

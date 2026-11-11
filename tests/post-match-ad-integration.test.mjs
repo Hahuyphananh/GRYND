@@ -518,6 +518,10 @@ test("bespoke result panels mount the shared slot themselves", () => {
       file: "src/app/casino/uno/game/[gameId]/PageClient.jsx",
       gate: /\{endPopup && adPending && <PostMatchAdSlot onDone=\{handleAdSettled\} \/>\}/,
     },
+    {
+      file: "src/components/solitaire-duel/SoloSolitaireGame.tsx",
+      gate: /\{adOpen && \(\s*<PostMatchAdSlot[\s\S]*?onDone=\{handleAdSettled\}/,
+    },
   ];
 
   for (const { file, gate } of panels) {
@@ -525,6 +529,26 @@ test("bespoke result panels mount the shared slot themselves", () => {
     assert.match(source, /import PostMatchAdSlot from/, `${file} must import the shared slot`);
     assert.match(source, gate, `${file} must render the slot only once its game is over`);
   }
+});
+
+test("solo and daily Solitaire offer the video on their exit actions", () => {
+  const solo = read("src/components/solitaire-duel/SoloSolitaireGame.tsx");
+
+  assert.match(solo, /import PostMatchAdSlot from "\.\.\/ads\/PostMatchAdSlot"/);
+  assert.match(solo, /guardExit\("playAgain", restart\)/);
+  assert.match(solo, /guardExit\("newDeal", newSoloGame\)/);
+  assert.match(solo, /guardExit\("lobby", \(\) => router\.push\("\/"\)\)/);
+  assert.match(solo, /onDone=\{handleAdSettled\}/, "the held action runs when the ad settles");
+  assert.match(
+    solo,
+    /if \(!session\?\.won \|\| finishing\) \{\s*action\(\);\s*return;/,
+    "an unfinished game never triggers the surface",
+  );
+  // Daily reuses the same panel, so it inherits the wiring.
+  assert.match(
+    read("src/app/daily/PageClient.tsx"),
+    /<SoloSolitaireGame[\s\S]*mode="daily"/,
+  );
 });
 
 test("the slot's answer is server-owned and takes no client input", () => {

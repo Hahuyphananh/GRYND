@@ -94,6 +94,9 @@ test("game-specific APIs for archived games are closed", () => {
   assert.equal(isArchivedGameApiPath("/api/solitaire-duel/create-or-join"), false);
   assert.equal(isArchivedGameApiPath("/api/leaderboard/trophy"), false);
   assert.equal(isArchivedGameApiPath("/api/user-stats"), false);
+  // The shared vs-AI pause route serves Solitaire too; blocking it made the
+  // Pause button a silent 404 on every live practice page.
+  assert.equal(isArchivedGameApiPath("/api/practice/pause"), false);
 });
 
 test("unavailable copy points at Solitaire and exposes no internals", () => {

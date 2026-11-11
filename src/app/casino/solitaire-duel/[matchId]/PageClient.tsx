@@ -78,6 +78,11 @@ import {
 } from "../../../../components/solitaire-duel/measureFinishCards";
 import { applyMoveToView } from "../../../../lib/solitaire-duel/optimistic";
 import BotAvatar from "../../../../components/solitaire-duel/BotAvatar";
+import BotSpeech from "../../../../components/solitaire-duel/BotSpeech";
+import { useSolitaireBotDialogue } from "../../../../hooks/useSolitaireBotDialogue";
+import { isSolitaireBotId } from "../../../../lib/solitaire-duel/bots";
+import type { SolitaireDialogueSnapshot } from "../../../../lib/solitaire-duel/dialogueEvents";
+import type { AiDialogueEventSummary } from "../../../../lib/solitaire-duel/aiDialogueEvents";
 import { useSocket } from "../../../../context/SocketProvider";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
 import GameEmoteLayer from "../../../../components/game/emotes/GameEmoteLayer";
@@ -169,6 +174,8 @@ type MatchDto = {
   view: SolitaireView | null;
   progress: SeatProgress | null;
   opponent: OpponentProgress | null;
+  /** Additive, count-only summary of the bot's latest planner batch. */
+  aiEvents?: AiDialogueEventSummary | null;
   players?: { player1: SeatIdentity; player2: SeatIdentity } | null;
 };
 
@@ -888,6 +895,31 @@ export default function SolitaireDuelMatchPage() {
   const viewerName = viewerIdentity?.name || "You";
   const canCancelLobby = status === "waiting" && seat === "player1";
   const isPractice = Boolean(match?.isAi);
+  // ── Opponent dialogue (practice only) ──────────────────────────────────
+  // The Phase 2 hook receives ONLY the presentation-safe counts this page
+  // already has. It never sees the bot's board, stock or move list, and it is
+  // passed null in a human duel, so PvP can never produce a bot line.
+  const practiceBotId =
+    practiceBot && isSolitaireBotId(practiceBot.id) ? practiceBot.id : null;
+  const dialogueSnapshot: SolitaireDialogueSnapshot | null =
+    isPractice && practiceBot && practiceBotId && match
+      ? {
+          matchId: match.matchId,
+          botId: practiceBotId,
+          status: match.status,
+          result: match.result,
+          seat: match.seat,
+          progress: match.progress,
+          opponent: match.opponent,
+          aiEvents: match.aiEvents ?? null,
+          view: match.view
+            ? { ply: match.view.ply, resetCount: match.view.resetCount }
+            : null,
+          goAtMs: match.goAtMs,
+          serverNow: match.serverNow,
+        }
+      : null;
+  const botLine = useSolitaireBotDialogue(dialogueSnapshot, { paused });
   // A practice match is untimed and unrated, so it can always be restarted —
   // even after the bot has finished, which is exactly when a player wants a
   // fresh deal. A rated duel only offers a rematch from its result screen.
@@ -1048,9 +1080,14 @@ export default function SolitaireDuelMatchPage() {
                         Unrated
                       </span>
                     </p>
-                    <p className="mt-0.5 truncate text-[11px] text-white/45">
-                      {practiceBot.description}
-                    </p>
+                    <BotSpeech
+                      bot={practiceBot}
+                      // One voice at a time: while the result is mounted the
+                      // opponent speaks there, not in the strip behind it.
+                      line={phase === "result" ? null : botLine}
+                      fallback={practiceBot.description}
+                      showAvatar={false}
+                    />
                   </div>
                 </div>
               )}
@@ -1418,6 +1455,22 @@ export default function SolitaireDuelMatchPage() {
         gameName="Solitaire Duel"
         onReturnToLobby={() => router.push("/casino/solitaire-duel")}
         gameKey="solitaire-duel"
+        // The opponent speaks in a practice result; the app mascot keeps its
+        // own reactions to rated duels. Never two voices on one result.
+        showGlitch={!isPractice}
+        extraContent={
+          isPractice &&
+          practiceBot &&
+          botLine &&
+          (botLine.event === "win" || botLine.event === "loss") ? (
+            <BotSpeech
+              bot={practiceBot}
+              line={botLine}
+              showAvatar={false}
+              testId="solitaire-bot-result-speech"
+            />
+          ) : null
+        }
         durationSeconds={resultDuration}
         sides={[
           {
