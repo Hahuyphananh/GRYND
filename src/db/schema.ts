@@ -619,6 +619,24 @@ export const userPresence = pgTable(
   })
 );
 
+// DAILY AUDIENCE SNAPSHOT — one aggregate row per UTC day.
+//
+// `user_presence` is overwritten on every heartbeat and `users`
+// `last_played_game_date` only remembers the latest day, so neither can produce
+// a peak-concurrency or daily-active trend after the fact. The 15-minute job
+// (`/api/jobs/audience-snapshot`) samples the live numbers into this table:
+// `peak_online` is a high-water mark, the rest are the current day's totals.
+// One narrow row per day, no per-user data, written/read only by the server.
+// See migration 0250.
+export const audienceDailySnapshots = pgTable("audience_daily_snapshots", {
+  day: date("day").primaryKey(),
+  peakOnline: integer("peak_online").notNull().default(0),
+  players: integer("players").notNull().default(0),
+  signups: integer("signups").notNull().default(0),
+  proMembers: integer("pro_members").notNull().default(0),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 export const userLoginRewards = pgTable("user_login_rewards", {
   userId: integer("user_id")
     .primaryKey()

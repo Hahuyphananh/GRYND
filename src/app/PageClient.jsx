@@ -27,11 +27,29 @@ import Footer from "../components/Footer";
 import SolitaireLobby from "../components/solitaire-duel/SolitaireLobby";
 import ReportEntryButton from "../components/reports/ReportEntryButton";
 import HeroCard3D from "../components/home/HeroCard3D";
+import Image from "next/image";
+import rankedModeArt from "../images/solitaire-mode-ranked.jpg";
+import soloModeArt from "../images/solitaire-mode-solo.jpg";
+import aiModeArt from "../images/solitaire-mode-ai.jpg";
+import dailyModeArt from "../images/solitaire-mode-daily.jpg";
+import { formatDuration } from "../lib/solitaire-duel/soloStats.js";
 import { clearSessionArtifacts } from "../lib/security/sessionCleanup";
 
 const formatDate = (ms) => {
   if (!ms) return "";
   return new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+};
+
+// A UTC date key (YYYY-MM-DD) as a short label. UTC is explicit so the viewer's
+// timezone can never move the day the server fixed the deal to.
+const formatDealDate = (dateKey) => {
+  const [year, month, day] = String(dateKey).split("-").map(Number);
+  if (!year || !month || !day) return "";
+  return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
 };
 
 const outcomeLabel = (outcome) => {
@@ -48,6 +66,121 @@ const outcomeTone = (outcome) => {
   return "text-sky-300";
 };
 
+// Every card previews all four table themes: its own table first, so a card at
+// rest shows the board the mode actually deals, and the rest while hovering.
+const MODE_ART_CYCLE_MS = 1400;
+const MODE_ART = [rankedModeArt, soloModeArt, aiModeArt, dailyModeArt];
+const artCycle = (primary) => [primary, ...MODE_ART.filter((art) => art !== primary)];
+
+// The four ways to play, as self-contained cards: each carries its own board
+// artwork (a real Klondike tableau, the same board the game renders), so the
+// grid reads like a game lobby rather than a row of text links.
+const MODES = [
+  {
+    key: "ranked",
+    href: "#lobby",
+    images: artCycle(rankedModeArt),
+    alt: "A Klondike board dealt on the ranked Solitaire table",
+    eyebrow: "Ranked PvP",
+    title: "Race a real person",
+    body: "The main competitive mode. Same deal, Elo on the line, never an AI opponent.",
+    cta: "Find a match",
+    shellClass: "border-cyan-400/30 hover:border-cyan-300/60 hover:bg-cyan-400/[0.06]",
+    pillClass: "border-cyan-400/60 text-cyan-300",
+    dotClass: "bg-cyan-300",
+    ctaClass: "text-cyan-300",
+  },
+  {
+    key: "solo",
+    href: "/solitaire",
+    images: artCycle(soloModeArt),
+    alt: "A freshly dealt solo Solitaire board",
+    eyebrow: "Solo",
+    title: "Play alone, right now",
+    body: "Classic Klondike with a timer, undo and personal bests. No queue, no opponent, no Elo.",
+    cta: "Start solo",
+    shellClass: "border-white/10 hover:border-white/25",
+    pillClass: "border-[#00e5ff]/60 text-[#9dd8ff]",
+    dotClass: "bg-[#00e5ff]",
+    ctaClass: "text-white/70 group-hover:text-white",
+  },
+  {
+    key: "ai",
+    href: "#practice",
+    images: artCycle(aiModeArt),
+    alt: "A Klondike board dealt for practice against the built-in bot",
+    eyebrow: "vs AI",
+    title: "Learn the rhythm",
+    body: "Unrated games against the built-in bot, with selectable difficulty. Clearly practice, never ranked.",
+    cta: "Practise vs AI",
+    shellClass: "border-violet-400/25 hover:border-violet-300/50",
+    pillClass: "border-violet-400/60 text-violet-200",
+    dotClass: "bg-violet-300",
+    ctaClass: "text-violet-200 group-hover:text-violet-100",
+  },
+  {
+    key: "daily",
+    anchor: "daily",
+    href: "/daily",
+    images: artCycle(dailyModeArt),
+    alt: "Today's shared Daily Challenge Klondike board",
+    eyebrow: "Daily",
+    title: "One deal, every day",
+    body: "The same deterministic Klondike deal for every player, fixed by the UTC date. One official result a day.",
+    cta: "Play today's deal",
+    shellClass: "border-amber-300/30 hover:border-amber-200/60",
+    pillClass: "border-amber-300/60 text-amber-200",
+    dotClass: "bg-amber-300",
+    ctaClass: "text-amber-200 group-hover:text-amber-100",
+  },
+];
+
+/**
+ * The card's board shot. While the card is hovered or keyboard-focused
+ * (`previewing`) it cycles through the four table themes, then returns to the
+ * mode's own table. The screenshots are stacked and cross-faded, so a swap
+ * never flashes. Cycling is skipped for visitors who ask for reduced motion.
+ */
+function ModeArt({ images, alt, previewing }) {
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    if (!previewing) {
+      setIndex(0);
+      return undefined;
+    }
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+    ) {
+      return undefined;
+    }
+    const timer = setInterval(() => {
+      setIndex((current) => (current + 1) % images.length);
+    }, MODE_ART_CYCLE_MS);
+    return () => clearInterval(timer);
+  }, [previewing, images.length]);
+
+  return (
+    <div className="absolute inset-0">
+      {images.map((image, position) => (
+        <Image
+          key={position}
+          src={image}
+          alt={position === index ? alt : ""}
+          aria-hidden={position !== index}
+          quality={85}
+          loading="lazy"
+          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+          className={`absolute inset-0 h-full w-full object-cover object-center transition-opacity duration-500 ${
+            position === index ? "opacity-100" : "opacity-0"
+          }`}
+        />
+      ))}
+    </div>
+  );
+}
+
 export default function MainComponent({ adSlot = null, hilltopSlot = null }) {
   const { isLoaded, isSignedIn, signOut } = useAuth();
   const { user } = useUser();
@@ -60,6 +193,14 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null }) {
   const [trophies, setTrophies] = useState(null);
   const [board, setBoard] = useState(null);
   const [recent, setRecent] = useState([]);
+  const [soloSummary, setSoloSummary] = useState(null);
+  const [soloLoaded, setSoloLoaded] = useState(false);
+  const [dailySummary, setDailySummary] = useState(null);
+  const [dailyDateKey, setDailyDateKey] = useState(null);
+  const [dailyLoaded, setDailyLoaded] = useState(false);
+  const [lobbyLoaded, setLobbyLoaded] = useState(false);
+  // Which mode card is being hovered/focused: its artwork previews the themes.
+  const [previewMode, setPreviewMode] = useState(null);
 
   // Terms gate — unchanged from the previous home page: a signed-in player who
   // has not accepted is asked before they keep playing.
@@ -132,16 +273,61 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null }) {
     fetch("/api/solitaire-duel/lobby", { cache: "no-store", credentials: "include" })
       .then((res) => res.json())
       .then((data) => {
-        if (!cancelled && data?.success && Array.isArray(data.data?.recent)) {
+        if (cancelled) return;
+        if (data?.success && Array.isArray(data.data?.recent)) {
           setRecent(data.data.recent);
         }
+        // Only now does the card know whether the caller has practice games;
+        // until this resolves it shows no claim rather than "none".
+        setLobbyLoaded(true);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setLobbyLoaded(true);
+      });
 
     return () => {
       cancelled = true;
     };
   }, [isSignedIn]);
+
+  // Solo and daily records for the mode cards. These endpoints are the ONLY
+  // source for those figures: `/api/solitaire/solo` 401s for a guest (there are
+  // no account rows to read) and the daily payload carries today's UTC date
+  // for everyone. A failed read leaves the card's stat line empty rather than
+  // inventing a zero.
+  useEffect(() => {
+    // Wait for the auth state so a signed-in visitor is never sent the 401 path.
+    if (!isLoaded) return;
+    let cancelled = false;
+    const readJson = (url) =>
+      fetch(url, { credentials: "same-origin", cache: "no-store" })
+        .then((res) => (res.ok ? res.json() : null))
+        .catch(() => null);
+
+    Promise.all([
+      isSignedIn ? readJson("/api/solitaire/solo") : Promise.resolve(null),
+      readJson("/api/solitaire/daily"),
+    ])
+      .then(([soloBody, dailyBody]) => {
+        if (cancelled) return;
+        if (soloBody?.data?.summary) setSoloSummary(soloBody.data.summary);
+        if (dailyBody?.data) {
+          setDailySummary(dailyBody.data.summary ?? null);
+          setDailyDateKey(dailyBody.data.dateKey ?? null);
+        }
+        setSoloLoaded(true);
+        setDailyLoaded(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSoloLoaded(true);
+        setDailyLoaded(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoaded, isSignedIn]);
 
   const handleAcceptTerms = async () => {
     setTermsSaving(true);
@@ -185,6 +371,61 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null }) {
   const winRate = Number.isFinite(Number(solitaireRating?.winRate))
     ? Number(solitaireRating.winRate)
     : null;
+
+  // ── Per-mode stat lines ──────────────────────────────────────────────────
+  // Each card reports its OWN mode from its OWN source: ranked from
+  // /api/user-stats, solo from /api/solitaire/solo, daily from
+  // /api/solitaire/daily, practice from the caller's recent AI matches in the
+  // lobby payload. A guest is offered a sign-in path, never a fabricated zero.
+  const lastPractice = recent.find((match) => match.isAi) ?? null;
+  const lastPracticeDate = lastPractice
+    ? formatDate(lastPractice.endedAtMs ?? lastPractice.createdAtMs)
+    : "";
+
+  const modeStats = {
+    ranked: !isSignedIn
+      ? "Sign in to carry a rating"
+      : !stats
+        ? ""
+        : rating === null
+        ? "Unrated · no settled matches"
+        : solitaireRating?.provisional
+          ? `Provisional ${rating.toLocaleString()} Elo · ${Number(solitaireRating.provisionalGamesRemaining ?? 0)} placement left`
+          : `${rating.toLocaleString()} Elo${games !== null ? ` · ${games.toLocaleString()} rated` : ""}`,
+    solo: !isSignedIn
+      ? "Sign in to save your best"
+      : !soloLoaded
+        ? ""
+        : soloSummary && soloSummary.games > 0
+          ? `${soloSummary.completed}/${soloSummary.games} solved${
+              soloSummary.bestMs ? ` · best ${formatDuration(soloSummary.bestMs)}` : ""
+            }`
+          : "No solo games yet",
+    ai: !isSignedIn
+      ? "Unrated · you pick the difficulty"
+      : !lobbyLoaded
+        ? ""
+        : lastPractice
+        ? `Last practice: ${outcomeLabel(lastPractice.outcome).toLowerCase()}${
+            lastPracticeDate ? ` · ${lastPracticeDate}` : ""
+          }`
+        : "No practice games yet",
+    daily: !dailyLoaded
+      ? ""
+      : dailySummary
+        ? dailySummary.today?.completed
+          ? `Played today${
+              dailySummary.currentStreak > 1 ? ` · ${dailySummary.currentStreak}-day streak` : ""
+            }`
+          : `Not played yet${
+              dailySummary.currentStreak > 0
+                ? ` · ${dailySummary.currentStreak}-day streak`
+                : ""
+            }`
+        : dailyDateKey
+          ? `Today's deal · ${formatDealDate(dailyDateKey)}`
+          : "",
+  };
 
   const tiles = [
     {
@@ -244,10 +485,11 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null }) {
             <span className="text-cyan-300">of Solitaire</span>
           </h1>
           <p className="mt-4 max-w-2xl text-sm leading-relaxed text-white/60 sm:text-base">
-            Classic Klondike, three ways: race a real person on the ranked
-            ladder, play a timed game on your own, or take on the same daily deal
-            as everyone else. Every ranked result is validated server-side, and
-            ranked play is free — the only thing at stake is your rating.
+            Classic Klondike, four ways: race a real person on the ranked
+            ladder, play a timed game on your own, take on the bot, or play the
+            same daily deal as everyone else. Every ranked result is validated
+            server-side, and ranked play is free — the only thing at stake is
+            your rating.
           </p>
           <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
             <a
@@ -284,89 +526,74 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null }) {
           </div>
         </section>
 
-        {/* ── Three ways to play ────────────────────────────────────────── */}
+        {/* ── Modes ─────────────────────────────────────────────────────── */}
         <section className="mt-8" aria-labelledby="modes-heading">
-          <h2
-            id="modes-heading"
-            className="text-[11px] font-black uppercase tracking-[0.32em] text-white/40"
-          >
-            Three ways to play
-          </h2>
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            <a
-              href="#lobby"
-              className="group rounded-2xl border border-cyan-400/30 bg-cyan-400/[0.06] p-5 transition hover:border-cyan-300/60 hover:bg-cyan-400/10"
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2
+              id="modes-heading"
+              className="text-[11px] font-black uppercase tracking-[0.32em] text-white/40"
             >
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300">
-                Ranked PvP
-              </p>
-              <h3 className="mt-2 text-lg font-bold text-white">Race a real person</h3>
-              <p className="mt-1 text-sm leading-relaxed text-white/55">
-                The main competitive mode. Same deal, Elo on the line, never an AI
-                opponent.
-              </p>
-              <span className="mt-3 inline-block text-sm font-semibold text-cyan-300">
-                Find a match →
-              </span>
-            </a>
-            <Link
-              href="/solitaire"
-              className="group rounded-2xl border border-white/10 bg-white/[0.02] p-5 transition hover:border-white/25 hover:bg-white/[0.05]"
-            >
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/45">
-                Solo Solitaire
-              </p>
-              <h3 className="mt-2 text-lg font-bold text-white">Play alone, right now</h3>
-              <p className="mt-1 text-sm leading-relaxed text-white/55">
-                Classic Klondike with a timer, undo and personal bests. No queue,
-                no opponent, no Elo.
-              </p>
-              <span className="mt-3 inline-block text-sm font-semibold text-white/70">
-                Start solo →
-              </span>
-            </Link>
-            <a
-              href="#practice"
-              className="group rounded-2xl border border-white/10 bg-white/[0.02] p-5 transition hover:border-white/25 hover:bg-white/[0.05]"
-            >
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/45">
-                Practice vs AI
-              </p>
-              <h3 className="mt-2 text-lg font-bold text-white">Learn the rhythm</h3>
-              <p className="mt-1 text-sm leading-relaxed text-white/55">
-                Unrated games against the built-in bot, with selectable
-                difficulty. Clearly practice, never ranked.
-              </p>
-              <span className="mt-3 inline-block text-sm font-semibold text-white/70">
-                Practise →
-              </span>
-            </a>
-          </div>
-        </section>
-
-        {/* ── Daily Challenge ───────────────────────────────────────────── */}
-        <section className="mt-4" aria-labelledby="daily-heading">
-          <Link
-            href="/daily"
-            className="flex flex-col gap-4 rounded-2xl border border-amber-300/30 bg-linear-to-r from-amber-300/[0.10] via-amber-300/[0.04] to-transparent p-5 transition hover:border-amber-200/50 sm:flex-row sm:items-center sm:justify-between"
-          >
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-amber-300">
-                Featured · Daily Challenge
-              </p>
-              <h2 id="daily-heading" className="mt-2 text-xl font-black text-white sm:text-2xl">
-                One deal. Everyone. Every day.
-              </h2>
-              <p className="mt-1 max-w-xl text-sm leading-relaxed text-white/60">
-                The same deterministic Klondike deal for every player, fixed by the
-                UTC date. One official result per day — refresh-proof and
-                reroll-proof.
-              </p>
-            </div>
-            <span className="shrink-0 rounded-lg bg-amber-300 px-5 py-2.5 text-sm font-bold text-[#1a1204]">
-              Play today&apos;s deal →
+              Pick a mode
+            </h2>
+            <span className="text-[11px] font-semibold text-white/30">
+              One board, four ways to play
             </span>
-          </Link>
+          </div>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {MODES.map((mode) => (
+              <Link
+                key={mode.key}
+                id={mode.anchor}
+                href={mode.href}
+                onMouseEnter={() => setPreviewMode(mode.key)}
+                onMouseLeave={() => setPreviewMode(null)}
+                onFocus={() => setPreviewMode(mode.key)}
+                onBlur={() => setPreviewMode(null)}
+                className={`group flex h-full flex-col rounded-2xl border bg-white/[0.02] p-3 transition hover:-translate-y-1 hover:bg-white/[0.05] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#05070d] ${mode.shellClass}`}
+              >
+                <div className="relative aspect-video overflow-hidden rounded-xl border border-white/10 bg-[#04060f]">
+                  <div className="absolute inset-0 transition-transform duration-300 group-hover:scale-105">
+                    <ModeArt
+                      images={mode.images}
+                      alt={mode.alt}
+                      previewing={previewMode === mode.key}
+                    />
+                  </div>
+                  <span
+                    className={`absolute left-2 top-2 rounded-full border bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider backdrop-blur-xs ${mode.pillClass}`}
+                  >
+                    {mode.eyebrow}
+                  </span>
+                </div>
+                <h3 className="mt-3 text-base font-bold text-white">{mode.title}</h3>
+                <p className="mt-1 text-[13px] leading-relaxed text-white/55">{mode.body}</p>
+                {modeStats[mode.key] ? (
+                  <p className="mt-2 flex items-center gap-1.5 text-[11px] font-semibold text-white/45">
+                    <span
+                      aria-hidden="true"
+                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${mode.dotClass}`}
+                    />
+                    {modeStats[mode.key]}
+                  </p>
+                ) : null}
+                <span
+                  className={`mt-auto inline-flex items-center gap-1 pt-3 text-sm font-semibold ${mode.ctaClass}`}
+                >
+                  {mode.cta}
+                  <svg
+                    className="h-4 w-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    aria-hidden="true"
+                  >
+                    <path d="M5 12h14M12 5l7 7-7 7" />
+                  </svg>
+                </span>
+              </Link>
+            ))}
+          </div>
         </section>
 
         {/* ── The lobby ─────────────────────────────────────────────────── */}

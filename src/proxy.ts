@@ -492,9 +492,20 @@ function applySecurityHeaders(response: NextResponse) {
   //     production but not localhost" — production bundles are
   //     pre-compiled and never call eval().
   // Production keeps eval() blocked for security.
+  // The HilltopAds snippet is protocol-relative (`//juvenilechoice.com/...`), so
+  // on a plain-http origin — localhost, or an http staging host — the browser
+  // resolves it to `http://`, which an https-only `script-src` refuses. The
+  // banner then never paints, no matter how its env gates are set. Development
+  // therefore names the provider host explicitly; production is untouched and
+  // stays https-only.
+  const hilltopDevHosts =
+    process.env.NODE_ENV === "development"
+      ? "http://juvenilechoice.com "
+      : "";
+
   const scriptSrc =
     process.env.NODE_ENV === "development"
-      ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.com https://*.clerk.accounts.dev https://challenges.cloudflare.com https:; "
+      ? `script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.com https://*.clerk.accounts.dev https://challenges.cloudflare.com https: ${hilltopDevHosts}; `
       : "script-src 'self' 'unsafe-inline' https://*.clerk.com https://*.clerk.accounts.dev https://challenges.cloudflare.com https:; ";
 
   response.headers.set(
@@ -535,7 +546,7 @@ function applySecurityHeaders(response: NextResponse) {
       // page, so leaving it out produces a CSP violation on each impression —
       // the unit still paints, but the console fills with errors and Google
       // loses the invalid-traffic signal it uses to protect the publisher.
-      "frame-src 'self' https://challenges.cloudflare.com https://*.clerk.com https://*.clerk.accounts.dev https://js.stripe.com https://checkout.stripe.com https://*.stripe.com https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://fundingchoicesmessages.google.com https://*.adtrafficquality.google https://juvenilechoice.com; " +
+      `frame-src 'self' https://challenges.cloudflare.com https://*.clerk.com https://*.clerk.accounts.dev https://js.stripe.com https://checkout.stripe.com https://*.stripe.com https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://fundingchoicesmessages.google.com https://*.adtrafficquality.google https://juvenilechoice.com ${hilltopDevHosts}; ` +
       // The post-match video ad (components/ads/PostMatchVideoAd.tsx) plays a
       // provider-supplied creative in a native <video>. With no `media-src`,
       // media falls back to `default-src 'self'` and every ad video is blocked

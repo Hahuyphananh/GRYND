@@ -9,7 +9,7 @@
 //     the AI's board
 //   * the local controller IS the shared engine (an accepted move equals the
 //     engine's own output, and an illegal move is refused by it)
-//   * all three difficulty tiers are honoured
+//   * the six real bots are honoured, each at its own roster pace
 //   * completion resolves with the existing ladder
 //   * the result screen renders the GRYND CTA on BOTH Victory and Defeat, and
 //     renders nothing but the game when the build leaves it off
@@ -34,18 +34,19 @@ import {
   endMatchByProgress,
   settleMatch,
   tick,
+  undoPlayerMove,
 } from "../standalone/solitaire-duel/src/match.ts";
 import { PORTAL_CONFIG } from "../standalone/solitaire-duel/src/portal-config.ts";
 import { PORTAL_RUNTIME } from "../standalone/solitaire-duel/src/portal-sdk.ts";
 import * as resultScreenModule from "../standalone/solitaire-duel/src/ResultScreen.tsx";
 import { randomSeed } from "../standalone/solitaire-duel/src/seed.ts";
 import {
-  AI_MOVE_DELAY_MS,
   aiMoveDelayMs,
   chooseAiMove,
   legalMoves,
   planAiMoves,
 } from "../src/lib/solitaire-duel/ai.ts";
+import { SOLITAIRE_BOTS } from "../src/lib/solitaire-duel/bots.ts";
 import {
   DECK_SIZE,
   SEAT,
@@ -59,8 +60,8 @@ const REPO = resolvePath(HERE, "..");
 const STANDALONE = join(REPO, "standalone", "solitaire-duel");
 
 /** A match with no countdown, so every assertion can act immediately. */
-function matchAt(seed, difficulty = "normal") {
-  return createLocalMatch({ difficulty, seed, nowMs: 0, countdownMs: 0 });
+function matchAt(seed, botId = "ace") {
+  return createLocalMatch({ botId, seed, nowMs: 0, countdownMs: 0 });
 }
 
 /** A board whose foundations are complete, stamped at `atMs`. */
@@ -143,7 +144,24 @@ test("a player move updates only the player's board", () => {
   assert.deepEqual(outcome.match.ai, aiBefore, "the bot's board must be untouched");
 });
 
-test("an AI step updates only the AI's board, at the tier's pace", () => {
+test("undo rebuilds the board from the shortened log and stops once the race is over", () => {
+  const base = matchAt(6060);
+  const started = applyPlayerMove(base, { kind: "draw" }, base.goAtMs + 10).match;
+
+  assert.equal(started.log.length, 1, "an accepted move is recorded");
+  assert.equal(started.player.waste.length, 1);
+
+  const undone = undoPlayerMove(started);
+  assert.equal(undone.log.length, 0);
+  // The board is the engine's own reconstruction from the deal, not a patch.
+  assert.deepEqual(undone.player, initialStateFromDeal(started.deal));
+  assert.equal(undoPlayerMove(undone), undone, "an empty log has nothing to undo");
+
+  const finished = settleMatch({ ...started, result: SEAT.PLAYER2, resolution: "finish" });
+  assert.equal(undoPlayerMove(finished), finished, "a settled race cannot be rewound");
+});
+
+test("an AI step updates only the AI's board, at the bot's pace", () => {
   const match = matchAt(4242);
   const playerBefore = structuredClone(match.player);
 
@@ -152,7 +170,7 @@ test("an AI step updates only the AI's board, at the tier's pace", () => {
   assert.ok(advanced.ai.ply > 0, "the bot must have played");
   assert.deepEqual(advanced.player, playerBefore, "the player's board must be untouched");
 
-  const allowed = Math.floor(3000 / aiMoveDelayMs("normal"));
+  const allowed = Math.floor(3000 / aiMoveDelayMs("ace"));
   assert.ok(advanced.ai.ply <= allowed, "the bot may never outrun its clock");
 
   // Nothing happens before GO.
@@ -160,15 +178,15 @@ test("an AI step updates only the AI's board, at the tier's pace", () => {
   assert.equal(early.ai.ply, 0);
 });
 
-test("the bot plays only from its own visible board, on every tier", () => {
-  for (const tier of ["easy", "normal", "hard"]) {
-    const match = matchAt(2026, tier);
-    const delay = AI_MOVE_DELAY_MS[tier];
-    const advanced = advanceAi(match, match.goAtMs + delay * 8);
+test("every named bot plays only from its own visible board", () => {
+  for (const bot of SOLITAIRE_BOTS) {
+    const match = matchAt(2026, bot.id);
+    const advanced = advanceAi(match, match.goAtMs + bot.ai.moveDelayMs * 8);
 
-    assert.ok(advanced.ai.ply > 0, `${tier}: the bot must actually play`);
-    assert.equal(advanced.ai.completed, false, `${tier}: eight moves cannot finish a deal`);
-    assert.equal(advanced.result, null, `${tier}: the race is still live`);
+    assert.equal(match.botId, bot.id);
+    assert.ok(advanced.ai.ply > 0, `${bot.name}: the bot must actually play`);
+    assert.equal(advanced.ai.completed, false, `${bot.name}: eight moves cannot finish a deal`);
+    assert.equal(advanced.result, null, `${bot.name}: the race is still live`);
     // It plays its OWN board and never touches the human's. The deal's proven
     // solution is not consulted, so no future information reaches the bot.
     assert.deepEqual(advanced.player, match.player);
@@ -203,33 +221,59 @@ test("the bot only ever returns moves the engine calls legal", () => {
   const legal = legalMoves(state);
   assert.ok(legal.length > 0);
 
-  const chosen = chooseAiMove({ state, difficulty: "hard", random: () => 0.5 });
+  const chosen = chooseAiMove({ state, botId: "grandmaster", random: () => 0.5 });
   assert.ok(chosen);
   assert.ok(
     legal.some((move) => JSON.stringify(move) === JSON.stringify(chosen)),
     "the chosen move must be one of the engine's legal moves",
   );
 
-  const plan = planAiMoves({ state, difficulty: "normal", maxMoves: 12 });
+  const plan = planAiMoves({ state, difficulty: "ace", maxMoves: 12 });
   assert.ok(plan.moves.length > 0);
   assert.ok(plan.moves.length <= 12);
 });
 
 // ── 5. Difficulty tiers ───────────────────────────────────────────────────
 
-test("easy, normal and hard keep their distinct pacing and stay ordered", () => {
-  assert.ok(AI_MOVE_DELAY_MS.easy > AI_MOVE_DELAY_MS.normal);
-  assert.ok(AI_MOVE_DELAY_MS.normal > AI_MOVE_DELAY_MS.hard);
+test("the six real bots keep their roster pace and solve-speed order", () => {
+  assert.equal(SOLITAIRE_BOTS.length, 6, "the real roster is six bots");
+
+  for (const bot of SOLITAIRE_BOTS) {
+    assert.equal(
+      aiMoveDelayMs(bot.id),
+      bot.ai.moveDelayMs,
+      `${bot.name} must move at its profile's pace`,
+    );
+    assert.ok(
+      Number.isFinite(bot.expectedSolveMoves) && bot.expectedSolveMoves > 0,
+      `${bot.name} must carry a measured solve length`,
+    );
+  }
+
+  // The roster is ordered weakest -> Perfect, and both the advertised solve
+  // speed and the clock the controller actually runs must follow that order.
+  for (let index = 1; index < SOLITAIRE_BOTS.length; index += 1) {
+    const previous = SOLITAIRE_BOTS[index - 1];
+    const current = SOLITAIRE_BOTS[index];
+    assert.ok(current.ai.moveDelayMs < previous.ai.moveDelayMs, `${current.name} must move faster than ${previous.name}`);
+    assert.ok(
+      current.expectedSolveMoves <= previous.expectedSolveMoves,
+      `${current.name} must not take longer to solve than ${previous.name}`,
+    );
+  }
 
   const at = 10_000;
-  const plies = ["easy", "normal", "hard"].map(
-    (tier) => advanceAi(matchAt(2026, tier), at).ai.ply,
+  const plies = SOLITAIRE_BOTS.map(
+    (bot) => advanceAi(matchAt(2026, bot.id), at).ai.ply,
   );
-
-  assert.ok(plies[0] <= plies[1], "easy must never out-pace normal");
-  assert.ok(plies[1] <= plies[2], "normal must never out-pace hard");
-  assert.ok(plies[2] > plies[0], "hard must be meaningfully faster than easy");
-  assert.ok(plies.every((ply) => ply > 0), "every tier must actually play");
+  for (let index = 1; index < plies.length; index += 1) {
+    assert.ok(
+      plies[index] >= plies[index - 1],
+      `${SOLITAIRE_BOTS[index].name} must never be slower than ${SOLITAIRE_BOTS[index - 1].name}`,
+    );
+  }
+  assert.ok(plies[plies.length - 1] > plies[0], "Perfect must move meaningfully faster than Rookie");
+  assert.ok(plies.every((ply) => ply > 0), "every bot must actually play");
 });
 
 // ── 6. Resolution ─────────────────────────────────────────────────────────

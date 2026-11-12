@@ -185,6 +185,23 @@ function priceProductId(price: Stripe.Price): string | null {
 }
 
 /**
+ * True when a price is denominated in the catalog's BASE currency (CAD).
+ *
+ * The plan rows were historically bound to USD prices (the catalog predates the
+ * CAD switch). Those bindings still resolve, so reading `unit_amount` from one
+ * and labelling it with the CAD symbol would advertise a price — and a
+ * currency — Stripe does not charge. Only a base-currency price may supply a
+ * base amount or be picked as the product's matching price; a foreign-currency
+ * price is treated like a missing binding and re-resolved from the catalog.
+ *
+ * The currency is compared case-insensitively because Stripe returns lowercase
+ * ISO codes, but a hand-written id or a stale payload is not guaranteed to.
+ */
+function priceMatchesBaseCurrency(price: Stripe.Price): boolean {
+  return (price.currency || "").toLowerCase() === BASE_CURRENCY;
+}
+
+/**
  * True when `price` is the exact price the catalog approves for `interval`:
  * same product, same BASE amount, same base currency, same recurring interval,
  * and still active. A mismatch means the binding is stale (an old amount, or a
@@ -213,7 +230,10 @@ function priceMatchesSpec(
  * Best-effort: the product-search API may be unavailable, in which case we
  * fall back to the persisted id / a fresh create.
  */
-async function findProductIdByPlanKey(stripe: Stripe, planKey: string): Promise<string | null> {
+async function findProductByPlanKey(
+  stripe: Stripe,
+  planKey: string,
+): Promise<{ id: string; defaultPrice: string | null } | null> {
   const safeKey = planKey.replace(/[^a-z0-9_-]/gi, "");
   if (!safeKey) return null;
   try {
@@ -221,7 +241,14 @@ async function findProductIdByPlanKey(stripe: Stripe, planKey: string): Promise<
       query: `metadata['planKey']:'${safeKey}'`,
       limit: 1,
     });
-    return found.data[0]?.id ?? null;
+    const product = found.data[0];
+    if (!product) return null;
+    const rawDefault = product.default_price;
+    return {
+      id: product.id,
+      defaultPrice:
+        typeof rawDefault === "string" ? rawDefault : (rawDefault?.id ?? null),
+    };
   } catch {
     return null;
   }
@@ -259,6 +286,8 @@ export async function ensureSubscriptionPlanStripe(
 
   let productId = plan.stripeProductId;
   let changed = false;
+  /** The product's current Stripe default price, when we could read it. */
+  let productDefaultPrice: string | null = null;
 
   // If only a price id is known (e.g. pasted from the Dashboard), resolve its
   // product so we never create a duplicate product for an existing price. A
@@ -293,6 +322,9 @@ export async function ensureSubscriptionPlanStripe(
     // used the ineligible `txcd_99999999`).
     try {
       const existingProduct = await stripe.products.retrieve(productId);
+      const rawDefault = existingProduct.default_price;
+      productDefaultPrice =
+        typeof rawDefault === "string" ? rawDefault : (rawDefault?.id ?? null);
       try {
         await stripe.products.update(productId, {
           tax_code: MANAGED_PAYMENTS_TAX_CODE,
@@ -319,8 +351,12 @@ export async function ensureSubscriptionPlanStripe(
   // Adopt the real product before creating one, so a lost binding can never
   // produce a second GRYND PRO product.
   if (!productId) {
-    productId = await findProductIdByPlanKey(stripe, plan.key);
-    if (productId) changed = true;
+    const adopted = await findProductByPlanKey(stripe, plan.key);
+    if (adopted) {
+      productId = adopted.id;
+      productDefaultPrice = adopted.defaultPrice;
+      changed = true;
+    }
   }
 
   if (!productId) {
@@ -402,6 +438,26 @@ export async function ensureSubscriptionPlanStripe(
     changed = true;
   }
 
+  // Stripe's OWN default for the product is what the product page and invoice
+  // defaults quote. It had drifted to a price in a different currency from the
+  // ones the plan sells, so the same membership advertised two currencies. The
+  // default is not used by checkout (the session always names an explicit
+  // price id), so this is a consistency repair, not a pricing change: point it
+  // at the monthly base-currency price the plan actually sells.
+  if (priceIds.monthly && productDefaultPrice !== priceIds.monthly) {
+    try {
+      await stripe.products.update(productId, {
+        default_price: priceIds.monthly,
+      });
+    } catch (err) {
+      // Non-fatal: checkout uses the resolved price id, never the default.
+      console.warn(
+        "[stripe] Could not reconcile the GRYND PRO product default price:",
+        err,
+      );
+    }
+  }
+
   if (changed) {
     await db
       .update(tokenSubscriptionPlans)
@@ -467,7 +523,10 @@ async function readPlanPrices(plan: SubscriptionPlanBundle): Promise<{
       const priceId = bound[interval];
       if (priceId) {
         try {
-          price = await getStripe().prices.retrieve(priceId);
+          const boundPrice = await getStripe().prices.retrieve(priceId);
+          // A price in another currency is a legacy binding (the catalog is
+          // CAD): its amount must never be shown as a CAD price.
+          price = priceMatchesBaseCurrency(boundPrice) ? boundPrice : null;
         } catch {
           // fall through to the product lookup / catalog amount
           price = null;
@@ -487,6 +546,7 @@ async function readPlanPrices(plan: SubscriptionPlanBundle): Promise<{
         price =
           productPrices.find(
             (candidate) =>
+              priceMatchesBaseCurrency(candidate) &&
               candidate.recurring?.interval === PRO_STRIPE_INTERVAL[interval],
           ) ?? null;
       }

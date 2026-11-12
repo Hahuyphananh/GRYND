@@ -1618,6 +1618,13 @@
       "when": 1800000093000,
       "tag": "0249_solitaire_analysis_cache",
       "breakpoints": true
+    },
+    {
+      "idx": 231,
+      "version": "7",
+      "when": 1800000094000,
+      "tag": "0250_audience_daily_snapshots",
+      "breakpoints": true
     }
   ]
 }

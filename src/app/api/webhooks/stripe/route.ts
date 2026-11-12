@@ -132,6 +132,12 @@ export async function POST(req: Request) {
           // Record the subscription from our own checkout metadata. Nothing is
           // credited — GRYND PRO grants no tokens.
           await recordSubscriptionFromCheckout(session);
+          // Stamp OUR ledger row as paid. The subscribe route writes it as
+          // `open` before redirecting, and a subscription session's payment
+          // status was never updated afterwards — which made a paid
+          // subscription look exactly like an abandoned checkout, so "charged
+          // but not entitled" was undiagnosable.
+          await updateStatus(session.id, session.payment_status ?? "paid");
           break;
         }
 

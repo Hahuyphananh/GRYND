@@ -27,7 +27,7 @@
 // reads the clock itself unless the caller omits `nowMs`, and it never mutates
 // the match it is handed.
 
-import { coerceAiDifficulty, type AiDifficulty } from "../../../src/lib/aiDifficulty";
+import { solitaireBotFor, type SolitaireBotId } from "../../../src/lib/solitaire-duel/bots";
 import {
   aiMoveDelayMs,
   legalMoves,
@@ -45,6 +45,7 @@ import {
   initialStateFromDeal,
   progressOf,
   raceFromState,
+  replayMoves,
   resolveRace,
   viewForState,
 } from "../../../src/lib/solitaire-duel/rules";
@@ -70,13 +71,21 @@ export type LocalResolution = "finish" | "forfeit" | "draw";
 export type LocalMatch = {
   /** The seed this match was dealt from (kept for debugging and replays). */
   seed: number;
-  difficulty: AiDifficulty;
+  /** The named opponent from the shared roster (Rookie … Perfect). */
+  botId: SolitaireBotId;
   /** The one deal both seats race. */
   deal: SolitaireDeal;
   /** The human's own board. */
   player: SolitaireState;
   /** The bot's own board, from the same deal. */
   ai: SolitaireState;
+  /**
+   * The human's accepted moves for the deal under their board, in order.
+   * The log is what an undo replays from — the same record the app keeps, so
+   * the board after an undo is the engine's own reconstruction rather than a
+   * second, hand-rolled rewind.
+   */
+  log: { kind: string; move: SolitaireMove }[];
   /** The instant the race starts. No move or AI step is allowed before it. */
   goAtMs: number;
   result: LocalResult | null;
@@ -107,26 +116,31 @@ export type LocalMatch = {
  * of its objects. That is the entire "same puzzle, separate boards" contract.
  */
 export function createLocalMatch({
+  botId,
   difficulty,
   seed,
   nowMs = Date.now(),
   countdownMs = READY_COUNTDOWN_MS,
 }: {
+  /** A named bot from the shared roster. */
+  botId?: unknown;
+  /** Legacy tier spelling (`easy|normal|hard`), resolved through the roster. */
   difficulty?: unknown;
   seed: number;
   nowMs?: number;
   countdownMs?: number;
 }): LocalMatch {
   const normalizedSeed = seed >>> 0;
-  const tier = coerceAiDifficulty(difficulty);
+  const bot = solitaireBotFor(botId ?? difficulty);
   const deal = solvableDealFromSeed(normalizedSeed);
 
   return {
     seed: normalizedSeed,
-    difficulty: tier,
+    botId: bot.id,
     deal,
     player: initialStateFromDeal(deal),
     ai: initialStateFromDeal(deal),
+    log: [],
     goAtMs: nowMs + Math.max(0, Math.trunc(countdownMs) || 0),
     result: null,
     resolution: null,
@@ -245,7 +259,32 @@ export function applyPlayerMove(
     player = { ...player, completedAtMs: nowMs };
   }
 
-  return { match: settleMatch({ ...match, player }, nowMs), error: null };
+  return {
+    match: settleMatch({ ...match, player, log: [...match.log, { kind: move.kind, move }] }, nowMs),
+    error: null,
+  };
+}
+
+/**
+ * Take back the human's last accepted move.
+ *
+ * The board is REBUILT by replaying the remaining log from the shared deal —
+ * `replayMoves` is the same reconstruction the app's undo uses — so an undone
+ * board is the engine's, never a locally patched copy. Nothing is undone once
+ * the race is over, once the board is solved, or when the log is empty.
+ *
+ * A mid-race re-deal clears the log (see `redealPlayerIfDead`): the recorded
+ * moves belong to the deal they were played on, and replaying them onto a
+ * different one would fabricate a board.
+ */
+export function undoPlayerMove(match: LocalMatch): LocalMatch {
+  if (match.result || match.player.completed || match.log.length === 0) return match;
+
+  const moves = match.log.slice(0, -1);
+  const replayed = replayMoves({ deal: match.deal, moves });
+  if (!replayed.ok) return match;
+
+  return { ...match, log: moves, player: replayed.state };
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -298,7 +337,7 @@ export function advanceAi(match: LocalMatch, nowMs = Date.now()): LocalMatch {
   if (nowMs < match.goAtMs) return match;
   if (match.ai.completed) return match;
 
-  const delayMs = aiMoveDelayMs(match.difficulty);
+  const delayMs = aiMoveDelayMs(match.botId);
   const allowedPly = Math.floor((nowMs - match.goAtMs) / delayMs);
   const maxMoves = Math.min(allowedPly - match.ai.ply, MAX_MOVES_PER_SEAT - match.ai.ply);
   if (maxMoves <= 0) return match;
@@ -306,7 +345,7 @@ export function advanceAi(match: LocalMatch, nowMs = Date.now()): LocalMatch {
   const startPly = match.ai.ply;
   const plan = planAiMoves({
     state: match.ai,
-    difficulty: match.difficulty,
+    difficulty: match.botId,
     maxMoves,
   });
 
@@ -348,6 +387,9 @@ export function redealPlayerIfDead(match: LocalMatch): LocalMatch {
   return settleMatch({
     ...match,
     player: withFreshDeal(match.player, deal),
+    // The old log belongs to the old deal: replaying it here would build a
+    // board that never existed, so undo starts fresh with the new one.
+    log: [],
     playerRedeals: match.playerRedeals + 1,
   });
 }

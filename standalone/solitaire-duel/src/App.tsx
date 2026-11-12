@@ -16,15 +16,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import SolitaireBoard from "../../../src/components/solitaire-duel/SolitaireBoard";
 import SolitaireThemePicker from "../../../src/components/solitaire-duel/SolitaireThemePicker";
 import {
-  AI_DIFFICULTIES,
-  AI_DIFFICULTY_LABELS,
-  type AiDifficulty,
-} from "../../../src/lib/aiDifficulty";
-import {
-  aiMoveDelayMs,
-  aiPaceLabel,
-  aiPaceSeconds,
-} from "../../../src/lib/solitaire-duel/ai";
+  SOLITAIRE_BOTS,
+  solitaireBotFor,
+  solitaireBotStats,
+  type SolitaireBotId,
+} from "../../../src/lib/solitaire-duel/bots";
+import { aiMoveDelayMs, aiPaceLabel } from "../../../src/lib/solitaire-duel/ai";
 import { SEAT } from "../../../src/lib/solitaire-duel/constants";
 import {
   clockLabel,
@@ -44,6 +41,7 @@ import {
   playerProgress,
   playerView,
   redealPlayerIfDead,
+  undoPlayerMove,
   type LocalMatch,
 } from "./match";
 import { PORTAL_CONFIG } from "./portal-config";
@@ -64,7 +62,8 @@ function matchTimeLabel(match: LocalMatch): string {
 
 export default function App() {
   const [match, setMatch] = useState<LocalMatch | null>(null);
-  const [difficulty, setDifficulty] = useState<AiDifficulty>("normal");
+  // The real roster, defaulting to Ace — the bot the old `normal` tier maps to.
+  const [botId, setBotId] = useState<SolitaireBotId>("ace");
   const [now, setNow] = useState(() => Date.now());
   const [dealing, setDealing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -77,8 +76,8 @@ export default function App() {
     matchRef.current = match;
   }, [match]);
 
-  const start = useCallback((tier: AiDifficulty) => {
-    setDifficulty(tier);
+  const start = useCallback((nextBotId: SolitaireBotId) => {
+    setBotId(nextBotId);
     setDealing(true);
     setNotice(null);
     setError(null);
@@ -93,7 +92,7 @@ export default function App() {
     window.setTimeout(() => {
       try {
         const created = createLocalMatch({
-          difficulty: tier,
+          botId: nextBotId,
           seed: randomSeed(),
           nowMs: Date.now(),
         });
@@ -126,7 +125,7 @@ export default function App() {
       );
     }, TICK_MS);
     return () => window.clearInterval(id);
-  }, [match?.seed, match?.difficulty, match?.result]);
+  }, [match?.seed, match?.botId, match?.result]);
 
   // Portal lifecycle. A complete no-op in every default build; when a portal
   // build enables an SDK, a blocked or dead CDN can only fail quietly and the
@@ -174,6 +173,17 @@ export default function App() {
     setNow(Date.now());
   }, []);
 
+  // Take back the last accepted move. The board comes from the controller's
+  // replay of the shortened log, exactly like the app's undo.
+  const undoLastMove = useCallback(() => {
+    const current = matchRef.current;
+    if (!current) return;
+    const next = undoPlayerMove(current);
+    if (next === current) return;
+    matchRef.current = next;
+    setMatch(next);
+  }, []);
+
   const view = useMemo(() => (match ? playerView(match) : null), [match]);
   const you = useMemo(() => (match ? playerProgress(match) : null), [match]);
   const bot = useMemo(() => (match ? aiProgress(match) : null), [match]);
@@ -194,7 +204,7 @@ export default function App() {
           {match && !match.result ? (
             <div className="flex items-center gap-2">
               <span className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-white/70">
-                {AI_DIFFICULTY_LABELS[match.difficulty]}
+                {solitaireBotFor(match.botId).difficultyLabel}
               </span>
               <span
                 data-testid="match-clock"
@@ -215,7 +225,7 @@ export default function App() {
 
         <main className="mt-3 flex flex-1 flex-col">
           {!match && !dealing ? (
-            <Menu difficulty={difficulty} onPick={setDifficulty} onStart={start} />
+            <Menu botId={botId} onPick={setBotId} onStart={start} />
           ) : null}
 
           {dealing ? (
@@ -239,7 +249,7 @@ export default function App() {
                 />
                 <StatBlock
                   testId="bot-progress"
-                  title={`Bot · ${AI_DIFFICULTY_LABELS[match.difficulty]}`}
+                  title={`Bot · ${solitaireBotFor(match.botId).name}`}
                   progress={bot}
                   ply={match.ai.ply}
                   bar="bg-[#ff4fd8]"
@@ -251,16 +261,33 @@ export default function App() {
                   changes. */}
               <p
                 data-testid="solver-pace"
-                data-delay-ms={aiMoveDelayMs(match.difficulty)}
+                data-delay-ms={aiMoveDelayMs(match.botId)}
                 className="mt-1.5 text-center text-[10px] font-bold uppercase tracking-[0.16em] text-white/35"
               >
-                {aiPaceLabel(match.difficulty)} — it solves the deal either way
+                {aiPaceLabel(match.botId)} — its real move pace
               </p>
 
-              {/* The same table selector as the app: the portal renders the
-                  shared board, so it must not be the only Solitaire surface
-                  where the player's table is fixed to Classic Green. */}
-              <div className="mt-3 flex justify-end">
+              {/* The app's own HUD line: time, moves and foundation cards,
+                  in the same metric cards the solo screen uses. The race clock
+                  freezes the instant the result lands. */}
+              <div className="mt-3 flex flex-wrap items-end justify-between gap-2">
+                <dl className="flex gap-2 text-center">
+                  <MiniStat
+                    testId="hud-time"
+                    label="Time"
+                    value={clockLabel(Math.max(0, (match.endedAtMs ?? now) - match.goAtMs))}
+                  />
+                  <MiniStat testId="hud-moves" label="Moves" value={String(match.log.length)} />
+                  <MiniStat
+                    testId="hud-foundations"
+                    label="Foundations"
+                    value={`${you.foundationCards}/52`}
+                  />
+                </dl>
+
+                {/* The same table selector as the app: the portal renders the
+                    shared board, so it must not be the only Solitaire surface
+                    where the player's table is fixed to Classic Green. */}
                 <SolitaireThemePicker />
               </div>
 
@@ -271,6 +298,30 @@ export default function App() {
                   onMove={onMove}
                   onInvalid={setNotice}
                 />
+              </div>
+
+              {/* The app's action row, under the board: a fresh race and an
+                  undo. Undo is disabled once the result lands, while the board
+                  is still hidden behind the countdown, and when there is
+                  nothing to take back. */}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  data-testid="new-game"
+                  onClick={() => start(match.botId)}
+                  className="gr-focusable rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400"
+                >
+                  New game
+                </button>
+                <button
+                  type="button"
+                  data-testid="undo-move"
+                  onClick={undoLastMove}
+                  disabled={match.log.length === 0 || Boolean(match.result) || now < match.goAtMs}
+                  className="gr-focusable rounded-lg border border-white/15 px-4 py-2 text-sm text-slate-200 transition hover:bg-white/5 disabled:opacity-40"
+                >
+                  Undo
+                </button>
               </div>
 
               <p
@@ -297,7 +348,7 @@ export default function App() {
         <div className="pointer-events-none fixed inset-0 z-30 flex items-center justify-center bg-[#04070f]/75">
           <div className="text-center">
             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/50">
-              Same deal · {AI_DIFFICULTY_LABELS[match.difficulty]} bot
+              Same deal · {solitaireBotFor(match.botId).name}
             </p>
             <p className="mt-2 text-6xl font-black tabular-nums">
               {Math.max(1, Math.ceil((match.goAtMs - now) / 1000))}
@@ -313,9 +364,9 @@ export default function App() {
           durationLabel={matchTimeLabel(match)}
           playerProgress={you}
           botProgress={bot}
-          botLabel={`Bot · ${AI_DIFFICULTY_LABELS[match.difficulty]}`}
+          botLabel={`Bot · ${solitaireBotFor(match.botId).name}`}
           cta={PORTAL_CONFIG}
-          onReplay={() => start(match.difficulty)}
+          onReplay={() => start(match.botId)}
           onChangeDifficulty={backToMenu}
         />
       ) : null}
@@ -324,6 +375,27 @@ export default function App() {
 }
 
 // ── Small presentational pieces ─────────────────────────────────────────
+
+/** One metric card, styled exactly like the app's solo HUD (Time/Moves/Best). */
+function MiniStat({
+  label,
+  value,
+  testId,
+}: {
+  label: string;
+  value: string;
+  testId: string;
+}) {
+  return (
+    <div
+      data-testid={testId}
+      className="rounded-lg border border-white/10 bg-white/5 px-3 py-2"
+    >
+      <dt className="text-[10px] uppercase tracking-wider text-slate-400">{label}</dt>
+      <dd className="font-mono text-lg text-white">{value}</dd>
+    </div>
+  );
+}
 
 function StatBlock({
   title,
@@ -363,13 +435,13 @@ function StatBlock({
 
 
 function Menu({
-  difficulty,
+  botId,
   onPick,
   onStart,
 }: {
-  difficulty: AiDifficulty;
-  onPick: (tier: AiDifficulty) => void;
-  onStart: (tier: AiDifficulty) => void;
+  botId: SolitaireBotId;
+  onPick: (id: SolitaireBotId) => void;
+  onStart: (id: SolitaireBotId) => void;
 }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center py-6">
@@ -385,28 +457,35 @@ function Menu({
           solvable before you see it — and never laid out for you.
         </p>
 
-        <div className="mt-5 grid grid-cols-3 gap-2">
-          {AI_DIFFICULTIES.map((tier) => {
-            const active = difficulty === tier;
+        {/* The same six opponents the app's practice lobby offers, with the
+            stats the roster derives: real pace and a measured typical finish. */}
+        <div className="mt-5 grid grid-cols-2 gap-2 text-left">
+          {SOLITAIRE_BOTS.map((bot) => {
+            const stats = solitaireBotStats(bot);
+            const active = botId === bot.id;
             return (
               <button
-                key={tier}
+                key={bot.id}
                 type="button"
-                onClick={() => onPick(tier)}
+                onClick={() => onPick(bot.id)}
                 aria-pressed={active}
-                data-testid={`difficulty-${tier}`}
-                data-pace-ms={aiMoveDelayMs(tier)}
-                className={`gr-focusable rounded-xl border px-2 py-1.5 text-xs font-black uppercase tracking-wider transition ${
+                data-testid={`bot-${bot.id}`}
+                data-pace-ms={bot.ai.moveDelayMs}
+                className={`gr-focusable rounded-xl border px-2 py-2 transition ${
                   active
                     ? "border-[#00e5ff] bg-[#00e5ff]/15 text-white"
-                    : "border-white/15 bg-white/[0.02] text-white/60 hover:border-white/30"
+                    : "border-white/15 bg-white/[0.02] text-white/70 hover:border-white/30"
                 }`}
               >
-                <span className="block">{AI_DIFFICULTY_LABELS[tier]}</span>
-                {/* The tier is PACE: the estimate is what the choice buys, so show
-                    it before the race instead of only during it. */}
-                <span className="mt-0.5 block text-[9px] font-bold tracking-wider text-white/40">
-                  ~{aiPaceSeconds(tier)}s a move
+                <span className="flex items-baseline justify-between gap-1 text-xs font-black uppercase tracking-wider">
+                  <span>{bot.name}</span>
+                  <span className="text-[9px] font-bold text-white/40">{bot.ratingLabel}</span>
+                </span>
+                <span className="mt-0.5 block text-[9px] font-bold uppercase tracking-wider text-white/40">
+                  {bot.difficultyLabel} · {stats.paceLabel}
+                </span>
+                <span className="mt-0.5 block text-[9px] font-bold tracking-wider text-white/30">
+                  {stats.finishLabel} typical
                 </span>
               </button>
             );
@@ -414,14 +493,14 @@ function Menu({
         </div>
 
         <p className="mt-2 text-[10px] leading-snug text-white/35">
-          Each tier is a different bot: stronger opponents plan further ahead, and
-          move faster.
+          Six named opponents, from Rookie to Perfect: stronger bots plan further
+          ahead, make fewer mistakes and finish the deal faster.
         </p>
 
         <button
           type="button"
           data-testid="start-race"
-          onClick={() => onStart(difficulty)}
+          onClick={() => onStart(botId)}
           className="gr-focusable mt-4 w-full rounded-xl bg-[#00e5ff] px-4 py-3 text-sm font-black uppercase tracking-[0.18em] text-[#04070f] transition hover:brightness-110"
         >
           Start race

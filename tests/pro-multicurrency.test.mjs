@@ -248,6 +248,23 @@ test("localized amounts are read from the price, and only whole sets are used", 
   assert.equal(resolved.currency, "cad");
   assert.deepEqual(resolved.amounts, { weekly: 400, monthly: 1000, yearly: 6000 });
 
+  // ── 3b. A legacy price in another currency is NOT a CAD amount ──────────
+  // The plan rows were bound to USD prices before the catalog moved to CAD.
+  // Reading their unit_amount and labelling it "CA$" would advertise both a
+  // wrong amount and the wrong currency — the card is charged USD.
+  world.prices = {
+    price_weekly: { id: "price_weekly", currency: "usd", unit_amount: 499, recurring: { interval: "week" } },
+    price_monthly: { id: "price_monthly", currency: "usd", unit_amount: 1299, recurring: { interval: "month" } },
+    price_yearly: { id: "price_yearly", currency: "usd", unit_amount: 6999, recurring: { interval: "year" } },
+  };
+  resolved = await resolveProBillingAmountsForCurrency(plan, "cad");
+  assert.equal(resolved.currency, "cad");
+  assert.deepEqual(
+    resolved.amounts,
+    { weekly: 349, monthly: 999, yearly: 5999 },
+    "a USD binding must fall back to the CAD catalog, never be shown as CAD",
+  );
+
   // ── 4. What a specific price will actually charge ────────────────────────
   world.prices = {
     price_monthly: {
@@ -288,6 +305,12 @@ test("the Stripe catalog is created in CAD, with localization left to the price"
   assert.doesNotMatch(subscriptions, /currency: "usd"/);
   // Localized amounts are READ from the price, never converted here.
   assert.match(subscriptions, /price\?\.currency_options/);
+  // A price in another currency can never supply a base-currency amount...
+  assert.match(subscriptions, /priceMatchesBaseCurrency\(boundPrice\)/);
+  assert.match(subscriptions, /priceMatchesBaseCurrency\(candidate\)/);
+  // ...and the Product's own default is reconciled to the monthly CAD price, so
+  // Stripe's product page cannot quote a second currency for the same plan.
+  assert.match(subscriptions, /default_price: priceIds\.monthly/);
   // No exchange-rate machinery: the only way an amount may change currency is
   // Stripe's own configuration. (Comments are stripped first — this file
   // explains the rule in prose.)
