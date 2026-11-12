@@ -223,6 +223,10 @@ const isPublicRoute = createRouteMatcher([
   // account (solo records then stay in their browser). No auth is required to
   // VIEW them; the record APIs still require a signed-in user.
   "/solitaire",
+  // The Learn section is a reading/practice surface: a guest must be able to
+  // launch a prepared lesson without an account. Progress stays local, and the
+  // lesson engine has no ranked or matchmaking side effects.
+  "/learn(.*)",
   "/daily",
   "/profil(.*)",
   // Onboarding / auth / system pages that must stay reachable BEFORE a

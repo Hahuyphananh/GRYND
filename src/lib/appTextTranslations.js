@@ -1,3 +1,5 @@
+import { LEARN_TRANSLATIONS } from "./learnTranslations";
+
 export const APP_TEXT_TRANSLATIONS = {
   en: {
     // ── Solitaire opponent dialogue ──────────────────────────────────────
@@ -851,6 +853,7 @@ export const APP_TEXT_TRANSLATIONS = {
     
     nav: {
       home: "Home",
+      learn: "Learn",
       casino: "Games",
       leaderboard: "Leaderboard",
       contact: "Contact",
@@ -2985,6 +2988,7 @@ export const APP_TEXT_TRANSLATIONS = {
       confirm_unavailable: "We couldn't confirm this purchase yet.",
       cash: "Coins are used only inside GRYND. They are virtual, have no cash value, and cannot be withdrawn, redeemed for gift cards or exchanged for money.",
     },
+    learn: LEARN_TRANSLATIONS.en,
   },
   fr: {
     // ── Dialogue des adversaires Solitaire ───────────────────────────────
@@ -3823,6 +3827,7 @@ export const APP_TEXT_TRANSLATIONS = {
     
     nav: {
       home: "Accueil",
+      learn: "Apprendre",
       casino: "Jeux",
       leaderboard: "Classement",
       contact: "Contact",
@@ -5694,6 +5699,7 @@ export const APP_TEXT_TRANSLATIONS = {
       confirm_unavailable: "Nous n'avons pas encore pu confirmer cet achat.",
       cash: "Les pièces servent uniquement à jouer dans GRYND. Elles sont virtuelles, n'ont aucune valeur monétaire et ne peuvent pas être retirées, échangées contre des cartes cadeaux ou contre de l'argent.",
     },
+    learn: LEARN_TRANSLATIONS.fr,
   },
   es: {
     // ── Diálogo de los rivales de Solitario ──────────────────────────────
@@ -6532,6 +6538,7 @@ export const APP_TEXT_TRANSLATIONS = {
     
     nav: {
       home: "Inicio",
+      learn: "Aprender",
       casino: "Juegos",
       leaderboard: "Clasificaciones",
       contact: "Contacto",
@@ -8403,6 +8410,7 @@ export const APP_TEXT_TRANSLATIONS = {
       confirm_unavailable: "Todavía no hemos podido confirmar esta compra.",
       cash: "Las monedas se usan solo dentro de GRYND. Son virtuales, no tienen valor monetario y no se pueden retirar, canjear por tarjetas regalo ni cambiar por dinero.",
     },
+    learn: LEARN_TRANSLATIONS.es,
   },
 };
 
