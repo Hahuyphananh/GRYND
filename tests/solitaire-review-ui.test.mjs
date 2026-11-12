@@ -26,10 +26,12 @@ import fs from "node:fs";
 import {
   accuracyPercent,
   describeMove,
+  notablePlies,
   RATING_META,
   ratingForMove,
   reconstructReviewPosition,
   stepPly,
+  stepToNotable,
   summaryCounts,
 } from "../src/lib/solitaire-duel/reviewView.ts";
 import {
@@ -138,6 +140,51 @@ test("forward, backward, first and last navigation clamp at both ends", () => {
   assert.equal(stepPly(99, total, "start"), 0);
   assert.equal(stepPly(-3, total, "next"), 1);
   assert.equal(stepPly(0, 0, "next"), 0);
+});
+
+test("the arrows stop only on standout moves and skip the routine log", () => {
+  const analysis = {
+    complete: true,
+    perMove: [
+      { ply: 0, rating: "normal", tags: [] },
+      { ply: 1, rating: "normal", tags: [] },
+      { ply: 2, rating: "great", tags: [] },
+      { ply: 3, rating: "good", tags: [] },
+      { ply: 4, rating: "blunder", tags: [] },
+      { ply: 5, rating: "normal", tags: [] },
+      { ply: 6, rating: "brilliant", tags: [] },
+      { ply: 7, rating: "inaccuracy", tags: [] },
+      { ply: 8, rating: "normal", tags: [] },
+    ],
+    summary: { accuracy: 0, ratings: {} },
+  };
+  const total = 9;
+  const stops = notablePlies(analysis, total);
+
+  // 1-based plies: great at index 2, blunder at 4, brilliant at 6, inaccuracy 7.
+  assert.deepEqual(stops, [3, 5, 7, 8]);
+  assert.deepEqual(notablePlies(null, total), []);
+  assert.deepEqual(notablePlies(analysis, 0), []);
+
+  // Forward: the initial deal goes straight to the first standout move.
+  assert.equal(stepToNotable(0, total, "next", stops), 3);
+  assert.equal(stepToNotable(3, total, "next", stops), 5);
+  // From inside a run of normal moves the next stop is still the next standout.
+  assert.equal(stepToNotable(4, total, "next", stops), 5);
+  assert.equal(stepToNotable(8, total, "next", stops), total);
+
+  // Backward: no stop before the first one means the initial deal.
+  assert.equal(stepToNotable(8, total, "previous", stops), 7);
+  assert.equal(stepToNotable(6, total, "previous", stops), 5);
+  assert.equal(stepToNotable(3, total, "previous", stops), 0);
+  assert.equal(stepToNotable(total, total, "next", stops), total);
+
+  assert.equal(stepToNotable(5, total, "start", stops), 0);
+  assert.equal(stepToNotable(5, total, "end", stops), total);
+
+  // Before the analysis exists there is nothing to skip: plain one-ply steps.
+  assert.equal(stepToNotable(4, total, "next", []), 5);
+  assert.equal(stepToNotable(4, total, "previous", []), 3);
 });
 
 test("each timeline step matches the board that prefix rebuilds", () => {
@@ -426,19 +473,141 @@ test("the worker is a native module worker with a fallback and cancellation", ()
 
 test("navigation and timeline are keyboard accessible with a clear selection", () => {
   const page = code(PAGE);
-  assert.match(page, /onKeyDown/);
-  assert.match(page, /onKeyDown=\{onKeyDown\}/);
+  // The listener is on the window, so arrows work without clicking a control
+  // first, and it is removed with the page.
+  assert.match(page, /window\.addEventListener\("keydown", onKeyDown\)/);
+  assert.match(page, /window\.removeEventListener\("keydown", onKeyDown\)/);
   assert.match(page, /ArrowLeft/);
   assert.match(page, /ArrowRight/);
   assert.match(page, /Home/);
   assert.match(page, /End/);
+  assert.match(page, /preventDefault\(\)/);
+  assert.match(page, /onKeyDown/);
   assert.match(page, /aria-current=\{isSelected \? "step" : undefined\}/);
   assert.match(page, /aria-label=\{`Move \$\{index \+ 1\}/);
   assert.match(page, /aria-live="polite"/);
-  assert.match(page, /label="Previous move"/);
-  assert.match(page, /label="Next move"/);
+  assert.match(page, /label="Previous key moment"/);
+  assert.match(page, /label="Next key moment"/);
   assert.match(page, /disabled=\{selectedPly === 0\}/);
   assert.match(page, /disabled=\{selectedPly >= totalMoves\}/);
+});
+
+test("auto-skim plays through the key moments and pauses at the end", () => {
+  const page = code(PAGE);
+  assert.match(page, /IconPlayerPlay/);
+  assert.match(page, /IconPlayerPause/);
+  assert.match(page, /data-testid="review-autoplay"/);
+  assert.match(page, /aria-pressed=\{playing\}/);
+  assert.match(page, /if \(playing\) \{\s*setPlaying\(false\);\s*return;/);
+  assert.match(page, /setPlaying\(true\)/);
+
+  // It advances with the same stop list as the arrows, and re-arms per step.
+  assert.match(page, /setTimeout\(\(\) => go\("next"\), skimSpeed\)/);
+  assert.match(page, /stepToNotable/);
+
+  // No key moments means nothing to play; reaching the end pauses itself.
+  assert.match(page, /disabled=\{notable\.length === 0\}/);
+  assert.match(page, /selectedPly >= totalMoves/);
+  assert.match(page, /setPlaying\(false\)/);
+
+  // Starting from the final position rewinds to the deal instead of stalling.
+  assert.match(page, /if \(selectedPly >= totalMoves\) setSelectedPly\(0\)/);
+});
+
+test("auto-skim speed is adjustable", () => {
+  const page = code(PAGE);
+  assert.match(page, /data-testid="review-skim-speed"/);
+  assert.match(page, /aria-label="Auto-skim speed"/);
+  assert.match(page, /const next = Number\(event\.target\.value\)/);
+  assert.match(page, /setSkimSpeed\(next\)/);
+  assert.match(page, /SKIM_SPEEDS/);
+  assert.match(page, /\{ label: "Slow", ms: 2200 \}/);
+  assert.match(page, /\{ label: "Fast", ms: 800 \}/);
+
+  // The timer uses the selected pace and re-arms when it changes.
+  assert.match(page, /setTimeout\(\(\) => go\("next"\), skimSpeed\)/);
+  assert.match(page, /\[playing, selectedPly, totalMoves, notable\.length, go, skimSpeed\]/);
+});
+
+test("Space toggles Play/Pause without double-toggling a focused button", () => {
+  const page = code(PAGE);
+  assert.match(page, /const togglePlay = useCallback/);
+  assert.match(page, /event\.key === " "/);
+  assert.match(page, /!target\?\.closest\("button, a, select, summary"\)/);
+  assert.match(page, /if \(!event\.repeat\) togglePlay\(\)/);
+  assert.match(page, /onClick=\{togglePlay\}/);
+  assert.match(page, /\[goManually, togglePlay\]/);
+});
+
+test("the chosen auto-skim speed survives a visit", () => {
+  const page = code(PAGE);
+  assert.match(page, /SKIM_SPEED_STORAGE_KEY = "grynd:solitaire-review:skim-speed"/);
+
+  // A chosen pace is written immediately; only an offered pace is restored.
+  assert.match(page, /window\.localStorage\.setItem\(\s*SKIM_SPEED_STORAGE_KEY,\s*String\(next\),?\s*\)/);
+  assert.match(page, /window\.localStorage\.getItem\(SKIM_SPEED_STORAGE_KEY\)/);
+  assert.match(page, /SKIM_SPEEDS\.some\(\(option\) => option\.ms === stored\)/);
+
+  // Storage can throw (private mode), so reading and writing both degrade to
+  // the Normal default instead of breaking the review page.
+  assert.match(page, /SKIM_SPEEDS\.some/);
+  assert.ok(
+    (page.match(/catch \{/g) ?? []).length >= 2,
+    "both the restore and the save must guard against storage throwing",
+  );
+
+  // The restore runs after mount, never in the state initializer.
+  assert.match(page, /useEffect\(\(\) => \{\s*try \{\s*const stored = Number\(window\.localStorage\.getItem/);
+});
+
+test("manual navigation pauses a running auto-skim", () => {
+  const page = code(PAGE);
+
+  // One manual wrapper pauses and then steps, for buttons and the keyboard.
+  assert.match(page, /const goManually = useCallback/);
+  assert.match(page, /setPlaying\(false\);/);
+  assert.match(page, /onClick=\{\(\) => goManually\("start"\)\}/);
+  assert.match(page, /onClick=\{\(\) => goManually\("previous"\)\}/);
+  assert.match(page, /onClick=\{\(\) => goManually\("next"\)\}/);
+  assert.match(page, /onClick=\{\(\) => goManually\("end"\)\}/);
+  assert.match(page, /goManually\("ArrowLeft"\)|goManually\("previous"\)/);
+  assert.match(page, /\}, \[goManually, togglePlay\]\);/);
+
+  // Timeline rows and key moments select directly, so they pause too.
+  assert.match(page, /const selectManually = useCallback/);
+  assert.match(page, /onClick=\{\(\) => selectManually\(moment\.ply \+ 1\)\}/);
+  assert.match(page, /onClick=\{\(\) => selectManually\(index \+ 1\)\}/);
+
+  // The auto timer is the only caller left on the raw stepper.
+  assert.match(page, /setTimeout\(\(\) => go\("next"\), skimSpeed\)/);
+});
+
+test("the hint names the move the next jump will land on", () => {
+  const page = code(PAGE);
+  assert.match(page, /data-testid="review-nav-hint"/);
+  assert.match(page, /stepToNotable\(selectedPly, totalMoves, "next", notable\)/);
+  assert.match(page, /next: move \$\{nextTarget\}/);
+  // With no further stop the hint says so rather than showing a stale number.
+  assert.match(page, /selectedPly >= totalMoves\s*\? null/);
+  assert.match(page, /at the end/);
+});
+
+test("skimming never scrolls the page and commentary sits above the board", () => {
+  const page = code(PAGE);
+  // Scrolling the selected timeline row must touch the list, never the window.
+  assert.doesNotMatch(page, /scrollIntoView/);
+  assert.match(page, /timelineListRef/);
+
+  // GLITCH's line renders before the board, i.e. at the top of the analysis.
+  const glitch = page.indexOf('data-testid="review-glitch"');
+  const board = page.indexOf('data-testid="review-board"');
+  assert.ok(glitch > 0, "the review still renders GLITCH commentary");
+  assert.ok(board > 0, "the review still renders the board");
+  assert.ok(glitch < board, "GLITCH's line must sit above the board, not below it");
+
+  // The arrows jump between rated moments, not one ply at a time.
+  assert.match(page, /notablePlies\(analysis, totalMoves\)/);
+  assert.match(page, /stepToNotable\(current, totalMoves, action, notable\)/);
 });
 
 test("the layout has a mobile-first grid, scrollable timeline and reduced motion", () => {

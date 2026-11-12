@@ -23,7 +23,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type KeyboardEventHandler,
   type ReactNode,
 } from "react";
 import {
@@ -35,6 +34,8 @@ import {
   IconChevronsLeft,
   IconChevronsRight,
   IconClock,
+  IconPlayerPause,
+  IconPlayerPlay,
   IconSparkles,
 } from "@tabler/icons-react";
 
@@ -59,11 +60,12 @@ import {
   accuracyPercent,
   describeMove,
   GAME_KIND_LABEL,
+  notablePlies,
   ratingForMove,
   RATING_META,
   reconstructReviewPosition,
   STATUS_META,
-  stepPly,
+  stepToNotable,
   summaryCounts,
   tagLabel,
   type ReviewNavigationAction,
@@ -71,24 +73,28 @@ import {
 
 const NOOP = () => {};
 
+/** Auto-skim paces, in milliseconds between key moments. */
+const SKIM_SPEEDS = [
+  { label: "Slow", ms: 2200 },
+  { label: "Normal", ms: 1400 },
+  { label: "Fast", ms: 800 },
+] as const;
+const DEFAULT_SKIM_SPEED = 1400;
+const SKIM_SPEED_STORAGE_KEY = "grynd:solitaire-review:skim-speed";
+
 function Shell({
   children,
   backHref,
   navPath,
-  onKeyDown,
 }: {
   children: ReactNode;
   backHref: string;
   navPath: string;
-  onKeyDown: KeyboardEventHandler<HTMLElement>;
 }) {
   return (
     <div className="relative min-h-screen bg-[#05070d] pb-24 text-white md:pb-0">
       <NavigationBar currentPath={navPath} />
-      <main
-        onKeyDown={onKeyDown}
-        className="mx-auto max-w-7xl px-4 pt-24 sm:px-6 md:pt-28"
-      >
+      <main className="mx-auto max-w-7xl px-4 pt-24 sm:px-6 md:pt-28">
         <Link
           href={backHref}
           className="inline-flex items-center gap-1.5 rounded-md text-xs font-semibold text-white/50 transition-colors hover:text-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70 motion-reduce:transition-none"
@@ -175,9 +181,24 @@ export default function SolitaireReviewPageClient({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedPly, setSelectedPly] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [skimSpeed, setSkimSpeed] = useState<number>(DEFAULT_SKIM_SPEED);
+
+  // Restore the pace this browser last picked. Reading in an effect rather than
+  // in the state initializer keeps the server markup and the first client
+  // render in agreement, so there is no hydration mismatch.
+  useEffect(() => {
+    try {
+      const stored = Number(window.localStorage.getItem(SKIM_SPEED_STORAGE_KEY));
+      if (SKIM_SPEEDS.some((option) => option.ms === stored)) setSkimSpeed(stored);
+    } catch {
+      // Storage can be unavailable (private mode, blocked cookies): Normal.
+    }
+  }, []);
   const { t } = useTranslation();
   const selectedRef = useRef<HTMLButtonElement | null>(null);
   const selectedRefKey = useRef<string | null>(null);
+  const timelineListRef = useRef<HTMLOListElement | null>(null);
 
   const backHref =
     kind === "daily" ? "/daily" : kind === "duel" ? `/casino/solitaire-duel/${gameId}` : "/solitaire";
@@ -191,6 +212,7 @@ export default function SolitaireReviewPageClient({
     setError(null);
     setData(null);
     setSelectedPly(0);
+    setPlaying(false);
 
     // A guest's completed solo game lives in this browser (localReview.ts).
     // Its local-only id is never sent to the server; the review is rebuilt
@@ -291,41 +313,122 @@ export default function SolitaireReviewPageClient({
   );
   const view = position?.ok ? position.view : null;
 
+  // The arrows stop on standout moves, not on every single ply: normal and
+  // good moves are skipped so reaching a great move or a blunder takes one or
+  // two clicks instead of a hundred. `stepToNotable` falls back to one-ply
+  // stepping until the analysis (and therefore the ratings) is available.
+  const notable = useMemo(
+    () => notablePlies(analysis, totalMoves),
+    [analysis, totalMoves],
+  );
   const go = useCallback(
     (action: ReviewNavigationAction) => {
-      setSelectedPly((current) => stepPly(current, totalMoves, action));
+      setSelectedPly((current) => stepToNotable(current, totalMoves, action, notable));
     },
-    [totalMoves],
+    [totalMoves, notable],
   );
 
-  // Keyboard stepping is scoped to the review page, and never steals a key from
-  // a text field. Home/End are also page-scroll keys, so they are prevented.
-  const onKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLElement>) => {
-      const target = event.target as HTMLElement | null;
-      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
-      if (event.key === "ArrowLeft") {
-        event.preventDefault();
-        go("previous");
-      } else if (event.key === "ArrowRight") {
-        event.preventDefault();
-        go("next");
-      } else if (event.key === "Home") {
-        event.preventDefault();
-        go("start");
-      } else if (event.key === "End") {
-        event.preventDefault();
-        go("end");
-      }
+  // Any manual step — an arrow button, a timeline row, a key moment or the
+  // keyboard — stops a running auto-skim. Only the timer advances without
+  // pausing, so the skim never fights the player for control.
+  const goManually = useCallback(
+    (action: ReviewNavigationAction) => {
+      setPlaying(false);
+      go(action);
     },
     [go],
   );
+  const selectManually = useCallback((ply: number) => {
+    setPlaying(false);
+    setSelectedPly(ply);
+  }, []);
 
-  // Keep the selected timeline row visible without moving the whole page.
+  // Shared by the Play button and the Space shortcut, so both paths restart
+  // from the deal when pressed at the final position.
+  const togglePlay = useCallback(() => {
+    if (playing) {
+      setPlaying(false);
+      return;
+    }
+    if (notable.length === 0) return;
+    if (selectedPly >= totalMoves) setSelectedPly(0);
+    setPlaying(true);
+  }, [playing, notable.length, selectedPly, totalMoves]);
+
+  // The move the next arrow will land on, so the hint can name it before the
+  // click instead of making the player guess how far a skip goes.
+  const nextTarget =
+    selectedPly >= totalMoves
+      ? null
+      : stepToNotable(selectedPly, totalMoves, "next", notable);
+
+  // Arrow keys work wherever focus is on the page — a player who has just
+  // scrolled the board into view should not have to click a control first.
+  // Keys typed into a field are never stolen, and preventDefault also stops the
+  // arrows from scrolling the page underneath the board.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      // Space is Play/Pause, except on a focused control: a button would also
+      // activate natively (toggling twice) and Space opens a select.
+      if (event.key === " " && !target?.closest("button, a, select, summary")) {
+        event.preventDefault();
+        if (!event.repeat) togglePlay();
+        return;
+      }
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        goManually("previous");
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        goManually("next");
+      } else if (event.key === "Home") {
+        event.preventDefault();
+        goManually("start");
+      } else if (event.key === "End") {
+        event.preventDefault();
+        goManually("end");
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [goManually, togglePlay]);
+
+  // Auto-skim walks the same stop list as the arrows: one key moment every
+  // 1.4s, never a routine move. The timeout is re-armed after each step, so an
+  // analysis that arrives mid-play simply changes where the next stop is. It
+  // pauses itself at the final position, and the cleanup stops the timer when
+  // the page unmounts or Play is toggled off.
+  useEffect(() => {
+    if (!playing) return;
+    if (selectedPly >= totalMoves) {
+      setPlaying(false);
+      return;
+    }
+    if (notable.length === 0) return;
+    const timer = window.setTimeout(() => go("next"), skimSpeed);
+    return () => window.clearTimeout(timer);
+  }, [playing, selectedPly, totalMoves, notable.length, go, skimSpeed]);
+
+  // Keep the selected timeline row visible WITHOUT moving the whole page.
+  // `scrollIntoView` walks every scrollable ancestor, including the window,
+  // which is why skimming used to drag the page down. Only the timeline's own
+  // scrollTop is adjusted, and only when the row is actually out of view.
   useEffect(() => {
     if (selectedRefKey.current === `${selectedPly}`) return;
     selectedRefKey.current = `${selectedPly}`;
-    selectedRef.current?.scrollIntoView({ block: "nearest" });
+    const list = timelineListRef.current;
+    const row = selectedRef.current;
+    if (!list || !row) return;
+    const listRect = list.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    if (rowRect.top < listRect.top) {
+      list.scrollTop -= listRect.top - rowRect.top;
+    } else if (rowRect.bottom > listRect.bottom) {
+      list.scrollTop += rowRect.bottom - listRect.bottom;
+    }
   }, [selectedPly]);
 
   const currentMove = selectedPly > 0 ? moves[selectedPly - 1] : null;
@@ -356,7 +459,7 @@ export default function SolitaireReviewPageClient({
   })();
 
   return (
-    <Shell backHref={backHref} navPath={navPath} onKeyDown={onKeyDown}>
+    <Shell backHref={backHref} navPath={navPath}>
       <header className="mt-5 max-w-3xl">
         <p className="text-[11px] font-black uppercase tracking-[0.4em] text-cyan-300/80">
           GRYND · game review
@@ -434,6 +537,27 @@ export default function SolitaireReviewPageClient({
               aria-label="Board review"
               className="min-w-0 rounded-2xl border border-white/10 bg-[#070b12]/85 p-3 shadow-[0_20px_60px_rgba(0,0,0,0.35)] sm:p-5"
             >
+              {/* Inline commentary leads the analysis: GLITCH's line for the
+                  selected move sits above the board it describes. Keyed by the
+                  stable event id so revisiting a move shows that same line. */}
+              {glitchReaction && (
+                <div
+                  data-testid="review-glitch"
+                  data-glitch-move={glitchReaction.moveNumber}
+                  className="mb-3"
+                >
+                  <GlitchSay
+                    key={glitchReaction.eventId}
+                    placement="inline"
+                    expression={glitchReaction.expression}
+                    message={t(glitchReaction.messageKey)}
+                    eventId={glitchReaction.eventId}
+                    priority={glitchReaction.priority}
+                    size="sm"
+                  />
+                </div>
+              )}
+
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
                 <div className="min-w-0">
                   <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/40">
@@ -496,23 +620,23 @@ export default function SolitaireReviewPageClient({
                   <NavButton
                     label="First move — initial position"
                     testId="review-nav-first"
-                    onClick={() => go("start")}
+                    onClick={() => goManually("start")}
                     disabled={selectedPly === 0}
                   >
                     <IconChevronsLeft size={18} aria-hidden="true" />
                   </NavButton>
                   <NavButton
-                    label="Previous move"
+                    label="Previous key moment"
                     testId="review-nav-prev"
-                    onClick={() => go("previous")}
+                    onClick={() => goManually("previous")}
                     disabled={selectedPly === 0}
                   >
                     <IconChevronLeft size={18} aria-hidden="true" />
                   </NavButton>
                   <NavButton
-                    label="Next move"
+                    label="Next key moment"
                     testId="review-nav-next"
-                    onClick={() => go("next")}
+                    onClick={() => goManually("next")}
                     disabled={selectedPly >= totalMoves}
                   >
                     <IconChevronRight size={18} aria-hidden="true" />
@@ -520,37 +644,76 @@ export default function SolitaireReviewPageClient({
                   <NavButton
                     label="Last move — final position"
                     testId="review-nav-last"
-                    onClick={() => go("end")}
+                    onClick={() => goManually("end")}
                     disabled={selectedPly >= totalMoves}
                   >
                     <IconChevronsRight size={18} aria-hidden="true" />
                   </NavButton>
+                  <button
+                    type="button"
+                    data-testid="review-autoplay"
+                    onClick={togglePlay}
+                    disabled={notable.length === 0}
+                    aria-pressed={playing}
+                    title={
+                      notable.length === 0
+                        ? "No key moments to skim yet"
+                        : playing
+                          ? "Pause the auto-skim"
+                          : "Play through the key moments"
+                    }
+                    className="ml-1 inline-flex h-10 items-center gap-1.5 rounded-lg border border-cyan-300/30 bg-cyan-300/10 px-3 text-xs font-bold uppercase tracking-wider text-cyan-200 transition-colors hover:bg-cyan-300/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70 disabled:cursor-not-allowed disabled:opacity-30 motion-reduce:transition-none"
+                  >
+                    {playing ? (
+                      <IconPlayerPause size={16} aria-hidden="true" />
+                    ) : (
+                      <IconPlayerPlay size={16} aria-hidden="true" />
+                    )}
+                    {playing ? "Pause" : "Play"}
+                  </button>
+                  <label className="ml-1 inline-flex h-10 items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2 text-[10px] font-bold uppercase tracking-wider text-white/45 focus-within:ring-2 focus-within:ring-cyan-300/70">
+                    <span className="hidden sm:inline">Speed</span>
+                    <select
+                      data-testid="review-skim-speed"
+                      aria-label="Auto-skim speed"
+                      value={skimSpeed}
+                      onChange={(event) => {
+                        const next = Number(event.target.value);
+                        setSkimSpeed(next);
+                        // Remember the pace for the next review in this browser.
+                        try {
+                          window.localStorage.setItem(
+                            SKIM_SPEED_STORAGE_KEY,
+                            String(next),
+                          );
+                        } catch {
+                          // A failed write must never break reviewing.
+                        }
+                      }}
+                      className="rounded-md bg-transparent py-1 text-[11px] font-bold uppercase tracking-wider text-white/80 outline-none"
+                    >
+                      {SKIM_SPEEDS.map((option) => (
+                        <option
+                          key={option.ms}
+                          value={option.ms}
+                          className="bg-[#0b1220] text-white"
+                        >
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
-                <p className="text-[10px] uppercase tracking-wider text-white/30">
-                  ← → step · Home / End jump
+                <p
+                  data-testid="review-nav-hint"
+                  className="text-[10px] uppercase tracking-wider text-white/30"
+                >
+                  ← → key moments
+                  {nextTarget != null ? ` · next: move ${nextTarget}` : " · at the end"}
+                  {" · Home / End jump · Space play/pause"}
                 </p>
               </div>
 
-              {/* Inline commentary: only for the moves the engine marked as
-                  worth a line, and keyed by the stable event id so a revisit
-                  rerenders that same reaction rather than a new one. */}
-              {glitchReaction && (
-                <div
-                  data-testid="review-glitch"
-                  data-glitch-move={glitchReaction.moveNumber}
-                  className="mt-4"
-                >
-                  <GlitchSay
-                    key={glitchReaction.eventId}
-                    placement="inline"
-                    expression={glitchReaction.expression}
-                    message={t(glitchReaction.messageKey)}
-                    eventId={glitchReaction.eventId}
-                    priority={glitchReaction.priority}
-                    size="sm"
-                  />
-                </div>
-              )}
             </section>
 
             {/* ── Summary, moments, timeline ─────────────────────────────── */}
@@ -660,7 +823,7 @@ export default function SolitaireReviewPageClient({
                         <li key={`${moment.ply}-${moment.rating}`}>
                           <button
                             type="button"
-                            onClick={() => setSelectedPly(moment.ply + 1)}
+                            onClick={() => selectManually(moment.ply + 1)}
                             className="flex w-full items-center gap-2 rounded-lg border border-transparent px-2 py-1.5 text-left transition-colors hover:border-white/10 hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70 motion-reduce:transition-none"
                           >
                             <span className="w-6 shrink-0 text-right font-mono text-[10px] text-white/35">
@@ -703,6 +866,7 @@ export default function SolitaireReviewPageClient({
                   <p className="mt-2 text-[11px] text-white/35">No moves were recorded.</p>
                 ) : (
                   <ol
+                    ref={timelineListRef}
                     aria-label="Move timeline"
                     className="mt-2 max-h-[18rem] space-y-0.5 overflow-y-auto overscroll-contain pr-1 sm:max-h-[22rem] lg:max-h-[26rem]"
                   >
@@ -715,7 +879,7 @@ export default function SolitaireReviewPageClient({
                           <button
                             type="button"
                             ref={isSelected ? selectedRef : null}
-                            onClick={() => setSelectedPly(index + 1)}
+                            onClick={() => selectManually(index + 1)}
                             aria-current={isSelected ? "step" : undefined}
                             aria-label={`Move ${index + 1}: ${describeMove(move.move)}${
                               meta ? `, rated ${meta.label}` : ", not rated yet"

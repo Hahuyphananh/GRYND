@@ -50,6 +50,75 @@ export function stepPly(
 }
 
 /**
+ * Ratings that make a move worth stopping on while skimming a review.
+ *
+ * The arrows exist to skip the routine log, so `normal` and `good` moves are
+ * stepped over. Standout plays (great, brilliant) and the moves worth learning
+ * from (inaccuracy, mistake, blunder) are the stops.
+ */
+export const NOTABLE_RATINGS: readonly MoveRating[] = [
+  "great",
+  "brilliant",
+  "inaccuracy",
+  "mistake",
+  "blunder",
+];
+
+export function isNotableRating(rating: MoveRating | null | undefined): boolean {
+  return Boolean(rating && NOTABLE_RATINGS.includes(rating));
+}
+
+/** The 1-based plies (the review's `selectedPly` scale) of notable moves. */
+export function notablePlies(
+  analysis: GameAnalysis | null | undefined,
+  totalMoves: number,
+): number[] {
+  const max = Math.max(0, Math.floor(Number(totalMoves) || 0));
+  if (!analysis || max === 0) return [];
+  const limit = Math.min(max, analysis.perMove.length);
+  const plies: number[] = [];
+  for (let index = 0; index < limit; index += 1) {
+    if (isNotableRating(analysis.perMove[index]?.rating)) plies.push(index + 1);
+  }
+  return plies;
+}
+
+/**
+ * Step to the next stop instead of the next ply.
+ *
+ * Forward past the last stop lands on the final position, and back before the
+ * first lands on the initial deal — the same ends the single-step arrows use.
+ * Before the analysis arrives (or when a game has no standout move at all)
+ * there is nothing to skip, so this degrades to plain one-ply stepping rather
+ * than jumping across the whole game.
+ */
+export function stepToNotable(
+  current: number,
+  total: number,
+  action: ReviewNavigationAction,
+  notable: readonly number[],
+): number {
+  const max = Math.max(0, Math.floor(Number(total) || 0));
+  const at = clampPly(current, max);
+  if (action === "start") return 0;
+  if (action === "end") return max;
+
+  const stops = notable.filter(
+    (ply) => Number.isInteger(ply) && ply > 0 && ply <= max,
+  );
+  if (stops.length === 0) return stepPly(at, max, action);
+
+  if (action === "previous") {
+    let target = 0;
+    for (const ply of stops) if (ply < at) target = ply;
+    return target;
+  }
+
+  for (const ply of stops) if (ply > at) return ply;
+  return max;
+}
+
+/**
  * Rebuild the board at `ply` from the deal and the first `ply` moves.
  *
  * A log that the engine refuses (or that leaves the cursor short) is reported
