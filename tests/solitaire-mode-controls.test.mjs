@@ -28,9 +28,9 @@ test("solo keeps undo, restart, a new deal and an exit", () => {
 
   assert.match(solo, /const undo = useCallback/, "the undo handler must exist");
   assert.match(solo, /onClick=\{undo\}/, "the Undo control runs it");
-  assert.match(solo, /onClick=\{\(\) => guardExit\("restart", restart\)\}/);
-  assert.match(solo, /onClick=\{\(\) => guardExit\("newDeal", newSoloGame\)\}/);
-  assert.match(solo, /guardExit\("exit", \(\) => router\.push\("\/"\)\)/);
+  assert.match(solo, /onClick={restart}/);
+  assert.match(solo, /onClick={newSoloGame}/);
+  assert.match(solo, /href="\/"\s*className="ml-auto text-sm text-slate-400 hover:text-white"/);
 });
 
 test("undo rewinds the last entry without ever becoming a silent no-op", () => {
@@ -96,6 +96,6 @@ test("practice undo is a server rollback of the seat's own log", () => {
 test("ranked and practice results offer the shared post-match video", () => {
   const result = read(RESULT);
 
-  assert.match(result, /<PostMatchAdSlot onDone=\{handleAdSettled\} \/>/);
-  assert.match(result, /\{!compact && !portalSurface && adOpen && !postMatchAd && \(/);
+  assert.match(result, /<PostMatchAdSlot \/>/);
+  assert.match(result, /\{!compact && !portalSurface && !postMatchAd && revealed && \(/);
 });

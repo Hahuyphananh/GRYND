@@ -191,18 +191,13 @@ test("a rematch is a new RESULT, so the video is offered again", () => {
 
   // Per-result state must not survive into the next match's result: the route
   // (and so this component instance) survives a rematch.
+  assert.match(source, /setNavigating\(false\);/, "a new result re-enables the exits");
   assert.match(
     source,
-    /useEffect\(\(\) => \{\s*if \(!open\) return;\s*adAttemptedRef\.current = false;/,
-    "opening a result resets the one-attempt flag",
+    /\{!compact && !portalSurface && !postMatchAd && revealed && \(/,
+    "the video mounts again for the new result",
   );
-  assert.match(source, /pendingExitRef\.current = null;\s*setAdOpen\(false\);/);
-  assert.match(source, /setNavigating\(false\);/);
-
-  // ...while the one-attempt-per-result guard and the release path are intact.
-  assert.match(source, /if \(!compact && !postMatchAd && !adAttemptedRef\.current\) \{/);
-  assert.match(source, /const handleAdSettled = useCallback\(\(\) => \{/);
-  assert.match(source, /next\(\);/);
+  assert.doesNotMatch(source, /adAttemptedRef/, "there is no one-attempt flag to reset");
 });
 
 test("the ad gate is outcome-agnostic, so a resignation is covered too", () => {
@@ -250,11 +245,9 @@ test("solo offers analysis on the win popup only, never automatically", () => {
   assert.ok(button > winPanel, "the analyse button lives inside the win popup");
 
   assert.match(source, /\{reviewGameId && \(/);
-  assert.match(
-    source,
-    /onClick=\{\(event\) => \{\s*event\.preventDefault\(\);\s*guardExit\("analysis", \(\) =>/,
-  );
-  assert.match(source, /guardExit\("playAgain", restart\)/);
+  assert.match(source, /data-testid="solitaire-analysis"/);
+  assert.match(source, /onClick=\{restart\}/);
+  assert.doesNotMatch(source, /guardExit/, "the exit gate is gone");
 });
 
 test("a guest daily game keeps its deal and gets a local review id", () => {

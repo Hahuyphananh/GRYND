@@ -461,8 +461,10 @@ test("a portal result screen shows no account CTA and no GRYND ad", () => {
   assert.match(screen, /import \{ isPortalPlayPath \} from "\.\.\/\.\.\/lib\/portal\/framing";/);
   assert.match(screen, /const portalSurface = isPortalPlayPath\(usePathname\(\)\);/);
   assert.match(screen, /\{!compact && !portalSurface && guestGameKey \? \(/);
-  assert.match(screen, /\{!compact && !portalSurface && adOpen && !postMatchAd && \(/);
-  assert.match(screen, /if \(portalSurface\) \{\s*setNavigating\(true\);/);
+  assert.match(screen, /\{!compact && !portalSurface && !postMatchAd && revealed && \(/);
+  // The portal path is excluded by the mount condition itself, so a result
+  // inside a portal frame can never reach the slot.
+  assert.doesNotMatch(screen, /\{!compact && portalSurface/);
 });
 
 // ── 5a. The practice-only lobby ──────────────────────────────────────────

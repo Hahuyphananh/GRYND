@@ -74,12 +74,18 @@ const GAME_UNAVAILABLE_PATH = "/game-unavailable";
 /**
  * PRODUCT SURFACES RETIRED WITH THE SOLITAIRE-FIRST TRANSITION.
  *
- * The coin shop, token rewards and paid membership are hidden from the public
- * product, but their implementations, APIs, tables and history stay in the
- * repository. A public visit goes to the one game the platform now offers, so
- * an old bookmark lands somewhere useful instead of on a dead page.
+ * The coin shop, token rewards and quests are hidden from the public product,
+ * but their implementations, APIs, tables and history stay in the repository. A
+ * public visit goes to the one game the platform now offers, so an old bookmark
+ * lands somewhere useful instead of on a dead page.
+ *
+ * GRYND PRO is deliberately NOT in this list any more: it is the one paid
+ * product that is still sold. A retired-product redirect for it swallowed the
+ * real /upgrade-pro page (and every link, email and Stripe return URL pointing
+ * at it) and bounced the visitor to the Solitaire Duel page instead of showing
+ * the offer and its Checkout button.
  */
-const RETIRED_PRODUCT_PATH = /^\/(?:rewards|shop|upgrade-pro|quests)(?:\/|$)/;
+const RETIRED_PRODUCT_PATH = /^\/(?:rewards|shop|quests)(?:\/|$)/;
 
 /**
  * APIs that belong to retired public features. They stay implemented for

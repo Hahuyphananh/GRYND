@@ -41,7 +41,7 @@
  *      so every result screen can reuse it, never a game-specific prop.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -323,32 +323,12 @@ export default function PvpResultScreen({
   }, [glitchReaction]);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [navigating, setNavigating] = useState(false);
-  // The post-match ad is offered when the player picks an EXIT action, so this
-  // screen holds that action until the ad reports back.
-  const [adOpen, setAdOpen] = useState(false);
-  const adOpenRef = useRef(false);
-  const adAttemptedRef = useRef(false);
-  const pendingExitRef = useRef(null);
-  // Which exit control started the ad attempt. The ad surface draws nothing
-  // while the tag is fetched, so the pressed button is what tells the player
-  // their choice registered: it carries a small inline spinner until the ad
-  // settles (played, skipped, or unavailable).
-  const [pendingExit, setPendingExit] = useState(null);
-
   // A RESULT SCREEN CAN OUTLIVE A RESULT. A rematch or a re-deal navigates to a
   // NEW match on the SAME route, where React keeps this component instance
-  // alive. Per-result state therefore has to be reset when a result opens, or
-  // the next match inherits the previous one's flags: `adAttemptedRef` would
-  // already be spent (so the video is never offered again) and `navigating`
-  // would still be true (so every exit button is disabled). One attempt per
-  // RESULT, not one attempt per mounted component.
+  // alive, so the per-result `navigating` flag has to be reset when the next
+  // result opens or every exit button would stay disabled.
   useEffect(() => {
     if (!open) return;
-    adAttemptedRef.current = false;
-    adOpenRef.current = false;
-    pendingExitRef.current = null;
-    setAdOpen(false);
-    setPendingExit(null);
     setNavigating(false);
   }, [open]);
 
@@ -388,91 +368,15 @@ export default function PvpResultScreen({
     return () => clearTimeout(timer);
   }, [open, outcome, opponent?.isAi]);
 
-  // One action per screen: once Play Again / Rematch / Lobby is picked,
-  // disable the buttons so a double-tap can't create two matches.
-  //
-  // THE POST-MATCH VIDEO COMES FIRST. Every exit control routes through this
-  // guard, so a finished match — a win, a loss or a resignation — offers its ad
-  // at the moment the player leaves the result, never over the result itself.
-  // The action is parked in a ref and run once the ad reports back.
-  //
-  // ONE ATTEMPT PER RESULT. If the surface is off, the viewer is a member, the
-  // cadence declines or the tag fails, the slot answers `onDone` immediately and
-  // the player moves on. A declined ad must never leave a button that looks
-  // clickable and does nothing.
+  // One action per screen: once Play Again / Rematch / Lobby is picked, disable
+  // the buttons so a double-tap can't create two matches. The post-match video
+  // no longer waits for an exit — it plays as soon as the result is on screen —
+  // so an exit action is never parked here.
   const guard = (key, fn) => () => {
-    if (navigating || pendingExit || typeof fn !== "function") return;
-    // A game that supplies its own node renders the ad itself (no shared slot
-    // is mounted), so parking the exit action here would leave the buttons
-    // waiting for a settle that can never arrive. Those screens navigate at
-    // once; everyone else meets the shared slot.
-    if (!compact && !postMatchAd && !adAttemptedRef.current) {
-      // Skip the surface entirely on the portal path: run the exit action now
-      // rather than holding it until an ad that must never play reports back.
-      if (portalSurface) {
-        setNavigating(true);
-        fn();
-        return;
-      }
-      adAttemptedRef.current = true;
-      pendingExitRef.current = fn;
-      adOpenRef.current = true;
-      setPendingExit(key);
-      setAdOpen(true);
-      return;
-    }
+    if (navigating || typeof fn !== "function") return;
     setNavigating(true);
     fn();
   };
-
-  // The ad is over (played, skipped, closed) or was never available: continue to
-  // where the player asked to go. Idempotent — the slot settles exactly once.
-  const handleAdSettled = useCallback(() => {
-    if (!adOpenRef.current) return;
-    adOpenRef.current = false;
-    setAdOpen(false);
-    setPendingExit(null);
-    const next = pendingExitRef.current;
-    pendingExitRef.current = null;
-    if (!next) return;
-    setNavigating(true);
-    next();
-  }, []);
-
-  // Latest guard, for the listener registered below: the back gesture hands
-  // its exit to the same gate as the buttons.
-  const guardRef = useRef(guard);
-  guardRef.current = guard;
-
-  // THE BROWSER BACK GESTURE IS AN EXIT TOO. A finished match can be left with
-  // the system back button or gesture, which never reaches a click handler;
-  // without this, that one way out would walk straight past the post-match
-  // video. While the result is on screen the pop is cancelled and the leave
-  // action goes through the guard, so back is held for the ad exactly like
-  // "Return to Lobby". A result with no leave action at all (replay only) is
-  // left alone: back already goes where it went before.
-  const backExitRef = useRef(null);
-  backExitRef.current = onReturnToLobby
-    ? onReturnToLobby
-    : secondaryAction
-      ? secondaryAction.href
-        ? () => router.push(secondaryAction.href)
-        : secondaryAction.onClick
-      : onDismiss;
-
-  useEffect(() => {
-    if (!revealed || compact || !backExitRef.current) return;
-    const onPopState = () => {
-      // The entry was already popped: put the result back first, so the
-      // player stays on it while the ad runs, and when there is none.
-      window.history.pushState(null, "", window.location.href);
-      // A second back while an exit is already in flight is not a second exit.
-      if (navigating || adOpenRef.current || pendingExitRef.current) return;
-      guardRef.current("back", backExitRef.current)();
-    };
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, [revealed, compact, navigating]);
 
   // Live progression — real numbers from the platform's own endpoints,
   // fetched only when the game didn't pass its own values. Fire-and-forget:
@@ -1142,13 +1046,9 @@ export default function PvpResultScreen({
                   <button
                     type="button"
                     onClick={guard("playAgain", playAgain.onClick)}
-                    disabled={navigating || Boolean(pendingExit)}
-                    aria-busy={pendingExit === "playAgain"}
+                    disabled={navigating}
                     className="inline-flex w-full items-center justify-center gap-2 rounded-xl border-b-4 border-[#0087a8] bg-[#00e5ff] px-5 py-3 text-sm font-extrabold text-[#001a2e] transition hover:brightness-110 disabled:opacity-60"
                   >
-                    {pendingExit === "playAgain" && (
-                      <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                    )}
                     {playAgain.label || "RUN IT BACK"}
                   </button>
                 )}
@@ -1156,13 +1056,9 @@ export default function PvpResultScreen({
                   <button
                     type="button"
                     onClick={guard("rematch", rematch.onClick)}
-                    disabled={navigating || Boolean(pendingExit)}
-                    aria-busy={pendingExit === "rematch"}
+                    disabled={navigating}
                     className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#00e5ff]/50 bg-[#00e5ff]/10 px-5 py-3 text-sm font-bold text-[#67f9ff] transition hover:bg-[#00e5ff]/20 disabled:opacity-60"
                   >
-                    {pendingExit === "rematch" && (
-                      <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                    )}
                     {rematch.label || "Rematch"}
                   </button>
                 )}
@@ -1202,13 +1098,9 @@ export default function PvpResultScreen({
                   <button
                     type="button"
                     onClick={guard("secondary", secondaryAction.onClick)}
-                    disabled={navigating || Boolean(pendingExit)}
-                    aria-busy={pendingExit === "secondary"}
+                    disabled={navigating}
                     className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#00e5ff]/50 bg-[#00e5ff]/10 px-5 py-3 text-sm font-bold text-[#67f9ff] transition hover:bg-[#00e5ff]/20 disabled:opacity-60"
                   >
-                    {pendingExit === "secondary" && (
-                      <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                    )}
                     {secondaryAction.label || "Continue"}
                   </button>
                 )}
@@ -1216,13 +1108,9 @@ export default function PvpResultScreen({
                   <button
                     type="button"
                     onClick={guard("lobby", onReturnToLobby)}
-                    disabled={navigating || Boolean(pendingExit)}
-                    aria-busy={pendingExit === "lobby"}
+                    disabled={navigating}
                     className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-5 py-3 text-sm font-semibold text-white/80 transition hover:bg-white/10 disabled:opacity-60"
                   >
-                    {pendingExit === "lobby" && (
-                      <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                    )}
                     Return to Lobby
                   </button>
                 )}
@@ -1230,13 +1118,9 @@ export default function PvpResultScreen({
                   <button
                     type="button"
                     onClick={guard("dismiss", onDismiss)}
-                    disabled={navigating || Boolean(pendingExit)}
-                    aria-busy={pendingExit === "dismiss"}
+                    disabled={navigating}
                     className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 px-5 py-2.5 text-xs font-semibold text-white/50 transition hover:bg-white/5 hover:text-white/80 disabled:opacity-60"
                   >
-                    {pendingExit === "dismiss" && (
-                      <span aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                    )}
                     {dismissLabel}
                   </button>
                 )}
@@ -1258,19 +1142,20 @@ export default function PvpResultScreen({
               </div>
             ) : null}
 
-            {/* Post-match advertisement. It is NOT mounted over the result any
-                more: the guard above opens it when the player picks an exit
-                action, and that action runs once it reports back. A game that
-                wired its own node still wins; every other game gets the shared
-                slot, which renders nothing unless the server says it may offer
-                one (and never for a GRYND PRO member). Compact creator
-                recordings carry no ad at all. */}
+            {/* Post-match advertisement. It plays the moment the result is
+                revealed — the player no longer has to pick an exit action to
+                see it — and it is an overlay, so the result, the score and the
+                controls stay behind it. A game that wired its own node still
+                wins; every other game gets the shared slot, which renders
+                nothing unless the server says it may offer one (and never for
+                a GRYND PRO member, and never on a portal surface). Compact
+                creator recordings carry no ad at all. */}
             {!compact && postMatchAd && (
               <div className="mx-auto mt-5 w-full max-w-xs">{postMatchAd}</div>
             )}
-            {!compact && !portalSurface && adOpen && !postMatchAd && (
+            {!compact && !portalSurface && !postMatchAd && revealed && (
               <div className="mx-auto mt-5 w-full max-w-xs">
-                <PostMatchAdSlot onDone={handleAdSettled} />
+                <PostMatchAdSlot />
               </div>
             )}
 

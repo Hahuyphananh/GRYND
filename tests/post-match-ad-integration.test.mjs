@@ -328,43 +328,37 @@ test("the pilot's completion signal is the server's own match status", () => {
   assert.doesNotMatch(source, /postMatchAd=\{/, "no per-page ad node");
 });
 
-test("the ad is offered on the way out, never over the result", () => {
-  const source = read(RESULT_SCREEN);
+test("the ad starts with the result, not on the way out", () => {
+  const source = code(read(RESULT_SCREEN));
 
   assert.match(source, /postMatchAd = null,/, "the shared screen takes an optional node");
 
-  // The slot hangs off the exit guard's state: the player reads the result and
-  // meets the ad when they choose where to go next, not before.
-  const adIndex = source.indexOf("{!compact && !portalSurface && adOpen && !postMatchAd && (");
-  assert.ok(adIndex > -1, "the shared screen renders the node");
-  assert.match(
+  // The slot mounts off `revealed`, so the tag is requested the moment the
+  // result panel is on screen; no exit state is involved any more.
+  const adIndex = source.indexOf(
+    "{!compact && !portalSurface && !postMatchAd && revealed && (",
+  );
+  assert.ok(adIndex > -1, "the shared screen mounts the slot when the result reveals");
+  assert.match(source, /<PostMatchAdSlot \/>/, "no exit callback is needed");
+  assert.doesNotMatch(
     source,
-    /<PostMatchAdSlot onDone=\{handleAdSettled\} \/>/,
-    "the slot reports back so the held exit action can run",
+    /adOpen|pendingExit|adAttemptedRef|handleAdSettled/,
+    "the exit gate is gone: nothing parks an action behind the video",
   );
 
-  for (const marker of ["YOU WON", "RUN IT BACK", "Match Details"]) {
+  for (const marker of ["YOU WON", "RUN IT BACK"]) {
     assert.ok(
       source.indexOf(marker) > -1 && source.indexOf(marker) < adIndex,
       `${marker} must render before the ad`,
     );
   }
 
-  // Compact (Creator Mode) recordings never carry an ad, and the guard is what
-  // opens it, so the same condition has to gate the attempt.
-  assert.match(
-    source,
-    /if \(!compact && !postMatchAd && !adAttemptedRef\.current\) \{/,
-    "one attempt per result: none in compact mode, and none when the game supplies its own node",
-  );
-  assert.match(
-    source,
-    /const handleAdSettled = useCallback\(\(\) => \{/,
-    "the held action runs when the ad settles",
-  );
+  // Compact (Creator Mode) recordings never carry an ad, and a portal frame
+  // never receives GRYND advertising.
+  assert.match(source, /!compact && !portalSurface && !postMatchAd && revealed/);
 
-  // The only exit that was not a button — an href secondary action — now goes
-  // through the same gate, so a link cannot skip the video.
+  // The secondary href action keeps the double-click guard; the video no
+  // longer gates it.
   assert.match(
     source,
     /event\.preventDefault\(\);\s*guard\("secondary", \(\) => router\.push\(secondaryAction\.href\)\)\(\)/,
@@ -392,7 +386,9 @@ test("nothing is offered before a match is definitively over", () => {
 
 test("reward and progression paths never depend on the ad", () => {
   const source = read(RESULT_SCREEN);
-  const adIndex = source.indexOf("{!compact && !portalSurface && adOpen && !postMatchAd && (");
+  const adIndex = source.indexOf(
+    "{!compact && !portalSurface && !postMatchAd && revealed && (",
+  );
   const actionsIndex = source.indexOf("{/* Actions */}");
 
   assert.ok(actionsIndex > -1 && actionsIndex < adIndex, "the ad follows the actions");
@@ -443,17 +439,12 @@ test("no lobby, browsing page or matchmaking surface mounts the ad", () => {
 
 // ── GRYND PRO: `ad_free` covers the post-match video ──────────────────────
 
-test("UNO's own end panel offers the video on its exit buttons, not on open", () => {
-  const uno = read("src/app/casino/uno/game/[gameId]/PageClient.jsx");
-  assert.match(uno, /const \[adPending, setAdPending\] = useState\(false\)/);
-  assert.match(
-    uno,
-    /\{endPopup && adPending && <PostMatchAdSlot onDone=\{handleAdSettled\} \/>\}/,
-    "the slot only mounts once the player picks an exit",
-  );
-  assert.match(uno, /onClick=\{guardExit\(requestReplay\)\}/);
-  assert.match(uno, /onClick=\{guardExit\(chooseReturn\)\}/);
-  assert.doesNotMatch(uno, /\{endPopup && <PostMatchAdSlot/);
+test("UNO's own end panel starts the video when the panel is on screen", () => {
+  const uno = code(read("src/app/casino/uno/game/[gameId]/PageClient.jsx"));
+  assert.match(uno, /\{endPopup && endPopupVisible && <PostMatchAdSlot \/>\}/);
+  assert.match(uno, /onClick=\{requestReplay\}/);
+  assert.match(uno, /onClick=\{chooseReturn\}/);
+  assert.doesNotMatch(uno, /adPending|guardExit|handleAdSettled/);
 });
 
 test("a GRYND PRO member is never offered the post-match video", () => {
@@ -493,11 +484,10 @@ test("practice results can offer the ad without a server match row", () => {
 test("every result screen offers the ad through one shared slot", () => {
   const shared = read(RESULT_SCREEN);
   assert.match(shared, /import PostMatchAdSlot from "\.\.\/ads\/PostMatchAdSlot"/);
-  assert.match(shared, /\{!compact && !portalSurface && adOpen && !postMatchAd && \(/);
+  assert.match(shared, /\{!compact && !portalSurface && !postMatchAd && revealed && \(/);
   // A game that wired its own node still wins; every other game gets the slot,
-  // which now opens on the exit action and reports back once it settles so the
-  // navigation the player asked for can run.
-  assert.match(shared, /<PostMatchAdSlot onDone=\{handleAdSettled\} \/>/);
+  // which mounts as soon as the result is revealed.
+  assert.match(shared, /<PostMatchAdSlot \/>/);
 
   const slot = read("src/components/ads/PostMatchAdSlot.tsx");
   assert.match(slot, /\/api\/ads\/post-match/, "the slot asks the server");
@@ -508,6 +498,15 @@ test("every result screen offers the ad through one shared slot", () => {
   );
   assert.match(slot, /surface\.adFree/, "a member is refused inside the slot too");
   assert.match(slot, /practiceResultId/, "a client-only practice result mints its id");
+
+  // The result is readable for a beat before the surface even asks.
+  assert.match(slot, /export const POST_MATCH_AD_DELAY_MS = 1_500;/);
+  assert.match(
+    slot,
+    /setTimeout\(\(\) => \{[\s\S]*?fetch\("\/api\/ads\/post-match"/,
+    "the server answer is requested only after the delay",
+  );
+  assert.match(slot, /window\.clearTimeout\(timer\)/, "unmounting cancels the wait");
 });
 
 test("bespoke result panels mount the shared slot themselves", () => {
@@ -516,11 +515,11 @@ test("bespoke result panels mount the shared slot themselves", () => {
   const panels = [
     {
       file: "src/app/casino/uno/game/[gameId]/PageClient.jsx",
-      gate: /\{endPopup && adPending && <PostMatchAdSlot onDone=\{handleAdSettled\} \/>\}/,
+      gate: /\{endPopup && endPopupVisible && <PostMatchAdSlot \/>\}/,
     },
     {
       file: "src/components/solitaire-duel/SoloSolitaireGame.tsx",
-      gate: /\{adOpen && \(\s*<PostMatchAdSlot[\s\S]*?onDone=\{handleAdSettled\}/,
+      gate: /\{session\.won && !finishing && \(\s*<PostMatchAdSlot[\s\S]*?\/>/,
     },
   ];
 
@@ -531,30 +530,14 @@ test("bespoke result panels mount the shared slot themselves", () => {
   }
 });
 
-test("solo and daily Solitaire offer the video on their exit actions", () => {
-  const solo = read("src/components/solitaire-duel/SoloSolitaireGame.tsx");
+test("solo and daily Solitaire start the video with the win panel", () => {
+  const solo = code(read("src/components/solitaire-duel/SoloSolitaireGame.tsx"));
 
   assert.match(solo, /import PostMatchAdSlot from "\.\.\/ads\/PostMatchAdSlot"/);
-  assert.match(solo, /guardExit\("playAgain", restart\)/);
-  assert.match(solo, /guardExit\("newDeal", newSoloGame\)/);
-  assert.match(solo, /guardExit\("lobby", \(\) => router\.push\("\/"\)\)/);
-  assert.match(solo, /onDone=\{handleAdSettled\}/, "the held action runs when the ad settles");
-  // A solo run ends by clearing the board OR by leaving it: leaving mid-run now
-  // offers the video too (new deal, restart, exit), because that is how most
-  // solo runs actually end. A deal nobody has touched is not a run.
-  assert.match(solo, /guardExit\("newChallenge", startDaily\)/);
-  assert.match(solo, /guardExit\("restart", restart\)/);
-  assert.match(solo, /guardExit\("exit", \(\) => router\.push\("\/"\)\)/);
-  assert.match(
-    solo,
-    /const runEnded =\s*Boolean\(session\?\.won\) \|\| Boolean\(session && session\.log\.length > 0\);/,
-    "a won run and an abandoned run both end a run",
-  );
-  assert.match(
-    solo,
-    /if \(!runEnded \|\| finishing\) \{\s*action\(\);\s*return;/,
-    "an untouched deal never triggers the surface",
-  );
+  assert.match(solo, /onClick=\{restart\}/);
+  assert.match(solo, /onClick=\{newSoloGame\}/);
+  assert.match(solo, /\{session\.won && !finishing && \(\s*<PostMatchAdSlot/);
+  assert.doesNotMatch(solo, /guardExit|runEnded|pendingExit|handleAdSettled/);
   // Daily reuses the same panel, so it inherits the wiring.
   assert.match(
     read("src/app/daily/PageClient.tsx"),
@@ -620,90 +603,30 @@ test("settlement, Elo, escrow, rules and matchmaking code are untouched", () => 
 
 // ── The exit action can never be held hostage by the ad ────────────────────
 
-test("an unavailable post-match ad never blocks the exit action it interrupted", () => {
+test("an unavailable post-match ad never blocks anything, because nothing waits on it", () => {
   const result = code(read(RESULT_SCREEN));
   const slot = code(read("src/components/ads/PostMatchAdSlot.tsx"));
-  const ad = code(read(AD_COMPONENT));
 
-  // 1. The control the player pressed is PARKED, not dropped, and the surface is
-  //    attempted at most once per result.
-  assert.match(result, /pendingExitRef\.current = fn;/, "the exit action must be kept");
-  assert.match(result, /setAdOpen\(true\);/, "the ad is opened in its place");
-  assert.match(
-    result,
-    /if \(!compact && !postMatchAd && !adAttemptedRef\.current\) \{/,
-    "one attempt per result, none in compact mode, and none when the game supplies its own node",
-  );
+  // Nothing is parked behind the video any more.
+  assert.doesNotMatch(result, /pendingExitRef|handleAdSettled|setAdOpen/);
 
-  // 2. The one handler that releases it does not care whether an ad played: the
-  //    slot reports `false` for every "nothing will play" answer, and that path
-  //    runs the player's action all the same.
-  const released = result.match(
-    /const handleAdSettled = useCallback\(\(\) => \{[\s\S]*?\}, \[\]\);/,
-  );
-  assert.ok(released, "the result screen needs exactly one settle handler");
-  assert.match(released[0], /const next = pendingExitRef\.current;/);
-  assert.match(released[0], /next\(\);/, "the parked action must actually run");
-  assert.ok(
-    !/played/.test(released[0]),
-    "the handler must not branch on whether the ad played",
-  );
-
-  // 3. The slot answers on BOTH paths, exactly once, whichever finishes first.
+  // The slot still answers exactly once, whichever path finishes first.
+  assert.match(slot, /if \(settledRef\.current\) return;/);
   assert.match(slot, /onDismiss=\{\(\) => settle\(true\)\}/);
   assert.match(slot, /onNoOffer=\{\(\) => settle\(false\)\}/);
-  assert.match(slot, /if \(settledRef\.current\) return;/);
-
-  // 4. Every way the player can end up without an ad — a missing tag, a failed
-  //    request, no fill, or a creative the browser cannot play — removes the
-  //    surface and reports `onNoOffer`, so the parked action is always released.
-  assert.equal(
-    (ad.match(/removeNow\(\);/g) ?? []).length,
-    4,
-    "every no-ad path must report back, not leave the action waiting",
-  );
-  assert.match(ad, /fireTracking\(ad\.errorUrls, "405"\);\s*removeNow\(\);/);
-  assert.match(ad, /onNoOfferRef\.current\?\.\(\);/);
-
-  // 5. And nothing is left on screen that the player would have to dismiss
-  //    before their action could run.
-  assert.doesNotMatch(ad, /No advertisement is available right now\./);
-  assert.doesNotMatch(ad, /This video could not be played\./);
-  assert.doesNotMatch(ad, /Loading advertisement…/);
-
-  // 6. While the tag is being fetched the pressed control shows a lightweight
-  //    inline spinner, and no other action can fire a second exit.
-  assert.match(result, /const \[pendingExit, setPendingExit\] = useState\(null\)/);
-  assert.match(result, /disabled=\{navigating \|\| Boolean\(pendingExit\)\}/);
-  assert.match(result, /pendingExit === "playAgain" && \(/);
-  assert.match(result, /animate-spin rounded-full border-2 border-current/);
 });
 
 
-// ── The system back gesture is an exit too ────────────────────────────────
+// ── The system back gesture is no longer an ad surface ────────────────────
 
-test("the browser back gesture is held for the post-match video", () => {
+test("the browser back gesture is no longer intercepted for the ad", () => {
   const result = code(read(RESULT_SCREEN));
   const uno = code(read("src/app/casino/uno/game/[gameId]/PageClient.jsx"));
 
-  // Shared panel: while the result is open, the pop is cancelled and its leave
-  // action goes through the same guard as every button.
-  assert.match(result, /window\.addEventListener\("popstate", onPopState\)/);
-  assert.match(
-    result,
-    /window\.history\.pushState\(null, "", window\.location\.href\)/,
-    "the popped entry must be restored so the player stays on the result",
-  );
-  assert.match(result, /guardRef\.current\("back", backExitRef\.current\)\(\)/);
-  assert.match(
-    result,
-    /if \(navigating \|\| adOpenRef\.current \|\| pendingExitRef\.current\) return;/,
-    "back while an exit is already in flight must not start a second exit",
-  );
-
-  // UNO's own end panel gates the gesture through guardExit too.
-  assert.match(uno, /window\.addEventListener\("popstate", onPopState\)/);
-  assert.match(uno, /if \(!endPopup\) return;/);
-  assert.match(uno, /if \(adPending\) return;/);
-  assert.match(uno, /guardExit\(chooseReturn\)\(\)/);
+  // The ad starts with the result, so back has nothing to hold: neither screen
+  // cancels a pop or restores a history entry on the ad's behalf.
+  assert.doesNotMatch(result, /addEventListener\("popstate"/);
+  assert.doesNotMatch(result, /history\.pushState/);
+  assert.doesNotMatch(uno, /addEventListener\("popstate"/);
+  assert.doesNotMatch(uno, /history\.pushState/);
 });

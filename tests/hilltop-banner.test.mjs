@@ -58,7 +58,7 @@ const ADSENSE_CONFIG = read("src/lib/ads.ts");
 const VAST_CONFIG = read("src/lib/vast/config.ts");
 
 const PROVIDER_URL =
-  "//juvenilechoice.com/bqXMV.sXdGGwlp0oYEWCcI/HeAmt9/uXZuUklDkMPBTQcD1DOAD/Qb2ZNYDuk/tXNQzzUv4rNRDTY-1/MKwp";
+  "//juvenilechoice.com/bDXOVVsud.Gulx0/YKWkcI/Fe/mb9/uNZOUgl/koPFTXc/1qOtD/Qg2DNRDzkltzNCzlU/4UNPDwYP1_M/wx";
 
 /** Run `fn` with a temporary environment and always restore it. */
 function withEnv(vars, fn) {
@@ -83,7 +83,7 @@ function withEnv(vars, fn) {
 test("the provider URL is preserved exactly as supplied", () => {
   assert.equal(HILLTOP_PROVIDER_SCRIPT_URL, PROVIDER_URL);
   assert.equal(hilltopBannerScriptUrl(), PROVIDER_URL);
-  assert.match(PROVIDER_URL, /^\/\/juvenilechoice\.com\/bqXMV\./);
+  assert.match(PROVIDER_URL, /^\/\/juvenilechoice\.com\/bDXOVVsud\./);
 });
 
 test("the snippet keeps the settings object, async flag, referrer policy and insertion order", () => {

@@ -12,11 +12,14 @@
 // Then it asserts the ad surface, in this order:
 //
 //   1. the result panel is on screen (the run really ended);
-//   2. picking an exit action makes the app request the post-match VAST tag —
-//      i.e. the surface was OFFERED (the server gate answered yes, the cadence
-//      allowed it, and the provider tag was fetched);
-//   3. the exit action still runs once the slot settles, so an ad that never
-//      fills can never strand the player on the result screen.
+//   2. WITHOUT any exit click, the app asks the server for the surface and then
+//      requests the post-match VAST tag — i.e. the surface was OFFERED (the
+//      server gate answered yes, the cadence allowed it, and the provider tag
+//      was fetched);
+//   3. that request waits for the readable beat (`POST_MATCH_AD_DELAY_MS`), so
+//      the player gets the result before the tag is even sought;
+//   4. the exit action still runs at once, because nothing is parked behind the
+//      video any more, so a no-fill can never strand the player.
 //
 // Run against a BUILT server. The ad chain is a once-per-result mount; a dev
 // server mounts it twice under React StrictMode, and the second mount is refused
@@ -150,29 +153,38 @@ try {
     .catch(() => {});
   if ((await resume.count()) > 0) await resume.first().click();
   await page.waitForSelector('[data-testid="solitaire-board"]', { timeout: 90_000 });
-  await page.waitForTimeout(1200);
+  // The slot mounts in the same commit as the win panel, so the readable beat
+  // starts here — not after the harness's own polling has caught up.
+  const panelAt = Date.now();
 
   const winPanel = page.getByRole("dialog", { name: "Game complete" });
+  await winPanel.waitFor({ state: "visible", timeout: 20_000 }).catch(() => {});
   check(
     "the solo run reached its result panel",
     (await winPanel.count()) > 0 || /cleared the board|Personal best|Solved/i.test(await page.locator("body").innerText()),
   );
 
-  const playAgain = page.getByRole("button", { name: "Play again" });
-  check("the result offers an exit action", (await playAgain.count()) > 0);
-  if (await playAgain.count()) {
-    await playAgain.first().click();
+  // NO CLICK. The surface is expected to open by itself, and the readable beat
+  // means it must not land with the result panel.
+  for (let attempt = 0; attempt < 40 && surfaceRequests === 0; attempt += 1) {
+    await page.waitForTimeout(250);
   }
+  const surfaceDelayMs = surfaceRequests > 0 ? Date.now() - panelAt : null;
+  check(
+    "the result screen opened the post-match ad surface without an exit click",
+    surfaceRequests > 0,
+    `surface requests: ${surfaceRequests}`,
+  );
+  check(
+    "the surface waited for the readable beat before asking",
+    surfaceDelayMs !== null && surfaceDelayMs >= 1_000,
+    surfaceDelayMs === null ? "the surface never asked" : `${surfaceDelayMs}ms after the panel`,
+  );
 
   // The slot answers asynchronously; give the tag request a moment to leave.
   for (let attempt = 0; attempt < 40 && vastRequests.length === 0; attempt += 1) {
     await page.waitForTimeout(250);
   }
-  check(
-    "the result screen opened the post-match ad surface",
-    surfaceRequests > 0,
-    `surface requests: ${surfaceRequests}`,
-  );
   check(
     "the post-match video surface was offered (VAST tag requested)",
     vastRequests.length > 0,
@@ -188,7 +200,12 @@ try {
           : "the result screen never opened the surface",
   );
 
-  // No fill ⇒ the slot settles and the parked action runs: a fresh board.
+  // No fill ⇒ nothing is holding the exit, so Play again deals at once.
+  const playAgain = page.getByRole("button", { name: "Play again" });
+  check("the result offers an exit action", (await playAgain.count()) > 0);
+  if (await playAgain.count()) {
+    await playAgain.first().click();
+  }
   const dealt = await page
     .waitForFunction(
       () => {
@@ -202,7 +219,7 @@ try {
     )
     .then(() => true)
     .catch(() => false);
-  check("the held exit action still runs when no creative fills", dealt, `moves ${await moves(page)}`);
+  check("the exit action runs without waiting for a creative", dealt, `moves ${await moves(page)}`);
   check("no uncaught page errors", errors.length === 0, errors.slice(0, 3).join(" | "));
 } finally {
   await browser.close();

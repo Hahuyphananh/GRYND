@@ -692,23 +692,30 @@ export async function getProPlanDisplay(
     billingOptions: buildProBillingOptions(),
   };
 
-  const rows = await db
-    .select({
-      id: tokenSubscriptionPlans.id,
-      key: tokenSubscriptionPlans.key,
-      name: tokenSubscriptionPlans.name,
-      monthlyTokens: tokenSubscriptionPlans.monthlyTokens,
-      priceCents: tokenSubscriptionPlans.priceCents,
-      badge: tokenSubscriptionPlans.badge,
-      perks: tokenSubscriptionPlans.perks,
-      stripeProductId: tokenSubscriptionPlans.stripeProductId,
-      stripePriceId: tokenSubscriptionPlans.stripePriceId,
-      stripePriceIdWeekly: tokenSubscriptionPlans.stripePriceIdWeekly,
-      stripePriceIdYearly: tokenSubscriptionPlans.stripePriceIdYearly,
-    })
-    .from(tokenSubscriptionPlans)
-    .where(eq(tokenSubscriptionPlans.key, CANONICAL_MEMBERSHIP_PLAN_KEY))
-    .limit(1)
+  // The getter itself can throw before a query is ever built (e.g. the pool
+  // refuses to start when the CA bundle is missing), so the read is deferred
+  // into a promise: a `.catch()` chained onto `db.select(...)` would never see
+  // that throw and the upgrade page would 500 instead of showing the fallback.
+  const rows = await Promise.resolve()
+    .then(() =>
+      db
+        .select({
+          id: tokenSubscriptionPlans.id,
+          key: tokenSubscriptionPlans.key,
+          name: tokenSubscriptionPlans.name,
+          monthlyTokens: tokenSubscriptionPlans.monthlyTokens,
+          priceCents: tokenSubscriptionPlans.priceCents,
+          badge: tokenSubscriptionPlans.badge,
+          perks: tokenSubscriptionPlans.perks,
+          stripeProductId: tokenSubscriptionPlans.stripeProductId,
+          stripePriceId: tokenSubscriptionPlans.stripePriceId,
+          stripePriceIdWeekly: tokenSubscriptionPlans.stripePriceIdWeekly,
+          stripePriceIdYearly: tokenSubscriptionPlans.stripePriceIdYearly,
+        })
+        .from(tokenSubscriptionPlans)
+        .where(eq(tokenSubscriptionPlans.key, CANONICAL_MEMBERSHIP_PLAN_KEY))
+        .limit(1),
+    )
     .catch((err) => {
       // A cold/unreadable database must not blank the upgrade surface — the
       // catalog fallback is an honest display price for the same plan.

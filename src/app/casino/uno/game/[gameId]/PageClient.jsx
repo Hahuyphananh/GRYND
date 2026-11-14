@@ -112,12 +112,6 @@ export default function UnoGamePage() {
     const timer = setTimeout(() => setEndPopupVisible(true), END_PANEL_DELAY_MS);
     return () => clearTimeout(timer);
   }, [endPopup]);
-  // The post-match video is offered when the player LEAVES the end panel: the
-  // chosen action is parked and released once the slot settles (played, closed
-  // or unavailable). Nothing plays before that click.
-  const [adPending, setAdPending] = useState(false);
-  const adAttemptedRef = useRef(false);
-  const pendingExitRef = useRef(null);
   const [replayRequested, setReplayRequested] = useState(false);
   const [opponentReplayRequested, setOpponentReplayRequested] = useState(false);
   const [returnChosen, setReturnChosen] = useState(false);
@@ -159,9 +153,6 @@ export default function UnoGamePage() {
   const prevIsPlayerTurnRef = useRef(null);
   const replayClientIdRef = useRef(Math.random().toString(36).slice(2));
   const openEndPopup = (result, reason = "finished") => {
-    adAttemptedRef.current = false;
-    pendingExitRef.current = null;
-    setAdPending(false);
     setEndPopup({
       result,
       reason,
@@ -219,40 +210,6 @@ export default function UnoGamePage() {
     }
     returnToLobby();
   };
-
-  // The ad gate for this panel's exits: one offer per match, the action parked
-  // until the surface settles. A declared "no ad" releases it immediately.
-  const guardExit = (action) => () => {
-    if (adPending) return;
-    if (!adAttemptedRef.current) {
-      adAttemptedRef.current = true;
-      pendingExitRef.current = action;
-      setAdPending(true);
-      return;
-    }
-    action();
-  };
-
-  const handleAdSettled = () => {
-    setAdPending(false);
-    const next = pendingExitRef.current;
-    pendingExitRef.current = null;
-    if (next) next();
-  };
-
-  // The browser back gesture is an exit too: with the end panel open it goes
-  // through the same ad gate as the panel's own buttons, so the post-match
-  // video cannot be dodged with the system back button.
-  useEffect(() => {
-    if (!endPopup) return;
-    const onPopState = () => {
-      window.history.pushState(null, "", window.location.href);
-      if (adPending) return;
-      guardExit(chooseReturn)();
-    };
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, [endPopup, adPending, guardExit, chooseReturn]);
 
   useGamePresence({
     gameKey: "uno",
@@ -853,9 +810,6 @@ export default function UnoGamePage() {
     setTurnHistory([]);
     setHistoryIndex(null);
     setEndPopup(null);
-    adAttemptedRef.current = false;
-    pendingExitRef.current = null;
-    setAdPending(false);
     setReplayRequested(false);
     setOpponentReplayRequested(false);
     setReturnChosen(false);
@@ -905,11 +859,10 @@ export default function UnoGamePage() {
 
   const modalsNode = (
     <>
-      {/* Post-match video. Offered when the player picks Replay / Return to
-          Lobby in the end panel — the action is held until the slot settles —
-          never over the result itself. UNO mounts the shared slot itself
-          because its end panel is its own. */}
-      {endPopup && adPending && <PostMatchAdSlot onDone={handleAdSettled} />}
+      {/* Post-match video. It starts as soon as the end panel is on screen —
+          no exit click required. UNO mounts the shared slot itself because its
+          end panel is its own. */}
+      {endPopup && endPopupVisible && <PostMatchAdSlot />}
       <AnimatePresence>
         {endPopup && endPopupVisible && (
           <motion.div
@@ -1082,7 +1035,7 @@ export default function UnoGamePage() {
                 className="mt-6 grid gap-3 sm:grid-cols-2"
               >
                 <button
-                  onClick={guardExit(requestReplay)}
+                  onClick={requestReplay}
                   disabled={returnChosen || replayRequested}
                   className="rounded-xl border border-fuchsia-300/70 bg-fuchsia-500/20 px-4 py-3 font-black text-fuchsia-100 shadow-[0_0_18px_rgba(217,70,239,0.25)] disabled:cursor-not-allowed disabled:opacity-40"
                 >
@@ -1093,7 +1046,7 @@ export default function UnoGamePage() {
                       : "RUN IT BACK"}
                 </button>
                 <button
-                  onClick={guardExit(chooseReturn)}
+                  onClick={chooseReturn}
                   disabled={returnChosen}
                   className="rounded-xl border border-white/20 bg-white/10 px-4 py-3 font-black text-white/80 transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"
                 >

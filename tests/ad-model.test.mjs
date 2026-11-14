@@ -232,7 +232,9 @@ test("the slot is placed above the footer, never over controls", () => {
     const source = read(client);
     assert.match(source, /adSlot = null/, `${client} must accept the slot prop`);
     const index = source.indexOf("{adSlot}");
-    const footer = source.indexOf("<Footer />");
+    // Some clients render a footer in an early-return state too; the slot
+    // belongs immediately above the MAIN render's footer, which is the last one.
+    const footer = source.lastIndexOf("<Footer />");
     assert.ok(index > -1, `${client} must render {adSlot}`);
     assert.ok(
       footer > -1 && Math.abs(footer - index) < 120,
@@ -376,12 +378,14 @@ test("every lobby enters a match through the ad-aware router", () => {
 
 test("the match router leaves the document only for a match", () => {
   const source = code(MATCH_ROUTER);
-  assert.match(source, /resolveMatchNavigation\(href, hasAdCodeLoaded\(\)\)/);
-  assert.match(source, /window\.location\.assign\(href\)/);
-  assert.match(source, /window\.location\.replace\(href\)/);
+  // The decision is made on the RESOLVED (portal-aware) href, so a portal
+  // mirror is classified exactly like the path it replaced.
+  assert.match(source, /resolveMatchNavigation\(target, hasAdCodeLoaded\(\)\)/);
+  assert.match(source, /window\.location\.assign\(target\)/);
+  assert.match(source, /window\.location\.replace\(target\)/);
   // …and everything else stays a client-side navigation.
-  assert.match(source, /router\.push\(href, options\)/);
-  assert.match(source, /router\.replace\(href, options\)/);
+  assert.match(source, /router\.push\(target, options\)/);
+  assert.match(source, /router\.replace\(target, options\)/);
   assert.ok(
     !/localStorage|sessionStorage|document\.cookie/.test(source),
     "the decision is about this document's ad code, not stored client state",
@@ -418,7 +422,12 @@ test("link-based match entries also leave an ad-carrying document", () => {
 // `CHANGELOG.md` is exempt on purpose: it is a historical record of what was
 // shipped, not an instruction or a live reference.
 
-const MONETAG_PATTERN = /monetag|quge5|295730|1203148[1-4]|sw1\.js/i;
+// A LIVE integration, not the bare word. The itch packaging scripts and the
+// portal build docs deliberately list "monetag" as a network to strip, and a
+// bare-word match would flag that prohibition. These patterns only catch a
+// reintroduced endpoint, zone, worker, loader or configuration value.
+const MONETAG_PATTERN =
+  /monetag\.(?:com|net|org)|quge5|295730|1203148[1-4]|sw1\.js|MonetagScript|NEXT_PUBLIC_MONETAG|monetagEnabled|monetagZoneId|MONETAG_TAG_SRC/i;
 
 const SKIP_DIRS = new Set([
   "node_modules",
@@ -457,7 +466,7 @@ test("no Monetag file is shipped any more", () => {
   }
 });
 
-test("nothing in the source tree, config, tests or docs references Monetag", () => {
+test("no live Monetag endpoint, zone, worker, loader or config is referenced", () => {
   const offenders = shippedTextFiles()
     // This file names the provider on purpose — it is the removal guard.
     .filter((file) => file !== "tests/ad-model.test.mjs")

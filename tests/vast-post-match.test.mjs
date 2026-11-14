@@ -486,7 +486,7 @@ test("the player is torn down on unmount", () => {
 test("the approved tag is configuration, and malformed values are refused", () => {
   assert.equal(
     HILLTOPS_VAST_TAG,
-    "https://rude-movie.com/dQmLF.zNdWGBNlv/Z_GzUa/Detmq9Ju_ZjUElLkiPrTWcJ1PNejfUfz_O/DbUjtYNUzgU/2WNOTrMj4ZOMQu",
+    "https://rude-movie.com/d/m.FUzldXGIN/vdZ-GvUr/XedmP9mu/ZGUMlSk/PLT/cV1/NQj-UfzGOJD/UytXNJzEUL2qNxTJMM4/O/Qd",
   );
   assert.equal(postMatchVastUrl(), HILLTOPS_VAST_TAG);
   assert.equal(typeof postMatchAdsEnabled(), "boolean");
@@ -541,7 +541,7 @@ test("the surface is mounted only by the wired result screens", () => {
   // which asks the server first and never renders on a browsing page.
   assert.match(
     read("src/components/result/PvpResultScreen.jsx"),
-    /<PostMatchAdSlot onDone=\{handleAdSettled\} \/>/,
+    /<PostMatchAdSlot \/>/,
     "the shared result screen is the single wiring point for every game",
   );
 });
