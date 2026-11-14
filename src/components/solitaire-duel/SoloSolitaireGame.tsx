@@ -584,9 +584,19 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
     setError(null);
     setSession((current) => {
       if (!current || current.endedAtMs || current.log.length === 0) return current;
-      const log = current.log.slice(0, -1);
-      const replayed = replayMoves({ deal: current.deal, moves: log as { kind: string; move: unknown }[] });
-      if (!replayed.ok) return current;
+      const trimmed = current.log.slice(0, -1);
+      const replayed = replayMoves({
+        deal: current.deal,
+        moves: trimmed as { kind: string; move: unknown }[],
+      });
+      // The engine always reports the deepest position it accepted, even when a
+      // later entry is refused, so a stored log that no longer replays (an
+      // older session, a rules change) still rewinds to that position instead
+      // of leaving the button doing nothing. Undo is never a silent no-op while
+      // there is history to remove.
+      const log = replayed.ok
+        ? trimmed
+        : trimmed.slice(0, Math.max(0, replayed.rejectedAt ?? 0));
       const next = { ...current, state: replayed.state, log };
       storeSession(next);
       return next;
@@ -652,8 +662,15 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
   // earns one attempt: the action is parked and the slot decides whether a
   // creative plays. When it reports back (played or unavailable) the parked
   // action runs. A game that is still in progress exits immediately.
+  //
+  // A run ENDS either by clearing the board or by leaving it, and both endings
+  // are a finished run: the video is offered once, whichever control the player
+  // picks to move on. A deal nobody has touched yet is not a run, so it exits
+  // immediately instead of interrupting with an ad.
+  const runEnded =
+    Boolean(session?.won) || Boolean(session && session.log.length > 0);
   const guardExit = (key: string, action: () => void) => {
-    if (!session?.won || finishing) {
+    if (!runEnded || finishing) {
       action();
       return;
     }
@@ -836,17 +853,17 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
             {mode === "solo" ? (
-              <button type="button" onClick={newSoloGame} disabled={Boolean(finishing)} className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-40 hover:bg-emerald-400">
+              <button type="button" onClick={() => guardExit("newDeal", newSoloGame)} disabled={Boolean(finishing)} className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-40 hover:bg-emerald-400">
                 New game
               </button>
             ) : (
-              <button type="button" onClick={startDaily} disabled={Boolean(finishing)} className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-40 hover:bg-emerald-400">
+              <button type="button" onClick={() => guardExit("newChallenge", startDaily)} disabled={Boolean(finishing)} className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-40 hover:bg-emerald-400">
                 New challenge
               </button>
             )}
             <button
               type="button"
-              onClick={restart}
+              onClick={() => guardExit("restart", restart)}
               disabled={Boolean(finishing)}
               className="rounded-lg border border-white/15 px-4 py-2 text-sm text-slate-200 disabled:opacity-40 hover:bg-white/5"
             >
@@ -860,7 +877,14 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
             >
               Undo
             </button>
-            <Link href="/" className="ml-auto text-sm text-slate-400 hover:text-white">
+            <Link
+              href="/"
+              onClick={(event) => {
+                event.preventDefault();
+                guardExit("exit", () => router.push("/"));
+              }}
+              className="ml-auto text-sm text-slate-400 hover:text-white"
+            >
               Exit
             </Link>
           </div>

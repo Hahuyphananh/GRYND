@@ -14,6 +14,7 @@ import {
 
 import Footer from "../Footer";
 import NavigationBar from "../navigation-bar";
+import AcademyVideoSection from "./AcademyVideoSection";
 import { useLessonProgress } from "../../hooks/useLessonProgress";
 import { useTranslation } from "../../hooks/useTranslation";
 import {
@@ -443,6 +444,8 @@ export default function LearnLanding() {
             </div>
           )}
         </section>
+
+        <AcademyVideoSection />
 
         {/* Learning path ---------------------------------------------------- */}
         <section className="mt-10" aria-labelledby="learn-path-title">

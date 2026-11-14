@@ -25,7 +25,7 @@ import { NextResponse } from "next/server";
 
 import { requirePracticePlayer } from "../../../../../../lib/auth/guestSession";
 import { logError } from "../../../../../../lib/logError";
-import { loadOrComputeAnalysis } from "../../../../../../lib/solitaire-duel/analysisCache";
+import { loadReviewAnalysis } from "../../../../../../lib/solitaire-duel/reviewAnalysis";
 import { TERMINAL_STATUSES, MATCH_STATUS, MAX_MOVES_PER_SEAT } from "../../../../../../lib/solitaire-duel/constants";
 import { replayMoves } from "../../../../../../lib/solitaire-duel/rules";
 import { canonicalMoveLog, moveLogDigest } from "../../../../../../lib/solitaire-duel/soloPersistence";
@@ -150,12 +150,15 @@ export async function GET(
 
     // Cache identity = the caller's own game + SHA-256 of THEIR canonical log +
     // engine version. The opponent's log is neither read nor part of the key.
-    const { analysis } = await loadOrComputeAnalysis({
+    // The analysis is costed by the caller's daily allowance: a cached re-view
+    // is free, a fresh one uses the free plan's 3/day (PRO is unlimited).
+    const { analysis, limited, allowance } = await loadReviewAnalysis({
       gameKind: "duel",
       gameId: String(match.id),
       logDigest: moveLogDigest(canonical.log),
       deal: match.deal as SolitaireDeal,
       moves: canonical.log,
+      playerId: userId,
     });
 
     const status = duelReviewStatus({
@@ -198,6 +201,8 @@ export async function GET(
         durationMs,
         analysisEligible: status === "complete",
         analysis,
+        analysisLimited: limited,
+        analysisAllowance: allowance,
         incompleteReason:
           status === "complete" ? null : status === "forfeit" ? "forfeit" : "not-completed",
       },

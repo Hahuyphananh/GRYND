@@ -1,0 +1,405 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:01.467
+Let's walk through a simple example.
+
+2
+00:00:01.533 --> 00:00:03.527
+Imagine you have a red ten in one column,
+
+3
+00:00:03.547 --> 00:00:06.200
+and a black nine is covering a hidden card in another.
+
+4
+00:00:06.267 --> 00:00:08.400
+You can move the black nine onto the red ten.
+
+5
+00:00:08.467 --> 00:00:10.000
+Doing so reveals a new card.
+
+6
+00:00:10.067 --> 00:00:11.567
+Suppose that card is a red eight.
+
+7
+00:00:11.633 --> 00:00:14.167
+You now have new information and potentially another move.
+
+8
+00:00:14.233 --> 00:00:17.000
+Maybe that red eight can be placed on a black nine somewhere else.
+
+9
+00:00:17.067 --> 00:00:19.567
+If you can do that, you may reveal another hidden card.
+
+10
+00:00:19.633 --> 00:00:20.833
+This is how moves connect.
+
+11
+00:00:20.900 --> 00:00:22.933
+One move creates an opportunity for another.
+
+12
+00:00:23.000 --> 00:00:26.533
+But sometimes the best move is not the one that immediately reveals a card.
+
+13
+00:00:26.600 --> 00:00:30.167
+Maybe moving a card to a foundation removes something you need in the tableau.
+
+14
+00:00:30.233 --> 00:00:33.000
+Maybe an empty column should be saved for a specific King.
+
+15
+00:00:33.067 --> 00:00:37.000
+Maybe a card in the waste becomes useful only after you reorganize another column.
+
+16
+00:00:37.067 --> 00:00:40.333
+So instead of asking, "What can I move right now?", start asking:
+
+17
+00:00:40.400 --> 00:00:42.167
+"What does this move allow me to do next?"
+
+18
+00:00:42.233 --> 00:00:44.433
+That one question can change how you approach the game.
+
+19
+00:00:44.500 --> 00:00:46.100
+Let's also look at a common mistake.
+
+20
+00:00:46.167 --> 00:00:48.667
+A player sees a legal move and immediately makes it.
+
+21
+00:00:48.733 --> 00:00:51.133
+But a legal move is not necessarily a useful move.
+
+22
+00:00:51.200 --> 00:00:53.136
+Sometimes two different moves are available,
+
+23
+00:00:53.156 --> 00:00:55.567
+and one gives you much more flexibility than the other.
+
+24
+00:00:55.633 --> 00:00:59.233
+For example, one move might simply rearrange two visible cards.
+
+25
+00:00:59.300 --> 00:01:01.789
+Another might expose a hidden card, open a column,
+
+26
+00:01:01.809 --> 00:01:03.867
+or make an important sequence accessible.
+
+27
+00:01:03.933 --> 00:01:06.700
+When you have a choice, consider the consequences before committing.
+
+28
+00:01:06.767 --> 00:01:08.933
+And remember that foundation takebacks exist.
+
+29
+00:01:09.000 --> 00:01:12.277
+If you discover that a card you moved to a foundation is needed in the tableau,
+
+30
+00:01:12.297 --> 00:01:14.133
+check whether you can legally bring it back.
+
+31
+00:01:14.200 --> 00:01:17.433
+You do not need to treat every foundation move as irreversible.
+
+32
+00:01:17.500 --> 00:01:21.021
+The goal is to keep the board flexible while steadily progressing toward the
+
+33
+00:01:21.041 --> 00:01:21.600
+foundations.
+
+34
+00:01:23.000 --> 00:01:24.500
+So, what does it actually mean to win?
+
+35
+00:01:24.567 --> 00:01:27.833
+In standard Klondike Solitaire, the objective is straightforward.
+
+36
+00:01:27.900 --> 00:01:30.733
+Move all fifty-two cards into the four foundations.
+
+37
+00:01:30.800 --> 00:01:33.100
+Every suit must be built from Ace through King.
+
+38
+00:01:33.167 --> 00:01:36.700
+Once all four foundations are complete, the Solitaire puzzle is solved.
+
+39
+00:01:36.767 --> 00:01:39.367
+But GRYND adds another dimension through Solitaire Duel.
+
+40
+00:01:39.433 --> 00:01:43.033
+In Duel, two players compete using the same guaranteed-solvable deal.
+
+41
+00:01:43.100 --> 00:01:45.600
+Both players are trying to complete the same Solitaire puzzle.
+
+42
+00:01:45.667 --> 00:01:49.333
+The first player to move all fifty-two cards into the foundations wins.
+
+43
+00:01:49.400 --> 00:01:51.433
+But what happens if neither player completes the game?
+
+44
+00:01:51.500 --> 00:01:53.133
+That's where the progress ladder comes in.
+
+45
+00:01:53.200 --> 00:01:56.000
+Progress is compared through the game's defined progress system.
+
+46
+00:01:56.067 --> 00:02:00.467
+Foundation progress is prioritized first, followed by revealed tableau progress.
+
+47
+00:02:00.533 --> 00:02:04.116
+This means that making progress is important even when you haven't completed the
+
+48
+00:02:04.136 --> 00:02:04.767
+entire puzzle.
+
+49
+00:02:04.833 --> 00:02:08.324
+You should still focus on building foundations and revealing hidden cards,
+
+50
+00:02:08.344 --> 00:02:10.967
+because those actions contribute to meaningful progress.
+
+51
+00:02:11.033 --> 00:02:12.233
+There is no match clock.
+
+52
+00:02:12.300 --> 00:02:12.674
+However,
+
+53
+00:02:12.694 --> 00:02:16.633
+a player who remains inactive for twenty minutes can forfeit through inactivity.
+
+54
+00:02:16.700 --> 00:02:20.145
+The important difference is that Duel isn't simply about finishing Solitaire
+
+55
+00:02:20.165 --> 00:02:20.667
+eventually.
+
+56
+00:02:20.733 --> 00:02:24.385
+It's about making efficient decisions and progressing toward the objective faster
+
+57
+00:02:24.405 --> 00:02:25.267
+than your opponent.
+
+58
+00:02:25.333 --> 00:02:27.733
+A move that reveals a hidden card can be valuable.
+
+59
+00:02:27.800 --> 00:02:30.500
+A move that opens a column can create new opportunities.
+
+60
+00:02:30.567 --> 00:02:34.000
+And a move that helps complete a foundation can bring you closer to victory.
+
+61
+00:02:34.067 --> 00:02:36.300
+The same fundamental Solitaire rules still apply.
+
+62
+00:02:36.367 --> 00:02:40.506
+You still need descending ranks, alternating colors, valid foundation sequences,
+
+63
+00:02:40.526 --> 00:02:42.033
+and careful use of the stock.
+
+64
+00:02:42.100 --> 00:02:45.100
+But now, every decision also has a competitive dimension.
+
+65
+00:02:45.167 --> 00:02:46.700
+GRYND includes several ways to play:
+
+66
+00:02:46.767 --> 00:02:48.500
+Solo, where you can play on your own.
+
+67
+00:02:48.567 --> 00:02:50.933
+Daily Challenge, where you can take on the daily puzzle.
+
+68
+00:02:51.000 --> 00:02:54.433
+Practice vs AI, where you can practice against an AI opponent.
+
+69
+00:02:54.500 --> 00:02:57.533
+Ranked PvP, for competitive Solitaire Duel matches.
+
+70
+00:02:57.600 --> 00:03:01.055
+Whether you're learning the game or trying to improve your competitive performance,
+
+71
+00:03:01.075 --> 00:03:02.633
+the underlying skills remain the same.
+
+72
+00:03:02.700 --> 00:03:03.667
+Understand the board.
+
+73
+00:03:03.733 --> 00:03:04.833
+Reveal hidden cards.
+
+74
+00:03:04.900 --> 00:03:06.167
+Preserve useful options.
+
+75
+00:03:06.233 --> 00:03:08.200
+And think about what each move makes possible.
+
+76
+00:03:09.600 --> 00:03:12.033
+Before we finish, here are a few habits worth remembering.
+
+77
+00:03:12.100 --> 00:03:13.333
+First, don't rush.
+
+78
+00:03:13.400 --> 00:03:16.733
+Even when a move looks obvious, take a moment to consider what it changes.
+
+79
+00:03:16.800 --> 00:03:19.000
+Second, prioritize useful information.
+
+80
+00:03:19.067 --> 00:03:21.747
+Revealing a hidden card can open up new possibilities,
+
+81
+00:03:21.767 --> 00:03:25.667
+so look for moves that uncover cards without sacrificing too much flexibility.
+
+82
+00:03:25.733 --> 00:03:27.867
+Third, use empty columns carefully.
+
+83
+00:03:27.933 --> 00:03:29.176
+Only Kings can fill them,
+
+84
+00:03:29.196 --> 00:03:32.900
+and an empty column can be extremely useful when reorganizing the tableau.
+
+85
+00:03:32.967 --> 00:03:35.000
+Fourth, don't forget the stock and waste.
+
+86
+00:03:35.067 --> 00:03:36.663
+The top waste card may be useful,
+
+87
+00:03:36.683 --> 00:03:40.729
+and unlimited redeals give you another opportunity to access cards you haven't been
+
+88
+00:03:40.749 --> 00:03:41.533
+able to use yet.
+
+89
+00:03:41.600 --> 00:03:44.867
+Fifth, understand that foundation moves can sometimes be reversed.
+
+90
+00:03:44.933 --> 00:03:46.509
+If a card is needed in the tableau,
+
+91
+00:03:46.529 --> 00:03:48.900
+a legal takeback can help you reorganize your board.
+
+92
+00:03:48.967 --> 00:03:51.567
+And finally, learn to think one or two moves ahead.
+
+93
+00:03:51.633 --> 00:03:55.933
+Instead of making the first legal move you see, ask yourself what that move unlocks.
+
+94
+00:03:56.000 --> 00:03:59.100
+That's how you start recognizing patterns and making better decisions.
+
+95
+00:03:59.167 --> 00:04:00.833
+The best way to improve is to play.
+
+96
+00:04:00.900 --> 00:04:03.238
+Try a few games, experiment with different moves,
+
+97
+00:04:03.258 --> 00:04:06.000
+and pay attention to the decisions that lead to progress.
+
+98
+00:04:06.067 --> 00:04:08.633
+If you're new to Solitaire, start with Solo or Practice.
+
+99
+00:04:08.700 --> 00:04:12.133
+When you're ready for more competition, explore the Duel experience on GRYND.
+
+100
+00:04:12.200 --> 00:04:16.133
+And remember: the rules are simple, but mastering the decisions takes practice.
+
+101
+00:04:16.200 --> 00:04:18.433
+Thanks for watching, and welcome to GRYND Academy.

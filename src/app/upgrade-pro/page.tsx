@@ -12,8 +12,11 @@ import { currencyForCountry } from "../../lib/currency";
 export const metadata: Metadata = {
   alternates: { canonical: "/upgrade-pro" },
   title: "GRYND PRO | GRYND",
+  // Only the benefits the membership actually grants (lib/proBenefits.ts).
+  // "Detailed match history" used to be here; no such feature exists and the
+  // existing match history is free for everyone, so the claim is gone.
   description:
-    "GRYND PRO — ad-free browsing, advanced statistics, advanced performance analytics and detailed match history. Monthly membership, cancel anytime. No tokens, no gameplay advantages.",
+    "GRYND PRO — ad-free browsing, the full performance dashboard and unlimited match analysis, plus priority matchmaking. Monthly membership, cancel anytime. No tokens, no gameplay advantages.",
 };
 
 // The membership entitlement is per-caller, so this page must never be

@@ -539,10 +539,21 @@ test("solo and daily Solitaire offer the video on their exit actions", () => {
   assert.match(solo, /guardExit\("newDeal", newSoloGame\)/);
   assert.match(solo, /guardExit\("lobby", \(\) => router\.push\("\/"\)\)/);
   assert.match(solo, /onDone=\{handleAdSettled\}/, "the held action runs when the ad settles");
+  // A solo run ends by clearing the board OR by leaving it: leaving mid-run now
+  // offers the video too (new deal, restart, exit), because that is how most
+  // solo runs actually end. A deal nobody has touched is not a run.
+  assert.match(solo, /guardExit\("newChallenge", startDaily\)/);
+  assert.match(solo, /guardExit\("restart", restart\)/);
+  assert.match(solo, /guardExit\("exit", \(\) => router\.push\("\/"\)\)/);
   assert.match(
     solo,
-    /if \(!session\?\.won \|\| finishing\) \{\s*action\(\);\s*return;/,
-    "an unfinished game never triggers the surface",
+    /const runEnded =\s*Boolean\(session\?\.won\) \|\| Boolean\(session && session\.log\.length > 0\);/,
+    "a won run and an abandoned run both end a run",
+  );
+  assert.match(
+    solo,
+    /if \(!runEnded \|\| finishing\) \{\s*action\(\);\s*return;/,
+    "an untouched deal never triggers the surface",
   );
   // Daily reuses the same panel, so it inherits the wiring.
   assert.match(

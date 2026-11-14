@@ -85,6 +85,7 @@ import {
   seatForUser,
   userIdForSeat,
   applyMove,
+  replayMoves,
   viewForState,
 } from "./rules";
 import { deriveDealSeed, getServerSeedHash, randomHex } from "./seeds";
@@ -1635,6 +1636,148 @@ export async function submitMove({
     if (isUniqueViolation(error)) {
       return err("Move already recorded", 409);
     }
+    throw error;
+  }
+}
+
+// ── Undo (practice only) ────────────────────────────────────────────────
+
+export type UndoResult =
+  | {
+      match: MatchRow;
+      view: SolitaireView;
+      progress: SeatProgress;
+      ply: number;
+    }
+  | StoreError;
+
+/**
+ * Take back this seat's LAST move.
+ *
+ * PRACTICE ONLY, and the asymmetry is the point: a ranked duel is a race against
+ * another person, so rewinding one seat's board would rewind half a race the
+ * opponent is still running. A practice match has no opponent at stake (the bot
+ * races its own board and settles nothing), so a player who misclicked on a
+ * timed-out brain can put the card back.
+ *
+ * The client cannot say what the board was: it asks for a rollback and the store
+ * rebuilds the position itself by REPLAYING this seat's own stored log — minus
+ * its final entry — through the same rules engine that accepted the move. The
+ * dropped `solitaire_duel_moves` row is deleted inside the same row-locked
+ * transaction, so the log stays the literal record of the board and
+ * `(match, seat, ply)` stays collision-free for the move that replaces it.
+ *
+ * Two deliberate limits:
+ *
+ *   * a seat's `peakFoundation` (a monotone settlement metric) is never lowered
+ *     by an undo — the live board rewinds, the record of how far it got does not;
+ *   * a board that was RE-DEALT mid-match no longer replays from the match's
+ *     committed deal, so the rollback is refused with a plain message rather
+ *     than guessing at a position (the client shows it and resyncs).
+ */
+export async function undoMove({
+  userId,
+  matchId,
+  nowMs = Date.now(),
+}: {
+  userId: string;
+  matchId: string;
+  nowMs?: number;
+}): Promise<UndoResult> {
+  try {
+    return await db.transaction(async (tx) => {
+      const [match] = await tx
+        .select()
+        .from(solitaireDuelMatches)
+        .where(eq(solitaireDuelMatches.id, matchId))
+        .for("update");
+
+      if (!match) return err("Match not found", 404);
+
+      const seats = seatsFromRow(match);
+      const seat = seatForUser(seats, userId);
+      if (!seat) return err("Not a participant of this match", 403);
+      if (!match.isAi) return err("Undo is only available in a practice match", 409);
+      if (match.status === MATCH_STATUS.WAITING || !seats.player2Id) {
+        return err("Waiting for an opponent", 409);
+      }
+      if (TERMINAL_STATUSES.includes(match.status)) {
+        return err("Match is no longer active", 409);
+      }
+      if (await isPracticePaused("solitaire-duel", matchId)) {
+        return err("Practice match is paused", 409);
+      }
+
+      const state = stateForSeat(match, seat);
+      if (!state || !isWellFormedState(state)) {
+        return err("The match state is not playable", 409);
+      }
+      if (Number(state.ply ?? 0) <= 0) return err("There is no move to undo", 409);
+
+      // This seat's own log, oldest first. Only its final entry is dropped.
+      const rows = await tx
+        .select({
+          ply: solitaireDuelMoves.ply,
+          kind: solitaireDuelMoves.kind,
+          move: solitaireDuelMoves.move,
+        })
+        .from(solitaireDuelMoves)
+        .where(
+          and(
+            eq(solitaireDuelMoves.matchId, match.id),
+            eq(solitaireDuelMoves.seat, seat),
+          ),
+        )
+        .orderBy(sql`${solitaireDuelMoves.ply} ASC`);
+      if (rows.length === 0) return err("There is no move to undo", 409);
+      const dropped = rows[rows.length - 1];
+      const kept = rows.slice(0, -1);
+
+      // The board is the ENGINE's reconstruction, never a client's or a patch.
+      const replayed = replayMoves({
+        deal: match.deal as SolitaireDeal,
+        moves: kept.map((row) => ({ kind: row.kind, move: row.move })),
+      });
+      if (!replayed.ok) return err("Undo is not available on this board", 409);
+
+      const nextState = replayed.state;
+      // Monotone metrics survive the rewind; the live position does not.
+      const previousPeak = Number(
+        (seat === SEAT.PLAYER1 ? match.p1PeakFoundation : match.p2PeakFoundation) ?? 0,
+      );
+      nextState.peakFoundation = Math.max(previousPeak, nextState.peakFoundation ?? 0);
+      nextState.completed = false;
+      nextState.completedAtMs = null;
+      const progress = progressOf(nextState);
+
+      await tx
+        .delete(solitaireDuelMoves)
+        .where(
+          and(
+            eq(solitaireDuelMoves.matchId, match.id),
+            eq(solitaireDuelMoves.seat, seat),
+            eq(solitaireDuelMoves.ply, dropped.ply),
+          ),
+        );
+
+      const [updated] = await tx
+        .update(solitaireDuelMatches)
+        .set({
+          ...seatPatchFor(seat, nextState, progress),
+          updatedAt: new Date(nowMs),
+        })
+        .where(eq(solitaireDuelMatches.id, match.id))
+        .returning();
+
+      return {
+        match: updated ?? match,
+        view: viewForState(nextState),
+        progress,
+        ply: nextState.ply,
+      } as const;
+    });
+  } catch (error) {
+    if (isUniqueViolation(error)) return err("Undo could not be recorded", 409);
     throw error;
   }
 }

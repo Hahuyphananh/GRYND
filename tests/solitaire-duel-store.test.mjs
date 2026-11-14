@@ -64,7 +64,11 @@ import {
   isDealSolvable,
   solvableDealFromSeed,
 } from "../src/lib/solitaire-duel/solvable.ts";
-import { initialStateFromDeal } from "../src/lib/solitaire-duel/rules.ts";
+import {
+  applyMove,
+  initialStateFromDeal,
+  viewForState,
+} from "../src/lib/solitaire-duel/rules.ts";
 import { legalMoves } from "../src/lib/solitaire-duel/ai.ts";
 import { deriveDealSeed, getServerSeedHash } from "../src/lib/solitaire-duel/seeds.js";
 
@@ -191,10 +195,23 @@ function createFakeDb() {
     },
   });
 
+  // Drizzle's `delete(table).where(...)`. The fake ignores WHERE (every store
+  // read targets the one row set under test), so the table is cleared and each
+  // scenario seeds exactly the rows it means to act on.
+  const deleteRows = (table) => ({
+    where: () => {
+      const rows = rowsOf(table);
+      const removed = rows.splice(0, rows.length);
+      state.writes.push({ table, op: "delete", values: { count: removed.length } });
+      return Promise.resolve(removed.map((row) => ({ ...row })));
+    },
+  });
+
   const tx = {
     select,
     update,
     insert,
+    delete: deleteRows,
     execute: async (query) => {
       state.locks.push(query);
       // A realistic driver result shape. The store uses `execute` both for the
@@ -1555,4 +1572,89 @@ test("practice: a human who solves the deal FIRST wins at once, unrated", { skip
   assert.equal(settlement.rating.length, 0);
   assert.equal(settlement.trophy.length, 0);
   assert.equal(settlement.queue.length, 0);
+});
+
+// ── Practice undo ─────────────────────────────────────────────────────────
+
+test("practice undo rewinds the seat's last move from its own log", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  const opening = openBoard();
+  const afterDraw = applyMove({ state: opening, move: { kind: "draw" } }).state;
+
+  seedMatch(fake, {
+    isAi: true,
+    player2Id: SOLITAIRE_DUEL_AI_PLAYER_ID,
+    aiDifficulty: "grandmaster",
+    p1State: afterDraw,
+    p1Ply: 1,
+    p1PeakFoundation: 1,
+  });
+  fake.rowsOf(solitaireDuelMoves).push({
+    matchId: MATCH_ID,
+    seat: "player1",
+    ply: 0,
+    kind: "draw",
+    move: { kind: "draw" },
+    createdAt: new Date(NOW),
+  });
+
+  const result = await store.undoMove({ userId: ALICE, matchId: MATCH_ID, nowMs: NOW });
+
+  assert.equal("error" in result, false, "a practice undo must be accepted");
+  assert.equal(result.ply, 0);
+  // The board is the ENGINE's rewind of the shortened log, not a patch.
+  assert.deepEqual(result.view, viewForState(opening));
+  assert.equal(fake.rowsOf(solitaireDuelMoves).length, 0, "the dropped ply leaves the log");
+
+  const row = fake.rowsOf(solitaireDuelMatches)[0];
+  assert.equal(row.p1Ply, 0);
+  assert.deepEqual(
+    row.p1State,
+    { ...opening, peakFoundation: 1 },
+    "the monotone peak survives the rollback",
+  );
+  assert.equal(row.p2State.ply, 0, "the bot's board is never touched");
+});
+
+test("undo is refused in a ranked duel, with nothing to take back, and after the end", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+
+  // Ranked: the opponent is racing the same deal, so there is no rollback.
+  seedMatch(fake);
+  const ranked = await store.undoMove({ userId: ALICE, matchId: MATCH_ID, nowMs: NOW });
+  assert.equal(ranked.status, 409);
+  assert.match(ranked.error, /practice/i);
+
+  // Nothing has been played on this practice board.
+  fake.reset();
+  seedMatch(fake, { isAi: true, player2Id: SOLITAIRE_DUEL_AI_PLAYER_ID });
+  const empty = await store.undoMove({ userId: ALICE, matchId: MATCH_ID, nowMs: NOW });
+  assert.equal(empty.status, 409);
+  assert.match(empty.error, /no move to undo/i);
+
+  // A settled match can never be rewound.
+  fake.reset();
+  const opening = openBoard();
+  const afterDraw = applyMove({ state: opening, move: { kind: "draw" } }).state;
+  seedMatch(fake, {
+    isAi: true,
+    player2Id: SOLITAIRE_DUEL_AI_PLAYER_ID,
+    status: MATCH_STATUS.FINISHED,
+    p1State: afterDraw,
+    p1Ply: 1,
+  });
+  fake.rowsOf(solitaireDuelMoves).push({
+    matchId: MATCH_ID,
+    seat: "player1",
+    ply: 0,
+    kind: "draw",
+    move: { kind: "draw" },
+    createdAt: new Date(NOW),
+  });
+  const settled = await store.undoMove({ userId: ALICE, matchId: MATCH_ID, nowMs: NOW });
+  assert.equal(settled.status, 409);
+  assert.match(settled.error, /longer active/i);
+  assert.equal(fake.rowsOf(solitaireDuelMoves).length, 1, "a refused undo must not delete a move");
 });

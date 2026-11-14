@@ -49,6 +49,8 @@ const read = (path) => fs.readFileSync(path, "utf8");
 /** The approved benefits that are enforced today, and WHERE they are enforced. */
 const ENFORCEMENT = {
   ad_free: "src/lib/adEntitlement.ts",
+  analysis_unlimited: "src/lib/solitaire-duel/analysisAllowance.ts",
+  analytics: "src/app/api/stats/performance/route.ts",
   matchmaking: "src/lib/quickQueueWorker.ts",
 };
 
@@ -77,10 +79,7 @@ test("only enforced benefits are advertised", () => {
 });
 
 test("the approved-but-unbuilt benefits are catalogued, translated and NOT advertised", () => {
-  assert.deepEqual(
-    [...PLANNED_PRO_BENEFIT_IDS],
-    ["analytics", "leaderboards", "private_rooms"],
-  );
+  assert.deepEqual([...PLANNED_PRO_BENEFIT_IDS], ["leaderboards", "private_rooms"]);
 
   for (const id of PLANNED_PRO_BENEFIT_IDS) {
     assert.ok(!ADVERTISED_PRO_BENEFIT_IDS.includes(id), `${id} must not be advertised yet`);

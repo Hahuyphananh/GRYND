@@ -447,10 +447,20 @@ export default function SolitaireReviewPageClient({
   const rejectedAt =
     position && "rejectedAt" in position ? position.rejectedAt : null;
 
+  // The free plan gets a fixed number of fresh analyses per day; the API says
+  // so (`analysisLimited`) and withholds only the scored analysis — the deal
+  // and the move log above are still fully reviewable.
+  const analysisLimited = Boolean(
+    (data as { analysisLimited?: boolean } | null)?.analysisLimited,
+  );
+
   const accuracyNote = (() => {
     if (!data) return "Loading the move log…";
     if (data.status !== "complete") return "Not scored — this game was not completed.";
     if (analysisState.status === "analyzing") return "Analyzing the validated move log…";
+    if (analysisLimited) {
+      return "Today's free analyses are used — GRYND PRO includes unlimited match analysis.";
+    }
     if (analysisState.status === "error" || !analysis) {
       return "Analysis unavailable — every move can still be reviewed.";
     }
@@ -460,6 +470,30 @@ export default function SolitaireReviewPageClient({
 
   return (
     <Shell backHref={backHref} navPath={navPath}>
+      {/* Daily allowance spent: the deal and the move log above are still fully
+          reviewable, only the scored analysis is withheld. This is the upgrade
+          entry point on the review surface itself. */}
+      {analysisLimited && (
+        <div
+          data-testid="review-analysis-limit"
+          role="status"
+          className="mt-5 max-w-3xl rounded-2xl border border-[#f5ff3b]/40 bg-[#f5ff3b]/[0.07] p-4"
+        >
+          <p className="text-[11px] font-black uppercase tracking-[0.24em] text-[#f5ff3b]">
+            GRYND PRO
+          </p>
+          <p className="mt-1 text-sm leading-relaxed text-white/75">
+            Today&rsquo;s free match analyses are used. GRYND PRO includes
+            unlimited match analysis — every game, every day.
+          </p>
+          <Link
+            href="/upgrade-pro"
+            className="mt-3 inline-flex rounded-lg border border-[#f5ff3b]/50 bg-[#f5ff3b]/10 px-4 py-2 text-sm font-semibold text-[#f5ff3b] transition hover:bg-[#f5ff3b]/20"
+          >
+            Get unlimited analysis
+          </Link>
+        </div>
+      )}
       <header className="mt-5 max-w-3xl">
         <p className="text-[11px] font-black uppercase tracking-[0.4em] text-cyan-300/80">
           GRYND · game review

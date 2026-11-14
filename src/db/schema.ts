@@ -4322,6 +4322,43 @@ export const solitaireDailyResults = pgTable(
 // a solo result or a daily result), so one FK cannot express it. The retention
 // sweep deletes rows whose parent game is gone, and account deletion removes
 // rows for that player's games.
+export const solitaireAnalysisUsage = pgTable(
+  "solitaire_analysis_usage",
+  {
+    // Clerk user id, or the signed guest id — no FK, a guest has no user row.
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    // UTC calendar day (YYYY-MM-DD).
+    dayKey: varchar("day_key", { length: 10 }).notNull(),
+    // Fresh (cache-miss) analyses consumed that day. Never decremented.
+    used: integer("used").notNull().default(0),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    key: primaryKey({
+      name: "solitaire_analysis_usage_pk",
+      columns: [table.userId, table.dayKey],
+    }),
+  }),
+);
+
+export const proWeeklyRecapSends = pgTable(
+  "pro_weekly_recap_sends",
+  {
+    // Clerk user id of the PRO member.
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    // ISO week the recap describes (e.g. 2026-W46).
+    periodKey: varchar("period_key", { length: 10 }).notNull(),
+    sentAt: timestamp("sent_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // The claim key: exactly one recap per member per week.
+    key: primaryKey({
+      name: "pro_weekly_recap_sends_pk",
+      columns: [table.userId, table.periodKey],
+    }),
+  }),
+);
+
 export const solitaireAnalysisCache = pgTable(
   "solitaire_analysis_cache",
   {

@@ -53,6 +53,7 @@ import { useUser } from "@clerk/nextjs";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   IconAlertTriangle,
+  IconArrowBackUp,
   IconCards,
   IconClock,
   IconStopwatch,
@@ -357,6 +358,7 @@ export default function SolitaireDuelMatchPage() {
   const [cancelling, setCancelling] = useState(false);
   const [requeueing, setRequeueing] = useState(false);
   const [restarting, setRestarting] = useState(false);
+  const [undoing, setUndoing] = useState(false);
   const [leaving, setLeaving] = useState(false);
   // True while the "your board was impossible to solve, it has been re-dealt"
   // popup is up. Raised only when the server's reset counter ticks up under the
@@ -423,6 +425,7 @@ export default function SolitaireDuelMatchPage() {
     setResigning(false);
     setCancelling(false);
     setRestarting(false);
+    setUndoing(false);
     setLeaving(false);
     setBoardResetNotice(false);
     resetSeenRef.current = null;
@@ -897,6 +900,50 @@ export default function SolitaireDuelMatchPage() {
   const viewerName = viewerIdentity?.name || "You";
   const canCancelLobby = status === "waiting" && seat === "player1";
   const isPractice = Boolean(match?.isAi);
+  // PRACTICE-ONLY ROLLBACK. The server rebuilds this seat's board by replaying
+  // its own log without the final entry, so nothing here decides a position. A
+  // ranked duel has no undo at all: the opponent is racing the same deal.
+  const canUndo =
+    isPractice &&
+    phase === "racing" &&
+    !expired &&
+    !paused &&
+    !terminal &&
+    !finishing &&
+    Number(view?.ply ?? 0) > 0;
+
+  const undoLastMove = useCallback(async () => {
+    if (!canUndo || undoing) return;
+    setUndoing(true);
+    setNotice(null);
+    // Anything predicted against the old board is void once it rewinds.
+    queueRef.current = [];
+    optimisticRef.current = null;
+    setOptimisticView(null);
+    finishingRef.current = false;
+    setFinishing(null);
+    try {
+      const res = await fetch(`${apiMatch}/undo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        // A refused rollback (a re-dealt board, a settled match) is surfaced and
+        // followed by a resync rather than a guessed board.
+        setNotice(data?.error || "That move cannot be taken back");
+        void load();
+        return;
+      }
+      adopt(data.data.match as MatchDto);
+      socket?.emit(SOLITAIRE_DUEL_EVENTS.READY, { matchId });
+    } catch {
+      setNotice("Connection hiccup — resyncing");
+      void load();
+    } finally {
+      setUndoing(false);
+    }
+  }, [adopt, apiMatch, canUndo, load, matchId, socket, undoing]);
   // ── Opponent dialogue (practice only) ──────────────────────────────────
   // The Phase 2 hook receives ONLY the presentation-safe counts this page
   // already has. It never sees the bot's board, stock or move list, and it is
@@ -1297,6 +1344,25 @@ export default function SolitaireDuelMatchPage() {
                           onToggle={togglePause}
                           testId="solitaire-pause"
                         />
+                      )}
+                      {/* Practice only. A ranked duel offers Resign and nothing
+                          else: you either win it or you lose it. */}
+                      {isPractice && phase === "racing" && !terminal && !expired && (
+                        <button
+                          type="button"
+                          data-testid="solitaire-undo"
+                          onClick={() => void undoLastMove()}
+                          disabled={!canUndo || undoing}
+                          title={
+                            canUndo
+                              ? "Take back your last move (practice only)"
+                              : "Nothing to take back yet"
+                          }
+                          className="inline-flex items-center gap-1 rounded-xl border border-[color:var(--gr-outline)] bg-white/[0.04] px-3 py-2 text-xs font-bold text-white/75 transition hover:bg-white/10 active:translate-y-px disabled:opacity-45"
+                        >
+                          <IconArrowBackUp size={13} aria-hidden="true" />
+                          {undoing ? "Undoing…" : "Undo"}
+                        </button>
                       )}
                       {!terminal && status === "playing" && !expired && (
                         <button

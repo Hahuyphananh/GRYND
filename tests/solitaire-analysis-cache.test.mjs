@@ -353,7 +353,17 @@ test("the schema and migration make one row per identity structural", () => {
   );
   const entry = journal.entries.find((row) => row.tag === "0249_solitaire_analysis_cache");
   assert.ok(entry, "the migration must be journaled or db:migrate will skip it");
-  assert.equal(entry.idx, journal.entries.length - 1);
+  // Entries are contiguous and in order, so an idx that disagrees with the
+  // journal's own position would make db:migrate replay or skip a migration.
+  journal.entries.forEach((row, position) => {
+    assert.equal(row.idx, position, `${row.tag} has a non-contiguous idx`);
+  });
+  //…and the analysis cache is never the newest entry by accident: a later
+  // migration may exist (the allowance that costed this analysis came after).
+  assert.ok(
+    journal.entries.at(-1).idx >= entry.idx,
+    "a later migration may follow the cache, never precede it",
+  );
 });
 
 test("retention deletes analyses whose game no longer exists", () => {
@@ -379,7 +389,10 @@ test("all three review modes return the analysis for their own canonical log", (
   const duel = read("src/app/api/solitaire-duel/match/[matchId]/review/route.ts");
 
   for (const source of [solo, duel]) {
-    assert.match(source, /loadOrComputeAnalysis\(/);
+    // The routes reach the cache through the allowance gate (cached re-views are
+    // free, a fresh analysis costs one of the free plan's three a day) — never
+    // by calling the uncosted loader directly.
+    assert.match(source, /loadReviewAnalysis\(/);
     assert.match(source, /logDigest: moveLogDigest\(canonical\.log\)/);
     assert.match(source, /^\s*analysis,$/m);
   }

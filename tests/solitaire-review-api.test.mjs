@@ -193,6 +193,16 @@ function installMocks() {
   // each route passes, so the canonical-digest wiring is asserted directly.
   mock.module("../src/lib/solitaire-duel/analysisCache.ts", {
     namedExports: {
+      // The allowance gate reads the cache identity and probes the cache before
+      // it can cost an analysis; here every read is a miss, so the recorded
+      // `loadOrComputeAnalysis` calls below still describe the route wiring.
+      analysisCacheIdentity: ({ gameKind, gameId, logDigest, engineVersion = 1 }) => ({
+        gameKind,
+        gameId,
+        logDigest,
+        engineVersion,
+      }),
+      readCachedAnalysis: async () => null,
       loadOrComputeAnalysis: async (input) => {
         cacheInputs.push(input);
         return { analysis: SAMPLE_ANALYSIS, cached: cacheInputs.length > 1 };
@@ -576,7 +586,10 @@ test("the routes never write, settle, or own the analysis engine", () => {
     assert.doesNotMatch(source, /analyzeSolitaireGame/);
     // The analysis comes from the cache module, never from a second engine or
     // a client-supplied payload.
-    assert.match(source, /loadOrComputeAnalysis\(/);
+    // The route reaches the analysis through the allowance gate (a cached
+    // re-view is free; a fresh one costs one of the free plan's three a day),
+    // never through the uncosted loader.
+    assert.match(source, /loadReviewAnalysis\(/);
     assert.doesNotMatch(source, /analysis:/);
   }
 });

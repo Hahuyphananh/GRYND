@@ -241,14 +241,19 @@ test("the game surface never calls the matchmaking or AI endpoints", () => {
 
 test("the homepage and navigation expose all four ways to play", () => {
   const home = read("src/app/PageClient.jsx");
-  assert.match(home, /href="\/solitaire"/);
-  assert.match(home, /href="\/daily"/);
-  assert.match(home, /href="#lobby"/);
-  assert.match(home, /href="#practice"/);
+  // The four cards are data-driven (`MODES`), so each mode's destination is a
+  // `href:` field the card renders — not a literal `href="…"` attribute in the
+  // markup. Match the field, and keep proving the card actually renders it.
+  assert.match(home, /href: "\/solitaire"/);
+  assert.match(home, /href: "\/daily"/);
+  assert.match(home, /href: "#lobby"/);
+  assert.match(home, /href: "#practice"/);
+  assert.match(home, /href=\{mode\.href\}/, "each mode card renders its own href");
+  // The cards' own copy, as the lobby presents the four modes.
   assert.match(home, /Ranked PvP/);
-  assert.match(home, /Solo Solitaire/);
-  assert.match(home, /Practice vs AI/);
-  assert.match(home, /Daily Challenge/);
+  assert.match(home, /Play alone, right now/);
+  assert.match(home, /Learn the rhythm/);
+  assert.match(home, /One deal, every day/);
 
   const nav = read("src/components/navigation-bar.jsx");
   assert.match(nav, /"\/daily"/);

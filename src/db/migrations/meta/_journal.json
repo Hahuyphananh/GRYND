@@ -1625,6 +1625,20 @@
       "when": 1800000094000,
       "tag": "0250_audience_daily_snapshots",
       "breakpoints": true
+    },
+    {
+      "idx": 232,
+      "version": "7",
+      "when": 1800000095000,
+      "tag": "0251_solitaire_analysis_usage",
+      "breakpoints": true
+    },
+    {
+      "idx": 233,
+      "version": "7",
+      "when": 1800000096000,
+      "tag": "0252_pro_weekly_recap_sends",
+      "breakpoints": true
     }
   ]
 }

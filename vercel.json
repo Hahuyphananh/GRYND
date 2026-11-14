@@ -23,6 +23,10 @@
     {
       "path": "/api/jobs/audience-snapshot",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/jobs/pro-weekly-recap",
+      "schedule": "0 9 * * 1"
     }
   ]
 }

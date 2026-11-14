@@ -32,6 +32,8 @@
 UPDATE "token_subscription_plans"
    SET "perks" = ARRAY[
          'Ad-free browsing and gaming',
+         'Unlimited game analysis — replay and review every match, every day',
+         'Advanced statistics and performance analytics, including graphs',
          'Priority matchmaking — a fair queue tie-break, never a skill advantage'
        ],
        "updated_at" = now()

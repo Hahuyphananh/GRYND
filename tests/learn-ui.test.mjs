@@ -106,9 +106,9 @@ test("Learn is reachable from both the desktop and mobile navigation", () => {
   // Guest experience: the middleware must let both /learn and /learn/<id>
   // through without sending a signed-out visitor to /sign-in.
   assert.match(source("src/proxy.ts"), /"\/learn\(\.\*\)"/);
-  assert.equal(resolve(APP_TEXT_TRANSLATIONS.en, "nav.learn"), "Learn");
-  assert.equal(resolve(APP_TEXT_TRANSLATIONS.fr, "nav.learn"), "Apprendre");
-  assert.equal(resolve(APP_TEXT_TRANSLATIONS.es, "nav.learn"), "Aprender");
+  assert.equal(resolve(APP_TEXT_TRANSLATIONS.en, "nav.learn"), "Academy");
+  assert.equal(resolve(APP_TEXT_TRANSLATIONS.fr, "nav.learn"), "Académie");
+  assert.equal(resolve(APP_TEXT_TRANSLATIONS.es, "nav.learn"), "Academia");
 });
 
 test("the landing page shows every required section without hardcoded lessons", () => {

@@ -15,7 +15,7 @@ export async function generateMetadata({
   if (!lesson) return { title: "Lesson not found — GRYND" };
 
   return {
-    title: `${LEARN_TRANSLATIONS.en.lessons[lesson.id]?.title ?? lesson.id} — Learn Solitaire`,
+    title: `${LEARN_TRANSLATIONS.en.lessons[lesson.id]?.title ?? lesson.id} — GRYND Academy`,
     description:
       "An interactive Solitaire lesson on GRYND. Prepared board, real rules and no penalty for retrying.",
     alternates: { canonical: `/learn/${lesson.id}` },

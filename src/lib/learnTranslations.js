@@ -9,8 +9,30 @@ import { LEARN_CURRICULUM_TRANSLATIONS } from "./learnCurriculumTranslations.js"
 
 export const LEARN_TRANSLATIONS = {
   en: {
-    kicker: "GRYND · Learn",
-    title: "Learn Solitaire.",
+    kicker: "GRYND · Academy",
+    title: "GRYND Academy.",
+    videos: {
+      kicker: "Video course",
+      title: "The Complete Guide to Solitaire",
+      description:
+        "Three short parts cover the whole game. Watch one, then practise the same idea on the board below.",
+      part: "Part {number}",
+      watch: "Watch the video",
+      chapters: "Chapters",
+      back: "Back to Academy",
+      next: "Next part",
+      resume: "Resume {time}",
+      watchAgain: "Watch again",
+      watched: "Watched",
+      watchedCount: "{watched} of {total} watched",
+      progress: "Video progress",
+      resumedAt: "Resumed at {time}",
+      startOver: "Start over",
+      practiceKicker: "Practise it on the board",
+      practiceCta: "Open the lesson",
+      note: "The video is the walkthrough; the interactive lessons below are where you play it yourself.",
+      unsupported: "Your browser cannot play this video.",
+    },
     description:
       "Short, hands-on lessons that teach one idea at a time. Every lesson starts from a prepared board, uses the real rules, and lets you retry without a penalty.",
     progress: {
@@ -85,7 +107,7 @@ export const LEARN_TRANSLATIONS = {
       stepProgress: "{step} of {total} steps",
     },
     player: {
-      back: "Back to Learn",
+      back: "Back to Academy",
       stepOf: "Step {step} of {total}",
       progress: "Lesson progress",
       objective: "Current objective",
@@ -98,7 +120,7 @@ export const LEARN_TRANSLATIONS = {
       next: "Next lesson",
       nextLocked: "Finish this lesson to unlock the next one.",
       replay: "Replay",
-      return: "Return to Learn",
+      return: "Return to Academy",
       saved: "Progress saved on this device.",
       boardNotice: "That card cannot go there. Look for a highlighted pile.",
       feedback: {
@@ -119,7 +141,7 @@ export const LEARN_TRANSLATIONS = {
       nextLesson: "Next lesson",
       finalLesson: "You have reached the end of the available lessons.",
       replayLesson: "Replay lesson",
-      returnToLearn: "Return to Learn",
+      returnToLearn: "Return to Academy",
       stepsComplete: "{completed} of {total} steps",
       stepDone: "Done",
       stepCurrent: "Current",
@@ -143,8 +165,30 @@ export const LEARN_TRANSLATIONS = {
   },
 
   fr: {
-    kicker: "GRYND · Apprendre",
-    title: "Apprendre le Solitaire.",
+    kicker: "GRYND · Académie",
+    title: "Académie GRYND.",
+    videos: {
+      kicker: "Cours vidéo",
+      title: "Le guide complet du Solitaire",
+      description:
+        "Trois courtes parties couvrent tout le jeu. Regarde-en une, puis mets la même idée en pratique sur le plateau ci-dessous.",
+      part: "Partie {number}",
+      watch: "Regarder la vidéo",
+      chapters: "Chapitres",
+      back: "Retour à l'Académie",
+      next: "Partie suivante",
+      resume: "Reprendre à {time}",
+      watchAgain: "Revoir la vidéo",
+      watched: "Vue",
+      watchedCount: "{watched} sur {total} vues",
+      progress: "Progression de la vidéo",
+      resumedAt: "Reprise à {time}",
+      startOver: "Recommencer",
+      practiceKicker: "Mets-le en pratique",
+      practiceCta: "Ouvrir la leçon",
+      note: "La vidéo explique ; les leçons interactives ci-dessous sont là pour jouer toi-même.",
+      unsupported: "Ton navigateur ne peut pas lire cette vidéo.",
+    },
     description:
       "Des leçons courtes et pratiques, une idée à la fois. Chaque leçon part d'un plateau préparé, utilise les vraies règles et te laisse réessayer sans pénalité.",
     progress: {
@@ -221,7 +265,7 @@ export const LEARN_TRANSLATIONS = {
       stepProgress: "{step} étapes sur {total}",
     },
     player: {
-      back: "Retour à Apprendre",
+      back: "Retour à l'Académie",
       stepOf: "Étape {step} sur {total}",
       progress: "Progression de la leçon",
       objective: "Objectif actuel",
@@ -234,7 +278,7 @@ export const LEARN_TRANSLATIONS = {
       next: "Leçon suivante",
       nextLocked: "Termine cette leçon pour débloquer la suivante.",
       replay: "Rejouer",
-      return: "Retour à Apprendre",
+      return: "Retour à l'Académie",
       saved: "Progression enregistrée sur cet appareil.",
       boardNotice:
         "Cette carte ne peut pas aller là. Cherche une pile surlignée.",
@@ -256,7 +300,7 @@ export const LEARN_TRANSLATIONS = {
       nextLesson: "Leçon suivante",
       finalLesson: "Tu as atteint la fin des leçons disponibles.",
       replayLesson: "Rejouer la leçon",
-      returnToLearn: "Retour à Apprendre",
+      returnToLearn: "Retour à l'Académie",
       stepsComplete: "{completed} étapes sur {total}",
       stepDone: "Terminé",
       stepCurrent: "En cours",
@@ -280,8 +324,30 @@ export const LEARN_TRANSLATIONS = {
   },
 
   es: {
-    kicker: "GRYND · Aprender",
-    title: "Aprende a jugar al Solitario.",
+    kicker: "GRYND · Academia",
+    title: "Academia GRYND.",
+    videos: {
+      kicker: "Curso en vídeo",
+      title: "La guía completa del Solitario",
+      description:
+        "Tres partes cortas cubren todo el juego. Mira una y practica la misma idea en el tablero de abajo.",
+      part: "Parte {number}",
+      watch: "Ver el vídeo",
+      chapters: "Capítulos",
+      back: "Volver a la Academia",
+      next: "Parte siguiente",
+      resume: "Continuar en {time}",
+      watchAgain: "Volver a ver",
+      watched: "Visto",
+      watchedCount: "{watched} de {total} vistos",
+      progress: "Progreso del vídeo",
+      resumedAt: "Retomado en {time}",
+      startOver: "Empezar de nuevo",
+      practiceKicker: "Ponlo en práctica",
+      practiceCta: "Abrir la lección",
+      note: "El vídeo explica; las lecciones interactivas de abajo son para jugarlo tú mismo.",
+      unsupported: "Tu navegador no puede reproducir este vídeo.",
+    },
     description:
       "Lecciones cortas y prácticas, una idea a la vez. Cada lección parte de un tablero preparado, usa las reglas reales y te deja reintentar sin penalización.",
     progress: {
@@ -357,7 +423,7 @@ export const LEARN_TRANSLATIONS = {
       stepProgress: "{step} de {total} pasos",
     },
     player: {
-      back: "Volver a Aprender",
+      back: "Volver a la Academia",
       stepOf: "Paso {step} de {total}",
       progress: "Progreso de la lección",
       objective: "Objetivo actual",
@@ -370,7 +436,7 @@ export const LEARN_TRANSLATIONS = {
       next: "Siguiente lección",
       nextLocked: "Termina esta lección para desbloquear la siguiente.",
       replay: "Repetir",
-      return: "Volver a Aprender",
+      return: "Volver a la Academia",
       saved: "Progreso guardado en este dispositivo.",
       boardNotice:
         "Esa carta no puede ir ahí. Busca una pila resaltada.",
@@ -392,7 +458,7 @@ export const LEARN_TRANSLATIONS = {
       nextLesson: "Siguiente lección",
       finalLesson: "Has llegado al final de las lecciones disponibles.",
       replayLesson: "Repetir lección",
-      returnToLearn: "Volver a Aprender",
+      returnToLearn: "Volver a la Academia",
       stepsComplete: "{completed} de {total} pasos",
       stepDone: "Hecho",
       stepCurrent: "Actual",

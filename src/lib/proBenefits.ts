@@ -41,6 +41,7 @@
 /** The approved benefit ids, in DISPLAY order (the order the offer shows them). */
 export const PRO_BENEFIT_IDS = [
   "ad_free",
+  "analysis_unlimited",
   "analytics",
   "leaderboards",
   "private_rooms",
@@ -64,16 +65,27 @@ export type ProBenefit = {
  *                  verified active member (src/lib/adEntitlement.ts), enforced
  *                  in the server-rendered response, not by hiding a div.
  *
+ * `analysis_unlimited` — a free account gets FREE_ANALYSES_PER_DAY (3) fresh
+ *                  Game Review analyses per UTC day, per identity; an active
+ *                  member is never counted (src/lib/solitaire-duel/
+ *                  analysisAllowance.ts, consumed by both review routes).
+ *
+ * `analytics`    — the performance dashboard (win rates, Elo and trophy
+ *                  progression, rank history) is served only to an active
+ *                  member: /api/stats/performance answers a non-member with
+ *                  `{ pro: false, locked: true }` and no figures.
+ *
  * `matchmaking`  — the queue worker prefers an active member ONLY as a
  *                  tie-break between already skill-compatible candidates; it
  *                  never widens the skill window and never changes a result
  *                  (src/lib/quickQueueWorker.ts + getActiveMemberIds).
  *
- * The remaining three are approved but NOT enforced yet — see the module note.
+ * The remaining two are approved but NOT enforced yet — see the module note.
  */
 export const PRO_BENEFITS: readonly ProBenefit[] = [
   { id: "ad_free", availability: "available" },
-  { id: "analytics", availability: "planned" },
+  { id: "analysis_unlimited", availability: "available" },
+  { id: "analytics", availability: "available" },
   { id: "leaderboards", availability: "planned" },
   { id: "private_rooms", availability: "planned" },
   { id: "matchmaking", availability: "available" },
@@ -108,6 +120,8 @@ export const PLANNED_PRO_BENEFIT_IDS: readonly ProBenefitId[] = PRO_BENEFITS.fil
  */
 export const PRO_BENEFIT_LABELS: Record<ProBenefitId, string> = {
   ad_free: "Ad-free browsing and gaming",
+  analysis_unlimited:
+    "Unlimited game analysis — replay and review every match, every day",
   analytics: "Advanced statistics and performance analytics, including graphs",
   leaderboards:
     "Extended leaderboard access, with graphs of your ranking over time",

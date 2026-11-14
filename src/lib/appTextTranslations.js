@@ -853,7 +853,7 @@ export const APP_TEXT_TRANSLATIONS = {
     
     nav: {
       home: "Home",
-      learn: "Learn",
+      learn: "Academy",
       casino: "Games",
       leaderboard: "Leaderboard",
       contact: "Contact",
@@ -910,6 +910,8 @@ export const APP_TEXT_TRANSLATIONS = {
       // (see ADVERTISED_PRO_BENEFITS).
       benefit: {
         ad_free: "Ad-free browsing and gaming",
+        analysis_unlimited:
+          "Unlimited match analysis — replay and review every game, every day",
         analytics:
           "Advanced statistics and performance analytics, including graphs",
         leaderboards:
@@ -3827,7 +3829,7 @@ export const APP_TEXT_TRANSLATIONS = {
     
     nav: {
       home: "Accueil",
-      learn: "Apprendre",
+      learn: "Académie",
       casino: "Jeux",
       leaderboard: "Classement",
       contact: "Contact",
@@ -3879,6 +3881,8 @@ export const APP_TEXT_TRANSLATIONS = {
       // trois avantages non encore développés sont traduits mais pas affichés.
       benefit: {
         ad_free: "Navigation et jeu sans publicité",
+        analysis_unlimited:
+          "Analyse de parties illimitée — rejouez et analysez chaque partie, chaque jour",
         analytics:
           "Statistiques avancées et analyse de performance, graphiques inclus",
         leaderboards:
@@ -6538,7 +6542,7 @@ export const APP_TEXT_TRANSLATIONS = {
     
     nav: {
       home: "Inicio",
-      learn: "Aprender",
+      learn: "Academia",
       casino: "Juegos",
       leaderboard: "Clasificaciones",
       contact: "Contacto",
@@ -6590,6 +6594,8 @@ export const APP_TEXT_TRANSLATIONS = {
       // ventajas aún sin desarrollar están traducidas pero no se muestran.
       benefit: {
         ad_free: "Navegación y juego sin anuncios",
+        analysis_unlimited:
+          "Análisis de partidas ilimitado — revisa y analiza cada partida, cada día",
         analytics:
           "Estadísticas avanzadas y análisis de rendimiento, con gráficos",
         leaderboards:

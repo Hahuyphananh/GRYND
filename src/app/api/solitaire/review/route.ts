@@ -27,7 +27,7 @@ import { db } from "../../../../db/client";
 import { solitaireDailyResults, solitaireSoloResults } from "../../../../db/schema";
 import { readGuestId } from "../../../../lib/auth/guestSession";
 import { logError } from "../../../../lib/logError";
-import { loadOrComputeAnalysis } from "../../../../lib/solitaire-duel/analysisCache";
+import { loadReviewAnalysis } from "../../../../lib/solitaire-duel/reviewAnalysis";
 import { dealFromSeed } from "../../../../lib/solitaire-duel/deck";
 import { dailyDealFor } from "../../../../lib/solitaire-duel/daily";
 import { replayMoves } from "../../../../lib/solitaire-duel/rules";
@@ -120,12 +120,18 @@ export async function GET(req: Request) {
 
       // Cache identity = game + SHA-256 of THIS canonical log + engine version.
       // The route never trusts a client digest and never writes the log twice.
-      const { analysis } = await loadOrComputeAnalysis({
+      // The analysis is costed by the caller's daily allowance: a cached
+      // re-view is free, a fresh one is taken from the free plan's 3/day (PRO
+      // is unlimited). The deal and the log are always returned; only the
+      // scored analysis is withheld when the allowance is spent.
+      const { analysis, limited, allowance } = await loadReviewAnalysis({
         gameKind: "solo",
         gameId: id,
         logDigest: moveLogDigest(canonical.log),
         deal: soloDeal,
         moves: canonical.log,
+        playerId: player.playerId,
+        isGuest: player.isGuest,
       });
 
       const completedAt = toIso(row.createdAt);
@@ -159,6 +165,8 @@ export async function GET(req: Request) {
             elapsedMs ?? durationMsBetween(startedAt, completedAt),
           analysisEligible: true,
           analysis,
+          analysisLimited: limited,
+          analysisAllowance: allowance,
           incompleteReason: null,
         },
       });
@@ -194,12 +202,14 @@ export async function GET(req: Request) {
     const replayed = replayMoves({ deal: dailyDeal, moves: canonical.log });
     if (!replayed.ok || !replayed.state.completed) return notFound();
 
-    const { analysis } = await loadOrComputeAnalysis({
+    const { analysis, limited, allowance } = await loadReviewAnalysis({
       gameKind: "daily",
       gameId: id,
       logDigest: moveLogDigest(canonical.log),
       deal: dailyDeal,
       moves: canonical.log,
+      playerId: player.playerId,
+      isGuest: player.isGuest,
     });
 
     const completedAt = toIso(row.createdAt);
@@ -232,6 +242,8 @@ export async function GET(req: Request) {
         durationMs: elapsedMs ?? durationMsBetween(startedAt, completedAt),
         analysisEligible: true,
         analysis,
+        analysisLimited: limited,
+        analysisAllowance: allowance,
         incompleteReason: null,
       },
     });

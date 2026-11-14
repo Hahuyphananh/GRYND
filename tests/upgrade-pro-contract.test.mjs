@@ -275,11 +275,19 @@ test("the modal shows the GRYND PRO offer with the pack-mega artwork", () => {
     /\{ id: "ad_free", availability: "available" \}/,
     "ad-free is enforced today (lib/adEntitlement.ts) and stays advertised",
   );
+  // The audit: `analytics` is shipped (the /stats dashboard, server-gated by
+  // /api/stats/performance) and may be advertised; extended leaderboards with
+  // ranking graphs and private custom rooms are still unbuilt and may not.
+  assert.match(
+    PRO_BENEFITS,
+    /\{ id: "analytics", availability: "available" \}/,
+    "the performance dashboard exists and is gated — the catalog must say so",
+  );
   assert.ok(
-    !/id: "(analytics|leaderboards|private_rooms)", availability: "available"/.test(
+    !/id: "(leaderboards|private_rooms)", availability: "available"/.test(
       PRO_BENEFITS,
     ),
-    "statistics / ranking graphs / private rooms are not built yet — they must not be advertised",
+    "leaderboard graphs / private rooms are not built yet — they must not be advertised",
   );
 
   // The perk row the API serves (/api/membership/status sends `plan.perks`) is
