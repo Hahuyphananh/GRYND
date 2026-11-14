@@ -235,18 +235,24 @@ export default function PageClient({ plan, signedIn, subscription }: PageClientP
           <h2 className="text-xl font-bold text-[#00e5ff]">{t("pro.billing_title")}</h2>
           <ul className="mt-3 space-y-2 text-sm text-[#9dd8ff]/85">
             {active && currentOption ? (
-              <li>
-                •{" "}
-                {t("pro.billing_current", {
-                  interval: t(`pro.interval.${currentOption.interval}`).toLowerCase(),
-                  price: currentOption.priceDisplay,
-                  unit: t(`pro.unit.${currentOption.interval}`),
-                })}
-              </li>
+              <>
+                <li>
+                  •{" "}
+                  {t("pro.billing_current", {
+                    interval: t(`pro.interval.${currentOption.interval}`).toLowerCase(),
+                    price: currentOption.priceDisplay,
+                    unit: t(`pro.unit.${currentOption.interval}`),
+                  })}
+                </li>
+                <li>• {t("pro.billing_change")}</li>
+              </>
             ) : (
-              <li>• {t("pro.billing_options")}</li>
+              // `billing_options_lead` ends in an em dash and exists only to
+              // introduce the change sentence, so the two render as one line.
+              <li>
+                • {t("pro.billing_options_lead")} {t("pro.billing_change")}
+              </li>
             )}
-            <li>• {t("pro.billing_change")}</li>
             <li>
               • {t("pro.billing_profile_lead")}{" "}
               <Link href="/profil" className="text-[#f5ff3b] underline">
