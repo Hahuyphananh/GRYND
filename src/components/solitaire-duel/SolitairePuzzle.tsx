@@ -13,14 +13,19 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
+import { isOfflineError } from "../../hooks/useOnlineStatus";
+import {
+  buildOfflinePuzzle,
+  publicPuzzle,
+  randomPuzzleSeed,
+  verifyPuzzleChoice,
+  type PuzzleCardView,
+  type PuzzleChoiceLabel,
+  type PuzzleChoiceView,
+  type PuzzlePositionView,
+  type PublicPuzzle,
+} from "../../lib/solitaire-duel/puzzleCore";
 import type { SolitaireMove } from "../../lib/solitaire-duel/types";
-import type {
-  PuzzleCardView,
-  PuzzleChoiceLabel,
-  PuzzleChoiceView,
-  PuzzlePositionView,
-  PublicPuzzle,
-} from "../../lib/solitaire-duel/puzzle";
 import { rankLabel, suitGlyph } from "./PlayingCard";
 
 type Allowance = {
@@ -155,6 +160,22 @@ export default function SolitairePuzzle({ kind }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
   const [result, setResult] = useState<AnswerState | null>(null);
+  // True when this position was built in the tab because there is no network.
+  const [offline, setOffline] = useState(false);
+  // The local position's answer. It never leaves this component, and nothing
+  // derived from it is stored.
+  const [localAnswer, setLocalAnswer] = useState<PuzzleChoiceLabel | null>(null);
+
+  // The unlimited puzzle is the offline-capable mode: a position is a pure
+  // function of a seed, so the tab can build and check one with no network.
+  // The daily puzzle is tied to the server's UTC day and its one recorded
+  // answer, so it stays online-only.
+  const buildLocal = useCallback(() => {
+    const local = buildOfflinePuzzle(randomPuzzleSeed());
+    setPuzzle({ ...publicPuzzle(local), answer: null, attempt: null, allowance: null });
+    setLocalAnswer(local.answer);
+    setOffline(true);
+  }, []);
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
@@ -162,6 +183,27 @@ export default function SolitairePuzzle({ kind }: Props) {
       setFailed(false);
       setLimitReached(false);
       setResult(null);
+      setOffline(false);
+      setLocalAnswer(null);
+
+      // Offline: never even attempt the request. The yield paints "Building…"
+      // before the synchronous deal search runs.
+      if (
+        kind === "unlimited" &&
+        typeof navigator !== "undefined" &&
+        navigator.onLine === false
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        try {
+          buildLocal();
+        } catch {
+          setFailed(true);
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
+
       try {
         const response = await fetch(`/api/solitaire/puzzle?kind=${kind}`, {
           credentials: "same-origin",
@@ -172,12 +214,27 @@ export default function SolitairePuzzle({ kind }: Props) {
         if (!response.ok || !body?.success) throw new Error(body?.error || "Puzzle unavailable");
         setPuzzle(body.data as PuzzleData);
       } catch (error) {
-        if ((error as Error)?.name !== "AbortError") setFailed(true);
+        if ((error as Error)?.name === "AbortError") return;
+        // A dropped connection or captive portal: build a local practice
+        // puzzle instead of showing a dead card. Nothing is submitted.
+        if (
+          kind === "unlimited" &&
+          (isOfflineError(error) ||
+            (typeof navigator !== "undefined" && navigator.onLine === false))
+        ) {
+          try {
+            buildLocal();
+          } catch {
+            setFailed(true);
+          }
+        } else {
+          setFailed(true);
+        }
       } finally {
         setLoading(false);
       }
     },
-    [kind],
+    [buildLocal, kind],
   );
 
   useEffect(() => {
@@ -204,6 +261,17 @@ export default function SolitairePuzzle({ kind }: Props) {
 
   const submit = async (choice: PuzzleChoiceLabel) => {
     if (!puzzle || submitting || locked) return;
+    // OFFLINE: check the choice with the same pure verifier and record NOTHING.
+    // No request is attempted, and no attempt or allowance is written anywhere.
+    if (offline) {
+      if (localAnswer == null) return;
+      setResult({
+        correct: verifyPuzzleChoice({ answer: localAnswer }, choice),
+        answer: localAnswer,
+        choice,
+      });
+      return;
+    }
     setSubmitting(true);
     try {
       const response = await fetch("/api/solitaire/puzzle", {
@@ -271,7 +339,17 @@ export default function SolitairePuzzle({ kind }: Props) {
           <p className="mt-2 max-w-xl text-sm leading-relaxed text-white/55">{blurb}</p>
         </div>
 
-        {kind === "unlimited" && allowance && (
+        {kind === "unlimited" && offline && (
+          <div className="rounded-xl border border-amber-300/30 bg-amber-400/10 px-3 py-2 text-right">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200/80">
+              Offline
+            </p>
+            <p className="font-mono text-lg text-white">Unlimited</p>
+            <p className="text-[9px] uppercase tracking-[0.12em] text-amber-100/50">not saved</p>
+          </div>
+        )}
+
+        {kind === "unlimited" && !offline && allowance && (
           <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-right">
             {allowance.unlimited ? (
               <>
@@ -298,7 +376,9 @@ export default function SolitairePuzzle({ kind }: Props) {
 
       {failed && (
         <div className="mt-4 rounded-xl border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-100">
-          The puzzle could not be loaded. Please try again.
+          {kind === "daily"
+            ? "The daily puzzle needs a connection — it is tied to the server's UTC day. Unlimited puzzles still work offline."
+            : "The puzzle could not be loaded. Please try again."}
         </div>
       )}
 
@@ -368,6 +448,11 @@ export default function SolitairePuzzle({ kind }: Props) {
                   {describeMove(answerChoice.move).title}.
                 </p>
               )}
+              {offline && (
+                <p className="mt-1 text-white/50">
+                  Checked on this device — nothing was recorded.
+                </p>
+              )}
               {kind === "daily" && (
                 <p className="mt-1 text-white/50">A new daily puzzle arrives at UTC midnight.</p>
               )}
@@ -392,9 +477,11 @@ export default function SolitairePuzzle({ kind }: Props) {
           {kind === "unlimited" && (
             <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
               <span className="text-[11px] text-white/35">
-                {allowance?.unlimited
-                  ? "PRO · no daily limit"
-                  : `Free plan · ${remaining ?? 0} of ${allowance?.limit ?? 5} left today`}
+                {offline
+                  ? "Offline · unlimited practice, nothing saved"
+                  : allowance?.unlimited
+                    ? "PRO · no daily limit"
+                    : `Free plan · ${remaining ?? 0} of ${allowance?.limit ?? 5} left today`}
               </span>
               <button
                 type="button"

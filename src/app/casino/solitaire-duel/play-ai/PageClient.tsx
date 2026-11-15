@@ -26,8 +26,10 @@ import {
 import NavigationBar from "../../../../components/navigation-bar";
 import BotAvatar from "../../../../components/solitaire-duel/BotAvatar";
 import BotSpeech from "../../../../components/solitaire-duel/BotSpeech";
+import OfflineSolitaireMatch from "../../../../components/solitaire-duel/OfflineSolitaireMatch";
 import { solitaireResultLine } from "../../../../lib/solitaire-duel/dialogueDirector";
 import { useMatchRouter } from "../../../../hooks/useMatchRouter";
+import { isOfflineError, useOnlineStatus } from "../../../../hooks/useOnlineStatus";
 import {
   SOLITAIRE_BOTS,
   solitaireBotStats,
@@ -107,12 +109,23 @@ function Rating({ bot }: { bot: SolitaireBot }) {
 
 export default function SolitairePlayAiPage() {
   const router = useMatchRouter();
+  const { online } = useOnlineStatus();
   const [challengingId, setChallengingId] = useState<SolitaireBotId | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Set when a challenge must run without the server: the device is offline, or
+  // the create request could not reach it. The arena then plays the same bot
+  // locally — same deal, same planner, nothing saved.
+  const [offlineBotId, setOfflineBotId] = useState<SolitaireBotId | null>(null);
 
   const challenge = useCallback(
     async (bot: SolitaireBot) => {
       if (challengingId) return;
+      // OFFLINE: skip the request entirely rather than fail it. The local arena
+      // deals a freshly proven board on this device.
+      if (!online || (typeof navigator !== "undefined" && navigator.onLine === false)) {
+        setOfflineBotId(bot.id);
+        return;
+      }
       setChallengingId(bot.id);
       setError(null);
       try {
@@ -128,14 +141,32 @@ export default function SolitairePlayAiPage() {
           return;
         }
         router.push(`${LOBBY_PATH}/${data.data.matchId}`);
-      } catch {
+      } catch (cause) {
+        // The connection died between the click and the request (captive portal,
+        // dropped Wi-Fi): start locally instead of telling an offline player to
+        // try again.
+        if (isOfflineError(cause)) {
+          setOfflineBotId(bot.id);
+          return;
+        }
         setError(`Unable to start the match against ${bot.name}`);
       } finally {
         setChallengingId(null);
       }
     },
-    [challengingId, router],
+    [challengingId, online, router],
   );
+
+  if (offlineBotId) {
+    return (
+      <main className="min-h-screen bg-linear-to-b from-[#07101f] via-[#06152c] to-[#040b17] px-4 pb-20 pt-20 text-white sm:px-6">
+        <NavigationBar currentPath={LOBBY_PATH} />
+        <div className="mx-auto mt-5 w-full max-w-6xl">
+          <OfflineSolitaireMatch botId={offlineBotId} onExit={() => setOfflineBotId(null)} />
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-linear-to-b from-[#07101f] via-[#06152c] to-[#040b17] px-4 pb-20 pt-20 text-white sm:px-6">
@@ -175,6 +206,16 @@ export default function SolitairePlayAiPage() {
             <span>Advanced</span>
           </div>
         </header>
+
+        {!online && (
+          <p
+            data-testid="solitaire-offline-notice"
+            className="mt-5 rounded-xl border border-amber-300/35 bg-amber-400/[0.08] px-4 py-3 text-xs leading-relaxed text-amber-100/80"
+          >
+            You're offline. Every bot still plays: the challenge runs on this
+            device, and nothing is saved to your account.
+          </p>
+        )}
 
         {error && (
           <p

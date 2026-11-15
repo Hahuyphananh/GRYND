@@ -10,11 +10,12 @@
 // deliberately NOT reused is the multiplayer session: there is no seat, no
 // opponent, no clock authority, no match row and no Elo here.
 //
-// TIMER: elapsed time is always `now - startedAtMs` (timestamps), never an
-// interval counter. The interval only refreshes the display. `startedAtMs` is
-// set when the board is dealt (or when the player taps Start for the Daily),
-// survives re-renders and is persisted, so a refresh resumes the same clock
-// instead of restarting it.
+// TIMER: elapsed time is always `now - timerStartedAtMs` (timestamps), never an
+// interval counter, and the interval only refreshes the display. Solo deals the
+// board WITHOUT starting the clock: `timerStartedAtMs` stays null until the
+// first accepted card move, so studying the opening deal costs no time. The
+// Daily starts it when the player taps Start. It survives re-renders and is
+// persisted, so a refresh resumes the same clock instead of restarting it.
 //
 // PERSISTENCE: the move log is persisted, not the derived board. Resuming
 // replays the log through the engine, which is the same verification the server
@@ -26,6 +27,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+
+import { useOnlineStatus } from "../../hooks/useOnlineStatus";
 
 import PostMatchAdSlot from "../ads/PostMatchAdSlot";
 import SolitaireBoard from "./SolitaireBoard";
@@ -55,6 +58,7 @@ import {
   viewForState,
 } from "../../lib/solitaire-duel/rules";
 import { formatDuration, summariseSolo } from "../../lib/solitaire-duel/soloStats.js";
+import { soloElapsedMs } from "../../lib/solitaire-duel/soloTimer";
 import type {
   SolitaireDeal,
   SolitaireMove,
@@ -100,6 +104,11 @@ type Session = {
   state: SolitaireState;
   log: LogEntry[];
   startedAtMs: number;
+  /**
+   * When the run's clock started: the first accepted card move in solo, or the
+   * moment the Daily was started. Null while a solo board is still untouched.
+   */
+  timerStartedAtMs: number | null;
   /** The instant of the last accepted action; the inactivity clock runs from it. */
   lastActivityAtMs: number;
   endedAtMs: number | null;
@@ -127,6 +136,7 @@ function buildSession({
   deal,
   log = [],
   startedAtMs = Date.now(),
+  timerStartedAtMs = startedAtMs,
   lastActivityAtMs = startedAtMs,
   endedAtMs = null,
   won = false,
@@ -137,6 +147,7 @@ function buildSession({
   deal: SolitaireDeal;
   log?: LogEntry[];
   startedAtMs?: number;
+  timerStartedAtMs?: number | null;
   lastActivityAtMs?: number;
   endedAtMs?: number | null;
   won?: boolean;
@@ -151,6 +162,7 @@ function buildSession({
     state: replayed.ok ? replayed.state : initialStateFromDeal(deal),
     log: replayed.ok ? log : [],
     startedAtMs,
+    timerStartedAtMs,
     lastActivityAtMs,
     endedAtMs,
     won: replayed.ok ? won || replayed.state.completed : false,
@@ -183,6 +195,7 @@ function storeSession(session: Session | null) {
         dateKey: session.dateKey,
         log: session.log,
         startedAtMs: session.startedAtMs,
+        timerStartedAtMs: session.timerStartedAtMs,
         lastActivityAtMs: session.lastActivityAtMs,
         endedAtMs: session.endedAtMs,
         won: session.won,
@@ -287,8 +300,13 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
   const [summary, setSummary] = useState<Summary | null>(soloSummary);
   const [dailyStats, setDailyStats] = useState<DailySummary | null>(daily?.summary ?? null);
   const [signedIn, setSignedIn] = useState(Boolean(daily?.signedIn ?? soloSummary));
+  const { online } = useOnlineStatus();
+  const onlineRef = useRef(online);
+  useEffect(() => {
+    onlineRef.current = online;
+  }, [online]);
   const [savedResult, setSavedResult] = useState<
-    "idle" | "saving" | "saved" | "duplicate" | "local" | "failed"
+    "idle" | "saving" | "saved" | "duplicate" | "local" | "failed" | "offline"
   >("idle");
   // The id of the recorded game, so the result popup can offer its analysis.
   // Server row id when signed in, local-only id for a guest's completed game.
@@ -305,6 +323,20 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
   const [finishing, setFinishing] = useState<FlyingCard[] | null>(null);
   const pendingFinishRef = useRef<FlyingCard[] | null>(null);
   const submittedRef = useRef<string | null>(null);
+
+  /**
+   * Persist the live session ONLY while connected.
+   *
+   * Offline runs are playable but deliberately keep nothing: no session
+   * snapshot, no device record, no queued upload. `navigator.onLine` is checked
+   * here as well as through the hook, because the mount effect that deals the
+   * first solo board can run before the hook's first connectivity update.
+   */
+  const persistSession = useCallback((next: Session | null) => {
+    if (!onlineRef.current) return;
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    storeSession(next);
+  }, []);
 
   // A finished game is appended exactly once; re-reading on every save-result
   // transition keeps the history list in step without a second store.
@@ -356,6 +388,9 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
       dateKey: null,
       deal: dealFromSeed(seed),
       startedAtMs: Date.now(),
+      // Solo's clock waits for the first card move: the deal itself is free to
+      // study, and the inactivity limit waits with it.
+      timerStartedAtMs: null,
     });
     setSession(next);
     setSavedResult("idle");
@@ -363,8 +398,8 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
     setPersonalBest(false);
     setError(null);
     setFinishing(null);
-    storeSession(next);
-  }, []);
+    persistSession(next);
+  }, [persistSession]);
 
   useEffect(() => {
     let restored: Session | null = null;
@@ -381,6 +416,10 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
               deal: dealFromSeed(seed),
               log: saved.log,
               startedAtMs: Number(saved.startedAtMs) || Date.now(),
+              // A resumed session has moves, so the clock had already started;
+              // the fallback covers sessions stored before the field existed.
+              timerStartedAtMs:
+                Number(saved.timerStartedAtMs) || Number(saved.startedAtMs) || Date.now(),
               lastActivityAtMs:
                 Number(saved.lastActivityAtMs) || Number(saved.startedAtMs) || Date.now(),
             });
@@ -405,6 +444,8 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
           deal: daily.deal,
           log: saved.log,
           startedAtMs: Number(saved.startedAtMs) || Date.now(),
+          timerStartedAtMs:
+            Number(saved.timerStartedAtMs) || Number(saved.startedAtMs) || Date.now(),
           lastActivityAtMs:
             Number(saved.lastActivityAtMs) || Number(saved.startedAtMs) || Date.now(),
         });
@@ -413,7 +454,7 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
     if (restored && !restored.won && Date.now() >= inactivityForfeitAt(restored)) {
       // A stored game left past the inactivity limit is already lost. Never
       // offer to resume it, and never leave it in progress.
-      storeSession(null);
+      persistSession(null);
       setSession({ ...restored, endedAtMs: inactivityForfeitAt(restored), won: false });
     } else if (restored) {
       setResumeCandidate(restored);
@@ -437,11 +478,13 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
   // game. Measured from the stored timestamp, so a refresh cannot reset it.
   useEffect(() => {
     if (!session || session.endedAtMs || session.won) return;
+    // An untouched solo board has not started, so neither has the limit.
+    if (session.timerStartedAtMs == null) return;
     if (nowMs < inactivityForfeitAt(session)) return;
     setSession((current) => {
       if (!current || current.endedAtMs || current.won) return current;
       if (Date.now() < inactivityForfeitAt(current)) return current;
-      storeSession(null);
+      persistSession(null);
       return { ...current, endedAtMs: inactivityForfeitAt(current), won: false };
     });
   }, [session, nowMs]);
@@ -470,7 +513,17 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
   // ── Move handling ────────────────────────────────────────────────────────
   const recordResult = useCallback(
     async (finished: Session) => {
-      const elapsedMs = Math.max(0, (finished.endedAtMs ?? Date.now()) - finished.startedAtMs);
+      // OFFLINE: the run is real but nothing is stored. No POST, no device
+      // record, and nothing queued for a later reconnect.
+      if (!onlineRef.current || (typeof navigator !== "undefined" && navigator.onLine === false)) {
+        setSavedResult("offline");
+        return;
+      }
+      const elapsedMs = soloElapsedMs(
+        finished.timerStartedAtMs,
+        finished.endedAtMs ?? Date.now(),
+        Date.now(),
+      );
       const key = `${finished.mode}:${finished.dateKey ?? finished.seed}:${finished.log.length}`;
       if (submittedRef.current === key) return;
       submittedRef.current = key;
@@ -605,9 +658,10 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
             ],
             endedAtMs: finishedAt,
             won: true,
+            timerStartedAtMs: current.timerStartedAtMs ?? finishedAt,
             lastActivityAtMs: finishedAt,
           };
-          storeSession(null);
+          persistSession(null);
           void recordResult(next);
           return next;
         }
@@ -618,16 +672,19 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
           ...current,
           state: applied.state,
           log: [...current.log, entry],
+          // THE first accepted card move starts the clock. A rejected move never
+          // reaches here, so reading the deal costs nothing.
+          timerStartedAtMs: current.timerStartedAtMs ?? movedAt,
           lastActivityAtMs: movedAt,
           endedAtMs: ended ? movedAt : null,
           won: ended,
         };
-        storeSession(ended ? null : next);
+        persistSession(ended ? null : next);
         if (ended) void recordResult(next);
         return next;
       });
     },
-    [recordResult],
+    [persistSession, recordResult],
   );
 
   const undo = useCallback(() => {
@@ -648,10 +705,10 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
         ? trimmed
         : trimmed.slice(0, Math.max(0, replayed.rejectedAt ?? 0));
       const next = { ...current, state: replayed.state, log, lastActivityAtMs: Date.now() };
-      storeSession(next);
+      persistSession(next);
       return next;
     });
-  }, []);
+  }, [persistSession]);
 
   const abandonIfNeeded = useCallback(
     (current: Session | null) => {
@@ -669,12 +726,16 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
   const restart = useCallback(() => {
     abandonIfNeeded(session);
     if (!session) return;
+    const restartedAtMs = Date.now();
     const next = buildSession({
       mode: session.mode,
       seed: session.seed,
       dateKey: session.dateKey,
       deal: session.deal,
-      startedAtMs: Date.now(),
+      startedAtMs: restartedAtMs,
+      // A restarted solo run waits for its first move too; a daily replay is
+      // started by this click, exactly like the first attempt.
+      timerStartedAtMs: session.mode === "solo" ? null : restartedAtMs,
     });
     setSession(next);
     setSavedResult("idle");
@@ -683,8 +744,8 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
     setError(null);
     setFinishing(null);
     submittedRef.current = null;
-    storeSession(next);
-  }, [abandonIfNeeded, session]);
+    persistSession(next);
+  }, [abandonIfNeeded, persistSession, session]);
 
   const startDaily = useCallback(() => {
     if (!daily) return;
@@ -702,8 +763,8 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
     setError(null);
     setFinishing(null);
     submittedRef.current = null;
-    storeSession(next);
-  }, [daily]);
+    persistSession(next);
+  }, [daily, persistSession]);
 
   // ── Post-match ad ────────────────────────────────────────────────────────
   // The slot mounts with the win panel itself, so the video starts as soon as
@@ -711,7 +772,9 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
   // the panel and every control stay behind it, and the server still decides
   // whether a free session is offered anything at all.
 
-  const elapsedMs = session ? Math.max(0, (session.endedAtMs ?? nowMs) - session.startedAtMs) : 0;
+  const elapsedMs = session
+    ? soloElapsedMs(session.timerStartedAtMs, session.endedAtMs, nowMs)
+    : 0;
   // Time left before the inactivity rule ends this run (0 once it has).
   const inactivityRemainingMs = session
     ? Math.max(0, inactivityForfeitAt(session) - nowMs)
@@ -767,15 +830,27 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
               ? "One shared deal for every player, dealt once per UTC day. Replays are practice and are not recorded."
               : "Classic Klondike with the ranked rules. Unrated: this never affects Elo or ranked history."}
           </p>
+          {!online && (
+            <p
+              data-testid="solitaire-offline-note"
+              className="mt-3 inline-flex rounded-full border border-amber-300/30 bg-amber-400/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200/80"
+            >
+              Offline · this run won't be saved
+            </p>
+          )}
         </div>
         <dl className="flex gap-2 text-center">          <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
             <dt className="text-[10px] uppercase tracking-wider text-slate-400">Time</dt>
             <dd className="font-mono text-lg text-white" aria-live="off">
-              {formatDuration(session ? Math.max(elapsedMs, 1000) : null)}
+              {session
+                ? session.timerStartedAtMs == null
+                  ? "0:00"
+                  : formatDuration(Math.max(elapsedMs, 1000))
+                : formatDuration(null)}
             </dd>
             {/* The idle clock is always on the timer, not only in the last five
                 minutes: a run forfeits 20 minutes after the last accepted move. */}
-            {session && !session.endedAtMs && !session.won && (
+            {session && !session.endedAtMs && !session.won && session.timerStartedAtMs != null && (
               <dd
                 data-testid="solitaire-idle-countdown"
                 title="Time until this run forfeits for inactivity"
@@ -960,6 +1035,7 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
                 {savedResult === "duplicate" && <p className="mt-2 text-xs text-slate-400">Today's official result was already recorded. This replay stays practice.</p>}
                 {savedResult === "local" && <p className="mt-2 text-xs text-amber-200">Saved on this device only — sign in to keep solo records.</p>}
                 {savedResult === "failed" && <p className="mt-2 text-xs text-rose-300">Could not save this result. Your board is unaffected.</p>}
+                {savedResult === "offline" && <p className="mt-2 text-xs text-amber-200">Offline run — nothing was saved.</p>}
                 {mode === "daily" && dailyStats && (
                   <p className="mt-2 text-xs text-slate-400">
                     Daily streak: {dailyStats.currentStreak} · Completed: {dailyStats.completed}
@@ -1054,6 +1130,11 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
                     This attempt could not be saved to your profile.
                   </p>
                 )}
+                {savedResult === "offline" && (
+                  <p className="mt-3 text-xs text-slate-500">
+                    Offline run — this attempt was not saved.
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -1130,6 +1211,7 @@ function readStoredSessionRaw(): {
   dateKey?: unknown;
   log: LogEntry[];
   startedAtMs?: unknown;
+  timerStartedAtMs?: unknown;
   lastActivityAtMs?: unknown;
   endedAtMs?: unknown;
 } | null {
@@ -1145,6 +1227,7 @@ function readStoredSessionRaw(): {
       dateKey: saved.dateKey,
       log,
       startedAtMs: saved.startedAtMs,
+      timerStartedAtMs: saved.timerStartedAtMs,
       lastActivityAtMs: saved.lastActivityAtMs,
       endedAtMs: saved.endedAtMs ?? null,
     };
