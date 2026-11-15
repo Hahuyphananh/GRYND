@@ -22,7 +22,11 @@ import {
   type SolitaireBotId,
 } from "../../../src/lib/solitaire-duel/bots";
 import { aiMoveDelayMs, aiPaceLabel } from "../../../src/lib/solitaire-duel/ai";
-import { SEAT } from "../../../src/lib/solitaire-duel/constants";
+import {
+  INACTIVITY_COUNTDOWN_MS,
+  INACTIVITY_FORFEIT_MS,
+  SEAT,
+} from "../../../src/lib/solitaire-duel/constants";
 import {
   clockLabel,
   durationSeconds,
@@ -38,6 +42,7 @@ import {
   applyPlayerMove,
   createLocalMatch,
   endMatchByProgress,
+  forfeitIfInactive,
   playerProgress,
   playerView,
   redealPlayerIfDead,
@@ -121,7 +126,9 @@ export default function App() {
       const stamp = Date.now();
       setNow(stamp);
       setMatch((prev) =>
-        prev && !prev.result ? redealPlayerIfDead(advanceAi(prev, stamp)) : prev,
+        prev && !prev.result
+          ? forfeitIfInactive(redealPlayerIfDead(advanceAi(prev, stamp)), stamp)
+          : prev,
       );
     }, TICK_MS);
     return () => window.clearInterval(id);
@@ -184,6 +191,12 @@ export default function App() {
     setMatch(next);
   }, []);
 
+  // Time left before the inactivity rule ends this race (0 once it has).
+  const idleMs =
+    match && !match.result
+      ? Math.max(0, match.lastActivityAtMs + INACTIVITY_FORFEIT_MS - now)
+      : 0;
+
   const view = useMemo(() => (match ? playerView(match) : null), [match]);
   const you = useMemo(() => (match ? playerProgress(match) : null), [match]);
   const bot = useMemo(() => (match ? aiProgress(match) : null), [match]);
@@ -211,6 +224,15 @@ export default function App() {
                 className="tabular-nums text-[11px] text-white/50"
               >
                 {clockLabel(Math.max(0, now - match.goAtMs))}
+              </span>
+              <span
+                data-testid="idle-countdown"
+                title="Time until you forfeit for inactivity"
+                className={`tabular-nums text-[11px] ${
+                  idleMs <= INACTIVITY_COUNTDOWN_MS ? "text-amber-300" : "text-white/40"
+                }`}
+              >
+                idle {clockLabel(idleMs)}
               </span>
               <button
                 type="button"

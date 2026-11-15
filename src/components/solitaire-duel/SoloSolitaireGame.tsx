@@ -35,6 +35,10 @@ import { measureFinishCards, type FlyingCard } from "./measureFinishCards";
 import {
   autoFinishPlan,
 } from "../../lib/solitaire-duel/autoFinish";
+import {
+  INACTIVITY_COUNTDOWN_MS,
+  INACTIVITY_FORFEIT_MS,
+} from "../../lib/solitaire-duel/constants";
 import { dealFromSeed } from "../../lib/solitaire-duel/deck";
 import {
   LOCAL_COMPLETED_KEY,
@@ -96,6 +100,8 @@ type Session = {
   state: SolitaireState;
   log: LogEntry[];
   startedAtMs: number;
+  /** The instant of the last accepted action; the inactivity clock runs from it. */
+  lastActivityAtMs: number;
   endedAtMs: number | null;
   won: boolean;
 };
@@ -121,6 +127,7 @@ function buildSession({
   deal,
   log = [],
   startedAtMs = Date.now(),
+  lastActivityAtMs = startedAtMs,
   endedAtMs = null,
   won = false,
 }: {
@@ -130,6 +137,7 @@ function buildSession({
   deal: SolitaireDeal;
   log?: LogEntry[];
   startedAtMs?: number;
+  lastActivityAtMs?: number;
   endedAtMs?: number | null;
   won?: boolean;
 }): Session {
@@ -143,9 +151,21 @@ function buildSession({
     state: replayed.ok ? replayed.state : initialStateFromDeal(deal),
     log: replayed.ok ? log : [],
     startedAtMs,
+    lastActivityAtMs,
     endedAtMs,
     won: replayed.ok ? won || replayed.state.completed : false,
   };
+}
+
+/**
+ * The instant a live session forfeits.
+ *
+ * Twenty minutes after the last accepted action, measured on the same clock the
+ * duel uses (`INACTIVITY_FORFEIT_MS`). Stored as a timestamp, never an interval
+ * count, so a refresh or a backgrounded tab cannot reset it.
+ */
+function inactivityForfeitAt(session: Session): number {
+  return session.lastActivityAtMs + INACTIVITY_FORFEIT_MS;
 }
 
 function storeSession(session: Session | null) {
@@ -163,6 +183,7 @@ function storeSession(session: Session | null) {
         dateKey: session.dateKey,
         log: session.log,
         startedAtMs: session.startedAtMs,
+        lastActivityAtMs: session.lastActivityAtMs,
         endedAtMs: session.endedAtMs,
         won: session.won,
       }),
@@ -360,6 +381,8 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
               deal: dealFromSeed(seed),
               log: saved.log,
               startedAtMs: Number(saved.startedAtMs) || Date.now(),
+              lastActivityAtMs:
+                Number(saved.lastActivityAtMs) || Number(saved.startedAtMs) || Date.now(),
             });
           } catch {
             restored = null;
@@ -382,11 +405,21 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
           deal: daily.deal,
           log: saved.log,
           startedAtMs: Number(saved.startedAtMs) || Date.now(),
+          lastActivityAtMs:
+            Number(saved.lastActivityAtMs) || Number(saved.startedAtMs) || Date.now(),
         });
       }
     }
-    if (restored) setResumeCandidate(restored);
-    else if (mode === "solo") startSolo();
+    if (restored && !restored.won && Date.now() >= inactivityForfeitAt(restored)) {
+      // A stored game left past the inactivity limit is already lost. Never
+      // offer to resume it, and never leave it in progress.
+      storeSession(null);
+      setSession({ ...restored, endedAtMs: inactivityForfeitAt(restored), won: false });
+    } else if (restored) {
+      setResumeCandidate(restored);
+    } else if (mode === "solo") {
+      startSolo();
+    }
     setReady(true);
     // `daily` is a stable server payload for the page's lifetime.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -398,6 +431,20 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
     const id = window.setInterval(() => setNowMs(Date.now()), 250);
     return () => window.clearInterval(id);
   }, [session]);
+
+  // INACTIVITY FORFEIT. There is no match clock, but a run still cannot stay in
+  // progress forever: twenty minutes without a move (or an undo) loses the
+  // game. Measured from the stored timestamp, so a refresh cannot reset it.
+  useEffect(() => {
+    if (!session || session.endedAtMs || session.won) return;
+    if (nowMs < inactivityForfeitAt(session)) return;
+    setSession((current) => {
+      if (!current || current.endedAtMs || current.won) return current;
+      if (Date.now() < inactivityForfeitAt(current)) return current;
+      storeSession(null);
+      return { ...current, endedAtMs: inactivityForfeitAt(current), won: false };
+    });
+  }, [session, nowMs]);
 
   useEffect(() => {
     if (mode === "solo" && !soloSummary && !summary) {
@@ -509,6 +556,16 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
     [],
   );
 
+  // A forfeit is a finished attempt, so it is recorded exactly once: the solo
+  // route replays the log and stores a non-completion, the same row an abandoned
+  // game produces. A daily forfeit is not submitted — that endpoint only stores
+  // a solved board — but the loss still ends the session here.
+  useEffect(() => {
+    if (!session || !session.endedAtMs || session.won) return;
+    if (session.mode !== "solo" || session.log.length === 0) return;
+    void recordResult(session);
+  }, [session, recordResult]);
+
   const playMove = useCallback(
     (move: SolitaireMove) => {
       setError(null);
@@ -548,6 +605,7 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
             ],
             endedAtMs: finishedAt,
             won: true,
+            lastActivityAtMs: finishedAt,
           };
           storeSession(null);
           void recordResult(next);
@@ -555,11 +613,13 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
         }
 
         const ended = applied.state.completed;
+        const movedAt = Date.now();
         const next: Session = {
           ...current,
           state: applied.state,
           log: [...current.log, entry],
-          endedAtMs: ended ? Date.now() : null,
+          lastActivityAtMs: movedAt,
+          endedAtMs: ended ? movedAt : null,
           won: ended,
         };
         storeSession(ended ? null : next);
@@ -587,7 +647,7 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
       const log = replayed.ok
         ? trimmed
         : trimmed.slice(0, Math.max(0, replayed.rejectedAt ?? 0));
-      const next = { ...current, state: replayed.state, log };
+      const next = { ...current, state: replayed.state, log, lastActivityAtMs: Date.now() };
       storeSession(next);
       return next;
     });
@@ -652,6 +712,10 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
   // whether a free session is offered anything at all.
 
   const elapsedMs = session ? Math.max(0, (session.endedAtMs ?? nowMs) - session.startedAtMs) : 0;
+  // Time left before the inactivity rule ends this run (0 once it has).
+  const inactivityRemainingMs = session
+    ? Math.max(0, inactivityForfeitAt(session) - nowMs)
+    : 0;
   const moves = session?.log.length ?? 0;
   const bestMs = mode === "daily" ? dailyStats?.bestMs ?? null : summary?.bestMs ?? null;
   const todayRecorded = Boolean(dailyStats?.today?.completed);
@@ -709,6 +773,21 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
             <dd className="font-mono text-lg text-white" aria-live="off">
               {formatDuration(session ? Math.max(elapsedMs, 1000) : null)}
             </dd>
+            {/* The idle clock is always on the timer, not only in the last five
+                minutes: a run forfeits 20 minutes after the last accepted move. */}
+            {session && !session.endedAtMs && !session.won && (
+              <dd
+                data-testid="solitaire-idle-countdown"
+                title="Time until this run forfeits for inactivity"
+                className={`font-mono text-[10px] leading-tight ${
+                  inactivityRemainingMs <= INACTIVITY_COUNTDOWN_MS
+                    ? "text-amber-300"
+                    : "text-slate-500"
+                }`}
+              >
+                idle {formatDuration(Math.max(1000, inactivityRemainingMs))}
+              </dd>
+            )}
           </div>
           <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
             <dt className="text-[10px] uppercase tracking-wider text-slate-400">Moves</dt>
@@ -792,6 +871,16 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
 
       {session && (
         <div className="relative">
+          {session && !session.endedAtMs && !session.won && inactivityRemainingMs <= INACTIVITY_COUNTDOWN_MS && (
+            <p
+              role="status"
+              data-testid="solitaire-inactivity-alarm"
+              className="mb-2 rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-xs font-semibold text-amber-100"
+            >
+              You&apos;ve been idle for a while. This run is lost if you do not move
+              within {formatDuration(Math.max(1000, inactivityRemainingMs))}.
+            </p>
+          )}
           {isPracticeReplay && (
             <p className="mb-2 rounded-lg border border-indigo-400/30 bg-indigo-400/10 px-3 py-2 text-xs text-indigo-200">
               Practice replay — today's official result is already recorded.
@@ -919,6 +1008,56 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
             </div>
           )}
 
+          {session.endedAtMs !== null && !session.won && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-slate-950/80 p-4 backdrop-blur-xs">
+              <div
+                role="alertdialog"
+                aria-label="Game over"
+                data-testid="solitaire-inactivity-forfeit"
+                className="w-full max-w-md rounded-2xl border border-rose-400/30 bg-slate-900 p-6 text-center shadow-2xl"
+              >
+                <p className="text-xs uppercase tracking-[0.25em] text-rose-300">Forfeited</p>
+                <h3 className="mt-2 text-2xl font-semibold text-white">
+                  Game over — you were inactive
+                </h3>
+                <p className="mt-2 text-sm text-slate-400">
+                  Twenty minutes passed without a move, so this run counts as a loss. The
+                  clock stopped at {formatDuration(elapsedMs)}.
+                </p>
+                <div className="mt-5 flex flex-wrap justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={restart}
+                    className="inline-flex items-center justify-center rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400"
+                  >
+                    Play again
+                  </button>
+                  {mode === "solo" ? (
+                    <button
+                      type="button"
+                      onClick={newSoloGame}
+                      className="inline-flex items-center justify-center rounded-lg border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5"
+                    >
+                      New deal
+                    </button>
+                  ) : (
+                    <Link
+                      href="/"
+                      className="inline-flex items-center justify-center rounded-lg border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5"
+                    >
+                      Back to lobby
+                    </Link>
+                  )}
+                </div>
+                {savedResult === "failed" && (
+                  <p className="mt-3 text-xs text-slate-500">
+                    This attempt could not be saved to your profile.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
           {session.won && !finishing && (
             <PostMatchAdSlot
               matchId={`solitaire:${session.mode}:${session.dateKey ?? session.seed}:${session.endedAtMs ?? "finished"}`}
@@ -991,6 +1130,7 @@ function readStoredSessionRaw(): {
   dateKey?: unknown;
   log: LogEntry[];
   startedAtMs?: unknown;
+  lastActivityAtMs?: unknown;
   endedAtMs?: unknown;
 } | null {
   if (typeof window === "undefined") return null;
@@ -1005,6 +1145,7 @@ function readStoredSessionRaw(): {
       dateKey: saved.dateKey,
       log,
       startedAtMs: saved.startedAtMs,
+      lastActivityAtMs: saved.lastActivityAtMs,
       endedAtMs: saved.endedAtMs ?? null,
     };
   } catch {

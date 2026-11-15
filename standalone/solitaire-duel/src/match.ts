@@ -34,6 +34,7 @@ import {
   planAiMoves,
 } from "../../../src/lib/solitaire-duel/ai";
 import {
+  INACTIVITY_FORFEIT_MS,
   MAX_MOVES_PER_SEAT,
   READY_COUNTDOWN_MS,
   SEAT,
@@ -92,6 +93,8 @@ export type LocalMatch = {
   resolution: LocalResolution | null;
   /** When the result was reached (for the result screen's match time). */
   endedAtMs: number | null;
+  /** The instant of the last accepted player action; the inactivity clock runs from it. */
+  lastActivityAtMs: number;
   /** Mid-match re-deals, per seat — the server keeps these too. */
   aiRedeals: number;
   playerRedeals: number;
@@ -145,6 +148,7 @@ export function createLocalMatch({
     result: null,
     resolution: null,
     endedAtMs: null,
+    lastActivityAtMs: nowMs,
     aiRedeals: 0,
     playerRedeals: 0,
   };
@@ -260,7 +264,10 @@ export function applyPlayerMove(
   }
 
   return {
-    match: settleMatch({ ...match, player, log: [...match.log, { kind: move.kind, move }] }, nowMs),
+    match: settleMatch(
+      { ...match, player, log: [...match.log, { kind: move.kind, move }], lastActivityAtMs: nowMs },
+      nowMs,
+    ),
     error: null,
   };
 }
@@ -277,14 +284,14 @@ export function applyPlayerMove(
  * moves belong to the deal they were played on, and replaying them onto a
  * different one would fabricate a board.
  */
-export function undoPlayerMove(match: LocalMatch): LocalMatch {
+export function undoPlayerMove(match: LocalMatch, nowMs = Date.now()): LocalMatch {
   if (match.result || match.player.completed || match.log.length === 0) return match;
 
   const moves = match.log.slice(0, -1);
   const replayed = replayMoves({ deal: match.deal, moves });
   if (!replayed.ok) return match;
 
-  return { ...match, log: moves, player: replayed.state };
+  return { ...match, log: moves, player: replayed.state, lastActivityAtMs: nowMs };
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -392,6 +399,27 @@ export function redealPlayerIfDead(match: LocalMatch): LocalMatch {
     log: [],
     playerRedeals: match.playerRedeals + 1,
   });
+}
+
+/**
+ * End a live race when the human has not acted for 20 minutes — the same
+ * inactivity forfeit the app applies to a duel seat.
+ *
+ * The clock starts at the deal and is reset by every accepted move and undo. The
+ * caller gives the bot its tick FIRST, so a bot completion inside the window is
+ * still recorded as its `finish`; only a race that is genuinely unfinished when
+ * the limit passes is forfeited.
+ */
+export function forfeitIfInactive(match: LocalMatch, nowMs = Date.now()): LocalMatch {
+  if (match.result || match.player.completed) return match;
+  const forfeitAtMs = match.lastActivityAtMs + INACTIVITY_FORFEIT_MS;
+  if (nowMs < forfeitAtMs) return match;
+  return {
+    ...match,
+    result: SEAT.PLAYER2,
+    resolution: "forfeit",
+    endedAtMs: match.endedAtMs ?? forfeitAtMs,
+  };
 }
 
 /** One clock tick: the bot moves, then a dead human board is rescued. */
