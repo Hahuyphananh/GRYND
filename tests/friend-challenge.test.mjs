@@ -280,6 +280,21 @@ test("the lobby offers the link, and never auto-creates one", () => {
   assert.match(panel, /value=\{challenge\.url\}/);
 
   const lobby = read("src/components/solitaire-duel/SolitaireLobby.tsx");
-  assert.match(lobby, /import FriendChallengePanel from "\.\/FriendChallengePanel"/);
-  assert.match(lobby, /<FriendChallengePanel \/>/);
+  assert.match(lobby, /import RankedFriendsPanel from "\.\/RankedFriendsPanel"/);
+  assert.match(lobby, /<RankedFriendsPanel \/>/);
+
+  // The ranked friends tab searches the caller's real friends and creates a
+  // private Solitaire Duel room through the server-authoritative room API.
+  const ranked = read("src/components/solitaire-duel/RankedFriendsPanel.tsx");
+  assert.match(ranked, /fetch\("\/api\/friends\/list"/);
+  assert.match(ranked, /fetch\("\/api\/rooms\/challenge"/);
+  assert.match(ranked, /gameKey: "solitaire-duel"/);
+  assert.match(ranked, /data-testid="ranked-friend-search"/);
+  assert.match(ranked, /data-testid="ranked-challenge-created"/);
+});
+
+test("the profile no longer hosts its own challenge button", () => {
+  const profile = read("src/app/profil/PageClient.jsx");
+  assert.doesNotMatch(profile, /ChallengeFriendDialog|challengeTarget|challengeStatus/);
+  assert.doesNotMatch(profile, /profile\.friends\.challenge/);
 });

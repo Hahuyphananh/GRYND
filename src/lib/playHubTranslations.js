@@ -1,6 +1,6 @@
 // src/lib/playHubTranslations.js
 //
-// Copy for the six-mode Solitaire Play hub and its dedicated lobbies. Mounted
+// Copy for the five-mode Solitaire Play hub and its dedicated lobbies. Mounted
 // at `playHub` in appTextTranslations.js.
 
 export const PLAY_HUB_TRANSLATIONS = {
@@ -8,7 +8,7 @@ export const PLAY_HUB_TRANSLATIONS = {
     kicker: "Play",
     title: "Choose your Solitaire",
     description:
-      "Six ways to play the same Klondike rules. Competitive modes count toward your record; casual modes never do, and puzzles are a single strategic decision.",
+      "Five ways to play the same Klondike rules. Competitive modes count toward your record; casual modes never do, and the daily puzzle is a short run of strategic decisions.",
     back: "Back to Play",
     loading: "Loading…",
     unavailable: "Status unavailable right now.",
@@ -55,8 +55,8 @@ export const PLAY_HUB_TRANSLATIONS = {
       dailyPuzzle: {
         title: "Daily Puzzle",
         tag: "Puzzle",
-        description: "One verified position, one answer, once per UTC day.",
-        meta: "Free · one attempt",
+        description: "Three verified positions from one deal, once per UTC day.",
+        meta: "Free · 3 steps · one run",
         cta: "Open the puzzle",
       },
       unlimited: {
@@ -120,16 +120,22 @@ export const PLAY_HUB_TRANSLATIONS = {
         kicker: "Puzzle · Daily",
         title: "Daily Puzzle",
         description:
-          "A real position from a verified winning deal. Choose the move that turns a hidden card face up and stays on the winning line.",
-        note: "One official attempt per UTC day. Opening the puzzle costs nothing; submitting an answer spends the attempt, right or wrong.",
+          "Three real positions from one verified winning deal. Find the best move at each step — one mistake ends the run.",
+        note: "One official run per UTC day. Opening the puzzle costs nothing; a wrong answer ends the run.",
         cta: "Start today's puzzle",
         available: "Available now",
+        inProgress: "In progress",
+        completed: "Run complete",
+        failed: "Run ended",
+        progress: "Progress",
+        stepProgress: "Step {step} of {total}",
+        stepResult: "Step result",
         played: "Already answered today",
         correct: "Correct",
         incorrect: "Not this time",
-        answer: "Correct answer: {answer}",
+        answer: "Best move: {answer}",
         explanation:
-          "The accepted move turns exactly one face-down card face up and remains on the deal's verified winning line.",
+          "The accepted move is the unique best move in that position and remains on the deal's verified winning line.",
         resets: "A new puzzle arrives at UTC midnight.",
         guest: "Guest attempts are recorded for this browser identity, not a permanent account.",
         playTitle: "Today's puzzle",
@@ -158,7 +164,7 @@ export const PLAY_HUB_TRANSLATIONS = {
     kicker: "Jouer",
     title: "Choisis ton Solitaire",
     description:
-      "Six façons de jouer avec les mêmes règles du Klondike. Les modes compétitifs comptent pour ton palmarès, les modes détente jamais, et les énigmes sont une seule décision stratégique.",
+      "Cinq façons de jouer avec les mêmes règles du Klondike. Les modes compétitifs comptent pour ton palmarès, les modes détente jamais, et l'énigme du jour est une courte série de décisions stratégiques.",
     back: "Retour à Jouer",
     loading: "Chargement…",
     unavailable: "Statut indisponible pour le moment.",
@@ -205,8 +211,8 @@ export const PLAY_HUB_TRANSLATIONS = {
       dailyPuzzle: {
         title: "Énigme du jour",
         tag: "Énigme",
-        description: "Une position vérifiée, une réponse, une fois par jour UTC.",
-        meta: "Gratuit · une tentative",
+        description: "Trois positions vérifiées d'une même donne, une fois par jour UTC.",
+        meta: "Gratuit · 3 étapes · une série",
         cta: "Ouvrir l'énigme",
       },
       unlimited: {
@@ -265,16 +271,22 @@ export const PLAY_HUB_TRANSLATIONS = {
       dailyPuzzle: {
         kicker: "Énigme · Quotidienne",
         title: "Énigme du jour",
-        description: "Une vraie position issue d'une donne gagnante vérifiée. Choisis le coup qui retourne une carte cachée et reste sur la ligne gagnante.",
-        note: "Une tentative officielle par jour UTC. Ouvrir l'énigme ne coûte rien ; soumettre une réponse consomme la tentative, juste ou fausse.",
+        description: "Trois vraies positions d'une donne gagnante vérifiée. Trouve le meilleur coup à chaque étape — une erreur met fin à la série.",
+        note: "Une série officielle par jour UTC. Ouvrir l'énigme ne coûte rien ; une mauvaise réponse met fin à la série.",
         cta: "Commencer l'énigme du jour",
         available: "Disponible",
+        inProgress: "En cours",
+        completed: "Série terminée",
+        failed: "Série interrompue",
+        progress: "Progression",
+        stepProgress: "Étape {step} sur {total}",
+        stepResult: "Résultat de l'étape",
         played: "Déjà répondue aujourd'hui",
         correct: "Correct",
         incorrect: "Pas cette fois",
-        answer: "Bonne réponse : {answer}",
+        answer: "Meilleur coup : {answer}",
         explanation:
-          "Le coup accepté retourne exactement une carte face cachée et reste sur la ligne gagnante vérifiée de la donne.",
+          "Le coup accepté est l'unique meilleur coup de cette position et reste sur la ligne gagnante vérifiée de la donne.",
         resets: "Une nouvelle énigme arrive à minuit UTC.",
         guest: "Les tentatives invité sont liées à cette identité de navigateur, pas à un compte permanent.",
         playTitle: "Énigme du jour",
@@ -302,7 +314,7 @@ export const PLAY_HUB_TRANSLATIONS = {
     kicker: "Jugar",
     title: "Elige tu Solitario",
     description:
-      "Seis formas de jugar con las mismas reglas del Klondike. Los modos competitivos cuentan para tu historial, los casuales nunca, y los puzles son una sola decisión estratégica.",
+      "Cinco formas de jugar con las mismas reglas del Klondike. Los modos competitivos cuentan para tu historial, los casuales nunca, y el puzle diario es una corta ronda de decisiones estratégicas.",
     back: "Volver a Jugar",
     loading: "Cargando…",
     unavailable: "Estado no disponible ahora mismo.",
@@ -349,8 +361,8 @@ export const PLAY_HUB_TRANSLATIONS = {
       dailyPuzzle: {
         title: "Puzle diario",
         tag: "Puzle",
-        description: "Una posición verificada, una respuesta, una vez por día UTC.",
-        meta: "Gratis · un intento",
+        description: "Tres posiciones verificadas de un mismo reparto, una vez por día UTC.",
+        meta: "Gratis · 3 pasos · una ronda",
         cta: "Abrir el puzle",
       },
       unlimited: {
@@ -409,16 +421,22 @@ export const PLAY_HUB_TRANSLATIONS = {
       dailyPuzzle: {
         kicker: "Puzle · Diario",
         title: "Puzle diario",
-        description: "Una posición real de un reparto ganador verificado. Elige el movimiento que revela una carta oculta y sigue en la línea ganadora.",
-        note: "Un intento oficial por día UTC. Abrir el puzle no cuesta nada; enviar una respuesta gasta el intento, acierte o no.",
+        description: "Tres posiciones reales de un reparto ganador verificado. Encuentra el mejor movimiento en cada paso — un error termina la ronda.",
+        note: "Una ronda oficial por día UTC. Abrir el puzle no cuesta nada; una respuesta incorrecta termina la ronda.",
         cta: "Empezar el puzle de hoy",
         available: "Disponible ahora",
+        inProgress: "En curso",
+        completed: "Ronda completada",
+        failed: "Ronda terminada",
+        progress: "Progreso",
+        stepProgress: "Paso {step} de {total}",
+        stepResult: "Resultado del paso",
         played: "Ya respondido hoy",
         correct: "Correcto",
         incorrect: "Esta vez no",
-        answer: "Respuesta correcta: {answer}",
+        answer: "Mejor movimiento: {answer}",
         explanation:
-          "El movimiento aceptado revela exactamente una carta boca abajo y permanece en la línea ganadora verificada del reparto.",
+          "El movimiento aceptado es el único mejor movimiento de esa posición y permanece en la línea ganadora verificada del reparto.",
         resets: "Un nuevo puzle llega a medianoche UTC.",
         guest: "Los intentos de invitado se registran para esta identidad del navegador, no para una cuenta permanente.",
         playTitle: "Puzle de hoy",

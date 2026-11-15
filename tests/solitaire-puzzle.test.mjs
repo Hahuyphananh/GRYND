@@ -5,9 +5,11 @@
  *   * a puzzle is a pure function of its seed, so the submit route rebuilds the
  *     exact position the player moved in;
  *   * the public payload never contains the answer or the server's state;
- *   * the answer is a REAL move: applying it reveals exactly one card, and no
- *     other legal move in the position reveals any — so the puzzle has one
- *     defensible solution;
+ *   * the answer is a REAL move and the UNIQUE highest-scoring legal move in
+ *     the position — it may reveal a card or improve the board quietly, so the
+ *     mode is not always a "find the flip" exercise;
+ *   * the daily puzzle is three such positions from one verified deal, with
+ *     ordered step keys (`daily:YYYY-MM-DD`, `:2`, `:3`);
  *   * a move is accepted only by its engine signature (a draw, a stale card and
  *     a made-up kind are all refused), which is what lets the player move cards
  *     by hand instead of picking A/B/C;
@@ -20,12 +22,21 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+
+const PUZZLE_UI = fs.readFileSync(
+  "src/components/solitaire-duel/SolitairePuzzle.tsx",
+  "utf8",
+);
 
 import {
+  DAILY_PUZZLE_STEPS,
   buildPuzzleForSeed,
   dailyPuzzleDateKey,
   dailyPuzzleKey,
+  dailyPuzzleStepFromKey,
   getDailyPuzzle,
+  getDailyPuzzleSteps,
   getUnlimitedPuzzle,
   moveSignature,
   parsePuzzleMove,
@@ -33,7 +44,7 @@ import {
   puzzleSeedFromKey,
   verifyPuzzleMove,
 } from "../src/lib/solitaire-duel/puzzle.ts";
-import { legalMoves } from "../src/lib/solitaire-duel/ai.ts";
+import { legalMoves, scoreMove } from "../src/lib/solitaire-duel/ai.ts";
 import { applyMove } from "../src/lib/solitaire-duel/rules.ts";
 import {
   FREE_PUZZLES_PER_DAY,
@@ -85,33 +96,73 @@ test("a seeded puzzle is deterministic and ships a playable board", () => {
   assert.ok(Array.isArray(first.board.waste));
 });
 
-test("the answer is a legal move that reveals exactly one card", () => {
+test("the answer is a legal move and the unique best move", () => {
   const puzzle = getUnlimitedPuzzle(777);
   const applied = applyMove({ state: puzzle.state, move: puzzle.answer });
   assert.equal(applied.ok, true, "the answer must be a move the engine accepts");
-  assert.equal(applied.revealed.length, 1, "the answer must turn exactly one card over");
-  assert.deepEqual(applied.revealed[0], puzzle.answerReveal.card);
-  assert.ok(puzzle.answerReveal.column >= 0 && puzzle.answerReveal.column < 7);
+
+  // A reveal is optional; when the answer does reveal, the metadata must match.
+  if (puzzle.answerReveal) {
+    assert.equal(applied.revealed.length, 1);
+    assert.deepEqual(applied.revealed[0], puzzle.answerReveal.card);
+    assert.ok(puzzle.answerReveal.column >= 0 && puzzle.answerReveal.column < 7);
+  } else {
+    assert.equal(applied.revealed.length, 0);
+  }
 
   // The board after the answer is the position the solution is shown from.
   assert.equal(puzzle.answerBoard.ply, puzzle.board.ply + 1);
+
+  // No other legal move may tie or beat it under the perfect player's score.
+  const answerSignature = moveSignature(puzzle.answer);
+  let answerScore = null;
+  const rivals = new Map();
+  for (const move of legalMoves(puzzle.state)) {
+    const signature = moveSignature(move);
+    const score = scoreMove(puzzle.state, move);
+    if (signature === answerSignature) answerScore = score;
+    else rivals.set(signature, Math.max(rivals.get(signature) ?? -Infinity, score));
+  }
+  assert.equal(typeof answerScore, "number", "the answer must be one of the legal moves");
+  assert.ok(answerScore > 0, "the best move must improve the position");
+  for (const [signature, score] of rivals) {
+    assert.ok(
+      answerScore > score,
+      `another move (${signature}) ties or beats the answer`,
+    );
+  }
 });
 
-test("no other legal move reveals a card, so the answer is unique", () => {
-  const puzzle = getUnlimitedPuzzle(777);
-  const answerSignature = moveSignature(puzzle.answer);
+test("puzzles vary: the best move is not always a reveal", () => {
+  const puzzles = [];
+  for (let seed = 0; seed < 24 && puzzles.length < 6; seed += 1) {
+    const puzzle = buildPuzzleForSeed(seed);
+    if (puzzle) puzzles.push(puzzle);
+  }
 
-  const rivalReveals = legalMoves(puzzle.state).filter((move) => {
-    if (moveSignature(move) === answerSignature) return false;
-    const applied = applyMove({ state: puzzle.state, move });
-    return applied.ok && applied.revealed.length > 0;
-  });
-
-  assert.deepEqual(
-    rivalReveals,
-    [],
-    "a position with a second card-revealing move has no single defensible answer",
+  assert.ok(puzzles.length >= 2, "the seed search must still produce puzzles");
+  assert.ok(
+    puzzles.some((puzzle) => puzzle.answerReveal === null),
+    "some puzzles must ask for a quiet best move instead of a card reveal",
   );
+  for (const puzzle of puzzles) {
+    const applied = applyMove({ state: puzzle.state, move: puzzle.answer });
+    assert.equal(applied.ok, true);
+    assert.equal(
+      applied.revealed.length,
+      puzzle.answerReveal ? 1 : 0,
+      "the recorded reveal must match what the answer actually does",
+    );
+  }
+});
+
+test("the explanation is green when correct and red when incorrect", () => {
+  // The feedback card carries the explanation, not just a border. The verdict
+  // has to be readable from the text colour as well as the panel.
+  assert.ok(PUZZLE_UI.includes('data-testid="puzzle-feedback"'));
+  assert.ok(PUZZLE_UI.includes("border-emerald-400/40 bg-emerald-400/10 text-emerald-50"));
+  assert.ok(PUZZLE_UI.includes("border-rose-400/30 bg-rose-400/10 text-rose-50"));
+  assert.ok(PUZZLE_UI.includes('"text-emerald-200" : "text-rose-200"'));
 });
 
 test("only the engine signature of the answer is accepted", () => {
@@ -186,12 +237,39 @@ test("the public payload never contains the answer or the server state", () => {
   assert.ok(hiddenSlots.every((slot) => slot.card === null));
 });
 
+test("the daily puzzle is a three-step run with ordered keys", () => {
+  const steps = getDailyPuzzleSteps("2026-11-14");
+  assert.equal(steps.length, DAILY_PUZZLE_STEPS);
+  assert.equal(steps[0].key, "daily:2026-11-14");
+  assert.equal(steps[1].key, "daily:2026-11-14:2");
+  assert.equal(steps[2].key, "daily:2026-11-14:3");
+  assert.equal(dailyPuzzleStepFromKey(steps[0].key, "2026-11-14"), 1);
+  assert.equal(dailyPuzzleStepFromKey(steps[1].key, "2026-11-14"), 2);
+  assert.equal(dailyPuzzleStepFromKey("daily:2026-11-14:4", "2026-11-14"), null);
+  assert.equal(dailyPuzzleStepFromKey("daily:2026-11-15", "2026-11-14"), null);
+
+  // The steps are distinct positions from one line, and each answer is legal.
+  assert.equal(new Set(steps.map((step) => step.board.ply)).size, steps.length);
+  for (const step of steps) {
+    assert.equal(applyMove({ state: step.state, move: step.answer }).ok, true);
+  }
+});
+
 test("the daily puzzle is identical for the same date", () => {
-  const first = getDailyPuzzle("2026-11-14");
-  const second = getDailyPuzzle("2026-11-14");
-  assert.deepEqual(first.board, second.board);
-  assert.equal(moveSignature(first.answer), moveSignature(second.answer));
-  assert.deepEqual(first.answerReveal, second.answerReveal);
+  const first = getDailyPuzzleSteps("2026-11-14");
+  const second = getDailyPuzzleSteps("2026-11-14");
+  assert.deepEqual(
+    first.map((step) => step.board),
+    second.map((step) => step.board),
+  );
+  assert.deepEqual(
+    first.map((step) => moveSignature(step.answer)),
+    second.map((step) => moveSignature(step.answer)),
+  );
+  assert.deepEqual(
+    first.map((step) => step.answerReveal),
+    second.map((step) => step.answerReveal),
+  );
 });
 
 test("the free allowance is 5 per day and PRO is unlimited", () => {

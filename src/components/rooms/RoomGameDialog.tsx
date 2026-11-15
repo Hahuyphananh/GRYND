@@ -79,8 +79,8 @@ export default function RoomGameDialog({
       }
       className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-4"
     >
-      <div className="w-full max-w-lg rounded-xl border border-[#00e5ff]/40 bg-[#0b224f] p-5 shadow-[0_0_30px_rgba(0,229,255,0.25)]">
-        <h2 className="text-lg font-semibold text-[#00e5ff]">
+      <div className="w-full max-w-lg rounded-xl border border-white/15 bg-[#07101f] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.4)]">
+        <h2 className="text-lg font-semibold text-slate-200">
           {mode === "challenge"
             ? t("rooms.dialogChallengeTitle", "Challenge a friend")
             : t("rooms.dialogRoomTitle", "Create a private room")}
@@ -119,7 +119,7 @@ export default function RoomGameDialog({
                     aria-pressed={option.key === gameKey}
                     className={`rounded-lg border px-3 py-2 text-sm font-semibold focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] ${
                       option.key === gameKey
-                        ? "border-[#00e5ff] bg-[#00e5ff]/15 text-white"
+                        ? "border-cyan-400/50 bg-cyan-400/10 text-white"
                         : "border-white/15 bg-white/5 text-gray-200 hover:bg-white/10"
                     }`}
                   >
@@ -154,7 +154,7 @@ export default function RoomGameDialog({
                     const next = Number(event.target.value);
                     setStake(Number.isFinite(next) ? Math.max(0, Math.min(maxStake, Math.trunc(next))) : 0);
                   }}
-                  className="mt-1 w-full rounded-sm border border-white/20 bg-[#08203f] px-3 py-2 text-sm text-white disabled:opacity-50"
+                  className="mt-1 w-full rounded-sm border border-white/15 bg-[#050b16] px-3 py-2 text-sm text-white disabled:opacity-50"
                 />
                 <p className="mt-1 text-[11px] text-gray-300">
                   {stakeOffered
@@ -178,7 +178,7 @@ export default function RoomGameDialog({
                   id="room-timer"
                   value={timerSeconds}
                   onChange={(event) => setTimerSeconds(Number(event.target.value))}
-                  className="mt-1 w-full rounded-sm border border-white/20 bg-[#08203f] px-3 py-2 text-sm text-white"
+                  className="mt-1 w-full rounded-sm border border-white/15 bg-[#050b16] px-3 py-2 text-sm text-white"
                 >
                   {ROOM_TIMER_OPTIONS.map((seconds) => (
                     <option key={seconds} value={seconds}>

@@ -71,10 +71,10 @@ export default function RoomsPanel({
 
   return (
     <section
-      className={`mt-8 rounded-xl border border-[#00e5ff]/30 bg-[#0b224f]/85 p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)] ${className}`}
+      className={`mt-8 rounded-xl border border-white/10 bg-[#07101f]/90 p-6 shadow-[0_12px_32px_rgba(0,0,0,0.28)] ${className}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-xl text-[#00e5ff]">
+        <h2 className="text-xl text-slate-200">
           {t("rooms.title", "Private rooms & challenges")}
         </h2>
         <div className="flex flex-wrap items-center gap-2">
@@ -109,14 +109,14 @@ export default function RoomsPanel({
             onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
             placeholder={t("rooms.joinCodePlaceholder", "ABCD234567")}
             maxLength={16}
-            className="mt-1 w-44 rounded-sm border border-white/20 bg-[#08203f] px-3 py-1.5 font-mono text-sm tracking-widest text-white"
+            className="mt-1 w-44 rounded-sm border border-white/15 bg-[#050b16] px-3 py-1.5 font-mono text-sm tracking-widest text-white"
           />
         </div>
         <button
           type="button"
           disabled={!joinCode.trim() || rooms.busy === "join"}
           onClick={handleJoin}
-          className="rounded-sm bg-[#00e5ff] px-3 py-1.5 text-sm font-semibold text-[#003366] disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+          className="rounded-sm bg-cyan-500/80 px-3 py-1.5 text-sm font-semibold text-[#04121a] disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
         >
           {rooms.busy === "join" ? t("rooms.joining", "Joining…") : t("rooms.join", "Join")}
         </button>

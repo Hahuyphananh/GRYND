@@ -1,12 +1,12 @@
 // src/lib/surfaceCardImage.tsx
 //
 // One shape for the per-surface social cards: the daily challenge, the daily
-// and unlimited puzzles, the Play hub and its AI lobby, and the solo and ranked
+// and the daily puzzle, the Play hub and its AI lobby, and the solo and ranked
 // lobbies.
 //
 // Each surface has its own page and its own identity, so each gets its own
 // 1200×630 card rather than the site's generic banner: a crawler that fetches
-// /daily, /play/daily-puzzle or /play/unlimited-puzzles should render a preview
+// /daily or /play/daily-puzzle should render a preview
 // that says which one it is. The differences are the accent colour,
 // the kicker and the three lines of substance — everything else (frame, ground,
 // wordmark, footer) is shared, so the three read as one family.

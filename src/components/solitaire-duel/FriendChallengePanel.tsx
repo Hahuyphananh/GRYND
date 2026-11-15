@@ -51,7 +51,7 @@ type Phase = "none" | "waiting" | "accepted" | "expired";
 const matchPath = (matchId: string) => `/casino/solitaire-duel/${matchId}`;
 const WATCH_POLL_MS = 4_000;
 
-export default function FriendChallengePanel() {
+export default function FriendChallengePanel({ embedded = false }: { embedded?: boolean } = {}) {
   const { isSignedIn, isLoaded } = useUser();
   const router = useMatchRouter();
 
@@ -215,10 +215,12 @@ export default function FriendChallengePanel() {
 
   return (
     <div
-      className={`mt-4 rounded-xl border p-4 ${
+      className={`${embedded ? "" : "mt-4 rounded-xl border p-4"} ${
         phase === "accepted"
-          ? "border-[#00ffa3]/40 bg-[#00ffa3]/[0.06]"
-          : "border-white/10 bg-white/[0.02]"
+          ? "rounded-xl border border-[#00ffa3]/40 bg-[#00ffa3]/[0.06] p-4"
+          : embedded
+            ? ""
+            : "border-white/10 bg-white/[0.02]"
       }`}
       data-testid="friend-challenge"
       data-phase={phase}

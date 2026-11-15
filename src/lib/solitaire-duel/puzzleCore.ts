@@ -8,12 +8,12 @@
 // card (or a run) onto a pile, click a card then a target, or click the stock to
 // turn the next waste card over.
 //
-// Exactly ONE legal move in the position turns a face-down card face up, and
-// that move is the next move of the deal's engine-proved winning line. Every
-// other legal move — including drawing — leaves every hidden card hidden, which
-// is what makes the puzzle have a single defensible answer rather than an
-// opinion: the answer is not "our favourite move", it is the only move that
-// makes progress, and it is the one the solver's line plays.
+// The answer is the next move of the deal's engine-proved winning line, and it
+// must be the UNIQUE highest-scoring legal move on the visible board (scored
+// with the perfect player's own objective). It does not have to reveal a card:
+// a foundation move, a tableau build or even a draw can be the best move, so
+// puzzles are not all the same "find the flip" exercise. When the answer does
+// reveal exactly one card, the reveal is recorded so the coaching can name it.
 //
 // This module holds everything that needs no server: the puzzle types, the
 // deterministic position builder, the move check, and a local builder for
@@ -28,7 +28,7 @@
 // DETERMINISM: a puzzle is a pure function of a 32-bit seed. The same seed always
 // produces the same position, the same answer move and the same revealed card.
 
-import { legalMoves } from "./ai";
+import { legalMoves, scoreMove } from "./ai";
 import { dealFromSeed } from "./deck";
 import { applyMove, initialStateFromDeal, viewForState } from "./rules";
 import { solveDealLine } from "./solvable";
@@ -36,7 +36,7 @@ import type { Card, SolitaireMove, SolitaireState, SolitaireView, Suit } from ".
 
 export type PuzzleKind = "daily" | "unlimited";
 
-/** The card — and the column it sits in — the winning move turns over. */
+/** The card — and the column it sits in — the best move turns over, if any. */
 export type PuzzleReveal = { column: number; card: Card };
 
 /**
@@ -59,11 +59,12 @@ export type Puzzle = PublicPuzzle & {
   seed: number;
   /** The authoritative position — needed to validate the move the player sends. */
   state: SolitaireState;
-  /** The next move of the proven winning line: the only move that reveals a card. */
+  /** The next move of the proven winning line: the position's unique best move. */
   answer: SolitaireMove;
   /** The board after that move, so a solution can be shown once it is judged. */
   answerBoard: SolitaireView;
-  answerReveal: PuzzleReveal;
+  /** The card the best move uncovers, or null when it is a quiet improvement. */
+  answerReveal: PuzzleReveal | null;
 };
 
 export const DAILY_PUZZLE_PREFIX = "daily:";
@@ -202,43 +203,54 @@ function revealedColumn(
   return null;
 }
 
-type RevealingMove = { move: SolitaireMove; revealed: Card[] };
+type RankedMove = { move: SolitaireMove; score: number; signature: string };
 
 /**
- * Every legal move from `state` that turns EXACTLY one face-down card over.
- *
- * The whole puzzle rests on this list having one entry. `legalMoves` is the
- * engine's own enumerator (the same one the bot uses), and each candidate is
- * re-applied through `applyMove` before it is believed, so a move here is a
- * move the engine accepts.
+ * The legal moves of `state`, scored with the perfect player's objective and
+ * ordered best-first. `legalMoves` is the engine's own enumerator, and
+ * `scoreMove` is the same evaluator the Perfect bot maximises, so "best" here
+ * is the game's own notion of best — not a second heuristic invented for the
+ * puzzle.
  */
-function revealingMoves(state: SolitaireState): RevealingMove[] {
-  const found: RevealingMove[] = [];
+function rankedMoves(state: SolitaireState): RankedMove[] {
   const seen = new Set<string>();
+  const scored: RankedMove[] = [];
   for (const move of legalMoves(state)) {
     const signature = moveSignature(move);
     if (seen.has(signature)) continue;
     seen.add(signature);
-    const applied = applyMove({ state, move });
-    if (applied.ok && applied.revealed.length === 1) {
-      found.push({ move, revealed: applied.revealed });
-    }
+    scored.push({ move, score: scoreMove(state, move), signature });
   }
-  return found;
+  return scored.sort(
+    (a, b) => b.score - a.score || a.signature.localeCompare(b.signature),
+  );
 }
 
 /**
- * Build the puzzle for one seed, or null when this deal has no position that
- * satisfies the puzzle's contract.
+ * The single best move, or null when the best score is tied or non-positive.
+ * A tie is not a puzzle with one answer, so the position is skipped.
+ */
+function bestMoveFor(state: SolitaireState): RankedMove | null {
+  const ranked = rankedMoves(state);
+  if (ranked.length === 0) return null;
+  if (ranked[0].score <= 0) return null;
+  if (ranked[1] && ranked[1].score === ranked[0].score) return null;
+  return ranked[0];
+}
+
+/**
+ * Every position along a deal's verified line whose next move is the unique
+ * highest-scoring legal move. The positions are returned in line order.
  *
  * The contract, all checked through the engine rather than assumed:
  *   1. the deal has a verified winning line (`solveDealLine`),
  *   2. the position is reached by replaying a prefix of that line,
- *   3. the line's next move turns exactly one card face up,
- *   4. NO other legal move turns a card face up — so the answer is the only
- *      progress-making move on the board, not merely our preferred one.
+ *   3. the line's next move is the unique highest-scoring legal move,
+ *   4. a reveal is OPTIONAL — the answer may instead build a run, reach the
+ *      foundation or draw, so the puzzle is about finding the best move rather
+ *      than always finding the flip.
  */
-export function buildPuzzleForSeed(seed: number): Puzzle | null {
+function puzzleCandidatesForSeed(seed: number): Puzzle[] | null {
   if (!Number.isInteger(seed) || seed < 0 || seed > MAX_UINT32) return null;
 
   const deal = dealFromSeed(seed);
@@ -254,23 +266,22 @@ export function buildPuzzleForSeed(seed: number): Puzzle | null {
     states.push(state);
   }
 
+  const candidates: Puzzle[] = [];
   for (let index = 1; index < line.length - 1; index += 1) {
     const before = states[index];
     const answer = line[index];
+    const best = bestMoveFor(before);
+    if (!best || best.signature !== moveSignature(answer)) continue;
+
     const applied = applyMove({ state: before, move: answer });
-    if (!applied.ok || applied.revealed.length !== 1) continue;
+    if (!applied.ok) continue;
 
-    // The answer must be the ONLY move that uncovers anything. If another
-    // legal move also turns a card over, either one is defensible and there is
-    // no puzzle to solve — skip this position entirely.
-    const revealing = revealingMoves(before);
-    if (revealing.length !== 1) continue;
-    if (moveSignature(revealing[0].move) !== moveSignature(answer)) continue;
+    const column =
+      applied.revealed.length === 1
+        ? revealedColumn(before, applied.state, applied.revealed[0])
+        : null;
 
-    const column = revealedColumn(before, applied.state, applied.revealed[0]);
-    if (column === null) continue;
-
-    return {
+    candidates.push({
       key: "",
       kind: "unlimited",
       dateKey: null,
@@ -279,11 +290,71 @@ export function buildPuzzleForSeed(seed: number): Puzzle | null {
       state: before,
       answer,
       answerBoard: viewForState(applied.state),
-      answerReveal: { column, card: applied.revealed[0] },
-    };
+      answerReveal:
+        column === null ? null : { column, card: applied.revealed[0] },
+    });
   }
 
-  return null;
+  return candidates.length > 0 ? candidates : null;
+}
+
+/**
+ * Build one puzzle for a seed, or null when this deal has no qualifying
+ * position.
+ *
+ * Positions that qualify are collected and one is chosen deterministically
+ * from the seed, alternating between quiet and revealing answers when both
+ * exist. That keeps a seed reproducible while making the mode varied.
+ */
+export function buildPuzzleForSeed(seed: number): Puzzle | null {
+  const candidates = puzzleCandidatesForSeed(seed);
+  if (!candidates) return null;
+
+  // Prefer variety: even seeds take a quiet best move when one exists, odd
+  // seeds take a revealing one. If only one kind qualifies, use it.
+  const quiet = candidates.filter((candidate) => candidate.answerReveal === null);
+  const revealing = candidates.filter((candidate) => candidate.answerReveal !== null);
+  const pool =
+    quiet.length > 0 && revealing.length > 0
+      ? seed % 2 === 0
+        ? quiet
+        : revealing
+      : quiet.length > 0
+        ? quiet
+        : revealing;
+
+  return pool[seed % pool.length] ?? null;
+}
+
+/**
+ * Build a multi-step puzzle from ONE deal: `count` qualifying positions spread
+ * through the middle and end of the verified line. Solving every step is a
+ * harder test than a single best-move question, and because the positions come
+ * from one deal the whole run has a single coherent solution.
+ *
+ * The first ~35% of the line is skipped: opening positions are mostly obvious,
+ * while the chosen positions have more cards exposed and more legal choices.
+ */
+export function buildPuzzleStepsForSeed(seed: number, count = 3): Puzzle[] | null {
+  const candidates = puzzleCandidatesForSeed(seed);
+  if (!candidates) return null;
+
+  const wanted = Math.max(1, Math.floor(count));
+  const start = Math.floor((candidates.length - 1) * 0.35);
+  const available = candidates.length - start;
+  if (available < wanted) return null;
+
+  const steps: Puzzle[] = [];
+  for (let index = 0; index < wanted; index += 1) {
+    const offset =
+      wanted === 1
+        ? available - 1
+        : Math.round(((available - 1) * index) / (wanted - 1));
+    const candidate = candidates[start + offset];
+    if (!candidate) return null;
+    steps.push(candidate);
+  }
+  return steps;
 }
 
 /** Strip the answer and the server's state so a route can serialise a puzzle. */

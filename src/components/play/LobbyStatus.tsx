@@ -2,8 +2,8 @@
 
 // src/components/play/LobbyStatus.tsx
 //
-// Real status for the Solo, Daily Challenge, Daily Puzzle and Unlimited Puzzle
-// lobbies. Every figure comes from an existing server endpoint:
+// Real status for the Solo, Daily Challenge and Daily Puzzle lobbies. Every
+// figure comes from an existing server endpoint:
 //
 //   /api/solitaire/solo       — the player's own solo record
 //   /api/solitaire/daily      — today's daily result and streak
@@ -14,7 +14,6 @@
 // fabricated, and the puzzle lobby never consumes an attempt: GET is read-only.
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 
 import { useTranslation } from "../../hooks/useTranslation";
 
@@ -45,6 +44,9 @@ type PuzzleStatus = {
   board?: { tableau?: unknown[]; stockCount?: number } | null;
   attempt?: { move?: unknown; correct?: boolean } | null;
   answerMove?: unknown;
+  step?: number;
+  totalSteps?: number;
+  status?: "playing" | "failed" | "completed";
   allowance?: {
     unlimited?: boolean;
     limit?: number | null;
@@ -157,7 +159,7 @@ function Row({ label, value }: { label: string; value: string }) {
 export default function LobbyStatus({
   mode,
 }: {
-  mode: "solo" | "daily" | "dailyPuzzle" | "unlimited";
+  mode: "solo" | "daily" | "dailyPuzzle";
 }) {
   const { t } = useTranslation();
   const endpoint =
@@ -165,7 +167,7 @@ export default function LobbyStatus({
       ? "/api/solitaire/solo"
       : mode === "daily"
         ? "/api/solitaire/daily"
-        : `/api/solitaire/puzzle?kind=${mode === "dailyPuzzle" ? "daily" : "unlimited"}`;
+        : "/api/solitaire/puzzle?kind=daily";
   const { data, state } = useStatus(endpoint);
 
   if (state === "loading") return <Loading label={t("playHub.loading")} />;
@@ -219,83 +221,49 @@ export default function LobbyStatus({
   const puzzle = data as unknown as PuzzleStatus;
   if (mode === "dailyPuzzle") {
     const attempt = puzzle.attempt ?? null;
-    const allowance = puzzle.allowance ?? null;
+    const status = puzzle.status ?? "playing";
+    const step = puzzle.step ?? 1;
+    const total = puzzle.totalSteps ?? 3;
+    const statusLabel =
+      status === "completed"
+        ? t("playHub.lobby.dailyPuzzle.completed")
+        : status === "failed"
+          ? t("playHub.lobby.dailyPuzzle.failed")
+          : step > 1
+            ? t("playHub.lobby.dailyPuzzle.inProgress")
+            : t("playHub.lobby.dailyPuzzle.available");
     return (
       <div className="space-y-1.5">
+        <Row label={t("playHub.statusTitle")} value={statusLabel} />
         <Row
-          label={t("playHub.statusTitle")}
-          value={attempt ? t("playHub.lobby.dailyPuzzle.played") : t("playHub.lobby.dailyPuzzle.available")}
+          label={t("playHub.lobby.dailyPuzzle.progress")}
+          value={t("playHub.lobby.dailyPuzzle.stepProgress", { step, total })}
         />
         {attempt && (
-          <>
-            <Row
-              label={t("playHub.lobby.dailyPuzzle.correct")}
-              value={
-                attempt.correct
-                  ? t("playHub.lobby.dailyPuzzle.correct")
-                  : t("playHub.lobby.dailyPuzzle.incorrect")
-              }
-            />
-            {puzzle.answerMove && moveLabel(puzzle.answerMove) && (
-              <p className="rounded-xl border border-[#00ffa3]/20 bg-[#00ffa3]/[0.06] px-3 py-2 text-xs leading-relaxed text-[#c8ffe6]">
-                {t("playHub.lobby.dailyPuzzle.answer", {
-                  answer: moveLabel(puzzle.answerMove) as string,
-                })}{" "}
-                {t("playHub.lobby.dailyPuzzle.explanation")}
-              </p>
-            )}
-          </>
+          <Row
+            label={t("playHub.lobby.dailyPuzzle.stepResult")}
+            value={
+              attempt.correct
+                ? t("playHub.lobby.dailyPuzzle.correct")
+                : t("playHub.lobby.dailyPuzzle.incorrect")
+            }
+          />
+        )}
+        {attempt && puzzle.answerMove && moveLabel(puzzle.answerMove) && (
+          <p className="rounded-xl border border-[#00ffa3]/20 bg-[#00ffa3]/[0.06] px-3 py-2 text-xs leading-relaxed text-[#c8ffe6]">
+            {t("playHub.lobby.dailyPuzzle.answer", {
+              answer: moveLabel(puzzle.answerMove) as string,
+            })}{" "}
+            {t("playHub.lobby.dailyPuzzle.explanation")}
+          </p>
         )}
         <p className="text-[10px] leading-relaxed text-white/35">
           {t("playHub.lobby.dailyPuzzle.resets")}{" "}
           {t("playHub.lobby.dailyPuzzle.guest")}
         </p>
-        {!attempt && allowance?.unlimited === false && (
-          <p className="text-[10px] text-white/35">{t("playHub.lobby.unlimited.oneType")}</p>
-        )}
       </div>
     );
   }
 
-  const allowance = puzzle.allowance ?? null;
-  if (!allowance) {
-    return <p className="text-sm text-white/50">{t("playHub.unavailable")}</p>;
-  }
-  if (allowance.unlimited) {
-    return (
-      <div className="space-y-1.5">
-        <Row label={t("playHub.statusTitle")} value={t("playHub.lobby.unlimited.unlimited")} />
-        <Row label={t("playHub.lobby.unlimited.oneType")} value="Reveal a card" />
-        <p className="text-[10px] leading-relaxed text-white/35">
-          {t("playHub.lobby.unlimited.freeNote")}
-        </p>
-      </div>
-    );
-  }
-
-  const remaining = allowance.remaining ?? 0;
-  const limit = allowance.limit ?? 5;
-  return (
-    <div className="space-y-1.5">
-      <Row
-        label={t("playHub.statusTitle")}
-        value={t("playHub.lobby.unlimited.remaining", { remaining, limit })}
-      />
-      <Row
-        label={t("playHub.lobby.unlimited.used", { used: allowance.used ?? 0 })}
-        value={`${allowance.used ?? 0}/${limit}`}
-      />
-      <p className="text-[10px] leading-relaxed text-white/35">
-        {t("playHub.lobby.unlimited.reset")}
-      </p>
-      {remaining === 0 && (
-        <p className="rounded-xl border border-[#f5ff3b]/25 bg-[#f5ff3b]/[0.06] px-3 py-2 text-xs font-semibold text-[#ffe9a3]">
-          {t("playHub.lobby.unlimited.freeNote")}{" "}
-          <Link href="/upgrade-pro" className="underline">
-            {t("playHub.upgrade")}
-          </Link>
-        </p>
-      )}
-    </div>
-  );
+  return <p className="text-sm text-white/50">{t("playHub.unavailable")}</p>;
 }

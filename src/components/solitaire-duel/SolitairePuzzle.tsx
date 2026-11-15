@@ -16,10 +16,10 @@
 // answer, and the answer is not in the initial payload.
 //
 // Glitch sits in the side column and explains the verdict with facts: what the
-// winning move does, which card it uncovers, and why what was played did not
-// (a draw uncovers nothing; a legal placement that leaves every hidden card
-// hidden is still not the move). After the move is judged the board shows the
-// position AFTER the winning move, the way a chess puzzle shows the solution.
+// best move does, which card it uncovers when it does, and why what was played
+// was not the strongest choice. The answer is the position's unique best move,
+// not necessarily a card-revealing one. After the move is judged the board shows
+// the position AFTER the best move, the way a chess puzzle shows the solution.
 //
 // OFFLINE: the unlimited puzzle is still playable with no network — it is built
 // and checked locally with the same pure verifier — and nothing is recorded.
@@ -62,12 +62,18 @@ type Attempt = {
   answeredAt?: string | null;
 } | null;
 
+type DailyStep = PublicPuzzle & { step: number; totalSteps: number };
+
 type PuzzleData = PublicPuzzle & {
   attempt?: Attempt;
   answerMove?: SolitaireMove | null;
   answerReveal?: PuzzleReveal | null;
   solution?: SolitaireView | null;
   allowance?: Allowance | null;
+  step?: number;
+  totalSteps?: number;
+  status?: "playing" | "failed" | "completed";
+  nextStep?: DailyStep | null;
 };
 
 /** One judged move: what was played, what wins, and the board after it. */
@@ -84,7 +90,7 @@ type GlitchLine = { expression: GlitchExpression; message: string };
 type Props = { kind: "daily" | "unlimited" };
 
 const OPENING_LINE =
-  "Your move. Play the one that turns a face-down card over — drag it, or click it and then click where it goes. You can click the stock to draw.";
+  "Your move. Find the strongest move on the board — drag a card, or click it and then click where it goes. You can click the stock to draw.";
 
 const OFFLINE_LINE =
   "No connection, so this one is built on your device. Same rules, same board — nothing is saved.";
@@ -104,6 +110,8 @@ export default function SolitairePuzzle({ kind }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
   const [judgement, setJudgement] = useState<Judgement | null>(null);
+  // The next board of a daily run, unlocked by a correct answer.
+  const [nextStep, setNextStep] = useState<DailyStep | null>(null);
   // True when this position was built in the tab because there is no network.
   const [offline, setOffline] = useState(false);
   const [line, setLine] = useState<GlitchLine>({
@@ -155,6 +163,7 @@ export default function SolitairePuzzle({ kind }: Props) {
       setFailed(false);
       setLimitReached(false);
       setJudgement(null);
+      setNextStep(null);
       setOffline(false);
       localRef.current = null;
       announce({ expression: "focused", message: OPENING_LINE });
@@ -190,7 +199,7 @@ export default function SolitairePuzzle({ kind }: Props) {
         setPuzzle(data);
 
         // A daily puzzle that has already been played resumes on its solution:
-        // the board shows the position after the winning move, locked.
+        // the board shows the position after the best move, locked.
         if (data.attempt && data.answerMove) {
           const judged: Judgement = {
             correct: Boolean(data.attempt.correct),
@@ -309,6 +318,14 @@ export default function SolitairePuzzle({ kind }: Props) {
           return;
         }
 
+        if (response.status === 409) {
+          announce({
+            expression: "focused",
+            message: "That step is still locked. Solve the earlier steps of today's puzzle first.",
+          });
+          return;
+        }
+
         if (!response.ok || !body?.success) throw new Error(body?.error || "Move failed");
 
         const data = body.data as {
@@ -318,6 +335,10 @@ export default function SolitairePuzzle({ kind }: Props) {
           answerReveal?: PuzzleReveal | null;
           solution?: SolitaireView | null;
           allowance?: Allowance | null;
+          step?: number;
+          totalSteps?: number;
+          status?: "playing" | "failed" | "completed";
+          nextStep?: DailyStep | null;
         };
 
         const judged: Judgement = {
@@ -328,6 +349,7 @@ export default function SolitairePuzzle({ kind }: Props) {
           solution: data.solution ?? null,
         };
         setJudgement(judged);
+        setNextStep(data.nextStep ?? null);
         announceJudgement(judged, puzzle.board);
         if (data.allowance) {
           setPuzzle((current) =>
@@ -353,6 +375,36 @@ export default function SolitairePuzzle({ kind }: Props) {
     ],
   );
 
+  /** Move from a solved step to the next board the server unlocked. */
+  const advance = useCallback(() => {
+    const next = nextStep;
+    if (!next) return;
+    setPuzzle((current) =>
+      current
+        ? {
+            ...current,
+            key: next.key,
+            kind: next.kind,
+            dateKey: next.dateKey,
+            board: next.board,
+            step: next.step,
+            totalSteps: next.totalSteps,
+            attempt: null,
+            answerMove: null,
+            answerReveal: null,
+            solution: null,
+            nextStep: null,
+          }
+        : current,
+    );
+    setJudgement(null);
+    setNextStep(null);
+    announce({
+      expression: "focused",
+      message: `Step ${next.step} of ${next.totalSteps}. ${OPENING_LINE}`,
+    });
+  }, [announce, nextStep]);
+
   const onInvalid = useCallback(
     (message: string) => {
       announce({ expression: "surprised", message });
@@ -371,11 +423,13 @@ export default function SolitairePuzzle({ kind }: Props) {
     : null;
 
   const wasteTop = puzzle?.board.waste?.[puzzle.board.waste.length - 1] ?? null;
+  const currentStep = puzzle?.step ?? 1;
+  const totalSteps = puzzle?.totalSteps ?? 1;
   const title = kind === "daily" ? "Daily puzzle" : "Unlimited puzzle";
   const blurb =
     kind === "daily"
-      ? "One real position from a verified winning deal, free for everyone. Play the move yourself — you get one answer a day, so make it count."
-      : "Real positions from verified winning deals. Play the move on the board; exactly one legal move turns a card face up.";
+      ? "Three real positions from one verified winning deal, free for everyone. Find the best move at each step — one mistake ends the run."
+      : "Real positions from verified winning deals. Play the strongest move on the board — it may uncover a card, build a run, reach the foundation or draw.";
 
   return (
     <section
@@ -385,7 +439,9 @@ export default function SolitairePuzzle({ kind }: Props) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.3em] text-cyan-300/80">
-            {kind === "daily" ? "GRYND · free · once a day" : "GRYND · practice"}
+            {kind === "daily"
+              ? `GRYND · free · step ${currentStep} of ${totalSteps}`
+              : "GRYND · practice"}
           </p>
           <h2
             id={`puzzle-${kind}-heading`}
@@ -438,7 +494,7 @@ export default function SolitairePuzzle({ kind }: Props) {
       {failed && (
         <div className="mt-4 rounded-xl border border-rose-400/30 bg-rose-400/10 p-4 text-sm text-rose-100">
           {kind === "daily"
-            ? "The daily puzzle needs a connection — it is tied to the server's UTC day. Unlimited puzzles still work offline."
+            ? "The daily puzzle needs a connection — it is tied to the server's UTC day."
             : "The puzzle could not be loaded. Please try again."}
         </div>
       )}
@@ -475,19 +531,35 @@ export default function SolitairePuzzle({ kind }: Props) {
               <div
                 role="status"
                 aria-live="polite"
+                data-testid="puzzle-feedback"
+                data-correct={judgement?.correct ? "true" : "false"}
                 className={`rounded-2xl border p-3 text-sm ${
                   judgement?.correct
-                    ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-50"
+                    ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-50"
                     : "border-rose-400/30 bg-rose-400/10 text-rose-50"
                 }`}
               >
-                <p className="text-[10px] font-black uppercase tracking-[0.18em]">
+                <p
+                  className={`text-[10px] font-black uppercase tracking-[0.18em] ${
+                    judgement?.correct ? "text-emerald-300" : "text-rose-300"
+                  }`}
+                >
                   {feedback.title}
                 </p>
-                <p className="mt-1 leading-relaxed text-white/75">{feedback.body}</p>
+                <p
+                  className={`mt-1 leading-relaxed ${
+                    judgement?.correct ? "text-emerald-200" : "text-rose-200"
+                  }`}
+                >
+                  {feedback.body}
+                </p>
                 {judgement && (
-                  <p className="mt-2 text-xs text-white/55">
-                    Winning move: <strong className="text-white">{puzzleMoveText(judgement.answer)}</strong>
+                  <p
+                    className={`mt-2 text-xs ${
+                      judgement.correct ? "text-emerald-200/80" : "text-rose-200/80"
+                    }`}
+                  >
+                    Best move: <strong className="text-white">{puzzleMoveText(judgement.answer)}</strong>
                     {judgement.answerReveal
                       ? ` — it uncovers the ${puzzleCardText(judgement.answerReveal.card)} in column ${judgement.answerReveal.column + 1}.`
                       : "."}
@@ -498,9 +570,27 @@ export default function SolitairePuzzle({ kind }: Props) {
                     Checked on this device — nothing was recorded.
                   </p>
                 )}
-                {kind === "daily" && (
-                  <p className="mt-1 text-xs text-white/45">
-                    A new daily puzzle arrives at UTC midnight.
+                {kind === "daily" && nextStep && (
+                  <button
+                    type="button"
+                    onClick={advance}
+                    data-testid="puzzle-next-step"
+                    className="mt-3 w-full rounded-lg border border-emerald-300/50 bg-emerald-300/15 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-emerald-100 transition hover:bg-emerald-300/25"
+                  >
+                    Next step · {currentStep + 1} of {totalSteps} →
+                  </button>
+                )}
+                {kind === "daily" && judgement && (
+                  <p
+                    className={`mt-2 text-xs ${
+                      judgement.correct ? "text-emerald-200/70" : "text-rose-200/70"
+                    }`}
+                  >
+                    {judgement.correct
+                      ? nextStep
+                        ? `Step ${currentStep} of ${totalSteps} solved.`
+                        : `All ${totalSteps} steps solved — daily complete.`
+                      : `Run over at step ${currentStep} of ${totalSteps}. A new run arrives at UTC midnight.`}
                   </p>
                 )}
               </div>
@@ -536,10 +626,10 @@ export default function SolitairePuzzle({ kind }: Props) {
               </button>
             ) : (
               <Link
-                href="/play/unlimited-puzzles/play"
+                href="/daily"
                 className="block w-full rounded-lg border border-cyan-400/40 bg-cyan-400/10 px-3 py-2 text-center text-xs font-black uppercase tracking-[0.14em] text-cyan-200 transition hover:bg-cyan-400/20"
               >
-                Practise another →
+                Play today's challenge →
               </Link>
             )}
 
@@ -550,7 +640,7 @@ export default function SolitairePuzzle({ kind }: Props) {
                   ? "PRO · no daily limit"
                   : kind === "unlimited"
                     ? `Free plan · ${remaining ?? 0} of ${allowance?.limit ?? 5} left today`
-                    : "One official move per UTC day."}
+                    : "Three official steps per UTC day. One mistake ends the run."}
             </p>
           </aside>
         </div>

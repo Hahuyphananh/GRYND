@@ -2,18 +2,20 @@
 //
 // THE SOLITAIRE PUZZLE (daily + unlimited).
 //
-// GET  ?kind=daily      — today's UTC puzzle (a playable board), the caller's
-//                         attempt (if any) and the unlimited allowance.
+// GET  ?kind=daily      — today's three-step UTC run: the caller's current
+//                         board, progress and the result of the current step.
 //      ?kind=unlimited  — a fresh practice puzzle plus the allowance.
 // POST                  — PLAY one move. The server rebuilds the exact position
 //                         from its own key+seed, checks the move with the engine,
-//                         and compares it to the proven winning move. The client
+//                         and compares it to the proven best move. The client
 //                         never supplies the position, the answer or the verdict.
 //
 // RULES
-//   * The daily puzzle is FREE for everyone (guests included) and can be played
-//     exactly ONCE per identity per UTC day: the unique (user_id, puzzle_key)
-//     index is the backstop, and the route checks it before accepting a move.
+//   * The daily puzzle is FREE for everyone (guests included). It has THREE
+//     steps from one deal; each step can be answered once, and a wrong answer
+//     ends the run. Each step has its own puzzle key, so the unique
+//     (user_id, puzzle_key) index still enforces one answer per step.
+//   * A step cannot be submitted until every earlier step is correct.
 //   * The unlimited puzzle is free for 5 moves per UTC day and unlimited for
 //     GRYND PRO. A submission consumes one slot — the slot is taken BEFORE the
 //     move is judged, so a wrong move still spends it and retrying cannot farm
@@ -39,7 +41,8 @@ import { getMembershipTier } from "../../../../lib/stripe/subscriptions";
 import { applyMove } from "../../../../lib/solitaire-duel/rules";
 import {
   dailyPuzzleDateKey,
-  getDailyPuzzle,
+  dailyPuzzleStepFromKey,
+  getDailyPuzzleSteps,
   getUnlimitedPuzzle,
   parsePuzzleMove,
   publicPuzzle,
@@ -154,12 +157,40 @@ export async function GET(req: Request) {
   try {
     if (kind === "daily") {
       const dateKey = dailyPuzzleDateKey(now);
-      const puzzle = getDailyPuzzle(dateKey);
-      const attempt = player ? await findAttempt(player.playerId, puzzle.key) : null;
+      const steps = getDailyPuzzleSteps(dateKey);
+
+      // Walk the run in order. The first unanswered step is the one to show; a
+      // wrong step ends the run, and answering the last one completes it.
+      let index = 0;
+      let status: "playing" | "failed" | "completed" = "playing";
+      let attempt: Awaited<ReturnType<typeof findAttempt>> = null;
+      for (let step = 0; step < steps.length; step += 1) {
+        const found = player
+          ? await findAttempt(player.playerId, steps[step].key)
+          : null;
+        if (!found) {
+          index = step;
+          attempt = null;
+          status = "playing";
+          break;
+        }
+        index = step;
+        attempt = found;
+        if (!found.correct) {
+          status = "failed";
+          break;
+        }
+        status = step === steps.length - 1 ? "completed" : "playing";
+      }
+
+      const puzzle = steps[index]!;
       return NextResponse.json({
         success: true,
         data: {
           ...publicPuzzle(puzzle),
+          step: index + 1,
+          totalSteps: steps.length,
+          status,
           // Only a player who has already moved sees the answer, and only then
           // does the position after it travel to the browser.
           answerMove: attempt ? puzzle.answer : null,
@@ -231,13 +262,35 @@ export async function POST(req: Request) {
   }
 
   const now = new Date();
-  const puzzle = puzzleForKey({ key, kind, dateKey: dailyPuzzleDateKey(now) });
+  const dateKey = dailyPuzzleDateKey(now);
+  const puzzle = puzzleForKey({ key, kind, dateKey });
   if (!puzzle) {
     return NextResponse.json(
       { success: false, error: "That puzzle is not available" },
       { status: 400 },
     );
   }
+
+  // Daily runs are ordered. Rebuild the sequence so the route can enforce the
+  // order and hand back the next step after a correct answer.
+  const dailySteps = kind === "daily" ? getDailyPuzzleSteps(dateKey) : [];
+  const dailyStep =
+    kind === "daily" ? dailyPuzzleStepFromKey(key, dateKey) : null;
+  if (kind === "daily" && dailyStep === null) {
+    return NextResponse.json(
+      { success: false, error: "That puzzle is not available" },
+      { status: 400 },
+    );
+  }
+
+  const nextDailyStep = (step: number) =>
+    step < dailySteps.length
+      ? {
+          ...publicPuzzle(dailySteps[step]!),
+          step: step + 1,
+          totalSteps: dailySteps.length,
+        }
+      : null;
 
   // The move must be a REAL move in THIS position. `applyMove` re-validates
   // internally, so nothing the board would have refused can be judged — or
@@ -251,10 +304,30 @@ export async function POST(req: Request) {
   }
 
   try {
-    if (kind === "daily") {
-      // ONE move per identity per day, right or wrong.
+    if (kind === "daily" && dailyStep !== null) {
+      // Enforce the run order: every earlier step must be correct. A forged key
+      // cannot skip ahead, and a wrong step ends the run.
+      for (let step = 0; step < dailyStep - 1; step += 1) {
+        const prior = await findAttempt(player.playerId, dailySteps[step]!.key);
+        if (!prior || !prior.correct) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: "Solve the earlier steps of today's puzzle first",
+              code: "PUZZLE_STEP_LOCKED",
+            },
+            { status: 409 },
+          );
+        }
+      }
+
       const existing = await findAttempt(player.playerId, puzzle.key);
       if (existing) {
+        const status = existing.correct
+          ? dailyStep === dailySteps.length
+            ? "completed"
+            : "playing"
+          : "failed";
         return NextResponse.json({
           success: true,
           data: {
@@ -264,21 +337,24 @@ export async function POST(req: Request) {
             answer: puzzle.answer,
             answerReveal: puzzle.answerReveal,
             solution: puzzle.answerBoard,
-            allowance: await readPuzzleAllowance({
-              playerId: player.playerId,
-              isPro: player.isPro,
-              now,
-            }),
+            step: dailyStep,
+            totalSteps: dailySteps.length,
+            status,
+            nextStep: existing.correct ? nextDailyStep(dailyStep) : null,
+            allowance: null,
           },
         });
       }
     }
 
-    let allowance = await readPuzzleAllowance({
-      playerId: player.playerId,
-      isPro: player.isPro,
-      now,
-    });
+    let allowance =
+      kind === "unlimited"
+        ? await readPuzzleAllowance({
+            playerId: player.playerId,
+            isPro: player.isPro,
+            now,
+          })
+        : null;
 
     // The unlimited puzzle is the paid/free-limited mode; the daily puzzle is
     // free and never touches the quota.
@@ -324,6 +400,12 @@ export async function POST(req: Request) {
     // move stands; this submission changed nothing.
     const duplicate = inserted.length === 0;
 
+    const status = correct
+      ? kind === "daily" && dailyStep === dailySteps.length
+        ? "completed"
+        : "playing"
+      : "failed";
+
     return NextResponse.json({
       success: true,
       data: {
@@ -334,6 +416,14 @@ export async function POST(req: Request) {
         solution: puzzle.answerBoard,
         duplicate,
         alreadyPlayed: duplicate,
+        ...(kind === "daily" && dailyStep !== null
+          ? {
+              step: dailyStep,
+              totalSteps: dailySteps.length,
+              status,
+              nextStep: correct ? nextDailyStep(dailyStep) : null,
+            }
+          : {}),
         allowance,
       },
     });

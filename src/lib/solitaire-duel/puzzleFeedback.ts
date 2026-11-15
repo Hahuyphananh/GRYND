@@ -7,8 +7,8 @@
 // Every sentence is built from facts the engine produced:
 //
 //   * the move that was played (its own coordinates and card),
-//   * the proven winning move,
-//   * the card — and column — the winning move turns face up,
+//   * the proven best move,
+//   * the card — and column — the best move turns face up, when it does,
 //   * how many tableau cards are still hidden.
 //
 // Browser-safe and server-safe: no React, no DOM, no engine import. That keeps
@@ -103,12 +103,12 @@ export function puzzleFeedback({
 
   if (correct) {
     const reveal = answerReveal
-      ? `It turns the ${puzzleCardText(answerReveal.card)} face up in column ${answerReveal.column + 1}, and it is the only move on this board that uncovers a card.`
-      : "It is the next move of the line that solves this deal.";
+      ? ` It also turns the ${puzzleCardText(answerReveal.card)} face up in column ${answerReveal.column + 1}.`
+      : " It improves the position without needing to uncover a card.";
     return {
       tone: "correct",
-      title: "Correct — that is the move",
-      body: `Playing ${answerText} keeps you on the winning line. ${reveal}`,
+      title: "Correct — that is the best move",
+      body: `Playing ${answerText} is the strongest move on this board, and it keeps you on the winning line.${reveal}`,
     };
   }
 
@@ -121,8 +121,8 @@ export function puzzleFeedback({
   if (playedMove.kind === "draw") {
     return {
       tone: "incorrect",
-      title: "Not the move",
-      body: `Drawing cycles the stock and leaves the tableau exactly as it is — ${hiddenText}. The winning move is ${answerText}${
+      title: "Not the best move",
+      body: `Drawing cycles the stock but does not improve this position — ${hiddenText}. The strongest move is ${answerText}${
         answerReveal
           ? `, which turns the ${puzzleCardText(answerReveal.card)} face up in column ${answerReveal.column + 1}`
           : ""
@@ -132,8 +132,8 @@ export function puzzleFeedback({
 
   return {
     tone: "incorrect",
-    title: "Not the move",
-    body: `That is legal Klondike, but it uncovers nothing — ${hiddenText}. The winning move is ${answerText}${
+    title: "Not the best move",
+    body: `That is legal Klondike, but it is not the strongest move — ${hiddenText}. The best move is ${answerText}${
       answerReveal
         ? `, which turns the ${puzzleCardText(answerReveal.card)} face up in column ${answerReveal.column + 1}`
         : ""

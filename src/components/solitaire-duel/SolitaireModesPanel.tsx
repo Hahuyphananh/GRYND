@@ -81,14 +81,14 @@ export default function SolitaireModesPanel() {
       </div>
 
       <div className="mt-3 grid gap-3 md:grid-cols-3">
-        <div className="rounded-2xl border border-cyan-400/25 bg-cyan-400/[0.05] p-4">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300">Ranked PvP</p>
+        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300/80">Ranked PvP</p>
           <p className="mt-2 text-sm leading-relaxed text-white/60">
             Rating, recent matches and trophies are in the ranked sections of this
             profile. Ranked only counts real human opponents.
           </p>
           <div className="mt-3 flex flex-wrap gap-3 text-sm">
-            <Link href="/classement" className="font-semibold text-cyan-300 hover:text-cyan-200">
+            <Link href="/classement" className="font-semibold text-cyan-200/70 hover:text-cyan-100">
               Leaderboard →
             </Link>
             <Link href="/games/solitaire-duel/play" className="font-semibold text-white/70 hover:text-white">

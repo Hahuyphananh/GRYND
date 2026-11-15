@@ -1,10 +1,10 @@
 // tests/play-hub.test.mjs
 //
-// THE SIX-MODE PLAY HUB CONTRACT.
+// THE PLAY HUB CONTRACT.
 //
-// Verifies the hub has exactly six cards in the required order, every card and
+// Verifies the hub has exactly five cards in the required order, every card and
 // lobby points at a real experience, navigation sends Play to /play, the ranked
-// lobby no longer offers bots, the daily/unlimited puzzles reuse the existing
+// lobby no longer offers bots, the daily puzzle uses the multi-step
 // server-enforced system, and free /stats is blurred + locked while Pro loads
 // the entitlement-gated coaching report.
 
@@ -25,7 +25,6 @@ const HUB = "src/components/play/PlayHub.tsx";
 const NAV = "src/components/navigation-bar.jsx";
 const RANKED_LOBBY = "src/components/solitaire-duel/SolitaireLobby.tsx";
 const PUZZLE_ROUTE = "src/app/api/solitaire/puzzle/route.ts";
-const ALLOWANCE = "src/lib/solitaire-duel/puzzleAllowance.ts";
 const STATS_CLIENT = "src/components/stats/SolitaireAcademyStats.tsx";
 
 const MODES = [
@@ -34,21 +33,20 @@ const MODES = [
   ["ai", "/play/ai"],
   ["ranked", "/play/ranked"],
   ["dailyPuzzle", "/play/daily-puzzle"],
-  ["unlimited", "/play/unlimited-puzzles"],
 ];
 
 // ── Play hub ──────────────────────────────────────────────────────────────
 
-test("the Play hub renders exactly six mode cards in order", () => {
+test("the Play hub renders exactly five mode cards in order", () => {
   const source = read(HUB);
   const ids = [...source.matchAll(/data-testid=\{`play-mode-\$\{mode\.id\}`\}/g)];
   assert.equal(ids.length, 1, "cards are rendered from one list, not hand-copied");
   assert.match(source, /const MODES: readonly Mode\[\] = \[/);
 
-  const order = [...source.matchAll(/id: "(solo|daily|ai|ranked|dailyPuzzle|unlimited)"/g)];
+  const order = [...source.matchAll(/id: "(solo|daily|ai|ranked|dailyPuzzle)"/g)];
   assert.deepEqual(
     order.map((match) => match[1]),
-    ["solo", "daily", "ai", "ranked", "dailyPuzzle", "unlimited"],
+    ["solo", "daily", "ai", "ranked", "dailyPuzzle"],
   );
 
   for (const [id, href] of MODES) {
@@ -69,15 +67,13 @@ test("every mode has a dedicated, real lobby route", () => {
     "src/app/play/ai/page.tsx",
     "src/app/play/ranked/page.tsx",
     "src/app/play/daily-puzzle/page.tsx",
-    "src/app/play/unlimited-puzzles/page.tsx",
     "src/app/play/daily-puzzle/play/page.tsx",
-    "src/app/play/unlimited-puzzles/play/page.tsx",
   ]) {
     assert.ok(exists(route), `${route} must exist`);
   }
 
-  for (const lobby of ["solo", "daily", "dailyPuzzle", "unlimited"]) {
-    assert.match(read(`src/app/play/${lobby === "dailyPuzzle" ? "daily-puzzle" : lobby === "unlimited" ? "unlimited-puzzles" : lobby}/page.tsx`), /ModeLobby/);
+  for (const lobby of ["solo", "daily", "dailyPuzzle"]) {
+    assert.match(read(`src/app/play/${lobby === "dailyPuzzle" ? "daily-puzzle" : lobby}/page.tsx`), /ModeLobby/);
   }
   // AI and ranked reuse the existing implementations, never a copy.
   assert.match(read("src/app/play/ai/page.tsx"), /solitaire-duel\/play-ai\/PageClient/);
@@ -92,7 +88,7 @@ test("hub CTA labels come from all three locales", () => {
       keys.push(`cards.${id}.${suffix}`);
     }
   }
-  for (const mode of ["solo", "daily", "dailyPuzzle", "unlimited"]) {
+  for (const mode of ["solo", "daily", "dailyPuzzle"]) {
     keys.push(`lobby.${mode}.title`, `lobby.${mode}.description`, `lobby.${mode}.cta`, `lobby.${mode}.note`);
   }
   keys.push("title", "description", "back", "loading", "unavailable");
@@ -160,10 +156,14 @@ test("existing routes remain available for bookmarks", () => {
 
 // ── Daily and unlimited puzzles reuse the enforced system ──────────────────
 
-test("the new puzzle lobbies reuse the server-authoritative puzzle system", () => {
+test("the daily puzzle uses the ordered multi-step server system", () => {
   const route = read(PUZZLE_ROUTE);
+  assert.match(route, /getDailyPuzzleSteps/);
+  assert.match(route, /dailyPuzzleStepFromKey/);
+  assert.match(route, /PUZZLE_STEP_LOCKED/);
+  assert.match(route, /totalSteps/);
+  assert.match(route, /nextStep/);
   assert.match(route, /onConflictDoNothing/);
-  assert.match(route, /consumePuzzleAllowance/);
   assert.match(route, /alreadyPlayed/);
   // The answer and the position after it travel ONLY once a move is recorded.
   assert.match(route, /answerMove: attempt \? puzzle\.answer : null/);
@@ -171,16 +171,9 @@ test("the new puzzle lobbies reuse the server-authoritative puzzle system", () =
   // A submitted move is engine-validated before it is judged or recorded.
   assert.match(route, /applyMove\(\{ state: puzzle\.state, move \}\)/);
   assert.match(route, /verifyPuzzleMove/);
-  assert.match(route, /status: 429/);
-  assert.match(route, /PUZZLE_LIMIT_REACHED/);
-
-  const allowance = read(ALLOWANCE);
-  assert.match(allowance, /FREE_PUZZLES_PER_DAY = 5/);
-  assert.match(allowance, /on conflict \("user_id", "day_key"\)/);
-  assert.match(allowance, /"used" < \$\{limit\}/);
+  assert.match(route, /status: 409/);
 
   assert.match(read("src/app/play/daily-puzzle/play/page.tsx"), /SolitairePuzzle kind="daily"/);
-  assert.match(read("src/app/play/unlimited-puzzles/play/page.tsx"), /SolitairePuzzle kind="unlimited"/);
   assert.match(read("src/components/play/LobbyStatus.tsx"), /\/api\/solitaire\/puzzle\?kind=/);
 });
 

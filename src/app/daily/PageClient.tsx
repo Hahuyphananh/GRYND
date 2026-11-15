@@ -213,10 +213,10 @@ export default function DailyPageClient() {
         <DailyArchivePanel />
 
         {/* PUZZLES ARE NOT THIS PAGE. The daily challenge is a full Klondike
-            deal; a puzzle is one position with one answer. They used to share
-            this page, which made "daily" ambiguous — a solver looking for the
-            day's puzzle found it wedged above the game. Each now has its own
-            page, and these two links are the only mention of them here. */}
+            deal; the daily puzzle is a three-step best-move run. They used to
+            share this page, which made "daily" ambiguous — a solver looking for
+            the day's puzzle found it wedged above the game. Each now has its own
+            page, and this link is the only mention of the puzzle here. */}
         <section aria-labelledby="daily-puzzles-heading" className="mt-10">
           <div className="flex items-center gap-3">
             <h2
@@ -228,9 +228,9 @@ export default function DailyPageClient() {
             <span className="h-px flex-1 bg-white/10" />
           </div>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/55">
-            Puzzles are a different game from the daily challenge: one verified
-            position, one answer, one official attempt. They live on their own
-            pages.
+            The daily puzzle is a different game from the daily challenge:
+            three verified positions from one deal, with one mistake ending the
+            run. It lives on its own page.
           </p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <Link
@@ -242,19 +242,7 @@ export default function DailyPageClient() {
                 Daily puzzle
               </p>
               <p className="mt-1 text-sm text-white/70">
-                Today&apos;s position. Free for everyone.
-              </p>
-            </Link>
-            <Link
-              href="/play/unlimited-puzzles/play"
-              data-testid="daily-to-unlimited-puzzles"
-              className="rounded-2xl border border-fuchsia-400/25 bg-fuchsia-400/[0.05] p-4 transition hover:border-fuchsia-300/50 hover:bg-fuchsia-400/10"
-            >
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-300">
-                Unlimited puzzles
-              </p>
-              <p className="mt-1 text-sm text-white/70">
-                Fresh positions to practise. 5 free a day.
+                Three steps, one run. Free for everyone.
               </p>
             </Link>
           </div>

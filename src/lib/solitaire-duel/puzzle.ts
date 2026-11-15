@@ -4,9 +4,14 @@
 //
 // A puzzle is a REAL mid-game Klondike position taken from a verified winning
 // line: the player is shown the whole board and plays the move themselves, and
-// the engine-proved next move of the line is the only legal move that turns a
-// face-down card over. The answer never leaves this module until the player has
-// moved.
+// the engine-proved next move of the line must be the position's unique best
+// legal move. It may reveal a card, build a run, reach the foundation or draw —
+// the puzzle asks for the best move, not always a flip. The answer never leaves
+// this module until the player has moved.
+//
+// The DAILY puzzle is a three-step run over one deal. Each step has its own
+// `daily:YYYY-MM-DD:N` key (step 1 keeps the legacy `daily:YYYY-MM-DD` key), so
+// the attempt table's one-row-per-key rule gives each step one official answer.
 //
 // The pure builder and the answer check now live in `./puzzleCore.ts`, which has
 // no Node imports so the browser can build and check an offline practice
@@ -27,6 +32,7 @@ import {
   MAX_UINT32,
   UNLIMITED_PUZZLE_PREFIX,
   buildPuzzleForSeed,
+  buildPuzzleStepsForSeed,
   dailyPuzzleDateKey,
   dailyPuzzleKey,
   puzzleSeedFromKey,
@@ -42,6 +48,7 @@ export {
   UNLIMITED_PUZZLE_PREFIX,
   buildOfflinePuzzle,
   buildPuzzleForSeed,
+  buildPuzzleStepsForSeed,
   dailyPuzzleDateKey,
   dailyPuzzleKey,
   moveSignature,
@@ -58,7 +65,11 @@ export {
 
 const MAX_CACHED_PUZZLES = 64;
 
+/** How many best-move steps one daily run contains. */
+export const DAILY_PUZZLE_STEPS = 3;
+
 const cache = new Map<string, Puzzle>();
+const dailyCache = new Map<string, Puzzle[]>();
 
 function remember(puzzle: Puzzle): Puzzle {
   cache.set(puzzle.key, puzzle);
@@ -67,6 +78,34 @@ function remember(puzzle: Puzzle): Puzzle {
     if (oldest !== undefined) cache.delete(oldest);
   }
   return puzzle;
+}
+
+function rememberDaily(dateKey: string, steps: Puzzle[]): Puzzle[] {
+  dailyCache.set(dateKey, steps);
+  if (dailyCache.size > MAX_CACHED_PUZZLES) {
+    const oldest = dailyCache.keys().next().value;
+    if (oldest !== undefined) dailyCache.delete(oldest);
+  }
+  return steps;
+}
+
+/** The key for one step of a daily run. Step 1 keeps the legacy key. */
+export function dailyPuzzleStepKey(dateKey: string, step: number): string {
+  return step <= 1 ? dailyPuzzleKey(dateKey) : `${dailyPuzzleKey(dateKey)}:${step}`;
+}
+
+/** The step number encoded in a daily key, or null when it is not this date. */
+export function dailyPuzzleStepFromKey(
+  key: string,
+  dateKey: string,
+): number | null {
+  if (key === dailyPuzzleKey(dateKey)) return 1;
+  const prefix = `${dailyPuzzleKey(dateKey)}:`;
+  if (!key.startsWith(prefix)) return null;
+  const raw = key.slice(prefix.length);
+  if (!/^[1-9]\d?$/.test(raw)) return null;
+  const step = Number(raw);
+  return step >= 1 && step <= DAILY_PUZZLE_STEPS ? step : null;
 }
 
 /** The candidate seed for one attempt at a day's puzzle. */
@@ -78,25 +117,39 @@ export function dailyPuzzleCandidateSeed(dateKey: string, attempt: number): numb
 }
 
 /**
- * The one puzzle for a UTC date, identical for every player.
+ * The three-step puzzle for a UTC date, identical for every player.
  *
  * Candidate seeds are derived from the date, so a retry on a deal that has no
  * usable position cannot make the puzzle different for the next player: the
  * same date walks the same candidates in the same order.
  */
-export function getDailyPuzzle(dateKey: string): Puzzle {
-  const key = dailyPuzzleKey(dateKey);
-  const cached = cache.get(key);
+export function getDailyPuzzleSteps(dateKey: string): Puzzle[] {
+  const cached = dailyCache.get(dateKey);
   if (cached) return cached;
 
   for (let attempt = 0; attempt < CANDIDATE_ATTEMPTS; attempt += 1) {
     const seed = dailyPuzzleCandidateSeed(dateKey, attempt);
-    const puzzle = buildPuzzleForSeed(seed);
-    if (!puzzle) continue;
-    return remember({ ...puzzle, key, kind: "daily", dateKey });
+    const steps = buildPuzzleStepsForSeed(seed, DAILY_PUZZLE_STEPS);
+    if (!steps) continue;
+    return rememberDaily(
+      dateKey,
+      steps.map((step, index) => ({
+        ...step,
+        key: dailyPuzzleStepKey(dateKey, index + 1),
+        kind: "daily",
+        dateKey,
+      })),
+    );
   }
 
   throw new Error(`No verified puzzle could be built for ${dateKey}`);
+}
+
+/** The first step of a day's run, kept for callers that only need one board. */
+export function getDailyPuzzle(dateKey: string): Puzzle {
+  const first = getDailyPuzzleSteps(dateKey)[0];
+  if (!first) throw new Error(`No verified puzzle could be built for ${dateKey}`);
+  return first;
 }
 
 /**
@@ -148,9 +201,10 @@ export function puzzleForKey({
   dateKey?: string;
 }): Puzzle | null {
   if (kind === "daily") {
-    if (key !== dailyPuzzleKey(dateKey)) return null;
+    const step = dailyPuzzleStepFromKey(key, dateKey);
+    if (step === null) return null;
     try {
-      return getDailyPuzzle(dateKey);
+      return getDailyPuzzleSteps(dateKey)[step - 1] ?? null;
     } catch {
       return null;
     }

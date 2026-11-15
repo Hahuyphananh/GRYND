@@ -1034,16 +1034,24 @@ test("the public matchmaking flow is untouched by rooms", () => {
   assert.match(read("src/app/api/precision/lobbies/route.ts"), /listWaitingLobbies/);
 });
 
-test("the Friends tab keeps its tabs and gains a Challenge action", () => {
+test("the Friends tab keeps its tabs, while ranked owns the Challenge action", () => {
   const page = read("src/app/profil/PageClient.jsx");
   assert.match(page, /setActiveFriendsTab\("friends"\)/);
   assert.match(page, /setActiveFriendsTab\("invites"\)/);
   assert.match(page, /RoomsPanel friends=\{myFriends\}/);
-  assert.match(page, /ChallengeFriendDialog/);
-  assert.match(page, /profile\.friends\.challenge/);
+  // The profile no longer hosts its own challenge button or dialog.
+  assert.doesNotMatch(page, /ChallengeFriendDialog/);
+  assert.doesNotMatch(page, /profile\.friends\.challenge/);
   // The friendship APIs the tab already used are still the ones it calls.
   assert.match(page, /"\/api\/friends\/list"/);
   assert.match(page, /"\/api\/friends\/invites"/);
+
+  const lobby = read("src/components/solitaire-duel/SolitaireLobby.tsx");
+  assert.match(lobby, /<RankedFriendsPanel \/>/);
+  const ranked = read("src/components/solitaire-duel/RankedFriendsPanel.tsx");
+  assert.match(ranked, /\/api\/friends\/list/);
+  assert.match(ranked, /\/api\/rooms\/challenge/);
+  assert.match(ranked, /gameKey: "solitaire-duel"/);
 });
 
 test("the realtime signal is an accelerator with a polling backstop", () => {

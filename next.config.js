@@ -151,6 +151,19 @@ const nextConfig = {
 
   async redirects() {
     return [
+      // Unlimited puzzles were retired in favour of the harder, three-step
+      // daily puzzle. Old bookmarks and shared links land on the daily run;
+      // the play sub-route goes straight into the board.
+      {
+        source: "/play/unlimited-puzzles",
+        destination: "/play/daily-puzzle",
+        permanent: true,
+      },
+      {
+        source: "/play/unlimited-puzzles/:path*",
+        destination: "/play/daily-puzzle/play",
+        permanent: true,
+      },
       // The GRYND Shop is gone — there is no token currency and no catalogue.
       // The only paid product is the GRYND PRO membership, so the legacy Shop
       // URL permanently redirects to its new upgrade experience (old emails,

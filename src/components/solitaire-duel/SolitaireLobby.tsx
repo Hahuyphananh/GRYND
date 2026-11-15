@@ -32,7 +32,7 @@ import Link from "next/link";
 import { IconCards } from "@tabler/icons-react";
 
 import PvpLobbyPage, { PvpLobby } from "../lobby/PvpLobby";
-import FriendChallengePanel from "./FriendChallengePanel";
+import RankedFriendsPanel from "./RankedFriendsPanel";
 import { useMatchRouter } from "../../hooks/useMatchRouter";
 
 const LOBBY_POLL_MS = 15_000;
@@ -446,9 +446,10 @@ export default function SolitaireLobby({ variant = "home" }: { variant?: "home" 
     children: (
       <>
         {queueStatus}
-        {/* Ranked is one way to find an opponent; a private link is the other.
-            The panel mints a lobby the public queue can never join. */}
-        <FriendChallengePanel />
+        {/* Ranked is one way to find an opponent; a private room against a
+            friend is the other. The friends tab searches the caller's real
+            friends list and creates the room through /api/rooms/challenge. */}
+        <RankedFriendsPanel />
       </>
     ),
   };
