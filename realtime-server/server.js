@@ -7,26 +7,17 @@ const helmet = require("helmet");
 const cors = require("cors");
 const { Server } = require("socket.io");
 const { verifyToken } = require("@clerk/backend");
+const { normalizeOrigin, parseAllowedOrigins } = require("./corsOrigins");
 
 const app = express();
 
 const PORT = Number(process.env.PORT || 3001);
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY;
 
-function normalizeOrigin(origin) {
-  return String(origin || "")
-    .trim()
-    .replace(/\/$/, "");
-}
-
-function getAllowedOrigins() {
-  return String(process.env.CLIENT_URL || "")
-    .split(",")
-    .map((origin) => normalizeOrigin(origin))
-    .filter(Boolean);
-}
-
-const allowedOrigins = getAllowedOrigins();
+// `CLIENT_URL` may name either host (apex or www); the allow-list carries both
+// forms, because the browser sends whichever one the player is on and CORS
+// compares origins exactly. See ./corsOrigins.js.
+const allowedOrigins = parseAllowedOrigins(process.env.CLIENT_URL);
 
 if (allowedOrigins.length === 0) {
   throw new Error("Missing CLIENT_URL in realtime-server/.env");
@@ -203,6 +194,12 @@ io.use(async (socket, next) => {
 });
 
 io.use(async (socket, next) => {
+  // A guest was already authenticated by the middleware above (the HMAC-signed
+  // cookie is its identity). Without this, the no-token check below rejected
+  // EVERY guest socket right after that check had passed, so a signed-out
+  // visitor's realtime connection could never complete.
+  if (socket.data.isGuest) return next();
+
   try {
     const token = socket.handshake.auth?.token;
 

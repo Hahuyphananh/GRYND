@@ -87,6 +87,10 @@ test("the guest middleware runs before Clerk and defers when a token exists", ()
   const clerkMiddleware = server.indexOf("verifyToken(token,");
   assert.ok(guestMiddleware > 0 && clerkMiddleware > guestMiddleware);
   assert.match(server, /if \(socket\.handshake\.auth\?\.token\) return next\(\);/);
+  // …and the Clerk middleware must let the already-authenticated guest through.
+  // Without this the no-token check rejected every guest right after the
+  // cookie had been verified, so guest realtime could never connect.
+  assert.match(server, /if \(socket\.data\.isGuest\) return next\(\);/);
 });
 
 test("a guest socket may only join dominoes match rooms, with a join budget", () => {

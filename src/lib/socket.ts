@@ -1,4 +1,5 @@
 import { io, type Socket } from "socket.io-client";
+import { resolveSocketUrl } from "./socketUrl";
 
 export type RealtimeSocket = Socket;
 
@@ -16,7 +17,14 @@ function getSocketUrl(): string | null {
     return null;
   }
 
-  return socketUrl.trim().replace(/\/$/, "");
+  // Same-origin whenever the configured host is this page's www/apex twin.
+  // The app is reachable as both, and dialing the other one turns a routine
+  // handshake into a CORS decision — which is exactly what broke realtime on
+  // the www host. See ./socketUrl.ts.
+  const pageOrigin =
+    typeof window !== "undefined" ? window.location.origin : null;
+
+  return resolveSocketUrl(socketUrl, pageOrigin);
 }
 
 export async function createSocketConnection(
