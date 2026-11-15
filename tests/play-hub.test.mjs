@@ -165,7 +165,12 @@ test("the new puzzle lobbies reuse the server-authoritative puzzle system", () =
   assert.match(route, /onConflictDoNothing/);
   assert.match(route, /consumePuzzleAllowance/);
   assert.match(route, /alreadyPlayed/);
-  assert.match(route, /answer: attempt \? puzzle\.answer : null/);
+  // The answer and the position after it travel ONLY once a move is recorded.
+  assert.match(route, /answerMove: attempt \? puzzle\.answer : null/);
+  assert.match(route, /solution: attempt \? puzzle\.answerBoard : null/);
+  // A submitted move is engine-validated before it is judged or recorded.
+  assert.match(route, /applyMove\(\{ state: puzzle\.state, move \}\)/);
+  assert.match(route, /verifyPuzzleMove/);
   assert.match(route, /status: 429/);
   assert.match(route, /PUZZLE_LIMIT_REACHED/);
 

@@ -2,6 +2,7 @@ import PageClient from "./PageClient";
 import AdSenseScript from "../components/AdSenseScript";
 import AdSlot from "../components/AdSlot";
 import HilltopBanner from "../components/ads/HilltopBanner";
+import SocialProof from "../components/home/SocialProof";
 import { ogImageUrl, SITE_URL } from "../lib/ogImages";
 import { getReviewAggregate } from "../lib/reviews";
 import { buildAppJsonLd } from "../lib/reviewJsonLd";
@@ -73,6 +74,10 @@ export default async function Page() {
           above the footer — never over the hero, nav or a control. */}
       <PageClient
         adSlot={<AdSlot placement="home" />}
+        // The Trustpilot Review Collector TrustBox and the Product Hunt badge.
+        // Passed in as a child, like the ad slots, so it is rendered on the
+        // server and lands inside the page's content column above the footer.
+        socialProof={<SocialProof />}
         // A second, independent provider. It carries its own server-side
         // entitlement check and its own placement allow-list, and it renders
         // inside the page's content column — never over the hero or a card.

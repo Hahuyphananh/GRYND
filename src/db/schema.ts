@@ -4356,7 +4356,13 @@ export const solitairePuzzleAttempts = pgTable(
     kind: varchar("kind", { length: 16 }).notNull(),
     // 'daily:YYYY-MM-DD' | 'unlimited:<seed>' — enough to rebuild the puzzle.
     puzzleKey: varchar("puzzle_key", { length: 80 }).notNull(),
-    choice: varchar("choice", { length: 1 }).notNull(),
+    // Legacy A/B/C answer from the three-choice puzzle UI. Null for moves
+    // played on the board; kept nullable until the contract migration drops it
+    // (migration 0254 is the expand step — the release pipeline never runs
+    // migrations, so the live version must keep working while it is applied).
+    choice: varchar("choice", { length: 1 }),
+    // The move the player played, as JSON (the engine's SolitaireMove union).
+    move: varchar("move", { length: 160 }),
     correct: boolean("correct").notNull().default(false),
     elapsedMs: integer("elapsed_ms").notNull().default(0),
     createdAt: timestamp("created_at").notNull().defaultNow(),

@@ -3,12 +3,20 @@
 // THE BROWSER-SAFE HALF OF THE SOLITAIRE PUZZLE.
 //
 // A puzzle is a REAL mid-game Klondike position taken from a verified winning
-// line: the player sees the position and three moves, and exactly one of them
-// turns a face-down card face up and is the next move of the deal's engine-proved
-// line.
+// line. The player is shown the whole board — stock, waste, foundations and the
+// seven columns — and plays the move themselves, exactly as in a game: drag a
+// card (or a run) onto a pile, click a card then a target, or click the stock to
+// turn the next waste card over.
+//
+// Exactly ONE legal move in the position turns a face-down card face up, and
+// that move is the next move of the deal's engine-proved winning line. Every
+// other legal move — including drawing — leaves every hidden card hidden, which
+// is what makes the puzzle have a single defensible answer rather than an
+// opinion: the answer is not "our favourite move", it is the only move that
+// makes progress, and it is the one the solver's line plays.
 //
 // This module holds everything that needs no server: the puzzle types, the
-// deterministic position builder, the answer check, and a local builder for
+// deterministic position builder, the move check, and a local builder for
 // offline unlimited practice. It imports only the pure engine (`deck`, `rules`,
 // `ai`, `solvable`), so a client component can generate and verify a position
 // with no network and no Node `crypto`.
@@ -18,43 +26,45 @@
 // API routes and tests keep their imports.
 //
 // DETERMINISM: a puzzle is a pure function of a 32-bit seed. The same seed always
-// produces the same position, the same three choices and the same answer.
+// produces the same position, the same answer move and the same revealed card.
 
 import { legalMoves } from "./ai";
 import { dealFromSeed } from "./deck";
-import { applyMove, initialStateFromDeal } from "./rules";
+import { applyMove, initialStateFromDeal, viewForState } from "./rules";
 import { solveDealLine } from "./solvable";
-import type { Card, SolitaireMove, SolitaireState, Suit } from "./types";
+import type { Card, SolitaireMove, SolitaireState, SolitaireView, Suit } from "./types";
 
 export type PuzzleKind = "daily" | "unlimited";
-export type PuzzleChoiceLabel = "A" | "B" | "C";
 
-const CHOICE_LABELS: readonly PuzzleChoiceLabel[] = ["A", "B", "C"];
+/** The card — and the column it sits in — the winning move turns over. */
+export type PuzzleReveal = { column: number; card: Card };
 
-export type PuzzleCardView = { suit: Suit; rank: number };
-
-export type PuzzlePositionView = {
-  /** `null` is a face-down slot — it carries no identity, only a position. */
-  columns: (PuzzleCardView | null)[][];
-  stockCount: number;
-  wasteTop: PuzzleCardView | null;
-  foundations: Record<Suit, number>;
-  faceDownRemaining: number;
-};
-
-export type PuzzleChoiceView = { label: PuzzleChoiceLabel; move: SolitaireMove };
-
-/** Everything the browser may know before it answers. Never the answer. */
+/**
+ * Everything the browser may know before it plays. Never the answer, never the
+ * server's state (face-down identities and the stock order stay on the server).
+ */
 export type PublicPuzzle = {
   key: string;
   kind: PuzzleKind;
   dateKey: string | null;
-  position: PuzzlePositionView;
-  choices: PuzzleChoiceView[];
+  /** A playable board: exactly what a duel seat would be shown. */
+  board: SolitaireView;
 };
 
-/** The server's puzzle. `answer` must never be serialised before submission. */
-export type Puzzle = PublicPuzzle & { seed: number; answer: PuzzleChoiceLabel };
+/**
+ * The server's puzzle. `state`, `answer`, `answerBoard` and `answerReveal` must
+ * never be serialised before the player has moved (see `publicPuzzle`).
+ */
+export type Puzzle = PublicPuzzle & {
+  seed: number;
+  /** The authoritative position — needed to validate the move the player sends. */
+  state: SolitaireState;
+  /** The next move of the proven winning line: the only move that reveals a card. */
+  answer: SolitaireMove;
+  /** The board after that move, so a solution can be shown once it is judged. */
+  answerBoard: SolitaireView;
+  answerReveal: PuzzleReveal;
+};
 
 export const DAILY_PUZZLE_PREFIX = "daily:";
 export const UNLIMITED_PUZZLE_PREFIX = "unlimited:";
@@ -62,6 +72,9 @@ export const UNLIMITED_PUZZLE_PREFIX = "unlimited:";
 export const MAX_UINT32 = 0xffff_ffff;
 /** How many seeds an unlimited key may try before giving up. */
 export const CANDIDATE_ATTEMPTS = 6;
+
+const SUITS: readonly Suit[] = ["spades", "hearts", "diamonds", "clubs"];
+const TABLEAU_COLUMNS = 7;
 
 /** The UTC calendar day a daily puzzle belongs to (`YYYY-MM-DD`). */
 export function dailyPuzzleDateKey(now: Date = new Date()): string {
@@ -81,25 +94,79 @@ export function puzzleSeedFromKey(key: string): number | null {
   return Number.isInteger(seed) && seed >= 0 && seed <= MAX_UINT32 ? seed : null;
 }
 
-function sameCard(a: Card | null | undefined, b: Card | null | undefined): boolean {
-  return Boolean(a && b && a.rank === b.rank && a.suit === b.suit);
+// ── Moves ─────────────────────────────────────────────────────────────────
+
+function isInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value);
 }
 
-/** True when a tableau move carries exactly the top card of its column. */
-function isSingleCardMove(state: SolitaireState, move: SolitaireMove): boolean {
-  if (move.kind !== "tableau-to-tableau") return false;
-  if (!Number.isInteger(move.fromColumn) || !Number.isInteger(move.toColumn)) return false;
-  const column = state.tableau[move.fromColumn] ?? [];
-  const top = column[column.length - 1];
-  return Boolean(top?.faceUp && sameCard(top.card, move.card));
+function isColumn(value: unknown): value is number {
+  return isInteger(value) && value >= 0 && value < TABLEAU_COLUMNS;
 }
 
-function moveSignature(move: SolitaireMove): string {
+function isSuit(value: unknown): value is Suit {
+  return typeof value === "string" && (SUITS as readonly string[]).includes(value);
+}
+
+function isCard(value: unknown): value is Card {
+  if (!value || typeof value !== "object") return false;
+  const card = value as { suit?: unknown; rank?: unknown };
+  return isSuit(card.suit) && isInteger(card.rank) && card.rank >= 1 && card.rank <= 13;
+}
+
+/**
+ * A move this module will accept from a client, or null.
+ *
+ * Every field is checked here, so a malformed body can never reach
+ * `applyMove` (which would throw on an undefined card) and a made-up move kind
+ * is refused before anything is judged.
+ */
+export function parsePuzzleMove(value: unknown): SolitaireMove | null {
+  if (!value || typeof value !== "object") return null;
+  const move = value as Record<string, unknown>;
+  switch (move.kind) {
+    case "draw":
+      return { kind: "draw" };
+    case "waste-to-foundation":
+      return isSuit(move.suit) ? { kind: "waste-to-foundation", suit: move.suit } : null;
+    case "waste-to-tableau":
+      return isColumn(move.toColumn)
+        ? { kind: "waste-to-tableau", toColumn: move.toColumn }
+        : null;
+    case "tableau-to-foundation":
+      return isColumn(move.fromColumn) && isCard(move.card) && isSuit(move.suit)
+        ? {
+            kind: "tableau-to-foundation",
+            fromColumn: move.fromColumn,
+            card: move.card,
+            suit: move.suit,
+          }
+        : null;
+    case "tableau-to-tableau":
+      return isColumn(move.fromColumn) && isCard(move.card) && isColumn(move.toColumn)
+        ? {
+            kind: "tableau-to-tableau",
+            fromColumn: move.fromColumn,
+            card: move.card,
+            toColumn: move.toColumn,
+          }
+        : null;
+    case "foundation-to-tableau":
+      return isSuit(move.suit) && isColumn(move.toColumn)
+        ? { kind: "foundation-to-tableau", suit: move.suit, toColumn: move.toColumn }
+        : null;
+    default:
+      return null;
+  }
+}
+
+/** A stable identity for a move — what the answer check and the DB row store. */
+export function moveSignature(move: SolitaireMove): string {
   switch (move.kind) {
     case "tableau-to-tableau":
       return `t2t:${move.fromColumn}:${move.toColumn}:${move.card.suit}:${move.card.rank}`;
     case "tableau-to-foundation":
-      return `t2f:${move.fromColumn}:${move.suit}`;
+      return `t2f:${move.fromColumn}:${move.card.suit}:${move.card.rank}:${move.suit}`;
     case "waste-to-tableau":
       return `w2t:${move.toColumn}`;
     case "waste-to-foundation":
@@ -111,38 +178,53 @@ function moveSignature(move: SolitaireMove): string {
   }
 }
 
-function revealedBy(state: SolitaireState, move: SolitaireMove): number {
-  const applied = applyMove({ state, move });
-  return applied.ok ? applied.revealed.length : -1;
+function sameCard(a: Card | null | undefined, b: Card | null | undefined): boolean {
+  return Boolean(a && b && a.rank === b.rank && a.suit === b.suit);
 }
 
-function cardView(card: Card | null | undefined): PuzzleCardView | null {
-  return card ? { suit: card.suit, rank: card.rank } : null;
+/**
+ * The column whose bottom card this move turned face up.
+ *
+ * Read from the two boards rather than assumed: `applyMove` flips the newly
+ * exposed bottom of the source column, so the column is whichever one went from
+ * a face-down bottom to a face-up bottom carrying `card`.
+ */
+function revealedColumn(
+  before: SolitaireState,
+  after: SolitaireState,
+  card: Card,
+): number | null {
+  for (let column = 0; column < after.tableau.length; column += 1) {
+    const wasHidden = !before.tableau[column]?.[0]?.faceUp;
+    const now = after.tableau[column]?.[0];
+    if (wasHidden && now?.faceUp && sameCard(now.card, card)) return column;
+  }
+  return null;
 }
 
-function positionView(state: SolitaireState): PuzzlePositionView {
-  let faceDownRemaining = 0;
-  const columns = state.tableau.map((column) =>
-    column.map((pile) => {
-      if (!pile.faceUp || !pile.card) {
-        faceDownRemaining += 1;
-        return null;
-      }
-      return cardView(pile.card);
-    }),
-  );
-  return {
-    columns,
-    stockCount: state.stock.length,
-    wasteTop: cardView(state.waste[state.waste.length - 1]),
-    foundations: {
-      spades: state.foundations.spades.length,
-      hearts: state.foundations.hearts.length,
-      diamonds: state.foundations.diamonds.length,
-      clubs: state.foundations.clubs.length,
-    },
-    faceDownRemaining,
-  };
+type RevealingMove = { move: SolitaireMove; revealed: Card[] };
+
+/**
+ * Every legal move from `state` that turns EXACTLY one face-down card over.
+ *
+ * The whole puzzle rests on this list having one entry. `legalMoves` is the
+ * engine's own enumerator (the same one the bot uses), and each candidate is
+ * re-applied through `applyMove` before it is believed, so a move here is a
+ * move the engine accepts.
+ */
+function revealingMoves(state: SolitaireState): RevealingMove[] {
+  const found: RevealingMove[] = [];
+  const seen = new Set<string>();
+  for (const move of legalMoves(state)) {
+    const signature = moveSignature(move);
+    if (seen.has(signature)) continue;
+    seen.add(signature);
+    const applied = applyMove({ state, move });
+    if (applied.ok && applied.revealed.length === 1) {
+      found.push({ move, revealed: applied.revealed });
+    }
+  }
+  return found;
 }
 
 /**
@@ -152,9 +234,9 @@ function positionView(state: SolitaireState): PuzzlePositionView {
  * The contract, all checked through the engine rather than assumed:
  *   1. the deal has a verified winning line (`solveDealLine`),
  *   2. the position is reached by replaying a prefix of that line,
- *   3. the answer is the next move of the line, a single-card tableau move that
- *      turns exactly one card face up,
- *   4. both decoys are legal moves that turn NO card face up.
+ *   3. the line's next move turns exactly one card face up,
+ *   4. NO other legal move turns a card face up — so the answer is the only
+ *      progress-making move on the board, not merely our preferred one.
  */
 export function buildPuzzleForSeed(seed: number): Puzzle | null {
   if (!Number.isInteger(seed) || seed < 0 || seed > MAX_UINT32) return null;
@@ -173,53 +255,48 @@ export function buildPuzzleForSeed(seed: number): Puzzle | null {
   }
 
   for (let index = 1; index < line.length - 1; index += 1) {
-    const answerMove = line[index];
-    if (!isSingleCardMove(states[index], answerMove)) continue;
-    if (revealedBy(states[index], answerMove) !== 1) continue;
+    const before = states[index];
+    const answer = line[index];
+    const applied = applyMove({ state: before, move: answer });
+    if (!applied.ok || applied.revealed.length !== 1) continue;
 
-    const decoys: SolitaireMove[] = [];
-    const seen = new Set<string>([moveSignature(answerMove)]);
-    for (const candidate of legalMoves(states[index])) {
-      if (decoys.length === 2) break;
-      if (seen.has(moveSignature(candidate))) continue;
-      if (revealedBy(states[index], candidate) !== 0) continue;
-      seen.add(moveSignature(candidate));
-      decoys.push(candidate);
-    }
-    if (decoys.length < 2) continue;
+    // The answer must be the ONLY move that uncovers anything. If another
+    // legal move also turns a card over, either one is defensible and there is
+    // no puzzle to solve — skip this position entirely.
+    const revealing = revealingMoves(before);
+    if (revealing.length !== 1) continue;
+    if (moveSignature(revealing[0].move) !== moveSignature(answer)) continue;
 
-    // Deterministic A/B/C order: the same seed always puts the answer in the
-    // same slot, so a rebuild for verification matches what the player saw.
-    const ordered = [answerMove, decoys[0], decoys[1]];
-    const shift = seed % 3;
-    const rotated = ordered.map((_, slot) => ordered[(slot + shift) % 3]);
-    const answerIndex = rotated.findIndex(
-      (move) => moveSignature(move) === moveSignature(answerMove),
-    );
+    const column = revealedColumn(before, applied.state, applied.revealed[0]);
+    if (column === null) continue;
 
     return {
       key: "",
       kind: "unlimited",
       dateKey: null,
       seed,
-      position: positionView(states[index]),
-      choices: rotated.map((move, slot) => ({ label: CHOICE_LABELS[slot], move })),
-      answer: CHOICE_LABELS[answerIndex],
+      board: viewForState(before),
+      state: before,
+      answer,
+      answerBoard: viewForState(applied.state),
+      answerReveal: { column, card: applied.revealed[0] },
     };
   }
 
   return null;
 }
 
-/** Strip the answer so a route can serialise a puzzle safely. */
+/** Strip the answer and the server's state so a route can serialise a puzzle. */
 export function publicPuzzle(puzzle: Puzzle): PublicPuzzle {
-  const { key, kind, dateKey, position, choices } = puzzle;
-  return { key, kind, dateKey, position, choices };
+  const { key, kind, dateKey, board } = puzzle;
+  return { key, kind, dateKey, board };
 }
 
-/** True when `label` is the puzzle's verified answer. */
-export function verifyPuzzleChoice(puzzle: Pick<Puzzle, "answer">, label: unknown): boolean {
-  return label === puzzle.answer;
+/** True when `move` is the puzzle's verified answer. */
+export function verifyPuzzleMove(puzzle: Pick<Puzzle, "answer">, move: unknown): boolean {
+  const parsed = parsePuzzleMove(move);
+  if (!parsed) return false;
+  return moveSignature(parsed) === moveSignature(puzzle.answer);
 }
 
 /**

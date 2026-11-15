@@ -2,31 +2,50 @@
 
 // src/components/solitaire-duel/SolitairePuzzle.tsx
 //
-// THE PUZZLE CARD — one verified Klondike position, three moves, one that turns
-// a face-down card and stays on the deal's proven winning line.
+// THE PUZZLE — a real Klondike board, played by hand, coached by Glitch.
 //
-// The browser never receives the answer before it answers: the API strips it
-// until a submission has been recorded. A daily puzzle locks itself after the
-// one allowed answer; an unlimited puzzle shows the free-plan count and points
-// at GRYND PRO when the day's five are spent.
+// There are no multiple-choice buttons any more. The browser receives a
+// playable `SolitaireView` of a real mid-game position taken from a verified
+// winning deal, and the player moves a card exactly as they would in a game:
+// drag it (or a face-up run) onto a pile, click it then click the target, or
+// click the stock to turn the next waste card over.
+//
+// Every click goes through `SolitaireBoard` → `interactions.ts` → the engine's
+// own validators, so a move this component sends is a move the server accepts.
+// The parent sends it and renders the server's verdict; it never decides the
+// answer, and the answer is not in the initial payload.
+//
+// Glitch sits in the side column and explains the verdict with facts: what the
+// winning move does, which card it uncovers, and why what was played did not
+// (a draw uncovers nothing; a legal placement that leaves every hidden card
+// hidden is still not the move). After the move is judged the board shows the
+// position AFTER the winning move, the way a chess puzzle shows the solution.
+//
+// OFFLINE: the unlimited puzzle is still playable with no network — it is built
+// and checked locally with the same pure verifier — and nothing is recorded.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
+import SolitaireBoard from "./SolitaireBoard";
+import GlitchSay from "../mascot/GlitchSay";
 import { isOfflineError } from "../../hooks/useOnlineStatus";
 import {
   buildOfflinePuzzle,
   publicPuzzle,
   randomPuzzleSeed,
-  verifyPuzzleChoice,
-  type PuzzleCardView,
-  type PuzzleChoiceLabel,
-  type PuzzleChoiceView,
-  type PuzzlePositionView,
+  verifyPuzzleMove,
   type PublicPuzzle,
+  type Puzzle,
+  type PuzzleReveal,
 } from "../../lib/solitaire-duel/puzzleCore";
-import type { SolitaireMove } from "../../lib/solitaire-duel/types";
-import { rankLabel, suitGlyph } from "./PlayingCard";
+import {
+  puzzleCardText,
+  puzzleFeedback,
+  puzzleMoveText,
+} from "../../lib/solitaire-duel/puzzleFeedback";
+import type { SolitaireMove, SolitaireView } from "../../lib/solitaire-duel/types";
+import type { GlitchExpression } from "../../lib/mascot/glitchAssets";
 
 type Allowance = {
   unlimited: boolean;
@@ -37,120 +56,45 @@ type Allowance = {
   resetsAt: string;
 };
 
+type Attempt = {
+  correct: boolean;
+  move?: SolitaireMove | null;
+  answeredAt?: string | null;
+} | null;
+
 type PuzzleData = PublicPuzzle & {
-  answer?: PuzzleChoiceLabel | null;
-  attempt?: { choice: string; correct: boolean; answeredAt: string | null } | null;
+  attempt?: Attempt;
+  answerMove?: SolitaireMove | null;
+  answerReveal?: PuzzleReveal | null;
+  solution?: SolitaireView | null;
   allowance?: Allowance | null;
 };
 
-type AnswerState = {
+/** One judged move: what was played, what wins, and the board after it. */
+type Judgement = {
   correct: boolean;
-  answer: PuzzleChoiceLabel | null;
-  choice: string;
+  playedMove: SolitaireMove;
+  answer: SolitaireMove;
+  answerReveal: PuzzleReveal | null;
+  solution: SolitaireView | null;
 };
+
+type GlitchLine = { expression: GlitchExpression; message: string };
 
 type Props = { kind: "daily" | "unlimited" };
 
-function cardText(card: { suit: string; rank: number }): string {
-  return `${rankLabel(card.rank)}${suitGlyph(card.suit)}`;
-}
+const OPENING_LINE =
+  "Your move. Play the one that turns a face-down card over — drag it, or click it and then click where it goes. You can click the stock to draw.";
 
-/** The human wording for a move — the same engine union the board uses. */
-function describeMove(move: SolitaireMove): { title: string; detail: string } {
-  switch (move.kind) {
-    case "tableau-to-tableau":
-      return {
-        title: `${cardText(move.card)} onto column ${move.toColumn + 1}`,
-        detail: `from column ${move.fromColumn + 1}`,
-      };
-    case "tableau-to-foundation":
-      return {
-        title: `${cardText(move.card)} to the foundation`,
-        detail: `from column ${move.fromColumn + 1}`,
-      };
-    case "waste-to-tableau":
-      return {
-        title: `The waste card onto column ${move.toColumn + 1}`,
-        detail: "from the waste",
-      };
-    case "waste-to-foundation":
-      return {
-        title: `The waste card to the ${move.suit} foundation`,
-        detail: "from the waste",
-      };
-    case "foundation-to-tableau":
-      return {
-        title: `A ${move.suit} foundation card onto column ${move.toColumn + 1}`,
-        detail: "pulling a card back down",
-      };
-    default:
-      return { title: "Draw from the stock", detail: "the stock" };
+const OFFLINE_LINE =
+  "No connection, so this one is built on your device. Same rules, same board — nothing is saved.";
+
+function hiddenCards(board: SolitaireView | null | undefined): number {
+  let count = 0;
+  for (const column of board?.tableau ?? []) {
+    for (const slot of column) if (!slot.faceUp) count += 1;
   }
-}
-
-function MiniCard({ card }: { card: PuzzleCardView }) {
-  const red = card.suit === "hearts" || card.suit === "diamonds";
-  return (
-    <div
-      className={`flex h-[52px] w-[38px] flex-col rounded-[4px] border border-black/25 bg-gradient-to-b from-white to-[#e8ecf3] px-1 pt-0.5 shadow-sm ${
-        red ? "text-[#d81f3a]" : "text-[#141a24]"
-      }`}
-    >
-      <span className="text-[11px] font-black leading-none">{rankLabel(card.rank)}</span>
-      <span className="text-[10px] leading-none">{suitGlyph(card.suit)}</span>
-    </div>
-  );
-}
-
-function MiniBack() {
-  return (
-    <div className="h-[52px] w-[38px] rounded-[4px] border border-cyan-400/25 bg-[repeating-linear-gradient(45deg,rgba(0,229,255,0.16)_0_3px,transparent_3px_6px)]" />
-  );
-}
-
-/** A small, read-only tableau. No interaction, no hidden identities. */
-function PuzzleBoard({ position }: { position: PuzzlePositionView }) {
-  const foundations = Object.values(position.foundations).reduce((sum, n) => sum + n, 0);
-  return (
-    <div className="mt-4 rounded-2xl border border-white/10 bg-[#071022] p-3">
-      <div className="flex items-start justify-center gap-2 overflow-x-auto pb-1">
-        {position.columns.map((column, index) => {
-          const height =
-            column.reduce((total, card) => total + (card ? 16 : 10), 0) + 52;
-          return (
-            <div key={index} className="flex min-w-[42px] flex-col items-center">
-              <div className="relative w-[38px]" style={{ height }}>
-                {column.length === 0 ? (
-                  <div className="h-[52px] w-[38px] rounded-[4px] border border-dashed border-white/15" />
-                ) : (
-                  column.map((card, slot) => (
-                    <div
-                      key={slot}
-                      className="absolute left-0"
-                      style={{
-                        top: column
-                          .slice(0, slot)
-                          .reduce((total, above) => total + (above ? 16 : 10), 0),
-                      }}
-                    >
-                      {card ? <MiniCard card={card} /> : <MiniBack />}
-                    </div>
-                  ))
-                )}
-              </div>
-              <span className="mt-1 text-[9px] font-bold text-white/25">{index + 1}</span>
-            </div>
-          );
-        })}
-      </div>
-      <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-white/45">
-        <span>Stock {position.stockCount}</span>
-        <span>Waste {position.wasteTop ? cardText(position.wasteTop) : "—"}</span>
-        <span>Face-down {position.faceDownRemaining}</span>
-        <span>Foundations {foundations}/52</span>
-      </div>
-    </div>
-  );
+  return count;
 }
 
 export default function SolitairePuzzle({ kind }: Props) {
@@ -159,21 +103,49 @@ export default function SolitairePuzzle({ kind }: Props) {
   const [failed, setFailed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
-  const [result, setResult] = useState<AnswerState | null>(null);
+  const [judgement, setJudgement] = useState<Judgement | null>(null);
   // True when this position was built in the tab because there is no network.
   const [offline, setOffline] = useState(false);
-  // The local position's answer. It never leaves this component, and nothing
+  const [line, setLine] = useState<GlitchLine>({
+    expression: "focused",
+    message: OPENING_LINE,
+  });
+  const [lineVersion, setLineVersion] = useState(0);
+  // The local puzzle's answer. It never leaves this component, and nothing
   // derived from it is stored.
-  const [localAnswer, setLocalAnswer] = useState<PuzzleChoiceLabel | null>(null);
+  const localRef = useRef<Puzzle | null>(null);
+
+  const announce = useCallback((next: GlitchLine) => {
+    setLine(next);
+    setLineVersion((version) => version + 1);
+  }, []);
+
+  /** The verdict, in Glitch's words, from the engine's facts. */
+  const announceJudgement = useCallback(
+    (judged: Judgement, before: SolitaireView | null) => {
+      const feedback = puzzleFeedback({
+        correct: judged.correct,
+        playedMove: judged.playedMove,
+        answer: judged.answer,
+        answerReveal: judged.answerReveal,
+        board: before,
+      });
+      announce({
+        expression: judged.correct ? "victory" : "defeat",
+        message: feedback.body,
+      });
+    },
+    [announce],
+  );
 
   // The unlimited puzzle is the offline-capable mode: a position is a pure
   // function of a seed, so the tab can build and check one with no network.
   // The daily puzzle is tied to the server's UTC day and its one recorded
-  // answer, so it stays online-only.
+  // move, so it stays online-only.
   const buildLocal = useCallback(() => {
     const local = buildOfflinePuzzle(randomPuzzleSeed());
-    setPuzzle({ ...publicPuzzle(local), answer: null, attempt: null, allowance: null });
-    setLocalAnswer(local.answer);
+    localRef.current = local;
+    setPuzzle({ ...publicPuzzle(local), attempt: null, allowance: null });
     setOffline(true);
   }, []);
 
@@ -182,11 +154,12 @@ export default function SolitairePuzzle({ kind }: Props) {
       setLoading(true);
       setFailed(false);
       setLimitReached(false);
-      setResult(null);
+      setJudgement(null);
       setOffline(false);
-      setLocalAnswer(null);
+      localRef.current = null;
+      announce({ expression: "focused", message: OPENING_LINE });
 
-      // Offline: never even attempt the request. The yield paints "Building…"
+      // Offline: never even attempt the request. The yield paints "Dealing…"
       // before the synchronous deal search runs.
       if (
         kind === "unlimited" &&
@@ -196,6 +169,7 @@ export default function SolitairePuzzle({ kind }: Props) {
         await new Promise((resolve) => setTimeout(resolve, 0));
         try {
           buildLocal();
+          announce({ expression: "focused", message: OFFLINE_LINE });
         } catch {
           setFailed(true);
         } finally {
@@ -212,7 +186,22 @@ export default function SolitairePuzzle({ kind }: Props) {
         });
         const body = await response.json().catch(() => null);
         if (!response.ok || !body?.success) throw new Error(body?.error || "Puzzle unavailable");
-        setPuzzle(body.data as PuzzleData);
+        const data = body.data as PuzzleData;
+        setPuzzle(data);
+
+        // A daily puzzle that has already been played resumes on its solution:
+        // the board shows the position after the winning move, locked.
+        if (data.attempt && data.answerMove) {
+          const judged: Judgement = {
+            correct: Boolean(data.attempt.correct),
+            playedMove: data.attempt.move ?? data.answerMove,
+            answer: data.answerMove,
+            answerReveal: data.answerReveal ?? null,
+            solution: data.solution ?? null,
+          };
+          setJudgement(judged);
+          announceJudgement(judged, data.board);
+        }
       } catch (error) {
         if ((error as Error)?.name === "AbortError") return;
         // A dropped connection or captive portal: build a local practice
@@ -224,6 +213,7 @@ export default function SolitairePuzzle({ kind }: Props) {
         ) {
           try {
             buildLocal();
+            announce({ expression: "focused", message: OFFLINE_LINE });
           } catch {
             setFailed(true);
           }
@@ -234,7 +224,7 @@ export default function SolitairePuzzle({ kind }: Props) {
         setLoading(false);
       }
     },
-    [buildLocal, kind],
+    [announce, announceJudgement, buildLocal, kind],
   );
 
   useEffect(() => {
@@ -247,83 +237,150 @@ export default function SolitairePuzzle({ kind }: Props) {
   const remaining = allowance?.unlimited ? null : allowance?.remaining ?? null;
   const outOfPuzzles = kind === "unlimited" && remaining === 0;
 
-  const answered: AnswerState | null =
-    result ??
-    (puzzle?.attempt
-      ? {
-          correct: puzzle.attempt.correct,
-          answer: puzzle.answer ?? null,
-          choice: puzzle.attempt.choice,
-        }
-      : null);
+  const board: SolitaireView | null = judgement?.solution ?? puzzle?.board ?? null;
+  const interactive =
+    Boolean(puzzle) &&
+    !loading &&
+    !failed &&
+    !judgement &&
+    !limitReached &&
+    !submitting &&
+    !outOfPuzzles;
 
-  const locked = answered !== null || outOfPuzzles || limitReached;
+  /**
+   * A move proposed by the BOARD. `SolitaireBoard` only proposes moves the
+   * engine accepts, so this is already legal; the server still re-checks it
+   * against its own position before judging or recording anything.
+   */
+  const play = useCallback(
+    async (move: SolitaireMove) => {
+      if (!puzzle || submitting || judgement || limitReached || outOfPuzzles) return;
 
-  const submit = async (choice: PuzzleChoiceLabel) => {
-    if (!puzzle || submitting || locked) return;
-    // OFFLINE: check the choice with the same pure verifier and record NOTHING.
-    // No request is attempted, and no attempt or allowance is written anywhere.
-    if (offline) {
-      if (localAnswer == null) return;
-      setResult({
-        correct: verifyPuzzleChoice({ answer: localAnswer }, choice),
-        answer: localAnswer,
-        choice,
-      });
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const response = await fetch("/api/solitaire/puzzle", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind, key: puzzle.key, choice }),
-      });
-      const body = await response.json().catch(() => null);
-
-      if (response.status === 429) {
-        if (body?.data?.allowance) {
-          setPuzzle((current) =>
-            current ? { ...current, allowance: body.data.allowance } : current,
-          );
-        }
-        setLimitReached(true);
+      // OFFLINE: judge with the same pure verifier and record NOTHING. No
+      // request is attempted, and no attempt or allowance is written anywhere.
+      if (offline) {
+        const local = localRef.current;
+        if (!local) return;
+        const judged: Judgement = {
+          correct: verifyPuzzleMove(local, move),
+          playedMove: move,
+          answer: local.answer,
+          answerReveal: local.answerReveal,
+          solution: local.answerBoard,
+        };
+        setJudgement(judged);
+        announceJudgement(judged, local.board);
         return;
       }
-      if (!response.ok || !body?.success) throw new Error(body?.error || "Submission failed");
 
-      setResult({
-        correct: Boolean(body.data.correct),
-        answer: (body.data.answer as PuzzleChoiceLabel) ?? null,
-        choice,
-      });
-      if (body.data.allowance) {
-        setPuzzle((current) =>
-          current ? { ...current, allowance: body.data.allowance } : current,
-        );
+      setSubmitting(true);
+      try {
+        const response = await fetch("/api/solitaire/puzzle", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kind, key: puzzle.key, move }),
+        });
+        const body = await response.json().catch(() => null);
+
+        if (response.status === 429) {
+          if (body?.data?.allowance) {
+            setPuzzle((current) =>
+              current ? { ...current, allowance: body.data.allowance } : current,
+            );
+          }
+          setLimitReached(true);
+          announce({
+            expression: "focused",
+            message:
+              "You have used all five free puzzles today. GRYND PRO plays them without a limit.",
+          });
+          return;
+        }
+
+        // The board only proposes engine-legal moves, so a 422 means the
+        // position moved under us — nothing was judged and nothing was spent.
+        if (response.status === 422) {
+          announce({
+            expression: "surprised",
+            message:
+              "That move is not legal in this position, so nothing was judged. Pick a card and a pile that accepts it.",
+          });
+          return;
+        }
+
+        if (!response.ok || !body?.success) throw new Error(body?.error || "Move failed");
+
+        const data = body.data as {
+          correct: boolean;
+          playedMove?: SolitaireMove | null;
+          answer: SolitaireMove;
+          answerReveal?: PuzzleReveal | null;
+          solution?: SolitaireView | null;
+          allowance?: Allowance | null;
+        };
+
+        const judged: Judgement = {
+          correct: Boolean(data.correct),
+          playedMove: data.playedMove ?? move,
+          answer: data.answer,
+          answerReveal: data.answerReveal ?? null,
+          solution: data.solution ?? null,
+        };
+        setJudgement(judged);
+        announceJudgement(judged, puzzle.board);
+        if (data.allowance) {
+          setPuzzle((current) =>
+            current ? { ...current, allowance: data.allowance ?? null } : current,
+          );
+        }
+      } catch {
+        setFailed(true);
+      } finally {
+        setSubmitting(false);
       }
-    } catch {
-      setFailed(true);
-    } finally {
-      setSubmitting(false);
-    }
-  };
+    },
+    [
+      puzzle,
+      submitting,
+      judgement,
+      limitReached,
+      outOfPuzzles,
+      offline,
+      kind,
+      announce,
+      announceJudgement,
+    ],
+  );
 
-  const answerChoice: PuzzleChoiceView | undefined = answered?.answer
-    ? puzzle?.choices.find((choice) => choice.label === answered.answer)
-    : undefined;
+  const onInvalid = useCallback(
+    (message: string) => {
+      announce({ expression: "surprised", message });
+    },
+    [announce],
+  );
 
+  const feedback = judgement
+    ? puzzleFeedback({
+        correct: judgement.correct,
+        playedMove: judgement.playedMove,
+        answer: judgement.answer,
+        answerReveal: judgement.answerReveal,
+        board: puzzle?.board ?? null,
+      })
+    : null;
+
+  const wasteTop = puzzle?.board.waste?.[puzzle.board.waste.length - 1] ?? null;
   const title = kind === "daily" ? "Daily puzzle" : "Unlimited puzzle";
   const blurb =
     kind === "daily"
-      ? "One position from a verified winning deal, free for everyone. One answer a day — make it count."
-      : "Fresh verified positions. One move turns a card face up and stays on the winning line.";
+      ? "One real position from a verified winning deal, free for everyone. Play the move yourself — you get one answer a day, so make it count."
+      : "Real positions from verified winning deals. Play the move on the board; exactly one legal move turns a card face up.";
 
   return (
     <section
       aria-labelledby={`puzzle-${kind}-heading`}
-      className="rounded-3xl border border-cyan-400/25 bg-gradient-to-b from-[#07152e] to-[#050b1d] p-5 sm:p-6"
+      className="rounded-3xl border border-cyan-400/25 bg-gradient-to-b from-[#07152e] to-[#050b1d] p-4 sm:p-6"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -353,12 +410,16 @@ export default function SolitairePuzzle({ kind }: Props) {
           <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-right">
             {allowance.unlimited ? (
               <>
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#f5ff3b]">GRYND PRO</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#f5ff3b]">
+                  GRYND PRO
+                </p>
                 <p className="font-mono text-lg text-white">Unlimited</p>
               </>
             ) : (
               <>
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/40">Today</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/40">
+                  Today
+                </p>
                 <p className="font-mono text-lg text-white">
                   {remaining}/{allowance.limit} left
                 </p>
@@ -370,7 +431,7 @@ export default function SolitairePuzzle({ kind }: Props) {
 
       {loading && (
         <p className="py-10 text-center text-sm text-white/45" aria-busy="true">
-          Building a verified position…
+          Dealing a verified position…
         </p>
       )}
 
@@ -383,117 +444,131 @@ export default function SolitairePuzzle({ kind }: Props) {
       )}
 
       {puzzle && !loading && (
-        <>
-          <PuzzleBoard position={puzzle.position} />
-
-          <p className="mt-4 text-[11px] font-bold uppercase tracking-[0.2em] text-cyan-300/70">
-            Which move turns a card face up?
-          </p>
-
-          <div className="mt-2 space-y-2">
-            {puzzle.choices.map((choice) => {
-              const description = describeMove(choice.move);
-              const isAnswer = answered?.answer === choice.label;
-              const isPicked = answered?.choice === choice.label;
-              const showCorrect = Boolean(answered) && isAnswer;
-              return (
-                <button
-                  key={choice.label}
-                  type="button"
-                  onClick={() => submit(choice.label)}
-                  disabled={submitting || locked}
-                  className={`flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition ${
-                    showCorrect
-                      ? "border-cyan-400/70 bg-cyan-400/10"
-                      : isPicked && answered && !answered.correct
-                        ? "border-rose-400/50 bg-rose-400/10"
-                        : "border-white/10 bg-white/[0.03] hover:border-cyan-400/40 hover:bg-white/[0.06]"
-                  } ${locked ? "cursor-default" : "cursor-pointer"}`}
-                >
-                  <span
-                    className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border font-mono text-sm font-black ${
-                      showCorrect
-                        ? "border-cyan-300 text-cyan-200"
-                        : "border-white/20 text-white/70"
-                    }`}
-                  >
-                    {choice.label}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-sm font-bold text-white">{description.title}</span>
-                    <span className="block text-[11px] uppercase tracking-[0.14em] text-white/35">
-                      {description.detail}
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
+        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_19rem] lg:items-start">
+          <div className="min-w-0">
+            <SolitaireBoard
+              view={board}
+              interactive={interactive}
+              onMove={play}
+              onInvalid={onInvalid}
+            />
+            {submitting && (
+              <p className="mt-2 text-center text-[11px] font-semibold text-cyan-200/70" role="status">
+                Checking that move…
+              </p>
+            )}
           </div>
 
-          {answered && (
-            <div
-              className={`mt-4 rounded-xl border p-4 text-sm ${
-                answered.correct
-                  ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-50"
-                  : "border-rose-400/30 bg-rose-400/10 text-rose-50"
-              }`}
-              role="status"
-            >
-              <p className="font-black">
-                {answered.correct ? "Correct — that card turns over." : "Not this time."}
-              </p>
-              {answerChoice && (
-                <p className="mt-1 text-white/70">
-                  The winning move was <strong>{answerChoice.label}</strong>:{" "}
-                  {describeMove(answerChoice.move).title}.
-                </p>
-              )}
-              {offline && (
-                <p className="mt-1 text-white/50">
-                  Checked on this device — nothing was recorded.
-                </p>
-              )}
-              {kind === "daily" && (
-                <p className="mt-1 text-white/50">A new daily puzzle arrives at UTC midnight.</p>
-              )}
+          {/* Glitch, on the side: why that move was right, or why it was not. */}
+          <aside className="space-y-3 lg:sticky lg:top-24" aria-label="Glitch explains the puzzle">
+            <div className="rounded-2xl border border-cyan-400/20 bg-[#071022] p-3">
+              <GlitchSay
+                key={lineVersion}
+                expression={line.expression}
+                message={line.message}
+                placement="inline"
+                size="sm"
+              />
             </div>
-          )}
 
-          {outOfPuzzles && !answered && (
-            <div className="mt-4 rounded-xl border border-[#f5ff3b]/30 bg-[#f5ff3b]/10 p-4 text-sm text-[#f7ffa1]">
-              <p className="font-black">You have used all 5 free puzzles today.</p>
-              <p className="mt-1 text-white/60">
-                GRYND PRO plays unlimited puzzles, all day, every day.
-              </p>
-              <Link
-                href="/upgrade-pro"
-                className="mt-3 inline-flex rounded-lg border border-[#f5ff3b]/50 bg-[#f5ff3b]/15 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-[#f5ff3b] hover:bg-[#f5ff3b]/25"
+            {feedback && (
+              <div
+                role="status"
+                aria-live="polite"
+                className={`rounded-2xl border p-3 text-sm ${
+                  judgement?.correct
+                    ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-50"
+                    : "border-rose-400/30 bg-rose-400/10 text-rose-50"
+                }`}
               >
-                Go unlimited →
-              </Link>
-            </div>
-          )}
+                <p className="text-[10px] font-black uppercase tracking-[0.18em]">
+                  {feedback.title}
+                </p>
+                <p className="mt-1 leading-relaxed text-white/75">{feedback.body}</p>
+                {judgement && (
+                  <p className="mt-2 text-xs text-white/55">
+                    Winning move: <strong className="text-white">{puzzleMoveText(judgement.answer)}</strong>
+                    {judgement.answerReveal
+                      ? ` — it uncovers the ${puzzleCardText(judgement.answerReveal.card)} in column ${judgement.answerReveal.column + 1}.`
+                      : "."}
+                  </p>
+                )}
+                {offline && (
+                  <p className="mt-1 text-xs text-white/45">
+                    Checked on this device — nothing was recorded.
+                  </p>
+                )}
+                {kind === "daily" && (
+                  <p className="mt-1 text-xs text-white/45">
+                    A new daily puzzle arrives at UTC midnight.
+                  </p>
+                )}
+              </div>
+            )}
 
-          {kind === "unlimited" && (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-              <span className="text-[11px] text-white/35">
-                {offline
-                  ? "Offline · unlimited practice, nothing saved"
-                  : allowance?.unlimited
-                    ? "PRO · no daily limit"
-                    : `Free plan · ${remaining ?? 0} of ${allowance?.limit ?? 5} left today`}
-              </span>
+            <dl className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 text-xs">
+              <div className="flex items-center justify-between gap-3 py-0.5">
+                <dt className="text-white/45">Face-down cards</dt>
+                <dd className="font-mono font-bold text-white">
+                  {hiddenCards(puzzle.board)}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-3 py-0.5">
+                <dt className="text-white/45">Stock</dt>
+                <dd className="font-mono font-bold text-white">{puzzle.board.stockCount}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3 py-0.5">
+                <dt className="text-white/45">Waste</dt>
+                <dd className="font-mono font-bold text-white">
+                  {wasteTop ? puzzleCardText(wasteTop) : "—"}
+                </dd>
+              </div>
+            </dl>
+
+            {kind === "unlimited" ? (
               <button
                 type="button"
                 onClick={() => load()}
                 disabled={loading || submitting || outOfPuzzles}
-                className="rounded-lg border border-cyan-400/40 bg-cyan-400/10 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-cyan-200 transition hover:bg-cyan-400/20 disabled:opacity-40"
+                className="w-full rounded-lg border border-cyan-400/40 bg-cyan-400/10 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-cyan-200 transition hover:bg-cyan-400/20 disabled:opacity-40"
               >
                 New puzzle
               </button>
-            </div>
-          )}
-        </>
+            ) : (
+              <Link
+                href="/play/unlimited-puzzles/play"
+                className="block w-full rounded-lg border border-cyan-400/40 bg-cyan-400/10 px-3 py-2 text-center text-xs font-black uppercase tracking-[0.14em] text-cyan-200 transition hover:bg-cyan-400/20"
+              >
+                Practise another →
+              </Link>
+            )}
+
+            <p className="text-[10px] leading-relaxed text-white/35">
+              {offline
+                ? "Offline · unlimited practice, nothing saved"
+                : kind === "unlimited" && allowance?.unlimited
+                  ? "PRO · no daily limit"
+                  : kind === "unlimited"
+                    ? `Free plan · ${remaining ?? 0} of ${allowance?.limit ?? 5} left today`
+                    : "One official move per UTC day."}
+            </p>
+          </aside>
+        </div>
+      )}
+
+      {outOfPuzzles && !judgement && (
+        <div className="mt-4 rounded-xl border border-[#f5ff3b]/30 bg-[#f5ff3b]/10 p-4 text-sm text-[#f7ffa1]">
+          <p className="font-black">You have used all 5 free puzzles today.</p>
+          <p className="mt-1 text-white/60">
+            GRYND PRO plays unlimited puzzles, all day, every day.
+          </p>
+          <Link
+            href="/upgrade-pro"
+            className="mt-3 inline-flex rounded-lg border border-[#f5ff3b]/50 bg-[#f5ff3b]/15 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-[#f5ff3b] hover:bg-[#f5ff3b]/25"
+          >
+            Go unlimited →
+          </Link>
+        </div>
       )}
     </section>
   );

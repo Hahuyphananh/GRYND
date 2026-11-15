@@ -9,7 +9,7 @@ import SolitairePuzzle from "../../../../components/solitaire-duel/SolitairePuzz
 export const metadata: Metadata = {
   title: "Today's Solitaire puzzle | GRYND",
   description:
-    "Answer today's verified Solitaire puzzle. One official attempt per UTC day; the answer and the reasoning are revealed after submission.",
+    "Play today's verified Solitaire puzzle on a real board. One official move per UTC day; the winning move and the reason are revealed after you play.",
   alternates: { canonical: "/play/daily-puzzle/play" },
   robots: { index: false, follow: false },
 };
@@ -18,7 +18,7 @@ export default function DailyPuzzlePlayPage() {
   return (
     <div className="relative min-h-screen bg-[#040712] pb-24 text-white md:pb-0">
       <NavigationBar currentPath="/play" />
-      <main className="relative mx-auto max-w-4xl px-4 pt-24 sm:px-6 md:pt-28">
+      <main className="relative mx-auto max-w-6xl px-4 pt-24 sm:px-6 md:pt-28">
         <Link
           href="/play/daily-puzzle"
           className="inline-flex items-center gap-2 text-xs font-bold text-white/55 underline-offset-4 hover:text-white hover:underline"

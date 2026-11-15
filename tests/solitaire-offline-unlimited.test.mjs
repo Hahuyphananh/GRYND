@@ -3,10 +3,11 @@
 // OFFLINE: solo solitaire and the unlimited puzzle stay playable with no
 // network, and neither one stores progress while offline.
 //
-//   * the puzzle builder and answer check are browser-safe (no Node crypto),
+//   * the puzzle builder and move check are browser-safe (no Node crypto),
 //     and an offline position is deterministic for its seed;
 //   * an offline key can never be replayed against the server;
-//   * the puzzle card verifies locally and returns before the POST;
+//   * the puzzle card verifies the PLAYED MOVE locally and returns before the
+//     POST, so a board played by hand works with no network at all;
 //   * solo routes every session/result write through one online-only guard.
 
 import test from "node:test";
@@ -15,27 +16,25 @@ import fs from "node:fs";
 
 import {
   buildOfflinePuzzle,
+  moveSignature,
   puzzleSeedFromKey,
-  verifyPuzzleChoice,
+  verifyPuzzleMove,
 } from "../src/lib/solitaire-duel/puzzleCore.ts";
 
-test("an offline unlimited puzzle is built, checked and unsubmittable", () => {
+test("an offline unlimited puzzle is built, judged and unsubmittable", () => {
   const puzzle = buildOfflinePuzzle(777);
 
   assert.equal(puzzle.kind, "unlimited");
   assert.equal(puzzle.dateKey, null);
-  assert.equal(puzzle.choices.length, 3);
-  assert.deepEqual(puzzle.choices.map((choice) => choice.label), ["A", "B", "C"]);
-  assert.ok(puzzle.choices.some((choice) => choice.label === puzzle.answer));
+  assert.equal(puzzle.board.tableau.length, 7);
+  assert.ok(Array.isArray(puzzle.board.waste));
 
-  assert.equal(verifyPuzzleChoice(puzzle, puzzle.answer), true);
-  for (const choice of puzzle.choices) {
-    if (choice.label === puzzle.answer) continue;
-    assert.equal(verifyPuzzleChoice(puzzle, choice.label), false);
-  }
+  assert.equal(verifyPuzzleMove(puzzle, puzzle.answer), true);
+  // Drawing is a real move the board can send — and never the answer.
+  assert.equal(verifyPuzzleMove(puzzle, { kind: "draw" }), false);
 
   // A server submit rebuilds an `unlimited:<uint32>` key. The offline key is
-  // deliberately not one, so an offline answer can never be recorded later.
+  // deliberately not one, so an offline move can never be recorded later.
   assert.match(puzzle.key, /^unlimited:offline:/);
   assert.equal(puzzleSeedFromKey(puzzle.key), null);
 });
@@ -43,9 +42,10 @@ test("an offline unlimited puzzle is built, checked and unsubmittable", () => {
 test("the offline builder is deterministic for a seed", () => {
   const first = buildOfflinePuzzle(777);
   const second = buildOfflinePuzzle(777);
-  assert.deepEqual(first.position, second.position);
-  assert.deepEqual(first.choices, second.choices);
-  assert.equal(first.answer, second.answer);
+  assert.deepEqual(first.board, second.board);
+  assert.deepEqual(first.answerBoard, second.answerBoard);
+  assert.deepEqual(first.answerReveal, second.answerReveal);
+  assert.equal(moveSignature(first.answer), moveSignature(second.answer));
 });
 
 test("the browser-safe puzzle core imports no Node-only modules", () => {
@@ -71,13 +71,14 @@ test("the puzzle card builds locally and never posts while offline", () => {
   assert.match(card, /navigator\.onLine === false/);
   assert.match(card, /if \(offline\)/);
 
-  // The offline branch verifies in place and returns BEFORE the submit fetch.
+  // The offline branch judges the PLAYED MOVE in place and returns BEFORE the
+  // submit fetch.
   const branch = card.indexOf("if (offline)");
   const submit = card.indexOf('fetch("/api/solitaire/puzzle",');
   assert.ok(branch >= 0 && submit > branch);
-  assert.match(card.slice(branch, submit), /verifyPuzzleChoice/);
+  assert.match(card.slice(branch, submit), /verifyPuzzleMove/);
 
-  // An offline answer is not persisted on the device either.
+  // An offline move is not persisted on the device either.
   assert.doesNotMatch(card, /localStorage|sessionStorage/);
 });
 

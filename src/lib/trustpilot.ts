@@ -38,6 +38,26 @@ const TRUSTPILOT_ID_PATTERN = /^[0-9a-f]{20,32}$/i;
 
 const DOMAIN_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
 
+/**
+ * The values Trustpilot issued for THIS business unit.
+ *
+ * Unlike an ad-unit id, these are not secrets and not deployment-specific: they
+ * identify the verified GRYND profile that the domain-verification meta tag in
+ * src/app/page.jsx belongs to. They are defaults, not placeholders, so the home
+ * page and /reviews show the real TrustBox on a deploy that configures nothing
+ * — the same reasoning as DEFAULT_ADSENSE_PUBLISHER_ID in src/lib/ads.ts. An
+ * environment value still wins, for a re-designed widget or a second domain.
+ *
+ * `grynd.dedyn.io` (no `www.`) is the domain Trustpilot verified; the review
+ * URL Trustpilot's own embed uses is https://www.trustpilot.com/review/grynd.dedyn.io.
+ */
+export const DEFAULT_TRUSTPILOT_BUSINESS_UNIT_ID = "6af91325a7dbf30ad4d22726";
+export const DEFAULT_TRUSTPILOT_TEMPLATE_ID = "56278e9abfbbba0bdcd568bc";
+export const DEFAULT_TRUSTPILOT_DOMAIN = "grynd.dedyn.io";
+
+/** The TrustBox height Trustpilot's Review Collector snippet uses. */
+export const TRUSTPILOT_REVIEW_COLLECTOR_HEIGHT = "52px";
+
 export interface TrustpilotConfig {
   businessUnitId: string;
   templateId: string;
@@ -86,6 +106,7 @@ export function trustpilotEnabled(): boolean {
 export function trustpilotDomain(): string | null {
   return (
     normalizeDomain(process.env.NEXT_PUBLIC_TRUSTPILOT_DOMAIN) ??
+    normalizeDomain(DEFAULT_TRUSTPILOT_DOMAIN) ??
     normalizeDomain(getSiteUrl())
   );
 }
@@ -97,10 +118,12 @@ export function trustpilotDomain(): string | null {
 export function getTrustpilotConfig(): TrustpilotConfig | null {
   if (!trustpilotEnabled()) return null;
 
-  const businessUnitId = normalizeId(
-    process.env.NEXT_PUBLIC_TRUSTPILOT_BUSINESS_UNIT_ID
-  );
-  const templateId = normalizeId(process.env.NEXT_PUBLIC_TRUSTPILOT_TEMPLATE_ID);
+  const businessUnitId =
+    normalizeId(process.env.NEXT_PUBLIC_TRUSTPILOT_BUSINESS_UNIT_ID) ??
+    normalizeId(DEFAULT_TRUSTPILOT_BUSINESS_UNIT_ID);
+  const templateId =
+    normalizeId(process.env.NEXT_PUBLIC_TRUSTPILOT_TEMPLATE_ID) ??
+    normalizeId(DEFAULT_TRUSTPILOT_TEMPLATE_ID);
   const domain = trustpilotDomain();
   if (!businessUnitId || !templateId || !domain) return null;
 

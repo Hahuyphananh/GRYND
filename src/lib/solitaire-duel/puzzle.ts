@@ -3,10 +3,10 @@
 // THE DAILY / UNLIMITED SOLITAIRE PUZZLE — server-only.
 //
 // A puzzle is a REAL mid-game Klondike position taken from a verified winning
-// line: the player is shown the position and three moves, and exactly one of
-// them turns a face-down card face up and is the next move of the deal's
-// engine-proved winning line. The answer never leaves this module until the
-// player has submitted once.
+// line: the player is shown the whole board and plays the move themselves, and
+// the engine-proved next move of the line is the only legal move that turns a
+// face-down card over. The answer never leaves this module until the player has
+// moved.
 //
 // The pure builder and the answer check now live in `./puzzleCore.ts`, which has
 // no Node imports so the browser can build and check an offline practice
@@ -44,17 +44,16 @@ export {
   buildPuzzleForSeed,
   dailyPuzzleDateKey,
   dailyPuzzleKey,
+  moveSignature,
+  parsePuzzleMove,
   publicPuzzle,
   puzzleSeedFromKey,
   randomPuzzleSeed,
-  verifyPuzzleChoice,
-  type Puzzle,
-  type PuzzleCardView,
-  type PuzzleChoiceLabel,
-  type PuzzleChoiceView,
-  type PuzzleKind,
-  type PuzzlePositionView,
+  verifyPuzzleMove,
   type PublicPuzzle,
+  type Puzzle,
+  type PuzzleKind,
+  type PuzzleReveal,
 } from "./puzzleCore";
 
 const MAX_CACHED_PUZZLES = 64;

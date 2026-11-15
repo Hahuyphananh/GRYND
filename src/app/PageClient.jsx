@@ -181,7 +181,11 @@ function ModeArt({ images, alt, previewing }) {
   );
 }
 
-export default function MainComponent({ adSlot = null, hilltopSlot = null }) {
+export default function MainComponent({
+  adSlot = null,
+  hilltopSlot = null,
+  socialProof = null,
+}) {
   const { isLoaded, isSignedIn, signOut } = useAuth();
   const { user } = useUser();
 
@@ -804,6 +808,11 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null }) {
         {hilltopSlot}
 
         {adSlot}
+
+        {/* Trustpilot + Product Hunt. A server-rendered child (see
+            src/components/home/SocialProof.tsx), so the TrustBox element and
+            the badge are in the HTML a crawler receives. */}
+        {socialProof}
       </main>
 
       <Footer />

@@ -42,8 +42,9 @@ type DailySummary = {
 
 type PuzzleStatus = {
   dateKey?: string | null;
-  attempt?: { choice?: string; correct?: boolean } | null;
-  answer?: string | null;
+  board?: { tableau?: unknown[]; stockCount?: number } | null;
+  attempt?: { move?: unknown; correct?: boolean } | null;
+  answerMove?: unknown;
   allowance?: {
     unlimited?: boolean;
     limit?: number | null;
@@ -52,6 +53,49 @@ type PuzzleStatus = {
     resetsAt?: string;
   } | null;
 };
+
+/**
+ * A move in plain words, for the lobby summary. Deliberately local and tiny:
+ * the lobby only needs to NAME the winning move, and pulling the puzzle's
+ * feedback module into the hub would ship its copy twice.
+ */
+const RANK_TEXT = ["", "A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
+const SUIT_TEXT: Record<string, string> = {
+  spades: "\u2660",
+  hearts: "\u2665",
+  diamonds: "\u2666",
+  clubs: "\u2663",
+};
+
+function moveLabel(move: unknown): string | null {
+  if (!move || typeof move !== "object") return null;
+  const value = move as {
+    kind?: string;
+    card?: { suit?: string; rank?: number } | null;
+    fromColumn?: number;
+    toColumn?: number;
+    suit?: string;
+  };
+  const card = value.card
+    ? `${RANK_TEXT[value.card.rank ?? 0] ?? ""}${SUIT_TEXT[value.card.suit ?? ""] ?? ""}`
+    : "the card";
+  switch (value.kind) {
+    case "tableau-to-tableau":
+      return `${card} from column ${(value.fromColumn ?? 0) + 1} onto column ${(value.toColumn ?? 0) + 1}`;
+    case "tableau-to-foundation":
+      return `${card} from column ${(value.fromColumn ?? 0) + 1} to the ${value.suit} foundation`;
+    case "waste-to-tableau":
+      return `the waste card onto column ${(value.toColumn ?? 0) + 1}`;
+    case "waste-to-foundation":
+      return `the waste card to the ${value.suit} foundation`;
+    case "foundation-to-tableau":
+      return `a foundation card back down onto column ${(value.toColumn ?? 0) + 1}`;
+    case "draw":
+      return "draw from the stock";
+    default:
+      return null;
+  }
+}
 
 function formatDuration(ms: number | null | undefined): string {
   if (!Number.isFinite(ms) || (ms as number) <= 0) return "—";
@@ -192,9 +236,11 @@ export default function LobbyStatus({
                   : t("playHub.lobby.dailyPuzzle.incorrect")
               }
             />
-            {puzzle.answer && (
+            {puzzle.answerMove && moveLabel(puzzle.answerMove) && (
               <p className="rounded-xl border border-[#00ffa3]/20 bg-[#00ffa3]/[0.06] px-3 py-2 text-xs leading-relaxed text-[#c8ffe6]">
-                {t("playHub.lobby.dailyPuzzle.answer", { answer: puzzle.answer })}{" "}
+                {t("playHub.lobby.dailyPuzzle.answer", {
+                  answer: moveLabel(puzzle.answerMove) as string,
+                })}{" "}
                 {t("playHub.lobby.dailyPuzzle.explanation")}
               </p>
             )}

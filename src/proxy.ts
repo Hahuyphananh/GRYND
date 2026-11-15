@@ -552,7 +552,15 @@ function applySecurityHeaders(response: NextResponse) {
       // page, so leaving it out produces a CSP violation on each impression —
       // the unit still paints, but the console fills with errors and Google
       // loses the invalid-traffic signal it uses to protect the publisher.
-      `frame-src 'self' https://challenges.cloudflare.com https://*.clerk.com https://*.clerk.accounts.dev https://js.stripe.com https://checkout.stripe.com https://*.stripe.com https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://fundingchoicesmessages.google.com https://*.adtrafficquality.google https://juvenilechoice.com ${hilltopDevHosts}; ` +
+      //
+      // widget.trustpilot.com (and widgets.trustpilot.com) serve the TrustBox
+      // iframe — the Review Collector strip on the home page and /reviews. The
+      // bootstrap script loads under `https:` in script-src, but frame-src is an
+      // explicit allow-list, so without these two hosts the element is in the
+      // page and the frame is refused: an empty grey box with a broken-document
+      // icon, which is exactly what an unlisted host looks like. Both spellings
+      // are named because Trustpilot has served the bootstrap from each.
+      `frame-src 'self' https://challenges.cloudflare.com https://*.clerk.com https://*.clerk.accounts.dev https://js.stripe.com https://checkout.stripe.com https://*.stripe.com https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://fundingchoicesmessages.google.com https://*.adtrafficquality.google https://juvenilechoice.com https://widget.trustpilot.com https://widgets.trustpilot.com ${hilltopDevHosts}; ` +
       // The post-match video ad (components/ads/PostMatchVideoAd.tsx) plays a
       // provider-supplied creative in a native <video>. With no `media-src`,
       // media falls back to `default-src 'self'` and every ad video is blocked
