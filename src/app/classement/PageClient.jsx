@@ -292,15 +292,18 @@ function rankStatus(rank, t) {
 export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
   const { t } = useTranslation();
   const { isLoaded: clerkLoaded, isSignedIn, user } = useUser();
-  const [tab, setTab] = useState("trophies");
+  const [tab, setTab] = useState("all-time");
   const myClerkId = isSignedIn ? user?.id : null;
 
   const endpoint = useMemo(() => {
     // Trophies = the all-time PEAK board: the label names the unit, the number
     // is the best total the player ever reached.
     if (tab === "trophies") return `/api/leaderboard/trophy-peak?limit=50`;
-    // All-Time wins: RANKED wins only, summed from the per-game ratings.
-    if (tab === "all-time") return `/api/leaderboard/ranked-wins?limit=50`;
+    // All-Time wins. The counters behind this board move only from settled
+    // human-vs-human results (applyLeaderboardCounters has no solo, practice or
+    // daily caller), so this is the ranked win count, not an every-mode total.
+    if (tab === "all-time")
+      return `/api/leaderboard/all-time?limit=50&category=wins`;
     // The fastest verified Daily Deal completion per player.
     if (tab === "daily-deal")
       return `/api/leaderboard/daily-deal-best-time?limit=50`;
@@ -372,7 +375,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
             {TABS.map((x) => (
               <button
                 key={x}
-                onClick={() => selectTab(x)}
+                onClick={() => setTab(x)}
                 aria-pressed={tab === x}
                 className={`shrink-0 whitespace-nowrap rounded-lg border px-4 py-2 text-sm font-semibold transition-all focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f] ${tab === x ? "border-[#f5ff3b]/60 bg-[#f5ff3b] text-[#041125]" : "border-[#00e5ff]/50 bg-[#0a214d] text-[#00e5ff] hover:bg-[#123b82]"}`}
               >

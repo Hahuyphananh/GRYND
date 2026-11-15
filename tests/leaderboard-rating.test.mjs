@@ -354,11 +354,10 @@ test("UI: the page offers exactly the five boards it can rank", () => {
   );
   // Trophies IS the all-time peak board, under a plain label.
   assert.ok(code.includes("/api/leaderboard/trophy-peak?limit=50"));
-  // All-Time wins ranks RANKED wins only.
-  assert.ok(code.includes("/api/leaderboard/ranked-wins?limit=50"));
+  // All-Time wins reads the settled-result counters (competitive only).
+  assert.ok(code.includes("/api/leaderboard/all-time?limit=50&category=wins"));
   assert.ok(code.includes("/api/leaderboard/daily-deal-best-time?limit=50"));
   // Both boards have a live route behind them.
-  assert.ok(fs.existsSync("src/app/api/leaderboard/ranked-wins/route.js"));
   assert.ok(fs.existsSync("src/app/api/leaderboard/daily-deal-best-time/route.js"));
   // No sub-categories: one tab, one ranking.
   assert.doesNotMatch(code, /CATEGORY_LABELS|ALL_TIME_CATEGORIES|WEEKLY_CATEGORIES/);
