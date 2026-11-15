@@ -1653,6 +1653,55 @@
       "when": 1800000098000,
       "tag": "0254_solitaire_puzzle_moves",
       "breakpoints": true
+    },
+    {
+      "idx": 236,
+      "version": "7",
+      "when": 1800000099000,
+      "tag": "0255_solitaire_ghost_duels",
+      "breakpoints": true
+    },
+    {
+      "idx": 237,
+      "version": "7",
+      "when": 1800000100000,
+      "tag": "0256_solitaire_ghost_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 238,
+      "version": "7",
+      "when": 1800000101000,
+      "tag": "0257_pro_social_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 239,
+      "version": "7",
+      "when": 1800000102000,
+      "tag": "0258_pro_social_status_perks",
+      "breakpoints": true
+    },
+    {
+      "idx": 240,
+      "version": "7",
+      "when": 1800000103000,
+      "tag": "0259_solitaire_duel_friend_links",
+      "breakpoints": true
+    },
+    {
+      "idx": 241,
+      "version": "7",
+      "when": 1800000104000,
+      "tag": "0260_pro_private_rooms_perk",
+      "breakpoints": true
+    },
+    {
+      "idx": 242,
+      "version": "7",
+      "when": 1800000105000,
+      "tag": "0261_pro_offer_refresh",
+      "breakpoints": true
     }
   ]
 }

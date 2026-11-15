@@ -89,7 +89,16 @@ type BillableInterval = "weekly" | "monthly" | "yearly";
  * in. Good enough for "is Pro growing", not for accounting.
  */
 export function monthlyValueCents(interval: BillableInterval): number {
-  const cents = PRO_PRICE_CENTS[interval];
+  // `weekly` is a LEGACY interval: the option was retired with the founder
+  // pricing change, but subscribers on it keep billing, so its historical
+  // amount (CA$3.49) is still what their MRR contribution is based on.
+  const LEGACY_WEEKLY_CENTS = 349;
+  const cents =
+    interval === "weekly"
+      ? LEGACY_WEEKLY_CENTS
+      : interval === "yearly"
+        ? PRO_PRICE_CENTS.yearly
+        : PRO_PRICE_CENTS.monthly;
   if (interval === "weekly") return Math.round((cents * 52) / 12);
   if (interval === "yearly") return Math.round(cents / 12);
   return cents;

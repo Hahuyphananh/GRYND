@@ -58,10 +58,12 @@ import {
   STARTING_RATING,
   OVERALL_MIN_GAMES,
   PROVISIONAL_GAMES,
+  clampRating,
   computeMatchRatings,
   isValidOutcome,
   overallEloFromRatings,
   provisionalProgress,
+  ratingDelta,
 } from "./elo";
 
 // ── Game registry (the full rated-game space) ──────────────────────────────
@@ -1093,6 +1095,204 @@ export async function applyRatingResult({
         k: computed.loser.k,
         expected: computed.loser.expected,
         ...loserAfter,
+      },
+    };
+  };
+
+  return tx ? run(tx) : db.transaction(run);
+}
+
+/**
+ * Apply ONE authoritative ranked result to ONE player's game-specific Elo.
+ *
+ * This is the asynchronous "ghost" duel writer, and it exists because the
+ * opponent in such a match is a RECORDING: another real player's run, replayed
+ * on the same deal. That person is not in the match and must never gain or lose
+ * a rating from it — so the two-seat writer above (which updates BOTH rows) is
+ * deliberately not used, and nothing here can move a second player.
+ *
+ * It reuses the platform's own maths and journals exactly as the two-seat writer
+ * does: `ratingDelta` from src/lib/elo.js, the same (user, game, match) idempotency
+ * journal, the same identity ledger, and the same daily-win marker. The
+ * opponent's strength comes from the recording's own ladder snapshot, supplied
+ * by the caller from the match row — never from the client.
+ *
+ * `result` is from the HUMAN's point of view: "win" | "loss" | "draw".
+ * The journal's `opponent_id` is NULL, because there is no app user on the other
+ * side of this match.
+ *
+ * @param {object} params
+ * @param {string} params.gameKey
+ * @param {string} params.matchId
+ * @param {string} params.clerkId          the human whose ladder moves
+ * @param {number} params.opponentRating   the recording's recorded rating
+ * @param {"win"|"loss"|"draw"} [params.result] "win" (default)
+ * @param {any} [params.tx]
+ * @param {number} [params.k]              K override (tests / tuning only)
+ */
+export async function applyGhostRatingResult({
+  tx,
+  gameKey,
+  matchId,
+  clerkId,
+  opponentRating,
+  result = "win",
+  k,
+}) {
+  const key = String(gameKey ?? "");
+  const eventId = String(matchId ?? "");
+  const outcome =
+    result === "draw" ? "draw" : result === "loss" ? "loss" : "win";
+
+  if (!isRatedGame(key)) return { applied: false, reason: "game-not-rated" };
+  if (!GAME_KEY_RE.test(key)) return { applied: false, reason: "invalid-game-key" };
+  if (!eventId || eventId.length > MAX_MATCH_ID_LENGTH) {
+    return { applied: false, reason: "invalid-match-id" };
+  }
+  if (!clerkId) return { applied: false, reason: "missing-player" };
+  if (!isValidOutcome(outcome)) return { applied: false, reason: "invalid-outcome" };
+
+  // A Guest seat is unrated for BOTH participants, so it is unrated here too.
+  if (isGuestPvpMatch([clerkId])) {
+    return { applied: false, reason: "guest-unrated" };
+  }
+
+  const rivalRating = Number.isFinite(Number(opponentRating))
+    ? Number(opponentRating)
+    : STARTING_RATING;
+
+  const run = async (txc) => {
+    const userRows = await txc.execute(sql`
+      SELECT id, clerk_id AS "clerkId", email
+        FROM users
+       WHERE clerk_id = ${String(clerkId)}
+       LIMIT 1
+    `);
+    const user = (userRows.rows ?? userRows)[0];
+    if (!user) return { applied: false, reason: "user-not-found" };
+    const identityHash = identityHashForEmail(user.email);
+
+    // Same lock-or-create shape as the two-seat writer: on creation the values
+    // are seeded from the identity ledger when this email has rated this game
+    // before, so a re-registered account carries its rating over.
+    const locked = await txc.execute(sql`
+      INSERT INTO player_ratings
+        (user_id, game_key, rating, peak_rating, games_rated,
+         wins, losses, draws, last_delta, last_rated_at)
+      SELECT
+        ${user.id}, ${key},
+        COALESCE(i.rating, ${STARTING_RATING}),
+        COALESCE(i.peak_rating, ${STARTING_RATING}),
+        COALESCE(i.games_rated, 0),
+        COALESCE(i.wins, 0),
+        COALESCE(i.losses, 0),
+        COALESCE(i.draws, 0),
+        COALESCE(i.last_delta, 0),
+        i.last_rated_at
+        FROM (SELECT 1) AS anchor
+        LEFT JOIN rating_identities i
+          ON i.identity_hash = ${identityHash}
+         AND i.game_key = ${key}
+      ON CONFLICT (user_id, game_key)
+      DO UPDATE SET updated_at = player_ratings.updated_at
+      RETURNING user_id, rating, games_rated, wins, losses, draws
+    `);
+    const row = (locked.rows ?? locked)[0];
+    if (!row) return { applied: false, reason: "rating-lock-failed" };
+
+    const dupe = await txc.execute(sql`
+      SELECT 1 AS hit
+        FROM rating_events
+       WHERE game_key = ${key}
+         AND match_id = ${eventId}
+         AND user_id = ${user.id}
+       LIMIT 1
+    `);
+    if ((dupe.rows ?? dupe).length > 0) {
+      return { applied: false, reason: "duplicate" };
+    }
+
+    const before = clampRating(Number(row.rating));
+    const computed = ratingDelta({
+      rating: before,
+      opponentRating: rivalRating,
+      outcome,
+      gamesRated: Number(row.games_rated ?? 0),
+      k,
+    });
+    const after = clampRating(before + computed.delta);
+    const isDraw = outcome === "draw";
+
+    await txc.execute(sql`
+      UPDATE player_ratings
+         SET rating = ${after},
+             peak_rating = GREATEST(peak_rating, ${after}),
+             games_rated = games_rated + 1,
+             wins = wins + ${outcome === "win" ? 1 : 0},
+             losses = losses + ${outcome === "loss" ? 1 : 0},
+             draws = draws + ${isDraw ? 1 : 0},
+             last_delta = ${computed.delta},
+             last_rated_at = NOW(),
+             updated_at = NOW()
+       WHERE user_id = ${user.id} AND game_key = ${key}
+    `);
+
+    if (identityHash) {
+      await txc.execute(sql`
+        INSERT INTO rating_identities
+          (identity_hash, game_key, rating, peak_rating, games_rated,
+           wins, losses, draws, last_delta, last_rated_at, updated_at)
+        SELECT
+          ${identityHash}, r.game_key, r.rating, r.peak_rating, r.games_rated,
+          r.wins, r.losses, r.draws, r.last_delta, r.last_rated_at, NOW()
+          FROM player_ratings r
+         WHERE r.user_id = ${user.id}
+           AND r.game_key = ${key}
+        ON CONFLICT (identity_hash, game_key) DO UPDATE SET
+          rating = EXCLUDED.rating,
+          peak_rating = GREATEST(rating_identities.peak_rating, EXCLUDED.peak_rating),
+          games_rated = EXCLUDED.games_rated,
+          wins = EXCLUDED.wins,
+          losses = EXCLUDED.losses,
+          draws = EXCLUDED.draws,
+          last_delta = EXCLUDED.last_delta,
+          last_rated_at = EXCLUDED.last_rated_at,
+          updated_at = NOW()
+      `);
+    }
+
+    // `opponent_id` is NULL: the recording has no app user in this match.
+    await txc.execute(sql`
+      INSERT INTO rating_events
+        (user_id, game_key, match_id, opponent_id, outcome,
+         rating_before, rating_after, delta, k_factor)
+      VALUES
+        (${user.id}, ${key}, ${eventId}, NULL, ${outcome},
+         ${before}, ${after}, ${computed.delta}, ${computed.k})
+      ON CONFLICT (user_id, game_key, match_id) DO NOTHING
+    `);
+
+    if (outcome === "win") {
+      await txc.execute(sql`
+        UPDATE users
+           SET last_won_game_date = ${new Date().toISOString().slice(0, 10)}
+         WHERE id = ${user.id}
+      `);
+    }
+
+    return {
+      applied: true,
+      result: outcome,
+      gameKey: key,
+      matchId: eventId,
+      player: {
+        userId: user.id,
+        ratingBefore: before,
+        ratingAfter: after,
+        delta: computed.delta,
+        k: computed.k,
+        expected: computed.expected,
+        ...provisionalProgress(Number(row.games_rated ?? 0) + 1, after),
       },
     };
   };

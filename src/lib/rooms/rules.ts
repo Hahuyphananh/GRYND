@@ -54,7 +54,7 @@ export interface RoomRecord {
   hostUserId: string;
   gameKey: string;
   mode?: string;
-  settings?: { stake?: number } | null;
+  settings?: { stake?: number; timerSeconds?: number } | null;
   status: string;
   matchId?: string | null;
   matchUrl?: string | null;

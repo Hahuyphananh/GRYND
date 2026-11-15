@@ -42,6 +42,24 @@ const SHEET_MIN_PX = 180;
 
 export default function SolitaireThemePicker({ className = "" }: { className?: string }) {
   const { theme, themeKey, themes, setTheme, reset, isDefault } = useSolitaireBoardTheme();
+  // The PRO-only tables are LOCKED for a non-member. This flag only draws the
+  // lock: the real gate is PUT /api/solitaire/board-theme, which refuses a
+  // PRO-only key for a non-member from the server's own answer (lib/proStatus).
+  const [isPro, setIsPro] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/solitaire/board-theme", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (alive && data?.pro === true) setIsPro(true);
+      })
+      .catch(() => {
+        // Signed out or offline: every free table still works.
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
   const defaultLabel = boardThemeFor(DEFAULT_BOARD_THEME).label;
   const detailsRef = useRef<HTMLDetailsElement>(null);
   const [sheetMaxPx, setSheetMaxPx] = useState<number | null>(null);
@@ -142,19 +160,30 @@ export default function SolitaireThemePicker({ className = "" }: { className?: s
         <div role="radiogroup" aria-label="Solitaire table theme" className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
           {themes.map((option) => {
             const checked = option.key === themeKey;
+            // Only the PRO tables can be locked; every free preset is unchanged.
+            const locked = Boolean(option.proOnly) && !isPro;
             return (
               <button
                 key={option.key}
                 type="button"
                 role="radio"
                 aria-checked={checked}
+                aria-disabled={locked || undefined}
+                disabled={locked}
                 data-theme-key={option.key}
-                title={option.blurb}
+                data-pro-only={option.proOnly ? "true" : undefined}
+                title={
+                  locked
+                    ? "GRYND PRO table — included with the membership"
+                    : option.blurb
+                }
                 onClick={() => setTheme(option.key)}
                 className={`flex items-center gap-2 rounded-lg border p-1.5 text-left text-[11px] font-semibold transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] ${
-                  checked
-                    ? "border-[#f5ff3b] bg-[#f5ff3b]/10 text-white"
-                    : "border-white/15 text-white/70 hover:border-white/30 hover:text-white"
+                  locked
+                    ? "cursor-not-allowed border-[#f5ff3b]/25 text-white/40"
+                    : checked
+                      ? "border-[#f5ff3b] bg-[#f5ff3b]/10 text-white"
+                      : "border-white/15 text-white/70 hover:border-white/30 hover:text-white"
                 }`}
               >
                 <span
@@ -163,11 +192,17 @@ export default function SolitaireThemePicker({ className = "" }: { className?: s
                   style={{ backgroundImage: option.felt }}
                 />
                 <span className="min-w-0 flex-1">{option.label}</span>
-                {/* Selection is never colour-only: the tick is the cue, the
-                    border is the reinforcement. */}
-                <span aria-hidden="true" className={checked ? "text-[#f5ff3b]" : "opacity-0"}>
-                  ✓
-                </span>
+                {locked ? (
+                  <span className="shrink-0 rounded-full border border-[#f5ff3b]/60 px-1 py-px text-[9px] font-black uppercase tracking-wider text-[#f5ff3b]">
+                    PRO
+                  </span>
+                ) : (
+                  /* Selection is never colour-only: the tick is the cue, the
+                     border is the reinforcement. */
+                  <span aria-hidden="true" className={checked ? "text-[#f5ff3b]" : "opacity-0"}>
+                    ✓
+                  </span>
+                )}
               </button>
             );
           })}

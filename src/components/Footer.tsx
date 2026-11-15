@@ -118,11 +118,17 @@ export default function Footer() {
           <div>
             <h2 className={heading}>Legal</h2>
             <div className="space-y-2">
+              <Link href="/about" className={linkClass}>
+                About
+              </Link>
               <Link href="/terms" className={linkClass}>
                 Terms
               </Link>
               <Link href="/privacy-policy" className={linkClass}>
                 Privacy
+              </Link>
+              <Link href="/cookie-policy" className={linkClass}>
+                Cookies &amp; ads
               </Link>
               <Link href="/fair-play" className={linkClass}>
                 Fair play

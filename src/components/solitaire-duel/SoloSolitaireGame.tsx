@@ -58,6 +58,7 @@ import {
   viewForState,
 } from "../../lib/solitaire-duel/rules";
 import { formatDuration, summariseSolo } from "../../lib/solitaire-duel/soloStats.js";
+import ShareWinButton from "../share/ShareWinButton";
 import { soloElapsedMs } from "../../lib/solitaire-duel/soloTimer";
 import type {
   SolitaireDeal,
@@ -548,7 +549,7 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
         const endpoint = finished.mode === "daily" ? "/api/solitaire/daily" : "/api/solitaire/solo";
         const body =
           finished.mode === "daily"
-            ? { moves: finished.log, elapsedMs }
+            ? { dateKey: finished.dateKey, moves: finished.log, elapsedMs }
             : { seed: finished.seed, moves: finished.log, elapsedMs };
         const response = await fetch(endpoint, {
           method: "POST",
@@ -1042,6 +1043,15 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
                   </p>
                 )}
                 <div className="mt-5 flex flex-wrap justify-center gap-2">
+                  {/* A win is shareable, and the copy always carries the time
+                      this run actually took. The loss dialog below gets no
+                      such control. */}
+                  <ShareWinButton
+                    game={mode === "daily" ? "daily" : "solitaire"}
+                    durationMs={elapsedMs}
+                    moves={moves}
+                    testId="solitaire-share-win"
+                  />
                   {reviewGameId && (
                     <Link
                       href={`/solitaire/review/${session.mode}/${encodeURIComponent(reviewGameId)}`}
@@ -1181,13 +1191,24 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
                       </p>
                     )}
                   </div>
-                  <Link
-                    href={`/solitaire/review/${row.mode}/${encodeURIComponent(row.id)}`}
-                    data-testid={`solitaire-history-review-${row.id}`}
-                    className="rounded-lg border border-cyan-300/40 bg-cyan-300/10 px-3 py-1.5 text-xs font-semibold text-cyan-200 hover:bg-cyan-300/20"
-                  >
-                    Review
-                  </Link>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {/* Every row here is a COMPLETED win, so it is shareable —
+                        with that game's own time and move count. */}
+                    <ShareWinButton
+                      compact
+                      game={row.mode === "daily" ? "daily" : "solitaire"}
+                      durationMs={row.elapsedMs}
+                      moves={row.moves}
+                      testId={`solitaire-history-share-${row.id}`}
+                    />
+                    <Link
+                      href={`/solitaire/review/${row.mode}/${encodeURIComponent(row.id)}`}
+                      data-testid={`solitaire-history-review-${row.id}`}
+                      className="rounded-lg border border-cyan-300/40 bg-cyan-300/10 px-3 py-1.5 text-xs font-semibold text-cyan-200 hover:bg-cyan-300/20"
+                    >
+                      Review
+                    </Link>
+                  </div>
                 </li>
               ))}
           </ul>

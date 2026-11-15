@@ -41,7 +41,7 @@ import {
   CHALLENGE_TTL_MS,
   ROOM_CODE_ALPHABET,
   ROOM_CODE_LENGTH,
-  ROOM_TTL_MS,
+  ROOM_DEFAULT_TIMER_SECONDS,
   getRoomGame,
 } from "./catalog";
 import { createPairMatch, type PairMatchResult } from "./games";
@@ -184,13 +184,14 @@ function asMemberRecord(row: MemberRow): RoomMemberRecord {
 
 /** The settings a room actually runs with (never what a body asked for). */
 function settingsOf(row: RoomRow): RoomSettings {
-  const raw = row.settings as { stake?: unknown } | null;
+  const raw = row.settings as { stake?: unknown; timerSeconds?: unknown } | null;
   if (row.kind === "challenge") return challengeSettings();
   const resolved = resolveRoomSettings(row.gameKey, raw);
   if (resolved.ok) return resolved.settings;
   // Stored settings are validated on write; if the catalog ever changes under
-  // them, a room falls back to free play rather than to an illegal stake.
-  return { stake: 0 };
+  // them, a room falls back to free play and the default lifetime rather than
+  // to an illegal stake or an unbounded room.
+  return { stake: 0, timerSeconds: ROOM_DEFAULT_TIMER_SECONDS };
 }
 
 function viewOf(
@@ -504,7 +505,11 @@ export async function createRoom({
   const roomSettings = settingsResult.settings as RoomSettings;
 
   const now = new Date();
-  const expiresAt = new Date(now.getTime() + (kind === "challenge" ? CHALLENGE_TTL_MS : ROOM_TTL_MS));
+  // A PRO room runs for the host's chosen window; a challenge keeps the fixed
+  // invitation TTL (it has no host-chosen lifetime).
+  const lifetimeMs =
+    kind === "challenge" ? CHALLENGE_TTL_MS : roomSettings.timerSeconds * 1000;
+  const expiresAt = new Date(now.getTime() + lifetimeMs);
   const hostName = await nameFor(hostUserId);
 
   // Codes are unique by index, so a collision (astronomically unlikely) is

@@ -25,7 +25,11 @@ import {
   requireRoomActor,
   requireRoomViewer,
 } from "../../../lib/rooms/api";
-import { ROOM_GAMES, getRoomGame } from "../../../lib/rooms/catalog";
+import {
+  ROOM_DEFAULT_TIMER_SECONDS,
+  ROOM_GAMES,
+  getRoomGame,
+} from "../../../lib/rooms/catalog";
 import { createRoom, listRoomsFor } from "../../../lib/rooms/store";
 
 export const dynamic = "force-dynamic";
@@ -74,6 +78,9 @@ export async function POST(req: Request) {
       // Flat, allowlisted: unknown fields are rejected, and the game's own
       // ceiling is applied by resolveRoomSettings inside the store.
       stake: { type: "number", integer: true, min: 0, max: 100 },
+      // The room's own open-for window. The exact option set is enforced by
+      // resolveRoomSettings; this is only the outer numeric bound.
+      timerSeconds: { type: "number", integer: true, min: 60, max: 7200 },
     });
     if (!parsed.ok) return parsed.response;
 
@@ -92,7 +99,10 @@ export async function POST(req: Request) {
       gameKey,
       kind: "room",
       tier,
-      rawSettings: { stake: parsed.data.stake ?? 0 },
+      rawSettings: {
+        stake: parsed.data.stake ?? 0,
+        timerSeconds: parsed.data.timerSeconds ?? ROOM_DEFAULT_TIMER_SECONDS,
+      },
     });
     if (!created.ok) return failureResponse(created);
 

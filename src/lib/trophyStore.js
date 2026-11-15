@@ -1033,6 +1033,91 @@ export async function applyTrophyResult({
  *   places?: object[],
  * }>}
  */
+/**
+ * Apply ONE authoritative ranked result to ONE player's game-specific trophies.
+ *
+ * The asynchronous ("ghost") duel writer. Its opponent is a RECORDED run of
+ * another real player, who is not in the match and whose trophies must not
+ * move — so this calls the shared `settleTrophies` with a SINGLE seat instead of
+ * a pair. Everything else is the platform's existing settlement:
+ *
+ *   * the same row lock / ledger seeding / identity mirror,
+ *   * the same `trophy_events` (user, game, match) idempotency journal,
+ *   * the same `duelTrophyDelta` ladder, scaled here by the recording's own
+ *     recorded trophy count rather than an invented opponent,
+ *   * the journal's `opponent_id` is NULL, because no app user is on that side.
+ *
+ * `result` is from the HUMAN's point of view: "win" | "loss" | "draw".
+ *
+ * @param {object} params
+ * @param {string} params.gameKey
+ * @param {string} params.matchId
+ * @param {string} params.clerkId
+ * @param {number} [params.opponentTrophies] the recording's recorded count
+ * @param {"win"|"loss"|"draw"} [params.result]
+ * @param {any} [params.tx]
+ */
+export async function applyGhostTrophyResult({
+  tx,
+  gameKey,
+  matchId,
+  clerkId,
+  opponentTrophies,
+  result = "win",
+}) {
+  const key = String(gameKey ?? "");
+  const eventId = String(matchId ?? "");
+  const outcome =
+    result === "draw" ? "draw" : result === "loss" ? "loss" : "win";
+
+  if (!isTrophyGame(key)) return { applied: false, reason: "game-not-rated" };
+  if (!GAME_KEY_RE.test(key)) return { applied: false, reason: "invalid-game-key" };
+  if (!eventId || eventId.length > MAX_MATCH_ID_LENGTH) {
+    return { applied: false, reason: "invalid-match-id" };
+  }
+  if (!clerkId) return { applied: false, reason: "missing-player" };
+  if (!isValidTrophyOutcome(outcome)) {
+    return { applied: false, reason: "invalid-outcome" };
+  }
+  if (isGuestPvpMatch([clerkId])) {
+    return { applied: false, reason: "guest-unrated" };
+  }
+
+  const rivalTrophies = Number.isFinite(Number(opponentTrophies))
+    ? Number(opponentTrophies)
+    : TROPHY_START;
+
+  const settled = await settleTrophies({
+    tx,
+    gameKey: key,
+    matchId: eventId,
+    seats: [{ clerkId: String(clerkId), outcome }],
+    // No second seat exists: there is no opponent user to journal.
+    opponentIdFor: () => null,
+    nominalDeltasFor: (locked) =>
+      locked.map((seat) =>
+        seat.outcome === "draw"
+          ? 0
+          : duelTrophyDelta({
+              playerTrophies: seat.trophies,
+              opponentTrophies: rivalTrophies,
+              outcome: seat.outcome,
+            }),
+      ),
+  });
+  if (!settled.applied) return settled;
+
+  const entry = settled.results[0];
+  return {
+    applied: true,
+    result: outcome,
+    gameKey: key,
+    matchId: eventId,
+    label: getTrophyGameLabel(key),
+    player: toSettledSeatShape(entry),
+  };
+}
+
 export async function applyPlacementTrophies({
   tx,
   gameKey,

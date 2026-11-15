@@ -311,7 +311,7 @@ test("the wager policy is the single source of stake legality", () => {
 
 test("a challenge's settings are the server's, always free", () => {
   const settings = challengeSettings();
-  assert.deepEqual(settings, { stake: 0 });
+  assert.deepEqual(settings, { stake: 0, timerSeconds: 7200 });
 });
 
 // ── Creating: the PRO gate ────────────────────────────────────────────────

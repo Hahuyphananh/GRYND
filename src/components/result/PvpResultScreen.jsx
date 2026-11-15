@@ -43,6 +43,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import ShareWinButton from "../share/ShareWinButton";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
@@ -190,6 +191,12 @@ export default function PvpResultScreen({
   details = [],
   detailsContent = null,
   durationSeconds = null,
+  // Optional share-a-win config, shaped `{ mode?: "Ranked", url?: string }`.
+  // Only games that pass it get the control, and the screen shows it on a WIN
+  // only — a "share" button on a loss would be a joke at the player's expense.
+  // The time in the shared copy is `durationSeconds`, i.e. the same number the
+  // result rows display, so the post can never exaggerate the run.
+  shareWin = null,
   playAgain = null,
   rematch = null,
   // Generic optional extra action, rendered between Rematch and Return to
@@ -1031,6 +1038,24 @@ export default function PvpResultScreen({
                     </span>
                   </p>
                 ))}
+              </div>
+            )}
+
+            {/* Share this win — outside the actions block, so it is present
+                even for a result that offers no retry/lobby action. */}
+            {!compact && shareWin && outcome === "win" && (
+              <div className="mx-auto mt-5 flex w-full max-w-xs justify-center">
+                <ShareWinButton
+                  game={shareWin.game ?? "duel"}
+                  mode={shareWin.mode ?? null}
+                  durationMs={
+                    durationSeconds !== null && durationSeconds !== undefined
+                      ? Number(durationSeconds) * 1000
+                      : null
+                  }
+                  url={shareWin.url ?? null}
+                  testId="result-share-win"
+                />
               </div>
             )}
 

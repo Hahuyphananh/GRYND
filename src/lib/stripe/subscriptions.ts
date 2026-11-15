@@ -124,7 +124,7 @@ export const LEGACY_MEMBERSHIP_PLAN_KEYS = [
  * catalog / Stripe — this constant exists so the upgrade surface still renders
  * an honest number on a cold/failed read instead of a blank CTA.
  */
-export const FALLBACK_PRO_PRICE_CENTS = 999;
+export const FALLBACK_PRO_PRICE_CENTS = 499;
 
 /** The user's current membership state — server-authoritative. */
 export async function getMembershipTier(
@@ -135,9 +135,7 @@ export async function getMembershipTier(
 
 // ── Membership perks (GRYND PRO) ───────────────────────────────────────────
 // GRYND PRO sells ad-free browsing, advanced statistics / performance
-// analytics, detailed match history, the profile-customization cosmetics
-// (custom chat color, profile accent), priority support and PRIORITY
-// MATCHMAKING. It NEVER grants:
+// analytics, unlimited match analysis and private custom rooms. It NEVER grants:
 //
 //   * tokens or any other currency,
 //   * XP multipliers,
@@ -145,17 +143,14 @@ export async function getMembershipTier(
 //   * a wider skill window, a bypassed game/mode/region constraint, or any
 //     influence over a match's outcome.
 //
-// PRIORITY MATCHMAKING — what it is and is NOT:
+// PRIORITY MATCHMAKING — implemented, but deliberately NOT sold:
 //   A verified ACTIVE subscriber is preferred over an otherwise EQUIVALENT free
 //   candidate in the queue worker's candidate ORDERING only. Membership never
-//   widens the trophy/Elo compatibility window (so a Pro member is never paired
-//   outside the same skill band a free player is held to), never overrides the
-//   game / mode / region / player-count constraints, and never changes a
-//   result. Skill compatibility stays the primary criterion: a strictly closer
-//   match always beats a less compatible Pro candidate. The priority is
-//   bounded (a small skill tolerance) and the existing wait-time window
-//   widening keeps free players from starving.
-//   See src/lib/quickQueue.ts + src/lib/quickQueueWorker.ts.
+//   widens the trophy/Elo compatibility window, never overrides the game /
+//   mode / region / player-count constraints, and never changes a result.
+//   See src/lib/quickQueue.ts + src/lib/quickQueueWorker.ts. It is absent from
+//   the offer (src/lib/proBenefits.ts) until the queues are large enough that
+//   a tie-break does not read as "the queues are empty".
 //
 // Free players get the complete game: all games, ranked play, Elo,
 // leaderboards, free tournaments, profiles, match history, progression and
@@ -279,7 +274,6 @@ export async function ensureSubscriptionPlanStripe(
   const stripe = getStripe();
 
   const bound: StripePriceIds = {
-    weekly: plan.stripePriceIdWeekly ?? null,
     monthly: plan.stripePriceId,
     yearly: plan.stripePriceIdYearly ?? null,
   };
@@ -391,7 +385,7 @@ export async function ensureSubscriptionPlanStripe(
     return productPrices;
   };
 
-  const priceIds: StripePriceIds = { weekly: null, monthly: null, yearly: null };
+  const priceIds: StripePriceIds = { monthly: null, yearly: null };
 
   for (const interval of PRO_BILLING_INTERVALS) {
     const existingId = bound[interval];
@@ -466,7 +460,6 @@ export async function ensureSubscriptionPlanStripe(
         // The monthly option keeps the ORIGINAL column so existing rows and the
         // existing monthly checkout path read exactly as before.
         stripePriceId: priceIds.monthly,
-        stripePriceIdWeekly: priceIds.weekly,
         stripePriceIdYearly: priceIds.yearly,
         updatedAt: new Date(),
       })
@@ -510,7 +503,6 @@ async function readPlanPrices(plan: SubscriptionPlanBundle): Promise<{
   > = {};
 
   const bound: StripePriceIds = {
-    weekly: plan.stripePriceIdWeekly ?? null,
     monthly: plan.stripePriceId,
     yearly: plan.stripePriceIdYearly ?? null,
   };
@@ -687,8 +679,8 @@ export async function getProPlanDisplay(
     priceDisplay: formatAmountFromCents(FALLBACK_PRO_PRICE_CENTS),
     badge: "Pro",
     perks: [...PRO_PLAN_FALLBACK_PERKS],
-    // The three options are always present, so the upgrade surface can render
-    // its selector even when the plan row (or Stripe) cannot be read.
+    // Both billing options are always present, so the upgrade surface can
+    // render its selector even when the plan row (or Stripe) cannot be read.
     billingOptions: buildProBillingOptions(),
   };
 
@@ -825,7 +817,9 @@ export async function resolveBillingIntervalForPriceId(
       .where(eq(tokenSubscriptionPlans.key, CANONICAL_MEMBERSHIP_PLAN_KEY))
       .limit(1);
     if (!row) return null;
-    if (row.stripePriceIdWeekly && row.stripePriceIdWeekly === priceId) return "weekly";
+    // Weekly is retired: an existing weekly subscriber's price no longer maps
+    // to a sellable interval, so it resolves to null and the UI simply says
+    // "your current plan" instead of inventing a cadence.
     if (row.stripePriceIdYearly && row.stripePriceIdYearly === priceId) return "yearly";
     if (row.stripePriceId && row.stripePriceId === priceId) return "monthly";
     return null;

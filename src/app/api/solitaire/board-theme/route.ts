@@ -24,7 +24,11 @@ import { auth } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 import { db } from "../../../../db";
 import { users } from "../../../../db/schema";
-import { isBoardThemeKey } from "../../../../lib/solitaire-duel/boardThemes";
+import {
+  boardThemeFor,
+  isBoardThemeKey,
+} from "../../../../lib/solitaire-duel/boardThemes";
+import { isProMember } from "../../../../lib/proStatus";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,12 +45,20 @@ export async function GET() {
     .where(eq(users.clerkId, userId))
     .limit(1);
 
+  // Whether this account may use the PRO-only tables. The selector locks those
+  // swatches on `pro: false`, and PUT below refuses them regardless — the client
+  // flag is a convenience, not the gate.
+  const pro = await isProMember(userId);
+  const stored = isBoardThemeKey(row?.theme) ? row.theme : null;
+  const usable = stored && (!boardThemeFor(stored).proOnly || pro) ? stored : null;
+
   return NextResponse.json({
     success: true,
     signedIn: true,
-    // A key that is no longer a preset reads as "no choice", never as an
-    // unstyled board.
-    theme: isBoardThemeKey(row?.theme) ? row.theme : null,
+    pro,
+    // A key that is no longer a preset (or is a PRO table this account may no
+    // longer use) reads as "no choice", never as an unstyled board.
+    theme: usable,
   });
 }
 
@@ -66,6 +78,16 @@ export async function PUT(req: Request) {
   const incoming = (body as { theme?: unknown } | null)?.theme;
   if (!isBoardThemeKey(incoming)) {
     return NextResponse.json({ success: false, error: "Unknown theme." }, { status: 400 });
+  }
+
+  // PRO-only tables are refused HERE, on the server, from the caller's own
+  // subscription row — not by hiding the swatch. Guests/unsigned-in callers were
+  // already refused above.
+  if (boardThemeFor(incoming).proOnly && !(await isProMember(userId))) {
+    return NextResponse.json(
+      { success: false, error: "This table is part of GRYND PRO." },
+      { status: 403 },
+    );
   }
 
   await db

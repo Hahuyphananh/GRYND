@@ -28,9 +28,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useUser } from "@clerk/nextjs";
+import Link from "next/link";
 import { IconCards } from "@tabler/icons-react";
 
 import PvpLobbyPage, { PvpLobby } from "../lobby/PvpLobby";
+import FriendChallengePanel from "./FriendChallengePanel";
 import { useMatchRouter } from "../../hooks/useMatchRouter";
 
 const LOBBY_POLL_MS = 15_000;
@@ -87,6 +89,9 @@ export default function SolitaireLobby({ variant = "home" }: { variant?: "home" 
   // The waiting match we just created. The GET snapshot is the source of truth,
   // but between the POST and the next poll this keeps the panel honest.
   const [localWaitingId, setLocalWaitingId] = useState<string | null>(null);
+  // Set once the server refuses a second guest race, so the lobby can offer the
+  // sign-in path instead of repeating a button that cannot work.
+  const [guestTrialUsed, setGuestTrialUsed] = useState(false);
 
   const waitingId = snapshot?.myWaiting?.matchId ?? localWaitingId;
 
@@ -188,6 +193,43 @@ export default function SolitaireLobby({ variant = "home" }: { variant?: "home" 
     }
   }, [enterMatch, loadLobby, rankedBusy]);
 
+  /**
+   * The guest trial: one race against a recorded human run, no account.
+   *
+   * Deliberately NOT the ranked queue. A guest has no rating row, and an open
+   * lobby is visible to real players, so the server mints a match that is
+   * already playing against a ghost seat — the guest feels the race without
+   * ever entering the ladder.
+   */
+  const startGuestRace = useCallback(async () => {
+    if (rankedBusy) return;
+    setRankedBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/solitaire-duel/guest-race", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        if (data?.reason === "guest_trial_used") {
+          setGuestTrialUsed(true);
+          setError("You've used your free race — sign in to keep racing.");
+          return;
+        }
+        setError(data?.error || "Unable to start the race");
+        return;
+      }
+      enterMatch(String(data.data.matchId));
+    } catch {
+      setError("Unable to start the race");
+    } finally {
+      setRankedBusy(false);
+    }
+  }, [enterMatch, rankedBusy]);
+
   const cancelWaiting = useCallback(async () => {
     if (!waitingId || cancelling) return;
     setCancelling(true);
@@ -278,8 +320,12 @@ export default function SolitaireLobby({ variant = "home" }: { variant?: "home" 
             <>
               Ranked Solitaire is <b>free</b>: there is no stake, no entry fee and
               no pot. A win moves your Solitaire Elo rating and trophies. Ranked
-              only matches <b>real human players</b> — no bot is ever substituted.
-              The outcome turns only on how fast and how accurately you solve the
+              only ever matches <b>real human players</b>. If nobody is live
+              within a few seconds you race a <b>ghost</b>: the recorded,
+              real-time run of another player who played this exact deal,
+              replayed move for move at their own pace. A ghost is a recording of
+              a person, <b>never an AI</b> — no bot is ever substituted. The
+              outcome turns only on how fast and how accurately you solve the
               same puzzle your opponent is looking at.
             </>
           ),
@@ -305,12 +351,28 @@ export default function SolitaireLobby({ variant = "home" }: { variant?: "home" 
         Live queue
       </p>
       {!isSignedIn ? (
-        <p className="mt-1 text-xs leading-relaxed text-white/45">
-          Sign in to join the ranked queue. Ranked only matches real players.
-        </p>
+        <div className="mt-1 text-xs leading-relaxed text-white/45">
+          <p>
+            Try <b className="text-white/70">one free race</b>: the same
+            deterministic deal, against another player&apos;s recorded run of it.
+            Nothing is rated and nothing is saved — sign in to join the live
+            ranked queue afterwards.
+          </p>
+          {guestTrialUsed ? (
+            <Link
+              href="/sign-in?redirect_url=/play/ranked"
+              className="mt-2 inline-block font-extrabold text-[#00e5ff] underline-offset-4 hover:underline"
+              data-testid="guest-trial-sign-in"
+            >
+              Sign in to keep racing →
+            </Link>
+          ) : null}
+        </div>
       ) : waitingId ? (
         <p className="mt-1 text-xs leading-relaxed text-cyan-100/80" role="status">
-          You are in the live queue, waiting for an opponent to join your table.
+          You are in the live queue. If no live player joins within a few
+          seconds, you will race a recorded run by another real player on the
+          same deal — never a bot.
         </p>
       ) : lobbies.length > 0 ? (
         <p className="mt-1 text-xs leading-relaxed text-white/50">
@@ -321,8 +383,9 @@ export default function SolitaireLobby({ variant = "home" }: { variant?: "home" 
         </p>
       ) : (
         <p className="mt-1 text-xs leading-relaxed text-white/45">
-          No one is waiting right now. Start a search and you hold the next open
-          table until another player joins.
+          No one is waiting right now. Start a search: if no live player joins
+          within a few seconds, you race a recorded run by another real player
+          on the same deal — never a bot.
         </p>
       )}
     </div>
@@ -333,7 +396,7 @@ export default function SolitaireLobby({ variant = "home" }: { variant?: "home" 
     subtitle:
       variant === "page"
         ? "A rated 1v1 Solitaire race. Both players receive the exact same Klondike deal and play it simultaneously — solve the whole puzzle first, or lead on progress when the clock runs out."
-        : "Ranked Klondike against a real person: one deterministic deal, both seats, first to solve it wins. Ranked never substitutes a bot.",
+        : "Ranked Klondike against a real person: one deterministic deal, both seats, first to solve it wins. Ranked never substitutes an AI — if nobody is live within a few seconds, you race another real player's recorded run of the same deal.",
     icon:
       variant === "page" ? (
         <IconCards className="h-9 w-9 flex-shrink-0 text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)] sm:h-10 sm:w-10" />
@@ -341,19 +404,23 @@ export default function SolitaireLobby({ variant = "home" }: { variant?: "home" 
     rules,
     rulesKey: "solitaire-duel",
     busy: rankedBusy,
-    onPlay: startRanked,
-    playLabel: waitLabelFor(waitingId),
-    playBusyLabel: "Searching…",
-    canPlay: Boolean(isSignedIn),
-    lobbies,
-    lobbiesLoading: lobbyLoading,
-    lobbyEmptyText:
-      "No one is waiting right now — press play to open the next table.",
+    // A guest gets the one-race trial; an account gets the real queue.
+    onPlay: isSignedIn ? startRanked : startGuestRace,
+    playLabel: isSignedIn ? waitLabelFor(waitingId) : "Play one free race",
+    playBusyLabel: isSignedIn ? "Searching…" : "Starting…",
+    canPlay: true,
+    // Open tables are a signed-in surface: a guest must never be seated next to
+    // a real player, so the list is empty for them instead of misleading.
+    lobbies: isSignedIn ? lobbies : [],
+    lobbiesLoading: isSignedIn ? lobbyLoading : false,
+    lobbyEmptyText: isSignedIn
+      ? "No one is waiting right now — press play to open the next table."
+      : "Live tables are for signed-in players — your free race starts right away.",
     lobbyKey: (lobby: OpenLobby) => lobby.matchId,
     lobbyTitle: () => <>Open Solitaire table</>,
     lobbyMeta: (lobby: { waited?: string | null }) =>
       lobby.waited ? `Waiting ${lobby.waited} for a second player` : "Waiting for a second player",
-    onJoin: startRanked,
+    onJoin: isSignedIn ? startRanked : startGuestRace,
     onRefresh: loadLobby,
     historyHref: isSignedIn ? "/profil" : null,
     myOpenId: waitingId,
@@ -364,7 +431,7 @@ export default function SolitaireLobby({ variant = "home" }: { variant?: "home" 
     cancelling,
     error,
     waitingSubtitle:
-      "Pairing you with another player on the same free ranked ladder. Nothing is wagered.",
+      "Pairing you with a live player on the same free ranked ladder — or, within a few seconds, with a real player's recorded run of the same deal. Nothing is wagered.",
     // Solitaire never shows the "you've been playing for N minutes" popup:
     // reminding a player of elapsed time here is a nag, not a safeguard.
     sessionReminder: false,
@@ -376,7 +443,14 @@ export default function SolitaireLobby({ variant = "home" }: { variant?: "home" 
      * shortcut inside the ranked lobby, so a search can never look like it
      * might substitute a bot.
      */
-    children: queueStatus,
+    children: (
+      <>
+        {queueStatus}
+        {/* Ranked is one way to find an opponent; a private link is the other.
+            The panel mints a lobby the public queue can never join. */}
+        <FriendChallengePanel />
+      </>
+    ),
   };
 
   if (variant === "page") {

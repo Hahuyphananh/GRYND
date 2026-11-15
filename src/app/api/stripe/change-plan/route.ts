@@ -1,7 +1,7 @@
 // src/app/api/stripe/change-plan/route.ts
 //
 // POST — switch an EXISTING GRYND PRO subscription to a different billing
-// interval (weekly / monthly / yearly). Every interval grants the same `pro`
+// interval (monthly / yearly). Every interval grants the same `pro`
 // entitlement, so this changes WHEN the member is billed, never WHAT they get.
 //
 // Safety model (deliberately conservative — a billing change is destructive):
@@ -72,8 +72,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Resolve the catalog plan and its three approved prices (idempotent — this
-  // reuses the persisted bindings and creates only a genuinely missing one).
+  // Resolve the catalog plan and its sellable prices (idempotent — this reuses
+  // the persisted bindings and creates only a genuinely missing one).
   const plan = await db
     .select()
     .from(tokenSubscriptionPlans)

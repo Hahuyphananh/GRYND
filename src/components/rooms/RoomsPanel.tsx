@@ -55,8 +55,12 @@ export default function RoomsPanel({
     ? rooms.rooms
     : [...rooms.invitations, ...rooms.hosted, ...rooms.shared];
 
-  const handleCreate = async (gameKey: string, stake: number) => {
-    const result = await rooms.createRoom(gameKey, stake);
+  const handleCreate = async (
+    gameKey: string,
+    stake: number,
+    timerSeconds: number,
+  ) => {
+    const result = await rooms.createRoom(gameKey, stake, timerSeconds);
     if (result.ok) setDialog(null);
   };
 
@@ -203,7 +207,7 @@ export function ChallengeFriendDialog({
 
   if (!friend?.clerk_id) return null;
 
-  const send = async (gameKey: string, _stake: number) => {
+  const send = async (gameKey: string, _stake: number, _timerSeconds: number) => {
     setBusy(true);
     const result = await rooms.challengeFriend(gameKey, String(friend.clerk_id));
     setBusy(false);

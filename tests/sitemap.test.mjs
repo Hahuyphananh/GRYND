@@ -147,7 +147,7 @@ test("shape: priorities, change frequencies and groups are valid", () => {
     assert.ok(page.priority > 0 && page.priority <= 1, `${page.path} priority out of range`);
     assert.ok(frequencies.has(page.changeFrequency), `${page.path} has no valid changeFrequency`);
     assert.ok(
-      ["home", "hub", "games", "guides", "info"].includes(page.group),
+      ["home", "hub", "games", "guides", "modes", "learn", "info"].includes(page.group),
       `${page.path} has an unknown group`,
     );
   }
@@ -269,11 +269,14 @@ test("exclusions: no authenticated, private or API URL is listed", () => {
   }
 });
 
-test("exclusions: no /play lobby and no /casino alias is listed", () => {
+test("exclusions: no authenticated gameplay lobby and no /casino alias is listed", () => {
   for (const path of PUBLIC_SEO_PATHS) {
+    // `/play` is the PUBLIC six-mode hub and is listed. What must stay out are
+    // the authenticated gameplay URLs, `/games/<slug>/play` — those are the
+    // ones that declare noindex and whose indexable page is the landing page.
     assert.doesNotMatch(
       path,
-      /\/play$/,
+      /^\/games\/[^/]+\/play$/,
       `${path} is the noindex authenticated lobby — the landing page is the indexable URL`,
     );
     assert.ok(
@@ -367,12 +370,22 @@ test("coverage: the sitemap lists nothing that no route renders", () => {
   }
 });
 
-test("coverage: /help and /about are not invented", () => {
+test("coverage: /help is not invented, and /about is a published decision", () => {
   const routes = new Set(staticRoutes());
-  for (const path of ["/help", "/about"]) {
-    assert.equal(routes.has(path), false, `${path} exists now — decide its SEO role explicitly`);
-    assert.equal(PUBLIC_SEO_PATHS.includes(path), false, `${path} does not exist and must not be listed`);
-  }
+  // /help still does not exist; /faq is the help surface.
+  assert.equal(routes.has("/help"), false, "/help exists now — decide its SEO role explicitly");
+  assert.equal(PUBLIC_SEO_PATHS.includes("/help"), false, "/help does not exist and must not be listed");
+
+  // /about DOES exist now: it is the publisher statement a site review looks
+  // for (who runs the site, how it is funded, what it will not do). Because it
+  // is public and indexable, the decision is to publish it — so it must be a
+  // real route AND be listed, rather than drifting in unnoticed.
+  assert.equal(routes.has("/about"), true);
+  assert.ok(PUBLIC_SEO_PATHS.includes("/about"), "/about is public and must be listed");
+  // The cookie + advertising disclosure is published for the same reason.
+  assert.equal(routes.has("/cookie-policy"), true);
+  assert.ok(PUBLIC_SEO_PATHS.includes("/cookie-policy"));
+
   assert.ok(PUBLIC_SEO_PATHS.includes("/faq"), "/faq is GRYND's help surface");
 });
 

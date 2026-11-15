@@ -2,20 +2,33 @@
 
 // src/components/rooms/RoomGameDialog.tsx
 //
-// "Which game, and for how much?" — the picker shared by the free friend
-// challenge and the PRO private room.
+// "Which game, for how much, and how long does the room stay open?" — the
+// picker shared by the free friend challenge and the PRO private room.
 //
 // The options come from src/lib/rooms/catalog.ts, the SAME module the server
 // validates with, so a game the server would refuse is never offered, and the
-// stake bounds shown are the ones enforced. A game whose `maxStake` is 0 (Pool
-// Masters: its lobby flow carries no escrow) is shown as free-play only.
+// stake bounds / room timers shown are the ones enforced. A game whose
+// `maxStake` is 0 (Pool Masters: its lobby flow carries no escrow) is shown as
+// free-play only.
 //
-// The dialog does not decide anything: it hands the chosen game + stake to the
-// caller, and the server re-validates both.
+// A CHALLENGE HAS NO TIMER CHOICE: it is a direct 1v1 invite that expires on the
+// server's own CHALLENGE_TTL, not a room the host keeps open.
+//
+// The dialog does not decide anything: it hands the chosen game, stake and
+// timer to the caller, and the server re-validates all three.
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "../../hooks/useTranslation";
+import {
+  ROOM_DEFAULT_TIMER_SECONDS,
+  ROOM_TIMER_OPTIONS,
+} from "../../lib/rooms/catalog";
 import type { RoomGameOption } from "../../lib/rooms/types";
+
+/** The fallback label used when a locale has not translated a timer option. */
+function timerFallback(seconds: number): string {
+  return seconds % 3600 === 0 ? `${seconds / 3600} h` : `${seconds / 60} min`;
+}
 
 export default function RoomGameDialog({
   open,
@@ -31,20 +44,22 @@ export default function RoomGameDialog({
   games: RoomGameOption[];
   busy?: boolean;
   onClose: () => void;
-  onConfirm: (gameKey: string, stake: number) => void;
+  onConfirm: (gameKey: string, stake: number, timerSeconds: number) => void;
 }) {
   const { t } = useTranslation();
   const selectable = useMemo(() => games.filter((game) => game.seats >= 2), [games]);
   const [gameKey, setGameKey] = useState<string>(selectable[0]?.key || "");
   const [stake, setStake] = useState<number>(0);
+  const [timerSeconds, setTimerSeconds] = useState<number>(ROOM_DEFAULT_TIMER_SECONDS);
 
-  // A dialog reopened for another game must not carry a stale stake.
+  // A dialog reopened for another game must not carry a stale stake or timer.
   useEffect(() => {
     if (!open) return;
     setGameKey((current) =>
       selectable.some((game) => game.key === current) ? current : selectable[0]?.key || "",
     );
     setStake(0);
+    setTimerSeconds(ROOM_DEFAULT_TIMER_SECONDS);
   }, [open, selectable]);
 
   if (!open) return null;
@@ -151,6 +166,35 @@ export default function RoomGameDialog({
               </div>
             )}
 
+            {mode === "room" && (
+              <div className="mt-4">
+                <label
+                  htmlFor="room-timer"
+                  className="text-xs font-semibold uppercase tracking-wide text-gray-300"
+                >
+                  {t("rooms.timerLabel", "Room timer")}
+                </label>
+                <select
+                  id="room-timer"
+                  value={timerSeconds}
+                  onChange={(event) => setTimerSeconds(Number(event.target.value))}
+                  className="mt-1 w-full rounded-sm border border-white/20 bg-[#08203f] px-3 py-2 text-sm text-white"
+                >
+                  {ROOM_TIMER_OPTIONS.map((seconds) => (
+                    <option key={seconds} value={seconds}>
+                      {t(`rooms.timer_${seconds}`, timerFallback(seconds))}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[11px] text-gray-300">
+                  {t(
+                    "rooms.timerHint",
+                    "How long the room stays open for friends to join before it expires.",
+                  )}
+                </p>
+              </div>
+            )}
+
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
@@ -162,7 +206,14 @@ export default function RoomGameDialog({
               <button
                 type="button"
                 disabled={!game || busy}
-                onClick={() => game && onConfirm(game.key, stakeOffered ? stake : 0)}
+                onClick={() =>
+                  game &&
+                  onConfirm(
+                    game.key,
+                    stakeOffered ? stake : 0,
+                    mode === "challenge" ? ROOM_DEFAULT_TIMER_SECONDS : timerSeconds,
+                  )
+                }
                 className="rounded-sm bg-[#FFD700] px-3 py-1.5 text-sm font-semibold text-[#003366] disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-400"
               >
                 {busy

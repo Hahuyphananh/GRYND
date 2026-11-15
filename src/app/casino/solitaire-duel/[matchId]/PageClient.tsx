@@ -69,6 +69,8 @@ import NavigationBar from "../../../../components/navigation-bar";
 import GameSessionHost from "../../../../components/GameSessionHost";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
+import GuestResultPrompt from "../../../../components/solitaire-duel/GuestResultPrompt";
+import MatchTimeline from "../../../../components/solitaire-duel/MatchTimeline";
 import { useMatchRouter } from "../../../../hooks/useMatchRouter";
 import SeatAvatar from "../../../../components/game/SeatAvatar";
 import SolitaireBoard from "../../../../components/solitaire-duel/SolitaireBoard";
@@ -161,6 +163,17 @@ type MatchDto = {
   aiDifficulty: string | null;
   /** The public identity of that bot; null on a human duel. */
   bot: MatchBot | null;
+  /** True when the opponent is a RECORDED human run — never an AI seat. */
+  isGhost?: boolean;
+  /** The anonymised handle, recorded strength and recorded pace of that run. */
+  ghost?: {
+    name: string;
+    rating: number | null;
+    /** Foundation progress at the recording's own instants (from GO). */
+    trail?: { atMs: number; foundationCards: number }[] | null;
+    /** When the recording solved the deal, in ms from GO (null if it never did). */
+    completedAtMs?: number | null;
+  } | null;
   goAtMs: number | null;
   /** The viewer's own inactivity alarm instant (15 min without a move). */
   inactivityAlarmAtMs: number | null;
@@ -227,6 +240,8 @@ function Meter({
   identity,
   isAi = false,
   ratingLabel,
+  ghostTrail = null,
+  ghostElapsedMs = null,
 }: {
   label: string;
   percent: number;
@@ -238,6 +253,10 @@ function Meter({
   isAi?: boolean;
   /** The bot's displayed opponent strength (never a player trophy). */
   ratingLabel?: string | null;
+  /** A ghost's recorded checkpoints, offsets from the server's GO instant. */
+  ghostTrail?: { atMs: number; foundationCards: number }[] | null;
+  /** The viewer's elapsed race time, for marking the reached checkpoints. */
+  ghostElapsedMs?: number | null;
 }) {
   const clamped = Math.max(0, Math.min(100, Math.round(percent)));
   // BOTH seats are identified the same way: a face and a name. A seat whose
@@ -316,6 +335,49 @@ function Meter({
         />
       </div>
       <p className="mt-1 truncate text-[10px] text-white/45">{detail}</p>
+      {/* THE RECORDED RUN, UNFOLDING. Each bar is a checkpoint from the
+          recording's OWN verified replay: its height is how many cards that run
+          had on the foundations, and it lights up when the race clock reaches
+          the instant it really happened. The database row is a recording, so
+          nothing here is interpolated or predicted — the player sees the run
+          they are racing at the pace it was played. */}
+      {ghostTrail && ghostTrail.length > 1 && (
+        <div
+          data-testid={`solitaire-ghost-trail-${tone}`}
+          data-reached={
+            ghostElapsedMs == null
+              ? 0
+              : ghostTrail.filter((point) => point.atMs <= ghostElapsedMs).length
+          }
+          aria-label="Recorded run progress"
+          className="mt-1.5 flex h-7 items-end gap-[2px]"
+        >
+          {ghostTrail.map((point, index) => {
+            const reached = ghostElapsedMs != null && point.atMs <= ghostElapsedMs;
+            const height = Math.max(
+              6,
+              Math.round(
+                (Math.max(0, Math.min(52, Number(point.foundationCards) || 0)) / 52) * 100,
+              ),
+            );
+            return (
+              <span
+                key={`${point.atMs}-${index}`}
+                aria-hidden="true"
+                className={`flex-1 rounded-sm ${
+                  reached ? "bg-[#00e5ff]/75" : "bg-white/[0.08]"
+                }`}
+                style={{ height: `${height}%` }}
+              />
+            );
+          })}
+        </div>
+      )}
+      {ghostTrail && ghostTrail.length > 1 && (
+        <p className="mt-1 text-[10px] text-white/35">
+          Recorded run — their real pace on this deal
+        </p>
+      )}
     </div>
   );
 }
@@ -601,6 +663,15 @@ export default function SolitaireDuelMatchPage() {
   // LIVE race, so a human duel keeps the purely event-driven path.
   const opponentIsBot = Boolean(match?.isAi);
   usePracticeBotHeartbeat(opponentIsBot && racing && !paused, () => loadRef.current());
+  // A GHOST has no socket events of its own: its recorded moves are replayed by
+  // the store only when the match is READ. So it needs the same visible-tab
+  // heartbeat a practice bot does, or the recording stands still while the
+  // player thinks. A live human duel keeps the purely event-driven path.
+  const opponentIsRecorded = Boolean(match?.isGhost);
+  usePracticeBotHeartbeat(
+    opponentIsRecorded && racing && !paused,
+    () => loadRef.current(),
+  );
 
   // When the local inactivity clock says the forfeit is due, the server still
   // owns the verdict — ask it, and let it resolve. Nothing is decided here.
@@ -888,9 +959,19 @@ export default function SolitaireDuelMatchPage() {
   const seatKeyForIdentity: Seat = mySeatKey === "player1" ? "player2" : "player1";
   const opponentIdentity: SeatIdentity = match?.players?.[seatKeyForIdentity] ?? null;
   const practiceBot = match?.isAi ? match.bot : null;
+  // A ghost is a recording of a real player, so it is introduced by its
+  // anonymised handle rather than by a bot name or a missing account.
+  const ghost = match?.isGhost ? match.ghost ?? null : null;
+  // The race clock on the SERVER's clock, so the trail lights up exactly the
+  // checkpoints the recording had reached by now (never a local guess).
+  const ghostTrail = ghost?.trail ?? null;
+  const ghostElapsedMs =
+    ghost && match?.goAtMs != null
+      ? Math.max(0, serverNowMs - match.goAtMs)
+      : null;
   const opponentName = match?.isAi
     ? practiceBot?.name || "Bot"
-    : opponentIdentity?.name || "Opponent";
+    : ghost?.name || opponentIdentity?.name || "Opponent";
   // The viewer's OWN seat, resolved the same way, so both sides of the race are
   // introduced by the same face and the same username rather than "You" vs a
   // name. The viewer is never the bot seat (the bot is always player2).
@@ -1116,6 +1197,17 @@ export default function SolitaireDuelMatchPage() {
               {/* The selected opponent, stated plainly during the match. The
                   rating is the BOT's strength label; it is never awarded to the
                   player, and practice never touches ranked progression. */}
+              {ghost && (
+                <div
+                  data-testid="solitaire-ghost-opponent"
+                  className="mt-2 rounded-xl border border-cyan-400/25 bg-cyan-400/[0.06] px-3 py-2 text-[11px] font-semibold leading-relaxed text-cyan-100/80"
+                >
+                  Racing a recorded run by a real player — {ghost.name}
+                  {ghost.rating != null ? ` (${ghost.rating} Elo)` : ""}. A replay
+                  of their own moves on this exact deal: never an AI.
+                </div>
+              )}
+
               {isPractice && practiceBot && (
                 <div
                   data-testid="solitaire-bot-opponent"
@@ -1253,6 +1345,8 @@ export default function SolitaireDuelMatchPage() {
                       identity={opponentIdentity}
                       isAi={isPractice}
                       ratingLabel={isPractice ? practiceBot?.ratingLabel : null}
+                      ghostTrail={ghostTrail}
+                      ghostElapsedMs={ghostElapsedMs}
                     />
                   </div>
 
@@ -1560,18 +1654,31 @@ export default function SolitaireDuelMatchPage() {
         // own reactions to rated duels. Never two voices on one result.
         showGlitch={!isPractice}
         extraContent={
-          isPractice && practiceBot && botResultLine ? (
-            <BotSpeech
-              bot={practiceBot}
-              line={botResultLine}
-              // The result hero above already shows this bot's portrait; this
-              // row is the bot's dialog, not a second avatar.
-              showAvatar={false}
-              testId="solitaire-bot-result-speech"
-            />
-          ) : null
+          <>
+            {/* A guest just finished their one free race: the result screen is
+                the honest place to ask for an account, and the prompt renders
+                nothing at all for a signed-in player. */}
+            <GuestResultPrompt />
+            {/* Post-match Mistake Finder: basic stats for everyone, the PRO
+                timeline scrubber for an active member. It reads the settled
+                match on the server, so nothing here decides who sees what. */}
+            <MatchTimeline matchId={match ? String(match.matchId) : ""} />
+            {isPractice && practiceBot && botResultLine ? (
+              <BotSpeech
+                bot={practiceBot}
+                line={botResultLine}
+                // The result hero above already shows this bot's portrait; this
+                // row is the bot's dialog, not a second avatar.
+                showAvatar={false}
+                testId="solitaire-bot-result-speech"
+              />
+            ) : null}
+          </>
         }
         durationSeconds={resultDuration}
+        // Ranked and practice both reach this one result screen; the shared
+        // copy names which, and the time comes from `resultDuration` above.
+        shareWin={{ mode: isPractice ? "practice" : "ranked" }}
         sides={[
           {
             name: "You",

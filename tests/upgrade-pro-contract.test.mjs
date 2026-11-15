@@ -175,7 +175,6 @@ test("the price is resolved server-side and rendered from the plan, never hardco
   );
   // Every option's price is resolved server-side from a bound Stripe price.
   assert.match(PRO_BILLING, /PRO_BILLING_INTERVALS/);
-  assert.match(SUBSCRIPTIONS, /stripePriceIdWeekly|stripe_price_id_weekly/);
   assert.match(SUBSCRIPTIONS, /stripePriceIdYearly|stripe_price_id_yearly/);
   assert.ok(
     !/\$\s?9\.99|\b999\b/.test(BUTTON + MODAL + CONTENT + PAGE_CLIENT),
@@ -237,15 +236,25 @@ test("the modal shows the GRYND PRO offer with the pack-mega artwork", () => {
   // shared `pro.*` keys, and each key it renders exists in the English bundle
   // that every locale falls back through.
   assert.match(CONTENT, /t\("pro\.lead"\)/);
-  assert.match(TRANSLATIONS, /lead: "Compete without distractions\."/);
+  // The offer states the promise (master your game) and the reasons to pay:
+  // post-match depth, a climb across every title, and visible standing.
+  assert.match(
+    TRANSLATIONS,
+    /lead: "Master Your Game\. Go deeper after every match, track your climb across every title, and stand out on the ladder\."/,
+  );
   assert.match(CONTENT, /t\("pro\.cta\.subscribe"/);
   assert.match(CONTENT, /t\("pro\.cta\.manage"\)/);
   // The CTA carries the fully formatted price (symbol included), so the copy has
   // no currency of its own — the same key is correct in CAD, USD, EUR…
   assert.match(TRANSLATIONS, /subscribe: "Subscribe — \{price}\/\{unit}\"/);
   assert.ok(
-    !/equivalent: "About \$\{amount}/.test(TRANSLATIONS) &&
-      !/save: "Save \$\{amount}/.test(TRANSLATIONS),
+    /save: "Save \{percent\}% vs\. \{versus\} \(\{amount\}\/mo\)"/.test(
+      TRANSLATIONS,
+    ),
+    "the saving is one crisp line: rounded percent, monthly price, no annual amount",
+  );
+  assert.ok(
+    !TRANSLATIONS.includes("${amount}") && !/save: "Save \$/.test(TRANSLATIONS),
     "no pro.* copy may hardcode a currency symbol",
   );
   assert.match(TRANSLATIONS, /manage: "Manage subscription"/);
@@ -275,32 +284,45 @@ test("the modal shows the GRYND PRO offer with the pack-mega artwork", () => {
     /\{ id: "ad_free", availability: "available" \}/,
     "ad-free is enforced today (lib/adEntitlement.ts) and stays advertised",
   );
-  // The audit: `analytics` is shipped (the /stats dashboard, server-gated by
-  // /api/stats/performance) and may be advertised; extended leaderboards with
-  // ranking graphs and private custom rooms are still unbuilt and may not.
+  // The refreshed box: analytics is shipped (the /stats dashboard, gated by
+  // /api/stats/performance); the daily archive is gated by its own route; and
+  // private rooms are still enforced by POST /api/rooms but are no longer part
+  // of the box. Extended leaderboards with ranking graphs are still unbuilt.
   assert.match(
     PRO_BENEFITS,
     /\{ id: "analytics", availability: "available" \}/,
     "the performance dashboard exists and is gated — the catalog must say so",
   );
+  assert.match(
+    PRO_BENEFITS,
+    /\{ id: "daily_archive", availability: "available" \}/,
+    "the PRO daily archive route exists — advertise it",
+  );
   assert.ok(
-    !/id: "(leaderboards|private_rooms)", availability: "available"/.test(
-      PRO_BENEFITS,
-    ),
-    "leaderboard graphs / private rooms are not built yet — they must not be advertised",
+    !/id: "private_rooms"/.test(PRO_BENEFITS),
+    "private rooms are out of the current value box",
+  );
+  assert.ok(
+    !/id: "leaderboards", availability: "available"/.test(PRO_BENEFITS),
+    "leaderboard graphs are not built yet — they must not be advertised",
   );
 
   // The perk row the API serves (/api/membership/status sends `plan.perks`) is
   // the same catalog, and the retired claims are gone from it. The comments in
   // the migration deliberately NAME the claims it removes (that is the audit
   // trail), so the check reads the statement — comments stripped — not the file.
-  const sql = MIGRATION_0215.split("\n")
+  const sql = read("src/db/migrations/0261_pro_offer_refresh.sql")
+    .split("\n")
     .filter((line) => !line.trim().startsWith("--"))
     .join("\n");
-  assert.match(sql, /'Ad-free browsing and gaming'/);
-  assert.match(
-    sql,
-    /'Priority matchmaking — a fair queue tie-break, never a skill advantage'/,
+  assert.match(sql, /'100% Ad-Free Experience/);
+  assert.ok(
+    !/matchmaking/i.test(sql),
+    "priority matchmaking is not sold while the queues are small",
+  );
+  assert.ok(
+    !/Private custom rooms/i.test(sql),
+    "private rooms are out of the current value box",
   );
   assert.ok(
     !/Detailed match history|Custom chat color|Priority support|customization/i.test(
@@ -317,7 +339,7 @@ test("every dynamic PRO string resolves in all three languages", async () => {
   // grepped as literals, so they are enumerated here and resolved through the
   // real bundle. A locale that is missing one would otherwise render the raw
   // key — or silently fall back to English mid-sentence.
-  const intervals = ["weekly", "monthly", "yearly"];
+  const intervals = ["monthly", "yearly"];
   // Derived from the catalog, not a second hand-kept list: every approved
   // benefit must be translated in every locale — INCLUDING the ones not
   // advertised yet, so the surface that ships each feature only has to flip its
@@ -335,9 +357,10 @@ test("every dynamic PRO string resolves in all three languages", async () => {
     "pro.membership",
     "pro.interval_group",
     "pro.badge.best_value",
-    "pro.equivalent",
     "pro.save",
-    "pro.flexible_weekly",
+    "pro.flexible_monthly",
+    "pro.founder_anchor",
+    "pro.founder_scarcity",
     "pro.selected",
     "pro.same_membership",
     "pro.cancel_anytime",
@@ -345,6 +368,13 @@ test("every dynamic PRO string resolves in all three languages", async () => {
     "pro.active_renews",
     "pro.close",
     "pro.benefits_title",
+    "pro.preview.title",
+    "pro.preview.sample",
+    "pro.preview.alt",
+    "pro.preview.range",
+    "pro.preview.gain",
+    "pro.preview.caption",
+    "pro.trustpilot_label",
     "pro.no_advantage",
     "pro.error_generic",
     "pro.checkout_cancelled",
@@ -352,7 +382,6 @@ test("every dynamic PRO string resolves in all three languages", async () => {
     "pro.checkout_active",
     "pro.free_title",
     "pro.free_body",
-    "pro.free_note",
     "pro.billing_title",
     "pro.billing_current",
     "pro.billing_options_lead",
@@ -422,6 +451,36 @@ test("the upgrade CTA sits on non-gameplay pages only", () => {
   };
   for (const dir of gameplayDirs) if (exists(dir)) walk(dir);
   assert.deepEqual(offenders, [], `upgrade CTA found inside gameplay: ${offenders}`);
+});
+
+test("the analytics benefit ships a sample visual preview", () => {
+  // The bullet promises "graphs"; the card shows what that means. It is a
+  // static sample (no dashboard fetch, no account data) and is labelled as one.
+  assert.match(CONTENT, /data-testid="pro-analytics-preview"/);
+  assert.match(CONTENT, /pro\.preview\.title/);
+  assert.match(CONTENT, /pro\.preview\.sample/);
+  assert.match(CONTENT, /pro\.preview\.alt/);
+  assert.match(CONTENT, /<svg/);
+  assert.match(CONTENT, /role="img"/);
+  assert.doesNotMatch(CONTENT, /useApiResource|fetch\(/);
+});
+
+test("social proof beside the CTA is Trustpilot's live widget, not invented numbers", () => {
+  // The proof is the real TrustBox, mounted from the configured business unit.
+  // A hardcoded rating or review count would be a fabricated claim (and would
+  // go stale), so the component must derive everything from the widget.
+  assert.match(
+    CONTENT,
+    /data-testid="pro-trustpilot-proof"/,
+    "the proof sits with the offer",
+  );
+  assert.match(CONTENT, /getTrustpilotConfig\(\)/);
+  assert.match(CONTENT, /<TrustpilotWidget/);
+  assert.match(CONTENT, /!active && trustpilot/);
+  assert.ok(
+    !/\b[45]\.\d\b|\b\d{2,}\s*(reviews|avis|opiniones)\b/i.test(CONTENT),
+    "no rating or review count may be typed into the component",
+  );
 });
 
 test("the upgrade landing page is public and never prerendered for one user", () => {

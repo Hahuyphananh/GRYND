@@ -2,11 +2,26 @@ import type { Metadata } from "next";
 
 import SolitaireLobby from "../../../components/solitaire-duel/SolitaireLobby";
 
+const RANKED_TITLE = "Ranked Solitaire lobby | GRYND";
+const RANKED_DESCRIPTION =
+  "Rated 1v1 Solitaire against real human players. One shared deal, both seats, Elo and trophies on the line.";
+
 export const metadata: Metadata = {
-  title: "Ranked Solitaire lobby | GRYND",
-  description:
-    "Rated 1v1 Solitaire against real human players. One shared deal, both seats, Elo and trophies on the line.",
+  title: RANKED_TITLE,
+  description: RANKED_DESCRIPTION,
   alternates: { canonical: "/play/ranked" },
+  openGraph: {
+    title: RANKED_TITLE,
+    description: RANKED_DESCRIPTION,
+    url: "/play/ranked",
+    type: "website",
+  },
+  // Card: ./opengraph-image.tsx — humans only; bots live at /play/ai.
+  twitter: {
+    card: "summary_large_image",
+    title: RANKED_TITLE,
+    description: RANKED_DESCRIPTION,
+  },
 };
 
 /**

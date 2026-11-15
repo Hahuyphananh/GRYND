@@ -1,0 +1,11 @@
+[Unit]
+Description=GRYND Solitaire ghost pool backfill (every 10 minutes; records verified replays of finished ranked duels so ranked matchmaking always has a REAL opponent available)
+
+[Timer]
+OnCalendar=*:0/10
+RandomizedDelaySec=30
+Persistent=true
+Unit=grynd-job@solitaire-ghost-pool.service
+
+[Install]
+WantedBy=timers.target

@@ -18,6 +18,7 @@ import {
   getShopCosmetics,
   getOwnedCosmetics,
 } from "../../../lib/cosmetics";
+import { isProMember } from "../../../lib/proStatus";
 
 export async function GET() {
   try {
@@ -29,8 +30,12 @@ export async function GET() {
       );
     }
 
+    // The membership is resolved from the caller's own subscription row. A
+    // member's collection includes the PRO-only frames (granted on read, so the
+    // picker can show them); a free account's payload is unchanged.
+    const isPro = await isProMember(userId);
     const [owned, shop, all] = await Promise.all([
-      getOwnedCosmetics(userId),
+      getOwnedCosmetics(userId, { isPro }),
       getShopCosmetics(),
       getEnabledCosmetics(),
     ]);

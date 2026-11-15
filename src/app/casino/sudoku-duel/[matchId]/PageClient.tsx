@@ -63,6 +63,7 @@ import NavigationBar from "../../../../components/navigation-bar";
 import GameSessionHost from "../../../../components/GameSessionHost";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
+import MatchTimeline from "../../../../components/solitaire-duel/MatchTimeline";
 import CompetitiveHud from "../../../../components/sudoku-duel/CompetitiveHud";
 import SudokuBoard from "../../../../components/sudoku-duel/SudokuBoard";
 import SudokuNumberPad from "../../../../components/sudoku-duel/SudokuNumberPad";
@@ -1262,6 +1263,14 @@ export default function SudokuDuelMatchPage() {
           },
         ]}
         progress={progression}
+        // Post-match Mistake Finder: basic stats for everyone, the PRO timeline
+        // scrubber for a member. The server decides which one this is.
+        extraContent={
+          <MatchTimeline
+            matchId={match ? String(match.matchId) : ""}
+            gameKey="sudoku-duel"
+          />
+        }
         summary={[
           // A completed board reports the completion facts the settlement used
           // (plain time, the accumulated penalty, the adjusted final time); a

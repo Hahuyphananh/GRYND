@@ -29,6 +29,7 @@ import { db } from "../../../../db/client";
 import { solitaireDuelMatches } from "../../../../db/schema";
 import { logError } from "../../../../lib/logError";
 import {
+  getMyFriendChallenge,
   listMyWaitingMatch,
   listOpenMatches,
   lobbyEntry,
@@ -66,6 +67,7 @@ export async function GET() {
       .map((row) => lobbyEntry(row, nowMs));
 
     let myWaiting: { matchId: string; createdAtMs: number | null } | null = null;
+    let myChallenge: Awaited<ReturnType<typeof getMyFriendChallenge>> = null;
     let recent: RecentMatch[] = [];
 
     if (userId) {
@@ -114,12 +116,22 @@ export async function GET() {
         createdAtMs: instantMs(row.createdAt),
         endedAtMs: instantMs(row.endedAt),
       }));
+
+      // The caller's own friend challenge, so the lobby can report whether the
+      // invited friend has taken the seat yet — and so the panel survives a
+      // reload, because an invite is deliberately NOT in `myWaiting`.
+      try {
+        myChallenge = await getMyFriendChallenge({ userId, nowMs });
+      } catch {
+        // A lobby read must never fail because an invite read did.
+        myChallenge = null;
+      }
     }
 
     return NextResponse.json(
       {
         success: true,
-        data: { open, myWaiting, recent, serverNow: nowMs },
+        data: { open, myWaiting, myChallenge, recent, serverNow: nowMs },
       },
       { headers: { "Cache-Control": "no-store" } },
     );

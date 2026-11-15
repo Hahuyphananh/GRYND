@@ -2057,6 +2057,21 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
     0 0 18px rgba(205, 214, 244, 0.5);
 }
 
+/* GRYND PRO frames (migration 0257). The same ring mechanics as the free
+   frames; only the palette and the animated sheen differ, so a PRO frame can
+   never change an avatar's size or push a name row around. */
+.frame-founder {
+  box-shadow: 0 0 0 2px #f5ff3b, 0 0 16px rgba(245, 255, 59, 0.55),
+    inset 0 0 10px rgba(255, 215, 0, 0.35);
+  background-image: linear-gradient(135deg, rgba(255, 215, 0, 0.22), rgba(0, 229, 255, 0.18));
+}
+
+.frame-supporter {
+  box-shadow: 0 0 0 2px #00ffa6, 0 0 16px rgba(0, 255, 166, 0.45),
+    inset 0 0 10px rgba(0, 229, 255, 0.3);
+  background-image: linear-gradient(135deg, rgba(0, 255, 166, 0.2), rgba(0, 229, 255, 0.16));
+}
+
 .frame-inferno {
   box-shadow:
     0 0 0 3px #f97316,

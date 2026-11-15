@@ -122,8 +122,26 @@ export function isGuestRoomGame(key: unknown): boolean {
 // must not stay joinable forever. The sweep is lazy (see src/lib/rooms/store.ts)
 // so nothing depends on a cron being alive.
 
-/** How long a PRO custom room stays open and joinable. */
+/** How long a PRO custom room stays open and joinable by default. */
 export const ROOM_TTL_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * The lifetimes a host may choose for a room, in seconds (15 min … 2 h).
+ *
+ * This is the ROOM's clock — how long the invitation stays joinable before the
+ * lazy expiry sweep closes it — not a match clock. No supported game store
+ * accepts a per-match clock yet, so offering one here would be a promise the
+ * server could not keep.
+ */
+export const ROOM_TIMER_OPTIONS: readonly number[] = Object.freeze([
+  15 * 60,
+  30 * 60,
+  60 * 60,
+  ROOM_TTL_MS / 1000,
+]);
+
+/** The lifetime a room gets when the host does not choose one (2 hours). */
+export const ROOM_DEFAULT_TIMER_SECONDS = ROOM_TTL_MS / 1000;
 
 /** How long a friend challenge stays pending before it expires. */
 export const CHALLENGE_TTL_MS = 15 * 60 * 1000;

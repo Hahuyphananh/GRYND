@@ -103,14 +103,16 @@ test("MRR normalises every billing option to a monthly amount", async () => {
     "../src/lib/admin/usersOverview.ts"
   );
 
-  // Published catalog: weekly 349, monthly 999, yearly 5999 (CAD cents).
-  assert.equal(monthlyValueCents("monthly"), 999);
+  // Published founder catalog: monthly 499, yearly 2999 (CAD cents). The
+  // retired weekly tier keeps its legacy 349 normalisation so an existing
+  // weekly subscriber is still counted instead of vanishing from MRR.
+  assert.equal(monthlyValueCents("monthly"), 499);
   assert.equal(monthlyValueCents("weekly"), Math.round((349 * 52) / 12));
-  assert.equal(monthlyValueCents("yearly"), Math.round(5999 / 12));
+  assert.equal(monthlyValueCents("yearly"), Math.round(2999 / 12));
   assert.equal(MRR_CURRENCY, "cad");
 
   const mrr = computeMrrCents({ weekly: 1, monthly: 2, yearly: 1 });
-  assert.equal(mrr, 1512 + 999 * 2 + 500);
+  assert.equal(mrr, 1512 + 499 * 2 + 250);
   // Unknown-interval and trialing/past-due counts never invent revenue.
   assert.equal(
     computeMrrCents({ weekly: 0, monthly: 0, yearly: 0 }),

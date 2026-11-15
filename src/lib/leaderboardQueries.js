@@ -1,5 +1,6 @@
 import { getNeonSql } from "../db/neon";
 import { getFrameDecorations } from "./cosmetics";
+import { getProClerkIds } from "./proStatus";
 import { toPlayerLevelShape } from "./playerLevel";
 import { OVERALL_MIN_GAMES, PROVISIONAL_GAMES } from "./elo";
 
@@ -455,6 +456,25 @@ async function attachProfileFrames(items) {
   });
 }
 
+/**
+ * Attach the GRYND PRO mark to a page of board rows.
+ *
+ * The membership is decoration, so this is one batched query per page (never
+ * one per row) reading the same subscription source every other perk uses
+ * (src/lib/proStatus.ts). A row for an account with no subscription simply has
+ * `isPro: false`; nothing else about the row changes and no rank moves.
+ */
+async function attachProBadges(items) {
+  const list = Array.isArray(items) ? items : [];
+  if (list.length === 0) return list;
+  const members = await getProClerkIds(list.map((item) => item?.clerk_id));
+  return list.map((item) =>
+    item
+      ? { ...item, isPro: Boolean(item.clerk_id && members.has(String(item.clerk_id))) }
+      : item,
+  );
+}
+
 async function fetchRankedRows({
   fields,
   orderBy,
@@ -522,8 +542,8 @@ async function fetchRankedRows({
   const me = row?.me ? decorate(row.me) : null;
 
   return {
-    items: await attachProfileFrames(items),
-    me: me ? (await attachProfileFrames([me]))[0] : null,
+    items: await attachProBadges(await attachProfileFrames(items)),
+    me: me ? (await attachProBadges(await attachProfileFrames([me])))[0] : null,
   };
 }
 

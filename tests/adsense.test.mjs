@@ -71,6 +71,11 @@ const ALLOWED = [
   "src/app/casino/page.jsx",
   "src/app/classement/page.jsx",
   "src/app/profil/page.jsx",
+  // the editorial surface — the guides index. Each guide ARTICLE renders the
+  // same loader from components/guides/GuideArticle.tsx (one component for
+  // every article), which is not a page file, so it is asserted separately in
+  // tests/adsense-readiness.test.mjs.
+  "src/app/guides/page.tsx",
   // game lobbies (lobby route only — the board lives elsewhere)
   // Barrier Blitz's lobby is the page the rewrite from
   // /games/barrier-blitz/play lands on, and its board lives at

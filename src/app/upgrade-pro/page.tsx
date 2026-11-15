@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   // "Detailed match history" used to be here; no such feature exists and the
   // existing match history is free for everyone, so the claim is gone.
   description:
-    "GRYND PRO — ad-free browsing, the full performance dashboard and unlimited match analysis, plus priority matchmaking. Monthly membership, cancel anytime. No tokens, no gameplay advantages.",
+    "GRYND PRO — ad-free browsing, the full performance dashboard and unlimited match analysis. Monthly membership, cancel anytime. No tokens, no gameplay advantages.",
 };
 
 // The membership entitlement is per-caller, so this page must never be

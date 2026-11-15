@@ -1,5 +1,7 @@
 "use client";
 
+import ShareProBadgeButton from "../../components/share/ShareProBadgeButton";
+
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useUser, useClerk } from "@clerk/nextjs";
@@ -1306,6 +1308,10 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
             browser has an unclaimed guest practice record, or to confirm a
             claim already made. Nothing changes for accounts without one. */}
         <GuestClaimPanel />
+
+        {/* Members can show the mark. Fetches the badge from the server and
+            renders nothing at all for a free account or a guest. */}
+        <ShareProBadgeButton />
 
         {/* GRYND PRO — shows "Manage Subscription" for subscribers and the
             upgrade CTA for everyone else; the status is read from the server

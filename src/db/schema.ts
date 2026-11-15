@@ -715,6 +715,10 @@ export const cosmetics = pgTable(
     unlockCondition: varchar("unlock_condition", { length: 40 }),
     enabled: boolean("enabled").notNull().default(true),
     sortOrder: integer("sort_order").notNull().default(0),
+    // PRO-only catalog entry (migration 0257). Never granted by the
+    // account-creation catalog grant and refused by equipCosmetic for a
+    // non-member — see src/lib/cosmetics.ts.
+    proOnly: boolean("pro_only").notNull().default(false),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -4190,6 +4194,38 @@ export const solitaireDuelMatches = pgTable(
     // seat plays its first move, in which case GO is the baseline.
     p1LastActionAt: timestamp("p1_last_action_at"),
     p2LastActionAt: timestamp("p2_last_action_at"),
+    // ── Asynchronous ghost duel (migration 0255) ───────────────────────
+    // A ghost is a RECORDED HUMAN run of the same deal — never the AI seat.
+    // `isGhost` is deliberately separate from `isAi`, because settlement is
+    // rated and no planner is ever consulted during playback.
+    isGhost: boolean("is_ghost").notNull().default(false),
+    // Provenance of the replay: the finished human match it came from.
+    ghostSourceMatchId: uuid("ghost_source_match_id"),
+    // Anonymised handle shown to the player (never the source account's id).
+    ghostName: varchar("ghost_name", { length: 40 }),
+    // The source player's ladder snapshot, so the duel settles against the
+    // strength the opponent actually had rather than an invented number.
+    ghostRating: integer("ghost_rating"),
+    ghostTrophies: integer("ghost_trophies"),
+    // The recorded replay: [{ offsetMs, kind, move }] in ply order, offsets
+    // measured from the SOURCE match's GO instant.
+    ghostTimeline: jsonb("ghost_timeline"),
+    // Offset of the source player's completing move, or null if unfinished.
+    ghostCompletedAtOffsetMs: integer("ghost_completed_at_offset_ms"),
+    // The recording's own pace: [{ atMs, foundationCards }], count-only, so the
+    // opponent panel can show the run unfolding at the pace it really happened.
+    ghostTrail: jsonb("ghost_trail"),
+    // When a still-waiting lobby may fall back to a ghost. NULL everywhere else.
+    ghostFallbackAt: timestamp("ghost_fallback_at"),
+    // ── Friend challenge link (migration 0259) ───────────────────────────
+    // A short shareable code for a PRIVATE waiting lobby. Whoever opens
+    // /duel/<code> takes the second seat. NULL on public lobbies, AI practice
+    // matches, ghost duels and every match that has started; the public
+    // matchmaker filters `invite_code IS NULL`, so it can never hand a private
+    // table to a stranger. Unique while set (partial index in the migration).
+    inviteCode: varchar("invite_code", { length: 12 }),
+    // When the link stops seating a second player. NULL where it does not apply.
+    inviteExpiresAt: timestamp("invite_expires_at"),
     // Absolute server instants — never a per-client delay. The match is
     // untimed, so there is no deadline column.
     goAt: timestamp("go_at"),
@@ -4230,6 +4266,62 @@ export const solitaireDuelMoves = pgTable(
   (table) => ({
     matchIdx: index("solitaire_duel_moves_match_idx").on(table.matchId, table.seat, table.ply),
     plyIdx: unique("solitaire_duel_moves_ply_unique").on(table.matchId, table.seat, table.ply),
+  })
+);
+
+// THE RECORDED GHOST POOL — one verified replay per (finished match, seat).
+//
+// MATERIALIZED on purpose: a run is copied here with its deal, timeline, trail
+// and anonymised handle, so it survives the retention sweep deleting the source
+// match and needs no join to be offered. There is deliberately NO foreign key
+// to `solitaire_duel_matches` — outliving the source row is the point.
+//
+// `source_clerk_id` exists ONLY to exclude a player from racing their own
+// recording; it never leaves the server. `ghost_name` is the one-way handle the
+// player sees. `rating` / `trophies` are the source player's ladder snapshot at
+// record time, so a ghost duel settles against the strength they really had.
+//
+// The pool is filled by /api/jobs/solitaire-ghost-pool, whose backfill reads
+// EXISTING finished ranked matches — which is what keeps it warm from the first
+// tick instead of only after the next human duel finishes.
+export const solitaireGhostRuns = pgTable(
+  "solitaire_ghost_runs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    sourceMatchId: uuid("source_match_id").notNull(),
+    sourceSeat: varchar("source_seat", { length: 10 }).notNull(),
+    // Exclusion key only (see the note above): never exposed to a client.
+    sourceClerkId: varchar("source_clerk_id", { length: 255 }).notNull(),
+    variant: varchar("variant", { length: 24 }).notNull(),
+    variantVersion: integer("variant_version").notNull(),
+    // The source match's commitment, reused verbatim so the replay's puzzle is
+    // provably the committed one. Still hidden until a ghost match is terminal.
+    serverSeed: varchar("server_seed", { length: 64 }).notNull(),
+    serverSeedHash: varchar("server_seed_hash", { length: 64 }).notNull(),
+    dealSeed: bigint("deal_seed", { mode: "number" }).notNull(),
+    deal: jsonb("deal").notNull(),
+    // [{ offsetMs, kind, move }] in ply order, offsets from the source GO.
+    timeline: jsonb("timeline").notNull(),
+    // [{ atMs, foundationCards }] sampled from the verified replay.
+    trail: jsonb("trail").notNull(),
+    ply: integer("ply").notNull(),
+    completed: boolean("completed").notNull().default(false),
+    completedOffsetMs: integer("completed_offset_ms"),
+    rating: integer("rating"),
+    trophies: integer("trophies"),
+    ghostName: varchar("ghost_name", { length: 40 }).notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    sourceUniq: unique("solitaire_ghost_runs_source_unique").on(
+      table.sourceMatchId,
+      table.sourceSeat,
+    ),
+    poolIdx: index("solitaire_ghost_runs_pool_idx").on(
+      table.variantVersion,
+      table.createdAt,
+    ),
+    clerkIdx: index("solitaire_ghost_runs_clerk_idx").on(table.sourceClerkId),
   })
 );
 

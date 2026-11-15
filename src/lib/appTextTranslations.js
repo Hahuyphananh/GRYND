@@ -881,19 +881,21 @@ export const APP_TEXT_TRANSLATIONS = {
     pro: {
       headline: "Play sharper. See more. Queue smarter.",
       subtitle:
-        "Unlock an ad-free GRYND experience, deeper performance insights, and priority matchmaking.",
+        "Unlock an ad-free GRYND experience, deeper performance insights, and unlimited match analysis.",
       membership: "Membership",
-      lead: "Compete without distractions.",
+      lead: "Master Your Game. Go deeper after every match, track your climb across every title, and stand out on the ladder.",
       interval_group: "Choose a billing option",
       interval: { weekly: "Weekly", monthly: "Monthly", yearly: "Yearly" },
       unit: { weekly: "week", monthly: "month", yearly: "year" },
       badge: { best_value: "BEST VALUE" },
-      equivalent: "About {amount}/month",
-      save: "Save {amount}/year vs {versus} ({percent}% off)",
-      flexible_weekly: "Maximum flexibility, billed every week.",
+      save: "Save {percent}% vs. {versus} ({amount}/mo)",
+      flexible_monthly: "Maximum flexibility, billed every month.",
+      founder_anchor: "Founder's Rate",
+      founder_scarcity:
+        "Early Supporter Offer: lock in GRYND PRO at {price}/month (or {yearly}/year) for life before our public launch.",
       selected: "Selected",
       same_membership:
-        "All three options are the same GRYND PRO membership — only how often you are billed changes.",
+        "Both options are the same GRYND PRO membership — only how often you are billed changes.",
       cancel_anytime: "Cancel anytime. Billed through Stripe.",
       active_plain: "GRYND PRO active",
       active_renews: "GRYND PRO active · renews {date}",
@@ -905,38 +907,45 @@ export const APP_TEXT_TRANSLATIONS = {
       },
       close: "Close",
       benefits_title: "What you get with GRYND PRO",
-      // The approved offer (lib/proBenefits.ts). `ad_free` and `matchmaking`
-      // are live; the other three are approved but not built yet, so they are
-      // translated and ready but NOT rendered until their entitlement ships
-      // (see ADVERTISED_PRO_BENEFITS).
+      preview: {
+        title: "Elo progression",
+        sample: "Sample",
+        alt: "Sample Elo progression graph trending upward",
+        range: "Last 30 games",
+        gain: "+124 Elo",
+        caption: "Sample data — your dashboard shows your real matches.",
+      },
+      trustpilot_label: "Rated by players on Trustpilot",
+      // The approved offer (lib/proBenefits.ts). Only benefits that are live
+      // AND enforced server-side are rendered (see ADVERTISED_PRO_BENEFITS).
       benefit: {
-        ad_free: "Ad-free browsing and gaming",
         analysis_unlimited:
-          "Unlimited match analysis — replay and review every game, every day",
+          "Unlimited Match Replays & Analysis — Scrub through every move, spot time-loss spikes, and review optimal lines after every game.",
         analytics:
-          "Advanced statistics and performance analytics, including graphs",
+          "Deep Performance Graphs — Track Elo trends, win rates by game mode, and speed benchmarks over time.",
+        daily_archive:
+          "Daily Challenge Archive — Replay any past Daily Deal or seed you missed and compare against the global board.",
+        social_status:
+          "PRO Leaderboard Badge & Founder Flair — Stand out in lobbies and rankings with an exclusive PRO badge and board theme.",
+        ad_free:
+          "100% Ad-Free Experience — Zero banners or interruptions while you play.",
         leaderboards:
           "Extended leaderboard access, with graphs of your ranking over time",
-        private_rooms: "Create private custom rooms",
-        matchmaking:
-          "Priority matchmaking — a fair queue tie-break, never a skill advantage",
       },
       no_advantage:
-        "Every game, ranked play, Elo, trophies, leaderboards, free tournaments and every cosmetic stay free. GRYND PRO never grants tokens, XP or Elo boosts, and never changes a match's outcome.",
+        "Fair Play Guarantee: Every game, ranked queue, tournament, and Elo point stays 100% free and skill-based. PRO never gives an in-game advantage.",
       error_generic: "Something went wrong. Please try again.",
       checkout_cancelled: "Checkout cancelled — nothing was charged.",
       checkout_activating: "Payment received — activating your GRYND PRO membership…",
       checkout_active: "You're on GRYND PRO. Enjoy the distraction-free experience.",
-      free_title: "Free forever — no membership required",
+      free_title: "Free forever, no membership required",
       free_body:
-        "GRYND PRO is convenience and insight, never an advantage. Everything competitive stays identical for every player:",
-      free_note:
-        "Free accounts see ads. GRYND PRO removes them, and its queue priority is only ever a tie-break between equally matched players.",
+        "Every game, ranked play, Elo, trophies, free tournaments and every cosmetic stay free. PRO adds convenience and insight — never an advantage.",
       billing_title: "Billing",
       billing_current: "You're on the {interval} option — {price}/{unit} through Stripe.",
       billing_options_lead: "Billed through Stripe —",
       billing_change:
-        "Switch between the weekly, monthly and yearly options at any time; the change is prorated and applied to your existing subscription.",
+        "Switch between the monthly and yearly options at any time; the change is prorated and applied to your existing subscription.",
       billing_profile_lead: "Managing an existing membership?",
       billing_profile_link: "Your profile",
     },
@@ -2875,6 +2884,12 @@ export const APP_TEXT_TRANSLATIONS = {
       creating: "Working…",
       pickGame: "Game",
       pickStake: "Entry (coins)",
+      timerLabel: "Room timer",
+      timerHint: "How long the room stays open for friends to join before it expires.",
+      timer_900: "15 minutes",
+      timer_1800: "30 minutes",
+      timer_3600: "1 hour",
+      timer_7200: "2 hours",
       optionFree: "Free play",
       optionStaked: "Up to {max} coins",
       stakeHint: "0 = free match. Up to {max} coins.",
@@ -3855,19 +3870,21 @@ export const APP_TEXT_TRANSLATIONS = {
     pro: {
       headline: "Joue plus finement. Vois plus. File plus intelligemment.",
       subtitle:
-        "Débloque une expérience GRYND sans publicité, des statistiques de performance plus poussées et un appariement prioritaire.",
+        "Débloque une expérience GRYND sans publicité, des statistiques de performance plus poussées et une analyse de parties illimitée.",
       membership: "Abonnement",
-      lead: "Affronte sans distractions.",
+      lead: "Maîtrise ton jeu. Va plus loin après chaque partie, suis ta progression dans tous les jeux et démarque-toi au classement.",
       interval_group: "Choisis une formule de facturation",
       interval: { weekly: "Hebdomadaire", monthly: "Mensuelle", yearly: "Annuelle" },
       unit: { weekly: "semaine", monthly: "mois", yearly: "an" },
       badge: { best_value: "MEILLEURE OFFRE" },
-      equivalent: "Environ {amount}/mois",
-      save: "Économise {amount}/an par rapport à la formule {versus} ({percent} % de moins)",
-      flexible_weekly: "Flexibilité maximale, facturé chaque semaine.",
+      save: "Économise {percent} % vs {versus} ({amount}/mois)",
+      flexible_monthly: "Flexibilité maximale, facturé chaque mois.",
+      founder_anchor: "Tarif fondateur",
+      founder_scarcity:
+        "Offre de soutien précoce : bloquez GRYND PRO à {price}/mois (ou {yearly}/an) à vie avant notre lancement public.",
       selected: "Sélectionné",
       same_membership:
-        "Les trois formules correspondent au même abonnement GRYND PRO — seule la fréquence de facturation change.",
+        "Les deux formules correspondent au même abonnement GRYND PRO — seule la fréquence de facturation change.",
       cancel_anytime: "Résiliable à tout moment. Paiement via Stripe.",
       active_plain: "GRYND PRO actif",
       active_renews: "GRYND PRO actif · renouvellement le {date}",
@@ -3879,36 +3896,45 @@ export const APP_TEXT_TRANSLATIONS = {
       },
       close: "Fermer",
       benefits_title: "Ce que tu obtiens avec GRYND PRO",
+      preview: {
+        title: "Progression Elo",
+        sample: "Exemple",
+        alt: "Exemple de courbe de progression Elo en hausse",
+        range: "30 dernières parties",
+        gain: "+124 Elo",
+        caption: "Données d'exemple — ton tableau de bord affiche tes vraies parties.",
+      },
+      trustpilot_label: "Noté par les joueurs sur Trustpilot",
       // L'offre approuvée (lib/proBenefits.ts) — voir la note anglaise : les
       // trois avantages non encore développés sont traduits mais pas affichés.
       benefit: {
-        ad_free: "Navigation et jeu sans publicité",
         analysis_unlimited:
-          "Analyse de parties illimitée — rejouez et analysez chaque partie, chaque jour",
+          "Replays et analyses de parties illimités — Passe chaque coup au crible, repère les pics de temps perdu et révise les meilleures lignes après chaque partie.",
         analytics:
-          "Statistiques avancées et analyse de performance, graphiques inclus",
+          "Graphiques de performance avancés — Suis l'évolution de ton Elo, tes taux de victoire par mode de jeu et tes repères de vitesse au fil du temps.",
+        daily_archive:
+          "Archives des défis quotidiens — Rejoue n'importe quelle Daily Deal ou graine manquée et compare-toi au classement mondial.",
+        social_status:
+          "Badge de classement PRO et distinction fondateur — Démarque-toi dans les salons et les classements avec un badge PRO exclusif et un thème de plateau.",
+        ad_free:
+          "Expérience 100 % sans publicité — Zéro bannière ni interruption pendant que tu joues.",
         leaderboards:
           "Accès élargi aux classements, avec des graphiques de ta progression",
-        private_rooms: "Création de salons privés personnalisés",
-        matchmaking:
-          "Appariement prioritaire — un simple départage équitable dans la file, jamais un avantage de niveau",
       },
       no_advantage:
-        "Tous les jeux, le mode classé, l'Elo, les trophées, les classements, les tournois gratuits et tous les cosmétiques restent gratuits. GRYND PRO ne donne jamais de jetons, d'XP ni de bonus d'Elo, et ne change jamais l'issue d'un match.",
+        "Garantie fair-play : chaque partie, file classée, tournoi et point Elo reste 100 % gratuit et basé sur la compétence. PRO ne donne jamais d'avantage en jeu.",
       error_generic: "Une erreur est survenue. Réessaie.",
       checkout_cancelled: "Paiement annulé — rien n'a été débité.",
       checkout_activating: "Paiement reçu — activation de ton abonnement GRYND PRO…",
       checkout_active: "Tu es sur GRYND PRO. Profite d'une expérience sans distractions.",
-      free_title: "Gratuit pour toujours — aucun abonnement requis",
+      free_title: "Gratuit pour toujours, aucun abonnement requis",
       free_body:
-        "GRYND PRO, c'est du confort et des informations, jamais un avantage. Tout ce qui est compétitif reste identique pour chaque joueur :",
-      free_note:
-        "Les comptes gratuits voient des publicités. GRYND PRO les retire, et sa priorité dans la file n'est jamais qu'un départage entre joueurs de même niveau.",
+        "Tous les jeux, le mode classé, l'Elo, les trophées, les tournois gratuits et tous les cosmétiques restent gratuits. PRO ajoute du confort et des analyses — jamais un avantage.",
       billing_title: "Facturation",
       billing_current: "Tu es sur la formule {interval} — {price} par {unit}, via Stripe.",
       billing_options_lead: "Paiement via Stripe —",
       billing_change:
-        "Change à tout moment entre les formules hebdomadaire, mensuelle et annuelle ; le changement est calculé au prorata et appliqué à ton abonnement existant.",
+        "Change à tout moment entre les formules mensuelle et annuelle ; le changement est calculé au prorata et appliqué à ton abonnement existant.",
       billing_profile_lead: "Tu gères un abonnement existant ?",
       billing_profile_link: "Ton profil",
     },
@@ -5588,6 +5614,12 @@ export const APP_TEXT_TRANSLATIONS = {
       creating: "En cours…",
       pickGame: "Jeu",
       pickStake: "Mise (jetons)",
+      timerLabel: "Minuterie de la salle",
+      timerHint: "Combien de temps la salle reste ouverte aux amis avant d'expirer.",
+      timer_900: "15 minutes",
+      timer_1800: "30 minutes",
+      timer_3600: "1 heure",
+      timer_7200: "2 heures",
       optionFree: "Partie gratuite",
       optionStaked: "Jusqu'à {max} jetons",
       stakeHint: "0 = partie gratuite. Jusqu'à {max} jetons.",
@@ -6569,19 +6601,21 @@ export const APP_TEXT_TRANSLATIONS = {
     pro: {
       headline: "Juega con más precisión. Ve más. Empareja mejor.",
       subtitle:
-        "Desbloquea una experiencia GRYND sin anuncios, estadísticas de rendimiento más profundas y emparejamiento prioritario.",
+        "Desbloquea una experiencia GRYND sin anuncios, estadísticas de rendimiento más profundas y análisis de partidas ilimitado.",
       membership: "Suscripción",
-      lead: "Compite sin distracciones.",
+      lead: "Domina tu juego. Profundiza después de cada partida, sigue tu ascenso en todos los juegos y destaca en la clasificación.",
       interval_group: "Elige una opción de facturación",
       interval: { weekly: "Semanal", monthly: "Mensual", yearly: "Anual" },
       unit: { weekly: "semana", monthly: "mes", yearly: "año" },
       badge: { best_value: "MEJOR OFERTA" },
-      equivalent: "Unos {amount}/mes",
-      save: "Ahorra {amount}/año frente a la opción {versus} ({percent} % menos)",
-      flexible_weekly: "Máxima flexibilidad, facturado cada semana.",
+      save: "Ahorra {percent} % vs. {versus} ({amount}/mes)",
+      flexible_monthly: "Máxima flexibilidad, facturado cada mes.",
+      founder_anchor: "Tarifa de fundador",
+      founder_scarcity:
+        "Oferta de apoyo temprano: fija GRYND PRO a {price}/mes (o {yearly}/año) de por vida antes de nuestro lanzamiento público.",
       selected: "Seleccionado",
       same_membership:
-        "Las tres opciones son la misma suscripción GRYND PRO — solo cambia la frecuencia de facturación.",
+        "Ambas opciones son la misma suscripción GRYND PRO — solo cambia la frecuencia de facturación.",
       cancel_anytime: "Cancela cuando quieras. Pago a través de Stripe.",
       active_plain: "GRYND PRO activo",
       active_renews: "GRYND PRO activo · se renueva el {date}",
@@ -6593,36 +6627,45 @@ export const APP_TEXT_TRANSLATIONS = {
       },
       close: "Cerrar",
       benefits_title: "Lo que obtienes con GRYND PRO",
+      preview: {
+        title: "Progreso de Elo",
+        sample: "Ejemplo",
+        alt: "Ejemplo de gráfico de progreso de Elo en ascenso",
+        range: "Últimas 30 partidas",
+        gain: "+124 Elo",
+        caption: "Datos de ejemplo: tu panel muestra tus partidas reales.",
+      },
+      trustpilot_label: "Valorado por jugadores en Trustpilot",
       // La oferta aprobada (lib/proBenefits.ts) — ver la nota inglesa: las tres
       // ventajas aún sin desarrollar están traducidas pero no se muestran.
       benefit: {
-        ad_free: "Navegación y juego sin anuncios",
         analysis_unlimited:
-          "Análisis de partidas ilimitado — revisa y analiza cada partida, cada día",
+          "Repeticiones y análisis de partidas ilimitados — Revisa cada movimiento, detecta picos de tiempo perdido y estudia las mejores líneas después de cada partida.",
         analytics:
-          "Estadísticas avanzadas y análisis de rendimiento, con gráficos",
+          "Gráficos de rendimiento avanzados — Sigue la evolución de tu Elo, tus porcentajes de victoria por modo de juego y tus referencias de velocidad con el tiempo.",
+        daily_archive:
+          "Archivo de retos diarios — Repite cualquier Daily Deal o semilla que te perdiste y compárate con la clasificación global.",
+        social_status:
+          "Insignia de clasificación PRO y distinción de fundador — Destaca en salas y clasificaciones con una insignia PRO exclusiva y un tema de tablero.",
+        ad_free:
+          "Experiencia 100 % sin anuncios — Cero banners o interrupciones mientras juegas.",
         leaderboards:
           "Acceso ampliado a las clasificaciones, con gráficos de tu progresión",
-        private_rooms: "Creación de salas privadas personalizadas",
-        matchmaking:
-          "Emparejamiento prioritario — un desempate justo en la cola, nunca una ventaja de nivel",
       },
       no_advantage:
-        "Todos los juegos, el modo clasificatorio, el Elo, los trofeos, las clasificaciones, los torneos gratuitos y todos los cosméticos siguen siendo gratis. GRYND PRO nunca otorga fichas, XP ni bonificaciones de Elo, y nunca cambia el resultado de una partida.",
+        "Garantía de juego limpio: cada partida, cola clasificatoria, torneo y punto de Elo sigue siendo 100 % gratis y basado en habilidad. PRO nunca da ventaja en el juego.",
       error_generic: "Algo salió mal. Inténtalo de nuevo.",
       checkout_cancelled: "Pago cancelado — no se cobró nada.",
       checkout_activating: "Pago recibido — activando tu suscripción GRYND PRO…",
       checkout_active: "Ya tienes GRYND PRO. Disfruta de la experiencia sin distracciones.",
-      free_title: "Gratis para siempre — no se requiere suscripción",
+      free_title: "Gratis para siempre, sin suscripción",
       free_body:
-        "GRYND PRO es comodidad e información, nunca una ventaja. Todo lo competitivo sigue siendo idéntico para cada jugador:",
-      free_note:
-        "Las cuentas gratuitas ven anuncios. GRYND PRO los elimina, y su prioridad en la cola solo desempata entre jugadores del mismo nivel.",
+        "Todos los juegos, el modo clasificatorio, el Elo, los trofeos, los torneos gratuitos y todos los cosméticos siguen siendo gratis. PRO añade comodidad e información — nunca una ventaja.",
       billing_title: "Facturación",
       billing_current: "Tienes la opción {interval} — {price}/{unit} a través de Stripe.",
       billing_options_lead: "Pago a través de Stripe —",
       billing_change:
-        "Cambia entre las opciones semanal, mensual y anual en cualquier momento; el cambio se prorratea y se aplica a tu suscripción existente.",
+        "Cambia entre las opciones mensual y anual en cualquier momento; el cambio se prorratea y se aplica a tu suscripción existente.",
       billing_profile_lead: "¿Gestionas una suscripción existente?",
       billing_profile_link: "Tu perfil",
     },
@@ -8302,6 +8345,12 @@ export const APP_TEXT_TRANSLATIONS = {
       creating: "Procesando…",
       pickGame: "Juego",
       pickStake: "Entrada (monedas)",
+      timerLabel: "Temporizador de la sala",
+      timerHint: "Cuánto tiempo la sala queda abierta para que entren amigos antes de caducar.",
+      timer_900: "15 minutos",
+      timer_1800: "30 minutos",
+      timer_3600: "1 hora",
+      timer_7200: "2 horas",
       optionFree: "Partida gratis",
       optionStaked: "Hasta {max} monedas",
       stakeHint: "0 = partida gratis. Hasta {max} monedas.",

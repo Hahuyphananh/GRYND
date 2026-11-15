@@ -1,6 +1,8 @@
 import Link from "next/link";
 import NavigationBar from "../navigation-bar";
 import Footer from "../Footer";
+import AdSenseScript from "../AdSenseScript";
+import AdSlot from "../AdSlot";
 import JsonLd from "../seo/JsonLd";
 import { guidePath, type Guide } from "../../lib/guides";
 import { GAME_LANDING_BY_SLUG, gameLandingPath } from "../../lib/gameLandingPages";
@@ -37,6 +39,13 @@ export default function GuideArticle({ guide, related }: { guide: Guide; related
       <NavigationBar currentPath="/guides" />
 
       <JsonLd data={buildGuideStructuredData(guide.slug)} />
+
+      {/* The editorial placement (lib/ads.ts → "guides"). It lives HERE, in the
+          one guide component, so every article carries it identically and a new
+          guide cannot ship without it. Still server-gated: no tag and no slot
+          for a GRYND PRO member, and nothing at all when the placement has no
+          configured unit id. */}
+      <AdSenseScript />
 
       <div className="mx-auto max-w-3xl px-4 py-8 sm:py-12">
         {/* Breadcrumb — real links, and it tells a visitor where this page
@@ -231,6 +240,7 @@ export default function GuideArticle({ guide, related }: { guide: Guide; related
         </section>
       </div>
 
+      <AdSlot placement="guides" />
       <Footer />
     </div>
   );

@@ -87,7 +87,11 @@ type StripeSubscriptionObject = {
   items?: {
     data?: Array<{ price?: string | { id?: string } | null }> | null;
   } | null;
-  metadata?: { clerkId?: string; planKey?: string; billingInterval?: string };
+  metadata?: {
+    clerkId?: string;
+    planKey?: string;
+    billingInterval?: string;
+  };
 };
 
 type StripeInvoiceObject = {

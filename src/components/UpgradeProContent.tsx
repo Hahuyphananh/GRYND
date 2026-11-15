@@ -4,7 +4,7 @@
 //
 // The GRYND PRO pitch — ONE presentational component shared by the reusable
 // modal (UpgradeProModal) and the /upgrade-pro landing page, so the offer, the
-// perk list, the THREE billing options and the CTA are written once.
+// perk list, the two billing options and the CTA are written once.
 //
 // IT DERIVES NO PRICE OF ITS OWN. `plan.billingOptions` is resolved server-side
 // from the plan catalog / the bound Stripe prices and passed down, so the
@@ -24,6 +24,11 @@ import {
 } from "../lib/proBilling";
 import { formatMoney } from "../lib/currency";
 import { ADVERTISED_PRO_BENEFITS } from "../lib/proBenefits";
+import {
+  TRUSTPILOT_REVIEW_COLLECTOR_HEIGHT,
+  getTrustpilotConfig,
+} from "../lib/trustpilot";
+import TrustpilotWidget from "./trustpilot/TrustpilotWidget";
 import type { ProPlanDisplay } from "../lib/membershipDisplay";
 
 export type UpgradeProContentProps = {
@@ -118,14 +123,6 @@ function BillingCard({
         </span>
       </span>
 
-      {option.monthlyEquivalentCents !== null && (
-        <span className="mt-0.5 text-[11px] text-[#9dd8ff]/75">
-          {t("pro.equivalent", {
-            amount: formatMoney(option.monthlyEquivalentCents, option.currency),
-          })}
-        </span>
-      )}
-
       <span className="mt-2 space-y-0.5">
         {option.savings.map((saving) => (
           <span
@@ -133,15 +130,18 @@ function BillingCard({
             className="block text-[11px] font-medium leading-snug text-[#00ffa6]"
           >
             {t("pro.save", {
-              amount: formatMoney(saving.amountCents, option.currency),
-              percent: saving.percent,
-              versus: t(`pro.interval.${saving.versus}`).toLowerCase(),
+              amount: formatMoney(
+                option.monthlyEquivalentCents ?? option.priceCents,
+                option.currency,
+              ),
+              percent: Math.round(saving.percent),
+              versus: t(`pro.interval.${saving.versus}`),
             })}
           </span>
         ))}
         {option.savings.length === 0 && (
           <span className="block text-[11px] leading-snug text-[#9dd8ff]/70">
-            {t("pro.flexible_weekly")}
+            {t("pro.flexible_monthly")}
           </span>
         )}
       </span>
@@ -152,6 +152,102 @@ function BillingCard({
         </span>
       )}
     </button>
+  );
+}
+
+/**
+ * A deliberately static preview of the analytics dashboard. The offer has to
+ * show what "graphs" means before a player pays; this samples the real surface
+ * (an Elo line with its range and gain) without importing the dashboard, which
+ * needs an account, a PRO check and a network round-trip. Every figure here is
+ * marked as a sample — nothing claims to be the visitor's own data.
+ */
+/** Split "Title — detail" so the title can carry the weight and the detail can
+ * explain it, without duplicating the offer copy into a second data model. */
+function splitBenefitLabel(label: string): { title: string; detail: string | null } {
+  const separator = " — ";
+  const at = label.indexOf(separator);
+  if (at < 0) return { title: label, detail: null };
+  return { title: label.slice(0, at), detail: label.slice(at + separator.length) };
+}
+
+function AnalyticsPreview({
+  t,
+}: {
+  t: (key: string, params?: Record<string, unknown>) => string;
+}) {
+  return (
+    <figure
+      data-testid="pro-analytics-preview"
+      className="rounded-xl border border-[#00e5ff]/25 bg-[#04122e]/80 p-3 text-left"
+    >
+      <figcaption className="flex items-center justify-between gap-2">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-[#00e5ff]">
+          {t("pro.preview.title")}
+        </span>
+        <span className="rounded-full border border-[#9dd8ff]/30 bg-[#9dd8ff]/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#9dd8ff]/80">
+          {t("pro.preview.sample")}
+        </span>
+      </figcaption>
+
+      <svg
+        viewBox="0 0 220 88"
+        role="img"
+        aria-label={t("pro.preview.alt")}
+        className="mt-2 h-auto w-full"
+      >
+        {[22, 44, 66].map((y) => (
+          <line
+            key={y}
+            x1="4"
+            x2="216"
+            y1={y}
+            y2={y}
+            stroke="#00e5ff"
+            strokeOpacity="0.12"
+            strokeWidth="1"
+          />
+        ))}
+        <path
+          d="M6 70 L32 62 L58 66 L84 51 L110 56 L136 39 L162 33 L194 18 L194 80 L6 80 Z"
+          fill="#00ffa6"
+          fillOpacity="0.12"
+        />
+        <path
+          d="M6 70 L32 62 L58 66 L84 51 L110 56 L136 39 L162 33 L194 18"
+          fill="none"
+          stroke="#00ffa6"
+          strokeWidth="2.5"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+        <circle
+          cx="194"
+          cy="18"
+          r="3.5"
+          fill="#f5ff3b"
+          stroke="#04122e"
+          strokeWidth="1.5"
+        />
+        <text x="6" y="84" fontSize="8" className="fill-[#9dd8ff]/70">
+          {t("pro.preview.range")}
+        </text>
+        <text
+          x="214"
+          y="84"
+          textAnchor="end"
+          fontSize="9"
+          fontWeight="700"
+          className="fill-[#00ffa6]"
+        >
+          {t("pro.preview.gain")}
+        </text>
+      </svg>
+
+      <p className="mt-1 text-[10px] leading-snug text-[#9dd8ff]/55">
+        {t("pro.preview.caption")}
+      </p>
+    </figure>
   );
 }
 
@@ -173,6 +269,10 @@ export default function UpgradeProContent({
 }: UpgradeProContentProps) {
   const { t } = useTranslation();
   const isPage = variant === "page";
+  // Live Trustpilot data, never a typed rating: the widget is mounted only when
+  // this deploy has a real business unit + template (lib/trustpilot.ts), and it
+  // is hidden from an existing member, who has already decided.
+  const trustpilot = getTrustpilotConfig();
 
   // A member starts on the option they actually hold; a visitor starts on the
   // recommended (yearly) one. The selection is client-side only — it chooses
@@ -187,6 +287,12 @@ export default function UpgradeProContent({
 
   const selectedOption = optionFor(plan, selected) ?? plan.billingOptions[0];
   if (!selectedOption) return null;
+
+  // The founder ANCHOR quotes the two recurring amounts as they resolve for
+  // this visitor, so the scarcity line can never advertise a price the cards
+  // below do not show.
+  const monthlyOption = optionFor(plan, "monthly");
+  const yearlyOption = optionFor(plan, "yearly");
 
   const renewsOn =
     active && currentPeriodEnd ? new Date(currentPeriodEnd).toLocaleDateString() : null;
@@ -268,11 +374,28 @@ export default function UpgradeProContent({
             {t("pro.lead")}
           </p>
 
-          {/* ── Three billing options ─────────────────────────────────── */}
+          {!active && (
+            <div className="mt-4">
+              <span
+                data-testid="pro-founder-anchor"
+                className="inline-flex items-center rounded-full border border-[#f5ff3b]/60 bg-[#f5ff3b]/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-[#f5ff3b]"
+              >
+                {t("pro.founder_anchor")}
+              </span>
+              <p className="mt-2 text-xs leading-snug text-[#00ffa6]">
+                {t("pro.founder_scarcity", {
+                  price: monthlyOption?.priceDisplay ?? "",
+                  yearly: yearlyOption?.priceDisplay ?? "",
+                })}
+              </p>
+            </div>
+          )}
+
+          {/* ── Two recurring options ─────────────────────────────────── */}
           <div
             role="radiogroup"
             aria-label={t("pro.interval_group")}
-            className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3"
+            className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2"
           >
             {PRO_BILLING_INTERVALS.map((interval) => {
               const option = optionFor(plan, interval);
@@ -310,7 +433,7 @@ export default function UpgradeProContent({
             </p>
           )}
 
-          <div className={`mt-4 flex flex-wrap gap-3 ${isPage ? "" : "justify-center"}`}>
+          <div className={`mt-4 flex flex-wrap items-center gap-3 ${isPage ? "" : "justify-center"}`}>
             <button
               type="button"
               onClick={handlePrimary}
@@ -330,22 +453,57 @@ export default function UpgradeProContent({
                 {t("pro.cta.manage")}
               </button>
             )}
+
+            {!active && trustpilot && (
+              <div
+                data-testid="pro-trustpilot-proof"
+                className="flex flex-col items-start gap-1"
+              >
+                <a
+                  href={trustpilot.reviewUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[10px] font-semibold uppercase tracking-wider text-[#9dd8ff]/70 underline-offset-2 transition hover:text-[#c9f7ff] hover:underline"
+                >
+                  {t("pro.trustpilot_label")} ↗
+                </a>
+                <div className="w-[220px] max-w-full">
+                  <TrustpilotWidget
+                    businessUnitId={trustpilot.businessUnitId}
+                    templateId={trustpilot.templateId}
+                    domain={trustpilot.domain}
+                    height={TRUSTPILOT_REVIEW_COLLECTOR_HEIGHT}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* ── Benefits ──────────────────────────────────────────────── */}
           <h3 className={`mt-6 text-sm font-bold uppercase tracking-wider text-[#00e5ff] ${isPage ? "" : "text-center"}`}>
             {t("pro.benefits_title")}
           </h3>
-          <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {BENEFIT_IDS.map((id) => (
-              <li key={id} className="flex items-start gap-2 text-sm text-[#d8fbff]">
-                <span aria-hidden className="mt-0.5 text-[#00ffa6]">
-                  ✓
-                </span>
-                <span>{t(`pro.benefit.${id}`)}</span>
-              </li>
-            ))}
-          </ul>
+          <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_230px] lg:items-start">
+            <ul className="grid grid-cols-1 gap-3">
+              {BENEFIT_IDS.map((id) => {
+                const { title, detail } = splitBenefitLabel(t(`pro.benefit.${id}`));
+                return (
+                  <li key={id} className="flex items-start gap-2 text-sm text-[#d8fbff]">
+                    <span aria-hidden className="mt-0.5 text-[#00ffa6]">
+                      ✓
+                    </span>
+                    <span>
+                      <strong className="font-semibold text-white">{title}</strong>
+                      {detail ? (
+                        <span className="text-[#9dd8ff]/85"> — {detail}</span>
+                      ) : null}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+            <AnalyticsPreview t={t} />
+          </div>
 
           {!active && (
             <p className="mt-4 text-xs text-[#9dd8ff]/60">{t("pro.no_advantage")}</p>

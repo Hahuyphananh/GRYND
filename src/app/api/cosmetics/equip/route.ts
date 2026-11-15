@@ -10,6 +10,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { equipCosmetic } from "../../../../lib/cosmetics";
+import { isProMember } from "../../../../lib/proStatus";
 
 export async function POST(req: Request) {
   try {
@@ -28,7 +29,10 @@ export async function POST(req: Request) {
       body = {};
     }
 
-    const result = await equipCosmetic(userId, body?.key, body?.category);
+    // The membership is resolved HERE, from the caller's own subscription row,
+    // and handed to the equip rule. The body cannot influence it.
+    const isPro = await isProMember(userId);
+    const result = await equipCosmetic(userId, body?.key, body?.category, { isPro });
     if (result.ok === false) {
       return NextResponse.json(
         { success: false, error: result.error },

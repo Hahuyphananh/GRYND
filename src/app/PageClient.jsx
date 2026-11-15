@@ -807,12 +807,15 @@ export default function MainComponent({
 
         {hilltopSlot}
 
-        {adSlot}
-
         {/* Trustpilot + Product Hunt. A server-rendered child (see
             src/components/home/SocialProof.tsx), so the TrustBox element and
             the badge are in the HTML a crawler receives. */}
         {socialProof}
+
+        {/* The ad is the LAST block on the page: after every interactive
+            element and immediately above the footer, so nothing clickable
+            follows it (tests/ad-model.test.mjs). */}
+        {adSlot}
       </main>
 
       <Footer />

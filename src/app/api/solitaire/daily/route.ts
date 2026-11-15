@@ -39,6 +39,8 @@ import { solitaireDailyResults } from "../../../../db/schema";
 import { logError } from "../../../../lib/logError";
 import { dailyDateKey, summariseDaily } from "../../../../lib/solitaire-duel/soloStats.js";
 import { dailyDealFor } from "../../../../lib/solitaire-duel/daily";
+import { getMembershipTier } from "../../../../lib/stripe/subscriptions";
+import { isValidDailyDateKey } from "../../../../lib/solitaire-duel/dailyArchive";
 import { replayMoves } from "../../../../lib/solitaire-duel/rules";
 import {
   canonicalMoveLog,
@@ -79,9 +81,54 @@ async function statsFor(userId: string, dateKey: string) {
   return summariseDaily(rows, dateKey);
 }
 
-export async function GET() {
-  const dateKey = dailyDateKey();
+export async function GET(req: Request) {
+  const todayKey = dailyDateKey();
+  const requested = new URL(req.url).searchParams.get("date");
+  if (requested !== null && !isValidDailyDateKey(requested)) {
+    return NextResponse.json(
+      { success: false, error: "Invalid challenge date" },
+      { status: 400 },
+    );
+  }
+  if (requested !== null && requested > todayKey) {
+    return NextResponse.json(
+      { success: false, error: "That challenge has not been dealt yet" },
+      { status: 400 },
+    );
+  }
+
+  const dateKey = requested ?? todayKey;
+  const archived = dateKey !== todayKey;
   const { userId } = await auth();
+
+  // TODAY IS ALWAYS FREE. A PAST DEAL IS THE PRO ARCHIVE: the entitlement is
+  // resolved from the subscription row here, never from the query string, so
+  // editing the URL cannot open an archived seed for a free account.
+  if (archived) {
+    if (!userId) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "PRO_REQUIRED",
+          locked: true,
+          error: "Sign in with GRYND PRO to play past Daily Challenges",
+        },
+        { status: 403 },
+      );
+    }
+    const tier = await getMembershipTier(userId);
+    if (tier !== "pro") {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "PRO_REQUIRED",
+          locked: true,
+          error: "Past Daily Challenges are a GRYND PRO feature",
+        },
+        { status: 403 },
+      );
+    }
+  }
 
   try {
     const deal = dailyDealFor(dateKey);
@@ -90,6 +137,7 @@ export async function GET() {
       success: true,
       data: {
         dateKey,
+        archived,
         timezone: "UTC",
         deal,
         signedIn: Boolean(userId),
@@ -123,26 +171,59 @@ export async function POST(req: Request) {
   }
 
   const body = (await req.json().catch(() => null)) as
-    | { moves?: unknown; elapsedMs?: unknown }
+    | { moves?: unknown; elapsedMs?: unknown; dateKey?: unknown }
     | null;
   const moves = readMoves(body?.moves);
   if (!moves) {
     return NextResponse.json({ success: false, error: "Invalid move list" }, { status: 400 });
   }
 
-  const dateKey = dailyDateKey();
+  const todayKey = dailyDateKey();
+  const requestedDate = body?.dateKey;
+  if (
+    requestedDate !== undefined &&
+    requestedDate !== null &&
+    !isValidDailyDateKey(requestedDate)
+  ) {
+    return NextResponse.json(
+      { success: false, error: "Invalid challenge date" },
+      { status: 400 },
+    );
+  }
+  if (typeof requestedDate === "string" && requestedDate > todayKey) {
+    return NextResponse.json(
+      { success: false, error: "That challenge has not been dealt yet" },
+      { status: 400 },
+    );
+  }
+
+  const dateKey = typeof requestedDate === "string" ? requestedDate : todayKey;
+  const archived = dateKey !== todayKey;
+  // A past run is PRO-only, exactly like reading its deal. Today's submission
+  // stays free.
+  if (archived && (await getMembershipTier(userId)) !== "pro") {
+    return NextResponse.json(
+      {
+        success: false,
+        code: "PRO_REQUIRED",
+        error: "Past Daily Challenges are a GRYND PRO feature",
+      },
+      { status: 403 },
+    );
+  }
+
   try {
     const deal = dailyDealFor(dateKey);
     const replayed = replayMoves({ deal, moves: moves as { kind: string; move: unknown }[] });
     if (!replayed.ok) {
       return NextResponse.json(
-        { success: false, error: "The submitted moves are not legal for today's deal" },
+        { success: false, error: "The submitted moves are not legal for that challenge's deal" },
         { status: 422 },
       );
     }
     if (!replayed.state.completed) {
       return NextResponse.json(
-        { success: false, error: "Today's challenge is not complete yet" },
+        { success: false, error: "That challenge is not complete yet" },
         { status: 422 },
       );
     }
@@ -152,7 +233,7 @@ export async function POST(req: Request) {
     const canonical = canonicalMoveLog(moves);
     if (!canonical.ok) {
       return NextResponse.json(
-        { success: false, error: "The submitted moves are not legal for today's deal" },
+        { success: false, error: "The submitted moves are not legal for that challenge's deal" },
         { status: 422 },
       );
     }
@@ -202,6 +283,7 @@ export async function POST(req: Request) {
       success: true,
       data: {
         dateKey,
+        archived,
         recorded: !duplicate,
         duplicate,
         id: resultId,

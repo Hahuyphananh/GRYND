@@ -1,5 +1,7 @@
 "use client";
 
+import ShareLadderButton from "../../components/share/ShareLadderButton";
+
 import { isGameArchived, isGameAvailable } from "../../lib/gameAvailability";
 
 import { useEffect, useMemo, useState } from "react";
@@ -10,6 +12,7 @@ import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import FrameAvatar from "../../components/FrameAvatar";
+import ProBadge from "../../components/ProBadge";
 import { cosmeticEffectClass } from "../../lib/profileCosmetics";
 import { useTranslation } from "../../hooks/useTranslation";
 import { useApiResource } from "../../hooks/useApiResource";
@@ -348,6 +351,39 @@ function RankBadge({ rank }) {
   );
 }
 
+/**
+ * The NUMBER a podium share names. `getMetricValue` returns display text
+ * ("1,450 Trophies · 4 games"); a shared standing wants the figure itself, and
+ * `null` for boards ranked by a percentage or a ratio, where "my 82.50%" would
+ * be a different claim than a point total.
+ */
+function shareScoreForPodium(item, category) {
+  const numeric = (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  switch (category) {
+    case "rating":
+      return numeric(item.rating);
+    case "trophies":
+      return numeric(item.overallTrophies ?? item.overall_trophies);
+    case "peak":
+      return numeric(item.peakTrophies ?? item.peak_trophies);
+    case "gains":
+      return numeric(item.trophyGain ?? item.trophy_gain);
+    case "overall":
+      return numeric(item.overallElo ?? item.overall_elo);
+    case "wins":
+    case "games":
+    case "best_streak":
+    case "pvp_wins":
+    case "net_wins":
+      return numeric(item[category]);
+    default:
+      return null;
+  }
+}
+
 /** Top-3 podium — real board data, never fabricated. */
 function Podium({ items, myClerkId, tab, category }) {
   if (!items || items.length === 0) return null;
@@ -374,8 +410,10 @@ function Podium({ items, myClerkId, tab, category }) {
         const isMe = myClerkId && item.clerk_id === myClerkId;
         const isFirst = item.rank === 1;
         return (
+          // The card is a link to the profile, so the share entry sits BESIDE
+          // it: a button may not nest inside an anchor.
+          <div key={`${item.clerk_id}-${item.rank}`} className="relative flex flex-col">
           <Link
-            key={`${item.clerk_id}-${item.rank}`}
             href={`/profil/${encodeURIComponent(item.clerk_id)}`}
             className={`group relative flex flex-col items-center rounded-xl border px-2 py-3 text-center transition-all hover:bg-white/10 sm:px-3 sm:py-4 ${
               isFirst
@@ -408,6 +446,8 @@ function Podium({ items, myClerkId, tab, category }) {
             >
               {item.user?.name || item.name}
             </span>
+            {/* The membership is visible where it matters: on the ladder. */}
+            {item.isPro && <ProBadge className="mt-1" />}
             {item.playerLevel && (
               <PlayerLevelBadge
                 level={item.playerLevel.level}
@@ -436,6 +476,19 @@ function Podium({ items, myClerkId, tab, category }) {
               {metricLabel}
             </span>
           </Link>
+          {/* Only the viewer's OWN card: sharing someone else's standing would
+              put words in their mouth. Rank and score are the row the server
+              ranked, never recomputed here. */}
+          {isMe && (
+            <div className="mt-1.5 flex justify-center">
+              <ShareLadderButton
+                rank={item.rank}
+                score={shareScoreForPodium(item, category)}
+                testId={`leaderboard-share-${item.rank}`}
+              />
+            </div>
+          )}
+          </div>
         );
       })}
     </div>
@@ -1031,6 +1084,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                                   className={`block max-w-[9rem] truncate font-semibold text-[#c9f7ff] transition-colors hover:text-[#00e5ff] hover:underline sm:max-w-none ${cosmeticEffectClass(item.profileFrame?.usernameEffect?.visual) || ""}`}
                                 >
                                   {item.user?.name || item.name}
+                                  {item.isPro && <ProBadge className="ml-1.5" />}
                                   {item.playerLevel && (
                                     <PlayerLevelBadge
                                       level={item.playerLevel.level}

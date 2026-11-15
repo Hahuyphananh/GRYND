@@ -44,19 +44,6 @@ type PageClientProps = {
   subscription: Subscription | null;
 };
 
-/** What every player keeps for free — GRYND PRO adds convenience only. */
-const FREE_FEATURES = [
-  "All games",
-  "Ranked play",
-  "Game-specific Elo",
-  "Leaderboards",
-  "Free tournaments",
-  "Profiles",
-  "Normal match history",
-  "Progression systems",
-  "Cosmetic rewards",
-];
-
 const CONFIRM_ATTEMPTS = 10;
 const CONFIRM_INTERVAL_MS = 1500;
 
@@ -213,21 +200,19 @@ export default function PageClient({ plan, signedIn, subscription }: PageClientP
           onSignIn={() => handleUpgrade("yearly")}
         />
 
-        {/* ── What free players keep ─────────────────────────────────── */}
-        <section className="mt-8 rounded-2xl border border-[#00e5ff]/25 bg-[#0b224f]/70 p-6">
-          <h2 className="text-xl font-bold text-[#00e5ff]">{t("pro.free_title")}</h2>
-          <p className="mt-1 text-sm text-[#9dd8ff]/80">{t("pro.free_body")}</p>
-          <ul className="mt-4 grid grid-cols-2 gap-2 text-sm text-[#d8fbff] sm:grid-cols-3">
-            {FREE_FEATURES.map((feature) => (
-              <li key={feature} className="flex items-start gap-2">
-                <span aria-hidden className="mt-0.5 text-[#00ffa6]">
-                  ✓
-                </span>
-                <span>{feature}</span>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-4 text-xs text-[#9dd8ff]/70">{t("pro.free_note")}</p>
+        {/* ── Fair-play promise: ONE quiet trust box, never a feature list.
+               A nine-item checklist under the CTA answered "what's free?" so
+               thoroughly that it argued against the purchase. The promise is
+               kept in two lines; the PRO list above is the only feature list
+               on this page. */}
+        <section
+          data-testid="pro-free-trust"
+          className="mt-6 rounded-xl border border-[#00e5ff]/15 bg-[#0b224f]/40 px-5 py-4"
+        >
+          <p className="text-sm leading-relaxed text-[#9dd8ff]/80">
+            <span className="font-bold text-[#00e5ff]">{t("pro.free_title")}.</span>{" "}
+            {t("pro.free_body")}
+          </p>
         </section>
 
         {/* ── Billing ────────────────────────────────────────────────── */}

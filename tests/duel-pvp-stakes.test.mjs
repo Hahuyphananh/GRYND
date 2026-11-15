@@ -1,8 +1,11 @@
 // tests/duel-pvp-stakes.test.mjs
 //
 // The five duel lobbies (Sudoku Duel, Solitaire Duel, Barricade, Mini Golf,
-// Speed Typing) were unstaked. They are now coin matches in PvP and stay free
-// vs the bot:
+// Speed Typing) were unstaked. Four of them are now coin matches in PvP and
+// stay free vs the bot. SOLITAIRE DUEL is the exception: its ranked ladder was
+// later made free play on purpose (`freePlay: true` below), so its entry route
+// hands the store a zero stake and never reads a client-supplied one — while
+// the store's stake-filtered claim still has to hold for the other four:
 //
 //   * the entry route REQUIRES a legal positive stake and passes it to the
 //     store, so a missing stake can never silently open free play;
@@ -36,6 +39,9 @@ const GAMES = [
     route: "src/app/api/solitaire-duel/create-or-join/route.ts",
     store: "src/lib/solitaire-duel/serverStore.ts",
     storeKey: "solitaire-duel",
+    // Ranked Solitaire is free: no entry fee, no pot, no escrow. Its route must
+    // therefore pass stake 0 and must never accept a stake from the request.
+    freePlay: true,
   },
   {
     key: "barricade",
@@ -74,8 +80,18 @@ test("shared pot math: 1.8× the winner's stake, a tenth of the pot to the house
 });
 
 for (const game of GAMES) {
-  test(`${game.key}: the PvP entry requires a stake and hands it to the store`, () => {
+  test(`${game.key}: the PvP entry ${game.freePlay ? "is free and never reads a stake" : "requires a stake and hands it to the store"}`, () => {
     const route = read(game.route);
+
+    if (game.freePlay) {
+      // Free play is a deliberate product rule, not a missing check: the store
+      // is told stake 0 and the request body is never consulted for money.
+      assert.match(route, /createOrJoin\(\{ userId, stake: 0 \}\)/);
+      assert.doesNotMatch(route, /requireStake\(/);
+      assert.doesNotMatch(route, /body\s*\??\.\s*stake/);
+      return;
+    }
+
     assert.match(route, new RegExp(`requireStake\\(body\\?\\.stake, "${game.key}"\\)`));
     assert.match(route, /if \(!required\.ok\)/);
     assert.match(route, /stake: required\.stake/);

@@ -56,7 +56,15 @@ export async function getShopCosmetics(): Promise<CosmeticRow[]> {
   return db
     .select()
     .from(cosmetics)
-    .where(and(eq(cosmetics.enabled, true), sql`${cosmetics.priceTokens} IS NOT NULL`))
+    .where(
+      and(
+        eq(cosmetics.enabled, true),
+        // A PRO-only cosmetic is never for sale: it is granted by the
+        // membership, not bought with coins.
+        eq(cosmetics.proOnly, false),
+        sql`${cosmetics.priceTokens} IS NOT NULL`,
+      ),
+    )
     .orderBy(asc(cosmetics.sortOrder), asc(cosmetics.id));
 }
 
@@ -135,7 +143,9 @@ export async function grantAllCosmeticsToUser(userId: number): Promise<void> {
   await db.execute(sql`
     INSERT INTO "user_cosmetics" ("user_id", "cosmetic_key", "source")
     SELECT ${userId}, c."key", 'grant' FROM "cosmetics" c
-     WHERE c."enabled" = TRUE
+     -- PRO-only entries are NOT part of the everyone-owns-everything grant:
+     -- they are granted when the member equips one (equipCosmetic below).
+     WHERE c."enabled" = TRUE AND c."pro_only" = FALSE
        AND NOT EXISTS (
          SELECT 1 FROM "user_cosmetics" uc WHERE uc."user_id" = ${userId} AND uc."cosmetic_key" = c."key"
        )
@@ -418,13 +428,47 @@ export async function resolveProfileFrame(
   return decoration ?? null;
 }
 
-/** All cosmetics a user owns, joined with catalog metadata + equip state. */
-export async function getOwnedCosmetics(clerkId: string): Promise<OwnedCosmetic[]> {
+/**
+ * Grant every PRO-only catalog entry to one member, idempotently.
+ *
+ * These entries are NOT part of the everyone-owns-everything grant (see
+ * grantAllCosmeticsToUser), so they must be granted when a verified member
+ * looks at their collection — otherwise the PRO frames exist in the catalog but
+ * never appear in the picker, and the perk is unusable. `source: "pro"`
+ * records why the row exists.
+ */
+export async function grantProCosmetics(userId: number): Promise<void> {
+  if (!Number.isFinite(Number(userId))) return;
+  await db.execute(sql`
+    INSERT INTO "user_cosmetics" ("user_id", "cosmetic_key", "source")
+    SELECT ${userId}, c."key", 'pro' FROM "cosmetics" c
+     WHERE c."enabled" = TRUE AND c."pro_only" = TRUE
+       AND NOT EXISTS (
+         SELECT 1 FROM "user_cosmetics" uc
+          WHERE uc."user_id" = ${userId} AND uc."cosmetic_key" = c."key"
+       )
+  `);
+}
+
+/**
+ * All cosmetics a user owns, joined with catalog metadata + equip state.
+ *
+ * `isPro` comes from the caller's subscription row (src/lib/proStatus.ts),
+ * resolved server-side by the route. When it is true the PRO-only entries are
+ * granted first, so a member's equipment panel shows the frames they are paying
+ * for. When it is false nothing is granted and the list is exactly what it was.
+ */
+export async function getOwnedCosmetics(
+  clerkId: string,
+  { isPro = false }: { isPro?: boolean } = {},
+): Promise<OwnedCosmetic[]> {
   const appUser = await db.query.users.findFirst({
     where: eq(users.clerkId, clerkId),
     columns: { id: true, equippedCosmetics: true },
   });
   if (!appUser) return [];
+
+  if (isPro) await grantProCosmetics(appUser.id);
 
   const rows = await db
     .select({
@@ -470,6 +514,10 @@ export async function equipCosmetic(
   clerkId: string,
   keyOrNull: unknown,
   categoryArg?: unknown,
+  // The caller's membership, resolved SERVER-SIDE by the route
+  // (src/lib/proStatus.ts). It is never read from the browser, and it only ever
+  // gates `pro_only` entries — every free cosmetic behaves exactly as before.
+  options: { isPro?: boolean } = {},
 ): Promise<EquipCosmeticResult> {
   const appUser = await db.query.users.findFirst({
     where: eq(users.clerkId, clerkId),
@@ -516,6 +564,26 @@ export async function equipCosmetic(
   }
   if (!(await meetsUnlockCondition(appUser.id, catalog.unlockCondition))) {
     return { ok: false, error: "Unlock condition not met.", status: 403 };
+  }
+
+  // PRO-only catalog entries (migration 0257). A non-member is refused here,
+  // on the server, so the entitlement is real even though the cosmetic is a
+  // piece of decoration. A member equips one and that IS the grant — these
+  // entries carry no price and no unlock condition.
+  if (catalog.proOnly) {
+    if (!options.isPro) {
+      return {
+        ok: false,
+        error: "This is a GRYND PRO cosmetic.",
+        status: 403,
+      };
+    }
+    await db
+      .insert(userCosmetics)
+      .values({ userId: appUser.id, cosmeticKey: key, source: "pro" })
+      .onConflictDoNothing({
+        target: [userCosmetics.userId, userCosmetics.cosmeticKey],
+      });
   }
 
   const owned = await db

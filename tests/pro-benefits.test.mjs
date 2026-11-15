@@ -48,10 +48,11 @@ const read = (path) => fs.readFileSync(path, "utf8");
 
 /** The approved benefits that are enforced today, and WHERE they are enforced. */
 const ENFORCEMENT = {
-  ad_free: "src/lib/adEntitlement.ts",
   analysis_unlimited: "src/lib/solitaire-duel/analysisAllowance.ts",
   analytics: "src/app/api/stats/performance/route.ts",
-  matchmaking: "src/lib/quickQueueWorker.ts",
+  daily_archive: "src/app/api/solitaire/daily/archive/route.ts",
+  social_status: "src/lib/proStatus.ts",
+  ad_free: "src/lib/adEntitlement.ts",
 };
 
 /** Claims that must never come back to a customer-facing surface. */
@@ -79,7 +80,7 @@ test("only enforced benefits are advertised", () => {
 });
 
 test("the approved-but-unbuilt benefits are catalogued, translated and NOT advertised", () => {
-  assert.deepEqual([...PLANNED_PRO_BENEFIT_IDS], ["leaderboards", "private_rooms"]);
+  assert.deepEqual([...PLANNED_PRO_BENEFIT_IDS], ["leaderboards"]);
 
   for (const id of PLANNED_PRO_BENEFIT_IDS) {
     assert.ok(!ADVERTISED_PRO_BENEFIT_IDS.includes(id), `${id} must not be advertised yet`);
@@ -105,6 +106,27 @@ test("the approved-but-unbuilt benefits are catalogued, translated and NOT adver
       "each set must stay in the catalog's display order",
     );
   }
+});
+
+test("priority matchmaking is not sold while the queues are small", () => {
+  // The queue worker still has its bounded member preference, but selling it
+  // on a growing site signals thin queues. It must not appear in the offer.
+  assert.ok(!PRO_BENEFIT_IDS.includes("matchmaking"));
+  assert.ok(!PRO_BENEFITS.some((benefit) => benefit.id === "matchmaking"));
+  assert.ok(!ADVERTISED_PRO_PERKS.some((perk) => /matchmaking/i.test(perk)));
+
+  const sql = read("src/db/migrations/0261_pro_offer_refresh.sql")
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("--"))
+    .join("\n");
+  assert.ok(!/matchmaking/i.test(sql), "the served perk row must omit it too");
+});
+
+test("the strongest paid benefit leads the offer", () => {
+  // The order is the sales order. Unlimited analysis is the reason to upgrade;
+  // ad removal is table stakes and must not be the first thing a buyer reads.
+  assert.equal(PRO_BENEFIT_IDS[0], "analysis_unlimited");
+  assert.equal(ADVERTISED_PRO_BENEFIT_IDS[0], "analysis_unlimited");
 });
 
 test("proBenefitIds() defaults to the advertised set", () => {
@@ -144,13 +166,16 @@ test("the offered perk row and the served plan row cannot drift", () => {
   // the migration's ARRAY must equal the catalog's advertised perks, item for
   // item and in order. Comments are stripped first: the migration deliberately
   // names the claims it removes.
-  const sql = read("src/db/migrations/0215_pro_benefit_copy.sql")
+  // ALWAYS the LATEST perks migration, not the first one: each change that adds
+  // an advertised benefit ships with its own migration, and the most recent one
+  // is what the plan row holds.
+  const sql = read("src/db/migrations/0261_pro_offer_refresh.sql")
     .split("\n")
     .filter((line) => !line.trim().startsWith("--"))
     .join("\n");
 
   const array = sql.match(/"perks"\s*=\s*ARRAY\[([\s\S]*?)\]/);
-  assert.ok(array, "migration 0215 must set the grynd-pro perks array");
+  assert.ok(array, "the perks migration must set the grynd-pro perks array");
 
   const rowPerks = [...array[1].matchAll(/'([^']*)'/g)].map((match) => match[1]);
   assert.deepEqual(rowPerks, [...ADVERTISED_PRO_PERKS]);

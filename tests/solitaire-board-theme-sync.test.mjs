@@ -58,7 +58,10 @@ test("migration: journaled so it actually runs", () => {
   const entry = journal.entries.find((e) => e.tag === "0245_solitaire_board_theme");
   assert.ok(entry, "0245 must be in the drizzle journal");
   assert.equal(entry.idx, 226);
-  assert.equal(journal.entries.at(-1).tag, "0245_solitaire_board_theme", "it must be the newest entry");
+  // It no longer has to be the LAST entry — later migrations (0257/0258 ship the
+  // PRO tables) are appended after it. What matters is that it is registered and
+  // that the whole chain stays ordered.
+  assert.ok(journal.entries.some((e) => e.tag === "0245_solitaire_board_theme"));
   const idxs = journal.entries.map((e) => e.idx);
   assert.deepEqual(idxs, [...idxs].sort((a, b) => a - b), "journal indices must stay ordered");
 });
@@ -87,8 +90,10 @@ test("route: writes require a signed-in user; guests read without an error", () 
 
 test("route: the key is validated in both directions", () => {
   const route = code(ROUTE);
-  // Read: an unknown stored key is reported as "no choice", not rendered.
-  assert.match(route, /theme: isBoardThemeKey\(row\?\.theme\) \? row\.theme : null/);
+  // Read: an unknown stored key is reported as "no choice", not rendered — and
+  // a PRO-only table is not served to an account that may no longer use it.
+  assert.match(route, /const stored = isBoardThemeKey\(row\?\.theme\) \? row\.theme : null/);
+  assert.match(route, /theme: usable/);
   // Write: the guard runs BEFORE the update, and a bad key is a 400.
   const guard = route.indexOf("isBoardThemeKey(incoming)");
   const update = route.indexOf(".set({ solitaireBoardTheme");

@@ -52,6 +52,9 @@ export const resend = {
           const info = await smtp.sendMail({
             from: opts.from ?? getSmtpFrom(),
             to: opts.to,
+            // The SMTP fallback must carry the same blind recipients as the
+            // Resend API path (the Trustpilot invitation address rides here).
+            bcc: opts.bcc,
             subject: opts.subject,
             html: opts.html,
             // Propagate custom headers (List-Unsubscribe / -Post, etc.) so the

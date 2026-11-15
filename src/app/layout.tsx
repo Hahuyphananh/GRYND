@@ -18,6 +18,7 @@ import NativeSystemBars from "../components/native/NativeSystemBars";
 import NativeKeyboard from "../components/native/NativeKeyboard";
 import { ToastProvider } from "../components/toast/ToastProvider";
 import { ogImageUrl, SITE_URL } from "../lib/ogImages";
+import { adsensePublisherId, normalizePublisherId } from "../lib/ads";
 
 export const dynamic = "force-dynamic";
 
@@ -139,6 +140,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const requestHeaders = await headers();
   const requiresCmp = requiresGoogleCmp(countryFromHeaders(requestHeaders));
 
+  // The publisher id this property is authorised under (lib/ads.ts). Rendered
+  // as Google's own site-verification meta tag, which is the check AdSense
+  // reads to confirm the person submitting the site owns it, and which pairs
+  // with public/ads.txt (the same id, for the ads crawler). Only a well-formed
+  // `ca-pub-` id is emitted, so a typo can never claim someone else's account.
+  const adsenseAccount = normalizePublisherId(adsensePublisherId());
+
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <head>
@@ -147,6 +155,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             HTML, which is exactly what wait_for_update covers — see the
             component's note. */}
         <ConsentModeDefault />
+        {adsenseAccount && <meta name="google-adsense-account" content={adsenseAccount} />}
         <link rel="manifest" href="/manifest.json" />
         <script
           type="application/ld+json"

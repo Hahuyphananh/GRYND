@@ -166,6 +166,9 @@ export const SEAT = Object.freeze({
  */
 export const SOLITAIRE_DUEL_AI_PLAYER_ID = "solitaire_duel_ai_bot";
 
+// A ghost is a RECORDED HUMAN, not a bot: its seat id is namespaced separately
+// (SOLITAIRE_GHOST_PLAYER_PREFIX above) so no code path can confuse the two.
+
 /** How the server ended the match. Persisted in `resolution_reason`. */
 export const RESOLUTION = Object.freeze({
   /** A seat put all 52 cards on the foundations. */
@@ -250,6 +253,48 @@ export const COMPLETION_DEAD_HEAT_MS = 200;
  * player's spam can never truncate the other's game.
  */
 export const MAX_MOVES_PER_SEAT = 1_500;
+
+// ──────────────────────────────────────────────────────────────────────────
+// Asynchronous ghost duels
+// ──────────────────────────────────────────────────────────────────────────
+
+/**
+ * How long a ranked search waits for a LIVE player before it may race a ghost.
+ *
+ * The live queue is unchanged and always wins: this window only opens a
+ * fallback, so a search that finds somebody is a normal human duel. Seven
+ * seconds sits inside the promised 5–10 second band and is read by the lobby's
+ * five-second poll, so a player is paired within ten seconds at the outside.
+ */
+export const GHOST_FALLBACK_MS = 7_000;
+
+/**
+ * Minimum recorded moves for a run to be replayable as a ghost.
+ *
+ * A two-move recording is not an opponent; this floor keeps the pool to runs
+ * that actually played the deal. It is measured in accepted plies, which (with
+ * no re-deal) is exactly the number of logged moves.
+ */
+export const GHOST_MIN_RECORDED_MOVES = 8;
+
+/**
+ * The synthetic identity a ghost seat occupies in `player2_id`.
+ *
+ * It is NOT an account, NOT the AI seat and can never authenticate: the value
+ * is derived from the source match id and no session can ever match it. That is
+ * what keeps the source player out of a match they did not play, while every
+ * existing seat-shaped read (the per-seat board, the move log, the race facts)
+ * keeps working untouched.
+ */
+export const SOLITAIRE_GHOST_PLAYER_PREFIX = "solitaire_ghost_" as const;
+
+/** True for the synthetic ghost seat id — never for an account or the AI bot. */
+export function isGhostPlayerId(value: unknown): boolean {
+  return (
+    typeof value === "string" &&
+    value.startsWith(SOLITAIRE_GHOST_PLAYER_PREFIX)
+  );
+}
 
 /**
  * Minimum spacing between opponent-progress emissions (ms).

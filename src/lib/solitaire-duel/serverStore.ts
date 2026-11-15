@@ -30,15 +30,20 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { db } from "../../db/client";
 import { solitaireDuelMatches, solitaireDuelMoves, users } from "../../db/schema";
-import { applyRatingResult } from "../rating";
+import { applyGhostRatingResult, applyRatingResult } from "../rating";
 import { escrowMatchWagers } from "../tokens/wager";
 import { payPvpPot, refundPvpPot } from "../tokens/pvpPot";
-import { applyTrophyResult } from "../trophyStore";
+import { applyGhostTrophyResult, applyTrophyResult } from "../trophyStore";
 import { markDailyRewardWin } from "../dailyRewardWin";
 import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
 import { publicSolitaireBot, solitaireBotFor, type SolitaireBotId } from "./bots";
+import { dueGhostSteps, findGhostRun, ghostPlayerIdFor, type GhostRun } from "./ghosts";
+import { isGuestId } from "../guestIdentity";
+import { FRIEND_CHALLENGE_TTL_MS } from "./friendChallenge";
+import { generateFriendChallengeCode } from "./inviteCodes";
 import { isPracticePaused } from "../practicePause";
 import {
+  GHOST_FALLBACK_MS,
   INACTIVITY_ALARM_MS,
   INACTIVITY_FORFEIT_MS,
   MATCH_STATUS,
@@ -49,6 +54,7 @@ import {
   SEAT,
   SOLITAIRE_DUEL_AI_PLAYER_ID,
   SOLITAIRE_DUEL_LOCK_NAMESPACE,
+  isGhostPlayerId,
   TERMINAL_STATUSES,
   VARIANT,
   VARIANT_VERSION,
@@ -244,6 +250,19 @@ function inactivityForfeitSeat(match: MatchRow, nowMs: number): Seat | "both" | 
   // A practice match is never forfeited for inactivity — it has no clock at all.
   if (match.isAi) return null;
   if (match.status !== MATCH_STATUS.PLAYING || !match.player2Id) return null;
+  // A GHOST duel has exactly one seat that can go idle. The recording's moves
+  // are already made, so the ghost can never forfeit; the human's own clock
+  // still runs, so an abandoned ghost duel resolves instead of living forever.
+  if (match.isGhost) {
+    const humanSeat = isGhostPlayerId(match.player2Id)
+      ? SEAT.PLAYER1
+      : SEAT.PLAYER2;
+    const idle = inactivityMsForSeat(match, humanSeat, nowMs);
+    const done = Boolean(stateForSeat(match, humanSeat)?.completed);
+    return !done && idle != null && idle >= INACTIVITY_FORFEIT_MS
+      ? humanSeat
+      : null;
+  }
   const idle1 = inactivityMsForSeat(match, SEAT.PLAYER1, nowMs);
   const idle2 = inactivityMsForSeat(match, SEAT.PLAYER2, nowMs);
   const done1 = Boolean(stateForSeat(match, SEAT.PLAYER1)?.completed);
@@ -359,6 +378,28 @@ export function matchToDto(
     bot: match.isAi
       ? publicSolitaireBot(solitaireBotFor(match.aiDifficulty))
       : null,
+    // A RECORDED HUMAN, not a bot. Ranked never substitutes the AI seat: when
+    // no live player is available the match is played against another person's
+    // recorded run of the same deal. The DTO names only the anonymised handle
+    // and the recorded ladder strength — never the source account.
+    isGhost: Boolean(match.isGhost),
+    ghost: match.isGhost
+      ? {
+          name: match.ghostName ?? "GHOST",
+          rating:
+            Number.isFinite(Number(match.ghostRating)) && match.ghostRating != null
+              ? Number(match.ghostRating)
+              : null,
+          // The recording's own pace, as count-only checkpoints measured from
+          // the server's GO instant. Enough for the opponent panel to show the
+          // run unfolding; no card identity, column or stock order is here.
+          trail: Array.isArray(match.ghostTrail) ? match.ghostTrail : [],
+          completedAtMs:
+            match.ghostCompletedAtOffsetMs == null
+              ? null
+              : Number(match.ghostCompletedAtOffsetMs),
+        }
+      : null,
     // The commitment is public from creation; the seed itself is only revealed
     // once the match is terminal, so the deal can be verified after the fact.
     seedHash: match.serverSeedHash,
@@ -370,9 +411,14 @@ export function matchToDto(
     inactivityAlarmAtMs: inactivityAtMs(match, seat, INACTIVITY_ALARM_MS),
     inactivityForfeitAtMs: inactivityAtMs(match, seat, INACTIVITY_FORFEIT_MS),
     // The OPPONENT's inactivity clock, so the active seat can be told the other
-    // side is about to forfeit. Null in a waiting lobby and in practice.
-    opponentInactivityAlarmAtMs: inactivityAtMs(match, opponentSeat, INACTIVITY_ALARM_MS),
-    opponentInactivityForfeitAtMs: inactivityAtMs(match, opponentSeat, INACTIVITY_FORFEIT_MS),
+    // side is about to forfeit. Null in a waiting lobby, in practice — and in a
+    // ghost duel, whose opponent has no clock because its moves are recorded.
+    opponentInactivityAlarmAtMs: match.isGhost
+      ? null
+      : inactivityAtMs(match, opponentSeat, INACTIVITY_ALARM_MS),
+    opponentInactivityForfeitAtMs: match.isGhost
+      ? null
+      : inactivityAtMs(match, opponentSeat, INACTIVITY_FORFEIT_MS),
     startedAtMs: instantMs(match.startedAt),
     endedAtMs: instantMs(match.endedAt),
     createdAtMs: instantMs(match.createdAt),
@@ -421,6 +467,10 @@ export async function listOpenMatches({ limit = 30 }: { limit?: number } = {}) {
       and(
         eq(solitaireDuelMatches.status, MATCH_STATUS.WAITING),
         isNull(solitaireDuelMatches.player2Id),
+        // A friend challenge is NOT public queue material: its second seat is
+        // reserved for whoever holds the code, so it must never appear in a
+        // list that anyone can join from.
+        isNull(solitaireDuelMatches.inviteCode),
       ),
     )
     .orderBy(sql`${solitaireDuelMatches.createdAt} ASC`)
@@ -437,11 +487,84 @@ export async function listMyWaitingMatch({ userId }: { userId: string }) {
         eq(solitaireDuelMatches.status, MATCH_STATUS.WAITING),
         isNull(solitaireDuelMatches.player2Id),
         eq(solitaireDuelMatches.player1Id, userId),
+        // A waiting INVITE is not a queue search: "resume your search" would be
+        // a lie about a table nobody else can join. The challenge panel owns it.
+        isNull(solitaireDuelMatches.inviteCode),
       ),
     )
     .orderBy(sql`${solitaireDuelMatches.createdAt} ASC`)
     .limit(1);
   return row ?? null;
+}
+
+/**
+ * The caller's own friend challenge, if one is live.
+ *
+ * This is what makes the link REAL from the creator's side: the lobby can say
+ * "waiting for your friend" and then "they accepted" without the creator
+ * having to open the match page to find out. It is owner-scoped by
+ * `player1_id = userId` — a code is never sufficient to read somebody else's
+ * challenge, and the projection carries no board, no seed and no opponent
+ * identity.
+ *
+ * A waiting invite past its window is reported as cancelled rather than
+ * waiting: the seat can no longer be taken, so "waiting" would be a lie.
+ */
+export async function getMyFriendChallenge({
+  userId,
+  nowMs = Date.now(),
+}: {
+  userId: string;
+  nowMs?: number;
+}): Promise<{
+  matchId: string;
+  code: string;
+  status: string;
+  opponentJoined: boolean;
+  createdAtMs: number | null;
+  expiresAtMs: number | null;
+} | null> {
+  const [row] = await db
+    .select({
+      id: solitaireDuelMatches.id,
+      code: solitaireDuelMatches.inviteCode,
+      status: solitaireDuelMatches.status,
+      player2Id: solitaireDuelMatches.player2Id,
+      createdAt: solitaireDuelMatches.createdAt,
+      inviteExpiresAt: solitaireDuelMatches.inviteExpiresAt,
+    })
+    .from(solitaireDuelMatches)
+    .where(
+      and(
+        eq(solitaireDuelMatches.player1Id, userId),
+        sql`${solitaireDuelMatches.inviteCode} IS NOT NULL`,
+        // Only a live challenge is worth reporting. A finished/cancelled one
+        // belongs in history, not in the lobby.
+        sql`${solitaireDuelMatches.status} IN ('waiting', 'playing')`,
+      ),
+    )
+    .orderBy(sql`${solitaireDuelMatches.createdAt} DESC`)
+    .limit(1);
+
+  if (!row || !row.code) return null;
+
+  const expiresAtMs = row.inviteExpiresAt
+    ? new Date(row.inviteExpiresAt).getTime()
+    : null;
+  const expired =
+    expiresAtMs != null && Number.isFinite(expiresAtMs) && expiresAtMs <= nowMs;
+
+  return {
+    matchId: String(row.id),
+    code: row.code,
+    status:
+      expired && row.status === MATCH_STATUS.WAITING
+        ? MATCH_STATUS.CANCELLED
+        : String(row.status),
+    opponentJoined: Boolean(row.player2Id),
+    createdAtMs: instantMs(row.createdAt),
+    expiresAtMs,
+  };
 }
 
 /**
@@ -480,6 +603,8 @@ export async function createOrJoin({
         and(
           eq(solitaireDuelMatches.status, MATCH_STATUS.WAITING),
           isNull(solitaireDuelMatches.player2Id),
+          // Never pair a stranger into somebody's private friend challenge.
+          isNull(solitaireDuelMatches.inviteCode),
           sql`${solitaireDuelMatches.stakeAmount} = ${stakeAmount}`,
         ),
       )
@@ -549,7 +674,18 @@ export async function createOrJoin({
  * "both players receive the exact same initial puzzle" is a structural property
  * of the row rather than something a join path has to remember to do.
  */
-async function createWaitingMatch(tx: any, userId: string, nowMs: number, stakeAmount = 0) {
+async function createWaitingMatch(
+  tx: any,
+  userId: string,
+  nowMs: number,
+  stakeAmount = 0,
+  /**
+   * Set ONLY for a friend challenge: the row becomes addressable by a short
+   * code, and it must never fall back to a ghost — a link addressed to one
+   * person may not quietly turn into a replay against somebody else.
+   */
+  invite?: { code: string; expiresAt: Date },
+) {
   // Server-generated entropy only. Never client-supplied, never Math.random().
   const serverSeed = randomHex(32);
   const serverSeedHash = getServerSeedHash(serverSeed);
@@ -587,6 +723,13 @@ async function createWaitingMatch(tx: any, userId: string, nowMs: number, stakeA
       p2PeakFoundation: opening.peakFoundation,
       p1Revealed: openingProgress.revealedTableau,
       p2Revealed: openingProgress.revealedTableau,
+      // The live queue gets first refusal: this instant only opens the ghost
+      // fallback. A second player who joins before it arrives still wins, and
+      // a search that finds somebody is an ordinary human duel. A PRIVATE
+      // invite takes no fallback at all: it waits for its friend or expires.
+      inviteCode: invite?.code ?? null,
+      inviteExpiresAt: invite?.expiresAt ?? null,
+      ghostFallbackAt: invite ? null : new Date(nowMs + GHOST_FALLBACK_MS),
     })
     .returning();
 
@@ -598,6 +741,187 @@ async function createWaitingMatch(tx: any, userId: string, nowMs: number, stakeA
   });
 
   return { match, joined: false } as const;
+}
+
+/**
+ * Mint — or hand back — the caller's friend-challenge lobby.
+ *
+ * The lobby is an ordinary seeded waiting match with `invite_code` set, so the
+ * same one-deal/two-boards invariants hold as in the public queue; the ONLY
+ * differences are that every public query filters it out and that the second
+ * seat is claimed by code rather than by matchmaking.
+ *
+ * Idempotent on purpose: pressing "challenge a friend" twice returns the SAME
+ * live link, because two links would mean two tables and the first friend to
+ * accept would land in the one the creator had already forgotten. An expired
+ * link counts as no link, so the next press mints a fresh one.
+ */
+export async function createFriendChallenge({
+  userId,
+  nowMs = Date.now(),
+  code,
+}: {
+  userId: string;
+  nowMs?: number;
+  code?: string;
+}): Promise<
+  | { match: typeof solitaireDuelMatches.$inferSelect }
+  | { error: string; status: number }
+> {
+  const mint = async (inviteCode: string) =>
+    await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(${SOLITAIRE_DUEL_LOCK_NAMESPACE}, 0)`,
+      );
+
+      const [existing] = await tx
+        .select()
+        .from(solitaireDuelMatches)
+        .where(
+          and(
+            eq(solitaireDuelMatches.player1Id, userId),
+            eq(solitaireDuelMatches.status, MATCH_STATUS.WAITING),
+            isNull(solitaireDuelMatches.player2Id),
+            sql`${solitaireDuelMatches.inviteCode} IS NOT NULL`,
+            sql`${solitaireDuelMatches.inviteExpiresAt} > ${new Date(nowMs)}`,
+          ),
+        )
+        .orderBy(sql`${solitaireDuelMatches.createdAt} DESC`)
+        .limit(1);
+      if (existing) return { match: existing } as const;
+
+      const { match } = await createWaitingMatch(tx, userId, nowMs, 0, {
+        code: inviteCode,
+        expiresAt: new Date(nowMs + FRIEND_CHALLENGE_TTL_MS),
+      });
+      return { match } as const;
+    });
+
+  try {
+    return await mint(code ?? generateFriendChallengeCode());
+  } catch (error) {
+    // 23505 = unique_violation on the code index. A collision is astronomically
+    // unlikely (32^8) but retrying once is cheaper than failing the request.
+    if ((error as { code?: string })?.code === "23505") {
+      try {
+        return await mint(generateFriendChallengeCode());
+      } catch (retryError) {
+        console.error(
+          "[solitaire-duel] friend challenge failed after a code collision:",
+          retryError instanceof Error ? retryError.message : retryError,
+        );
+      }
+    } else {
+      console.error(
+        "[solitaire-duel] friend challenge creation failed:",
+        error instanceof Error ? error.message : error,
+      );
+    }
+    return { error: "Unable to create the challenge link", status: 500 } as const;
+  }
+}
+
+/**
+ * Take the second seat of a friend challenge by code.
+ *
+ * Same lock and same claim primitive as public matchmaking (`joinExistingMatch`
+ * under `FOR UPDATE`), so two people opening the link at the same instant
+ * cannot both be seated. The caller's identity comes from the session; the code
+ * is only ever a locator, never an identity.
+ *
+ * Re-opening a link you already hold is not an error: the creator gets their own
+ * lobby back, and the friend who already accepted gets the started match, so a
+ * reload or a second click never dead-ends on a 409.
+ */
+export async function joinFriendChallenge({
+  userId,
+  code,
+  nowMs = Date.now(),
+}: {
+  userId: string;
+  code: string;
+  nowMs?: number;
+}): Promise<
+  | { match: typeof solitaireDuelMatches.$inferSelect; joined: boolean; own?: boolean; alreadySeated?: boolean }
+  | { error: string; status: number }
+> {
+  return await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(${SOLITAIRE_DUEL_LOCK_NAMESPACE}, 0)`,
+    );
+
+    const [row] = await tx
+      .select()
+      .from(solitaireDuelMatches)
+      .where(eq(solitaireDuelMatches.inviteCode, code))
+      .for("update");
+
+    if (!row) return { error: "This challenge link is not valid", status: 404 } as const;
+
+    // The creator opening their own link: hand back their lobby, never a second
+    // seat and never a second table.
+    if (row.player1Id === userId) {
+      return { match: row, joined: false, own: true } as const;
+    }
+    // Already the invited friend (a reload, or a second click): the match page is
+    // where they belong.
+    if (row.player2Id === userId) {
+      return { match: row, joined: false, alreadySeated: true } as const;
+    }
+
+    const expiresAtMs = row.inviteExpiresAt
+      ? new Date(row.inviteExpiresAt).getTime()
+      : null;
+    if (expiresAtMs != null && Number.isFinite(expiresAtMs) && expiresAtMs <= nowMs) {
+      return { error: "This challenge link has expired", status: 410 } as const;
+    }
+    if (row.status !== MATCH_STATUS.WAITING || row.player2Id) {
+      return { error: "This duel has already started", status: 409 } as const;
+    }
+
+    return await joinExistingMatch(tx, row.id, userId, nowMs, 0);
+  });
+}
+
+/**
+ * What a challenge code currently points at — PUBLIC and deal-free.
+ *
+ * The `/duel/<code>` preview needs exactly this: is the seat still open, has
+ * somebody taken it, has the link lapsed. It deliberately returns no match id,
+ * no board, no seed and no player, because a code proves nothing until its
+ * holder actually sits down.
+ */
+export async function findFriendChallenge({
+  code,
+  nowMs = Date.now(),
+}: {
+  code: string;
+  nowMs?: number;
+}): Promise<{
+  status: "open" | "started" | "expired" | "unknown";
+  expiresAtMs: number | null;
+}> {
+  const [row] = await db
+    .select({
+      status: solitaireDuelMatches.status,
+      player2Id: solitaireDuelMatches.player2Id,
+      inviteExpiresAt: solitaireDuelMatches.inviteExpiresAt,
+    })
+    .from(solitaireDuelMatches)
+    .where(eq(solitaireDuelMatches.inviteCode, code))
+    .limit(1);
+
+  if (!row) return { status: "unknown", expiresAtMs: null };
+
+  const expiresAtMs = row.inviteExpiresAt
+    ? new Date(row.inviteExpiresAt).getTime()
+    : null;
+  const expired =
+    expiresAtMs != null && Number.isFinite(expiresAtMs) && expiresAtMs <= nowMs;
+
+  if (expired) return { status: "expired", expiresAtMs };
+  if (row.player2Id) return { status: "started", expiresAtMs };
+  return { status: "open", expiresAtMs };
 }
 
 /**
@@ -721,6 +1045,8 @@ async function joinExistingMatch(
     .set({
       player2Id: userId,
       status: MATCH_STATUS.PLAYING,
+      // A live player arrived: the ghost window is closed for good.
+      ghostFallbackAt: null,
       goAt: new Date(goAtMs),
       // Both seats' inactivity clocks start at GO. No deadline is armed: the
       // match is untimed and only ends by completion, forfeit, disconnect or
@@ -1299,6 +1625,377 @@ async function advanceAiIfPractice(
   return { match: advanced.match, aiEvents: advanced.aiEvents };
 }
 
+// ── Asynchronous ghost duels (a RECORDED HUMAN, never the AI seat) ────────
+//
+// The live queue is unchanged: `createOrJoin` still pairs real players first,
+// and a search that finds somebody is an ordinary human duel. These functions
+// only describe what happens when nobody joins — the open lobby is re-seated
+// against another real player's RECORDED run of the same committed deal.
+//
+// Three properties make that honest rather than a disguised bot:
+//
+//   1. THE DEAL IS THE RECORDING'S OWN. A ghost match adopts the source match's
+//      committed seed, hash, deal seed and deal, so "the ghost played this exact
+//      deal" is structural. Its seed stays hidden until THIS match is terminal.
+//   2. THE MOVES ARE FIXED. Playback replays `ghost_timeline` — the recorded log
+//      with its recorded offsets — through the same rules engine. No planner is
+//      imported, no difficulty exists, and no move is chosen here.
+//   3. THE GHOST HAS NO SEAT IN THE LADDER. It occupies a synthetic id, so the
+//      source player can never be treated as a participant, and settlement
+//      rates only the human (see `settleSolitaireDuelMatch`).
+
+/**
+ * The guest trial: ONE race, against a recorded human run, with no account.
+ *
+ * A curious visitor should feel the race immediately, but a guest is not a
+ * ladder participant (no rating, no trophies, no `users` row) and must never be
+ * seated against a real player — so this path deliberately bypasses the public
+ * queue entirely. It mints a match that is ALREADY `playing` against a ghost
+ * seat, exactly like a converted fallback:
+ *
+ *   * no `waiting` row is ever created, so the guest never appears in the open
+ *     lobby list and no stranger can be paired into the trial;
+ *   * the deal is the RECORDING's own committed deal, so the race is provably
+ *     the one the ghost played;
+ *   * settlement skips every guest seat, so nothing is rated;
+ *   * the limit is enforced from this guest id's own rows, and a second request
+ *     gets a sign-in prompt rather than a second race. (Clearing cookies mints
+ *     a new guest id; that is why the trial is a taste, not a free ladder —
+ *     the sign-in prompt is the real gate.)
+ */
+export const GUEST_TRIAL_MAX_MATCHES = 1;
+
+export async function createGuestGhostRace({
+  userId,
+  nowMs = Date.now(),
+}: {
+  userId: string;
+  nowMs?: number;
+}): Promise<
+  | { match: typeof solitaireDuelMatches.$inferSelect; reused: boolean }
+  | { error: string; status: number; reason?: string }
+> {
+  if (!isGuestId(userId)) {
+    return { error: "A guest race needs a guest session", status: 400 } as const;
+  }
+
+  return await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(${SOLITAIRE_DUEL_LOCK_NAMESPACE}, 0)`,
+    );
+
+    // A refresh / double click must not mint a second race: hand back the one
+    // this guest is already in.
+    const [live] = await tx
+      .select()
+      .from(solitaireDuelMatches)
+      .where(
+        and(
+          eq(solitaireDuelMatches.player1Id, userId),
+          sql`${solitaireDuelMatches.status} IN ('waiting', 'playing')`,
+        ),
+      )
+      .orderBy(sql`${solitaireDuelMatches.createdAt} DESC`)
+      .limit(1);
+    if (live) return { match: live, reused: true } as const;
+
+    const used = await tx
+      .select({ id: solitaireDuelMatches.id })
+      .from(solitaireDuelMatches)
+      .where(eq(solitaireDuelMatches.player1Id, userId))
+      .limit(GUEST_TRIAL_MAX_MATCHES);
+    if (used.length >= GUEST_TRIAL_MAX_MATCHES) {
+      return {
+        error: "Your free race is used — sign in to keep racing",
+        status: 403,
+        reason: "guest_trial_used",
+      } as const;
+    }
+
+    const run = await findGhostRun(tx, { excludeUserId: userId });
+    if (!run) {
+      // No recording exists yet. Never invent an opponent: say so and point at
+      // the signed-in queue, which can pair a live player.
+      return {
+        error: "No recorded race is available right now — sign in to join the live queue",
+        status: 503,
+        reason: "no_ghost",
+      } as const;
+    }
+
+    const opening = initialStateFromDeal(run.deal);
+    const progress = progressOf(opening);
+    const goAtMs = nowMs + READY_COUNTDOWN_MS;
+
+    const [match] = await tx
+      .insert(solitaireDuelMatches)
+      .values({
+        variant: VARIANT,
+        variantVersion: VARIANT_VERSION,
+        player1Id: userId,
+        player2Id: ghostPlayerIdFor(run.sourceMatchId),
+        status: MATCH_STATUS.PLAYING,
+        isAi: false,
+        isGhost: true,
+        stakeAmount: "0",
+        ghostSourceMatchId: run.sourceMatchId,
+        ghostName: run.name,
+        ghostRating: run.rating,
+        ghostTrophies: run.trophies,
+        ghostTimeline: run.timeline,
+        ghostTrail: run.trail,
+        ghostCompletedAtOffsetMs: run.completedOffsetMs,
+        ghostFallbackAt: null,
+        serverSeed: run.serverSeed,
+        serverSeedHash: run.serverSeedHash,
+        dealSeed: run.dealSeed,
+        deal: run.deal,
+        p1State: opening,
+        p2State: cloneState(opening),
+        p1Ply: 0,
+        p2Ply: 0,
+        p1PeakFoundation: opening.peakFoundation,
+        p2PeakFoundation: opening.peakFoundation,
+        p1Revealed: progress.revealedTableau,
+        p2Revealed: progress.revealedTableau,
+        goAt: new Date(goAtMs),
+        startedAt: new Date(nowMs),
+        p1LastActionAt: new Date(goAtMs),
+        p2LastActionAt: new Date(goAtMs),
+        updatedAt: new Date(nowMs),
+      })
+      .returning();
+
+    return { match, reused: false } as const;
+  });
+}
+
+/**
+ * Turn a still-waiting lobby into a ghost duel, if its window has passed.
+ *
+ * Takes the SAME per-game advisory lock as `createOrJoin`, so a live joiner and
+ * the fallback can never both claim the lobby: whichever runs second sees the
+ * row already `playing` and does nothing. Safe to call on any read; a lobby
+ * that is not due, has no replay available, or has already started is a no-op.
+ */
+export async function resolveGhostFallback({
+  matchId,
+  nowMs = Date.now(),
+}: {
+  matchId: string;
+  nowMs?: number;
+}) {
+  return await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(${SOLITAIRE_DUEL_LOCK_NAMESPACE}, 0)`,
+    );
+
+    const [match] = await tx
+      .select()
+      .from(solitaireDuelMatches)
+      .where(eq(solitaireDuelMatches.id, matchId))
+      .for("update");
+
+    if (!match) return err("Match not found", 404);
+    if (
+      match.status !== MATCH_STATUS.WAITING ||
+      match.player2Id ||
+      match.isGhost
+    ) {
+      return { match, ghost: false } as const;
+    }
+
+    const dueAtMs = instantMs(match.ghostFallbackAt);
+    if (dueAtMs == null || nowMs < dueAtMs) {
+      return { match, ghost: false } as const;
+    }
+
+    const run = await findGhostRun(tx, {
+      excludeUserId: match.player1Id,
+    });
+    if (!run) {
+      // No recording exists yet (a cold pool). The honest outcome is to keep
+      // waiting and re-check on the next read — never to invent an opponent.
+      return { match, ghost: false } as const;
+    }
+
+    const converted = await convertWaitingLobbyToGhost(tx, match, run, nowMs);
+    return { match: converted ?? match, ghost: Boolean(converted) } as const;
+  });
+}
+
+/**
+ * Re-seat one waiting lobby onto a recording.
+ *
+ * NOTHING has been played on this row — it is still a `waiting` lobby at ply 0 —
+ * so replacing its deal costs the player nothing and reveals nothing: the board
+ * is only shown once the row is `playing`. Both seats are written from the
+ * recording's deal in the same update, so the shared-puzzle invariant holds
+ * exactly as it does for a live join.
+ */
+async function convertWaitingLobbyToGhost(
+  tx: any,
+  match: MatchRow,
+  run: GhostRun,
+  nowMs: number,
+): Promise<MatchRow | null> {
+  const opening = initialStateFromDeal(run.deal);
+  const progress = progressOf(opening);
+  const goAtMs = nowMs + READY_COUNTDOWN_MS;
+
+  const [updated] = await tx
+    .update(solitaireDuelMatches)
+    .set({
+      player2Id: ghostPlayerIdFor(run.sourceMatchId),
+      status: MATCH_STATUS.PLAYING,
+      isGhost: true,
+      ghostSourceMatchId: run.sourceMatchId,
+      ghostName: run.name,
+      ghostRating: run.rating,
+      ghostTrophies: run.trophies,
+      ghostTimeline: run.timeline,
+      ghostTrail: run.trail,
+      ghostCompletedAtOffsetMs: run.completedOffsetMs,
+      ghostFallbackAt: null,
+      // The recording's own commitment, so the puzzle is provably the one the
+      // ghost played. The seed is only revealed once this match is terminal.
+      serverSeed: run.serverSeed,
+      serverSeedHash: run.serverSeedHash,
+      dealSeed: run.dealSeed,
+      deal: run.deal,
+      p1State: opening,
+      p2State: cloneState(opening),
+      p1Ply: 0,
+      p2Ply: 0,
+      p1PeakFoundation: opening.peakFoundation,
+      p2PeakFoundation: opening.peakFoundation,
+      p1Revealed: progress.revealedTableau,
+      p2Revealed: progress.revealedTableau,
+      goAt: new Date(goAtMs),
+      startedAt: new Date(nowMs),
+      p1LastActionAt: new Date(goAtMs),
+      p2LastActionAt: new Date(goAtMs),
+      updatedAt: new Date(nowMs),
+    })
+    .where(
+      and(
+        eq(solitaireDuelMatches.id, match.id),
+        eq(solitaireDuelMatches.status, MATCH_STATUS.WAITING),
+        isNull(solitaireDuelMatches.player2Id),
+      ),
+    )
+    .returning();
+
+  return updated ?? null;
+}
+
+/**
+ * Replay the recording up to the server's current instant.
+ *
+ * THE GHOST'S ONLY MOVE SOURCE. It applies the recorded moves whose recorded
+ * offsets have been reached, in order, through `applyMove` — the same authority
+ * a human move passes through — and stamps the completion instant from the
+ * RECORDED offset, so a photo finish is decided by the two humans' real solving
+ * times rather than by whenever this read happened to run.
+ *
+ * Idempotent and monotonic: the seat's own ply cursor is the progress marker, a
+ * read between two recorded moves writes nothing, and a recording that stops
+ * replaying simply ends the replay (it is never re-dealt or substituted).
+ */
+export async function advanceGhostMatch({
+  matchId,
+  nowMs = Date.now(),
+}: {
+  matchId: string;
+  nowMs?: number;
+}) {
+  return await db.transaction(async (tx) => {
+    const [match] = await tx
+      .select()
+      .from(solitaireDuelMatches)
+      .where(eq(solitaireDuelMatches.id, matchId))
+      .for("update");
+
+    if (!match) return err("Match not found", 404);
+    if (
+      !match.isGhost ||
+      match.status !== MATCH_STATUS.PLAYING ||
+      !match.player2Id
+    ) {
+      return { match, advanced: false } as const;
+    }
+
+    const goAtMs = instantMs(match.goAt);
+    const timeline = Array.isArray(match.ghostTimeline)
+      ? match.ghostTimeline
+      : [];
+    let state = stateForSeat(match, SEAT.PLAYER2);
+    if (
+      goAtMs == null ||
+      nowMs < goAtMs ||
+      !state ||
+      !isWellFormedState(state) ||
+      state.completed ||
+      timeline.length === 0
+    ) {
+      return { match, advanced: false } as const;
+    }
+
+    const due = dueGhostSteps(timeline, state.ply, nowMs - goAtMs);
+    if (due.length === 0) return { match, advanced: false } as const;
+
+    const played: { ply: number; step: (typeof due)[number]["step"] }[] = [];
+    for (const entry of due) {
+      const applied = applyMove({ state, move: entry.step.move });
+      // A recording is verified before it is offered, so this is unreachable in
+      // practice — and it deliberately STOPS the replay rather than guessing a
+      // different move. The ghost is never substituted or re-dealt.
+      if (!applied.ok) break;
+      state = applied.state as SolitaireState;
+      played.push({ ply: entry.index, step: entry.step });
+    }
+    if (played.length === 0) return { match, advanced: false } as const;
+
+    if (state.completed) {
+      const completing = played[played.length - 1];
+      state.completedAtMs = goAtMs + completing.step.offsetMs;
+    }
+
+    for (const entry of played) {
+      await tx.insert(solitaireDuelMoves).values({
+        matchId: match.id,
+        seat: SEAT.PLAYER2,
+        ply: entry.ply,
+        kind: entry.step.kind,
+        move: entry.step.move,
+      });
+    }
+
+    const progress = progressOf(state);
+    const [updated] = await tx
+      .update(solitaireDuelMatches)
+      .set({
+        ...seatPatchFor(SEAT.PLAYER2, state, progress),
+        p2LastActionAt: new Date(nowMs),
+        ...(state.completed && state.completedAtMs
+          ? { p2FinishedAt: new Date(state.completedAtMs) }
+          : {}),
+        updatedAt: new Date(nowMs),
+      })
+      .where(eq(solitaireDuelMatches.id, match.id))
+      .returning();
+
+    let finalRow = updated ?? match;
+    const outcome = resolveRace({
+      player1: raceFor(finalRow, SEAT.PLAYER1),
+      player2: raceFor(finalRow, SEAT.PLAYER2),
+    });
+    if (outcome) finalRow = await finalizeMatch(tx, finalRow, outcome, nowMs);
+
+    return { match: finalRow, advanced: true } as const;
+  });
+}
+
 // ── Reads ─────────────────────────────────────────────────────────────────
 
 /**
@@ -1331,6 +2028,14 @@ export async function fetchMatch({
     return err("Not a participant of this match", 403);
   }
 
+  // A still-open lobby past its window becomes an asynchronous duel against a
+  // recorded human run of the SAME deal. Resolved on READ so a player is never
+  // left waiting on a pool that the store could have filled.
+  if (match.status === MATCH_STATUS.WAITING && !match.player2Id) {
+    const fallback = await resolveGhostFallback({ matchId, nowMs });
+    if (!("error" in fallback) && fallback.match) match = fallback.match;
+  }
+
   // A paused practice match is frozen: no read advances the bot and no clock
   // is allowed to decide anything until the player resumes.
   if (
@@ -1345,6 +2050,14 @@ export async function fetchMatch({
   // deal). A human row is untouched by this step.
   const advancedRead = await advanceAiIfPractice(match, nowMs);
   match = advancedRead.match;
+
+  // A ghost duel is advanced to NOW on every read, for the same reason a
+  // practice bot is: the recorded moves due by now must land even between the
+  // player's own moves, and NOTHING here chooses a move — it replays the log.
+  if (match.isGhost && match.status === MATCH_STATUS.PLAYING) {
+    const advancedGhost = await advanceGhostMatch({ matchId, nowMs });
+    if (!("error" in advancedGhost)) match = advancedGhost.match;
+  }
   // Retained for THIS response only. A later re-deal or inactivity resolution
   // does not rewrite it, but the summary describes only the bot's batch.
   let aiEvents = advancedRead.aiEvents;
@@ -1482,6 +2195,9 @@ export async function submitMove({
   // lands second is judged against the bot's real completion instant. A no-op
   // for a human match.
   await advanceAiMatch({ matchId, nowMs });
+  // Same for a ghost: the recording's moves that are due must be on the board
+  // BEFORE this move is judged, or a human could out-run an already-faster run.
+  await advanceGhostMatch({ matchId, nowMs });
 
   try {
     return await db.transaction(async (tx) => {
@@ -2108,6 +2824,64 @@ async function settleSolitaireDuelMatch(
   match: MatchRow,
   outcome: RaceOutcome,
 ) {
+  // A GUEST TRIAL NEVER TOUCHES THE LADDER.
+  //
+  // A guest id is `guest_<uuid>`: there is no `users` row behind it, no rating,
+  // no trophies and no stats. Settling one would either write to nothing or —
+  // worse — fail the settlement of a match the guest played, so the whole
+  // settlement is skipped. This is the guard that makes "one free race before
+  // signing in" safe without a second, parallel settlement path.
+  if (isGuestId(match.player1Id) || isGuestId(match.player2Id)) return;
+  // A GHOST duel settles into the HUMAN's ladder ONLY.
+  //
+  // The ghost is a recording, not a seat: its source player was not in this
+  // match and must never gain or lose a rating from it, so the two-seat writers
+  // are deliberately NOT used. The human is rated against the strength the
+  // recording's owner actually had (`ghost_rating` / `ghost_trophies`), through
+  // single-seat writers that reuse the same Elo maths and trophy ladder.
+  if (match.isGhost) {
+    const humanId = isGhostPlayerId(match.player2Id)
+      ? match.player1Id
+      : match.player2Id;
+    if (!humanId) return;
+
+    const draw = outcome.result === RESULT.DRAW;
+    const humanSeat = humanId === match.player1Id ? RESULT.PLAYER1 : RESULT.PLAYER2;
+    const humanWon = !draw && outcome.result === humanSeat;
+    const result = draw ? "draw" : humanWon ? "win" : "loss";
+
+    if (!draw) {
+      await tx
+        .update(users)
+        .set(
+          humanWon
+            ? { gamesWon: sql`${users.gamesWon} + 1` }
+            : { gamesLost: sql`${users.gamesLost} + 1` },
+        )
+        .where(eq(users.clerkId, humanId));
+    }
+
+    await applyGhostRatingResult({
+      tx,
+      gameKey: "solitaire-duel",
+      matchId: String(match.id),
+      clerkId: humanId,
+      opponentRating: match.ghostRating ?? undefined,
+      result,
+    }).catch(() => {});
+    await applyGhostTrophyResult({
+      tx,
+      gameKey: "solitaire-duel",
+      matchId: String(match.id),
+      clerkId: humanId,
+      opponentTrophies: match.ghostTrophies ?? undefined,
+      result,
+    }).catch(() => {});
+
+    if (humanWon) await markDailyRewardWin(tx, humanId);
+    return;
+  }
+
   // Free vs-AI matches must never affect rating, trophies or win counters —
   // but a human win still unlocks the daily reward.
   if (match.isAi) {

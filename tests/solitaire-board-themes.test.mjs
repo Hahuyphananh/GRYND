@@ -90,10 +90,17 @@ const WHITE = parseColor("#ffffff");
 
 // ── 1. The catalog ────────────────────────────────────────────────────────
 
-test("catalog: exactly the six documented presets, Classic Green first", () => {
+test("catalog: the six free presets plus the two PRO tables, Classic Green first", () => {
+  // Every free preset is unchanged — that is the product rule the offer makes.
   assert.deepEqual(
-    BOARD_THEMES.map((theme) => theme.label),
+    BOARD_THEMES.filter((theme) => !theme.proOnly).map((theme) => theme.label),
     ["Classic Green", "Ocean Blue", "Royal Purple", "Midnight", "Warm Copper", "Sand"],
+  );
+  // The PRO tables are the only gated ones, and they are flagged in the catalog
+  // (the API refuses them for a non-member — see tests/pro-social-status).
+  assert.deepEqual(
+    BOARD_THEMES.filter((theme) => theme.proOnly).map((theme) => theme.key),
+    ["founder", "supporter"],
   );
   assert.equal(BOARD_THEMES[0].key, DEFAULT_BOARD_THEME);
   assert.equal(DEFAULT_BOARD_THEME, "classic");

@@ -28,6 +28,7 @@ import {
 } from "@tabler/icons-react";
 
 import BotAvatar from "./BotAvatar";
+import ShareWinButton from "../share/ShareWinButton";
 import SolitaireBoard from "./SolitaireBoard";
 import SolitaireThemePicker from "./SolitaireThemePicker";
 import { aiMoveDelayMs, aiPaceLabel } from "../../lib/solitaire-duel/ai";
@@ -418,6 +419,20 @@ export default function OfflineSolitaireMatch({
               This race ran on this device. Nothing was sent, so no Elo, trophies,
               history or account state changed.
             </p>
+
+            {/* A win in this arena is shareable too — with the race time the
+                HUD counted, and only on a win. */}
+            {outcome === "win" ? (
+              <div className="mt-3 flex justify-center">
+                <ShareWinButton
+                  game="solitaire"
+                  mode="practice"
+                  durationMs={Math.max(0, (match.endedAtMs ?? match.goAtMs) - match.goAtMs)}
+                  moves={match.log.length}
+                  testId="solitaire-offline-share-win"
+                />
+              </div>
+            ) : null}
 
             <div className="mt-4 flex flex-col gap-2">
               <button

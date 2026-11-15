@@ -18,12 +18,22 @@
 // one in the adapter that reads it.
 
 import { validateWager } from "../games/stakes";
-import { getRoomGame } from "./catalog";
+import {
+  ROOM_DEFAULT_TIMER_SECONDS,
+  ROOM_TIMER_OPTIONS,
+  getRoomGame,
+} from "./catalog";
 
-/** The validated settings a room carries. Only the stake is a rule today. */
+/** The validated settings a room carries. */
 export interface RoomSettings {
   /** Coins on the line. 0 = a free match, and always legal. */
   stake: number;
+  /**
+   * How long this room stays open and joinable, in seconds. One of
+   * ROOM_TIMER_OPTIONS. It is the ROOM's clock (the invitation window), not a
+   * match clock — no supported game accepts a per-match timer yet.
+   */
+  timerSeconds: number;
 }
 
 // A PLAIN object rather than a discriminated union: this repo compiles with
@@ -58,6 +68,23 @@ export function resolveRoomSettings(
     raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const requested = source.stake;
 
+  const requestedTimer = source.timerSeconds;
+  // A number only: a JSON string that happens to spell an option is refused,
+  // so the stored setting is always the exact value the catalog offers.
+  const timerSeconds =
+    requestedTimer === undefined || requestedTimer === null
+      ? ROOM_DEFAULT_TIMER_SECONDS
+      : typeof requestedTimer === "number"
+        ? requestedTimer
+        : Number.NaN;
+  if (!ROOM_TIMER_OPTIONS.includes(timerSeconds)) {
+    return {
+      ok: false,
+      status: 400,
+      message: `Room timer must be one of ${ROOM_TIMER_OPTIONS.join(", ")} seconds`,
+    };
+  }
+
   const wager = validateWager(requested, game.key);
   if (!wager.ok) {
     // `validateWager`'s own message + status: the platform's wording, not a
@@ -74,7 +101,7 @@ export function resolveRoomSettings(
           : `Maximum stake for ${game.label} is ${game.maxStake} coins`,
     };
   }
-  return { ok: true, settings: { stake: wager.stake } };
+  return { ok: true, settings: { stake: wager.stake, timerSeconds } };
 }
 
 /**
@@ -84,5 +111,5 @@ export function resolveRoomSettings(
  * never move coins on the acceptor's behalf.
  */
 export function challengeSettings(): RoomSettings {
-  return { stake: 0 };
+  return { stake: 0, timerSeconds: ROOM_DEFAULT_TIMER_SECONDS };
 }

@@ -29,6 +29,24 @@ export default function UnlimitedPuzzlePlayPage() {
         <div className="mt-4">
           <SolitairePuzzle kind="unlimited" />
         </div>
+        {/* The three daily surfaces are separate pages, so each one has to say
+            where the others are — otherwise separating them just makes the
+            others harder to find. */}
+        <p className="mt-4 text-xs text-white/50" data-testid="unlimited-puzzles-cross-link">
+          Want the day&apos;s official position?{" "}
+          <Link
+            href="/play/daily-puzzle/play"
+            className="font-semibold text-sky-300 underline-offset-4 hover:text-sky-200 hover:underline"
+          >
+            Play the daily puzzle →
+          </Link>{" "}
+          <Link
+            href="/daily"
+            className="font-semibold text-[#f5ff3b] underline-offset-4 hover:text-[#fff9b0] hover:underline"
+          >
+            or today&apos;s challenge →
+          </Link>
+        </p>
       </main>
       <Footer />
     </div>

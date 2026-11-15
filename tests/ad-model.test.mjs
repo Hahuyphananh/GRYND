@@ -149,6 +149,7 @@ test("the entitlement helper is server-authoritative and memoized per request", 
 
 test("only non-game surfaces are registered placements", () => {
   assert.deepEqual(Object.keys(AD_PLACEMENT_ENV).sort(), [
+    "guides",
     "home",
     "hub",
     "leaderboard",
@@ -161,6 +162,7 @@ test("every ad slot or loader sits on a non-game browsing page", () => {
   assert.deepEqual(pagesWithSlots, [
     "src/app/casino/page.jsx",
     "src/app/classement/page.jsx",
+    "src/app/guides/page.tsx",
     "src/app/page.jsx",
     "src/app/profil/page.jsx",
   ]);

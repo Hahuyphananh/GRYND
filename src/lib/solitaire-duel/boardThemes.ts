@@ -39,10 +39,20 @@ export type BoardThemeKey =
   | "royal"
   | "midnight"
   | "copper"
-  | "sand";
+  | "sand"
+  // The two GRYND PRO tables (migration-era, PRO-only):
+  | "founder"
+  | "supporter";
 
 export type BoardTheme = {
   key: BoardThemeKey;
+  /**
+   * GRYND PRO-only table. The board itself paints it like any other preset (a
+   * player who already has it selected keeps a readable board), but choosing it
+   * is refused for a non-member by PUT /api/solitaire/board-theme, and the
+   * selector locks the swatch. It is the same table, not a different game.
+   */
+  proOnly?: boolean;
   /** What the selector shows. */
   label: string;
   /** One-line description, used as the radio's title/aria description. */
@@ -172,6 +182,43 @@ export const BOARD_THEMES: readonly BoardTheme[] = [
     },
     legal: { ink: "#fff3d6", glow: "rgba(255, 243, 214, 0.32)" },
     legend: "#ffefd2",
+  },
+  // ── GRYND PRO tables ───────────────────────────────────────────────────
+  // Same furniture, same contrast discipline as the free presets: a PRO table
+  // changes the felt, never the cards, and cannot make the game unreadable.
+  {
+    key: "founder",
+    proOnly: true,
+    label: "Founder's Table",
+    blurb: "GRYND PRO founders — gold felt, torchlight edge.",
+    base: "#3a2a06",
+    felt: "radial-gradient(120% 120% at 50% 0%, #57400a 0%, #3a2a06 46%, #201703 100%)",
+    frame: "#2a1e04",
+    slot: {
+      fill: "rgba(20, 14, 2, 0.74)",
+      border: "rgba(255, 230, 140, 0.3)",
+      ink: "rgba(255, 244, 214, 0.62)",
+      activeFill: "rgba(255, 244, 214, 0.14)",
+    },
+    legal: { ink: "#fff3c4", glow: "rgba(255, 243, 196, 0.34)" },
+    legend: "#ffee98",
+  },
+  {
+    key: "supporter",
+    proOnly: true,
+    label: "Supporter's Table",
+    blurb: "GRYND PRO supporters — deep teal, quiet edge.",
+    base: "#04302a",
+    felt: "radial-gradient(120% 120% at 50% 0%, #075247 0%, #04302a 46%, #021b17 100%)",
+    frame: "#032622",
+    slot: {
+      fill: "rgba(2, 24, 20, 0.74)",
+      border: "rgba(160, 255, 225, 0.26)",
+      ink: "rgba(214, 255, 242, 0.6)",
+      activeFill: "rgba(214, 255, 242, 0.14)",
+    },
+    legal: { ink: "#d6fff2", glow: "rgba(214, 255, 242, 0.32)" },
+    legend: "#bdffe9",
   },
 ] as const;
 

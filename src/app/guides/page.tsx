@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
+import AdSenseScript from "../../components/AdSenseScript";
+import AdSlot from "../../components/AdSlot";
 import { GUIDE_INDEX, guidePath } from "../../lib/guides";
 
 /**
@@ -25,6 +27,10 @@ export default function GuidesIndexPage() {
   return (
     <div className="relative min-h-screen overflow-x-clip pb-16">
       <NavigationBar currentPath="/guides" />
+      {/* The guides are the site's editorial surface, so this is the
+          placement a reader is actually engaged with — and the one a site
+          review reads as content rather than inventory. */}
+      <AdSenseScript />
 
       <div className="mx-auto max-w-4xl px-4 py-8 sm:py-12">
         <nav aria-label="Breadcrumb" className="mb-6 text-xs text-[#9dd8ff]">
@@ -86,6 +92,7 @@ export default function GuidesIndexPage() {
         </ul>
       </div>
 
+      <AdSlot placement="guides" />
       <Footer />
     </div>
   );
