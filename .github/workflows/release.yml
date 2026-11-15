@@ -559,20 +559,44 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # The host is small enough that a full disk made the tooling rsync
-          # below fail with "No space left on device" before any release work
-          # ran. Reclaim first: the prune tool already on the host never
-          # deletes the active or previous release, and incoming/ only ever
-          # holds uploads that were never installed. A missing tool or an
-          # already-clean host must not fail the deploy.
-          "$SSH_CMD" "$DEPLOY_USER@$DEPLOY_HOST" \
-            "df -h / | tail -1;
-             if [ -f '$REMOTE_PATH/tool/release.mjs' ]; then
-               cd '$REMOTE_PATH' && node tool/release.mjs prune --keep=3 || true;
-             fi;
-             mkdir -p '$REMOTE_PATH/incoming';
-             find '$REMOTE_PATH/incoming' -mindepth 1 -maxdepth 1 -exec rm -rf {} + ;
-             df -h / | tail -1" || true
+          # The host is small enough that a full disk made both the tooling and
+          # the artifact rsync fail with "No space left on device". Reclaim
+          # first, and never touch the active or previous release: the ids come
+          # from the host's own status report, and an unreadable report keeps
+          # every release dir instead of guessing.
+          status=$("$SSH_CMD" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd '$REMOTE_PATH' && node tool/release.mjs status --json" 2>/dev/null || true)
+          protected=$(printf '%s' "$status" | jq -r \
+            '[.active.releaseId, .active.previousReleaseId, .current.id, .previous.id]
+             | map(select(. != null)) | unique | .[]' 2>/dev/null || true)
+
+          "$SSH_CMD" "$DEPLOY_USER@$DEPLOY_HOST" "bash -s" <<REMOTE
+          set -u
+          cd '$REMOTE_PATH'
+          # Uploads that were never installed.
+          mkdir -p incoming
+          find incoming -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null
+          if [ -f tool/release.mjs ]; then
+            node tool/release.mjs prune --keep=3 >/dev/null 2>&1 || true
+          fi
+          keep='$protected'
+          if [ -n "$keep" ]; then
+            for d in releases/*/; do
+              [ -d "$d" ] || continue
+              id=\$(basename "\$d")
+              case " \$keep " in
+                *" \$id "*) ;;
+                *) echo "removing release not active/previous: \$id"; rm -rf "\$d" ;;
+              esac
+            done
+          else
+            echo 'no release pointers could be read; keeping every release'
+          fi
+          # Disposable Next caches and the npm cache.
+          find releases -type d -path '*/.next/cache' -prune -exec rm -rf {} + 2>/dev/null
+          rm -rf /home/ubuntu/.npm/_cacache 2>/dev/null
+          df -h /
+          REMOTE
 
       - name: Refresh the release tooling on the host
         shell: bash
