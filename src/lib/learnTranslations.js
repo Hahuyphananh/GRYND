@@ -6,10 +6,57 @@
 // the app. Catalog keys are namespaced by the stable lesson/course ids.
 
 import { LEARN_CURRICULUM_TRANSLATIONS } from "./learnCurriculumTranslations.js";
+import { LEARN_PHASE_TRANSLATIONS } from "./learnPhaseTranslations.js";
+import { LEARN_COACHING_TRANSLATIONS } from "./learnCoachingTranslations.js";
+import { LEARN_PRACTICE_TRANSLATIONS } from "./learnPracticeTranslations.js";
 
 export const LEARN_TRANSLATIONS = {
   en: {
     kicker: "GRYND · Academy",
+    subnav: {
+      label: "Academy sections",
+      back: "Back to Academy",
+      courses: "Courses",
+      practice: "Practice",
+      videos: "Videos",
+      coaching: "Coaching",
+    },
+    destinations: {
+      kicker: "Choose how to learn",
+      title: "Four ways to train",
+      description:
+        "Follow the guided courses, drill one skill in Practice, watch the three-part video guide, or let Pro coaching build a plan from your own record.",
+      courses: {
+        title: "Courses",
+        description:
+          "Five structured courses, from reading the board to advanced planning.",
+        cta: "Browse courses",
+      },
+      practice: {
+        title: "Practice",
+        description:
+          "Focused skill drills that sit outside the course order.",
+        meta: "Independent drills",
+        cta: "Open practice",
+      },
+      videos: {
+        title: "Videos",
+        description:
+          "The complete video walkthrough, with a related interactive lesson for each part.",
+        cta: "Watch videos",
+      },
+      coaching: {
+        title: "Coaching",
+        description:
+          "Pro analytics and a short daily plan built from your own practice record.",
+        meta: "GRYND Pro",
+        cta: "Open coaching",
+      },
+    },
+    practice: LEARN_PRACTICE_TRANSLATIONS.en,
+    coaching: LEARN_COACHING_TRANSLATIONS.en,
+
+    phases: LEARN_PHASE_TRANSLATIONS.en,
     title: "GRYND Academy.",
     videos: {
       kicker: "Video course",
@@ -32,6 +79,8 @@ export const LEARN_TRANSLATIONS = {
       practiceCta: "Open the lesson",
       note: "The video is the walkthrough; the interactive lessons below are where you play it yourself.",
       unsupported: "Your browser cannot play this video.",
+      relatedLesson: "Related lesson",
+      backToVideos: "Back to videos",
     },
     description:
       "Short, hands-on lessons that teach one idea at a time. Every lesson starts from a prepared board, uses the real rules, and lets you retry without a penalty.",
@@ -68,6 +117,7 @@ export const LEARN_TRANSLATIONS = {
       lockedHint: "Finish the previous course to unlock this one.",
       open: "Open course",
       review: "Review course",
+      allCourses: "View all courses",
     },
     library: {
       kicker: "Lesson library",
@@ -108,6 +158,44 @@ export const LEARN_TRANSLATIONS = {
     },
     player: {
       back: "Back to Academy",
+      phases: {
+        label: "Lesson phases",
+        progress: "Phase {current} of {total}",
+        continue: "Continue",
+        back: "Back",
+        finish: "Finish lesson",
+        learn: "Learn",
+        watch: "Watch",
+        guided: "Guided exercise",
+        practice: "Practice",
+        knowledgeCheck: "Knowledge check",
+        recap: "Recap",
+        whyMatters: "Why it matters",
+        concept: "Concept",
+        mistake: "Common mistake",
+        recognize: "How to spot it",
+        watchLead: "Step through the real board. Nothing here affects your records.",
+        nextAction: "Next action",
+        replayDemo: "Replay demonstration",
+        demoComplete: "Demonstration complete",
+        demoProgress: "Action {current} of {total}",
+        demoBoardAria: "Demonstration board",
+        practicePosition: "Position {current} of {total}",
+        practiceComplete: "Position complete",
+        practiceNext: "Next position",
+        practiceBoardAria: "Practice board",
+        practiceTryAgain: "Try this position again",
+        chooseAnswer: "Choose an answer",
+        checkAnswer: "Check answer",
+        correct: "Correct",
+        incorrect: "Not quite — try again.",
+        explanation: "Why",
+        question: "Question",
+        remember: "Remember",
+        summary: "Summary",
+        suggestedNext: "Suggested next lesson",
+        guidedComplete: "Exercise complete",
+      },
       stepOf: "Step {step} of {total}",
       progress: "Lesson progress",
       objective: "Current objective",
@@ -166,6 +254,50 @@ export const LEARN_TRANSLATIONS = {
 
   fr: {
     kicker: "GRYND · Académie",
+    subnav: {
+      label: "Sections de l'Académie",
+      back: "Retour à l'Académie",
+      courses: "Cours",
+      practice: "Entraînement",
+      videos: "Vidéos",
+      coaching: "Coaching",
+    },
+    destinations: {
+      kicker: "Choisis ta façon d'apprendre",
+      title: "Quatre façons de progresser",
+      description:
+        "Suis les cours guidés, travaille une compétence dans l'Entraînement, regarde le guide vidéo en trois parties ou laisse le coaching Pro construire un plan à partir de ton bilan.",
+      courses: {
+        title: "Cours",
+        description:
+          "Cinq cours structurés, de la lecture du tableau à la planification avancée.",
+        cta: "Voir les cours",
+      },
+      practice: {
+        title: "Entraînement",
+        description:
+          "Des exercices ciblés, indépendants de l'ordre des cours.",
+        meta: "Exercices autonomes",
+        cta: "Ouvrir l'entraînement",
+      },
+      videos: {
+        title: "Vidéos",
+        description:
+          "Le guide vidéo complet, avec une leçon interactive liée à chaque partie.",
+        cta: "Voir les vidéos",
+      },
+      coaching: {
+        title: "Coaching",
+        description:
+          "Des analyses Pro et un court plan quotidien construits à partir de ton bilan d'entraînement.",
+        meta: "GRYND Pro",
+        cta: "Ouvrir le coaching",
+      },
+    },
+    practice: LEARN_PRACTICE_TRANSLATIONS.fr,
+    coaching: LEARN_COACHING_TRANSLATIONS.fr,
+
+    phases: LEARN_PHASE_TRANSLATIONS.fr,
     title: "Académie GRYND.",
     videos: {
       kicker: "Cours vidéo",
@@ -188,6 +320,8 @@ export const LEARN_TRANSLATIONS = {
       practiceCta: "Ouvrir la leçon",
       note: "La vidéo explique ; les leçons interactives ci-dessous sont là pour jouer toi-même.",
       unsupported: "Ton navigateur ne peut pas lire cette vidéo.",
+      relatedLesson: "Leçon associée",
+      backToVideos: "Retour aux vidéos",
     },
     description:
       "Des leçons courtes et pratiques, une idée à la fois. Chaque leçon part d'un plateau préparé, utilise les vraies règles et te laisse réessayer sans pénalité.",
@@ -225,6 +359,7 @@ export const LEARN_TRANSLATIONS = {
       lockedHint: "Termine le cours précédent pour débloquer celui-ci.",
       open: "Ouvrir le cours",
       review: "Revoir le cours",
+      allCourses: "Voir tous les cours",
     },
     library: {
       kicker: "Bibliothèque",
@@ -266,6 +401,45 @@ export const LEARN_TRANSLATIONS = {
     },
     player: {
       back: "Retour à l'Académie",
+      phases: {
+        label: "Phases de la leçon",
+        progress: "Phase {current} sur {total}",
+        continue: "Continuer",
+        back: "Retour",
+        finish: "Terminer la leçon",
+        learn: "Apprendre",
+        watch: "Observer",
+        guided: "Exercice guidé",
+        practice: "Pratique",
+        knowledgeCheck: "Vérification",
+        recap: "Récapitulatif",
+        whyMatters: "Pourquoi c'est important",
+        concept: "Concept",
+        mistake: "Erreur fréquente",
+        recognize: "Comment le repérer",
+        watchLead:
+          "Avance pas à pas sur le vrai plateau. Rien ici ne modifie tes records.",
+        nextAction: "Action suivante",
+        replayDemo: "Rejouer la démonstration",
+        demoComplete: "Démonstration terminée",
+        demoProgress: "Action {current} sur {total}",
+        demoBoardAria: "Plateau de démonstration",
+        practicePosition: "Position {current} sur {total}",
+        practiceComplete: "Position terminée",
+        practiceNext: "Position suivante",
+        practiceBoardAria: "Plateau d'entraînement",
+        practiceTryAgain: "Réessayer cette position",
+        chooseAnswer: "Choisis une réponse",
+        checkAnswer: "Vérifier",
+        correct: "Correct",
+        incorrect: "Pas tout à fait — réessaie.",
+        explanation: "Pourquoi",
+        question: "Question",
+        remember: "À retenir",
+        summary: "Résumé",
+        suggestedNext: "Leçon suggérée",
+        guidedComplete: "Exercice terminé",
+      },
       stepOf: "Étape {step} sur {total}",
       progress: "Progression de la leçon",
       objective: "Objectif actuel",
@@ -325,6 +499,50 @@ export const LEARN_TRANSLATIONS = {
 
   es: {
     kicker: "GRYND · Academia",
+    subnav: {
+      label: "Secciones de la Academia",
+      back: "Volver a la Academia",
+      courses: "Cursos",
+      practice: "Práctica",
+      videos: "Vídeos",
+      coaching: "Coaching",
+    },
+    destinations: {
+      kicker: "Elige cómo aprender",
+      title: "Cuatro formas de entrenar",
+      description:
+        "Sigue los cursos guiados, trabaja una habilidad en Práctica, mira la guía en vídeo de tres partes o deja que el coaching Pro cree un plan con tu registro.",
+      courses: {
+        title: "Cursos",
+        description:
+          "Cinco cursos estructurados, desde leer el tablero hasta planificar con antelación.",
+        cta: "Ver cursos",
+      },
+      practice: {
+        title: "Práctica",
+        description:
+          "Ejercicios centrados en una habilidad, fuera del orden de los cursos.",
+        meta: "Ejercicios independientes",
+        cta: "Abrir práctica",
+      },
+      videos: {
+        title: "Vídeos",
+        description:
+          "La guía completa en vídeo, con una lección interactiva relacionada con cada parte.",
+        cta: "Ver vídeos",
+      },
+      coaching: {
+        title: "Coaching",
+        description:
+          "Analíticas Pro y un plan diario corto creados con tu propio registro de práctica.",
+        meta: "GRYND Pro",
+        cta: "Abrir coaching",
+      },
+    },
+    practice: LEARN_PRACTICE_TRANSLATIONS.es,
+    coaching: LEARN_COACHING_TRANSLATIONS.es,
+
+    phases: LEARN_PHASE_TRANSLATIONS.es,
     title: "Academia GRYND.",
     videos: {
       kicker: "Curso en vídeo",
@@ -347,6 +565,8 @@ export const LEARN_TRANSLATIONS = {
       practiceCta: "Abrir la lección",
       note: "El vídeo explica; las lecciones interactivas de abajo son para jugarlo tú mismo.",
       unsupported: "Tu navegador no puede reproducir este vídeo.",
+      relatedLesson: "Lección relacionada",
+      backToVideos: "Volver a los vídeos",
     },
     description:
       "Lecciones cortas y prácticas, una idea a la vez. Cada lección parte de un tablero preparado, usa las reglas reales y te deja reintentar sin penalización.",
@@ -383,6 +603,7 @@ export const LEARN_TRANSLATIONS = {
       lockedHint: "Termina el curso anterior para desbloquear este.",
       open: "Abrir curso",
       review: "Repasar curso",
+      allCourses: "Ver todos los cursos",
     },
     library: {
       kicker: "Biblioteca",
@@ -424,6 +645,45 @@ export const LEARN_TRANSLATIONS = {
     },
     player: {
       back: "Volver a la Academia",
+      phases: {
+        label: "Fases de la lección",
+        progress: "Fase {current} de {total}",
+        continue: "Continuar",
+        back: "Atrás",
+        finish: "Terminar lección",
+        learn: "Aprender",
+        watch: "Observar",
+        guided: "Ejercicio guiado",
+        practice: "Práctica",
+        knowledgeCheck: "Comprobación",
+        recap: "Resumen",
+        whyMatters: "Por qué importa",
+        concept: "Concepto",
+        mistake: "Error frecuente",
+        recognize: "Cómo reconocerlo",
+        watchLead:
+          "Avanza paso a paso por el tablero real. Nada de esto afecta a tus registros.",
+        nextAction: "Siguiente acción",
+        replayDemo: "Repetir demostración",
+        demoComplete: "Demostración completada",
+        demoProgress: "Acción {current} de {total}",
+        demoBoardAria: "Tablero de demostración",
+        practicePosition: "Posición {current} de {total}",
+        practiceComplete: "Posición completada",
+        practiceNext: "Siguiente posición",
+        practiceBoardAria: "Tablero de práctica",
+        practiceTryAgain: "Reintentar esta posición",
+        chooseAnswer: "Elige una respuesta",
+        checkAnswer: "Comprobar",
+        correct: "Correcto",
+        incorrect: "Casi — inténtalo de nuevo.",
+        explanation: "Por qué",
+        question: "Pregunta",
+        remember: "Recuerda",
+        summary: "Resumen",
+        suggestedNext: "Lección sugerida",
+        guidedComplete: "Ejercicio completado",
+      },
       stepOf: "Paso {step} de {total}",
       progress: "Progreso de la lección",
       objective: "Objetivo actual",

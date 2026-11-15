@@ -1,270 +1,89 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, type ReactNode } from "react";
 import {
   IconArrowRight,
   IconCards,
+  IconChartBar,
   IconCheck,
-  IconClock,
-  IconLock,
+  IconPlayerPlay,
   IconSchool,
   IconStack2,
 } from "@tabler/icons-react";
 
 import Footer from "../Footer";
 import NavigationBar from "../navigation-bar";
-import AcademyVideoSection from "./AcademyVideoSection";
+import { CourseCard, DifficultyBadge, Meter } from "./LearnCards";
+import { useAcademyVideoProgress } from "../../hooks/useAcademyVideoProgress";
 import { useLessonProgress } from "../../hooks/useLessonProgress";
 import { useTranslation } from "../../hooks/useTranslation";
+import { watchedVideoCount } from "../../lib/academyVideoProgress";
+import { ACADEMY_VIDEOS } from "../../lib/academyVideos";
+import { LESSON_COURSES } from "../../lib/solitaire-duel/lessonCatalog";
 import {
-  LESSON_COURSES,
-  lessonsForCourse,
-} from "../../lib/solitaire-duel/lessonCatalog";
-import type { Lesson } from "../../lib/solitaire-duel/lessons";
-import {
-  courseDifficulty,
-  courseProgress,
-  courseState,
-  isLessonCompleted,
-  lessonStatus,
   lessonStepIndex,
   orderedLessons,
   overallProgress,
   recommendedLesson,
-  type LessonStatus,
 } from "../../lib/solitaire-duel/lessonProgress";
 
-type StatusFilter = "all" | LessonStatus;
-
-function Meter({
-  percent,
-  label,
-  className = "",
+function DestinationCard({
+  href,
+  icon,
+  title,
+  description,
+  meta,
+  cta,
+  tone,
+  testId,
 }: {
-  percent: number;
-  label: string;
-  className?: string;
+  href: string;
+  icon: ReactNode;
+  title: string;
+  description: string;
+  meta: string;
+  cta: string;
+  tone: "cyan" | "green" | "amber";
+  testId: string;
 }) {
-  const value = Math.max(0, Math.min(100, percent));
+  const tones = {
+    cyan: "border-[#00e5ff]/25 bg-[#00e5ff]/[0.06] text-[#9dd8ff]",
+    green: "border-[#00ffa3]/25 bg-[#00ffa3]/[0.06] text-[#8dffd0]",
+    amber: "border-[#f5ff3b]/25 bg-[#f5ff3b]/[0.06] text-[#ffe9a3]",
+  } as const;
+
   return (
-    <div
-      role="progressbar"
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={value}
-      aria-label={label}
-      className={`h-1.5 overflow-hidden rounded-full bg-white/10 ${className}`}
+    <Link
+      href={href}
+      data-testid={testId}
+      className="group flex min-h-full flex-col rounded-2xl border border-white/10 bg-[#071128]/85 p-4 transition hover:border-[#00e5ff]/35 hover:bg-[#081a38] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] sm:p-5"
     >
-      <div
-        className="h-full rounded-full bg-gradient-to-r from-[#00e5ff] to-[#00ffa3] transition-[width] duration-300 motion-reduce:transition-none"
-        style={{ width: `${value}%` }}
-      />
-    </div>
-  );
-}
-
-function DifficultyBadge({ value }: { value: string }) {
-  const { t } = useTranslation();
-  return (
-    <span className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[#9dd8ff]">
-      {t(`learn.difficulty.${value}`)}
-    </span>
-  );
-}
-
-function CourseCard({
-  course,
-  index,
-}: {
-  course: (typeof LESSON_COURSES)[number];
-  index: number;
-}) {
-  const { t } = useTranslation();
-  const { progress } = useLessonProgress();
-  const state = courseState(progress, course.id);
-  const stats = courseProgress(progress, course.id);
-  const lessons = lessonsForCourse(course.id);
-  const first = lessons[0];
-  const percent = stats.total ? Math.round((stats.completed / stats.total) * 100) : 0;
-  const locked = state === "locked";
-
-  const stateClasses =
-    state === "completed"
-      ? "border-[#00ffa3]/30 bg-[#00ffa3]/[0.06]"
-      : state === "available"
-        ? "border-[#00e5ff]/30 bg-[#00e5ff]/[0.05]"
-        : "border-white/10 bg-white/[0.02]";
-
-  return (
-    <article
-      data-testid="learn-course-card"
-      data-course-id={course.id}
-      data-state={state}
-      className={`flex flex-col rounded-2xl border p-4 transition-colors sm:p-5 ${stateClasses}`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#00e5ff]/80">
-          {t("learn.path.courseNumber", { number: index + 1 })}
-        </p>
-        <span
-          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] ${
-            state === "completed"
-              ? "bg-[#00ffa3]/15 text-[#8dffd0]"
-              : state === "available"
-                ? "bg-[#00e5ff]/10 text-[#9dd8ff]"
-                : "bg-white/5 text-white/40"
-          }`}
-        >
-          {state === "completed" ? (
-            <IconCheck size={11} aria-hidden="true" />
-          ) : locked ? (
-            <IconLock size={11} aria-hidden="true" />
-          ) : null}
-          {t(`learn.status.${state}`)}
-        </span>
-      </div>
-
-      <h3 className="mt-3 text-xl font-black tracking-tight text-white">
-        {t(course.titleKey)}
-      </h3>
-      <p className="mt-2 flex-1 text-sm leading-relaxed text-white/55">
-        {t(course.descriptionKey)}
-      </p>
-
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <DifficultyBadge value={courseDifficulty(course.id)} />
-        <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-bold text-[#9dd8ff]">
-          <IconCards size={12} aria-hidden="true" />
-          {t("learn.path.lessons", { count: stats.total })}
-        </span>
-        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-white/45">
-          <IconClock size={12} aria-hidden="true" />
-          {t("learn.path.progress", { completed: stats.completed, total: stats.total })}
-        </span>
-      </div>
-
-      <Meter
-        percent={percent}
-        label={t("learn.path.progress", { completed: stats.completed, total: stats.total })}
-        className="mt-4"
-      />
-
-      <div className="mt-4">
-        {locked ? (
-          <p className="flex items-center gap-2 text-xs font-semibold text-white/40">
-            <IconLock size={14} aria-hidden="true" />
-            {t("learn.path.lockedHint")}
-          </p>
-        ) : (
-          first && (
-            <Link
-              href={`/learn/${first.id}`}
-              className="inline-flex items-center gap-1.5 text-xs font-extrabold text-[#00e5ff] underline-offset-4 transition hover:text-[#8df6ff] hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
-            >
-              {state === "completed" ? t("learn.path.review") : t("learn.path.open")}
-              <IconArrowRight size={14} aria-hidden="true" />
-            </Link>
-          )
-        )}
-      </div>
-    </article>
-  );
-}
-
-function LessonCard({ lesson }: { lesson: Lesson }) {
-  const { t } = useTranslation();
-  const { progress } = useLessonProgress();
-  const course = LESSON_COURSES.find((item) => item.id === lesson.courseId);
-  const state = course ? courseState(progress, course.id) : "locked";
-  const status = lessonStatus(progress, lesson);
-  const step = lessonStepIndex(progress, lesson);
-  const locked = state === "locked";
-  const percent = Math.round((step / lesson.steps.length) * 100);
-
-  return (
-    <article
-      data-testid="learn-lesson-card"
-      data-lesson-id={lesson.id}
-      data-status={status}
-      className="flex flex-col rounded-2xl border border-white/10 bg-[#071128]/80 p-4 transition-colors hover:border-[#00e5ff]/25"
-    >
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#00e5ff]/70">
-          {course ? t(course.titleKey) : ""}
-        </p>
-        <span
-          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-            status === "completed"
-              ? "bg-[#00ffa3]/15 text-[#8dffd0]"
-              : status === "in-progress"
-                ? "bg-[#f5ff3b]/10 text-[#f5ff3b]"
-                : locked
-                  ? "bg-white/5 text-white/40"
-                  : "bg-[#00e5ff]/10 text-[#9dd8ff]"
-          }`}
-        >
-          {t(`learn.status.${status === "not-started" ? (locked ? "locked" : "notStarted") : status === "in-progress" ? "inProgress" : "completed"}`)}
-        </span>
-      </div>
-
-      <h3 className="mt-2 text-base font-extrabold leading-snug text-white">
-        {t(lesson.titleKey)}
-      </h3>
-      <p className="mt-1.5 flex-1 text-xs leading-relaxed text-white/50">
-        {t(lesson.descriptionKey)}
-      </p>
-
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <DifficultyBadge value={lesson.difficulty} />
-        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-white/40">
-          <IconClock size={12} aria-hidden="true" />
-          {t("learn.lesson.minutes", { minutes: lesson.estimatedMinutes })}
-        </span>
-      </div>
-
-      {status === "in-progress" && (
-        <div className="mt-3">
-          <p className="mb-1.5 text-[10px] font-bold text-[#9dd8ff]/80">
-            {t("learn.lesson.stepProgress", { step, total: lesson.steps.length })}
-          </p>
-          <Meter
-            percent={percent}
-            label={t("learn.lesson.stepProgress", { step, total: lesson.steps.length })}
-          />
-        </div>
-      )}
-
-      <div className="mt-4">
-        {locked ? (
-          <span className="inline-flex items-center gap-1.5 text-xs font-bold text-white/35">
-            <IconLock size={13} aria-hidden="true" />
-            {t("learn.lesson.locked")}
-          </span>
-        ) : (
-          <Link
-            href={`/learn/${lesson.id}`}
-            className="inline-flex items-center gap-1.5 text-xs font-extrabold text-[#00e5ff] underline-offset-4 transition hover:text-[#8df6ff] hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
-          >
-            {status === "completed"
-              ? t("learn.lesson.review")
-              : status === "in-progress"
-                ? t("learn.lesson.resume")
-                : t("learn.lesson.start")}
-            <IconArrowRight size={14} aria-hidden="true" />
-          </Link>
-        )}
-      </div>
-    </article>
+      <span className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border ${tones[tone]}`}>
+        {icon}
+      </span>
+      <h3 className="mt-3 text-lg font-black tracking-tight text-white">{title}</h3>
+      <p className="mt-1.5 flex-1 text-xs leading-relaxed text-white/55">{description}</p>
+      <span className="mt-3 text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">
+        {meta}
+      </span>
+      <span className="mt-3 inline-flex items-center gap-1.5 text-xs font-extrabold text-[#00e5ff]">
+        {cta}
+        <IconArrowRight
+          size={14}
+          aria-hidden="true"
+          className="transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none"
+        />
+      </span>
+    </Link>
   );
 }
 
 export default function LearnLanding() {
   const { t } = useTranslation();
   const { progress, userId, isLoaded } = useLessonProgress();
-  const [courseFilter, setCourseFilter] = useState("all");
-  const [difficultyFilter, setDifficultyFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const { progress: videoProgress } = useAcademyVideoProgress();
+  const watched = watchedVideoCount(videoProgress);
 
   const stats = useMemo(() => overallProgress(progress), [progress]);
   const recommended = useMemo(() => recommendedLesson(progress), [progress]);
@@ -275,24 +94,6 @@ export default function LearnLanding() {
     ? lessonStepIndex(progress, recommended)
     : 0;
   const allLessons = useMemo(() => orderedLessons(), []);
-
-  const filteredLessons = useMemo(
-    () =>
-      allLessons.filter((lesson) => {
-        if (courseFilter !== "all" && lesson.courseId !== courseFilter) return false;
-        if (difficultyFilter !== "all" && lesson.difficulty !== difficultyFilter) {
-          return false;
-        }
-        if (statusFilter !== "all" && lessonStatus(progress, lesson) !== statusFilter) {
-          return false;
-        }
-        return true;
-      }),
-    [allLessons, courseFilter, difficultyFilter, statusFilter, progress],
-  );
-
-  const hasFilters =
-    courseFilter !== "all" || difficultyFilter !== "all" || statusFilter !== "all";
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#040712] pb-24 text-white md:pb-0">
@@ -361,7 +162,6 @@ export default function LearnLanding() {
           </section>
         </div>
 
-        {/* Continue Learning ------------------------------------------------ */}
         <section className="mt-8" aria-labelledby="learn-continue-title">
           <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#00e5ff]/75">
             {t("learn.continue.kicker")}
@@ -401,9 +201,7 @@ export default function LearnLanding() {
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <DifficultyBadge value={recommended.difficulty} />
                   <span className="text-[11px] font-semibold text-white/40">
-                    {t("learn.lesson.minutes", {
-                      minutes: recommended.estimatedMinutes,
-                    })}
+                    {t("learn.lesson.minutes", { minutes: recommended.estimatedMinutes })}
                   </span>
                 </div>
               </div>
@@ -411,9 +209,7 @@ export default function LearnLanding() {
                 href={`/learn/${recommended.id}`}
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#00e5ff] px-5 py-2.5 text-sm font-black text-[#00212b] transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#07132b]"
               >
-                {recommendedStep > 0
-                  ? t("learn.continue.resume")
-                  : t("learn.continue.start")}
+                {recommendedStep > 0 ? t("learn.continue.resume") : t("learn.continue.start")}
                 <IconArrowRight size={17} aria-hidden="true" />
               </Link>
             </div>
@@ -445,9 +241,67 @@ export default function LearnLanding() {
           )}
         </section>
 
-        <AcademyVideoSection />
+        <section className="mt-10" aria-labelledby="learn-destinations-title">
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#00e5ff]/75">
+            {t("learn.destinations.kicker")}
+          </p>
+          <h2 id="learn-destinations-title" className="mt-1 text-2xl font-black tracking-tight">
+            {t("learn.destinations.title")}
+          </h2>
+          <p className="mt-1 max-w-2xl text-sm leading-relaxed text-white/50">
+            {t("learn.destinations.description")}
+          </p>
 
-        {/* Learning path ---------------------------------------------------- */}
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <DestinationCard
+              href="/learn/courses"
+              icon={<IconSchool size={21} aria-hidden="true" />}
+              title={t("learn.destinations.courses.title")}
+              description={t("learn.destinations.courses.description")}
+              meta={t("learn.progress.lessons", {
+                completed: stats.completedLessons,
+                total: stats.totalLessons,
+              })}
+              cta={t("learn.destinations.courses.cta")}
+              tone="cyan"
+              testId="learn-destination-courses"
+            />
+            <DestinationCard
+              href="/learn/practice"
+              icon={<IconCards size={21} aria-hidden="true" />}
+              title={t("learn.destinations.practice.title")}
+              description={t("learn.destinations.practice.description")}
+              meta={t("learn.destinations.practice.meta")}
+              cta={t("learn.destinations.practice.cta")}
+              tone="green"
+              testId="learn-destination-practice"
+            />
+            <DestinationCard
+              href="/learn/videos"
+              icon={<IconPlayerPlay size={21} aria-hidden="true" />}
+              title={t("learn.destinations.videos.title")}
+              description={t("learn.destinations.videos.description")}
+              meta={t("learn.videos.watchedCount", {
+                watched,
+                total: ACADEMY_VIDEOS.length,
+              })}
+              cta={t("learn.destinations.videos.cta")}
+              tone="amber"
+              testId="learn-destination-videos"
+            />
+            <DestinationCard
+              href="/learn/coaching"
+              icon={<IconChartBar size={21} aria-hidden="true" />}
+              title={t("learn.destinations.coaching.title")}
+              description={t("learn.destinations.coaching.description")}
+              meta={t("learn.destinations.coaching.meta")}
+              cta={t("learn.destinations.coaching.cta")}
+              tone="cyan"
+              testId="learn-destination-coaching"
+            />
+          </div>
+        </section>
+
         <section className="mt-10" aria-labelledby="learn-path-title">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
@@ -461,13 +315,13 @@ export default function LearnLanding() {
                 {t("learn.path.description")}
               </p>
             </div>
-            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-white/40">
-              <IconSchool size={15} aria-hidden="true" />
-              {t("learn.progress.lessons", {
-                completed: stats.completedLessons,
-                total: stats.totalLessons,
-              })}
-            </span>
+            <Link
+              href="/learn/courses"
+              className="inline-flex items-center gap-1.5 text-xs font-extrabold text-[#00e5ff] underline-offset-4 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+            >
+              {t("learn.path.allCourses")}
+              <IconArrowRight size={14} aria-hidden="true" />
+            </Link>
           </div>
 
           <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -477,110 +331,6 @@ export default function LearnLanding() {
                 <CourseCard key={course.id} course={course} index={index} />
               ))}
           </div>
-        </section>
-
-        {/* Lesson library --------------------------------------------------- */}
-        <section className="mt-10" aria-labelledby="learn-library-title">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#00e5ff]/75">
-              {t("learn.library.kicker")}
-            </p>
-            <h2 id="learn-library-title" className="mt-1 text-2xl font-black tracking-tight">
-              {t("learn.library.title")}
-            </h2>
-            <p className="mt-1 max-w-2xl text-sm leading-relaxed text-white/50">
-              {t("learn.library.description")}
-            </p>
-          </div>
-
-          <div className="mt-4 grid gap-3 rounded-2xl border border-white/10 bg-[#061020]/80 p-3 sm:grid-cols-3 sm:p-4">
-            <label className="block">
-              <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.16em] text-[#9dd8ff]/70">
-                {t("learn.library.course")}
-              </span>
-              <select
-                value={courseFilter}
-                onChange={(event) => setCourseFilter(event.target.value)}
-                className="min-h-10 w-full rounded-lg border border-white/10 bg-[#071128] px-3 text-sm font-semibold text-white outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
-              >
-                <option value="all">{t("learn.library.allCourses")}</option>
-                {[...LESSON_COURSES]
-                  .sort((a, b) => a.order - b.order)
-                  .map((course) => (
-                    <option key={course.id} value={course.id}>
-                      {t(course.titleKey)}
-                    </option>
-                  ))}
-              </select>
-            </label>
-
-            <label className="block">
-              <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.16em] text-[#9dd8ff]/70">
-                {t("learn.library.difficulty")}
-              </span>
-              <select
-                value={difficultyFilter}
-                onChange={(event) => setDifficultyFilter(event.target.value)}
-                className="min-h-10 w-full rounded-lg border border-white/10 bg-[#071128] px-3 text-sm font-semibold text-white outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
-              >
-                <option value="all">{t("learn.library.allDifficulties")}</option>
-                <option value="beginner">{t("learn.difficulty.beginner")}</option>
-                <option value="intermediate">
-                  {t("learn.difficulty.intermediate")}
-                </option>
-                <option value="advanced">{t("learn.difficulty.advanced")}</option>
-              </select>
-            </label>
-
-            <label className="block">
-              <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.16em] text-[#9dd8ff]/70">
-                {t("learn.library.status")}
-              </span>
-              <select
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
-                className="min-h-10 w-full rounded-lg border border-white/10 bg-[#071128] px-3 text-sm font-semibold text-white outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
-              >
-                <option value="all">{t("learn.library.allStatuses")}</option>
-                <option value="not-started">{t("learn.status.notStarted")}</option>
-                <option value="in-progress">{t("learn.status.inProgress")}</option>
-                <option value="completed">{t("learn.status.completed")}</option>
-              </select>
-            </label>
-          </div>
-
-          <div className="mt-3 flex items-center justify-between gap-3">
-            <p className="text-[11px] font-semibold text-white/40" aria-live="polite">
-              {t("learn.library.results", { count: filteredLessons.length })}
-            </p>
-            {hasFilters && (
-              <button
-                type="button"
-                onClick={() => {
-                  setCourseFilter("all");
-                  setDifficultyFilter("all");
-                  setStatusFilter("all");
-                }}
-                className="text-[11px] font-bold text-[#00e5ff] underline-offset-4 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
-              >
-                {t("learn.library.clear")}
-              </button>
-            )}
-          </div>
-
-          {filteredLessons.length > 0 ? (
-            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredLessons.map((lesson) => (
-                <LessonCard key={lesson.id} lesson={lesson} />
-              ))}
-            </div>
-          ) : (
-            <div className="mt-3 rounded-2xl border border-dashed border-white/15 px-5 py-10 text-center">
-              <p className="text-sm font-semibold text-white/50">
-                {t("learn.library.empty")}
-              </p>
-            </div>
-          )}
         </section>
       </main>
 

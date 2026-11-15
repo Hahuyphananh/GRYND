@@ -13,6 +13,7 @@
 // line is played through `applyLessonMove`.
 
 import { SUITS } from "./constants";
+import { buildLessonPhases, PHASE_MINUTES } from "./lessonPhaseContent";
 import type {
   Lesson,
   LessonCourse,
@@ -60,7 +61,7 @@ function remainingDeck(excluded: readonly Card[]): Card[] {
  * exactly the cards that exercise needs. Elsewhere the rest of the deck stays
  * in the stock, as in a real deal.
  */
-function preparedDeal({
+export function preparedDeal({
   tableau,
   drawOrder = [],
   padTableau = false,
@@ -1002,7 +1003,7 @@ export const LESSON_COURSES: readonly LessonCourse[] = Object.freeze([
   },
 ]);
 
-export const LESSON_CATALOG: readonly Lesson[] = Object.freeze([
+const BASE_LESSONS: readonly Lesson[] = Object.freeze([
   TABLEAU_BASICS,
   FIRST_DRAW,
   BUILDING_FOUNDATIONS,
@@ -1024,6 +1025,21 @@ export const LESSON_CATALOG: readonly Lesson[] = Object.freeze([
   STOCK_CYCLES,
   DIFFICULT_POSITIONS,
 ]);
+
+/**
+ * The catalog is still the same 20 lessons. Phases are attached after the
+ * definitions so IDs, prepared deals, objectives and progress keys stay stable.
+ */
+export const LESSON_CATALOG: readonly Lesson[] = Object.freeze(
+  BASE_LESSONS.map((lesson) => ({
+    ...lesson,
+    estimatedMinutes: Math.max(
+      lesson.estimatedMinutes,
+      PHASE_MINUTES[lesson.id] ?? lesson.estimatedMinutes,
+    ),
+    phases: buildLessonPhases(lesson, BASE_LESSONS),
+  })),
+);
 
 /** Stable id lookup. A catalog edit never changes a route or stored key. */
 export const LESSON_BY_ID: Readonly<Record<string, Lesson>> = Object.freeze(

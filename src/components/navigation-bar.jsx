@@ -49,6 +49,7 @@ const ACCOUNT_ITEMS = [
 // Labels for the primary row. The existing translated keys keep their copy;
 // the Solitaire-specific entries name their destination explicitly.
 function navLabel(path, t) {
+  if (path === "/play") return "Play";
   if (path === "/games/solitaire-duel/play") return "Play";
   if (path === "/games/solitaire-duel") return "Rules";
   if (path === "/upgrade-pro") return "GRYND PRO";
@@ -56,6 +57,15 @@ function navLabel(path, t) {
 
   if (path === "/learn") return t("nav.learn");
   return t(NAV_TRANSLATION_KEYS[path]);
+}
+
+/** Play stays active on every mode lobby; other links match exactly. */
+function isPathActive(path, currentPath) {
+  if (!path) return false;
+  if (path === "/play") {
+    return currentPath === "/play" || currentPath.startsWith("/play/");
+  }
+  return currentPath === path;
 }
 
 function NavigationBarInner({ currentPath = "" }) {
@@ -482,7 +492,7 @@ function NavigationBarInner({ currentPath = "" }) {
               animate="animate"
               className="hidden items-center space-x-1 md:flex lg:space-x-4"
             >
-              {["/", "/learn", "/games/solitaire-duel/play", "/classement", "/games/solitaire-duel", "/upgrade-pro"].map((path) => (
+              {["/", "/play", "/learn", "/classement", "/games/solitaire-duel", "/upgrade-pro"].map((path) => (
                 <motion.div
                   key={path}
                   initial={itemVariant.initial}
@@ -492,7 +502,7 @@ function NavigationBarInner({ currentPath = "" }) {
                 >
                   <Link
                     href={path}
-                    className={`px-1 py-2 text-sm font-medium rounded-sm lg:px-3 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === path ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
+                    className={`px-1 py-2 text-sm font-medium rounded-sm lg:px-3 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${isPathActive(path, currentPath) ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
                   >
                     {/* Only Rewards carries a glyph. Links without one render
                         their label exactly as before (a bare text node) — the
@@ -737,12 +747,17 @@ function NavigationBarInner({ currentPath = "" }) {
                     Admin dashboard
                   </Link>
                 )}
-                {["/", "/learn", "/games/solitaire-duel/play", "/classement", "/games/solitaire-duel", "/upgrade-pro"].map((path) => (
+                {["/", "/play", "/learn", "/classement", "/games/solitaire-duel", "/upgrade-pro"].map((path) => (
                   <Link
                     key={path}
                     href={path}
                     onClick={() => setMobileMenuOpen(false)}
-                    className="block rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff]"
+                    aria-current={isPathActive(path, currentPath) ? "page" : undefined}
+                    className={`block rounded-lg px-3 py-2 ${
+                      isPathActive(path, currentPath)
+                        ? "bg-[#00e5ff]/15 text-white"
+                        : "bg-[#091737] text-[#9dd8ff]"
+                    }`}
                   >
                     {navLabel(path, t)}
                   </Link>

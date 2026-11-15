@@ -347,7 +347,7 @@ test("the engine has no competitive or browser side effects", () => {
   assert.doesNotMatch(source, /function validateMove\(/);
   assert.doesNotMatch(
     source,
-    /fetch\(|localStorage|sessionStorage|create-or-join|matchmaking|applyRating|\btroph|\bquest|\belo\b/i,
+    /fetch\(|localStorage|sessionStorage|create-or-join|matchmaking|applyRating|\btroph|\bquests?\b|\belo\b/i,
   );
   assert.doesNotMatch(source, /from\s+["'][^"']*(serverStore|room|realtime|bot|ranked)/i);
 });

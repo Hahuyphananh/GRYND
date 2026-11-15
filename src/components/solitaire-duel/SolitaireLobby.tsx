@@ -14,21 +14,21 @@
 //   ranked   POST /api/solitaire-duel/create-or-join — the store's own
 //            matchmaker (advisory lock + FOR UPDATE), which joins the oldest
 //            waiting lobby or opens one.
-//   practice POST /api/solitaire-duel/create-ai — the real bot, unrated.
 //   queue    GET  /api/solitaire-duel/lobby — open lobbies + my waiting lobby,
 //            polled so the panel reports the actual queue instead of a number
 //            someone typed.
 //   resume   the match page for the caller's own waiting lobby.
 //   cancel   POST /api/solitaire-duel/match/<id>/cancel.
 //
-// There is no simulated queue, no invented opponent and no silent fallback to
-// the bot: a ranked search that finds nobody leaves the caller waiting, with
-// the real state on screen and the decision (wait, cancel, practise) theirs.
+// There is no simulated queue, no invented opponent and no silent fallback: a
+// ranked search that finds nobody leaves the caller waiting, with the real
+// state on screen and the decision (wait or cancel) theirs. Bot matches live
+// in the separate Play vs AI lobby at /play/ai.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+
 import { useUser } from "@clerk/nextjs";
-import { IconCards, IconRobot } from "@tabler/icons-react";
+import { IconCards } from "@tabler/icons-react";
 
 import PvpLobbyPage, { PvpLobby } from "../lobby/PvpLobby";
 import { useMatchRouter } from "../../hooks/useMatchRouter";
@@ -277,9 +277,10 @@ export default function SolitaireLobby({ variant = "home" }: { variant?: "home" 
           body: (
             <>
               Ranked Solitaire is <b>free</b>: there is no stake, no entry fee and
-              no pot. A win moves your Solitaire Elo rating and trophies. Practice
-              vs the bot is free too. The outcome turns only on how fast and how
-              accurately you solve the same puzzle your opponent is looking at.
+              no pot. A win moves your Solitaire Elo rating and trophies. Ranked
+              only matches <b>real human players</b> — no bot is ever substituted.
+              The outcome turns only on how fast and how accurately you solve the
+              same puzzle your opponent is looking at.
             </>
           ),
         },
@@ -305,8 +306,7 @@ export default function SolitaireLobby({ variant = "home" }: { variant?: "home" 
       </p>
       {!isSignedIn ? (
         <p className="mt-1 text-xs leading-relaxed text-white/45">
-          Sign in to join the ranked queue. Practice against the bot works without
-          an account.
+          Sign in to join the ranked queue. Ranked only matches real players.
         </p>
       ) : waitingId ? (
         <p className="mt-1 text-xs leading-relaxed text-cyan-100/80" role="status">
@@ -322,7 +322,7 @@ export default function SolitaireLobby({ variant = "home" }: { variant?: "home" 
       ) : (
         <p className="mt-1 text-xs leading-relaxed text-white/45">
           No one is waiting right now. Start a search and you hold the next open
-          table until another player joins — or practise against the bot instead.
+          table until another player joins.
         </p>
       )}
     </div>
@@ -333,7 +333,7 @@ export default function SolitaireLobby({ variant = "home" }: { variant?: "home" 
     subtitle:
       variant === "page"
         ? "A rated 1v1 Solitaire race. Both players receive the exact same Klondike deal and play it simultaneously — solve the whole puzzle first, or lead on progress when the clock runs out."
-        : "Ranked Klondike against a real person: one deterministic deal, both seats, first to solve it wins. Or play the same format against one of six named bots, unrated.",
+        : "Ranked Klondike against a real person: one deterministic deal, both seats, first to solve it wins. Ranked never substitutes a bot.",
     icon:
       variant === "page" ? (
         <IconCards className="h-9 w-9 flex-shrink-0 text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)] sm:h-10 sm:w-10" />
@@ -370,16 +370,12 @@ export default function SolitaireLobby({ variant = "home" }: { variant?: "home" 
     sessionReminder: false,
     backHref: "/games/solitaire-duel",
     backLabel: "Solitaire rules",
-    extraActions: (
-      <Link
-        href="/casino/solitaire-duel/play-ai"
-        data-testid="solitaire-play-bots"
-        className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-violet-400/40 bg-violet-400/10 px-5 text-sm font-black uppercase tracking-[0.14em] text-violet-200 transition hover:bg-violet-400/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
-      >
-        <IconRobot size={16} className="opacity-70" />
-        Play vs Bots
-      </Link>
-    ),
+    /**
+     * Ranked is humans only. The AI picker remains a first-class mode through
+     * /play/ai and /casino/solitaire-duel/play-ai; it is deliberately not a
+     * shortcut inside the ranked lobby, so a search can never look like it
+     * might substitute a bot.
+     */
     children: queueStatus,
   };
 

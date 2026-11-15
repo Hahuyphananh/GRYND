@@ -14,6 +14,7 @@
 // free profile statistics, which keep working exactly as before.
 
 import Link from "next/link";
+import { IconLock } from "@tabler/icons-react";
 import { useTranslation } from "../../hooks/useTranslation";
 
 const FRAME = "rounded-xl border border-dashed border-[#00e5ff]/20 bg-[#04122b]/40";
@@ -77,6 +78,38 @@ export default function ProAnalyticsLocked({
           <span className="text-xs text-[#9dd8ff]/70">
             {t("stats.locked.free_note")}
           </span>
+        </div>
+      </div>
+
+      <div className="relative overflow-hidden rounded-2xl border border-[#00e5ff]/20 bg-[#04122b]/60 p-5">
+        <div className="blur-[5px]" aria-hidden>
+          <div className="flex h-32 items-end gap-2">
+            {[38, 62, 47, 78, 55, 86, 68, 92, 74, 58, 82, 66].map((height, index) => (
+              <div
+                key={index}
+                className="min-w-0 flex-1 rounded-t bg-linear-to-t from-[#00e5ff]/20 to-[#00ffa3]/60"
+                style={{ height: `${height}%` }}
+              />
+            ))}
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[0, 1, 2, 3].map((index) => (
+              <div key={index} className="h-16 rounded-xl border border-white/10 bg-white/[0.04]" />
+            ))}
+          </div>
+        </div>
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[#04122b]/55 p-4 text-center">
+          <IconLock size={22} aria-hidden="true" className="text-[#f5ff3b]" />
+          <p className="text-sm font-black text-[#f5ff3b]">{t("stats.locked.title")}</p>
+          <p className="max-w-md text-[11px] leading-relaxed text-white/60">
+            {t("stats.locked.body")}
+          </p>
+          <Link
+            href={signedIn ? "/upgrade-pro" : "/sign-in"}
+            className="mt-1 rounded-xl bg-[#f5ff3b] px-4 py-2 text-xs font-black text-[#04122b] transition hover:bg-yellow-300"
+          >
+            {signedIn ? t("stats.locked.cta") : t("stats.locked.signin")}
+          </Link>
         </div>
       </div>
 

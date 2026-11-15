@@ -1,4 +1,5 @@
 import { LEARN_TRANSLATIONS } from "./learnTranslations";
+import { PLAY_HUB_TRANSLATIONS } from "./playHubTranslations";
 
 export const APP_TEXT_TRANSLATIONS = {
   en: {
@@ -2991,6 +2992,7 @@ export const APP_TEXT_TRANSLATIONS = {
       cash: "Coins are used only inside GRYND. They are virtual, have no cash value, and cannot be withdrawn, redeemed for gift cards or exchanged for money.",
     },
     learn: LEARN_TRANSLATIONS.en,
+    playHub: PLAY_HUB_TRANSLATIONS.en,
   },
   fr: {
     // ── Dialogue des adversaires Solitaire ───────────────────────────────
@@ -5704,6 +5706,7 @@ export const APP_TEXT_TRANSLATIONS = {
       cash: "Les pièces servent uniquement à jouer dans GRYND. Elles sont virtuelles, n'ont aucune valeur monétaire et ne peuvent pas être retirées, échangées contre des cartes cadeaux ou contre de l'argent.",
     },
     learn: LEARN_TRANSLATIONS.fr,
+    playHub: PLAY_HUB_TRANSLATIONS.fr,
   },
   es: {
     // ── Diálogo de los rivales de Solitario ──────────────────────────────
@@ -8417,6 +8420,7 @@ export const APP_TEXT_TRANSLATIONS = {
       cash: "Las monedas se usan solo dentro de GRYND. Son virtuales, no tienen valor monetario y no se pueden retirar, canjear por tarjetas regalo ni cambiar por dinero.",
     },
     learn: LEARN_TRANSLATIONS.es,
+    playHub: PLAY_HUB_TRANSLATIONS.es,
   },
 };
 

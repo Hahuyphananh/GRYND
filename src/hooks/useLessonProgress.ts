@@ -24,11 +24,13 @@ export function useLessonProgress() {
   const { isLoaded, user } = useUser();
   const userId = isLoaded ? user?.id ?? null : null;
   const [progress, setProgress] = useState<LessonProgressState>(emptyLessonProgress);
+  const [isProgressLoaded, setIsProgressLoaded] = useState(false);
 
   useEffect(() => {
     const sync = () => {
       const storage = typeof window === "undefined" ? null : window.localStorage;
       setProgress(readLessonProgress(storage, userId));
+      setIsProgressLoaded(true);
     };
     sync();
     if (typeof window === "undefined") return undefined;
@@ -41,8 +43,13 @@ export function useLessonProgress() {
   }, [userId]);
 
   const update = useCallback(
-    (lessonId: string, stepIndex: number, completed = false) => {
-      const next = recordLessonProgress(progress, { lessonId, stepIndex, completed });
+    (lessonId: string, stepIndex: number, completed = false, phaseIndex?: number) => {
+      const next = recordLessonProgress(progress, {
+        lessonId,
+        stepIndex,
+        completed,
+        phaseIndex,
+      });
       const storage = typeof window === "undefined" ? null : window.localStorage;
       writeLessonProgress(storage, userId, next);
       setProgress(next);
@@ -61,5 +68,24 @@ export function useLessonProgress() {
     [update],
   );
 
-  return { progress, userId, isLoaded, recordStep, completeLesson };
+  const recordPhase = useCallback(
+    (lessonId: string, phaseIndex: number, stepIndex?: number) =>
+      update(
+        lessonId,
+        stepIndex ?? progress.stepIndexByLesson[lessonId] ?? 0,
+        false,
+        phaseIndex,
+      ),
+    [progress, update],
+  );
+
+  return {
+    progress,
+    userId,
+    isLoaded,
+    isProgressLoaded,
+    recordStep,
+    recordPhase,
+    completeLesson,
+  };
 }

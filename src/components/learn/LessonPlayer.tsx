@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   IconArrowLeft,
   IconArrowRight,
@@ -18,6 +18,14 @@ import {
 import Footer from "../Footer";
 import NavigationBar from "../navigation-bar";
 import SolitaireBoard from "../solitaire-duel/SolitaireBoard";
+import {
+  KnowledgeCheckView,
+  LearnPhaseView,
+  PhaseRail,
+  PracticePhaseView,
+  RecapPhaseView,
+  WatchPhaseView,
+} from "./LessonPhaseViews";
 import { useLessonProgress } from "../../hooks/useLessonProgress";
 import { useTranslation } from "../../hooks/useTranslation";
 import { lessonById, LESSON_COURSES } from "../../lib/solitaire-duel/lessonCatalog";
@@ -33,8 +41,16 @@ import {
   type LessonSession,
 } from "../../lib/solitaire-duel/lessons";
 import {
+  createLessonPhaseState,
+  currentLessonPhase,
+  isLastLessonPhase,
+  nextLessonPhase,
+  previousLessonPhase,
+} from "../../lib/solitaire-duel/lessonPhases";
+import {
   courseProgress,
   isLessonCompleted,
+  lessonPhaseIndex,
   lessonStepIndex,
   nextLessonAfter,
 } from "../../lib/solitaire-duel/lessonProgress";
@@ -242,21 +258,61 @@ function CompletionScreen({
   );
 }
 
+type PendingAdvance = {
+  readonly session: LessonSession;
+  readonly feedback: LessonFeedback;
+};
+
 function Player({ lesson }: { lesson: Lesson }) {
   const { t } = useTranslation();
-  const { progress, recordStep, completeLesson } = useLessonProgress();
+  const { progress, recordStep, recordPhase, completeLesson, isProgressLoaded } =
+    useLessonProgress();
   const [session, setSession] = useState<LessonSession>(() => createLessonSession(lesson));
+  // The engine advances as soon as a qualifying move is applied. The ADVANCED
+  // session is held here, unacknowledged, so the board can show the completed
+  // move while the next objective stays inactive until Continue.
+  const [pendingAdvance, setPendingAdvance] = useState<PendingAdvance | null>(null);
+  const advanceLockRef = useRef(false);
   const [feedback, setFeedback] = useState<LessonFeedback | null>(null);
   const [hint, setHint] = useState<LessonHintResult["hint"]>(null);
   const [hintMessage, setHintMessage] = useState<string | null>(null);
   const [boardNotice, setBoardNotice] = useState(false);
+  const [phaseState, setPhaseState] = useState(() => createLessonPhaseState(lesson));
+  const [finished, setFinished] = useState(false);
+  const phaseLockRef = useRef(false);
+  const restoredRef = useRef(false);
+  const phase = currentLessonPhase(phaseState);
+
+  // Restore once, after device progress has loaded, at the BEGINNING of the
+  // saved phase. The guided exercise itself deliberately restarts its board.
+  useEffect(() => {
+    if (!isProgressLoaded || restoredRef.current) return;
+    restoredRef.current = true;
+    setPhaseState(
+      createLessonPhaseState(lesson, lessonPhaseIndex(progress, lesson.id)),
+    );
+  }, [isProgressLoaded, lesson, progress]);
+
+  // A locked transition is released only once the new phase has rendered, so a
+  // rapid double-click cannot skip a phase.
+  useEffect(() => {
+    phaseLockRef.current = false;
+  }, [phaseState.index]);
 
   const course = LESSON_COURSES.find((item) => item.id === lesson.courseId);
-  const currentStep = lesson.steps[session.stepIndex] ?? null;
+  const boardSession = pendingAdvance?.session ?? session;
+  // While the explanation is open, keep showing the objective that was just
+  // completed. The next objective becomes current only after Continue.
+  const displayStepIndex = pendingAdvance
+    ? Math.max(0, pendingAdvance.session.stepIndex - 1)
+    : session.stepIndex;
+  const currentStep = lesson.steps[displayStepIndex] ?? null;
   const next = nextLessonAfter(lesson.id);
   const progressPercent = (session.stepIndex / lesson.steps.length) * 100;
 
   const finish = () => {
+    setFinished(true);
+    setPendingAdvance(null);
     completeLesson(lesson.id, lesson.steps.length);
     setFeedback(null);
     setHint(null);
@@ -265,30 +321,37 @@ function Player({ lesson }: { lesson: Lesson }) {
   };
 
   const onMove = (move: Parameters<typeof applyLessonMove>[1]) => {
+    // The pause is not only visual: no second lesson move is evaluated while
+    // the completed objective is waiting to be acknowledged.
+    if (pendingAdvance) return;
+
     const result = applyLessonMove(session, move);
     setBoardNotice(false);
     setHint(null);
     setHintMessage(null);
 
     if (!result.accepted) {
+      setSession(result.session);
       setFeedback(result.feedback);
       return;
     }
 
-    setSession(result.session);
-
-    if (result.feedback.kind === "complete") {
-      finish();
+    // Correct (or final) move: show the advanced board, but hold progression.
+    // The pre-move session stays authoritative until Continue, so the next
+    // objective cannot accept moves yet.
+    if (result.advanced) {
+      setFeedback(result.feedback);
+      setPendingAdvance({ session: result.session, feedback: result.feedback });
+      advanceLockRef.current = false;
       return;
     }
 
-    if (result.advanced) {
-      recordStep(lesson.id, result.session.stepIndex);
-    }
+    setSession(result.session);
     setFeedback(result.feedback);
   };
 
   const onHint = () => {
+    if (pendingAdvance) return;
     const result = requestLessonHint(session);
     setSession(result.session);
     setHint(result.hint);
@@ -299,18 +362,25 @@ function Player({ lesson }: { lesson: Lesson }) {
 
   const onRestart = () => {
     const nextSession = restartLesson(session);
+    setPendingAdvance(null);
+    advanceLockRef.current = false;
+    phaseLockRef.current = false;
     setSession(nextSession);
     setFeedback(null);
     setHint(null);
     setHintMessage(null);
     setBoardNotice(false);
-    if (!isLessonCompleted(progress, lesson.id)) {
-      recordStep(lesson.id, 0);
-    }
+    setFinished(false);
+    setPhaseState(createLessonPhaseState(lesson));
+    // One write records both the first step and the first phase; completed
+    // lessons stay completed because the progress reducer preserves history.
+    recordPhase(lesson.id, 0, 0);
   };
 
   const onUndo = () => {
     const nextSession = undoLessonMove(session);
+    setPendingAdvance(null);
+    advanceLockRef.current = false;
     setSession(nextSession);
     setFeedback(null);
     setHint(null);
@@ -319,7 +389,62 @@ function Player({ lesson }: { lesson: Lesson }) {
     recordStep(lesson.id, nextSession.stepIndex);
   };
 
+  const advancePhase = (stepIndex = boardSession.stepIndex) => {
+    if (phaseLockRef.current || finished) return;
+    phaseLockRef.current = true;
+    const next = nextLessonPhase(phaseState);
+    if (!next) {
+      finish();
+      return;
+    }
+    setPhaseState(next);
+    recordPhase(lesson.id, next.index, stepIndex);
+    setPendingAdvance(null);
+    setFeedback(null);
+    setHint(null);
+    setHintMessage(null);
+    setBoardNotice(false);
+  };
+
+  const backPhase = () => {
+    if (phaseLockRef.current || finished) return;
+    const previous = previousLessonPhase(phaseState);
+    if (!previous) return;
+    phaseLockRef.current = true;
+    setPhaseState(previous);
+    recordPhase(lesson.id, previous.index, session.stepIndex);
+    setPendingAdvance(null);
+    setFeedback(null);
+    setHint(null);
+    setHintMessage(null);
+    setBoardNotice(false);
+  };
+
+  const onContinue = () => {
+    const pending = pendingAdvance;
+    // The synchronous lock is what makes rapid double-clicks advance exactly
+    // once: the second click is rejected before React has re-rendered.
+    if (!pending || advanceLockRef.current) return;
+    advanceLockRef.current = true;
+
+    setPendingAdvance(null);
+    setFeedback(null);
+    setSession(pending.session);
+
+    if (pending.session.completed) {
+      if (isLastLessonPhase(phaseState)) finish();
+      else advancePhase(pending.session.stepIndex);
+      return;
+    }
+    recordStep(lesson.id, pending.session.stepIndex);
+  };
+
   const replay = () => {
+    setPendingAdvance(null);
+    advanceLockRef.current = false;
+    phaseLockRef.current = false;
+    setFinished(false);
+    setPhaseState(createLessonPhaseState(lesson));
     setSession(createLessonSession(lesson));
     setFeedback(null);
     setHint(null);
@@ -327,26 +452,109 @@ function Player({ lesson }: { lesson: Lesson }) {
     setBoardNotice(false);
   };
 
-  if (session.completed) {
+  if (finished) {
     return <CompletionScreen lesson={lesson} session={session} onReplay={replay} />;
   }
 
   const feedbackTone =
-    feedback?.kind === "incorrect" ? "warning" : feedback?.kind === "correct" ? "correct" : null;
+    feedback?.kind === "incorrect" ? "warning" : feedback ? "correct" : null;
   const feedbackTitle =
-    feedback?.kind === "correct"
+    feedback?.kind === "correct" || feedback?.kind === "complete"
       ? t("learn.player.feedback.correct")
       : feedback?.kind === "incorrect"
         ? feedback.reason === "illegal"
           ? t("learn.player.feedback.illegal")
           : t("learn.player.feedback.offGoal")
         : "";
+  const completedStep =
+    feedback && "completedStepIds" in feedback
+      ? lesson.steps.find(
+          (step) => step.id === feedback.completedStepIds[feedback.completedStepIds.length - 1],
+        ) ?? null
+      : null;
   const feedbackBody =
     feedback?.kind === "correct"
       ? t(feedback.explanationKey)
-      : feedback?.kind === "incorrect"
-        ? t(feedback.messageKey)
-        : "";
+      : feedback?.kind === "complete"
+        ? t(completedStep?.explanationKey ?? lesson.successKey)
+        : feedback?.kind === "incorrect"
+          ? t(feedback.messageKey)
+          : "";
+  const showContinue = Boolean(pendingAdvance && feedback && feedback.kind !== "incorrect");
+
+  if (phase && phase !== "guided") {
+    const phases = lesson.phases;
+    return (
+      <main className="relative mx-auto max-w-4xl px-4 pb-24 pt-24 sm:px-6 md:pt-28">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Link
+            href="/learn"
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-[#9dd8ff]/75 transition hover:text-[#00e5ff] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+          >
+            <IconArrowLeft size={15} aria-hidden="true" />
+            {t("learn.player.back")}
+          </Link>
+          <p className="flex items-center gap-1.5 text-[11px] font-semibold text-white/35">
+            <IconCheck size={13} aria-hidden="true" />
+            {t("learn.player.saved")}
+          </p>
+        </div>
+
+        <header className="mt-4 border-b border-white/10 pb-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#00e5ff]/75">
+            {course ? t(course.titleKey) : t("learn.kicker")}
+          </p>
+          <h1 className="mt-1 text-3xl font-black leading-tight tracking-tight text-white sm:text-4xl">
+            {t(lesson.titleKey)}
+          </h1>
+          <p className="mt-1 text-sm leading-relaxed text-white/50">
+            {t(lesson.descriptionKey)}
+          </p>
+        </header>
+
+        <PhaseRail
+          state={phaseState}
+          onBack={phaseState.index > 0 ? backPhase : null}
+        />
+
+        <div className="mt-5">
+          {phase === "learn" && phases?.learn && (
+            <LearnPhaseView content={phases.learn} onContinue={() => advancePhase()} />
+          )}
+          {phase === "watch" && phases?.watch && (
+            <WatchPhaseView
+              key={`watch-${phaseState.index}`}
+              content={phases.watch}
+              onContinue={() => advancePhase()}
+            />
+          )}
+          {phase === "practice" && phases?.practice && (
+            <PracticePhaseView
+              key={`practice-${phaseState.index}`}
+              lesson={lesson}
+              positions={phases.practice}
+              onContinue={() => advancePhase()}
+            />
+          )}
+          {phase === "knowledgeCheck" && phases?.knowledgeCheck && (
+            <KnowledgeCheckView
+              key={`knowledge-${phaseState.index}`}
+              check={phases.knowledgeCheck}
+              onContinue={() => advancePhase()}
+            />
+          )}
+          {phase === "recap" && phases?.recap && (
+            <RecapPhaseView
+              key={`recap-${phaseState.index}`}
+              lesson={lesson}
+              recap={phases.recap}
+              onContinue={() => advancePhase()}
+            />
+          )}
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="relative mx-auto max-w-[1440px] px-2 pb-24 pt-24 sm:px-6 md:pt-28">
@@ -405,6 +613,11 @@ function Player({ lesson }: { lesson: Lesson }) {
         <StepDots session={session} />
       </div>
 
+      <PhaseRail
+        state={phaseState}
+        onBack={phaseState.index > 0 ? backPhase : null}
+      />
+
       <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_400px]">
         {/* Board ---------------------------------------------------------- */}
         <section
@@ -413,8 +626,8 @@ function Player({ lesson }: { lesson: Lesson }) {
         >
           <div className="rounded-3xl border border-[#00e5ff]/20 bg-[#040d24]/80 p-2 shadow-[0_0_45px_rgba(0,229,255,0.06)] sm:p-3">
             <SolitaireBoard
-              view={viewForState(session.state)}
-              interactive
+              view={viewForState(boardSession.state)}
+              interactive={!pendingAdvance && !session.completed}
               onMove={onMove}
               onInvalid={() => setBoardNotice(true)}
             />
@@ -424,7 +637,7 @@ function Player({ lesson }: { lesson: Lesson }) {
             <button
               type="button"
               onClick={onUndo}
-              disabled={session.log.length === 0}
+              disabled={session.log.length === 0 || pendingAdvance !== null}
               className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-white/15 px-3 text-[11px] font-bold text-[#9dd8ff] transition hover:bg-white/5 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] disabled:cursor-not-allowed disabled:opacity-35"
             >
               <IconRotateClockwise size={14} aria-hidden="true" />
@@ -433,7 +646,8 @@ function Player({ lesson }: { lesson: Lesson }) {
             <button
               type="button"
               onClick={onRestart}
-              className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-white/15 px-3 text-[11px] font-bold text-[#9dd8ff] transition hover:bg-white/5 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+              disabled={pendingAdvance !== null}
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-white/15 px-3 text-[11px] font-bold text-[#9dd8ff] transition hover:bg-white/5 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] disabled:cursor-not-allowed disabled:opacity-35"
             >
               <IconRefresh size={14} aria-hidden="true" />
               {t("learn.player.restart")}
@@ -441,7 +655,8 @@ function Player({ lesson }: { lesson: Lesson }) {
             <button
               type="button"
               onClick={onHint}
-              className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-[#f5ff3b]/35 bg-[#f5ff3b]/10 px-3 text-[11px] font-bold text-[#f5ff3b] transition hover:bg-[#f5ff3b]/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b]"
+              disabled={pendingAdvance !== null}
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-[#f5ff3b]/35 bg-[#f5ff3b]/10 px-3 text-[11px] font-bold text-[#f5ff3b] transition hover:bg-[#f5ff3b]/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] disabled:cursor-not-allowed disabled:opacity-35"
             >
               <IconBulb size={14} aria-hidden="true" />
               {t("learn.player.hint")}
@@ -460,6 +675,21 @@ function Player({ lesson }: { lesson: Lesson }) {
             >
               {t("learn.player.boardNotice")}
             </p>
+          )}
+
+          {session.completed && !pendingAdvance && (
+            <section className="mt-3 rounded-2xl border border-[#00ffa3]/25 bg-[#00ffa3]/[0.07] p-4">
+              <p className="text-sm font-extrabold text-[#8dffd0]">
+                {t("learn.player.phases.guidedComplete")}
+              </p>
+              <button
+                type="button"
+                onClick={() => advancePhase(session.stepIndex)}
+                className="mt-2 inline-flex min-h-9 items-center justify-center rounded-lg bg-[#00e5ff] px-3 py-1.5 text-[11px] font-black text-[#00212b] transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+              >
+                {t("learn.player.phases.continue")}
+              </button>
+            </section>
           )}
 
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 lg:hidden">
@@ -554,7 +784,7 @@ function Player({ lesson }: { lesson: Lesson }) {
           </section>
 
           <div aria-live="polite" aria-label={t("learn.player.feedbackAria")}>
-            {feedback && feedback.kind !== "complete" && (
+            {feedback && (
               <section
                 className={`rounded-2xl border p-3.5 ${
                   feedbackTone === "correct"
@@ -587,15 +817,28 @@ function Player({ lesson }: { lesson: Lesson }) {
                     <p className="mt-1 text-xs leading-relaxed text-white/65">
                       {feedbackBody}
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => setFeedback(null)}
-                      className="mt-2 text-[11px] font-extrabold text-[#00e5ff] underline-offset-4 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
-                    >
-                      {feedbackTone === "correct"
-                        ? t("learn.player.feedback.continue")
-                        : t("learn.player.feedback.tryAgain")}
-                    </button>
+                    {feedback.kind === "incorrect" && feedback.nextInstructionKey && (
+                      <p className="mt-1 text-[11px] leading-relaxed text-[#ffe9a3]/70">
+                        {t("learn.player.objective")}: {t(feedback.nextInstructionKey)}
+                      </p>
+                    )}
+                    {showContinue ? (
+                      <button
+                        type="button"
+                        onClick={onContinue}
+                        className="mt-2 inline-flex min-h-9 items-center justify-center rounded-lg bg-[#00e5ff] px-3 py-1.5 text-[11px] font-black text-[#00212b] transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                      >
+                        {t("learn.player.feedback.continue")}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setFeedback(null)}
+                        className="mt-2 text-[11px] font-extrabold text-[#00e5ff] underline-offset-4 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                      >
+                        {t("learn.player.feedback.tryAgain")}
+                      </button>
+                    )}
                   </div>
                 </div>
               </section>

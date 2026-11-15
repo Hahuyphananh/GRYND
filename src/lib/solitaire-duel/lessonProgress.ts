@@ -24,6 +24,8 @@ import type { Lesson, LessonDifficulty } from "./lessons";
 export type LessonProgressState = {
   readonly completedLessonIds: readonly string[];
   readonly stepIndexByLesson: Readonly<Record<string, number>>;
+  /** Phase the player should resume at (beginning of that teaching phase). */
+  readonly phaseIndexByLesson: Readonly<Record<string, number>>;
   readonly lastLessonId: string | null;
   readonly updatedAt: number;
 };
@@ -32,6 +34,7 @@ export type LessonProgressUpdate = {
   readonly lessonId: string;
   readonly stepIndex: number;
   readonly completed?: boolean;
+  readonly phaseIndex?: number;
 };
 
 export type LessonStatus = "not-started" | "in-progress" | "completed";
@@ -48,12 +51,13 @@ export const LESSON_PROGRESS_EVENT = "grynd:lesson-progress";
 const EMPTY_STATE: LessonProgressState = {
   completedLessonIds: [],
   stepIndexByLesson: {},
+  phaseIndexByLesson: {},
   lastLessonId: null,
   updatedAt: 0,
 };
 
 export function emptyLessonProgress(): LessonProgressState {
-  return { ...EMPTY_STATE, stepIndexByLesson: {} };
+  return { ...EMPTY_STATE, stepIndexByLesson: {}, phaseIndexByLesson: {} };
 }
 
 export function lessonProgressStorageKey(userId?: string | null): string {
@@ -88,6 +92,14 @@ export function normalizeLessonProgress(value: unknown): LessonProgressState {
     }
   }
 
+  const phases: Record<string, number> = {};
+  if (isRecord(value.phaseIndexByLesson)) {
+    for (const [id, raw] of Object.entries(value.phaseIndexByLesson)) {
+      if (!LESSON_BY_ID[id] || typeof raw !== "number" || !Number.isFinite(raw)) continue;
+      phases[id] = Math.max(0, Math.floor(raw));
+    }
+  }
+
   const lastLessonId =
     typeof value.lastLessonId === "string" && LESSON_BY_ID[value.lastLessonId]
       ? value.lastLessonId
@@ -96,6 +108,7 @@ export function normalizeLessonProgress(value: unknown): LessonProgressState {
   return {
     completedLessonIds: completed,
     stepIndexByLesson: steps,
+    phaseIndexByLesson: phases,
     lastLessonId,
     updatedAt:
       typeof value.updatedAt === "number" && Number.isFinite(value.updatedAt)
@@ -156,6 +169,15 @@ export function lessonStepIndex(progress: LessonProgressState, lesson: Lesson): 
   return Math.min(Math.max(0, Math.floor(raw)), lesson.steps.length);
 }
 
+/** The persisted phase index for a lesson. Callers clamp it to the plan. */
+export function lessonPhaseIndex(
+  progress: LessonProgressState,
+  lessonId: string,
+): number {
+  const raw = progress.phaseIndexByLesson[lessonId] ?? 0;
+  return Math.max(0, Math.floor(Number.isFinite(raw) ? raw : 0));
+}
+
 export function lessonStatus(
   progress: LessonProgressState,
   lesson: Lesson,
@@ -178,6 +200,14 @@ export function recordLessonProgress(
   );
   const alreadyComplete = isLessonCompleted(progress, update.lessonId);
   const completed = update.completed === true || alreadyComplete;
+  const rawPhase =
+    update.phaseIndex !== undefined
+      ? update.phaseIndex
+      : progress.phaseIndexByLesson[update.lessonId] ?? 0;
+  const phaseIndex = Math.max(
+    0,
+    Math.floor(Number.isFinite(rawPhase) ? rawPhase : 0),
+  );
 
   return {
     completedLessonIds: completed
@@ -186,6 +216,10 @@ export function recordLessonProgress(
     stepIndexByLesson: {
       ...progress.stepIndexByLesson,
       [update.lessonId]: completed ? lesson.steps.length : stepIndex,
+    },
+    phaseIndexByLesson: {
+      ...progress.phaseIndexByLesson,
+      [update.lessonId]: phaseIndex,
     },
     lastLessonId: update.lessonId,
     updatedAt: now,

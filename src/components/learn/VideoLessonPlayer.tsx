@@ -145,11 +145,11 @@ export default function VideoLessonPlayer({ video }: { video: AcademyVideo }) {
 
       <main className="relative mx-auto max-w-5xl px-4 pt-24 sm:px-6 md:pt-28">
         <Link
-          href="/learn"
+          href="/learn/videos"
           className="inline-flex items-center gap-2 text-xs font-bold text-white/55 underline-offset-4 transition hover:text-white hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
         >
           <IconArrowLeft size={15} aria-hidden="true" />
-          {t("learn.videos.back")}
+          {t("learn.videos.backToVideos")}
         </Link>
 
         <div className="mt-6 flex flex-wrap items-end justify-between gap-3">
@@ -331,10 +331,10 @@ export default function VideoLessonPlayer({ video }: { video: AcademyVideo }) {
           </Link>
         ) : (
           <Link
-            href="/learn"
+            href="/learn/videos"
             className="mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#00e5ff] px-5 text-sm font-black text-[#00212b] transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
           >
-            {t("learn.videos.back")}
+            {t("learn.videos.backToVideos")}
             <IconArrowRight size={16} aria-hidden="true" />
           </Link>
         )}

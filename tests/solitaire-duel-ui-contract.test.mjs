@@ -460,10 +460,11 @@ test("platform: the lobby and match routes mount the shared chrome", () => {
   assert.match(lobby, /\/api\/solitaire-duel\/create-or-join/);
   assert.match(lobby, /matchPath\(matchId\)/);
   assert.match(lobby, /`\/casino\/solitaire-duel\/\$\{matchId\}`/);
-  // Practice now has a dedicated named-bot picker rather than a tier button.
-  assert.match(lobby, /href="\/casino\/solitaire-duel\/play-ai"/);
-  assert.match(lobby, /Play vs Bots/);
+  // Ranked is humans only. The named-bot picker is a separate mode reachable
+  // from /play/ai and its own route; it is not a shortcut in the ranked lobby.
+  assert.doesNotMatch(lobby, /solitaire-play-bots|Play vs Bots/);
   assert.doesNotMatch(lobby, /\/api\/solitaire-duel\/create-ai/);
+  assert.ok(fs.existsSync(PLAY_AI_ROUTE), "the AI picker route must remain");
 });
 
 test("bots: the picker renders the roster and starts the selected opponent", () => {
@@ -613,6 +614,11 @@ test("bots: practice plays the heuristic, then recovers on the proven line", () 
   assert.match(store, /publicSolitaireBot/);
 
   const standalone = code("standalone/solitaire-duel/src/match.ts");
-  assert.match(standalone, /planAiMoves\(\{/);
+  // The standalone match now re-exports the shared implementation, so the
+  // planner lives in the module it points at rather than in a copy.
+  assert.match(
+    standalone,
+    /export \* from "\.\.\/\.\.\/\.\.\/src\/lib\/solitaire-duel\/localMatch"/,
+  );
   assert.doesNotMatch(standalone, /planAiSolution|solveDealLine/);
 });

@@ -13,6 +13,7 @@ import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import PerformanceDashboard from "../../components/stats/PerformanceDashboard";
+import SolitaireAcademyStats from "../../components/stats/SolitaireAcademyStats";
 import { useTranslation } from "../../hooks/useTranslation";
 
 export default function StatsPageClient({
@@ -42,6 +43,12 @@ export default function StatsPageClient({
           </h1>
           <p className="mt-2 max-w-3xl text-sm text-[#9dd8ff]/80">{t("stats.subtitle")}</p>
         </header>
+
+        <SolitaireAcademyStats
+          signedIn={signedIn}
+          pro={pro}
+          membershipUnavailable={membershipUnavailable}
+        />
 
         <PerformanceDashboard
           signedIn={signedIn}

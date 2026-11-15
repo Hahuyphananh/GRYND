@@ -99,6 +99,77 @@ export type LessonStep = {
   readonly hints?: readonly LessonHint[];
 };
 
+/** The concept-first phase: what, why, and an optional visual cue. */
+export type LessonLearnContent = {
+  readonly titleKey: string;
+  readonly explanationKey: string;
+  readonly whyKey: string;
+  /** Optional emphasis/illustration copy rendered beside the concept. */
+  readonly illustrationKey?: string;
+  /** The common mistake this concept prevents. */
+  readonly mistakeKey?: string;
+  /** How the player recognises the situation during a real game. */
+  readonly recognizeKey?: string;
+};
+
+/** One action in a demonstration, played through the REAL rules engine. */
+export type LessonDemoStep = {
+  readonly move: SolitaireMove;
+  readonly explanationKey: string;
+  /** Optional presentation pause hint before the next action is offered. */
+  readonly pauseMs?: number;
+};
+
+/** A prepared position plus the actions the player steps through. */
+export type LessonWatchContent = {
+  readonly deal: SolitaireDeal;
+  readonly steps: readonly LessonDemoStep[];
+};
+
+/** One independent-practice position. Same engine, no guided copy leak. */
+export type LessonPracticePosition = {
+  readonly id: string;
+  readonly deal: SolitaireDeal;
+  readonly instructionKey: string;
+  readonly steps: readonly LessonStep[];
+  readonly successKey?: string;
+  readonly hints?: readonly LessonHint[];
+};
+
+export type LessonKnowledgeOption = {
+  readonly id: string;
+  readonly textKey: string;
+};
+
+export type LessonKnowledgeCheck = {
+  readonly questionKey: string;
+  readonly options: readonly LessonKnowledgeOption[];
+  readonly correctOptionId: string;
+  readonly explanationKey: string;
+};
+
+export type LessonRecapContent = {
+  readonly summaryKey: string;
+  readonly rememberKey: string;
+  readonly nextLessonId?: string;
+};
+
+/**
+ * Optional teaching phases wrapped around the EXISTING guided exercise.
+ *
+ * The lesson's own deal/steps remain the Guided Exercise phase, so the 20
+ * authored lessons keep working unchanged. A lesson opts into any of the other
+ * phases by providing content here; a missing phase is skipped rather than
+ * rendered empty.
+ */
+export type LessonPhases = {
+  readonly learn?: LessonLearnContent;
+  readonly watch?: LessonWatchContent;
+  readonly practice?: readonly LessonPracticePosition[];
+  readonly knowledgeCheck?: LessonKnowledgeCheck;
+  readonly recap?: LessonRecapContent;
+};
+
 export type Lesson = {
   /** Stable, globally unique id (also the catalog lookup key). */
   readonly id: string;
@@ -119,6 +190,8 @@ export type Lesson = {
    * (e.g. a move-count or no-pull-back rule).
    */
   readonly completion?: (state: SolitaireState) => boolean;
+  /** Optional teaching phases around the guided exercise above. */
+  readonly phases?: LessonPhases;
   /** Copy shown when the lesson is complete. */
   readonly successKey: string;
 };
@@ -296,6 +369,144 @@ function dealErrors(deal: unknown): string[] {
  * exercise. It also enforces that no step is already satisfied by the opening
  * position, so a lesson can never begin complete.
  */
+/** Structural validation for one exercise step, shared by practice positions. */
+function practiceStepErrors(step: unknown, label: string): string[] {
+  const errors: string[] = [];
+  if (!isRecord(step)) return [label + " must be an object."];
+  if (!isNonEmptyString(step.id)) errors.push(label + " has no id.");
+  for (const field of ["instructionKey", "explanationKey"] as const) {
+    if (!isNonEmptyString(step[field])) errors.push(label + " needs a " + field + ".");
+  }
+  if (typeof step.done !== "function") errors.push(label + " needs a done predicate.");
+  if (step.acceptableMoves !== undefined && !Array.isArray(step.acceptableMoves)) {
+    errors.push(label + " acceptableMoves must be an array.");
+  }
+  if (step.hints !== undefined && !Array.isArray(step.hints)) {
+    errors.push(label + " hints must be an array.");
+  }
+  return errors;
+}
+
+function phaseErrors(phases: unknown): string[] {
+  if (phases === undefined) return [];
+  if (!isRecord(phases)) return ["Lesson phases must be an object."];
+
+  const errors: string[] = [];
+
+  if (phases.learn !== undefined) {
+    if (!isRecord(phases.learn)) errors.push("learn phase must be an object.");
+    else {
+      for (const field of ["titleKey", "explanationKey", "whyKey"] as const) {
+        if (!isNonEmptyString(phases.learn[field])) errors.push("learn phase needs " + field + ".");
+      }
+      for (const field of ["illustrationKey", "mistakeKey", "recognizeKey"] as const) {
+        if (phases.learn[field] !== undefined && !isNonEmptyString(phases.learn[field])) {
+          errors.push("learn phase " + field + " must be a non-empty string.");
+        }
+      }
+    }
+  }
+
+  if (phases.watch !== undefined) {
+    if (!isRecord(phases.watch)) errors.push("watch phase must be an object.");
+    else {
+      errors.push(...dealErrors(phases.watch.deal).map((error) => "watch: " + error));
+      if (!Array.isArray(phases.watch.steps) || phases.watch.steps.length === 0) {
+        errors.push("watch phase needs at least one demonstration step.");
+      } else {
+        let state: SolitaireState | null = null;
+        if (dealErrors(phases.watch.deal).length === 0) {
+          state = initialStateFromDeal(phases.watch.deal as SolitaireDeal);
+        }
+        phases.watch.steps.forEach((step, index) => {
+          const label = "watch step " + index;
+          if (!isRecord(step)) { errors.push(label + " must be an object."); return; }
+          if (!isNonEmptyString(step.explanationKey)) errors.push(label + " needs an explanationKey.");
+          if (step.pauseMs !== undefined && (typeof step.pauseMs !== "number" || !Number.isFinite(step.pauseMs) || step.pauseMs < 0)) {
+            errors.push(label + " pauseMs must be a non-negative number.");
+          }
+          const normalized = normalizeMove(step.move);
+          if (!normalized.ok) { errors.push(label + " move is not a legal move shape."); return; }
+          if (state) {
+            const applied = applyMove({ state, move: normalized.move });
+            if (!applied.ok) errors.push(label + " is illegal on the prepared position: " + applied.error);
+            else state = applied.state;
+          }
+        });
+      }
+    }
+  }
+
+  if (phases.practice !== undefined) {
+    if (!Array.isArray(phases.practice) || phases.practice.length === 0) {
+      errors.push("practice phase needs at least one prepared position.");
+    } else {
+      const ids = new Set<string>();
+      phases.practice.forEach((position, index) => {
+        const label = "practice position " + index;
+        if (!isRecord(position)) { errors.push(label + " must be an object."); return; }
+        if (!isNonEmptyString(position.id)) errors.push(label + " has no id.");
+        else if (ids.has(position.id)) errors.push(label + " id is duplicated.");
+        else ids.add(position.id);
+        if (!isNonEmptyString(position.instructionKey)) errors.push(label + " needs an instructionKey.");
+        if (position.successKey !== undefined && !isNonEmptyString(position.successKey)) {
+          errors.push(label + " successKey must be a non-empty string.");
+        }
+        errors.push(...dealErrors(position.deal).map((error) => label + ": " + error));
+        if (!Array.isArray(position.steps) || position.steps.length === 0) {
+          errors.push(label + " needs at least one step.");
+        } else {
+          position.steps.forEach((step, stepIndex) => {
+            errors.push(...practiceStepErrors(step, label + " step " + stepIndex));
+          });
+        }
+        if (position.hints !== undefined && !Array.isArray(position.hints)) {
+          errors.push(label + " hints must be an array.");
+        }
+      });
+    }
+  }
+
+  if (phases.knowledgeCheck !== undefined) {
+    const check = phases.knowledgeCheck;
+    if (!isRecord(check)) errors.push("knowledgeCheck phase must be an object.");
+    else {
+      if (!isNonEmptyString(check.questionKey)) errors.push("knowledgeCheck needs a questionKey.");
+      if (!isNonEmptyString(check.explanationKey)) errors.push("knowledgeCheck needs an explanationKey.");
+      if (!Array.isArray(check.options) || check.options.length < 2) {
+        errors.push("knowledgeCheck needs at least two options.");
+      } else {
+        const ids = new Set<string>();
+        check.options.forEach((option, index) => {
+          const label = "knowledgeCheck option " + index;
+          if (!isRecord(option)) { errors.push(label + " must be an object."); return; }
+          if (!isNonEmptyString(option.id)) errors.push(label + " has no id.");
+          else if (ids.has(option.id)) errors.push(label + " id is duplicated.");
+          else ids.add(option.id);
+          if (!isNonEmptyString(option.textKey)) errors.push(label + " needs a textKey.");
+        });
+        if (!isNonEmptyString(check.correctOptionId) || !ids.has(check.correctOptionId)) {
+          errors.push("knowledgeCheck correctOptionId must name one of its options.");
+        }
+      }
+    }
+  }
+
+  if (phases.recap !== undefined) {
+    if (!isRecord(phases.recap)) errors.push("recap phase must be an object.");
+    else {
+      for (const field of ["summaryKey", "rememberKey"] as const) {
+        if (!isNonEmptyString(phases.recap[field])) errors.push("recap phase needs " + field + ".");
+      }
+      if (phases.recap.nextLessonId !== undefined && !isNonEmptyString(phases.recap.nextLessonId)) {
+        errors.push("recap phase nextLessonId must be a non-empty string.");
+      }
+    }
+  }
+
+  return errors;
+}
+
 export function validateLessonDefinition(lesson: unknown): LessonValidation {
   if (!isRecord(lesson)) {
     return { ok: false, errors: ["A lesson definition must be an object."] };
@@ -327,6 +538,7 @@ export function validateLessonDefinition(lesson: unknown): LessonValidation {
 
   const dealIssues = dealErrors(lesson.deal);
   errors.push(...dealIssues);
+  errors.push(...phaseErrors(lesson.phases));
 
   if (!Array.isArray(lesson.steps) || lesson.steps.length === 0) {
     errors.push("A lesson must define at least one step.");
