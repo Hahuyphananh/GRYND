@@ -1,31 +1,28 @@
 // src/components/home/SocialProof.tsx
 //
-// THE TWO THIRD-PARTY PROOF WIDGETS ON THE HOME PAGE.
+// THE TWO THIRD-PARTY PROOF LINKS ON THE HOME PAGE.
 //
-//   * Trustpilot — the Review Collector TrustBox Trustpilot generated for the
-//     verified grynd.dedyn.io profile. The snippet is Trustpilot's own: the
-//     bootstrap loads from their CDN and the `.trustpilot-widget` div carries
-//     their business unit, template and 52px height. The profile link is the
-//     no-JavaScript fallback, exactly as their embed ships it.
-//   * Product Hunt — the official "featured" badge, in the theme of the page
-//     (see ProductHuntBadge.tsx). It is a plain <a> around their SVG, so it
-//     needs no script and cannot slow the page down.
+//   * Trustpilot — a first-party capsule that links to the verified
+//     grynd.dedyn.io profile. It deliberately does NOT embed the Review
+//     Collector TrustBox: that iframe paints its own white pill and ignores
+//     `theme=dark` (the template is fixed by Trustpilot's generator), so on the
+//     dark ground it read as a stray white rectangle. The capsule carries the
+//     same verified review URL, in the page's own palette.
+//   * Product Hunt — the official "featured" badge (see
+//     ProductHuntBadge.tsx). A plain <a> around their SVG: no script, no
+//     layout shift.
 //
-// Both are server-rendered markup, so the links and the TrustBox element are in
-// the HTML a crawler receives; only Trustpilot's iframe is hydrated on the
-// client (see components/trustpilot/TrustpilotWidget.tsx).
+// Both are server-rendered markup, so a crawler receives the links. This stays a
+// server component: it reads the Trustpilot config per request and ships no
+// client JavaScript. If the Trustpilot ids are switched off
+// (NEXT_PUBLIC_TRUSTPILOT_ENABLED=false) the capsule disappears; the Product
+// Hunt badge is first-party markup and stays.
 //
-// A server component on purpose: it reads the Trustpilot config per request and
-// ships no client JavaScript of its own. If the Trustpilot ids are ever switched
-// off (NEXT_PUBLIC_TRUSTPILOT_ENABLED=false) the TrustBox disappears; the
-// Product Hunt badge is first-party markup and stays.
+// The live TrustBox (real reviews, scores) still runs on /reviews and beside the
+// PRO upsell — surfaces where a full review list is the point, not a strip.
 
-import {
-  TRUSTPILOT_REVIEW_COLLECTOR_HEIGHT,
-  getTrustpilotConfig,
-} from "../../lib/trustpilot";
+import { getTrustpilotConfig } from "../../lib/trustpilot";
 import ProductHuntBadge from "./ProductHuntBadge";
-import TrustpilotWidget from "../trustpilot/TrustpilotWidget";
 
 export default function SocialProof() {
   const trustpilot = getTrustpilotConfig();
@@ -38,15 +35,33 @@ export default function SocialProof() {
     >
       <div className="flex flex-col items-center gap-5 sm:flex-row sm:justify-center sm:gap-8">
         {trustpilot && (
-          <div className="w-full max-w-[300px]">
-            {/* Review Collector: Trustpilot's 52px strip, on the brand ground. */}
-            <TrustpilotWidget
-              businessUnitId={trustpilot.businessUnitId}
-              templateId={trustpilot.templateId}
-              domain={trustpilot.domain}
-              height={TRUSTPILOT_REVIEW_COLLECTOR_HEIGHT}
-            />
-          </div>
+          <a
+            href={trustpilot.reviewUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group flex h-[52px] w-full max-w-[300px] items-center gap-3 rounded-full border border-white/12 bg-[#071223]/80 px-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xs transition-colors hover:border-[#00b67a]/45 hover:bg-[#081a2c]/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00b67a]/60"
+          >
+            <span
+              aria-hidden="true"
+              className="text-[17px] leading-none text-[#00b67a] drop-shadow-[0_0_6px_rgba(0,182,122,0.35)]"
+            >
+              ★
+            </span>
+            <span className="min-w-0 text-left">
+              <span className="block text-[11px] font-black uppercase tracking-[0.16em] text-white/85">
+                Trustpilot
+              </span>
+              <span className="block truncate text-[10px] font-medium text-white/40">
+                Read player reviews
+              </span>
+            </span>
+            <span
+              aria-hidden="true"
+              className="ml-auto text-xs text-white/30 transition-colors group-hover:text-[#00b67a]"
+            >
+              ↗
+            </span>
+          </a>
         )}
 
         <ProductHuntBadge />

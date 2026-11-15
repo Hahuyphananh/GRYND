@@ -76,12 +76,16 @@ export default function SiteChrome({
       <GoogleAnalytics />
 
       {/* STREAK + APPEARANCE. The flame chip is the compact indicator that
-          lives beside the profile cluster; the drawer is the Settings/Profile
-          entry point to the same cosmetics the board header opens. */}
+          lives beside the profile cluster on every page except the homepage,
+          where it is pinned under the navbar at the top left (rendered inside
+          <main>, below). The drawer is the Settings/Profile entry point to the
+          same cosmetics the board header opens. */}
       <div className="pointer-events-none fixed right-3 top-[72px] z-40 flex items-center gap-2 sm:right-4 sm:top-[76px]">
-        <div className="pointer-events-auto">
-          <StreakChip />
-        </div>
+        {pathname !== "/" && (
+          <div className="pointer-events-auto">
+            <StreakChip />
+          </div>
+        )}
         {(pathname === "/settings" || pathname === "/profil") && (
           <div className="pointer-events-auto">
             <BoardAppearanceDrawer />
@@ -110,6 +114,18 @@ export default function SiteChrome({
         id="main-content"
         className="pt-[calc(68px_+_var(--safe-top))] sm:pt-[calc(4rem_+_var(--safe-top))]"
       >
+        {/* The homepage streak marker: sticky, left-aligned, sitting directly
+            under the fixed navbar. `empty:hidden` collapses the wrapper for a
+            signed-out visitor, whose chip renders nothing (the guest prompt
+            below is their call to action). */}
+        {pathname === "/" && (
+          <div
+            data-testid="home-streak-sticky"
+            className="sticky top-[calc(68px_+_var(--safe-top))] z-40 flex justify-start px-3 empty:hidden sm:top-[calc(4rem_+_var(--safe-top))] sm:px-4"
+          >
+            <StreakChip />
+          </div>
+        )}
         <GuestStreakPrompt />
         {children}
       </main>
