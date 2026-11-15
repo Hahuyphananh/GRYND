@@ -331,15 +331,13 @@ test("PROFILE UI: shows Overall Elo and keeps the per-game ratings separate", ()
   assert.match(tabs, /<RatingRow key=\{entry\.gameKey\} entry=\{entry\} \/>/);
 });
 
-test("LEADERBOARD UI: an Overall Elo board is wired to the aggregate endpoint", () => {
+test("LEADERBOARD UI: Overall Elo is not a board on the classement", () => {
   const page = fs.readFileSync("src/app/classement/PageClient.jsx", "utf8");
-  assert.match(page, /"overall"/);
-  assert.match(page, /\/api\/leaderboard\/overall\?limit=50/);
-  assert.match(page, /function isOverallTab\(/);
-  assert.match(page, /case "overall"/);
-  assert.match(page, /Overall Elo/);
+  // The board was removed by product decision. The aggregate still powers
+  // the profile header and the result screen, not the ladder.
+  assert.ok(!page.includes("/api/leaderboard/overall?limit=50"));
+  assert.doesNotMatch(page, /isOverallTab/);
 });
-
 // ════════════════════════════════════════════════════════════════════════
 // 6. Result screen movement (before → after)
 // ════════════════════════════════════════════════════════════════════════
@@ -391,15 +389,16 @@ test("PER-GAME BOARD: enriches rows with the badge without merging games", () =>
   assert.match(fn, /overallElo: elo/);
 });
 
-test("UI: the badge renders next to names on the classement", () => {
+test("UI: the Overall Elo badge is gone from the classement rows", () => {
   const page = fs.readFileSync("src/app/classement/PageClient.jsx", "utf8");
-  assert.match(page, /function OverallEloBadge\(/);
-  assert.match(page, /<OverallEloBadge item=\{item\}/);
-  // Not doubled up on the Overall tab (where it is already the metric) or the
-  // Trophy tab (where the badge has no meaning).
-  assert.match(page, /!isOverallTab\(tab\) && !isTrophyTab\(tab\) && \(/);
+  assert.doesNotMatch(page, /OverallEloBadge/);
+  // The profile still shows the aggregate in its header.
+  const own = fs.readFileSync("src/app/profil/PageClient.jsx", "utf8");
+  assert.match(
+    own,
+    /Overall \{Number\(stats\.overallElo\)\.toLocaleString\(\)\} Elo/,
+  );
 });
-
 test("UI: the badge renders in both profile headers", () => {
   const own = fs.readFileSync("src/app/profil/PageClient.jsx", "utf8");
   assert.match(own, /Overall \{Number\(stats\.overallElo\)\.toLocaleString\(\)\} Elo/);

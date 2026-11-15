@@ -60,24 +60,21 @@ test("the all-time config ranks the users-row high-water marks", () => {
   );
 });
 
-test("the leaderboard UI labels and formats both coin boards", () => {
-  assert.match(PAGE, /biggest_win: "Biggest Coin Win"/);
-  assert.match(PAGE, /peak_balance: "Highest All-Time Coins"/);
-  assert.match(PAGE, /case "biggest_win":/);
-  assert.match(PAGE, /case "peak_balance":/);
-  // Both render a coin value.
-  assert.ok((PAGE.match(/coins`/g) || []).length >= 2);
+test("the leaderboard UI no longer offers a coin sub-category", () => {
+  // The category chips went with every sub-category, so the two coin boards
+  // are no longer reachable (or labelled) from the page. The query layer
+  // keeps its configs; nothing renders them.
+  assert.doesNotMatch(PAGE, /peak_balance: "Highest All-Time Coins"/);
+  assert.doesNotMatch(PAGE, /biggest_win: "Biggest Coin Win"/);
+  assert.doesNotMatch(PAGE, /CATEGORY_LABELS/);
+  assert.doesNotMatch(PAGE, /case "biggest_win":/);
+  assert.doesNotMatch(PAGE, /case "peak_balance":/);
 });
-
-test("the weekly tab cannot select an all-time-only coin board", () => {
-  assert.match(
-    PAGE,
-    /ALL_TIME_ONLY_CATEGORIES = new Set\(\["pvp_wins", "biggest_win", "peak_balance"\]\)/,
-  );
-  assert.match(PAGE, /tab === "all-time" \? ALL_TIME_CATEGORIES : WEEKLY_CATEGORIES/);
-  assert.match(PAGE, /ALL_TIME_ONLY_CATEGORIES\.has\(category\)/);
+test("no sub-category row remains to select a weekly board", () => {
+  assert.doesNotMatch(PAGE, /ALL_TIME_ONLY_CATEGORIES/);
+  assert.doesNotMatch(PAGE, /ALL_TIME_CATEGORIES : WEEKLY_CATEGORIES/);
+  assert.doesNotMatch(PAGE, /WEEKLY_CATEGORIES/);
 });
-
 test("the peak-balance column ships with its migration", () => {
   const schema = fs.readFileSync("src/db/schema.ts", "utf8");
   assert.match(schema, /peakBalance: numeric\("peak_balance"/);

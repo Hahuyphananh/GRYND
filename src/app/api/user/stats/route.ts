@@ -96,9 +96,40 @@ export async function GET() {
     ratings,
   ).catch(() => null);
 
+  // RANKED RECORD. `player_ratings` only carries rated matches, so summing it
+  // gives wins/losses that actually moved a rating — the record the profile
+  // shows. `user_stats.wins` (which counts every settled result, rated or not)
+  // is deliberately not used for wins or the win rate.
+  const rankedRows = Object.values(
+    (ratings || {}) as Record<
+      string,
+      { wins?: number; losses?: number; draws?: number }
+    >,
+  );
+  const ranked = rankedRows.reduce(
+    (totals, entry) => {
+      totals.wins += Number(entry?.wins) || 0;
+      totals.losses += Number(entry?.losses) || 0;
+      totals.draws += Number(entry?.draws) || 0;
+      return totals;
+    },
+    { wins: 0, losses: 0, draws: 0 },
+  );
+  const rankedGames = ranked.wins + ranked.losses + ranked.draws;
+  const rankedDecided = ranked.wins + ranked.losses;
+  const rankedWinRate =
+    rankedDecided > 0
+      ? Math.round((ranked.wins / rankedDecided) * 10_000) / 100
+      : 0;
+
   return Response.json({
     userStats: {
       ...row,
+      // Override the stored counters with the ranked-only record above.
+      gamesWon: ranked.wins,
+      gamesLost: ranked.losses,
+      gamesPlayed: rankedGames,
+      gameWinRate: rankedWinRate,
       ratings,
       // Per-game trophies + the overall trophy total.
       trophies,

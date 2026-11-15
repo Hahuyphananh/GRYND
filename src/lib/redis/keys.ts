@@ -32,8 +32,27 @@ export const CacheKeys = {
       `${PREFIX}:lb:daily-streak:${type}:${limit}:${offset}`,
 
     /**
+     * grynd:lb:ranked-wins:{limit}:{offset}
+     *
+     * The All-Time Wins board: ranked wins only (summed per-game
+     * `player_ratings.wins`), so a settlement can move it.
+     */
+    rankedWins: (limit: number, offset: number) =>
+      `${PREFIX}:lb:ranked-wins:${limit}:${offset}`,
+
+    /**
+     * grynd:lb:daily-deal:{limit}:{offset}
+     *
+     * The Daily Deal best-time board, read from the official daily result
+     * rows. A new completion can only improve a time, so a settlement purge
+     * covers it too.
+     */
+    dailyDealBestTime: (limit: number, offset: number) =>
+      `${PREFIX}:lb:daily-deal:${limit}:${offset}`,
+
+    /**
      * Patterns for the ranking boards every settlement can affect
-     * (all-time, weekly, daily-streak). The per-game boards are NOT here:
+     * (all-time, weekly, daily-streak, ranked wins, daily deal). The per-game boards are NOT here:
      * they are the Elo boards under `rating` below, and they are purged
      * eagerly by that game's own settlement instead of by a debounced
      * full-table purge. `all` (below) still wipes everything for the
@@ -43,6 +62,8 @@ export const CacheKeys = {
       `${PREFIX}:lb:all-time:*`,
       `${PREFIX}:lb:weekly:*`,
       `${PREFIX}:lb:daily-streak:*`,
+      `${PREFIX}:lb:ranked-wins:*`,
+      `${PREFIX}:lb:daily-deal:*`,
     ],
 
     /** Wildcard pattern for eviction of ALL leaderboard keys */

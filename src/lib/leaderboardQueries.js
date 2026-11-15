@@ -664,3 +664,154 @@ export async function fetchWeeklyStreakLeaderboard({ type, limit, offset, clerkI
     clerkId,
   });
 }
+
+// ── Ranked wins ─────────────────────────────────────────────────────────────
+// The all-time wins board now ranks RANKED wins only: the per-game `wins`
+// column on `player_ratings`, summed across games. `user_stats.wins` counts
+// every settled result (including non-rated modes), which is why it is not the
+// source here — a win only counts once it moved a rating.
+export async function fetchRankedWinsLeaderboard({
+  limit,
+  offset,
+  clerkId = null,
+}) {
+  const columns = await getLeaderboardColumns();
+  const clerkIdField = userIdentityField(columns, "clerk_id", "NULL");
+  const nameField = userIdentityField(columns, "name", "'Unknown'");
+  const iconKeyField = userIdentityField(columns, "selected_icon", "NULL");
+  const equippedField = userIdentityField(columns, "equipped_cosmetics", "NULL");
+  const peakTotalField = userIdentityField(columns, "peak_total_trophies", "0");
+  const params = clerkId ? [limit, offset, clerkId] : [limit, offset];
+  const meClause =
+    clerkId && hasColumn(columns, "users", "clerk_id")
+      ? "(SELECT row_to_json(ranked) FROM ranked WHERE clerk_id = $3 LIMIT 1) AS me"
+      : "NULL AS me";
+
+  const result = await getSql().query(
+    `
+      WITH totals AS (
+        SELECT r.user_id,
+               SUM(r.wins)::int AS wins,
+               SUM(r.losses)::int AS losses,
+               SUM(r.draws)::int AS draws
+          FROM player_ratings r
+         GROUP BY r.user_id
+      ),
+      ranked AS (
+        SELECT
+          ROW_NUMBER() OVER (ORDER BY t.wins DESC, t.losses ASC, u.id ASC)::int AS rank,
+          ${clerkIdField} AS clerk_id,
+          u.id AS user_id,
+          ${nameField} AS name,
+          ${iconKeyField} AS icon_key,
+          ${equippedField} AS equipped_cosmetics,
+          ${peakTotalField} AS peak_total_trophies,
+          t.wins, t.losses, t.draws,
+          json_build_object(
+            'name', ${nameField},
+            'icon_key', ${iconKeyField}
+          ) AS "user"
+        FROM totals t
+        INNER JOIN users u ON u.id = t.user_id
+        WHERE t.wins > 0
+      ),
+      paged AS (
+        SELECT * FROM ranked ORDER BY rank ASC LIMIT $1 OFFSET $2
+      )
+      SELECT
+        COALESCE(json_agg(paged ORDER BY rank ASC), '[]'::json) AS items,
+        ${meClause}
+      FROM paged
+    `,
+    params,
+  );
+
+  const row = result?.[0];
+  const decorate = (item) => decoratePlayerLevel(item);
+  const items = Array.isArray(row?.items) ? row.items.map(decorate) : [];
+  const me = row?.me ? decorate(row.me) : null;
+
+  return {
+    items: await attachProBadges(await attachProfileFrames(items)),
+    me: me ? (await attachProBadges(await attachProfileFrames([me])))[0] : null,
+  };
+}
+
+// ── Daily Deal best time ────────────────────────────────────────────────────
+// The fastest COMPLETED Daily Deal per player, from the official result rows
+// (`solitaire_daily_results`). Only a verified completion has a row, and
+// `elapsed_ms = 0` means "no time recorded", so it never ranks as an instant
+// win. Lower is better, so the board sorts ascending.
+export async function fetchDailyDealBestTimeLeaderboard({
+  limit,
+  offset,
+  clerkId = null,
+}) {
+  const columns = await getLeaderboardColumns();
+  const clerkIdField = userIdentityField(columns, "clerk_id", "NULL");
+  const nameField = userIdentityField(columns, "name", "'Unknown'");
+  const iconKeyField = userIdentityField(columns, "selected_icon", "NULL");
+  const equippedField = userIdentityField(columns, "equipped_cosmetics", "NULL");
+  const peakTotalField = userIdentityField(columns, "peak_total_trophies", "0");
+  const params = clerkId ? [limit, offset, clerkId] : [limit, offset];
+  const meClause =
+    clerkId && hasColumn(columns, "users", "clerk_id")
+      ? "(SELECT row_to_json(ranked) FROM ranked WHERE clerk_id = $3 LIMIT 1) AS me"
+      : "NULL AS me";
+
+  const result = await getSql().query(
+    `
+      WITH best AS (
+        SELECT d.user_id,
+               MIN(d.elapsed_ms)::int AS best_ms,
+               COUNT(*)::int AS runs
+          FROM solitaire_daily_results d
+         WHERE d.completed = true AND d.elapsed_ms > 0
+         GROUP BY d.user_id
+      ),
+      ranked AS (
+        SELECT
+          ROW_NUMBER() OVER (ORDER BY b.best_ms ASC, u.id ASC)::int AS rank,
+          ${clerkIdField} AS clerk_id,
+          u.id AS user_id,
+          ${nameField} AS name,
+          ${iconKeyField} AS icon_key,
+          ${equippedField} AS equipped_cosmetics,
+          ${peakTotalField} AS peak_total_trophies,
+          b.best_ms, b.runs,
+          json_build_object(
+            'name', ${nameField},
+            'icon_key', ${iconKeyField}
+          ) AS "user"
+        FROM best b
+        INNER JOIN users u ON u.clerk_id = b.user_id
+      ),
+      paged AS (
+        SELECT * FROM ranked ORDER BY rank ASC LIMIT $1 OFFSET $2
+      )
+      SELECT
+        COALESCE(json_agg(paged ORDER BY rank ASC), '[]'::json) AS items,
+        ${meClause}
+      FROM paged
+    `,
+    params,
+  );
+
+  const row = result?.[0];
+  const decorate = (item) => decoratePlayerLevel(item);
+  const items = Array.isArray(row?.items) ? row.items.map(decorate) : [];
+  const me = row?.me ? decorate(row.me) : null;
+
+  return {
+    items: await attachProBadges(await attachProfileFrames(items)),
+    me: me ? (await attachProBadges(await attachProfileFrames([me])))[0] : null,
+  };
+}
+
+/** `m:ss` for a millisecond duration — the Daily Deal board's display unit. */
+export function formatDailyDealTime(ms) {
+  const total = Math.max(0, Math.round(Number(ms) / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}

@@ -342,22 +342,38 @@ test("UI: the game tabs mirror RATED_GAMES exactly (no drift)", () => {
   for (const { key, label } of mirror) {
     assert.equal(label, RATING_GAME_LABELS[key], `label mismatch for ${key}`);
   }
-  // ...and the authoritative list still comes from the API on load.
-  assert.match(page, /board\.data\?\.games/);
+  // The page no longer renders a per-game tab, so there is no game list to
+  // reconcile with the API on load.
 });
 
-test("UI: the per-game board ranks and labels by Elo", () => {
+test("UI: the page offers exactly the five boards it can rank", () => {
   const code = codeOf(CLASSEMENT);
   assert.match(
     code,
-    /const displayCategory = isPerGameTab\(tab\)\s*\?\s*"rating"/,
+    /const TABS = \["trophies", "all-time", "daily-deal", "daily-current", "daily-best"\]/,
   );
-  assert.match(code, /return formatNumber\(field\("rating"\)\);/);
-  assert.match(code, /ProvisionalChip/);
-  assert.match(code, /provisionalGamesCompleted/);
-  assert.match(code, /\/api\/leaderboard\/game\?game=\$\{game\}&limit=50/);
+  // Trophies IS the all-time peak board, under a plain label.
+  assert.ok(code.includes("/api/leaderboard/trophy-peak?limit=50"));
+  // All-Time wins ranks RANKED wins only.
+  assert.ok(code.includes("/api/leaderboard/ranked-wins?limit=50"));
+  assert.ok(code.includes("/api/leaderboard/daily-deal-best-time?limit=50"));
+  // Both boards have a live route behind them.
+  assert.ok(fs.existsSync("src/app/api/leaderboard/ranked-wins/route.js"));
+  assert.ok(fs.existsSync("src/app/api/leaderboard/daily-deal-best-time/route.js"));
+  // No sub-categories: one tab, one ranking.
+  assert.doesNotMatch(code, /CATEGORY_LABELS|ALL_TIME_CATEGORIES|WEEKLY_CATEGORIES/);
+  assert.doesNotMatch(code, /setCategory\(/);
+  // Win rate is a profile stat, never a board one.
+  assert.doesNotMatch(code, /gameWinRate|% win/);
+  // The Elo and weekly boards are gone with their plumbing.
+  assert.doesNotMatch(
+    code,
+    /isPerGameTab|isOverallTab|isGainTab|OverallEloBadge|ProvisionalChip/,
+  );
+  // Streaks stay.
+  assert.match(code, /"daily-current"/);
+  assert.match(code, /"daily-best"/);
 });
-
 test("UI: no token or winnings metric is rendered on the boards", () => {
   const code = codeOf(CLASSEMENT);
   // The two coin boards ARE rendered (Biggest Coin Win / Highest All-Time
@@ -376,46 +392,14 @@ test("UI: no token or winnings metric is rendered on the boards", () => {
   assert.doesNotMatch(tabs, /\btoken/i);
 });
 
-test("DEEP LINK: ?game= opens that game's Elo board; unknown ids are ignored", () => {
-  const page = fs.readFileSync(CLASSEMENT, "utf8");
-  assert.match(page, /URLSearchParams\(window\.location\.search\)\.get\("game"\)/);
-  assert.match(page, /setTab\("per-game"\)/);
-
-  // The lobby's canonical ids differ from the rating keys for some games, so
-  // every alias target must resolve to a REAL rated game key — otherwise a
-  // lobby shortcut would land on an empty invented board.
-  const block = page.slice(page.indexOf("const LOBBY_GAME_ALIASES"));
-  const body = block.slice(0, block.indexOf("};"));
-  const targets = [...body.matchAll(/:\s*"([a-z0-9-]+)"/g)].map((m) => m[1]);
-  assert.ok(targets.length >= 4, "the lobby alias map should be populated");
-  for (const target of targets) {
-    assert.ok(
-      RATED_GAMES.includes(target),
-      `alias target ${target} is not a rated game`,
-    );
-  }
-
-  // These rated games already share the lobby's id, so no alias is needed.
-  for (const direct of [
-    "chess",
-    "four-in-a-row",
-    "dots-and-boxes",
-    "memory-grid",
-    "precision",
-    "mines-pvp",
-  ]) {
-    assert.ok(RATED_GAMES.includes(direct), `${direct} must be rated`);
-    assert.equal(LOBBY_ALIAS_HAS(direct), false, `${direct} should not be aliased`);
-  }
+test("the page no longer deep-links to a per-game Elo board", () => {
+  const code = codeOf(CLASSEMENT);
+  // The per-game ladder tab was removed, so the old ?game= shortcut went
+  // with it rather than landing on a board the page no longer renders.
+  assert.doesNotMatch(code, /setTab\("per-game"\)/);
+  assert.doesNotMatch(code, /LOBBY_GAME_ALIASES/);
+  assert.doesNotMatch(code, /\/api\/leaderboard\/game\?game=/);
 });
-
-/** True when the deep-link alias map contains `key` as a key. */
-function LOBBY_ALIAS_HAS(key) {
-  const page = fs.readFileSync(CLASSEMENT, "utf8");
-  const block = page.slice(page.indexOf("const LOBBY_GAME_ALIASES"));
-  const body = block.slice(0, block.indexOf("};") + 2);
-  return new RegExp(`(^|\\s)["']?${key}["']?\\s*:`).test(body);
-}
 
 // ════════════════════════════════════════════════════════════════════════
 // 5. The profile's game-specific rating section
