@@ -555,6 +555,25 @@ jobs:
             exit 1
           fi
 
+      - name: Reclaim disk on the release host
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The host is small enough that a full disk made the tooling rsync
+          # below fail with "No space left on device" before any release work
+          # ran. Reclaim first: the prune tool already on the host never
+          # deletes the active or previous release, and incoming/ only ever
+          # holds uploads that were never installed. A missing tool or an
+          # already-clean host must not fail the deploy.
+          "$SSH_CMD" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "df -h / | tail -1;
+             if [ -f '$REMOTE_PATH/tool/release.mjs' ]; then
+               cd '$REMOTE_PATH' && node tool/release.mjs prune --keep=3 || true;
+             fi;
+             mkdir -p '$REMOTE_PATH/incoming';
+             find '$REMOTE_PATH/incoming' -mindepth 1 -maxdepth 1 -exec rm -rf {} + ;
+             df -h / | tail -1" || true
+
       - name: Refresh the release tooling on the host
         shell: bash
         run: |
