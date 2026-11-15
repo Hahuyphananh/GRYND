@@ -570,7 +570,9 @@ jobs:
             '[.active.releaseId, .active.previousReleaseId, .current.id, .previous.id]
              | map(select(. != null)) | unique | .[]' 2>/dev/null || true)
 
-          "$SSH_CMD" "$DEPLOY_USER@$DEPLOY_HOST" "bash -s" <<REMOTE
+          # The reclaim is best-effort: a host that reports a problem must not
+          # block a deploy, so this never fails the job.
+          "$SSH_CMD" "$DEPLOY_USER@$DEPLOY_HOST" "bash -s" <<REMOTE || true
           set -u
           cd '$REMOTE_PATH'
           # Uploads that were never installed.
@@ -580,7 +582,7 @@ jobs:
             node tool/release.mjs prune --keep=3 >/dev/null 2>&1 || true
           fi
           keep='$protected'
-          if [ -n "$keep" ]; then
+          if [ -n "\$keep" ]; then
             for d in releases/*/; do
               [ -d "$d" ] || continue
               id=\$(basename "\$d")
