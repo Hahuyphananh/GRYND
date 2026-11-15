@@ -350,9 +350,15 @@ test("migration 0216 runs on PostgreSQL and creates the indexed snapshot table",
     "the per-day sweep needs its own index",
   );
 
+  // Scoped to the FIXTURE schema: a database that already has the real table
+  // (migration applied in production) has a constraint of the same name in
+  // `public`, and an unscoped lookup then counts two.
   const { rows: constraints } = await admin.query(
     `SELECT confrelid::regclass::text AS ref, confdeltype
-     FROM pg_constraint WHERE conname = 'player_rank_snapshots_user_id_fkey'`,
+     FROM pg_constraint
+     WHERE conname = 'player_rank_snapshots_user_id_fkey'
+       AND connamespace = $1::regnamespace`,
+    [SCHEMA],
   );
   assert.equal(constraints.length, 1, "the snapshot row must reference a user");
   assert.equal(constraints[0].ref, "users");

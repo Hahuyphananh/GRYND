@@ -18,9 +18,12 @@ import { useTranslation } from "../../hooks/useTranslation";
 export default function StatsPageClient({
   signedIn,
   pro,
+  membershipUnavailable = false,
 }: {
   signedIn: boolean;
   pro: boolean;
+  /** The server could not READ the membership (timeout/failure) — not the same as free. */
+  membershipUnavailable?: boolean;
 }) {
   const { t } = useTranslation();
 
@@ -40,7 +43,11 @@ export default function StatsPageClient({
           <p className="mt-2 max-w-3xl text-sm text-[#9dd8ff]/80">{t("stats.subtitle")}</p>
         </header>
 
-        <PerformanceDashboard signedIn={signedIn} pro={pro} />
+        <PerformanceDashboard
+          signedIn={signedIn}
+          pro={pro}
+          membershipUnavailable={membershipUnavailable}
+        />
       </main>
 
       <Footer />

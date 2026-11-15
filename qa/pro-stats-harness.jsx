@@ -14,7 +14,13 @@
 //   states that matter (a locked account, an account with no results, a failed
 //   request, a single-point series) and the responsive layouts.
 //
-// THE SCENARIO IS IN THE URL: ?scenario=pro|locked|free|guest|empty|onepoint|error|loading
+// THE SCENARIO IS IN THE URL:
+//   ?scenario=pro|locked|free|guest|empty|onepoint|error|loading|unverified
+//
+// `unverified` is the server saying "I could not READ your membership" (a 503
+// from /api/stats/performance, or a timed-out lookup on the page). It is not a
+// downgrade: the dashboard must say so and offer a retry, never show the
+// upgrade prompt to a paying member.
 //
 // Run through qa/pro-stats-check.mjs — it compiles this file, serves it over a
 // real http origin and drives every scenario at two viewports.
@@ -292,8 +298,14 @@ window.fetch = async (url) => {
 };
 
 const PROPS = {
-  pro: scenario === "lock" || scenario === "free" || scenario === "guest" ? false : true,
+  pro:
+    scenario === "lock" || scenario === "free" || scenario === "guest" || scenario === "unverified"
+      ? false
+      : true,
   signedIn: scenario === "guest" ? false : true,
+  // The membership could not be read — distinct from "free". No request is
+  // expected: the dashboard cannot know whether analytics are allowed.
+  membershipUnavailable: scenario === "unverified",
 };
 
 // The values the check script asserts are actually rendered.
@@ -313,7 +325,11 @@ window.__expected = {
 createRoot(document.getElementById("root")).render(
   <SWRProvider>
     <LanguageProvider>
-      <PerformanceDashboard signedIn={PROPS.signedIn} pro={PROPS.pro} />
+      <PerformanceDashboard
+        signedIn={PROPS.signedIn}
+        pro={PROPS.pro}
+        membershipUnavailable={PROPS.membershipUnavailable}
+      />
     </LanguageProvider>
   </SWRProvider>,
 );

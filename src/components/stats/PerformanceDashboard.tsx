@@ -20,7 +20,9 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import AsyncState from "../states/AsyncState";
+import ErrorState from "../states/ErrorState";
 import LineChart from "./LineChart";
 import ProAnalyticsLocked from "./ProAnalyticsLocked";
 import StatTile from "./StatTile";
@@ -136,12 +138,20 @@ function shortDate(iso: string | null | undefined): string {
 export default function PerformanceDashboard({
   signedIn,
   pro,
+  membershipUnavailable = false,
 }: {
   signedIn: boolean;
   /** Server-resolved membership — the client never decides this. */
   pro: boolean;
+  /**
+   * The server could not READ the membership (timeout or DB failure). That is
+   * not a downgrade: showing the upgrade prompt here would tell a paying member
+   * their subscription is gone. Offer a retry instead.
+   */
+  membershipUnavailable?: boolean;
 }) {
   const { t } = useTranslation();
+  const router = useRouter();
   const [game, setGame] = useState<string>("all");
   const [range, setRange] = useState<RangeKey>("all");
   const [pages, setPages] = useState(1);
@@ -172,6 +182,22 @@ export default function PerformanceDashboard({
 
   const rangeLabel = (key: RangeKey) =>
     key === "all" ? t("stats.range.all") : t(`stats.range.${key}`);
+
+  if (signedIn && membershipUnavailable) {
+    return (
+      <ErrorState
+        title={t(
+          "stats.membership_unverified_title",
+          "We couldn't verify your GRYND PRO membership",
+        )}
+        description={t(
+          "stats.membership_unverified_body",
+          "The membership check didn't answer in time, so the analytics stay hidden for now. Nothing was changed on your account — try again in a moment.",
+        )}
+        onRetry={() => router.refresh()}
+      />
+    );
+  }
 
   if (!signedIn) {
     return (

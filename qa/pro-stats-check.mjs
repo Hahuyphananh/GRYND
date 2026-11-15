@@ -28,8 +28,10 @@
 
 import esbuild from "esbuild";
 import postcss from "postcss";
-import tailwindcss from "tailwindcss";
-import autoprefixer from "autoprefixer";
+// Tailwind v4 ships its own PostCSS plugin; the bare `tailwindcss` entrypoint
+// throws when used as one (see postcss.config.js). Vendor prefixing happens
+// inside Lightning CSS, so there is no autoprefixer pass here either.
+import tailwindcss from "@tailwindcss/postcss";
 import { chromium } from "playwright";
 import { createServer } from "node:http";
 import { mkdtempSync, writeFileSync, mkdirSync, readFileSync } from "node:fs";
@@ -113,10 +115,9 @@ await esbuild.build({
 });
 
 // ── The app's real stylesheet ──────────────────────────────────────────────
-const compiled = await postcss([
-  tailwindcss(join(root, "tailwind.config.js")),
-  autoprefixer(),
-]).process(readFileSync(join(root, "src/app/globals.css"), "utf8"), {
+const compiled = await postcss([tailwindcss()]).process(
+  readFileSync(join(root, "src/app/globals.css"), "utf8"),
+  {
   from: join(root, "src/app/globals.css"),
 });
 writeFileSync(
@@ -414,7 +415,36 @@ const sameRow = (a, b) => Math.abs(a.y - b.y) <= 2;
   await page.close();
 }
 
-// ── 8. A failed request ────────────────────────────────────────────────────
+// ── 8. The membership check itself failed (503) ────────────────────────────
+// The server could not READ the subscription — not the same as "free". A
+// paying member must be told the check failed and offered a retry, not shown
+// the upgrade prompt.
+{
+  const { page, text, errors } = await open("unverified");
+  check(
+    "unverified: it says the membership could not be verified",
+    has(text, "We couldn't verify your GRYND PRO membership"),
+  );
+  check(
+    "unverified: it explains nothing changed and offers a retry",
+    has(text, "didn't answer in time") && has(text, t("en", "states.retry")),
+  );
+  check(
+    "unverified: the upgrade prompt is NOT shown to a paying member",
+    (await page.locator('a[href="/upgrade-pro"]').count()) === 0,
+  );
+  const requests = await page.evaluate(() => window.__proStats.requests);
+  check("unverified: the analytics endpoint is not called", requests.length === 0, requests.join(","));
+  check(
+    "unverified: no chart is drawn from an unverified account",
+    (await page.locator("figure svg[role='img']").count()) === 0,
+  );
+  check("unverified: the page raised no runtime error", errors.length === 0, errors.join(" | "));
+  await shots(page, "unverified");
+  await page.close();
+}
+
+// ── 9. A failed request ────────────────────────────────────────────────────
 {
   const { page, text } = await open("error");
   check("error: the failure state replaces the dashboard", !has(text, t("en", "stats.pergame.title")));
@@ -424,7 +454,7 @@ const sameRow = (a, b) => Math.abs(a.y - b.y) <= 2;
   await page.close();
 }
 
-// ── 9. The first load ──────────────────────────────────────────────────────
+// ── 10. The first load ─────────────────────────────────────────────────────
 {
   const page = await browser.newPage({ viewport: { width: 1280, height: 1000 }, locale: "en-US" });
   await page.goto(`${base}?scenario=loading`, { waitUntil: "domcontentloaded" });
