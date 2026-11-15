@@ -13,6 +13,12 @@ export const metadata = {
   alternates: {
     canonical: `${SITE_URL}/`,
   },
+  // Trustpilot domain ownership check. It must be served on the homepage
+  // <head>, so it lives here rather than in the root layout.
+  other: {
+    "trustpilot-one-time-domain-verification-id":
+      "98b96218-f16a-408f-b1f0-5a8efcb052e2",
+  },
   openGraph: {
     title: "GRYND — The competitive home of Solitaire",
     description:

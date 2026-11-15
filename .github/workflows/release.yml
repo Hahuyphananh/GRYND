@@ -207,6 +207,16 @@ jobs:
           NEXT_PUBLIC_HILLTOPS_VAST_URL: ${{ vars.NEXT_PUBLIC_HILLTOPS_VAST_URL }}
           NEXT_PUBLIC_HILLTOP_BANNER_ENABLED: ${{ vars.NEXT_PUBLIC_HILLTOP_BANNER_ENABLED }}
           NEXT_PUBLIC_HILLTOP_BANNER_SCRIPT_URL: ${{ vars.NEXT_PUBLIC_HILLTOP_BANNER_SCRIPT_URL }}
+          # Trustpilot widget (src/lib/trustpilot.ts). Inlined for the same
+          # reason as the block above: a value absent here is baked in as
+          # `undefined`, so setting the repository variable later could never
+          # light the widget up without a code change. The domain-verification
+          # meta tag does NOT depend on these — it is static markup in
+          # src/app/page.jsx and ships with every build.
+          NEXT_PUBLIC_TRUSTPILOT_BUSINESS_UNIT_ID: ${{ vars.NEXT_PUBLIC_TRUSTPILOT_BUSINESS_UNIT_ID }}
+          NEXT_PUBLIC_TRUSTPILOT_TEMPLATE_ID: ${{ vars.NEXT_PUBLIC_TRUSTPILOT_TEMPLATE_ID }}
+          NEXT_PUBLIC_TRUSTPILOT_DOMAIN: ${{ vars.NEXT_PUBLIC_TRUSTPILOT_DOMAIN }}
+          NEXT_PUBLIC_TRUSTPILOT_ENABLED: ${{ vars.NEXT_PUBLIC_TRUSTPILOT_ENABLED }}
           # Server-side only; the running service gets this from env/app.env.
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}

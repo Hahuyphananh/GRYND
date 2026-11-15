@@ -4,6 +4,7 @@ import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
 import ReviewWall from "../../components/reviews/ReviewWall";
+import TrustpilotPanel from "../../components/trustpilot/TrustpilotPanel";
 import { getApprovedReviews, getReviewStats, type PublicReview, type ReviewStats } from "../../lib/reviews";
 import { buildAppJsonLd } from "../../lib/reviewJsonLd";
 
@@ -78,6 +79,11 @@ export default async function ReviewsPage() {
           initialReviews={data?.reviews ?? null}
           initialStats={data?.stats ?? null}
         />
+
+        {/* Trustpilot: the TrustBox and the "write a review" link. Renders
+            nothing until the business unit id and template id are configured
+            (src/lib/trustpilot.ts). */}
+        <TrustpilotPanel />
       </div>
       <Footer />
     </div>
