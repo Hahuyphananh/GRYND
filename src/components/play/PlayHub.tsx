@@ -4,7 +4,7 @@
 //
 // THE PLAY HUB.
 //
-// Five cards, each pointing at a dedicated lobby. The modes are grouped
+// Six cards, each pointing at a dedicated lobby. The modes are grouped
 // visually (competitive / casual / puzzle) so the difference is legible without
 // a legend. No card is a placeholder: every href resolves to a real lobby, and
 // the puzzle and AI destinations reuse the existing implementations.
@@ -15,6 +15,7 @@ import {
   IconArrowRight,
   IconCalendar,
   IconCards,
+  IconInfinity,
   IconPuzzle,
   IconRobot,
   IconTrophy,
@@ -24,7 +25,7 @@ import Footer from "../Footer";
 import NavigationBar from "../navigation-bar";
 import { useTranslation } from "../../hooks/useTranslation";
 
-type ModeId = "solo" | "daily" | "ai" | "ranked" | "dailyPuzzle";
+type ModeId = "solo" | "daily" | "ai" | "ranked" | "dailyPuzzle" | "unlimited";
 
 type Mode = {
   id: ModeId;
@@ -69,6 +70,13 @@ const MODES: readonly Mode[] = [
     group: "puzzle",
     icon: <IconPuzzle size={22} aria-hidden="true" />,
     tone: "border-sky-400/30 bg-sky-400/[0.07] text-sky-200",
+  },
+  {
+    id: "unlimited",
+    href: "/play/unlimited-puzzles",
+    group: "puzzle",
+    icon: <IconInfinity size={22} aria-hidden="true" />,
+    tone: "border-fuchsia-400/30 bg-fuchsia-400/[0.07] text-fuchsia-200",
   },
 ];
 

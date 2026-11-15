@@ -2,8 +2,8 @@
 
 // src/components/play/LobbyStatus.tsx
 //
-// Real status for the Solo, Daily Challenge and Daily Puzzle lobbies. Every
-// figure comes from an existing server endpoint:
+// Real status for the Solo, Daily Challenge, Daily Puzzle and Unlimited Puzzle
+// lobbies. Every figure comes from an existing server endpoint:
 //
 //   /api/solitaire/solo       — the player's own solo record
 //   /api/solitaire/daily      — today's daily result and streak
@@ -14,6 +14,7 @@
 // fabricated, and the puzzle lobby never consumes an attempt: GET is read-only.
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 import { useTranslation } from "../../hooks/useTranslation";
 
@@ -159,7 +160,7 @@ function Row({ label, value }: { label: string; value: string }) {
 export default function LobbyStatus({
   mode,
 }: {
-  mode: "solo" | "daily" | "dailyPuzzle";
+  mode: "solo" | "daily" | "dailyPuzzle" | "unlimited";
 }) {
   const { t } = useTranslation();
   const endpoint =
@@ -167,7 +168,7 @@ export default function LobbyStatus({
       ? "/api/solitaire/solo"
       : mode === "daily"
         ? "/api/solitaire/daily"
-        : "/api/solitaire/puzzle?kind=daily";
+        : `/api/solitaire/puzzle?kind=${mode === "dailyPuzzle" ? "daily" : "unlimited"}`;
   const { data, state } = useStatus(endpoint);
 
   if (state === "loading") return <Loading label={t("playHub.loading")} />;
@@ -265,5 +266,48 @@ export default function LobbyStatus({
     );
   }
 
-  return <p className="text-sm text-white/50">{t("playHub.unavailable")}</p>;
+  // Unlimited puzzles: a single best move per puzzle, 5 free per UTC day.
+  const allowance = puzzle.allowance ?? null;
+  if (!allowance) {
+    return <p className="text-sm text-white/50">{t("playHub.unavailable")}</p>;
+  }
+  if (allowance.unlimited) {
+    return (
+      <div className="space-y-1.5">
+        <Row
+          label={t("playHub.statusTitle")}
+          value={t("playHub.lobby.unlimited.unlimited")}
+        />
+        <p className="text-[10px] leading-relaxed text-white/35">
+          {t("playHub.lobby.unlimited.oneType")}
+        </p>
+      </div>
+    );
+  }
+
+  const remaining = allowance.remaining ?? 0;
+  const limit = allowance.limit ?? 5;
+  return (
+    <div className="space-y-1.5">
+      <Row
+        label={t("playHub.statusTitle")}
+        value={t("playHub.lobby.unlimited.remaining", { remaining, limit })}
+      />
+      <Row
+        label={t("playHub.lobby.unlimited.used", { used: allowance.used ?? 0 })}
+        value={`${allowance.used ?? 0}/${limit}`}
+      />
+      <p className="text-[10px] leading-relaxed text-white/35">
+        {t("playHub.lobby.unlimited.oneType")} {t("playHub.lobby.unlimited.reset")}
+      </p>
+      {remaining === 0 && (
+        <p className="rounded-xl border border-[#f5ff3b]/25 bg-[#f5ff3b]/[0.06] px-3 py-2 text-xs font-semibold text-[#ffe9a3]">
+          {t("playHub.lobby.unlimited.freeNote")}{" "}
+          <Link href="/upgrade-pro" className="underline">
+            {t("playHub.upgrade")}
+          </Link>
+        </p>
+      )}
+    </div>
+  );
 }

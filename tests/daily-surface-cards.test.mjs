@@ -10,7 +10,7 @@
  *   4. cross-links, so splitting the pages does not hide the others.
  *
  * Covers the two daily surfaces (challenge / daily puzzle), the two Solitaire
- * lobbies (solo, ranked), the five-mode Play hub and the Play vs AI lobby.
+ * lobbies (solo, ranked), the six-mode Play hub and the Play vs AI lobby.
  *
  * Run:  node --import tsx --test tests/daily-surface-cards.test.mjs
  */
@@ -26,6 +26,7 @@ const code = (src) => src.replace(/^\s*\/\/.*$/gm, "");
 const CARDS = {
   challenge: "src/app/daily/opengraph-image.tsx",
   dailyPuzzle: "src/app/play/daily-puzzle/opengraph-image.tsx",
+  unlimited: "src/app/play/unlimited-puzzles/opengraph-image.tsx",
   solo: "src/app/play/solo/opengraph-image.tsx",
   ranked: "src/app/play/ranked/opengraph-image.tsx",
   hub: "src/app/play/opengraph-image.tsx",
@@ -35,6 +36,7 @@ const CARDS = {
 const PAGES = {
   challenge: "src/app/daily/page.tsx",
   dailyPuzzle: "src/app/play/daily-puzzle/page.tsx",
+  unlimited: "src/app/play/unlimited-puzzles/page.tsx",
   solo: "src/app/play/solo/page.tsx",
   ranked: "src/app/play/ranked/page.tsx",
   hub: "src/app/play/page.tsx",
@@ -44,6 +46,7 @@ const PAGES = {
 const OG_URLS = {
   challenge: "/daily",
   dailyPuzzle: "/play/daily-puzzle",
+  unlimited: "/play/unlimited-puzzles",
   solo: "/play/solo",
   ranked: "/play/ranked",
   hub: "/play",
@@ -76,6 +79,7 @@ test("every carded surface ships its own Open Graph image", () => {
   // Each card must name its own surface, not a sibling's.
   assert.match(read(CARDS.challenge), /"DAILY CHALLENGE"/);
   assert.match(read(CARDS.dailyPuzzle), /"DAILY PUZZLE"/);
+  assert.match(read(CARDS.unlimited), /"UNLIMITED PUZZLES"/);
   assert.match(read(CARDS.solo), /"SOLO"/);
   assert.match(read(CARDS.ranked), /"RANKED"/);
   assert.match(read(CARDS.hub), /"PLAY"/);
@@ -84,10 +88,10 @@ test("every carded surface ships its own Open Graph image", () => {
   // The hub is a menu, so its card enumerates the modes instead of describing
   // one; and it must not be mistaken for the AI lobby it links to.
   const hub = code(read(CARDS.hub));
-  for (const mode of ["Solo", "Daily Challenge", "Play vs AI", "Ranked", "Daily Puzzle"]) {
+  for (const mode of ["Solo", "Daily Challenge", "Play vs AI", "Ranked", "Daily Puzzle", "Unlimited Puzzles"]) {
     assert.ok(hub.includes(mode), `the hub card must name ${mode}`);
   }
-  assert.match(hub, /Five ways to play/);
+  assert.match(hub, /Six ways to play/);
 
   const ai = code(read(CARDS.ai));
   assert.match(ai, /Unrated/);
@@ -129,23 +133,27 @@ test("the lobbies do not borrow the rated/unrated claim of the other", () => {
   assert.doesNotMatch(ranked, /\bbots?\b|\bAI\b/);
 });
 
-test("the Play hub links the daily puzzle card", () => {
-  // The hub is how a visitor reaches the daily puzzle — and therefore its own
-  // social card. The card goes to the LOBBY, not straight into a game, because
-  // the lobby is where the three-step rule is stated.
+test("the Play hub links the daily puzzle and unlimited puzzle cards", () => {
+  // The hub is how a visitor reaches both puzzle pages — and therefore their
+  // own social cards. Each card goes to the LOBBY, not straight into a game,
+  // because the lobby is where the attempt rule is stated.
   const hub = read("src/components/play/PlayHub.tsx");
   const hrefs = [...hub.matchAll(/href: "([^"]+)"/g)].map((m) => m[1]);
   assert.ok(hrefs.includes("/play/daily-puzzle"), "/play/daily-puzzle must be a hub card");
-  assert.ok(!hrefs.includes("/play/unlimited-puzzles"), "unlimited puzzles were retired");
+  assert.ok(hrefs.includes("/play/unlimited-puzzles"), "/play/unlimited-puzzles must be a hub card");
   assert.ok(hrefs.includes("/play/solo") && hrefs.includes("/play/ranked"));
   assert.ok(hrefs.includes("/play/ai") && hrefs.includes("/play/daily"));
   assert.ok(hrefs.every((href) => href.startsWith("/play/")), "a hub card must never skip its lobby");
 
-  // The daily puzzle lobby exists and carries its own metadata, so the hub's
-  // link lands on a real indexable page rather than a redirect.
-  const lobby = "src/app/play/daily-puzzle/page.tsx";
-  assert.match(read(lobby), /alternates: \{ canonical:/);
-  assert.match(read(lobby), /openGraph: \{/);
+  // Each puzzle lobby exists and carries its own metadata, so the hub's link
+  // lands on a real indexable page rather than a redirect.
+  for (const lobby of [
+    "src/app/play/daily-puzzle/page.tsx",
+    "src/app/play/unlimited-puzzles/page.tsx",
+  ]) {
+    assert.match(read(lobby), /alternates: \{ canonical:/);
+    assert.match(read(lobby), /openGraph: \{/);
+  }
 });
 
 test("the daily puzzle links back to the challenge and nowhere retired", () => {

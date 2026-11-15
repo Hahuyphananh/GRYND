@@ -429,7 +429,7 @@ export default function SolitairePuzzle({ kind }: Props) {
   const blurb =
     kind === "daily"
       ? "Three real positions from one verified winning deal, free for everyone. Find the best move at each step — one mistake ends the run."
-      : "Real positions from verified winning deals. Play the strongest move on the board — it may uncover a card, build a run, reach the foundation or draw.";
+      : "Real positions from verified winning deals, one move each — shorter than the daily run. Play the strongest move on the board; it may uncover a card, build a run, reach the foundation or draw.";
 
   return (
     <section

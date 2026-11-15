@@ -1,6 +1,6 @@
 // src/lib/playHubTranslations.js
 //
-// Copy for the five-mode Solitaire Play hub and its dedicated lobbies. Mounted
+// Copy for the six-mode Solitaire Play hub and its dedicated lobbies. Mounted
 // at `playHub` in appTextTranslations.js.
 
 export const PLAY_HUB_TRANSLATIONS = {
@@ -8,7 +8,7 @@ export const PLAY_HUB_TRANSLATIONS = {
     kicker: "Play",
     title: "Choose your Solitaire",
     description:
-      "Five ways to play the same Klondike rules. Competitive modes count toward your record; casual modes never do, and the daily puzzle is a short run of strategic decisions.",
+      "Six ways to play the same Klondike rules. Competitive modes count toward your record; casual modes never do, and puzzles range from a single best move to a three-step daily run.",
     back: "Back to Play",
     loading: "Loading…",
     unavailable: "Status unavailable right now.",
@@ -62,8 +62,8 @@ export const PLAY_HUB_TRANSLATIONS = {
       unlimited: {
         title: "Unlimited Puzzles",
         tag: "Practice",
-        description: "Repeatable position puzzles at your own pace.",
-        meta: "5 free per day · unlimited on Pro",
+        description: "One position, one best move — the short version of the daily run.",
+        meta: "5 free per UTC day · 1 move each",
         cta: "Practise puzzles",
       },
     },
@@ -145,15 +145,15 @@ export const PLAY_HUB_TRANSLATIONS = {
         kicker: "Puzzle · Practice",
         title: "Unlimited Puzzles",
         description:
-          "Fresh verified positions from the same engine. Each accepted move reveals a card and stays on a winning line.",
-        note: "A puzzle counts when you submit an answer. Opening the lobby or refreshing does not spend an attempt.",
+          "A real position from a verified winning deal. Find the single best move — the same engine as the daily puzzle, without the multi-step run.",
+        note: "A puzzle counts when you submit a move. Opening the lobby or refreshing does not spend one.",
         cta: "Start a practice puzzle",
         remaining: "{remaining} of {limit} free puzzles left today",
         unlimited: "Unlimited puzzles with GRYND Pro",
         used: "Answered today: {used}",
         reset: "The free allowance resets at UTC midnight.",
         freeNote: "Free players get 5 practice puzzles per UTC day. Pro members are never counted.",
-        oneType: "Supported puzzle type: reveal a card.",
+        oneType: "One move per puzzle — shorter than the daily run.",
         playTitle: "Practice puzzle",
         back: "Back to Unlimited Puzzles",
       },
@@ -164,7 +164,7 @@ export const PLAY_HUB_TRANSLATIONS = {
     kicker: "Jouer",
     title: "Choisis ton Solitaire",
     description:
-      "Cinq façons de jouer avec les mêmes règles du Klondike. Les modes compétitifs comptent pour ton palmarès, les modes détente jamais, et l'énigme du jour est une courte série de décisions stratégiques.",
+      "Six façons de jouer avec les mêmes règles du Klondike. Les modes compétitifs comptent pour ton palmarès, les modes détente jamais, et les énigmes vont d'un seul coup à une série quotidienne de trois étapes.",
     back: "Retour à Jouer",
     loading: "Chargement…",
     unavailable: "Statut indisponible pour le moment.",
@@ -218,8 +218,8 @@ export const PLAY_HUB_TRANSLATIONS = {
       unlimited: {
         title: "Énigmes illimitées",
         tag: "Entraînement",
-        description: "Des énigmes de position répétables à ton rythme.",
-        meta: "5 gratuites par jour · illimité avec Pro",
+        description: "Une position, un meilleur coup — la version courte de la série du jour.",
+        meta: "5 gratuites par jour UTC · 1 coup chacune",
         cta: "S'entraîner",
       },
     },
@@ -295,15 +295,15 @@ export const PLAY_HUB_TRANSLATIONS = {
       unlimited: {
         kicker: "Énigme · Entraînement",
         title: "Énigmes illimitées",
-        description: "De nouvelles positions vérifiées par le même moteur. Chaque coup accepté révèle une carte et reste sur une ligne gagnante.",
-        note: "Une énigme compte quand tu soumets une réponse. Ouvrir le lobby ou rafraîchir ne consomme rien.",
+        description: "Une vraie position issue d'une donne gagnante vérifiée. Trouve l'unique meilleur coup — le même moteur que l'énigme du jour, sans la série en plusieurs étapes.",
+        note: "Une énigme compte quand tu soumets un coup. Ouvrir le lobby ou rafraîchir ne consomme rien.",
         cta: "Commencer une énigme d'entraînement",
         remaining: "{remaining} énigmes gratuites sur {limit} restantes aujourd'hui",
         unlimited: "Énigmes illimitées avec GRYND Pro",
         used: "Répondues aujourd'hui : {used}",
         reset: "L'allocation gratuite se réinitialise à minuit UTC.",
         freeNote: "Les joueurs gratuits ont 5 énigmes d'entraînement par jour UTC. Les membres Pro ne sont jamais comptés.",
-        oneType: "Type d'énigme pris en charge : révéler une carte.",
+        oneType: "Un seul coup par énigme — plus court que la série du jour.",
         playTitle: "Énigme d'entraînement",
         back: "Retour aux Énigmes illimitées",
       },
@@ -314,7 +314,7 @@ export const PLAY_HUB_TRANSLATIONS = {
     kicker: "Jugar",
     title: "Elige tu Solitario",
     description:
-      "Cinco formas de jugar con las mismas reglas del Klondike. Los modos competitivos cuentan para tu historial, los casuales nunca, y el puzle diario es una corta ronda de decisiones estratégicas.",
+      "Seis formas de jugar con las mismas reglas del Klondike. Los modos competitivos cuentan para tu historial, los casuales nunca, y los puzles van de un solo movimiento a una ronda diaria de tres pasos.",
     back: "Volver a Jugar",
     loading: "Cargando…",
     unavailable: "Estado no disponible ahora mismo.",
@@ -368,8 +368,8 @@ export const PLAY_HUB_TRANSLATIONS = {
       unlimited: {
         title: "Puzles ilimitados",
         tag: "Práctica",
-        description: "Puzles de posición repetibles a tu ritmo.",
-        meta: "5 gratis al día · ilimitados con Pro",
+        description: "Una posición, un mejor movimiento — la versión corta de la ronda diaria.",
+        meta: "5 gratis por día UTC · 1 movimiento cada uno",
         cta: "Practicar puzles",
       },
     },
@@ -445,15 +445,15 @@ export const PLAY_HUB_TRANSLATIONS = {
       unlimited: {
         kicker: "Puzle · Práctica",
         title: "Puzles ilimitados",
-        description: "Posiciones verificadas nuevas del mismo motor. Cada movimiento aceptado revela una carta y sigue en una línea ganadora.",
-        note: "Un puzle cuenta cuando envías una respuesta. Abrir el lobby o recargar no gasta intentos.",
+        description: "Una posición real de un reparto ganador verificado. Encuentra el único mejor movimiento — el mismo motor que el puzle diario, sin la ronda de varios pasos.",
+        note: "Un puzle cuenta cuando envías un movimiento. Abrir el lobby o recargar no gasta intentos.",
         cta: "Empezar un puzle de práctica",
         remaining: "Quedan {remaining} de {limit} puzles gratis hoy",
         unlimited: "Puzles ilimitados con GRYND Pro",
         used: "Respondidos hoy: {used}",
         reset: "La asignación gratuita se reinicia a medianoche UTC.",
         freeNote: "Los jugadores gratuitos tienen 5 puzles de práctica por día UTC. Los miembros Pro nunca se cuentan.",
-        oneType: "Tipo de puzle compatible: revelar una carta.",
+        oneType: "Un solo movimiento por puzle — más corto que la ronda diaria.",
         playTitle: "Puzle de práctica",
         back: "Volver a Puzles ilimitados",
       },

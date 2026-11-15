@@ -2,7 +2,7 @@
 //
 // THE PLAY HUB CONTRACT.
 //
-// Verifies the hub has exactly five cards in the required order, every card and
+// Verifies the hub has exactly six cards in the required order, every card and
 // lobby points at a real experience, navigation sends Play to /play, the ranked
 // lobby no longer offers bots, the daily puzzle uses the multi-step
 // server-enforced system, and free /stats is blurred + locked while Pro loads
@@ -33,20 +33,21 @@ const MODES = [
   ["ai", "/play/ai"],
   ["ranked", "/play/ranked"],
   ["dailyPuzzle", "/play/daily-puzzle"],
+  ["unlimited", "/play/unlimited-puzzles"],
 ];
 
 // ── Play hub ──────────────────────────────────────────────────────────────
 
-test("the Play hub renders exactly five mode cards in order", () => {
+test("the Play hub renders exactly six mode cards in order", () => {
   const source = read(HUB);
   const ids = [...source.matchAll(/data-testid=\{`play-mode-\$\{mode\.id\}`\}/g)];
   assert.equal(ids.length, 1, "cards are rendered from one list, not hand-copied");
   assert.match(source, /const MODES: readonly Mode\[\] = \[/);
 
-  const order = [...source.matchAll(/id: "(solo|daily|ai|ranked|dailyPuzzle)"/g)];
+  const order = [...source.matchAll(/id: "(solo|daily|ai|ranked|dailyPuzzle|unlimited)"/g)];
   assert.deepEqual(
     order.map((match) => match[1]),
-    ["solo", "daily", "ai", "ranked", "dailyPuzzle"],
+    ["solo", "daily", "ai", "ranked", "dailyPuzzle", "unlimited"],
   );
 
   for (const [id, href] of MODES) {
@@ -68,12 +69,16 @@ test("every mode has a dedicated, real lobby route", () => {
     "src/app/play/ranked/page.tsx",
     "src/app/play/daily-puzzle/page.tsx",
     "src/app/play/daily-puzzle/play/page.tsx",
+    "src/app/play/unlimited-puzzles/page.tsx",
+    "src/app/play/unlimited-puzzles/play/page.tsx",
   ]) {
     assert.ok(exists(route), `${route} must exist`);
   }
 
-  for (const lobby of ["solo", "daily", "dailyPuzzle"]) {
-    assert.match(read(`src/app/play/${lobby === "dailyPuzzle" ? "daily-puzzle" : lobby}/page.tsx`), /ModeLobby/);
+  for (const lobby of ["solo", "daily", "dailyPuzzle", "unlimited"]) {
+    const folder =
+      lobby === "dailyPuzzle" ? "daily-puzzle" : lobby === "unlimited" ? "unlimited-puzzles" : lobby;
+    assert.match(read(`src/app/play/${folder}/page.tsx`), /ModeLobby/);
   }
   // AI and ranked reuse the existing implementations, never a copy.
   assert.match(read("src/app/play/ai/page.tsx"), /solitaire-duel\/play-ai\/PageClient/);
@@ -88,7 +93,7 @@ test("hub CTA labels come from all three locales", () => {
       keys.push(`cards.${id}.${suffix}`);
     }
   }
-  for (const mode of ["solo", "daily", "dailyPuzzle"]) {
+  for (const mode of ["solo", "daily", "dailyPuzzle", "unlimited"]) {
     keys.push(`lobby.${mode}.title`, `lobby.${mode}.description`, `lobby.${mode}.cta`, `lobby.${mode}.note`);
   }
   keys.push("title", "description", "back", "loading", "unavailable");

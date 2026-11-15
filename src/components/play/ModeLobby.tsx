@@ -14,6 +14,7 @@ import {
   IconArrowRight,
   IconCalendar,
   IconCards,
+  IconInfinity,
   IconPuzzle,
   IconRobot,
   IconTrophy,
@@ -23,7 +24,13 @@ import Footer from "../Footer";
 import NavigationBar from "../navigation-bar";
 import { useTranslation } from "../../hooks/useTranslation";
 
-export type LobbyMode = "solo" | "daily" | "ai" | "ranked" | "dailyPuzzle";
+export type LobbyMode =
+  | "solo"
+  | "daily"
+  | "ai"
+  | "ranked"
+  | "dailyPuzzle"
+  | "unlimited";
 
 const MODE_META: Record<
   LobbyMode,
@@ -53,6 +60,11 @@ const MODE_META: Record<
     href: "/play/daily-puzzle/play",
     icon: <IconPuzzle size={22} aria-hidden="true" />,
     tone: "border-sky-400/30 bg-sky-400/[0.07] text-sky-200",
+  },
+  unlimited: {
+    href: "/play/unlimited-puzzles/play",
+    icon: <IconInfinity size={22} aria-hidden="true" />,
+    tone: "border-fuchsia-400/30 bg-fuchsia-400/[0.07] text-fuchsia-200",
   },
 };
 

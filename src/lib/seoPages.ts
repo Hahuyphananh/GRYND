@@ -186,7 +186,7 @@ const GUIDE_PAGES: SeoPage[] = [
  *
  * Every one of these has its own copy, its own canonical URL and no `noindex`,
  * so it is a real search surface rather than app chrome. `/play` itself is the
- * hub that lists the five modes — the older rule that banned anything ending in
+ * hub that lists the six modes — the older rule that banned anything ending in
  * `/play` was written when that path was only an authenticated lobby; it now
  * guards the gameplay URLs (`/games/<slug>/play` and `/play/<mode>/play`) and
  * those stay out because their own metadata says `noindex`.
@@ -198,6 +198,7 @@ const MODE_PAGES: SeoPage[] = [
   { path: "/play/ai", group: "modes", changeFrequency: "weekly", priority: 0.6 },
   { path: "/play/ranked", group: "modes", changeFrequency: "daily", priority: 0.7 },
   { path: "/play/daily-puzzle", group: "modes", changeFrequency: "daily", priority: 0.6 },
+  { path: "/play/unlimited-puzzles", group: "modes", changeFrequency: "daily", priority: 0.6 },
   // The two single-player surfaces outside /play. `/daily` is the challenge —
   // a full deal — and is NOT one of the puzzle pages.
   { path: "/solitaire", group: "modes", changeFrequency: "weekly", priority: 0.7 },
