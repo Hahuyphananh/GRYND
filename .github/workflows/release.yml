@@ -584,7 +584,7 @@ jobs:
           keep='$protected'
           if [ -n "\$keep" ]; then
             for d in releases/*/; do
-              [ -d "$d" ] || continue
+              [ -d "\$d" ] || continue
               id=\$(basename "\$d")
               case " \$keep " in
                 *" \$id "*) ;;
