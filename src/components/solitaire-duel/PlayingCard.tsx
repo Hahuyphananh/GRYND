@@ -44,6 +44,11 @@ export function cardLabel(card: Card | null | undefined): string {
   return `${rankLabel(card.rank)}${suitGlyph(card.suit)}`;
 }
 
+/** Face cards get the deck skin's foil treatment (see globals.css). */
+function isFaceCard(card: Card): boolean {
+  return card.rank >= 11 || card.rank === 1;
+}
+
 export type PlayingCardProps = {
   card: Card | null;
   faceUp: boolean;
@@ -99,8 +104,9 @@ export default function PlayingCard({
   const dim = dimmed ? "opacity-70" : "";
 
   if (!faceUp || !card) {
-    // The back. Deliberately patterned rather than blank so a face-down stack
-    // reads as cards, not as empty slots.
+    // The back. The design is painted from the board's `--sol-card-back-*`
+    // custom properties (a CSS gradient stack + emblem glyph), so a cosmetic
+    // change repaints every back with no prop drilling and no image request.
     return (
       <button
         type="button"
@@ -111,14 +117,19 @@ export default function PlayingCard({
         data-testid={testId}
         data-face-up="false"
         {...dataAttrs}
-        style={style}
-        className={`gr-focusable relative flex h-full w-full select-none items-center justify-center overflow-hidden rounded-[6px] border-2 border-[color:var(--gr-outline)] bg-linear-to-br from-[#1d3a63] via-[#16294a] to-[#0f1d36] shadow-[0_1px_2px_rgba(3,8,20,0.55)] transition focus-visible:z-10 ${stateClasses} ${dim} ${
+        style={{
+          ...style,
+          backgroundImage: "var(--sol-card-back-image)",
+          borderColor: "var(--sol-card-back-border, var(--gr-outline))",
+          animation: "var(--sol-card-back-animation, none)",
+        }}
+        className={`gr-focusable sol-card-back relative flex h-full w-full select-none items-center justify-center overflow-hidden rounded-[6px] border-2 shadow-[0_1px_2px_rgba(3,8,20,0.55)] transition focus-visible:z-10 ${stateClasses} ${dim} ${
           interactive ? "cursor-pointer hover:brightness-125" : "cursor-default"
         } ${className}`}
       >
         <span
           aria-hidden="true"
-          className="h-[62%] w-[62%] rounded-[4px] border border-[color:var(--gr-hairline)] bg-[repeating-linear-gradient(45deg,rgba(0,229,255,0.16)_0_3px,transparent_3px_6px)]"
+          className="h-[62%] w-[62%] rounded-[4px] border border-[color:var(--sol-card-back-border,var(--gr-hairline))] bg-[repeating-linear-gradient(45deg,rgba(255,255,255,0.08)_0_2px,transparent_2px_6px)]"
         />
       </button>
     );
@@ -136,7 +147,7 @@ export default function PlayingCard({
       data-card={`${card.suit}-${card.rank}`}
       {...dataAttrs}
       style={style}
-      className={`gr-focusable relative flex h-full w-full select-none flex-col overflow-hidden rounded-[6px] border-2 border-[color:var(--gr-outline)] bg-linear-to-b from-white to-[#e8ecf3] text-left shadow-[0_2px_0_-1px_rgba(3,8,20,0.8),0_1px_3px_rgba(0,0,0,0.4)] transition focus-visible:z-10 ${
+      className={`gr-focusable ${isFaceCard(card) ? "sol-face-card" : ""} relative flex h-full w-full select-none flex-col overflow-hidden rounded-[6px] border-2 border-[color:var(--gr-outline)] bg-linear-to-b from-white to-[#e8ecf3] text-left shadow-[0_2px_0_-1px_rgba(3,8,20,0.8),0_1px_3px_rgba(0,0,0,0.4)] transition focus-visible:z-10 ${
         red ? "text-[#d81f3a]" : "text-[#141a24]"
       } ${stateClasses} ${dim} ${
         // `touch-none` on a playable card is what lets a touch drag begin on it

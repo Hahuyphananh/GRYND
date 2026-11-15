@@ -33,6 +33,10 @@ import SplashScreen from "./SplashScreen";
 import GlitchProvider from "./mascot/GlitchProvider";
 import { isPortalPlayPath } from "../lib/portal/framing";
 import GryndProWidget from "./GryndProWidget";
+import StreakChip from "./streaks/StreakChip";
+import StreakUnlockModal from "./streaks/StreakUnlockModal";
+import GuestStreakPrompt from "./streaks/GuestStreakPrompt";
+import BoardAppearanceDrawer from "./solitaire/BoardAppearanceDrawer";
 import { shouldShowProWidget } from "../lib/proWidget";
 import { useSolitaireBoardThemeSync } from "../hooks/useSolitaireBoardThemeSync";
 
@@ -71,6 +75,21 @@ export default function SiteChrome({
           banner there to earn the consent it needs. */}
       <GoogleAnalytics />
 
+      {/* STREAK + APPEARANCE. The flame chip is the compact indicator that
+          lives beside the profile cluster; the drawer is the Settings/Profile
+          entry point to the same cosmetics the board header opens. */}
+      <div className="pointer-events-none fixed right-3 top-[72px] z-40 flex items-center gap-2 sm:right-4 sm:top-[76px]">
+        <div className="pointer-events-auto">
+          <StreakChip />
+        </div>
+        {(pathname === "/settings" || pathname === "/profil") && (
+          <div className="pointer-events-auto">
+            <BoardAppearanceDrawer />
+          </div>
+        )}
+      </div>
+      <StreakUnlockModal />
+
       {/* Skip to content — accessibility */}
       <a
         href="#main-content"
@@ -91,6 +110,7 @@ export default function SiteChrome({
         id="main-content"
         className="pt-[calc(68px_+_var(--safe-top))] sm:pt-[calc(4rem_+_var(--safe-top))]"
       >
+        <GuestStreakPrompt />
         {children}
       </main>
 

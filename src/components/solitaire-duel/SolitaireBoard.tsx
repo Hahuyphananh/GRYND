@@ -34,7 +34,9 @@ import {
 } from "react";
 
 import PlayingCard, { cardLabel, suitGlyph } from "./PlayingCard";
+import BoardAppearanceDrawer from "../solitaire/BoardAppearanceDrawer";
 import { useSolitaireBoardTheme } from "../../hooks/useSolitaireBoardTheme";
+import { useSolitaireBoardCosmetics } from "../../hooks/useSolitaireBoardCosmetics";
 import { SUITS, TABLEAU_COLUMNS } from "../../lib/solitaire-duel/constants";
 import {
   canDraw,
@@ -292,6 +294,10 @@ export default function SolitaireBoard({
   // reading the shared theme here is what keeps solo, daily, practice and
   // ranked identical; nothing is passed down per route.
   const { theme } = useSolitaireBoardTheme();
+  // The card backs and deck skin are site-wide cosmetics, read from the same
+  // local-first store the appearance drawer writes. Painting them from custom
+  // properties on the board root is what repaints 52 cards in place.
+  const { cardBack, deckSkin } = useSolitaireBoardCosmetics();
   const [selection, setSelection] = useState<BoardSelection | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragSession | null>(null);
@@ -702,6 +708,12 @@ export default function SolitaireBoard({
           "--sol-legal": theme.legal.ink,
           "--sol-legal-glow": theme.legal.glow,
           "--sol-legend": theme.legend,
+          // ── Card cosmetics (lib/solitaire-duel/boardCosmetics) ──
+          "--sol-card-back-image": cardBack.background,
+          "--sol-card-back-border": cardBack.border,
+          "--sol-card-back-emblem": `"${cardBack.emblem}"`,
+          "--sol-card-back-animation": cardBack.animation ?? "none",
+          "--sol-deck-crest": `"${deckSkin.crest ?? ""}"`,
           // The felt never collapses below a full table, even after the finish
           // animation releases its measured pre-finish height. When that
           // measurement is taller, max() keeps it; there is no maximum, so the
@@ -713,10 +725,14 @@ export default function SolitaireBoard({
           backgroundImage: theme.felt,
           // The felt's edge is an INSET ring, never a border: a border would add
           // 4px to the height the `--cw` budget above was computed against.
-          boxShadow: `inset 0 0 0 2px ${theme.frame}, 0 10px 30px rgba(3, 8, 20, 0.35)`,
+          boxShadow: `inset 0 0 0 2px ${theme.frame}${
+            theme.frameExtra ? `, ${theme.frameExtra}` : ""
+          }, 0 10px 30px rgba(3, 8, 20, 0.35)`,
         } as CSSProperties
       }
       data-solitaire-theme={theme.key}
+      data-card-back={cardBack.key}
+      data-deck={deckSkin.key}
       className="w-full touch-manipulation select-none rounded-2xl"
     >
       {/* ── Top row: stock · waste · the four foundations ──────────────── */}
@@ -981,7 +997,8 @@ export default function SolitaireBoard({
       {/* A one-line legend instead of a tutorial: it states the only rule a
           Klondike player cannot see from the board itself (the automatic flip)
           and the current hold. */}
-      <p className="mt-2 text-center text-[11px] leading-relaxed text-[color:var(--sol-legend)]">
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+      <p className="flex-1 text-center text-[11px] leading-relaxed text-[color:var(--sol-legend)]">
         {readOnly
           ? "Review mode — step through the move timeline or use the arrow keys. Play is disabled."
           : selection
@@ -990,6 +1007,8 @@ export default function SolitaireBoard({
               ? "Stock empty — click the \u21bb slot to turn the waste back over."
               : "Drag a card (or a face-up run) onto a pile — or click it, then click where it should go. A face-down card flips by itself when the card above it leaves."}
       </p>
+      <BoardAppearanceDrawer />
+      </div>
     </div>
   );
 }

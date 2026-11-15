@@ -26,6 +26,7 @@ import { eq, inArray } from "drizzle-orm";
 import { db } from "../db";
 import { tokenSubscriptions } from "../db/schema";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "./stripe/subscriptions";
+import { hasActiveProTrial } from "./streaks/trial";
 
 /** The label worn by a member after the founding window. */
 export const PRO_BADGE_LABEL = "PRO";
@@ -118,10 +119,18 @@ export async function getProClerkIds(
   return members;
 }
 
-/** The same answer for a single account (profile page, own settings). */
+/**
+ * The same answer for a single account (profile page, own settings).
+ *
+ * PRO is a PAID membership OR an unexpired streak trial. A trial is a
+ * predicate on `user_streaks.pro_trial_expires_at`, never a fake subscription,
+ * so every perk that already asks this function treats a trial exactly like a
+ * paid month.
+ */
 export async function isProMember(clerkId: string | null | undefined): Promise<boolean> {
   if (!clerkId) return false;
-  return (await getProClerkIds([clerkId])).has(clerkId);
+  if ((await getProClerkIds([clerkId])).has(clerkId)) return true;
+  return hasActiveProTrial(clerkId);
 }
 
 /**

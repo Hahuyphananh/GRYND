@@ -455,6 +455,16 @@ export const users = pgTable("users", {
   // /api/solitaire/board-theme after validating the key against the catalog,
   // and cached in localStorage so guests and offline play need no round trip.
   solitaireBoardTheme: varchar("solitaire_board_theme", { length: 20 }),
+  // Board cosmetics earned by the UTC streak (migration 0262). The title and
+  // frame reuse `selected_title` / `equipped_cosmetics.profile_frame`, so there
+  // is one authority per slot.
+  equippedFelt: varchar("equipped_felt", { length: 40 }).notNull().default("felt_default"),
+  equippedCardBack: varchar("equipped_card_back", { length: 40 })
+    .notNull()
+    .default("card_back_default"),
+  equippedDeckSkin: varchar("equipped_deck_skin", { length: 40 })
+    .notNull()
+    .default("deck_default"),
   // Per-game default wager (tokens), keyed by game key. An empty map (or a
   // missing key) means the game's built-in default. Written through
   // /api/user/default-wagers; consumed by src/hooks/useDefaultWager.js.
@@ -729,6 +739,40 @@ export const cosmetics = pgTable(
 
 // Cosmetic ownership. Written only by server-side grants (shop purchase /
 // account-creation catalog grant) — never by the client.
+// THE UTC DAILY STREAK (migration 0262). One row per account, written only by
+// src/lib/streaks/server.ts. Deliberately separate from the local-time LOGIN
+// streak on `users`: this one counts verified completions per UTC day and has
+// no shields.
+export const userStreaks = pgTable("user_streaks", {
+  userId: integer("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  currentStreak: integer("current_streak").notNull().default(0),
+  longestStreak: integer("longest_streak").notNull().default(0),
+  lastCompletedUtcDate: date("last_completed_utc_date"),
+  initialProTrialClaimed: boolean("initial_pro_trial_claimed").notNull().default(false),
+  proTrialExpiresAt: timestamp("pro_trial_expires_at", { withTimezone: true }),
+  prestigePips: integer("prestige_pips").notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// PERMANENT streak-earned cosmetic ownership. Always-owned defaults are absent
+// by design — membership is decided by the catalog, not by a grant row.
+export const userUnlocks = pgTable(
+  "user_unlocks",
+  {
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    itemId: varchar("item_id", { length: 64 }).notNull(),
+    unlockedAt: timestamp("unlocked_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.userId, table.itemId] }),
+    userIdx: index("user_unlocks_user_idx").on(table.userId),
+  }),
+);
+
 export const userCosmetics = pgTable(
   "user_cosmetics",
   {

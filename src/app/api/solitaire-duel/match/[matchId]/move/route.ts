@@ -25,6 +25,7 @@
 import { NextResponse } from "next/server";
 import { requirePracticePlayer } from "../../../../../../lib/auth/guestSession";
 import { logError } from "../../../../../../lib/logError";
+import { recordStreakCompletion } from "../../../../../../lib/streaks/server";
 import {
   isMatchId,
   matchToDto,
@@ -106,6 +107,17 @@ export async function POST(
       result: result.match.result ?? null,
     });
 
+    // UTC STREAK: finishing a ranked duel credits today once. Idempotent per
+    // day in the engine, and never allowed to fail a settled match.
+    let streak: Awaited<ReturnType<typeof recordStreakCompletion>> = null;
+    if (result.raceResolved) {
+      try {
+        streak = await recordStreakCompletion(userId);
+      } catch {
+        streak = null;
+      }
+    }
+
     if (result.raceResolved) {
       broadcastMatchFinished({
         matchId,
@@ -133,6 +145,12 @@ export async function POST(
         autoFinish: result.autoFinish ?? [],
         completed: result.completed === true,
         raceResolved: result.raceResolved === true,
+        // The same fields the daily route returns, so one client component can
+        // celebrate either completion.
+        streak,
+        current_streak: streak?.currentStreak ?? null,
+        newly_unlocked_rewards: streak?.newlyUnlocked ?? [],
+        next_milestone: streak?.nextMilestone ?? null,
       },
     });
   } catch (error) {

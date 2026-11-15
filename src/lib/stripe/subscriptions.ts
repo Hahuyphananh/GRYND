@@ -40,6 +40,7 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type Stripe from "stripe";
 import { db } from "../../db/client";
+import { hasActiveProTrial } from "../streaks/trial";
 import { tokenSubscriptionPlans, tokenSubscriptions } from "../../db/schema";
 import { getStripe } from "../stripe";
 import { MANAGED_PAYMENTS_TAX_CODE } from "./packages";
@@ -126,11 +127,19 @@ export const LEGACY_MEMBERSHIP_PLAN_KEYS = [
  */
 export const FALLBACK_PRO_PRICE_CENTS = 499;
 
-/** The user's current membership state — server-authoritative. */
+/**
+ * The user's current membership state — server-authoritative.
+ *
+ * PRO is an active paid subscription OR an unexpired streak trial (Day 7, and
+ * every completed 30-day loop after Day 365). The trial is a timestamp on
+ * `user_streaks`, not a subscription row, so billing and entitlements stay
+ * separate: cancelling a trial is simply letting the clock run out.
+ */
 export async function getMembershipTier(
   clerkId: string
 ): Promise<MembershipTier> {
-  return (await findActiveSubscription(clerkId)) ? "pro" : "free";
+  if (await findActiveSubscription(clerkId)) return "pro";
+  return (await hasActiveProTrial(clerkId)) ? "pro" : "free";
 }
 
 // ── Membership perks (GRYND PRO) ───────────────────────────────────────────

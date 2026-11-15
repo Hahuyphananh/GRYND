@@ -40,6 +40,7 @@ import { logError } from "../../../../lib/logError";
 import { dailyDateKey, summariseDaily } from "../../../../lib/solitaire-duel/soloStats.js";
 import { dailyDealFor } from "../../../../lib/solitaire-duel/daily";
 import { getMembershipTier } from "../../../../lib/stripe/subscriptions";
+import { recordStreakCompletion } from "../../../../lib/streaks/server";
 import { isValidDailyDateKey } from "../../../../lib/solitaire-duel/dailyArchive";
 import { replayMoves } from "../../../../lib/solitaire-duel/rules";
 import {
@@ -279,11 +280,28 @@ export async function POST(req: Request) {
     }
 
     const summary = await statsFor(userId, dateKey);
+
+    // UTC STREAK: a verified completion credits today ONCE. This happens after
+    // the result row is committed, and a failure here must not fail the result
+    // the player just earned — the streak is a reward, not a gate.
+    let streak: Awaited<ReturnType<typeof recordStreakCompletion>> = null;
+    if (!duplicate) {
+      try {
+        streak = await recordStreakCompletion(userId);
+      } catch {
+        streak = null;
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: {
         dateKey,
         archived,
+        streak,
+        current_streak: streak?.currentStreak ?? null,
+        newly_unlocked_rewards: streak?.newlyUnlocked ?? [],
+        next_milestone: streak?.nextMilestone ?? null,
         recorded: !duplicate,
         duplicate,
         id: resultId,

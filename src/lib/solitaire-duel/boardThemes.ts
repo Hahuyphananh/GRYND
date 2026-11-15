@@ -40,6 +40,12 @@ export type BoardThemeKey =
   | "midnight"
   | "copper"
   | "sand"
+  // Streak-earned tables (Day 3 → Day 365):
+  | "felt_slate"
+  | "felt_royal_emerald"
+  | "felt_midnight_navy"
+  | "felt_crimson_velvet"
+  | "felt_eternal_obsidian"
   // The two GRYND PRO tables (migration-era, PRO-only):
   | "founder"
   | "supporter";
@@ -53,6 +59,13 @@ export type BoardTheme = {
    * selector locks the swatch. It is the same table, not a different game.
    */
   proOnly?: boolean;
+  /**
+   * Streak day that unlocks this table, or undefined for an always-owned one.
+   * A table with a streak day is refused by the equip route until the player's
+   * UTC streak reaches it; the felt itself always renders (a player who already
+   * has it selected keeps a readable board).
+   */
+  streakDay?: number;
   /** What the selector shows. */
   label: string;
   /** One-line description, used as the radio's title/aria description. */
@@ -63,6 +76,12 @@ export type BoardTheme = {
   felt: string;
   /** The table's own edge, drawn as an inset ring (never a layout border). */
   frame: string;
+  /**
+   * An extra inset shadow layer: the casino double border, hairline trim and
+   * corner flourishes that CSS can draw without an image asset. Optional, and
+   * appended to the board's own inset ring.
+   */
+  frameExtra?: string;
   /** Empty pile socket. */
   slot: {
     fill: string;
@@ -183,6 +202,99 @@ export const BOARD_THEMES: readonly BoardTheme[] = [
     legal: { ink: "#fff3d6", glow: "rgba(255, 243, 214, 0.32)" },
     legend: "#ffefd2",
   },
+  // ── Streak tables (Day 3 → Day 365) ──────────────────────────────────
+  // Earned by the UTC daily streak and kept forever. Same furniture contract
+  // as every other preset: they paint the table, never the cards.
+  {
+    key: "felt_slate",
+    streakDay: 3,
+    label: "Slate",
+    blurb: "Deep matte charcoal with a woven texture.",
+    base: "#1a2026",
+    felt: "radial-gradient(120% 120% at 50% 0%, #1e242b 0%, #14181d 68%, #101418 100%), repeating-linear-gradient(45deg, rgba(255,255,255,0.022) 0 2px, transparent 2px 4px), repeating-linear-gradient(-45deg, rgba(0,0,0,0.06) 0 2px, transparent 2px 4px)",
+    frame: "#0f1418",
+    slot: {
+      fill: "rgba(6, 9, 12, 0.72)",
+      border: "rgba(206, 214, 224, 0.2)",
+      ink: "rgba(224, 230, 238, 0.52)",
+      activeFill: "rgba(228, 234, 242, 0.11)",
+    },
+    legal: { ink: "#e6ecf4", glow: "rgba(230, 236, 244, 0.26)" },
+    legend: "#dbe2ea",
+  },
+  {
+    key: "felt_royal_emerald",
+    streakDay: 30,
+    label: "Royal Emerald",
+    blurb: "Tournament green with crisp casino border lines.",
+    base: "#0f4c3a",
+    felt: "radial-gradient(120% 120% at 50% 0%, #0f4c3a 0%, #0b3a2c 60%, #082b20 100%)",
+    frame: "#062219",
+    frameExtra:
+      "inset 0 0 0 6px rgba(255,255,255,0.04), inset 0 0 0 7px rgba(214,255,236,0.18)",
+    slot: {
+      fill: "rgba(3, 26, 20, 0.72)",
+      border: "rgba(160, 255, 218, 0.24)",
+      ink: "rgba(214, 255, 236, 0.58)",
+      activeFill: "rgba(217, 255, 233, 0.13)",
+    },
+    legal: { ink: "#d9ffe9", glow: "rgba(217, 255, 233, 0.3)" },
+    legend: "#cfeee0",
+  },
+  {
+    key: "felt_midnight_navy",
+    streakDay: 60,
+    label: "Midnight Navy",
+    blurb: "Deep tournament blue with a diamond weave.",
+    base: "#0e1f38",
+    felt: "radial-gradient(120% 120% at 50% 0%, #10233f 0%, #0c1b31 64%, #091426 100%), repeating-linear-gradient(45deg, rgba(140,180,255,0.05) 0 1px, transparent 1px 12px), repeating-linear-gradient(-45deg, rgba(140,180,255,0.05) 0 1px, transparent 1px 12px)",
+    frame: "#071120",
+    slot: {
+      fill: "rgba(3, 10, 22, 0.72)",
+      border: "rgba(150, 190, 255, 0.22)",
+      ink: "rgba(206, 226, 255, 0.56)",
+      activeFill: "rgba(206, 226, 255, 0.12)",
+    },
+    legal: { ink: "#cfe2ff", glow: "rgba(207, 226, 255, 0.28)" },
+    legend: "#cbdffb",
+  },
+  {
+    key: "felt_crimson_velvet",
+    streakDay: 275,
+    label: "Crimson Velvet",
+    blurb: "Deep burgundy velvet with a warm gold hairline trim.",
+    base: "#3a0f18",
+    felt: "radial-gradient(120% 120% at 50% 0%, #4a121d 0%, #380d17 62%, #26080e 100%), repeating-linear-gradient(0deg, rgba(255,215,150,0.018) 0 2px, transparent 2px 5px)",
+    frame: "#1f070c",
+    frameExtra: "inset 0 0 0 5px rgba(255, 214, 150, 0.1)",
+    slot: {
+      fill: "rgba(22, 5, 9, 0.72)",
+      border: "rgba(255, 214, 170, 0.22)",
+      ink: "rgba(255, 226, 200, 0.56)",
+      activeFill: "rgba(255, 226, 200, 0.12)",
+    },
+    legal: { ink: "#ffe2c8", glow: "rgba(255, 226, 200, 0.3)" },
+    legend: "#ffdcc4",
+  },
+  {
+    key: "felt_eternal_obsidian",
+    streakDay: 365,
+    label: "Eternal Obsidian",
+    blurb: "Pitch obsidian with metallic gold corner flourishes.",
+    base: "#121116",
+    felt: "radial-gradient(circle at 0% 0%, rgba(201,162,74,0.22) 0 8%, transparent 22%), radial-gradient(circle at 100% 0%, rgba(201,162,74,0.22) 0 8%, transparent 22%), radial-gradient(circle at 0% 100%, rgba(201,162,74,0.18) 0 8%, transparent 22%), radial-gradient(circle at 100% 100%, rgba(201,162,74,0.18) 0 8%, transparent 22%), radial-gradient(120% 120% at 50% 45%, #0d0d10 0%, #14131a 58%, #18161c 100%)",
+    frame: "#0a0a0d",
+    frameExtra:
+      "inset 0 0 0 1px rgba(201,162,74,0.55), inset 0 0 24px rgba(201,162,74,0.12)",
+    slot: {
+      fill: "rgba(6, 6, 9, 0.74)",
+      border: "rgba(214, 190, 140, 0.26)",
+      ink: "rgba(240, 228, 200, 0.58)",
+      activeFill: "rgba(240, 228, 200, 0.14)",
+    },
+    legal: { ink: "#f0e4c8", glow: "rgba(240, 228, 200, 0.3)" },
+    legend: "#e9dcbc",
+  },
   // ── GRYND PRO tables ───────────────────────────────────────────────────
   // Same furniture, same contrast discipline as the free presets: a PRO table
   // changes the felt, never the cards, and cannot make the game unreadable.
@@ -233,7 +345,12 @@ export function isBoardThemeKey(value: unknown): value is BoardThemeKey {
  * a corrupted value, a hand-edited localStorage — resolves to Classic Green
  * rather than leaving the board unstyled.
  */
+/**
+ * The stored key `felt_default` is the schema's default and means "no choice":
+ * it resolves to Classic Green rather than to a preset that does not exist.
+ */
 export function boardThemeFor(value: unknown): BoardTheme {
+  if (value === "felt_default") return BY_KEY.get(DEFAULT_BOARD_THEME)!;
   return BY_KEY.get(typeof value === "string" ? value : "") ?? BY_KEY.get(DEFAULT_BOARD_THEME)!;
 }
 
