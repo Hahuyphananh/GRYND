@@ -4341,6 +4341,54 @@ export const solitaireAnalysisUsage = pgTable(
   }),
 );
 
+// SOLITAIRE PUZZLE — one verified answer per identity per puzzle.
+//
+// The daily puzzle is free and one-shot (the unique user+puzzle key is the
+// backstop); an unlimited puzzle is 5/day free and unlimited for PRO. The row
+// stores the ONE answer that was recorded, so a retry can never replace it.
+export const solitairePuzzleAttempts = pgTable(
+  "solitaire_puzzle_attempts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    // Clerk user id, or the signed guest id — no FK, a guest has no user row.
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    // 'daily' | 'unlimited'.
+    kind: varchar("kind", { length: 16 }).notNull(),
+    // 'daily:YYYY-MM-DD' | 'unlimited:<seed>' — enough to rebuild the puzzle.
+    puzzleKey: varchar("puzzle_key", { length: 80 }).notNull(),
+    choice: varchar("choice", { length: 1 }).notNull(),
+    correct: boolean("correct").notNull().default(false),
+    elapsedMs: integer("elapsed_ms").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // THE one-shot guarantee: one answer per identity per puzzle.
+    userPuzzleIdx: unique("solitaire_puzzle_attempts_user_puzzle_unique").on(
+      table.userId,
+      table.puzzleKey,
+    ),
+    userIdx: index("solitaire_puzzle_attempts_user_idx").on(table.userId, table.createdAt),
+  }),
+);
+
+// Per-identity, per-UTC-day count of answered UNLIMITED puzzles. The free daily
+// puzzle is not counted; PRO members never touch this table.
+export const solitairePuzzleUsage = pgTable(
+  "solitaire_puzzle_usage",
+  {
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    dayKey: varchar("day_key", { length: 10 }).notNull(),
+    used: integer("used").notNull().default(0),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    key: primaryKey({
+      name: "solitaire_puzzle_usage_pk",
+      columns: [table.userId, table.dayKey],
+    }),
+  }),
+);
+
 export const proWeeklyRecapSends = pgTable(
   "pro_weekly_recap_sends",
   {

@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
 import SoloSolitaireGame from "../../components/solitaire-duel/SoloSolitaireGame";
+import SolitairePuzzle from "../../components/solitaire-duel/SolitairePuzzle";
 import { formatDuration } from "../../lib/solitaire-duel/soloStats.js";
 import type { SolitaireDeal } from "../../lib/solitaire-duel/types";
 
@@ -102,6 +103,18 @@ export default function DailyPageClient() {
             Today's deal could not be loaded. Please try again shortly.
           </div>
         )}
+
+        <div className="mt-8 space-y-4">
+          <SolitairePuzzle kind="daily" />
+          <SolitairePuzzle kind="unlimited" />
+        </div>
+
+        <div className="mt-10 flex items-center gap-3">
+          <h2 className="text-lg font-black uppercase tracking-[0.2em] text-white/70">
+            The daily game
+          </h2>
+          <span className="h-px flex-1 bg-white/10" />
+        </div>
 
         {payload && (
           <SoloSolitaireGame

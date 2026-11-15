@@ -52,8 +52,8 @@ function navLabel(path, t) {
   if (path === "/games/solitaire-duel/play") return "Play";
   if (path === "/games/solitaire-duel") return "Rules";
   if (path === "/upgrade-pro") return "GRYND PRO";
-  if (path === "/daily") return "Daily";
-  if (path === "/solitaire") return "Solo";
+
+
   if (path === "/learn") return t("nav.learn");
   return t(NAV_TRANSLATION_KEYS[path]);
 }
@@ -482,7 +482,7 @@ function NavigationBarInner({ currentPath = "" }) {
               animate="animate"
               className="hidden items-center space-x-1 md:flex lg:space-x-4"
             >
-              {["/", "/learn", "/daily", "/solitaire", "/games/solitaire-duel/play", "/classement", "/games/solitaire-duel", "/upgrade-pro"].map((path) => (
+              {["/", "/learn", "/games/solitaire-duel/play", "/classement", "/games/solitaire-duel", "/upgrade-pro"].map((path) => (
                 <motion.div
                   key={path}
                   initial={itemVariant.initial}
@@ -737,7 +737,7 @@ function NavigationBarInner({ currentPath = "" }) {
                     Admin dashboard
                   </Link>
                 )}
-                {["/", "/learn", "/daily", "/solitaire", "/games/solitaire-duel/play", "/classement", "/games/solitaire-duel", "/upgrade-pro"].map((path) => (
+                {["/", "/learn", "/games/solitaire-duel/play", "/classement", "/games/solitaire-duel", "/upgrade-pro"].map((path) => (
                   <Link
                     key={path}
                     href={path}
