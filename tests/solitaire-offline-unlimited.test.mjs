@@ -30,8 +30,13 @@ test("an offline unlimited puzzle is built, judged and unsubmittable", () => {
   assert.ok(Array.isArray(puzzle.board.waste));
 
   assert.equal(verifyPuzzleMove(puzzle, puzzle.answer), true);
-  // Drawing is a real move the board can send — and never the answer.
-  assert.equal(verifyPuzzleMove(puzzle, { kind: "draw" }), false);
+  // Drawing is a real move the board can send, and it may be the unique best
+  // move; the verifier accepts exactly the recorded answer, whatever it is.
+  assert.equal(
+    verifyPuzzleMove(puzzle, { kind: "draw" }),
+    moveSignature(puzzle.answer) === moveSignature({ kind: "draw" }),
+  );
+  assert.equal(verifyPuzzleMove(puzzle, { kind: "teleport" }), false);
 
   // A server submit rebuilds an `unlimited:<uint32>` key. The offline key is
   // deliberately not one, so an offline move can never be recorded later.
