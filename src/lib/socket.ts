@@ -5,6 +5,59 @@ export type RealtimeSocket = Socket;
 
 let socketInstance: RealtimeSocket | null = null;
 
+// ── Fresh Clerk token on every (re)connect ─────────────────────────────
+//
+// Socket.IO captures auth when the client is created. Clerk session tokens
+// expire within minutes, so a reconnect after a longer dropout used to present
+// the token captured at sign-in: the realtime server rejected it with
+// "Invalid authentication token", and Socket.IO does NOT retry namespace-level
+// auth failures on its own — realtime stayed dead until a full reload. The
+// provider registers getToken here and the auth callback below runs for every
+// handshake, so each attempt carries a currently valid token.
+type SocketTokenProvider = () => Promise<string | null>;
+
+let socketTokenProvider: SocketTokenProvider | null = null;
+let currentToken: string | null = null;
+
+/** Register (or clear) the Clerk token source. Called by SocketProvider. */
+export function setSocketTokenProvider(
+  provider: SocketTokenProvider | null,
+): void {
+  socketTokenProvider = provider;
+}
+
+/** Resolve a token for one handshake; never throws into Socket.IO. */
+async function resolveAuthToken(): Promise<string> {
+  if (!socketTokenProvider) return currentToken ?? "";
+  try {
+    return (await socketTokenProvider()) ?? currentToken ?? "";
+  } catch {
+    return currentToken ?? "";
+  }
+}
+
+// Retry of an auth-level connect_error, with backoff. A permanently rejected
+// session settles at one attempt per minute instead of spinning.
+const AUTH_RETRY_BASE_MS = 3000;
+const AUTH_RETRY_MAX_MS = 60000;
+let authRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let authRetryDelayMs = AUTH_RETRY_BASE_MS;
+
+function scheduleAuthRetry(): void {
+  if (authRetryTimer) return;
+
+  const delay = authRetryDelayMs;
+  authRetryTimer = setTimeout(() => {
+    authRetryTimer = null;
+    authRetryDelayMs = Math.min(authRetryDelayMs * 2, AUTH_RETRY_MAX_MS);
+
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    const socket = socketInstance;
+    if (!socket || socket.connected) return;
+    socket.connect();
+  }, delay);
+}
+
 function getSocketUrl(): string | null {
   const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL;
 
@@ -41,10 +94,14 @@ export async function createSocketConnection(
   }
 
   if (socketInstance && !socketInstance.connected) {
-    socketInstance.auth = { token };
+    // Keep the latest token as the fallback for environments where no token
+    // provider is registered (e.g. a native recovery call).
+    currentToken = token;
     socketInstance.connect();
     return socketInstance;
   }
+
+  currentToken = token;
 
   socketInstance = io(socketUrl, {
     autoConnect: true,
@@ -63,20 +120,40 @@ export async function createSocketConnection(
     // 10s is plenty and prevents the UI from feeling frozen while we retry.
     timeout: 10000,
     reconnection: true,
-    reconnectionAttempts: 10,
+    // Never give up. Ten attempts (~25-40s of failures) permanently disabled
+    // realtime until a reload, which is exactly what a Wi-Fi blip or a laptop
+    // wake looked like. The backoff cap below keeps retry traffic low.
+    reconnectionAttempts: Infinity,
     // Start small (1s) and cap the backoff so recovery is snappy: with
     // exponential growth the wait can otherwise stretch to tens of seconds
     // after a blip, which looks like "the connection died" mid-game.
     reconnectionDelay: 1000,
-    reconnectionDelayMax: 4000,
-    auth: {
-      token,
+    reconnectionDelayMax: 10000,
+    auth: (callback) => {
+      // Re-evaluated for every handshake (initial connect and each reconnect),
+      // so an expired Clerk token is never replayed forever.
+      void resolveAuthToken().then((token) => callback({ token }));
     },
   });
 
   socketInstance.on("connect_error", (error) => {
     if (process.env.NODE_ENV !== "production") {
       console.warn("[socket] connect_error:", error.message, "- retrying...");
+    }
+
+    // Transport failures are retried by Socket.IO's own (now uncapped)
+    // backoff. Namespace middleware failures — an expired or invalid Clerk
+    // token — are NOT, so retry those explicitly with a fresh token.
+    if (!/auth|token/i.test(String(error?.message ?? ""))) return;
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    scheduleAuthRetry();
+  });
+
+  socketInstance.on("connect", () => {
+    authRetryDelayMs = AUTH_RETRY_BASE_MS;
+    if (authRetryTimer) {
+      clearTimeout(authRetryTimer);
+      authRetryTimer = null;
     }
   });
 
@@ -100,6 +177,13 @@ export function getSocket(): RealtimeSocket | null {
 }
 
 export function disconnectSocket(): void {
+  if (authRetryTimer) {
+    clearTimeout(authRetryTimer);
+    authRetryTimer = null;
+  }
+  authRetryDelayMs = AUTH_RETRY_BASE_MS;
+  currentToken = null;
+
   if (!socketInstance) return;
   socketInstance.disconnect();
   socketInstance = null;

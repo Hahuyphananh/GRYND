@@ -491,8 +491,8 @@ test("Socket.IO behaviour and configuration are untouched", () => {
   // Phase 3B owns reconnection. Nothing native may leak into the socket module.
   assert.ok(!/@capacitor/.test(socket));
   assert.ok(!/grynd:app-state-change|grynd:network-status-change/.test(socket));
-  assert.match(socket, /reconnectionAttempts: 10/);
-  assert.match(socket, /reconnectionDelayMax: 4000/);
-  assert.match(socket, /transports: \["polling", "websocket"\]/);
-  assert.match(socket, /auth: \{\s*token,?\s*\}/);
+  assert.match(socket, /reconnectionAttempts: Infinity/);
+  assert.ok(socket.includes("reconnectionDelayMax: 10000"));
+  assert.ok(socket.includes('transports: ["polling", "websocket"]'));
+  assert.ok(socket.includes("auth: (callback) =>"));
 });

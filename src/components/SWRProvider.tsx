@@ -66,7 +66,12 @@ export function SWRProvider({ children }: { children: ReactNode }) {
         dedupingInterval: 4000,
         focusThrottleInterval: 30000,
         loadingTimeout: 8000,
-        shouldRetryOnError: true,
+        // Retrying a request while the device is offline cannot succeed; SWR
+        // already refetches everything on reconnect (and the banner calls
+        // mutate(() => true)). Skipping the retry burst keeps a flaky link
+        // from being hammered with doomed requests.
+        shouldRetryOnError: () =>
+          typeof navigator === "undefined" || navigator.onLine !== false,
         errorRetryCount: 3,
       }}
     >

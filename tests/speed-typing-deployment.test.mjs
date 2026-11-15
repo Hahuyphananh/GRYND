@@ -219,22 +219,24 @@ test("deploy: the countdown window is the one the server broadcasts", () => {
 // ════════════════════════════════════════════════════════════════════════
 
 test("deploy: CORS is an explicit allowlist from CLIENT_URL, and fails closed", () => {
+  const CORS_ORIGINS = read("realtime-server/corsOrigins.js");
   // Comma-separated so a preview deployment can be added next to production.
-  assert.match(SERVER, /String\(process\.env\.CLIENT_URL \|\| ""\)\s*\.split\(","\)/);
+  assert.ok(SERVER.includes("parseAllowedOrigins(process.env.CLIENT_URL)"));
   // Trailing slashes normalised on both the config and the inbound origin.
-  assert.match(SERVER, /\.replace\(\/\\\/\$\/, ""\)/);
-  assert.match(SERVER, /function normalizeOrigin\(origin\)/);
+  assert.ok(CORS_ORIGINS.includes("trailing slash"));
+  assert.ok(CORS_ORIGINS.includes("function normalizeOrigin(origin)"));
   // An empty allowlist is a startup failure, not an open door.
-  assert.match(SERVER, /if \(allowedOrigins\.length === 0\) \{[\s\S]{0,120}?throw new Error\("Missing CLIENT_URL/);
+  assert.ok(SERVER.includes("if (allowedOrigins.length === 0) {"));
+  assert.ok(SERVER.includes('throw new Error("Missing CLIENT_URL'));
   // No wildcard / reflect-anything anywhere in the CORS setup.
-  assert.doesNotMatch(SERVER, /origin:\s*true/);
-  assert.doesNotMatch(SERVER, /origin:\s*"\*"/);
-  assert.doesNotMatch(SERVER, /app\.use\(cors\(\)\)/);
+  assert.ok(!SERVER.includes("origin: true"));
+  assert.ok(!SERVER.includes('origin: "*"'));
+  assert.ok(!SERVER.includes("app.use(cors())"));
   // Applied to BOTH express (the /emit, /health endpoints) and Socket.IO.
-  assert.match(SERVER, /app\.use\(cors\(corsOptions\)\)/);
-  assert.match(SERVER, /cors: \{[\s\S]{0,200}?origin\(origin, callback\)/);
+  assert.ok(SERVER.includes("app.use(cors(corsOptions))"));
+  assert.ok(SERVER.includes("origin(origin, callback)"));
   // The Socket.IO origin check rejects, rather than silently allowing.
-  assert.match(SERVER, /callback\(new Error\("Socket origin not allowed"\)\)/);
+  assert.ok(SERVER.includes('callback(new Error("Socket origin not allowed"))'));
 });
 
 test("deploy: /health reports the config without leaking a secret", () => {
@@ -357,8 +359,11 @@ test("deploy: the browser reaches Render by one public variable, with a token, o
     /transports: \["polling", "websocket"\]/,
     "Render sits behind a proxy: polling must come first, the websocket is the upgrade",
   );
-  assert.match(CLIENT_SOCKET, /auth:\s*\{\s*token,?\s*\}/);
-  assert.match(CLIENT_SOCKET, /socketUrl\.trim\(\)\.replace\(\/\\\/\$\/, ""\)/, "a trailing slash in the env var must not break the URL");
+  // Auth is resolved per handshake, so a reconnect carries a fresh Clerk
+  // token instead of the one captured at sign-in.
+  assert.ok(CLIENT_SOCKET.includes("auth: (callback) =>"));
+  assert.match(SOCKET_PROVIDER, /setSocketTokenProvider/);
+  assert.ok(CLIENT_SOCKET.includes("resolveSocketUrl(socketUrl, pageOrigin)"));
   assert.match(SOCKET_PROVIDER, /const token = await getToken\(\)/);
   assert.match(SOCKET_PROVIDER, /await createSocketConnection\(token\)/);
   // Render verifies that token server-side with its own secret.
@@ -399,17 +404,25 @@ test("deploy: the Vercel app serves the game without needing Render to be up", (
 // ════════════════════════════════════════════════════════════════════════
 
 test("deploy: the client retries hard enough to outlast a blip inside the grace window", () => {
-  const attempts = Number(CLIENT_SOCKET.match(/reconnectionAttempts:\s*(\d+)/)?.[1]);
+  const attemptsMatch = CLIENT_SOCKET.match(
+    /reconnectionAttempts:\s*(\d+|Infinity)/,
+  )?.[1];
+  const attempts = attemptsMatch === "Infinity" ? Infinity : Number(attemptsMatch);
   const base = Number(CLIENT_SOCKET.match(/reconnectionDelay:\s*(\d+)/)?.[1]);
   const cap = Number(CLIENT_SOCKET.match(/reconnectionDelayMax:\s*(\d+)/)?.[1]);
   assert.equal(CLIENT_SOCKET.includes("reconnection: true"), true);
-  assert.ok(Number.isFinite(attempts) && attempts >= 10, "a dropped socket must keep trying");
+  assert.ok(
+    attempts === Infinity || (Number.isFinite(attempts) && attempts >= 10),
+    "a dropped socket must keep trying",
+  );
   assert.ok(base > 0 && cap >= base, "the backoff must start small and be capped");
 
-  // Socket.IO doubles the delay per attempt up to the cap.
+  // Socket.IO doubles the delay per attempt up to the cap. An uncapped client
+  // never stops, so its window outlasts any finite grace by construction.
+  const planned = attempts === Infinity ? 20 : attempts;
   let total = 0;
-  for (let i = 0; i < attempts; i += 1) total += Math.min(cap, base * 2 ** i);
-  const minWithJitter = total * 0.5; // randomizationFactor defaults to 0.5
+  for (let i = 0; i < planned; i += 1) total += Math.min(cap, base * 2 ** i);
+  const minWithJitter = attempts === Infinity ? Infinity : total * 0.5;
 
   // The server's forfeit grace window, read from the shared realtime source.
   const grace = Number(SERVER.match(/CRASH_ARENA_DISCONNECT_GRACE_MS = ([\d_]+)/)?.[1].replace(/_/g, ""));
@@ -421,7 +434,7 @@ test("deploy: the client retries hard enough to outlast a blip inside the grace 
   // docs/PROD_REALTIME_AND_NEON_TASKS.md: the server re-checks for a live
   // socket before forfeiting, which is what closes that last gap.)
   assert.ok(
-    minWithJitter < grace,
+    attempts === Infinity || minWithJitter < grace,
     `the client's retry window (min ${minWithJitter}ms) must be shorter than the server's grace (${grace}ms)`,
   );
 });

@@ -408,18 +408,23 @@ test("the recovery effect cleans up both listeners and the controller", () => {
 test("the existing Socket.IO configuration is preserved", () => {
   const socket = read("src/lib/socket.ts");
 
-  assert.match(socket, /reconnectionAttempts: 10/);
-  assert.match(socket, /reconnectionDelay: 1000/);
-  assert.match(socket, /reconnectionDelayMax: 4000/);
-  assert.match(socket, /transports: \["polling", "websocket"\]/);
-  assert.match(socket, /auth: \{\s*token,?\s*\}/);
+  // Realtime must never give up for good: the old ten-attempt cap left the
+  // socket dead until a reload after a Wi-Fi blip.
+  assert.match(socket, /reconnectionAttempts: Infinity/);
+  assert.ok(socket.includes("reconnectionDelay: 1000"));
+  assert.ok(socket.includes("reconnectionDelayMax: 10000"));
+  assert.ok(socket.includes('transports: ["polling", "websocket"]'));
+  // Auth is resolved per handshake, so an expired Clerk token is not replayed.
+  assert.ok(socket.includes("auth: (callback) =>"));
+  assert.ok(socket.includes("resolveAuthToken()"));
+  // Auth-level connect_errors are retried explicitly with backoff.
+  assert.ok(socket.includes("scheduleAuthRetry()"));
+  assert.ok(socket.includes("/auth|token/i"));
 
   // The revive path recovery depends on: same instance, refreshed auth.
   assert.match(socket, /if \(socketInstance\?\.connected\) \{[\s\S]{0,40}return socketInstance;/);
-  assert.match(
-    socket,
-    /if \(socketInstance && !socketInstance\.connected\) \{[\s\S]{0,120}socketInstance\.auth = \{ token \};[\s\S]{0,80}socketInstance\.connect\(\);/,
-  );
+  assert.ok(socket.includes("if (socketInstance && !socketInstance.connected) {"));
+  assert.ok(socket.includes("currentToken = token;"));
   // A new client is only ever built when there is none.
   assert.equal((socket.match(/io\(socketUrl/g) ?? []).length, 1);
   assert.ok(!/localStorage|sessionStorage/.test(socket));

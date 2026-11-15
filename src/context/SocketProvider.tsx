@@ -6,6 +6,7 @@ import {
   createSocketConnection,
   disconnectSocket,
   getSocket,
+  setSocketTokenProvider,
   type RealtimeSocket,
 } from "../lib/socket";
 import {
@@ -27,6 +28,15 @@ const SocketContext = createContext<SocketContextValue>({ socket: null, userId: 
 export function SocketProvider({ children }: { children: React.ReactNode }) {
   const { getToken, isSignedIn, isLoaded, userId } = useAuth(); // added isLoaded
   const [socket, setSocket] = useState<RealtimeSocket | null>(null);
+
+  // Every (re)handshake must carry a currently valid Clerk token. Clerk's
+  // getToken() returns a token only while it is still valid and refreshes it
+  // near expiry, so a reconnect after a long dropout no longer presents the
+  // token captured at sign-in.
+  useEffect(() => {
+    setSocketTokenProvider(() => getToken());
+    return () => setSocketTokenProvider(null);
+  }, [getToken]);
 
   useEffect(() => {
     if (!isLoaded) return; // wait for Clerk hydration
@@ -90,6 +100,38 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   // socket's own `connect` event — `user:join` above, and each game page's own
   // room join — so nothing here re-sends a join, a move, a bet or a
   // matchmaking request.
+  // ── Browser recovery ─────────────────────────────────────────────────────
+  //
+  // Socket.IO retries transport failures on its own (now without a cap), but a
+  // browser tab that slept or lost Wi-Fi has no native lifecycle bridge: the
+  // online event and a visible tab are its only wake-up edges. Reconnecting
+  // here costs one handshake and avoids a full reload just to get realtime
+  // back. connect() is safe mid-reconnect (it is a no-op while Socket.IO is
+  // already retrying) and after the backoff has gone idle (it reopens the
+  // manager).
+  useEffect(() => {
+    if (!socket) return;
+
+    const reconnect = () => {
+      if (socket.connected) return;
+      if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+      socket.connect();
+    };
+    const onVisibility = () => {
+      if (typeof document !== "undefined" && !document.hidden) reconnect();
+    };
+
+    window.addEventListener("online", reconnect);
+    window.addEventListener("pageshow", reconnect);
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      window.removeEventListener("online", reconnect);
+      window.removeEventListener("pageshow", reconnect);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [socket]);
+
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return undefined;
 
