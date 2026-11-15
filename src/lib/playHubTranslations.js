@@ -65,6 +65,9 @@ export const PLAY_HUB_TRANSLATIONS = {
         description: "One position, one best move — the short version of the daily run.",
         meta: "5 free per UTC day · 1 move each",
         cta: "Practise puzzles",
+        remaining: "{remaining} of {limit} left today",
+        pro: "Unlimited on PRO",
+        checking: "Checking today's allowance…",
       },
     },
     lobby: {
@@ -221,6 +224,9 @@ export const PLAY_HUB_TRANSLATIONS = {
         description: "Une position, un meilleur coup — la version courte de la série du jour.",
         meta: "5 gratuites par jour UTC · 1 coup chacune",
         cta: "S'entraîner",
+        remaining: "{remaining} sur {limit} restantes aujourd'hui",
+        pro: "Illimité avec PRO",
+        checking: "Vérification de l'allocation du jour…",
       },
     },
     lobby: {
@@ -371,6 +377,9 @@ export const PLAY_HUB_TRANSLATIONS = {
         description: "Una posición, un mejor movimiento — la versión corta de la ronda diaria.",
         meta: "5 gratis por día UTC · 1 movimiento cada uno",
         cta: "Practicar puzles",
+        remaining: "Quedan {remaining} de {limit} hoy",
+        pro: "Ilimitados con PRO",
+        checking: "Comprobando la asignación de hoy…",
       },
     },
     lobby: {

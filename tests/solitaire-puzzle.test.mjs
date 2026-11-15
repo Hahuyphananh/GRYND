@@ -41,6 +41,7 @@ import {
   moveSignature,
   parsePuzzleMove,
   publicPuzzle,
+  puzzleCandidatesForSeed,
   puzzleSeedFromKey,
   verifyPuzzleMove,
 } from "../src/lib/solitaire-duel/puzzle.ts";
@@ -133,19 +134,16 @@ test("the answer is a legal move and the unique best move", () => {
   }
 });
 
-test("puzzles vary: the best move is not always a reveal", () => {
-  const puzzles = [];
-  for (let seed = 0; seed < 24 && puzzles.length < 6; seed += 1) {
+test("practice puzzles are the EASIER position on the deal", () => {
+  // Unlimited practice must be gentler than the daily run: the plainest
+  // decision the deal offers, never the widest one.
+  let checked = 0;
+  for (let seed = 0; seed < 24 && checked < 4; seed += 1) {
     const puzzle = buildPuzzleForSeed(seed);
-    if (puzzle) puzzles.push(puzzle);
-  }
+    const candidates = puzzleCandidatesForSeed(seed);
+    if (!puzzle || !candidates) continue;
+    checked += 1;
 
-  assert.ok(puzzles.length >= 2, "the seed search must still produce puzzles");
-  assert.ok(
-    puzzles.some((puzzle) => puzzle.answerReveal === null),
-    "some puzzles must ask for a quiet best move instead of a card reveal",
-  );
-  for (const puzzle of puzzles) {
     const applied = applyMove({ state: puzzle.state, move: puzzle.answer });
     assert.equal(applied.ok, true);
     assert.equal(
@@ -153,7 +151,69 @@ test("puzzles vary: the best move is not always a reveal", () => {
       puzzle.answerReveal ? 1 : 0,
       "the recorded reveal must match what the answer actually does",
     );
+
+    // A plain card reveal is the decision to ask for whenever one exists.
+    const revealing = candidates.filter((candidate) => candidate.answerReveal !== null);
+    if (revealing.length > 0) {
+      assert.ok(
+        puzzle.answerReveal !== null,
+        `seed ${seed}: practice must take a revealing position when the deal has one`,
+      );
+    }
+
+    // And among those, the one with the fewest legal moves.
+    const pool = revealing.length > 0 ? revealing : candidates;
+    const fewest = Math.min(...pool.map((candidate) => legalMoves(candidate.state).length));
+    assert.equal(
+      legalMoves(puzzle.state).length,
+      fewest,
+      `seed ${seed}: practice must present the narrowest decision on the deal`,
+    );
+
+    // The daily run, by contrast, deliberately takes later positions where more
+    // of the board is exposed. Practice must never be the wider of the two.
+    const daily = getDailyPuzzleSteps("2026-11-14");
+    const widestDaily = Math.max(...daily.map((step) => legalMoves(step.state).length));
+    assert.ok(
+      legalMoves(puzzle.state).length <= widestDaily,
+      `seed ${seed}: a practice position must not offer more choices than the daily run`,
+    );
   }
+  assert.ok(checked >= 2, "the seed search must still produce practice puzzles");
+});
+
+test("a solved practice puzzle can be replayed once without spending a slot", () => {
+  const route = fs.readFileSync("src/app/api/solitaire/puzzle/route.ts", "utf8");
+
+  // The marker is a second attempt row under `<key>:replay`, so the unique
+  // (user_id, puzzle_key) index is what limits the player to one free replay.
+  assert.ok(route.includes('`${puzzle.key}:replay`'));
+  assert.match(route, /PUZZLE_REPLAY_USED/);
+  assert.match(route, /PUZZLE_REPLAY_UNAVAILABLE/);
+
+  // The replay answers BEFORE the allowance is consumed: it costs no slot.
+  assert.ok(
+    route.indexOf('kind === "unlimited" && replay') < route.indexOf("consumePuzzleAllowance({"),
+    "the replay branch must answer before the allowance is consumed",
+  );
+
+  // Only a correct practice answer opens the replay.
+  assert.match(route, /replayAvailable: kind === "unlimited" && correct/);
+
+  // The board offers it, and asks the server for it.
+  assert.ok(PUZZLE_UI.includes('data-testid="puzzle-replay"'));
+  assert.match(PUZZLE_UI, /replay: replayMode/);
+});
+
+test("the allowance can be read without building a puzzle", () => {
+  const route = fs.readFileSync("src/app/api/solitaire/puzzle/route.ts", "utf8");
+  assert.match(route, /allowanceOnly/);
+  // The early return happens before the daily/unlimited builders run.
+  assert.ok(
+    route.indexOf('url.searchParams.get("allowanceOnly")') <
+      route.indexOf("getDailyPuzzleSteps(dateKey)"),
+    "the allowance-only answer must not build a position",
+  );
 });
 
 test("the explanation is green when correct and red when incorrect", () => {

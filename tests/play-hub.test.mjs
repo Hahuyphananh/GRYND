@@ -182,6 +182,28 @@ test("the daily puzzle uses the ordered multi-step server system", () => {
   assert.match(read("src/components/play/LobbyStatus.tsx"), /\/api\/solitaire\/puzzle\?kind=/);
 });
 
+test("the unlimited card and lobby show today's remaining puzzles", () => {
+  // The hub card reads the server's allowance, from a read-only endpoint that
+  // does NOT build a position, and never invents a number.
+  assert.match(read(HUB), /PuzzleAllowanceBadge/);
+  const badge = read("src/components/play/PuzzleAllowanceBadge.tsx");
+  assert.match(badge, /\/api\/solitaire\/puzzle\?kind=unlimited&allowanceOnly=1/);
+  assert.match(badge, /remaining/);
+  assert.match(badge, /if \(failed\) return null/);
+
+  // The lobby prints the same live figures.
+  const lobby = read("src/components/play/LobbyStatus.tsx");
+  assert.match(lobby, /allowanceOnly=1/);
+  assert.match(lobby, /lobby\.unlimited\.remaining/);
+
+  // And the counts exist in all three locales.
+  for (const language of ["en", "fr", "es"]) {
+    const card = PLAY_HUB_TRANSLATIONS[language].cards.unlimited;
+    assert.equal(typeof card.remaining, "string", `${language} needs a remaining count`);
+    assert.equal(typeof card.pro, "string", `${language} needs the PRO label`);
+  }
+});
+
 // ── Stats: Pro analytics + blurred free lock ──────────────────────────────
 
 test("free stats are blurred behind a lock and Pro loads coaching", () => {

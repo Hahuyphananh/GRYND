@@ -168,7 +168,11 @@ export default function LobbyStatus({
       ? "/api/solitaire/solo"
       : mode === "daily"
         ? "/api/solitaire/daily"
-        : `/api/solitaire/puzzle?kind=${mode === "dailyPuzzle" ? "daily" : "unlimited"}`;
+        : mode === "dailyPuzzle"
+          ? "/api/solitaire/puzzle?kind=daily"
+          : // The unlimited lobby only prints the count, so it asks for the
+            // allowance alone instead of making the server build a position.
+            "/api/solitaire/puzzle?kind=unlimited&allowanceOnly=1";
   const { data, state } = useStatus(endpoint);
 
   if (state === "loading") return <Loading label={t("playHub.loading")} />;

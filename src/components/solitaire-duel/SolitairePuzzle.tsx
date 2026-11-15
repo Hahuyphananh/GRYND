@@ -112,6 +112,10 @@ export default function SolitairePuzzle({ kind }: Props) {
   const [judgement, setJudgement] = useState<Judgement | null>(null);
   // The next board of a daily run, unlocked by a correct answer.
   const [nextStep, setNextStep] = useState<DailyStep | null>(null);
+  // A solved practice puzzle may be replayed ONCE for free: the server judges
+  // the same position again without taking a slot from the day's allowance.
+  const [replayMode, setReplayMode] = useState(false);
+  const [replayed, setReplayed] = useState(false);
   // True when this position was built in the tab because there is no network.
   const [offline, setOffline] = useState(false);
   const [line, setLine] = useState<GlitchLine>({
@@ -164,6 +168,8 @@ export default function SolitairePuzzle({ kind }: Props) {
       setLimitReached(false);
       setJudgement(null);
       setNextStep(null);
+      setReplayMode(false);
+      setReplayed(false);
       setOffline(false);
       localRef.current = null;
       announce({ expression: "focused", message: OPENING_LINE });
@@ -279,6 +285,11 @@ export default function SolitairePuzzle({ kind }: Props) {
         };
         setJudgement(judged);
         announceJudgement(judged, local.board);
+        // Offline nothing is recorded, so the second look is free anyway.
+        if (replayMode) {
+          setReplayMode(false);
+          setReplayed(true);
+        }
         return;
       }
 
@@ -288,7 +299,13 @@ export default function SolitairePuzzle({ kind }: Props) {
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ kind, key: puzzle.key, move }),
+          body: JSON.stringify({
+            kind,
+            key: puzzle.key,
+            move,
+            // Practice only: the free second look at a solved position.
+            ...(kind === "unlimited" ? { replay: replayMode } : {}),
+          }),
         });
         const body = await response.json().catch(() => null);
 
@@ -319,9 +336,22 @@ export default function SolitairePuzzle({ kind }: Props) {
         }
 
         if (response.status === 409) {
+          if (body?.code === "PUZZLE_REPLAY_USED") {
+            setReplayMode(false);
+            setReplayed(true);
+            announce({
+              expression: "focused",
+              message:
+                "This position has already had its one free replay. Start a new puzzle instead.",
+            });
+            return;
+          }
           announce({
             expression: "focused",
-            message: "That step is still locked. Solve the earlier steps of today's puzzle first.",
+            message:
+              body?.code === "PUZZLE_REPLAY_UNAVAILABLE"
+                ? "Only a position you have already solved can be replayed."
+                : "That step is still locked. Solve the earlier steps of today's puzzle first.",
           });
           return;
         }
@@ -339,6 +369,8 @@ export default function SolitairePuzzle({ kind }: Props) {
           totalSteps?: number;
           status?: "playing" | "failed" | "completed";
           nextStep?: DailyStep | null;
+          replay?: boolean;
+          replayAvailable?: boolean;
         };
 
         const judged: Judgement = {
@@ -350,6 +382,8 @@ export default function SolitairePuzzle({ kind }: Props) {
         };
         setJudgement(judged);
         setNextStep(data.nextStep ?? null);
+        setReplayMode(false);
+        if (data.replay) setReplayed(true);
         announceJudgement(judged, puzzle.board);
         if (data.allowance) {
           setPuzzle((current) =>
@@ -370,6 +404,7 @@ export default function SolitairePuzzle({ kind }: Props) {
       outOfPuzzles,
       offline,
       kind,
+      replayMode,
       announce,
       announceJudgement,
     ],
@@ -404,6 +439,24 @@ export default function SolitairePuzzle({ kind }: Props) {
       message: `Step ${next.step} of ${next.totalSteps}. ${OPENING_LINE}`,
     });
   }, [announce, nextStep]);
+
+  /**
+   * Re-open the SAME practice position for its one free replay.
+   *
+   * Clearing the judgement puts the original board back (the solution board is
+   * only shown while a judgement is held), and `replayMode` makes the next
+   * submission ask the server not to spend a slot.
+   */
+  const startReplay = useCallback(() => {
+    if (kind !== "unlimited" || !judgement?.correct || replayed || replayMode) return;
+    setJudgement(null);
+    setReplayMode(true);
+    announce({
+      expression: "focused",
+      message:
+        "Same position, one free replay — this does not use one of today's puzzles. Play the best move again.",
+    });
+  }, [announce, judgement, kind, replayed, replayMode]);
 
   const onInvalid = useCallback(
     (message: string) => {
@@ -569,6 +622,23 @@ export default function SolitairePuzzle({ kind }: Props) {
                   <p className="mt-1 text-xs text-white/45">
                     Checked on this device — nothing was recorded.
                   </p>
+                )}
+                {kind === "unlimited" && replayMode && (
+                  <p className="mt-2 text-xs font-semibold text-cyan-200/85">
+                    Free replay — no puzzle is spent on this attempt.
+                  </p>
+                )}
+                {kind === "unlimited" && judgement && !replayed && (
+                  <button
+                    type="button"
+                    onClick={startReplay}
+                    data-testid="puzzle-replay"
+                    className="mt-3 w-full rounded-lg border border-cyan-300/45 bg-cyan-300/10 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-cyan-100 transition hover:bg-cyan-300/20"
+                  >
+                    {judgement.correct
+                      ? "Replay this position once · free →"
+                      : "Study the position again · free →"}
+                  </button>
                 )}
                 {kind === "daily" && nextStep && (
                   <button

@@ -250,7 +250,7 @@ function bestMoveFor(state: SolitaireState): RankedMove | null {
  *      foundation or draw, so the puzzle is about finding the best move rather
  *      than always finding the flip.
  */
-function puzzleCandidatesForSeed(seed: number): Puzzle[] | null {
+export function puzzleCandidatesForSeed(seed: number): Puzzle[] | null {
   if (!Number.isInteger(seed) || seed < 0 || seed > MAX_UINT32) return null;
 
   const deal = dealFromSeed(seed);
@@ -299,31 +299,51 @@ function puzzleCandidatesForSeed(seed: number): Puzzle[] | null {
 }
 
 /**
- * Build one puzzle for a seed, or null when this deal has no qualifying
- * position.
+ * The EASIEST qualifying position on a deal.
  *
- * Positions that qualify are collected and one is chosen deterministically
- * from the seed, alternating between quiet and revealing answers when both
- * exist. That keeps a seed reproducible while making the mode varied.
+ * Unlimited practice is deliberately gentler than the daily run, and
+ * "gentler" is measured rather than asserted:
+ *
+ *   * a plain card reveal is preferred whenever the deal has one — the
+ *     "find the flip" decision the mode is for, rather than a quiet
+ *     foundation or build move;
+ *   * of those, the position with the FEWEST legal moves wins, so the player
+ *     faces the smallest decision the line offers;
+ *   * the earliest position breaks a tie, which is also the simplest one.
+ *
+ * The daily run does the opposite by design: it skips the first 35% of the
+ * line and mixes in non-revealing answers, so it is never the easier of the
+ * two.
+ */
+function easiestCandidate(candidates: Puzzle[]): Puzzle | null {
+  const revealing = candidates.filter((candidate) => candidate.answerReveal !== null);
+  const pool = revealing.length > 0 ? revealing : candidates;
+
+  let best: Puzzle | null = null;
+  let fewest = Number.POSITIVE_INFINITY;
+  for (const candidate of pool) {
+    const moves = legalMoves(candidate.state).length;
+    // Strict `<` keeps the earliest position when branching is equal.
+    if (moves < fewest) {
+      best = candidate;
+      fewest = moves;
+    }
+  }
+  return best;
+}
+
+/**
+ * Build one PRACTICE puzzle for a seed, or null when this deal has no
+ * qualifying position.
+ *
+ * One best move, and the easiest one the deal can offer — see
+ * `easiestCandidate`. A pure function of the seed, so the submit route can
+ * rebuild the exact position the player answered.
  */
 export function buildPuzzleForSeed(seed: number): Puzzle | null {
   const candidates = puzzleCandidatesForSeed(seed);
   if (!candidates) return null;
-
-  // Prefer variety: even seeds take a quiet best move when one exists, odd
-  // seeds take a revealing one. If only one kind qualifies, use it.
-  const quiet = candidates.filter((candidate) => candidate.answerReveal === null);
-  const revealing = candidates.filter((candidate) => candidate.answerReveal !== null);
-  const pool =
-    quiet.length > 0 && revealing.length > 0
-      ? seed % 2 === 0
-        ? quiet
-        : revealing
-      : quiet.length > 0
-        ? quiet
-        : revealing;
-
-  return pool[seed % pool.length] ?? null;
+  return easiestCandidate(candidates);
 }
 
 /**

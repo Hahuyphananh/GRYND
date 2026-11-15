@@ -23,6 +23,7 @@ import {
 
 import Footer from "../Footer";
 import NavigationBar from "../navigation-bar";
+import PuzzleAllowanceBadge from "./PuzzleAllowanceBadge";
 import { useTranslation } from "../../hooks/useTranslation";
 
 type ModeId = "solo" | "daily" | "ai" | "ranked" | "dailyPuzzle" | "unlimited";
@@ -128,6 +129,14 @@ export default function PlayHub() {
               <span className="mt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-white/35">
                 {t(`playHub.cards.${mode.id}.meta`)}
               </span>
+              {mode.id === "unlimited" && (
+                <span
+                  data-testid="play-mode-unlimited-remaining"
+                  className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-fuchsia-200/80"
+                >
+                  <PuzzleAllowanceBadge />
+                </span>
+              )}
               <span className="mt-2 inline-flex items-center gap-1.5 text-xs font-extrabold text-[#00e5ff]">
                 {t(`playHub.cards.${mode.id}.cta`)}
                 <IconArrowRight

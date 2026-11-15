@@ -19,7 +19,10 @@
 //   * The unlimited puzzle is free for 5 moves per UTC day and unlimited for
 //     GRYND PRO. A submission consumes one slot — the slot is taken BEFORE the
 //     move is judged, so a wrong move still spends it and retrying cannot farm
-//     the day.
+//     the day. A puzzle the player already SOLVED may be replayed ONCE for
+//     free (`replay: true`), which is judged again without consuming a slot.
+//   * `allowanceOnly=1` returns just the allowance, so the Play hub and the
+//     lobby can print the count without paying for a puzzle build.
 //   * The answer is never in a GET response before the player has moved. Once a
 //     move is recorded, the position AFTER the winning move is returned so the
 //     board can show the solution.
@@ -155,6 +158,13 @@ export async function GET(req: Request) {
   }
 
   try {
+    // The hub card and the lobby only print the count. Building a verified
+    // position is the expensive part of this route, so a read-only caller can
+    // ask for the allowance alone.
+    if (kind === "unlimited" && url.searchParams.get("allowanceOnly") === "1") {
+      return NextResponse.json({ success: true, data: { allowance } });
+    }
+
     if (kind === "daily") {
       const dateKey = dailyPuzzleDateKey(now);
       const steps = getDailyPuzzleSteps(dateKey);
@@ -240,12 +250,20 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => null)) as
-    | { kind?: unknown; key?: unknown; move?: unknown; elapsedMs?: unknown }
+    | {
+        kind?: unknown;
+        key?: unknown;
+        move?: unknown;
+        elapsedMs?: unknown;
+        replay?: unknown;
+      }
     | null;
 
   const kind = readKind(body?.kind);
   const key = typeof body?.key === "string" ? body.key : "";
   const move = parsePuzzleMove(body?.move);
+  // A free second look at a practice position the player already solved.
+  const replay = body?.replay === true;
   if (!key || !move) {
     return NextResponse.json(
       { success: false, error: "A puzzle key and a valid move are required" },
@@ -304,6 +322,80 @@ export async function POST(req: Request) {
   }
 
   try {
+    // A SOLVED practice puzzle may be replayed once for free. The replay is
+    // judged exactly like the first look, but it takes no slot from the day's
+    // allowance, so a player can study the position they just solved instead of
+    // paying a puzzle for the second attempt.
+    //
+    // The marker is a second attempt row under `<key>:replay`: the table's
+    // unique (user_id, puzzle_key) index is then what limits the player to ONE
+    // replay, with no new column and no migration.
+    if (kind === "unlimited" && replay) {
+      const original = await findAttempt(player.playerId, puzzle.key);
+      if (!original?.correct) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Only a puzzle you have solved can be replayed",
+            code: "PUZZLE_REPLAY_UNAVAILABLE",
+          },
+          { status: 409 },
+        );
+      }
+
+      const replayKey = `${puzzle.key}:replay`;
+      const usedReplay = await findAttempt(player.playerId, replayKey);
+      if (usedReplay) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "That puzzle has already had its free replay",
+            code: "PUZZLE_REPLAY_USED",
+          },
+          { status: 409 },
+        );
+      }
+
+      const correct = verifyPuzzleMove(puzzle, move);
+      const inserted = await db
+        .insert(solitairePuzzleAttempts)
+        .values({
+          userId: player.playerId,
+          kind,
+          puzzleKey: replayKey,
+          move: JSON.stringify(move),
+          correct,
+          elapsedMs: 0,
+        })
+        .onConflictDoNothing({
+          target: [
+            solitairePuzzleAttempts.userId,
+            solitairePuzzleAttempts.puzzleKey,
+          ],
+        })
+        .returning({ id: solitairePuzzleAttempts.id });
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          correct,
+          playedMove: move,
+          answer: puzzle.answer,
+          answerReveal: puzzle.answerReveal,
+          solution: puzzle.answerBoard,
+          replay: true,
+          replayAvailable: false,
+          alreadyPlayed: inserted.length === 0,
+          // Read, never consumed: the free replay does not spend a slot.
+          allowance: await readPuzzleAllowance({
+            playerId: player.playerId,
+            isPro: player.isPro,
+            now,
+          }),
+        },
+      });
+    }
+
     if (kind === "daily" && dailyStep !== null) {
       // Enforce the run order: every earlier step must be correct. A forged key
       // cannot skip ahead, and a wrong step ends the run.
@@ -416,6 +508,8 @@ export async function POST(req: Request) {
         solution: puzzle.answerBoard,
         duplicate,
         alreadyPlayed: duplicate,
+        // Only a solved practice puzzle opens the free replay.
+        replayAvailable: kind === "unlimited" && correct,
         ...(kind === "daily" && dailyStep !== null
           ? {
               step: dailyStep,
