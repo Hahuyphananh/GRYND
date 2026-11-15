@@ -1,4 +1,5 @@
 import "./globals.css";
+import "./solitaire-cosmetics.css";
 import { headers } from "next/headers";
 import { Providers } from "./providers";
 import ConsentModeDefault from "../components/ConsentModeDefault";

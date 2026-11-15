@@ -1702,6 +1702,13 @@
       "when": 1800000105000,
       "tag": "0261_pro_offer_refresh",
       "breakpoints": true
+    },
+    {
+      "idx": 243,
+      "version": "7",
+      "when": 1800000106000,
+      "tag": "0262_streaks_board_cosmetics",
+      "breakpoints": true
     }
   ]
 }
