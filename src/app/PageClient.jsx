@@ -2,15 +2,15 @@
 
 // src/app/PageClient.jsx
 //
-// GRYND's home page — the Solitaire lobby.
+// GRYND's home page — the six-mode Solitaire menu.
 //
-// This is deliberately not a marketing page with a link to a lobby somewhere
-// else: the real lobby (src/components/solitaire-duel/SolitaireLobby) is
-// mounted right here, with the existing matchmaking, practice, open-table,
-// resume and cancel actions. Everything above and below it is support:
+// The ranked lobby is NOT mounted here: matchmaking lives on its own page
+// (/play/ranked, part of the /play hub), and this page routes to it instead of
+// duplicating it. Everything on the page is support:
 //
 //   * the hero says what GRYND is in one screen;
-//   * the lobby is the product (ranked / practice / real queue state);
+//   * the six mode cards are the product menu — one per mode the /play hub
+//     offers, each carrying its own record and linking to its real lobby;
 //   * the dashboard is the player's own Solitaire record, from /api/user-stats,
 //     /api/get-user-tokens and /api/solitaire-duel/lobby;
 //   * the ranking preview is the public Solitaire board.
@@ -25,9 +25,9 @@ import { useAuth, useUser } from "@clerk/nextjs";
 import NavigationBar from "../components/navigation-bar";
 import DailyRewardWidget from "../components/DailyRewardWidget";
 import Footer from "../components/Footer";
-import SolitaireLobby from "../components/solitaire-duel/SolitaireLobby";
 import ReportEntryButton from "../components/reports/ReportEntryButton";
 import HeroCard3D from "../components/home/HeroCard3D";
+import ModeTableau from "../components/play/ModeTableau";
 import Image from "next/image";
 import rankedModeArt from "../images/solitaire-mode-ranked.jpg";
 import soloModeArt from "../images/solitaire-mode-solo.jpg";
@@ -73,13 +73,14 @@ const MODE_ART_CYCLE_MS = 1400;
 const MODE_ART = [rankedModeArt, soloModeArt, aiModeArt, dailyModeArt];
 const artCycle = (primary) => [primary, ...MODE_ART.filter((art) => art !== primary)];
 
-// The four ways to play, as self-contained cards: each carries its own board
-// artwork (a real Klondike tableau, the same board the game renders), so the
-// grid reads like a game lobby rather than a row of text links.
+// The six ways to play — the same six the /play hub offers — as
+// self-contained cards: each carries its own board artwork (a real Klondike
+// tableau, the same board the game renders), so the grid reads like a game
+// lobby rather than a row of text links.
 const MODES = [
   {
     key: "ranked",
-    href: "#lobby",
+    href: "/play/ranked",
     images: artCycle(rankedModeArt),
     alt: "A Klondike board dealt on the ranked Solitaire table",
     eyebrow: "Ranked PvP",
@@ -107,7 +108,7 @@ const MODES = [
   },
   {
     key: "ai",
-    href: "#practice",
+    href: "/play/ai",
     images: artCycle(aiModeArt),
     alt: "A Klondike board dealt for practice against the built-in bot",
     eyebrow: "vs AI",
@@ -133,6 +134,37 @@ const MODES = [
     pillClass: "border-amber-300/60 text-amber-200",
     dotClass: "bg-amber-300",
     ctaClass: "text-amber-200 group-hover:text-amber-100",
+  },
+  {
+    key: "dailyPuzzle",
+    href: "/play/daily-puzzle",
+    // No photograph exists for the puzzle modes, and borrowing another mode's
+    // board would advertise the wrong table. They get the /play hub's own
+    // tableau preview instead: a real Klondike layout in this mode's felt,
+    // playing the one move the mode is about (a card lifted to the puzzle's
+    // target / an endless three-card shuffle).
+    tableau: "dailyPuzzle",
+    eyebrow: "Daily Puzzle",
+    title: "Three moves, one deal",
+    body: "Three verified positions from one winning deal. Find the best move at each step — one wrong answer ends the run.",
+    cta: "Open the puzzle",
+    shellClass: "border-sky-400/30 hover:border-sky-300/60 hover:bg-sky-400/[0.06]",
+    pillClass: "border-sky-400/60 text-sky-300",
+    dotClass: "bg-sky-300",
+    ctaClass: "text-sky-300 group-hover:text-sky-200",
+  },
+  {
+    key: "unlimited",
+    href: "/play/unlimited-puzzles",
+    tableau: "unlimited",
+    eyebrow: "Unlimited Puzzles",
+    title: "A puzzle whenever you want",
+    body: "One real position, one best move — the short version of the daily run. Five free puzzles per UTC day, unlimited on PRO.",
+    cta: "Practise puzzles",
+    shellClass: "border-fuchsia-400/30 hover:border-fuchsia-300/60 hover:bg-fuchsia-400/[0.06]",
+    pillClass: "border-fuchsia-400/60 text-fuchsia-200",
+    dotClass: "bg-fuchsia-300",
+    ctaClass: "text-fuchsia-200 group-hover:text-fuchsia-100",
   },
 ];
 
@@ -172,7 +204,7 @@ function ModeArt({ images, alt, previewing }) {
           aria-hidden={position !== index}
           quality={85}
           loading="lazy"
-          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
           className={`absolute inset-0 h-full w-full object-cover object-center transition-opacity duration-500 ${
             position === index ? "opacity-100" : "opacity-0"
           }`}
@@ -430,6 +462,11 @@ export default function MainComponent({
         : dailyDateKey
           ? `Today's deal · ${formatDealDate(dailyDateKey)}`
           : "",
+    // The puzzle modes are not in the daily summary payload above (that one is
+    // the Daily Challenge's own record), so their lines state the rule rather
+    // than borrowing a number from a mode they do not describe.
+    dailyPuzzle: "Free · 3 steps · one run per day",
+    unlimited: "5 free per UTC day · 1 move each",
   };
 
   const tiles = [
@@ -492,25 +529,25 @@ export default function MainComponent({
             <span className="text-cyan-300">of Solitaire</span>
           </h1>
           <p className="mt-4 max-w-2xl text-sm leading-relaxed text-white/60 sm:text-base">
-            Classic Klondike, four ways: race a real person on the ranked
-            ladder, play a timed game on your own, take on the bot, or play the
-            same daily deal as everyone else. Every ranked result is validated
-            server-side, and ranked play is free — the only thing at stake is
-            your rating.
+            Classic Klondike, six ways: race a real person on the ranked
+            ladder, play a timed game on your own, take on the bot, play the
+            same daily deal as everyone else, or work through the daily and
+            unlimited puzzles. Every ranked result is validated server-side,
+            and ranked play is free — the only thing at stake is your rating.
           </p>
           <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
-            <a
-              href="#lobby"
+            <Link
+              href="/play/ranked"
               className="inline-flex items-center gap-2 rounded-lg bg-cyan-400 px-5 py-2.5 font-bold text-[#04121a] transition hover:bg-cyan-300 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-2 focus-visible:ring-offset-[#05070d]"
             >
               Play ranked
-            </a>
-            <a
-              href="#practice"
+            </Link>
+            <Link
+              href="/play/ai"
               className="text-white/70 underline underline-offset-4 transition hover:text-white"
             >
               Practise vs AI
-            </a>
+            </Link>
             <Link href="/games/solitaire-duel" className="text-white/70 underline underline-offset-4 transition hover:text-white">
               Rules &amp; strategy
             </Link>
@@ -543,10 +580,10 @@ export default function MainComponent({
               Pick a mode
             </h2>
             <span className="text-[11px] font-semibold text-white/30">
-              One board, four ways to play
+              One board, six ways to play
             </span>
           </div>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {MODES.map((mode) => (
               <Link
                 key={mode.key}
@@ -559,15 +596,31 @@ export default function MainComponent({
                 className={`group flex h-full flex-col rounded-2xl border bg-white/[0.02] p-3 transition hover:-translate-y-1 hover:bg-white/[0.05] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#05070d] ${mode.shellClass}`}
               >
                 <div className="relative aspect-video overflow-hidden rounded-xl border border-white/10 bg-[#04060f]">
-                  <div className="absolute inset-0 transition-transform duration-300 group-hover:scale-105">
-                    <ModeArt
-                      images={mode.images}
-                      alt={mode.alt}
-                      previewing={previewMode === mode.key}
-                    />
-                  </div>
+                  {mode.tableau ? (
+                    /* The tableau is 16:10 inside a 16:9 frame, so the couple
+                       of percent of empty felt at the top and bottom edge is
+                       cropped rather than letterboxed. */
+                    <div className="absolute inset-0 flex items-center">
+                      <ModeTableau variant={mode.tableau} />
+                    </div>
+                  ) : (
+                    <div className="absolute inset-0 transition-transform duration-300 group-hover:scale-105">
+                      <ModeArt
+                        images={mode.images}
+                        alt={mode.alt}
+                        previewing={previewMode === mode.key}
+                      />
+                    </div>
+                  )}
                   <span
-                    className={`absolute left-2 top-2 rounded-full border bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider backdrop-blur-xs ${mode.pillClass}`}
+                    className={`absolute rounded-full border bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider backdrop-blur-xs ${mode.pillClass} ${
+                      // A Klondike tableau keeps its foundations in the top-left
+                      // corner — exactly where the tag sits on the photo cards.
+                      // On the tableau cards the tag moves to the bottom-left
+                      // (the /play hub's own placement) so it labels the board
+                      // instead of covering the layout it advertises.
+                      mode.tableau ? "bottom-2 left-2" : "left-2 top-2"
+                    }`}
                   >
                     {mode.eyebrow}
                   </span>
@@ -600,19 +653,6 @@ export default function MainComponent({
                 </span>
               </Link>
             ))}
-          </div>
-        </section>
-
-        {/* ── The lobby ─────────────────────────────────────────────────── */}
-        <section id="lobby" className="scroll-mt-28 pt-8" aria-labelledby="lobby-heading">
-          <h2
-            id="lobby-heading"
-            className="text-[11px] font-black uppercase tracking-[0.32em] text-white/40"
-          >
-            Play now
-          </h2>
-          <div id="practice" className="mt-4 scroll-mt-28">
-            <SolitaireLobby variant="home" />
           </div>
         </section>
 

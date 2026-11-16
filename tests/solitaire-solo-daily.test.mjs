@@ -239,21 +239,28 @@ test("the game surface never calls the matchmaking or AI endpoints", () => {
   assert.match(game, /replayMoves/, "resume replays the move log through the engine");
 });
 
-test("the homepage and navigation expose all four ways to play", () => {
+test("the homepage and navigation expose all six ways to play", () => {
   const home = read("src/app/PageClient.jsx");
-  // The four cards are data-driven (`MODES`), so each mode's destination is a
+  // The six cards are data-driven (`MODES`), so each mode's destination is a
   // `href:` field the card renders — not a literal `href="…"` attribute in the
   // markup. Match the field, and keep proving the card actually renders it.
   assert.match(home, /href: "\/solitaire"/);
   assert.match(home, /href: "\/daily"/);
-  assert.match(home, /href: "#lobby"/);
-  assert.match(home, /href: "#practice"/);
+  // Ranked and AI open their own /play lobbies: the ranked matchmaking is not
+  // mounted on the home page, so the cards cannot be in-page anchors.
+  assert.match(home, /href: "\/play\/ranked"/);
+  assert.match(home, /href: "\/play\/ai"/);
+  assert.match(home, /href: "\/play\/daily-puzzle"/);
+  assert.match(home, /href: "\/play\/unlimited-puzzles"/);
+  assert.doesNotMatch(home, /variant="home"/, "the ranked lobby belongs to /play");
   assert.match(home, /href=\{mode\.href\}/, "each mode card renders its own href");
   // The cards' own copy, as the lobby presents the four modes.
   assert.match(home, /Ranked PvP/);
   assert.match(home, /Play alone, right now/);
   assert.match(home, /Learn the rhythm/);
   assert.match(home, /One deal, every day/);
+  assert.match(home, /Three moves, one deal/);
+  assert.match(home, /A puzzle whenever you want/);
 
   const nav = read("src/components/navigation-bar.jsx");
   assert.match(nav, /"\/daily"/);

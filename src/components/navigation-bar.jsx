@@ -33,6 +33,7 @@ const NAV_TRANSLATION_KEYS = {
   "/": "nav.home",
   "/games/solitaire-duel": "nav.casino",
   "/classement": "nav.leaderboard",
+  "/contact": "nav.contact",
 };
 const NAV_ICONS = {};
 
@@ -492,7 +493,7 @@ function NavigationBarInner({ currentPath = "" }) {
               animate="animate"
               className="hidden items-center space-x-1 md:flex lg:space-x-4"
             >
-              {["/", "/play", "/learn", "/classement", "/games/solitaire-duel", "/upgrade-pro"].map((path) => (
+              {["/", "/play", "/learn", "/classement", "/contact", "/games/solitaire-duel", "/upgrade-pro"].map((path) => (
                 <motion.div
                   key={path}
                   initial={itemVariant.initial}
@@ -747,7 +748,7 @@ function NavigationBarInner({ currentPath = "" }) {
                     Admin dashboard
                   </Link>
                 )}
-                {["/", "/play", "/learn", "/classement", "/games/solitaire-duel", "/upgrade-pro"].map((path) => (
+                {["/", "/play", "/learn", "/classement", "/contact", "/games/solitaire-duel", "/upgrade-pro"].map((path) => (
                   <Link
                     key={path}
                     href={path}

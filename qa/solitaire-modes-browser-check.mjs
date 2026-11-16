@@ -73,8 +73,10 @@ try {
   check("home features Daily Challenge", /Daily Challenge/i.test(homeText));
   check("home links /solitaire", (await page.locator('a[href="/solitaire"]').count()) > 0);
   check("home links /daily", (await page.locator('a[href="/daily"]').count()) > 0);
-  check("home links ranked lobby", (await page.locator('a[href="#lobby"]').count()) > 0);
-  check("home links practice", (await page.locator('a[href="#practice"]').count()) > 0);
+  check("home links the ranked lobby", (await page.locator('a[href="/play/ranked"]').count()) > 0);
+  check("home links practice", (await page.locator('a[href="/play/ai"]').count()) > 0);
+  check("home links the daily puzzle", (await page.locator('a[href="/play/daily-puzzle"]').count()) > 0);
+  check("home links unlimited puzzles", (await page.locator('a[href="/play/unlimited-puzzles"]').count()) > 0);
   await page.screenshot({ path: `${SHOTS}/home-desktop.png`, fullPage: true });
 
   await openSolo(page);
