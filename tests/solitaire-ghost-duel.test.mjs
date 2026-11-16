@@ -646,7 +646,7 @@ test("the backfill is scheduled on both schedulers with the cron secret", () => 
   assert.match(route, /success: true/);
 
   const runner = read("deploy/jobs/run-job.sh");
-  assert.match(runner, /solitaire-ghost-pool\) ;;/);
+  assert.match(runner, /solitaire-ghost-pool\b[^)]*\) ;;/);
   assert.equal(fs.existsSync("deploy/jobs/grynd-job-solitaire-ghost-pool.timer"), true);
   const timer = read("deploy/jobs/grynd-job-solitaire-ghost-pool.timer");
   assert.match(timer, /Unit=grynd-job@solitaire-ghost-pool\.service/);

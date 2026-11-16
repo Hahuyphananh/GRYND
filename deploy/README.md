@@ -667,6 +667,7 @@ UTC schedules**, so removing Vercel removes nothing that production still needs.
 | `grynd-job-rank-snapshots.timer` | `/api/jobs/rank-snapshots` | `21:00` daily | Records each ranked player's Overall Elo position for the day |
 | `grynd-job-battleship-timeouts.timer` | `/api/jobs/battleship-timeouts` | every minute | Settles overdue Battleship placement and attack deadlines: one random untried timeout attack, forfeit at two consecutive timeouts, draw when both time out, cancel when both fleets are missing |
 | `grynd-job-solitaire-ghost-pool.timer` | `/api/jobs/solitaire-ghost-pool` | every 10 minutes | Records verified replays of FINISHED ranked Solitaire duels into `solitaire_ghost_runs`, so ranked matchmaking always has a real recorded opponent available. Idempotent (`NOT EXISTS` + `ON CONFLICT DO NOTHING`), writes only its own pool table, bounded per tick |
+| `grynd-job-solitaire-inactivity.timer` | `/api/jobs/solitaire-inactivity` | every 5 minutes | Settles untimed Solitaire duels whose seat has made no move for 20 minutes, so an abandoned match is recorded as a forfeit loss instead of staying `playing`. Idempotent and re-checked under the row lock |
 
 Installed files:
 

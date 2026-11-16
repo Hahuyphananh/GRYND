@@ -94,3 +94,19 @@ test("the match view explains an inactivity forfeit", () => {
   assert.match(MATCH_VIEW, /opponentInactivityForfeitAtMs/);
   assert.match(MATCH_VIEW, /20 minutes/);
 });
+
+test("the sweep is scheduled on every scheduler with the cron secret", () => {
+  const timer = read("deploy/jobs/grynd-job-solitaire-inactivity.timer");
+  assert.match(timer, /OnCalendar=\*:0\/5/);
+  assert.match(timer, /Unit=grynd-job@solitaire-inactivity\.service/);
+
+  const runner = read("deploy/jobs/run-job.sh");
+  assert.match(runner, /solitaire-inactivity\) ;;/);
+
+  const vercel = JSON.parse(read("vercel.json"));
+  const cron = (vercel.crons ?? []).find(
+    (entry) => entry.path === "/api/jobs/solitaire-inactivity",
+  );
+  assert.ok(cron, "the Vercel cron list must schedule the sweep");
+  assert.equal(cron.schedule, "*/5 * * * *");
+});
