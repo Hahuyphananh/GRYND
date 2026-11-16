@@ -43,6 +43,11 @@ import { mock } from "node:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import {
+  dailyRewardCycleDay,
+  dailyRewardWindow,
+  dailyRewardWindowStart,
+} from "../src/lib/dailyRewardCycle.ts";
 
 const MODULE_MOCKING_AVAILABLE = typeof mock?.module === "function";
 const SKIP_REASON = MODULE_MOCKING_AVAILABLE
@@ -176,8 +181,11 @@ test("both surfaces open the one shared 14-day board", () => {
 
   // The board renders the whole cycle the server sent, and never invents a
   // curve of its own.
-  assert.match(board, /status\.cycle\.map\(\(amount, index\)/);
-  assert.match(board, /status\.cycleDays/);
+  // The tiles are the server's WINDOW, numbered absolutely: 1-14 on the first
+  // fortnight, 15-28 after it, then 29-42.
+  assert.match(board, /rewards\.map\(\(\{ day, amount \}\)/);
+  assert.match(board, /status\.windowStart/);
+  assert.match(board, /status\.windowEnd/);
   assert.ok(
     !/\[\s*30\s*,/.test(stripComments(board)),
     "the board must not inline its own cycle",
@@ -248,27 +256,32 @@ test("the widget is on the home page and the games hub, once each", () => {
 test("the widget stays under the navbar in the top-right", () => {
   const widget = read(WIDGET);
 
-  // Fixed to the viewport's right edge from `md` up, and never above the
+  // Fixed to the viewport's right edge from md up, and never above the
   // navbar in the stacking order (the navbar is z-40, the mobile menu z-50).
   assert.match(widget, /md:fixed/);
   assert.match(widget, /md:right-4/);
 
-  const top = widget.match(/md:top-\[(\d+)px\]/);
-  assert.ok(top, "the widget must pin its top offset");
-  // The navbar is h-16 (64px) / sm:h-20 (80px) / md:h-24 (96px) — the fixed
-  // offset has to clear the tallest of them or the widget sits behind it.
-  assert.ok(
-    Number(top[1]) >= 96,
-    `top offset ${top[1]}px does not clear the navbar's 96px (md:h-24)`,
+  // The offset is the navbar's tallest height (md:h-24 = 96px) plus a 16px
+  // gap; --safe-top is the Android edge-to-edge / iOS standalone inset the
+  // bar pads with. Dropping it is what put the card behind the bar.
+  assert.match(
+    widget,
+    /md:top-\[calc\(var\(--safe-top,0px\)_\+_112px\)\]/,
+    "the fixed offset must clear the navbar AND its safe-area padding",
   );
   assert.match(widget, /md:z-30/);
 
-  // Below `md` a fixed 288px card would cover the page it is meant to help, so
-  // the same element is inline there.
+  // Below md a fixed card would cover the page it is meant to help, so the
+  // same element is inline there.
   assert.match(widget, /mt-3 px-4 md:mt-0 md:px-0/);
 
   // Signed out (or before the session resolves) it renders nothing at all.
   assert.match(widget, /if \(!isLoaded \|\| !isSignedIn\) return null;/);
+
+  // The streak is a drawn flame (components/FlameMark), never an emoji: an
+  // emoji renders differently on every OS and can ship as a blank box.
+  assert.match(widget, /FlameMark/);
+  assert.doesNotMatch(widget, /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u);
 });
 
 // ── The navbar chip ─────────────────────────────────────────────────────────
@@ -356,15 +369,19 @@ test("the widget renders each reward state, and nothing when signed out", { skip
   const render = () =>
     renderToStaticMarkup(React.createElement(DailyRewardWidget));
 
+  const CYCLE = [30, 35, 120, 50, 60, 70, 80, 90, 105, 110, 135, 155, 175, 200];
   const STATUS = {
     claimable: true,
     winGateSatisfied: true,
-    streakDay: 10,
+    streakDay: 3,
     cycleDay: 3,
     cycleDays: 14,
+    windowStart: 1,
+    windowEnd: 14,
+    window: CYCLE.map((amount, index) => ({ day: index + 1, amount })),
     reward: 120,
     today: "2026-10-14",
-    cycle: [30, 35, 120, 50, 60, 70, 80, 90, 105, 110, 135, 155, 175, 200],
+    cycle: [...CYCLE],
     balance: 500,
   };
 
@@ -384,11 +401,12 @@ test("the widget renders each reward state, and nothing when signed out", { skip
     loading: false,
   });
   const claimable = render();
-  assert.match(claimable, /Claim day 3\s*—\s*120 coins/);
+  assert.match(claimable, /Daily Streak/);
+  assert.match(claimable, /data-testid="daily-streak-count"/);
+  assert.match(claimable, />3</, "the streak number is on the card");
+  assert.match(claimable, /120 coins/);
+  assert.match(claimable, /Days 1–14/);
   assert.match(claimable, /data-testid="daily-reward-widget-open"/);
-  // The board and the claim button are NOT in the initial markup: the reward
-  // opens first, and the claim is one click deeper.
-  assert.match(claimable, /Day 3\/14/);
   assert.doesNotMatch(claimable, /data-testid="daily-reward-claim"/);
   assert.doesNotMatch(claimable, /data-testid="daily-reward-board-dialog"/);
   // The amount comes from the server's answer, never from a literal here.
@@ -458,6 +476,11 @@ test("a wallet above the old ceiling still gets the claim", { skip: SKIP_REASON 
     streakDay: 2,
     cycleDay: 2,
     cycleDays: 14,
+    windowStart: 1,
+    windowEnd: 14,
+    window: [30, 35, 45, 50, 60, 70, 80, 90, 105, 120, 135, 155, 175, 200].map(
+      (amount, index) => ({ day: index + 1, amount }),
+    ),
     reward: 35,
     today: "2026-10-17",
     cycle: [30, 35, 45, 50, 60, 70, 80, 90, 105, 120, 135, 155, 175, 200],
@@ -468,7 +491,7 @@ test("a wallet above the old ceiling still gets the claim", { skip: SKIP_REASON 
 
   // The widget offers the claim — the same CTA a broke wallet gets.
   const widget = renderToStaticMarkup(React.createElement(DailyRewardWidget));
-  assert.match(widget, /Claim day 2\s*—\s*35 coins/);
+  assert.match(widget, /35 coins ready today/);
   assert.doesNotMatch(widget, /Wallet full/);
   assert.doesNotMatch(widget, /daily-reward-widget-wallet-full/);
 
@@ -530,4 +553,50 @@ test("an unread wallet shows a dash, never a fabricated zero", () => {
     (nav.match(/"—"/g) || []).length >= 2,
     "both nav surfaces must show a dash for an unknown balance",
   );
+});
+
+// -- The sliding 14-day window ---------------------------------------------
+
+test("the popup window slides by 14 days at a time", () => {
+  assert.equal(dailyRewardWindowStart(1), 1);
+  assert.equal(dailyRewardWindowStart(14), 1);
+  assert.equal(dailyRewardWindowStart(15), 15);
+  assert.equal(dailyRewardWindowStart(28), 15);
+  assert.equal(dailyRewardWindowStart(29), 29);
+
+  const first = dailyRewardWindow(14);
+  assert.deepEqual(
+    first.map((entry) => entry.day),
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+  );
+
+  const second = dailyRewardWindow(15);
+  assert.deepEqual(
+    second.map((entry) => entry.day),
+    [15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28],
+  );
+  // Same curated curve, new day numbers: the fortnight repeats.
+  assert.deepEqual(
+    second.map((entry) => entry.amount),
+    first.map((entry) => entry.amount),
+  );
+  assert.equal(dailyRewardCycleDay(15), 1);
+  assert.equal(dailyRewardCycleDay(28), 14);
+});
+
+test("a new day advances the streak when the player logs back in", () => {
+  const hook = read(HOOK);
+  assert.match(hook, /fetch\("\/api\/user\/daily-streak", \{/);
+  assert.match(hook, /method: "POST"/);
+  // The writer is the shared, idempotent-per-day one, not a client counter.
+  const route = read("src/app/api/user/daily-streak/route.js");
+  assert.match(route, /updateDailyStreak/);
+});
+
+test("an empty reward window opens nothing", () => {
+  const board = read(BOARD);
+  assert.match(board, /rewards\.length === 0\) return null;/);
+  const widget = read(WIDGET);
+  assert.match(widget, /windowDays\.filter\(/);
+  assert.match(widget, /hasRewards &&/);
 });

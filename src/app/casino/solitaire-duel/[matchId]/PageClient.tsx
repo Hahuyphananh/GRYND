@@ -1059,6 +1059,19 @@ export default function SolitaireDuelMatchPage() {
   const myPercent = myProgress?.progressPercent ?? 0;
   const opponentPercent = opponentProgress?.progressPercent ?? 0;
   const outcome = viewerOutcome(seat, match?.result) ?? "draw";
+// The server records every non-completion as `forfeit`; the clock instants
+  // it also sends distinguish an inactivity settlement from a concession, so
+  // the result can say what actually happened instead of guessing.
+  const settledByInactivity = Boolean(
+    finished &&
+      match?.resolutionReason === "forfeit" &&
+      match.endedAtMs != null &&
+      (outcome === "win"
+        ? match.opponentInactivityForfeitAtMs != null &&
+          match.endedAtMs >= match.opponentInactivityForfeitAtMs
+        : match.inactivityForfeitAtMs != null &&
+          match.endedAtMs >= match.inactivityForfeitAtMs),
+  );
   // THE BOT'S LAST WORD. A practice result ALWAYS shows the opponent's ending
   // line: the dialogue hook's latest line may be an ordinary one (or the ending
   // transition may have happened between polls), so the settled outcome
@@ -1655,6 +1668,29 @@ export default function SolitaireDuelMatchPage() {
         showGlitch={!isPractice}
         extraContent={
           <>
+            {finished && match?.resolutionReason === "forfeit" ? (
+              <div
+                role="status"
+                data-testid="solitaire-forfeit-notice"
+                className="rounded-xl border border-amber-400/35 bg-amber-500/10 px-4 py-3 text-left"
+              >
+                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-amber-300">
+                  {settledByInactivity ? "Forfeit — inactivity" : "Forfeit"}
+                </p>
+                <p className="mt-1 text-sm font-bold text-white">
+                  {outcome === "win"
+                    ? "Your opponent left the duel."
+                    : "The duel was forfeited."}
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-white/60">
+                  {settledByInactivity
+                    ? outcome === "win"
+                      ? "They stopped responding: a seat that makes no move for 20 minutes forfeits, and the server recorded your win."
+                      : "No move was made for 20 minutes, so the server awarded the duel to your opponent."
+                    : "A seat left the match before it was solved; the server recorded the result."}
+                </p>
+              </div>
+            ) : null}
             {/* A guest just finished their one free race: the result screen is
                 the honest place to ask for an account, and the prompt renders
                 nothing at all for a signed-in player. */}

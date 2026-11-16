@@ -21,7 +21,6 @@ import ChooseIconModal from "../../components/ChooseIconModal";
 import ChooseGlowModal from "../../components/ChooseGlowModal";
 import ChooseFrameModal from "../../components/ChooseFrameModal";
 import ChooseEmotesModal from "../../components/ChooseEmotesModal";
-import UpgradeProButton from "../../components/UpgradeProButton";
 import EmoteLoadoutStrip from "../../components/EmoteLoadoutStrip";
 import UserStatsTabs from "../../components/UserStatsTabs";
 import GuestProgressPanel from "../../components/guest/GuestProgressPanel";
@@ -110,7 +109,6 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
       console.error("[LOAD_MEMBERSHIP_ERROR]", err);
     }
   };
-
 
   const [titlesView, setTitlesView] = useState("special");
   const [titlesOpen, setTitlesOpen] = useState(false); // collapsed by default so the profile stays compact
@@ -1179,7 +1177,7 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
 
   if (!isLoaded) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#030712]">
+      <div className="flex h-screen items-center justify-center bg-[#05070d]">
         <div className="text-2xl text-cyan-200/80">
           {t("profile.loading", "Loading…")}
         </div>
@@ -1194,10 +1192,7 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
     // account profile below is untouched (Phase 2F).
     return (
       <div
-        className="min-h-screen text-white"
-        style={{
-          backgroundImage: "linear-gradient(135deg, #030712 0%, #01040a 100%)",
-        }}
+        className="relative min-h-screen bg-[#05070d] text-white"
       >
         <div className="mx-auto max-w-6xl px-4 pb-20 pt-24 sm:px-6">
           <NavigationBar currentPath="/profil" />
@@ -1230,89 +1225,14 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
 
   return (
     <div
-      className="min-h-screen text-white"
-      style={{
-        backgroundImage: "linear-gradient(135deg, #030712 0%, #01040a 100%)",
-      }}
+      className="relative min-h-screen bg-[#05070d] text-white"
     >
       <div className="max-w-6xl mx-auto px-6 pt-24 pb-20">
         <NavigationBar currentPath="/profil" />
         <h1 className="mb-8 text-4xl font-black tracking-tight text-white sm:text-5xl">
           {t("profile.title", "Your Profile")}
         </h1>
-        <SolitaireModesPanel />
-
-        {/* Permanent trophy-derived level + rank. Every number is the server's
-            `/api/user-stats` progression payload (peak-protected). */}
-        {stats?.playerLevel && (
-          <PlayerLevelProgressCard
-            progression={stats.playerLevel}
-            className="mb-8"
-          />
-        )}
-
-        <div
-          className="mt-8 bg-[#07101f]/90 border border-white/10 
-rounded-xl p-6 
-shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
-        >
-          <h2 className="text-xl text-cyan-200/80 mb-4">
-            {t("profile.stats.title", "User Statistics")}
-          </h2>
-          {statsError && <p className="text-red-400 mb-4">{statsError}</p>}
-          {/* Tabbed stat panel — mirrors the /classement leaderboard
-              (record / weekly / streaks) instead of a flat grid. */}
-          {/* Per-game Elo ratings come from /api/user-stats (read fresh on
-              every request, outside its stats cache) and render as the
-              "Game Ratings" tab. */}
-          <UserStatsTabs
-            record={stats?.record}
-            ratings={stats?.ratings}
-            overall={stats}
-          />
-
-          {/* Pointer to the GRYND PRO performance dashboard. It is a LINK, not
-              an embedded dashboard: the advanced analytics are gated on the
-              server (/api/stats/performance), so a free player sees the upsell
-              there rather than a second empty panel here. */}
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#f5ff3b]/30 bg-[#f5ff3b]/5 p-4">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-cyan-200/80">
-                {t("profile.stats.advanced_badge", "GRYND PRO")}
-              </p>
-              <p className="mt-0.5 text-sm text-slate-300">
-                {t(
-                  "profile.stats.advanced",
-                  "Performance dashboard — win rates, Elo and trophy graphs, and your overall ranking over time.",
-                )}
-              </p>
-            </div>
-            <Link
-              href="/stats"
-              className="shrink-0 rounded-lg border border-[#f5ff3b]/50 bg-[#f5ff3b]/10 px-4 py-2 text-sm font-semibold text-[#f5ff3b] transition hover:bg-[#f5ff3b]/20"
-            >
-              {t("profile.stats.advanced_open", "Open dashboard")}
-            </Link>
-          </div>
-        </div>
-
-        {/* Guest→account conversion (Phase 4): renders only while this
-            browser has an unclaimed guest practice record, or to confirm a
-            claim already made. Nothing changes for accounts without one. */}
-        <GuestClaimPanel />
-
-        {/* Members can show the mark. Fetches the badge from the server and
-            renders nothing at all for a free account or a guest. */}
-        <ShareProBadgeButton />
-
-        {/* GRYND PRO — shows "Manage Subscription" for subscribers and the
-            upgrade CTA for everyone else; the status is read from the server
-            (/api/membership/status), so the client can't claim PRO. */}
-        <div className="mb-6 flex justify-center">
-          <UpgradeProButton variant="compact" />
-        </div>
-
-        <div className="grid gap-8 md:grid-cols-2">
+        <div className="grid gap-8">
           <div
             className={`relative overflow-hidden bg-[#07101f]/90 border border-white/10 rounded-xl p-6 shadow-[0_12px_32px_rgba(0,0,0,0.28)] ${profileGlowClass || ""}`}
             style={
@@ -1368,7 +1288,7 @@ shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
                   className="border border-[#FFD700] transition group-hover:scale-105"
                 />
                 {/* Subtle "change" affordance so players know it's clickable */}
-                <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border border-white/20 bg-[#030712] text-cyan-200/80 shadow-[0_8px_20px_rgba(0,0,0,0.3)] transition group-hover:scale-110">
+                <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border border-white/20 bg-[#05070d] text-cyan-200/80 shadow-[0_8px_20px_rgba(0,0,0,0.3)] transition group-hover:scale-110">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                 </span>
               </button>
@@ -1495,6 +1415,71 @@ shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
 
         </div>
 
+        <SolitaireModesPanel />
+
+        {/* Permanent trophy-derived level + rank. Every number is the server's
+            `/api/user-stats` progression payload (peak-protected). */}
+        {stats?.playerLevel && (
+          <PlayerLevelProgressCard
+            progression={stats.playerLevel}
+            className="mt-8 mb-8"
+          />
+        )}
+
+        <div
+          className="mt-8 bg-[#07101f]/90 border border-white/10 
+rounded-xl p-6 
+shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
+        >
+          <h2 className="text-xl text-cyan-200/80 mb-4">
+            {t("profile.stats.title", "User Statistics")}
+          </h2>
+          {statsError && <p className="text-red-400 mb-4">{statsError}</p>}
+          {/* Tabbed stat panel — mirrors the /classement leaderboard
+              (record / weekly / streaks) instead of a flat grid. */}
+          {/* Per-game Elo ratings come from /api/user-stats (read fresh on
+              every request, outside its stats cache) and render as the
+              "Game Ratings" tab. */}
+          <UserStatsTabs
+            record={stats?.record}
+            ratings={stats?.ratings}
+            overall={stats}
+          />
+
+          {/* Pointer to the GRYND PRO performance dashboard. It is a LINK, not
+              an embedded dashboard: the advanced analytics are gated on the
+              server (/api/stats/performance), so a free player sees the upsell
+              there rather than a second empty panel here. */}
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.02] px-4 py-3">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-cyan-200/80">
+                {t("profile.stats.advanced_badge", "GRYND PRO")}
+              </p>
+              <p className="mt-0.5 text-sm text-white/50">
+                {t(
+                  "profile.stats.advanced",
+                  "Performance dashboard — win rates, Elo and trophy graphs, and your overall ranking over time.",
+                )}
+              </p>
+            </div>
+            <Link
+              href="/stats"
+              className="shrink-0 text-sm font-semibold text-cyan-300 underline-offset-4 transition hover:text-cyan-200 hover:underline"
+            >
+              {t("profile.stats.advanced_open", "Open dashboard")}
+            </Link>
+          </div>
+        </div>
+
+        {/* Guest→account conversion (Phase 4): renders only while this
+            browser has an unclaimed guest practice record, or to confirm a
+            claim already made. Nothing changes for accounts without one. */}
+        <GuestClaimPanel />
+
+        {/* Members can show the mark. Fetches the badge from the server and
+            renders nothing at all for a free account or a guest. */}
+        <ShareProBadgeButton />
+
         <div className="mt-8 rounded-xl border border-emerald-400/35 bg-[#052e1f]/85 p-6 shadow-[0_0_24px_rgba(52,211,153,0.15)]">
           <div className="flex items-center justify-between gap-4 mb-4">
             <h2 className="text-xl text-emerald-300">
@@ -1503,7 +1488,7 @@ shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
             {!membership?.active && (
               <a
                 href="/upgrade-pro"
-                className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-3 py-1 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/20"
+                className="inline-flex items-center rounded-full border border-white/15 bg-cyan-500/10 px-3 py-1 text-sm font-medium text-cyan-200/90 transition hover:bg-cyan-500/25 hover:text-cyan-100"
               >
                 {t("profile.membership.seePro", "See GRYND PRO")}
               </a>

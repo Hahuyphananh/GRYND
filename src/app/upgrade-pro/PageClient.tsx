@@ -20,7 +20,6 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
-import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import UpgradeProContent from "../../components/UpgradeProContent";
 import {
   changeProBillingInterval,
@@ -152,8 +151,7 @@ export default function PageClient({ plan, signedIn, subscription }: PageClientP
   );
 
   return (
-    <div className="relative min-h-screen">
-      <InteractiveCasinoBg variant="subtle" />
+    <div className="relative min-h-screen bg-[#05070d] text-white">
       <NavigationBar currentPath="/upgrade-pro" />
 
       <main className="relative z-10 mx-auto max-w-5xl px-4 pb-20 pt-24 sm:pt-28">
@@ -161,7 +159,7 @@ export default function PageClient({ plan, signedIn, subscription }: PageClientP
           <h1 className="text-3xl font-black tracking-tight text-[#f5ff3b] drop-shadow-[0_0_10px_rgba(245,255,59,0.5)] sm:text-5xl">
             {t("pro.headline")}
           </h1>
-          <p className="mx-auto mt-3 max-w-2xl text-sm text-[#9dd8ff]/85 sm:text-base">
+          <p className="mx-auto mt-3 max-w-2xl text-sm text-white/65 sm:text-base">
             {t("pro.subtitle")}
           </p>
         </header>
@@ -169,7 +167,7 @@ export default function PageClient({ plan, signedIn, subscription }: PageClientP
         {checkoutState === "cancelled" && (
           <p
             role="status"
-            className="mx-auto mb-5 max-w-xl rounded-lg border border-[#00e5ff]/30 bg-[#0b224f]/80 px-4 py-2 text-center text-sm text-[#9dd8ff]"
+            className="mx-auto mb-5 max-w-xl rounded-lg border border-[#00e5ff]/30 bg-[#07101f]/90 px-4 py-2 text-center text-sm text-[#9dd8ff]"
           >
             {t("pro.checkout_cancelled")}
           </p>
@@ -207,18 +205,18 @@ export default function PageClient({ plan, signedIn, subscription }: PageClientP
                on this page. */}
         <section
           data-testid="pro-free-trust"
-          className="mt-6 rounded-xl border border-[#00e5ff]/15 bg-[#0b224f]/40 px-5 py-4"
+          className="mt-6 rounded-xl border border-[#00e5ff]/15 bg-white/[0.02] px-5 py-4"
         >
-          <p className="text-sm leading-relaxed text-[#9dd8ff]/80">
+          <p className="text-sm leading-relaxed text-white/60">
             <span className="font-bold text-[#00e5ff]">{t("pro.free_title")}.</span>{" "}
             {t("pro.free_body")}
           </p>
         </section>
 
         {/* ── Billing ────────────────────────────────────────────────── */}
-        <section className="mt-6 rounded-2xl border border-[#00e5ff]/25 bg-[#0b224f]/70 p-6">
+        <section className="mt-6 rounded-2xl border border-[#00e5ff]/25 bg-[#07101f]/90 p-6">
           <h2 className="text-xl font-bold text-[#00e5ff]">{t("pro.billing_title")}</h2>
-          <ul className="mt-3 space-y-2 text-sm text-[#9dd8ff]/85">
+          <ul className="mt-3 space-y-2 text-sm text-white/65">
             {active && currentOption ? (
               <>
                 <li>

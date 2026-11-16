@@ -405,7 +405,6 @@ test("the upgrade CTA sits on non-gameplay pages only", () => {
   // Pages that still sell PRO inline keep their button.
   for (const path of [
     "src/app/classement/PageClient.jsx",
-    "src/app/profil/PageClient.jsx",
     "src/app/settings/PageClient.jsx",
   ]) {
     assert.ok(

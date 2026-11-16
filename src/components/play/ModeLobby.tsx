@@ -3,9 +3,15 @@
 // src/components/play/ModeLobby.tsx
 //
 // One consistent lobby structure for the mode pages that need a new lobby:
-// back link to Play, mode identity, description, status slot, primary action and
-// an honest note. The action href is resolved here so no page can point at a
-// missing experience; /play/ai and /play/ranked reuse their existing screens.
+// back link to Play, mode identity, the mode's own animated table, description,
+// status slot, primary action and an honest note. The action href is resolved
+// here so no page can point at a missing experience; /play/ai and /play/ranked
+// reuse their existing screens.
+//
+// The lobby wears the SAME palette and the SAME preview as the hub card that
+// leads here (src/lib/playModePalette.ts + components/play/ModeTableau): the
+// card and the room it opens must not look like two different products. The
+// preview is the one instance on the page, so its gradient ids stay unique.
 
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -22,49 +28,42 @@ import {
 
 import Footer from "../Footer";
 import NavigationBar from "../navigation-bar";
+import ModeTableau from "./ModeTableau";
+import {
+  PLAY_MODE_PALETTE,
+  type PlayModeId,
+} from "../../lib/playModePalette";
 import { useTranslation } from "../../hooks/useTranslation";
 
-export type LobbyMode =
-  | "solo"
-  | "daily"
-  | "ai"
-  | "ranked"
-  | "dailyPuzzle"
-  | "unlimited";
+export type LobbyMode = PlayModeId;
 
 const MODE_META: Record<
   LobbyMode,
-  { href: string; icon: ReactNode; tone: string }
+  { href: string; icon: ReactNode }
 > = {
   solo: {
     href: "/solitaire",
     icon: <IconCards size={22} aria-hidden="true" />,
-    tone: "border-[#00e5ff]/30 bg-[#00e5ff]/[0.07] text-[#9dd8ff]",
   },
   daily: {
     href: "/daily",
     icon: <IconCalendar size={22} aria-hidden="true" />,
-    tone: "border-[#f5ff3b]/30 bg-[#f5ff3b]/[0.06] text-[#ffe9a3]",
   },
   ai: {
     href: "/casino/solitaire-duel/play-ai",
     icon: <IconRobot size={22} aria-hidden="true" />,
-    tone: "border-violet-400/30 bg-violet-400/[0.07] text-violet-200",
   },
   ranked: {
     href: "/casino/solitaire-duel",
     icon: <IconTrophy size={22} aria-hidden="true" />,
-    tone: "border-[#00ffa3]/30 bg-[#00ffa3]/[0.07] text-[#8dffd0]",
   },
   dailyPuzzle: {
     href: "/play/daily-puzzle/play",
     icon: <IconPuzzle size={22} aria-hidden="true" />,
-    tone: "border-sky-400/30 bg-sky-400/[0.07] text-sky-200",
   },
   unlimited: {
     href: "/play/unlimited-puzzles/play",
     icon: <IconInfinity size={22} aria-hidden="true" />,
-    tone: "border-fuchsia-400/30 bg-fuchsia-400/[0.07] text-fuchsia-200",
   },
 };
 
@@ -79,17 +78,19 @@ export default function ModeLobby({
 }) {
   const { t } = useTranslation();
   const meta = MODE_META[mode];
+  const palette = PLAY_MODE_PALETTE[mode];
   const prefix = `playHub.lobby.${mode}`;
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#040712] pb-24 text-white md:pb-0">
+    <div className="relative min-h-screen overflow-hidden bg-[#04060f] pb-24 text-white md:pb-0">
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 top-0 h-[480px] bg-[radial-gradient(ellipse_at_top,rgba(0,229,255,0.11),transparent_62%)]"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[480px] bg-[radial-gradient(ellipse_at_top,var(--lobby-glow),transparent_62%)]"
+        style={{ ["--lobby-glow" as string]: palette.glow }}
       />
       <NavigationBar currentPath="/play" />
 
-      <main className="relative mx-auto max-w-4xl px-4 pt-24 sm:px-6 md:pt-28">
+      <main className="relative mx-auto max-w-5xl px-4 pt-24 sm:px-6 md:pt-28">
         <Link
           href="/play"
           className="inline-flex items-center gap-2 text-xs font-bold text-white/55 underline-offset-4 transition hover:text-white hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
@@ -101,52 +102,86 @@ export default function ModeLobby({
         <section
           aria-labelledby={`lobby-${mode}-title`}
           data-testid={`play-lobby-${mode}`}
-          className="mt-4 rounded-2xl border border-white/10 bg-[#06152f]/90 p-5 sm:p-6"
+          style={{
+            borderColor: palette.line,
+            backgroundImage: palette.surface,
+          }}
+          className="mt-4 overflow-hidden rounded-2xl border"
         >
-          <div className="flex items-start gap-3">
-            <span
-              className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border ${meta.tone}`}
-            >
-              {meta.icon}
-            </span>
-            <div className="min-w-0">
-              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#00e5ff]/75">
-                {t(`${prefix}.kicker`)}
+          <div className="grid md:grid-cols-[minmax(0,1fr)_19rem]">
+            <div className="p-5 sm:p-6">
+              <div className="flex items-start gap-3">
+                <span
+                  className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border"
+                  style={{
+                    borderColor: palette.line,
+                    backgroundColor: palette.glow,
+                    color: palette.accent,
+                  }}
+                >
+                  {meta.icon}
+                </span>
+                <div className="min-w-0">
+                  <p
+                    className="text-[10px] font-black uppercase tracking-[0.24em]"
+                    style={{ color: palette.accent }}
+                  >
+                    {t(`${prefix}.kicker`)}
+                  </p>
+                  <h1
+                    id={`lobby-${mode}-title`}
+                    className="mt-1 text-3xl font-black tracking-tight sm:text-4xl"
+                  >
+                    {t(`${prefix}.title`)}
+                  </h1>
+                </div>
+              </div>
+
+              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/60">
+                {t(`${prefix}.description`)}
               </p>
-              <h1
-                id={`lobby-${mode}-title`}
-                className="mt-1 text-3xl font-black tracking-tight sm:text-4xl"
-              >
-                {t(`${prefix}.title`)}
-              </h1>
+
+              {children && (
+                <div className="mt-5" data-testid={`play-lobby-${mode}-status`}>
+                  {children}
+                </div>
+              )}
+
+              <div className="mt-5 flex flex-wrap items-center gap-2">
+                <Link
+                  href={meta.href}
+                  data-testid={`play-lobby-${mode}-cta`}
+                  style={{
+                    backgroundColor: palette.accent,
+                    color: "#04120f",
+                  }}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-black transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white/70"
+                >
+                  {t(`${prefix}.cta`)}
+                  <IconArrowRight size={16} aria-hidden="true" />
+                </Link>
+                {secondary}
+              </div>
+
+              <p className="mt-4 border-t border-white/8 pt-3 text-[11px] leading-relaxed text-white/40">
+                {t(`${prefix}.note`)}
+              </p>
             </div>
-          </div>
 
-          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/60">
-            {t(`${prefix}.description`)}
-          </p>
-
-          {children && (
-            <div className="mt-5" data-testid={`play-lobby-${mode}-status`}>
-              {children}
-            </div>
-          )}
-
-          <div className="mt-5 flex flex-wrap items-center gap-2">
-            <Link
-              href={meta.href}
-              data-testid={`play-lobby-${mode}-cta`}
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#00e5ff] px-5 py-2.5 text-sm font-black text-[#00212b] transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+            <div
+              className="relative order-first border-b md:order-none md:border-b-0 md:border-l"
+              style={{ borderColor: palette.line }}
+              data-testid={`play-lobby-${mode}-preview`}
             >
-              {t(`${prefix}.cta`)}
-              <IconArrowRight size={16} aria-hidden="true" />
-            </Link>
-            {secondary}
+              <ModeTableau variant={mode} />
+              <span
+                className="absolute bottom-3 left-3 rounded-full border bg-[#04060f]/80 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-[0.16em] backdrop-blur-xs"
+                style={{ borderColor: palette.line, color: palette.accent }}
+              >
+                {t(`playHub.cards.${mode}.tag`)}
+              </span>
+            </div>
           </div>
-
-          <p className="mt-4 border-t border-white/8 pt-3 text-[11px] leading-relaxed text-white/40">
-            {t(`${prefix}.note`)}
-          </p>
         </section>
       </main>
 

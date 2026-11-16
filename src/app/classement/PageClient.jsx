@@ -10,7 +10,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useUser } from "@clerk/nextjs";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
-import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import FrameAvatar from "../../components/FrameAvatar";
 import ProBadge from "../../components/ProBadge";
 import { cosmeticEffectClass } from "../../lib/profileCosmetics";
@@ -337,19 +336,12 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
     me?.rank && me.rank <= 10 ? t("leaderboard.defend_spot") : t("leaderboard.climb_ranks");
 
   return (
-    <div className="relative min-h-screen text-[#c9f7ff]">
-      <InteractiveCasinoBg variant="subtle" />
-      {/* Fade the casino artwork back so the board reads clearly. Painted
-          above the z-0 background but below the z-10 content. */}
-      <div
-        className="pointer-events-none absolute inset-0 z-0 bg-[#030815]/60"
-        aria-hidden="true"
-      />
+    <div className="relative min-h-screen bg-[#05070d] text-white">
 
       <NavigationBar currentPath="/classement" />
       <div className="relative z-10 mx-auto max-w-6xl px-4 py-24 sm:px-6">
         <header className="mb-6 text-center">
-          <h1 className="text-3xl font-bold text-[#f5ff3b] drop-shadow-[0_0_10px_rgba(245,255,59,0.5)] sm:text-4xl">
+          <h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl">
             {t("leaderboard.title")}
           </h1>
           <p className="mt-2 text-sm text-cyan-200/80 sm:text-base">

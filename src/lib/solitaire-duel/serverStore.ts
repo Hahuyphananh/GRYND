@@ -26,7 +26,7 @@
 // (user, game, match)-keyed idempotency journals. There is NO second Elo
 // implementation and NO wager/token/payout path anywhere in this file.
 
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 
 import { db } from "../../db/client";
 import { solitaireDuelMatches, solitaireDuelMoves, users } from "../../db/schema";
@@ -227,7 +227,9 @@ function inactivityAtMs(
 ): number | null {
   // A practice match is fully untimed: the human may think as long as they like,
   // so no inactivity clock is even projected for it.
-  if (!seat || match.isAi) return null;
+  if (!seat) return null;
+  // Practice has a clock for the HUMAN only; the bot never forfeits.
+  if (match.isAi && seat === SEAT.PLAYER2) return null;
   const base = inactivityBaselineMs(match, seat);
   return base == null ? null : base + thresholdMs;
 }
@@ -247,8 +249,20 @@ function inactivityMsForSeat(match: MatchRow, seat: Seat, nowMs: number): number
  * instant) is a draw rather than an arbitrary winner.
  */
 function inactivityForfeitSeat(match: MatchRow, nowMs: number): Seat | "both" | null {
-  // A practice match is never forfeited for inactivity — it has no clock at all.
-  if (match.isAi) return null;
+  // A practice match used to be exempt ("it has no clock"), which is exactly
+  // how an abandoned practice row could stay "playing" forever. The HUMAN's
+  // own 20-minute clock now applies to practice too: the bot never forfeits,
+  // and a human who stops playing records a loss instead of an open row.
+  if (match.isAi) {
+    if (match.status !== MATCH_STATUS.PLAYING || !match.player2Id) return null;
+    const humanSeat =
+      match.player2Id === SOLITAIRE_DUEL_AI_PLAYER_ID ? SEAT.PLAYER1 : SEAT.PLAYER2;
+    const idle = inactivityMsForSeat(match, humanSeat, nowMs);
+    const done = Boolean(stateForSeat(match, humanSeat)?.completed);
+    return !done && idle != null && idle >= INACTIVITY_FORFEIT_MS
+      ? humanSeat
+      : null;
+  }
   if (match.status !== MATCH_STATUS.PLAYING || !match.player2Id) return null;
   // A GHOST duel has exactly one seat that can go idle. The recording's moves
   // are already made, so the ghost can never forfeit; the human's own clock
@@ -2558,6 +2572,85 @@ async function resolveInactivityDueInTx(
 
   const finalRow = await finalizeMatch(tx, match, outcome, nowMs);
   return { match: finalRow, resolved: true };
+}
+
+/**
+ * Resolve EVERY live match in which a seat has been idle past the forfeit
+ * threshold. This is what makes the 20-minute rule true for matches nobody is
+ * looking at: `fetchMatch` settles the reader's own match, but a row that is
+ * only ever listed (lobby, profile, history) would otherwise stay "playing"
+ * forever.
+ *
+ * The candidate query is per seat and mirrors `inactivityForfeitSeat`: a seat
+ * is due when it has not finished and its own last action (or GO when it has
+ * never moved) is older than the threshold. Every candidate is then re-checked
+ * under the row lock by `resolveInactivityDue`, so this sweep can never settle
+ * a match that recovered, and running it twice is a no-op.
+ *
+ * `userId` scopes the sweep to one player's matches for a read path; the cron
+ * job omits it. Returns only counts, never boards or identities.
+ */
+export async function sweepInactiveMatches({
+  userId,
+  limit = 50,
+  nowMs = Date.now(),
+}: {
+  userId?: string;
+  limit?: number;
+  nowMs?: number;
+} = {}): Promise<{ scanned: number; resolved: number }> {
+  const cutoff = new Date(nowMs - INACTIVITY_FORFEIT_MS);
+  const p1Due = sql`(
+    ${solitaireDuelMatches.p1FinishedAt} IS NULL
+      AND COALESCE(${solitaireDuelMatches.p1LastActionAt}, ${solitaireDuelMatches.goAt}, ${solitaireDuelMatches.startedAt}) <= ${cutoff}
+  )`;
+  const p2Due = sql`(
+    ${solitaireDuelMatches.p2FinishedAt} IS NULL
+      AND COALESCE(${solitaireDuelMatches.p2LastActionAt}, ${solitaireDuelMatches.goAt}, ${solitaireDuelMatches.startedAt}) <= ${cutoff}
+  )`;
+  // Human duels: either seat can be the idle one.
+  // Practice: only the human seat has a clock — the bot never forfeits.
+  const due = sql`(
+    (${solitaireDuelMatches.isAi} = false AND (${p1Due} OR ${p2Due}))
+    OR (
+      ${solitaireDuelMatches.isAi} = true
+      AND (
+        (${solitaireDuelMatches.player1Id} <> ${SOLITAIRE_DUEL_AI_PLAYER_ID} AND ${p1Due})
+        OR (${solitaireDuelMatches.player2Id} <> ${SOLITAIRE_DUEL_AI_PLAYER_ID} AND ${p2Due})
+      )
+    )
+  )`;
+
+  const scope = userId
+    ? [or(eq(solitaireDuelMatches.player1Id, userId), eq(solitaireDuelMatches.player2Id, userId))]
+    : [];
+
+  const rows = await db
+    .select({ id: solitaireDuelMatches.id, isAi: solitaireDuelMatches.isAi })
+    .from(solitaireDuelMatches)
+    .where(
+      and(
+        eq(solitaireDuelMatches.status, MATCH_STATUS.PLAYING),
+        sql`${solitaireDuelMatches.player2Id} IS NOT NULL`,
+        due,
+        ...scope,
+      ),
+    )
+    .orderBy(sql`COALESCE(${solitaireDuelMatches.goAt}, ${solitaireDuelMatches.startedAt}) ASC`)
+    .limit(Math.max(1, Math.min(500, Math.floor(limit))));
+
+  let resolved = 0;
+  for (const row of rows) {
+    try {
+      // A deliberately paused practice match is frozen, not abandoned.
+      if (row.isAi && (await isPracticePaused("solitaire-duel", String(row.id)))) continue;
+      const outcome = await resolveInactivityDue({ matchId: String(row.id), nowMs });
+      if (!("error" in outcome) && outcome.resolved) resolved += 1;
+    } catch {
+      // One malformed row must not stop the sweep. The next tick retries it.
+    }
+  }
+  return { scanned: rows.length, resolved };
 }
 
 // ── Forfeit / cancel ──────────────────────────────────────────────────────

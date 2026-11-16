@@ -2,6 +2,7 @@
 
 import { isGameAvailable } from "../../lib/gameAvailability";
 import NavigationBar from "../../components/navigation-bar";
+import DailyRewardWidget from "../../components/DailyRewardWidget";
 import Footer from "../../components/Footer";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import { useUser } from "@clerk/nextjs";
@@ -883,6 +884,8 @@ function MainComponent({ adSlot = null, hilltopSlot = null, gameIndex = [], disc
       <InteractiveCasinoBg variant="subtle" />
 
       <NavigationBar currentPath="/casino" />
+
+      <DailyRewardWidget />
 
       <div className="mx-auto max-w-7xl px-3 py-6 sm:px-4 sm:py-12">
         <section className="mb-8 space-y-3 text-center">

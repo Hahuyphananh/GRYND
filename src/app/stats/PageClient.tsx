@@ -11,7 +11,6 @@
 
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
-import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import PerformanceDashboard from "../../components/stats/PerformanceDashboard";
 import SolitaireAcademyStats from "../../components/stats/SolitaireAcademyStats";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -29,8 +28,7 @@ export default function StatsPageClient({
   const { t } = useTranslation();
 
   return (
-    <div className="relative min-h-screen">
-      <InteractiveCasinoBg variant="subtle" />
+    <div className="relative min-h-screen bg-[#05070d] text-white">
       <NavigationBar currentPath="/stats" />
 
       <main className="relative mx-auto w-full max-w-6xl px-4 pb-16 pt-24 sm:px-6">

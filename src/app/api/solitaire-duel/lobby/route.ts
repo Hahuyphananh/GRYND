@@ -33,6 +33,7 @@ import {
   listMyWaitingMatch,
   listOpenMatches,
   lobbyEntry,
+  sweepInactiveMatches,
 } from "../../../../lib/solitaire-duel/serverStore";
 import { MATCH_STATUS } from "../../../../lib/solitaire-duel/constants";
 
@@ -71,6 +72,16 @@ export async function GET() {
     let recent: RecentMatch[] = [];
 
     if (userId) {
+      // Settle any of this player's untimed matches in which a seat has been
+      // idle past the 20-minute forfeit threshold. A list must never show a
+      // row as "in progress" that the server can already resolve.
+      try {
+        await sweepInactiveMatches({ userId });
+      } catch {
+        // A settlement failure must not take the lobby down; the next read or
+        // the cron sweep retries it.
+      }
+
       const waiting = await listMyWaitingMatch({ userId });
       if (waiting) {
         myWaiting = {

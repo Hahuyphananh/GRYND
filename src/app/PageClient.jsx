@@ -23,6 +23,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth, useUser } from "@clerk/nextjs";
 import NavigationBar from "../components/navigation-bar";
+import DailyRewardWidget from "../components/DailyRewardWidget";
 import Footer from "../components/Footer";
 import SolitaireLobby from "../components/solitaire-duel/SolitaireLobby";
 import ReportEntryButton from "../components/reports/ReportEntryButton";
@@ -475,6 +476,8 @@ export default function MainComponent({
   return (
     <div className="relative min-h-screen bg-[#05070d] pb-24 text-white md:pb-0">
       <NavigationBar currentPath="/" />
+
+      <DailyRewardWidget />
 
       <main className="mx-auto max-w-6xl px-4 pt-24 sm:px-6 md:pt-28">
         {/* ── Hero ──────────────────────────────────────────────────────── */}

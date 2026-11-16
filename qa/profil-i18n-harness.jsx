@@ -61,6 +61,38 @@ const RESPONSES = {
       referrals: 2,
       referralEarnings: 50,
       record: { wins: 12, losses: 4, winRate: 75, currentStreak: 3 },
+      playerLevel: {
+        level: 12,
+        rankKey: "rookie",
+        progressPercent: 42.5,
+        currentTrophies: 1150,
+        peakTrophies: 1300,
+        nextLevelTrophies: 1300,
+      },
+    },
+  },
+  "/api/solitaire/solo": {
+    success: true,
+    data: {
+      summary: {
+        games: 24,
+        completed: 18,
+        completionRate: 75,
+        bestMs: 214000,
+        averageMs: 301000,
+      },
+    },
+  },
+  "/api/solitaire/daily": {
+    success: true,
+    data: {
+      summary: {
+        completed: 9,
+        currentStreak: 3,
+        longestStreak: 5,
+        bestMs: 280000,
+        today: { completed: false, moves: 0, elapsedMs: null },
+      },
     },
   },
   "/api/titles": {

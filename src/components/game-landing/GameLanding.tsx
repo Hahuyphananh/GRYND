@@ -52,7 +52,7 @@ export default function GameLanding({
   const gameGuides = guidesForGame(game.slug).slice(0, 3);
 
   return (
-    <div className="relative min-h-screen overflow-x-clip pb-16">
+    <div className="relative min-h-screen overflow-x-clip bg-[#05070d] pb-16 text-white">
       <NavigationBar currentPath="/games" />
 
       {/* Structured data through the shared component, not a JSON blob copied
@@ -191,7 +191,7 @@ export default function GameLanding({
               {game.faq.map((entry) => (
                 <div
                   key={entry.q}
-                  className="rounded-xl border border-[#00e5ff]/25 bg-[#040d24] p-4"
+                  className="rounded-xl border border-[#00e5ff]/25 bg-[#07101f] p-4"
                 >
                   <dt className="mb-1.5 font-bold text-[#00e5ff]">{entry.q}</dt>
                   <dd className="text-sm leading-relaxed text-[#d8fbff]">{entry.a}</dd>
@@ -214,7 +214,7 @@ export default function GameLanding({
                   <li key={entry.slug}>
                     <Link
                       href={gameLandingPath(entry.slug)}
-                      className="block h-full rounded-xl border border-[#00e5ff]/30 bg-[#040d24] p-4 transition-all hover:-translate-y-0.5 hover:border-[#00e5ff]/60 hover:shadow-[0_0_24px_rgba(0,229,255,0.25)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                      className="block h-full rounded-xl border border-[#00e5ff]/30 bg-[#07101f] p-4 transition-all hover:-translate-y-0.5 hover:border-[#00e5ff]/60 hover:shadow-[0_0_24px_rgba(0,229,255,0.25)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
                     >
                       <span className="block font-bold text-[#f5ff3b]">{entry.name}</span>
                       <span className="mt-1 block text-sm leading-relaxed text-[#9dd8ff]">
@@ -244,7 +244,7 @@ export default function GameLanding({
                   <li key={entry.slug}>
                     <Link
                       href={guidePath(entry.slug)}
-                      className="block rounded-xl border border-[#00e5ff]/25 bg-[#040d24] p-4 transition-all hover:border-[#00e5ff]/55 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                      className="block rounded-xl border border-[#00e5ff]/25 bg-[#07101f] p-4 transition-all hover:border-[#00e5ff]/55 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
                     >
                       <span className="block font-bold text-[#00e5ff]">{entry.title}</span>
                       <span className="mt-1 block text-sm leading-relaxed text-[#9dd8ff]">
@@ -265,7 +265,7 @@ export default function GameLanding({
               click. */}
           <nav
             aria-labelledby="more-info-heading"
-            className="rounded-2xl border border-[#00e5ff]/25 bg-[#040d24] p-6"
+            className="rounded-2xl border border-[#00e5ff]/25 bg-[#07101f] p-6"
           >
             <h2 id="more-info-heading" className="text-xl font-black tracking-tight text-[#f5ff3b]">
               More about competitive play

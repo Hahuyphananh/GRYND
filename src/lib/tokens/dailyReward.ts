@@ -55,6 +55,18 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { tokenTransactions, users } from "../../db/schema";
 import { DAILY_REWARD_CYCLE } from "../games/economy";
+import {
+  DAILY_REWARD_CYCLE_DAYS,
+  dailyRewardCycleDay,
+  dailyRewardWindow,
+  dailyRewardWindowStart,
+  type DailyRewardWindowDay,
+} from "../dailyRewardCycle";
+
+// The curve's SHAPE lives in the pure module `dailyRewardCycle` so it can be
+// unit-tested without a database; it is re-exported here because this file is
+// the reward's public entry point.
+export { DAILY_REWARD_CYCLE_DAYS, dailyRewardCycleDay } from "../dailyRewardCycle";
 import { daysBetween, projectDailyStreakDay, toDateStr, updateDailyStreak } from "../dailyStreak";
 import { hasItem } from "../shopItems";
 import { checkUnlocks } from "../specialTitles";
@@ -99,25 +111,9 @@ async function projectedStreakDay(
   );
 }
 
-/** Days in one reward cycle. The curve repeats after this many days. */
-export const DAILY_REWARD_CYCLE_DAYS = DAILY_REWARD_CYCLE.length;
-
 /** The UTC calendar day a claim belongs to (`YYYY-MM-DD`). */
 export function utcDateKey(now: Date = new Date()): string {
   return now.toISOString().slice(0, 10);
-}
-
-/**
- * Which day of the 14-day cycle a streak day lands on (1-based). A streak of 1
- * is cycle day 1; a streak of 15 starts the curve over at cycle day 1 — which
- * is the "14 days completed, the 15th day is day 1 again" rule. A non-positive
- * or non-finite streak day is treated as day 1, so a claim can never index the
- * curve out of bounds.
- */
-export function dailyRewardCycleDay(streakDay: number): number {
-  const day = Math.floor(Number(streakDay));
-  if (!Number.isFinite(day) || day < 1) return 1;
-  return ((day - 1) % DAILY_REWARD_CYCLE_DAYS) + 1;
 }
 
 /**
@@ -157,6 +153,12 @@ export type DailyRewardStatus = {
   cycleDay: number;
   /** How many days the cycle runs for, so the UI never hardcodes it. */
   cycleDays: number;
+  /** First absolute streak day of the 14-day window the popup shows (1, 15, 29…). */
+  windowStart: number;
+  /** Last absolute streak day of that window (14, 28, 42…). */
+  windowEnd: number;
+  /** The window's days and amounts, numbered absolutely. */
+  window: DailyRewardWindowDay[];
   /** What today's claim is worth. */
   reward: number;
   /** The day key the claim is recorded against. */
@@ -223,6 +225,9 @@ export async function getDailyRewardStatus(
     streakDay,
     cycleDay: dailyRewardCycleDay(streakDay),
     cycleDays: DAILY_REWARD_CYCLE_DAYS,
+    windowStart: dailyRewardWindowStart(streakDay),
+    windowEnd: dailyRewardWindowStart(streakDay) + DAILY_REWARD_CYCLE_DAYS - 1,
+    window: dailyRewardWindow(streakDay),
     reward,
     today,
     cycle: [...DAILY_REWARD_CYCLE],
@@ -363,6 +368,9 @@ export async function claimDailyReward(
       streakDay,
       cycleDay: dailyRewardCycleDay(streakDay),
       cycleDays: DAILY_REWARD_CYCLE_DAYS,
+      windowStart: dailyRewardWindowStart(streakDay),
+      windowEnd: dailyRewardWindowStart(streakDay) + DAILY_REWARD_CYCLE_DAYS - 1,
+      window: dailyRewardWindow(streakDay),
       reward,
       today,
       cycle: [...DAILY_REWARD_CYCLE],

@@ -39,6 +39,12 @@ export type DailyRewardStatus = {
   cycleDay: number;
   /** How many days the board shows (14). Server-owned, never hardcoded. */
   cycleDays: number;
+  /** First absolute streak day of the window the popup shows (1, 15, 29…). */
+  windowStart: number;
+  /** Last absolute streak day of that window (14, 28, 42…). */
+  windowEnd: number;
+  /** The window's days and amounts, numbered absolutely. */
+  window: { day: number; amount: number }[];
   reward: number;
   today: string;
   cycle: number[];
@@ -103,7 +109,28 @@ export function useDailyReward(): UseDailyReward {
       setLoading(false);
       return;
     }
-    void load();
+
+    // Logging in on a new day is what ADVANCES the streak, so the number on the
+    // card is more than a projection: POST /api/user/daily-streak is the
+    // shared writer (the same one the claim calls), and it is idempotent per
+    // day, so calling it once per mount is a no-op later the same day. It runs
+    // before the read so the stored day and the displayed day agree.
+    let active = true;
+    void (async () => {
+      try {
+        await fetch("/api/user/daily-streak", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+      } catch {
+        // Offline: the status read below still projects the correct day.
+      }
+      if (active) await load();
+    })();
+
+    return () => {
+      active = false;
+    };
   }, [isLoaded, isSignedIn, load]);
 
   // A win is recorded away from this surface — on the game page, or in another

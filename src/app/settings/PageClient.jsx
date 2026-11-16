@@ -394,24 +394,15 @@ export default function SettingsPageClient() {
   }
 
   return (
-    <div
-      className="min-h-screen text-white"
-      style={{
-        backgroundImage: "linear-gradient(135deg, #001933 0%, #000d1a 100%)",
-      }}
-    >
+    <div className="relative min-h-screen bg-[#05070d] text-white">
       <div className="max-w-6xl mx-auto px-6 pt-24 pb-20">
         <NavigationBar currentPath="/settings" />
-        <h1
-          className="text-4xl font-extrabold text-center mb-8
-  bg-linear-to-r from-purple-400 to-pink-500
-  bg-clip-text text-transparent"
-        >
+        <h1 className="mb-8 text-center text-4xl font-extrabold tracking-tight text-white">
           Settings
         </h1>
 
         {!isSignedIn ? (
-          <div className="mx-auto max-w-md rounded-xl border border-[#00e5ff]/30 bg-[#0b224f]/85 p-8 text-center shadow-[0_0_24px_rgba(0,229,255,0.15)]">
+          <div className="mx-auto max-w-md rounded-xl border border-[#00e5ff]/30 bg-[#07101f]/90 p-8 text-center shadow-[0_0_24px_rgba(0,229,255,0.15)]">
             <p className="mb-4 text-lg text-gray-300">
               Sign in to manage your GRYND settings.
             </p>
@@ -425,7 +416,7 @@ export default function SettingsPageClient() {
         ) : (
           <div className="grid gap-8 md:grid-cols-2">
             {/* Sound */}
-            <div className="rounded-xl border border-[#00e5ff]/30 bg-[#0b224f]/85 p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)]">
+            <div className="rounded-xl border border-[#00e5ff]/30 bg-[#07101f]/90 p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)]">
               <h2 className="mb-4 flex items-center gap-2 text-xl text-[#00e5ff]">
                 <IconVolume size={20} /> Sound
               </h2>
@@ -437,7 +428,7 @@ export default function SettingsPageClient() {
             </div>
 
             {/* Language */}
-            <div className="rounded-xl border border-[#00e5ff]/30 bg-[#0b224f]/85 p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)]">
+            <div className="rounded-xl border border-[#00e5ff]/30 bg-[#07101f]/90 p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)]">
               <h2 className="mb-4 flex items-center gap-2 text-xl text-[#00e5ff]">
                 <IconGlobe size={20} /> Language
               </h2>
@@ -454,10 +445,10 @@ export default function SettingsPageClient() {
                     key={lang.value}
                     onClick={() => setLanguage(lang.value)}
                     aria-pressed={language === lang.value}
-                    className={`cursor-pointer rounded-lg border px-4 py-2 text-sm font-medium focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f] ${
+                    className={`cursor-pointer rounded-lg border px-4 py-2 text-sm font-medium focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#07101f] ${
                       language === lang.value
                         ? "border-[#f5ff3b]/60 bg-[#f5ff3b]/15 text-[#f5ff3b]"
-                        : "border-[#00e5ff]/50 bg-[#091737] text-[#c9f7ff] hover:bg-[#00e5ff]/10"
+                        : "border-[#00e5ff]/50 bg-[#0a1626] text-[#c9f7ff] hover:bg-[#00e5ff]/10"
                     }`}
                   >
                     {lang.label}
@@ -505,7 +496,7 @@ export default function SettingsPageClient() {
                       min={1}
                       value={lossLimitDraft}
                       onChange={(e) => setLossLimitDraft(e.target.value)}
-                      className="w-44 rounded-md border border-amber-600/50 bg-[#020617] px-2 py-1.5 text-sm text-white outline-hidden focus:border-amber-400"
+                      className="w-44 rounded-md border border-amber-600/50 bg-[#05070d] px-2 py-1.5 text-sm text-white outline-hidden focus:border-amber-400"
                       aria-label="Custom daily loss limit in tokens"
                     />
                   </label>
@@ -589,7 +580,7 @@ export default function SettingsPageClient() {
                           placeholder="6-digit code"
                           value={mfaCode}
                           onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, ""))}
-                          className="w-40 rounded-lg border border-[#00e5ff]/40 bg-[#08142f] px-3 py-2 text-center text-lg tracking-[0.4em] text-[#ecf8ff] focus:outline-hidden focus:ring-2 focus:ring-[#00e5ff]"
+                          className="w-40 rounded-lg border border-[#00e5ff]/40 bg-[#0a1a2e] px-3 py-2 text-center text-lg tracking-[0.4em] text-[#ecf8ff] focus:outline-hidden focus:ring-2 focus:ring-[#00e5ff]"
                         />
                         <button
                           type="button"
@@ -620,7 +611,7 @@ export default function SettingsPageClient() {
             </div>
 
             {/* Email notification preferences */}
-            <div className="rounded-xl border border-[#00e5ff]/30 bg-[#0b224f]/85 p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)]">
+            <div className="rounded-xl border border-[#00e5ff]/30 bg-[#07101f]/90 p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)]">
               <h2 className="mb-1 flex items-center gap-2 text-xl text-[#00e5ff]">
                 <IconBell size={20} /> Email Notifications
               </h2>
@@ -638,7 +629,7 @@ export default function SettingsPageClient() {
                 ].map((opt) => (
                   <label
                     key={opt.key}
-                    className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-[#00e5ff]/20 bg-[#091737] px-3 py-2.5"
+                    className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-[#00e5ff]/20 bg-[#0a1626] px-3 py-2.5"
                   >
                     <span>
                       <span className="block text-sm font-medium text-[#c9f7ff]">{opt.label}</span>
@@ -689,7 +680,7 @@ export default function SettingsPageClient() {
             </div>
 
             {/* Account */}
-            <div className="rounded-xl border border-[#00e5ff]/30 bg-[#0b224f]/85 p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)]">
+            <div className="rounded-xl border border-[#00e5ff]/30 bg-[#07101f]/90 p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)]">
               <h2 className="mb-4 flex items-center gap-2 text-xl text-[#00e5ff]">
                 <IconUser size={20} /> Account
               </h2>
@@ -717,7 +708,7 @@ export default function SettingsPageClient() {
                 lobby's "Make GRYND yours" card points here for players who
                 chose "Maybe Later", and the questionnaire itself reopens in
                 edit mode (?from=settings) and returns to this page. */}
-            <div className="rounded-xl border border-[#00e5ff]/30 bg-[#0b224f]/85 p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)] md:col-span-2">
+            <div className="rounded-xl border border-[#00e5ff]/30 bg-[#07101f]/90 p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)] md:col-span-2">
               <h2 className="mb-1 flex items-center gap-2 text-xl text-[#00e5ff]">
                 <IconWand size={20} /> {t("onboarding.preferences.title")}
               </h2>
@@ -737,7 +728,7 @@ export default function SettingsPageClient() {
                     {preferenceRows.map((row) => (
                       <div
                         key={row.key}
-                        className="rounded-lg border border-[#00e5ff]/20 bg-[#091737] px-3 py-2.5"
+                        className="rounded-lg border border-[#00e5ff]/20 bg-[#0a1626] px-3 py-2.5"
                       >
                         <dt className="text-[11px] font-bold uppercase tracking-widest text-[#7dd3fc]/80">
                           {row.title}
@@ -785,7 +776,7 @@ export default function SettingsPageClient() {
             </div>
 
             {/* Help & support */}
-            <div className="rounded-xl border border-[#00e5ff]/30 bg-[#0b224f]/85 p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)]">
+            <div className="rounded-xl border border-[#00e5ff]/30 bg-[#07101f]/90 p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)]">
               <h2 className="mb-4 flex items-center gap-2 text-xl text-[#00e5ff]">
                 <IconHelp size={20} /> Help & Support
               </h2>

@@ -2,7 +2,6 @@
 
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
-import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import { motion } from "framer-motion";
 import Link from "next/link";
 
@@ -126,8 +125,7 @@ const sections = [
 
 export default function PrivacyPolicyPage() {
   return (
-    <div className="relative min-h-screen">
-      <InteractiveCasinoBg variant="subtle" />
+    <div className="relative min-h-screen bg-[#05070d] text-white">
 
       <NavigationBar currentPath="/" />
 
@@ -144,7 +142,7 @@ export default function PrivacyPolicyPage() {
             Last updated: September 23, 2026
           </p>
 
-          <div className="mb-8 rounded-lg border border-[#00e5ff]/20 bg-[#040d24]/80 p-6 backdrop-blur-xs">
+          <div className="mb-8 rounded-lg border border-[#00e5ff]/20 bg-[#07101f]/90 p-6 backdrop-blur-xs">
             <p className="leading-relaxed text-[#c9f7ff]">
               Your privacy matters to us. This Privacy Policy explains how
               GRYND collects, uses, stores, and protects your personal
@@ -161,7 +159,7 @@ export default function PrivacyPolicyPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: index * 0.05 }}
-              className="rounded-lg border border-[#00e5ff]/15 bg-[#040d24]/60 p-6 backdrop-blur-xs transition-all hover:border-[#00e5ff]/30 hover:shadow-[0_0_15px_rgba(0,229,255,0.1)]"
+              className="rounded-lg border border-[#00e5ff]/15 bg-[#07101f]/80 p-6 backdrop-blur-xs transition-all hover:border-[#00e5ff]/30 hover:shadow-[0_0_15px_rgba(0,229,255,0.1)]"
             >
               <h2 className="mb-3 text-xl font-bold text-[#00e5ff]">
                 {section.title}

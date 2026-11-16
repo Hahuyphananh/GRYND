@@ -1,0 +1,415 @@
+/* src/components/play/ModeTableau.module.css
+ *
+ * The mode preview is an SVG tableau with ONE looping move. Everything below is
+ * transform/opacity only, so the six previews animate on the compositor and no
+ * JavaScript frame is spent. Each variant owns a palette (felt + accent line),
+ * which is what separates the modes at a glance.
+ */
+
+.frame {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: hidden;
+}
+
+/* ── Palettes ──────────────────────────────────────────────────────────── */
+
+.ranked {
+  --felt-a: #04251a;
+  --felt-b: #020b07;
+  --line: rgba(0, 255, 163, 0.34);
+}
+
+.solo {
+  --felt-a: #052033;
+  --felt-b: #020a12;
+  --line: rgba(0, 229, 255, 0.32);
+}
+
+.ai {
+  --felt-a: #1c1330;
+  --felt-b: #080512;
+  --line: rgba(167, 139, 250, 0.38);
+}
+
+.daily {
+  --felt-a: #2a1e05;
+  --felt-b: #0d0902;
+  --line: rgba(251, 191, 36, 0.36);
+}
+
+.dailyPuzzle {
+  --felt-a: #082338;
+  --felt-b: #020a12;
+  --line: rgba(56, 189, 248, 0.36);
+}
+
+.unlimited {
+  --felt-a: #24102e;
+  --felt-b: #0a0410;
+  --line: rgba(232, 121, 249, 0.36);
+}
+
+/* ── Table furniture ───────────────────────────────────────────────────── */
+
+.glow {
+  opacity: 0.55;
+}
+
+.grain line {
+  stroke: rgba(255, 255, 255, 0.05);
+  stroke-width: 0.4;
+}
+
+.slot {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 0.6;
+  stroke-dasharray: 2.2 1.6;
+}
+
+.face {
+  fill: #f8fafc;
+  stroke: rgba(15, 23, 42, 0.35);
+  stroke-width: 0.35;
+}
+
+.back {
+  fill: #081322;
+  stroke: var(--line);
+  stroke-width: 0.6;
+}
+
+.backInset {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 0.35;
+  opacity: 0.75;
+}
+
+.rank {
+  fill: #10151f;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 5.4px;
+  font-weight: 800;
+}
+
+.suitSmall,
+.suitBig {
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  fill: #10151f;
+}
+
+.suitSmall {
+  font-size: 5.4px;
+}
+
+.suitBig {
+  font-size: 6.6px;
+  opacity: 0.8;
+}
+
+.red {
+  fill: #d81f3a;
+}
+
+
+.fresh {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 0.8;
+  animation: freshGlow 2.8s ease-in-out infinite;
+}
+
+@keyframes freshGlow {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ── solo: the stock card slides into the waste, then resets ───────────── */
+
+.soloFlyer {
+  animation: soloSlide 4.4s ease-in-out infinite;
+}
+
+@keyframes soloSlide {
+  0%,
+  22% {
+    transform: translate(0, 0);
+    opacity: 1;
+  }
+  46%,
+  78% {
+    transform: translate(0, 22px);
+    opacity: 1;
+  }
+  88% {
+    transform: translate(0, 22px);
+    opacity: 0;
+  }
+  100% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+}
+
+/* ── daily: a sealed card deals onto the table, under a gold sweep ─────── */
+
+.dealFlyer {
+  animation: dealIn 4.4s ease-in-out infinite;
+}
+
+@keyframes dealIn {
+  0% {
+    transform: translate(0, -48px) rotate(-7deg);
+    opacity: 0;
+  }
+  14% {
+    opacity: 0;
+  }
+  30% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 1;
+  }
+  72% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 1;
+  }
+  86%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 0;
+  }
+}
+
+.sweep {
+  fill: var(--line);
+  opacity: 0;
+  animation: sweep 4.4s ease-in-out infinite;
+}
+
+@keyframes sweep {
+  0%,
+  24% {
+    transform: translateX(-56px);
+    opacity: 0;
+  }
+  34% {
+    opacity: 0.28;
+  }
+  58% {
+    transform: translateX(150px);
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ── ai: the tableau's top card goes up to a foundation ────────────────── */
+
+.aiFlyer {
+  animation: toFoundation 4.4s ease-in-out infinite;
+}
+
+@keyframes toFoundation {
+  0%,
+  20% {
+    transform: translate(0, 0);
+    opacity: 1;
+  }
+  46%,
+  76% {
+    transform: translate(-8px, -32px);
+    opacity: 1;
+  }
+  88%,
+  100% {
+    transform: translate(-8px, -32px);
+    opacity: 0;
+  }
+}
+
+.botPulse {
+  animation: botPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes botPulse {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.82);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ── ranked: two players race the same deal to the foundations ─────────── */
+
+.raceA {
+  animation: raceA 4.6s ease-in-out infinite;
+}
+
+@keyframes raceA {
+  0%,
+  14% {
+    transform: translate(0, 0);
+    opacity: 1;
+  }
+  38%,
+  74% {
+    transform: translate(-8px, -32px);
+    opacity: 1;
+  }
+  86%,
+  100% {
+    transform: translate(-8px, -32px);
+    opacity: 0;
+  }
+}
+
+.raceB {
+  animation: raceB 4.6s ease-in-out 0.55s infinite;
+}
+
+@keyframes raceB {
+  0%,
+  14% {
+    transform: translate(0, 0);
+    opacity: 1;
+  }
+  44%,
+  78% {
+    transform: translate(-93.5px, -32px);
+    opacity: 1;
+  }
+  90%,
+  100% {
+    transform: translate(-93.5px, -32px);
+    opacity: 0;
+  }
+}
+
+.raceBar {
+  fill: var(--line);
+  transform-box: fill-box;
+  transform-origin: left center;
+  animation: raceFill 4.6s ease-in-out infinite;
+}
+
+@keyframes raceFill {
+  0% {
+    transform: scaleX(0.18);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scaleX(0.66);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scaleX(0.18);
+    opacity: 0.4;
+  }
+}
+
+/* ── daily puzzle: one card is lifted, then the target accepts it ──────── */
+
+.puzzleFlyer {
+  animation: puzzleLift 4.2s ease-in-out infinite;
+}
+
+@keyframes puzzleLift {
+  0%,
+  16% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  40%,
+  58% {
+    transform: translate(0, -11px) rotate(-5deg);
+  }
+  78%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+}
+
+.puzzleTarget {
+  animation: targetPulse 2.1s ease-in-out infinite;
+}
+
+@keyframes targetPulse {
+  0%,
+  100% {
+    opacity: 0.25;
+    stroke-dashoffset: 0;
+  }
+  50% {
+    opacity: 0.95;
+    stroke-dashoffset: -6;
+  }
+}
+
+/* ── unlimited: an endless shuffle, three cards in flight ──────────────── */
+
+.shuffle {
+  animation: shuffle 3.6s ease-in-out infinite;
+}
+
+.shuffle2 {
+  animation-delay: 1.2s;
+}
+
+.shuffle3 {
+  animation-delay: 2.4s;
+}
+
+@keyframes shuffle {
+  0% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  54% {
+    transform: translate(0, 22px);
+    opacity: 1;
+  }
+  72% {
+    transform: translate(0, 22px);
+    opacity: 0;
+  }
+  100% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+}
+
+/* ── Save-Data / 2G: the dealt table, with no motion at all ────────────── */
+
+.static :is(.soloFlyer, .dealFlyer, .aiFlyer, .raceA, .raceB, .puzzleFlyer, .shuffle) {
+  display: none;
+  animation: none !important;
+}
+
+.static :is(.fresh, .botPulse, .puzzleTarget, .raceBar) {
+  animation: none !important;
+  opacity: 0.65;
+}
+
+/* ── Reduced motion: a still, fully dealt table ────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .frame * {
+    animation: none !important;
+  }
+}

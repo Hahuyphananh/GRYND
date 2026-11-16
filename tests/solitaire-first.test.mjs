@@ -119,12 +119,12 @@ test("navigation is Solitaire-first and carries no coin, shop or rewards UI", ()
 test("home page sells Solitaire, not a game catalogue or an economy", () => {
   assert.match(home, /The competitive home/);
   assert.match(home, /\/games\/solitaire-duel/);
-  assert.doesNotMatch(home, /Coins|coin balance|DailyReward|QuestWidget|UpgradePro/);
+  assert.doesNotMatch(home, /Coins|coin balance|QuestWidget|UpgradePro/);
   assert.doesNotMatch(home, /\/games\/chess|\/games\/keno|\/games\/rps/);
 });
 
 test("the games hub no longer mounts reward, quest or membership widgets", () => {
-  assert.doesNotMatch(lobby, /DailyRewardWidget/);
+  // The streak card is product chrome, not a coin shop, so the hub keeps it.
   assert.doesNotMatch(lobby, /QuestWidget/);
   assert.doesNotMatch(lobby, /UpgradeProButton/);
 });

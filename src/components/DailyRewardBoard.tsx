@@ -2,40 +2,35 @@
 
 // src/components/DailyRewardBoard.tsx
 //
-// The daily login reward's BOARD — the 14-day cycle laid out as tiles, opened
-// from the claim button on /rewards (components/DailyRewardCard) and from the
-// corner widget (components/DailyRewardWidget).
+// The daily-streak POPUP — the 14 rewards of the player's CURRENT window,
+// opened from the streak card (components/DailyRewardWidget) and from the
+// /rewards card (components/DailyRewardCard).
 //
-// ── Why a board ─────────────────────────────────────────────────────────────
+// ── Absolute days, not cycle days ───────────────────────────────────────────
 //
-// A single "Claim 60 coins" button hides the thing that makes a login streak
-// worth keeping: tomorrow is worth more than today, and the fortnight ends in a
-// payday. The board makes the whole cycle visible at once, so the day a player
-// is on, the day they would be paid, and what completing the cycle is worth are
-// all on screen before they commit.
+// The board shows the window the server sends (`status.window`): absolute
+// streak days and what each pays. A player on day 16 sees days 15–28 with
+// today at 16 — the curve's index wraps every 14 days, but the day NUMBER does
+// not, so the popup never looks like the streak reset on day 15.
 //
 // ── Presentational, deliberately ────────────────────────────────────────────
 //
-// This component never fetches and never computes an amount. It is handed the
-// `useDailyReward()` result and renders it — the server owns the curve, the
-// streak and the gate. That keeps ONE claim path in the app (the hook) no
-// matter how many surfaces open the board.
+// It never fetches and never computes an amount. It renders the
+// `useDailyReward()` result it is handed — the server owns the curve, the
+// streak, the gate and the idempotency, so there is exactly one claim path in
+// the app.
 //
-// ── The three states a tile can be in ───────────────────────────────────────
+// ── Empty window, no popup ──────────────────────────────────────────────────
 //
-//   * before today — already collected in this cycle (ticked);
-//   * today       — highlighted; ticked once today's claim has landed;
-//   * after today — still to come, showing what it will pay.
-//
-// A tile is never a second claim button: the single action lives in the footer,
-// so there is exactly one thing to press and exactly one request it can send.
+// If the server sends no window (or only zero-value days) there is nothing to
+// show, so the component renders nothing at all rather than an empty modal.
 //
 // ── Why it is portalled ─────────────────────────────────────────────────────
 //
-// Both hosts mount this inside framer-motion wrappers (the /rewards card sits in
+// Both hosts mount it inside framer-motion wrappers (the /rewards card sits in
 // a `motion.div` whose entrance animates a transform). A transformed ancestor
-// becomes the containing block for `position: fixed` descendants AND opens a new
-// stacking context, so an overlay rendered in place would be sized to that
+// becomes the containing block for `position: fixed` descendants AND opens a
+// new stacking context, so an overlay rendered in place would be sized to that
 // wrapper and could be painted under the fixed navbar. Portalling to
 // `document.body` puts the board at the top of the document where `fixed
 // inset-0` and `z-[100]` mean what they say.
@@ -43,10 +38,11 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { IconCheck, IconCoins, IconGift, IconLock, IconRefresh, IconX } from "@tabler/icons-react";
+import { IconCheck, IconCoins, IconLock, IconRefresh, IconX } from "@tabler/icons-react";
 import type { DailyRewardStatus, UseDailyReward } from "../hooks/useDailyReward";
 import { useTranslation } from "../hooks/useTranslation";
 import GlitchSay from "./mascot/GlitchSay";
+import FlameMark from "./FlameMark";
 
 type Props = {
   open: boolean;
@@ -55,11 +51,13 @@ type Props = {
   reward: UseDailyReward;
 };
 
+type WindowDay = DailyRewardStatus["window"][number];
+
 function formatCoins(value: number) {
   return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
-/** One day of the cycle. Purely presentational — see the file header. */
+/** One day of the window. Purely presentational. */
 function DayTile({
   day,
   amount,
@@ -103,20 +101,21 @@ function DayTile({
   );
 }
 
-/** The 14 tiles, in cycle order, with today highlighted. */
-function Board({ status }: { status: DailyRewardStatus }) {
+/** The window's days, in order, with the absolute current day highlighted. */
+function Board({ status, rewards }: { status: DailyRewardStatus; rewards: WindowDay[] }) {
+  const currentDay = Math.max(1, Number(status.streakDay) || 1);
+
   return (
     <ol
       role="list"
       data-testid="daily-reward-board"
       className="grid grid-cols-4 gap-1.5 sm:grid-cols-7 sm:gap-2"
     >
-      {status.cycle.map((amount, index) => {
-        const day = index + 1;
-        const isToday = day === status.cycleDay;
-        // Days already behind us in this cycle are collected; today counts as
+      {rewards.map(({ day, amount }) => {
+        const isToday = day === currentDay;
+        // Days already behind us in this window are collected; today counts as
         // collected the moment the claim lands.
-        const isCollected = day < status.cycleDay || (isToday && !status.claimable);
+        const isCollected = day < currentDay || (isToday && !status.claimable);
         return (
           <DayTile
             key={day}
@@ -166,20 +165,25 @@ export default function DailyRewardBoard({ open, onClose, reward }: Props) {
   if (!open) return null;
   if (typeof document === "undefined") return null;
 
-  // ── GLITCH inside the board ─────────────────────────────────────────────
-  //
-  // Says what the player has banked so far (day and streak) and how much of the
-  // cycle is still payable. The numbers are the server's own status fields; the
-  // line is inline in the board's flow, so it cannot cover a tile or the claim
-  // button, and it is silent until the status has actually loaded.
-  const dailyGlitchLine = status
-    ? t("rewards.glitch.dailySummary", {
-        day: status.cycleDay,
-        days: status.cycleDays,
-        streak: status.streakDay,
-        remaining: Math.max(0, Number(status.cycleDays) - Number(status.cycleDay)),
-      })
-    : null;
+  // Only days that actually pay are shown. Nothing payable means no popup:
+  // an empty modal would just be a dead end.
+  const rewards = (status?.window ?? []).filter((entry) => Number(entry?.amount) > 0);
+  if (!status || rewards.length === 0) return null;
+
+  const currentDay = Math.max(1, Number(status.streakDay) || 1);
+  // The server owns the window bounds; the tile list is only the fallback.
+  const windowStart = Number(status.windowStart) || rewards[0].day;
+  const windowEnd = Number(status.windowEnd) || rewards[rewards.length - 1].day;
+
+  // Says what the player has banked so far (streak and window) — the numbers
+  // are the server's own status fields, inline in the flow, so it cannot cover
+  // a tile or the claim button.
+  const dailyGlitchLine = t("rewards.glitch.dailySummary", {
+    day: currentDay,
+    days: rewards.length,
+    streak: status.streakDay,
+    remaining: Math.max(0, windowEnd - currentDay),
+  });
 
   return createPortal(
     <div
@@ -198,22 +202,26 @@ export default function DailyRewardBoard({ open, onClose, reward }: Props) {
         className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-[#f5ff3b]/40 bg-[#040d24] p-4 shadow-[0_0_40px_rgba(245,255,59,0.25)] outline-hidden sm:p-6"
       >
         <div className="mb-3 flex items-start justify-between gap-3">
-          <div>
-            <h2
-              id="daily-reward-board-heading"
-              className="flex items-center gap-2 text-lg font-bold text-[#f5ff3b] sm:text-xl"
-            >
-              <IconGift size={20} aria-hidden="true" /> Daily Reward
-            </h2>
-            <p className="mt-1 text-xs leading-relaxed text-[#c9f7ff]/75 sm:text-sm">
-              Log in and win one match each day — online or vs the AI. The streak climbs for 14 days — miss a day
-              and it starts again at day 1.
-            </p>
+          <div className="flex items-start gap-3">
+            <FlameMark size={32} />
+            <div>
+              <h2
+                id="daily-reward-board-heading"
+                className="text-lg font-bold text-[#f5ff3b] sm:text-xl"
+              >
+                Daily Streak
+              </h2>
+              <p className="mt-1 text-xs leading-relaxed text-[#c9f7ff]/75 sm:text-sm">
+                Log in and win one match each day — online or vs the AI. Each day of the
+                14-day window pays more than the one before; miss a day and the streak
+                starts again at day 1.
+              </p>
+            </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close daily reward"
+            aria-label="Close daily streak"
             data-testid="daily-reward-board-close"
             className="shrink-0 rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 p-2 text-[#d8fbff] transition hover:bg-[#00e5ff]/25 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b]"
           >
@@ -221,109 +229,97 @@ export default function DailyRewardBoard({ open, onClose, reward }: Props) {
           </button>
         </div>
 
-        {!status ? (
-          <p className="py-4 text-sm text-[#9dd8ff]/70" aria-hidden="true">
-            Loading your reward…
-          </p>
-        ) : (
-          <>
-            <div className="mb-4 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#00e5ff]">
-                {formatCoins(status.streakDay)}-day streak
-              </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-[#f5ff3b]">
-                Day {status.cycleDay} of {status.cycleDays}
-              </span>
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#00e5ff]">
+            {formatCoins(status.streakDay)}-day streak
+          </span>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-[#f5ff3b]">
+            Days {windowStart}–{windowEnd}
+          </span>
+        </div>
+
+        <div className="mb-4" data-testid="daily-reward-glitch">
+          <GlitchSay
+            expression="wink"
+            message={dailyGlitchLine}
+            placement="inline"
+            size="sm"
+            dismissible
+            dismissLabel={t("quests.close")}
+          />
+        </div>
+
+        <Board status={status} rewards={rewards} />
+
+        <div className="mt-5">
+          {claimedNow !== null ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <p
+                className="flex items-center gap-2 text-sm font-semibold text-[#f5ff3b]"
+                role="status"
+                data-testid="daily-reward-claimed"
+              >
+                <IconCheck size={16} aria-hidden="true" /> You claimed {formatCoins(claimedNow)}{" "}
+                coins. Day {currentDay + 1} is next.
+              </p>
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-4 py-2 text-sm font-semibold text-[#d8fbff] transition hover:bg-[#00e5ff]/25"
+              >
+                Nice!
+              </button>
             </div>
-
-            {dailyGlitchLine ? (
-              <div className="mb-4" data-testid="daily-reward-glitch">
-                <GlitchSay
-                  expression="wink"
-                  message={dailyGlitchLine}
-                  placement="inline"
-                  size="sm"
-                  dismissible
-                  dismissLabel={t("quests.close")}
-                />
-              </div>
-            ) : null}
-
-            <Board status={status} />
-
-            <div className="mt-5">
-              {claimedNow !== null ? (
-                <div className="flex flex-wrap items-center gap-3">
-                  <p
-                    className="flex items-center gap-2 text-sm font-semibold text-[#f5ff3b]"
-                    role="status"
-                    data-testid="daily-reward-claimed"
-                  >
-                    <IconCheck size={16} aria-hidden="true" /> You claimed {formatCoins(claimedNow)}{" "}
-                    coins. Come back tomorrow — day{" "}
-                    {status.cycleDay === status.cycleDays ? 1 : status.cycleDay + 1} is next.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-4 py-2 text-sm font-semibold text-[#d8fbff] transition hover:bg-[#00e5ff]/25"
-                  >
-                    Nice!
-                  </button>
-                </div>
-              ) : !status.winGateSatisfied ? (
-                <div className="flex flex-wrap items-center gap-3">
-                  <span
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-[#ff4fd8]/40 bg-[#ff4fd8]/10 px-3 py-2 text-sm font-semibold text-[#ff4fd8]"
-                    data-testid="daily-reward-locked"
-                  >
-                    <IconLock size={15} aria-hidden="true" /> Win a match to unlock
-                    today&apos;s reward
-                  </span>
-                  <Link
-                    href="/games"
-                    className="text-sm font-semibold text-[#00e5ff] underline underline-offset-2 hover:text-[#f5ff3b]"
-                  >
-                    Choose a game
-                  </Link>
-                </div>
-              ) : status.claimable ? (
-                <button
-                  type="button"
-                  onClick={claim}
-                  disabled={claiming}
-                  data-testid="daily-reward-claim"
-                  className="inline-flex w-full items-center justify-center rounded-xl border border-[#f5ff3b]/60 bg-linear-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-3 text-base font-bold text-[#1f1700] shadow-[0_0_25px_rgba(245,255,59,0.35)] transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817] disabled:opacity-60 sm:w-auto"
-                >
-                  {claiming
-                    ? "Claiming…"
-                    : `Claim day ${status.cycleDay} — ${formatCoins(status.reward)} coins`}
-                </button>
-              ) : (
-                <p
-                  className="flex items-center gap-2 text-sm text-[#c9f7ff]/80"
-                  data-testid="daily-reward-claimed"
-                >
-                  <IconCheck size={15} aria-hidden="true" /> Already claimed today — tomorrow&apos;s
-                  reward is waiting.
-                </p>
-              )}
-
-              {error && (
-                <p className="mt-3 text-sm text-[#ff4fd8]" role="alert">
-                  {error}{" "}
-                  <button
-                    type="button"
-                    onClick={load}
-                    className="inline-flex items-center gap-1 font-semibold text-[#00e5ff] underline underline-offset-2 hover:text-[#f5ff3b]"
-                  >
-                    <IconRefresh size={13} aria-hidden="true" /> Try again
-                  </button>
-                </p>
-              )}
+          ) : !status.winGateSatisfied ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <span
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[#ff4fd8]/40 bg-[#ff4fd8]/10 px-3 py-2 text-sm font-semibold text-[#ff4fd8]"
+                data-testid="daily-reward-locked"
+              >
+                <IconLock size={15} aria-hidden="true" /> Win a match to unlock today&apos;s reward
+              </span>
+              <Link
+                href="/games"
+                className="text-sm font-semibold text-[#00e5ff] underline underline-offset-2 hover:text-[#f5ff3b]"
+              >
+                Choose a game
+              </Link>
             </div>
-          </>
-        )}
+          ) : status.claimable ? (
+            <button
+              type="button"
+              onClick={claim}
+              disabled={claiming}
+              data-testid="daily-reward-claim"
+              className="inline-flex w-full items-center justify-center rounded-xl border border-[#f5ff3b]/60 bg-linear-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-3 text-base font-bold text-[#1f1700] shadow-[0_0_25px_rgba(245,255,59,0.35)] transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817] disabled:opacity-60 sm:w-auto"
+            >
+              {claiming
+                ? "Claiming…"
+                : `Claim day ${currentDay} — ${formatCoins(status.reward)} coins`}
+            </button>
+          ) : (
+            <p
+              className="flex items-center gap-2 text-sm text-[#c9f7ff]/80"
+              data-testid="daily-reward-claimed"
+            >
+              <IconCheck size={15} aria-hidden="true" /> Already claimed today — tomorrow&apos;s
+              reward is waiting.
+            </p>
+          )}
+
+          {error && (
+            <p className="mt-3 text-sm text-[#ff4fd8]" role="alert">
+              {error}{" "}
+              <button
+                type="button"
+                onClick={load}
+                className="inline-flex items-center gap-1 font-semibold text-[#00e5ff] underline underline-offset-2 hover:text-[#f5ff3b]"
+              >
+                <IconRefresh size={13} aria-hidden="true" /> Try again
+              </button>
+            </p>
+          )}
+        </div>
       </div>
     </div>,
     document.body

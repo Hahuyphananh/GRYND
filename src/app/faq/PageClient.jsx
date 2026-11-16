@@ -1,7 +1,6 @@
 import Link from "next/link";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
-import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import GameCard from "../../components/games/GameCard";
 import { GAME_CARD_ART } from "../../components/games/gameCardArt";
 import { FaqSidebarList, FaqSidebarRail } from "../../components/faq/FaqSidebar";
@@ -304,7 +303,7 @@ const SIDEBAR_ITEMS = [
 // crawlers, and it works with JavaScript disabled.
 function FaqItem({ q, a }) {
   return (
-    <details className="group rounded-lg border border-[#00e5ff]/15 bg-[#040d24]/60 backdrop-blur-xs transition-all hover:border-[#00e5ff]/30 open:border-[#00e5ff]/40">
+    <details className="group rounded-lg border border-[#00e5ff]/15 bg-[#07101f]/80 backdrop-blur-xs transition-all hover:border-[#00e5ff]/30 open:border-[#00e5ff]/40">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-4 text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]">
         <h3 className="text-base font-semibold text-[#c9f7ff]">{q}</h3>
         <span
@@ -321,8 +320,7 @@ function FaqItem({ q, a }) {
 
 export default function FaqPage({ gameCards = [] }) {
   return (
-    <div className="relative min-h-screen overflow-x-clip">
-      <InteractiveCasinoBg variant="subtle" />
+    <div className="relative min-h-screen overflow-x-clip bg-[#05070d] text-white">
 
       <NavigationBar currentPath="/faq" />
 

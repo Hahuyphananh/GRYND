@@ -20,7 +20,7 @@
 
 import esbuild from "esbuild";
 import postcss from "postcss";
-import tailwindcss from "tailwindcss";
+import tailwindcss from "@tailwindcss/postcss";
 import autoprefixer from "autoprefixer";
 import { chromium } from "playwright";
 import { createServer } from "node:http";
@@ -123,7 +123,7 @@ await esbuild.build({
 
 // ── The app's real stylesheet ──────────────────────────────────────────────
 const compiled = await postcss([
-  tailwindcss(join(root, "tailwind.config.js")),
+  tailwindcss(),
   autoprefixer(),
 ]).process(readFileSync(join(root, "src/app/globals.css"), "utf8"), {
   from: join(root, "src/app/globals.css"),
@@ -296,6 +296,10 @@ for (const lang of ["en", "fr", "es"]) {
   const editButton = page.getByRole("button", { name: want.editButton, exact: true });
   const editButtonCount = await editButton.count();
   check(`${lang}: the edit-profile button is translated`, editButtonCount === 1);
+  await page.screenshot({
+    path: join(REPORTS, `profil-i18n-${lang}-closed.png`),
+    fullPage: true,
+  });
   if (editButtonCount === 1) {
     await editButton.click();
     await page.waitForTimeout(200);

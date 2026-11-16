@@ -3,7 +3,6 @@
 import { useCallback, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import NavigationBar from "../../components/navigation-bar";
 import ContactMessageHistory from "../../components/ContactMessageHistory";
 import SocialLinks from "../../components/SocialLinks";
@@ -86,21 +85,13 @@ export default function ContactPage() {
   }, [errorMsg]);
 
   return (
-    <div className="relative min-h-screen bg-[#0a0f1e] text-white">
-      <InteractiveCasinoBg
-        variant="subtle"
-        wheelPosition="bottom"
-        wheelSize="min(140vh, 1200px)"
-        wheelOffsetY="50%"
-        wheelOpacity={0.12}
-        cursorOrb={false}
-      />
+    <div className="relative min-h-screen bg-[#05070d] text-white">
 
       <NavigationBar currentPath="/contact" />
 
       {/* Hero header */}
       <div className="relative overflow-hidden border-b border-white/5">
-        <div className="absolute inset-0 bg-linear-to-b from-[#1a1f3e]/40 to-transparent pointer-events-none" />
+        <div className="absolute inset-0 bg-linear-to-b from-[#00e5ff]/[0.06] to-transparent pointer-events-none" />
         <div className="max-w-4xl mx-auto px-4 pt-16 sm:pt-20 pb-8 sm:pb-12">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -113,7 +104,7 @@ export default function ContactPage() {
               </span>{" "}
               <span className="text-white">Us</span>
             </h1>
-            <p className="mt-3 text-lg text-[#c9f7ff]/70 max-w-lg">
+            <p className="mt-3 text-lg text-[#d8fbff]/70 max-w-lg">
               Have a question, suggestion, or need support? Send us a message
               and we'll get back to you as soon as possible.
             </p>
@@ -139,23 +130,23 @@ export default function ContactPage() {
             transition={{ duration: 0.5, delay: 0.15 }}
             className="lg:col-span-2 space-y-6"
           >
-            <div className="bg-[#0e1f4d] border border-white/10 rounded-xl p-6">
+            <div className="bg-[#07101f]/90 border border-white/10 rounded-xl p-6">
               <h2 className="text-sm font-semibold text-[#f5ff3b] uppercase tracking-wider mb-4">
                 Reach Us
               </h2>
-              <ul className="space-y-4 text-sm text-[#c9f7ff]/80">
+              <ul className="space-y-4 text-sm text-[#d8fbff]/80">
                 <li className="flex items-start gap-3">
                   <IconClock size={18} className="text-[#f5ff3b] mt-0.5" />
                   <div>
                     <p className="font-medium text-white">Response Time</p>
-                    <p className="text-[#c9f7ff]/60">Within 24 hours</p>
+                    <p className="text-[#d8fbff]/60">Within 24 hours</p>
                   </div>
                 </li>
                 <li className="flex items-start gap-3">
                   <IconLock size={18} className="text-[#f5ff3b] mt-0.5" />
                   <div>
                     <p className="font-medium text-white">Secure</p>
-                    <p className="text-[#c9f7ff]/60">
+                    <p className="text-[#d8fbff]/60">
                       Your information is encrypted and never shared.
                     </p>
                   </div>
@@ -166,18 +157,18 @@ export default function ContactPage() {
             {/* Socials live here as well as in the site footer, because a
                 visitor who came looking for a human shouldn't have to scroll
                 to the bottom to find us. */}
-            <div className="bg-[#0e1f4d] border border-white/10 rounded-xl p-6">
+            <div className="bg-[#07101f]/90 border border-white/10 rounded-xl p-6">
               <h2 className="text-sm font-semibold text-[#f5ff3b] uppercase tracking-wider mb-4">
                 Follow Us
               </h2>
-              <p className="mb-4 text-sm text-[#c9f7ff]/60">
+              <p className="mb-4 text-sm text-[#d8fbff]/60">
                 Updates, giveaways and support answers — reach us on whichever
                 platform you prefer.
               </p>
               <SocialLinks size="lg" testId="contact-social" />
             </div>
 
-            <div className="bg-[#0e1f4d] border border-white/10 rounded-xl p-6">
+            <div className="bg-[#07101f]/90 border border-white/10 rounded-xl p-6">
               <h2 className="text-sm font-semibold text-[#f5ff3b] uppercase tracking-wider mb-4">
                 Quick Links
               </h2>
@@ -199,7 +190,7 @@ export default function ContactPage() {
                   <li key={href}>
                     <Link
                       href={href}
-                      className="text-[#c9f7ff]/60 hover:text-[#f5ff3b] transition-colors duration-200"
+                      className="text-[#d8fbff]/60 hover:text-[#f5ff3b] transition-colors duration-200"
                     >
                       → {label}
                     </Link>
@@ -216,7 +207,7 @@ export default function ContactPage() {
             transition={{ duration: 0.5, delay: 0.25 }}
             className="lg:col-span-3"
           >
-            <div className="mb-4 rounded-lg border border-[#00e5ff]/20 bg-[#00e5ff]/5 px-4 py-3 text-sm text-[#c9f7ff]/80">
+            <div className="mb-4 rounded-lg border border-[#00e5ff]/20 bg-[#00e5ff]/5 px-4 py-3 text-sm text-[#d8fbff]/80">
               <IconHelp size={15} className="mb-0.5 mr-1.5 inline text-[#00e5ff]" />
               Looking for a quick answer? Check the{" "}
               <Link
@@ -234,13 +225,13 @@ export default function ContactPage() {
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0 }}
-                  className="bg-[#0e1f4d] border border-emerald-500/30 rounded-xl p-10 text-center"
+                  className="bg-[#07101f]/90 border border-emerald-500/30 rounded-xl p-10 text-center"
                 >
                   <div className="mb-4 flex justify-center"><IconCircleCheck size={48} className="text-emerald-400" /></div>
                   <h2 className="text-2xl font-bold text-white mb-2">
                     Message Sent!
                   </h2>
-                  <p className="text-[#c9f7ff]/70 mb-6">
+                  <p className="text-[#d8fbff]/70 mb-6">
                     Thank you for reaching out. We'll get back to you within 24
                     hours.
                   </p>
@@ -258,16 +249,16 @@ export default function ContactPage() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="bg-[#0e1f4d] border border-white/10 rounded-xl p-6 sm:p-8 space-y-5"
+                  className="bg-[#07101f]/90 border border-white/10 rounded-xl p-6 sm:p-8 space-y-5"
                 >
                   {/* Name */}
                   <div>
                     <label
                       htmlFor="contact-name"
-                      className="block text-sm font-medium text-[#c9f7ff]/80 mb-1.5"
+                      className="block text-sm font-medium text-[#d8fbff]/80 mb-1.5"
                     >
                       Your Name{" "}
-                      <span className="text-[#c9f7ff]/40">(optional)</span>
+                      <span className="text-[#d8fbff]/40">(optional)</span>
                     </label>
                     <input
                       id="contact-name"
@@ -275,7 +266,7 @@ export default function ContactPage() {
                       value={name}
                       onChange={(e) => handleFieldChange(setName, e.target.value)}
                       placeholder="John Doe"
-                      className="w-full rounded-lg border border-white/10 bg-[#0a0f1e] px-4 py-2.5 text-sm text-white placeholder-[#c9f7ff]/30 outline-hidden transition-all focus:border-[#f5ff3b]/50 focus:bg-[#0d1428] focus:ring-1 focus:ring-[#f5ff3b]/20"
+                      className="w-full rounded-lg border border-white/10 bg-[#05070d] px-4 py-2.5 text-sm text-white placeholder-[#d8fbff]/30 outline-hidden transition-all focus:border-[#f5ff3b]/50 focus:bg-[#0d1428] focus:ring-1 focus:ring-[#f5ff3b]/20"
                     />
                   </div>
 
@@ -283,7 +274,7 @@ export default function ContactPage() {
                   <div>
                     <label
                       htmlFor="contact-email"
-                      className="block text-sm font-medium text-[#c9f7ff]/80 mb-1.5"
+                      className="block text-sm font-medium text-[#d8fbff]/80 mb-1.5"
                     >
                       Your Email <span className="text-red-400">*</span>
                     </label>
@@ -294,7 +285,7 @@ export default function ContactPage() {
                       value={email}
                       onChange={(e) => handleFieldChange(setEmail, e.target.value)}
                       placeholder="you@example.com"
-                      className="w-full rounded-lg border border-white/10 bg-[#0a0f1e] px-4 py-2.5 text-sm text-white placeholder-[#c9f7ff]/30 outline-hidden transition-all focus:border-[#f5ff3b]/50 focus:bg-[#0d1428] focus:ring-1 focus:ring-[#f5ff3b]/20"
+                      className="w-full rounded-lg border border-white/10 bg-[#05070d] px-4 py-2.5 text-sm text-white placeholder-[#d8fbff]/30 outline-hidden transition-all focus:border-[#f5ff3b]/50 focus:bg-[#0d1428] focus:ring-1 focus:ring-[#f5ff3b]/20"
                     />
                   </div>
 
@@ -302,7 +293,7 @@ export default function ContactPage() {
                   <div>
                     <label
                       htmlFor="contact-message"
-                      className="block text-sm font-medium text-[#c9f7ff]/80 mb-1.5"
+                      className="block text-sm font-medium text-[#d8fbff]/80 mb-1.5"
                     >
                       Message <span className="text-red-400">*</span>
                     </label>
@@ -314,9 +305,9 @@ export default function ContactPage() {
                       onChange={(e) => handleFieldChange(setMessage, e.target.value)}
                       placeholder="Tell us how we can help..."
                       maxLength={5000}
-                      className="w-full rounded-lg border border-white/10 bg-[#0a0f1e] px-4 py-2.5 text-sm text-white placeholder-[#c9f7ff]/30 outline-hidden transition-all focus:border-[#f5ff3b]/50 focus:bg-[#0d1428] focus:ring-1 focus:ring-[#f5ff3b]/20 resize-y min-h-[120px]"
+                      className="w-full rounded-lg border border-white/10 bg-[#05070d] px-4 py-2.5 text-sm text-white placeholder-[#d8fbff]/30 outline-hidden transition-all focus:border-[#f5ff3b]/50 focus:bg-[#0d1428] focus:ring-1 focus:ring-[#f5ff3b]/20 resize-y min-h-[120px]"
                     />
-                    <p className="text-xs text-[#c9f7ff]/40 mt-1 text-right">
+                    <p className="text-xs text-[#d8fbff]/40 mt-1 text-right">
                       {message.length}/5000
                     </p>
                   </div>

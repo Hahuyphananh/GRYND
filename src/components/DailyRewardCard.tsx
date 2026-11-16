@@ -66,7 +66,7 @@ export default function DailyRewardCard() {
         )}
         {status && (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-[#f5ff3b]">
-            Day {status.cycleDay} of {status.cycleDays}
+            Days {status.windowStart}–{status.windowEnd}
           </span>
         )}
       </div>
@@ -142,7 +142,7 @@ export default function DailyRewardCard() {
                 className="inline-flex items-center justify-center rounded-xl border border-[#f5ff3b]/60 bg-linear-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-3 text-base font-bold text-[#1f1700] shadow-[0_0_25px_rgba(245,255,59,0.35)] transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
               >
                 {status.claimable
-                  ? `Daily reward — day ${status.cycleDay} (${formatCoins(status.reward)} coins)`
+                  ? `Daily reward — day ${status.streakDay} (${formatCoins(status.reward)} coins)`
                   : "Already claimed — see the board"}
               </button>
             </div>
