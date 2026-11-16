@@ -161,6 +161,14 @@ jobs:
         shell: bash
         run: npm run lint:release
 
+      # Fails the build on a call site naming a symbol nothing defines — the
+      # class of bug that shipped `selectTab is not defined` and the UNO join
+      # route's `userId is not defined`. Neither `next build` nor `tsc` sees it
+      # in plain JS/JSX.
+      - name: Check the app for undefined references
+        shell: bash
+        run: npm run lint:no-undef
+
       - name: Type-check the application
         shell: bash
         run: npm run typecheck
@@ -230,6 +238,14 @@ jobs:
             echo "::error::.next/standalone exists but this deployment runs 'next start'"
             exit 1
           fi
+
+      # Runs AFTER the build so the tunnel test also asserts the generated
+      # .next/routes-manifest.json keeps /monitoring -> /sentry-tunnel (the
+      # external rewrite form is what answered 500 in production). It has to run
+      # before devDependencies are pruned, because it loads tsx.
+      - name: Test the Sentry tunnel (built manifest)
+        shell: bash
+        run: npm run test:sentry-tunnel
 
       - name: Drop build-only dependencies
         shell: bash

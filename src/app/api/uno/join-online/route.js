@@ -57,7 +57,7 @@ function safeParse(value, fallback = []) {
   return value;
 }
 
-async function joinOpenGame({ user, openGame }) {
+async function joinOpenGame({ user, userId, openGame }) {
   const balance = parseFloat(user.balance);
 
   const deck = safeParse(openGame.deck, []);
@@ -274,7 +274,7 @@ export async function POST(request) {
       }
       const randomGame =
         waitingGames[Math.floor(Math.random() * waitingGames.length)];
-      return await joinOpenGame({ user, openGame: randomGame });
+      return await joinOpenGame({ user, userId, openGame: randomGame });
     }
 
     if (mode === "join-specific") {
@@ -310,7 +310,7 @@ export async function POST(request) {
         );
       }
 
-      return await joinOpenGame({ user, openGame: targetedGame });
+      return await joinOpenGame({ user, userId, openGame: targetedGame });
     }
 
     if (mode === "create") {
@@ -321,7 +321,7 @@ export async function POST(request) {
       (game) => game.betAmount === betAmount.toFixed(2),
     );
     if (matchedByBet) {
-      return await joinOpenGame({ user, openGame: matchedByBet });
+      return await joinOpenGame({ user, userId, openGame: matchedByBet });
     }
 
     return await createWaitingGame({ user, betAmount });

@@ -23,12 +23,16 @@
 //
 // ── Placement ───────────────────────────────────────────────────────────────
 //
-// `md:` and up: fixed to the viewport's top-right, below the navbar (which is
-// fixed at h-16 / h-20 / h-24, so top-104px clears the tallest of the three),
-// stacked BELOW the navbar (z-30 vs its z-40) and below the mobile menu (z-50)
-// and the modals (z-100). Below `md:` the fixed card would cover the page it is
-// meant to help, so the same element lays out inline at the top of the page
-// content instead — under the navbar, right where the reading starts.
+// `md:` and up: fixed to the viewport's top-right, below the navbar. The bar
+// is h-16 / h-20 / h-24 — 96px at its tallest — and pads itself with `safe-top`
+// on Android edge-to-edge and iOS standalone, where that inset is real. The
+// offset is therefore `--safe-top + 112px`: without the inset the card rode up
+// under the bar (the "behind the navbar" state), and the extra 16px is the gap
+// under it. It also stays stacked BELOW the navbar (z-30 vs its z-40) and below
+// the mobile menu (z-50) and the modals (z-100). Below `md:` the fixed card
+// would cover the page it is meant to help, so the same element lays out inline
+// at the top of the page content instead — under the navbar, right where the
+// reading starts.
 //
 // A signed-out visitor gets nothing: there is no reward without a player, and a
 // permanent "sign in" pitch in the corner of every page is noise. (The navbar
@@ -45,11 +49,11 @@ import DailyRewardBoard from "./DailyRewardBoard";
 // (the pages that mount it have no padding of their own at that point).
 const POSITION_CLASS = [
   "mt-3 px-4 md:mt-0 md:px-0",
-  "md:fixed md:right-4 md:top-[104px] md:z-30 md:w-72 md:max-w-[calc(100vw-2rem)]",
+  "md:fixed md:right-4 md:top-[calc(var(--safe-top,0px)_+_112px)] md:z-30 md:w-[22rem] md:max-w-[calc(100vw-2rem)]",
 ].join(" ");
 
 const CARD =
-  "rounded-xl border border-[#f5ff3b]/40 bg-[#040d24]/90 px-4 py-3 shadow-[0_0_25px_rgba(245,255,59,0.18)] backdrop-blur-md";
+  "rounded-xl border border-[#f5ff3b]/40 bg-[#040d24]/90 px-5 py-4 shadow-[0_0_25px_rgba(245,255,59,0.18)] backdrop-blur-md";
 
 function formatCoins(value: number) {
   return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
@@ -70,9 +74,9 @@ export default function DailyRewardWidget() {
         <div className="flex items-center justify-between gap-2">
           <h2
             id="daily-reward-widget-heading"
-            className="flex items-center gap-1.5 text-sm font-bold text-[#f5ff3b]"
+            className="flex items-center gap-1.5 text-base font-bold text-[#f5ff3b]"
           >
-            <IconGift size={16} aria-hidden="true" /> Daily Reward
+            <IconGift size={18} aria-hidden="true" /> Daily Reward
           </h2>
           {status && (
             <span className="rounded-full border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#00e5ff]">

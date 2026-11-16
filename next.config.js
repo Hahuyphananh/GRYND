@@ -329,6 +329,17 @@ const nextConfig = {
     }
 
     return [
+      // The service worker is a self-unregistering kill switch (see
+      // public/sw.js). Browsers that still have the old precache installed
+      // must be able to fetch the replacement promptly, so it is never cached
+      // by an intermediary, and its scope stays the whole site.
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Cache-Control", value: "no-store, must-revalidate" },
+          { key: "Service-Worker-Allowed", value: "/" }
+        ]
+      },
       {
         source: "/:path*",
         headers: securityHeaders
