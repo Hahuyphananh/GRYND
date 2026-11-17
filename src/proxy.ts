@@ -37,6 +37,25 @@ import { applyPortalFramePolicy } from "./lib/portal/framing";
 const NOT_FOUND_SENTINEL = "/__unknown-game-slug";
 
 /**
+ * A real 404 for a game URL that no longer has a page.
+ *
+ * Returned directly instead of rewriting to NOT_FOUND_SENTINEL: on a host with
+ * Clerk configured, the rewritten request re-enters the auth pipeline and that
+ * path answered 500 instead of 404. A direct response cannot be re-routed and
+ * never consults a session.
+ */
+function gameNotFoundResponse(): NextResponse {
+  const body = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="robots" content="noindex"><title>Game not found | GRYND</title></head><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#030817;color:#d8fbff;font-family:system-ui,sans-serif;text-align:center;padding:24px"><main><h1 style="font-size:2rem;margin:0 0 12px">Game not found</h1><p style="margin:0 0 20px;color:#9dd8ff">This game is no longer on GRYND.</p><a href="/games/solitaire-duel" style="display:inline-block;padding:12px 24px;border-radius:12px;background:#FFD700;color:#030817;font-weight:700;text-decoration:none">Play Solitaire Duel</a></main></body></html>`;
+  return new NextResponse(body, {
+    status: 404,
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "x-robots-tag": "noindex",
+    },
+  });
+}
+
+/**
  * RETIRED GAMES — real, playable games that have since been removed from the
  * app (see docs/last-run-removal.md).
  *
@@ -565,8 +584,8 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
   // rendering starts.
   //
   // Two behaviours fall out of it, both intended:
-  //   * the request is REWRITTEN, not redirected, so the URL the visitor typed
-  //     stays in the address bar while the 404 status is returned;
+  //   * the response is a direct 404, so the URL the visitor typed stays in the
+  //     address bar and no session is consulted;
   //   * it applies whatever the session is. Previously an unknown slug that the
   //     game-route patterns did not recognise (/games/typo) was bounced to
   //     /sign-in like any other unknown path, and one that they DID recognise
@@ -584,16 +603,12 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
     !isGameLandingSlug(unknownGameSlug[1]) &&
     !isGameRoute(pathname)
   ) {
-    return applySecurityHeaders(
-      NextResponse.rewrite(new URL(NOT_FOUND_SENTINEL, req.url)),
-    );
+    return applySecurityHeaders(gameNotFoundResponse());
   }
 
   // A retired game's URL is gone, not redirected and not a sign-in bounce.
   if (RETIRED_GAME_PATHS.some((pattern) => pattern.test(pathname))) {
-    return applySecurityHeaders(
-      NextResponse.rewrite(new URL(NOT_FOUND_SENTINEL, req.url)),
-    );
+    return applySecurityHeaders(gameNotFoundResponse());
   }
 
   if (RETIRED_PRODUCT_API.test(pathname)) {

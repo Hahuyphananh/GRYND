@@ -163,12 +163,11 @@ const nextConfig = {
         permanent: true,
       },
       // Old /casino/* links keep working — bounce them to the new /games/* URLs.
-      // Same exact-rule-first pattern as the rewrite above: bare /casino must
-      // redirect to /games, not /games/ (which would 308-loop into the
-      // rewrite and 404 the tree-prefetch).
+      // The platform is Solitaire-only, so the bare hub goes straight to the one
+      // game's public landing page instead of the (now single-entry) hub.
       {
         source: "/casino",
-        destination: "/games",
+        destination: "/games/solitaire-duel",
         permanent: true,
       },
       {
