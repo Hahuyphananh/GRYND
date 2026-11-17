@@ -248,94 +248,6 @@ const shiftSudoku: ShiftFn = async (tx, row, matchId, deltaMs) => {
 const noShift: ShiftFn = async () => {};
 
 const GAMES: Record<ServerPracticePauseGame, GameConfig> = {
-  chess: {
-    table: "chess_games",
-    idColumn: "id",
-    participant: (userId) => standardPlayer(userId, "player_white_id", "player_black_id"),
-    ai: sql`is_ai_game = true`,
-    active: sql`status = 'in_progress'`,
-    shift: shiftChess,
-  },
-  "dice-flush": {
-    table: "dice_flush_rooms",
-    idColumn: "id",
-    participant: (userId) => sql`game_state->'players' @> ${JSON.stringify([{ userId }])}::jsonb`,
-    ai: sql`game_state->'players' @> '[{"isAI":true}]'::jsonb`,
-    active: sql`status = 'playing'`,
-    shift: shiftDiceFlush,
-  },
-  "dots-and-boxes": {
-    table: "dots_and_boxes_games",
-    idColumn: "id",
-    participant: (userId) => standardPlayer(userId, "host_clerk_id", "guest_clerk_id"),
-    ai: sql`is_ai_game = true`,
-    active: notTerminal,
-    shift: noShift,
-  },
-  "hex-duel": {
-    table: "hex_duel_games",
-    idColumn: "id",
-    participant: (userId) => standardPlayer(userId),
-    ai: sql`is_ai_game = true`,
-    active: notTerminal,
-    shift: noShift,
-  },
-  "keno-pvp": {
-    table: "keno_pvp_matches",
-    idColumn: "id",
-    participant: (userId) => standardPlayer(userId),
-    ai: sql`is_ai = true`,
-    active: notTerminal,
-    shift: shiftKeno,
-  },
-  "lane-rush-duel": {
-    table: "lane_rush_duel_matches",
-    idColumn: "id",
-    participant: (userId) => standardPlayer(userId),
-    ai: sql`player2_id = 'AI_BOT'`,
-    active: notTerminal,
-    shift: shiftLaneRush,
-  },
-  "memory-grid": {
-    table: "memory_grid_matches",
-    idColumn: "id",
-    participant: (userId) => standardPlayer(userId),
-    ai: sql`is_ai = true`,
-    active: notTerminal,
-    shift: shiftMemoryGrid,
-  },
-  "mines-pvp": {
-    table: "mines_pvp_matches",
-    idColumn: "id",
-    participant: (userId) => standardPlayer(userId),
-    ai: sql`is_ai = true`,
-    active: notTerminal,
-    shift: shiftMines,
-  },
-  "mini-golf": {
-    table: "mini_golf_matches",
-    idColumn: "id",
-    participant: (userId) => standardPlayer(userId),
-    ai: sql`is_ai = true`,
-    active: notTerminal,
-    shift: noShift,
-  },
-  pool: {
-    table: "pool_matches",
-    idColumn: "id",
-    participant: (userId) => standardPlayer(userId),
-    ai: sql`player2_id = 'AI'`,
-    active: notTerminal,
-    shift: noShift,
-  },
-  precision: {
-    table: "precision_matches",
-    idColumn: "id",
-    participant: (userId) => standardPlayer(userId),
-    ai: sql`is_ai_game = true`,
-    active: notTerminal,
-    shift: shiftPrecision,
-  },
   "solitaire-duel": {
     table: "solitaire_duel_matches",
     idColumn: "id",
@@ -343,42 +255,6 @@ const GAMES: Record<ServerPracticePauseGame, GameConfig> = {
     ai: sql`is_ai = true`,
     active: sql`status = 'playing'`,
     shift: shiftSolitaire,
-  },
-  "speed-typing": {
-    table: "speed_typing_matches",
-    idColumn: "id",
-    participant: (userId) => standardPlayer(userId),
-    ai: sql`is_ai = true`,
-    active: sql`status = 'playing'`,
-    shift: shiftSpeedTyping,
-  },
-  "sudoku-duel": {
-    table: "sudoku_duel_matches",
-    idColumn: "id",
-    participant: (userId) => standardPlayer(userId),
-    ai: sql`is_ai = true`,
-    active: sql`status = 'playing'`,
-    shift: shiftSudoku,
-  },
-  "tic-tac-toe": {
-    table: "tic_tac_toe_matches",
-    idColumn: "id",
-    participant: (userId) => standardPlayer(userId),
-    ai: sql`is_ai = true`,
-    active: sql`status = 'playing'`,
-    shift: noShift,
-  },
-  uno: {
-    table: "uno_games",
-    idColumn: "id",
-    participant: (userId) => sql`(
-      guest_id = ${userId}
-      or user_id = (select id from users where clerk_id = ${userId} limit 1)
-    )`,
-    // An AI game is the row with no second account seat.
-    ai: sql`player2_id is null`,
-    active: sql`status = 'active'`,
-    shift: noShift,
   },
 };
 

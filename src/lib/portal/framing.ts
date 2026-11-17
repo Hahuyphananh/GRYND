@@ -78,12 +78,7 @@ export function portalGameKeyFromPath(pathname: unknown): string | null {
  * practice match renders inside the lobby page, so it never needs a second
  * framable path.
  */
-export const PORTAL_MATCH_GAMES: readonly string[] = [
-  "tic-tac-toe",
-  "dominoes",
-  "odds",
-  "solitaire-duel",
-];
+export const PORTAL_MATCH_GAMES: readonly string[] = ["solitaire-duel"];
 
 export function hasPortalMatchRoute(gameKey: unknown): boolean {
   return typeof gameKey === "string" && PORTAL_MATCH_GAMES.includes(gameKey);

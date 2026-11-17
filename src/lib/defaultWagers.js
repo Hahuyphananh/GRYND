@@ -12,28 +12,7 @@
 // the stored object and never rewrites it), and every other game's key and
 // fallback are unchanged.
 
-export const WAGER_GAMES = [
-  { key: "mines", label: "Mines", fallback: 50 },
-  { key: "memory-grid", label: "Memory Grid", fallback: 50 },
-  { key: "keno", label: "Keno", fallback: 50 },
-  { key: "tower-arena", label: "Tower Arena", fallback: 10 },
-  { key: "odds", label: "Odds", fallback: 50 },
-  { key: "hex-duel", label: "Hex Duel", fallback: 50 },
-  { key: "four-in-a-row", label: "Four in a Row", fallback: 10 },
-  { key: "dots-and-boxes", label: "Dots and Boxes", fallback: 10 },
-  { key: "uno", label: "UNO", fallback: 100 },
-  { key: "pool-masters", label: "Pool Masters", fallback: 10 },
-  { key: "rps", label: "Rock Paper Scissors", fallback: 10 },
-  { key: "lane-runner", label: "Lane Runner", fallback: 50 },
-  { key: "precision", label: "Precision", fallback: 10 },
-  // The lobby-style duels that now play for coins in PvP (practice vs the bot
-  // stays free in every one of them).
-  { key: "sudoku-duel", label: "Sudoku Duel", fallback: 10 },
-  { key: "solitaire-duel", label: "Solitaire Duel", fallback: 10 },
-  { key: "barricade", label: "Barrier Blitz", fallback: 10 },
-  { key: "mini-golf", label: "Mini Golf", fallback: 10 },
-  { key: "speed-typing", label: "Speed Typing", fallback: 10 },
-];
+export const WAGER_GAMES = [];
 
 export const WAGER_GAME_KEYS = WAGER_GAMES.map((g) => g.key);
 

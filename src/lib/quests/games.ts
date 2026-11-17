@@ -20,29 +20,7 @@
 // "the canonical game id used everywhere else"), plus `dice-flush`, which is a
 // real PvP game in the repo but is not part of the lobby's catalog.
 
-export const QUEST_GAME_IDS = [
-  "mines-pvp",
-  "memory-grid",
-  "chess",
-  "keno",
-  "uno",
-  "rps",
-  "tower-arena",
-  "four-in-a-row",
-  "lane-runner",
-  "pool-masters",
-  "hex-duel",
-  "odds",
-  "precision",
-  "dots-and-boxes",
-  "mini-golf",
-  "speed-typing",
-  "tic-tac-toe",
-  "solitaire-duel",
-  "sudoku-duel",
-  "barricade",
-  "dice-flush",
-] as const;
+export const QUEST_GAME_IDS = ["solitaire-duel"] as const;
 
 export type QuestGameId = (typeof QUEST_GAME_IDS)[number];
 
@@ -53,18 +31,7 @@ export type QuestGameId = (typeof QUEST_GAME_IDS)[number];
  * Keep this list in lockstep with the `gameKey` passed to
  * `applyRatingResult` / `applyLeaderboardCounters` by each settle path.
  */
-export const QUEST_GAME_ALIASES: Readonly<Record<string, QuestGameId>> = {
-  "keno-pvp": "keno",
-  "rps-pvp": "rps",
-  "lane-rush-duel": "lane-runner",
-  "odds-pvp": "odds",
-  // The pool settle route (src/app/api/pool/resign/route.ts) reports its result
-  // under the rating key "pool", while the lobby — and therefore the quest
-  // catalog — calls the same game "pool-masters". Without this alias every
-  // Pool Masters match would be rejected as an unknown game and the
-  // distinct-games quests would silently never see it.
-  pool: "pool-masters",
-};
+export const QUEST_GAME_ALIASES: Readonly<Record<string, QuestGameId>> = {};
 
 /**
  * Normalize any game key to a canonical quest game id, or `null` when the key is

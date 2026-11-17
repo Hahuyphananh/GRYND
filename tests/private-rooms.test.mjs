@@ -123,14 +123,8 @@ function guest(inviteStatus = "accepted") {
 
 // ── The catalog: which games may host a room at all ────────────────────────
 
-test("only the games with a seat-this-pair primitive are offered", () => {
-  assert.deepEqual([...ROOM_GAME_KEYS].sort(), [
-    "dominoes",
-    "pool",
-    "precision",
-    "solitaire-duel",
-    "tower-arena",
-  ]);
+test("only the game with a seat-this-pair primitive is offered", () => {
+  assert.deepEqual([...ROOM_GAME_KEYS], ["solitaire-duel"]);
   for (const game of ROOM_GAMES) {
     assert.equal(game.seats, 2, `${game.key} must be a two-seat duel`);
     assert.equal(game.mode, "pvp");
@@ -160,25 +154,11 @@ test("create-or-join games are NOT offered (they cannot seat a named pair)", () 
   assert.equal(getRoomGame(null), null);
 });
 
-test("every offered game's room ceiling comes from the platform wager policy", () => {
-  // A game whose lobby flow carries no escrow pins the ceiling to 0 instead of
-  // taking the platform maximum: a staked room there could never settle a wager.
-  const FREE_ONLY = new Set(["pool", "dominoes", "solitaire-duel"]);
+test("the offered game's room ceiling is free play", () => {
   for (const game of ROOM_GAMES) {
-    assert.equal(
-      game.maxStake,
-      FREE_ONLY.has(game.key) ? 0 : maxStakeFor(game.key),
-      `${game.key} room ceiling must not invent its own bounds`,
-    );
+    assert.equal(game.maxStake, 0, `${game.key} room ceiling must be free`);
   }
-  // Pool Masters' join-lobby flow carries no escrow, and Dominoes' match table
-  // has no stake column at all.
-  assert.equal(getRoomGame("pool").maxStake, 0);
-  assert.equal(getRoomGame("dominoes").maxStake, 0);
-  // Solitaire Duel is free ranked play; a private room must not add a wager.
   assert.equal(getRoomGame("solitaire-duel").maxStake, 0);
-  assert.ok(getRoomGame("precision").maxStake > 0);
-  assert.ok(getRoomGame("tower-arena").maxStake > 0);
 });
 
 test("a room code is unguessable in practice", () => {
@@ -249,40 +229,8 @@ test("an illegal stake is refused with the wager policy's own bounds", () => {
   assert.equal(absurd.status, 400);
 });
 
-test("a staked room is capped by the game's own ceiling", () => {
-  const precision = resolveRoomSettings("precision", { stake: maxStakeFor("precision") });
-  assert.equal(precision.ok, true);
-  assert.equal(precision.settings.stake, maxStakeFor("precision"));
 
-  const tower = resolveRoomSettings("tower-arena", { stake: maxStakeFor("tower-arena") });
-  assert.equal(tower.ok, true);
 
-  // The platform's own policy and the room's ceiling agree by construction.
-  for (const game of ROOM_GAMES) {
-    const over = resolveRoomSettings(game.key, { stake: game.maxStake + 1 });
-    assert.equal(over.ok, false, `${game.key} must refuse a stake above its ceiling`);
-  }
-});
-
-test("Dominoes rooms are free-play only, refused server-side", () => {
-  // `validateWager` accepts a positive stake for any known game, so the room
-  // ceiling is what stops an unstaked game being staked. A Dominoes match row
-  // has no stake/escrow column; a staked room would be unsettleable.
-  assert.equal(resolveRoomSettings("dominoes", { stake: 10 }).ok, false);
-  assert.match(resolveRoomSettings("dominoes", { stake: 10 }).message, /free-play only/i);
-  const free = resolveRoomSettings("dominoes", {});
-  assert.equal(free.ok, true);
-  assert.equal(free.settings.stake, 0);
-  // …and a challenge (always free) is legal for it.
-  assert.equal(resolveRoomSettings("dominoes", challengeSettings()).ok, true);
-});
-
-test("Pool Masters rooms are free-play only, refused server-side", () => {
-  const staked = resolveRoomSettings("pool", { stake: 10 });
-  assert.equal(staked.ok, false);
-  assert.equal(staked.status, 400);
-  assert.match(String(staked.message), /free-play only/i);
-});
 
 test("Solitaire Duel rooms are free-play only, refused server-side", () => {
   const staked = resolveRoomSettings("solitaire-duel", { stake: 10 });
@@ -301,12 +249,9 @@ test("an unsupported game can never be given settings", () => {
 });
 
 test("the wager policy is the single source of stake legality", () => {
-  // A stake the policy accepts must be accepted by the room, and vice versa —
-  // for the free range the two must never disagree.
-  for (const requested of [0, 1, 5, 50]) {
-    assert.equal(validateWager(requested, "precision").ok, true);
-    assert.equal(resolveRoomSettings("precision", { stake: requested }).ok, true);
-  }
+  assert.equal(validateWager(0, "solitaire-duel").ok, true);
+  assert.equal(resolveRoomSettings("solitaire-duel", { stake: 0 }).ok, true);
+  assert.equal(resolveRoomSettings("solitaire-duel", { stake: 5 }).ok, false);
 });
 
 test("a challenge's settings are the server's, always free", () => {
@@ -986,52 +931,21 @@ test("the per-user notification room is server-derived, not client-claimed", () 
   assert.doesNotMatch(notify, /payload: \{[^}]*\}/, "the emitted payload must have no extra fields");
 });
 
-test("the room adapters delegate to each game's own store", () => {
-  const games = read("src/lib/rooms/games.ts");
-  for (const fn of [
-    "createPrecisionMatchForPair",
-    "createPoolMatchForPair",
-    "createTowerArenaMatchForPair",
-  ]) {
-    assert.match(games, new RegExp(fn), `the ${fn} primitive must be reused`);
-  }
-  // The games' own stores are touched by those primitives only.
-  const pool = read("src/lib/pool/lobbyJoin.ts");
-  assert.match(pool, /export async function createPoolMatchForPair/);
-  const precision = read("src/lib/precision/matchmaking.ts");
-  assert.match(precision, /export async function createPrecisionMatchForPair/);
-  const tower = read("src/lib/tower-arena/serverStore.ts");
-  assert.match(tower, /export async function createTowerArenaMatchForPair/);
+test("the room adapter delegates to the game's own store", () => {
+  assert.match(read("src/lib/rooms/games.ts"), /createSolitaireMatchForPair/);
+  assert.match(
+    read("src/lib/solitaire-duel/serverStore.ts"),
+    /export async function createSolitaireMatchForPair/,
+  );
 });
 
 test("the public matchmaking flow is untouched by rooms", () => {
-  // A private pair is created and claimed inside ONE transaction, so the public
-  // waiting-lobby queries can never see it.
-  const poolPair = fnBody(read("src/lib/pool/lobbyJoin.ts"), "createPoolMatchForPair");
-  assert.match(poolPair, /db\.transaction\(async \(tx\) => \{/);
-  assert.match(poolPair, /insert\(poolLobbies\)/);
-  assert.match(poolPair, /update\(poolLobbies\)/);
-  assert.match(poolPair, /eq\(poolLobbies\.status, "waiting"\)/);
-
-  const precisionPair = fnBody(
-    read("src/lib/precision/matchmaking.ts"),
-    "createPrecisionMatchForPair",
+  const pair = fnBody(
+    read("src/lib/solitaire-duel/serverStore.ts"),
+    "createSolitaireMatchForPair",
   );
-  assert.match(precisionPair, /db\.transaction\(async \(tx\) => \{/);
-  assert.match(precisionPair, /insert\(precisionLobbies\)/);
-  assert.match(precisionPair, /eq\(precisionLobbies\.status, "waiting"\)/);
-
-  const towerPair = fnBody(
-    read("src/lib/tower-arena/serverStore.ts"),
-    "createTowerArenaMatchForPair",
-  );
-  assert.match(towerPair, /db\.transaction\(async \(tx\) => \{/);
-  assert.match(towerPair, /createLobbyTx\(tx/);
-  assert.match(towerPair, /joinLobbyTx\(tx/);
-
-  // The public routes still exist with their original behaviour.
-  assert.match(read("src/app/api/pool/lobbies/route.ts"), /eq\(poolLobbies\.status, "waiting"\)/);
-  assert.match(read("src/app/api/precision/lobbies/route.ts"), /listWaitingLobbies/);
+  assert.match(pair, /db\.transaction\(async \(tx\) => \{/);
+  assert.match(read("src/app/api/solitaire-duel/create-or-join/route.ts"), /createOrJoin/);
 });
 
 test("the Friends tab keeps its tabs, while ranked owns the Challenge action", () => {
@@ -1061,11 +975,8 @@ test("the realtime signal is an accelerator with a polling backstop", () => {
   assert.match(hook, /visibilityState !== "visible"/);
 });
 
-test("the docs record the audit, the supported games and the limits", () => {
+test("the docs record the audit, the supported game and the limits", () => {
   const doc = read("docs/PRIVATE_ROOMS.md");
-  for (const game of ["precision", "pool", "tower-arena"]) {
-    assert.match(doc, new RegExp(game));
-  }
+  assert.match(doc, /solitaire-duel/i);
   assert.match(doc, /Unsupported for now/);
-  assert.match(doc, /create-or-join/);
 });

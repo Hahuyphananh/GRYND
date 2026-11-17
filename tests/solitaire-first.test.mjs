@@ -1,152 +1,99 @@
 /**
- * Solitaire-first regression contract.
+ * Solitaire-only regression contract.
  *
- * GRYND presents Solitaire Duel as its only public game. Archived games keep
- * their source, assets, tables and history; they are closed at the discovery
- * and route boundaries, not deleted.
+ * GRYND ships exactly one game: Solitaire Duel (with its ranked, vs-AI,
+ * puzzle, solo and daily modes). The other game implementations have been
+ * removed from this branch rather than archived.
  */
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-import {
-  ARCHIVED_LANDING_SLUGS,
-  GAME_UNAVAILABLE_MESSAGE,
-  isArchivedGameApiPath,
-  isArchivedGamePath,
-  isGameArchived,
-  isGameAvailable,
-} from "../src/lib/gameAvailability.js";
 import { GAME_CATALOG } from "../src/lib/gameTags.js";
 import { GAME_LANDING_PAGES } from "../src/lib/gameLandingPages.ts";
 import { RATED_GAMES } from "../src/lib/rating.js";
+import { ROOM_GAMES } from "../src/lib/rooms/catalog.ts";
 
-const read = (path) => fs.readFileSync(path, "utf8");
-const nav = read("src/components/navigation-bar.jsx");
-const home = read("src/app/PageClient.jsx");
-const lobby = read("src/app/casino/PageClient.jsx");
-const solitaireLobby = read("src/components/solitaire-duel/SolitaireLobby.tsx");
-const solitaireRoute = read("src/app/api/solitaire-duel/create-or-join/route.ts");
-const classement = read("src/app/classement/PageClient.jsx");
+const REMOVED_GAMES = [
+  "barricade",
+  "barrier-blitz",
+  "battleship",
+  "chess",
+  "chess-game",
+  "dice-flush",
+  "dominoes",
+  "dots-and-boxes",
+  "four-in-a-row",
+  "hex-duel",
+  "hillstrike",
+  "keno",
+  "keno-pvp",
+  "lane-runner",
+  "memory-grid",
+  "mines-pvp",
+  "mini-golf",
+  "neon-flush",
+  "odds",
+  "pool-masters",
+  "precision",
+  "rps",
+  "speed-typing",
+  "sudoku-duel",
+  "tic-tac-toe",
+  "tower-arena",
+  "uno",
+];
 
-test("Solitaire Duel is the only publicly available game", () => {
-  const available = GAME_CATALOG.filter((game) => isGameAvailable(game.id)).map(
-    (game) => game.id,
-  );
-  assert.deepEqual(available, ["solitaire-duel"]);
-  assert.equal(GAME_CATALOG.length > 1, true, "the implementations are preserved");
-});
-
-test("every other catalogue game is archived, not deleted", () => {
-  for (const game of GAME_CATALOG) {
-    if (game.id === "solitaire-duel") {
-      assert.equal(isGameArchived(game.id), false);
-    } else {
-      assert.equal(isGameArchived(game.id), true, `${game.id} must be archived`);
-    }
-  }
-  // Historical rating keys survive in the registry.
-  assert.ok(RATED_GAMES.includes("solitaire-duel"));
-  assert.ok(RATED_GAMES.includes("chess"));
-});
-
-test("archived landing pages keep their catalogue entries for reactivation", () => {
-  const archivedPages = GAME_LANDING_PAGES.filter((page) =>
-    isGameArchived(page.leaderboardKey),
-  );
-  assert.ok(archivedPages.length > 0);
-  for (const page of archivedPages) {
-    assert.ok(ARCHIVED_LANDING_SLUGS.includes(page.slug), `${page.slug} route must close`);
-  }
-  assert.equal(
-    GAME_LANDING_PAGES.some((page) => page.slug === "solitaire-duel"),
-    true,
+test("Solitaire Duel is the only game in the catalogue", () => {
+  assert.deepEqual(
+    GAME_CATALOG.map((game) => game.id),
+    ["solitaire-duel"],
   );
 });
 
-test("direct routes for archived games are intercepted, Solitaire is not", () => {
-  for (const slug of ARCHIVED_LANDING_SLUGS) {
-    assert.equal(isArchivedGamePath(`/games/${slug}`), true, `/games/${slug}`);
-    assert.equal(isArchivedGamePath(`/casino/${slug}`), true, `/casino/${slug}`);
-  }
-  assert.equal(isArchivedGamePath("/games/solitaire-duel"), false);
-  assert.equal(isArchivedGamePath("/casino/solitaire-duel"), false);
-  assert.equal(isArchivedGamePath("/casino/solitaire-duel/abc"), false);
-  assert.equal(isArchivedGamePath("/games"), false);
-  assert.equal(isArchivedGamePath("/classement"), false);
+test("Solitaire Duel is the only rated game", () => {
+  assert.deepEqual([...RATED_GAMES], ["solitaire-duel"]);
 });
 
-test("game-specific APIs for archived games are closed", () => {
-  for (const prefix of [
-    "keno-pvp",
-    "uno",
-    "rps",
-    "lane-rush-duel",
-    "hillstrike",
-    "chess",
-    "battleship",
-    "tower-arena",
-    "mines-pvp",
+test("the public landing catalogue is Solitaire-only", () => {
+  assert.deepEqual(
+    GAME_LANDING_PAGES.map((page) => page.slug),
+    ["solitaire-duel"],
+  );
+});
+
+test("private rooms are Solitaire-only", () => {
+  assert.deepEqual(
+    ROOM_GAMES.map((game) => game.key),
+    ["solitaire-duel"],
+  );
+});
+
+test("the removed games' page trees no longer exist", () => {
+  for (const game of REMOVED_GAMES) {
+    assert.equal(
+      fs.existsSync(`src/app/casino/${game}`),
+      false,
+      `src/app/casino/${game} must be removed`,
+    );
+  }
+});
+
+test("Solitaire's own modes are intact", () => {
+  for (const path of [
+    "src/app/casino/solitaire-duel",
+    "src/app/solitaire",
+    "src/app/play/ai",
+    "src/app/play/solo",
+    "src/app/play/ranked",
+    "src/app/play/daily",
+    "src/app/play/daily-puzzle",
+    "src/app/play/unlimited-puzzles",
+    "src/lib/solitaire-duel/puzzle.ts",
+    "src/lib/solitaire-duel/practice.ts",
+    "src/lib/solitaire-duel/daily.ts",
   ]) {
-    assert.equal(isArchivedGameApiPath(`/api/${prefix}/start`), true, prefix);
+    assert.equal(fs.existsSync(path), true, `${path} must exist`);
   }
-  assert.equal(isArchivedGameApiPath("/api/solitaire-duel/create-or-join"), false);
-  assert.equal(isArchivedGameApiPath("/api/leaderboard/trophy"), false);
-  assert.equal(isArchivedGameApiPath("/api/user-stats"), false);
-  // The shared vs-AI pause route serves Solitaire too; blocking it made the
-  // Pause button a silent 404 on every live practice page.
-  assert.equal(isArchivedGameApiPath("/api/practice/pause"), false);
-});
-
-test("unavailable copy points at Solitaire and exposes no internals", () => {
-  assert.match(GAME_UNAVAILABLE_MESSAGE, /Solitaire Duel/);
-  assert.doesNotMatch(GAME_UNAVAILABLE_MESSAGE, /keno|rps|uno|hillstrike|lane/i);
-});
-
-test("navigation is Solitaire-first and carries no coin, shop or rewards UI", () => {
-  assert.match(nav, /\/games\/solitaire-duel/);
-  assert.match(nav, /\/classement/);
-  assert.doesNotMatch(nav, /nav-coins/);
-  assert.doesNotMatch(nav, /IconCoins/);
-  assert.doesNotMatch(nav, /\/rewards/);
-  // GRYND PRO is a membership, not a coin shop: it stays reachable from the
-  // public chrome, and the product keeps exactly one membership entry.
-  assert.match(nav, /\/upgrade-pro/);
-  assert.doesNotMatch(nav, /QuestNavBadge/);
-});
-
-test("home page sells Solitaire, not a game catalogue or an economy", () => {
-  assert.match(home, /The competitive home/);
-  assert.match(home, /\/games\/solitaire-duel/);
-  assert.doesNotMatch(home, /Coins|coin balance|QuestWidget|UpgradePro/);
-  assert.doesNotMatch(home, /\/games\/chess|\/games\/keno|\/games\/rps/);
-});
-
-test("the games hub no longer mounts reward, quest or membership widgets", () => {
-  // The streak card is product chrome, not a coin shop, so the hub keeps it.
-  assert.doesNotMatch(lobby, /QuestWidget/);
-  assert.doesNotMatch(lobby, /UpgradeProButton/);
-});
-
-test("ranked Solitaire requires no stake, coins or wager", () => {
-  assert.doesNotMatch(solitaireRoute, /requireStake/);
-  assert.doesNotMatch(solitaireRoute, /body\?\.stake/);
-  assert.match(solitaireRoute, /createOrJoin\(\{ userId, stake: 0 \}\)/);
-  assert.doesNotMatch(solitaireLobby, /wager=/);
-  assert.doesNotMatch(solitaireLobby, /body: JSON\.stringify\(\{ stake \}\)/);
-  assert.match(solitaireLobby, /Free ranked play/);
-});
-
-test("the public rankings mirror is Solitaire-only but keeps historical ratings", () => {
-  assert.match(classement, /AVAILABLE_RATED_GAMES/);
-  assert.match(classement, /isGameAvailable\(game\.key\)/);
-  assert.ok(RATED_GAMES.includes("keno-pvp"), "archived rating history stays");
-});
-
-test("trophy infrastructure remains wired for Solitaire", () => {
-  const trophies = read("src/lib/trophies.js");
-  assert.match(trophies, /solitaire-duel|RATED_GAMES|isTrophyGame/);
-  const store = read("src/lib/solitaire-duel/serverStore.ts");
-  assert.match(store, /troph|rating|apply/i);
 });

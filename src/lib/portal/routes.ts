@@ -52,13 +52,6 @@ export function portalAwareHref(href: unknown, pathname: unknown): string {
   const gameKey = portalGameKeyFromPath(pathname);
   if (!gameKey) return href;
 
-  // Odds' board lives one segment deeper than every other game's, so its shape
-  // is mapped explicitly before the generic rule can see it.
-  if (gameKey === "odds") {
-    const oddsBoard = /^\/casino\/odds\/game\/([A-Za-z0-9._~-]{1,64})([\s\S]*)$/.exec(href);
-    if (oddsBoard) return `/play/odds/${oddsBoard[1]}${oddsBoard[2]}`;
-  }
-
   const lobby = new RegExp(`^/(?:casino|games)/${gameKey}([\\s\\S]*)$`).exec(href);
   if (!lobby) return href;
 

@@ -62,7 +62,7 @@ const read = (rel) => fs.readFileSync(rel, "utf8");
 
 const HUMAN_MATCH = {
   matchId: "match-1",
-  gameKey: "tic-tac-toe",
+  gameKey: "solitaire-duel",
   opponentKind: "human",
   completed: true,
   outcome: "win",
@@ -365,17 +365,14 @@ test("a period needs a key and a user", () => {
 // ════════════════════════════════════════════════════════════════════════
 
 test("settlement game keys normalize to canonical ids", () => {
-  assert.equal(canonicalQuestGame("keno-pvp"), "keno");
-  assert.equal(canonicalQuestGame("rps-pvp"), "rps");
-  assert.equal(canonicalQuestGame("lane-rush-duel"), "lane-runner");
-  assert.equal(canonicalQuestGame("odds-pvp"), "odds");
-  assert.equal(canonicalQuestGame("tic-tac-toe"), "tic-tac-toe");
-  assert.equal(canonicalQuestGame("TIC-TAC-TOE"), "tic-tac-toe");
-  assert.equal(canonicalQuestGame("  chess  "), "chess");
+  assert.equal(canonicalQuestGame("solitaire-duel"), "solitaire-duel");
+  assert.equal(canonicalQuestGame("SOLITAIRE-DUEL"), "solitaire-duel");
+  assert.equal(canonicalQuestGame("  solitaire-duel  "), "solitaire-duel");
 
-  // Display names and unknown keys are NOT identities.
-  assert.equal(canonicalQuestGame("Tic Tac Toe"), null);
-  assert.equal(canonicalQuestGame("Keno PvP"), null);
+  // Removed games, display names and unknown keys are NOT identities.
+  assert.equal(canonicalQuestGame("keno-pvp"), null);
+  assert.equal(canonicalQuestGame("chess"), null);
+  assert.equal(canonicalQuestGame("Solitaire Duel"), null);
   assert.equal(canonicalQuestGame("not-a-game"), null);
   assert.equal(canonicalQuestGame(""), null);
   assert.equal(canonicalQuestGame(null), null);
@@ -402,7 +399,7 @@ test("a completed human match is eligible", () => {
   assert.equal(isQuestEligibleMatch(match()), true);
   assert.equal(isQuestEligibleMatch(match({ outcome: "loss" })), true);
   assert.equal(isQuestEligibleMatch(match({ outcome: "draw" })), true);
-  assert.equal(isQuestEligibleMatch(match({ gameKey: "keno-pvp" })), true);
+  assert.equal(isQuestEligibleMatch(match({ gameKey: "solitaire-duel" })), true);
 });
 
 test("AI, bot, guest, lobby and unfinished matches are never eligible", () => {
@@ -499,56 +496,30 @@ test("a win quest counts wins only", () => {
   assert.equal(win.row.progress, 1);
 });
 
-test("a distinct-games quest counts each canonical game exactly once", () => {
-  const row = questRow({ questType: "pvp_games", target: 3, progress: 0 });
-
-  const first = advanceQuest(row, match({ gameKey: "tic-tac-toe", matchId: "m1" }));
+test("a distinct-games quest counts the one canonical game exactly once", () => {
+  const row = questRow({ questType: "pvp_games", target: 1, progress: 0 });
+  const first = advanceQuest(row, match({ gameKey: "solitaire-duel", matchId: "m1" }));
   assert.equal(first.row.progress, 1);
-  assert.deepEqual(first.row.meta.games, ["tic-tac-toe"]);
-
-  // Same game again: no progress, no duplicate entry.
-  const same = advanceQuest(first.row, match({ gameKey: "tic-tac-toe", matchId: "m2" }));
-  assert.equal(same.advanced, false);
-  assert.equal(same.reason, "already-counted");
-  assert.deepEqual(same.row.meta.games, ["tic-tac-toe"]);
-
-  const keno = advanceQuest(first.row, match({ gameKey: "keno-pvp", matchId: "m3" }));
-  assert.equal(keno.row.progress, 2);
-  assert.deepEqual(keno.row.meta.games, ["tic-tac-toe", "keno"]);
-
-  const chess = advanceQuest(keno.row, match({ gameKey: "chess", matchId: "m4" }));
-  assert.equal(chess.row.progress, 3);
-  assert.deepEqual(chess.row.meta.games, ["tic-tac-toe", "keno", "chess"]);
-  assert.equal(isQuestComplete(chess.row), true);
+  assert.deepEqual(first.row.meta.games, ["solitaire-duel"]);
+  assert.equal(isQuestComplete(first.row), true);
 });
 
-test("aliases of one game cannot double-count a distinct-games quest", () => {
-  const row = questRow({ questType: "pvp_games", target: 2, progress: 0 });
-
-  const odds = advanceQuest(row, match({ gameKey: "odds", matchId: "m1" }));
-  assert.equal(odds.row.progress, 1);
-
-  const alias = advanceQuest(odds.row, match({ gameKey: "odds-pvp", matchId: "m2" }));
-  assert.equal(alias.advanced, false);
-  assert.equal(alias.reason, "already-counted");
-  assert.deepEqual(alias.row.meta.games, ["odds"]);
+test("the catalogue is Solitaire-only, so nothing can double-count", () => {
+  assert.deepEqual([...QUEST_GAME_IDS], ["solitaire-duel"]);
+  assert.equal(canonicalQuestGame("keno-pvp"), null);
 });
 
-test("a game-scoped quest ignores every other game", () => {
-  const row = questRow({ questType: "pvp_matches", gameKey: "chess", target: 2 });
+test("a game-scoped quest counts only its own game", () => {
+  const row = questRow({ questType: "pvp_matches", gameKey: "solitaire-duel", target: 2 });
 
-  const other = advanceQuest(row, match({ gameKey: "tic-tac-toe" }));
+  const other = advanceQuest(row, match({ gameKey: "keno-pvp" }));
   assert.equal(other.advanced, false);
-  assert.equal(other.reason, "wrong-game");
+  assert.equal(other.reason, "ineligible");
   assert.deepEqual(other.row, row);
 
-  // An alias of a DIFFERENT game is still another game.
-  const keno = advanceQuest(row, match({ gameKey: "keno-pvp" }));
-  assert.equal(keno.reason, "wrong-game");
-
-  const chess = advanceQuest(row, match({ gameKey: "chess" }));
-  assert.equal(chess.advanced, true);
-  assert.equal(chess.row.progress, 1);
+  const same = advanceQuest(row, match({ gameKey: "solitaire-duel" }));
+  assert.equal(same.advanced, true);
+  assert.equal(same.row.progress, 1);
 });
 
 test("progress clamps at the target and completion is sticky", () => {

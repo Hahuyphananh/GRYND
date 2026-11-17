@@ -2,35 +2,14 @@
 //
 // THE list of games a private room / friend challenge can be created for.
 //
-// WHY A SEPARATE, CLIENT-SAFE MODULE: the UI has to render the game picker and
-// the settings the server will accept, but it must not import the adapters —
-// those pull in game server stores and a database client. So this module holds
-// only what both sides need (which games, which mode, which stake range) and
-// imports nothing but the pure wager policy. The server-side implementation of
-// each game lives in src/lib/rooms/games.ts, keyed by the SAME keys.
-//
-// WHY THE STAKE IS THE ONLY SETTING: Pool Masters, Precision, Tower Arena and
-// Dominoes take exactly one room-level rule from a player — the coins on the
-// line — and the platform already has ONE wager policy (`maxStakeFor` /
-// `validateWager` in src/lib/games/stakes.js). A room therefore re-exposes that
-// policy rather than inventing a second one, and a game whose lobby flow cannot
-// escrow a stake (Pool Masters, Dominoes) declares `maxStake: 0`, i.e. free
-// play only.
-//
-// ADDING A GAME: it needs a "seat these two named players" primitive in ITS OWN
-// store first (see docs/PRIVATE_ROOMS.md §1), an adapter in src/lib/rooms/games.ts,
-// and one entry here. Until then it is not offered anywhere, and the server
-// refuses its key (`unknown_game`) instead of faking support.
+// GRYND is Solitaire-only, so this list has exactly one entry: Solitaire Duel.
+// The module stays client-safe (it imports nothing but the pure wager policy)
+// so the UI can render the game picker without pulling in server stores.
 
 import { maxStakeFor } from "../games/stakes";
 
 /** Canonical keys of the games that support rooms today. */
-export type RoomGameKey =
-  | "precision"
-  | "pool"
-  | "tower-arena"
-  | "dominoes"
-  | "solitaire-duel";
+export type RoomGameKey = "solitaire-duel";
 
 export interface RoomGameDef {
   key: RoomGameKey;
@@ -51,31 +30,17 @@ export interface RoomGameDef {
  * Cap a room stake by the game's own ceiling. Kept here (not in the UI) so the
  * picker and the server agree by construction: the UI renders `maxStake`, the
  * server re-validates against the same number.
+ *
+ * Solitaire Duel is a free ranked game by construction: its match row has a
+ * stake column, but the competitive reward is rating/trophies, and a private
+ * room must never be the way a wager enters a game that does not use one.
  */
 function cap(key: RoomGameKey): number {
-  const global = Number(maxStakeFor(key)) || 0;
-  // Pool Masters' join-lobby flow never escrows, so a staked table there would
-  // be a match that cannot settle a wager. Free only.
-  //
-  // Dominoes is the same case for a stronger reason: its match table has NO
-  // stake/escrow/pot column at all (src/db/migrations/0227_dominoes.sql), by
-  // design. A staked Dominoes room would therefore be a match that structurally
-  // cannot settle a wager, so the ceiling pins it to free play.
-  // Solitaire Duel is a free ranked game by construction: its match row has a
-  // stake column, but the competitive reward is rating/trophies, and a private
-  // room must never be the way a wager enters a game that does not use one.
-  if (key === "pool" || key === "dominoes" || key === "solitaire-duel") return 0;
-  return global;
+  if (key === "solitaire-duel") return 0;
+  return Number(maxStakeFor(key)) || 0;
 }
 
 export const ROOM_GAMES: readonly RoomGameDef[] = Object.freeze([
-  { key: "precision", label: "Precision", mode: "pvp", seats: 2, maxStake: cap("precision") },
-  { key: "pool", label: "Pool Masters", mode: "pvp", seats: 2, maxStake: cap("pool") },
-  { key: "tower-arena", label: "Tower Arena", mode: "pvp", seats: 2, maxStake: cap("tower-arena") },
-  // Dominoes joins the room architecture on the SAME authoritative store as its
-  // public lobby, via `createDominoesMatchForPair` (src/lib/dominoes/serverStore).
-  // Free play only — see `cap`.
-  { key: "dominoes", label: "Dominoes", mode: "pvp", seats: 2, maxStake: cap("dominoes") },
   // Solitaire Duel joins on its own `createSolitaireMatchForPair` primitive:
   // the same server seed → solvable deal → two independent boards as its public
   // lobby, seeded directly for the named pair. Free play only — see `cap`.
@@ -99,16 +64,8 @@ export function isRoomGame(key: unknown): key is RoomGameKey {
   return getRoomGame(key) !== null;
 }
 
-/**
- * THE GUEST ROOM ALLOWLIST (Phase 3D).
- *
- * A verified guest may create or join a private room ONLY for a game whose
- * match it can legitimately play. It is deliberately the same closed list the
- * quick queue uses (`GUEST_PVP_GAME_KEYS` in src/lib/quickQueue.ts), and a test
- * pins the two together: dominoes is free, server-authoritative and has no
- * stake/escrow column, so a guest room there can never move money.
- */
-export const GUEST_ROOM_GAME_KEYS: readonly string[] = Object.freeze(["dominoes"]);
+/** This gate is closed until a game is explicitly reviewed for guests. */
+export const GUEST_ROOM_GAME_KEYS: readonly string[] = Object.freeze([]);
 
 /** True when a guest may host or join a room for this game. */
 export function isGuestRoomGame(key: unknown): boolean {
@@ -129,9 +86,7 @@ export const ROOM_TTL_MS = 2 * 60 * 60 * 1000;
  * The lifetimes a host may choose for a room, in seconds (15 min … 2 h).
  *
  * This is the ROOM's clock — how long the invitation stays joinable before the
- * lazy expiry sweep closes it — not a match clock. No supported game store
- * accepts a per-match clock yet, so offering one here would be a promise the
- * server could not keep.
+ * lazy expiry sweep closes it — not a match clock.
  */
 export const ROOM_TIMER_OPTIONS: readonly number[] = Object.freeze([
   15 * 60,

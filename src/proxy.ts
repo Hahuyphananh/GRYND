@@ -25,11 +25,6 @@ import { eq } from "drizzle-orm";
 import { cacheGet, cacheSet } from "./lib/redis/cache";
 import { CacheKeys, CacheTTL } from "./lib/redis/keys";
 import { isGameLandingSlug } from "./lib/gameLandingPages";
-import {
-  GAME_UNAVAILABLE_MESSAGE,
-  isArchivedGameApiPath,
-  isArchivedGamePath,
-} from "./lib/gameAvailability";
 import { isGuideSlug } from "./lib/guides";
 import { applyEmbedFramePolicy } from "./lib/platform/framing";
 import { applyPortalFramePolicy } from "./lib/portal/framing";
@@ -57,19 +52,6 @@ const RETIRED_GAME_PATHS: readonly RegExp[] = [
   /^\/games\/last-run(\/|$)/,
   /^\/casino\/last-run(\/|$)/,
 ];
-
-/**
- * ARCHIVED GAMES — temporarily deactivated games whose implementation is kept.
- *
- * Unlike a retired game, an archived one is not gone: its source, assets,
- * tables and API routes remain so it can be reactivated by changing one entry
- * in src/lib/gameAvailability.js. Until then, every page URL (public page,
- * lobby, old bookmark, match link) is REWRITTEN to a real "unavailable" page,
- * before any authentication or game code runs, and every game-specific API
- * request is answered here with a plain 404 — so no engine mounts, no sockets
- * open and no matchmaking request reaches a handler.
- */
-const GAME_UNAVAILABLE_PATH = "/game-unavailable";
 
 /**
  * PRODUCT SURFACES RETIRED WITH THE SOLITAIRE-FIRST TRANSITION.
@@ -104,89 +86,9 @@ const RETIRED_PRODUCT_API = /^\/api\/(?:quick-queue|coins|shop|rewards|quests)(?
  * /casino/* → /games/*, so a request can arrive with either prefix.
  */
 const GAME_ROUTE_PATTERNS = [
-  "/casino/uno(.*)",
-  "/casino/neon-flush(.*)",
-  // /uno is the top-level alias of the Uno game page.
-  "/uno",
-  "/casino/mines-pvp(.*)",
-  "/casino/chess(.*)",
-  // Keno carries a `(.*)` like every other game so that its play URL
-  // (/games/keno/play, rewritten to /casino/keno) is classified as a game route
-  // too. Without it the bare pattern matched only the lobby itself, so a
-  // signed-out visitor pressing Play on the Keno landing page was bounced to
-  // /sign-in while the same visitor reached the lobby on the other twenty
-  // games — the exact inconsistency this list exists to prevent.
-  "/casino/keno(.*)",
-  "/casino/keno-pvp(.*)",
-  "/casino/rps(.*)",
-  "/casino/four-in-a-row(.*)",
-  "/casino/dots-and-boxes(.*)",
-  "/casino/lane-runner(.*)",
-  "/casino/tower-arena(.*)",
-  "/casino/pool-masters(.*)",
-  "/casino/hex-duel(.*)",
-  "/casino/dice-flush(.*)",
-  "/casino/odds(.*)",
-  "/casino/memory-grid(.*)",
-  "/casino/precision(.*)",
-  // Games added to the hub catalogue after this list was first written
-  // (src/app/casino/PageClient.jsx `games[].href`). They are advertised on the
-  // public hub, so a signed-out visitor must be able to READ their lobby as
-  // well — keep this list in sync with that catalogue.
-  "/casino/mini-golf(.*)",
-  "/casino/speed-typing(.*)",
-  "/casino/tic-tac-toe(.*)",
   "/casino/solitaire-duel(.*)",
-  "/casino/sudoku-duel(.*)",
-  // Barrier Blitz's free-practice route (/casino/barrier-blitz/play-ai). There
-  // is no wager, no rating and no server-side match behind it — the whole game
-  // is played against the local bot — so a signed-out visitor must be able to
-  // read it rather than be bounced to /sign-in.
-  "/casino/barrier-blitz(.*)",
-  // Dominoes' online table (lobby at /casino/dominoes, match at
-  // /casino/dominoes/<id>). The lobby is public to READ — its Play action sends a
-  // signed-out visitor to sign-in — so the whole subtree is classified as a game
-  // route like every other one. There is no free-practice route yet, so nothing
-  // here is playable without an account.
-  "/casino/dominoes(.*)",
-  // Hillstrike's online lobby (/casino/hillstrike), its per-match view
-  // (/casino/hillstrike/<id>) and its free-practice board
-  // (/casino/hillstrike/play-ai). The lobby is public to READ — its Play action
-  // sends a signed-out visitor to sign-in — while the practice board is entirely
-  // client-side and needs no account at all.
-  "/casino/hillstrike(.*)",
-  // Battleship's lobby (/casino/battleship) and its free-practice / match
-  // state live on that one page — the lobby is public to READ, while its Play
-  // action and the practice start still require the gates above (practice mints
-  // a guest through its own API route).
-  "/casino/battleship(.*)",
-  // /games/* mirrors of the /casino/* routes.
-  "/games/uno(.*)",
-  "/games/neon-flush(.*)",
-  "/games/mines-pvp(.*)",
-  "/games/chess(.*)",
-  "/games/keno(.*)",
-  "/games/keno-pvp(.*)",
-  "/games/rps(.*)",
-  "/games/four-in-a-row(.*)",
-  "/games/dots-and-boxes(.*)",
-  "/games/lane-runner(.*)",
-  "/games/tower-arena(.*)",
-  "/games/pool-masters(.*)",
-  "/games/hex-duel(.*)",
-  "/games/dice-flush(.*)",
-  "/games/odds(.*)",
-  "/games/memory-grid(.*)",
-  "/games/precision(.*)",
-  "/games/mini-golf(.*)",
-  "/games/speed-typing(.*)",
-  "/games/tic-tac-toe(.*)",
+  // /games/* mirror of the same route.
   "/games/solitaire-duel(.*)",
-  "/games/sudoku-duel(.*)",
-  "/games/barrier-blitz(.*)",
-  "/games/dominoes(.*)",
-  "/games/hillstrike(.*)",
-  "/games/battleship(.*)",
 ] as const;
 
 const isPublicRoute = createRouteMatcher([
@@ -691,39 +593,6 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
   if (RETIRED_GAME_PATHS.some((pattern) => pattern.test(pathname))) {
     return applySecurityHeaders(
       NextResponse.rewrite(new URL(NOT_FOUND_SENTINEL, req.url)),
-    );
-  }
-
-  // An ARCHIVED game's page URL answers with a simple "unavailable" page.
-  // A rewrite keeps the typed URL in the address bar and never mounts the
-  // game's route, so its client components, engine and assets are never sent.
-  if (RETIRED_PRODUCT_PATH.test(pathname)) {
-    return applySecurityHeaders(
-      NextResponse.redirect(new URL("/games/solitaire-duel", req.url)),
-    );
-  }
-
-  if (isArchivedGamePath(pathname)) {
-    return applySecurityHeaders(
-      NextResponse.rewrite(new URL(GAME_UNAVAILABLE_PATH, req.url)),
-    );
-  }
-
-  // An archived game's own API namespace is closed to every caller. This runs
-  // before rate limiting and before the route handler, so no game-specific
-  // query, matchmaking call or background process is started. Shared APIs
-  // (presence, quick queue, leaderboards, history) are intentionally excluded
-  // so historical data and the active catalogue keep working.
-  if (isArchivedGameApiPath(pathname)) {
-    return applySecurityHeaders(
-      NextResponse.json(
-        {
-          success: false,
-          gameUnavailable: true,
-          error: GAME_UNAVAILABLE_MESSAGE,
-        },
-        { status: 404 },
-      ),
     );
   }
 

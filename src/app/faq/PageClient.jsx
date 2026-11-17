@@ -1,8 +1,6 @@
 import Link from "next/link";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
-import GameCard from "../../components/games/GameCard";
-import { GAME_CARD_ART } from "../../components/games/gameCardArt";
 import { FaqSidebarList, FaqSidebarRail } from "../../components/faq/FaqSidebar";
 
 /**
@@ -414,16 +412,20 @@ export default function FaqPage({ gameCards = [] }) {
             <ul className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-4">
               {gameCards.map((card) => (
                 <li key={card.slug} className="h-full">
-                  <GameCard
-                    game={{
-                      href: card.href,
-                      title: card.name,
-                      description: card.shortDescription,
-                      image: GAME_CARD_ART[card.slug],
-                      imageClassName: "group-hover:scale-[1.03]",
-                      leaderboardKey: card.leaderboardKey,
-                    }}
-                  />
+                  <Link
+                    href={card.href}
+                    className="group flex h-full flex-col justify-between rounded-lg border border-white/10 bg-[#00172b] p-5 transition-colors hover:border-[#00e5ff]/50"
+                  >
+                    <div>
+                      <p className="text-base font-bold text-[#f5ff3b]">{card.name}</p>
+                      <p className="mt-2 text-sm leading-relaxed text-[#c9f7ff]/80">
+                        {card.shortDescription}
+                      </p>
+                    </div>
+                    <span className="mt-4 text-xs font-bold uppercase tracking-wider text-[#00e5ff]">
+                      How it works →
+                    </span>
+                  </Link>
                 </li>
               ))}
             </ul>

@@ -295,18 +295,6 @@ export const PUBLIC_SEO_PATHS: string[] = PUBLIC_SEO_PAGES.map((page) => page.pa
 export const EXCLUDED_FROM_SITEMAP: Record<string, string> = {
   "/casino":
     "308 alias of /games — the canonical hub URL is /games, and a sitemap must list canonical URLs only",
-  "/casino/chess/ai":
-    "free AI practice board — a playable route with no unique content, and already disallowed in robots.txt",
-  "/casino/rps/play-ai": "free AI practice board — a playable route, not a search surface",
-  "/casino/four-in-a-row/play-ai": "free AI practice board — a playable route, not a search surface",
-  "/casino/barrier-blitz/play-ai":
-    "free AI practice board — a playable route with no unique content; the indexable page for the game is /games/barrier-blitz",
-  "/casino/hillstrike/play-ai":
-    "free AI practice board — a playable route with no unique content; the indexable page for the game is /games/hillstrike",
-  "/casino/hex-duel": "live matchmaking lobby — nothing for a crawler to index",
-  "/casino/hex-duel/history": "per-player match history — user-specific data, never a landing page",
-  "/casino/lane-runner/history": "per-player match history — user-specific data, never a landing page",
-  "/casino/precision/test": "single-player timing sandbox with no unique content",
   "/casino/solitaire-duel/play-ai":
     "free AI practice board in the /casino namespace — the indexable surface is its /play/ai mirror, and a second URL for the same picker would split the crawl",
   "/game-unavailable":

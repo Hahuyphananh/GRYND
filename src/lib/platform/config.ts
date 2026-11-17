@@ -28,7 +28,7 @@
 // (it is server-authoritative and unrated), and the list is closed on purpose:
 // adding a game requires its own review of the guest/practice path.
 
-export const EMBEDDED_GAME_KEYS = ["tic-tac-toe"] as const;
+export const EMBEDDED_GAME_KEYS = [] as const;
 
 export type EmbeddedGameKey = (typeof EMBEDDED_GAME_KEYS)[number];
 

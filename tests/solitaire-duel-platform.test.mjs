@@ -52,7 +52,7 @@ const stripComments = (src) =>
 const code = (rel) => stripComments(strip(read(rel)));
 
 const KEY = "solitaire-duel";
-const LOBBY = "src/app/casino/PageClient.jsx";
+const LOBBY = "src/app/casino/page.jsx";
 const LOBBY_PAGE = "src/app/casino/solitaire-duel/page.tsx";
 const MATCH_PAGE_ROUTE = "src/app/casino/solitaire-duel/[matchId]/page.tsx";
 const CLASSEMENT = "src/app/classement/PageClient.jsx";
@@ -84,51 +84,24 @@ test("discovery: solitaire-duel is in the canonical catalog with the lobby's hre
   assert.equal(GAME_CATALOG.filter((game) => game.id === KEY).length, 1);
 });
 
-test("discovery: the catalog and the lobby agree on Solitaire Duel's position", () => {
-  const lobby = strip(read(LOBBY));
-  const start = lobby.indexOf("  const games = [");
-  const end = lobby.indexOf("\n  ];", start);
-  const block = lobby.slice(start, end);
-  const ids = [...block.matchAll(/leaderboardKey: "([^"]+)"/g)].map((m) => m[1]);
-
-  assert.deepEqual(GAME_CATALOG.map((game) => game.id), ids);
-  assert.equal(ids.filter((id) => id === KEY).length, 1);
+test("discovery: the catalogue is Solitaire-only and the hub redirects to it", () => {
+  assert.deepEqual(
+    GAME_CATALOG.map((game) => game.id),
+    [KEY],
+  );
+  assert.match(strip(read(LOBBY)), /redirect\("\/games\/solitaire-duel"\)/);
 });
 
-test("discovery: the lobby card links to the game, records plays and is 1v1", () => {
-  const src = strip(read(LOBBY));
-  const start = src.indexOf('href: "/games/solitaire-duel"');
-  assert.ok(start > -1, "the lobby card must exist");
-  const card = src.slice(Math.max(0, start - 80), start + 420);
-
-  assert.match(card, /leaderboardKey: "solitaire-duel"/);
-  assert.match(card, /playsKey: "solitaire-duel"/);
-  assert.match(card, /pvpMode: "1v1"/);
-  assert.match(card, /descriptionKey: "games.solitaire_duel_desc"/);
-  assert.match(card, /nameKey: "games.solitaire_duel_name"/);
-  // The card artwork comes from the ONE central art registry, not a per-lobby
-  // import: every lobby card renders `image: GAME_CARD_ART[key]`.
+test("discovery: the catalogue entry links to the game's own surfaces", () => {
+  const entry = GAMES_BY_ID[KEY];
+  assert.equal(entry.href, "/games/solitaire-duel");
+  assert.ok(entry.tags.includes("pvp"), "it is a 1v1 duel");
   assert.match(
-    src,
-    /import \{ GAME_CARD_ART \} from "\.\.\/\.\.\/components\/games\/gameCardArt"/,
+    strip(read("src/components/navigation-bar.jsx")),
+    /\/games\/solitaire-duel/,
+    "the product chrome links to the game",
   );
-  assert.match(card, /image: GAME_CARD_ART\["solitaire-duel"\]/);
-  assert.ok(
-    fs.existsSync("src/images/solitaire-duel-card.svg"),
-    "the card artwork must exist",
-  );
-  assert.match(
-    fs.readFileSync("src/components/games/gameCardArt.js", "utf8"),
-    /"solitaire-duel": solitaireDuelArt/,
-    "the registry must map the key onto that artwork",
-  );
-  // It rides the existing "newest" ordering, without disturbing the games that
-  // were already at its head. A title that ships LATER legitimately heads the
-  // list (Barricade does today), so what is asserted is the sibling order —
-  // tic-tac-toe directly ahead of speed-typing — not "tic-tac-toe is first".
-  assert.match(src, /"solitaire-duel",\n/);
-  assert.match(src, /const newestOrder = \[/);
-  assert.match(src, /"tic-tac-toe",\n\s*"speed-typing",/);
+  assert.ok(fs.existsSync(LOBBY_PAGE), "the authenticated lobby route exists");
 });
 
 // ── 2. Presence ───────────────────────────────────────────────────────────
@@ -142,10 +115,12 @@ test("presence: the solitaire-duel gameLabel resolves to the canonical id", () =
   assert.match(strip(read(PRESENCE)), /"solitaire-duel": "solitaire-duel",/);
 });
 
-test("presence: the lobby has a card to render the count on", () => {
-  const lobby = strip(read(LOBBY));
-  const ids = [...lobby.matchAll(/leaderboardKey: "([^"]+)"/g)].map((m) => m[1]);
-  assert.ok(ids.includes(KEY), "the badge counts by leaderboardKey");
+test("presence: the catalogue supplies the key the count is rendered by", () => {
+  assert.deepEqual(
+    [...PRESENCE_GAME_IDS],
+    GAME_CATALOG.map((game) => game.id),
+  );
+  assert.ok(PRESENCE_GAME_IDS.includes(KEY));
 });
 
 // ── 3. Rated settlement ───────────────────────────────────────────────────
@@ -234,18 +209,11 @@ test("metadata: the lobby card copy exists in every locale and states the format
 
 // ── 7. The game's own surfaces stay economy-free ─────────────────────────
 
-test("no economy: the platform surfaces expose no wager for this game", () => {
-  const src = code(LOBBY);
-  const card = src.slice(
-    src.indexOf('href: "/games/solitaire-duel"'),
-    src.indexOf('href: "/games/solitaire-duel"') + 420,
+test("no economy: the catalogue entry carries no wager for this game", () => {
+  assert.deepEqual(Object.keys(GAMES_BY_ID[KEY]).sort(), ["href", "id", "tags"]);
+  assert.match(read("src/lib/defaultWagers.js"), /export const WAGER_GAMES = \[\];/);
+  assert.doesNotMatch(
+    code("src/components/solitaire-duel/SolitaireLobby.tsx"),
+    /wager=/,
   );
-  // The card carries no stake/bet/balance field at all.
-  for (const forbidden of ["wager", "stake", "betAmount", "balance", "payout"]) {
-    assert.equal(
-      card.toLowerCase().includes(forbidden.toLowerCase()),
-      false,
-      `the lobby card must not carry a ${forbidden} concept`,
-    );
-  }
 });

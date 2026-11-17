@@ -622,10 +622,7 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
     if (!url || typeof url !== "string") return false;
     if (!url.startsWith("/")) return false;
 
-    const allowedPrefixes = [
-      "/casino/chess-game/",
-      "/casino/four-in-a-row/game/",
-    ];
+    const allowedPrefixes = ["/casino/solitaire-duel/"];
 
     return allowedPrefixes.some((prefix) => url.startsWith(prefix));
   };
@@ -637,10 +634,8 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
       .trim();
     if (!presence?.gameId || !gameKey) return null;
 
-    if (gameKey === "chess")
-      return `/casino/chess-game/${presence.gameId}?spectator=1&focusTarget=${encodeURIComponent(friendId)}`;
-    if (gameKey === "four-in-a-row")
-      return `/casino/four-in-a-row/game/${presence.gameId}?spectator=1&focusTarget=${encodeURIComponent(friendId)}`;
+    if (gameKey === "solitaire-duel")
+      return `/casino/solitaire-duel/${presence.gameId}?spectator=1&focusTarget=${encodeURIComponent(friendId)}`;
     return null;
   };
 
