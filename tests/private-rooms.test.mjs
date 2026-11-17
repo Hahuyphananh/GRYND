@@ -944,7 +944,9 @@ test("the public matchmaking flow is untouched by rooms", () => {
     read("src/lib/solitaire-duel/serverStore.ts"),
     "createSolitaireMatchForPair",
   );
-  assert.match(pair, /db\.transaction\(async \(tx\) => \{/);
+  assert.match(pair, /insert\(solitaireDuelMatches\)/);
+  assert.match(pair, /player1Id: hostUserId/);
+  assert.match(pair, /player2Id: opponentUserId/);
   assert.match(read("src/app/api/solitaire-duel/create-or-join/route.ts"), /createOrJoin/);
 });
 
