@@ -9,6 +9,7 @@ import {
   guideUrl,
   relatedGuidesFor,
 } from "../../../lib/guides";
+import { pageMetadata, DEFAULT_SOCIAL_IMAGE } from "../../../lib/seo";
 
 /**
  * /guides/<slug> — one PUBLIC, indexable guide.
@@ -55,29 +56,14 @@ export async function generateMetadata({
   const canonical = guide ? guidePath(slug) : "/guides";
   const ogUrl = guide ? guideUrl(slug) : `${SITE_ORIGIN}/guides`;
 
-  return {
-    title,
+  return pageMetadata({
+    title: guide ? guide.title : "Guide not found",
     description,
-    alternates: { canonical },
-    // A real guide is indexable and owns its own canonical; only the
-    // (unreachable) fallback is noindex.
+    path: canonical,
+    image: DEFAULT_SOCIAL_IMAGE,
+    type: "article",
     ...(guide ? {} : { robots: { index: false, follow: true } }),
-    openGraph: {
-      title,
-      description,
-      url: ogUrl,
-      siteName: "GRYND",
-      locale: "en_US",
-      type: "article",
-      images: [{ url: image, width: 1200, height: 630, alt: guide ? guide.title : "GRYND Guides" }],
-    },
-    twitter: {
-      card: "summary_large_image",
-      title,
-      description,
-      images: [image],
-    },
-  };
+  });
 }
 
 export default async function GuidePage({ params }: { params: Promise<{ slug: string }> }) {

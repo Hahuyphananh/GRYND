@@ -106,7 +106,12 @@ const nextConfig = {
   // canonical, and the new page was never reached at all). Enumerating the
   // sub-path shapes explicitly puts the split under our control:
   //
-  //   * `/games` exact — the games hub, which is still the /casino index.
+  //   * `/games` exact — the games hub. It is a REAL App Router page
+  //                       (src/app/games/page.tsx) and is deliberately NOT in
+  //                       this table: it used to rewrite to /casino, which the
+  //                       redirect table below sends to /games/solitaire-duel,
+  //                       so the sitemap's second-most-important URL answered
+  //                       with a noindex soft redirect.
   //   * `/games/:slug/play` — the lobby. Declared before the sub-path rule
   //     below, which would otherwise rewrite "<slug>/play" to the non-existent
   //     /casino/<slug>/play (every game's lobby is /casino/<slug> itself).
@@ -118,10 +123,6 @@ const nextConfig = {
   // non-existent /casino path.
   async rewrites() {
     const gameRewrites = [
-      {
-        source: "/games",
-        destination: "/casino",
-      },
       {
         source: "/games/:slug/play",
         destination: "/casino/:slug",
@@ -151,6 +152,31 @@ const nextConfig = {
 
   async redirects() {
     return [
+      // ── Consolidated Solitaire URLs ───────────────────────────────────
+      // Each of these was a SECOND indexable page for an intent another URL
+      // already owns, so the crawl was split between them. They are declared
+      // first because the broad /casino rules below would otherwise catch the
+      // practice board on its way through the app namespace.
+      {
+        source: "/play/solo",
+        destination: "/solitaire",
+        permanent: true,
+      },
+      {
+        source: "/play/daily",
+        destination: "/daily",
+        permanent: true,
+      },
+      {
+        source: "/casino/solitaire-duel/play-ai",
+        destination: "/play/ai",
+        permanent: true,
+      },
+      {
+        source: "/games/solitaire-duel/play-ai",
+        destination: "/play/ai",
+        permanent: true,
+      },
       // The GRYND Shop is gone — there is no token currency and no catalogue.
       // The only paid product is the GRYND PRO membership, so the legacy Shop
       // URL permanently redirects to its new upgrade experience (old emails,
@@ -175,6 +201,24 @@ const nextConfig = {
         destination: "/games/:path*",
         permanent: true,
       },
+      // The guides library was rewritten for the Solitaire-only product. Every
+      // retired slug was indexed and may still be linked from elsewhere, so it
+      // 308s to the closest surviving article instead of 404ing. The same map
+      // is applied in src/proxy.ts, whose unknown-slug guard would otherwise
+      // answer these before the router sees this table.
+      { source: "/guides/how-to-improve-typing-speed", destination: "/guides/how-to-play-klondike-solitaire", permanent: true },
+      { source: "/guides/how-to-get-better-at-sudoku", destination: "/guides/how-to-win-solitaire-more-often", permanent: true },
+      { source: "/guides/reaction-time-in-competitive-games", destination: "/guides/how-solitaire-duel-scoring-works", permanent: true },
+      { source: "/guides/memory-techniques-for-competitive-games", destination: "/guides/solitaire-memory-techniques", permanent: true },
+      { source: "/guides/speed-versus-accuracy", destination: "/guides/speed-versus-accuracy-in-solitaire", permanent: true },
+      { source: "/guides/how-to-improve-at-chess", destination: "/guides/solitaire-strategy-for-beginners", permanent: true },
+      { source: "/guides/building-competitive-habits", destination: "/guides/building-a-solitaire-practice-routine", permanent: true },
+      { source: "/guides/what-makes-a-game-skill-based", destination: "/guides/is-solitaire-a-skill-game", permanent: true },
+      { source: "/guides/improve-concentration", destination: "/guides/how-to-concentrate-on-solitaire", permanent: true },
+      { source: "/guides/how-to-practice-competitive-games", destination: "/guides/how-to-practice-solitaire", permanent: true },
+      { source: "/guides/reading-your-opponent", destination: "/guides/reading-your-opponent-in-solitaire", permanent: true },
+      { source: "/guides/recovering-from-a-losing-streak", destination: "/guides/recovering-from-a-solitaire-losing-streak", permanent: true },
+      { source: "/guides/dominoes-strategy", destination: "/guides/solitaire-mistakes-to-avoid", permanent: true },
     ];
   },
 

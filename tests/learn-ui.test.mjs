@@ -116,7 +116,7 @@ test("the Learn routes exist and launch the catalog-driven components", () => {
   assert.ok(fs.existsSync(path.join(ROOT, LEARN_PAGE)));
   assert.ok(fs.existsSync(path.join(ROOT, LESSON_PAGE)));
   assert.match(source(LEARN_PAGE), /LearnLanding/);
-  assert.match(source(LEARN_PAGE), /alternates: \{ canonical: "\/learn" \}/);
+  assert.match(source(LEARN_PAGE), /path: "\/learn"/);
   assert.match(source(LESSON_PAGE), /lessonById\(lessonId\)/);
   assert.match(source(LESSON_PAGE), /notFound\(\)/);
   assert.match(source(LESSON_PAGE), /LessonPlayer/);
@@ -171,9 +171,9 @@ test("Courses, Practice and Videos are real destinations with routes", () => {
   assert.match(subnavSource, /\/learn\/practice/);
   assert.match(subnavSource, /\/learn\/videos/);
   assert.match(subnavSource, /aria-current/);
-  assert.match(source(COURSES_PAGE), /canonical: "\/learn\/courses"/);
-  assert.match(source(PRACTICE_PAGE), /canonical: "\/learn\/practice"/);
-  assert.match(source(VIDEOS_PAGE), /canonical: "\/learn\/videos"/);
+  assert.match(source(COURSES_PAGE), /path: "\/learn\/courses"/);
+  assert.match(source(PRACTICE_PAGE), /path: "\/learn\/practice"/);
+  assert.match(source(VIDEOS_PAGE), /path: "\/learn\/videos"/);
 });
 
 test("the Courses page keeps courses, individual lessons and replay access", () => {

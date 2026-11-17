@@ -461,7 +461,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <Link
-                href="/casino"
+                href="/games/solitaire-duel"
                 className="rounded-lg border border-[#f5ff3b]/60 bg-[#f5ff3b] px-4 py-2 text-sm font-bold text-[#041125] transition-all hover:bg-[#f5ff3b]/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a214d]"
               >
                 {me ? climbCtaLabel : "PLAY NOW"}
@@ -555,7 +555,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                 {t("leaderboard.empty_hint")}
               </p>
               <Link
-                href="/casino"
+                href="/games/solitaire-duel"
                 className="mt-1 rounded-lg border border-[#f5ff3b]/60 bg-[#f5ff3b] px-5 py-2.5 text-sm font-bold text-[#041125] transition-all hover:bg-[#f5ff3b]/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f]"
               >
                 PLAY NOW
@@ -675,7 +675,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
               </p>
             </div>
             <Link
-              href="/casino"
+              href="/games/solitaire-duel"
               className="shrink-0 rounded-lg border border-[#00e5ff]/50 bg-[#00e5ff] px-5 py-2.5 text-sm font-bold text-[#001933] transition-all hover:bg-[#00e5ff]/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f]"
             >
               PLAY NOW

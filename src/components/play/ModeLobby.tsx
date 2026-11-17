@@ -50,7 +50,7 @@ const MODE_META: Record<
     icon: <IconCalendar size={22} aria-hidden="true" />,
   },
   ai: {
-    href: "/casino/solitaire-duel/play-ai",
+    href: "/play/ai",
     icon: <IconRobot size={22} aria-hidden="true" />,
   },
   ranked: {

@@ -27,9 +27,11 @@ const RANKED_LOBBY = "src/components/solitaire-duel/SolitaireLobby.tsx";
 const PUZZLE_ROUTE = "src/app/api/solitaire/puzzle/route.ts";
 const STATS_CLIENT = "src/components/stats/SolitaireAcademyStats.tsx";
 
+// Solo and Daily open the standalone surfaces that own their intent; the other
+// four still open their own lobby. `/play/solo` and `/play/daily` 308 to these.
 const MODES = [
-  ["solo", "/play/solo"],
-  ["daily", "/play/daily"],
+  ["solo", "/solitaire"],
+  ["daily", "/daily"],
   ["ai", "/play/ai"],
   ["ranked", "/play/ranked"],
   ["dailyPuzzle", "/play/daily-puzzle"],
@@ -120,7 +122,7 @@ test("Play is one nav destination on desktop and mobile", () => {
   assert.match(nav, /currentPath\.startsWith\("\/play\/"\)/);
   assert.match(nav, /isPathActive\(path, currentPath\)/);
 
-  const arrays = [...nav.matchAll(/\["\/", "\/play", "\/learn", "\/classement", "\/games\/solitaire-duel", "\/upgrade-pro"\]/g)];
+  const arrays = [...nav.matchAll(/\["\/", "\/play", "\/learn", "\/classement", "\/contact", "\/games\/solitaire-duel", "\/upgrade-pro"\]/g)];
   assert.equal(arrays.length, 2, "desktop and mobile share the same destinations");
   assert.equal((nav.match(/aria-current=\{isPathActive/g) ?? []).length, 1);
 

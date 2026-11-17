@@ -3,6 +3,7 @@ import Link from "next/link";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
 import CookieSettingsLink from "../../components/CookieSettingsLink";
+import { pageMetadata, DEFAULT_OG_IMAGE } from "../../lib/seo";
 
 /**
  * /cookie-policy — the cookie and advertising disclosure, on its own URL.
@@ -24,12 +25,12 @@ import CookieSettingsLink from "../../components/CookieSettingsLink";
  * it would be inventory with nothing behind it.
  */
 
-export const metadata: Metadata = {
-  title: "Cookie Policy | GRYND",
-  description:
-    "Every cookie and storage class GRYND uses, what Google AdSense sets for advertising, how personalised advertising is controlled, and how to withdraw consent at any time.",
-  alternates: { canonical: "/cookie-policy" },
-};
+export const metadata = pageMetadata({
+  title: "Cookie Policy",
+  description: "Every cookie and storage class GRYND uses, what Google AdSense sets for advertising, how personalised advertising is controlled, and how to withdraw consent at any time.",
+  path: "/cookie-policy",
+  image: DEFAULT_OG_IMAGE,
+});
 
 const H2 = "text-xl font-black tracking-tight text-[#f5ff3b] sm:text-2xl";
 const H3 = "mt-6 text-base font-bold text-[#d8fbff]";

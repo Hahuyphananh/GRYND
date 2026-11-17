@@ -1,35 +1,32 @@
 // src/lib/guides.ts
 //
-// THE GUIDES LIBRARY — a SMALL set of genuinely useful, original articles
-// about the skills GRYND's games actually test.
+// THE GUIDES LIBRARY — a small set of original articles about the one game
+// GRYND offers: Klondike Solitaire, played head to head.
 //
 // ── Why this file exists ──────────────────────────────────────────────────
 //
-// The site's public pages explained WHAT each game is (see
-// src/lib/gameLandingPages.ts) but nothing taught a visitor how to get better
-// at the skills those games measure. This module is the missing layer: a
-// dozen guides, each about one transferable skill or one practical question,
-// written to be read rather than skimmed by a crawler.
+// The public pages explain WHAT the game is (src/lib/gameLandingPages.ts) and
+// the Academy teaches the rules interactively. This module is the editorial
+// layer: a dozen articles about the decisions that actually decide a Solitaire
+// deal — reveals, promotion, stock order, tempo — and about the habits that
+// make a competitive player better.
 //
 // ── The rules every guide here follows ────────────────────────────────────
 //
-//   * NO SPAM. Twelve guides, not twelve hundred. Each one answers a question
-//     a real player has, and the set is closed until there is a genuinely new
+//   * NO SPAM. Thirteen guides, not thirteen hundred. Each answers a question a
+//     real player has, and the set is closed until there is a genuinely new
 //     question to answer.
-//   * NO FAKE AUTHORITY. There are no invented authors, no invented review
-//     counts and no invented statistics. Where a number appears it is a
-//     mechanical fact of a GRYND game (mine values, the Memory Grid ramp, the
-//     Speed Typing win condition), taken from that game's own server-side
-//     source — the same rule src/lib/gameLandingPages.ts documents.
+//   * NO FAKE AUTHORITY. There are no invented authors, review counts or
+//     statistics. Where a number appears it is a mechanical fact of Klondike or
+//     of Solitaire Duel, taken from the game's own server-side source.
 //   * NO KEYWORD STUFFING and no duplicated paragraphs. Two guides may both
-//     mention Memory Grid because both genuinely concern it; they never make
-//     the same point about it.
-//   * NO INVENTED MECHANICS. Every GRYND-specific claim points at something
-//     the game actually does today (stakes are retired, matches are free,
-//     results move a per-game Elo rating and trophies). If a mechanic changes,
-//     the guide that mentions it must change too — tests/guides.test.mjs
-//     asserts each guide links only to real game pages, and that every guide
-//     is reachable and indexable.
+//     mention the stock or an empty column because both genuinely concern it;
+//     they never make the same point about it.
+//   * NO INVENTED MECHANICS. Every GRYND-specific claim points at something the
+//     game does today: one deterministic deal served to both seats, a
+//     solver-verified winning line, verified progress as the tiebreak, free
+//     ranked play that moves Elo and trophies. tests/guides.test.mjs asserts
+//     every guide is reachable, indexable and links only to real pages.
 //
 // ── Structure ─────────────────────────────────────────────────────────────
 //
@@ -81,686 +78,743 @@ export type Guide = {
 
 export const GUIDES: readonly Guide[] = [
   {
-    slug: "how-to-improve-typing-speed",
-    title: "How to Improve Your Typing Speed",
+    slug: "how-to-play-klondike-solitaire",
+    title: "How to Play Klondike Solitaire: Rules and Setup",
     metaDescription:
-      "How to type faster without typing worse: measuring an honest baseline, why accuracy comes first, which drills transfer to a timed race, and how Speed Typing decides a match.",
-    h1: "How to improve your typing speed",
+      "A complete beginner's walkthrough of Klondike Solitaire: the deal, the seven tableau columns, the stock and waste, the four foundations, and the rules a GRYND duel enforces.",
+    h1: "How to play Klondike Solitaire",
     summary:
-      "Typing speed is one of the few competitive skills you can measure in a single number and train in ten-minute blocks. The catch is that the number most people chase — raw speed — is the one that loses races. This guide covers measuring your real baseline, fixing accuracy first, the drills that actually transfer, and how all of it plays out in Speed Typing.",
+      "Klondike has a reputation for being self-explanatory, and almost every new player gets one rule wrong: the empty column. This walkthrough covers the deal, the tableau, the foundations, the stock, and exactly how a competitive Solitaire Duel differs from the game you play alone.",
     sections: [
       {
-        heading: "Measure a baseline you can trust",
+        heading: "The deal: seven columns and a stock",
         paragraphs: [
-          "Before changing anything, type a passage you have never seen for sixty seconds and write down two numbers: your speed and your accuracy. A number produced from a passage you have already memorised measures recall, not typing, and it will always be flattering.",
-          "Repeat the test the same way — same keyboard, same posture, same time of day — so the numbers are comparable. Progress in typing is slow and uneven, and a baseline you retest inconsistently will convince you that you are stuck when you are not.",
+          "Klondike is played with one standard 52-card deck. The deal builds seven tableau columns from left to right: the first column gets one card, the second two, and so on to seven, for twenty-eight cards in total. In each column only the top card is face up; the rest stay face down until the cards above them are moved away.",
+          "The twenty-four cards left over become the stock, which sits face down at the top left of the board. You turn them over one at a time into the waste beside it. GRYND uses the single-card draw with unlimited redeals, so when the stock runs out you turn the waste back over and go through it again.",
         ],
       },
       {
-        heading: "Accuracy is the skill; speed is the result",
+        heading: "The foundations: one pile per suit",
         paragraphs: [
-          "Fast typists are not people who move their fingers faster. They are people who make fewer corrections. Every wrong key costs you three times over: the wrong character, the time to notice it, and the time to fix it. A typist who never backspaces is effectively faster than a quicker typist who corrects twice a sentence, even if the second one's fingers are moving faster.",
-          "So drill accuracy first. Type slowly enough that you can finish a passage with no errors at all, then let the speed arrive on its own. If you are making more than roughly one mistake per twenty words, you are practising your mistakes.",
+          "Above the tableau are four empty foundations. Each one takes a single suit, and each must be built upward from the ace to the king. An ace is the only card that can start a foundation, which is why finding the aces early matters more than almost anything else on the board.",
+          "A foundation never blocks a move. A card that has gone up can still come back down if you need it in the tableau, so promoting a card is not a commitment — it is one less card in the way. The game ends the moment all fifty-two cards sit on the foundations.",
         ],
       },
       {
-        heading: "Use the home row and stop watching your hands",
+        heading: "Building down the tableau, in alternating colours",
         paragraphs: [
-          "Touch typing — keeping your fingers anchored on the home row and trusting them — is the single biggest structural improvement available to most players. Looking down at the keyboard forces a visual check between every keystroke, and that check is where beginners lose most of their time.",
-          "If you cannot yet type without looking, practise short, easy passages with the screen dimmed or your hands covered. It is slower for a week and faster forever.",
+          "The tableau builds downward: a card may be placed on another card of the opposite colour and exactly one rank higher. A red six goes on a black seven, a black five on a red six, and so on. Any face-up card carries the sequence below it, so moving one card can uncover several cards at once.",
+          "An empty column is the exception. Only a king may be placed there. That single rule is why emptying a column without a king in hand can leave you worse off than before, and why experienced players treat an empty column as a resource to spend deliberately.",
         ],
       },
       {
-        heading: "Drill the things a random passage will not teach you",
+        heading: "Turning cards over is the real objective",
         paragraphs: [
-          "Random text samples every letter equally, which is not how real text is distributed. Spend part of each session on the transitions you actually fumble — letter pairs like `th`, `in`, `er`, `ou` and the capitals and punctuation that break your rhythm. A drill can be boring and still be useful; the point is repetition, not novelty.",
-          "Then rehearse the thing you are actually training: a match. Type whole sentences at race pace, not isolated words, because the skill you need is holding accuracy while reading ahead.",
-        ],
-        bullets: [
-          "Warm up for two minutes before a session — cold hands fumble more than tired ones.",
-          "Read one word ahead of the word you are typing; your hands will follow your eyes.",
-          "Never look at the keyboard to check a mistake. Look at the screen.",
-          "Stop a drill when accuracy drops. Grinding out sloppy repetitions teaches sloppiness.",
+          "Every face-down card is information you do not have. The point of most tableau moves is not to tidy the board but to expose the next hidden card, because each reveal adds a card you can use and a new option you did not have before.",
+          "That is why a move which reveals a card usually beats a move that merely looks neater. When two plays are both legal and neither promotes anything, choose the one that turns something over. If neither does, cycle the stock and look for a better option.",
         ],
       },
       {
-        heading: "How this plays out in Speed Typing",
+        heading: "How a GRYND duel differs from solitaire alone",
         paragraphs: [
-          "In Speed Typing, both seats receive the same server-selected passage and the first player to type it correctly wins. There is no partial credit for getting most of the way there, and no benefit to finishing a sentence you typed wrong — which makes it a pure test of the accuracy-first approach this guide describes.",
-          "Because the passage is identical for both players, you cannot win by getting lucky with an easy text. The race is decided by who makes fewer corrections under a clock, so the drills above are the whole training plan: read ahead, hold accuracy, and let speed follow.",
+          "In Solitaire Duel both seats receive the exact same deterministic deal from the server and play it at the same time on their own boards. The rules above are unchanged; the difference is that someone else is solving the same puzzle, and the first player to move all fifty-two cards onto the foundations wins.",
+          "The server only serves a deal it has proved has a winning line, so a loss is never the deck's fault. If neither player finishes, the greater verified progress wins, and an exact tie is recorded as a draw. Ranked play is free and moves an Elo rating and trophies, not a pot.",
         ],
       },
     ],
-    gameSlugs: ["speed-typing", "precision"],
-    relatedGuides: ["speed-versus-accuracy", "how-to-practice-competitive-games"],
+    gameSlugs: ["solitaire-duel"],
+    relatedGuides: ["solitaire-strategy-for-beginners", "solitaire-mistakes-to-avoid"],
   },
 
   {
-    slug: "how-to-get-better-at-sudoku",
-    title: "How to Get Better at Sudoku",
+    slug: "solitaire-strategy-for-beginners",
+    title: "Solitaire Strategy for Beginners: Priorities That Win Deals",
     metaDescription:
-      "A method for solving Sudoku faster and more reliably: naked and hidden singles, disciplined pencil marks, a scanning order that finds forced moves, and why guessing is the slow route.",
-    h1: "How to get better at Sudoku",
+      "The move-order priorities that decide most Klondike deals: uncovering hidden cards, promoting aces, spending empty columns deliberately, and using the stock as a tool rather than an escape.",
+    h1: "Solitaire strategy for beginners",
     summary:
-      "Most Sudoku players do not lose on hard puzzles because the puzzle is too hard. They lose because they guess early, write down too much, and then have to unpick their own notes. This guide is about the method that makes puzzles fall faster: work only with forced moves until there are none left.",
+      "Beginners lose more Klondike games to the order of their moves than to the deal. This guide sets out the priorities that matter: reveal before you tidy, promote whenever it is free, spend an empty column only for a king that does work, and treat the stock as a tool rather than an escape hatch.",
     sections: [
       {
-        heading: "Understand what a valid move is",
+        heading: "Uncover hidden cards before you tidy",
         paragraphs: [
-          "Every Sudoku cell is defended by three constraints at once: the row, the column and the 3×3 box it sits in. A digit is only legal in a cell if it appears in none of the three. Internalising that triangle is the difference between scanning and guessing — you are looking for the intersection, not filling the first gap you see.",
+          "A face-down card is the only thing on the board that can add a new option. A face-up card can always be moved later, but a hidden card cannot be used until it is revealed. When two moves are both legal, prefer the one that opens a new card, even if it leaves the columns looking uneven.",
+          "This one habit separates beginners from players who finish deals. It is tempting to build a beautiful descending sequence in the middle of the board, but a sequence that reveals nothing has spent moves without buying information.",
         ],
       },
       {
-        heading: "Start with singles, in the right order",
+        heading: "Promote aces and low cards immediately",
         paragraphs: [
-          "A naked single is a cell where eight of the nine digits are already eliminated, so exactly one can go there. A hidden single is a cell that is one of several candidates, but where a digit can fit in only one cell of a row, column or box. Both are forced moves, and forced moves are free.",
-          "Scan for hidden singles before naked ones when a grid looks stuck. They are easier to miss and more common than people expect, and a puzzle that seems to require a guess usually still has a hidden single in it.",
-        ],
-        bullets: [
-          "Sweep one digit across the whole board at a time before moving to the next.",
-          "Check every box for a digit that can only land in one square.",
-          "When you place a digit, re-check its row, column and box — placements create new singles.",
+          "An ace on a foundation is a card that can never block you. The same is true of every low card you can send up safely: once it is on the foundation, the tableau has one fewer rank to work around. Promote whenever the move is legal and does not cost you a reveal.",
+          "The habit to avoid is holding a low card in the tableau because it fits somewhere. Fitting somewhere is not a reason to keep it; the foundation is where it belongs, and you can always bring it back down if a later move needs it.",
         ],
       },
       {
-        heading: "Keep pencil marks disciplined, or keep none at all",
+        heading: "Spend an empty column on a king you actually need to place",
         paragraphs: [
-          "Full pencil marks are powerful and dangerous. Writing every candidate in every cell turns a puzzle into a wall of digits you have to read every time you scan, which is slower than the puzzle deserves. A workable middle ground: pencil-mark only the cells you are actively reasoning about, and erase a mark the moment it becomes impossible.",
-          "The worst habit is leaving a stale mark in place after the situation changed. A wrong note is worse than no note, because it makes a forced move look unavailable.",
+          "An empty column is flexible space, and the only card that can occupy it is a king. Do not fill it just because a king is available. Ask what placing that king lets you do: which hidden card it exposes, which sequence it unlocks, or which other column it frees.",
+          "Sometimes the right move is to leave the column empty for two or three turns while you wait for a king that does more work. That feels wasteful and is usually correct. An empty column you fill too early is a resource you cannot get back.",
         ],
       },
       {
-        heading: "Prefer a slow correct move to a fast guess",
+        heading: "Use the stock to reorder, not to escape",
         paragraphs: [
-          "Guessing is not just risky — it is expensive. A wrong guess can sit in the grid for several minutes before you notice, and by then you have built reasoning on top of it. If no forced move exists, look harder rather than writing a digit you cannot justify; there is almost always one more elimination to make.",
-          "This is the habit that transfers directly into Sudoku Duel, where the server generates one puzzle and both seats solve the same grid simultaneously with no time limit. Because there is no clock to force your hand, the player who stays on forced moves and never has to back out of a mistake almost always finishes first — patience is the faster strategy, which surprises people who expect a solving race to reward speed above everything.",
+          "With a single-card draw and unlimited redeals, the stock is not a countdown; it is a way to change which card is available. Going through it once can rearrange the waste into an order that unlocks a tableau play you could not make before.",
+          "The mistake is cycling the stock whenever the board looks stuck. Before you touch it, check whether a tableau move exists that you have overlooked. A stock cycle buys time, but it does not reveal anything new until you use the cards it gives you.",
         ],
       },
       {
-        heading: "A short daily routine",
+        heading: "Think in two-move pairs",
         paragraphs: [
-          "Solve one puzzle a day at the hardest level you can complete without guessing, and after each one, note the single moment you found hardest. That note is your training plan: tomorrow, look for that pattern first. Improvement in Sudoku comes from recognising more patterns, and you only recognise the ones you have deliberately looked for.",
+          "Strong players rarely evaluate a move on its own. They ask what the move makes possible next, and whether the follow-up depends on a card they cannot reach. A move that sets up a reveal next turn is worth more than one that merely looks safe.",
+          "In a GRYND duel this matters even more, because the clock rewards the player who needs fewer moves for the same reveal. Efficiency is not about moving faster; it is about choosing a route that does not double back.",
         ],
       },
     ],
-    gameSlugs: ["sudoku-duel"],
-    relatedGuides: ["improve-concentration", "speed-versus-accuracy"],
+    gameSlugs: ["solitaire-duel"],
+    relatedGuides: ["how-to-play-klondike-solitaire", "how-to-win-solitaire-more-often"],
   },
 
   {
-    slug: "reaction-time-in-competitive-games",
-    title: "How Reaction Time Affects Competitive Play",
+    slug: "how-to-win-solitaire-more-often",
+    title: "How to Win Solitaire More Often",
     metaDescription:
-      "What reaction time really measures, why anticipation beats raw reflexes, how display and input delay quietly cost you milliseconds, and where timing decides a GRYND match.",
-    h1: "How reaction time affects competitive play",
+      "Why winnable deals are not easy deals, how to recognise a dead board early, which moves are irreversible, and the review habit that turns a lost Klondike deal into a lesson.",
+    h1: "How to win Solitaire more often",
     summary:
-      "Reaction time is treated as a fixed personal trait, like height. It is closer to a trainable skill with a large anticipation component, and on a screen the biggest number in the equation is usually not your nerves at all — it is how quickly you already knew what was coming.",
+      "Winning more Klondike games is less about finding clever moves and more about recognising which deals are worth finishing. This guide covers what solvability really guarantees, how to spot a dead board early, and the review habit that turns a losing deal into a lesson.",
     sections: [
       {
-        heading: "Reaction time is two skills, not one",
+        heading: "Winnable does not mean easy",
         paragraphs: [
-          "A simple reaction is one known stimulus, one known response. A choice reaction is a signal you have to identify before you respond, and it is dramatically slower — which is why good players are rarely the ones with the fastest fingers. They are the ones who have narrowed the number of things the signal could be.",
-          "This is why anticipation is not cheating and not luck. If you already know that the next input will be one of two options, you are running a choice reaction with a much smaller choice.",
+          "Every deal served in Solitaire Duel has been proved to have a winning line before either player sees it. That guarantee is about existence, not difficulty: the line can be narrow, and a plausible-looking move can close it for good.",
+          "So the question is never whether the deal can be won in theory. It is whether you can still find the line from the position you are in. Players who assume a lost-looking board is unwinnable give up on deals that were still recoverable.",
         ],
       },
       {
-        heading: "Find your real latency and remove the avoidable part",
+        heading: "Recognise a dead board early",
         paragraphs: [
-          "Before training anything, make sure what you are measuring is you and not your setup. A television in picture mode, a wireless mouse reporting at a low rate, or a browser tab under heavy load all add delay that feels like slow reflexes and cannot be trained away.",
-          "Play on the display mode with the least processing, keep your computer idle of background work during a match, and use a consistent setup. Removing fifty milliseconds of display lag is worth months of reaction drills.",
+          "A board is effectively dead when the cards you need are buried under cards you cannot move, and the stock has no useful order left. The signs are concrete: no legal tableau move, no king for an empty column, and a stock cycle that returns the same waste.",
+          "Recognising that state early is not pessimism; it saves the moves you would spend on a position that cannot improve. In ranked play, switching from trying to win to protecting progress is sometimes the correct decision.",
         ],
       },
       {
-        heading: "Warm up: reaction time is state-dependent",
+        heading: "Prefer moves that cannot be undone",
         paragraphs: [
-          "Cold reaction times are reliably worse than warmed-up ones, and the warm-up that helps most is specific: a minute of the exact input the game asks for, at a pace you can control. Reading a book warms nothing you need.",
-          "Fatigue, caffeine and frustration all move reaction time, and none of them move it in a direction you can push through. A short break is often a faster recovery than another attempt.",
+          "Promoting a card to a foundation is permanent progress. Revealing a hidden card is permanent information. Moving a sequence around the tableau is reversible and often worth nothing. When you have a choice, spend the move on the irreversible kind.",
+          "This is the practical version of playing efficiently. Two players can make the same number of moves, but the one who spent them on foundations and reveals will be ahead on the board that matters.",
         ],
       },
       {
-        heading: "Where timing actually decides a match here",
+        heading: "Count what the stock still owes you",
         paragraphs: [
-          "Different GRYND games expose timing in very different ways, and training the wrong one wastes the session.",
-        ],
-        bullets: [
-          "Precision is the purest test: you stop closest to a target, so the whole game is a judgement about when to commit, not how fast you can click. Practising calm, single, deliberate stops beats spamming inputs.",
-          "In Rock-Paper-Scissors, a round resolves on one click in a best-of-seven series. There is no reaction window to speak of; the skill is reading the opponent's pattern, so speed is irrelevant and misreading your own tempo is the real risk.",
-          "Lane Rush is planning under a clock: the 60-second window rewards having your deploy, merge and repair choices worked out before the round opens, so the time goes into confirming the plan rather than discovering it.",
-          "Mini Golf is timing under a physics model — your control is the power meter, and consistency at a familiar power setting beats trying to react to a perfect line.",
+          "The stock is not infinite, even with unlimited redeals. It is a fixed set of twenty-four cards, and every cycle costs time. If the card you need is already visible in the waste or the tableau, another cycle cannot produce it.",
+          "Counting is not about memorising the whole deck. It is about knowing whether the card you are waiting for has already passed. That single check prevents the most common waste of a close race.",
         ],
       },
       {
-        heading: "Train the predictable part",
+        heading: "Review the deal you lost",
         paragraphs: [
-          "Because choice reactions dominate, the highest-value training is not a reaction-time test — it is learning the game's patterns until fewer decisions are open to you. Study how a sequence usually unfolds, decide your default response in advance, and rehearse it. Your reaction time as a player is the sum of your reading speed and your reflexes, and reading is the half you can actually improve quickly.",
+          "After a loss, find the first move you would change, not the last. The earliest mistake is usually the cause; the final move is only where it became visible. One sentence about that move is a better use of two minutes than another queue.",
+          "Over a week, those sentences repeat. When one repeats three times it is a habit, not bad luck, and it becomes the thing to practise in an unrated mode before you take it back into ranked play.",
+        ],
+      },
+      {
+        heading: "Use the daily deal as a free lesson",
+        paragraphs: [
+          "The daily challenge gives every player the same deal once per UTC day, which makes it an unusually clean piece of practice. You can compare your route with the day's board rather than guessing whether a different decision would have helped.",
+          "Play it slowly on purpose: no clock, no opponent, just the position. Then note the move that unlocked the deal. That note is more useful than another ranked match, because the same shape recurs.",
         ],
       },
     ],
-    gameSlugs: ["precision", "rps", "lane-runner", "mini-golf"],
-    relatedGuides: ["improve-concentration", "speed-versus-accuracy"],
+    gameSlugs: ["solitaire-duel"],
+    relatedGuides: ["solitaire-memory-techniques", "speed-versus-accuracy-in-solitaire"],
   },
 
   {
-    slug: "memory-techniques-for-competitive-games",
-    title: "How Memory Affects Competitive Games",
+    slug: "solitaire-mistakes-to-avoid",
+    title: "Common Solitaire Mistakes (and What to Do Instead)",
     metaDescription:
-      "Practical memory techniques for competitive play: chunking, spatial anchoring and rehearsal, why reconstructing a pattern beats trying to photograph it, and how Memory Grid's ramp works.",
-    h1: "How memory affects competitive games",
+      "The five Klondike habits that cost the most moves: filling empty columns too early, cycling the stock without purpose, building sequences for show, hoarding low cards and restarting unread deals.",
+    h1: "Common Solitaire mistakes to avoid",
     summary:
-      "Memory in games is rarely about raw capacity. It is about how you encode what you saw, and whether your encoding survives the five seconds between seeing it and needing it. This guide covers the techniques that hold up under pressure, using the games where recall decides the result.",
+      "Most Klondike losses come from a small set of habits that feel productive and are not. Here are the five that cost the most moves, why each one feels right at the time, and the simpler play to make instead.",
     sections: [
       {
-        heading: "Encode structure, not pixels",
+        heading: "Filling an empty column because you can",
         paragraphs: [
-          "Trying to remember a lit grid as a photograph fails quickly, because raw visual detail is expensive to store. What holds is structure: which column, which row, which corner. Turn the pattern into a small number of relationships — 'two in the top row, one on the right edge, a cluster in the middle' — and you are storing three facts instead of a dozen coordinates.",
-          "This is the same reason a phone number is easier to hold as three groups than as ten digits. Grouping is not a trick; it is how short-term memory works.",
+          "An empty column is the most valuable space on the board, and a king is the only thing that can occupy it. Placing a king there immediately is often a mistake: you have spent your flexibility on the first king you found rather than the one that unlocks the most.",
+          "Instead, ask what the king exposes. If it frees a hidden card or completes a run you need, place it. If it merely puts a card somewhere legal, leave the column empty and keep looking.",
         ],
       },
       {
-        heading: "Reconstruct from the edges inward",
+        heading: "Cycling the stock before the tableau is exhausted",
         paragraphs: [
-          "When a pattern is flashed and then hidden, most people start in the middle and lose the whole thing when they cannot place the middle tiles. Start with the corners and edges, which are the easiest to locate spatially, then fill inward. Even if you cannot finish, a partially correct reconstruction scores better than a blank grid, and the edges are the anchors that let you place the rest.",
+          "The stock feels like progress because the cards change. But a cycle that produces no new legal move has only spent time. Before you draw, scan every column for a move you have not made, including one that looks like it breaks a tidy sequence.",
+          "A good rule is to exhaust the tableau first and cycle second. When you do cycle, cycle with a purpose: you are looking for a specific rank or colour that unlocks a specific column, not simply hoping the next card is better.",
         ],
       },
       {
-        heading: "Rehearse out loud, quietly",
+        heading: "Building a long sequence for its own sake",
         paragraphs: [
-          "Verbal rehearsal — naming the positions to yourself during the exposure window — measurably beats silent staring, because it converts a visual trace into a second, independent trace. 'Top-left, top-right, centre.' The naming is the memory, not a distraction from it.",
-          "The catch is timing. Rehearse during the reveal, not after it. Once the grid goes dark you should already be tapping, and hesitation is what erases the trace.",
+          "A long alternating sequence looks like achievement, but if every card in it is already face up, the sequence has revealed nothing. It may even hide the fact that a shorter, messier arrangement would expose more.",
+          "Judge a sequence by what it makes reachable. If collapsing it lets you promote a card or turn over a hidden one, the tidy version was costing you moves.",
         ],
       },
       {
-        heading: "Where recall decides a match",
+        heading: "Holding a low card because it fits",
         paragraphs: [
-          "Memory Grid is the direct test: five rounds on a fixed ramp, where both seats see the same pattern for the same exposure time — a 3×3 grid with three lit tiles and 2.5 seconds to start, rising to a 5×5 grid with fourteen tiles and four seconds by round five. Because the pattern and the window are identical for both players, nothing here is about luck; it is about encoding quality under a fixed deadline, and a level set of five rounds is broken by a sixth tiebreak round on a harder grid.",
-          "Recall matters elsewhere too, just less mechanically. In Mines Duel you are reading and remembering which clue numbers touch which unrevealed tiles, and losing track of that is how players step on a mine. In Key-draw games like Keno, both seats see the same draw, and the player who remembers which numbers are still live makes faster decisions. In Pool Masters, the table is the memory: which balls have been potted and which pockets are still safe. Even Solitaire Duel rewards a clear picture of the deal you have already seen, because both seats solve the same deal and progress is what breaks a stalemate.",
+          "A low card that fits into a tableau sequence is not therefore doing useful work. If the card can go to its foundation, sending it there removes a rank from the tableau and cannot block a future move.",
+          "Keep a low card in play only when it is actively holding a sequence together or covering nothing useful. The default should be to promote.",
         ],
       },
       {
-        heading: "Two habits that protect memory",
+        heading: "Restarting a deal you have not read",
         paragraphs: [
-          "Sleep is the training, not the rest. Consolidation happens overnight, and a pattern you could not hold on five hours of sleep is often easy on eight. If you are drilling memory games seriously, the cheapest improvement available is a consistent bedtime.",
-          "Second, do not run memory drills while distracted. Split attention destroys encoding at the first step, and no technique later in the pipeline recovers a pattern you never properly stored.",
+          "A deal that looks bad after ten moves may still have a narrow line. Restarting is cheap in solo play and expensive in a race, because the clock keeps running while you decide.",
+          "Read the board first: what is buried, what the stock still holds, and whether any column can be opened. If the answer is genuinely nothing, restart or protect progress. If it is unclear, keep playing and find out.",
+        ],
+      },
+      {
+        heading: "Mistake: assuming a legal move is a good move",
+        paragraphs: [
+          "Almost every card on the board is legal somewhere, which makes legality a poor test of a move. The question is not whether you can place a card but whether placing it improves the position you will face three moves from now.",
+          "Before you commit, name what the move changes: a reveal, a foundation, an open column, or nothing. When the answer is nothing, the move is a candidate to skip, even though the rules allow it.",
         ],
       },
     ],
-    gameSlugs: ["memory-grid", "mines-pvp", "keno", "pool-masters", "solitaire-duel"],
-    relatedGuides: ["improve-concentration", "how-to-practice-competitive-games"],
+    gameSlugs: ["solitaire-duel"],
+    relatedGuides: ["solitaire-strategy-for-beginners", "how-to-play-klondike-solitaire"],
   },
 
   {
-    slug: "speed-versus-accuracy",
-    title: "Speed vs Accuracy in Competitive Games",
+    slug: "solitaire-memory-techniques",
+    title: "Solitaire Memory Techniques: Track the Cards That Matter",
     metaDescription:
-      "When to play fast and when to be right: expected value in practice, the error costs in GRYND's games, and how to tell which side of the trade-off a match is actually paying for.",
-    h1: "Speed versus accuracy in competitive games",
+      "How to remember what matters in Klondike without memorising the deck: tracking ranks by colour, reading the foundations, reconstructing the stock and rehearsing recall without a clock.",
+    h1: "Solitaire memory techniques",
     summary:
-      "Every competitive game asks the same question in a different costume: is it worth being faster at the risk of being wrong? The answer is never a personality trait — it is arithmetic about what a mistake costs and what a fast success earns. This guide shows how to read that arithmetic in the games you play.",
+      "You do not need a photographic memory to play Klondike well. You need to track a handful of facts about what has been played, what is still buried, and what the stock can still deliver. This guide shows how to hold those facts without straining.",
     sections: [
       {
-        heading: "The trade-off is a price, not a philosophy",
+        heading: "You do not need all fifty-two cards",
         paragraphs: [
-          "'Play fast' and 'play safe' are both bad advice on their own. What matters is the exchange rate: how much a mistake costs you relative to how much a quick correct action gains. Where mistakes are cheap and time is scarce, speed wins. Where mistakes are expensive and the clock is generous, patience wins.",
-          "So the first thing to learn about any game is its penalty table, not its strategy tips. The penalties tell you which side of the trade-off the designer is paying you to take.",
+          "Memory in solitaire is not a card-by-card inventory. Most of the deck is visible, either on the tableau or on the foundations, so the useful question is much smaller: which ranks are still missing, and where could they be?",
+          "That is a handful of facts, not fifty-two. Players who try to hold the whole deck exhaust themselves; players who track the few missing ranks stay sharp through a long session.",
         ],
       },
       {
-        heading: "Read the penalty table",
+        heading: "Track ranks by colour, not by suit",
         paragraphs: [
-          "Two examples from GRYND's catalogue sit at opposite ends of this spectrum, and both are decided by their numbers rather than by player temperament.",
-          "In Mines Duel, a safe reveal is worth five points, a wrong flag costs ten and stepping on a mine costs twenty-five — more than four safe reveals. A coin-flip guess that succeeds earns five and one that fails costs twenty-five, so a genuine fifty-fifty is a losing bet every time. The correct strategy is to spend the clock finding safe ground, and only gamble when the value of a correct flag (up to fifty points for the single high-value mine) actually outweighs the risk. Fast flagging is a trap.",
-          "In Speed Typing it is the reverse. Both seats race the same passage and only a correct finish counts, so there is no penalty for pausing to check a word — but there is no reward for typing a sentence you will have to fix either. The clock is generous enough that the winning move is almost always a clean one: read ahead, hold accuracy, and let the finish come.",
+          "For tableau building you need to know whether a red or black card of a given rank is available, not which of the two suits it belongs to. Tracking colour and rank is half the information and almost all of the usefulness.",
+          "Suits only become decisive on the foundations. Until a suit is close to complete, colour is the better filter, and it is far easier to keep in mind under a clock.",
         ],
       },
       {
-        heading: "Match your tempo to the clock, not to your nerves",
+        heading: "Use the foundations as a scoreboard",
         paragraphs: [
-          "A shared clock changes the calculus over time. Early in a timed match, patience is cheap because you have clock to spend. Late, when the clock is short, the same decision may genuinely favour speed, because a correct slow action that arrives after the whistle is worth nothing.",
-          "This is why good players seem to change personality mid-match. They are not becoming reckless; they are re-pricing the same decision as the time budget shrinks.",
+          "The foundations tell you what has left the deck. If the three of hearts is on its foundation, it cannot be in the stock, and it cannot be blocking a column. Reading the foundations first is a free memory aid that costs no effort.",
+          "Before each cycle of the stock, glance at the four piles and note which ranks are already gone. What remains is the short list worth remembering.",
         ],
       },
       {
-        heading: "In a game with no clock, accuracy is almost always right",
+        heading: "Reconstruct the stock from what is missing",
         paragraphs: [
-          "Sudoku Duel is the clean case: the server generates one puzzle, both seats solve it at once, and there is no time limit — the first correct board wins. In a race like that, someone will eventually be faster, but a wrong digit you have to find and undo costs far more than the seconds you saved typing it. When the only thing that ends the match is being right, being right is the whole strategy.",
+          "The stock and the waste together hold the cards that are not on the tableau or the foundations. When you need a specific card, work out where it can possibly be before you draw. If it is already visible, no amount of cycling will produce it.",
+          "This is the most practical memory skill in the game. It prevents wasted cycles and it tells you when a deal is genuinely stuck rather than merely awkward.",
         ],
       },
       {
-        heading: "A weekly habit that fixes your default",
+        heading: "Rehearse recall in solo games",
         paragraphs: [
-          "After each session, note one decision where you chose speed and one where you chose accuracy, and whether the result justified it. Players who do this stop treating tempo as a mood and start treating it as a setting they choose per game. The same person should be cautious in Mines Duel and decisive in a Precision stop, and that is not inconsistency — it is reading the price.",
+          "Solo Klondike is the right place to train memory because there is no clock pressure and no opponent. Pause before each draw and name the card you are hoping for, then check whether that hope was realistic.",
+          "Do that for a few games and the tracking becomes automatic. The skill transfers directly to Solitaire Duel, where the same recall happens under a clock.",
+        ],
+      },
+      {
+        heading: "Name the card before you draw",
+        paragraphs: [
+          "A small habit makes tracking concrete: before every draw, say which card would help most and where it could be. Then draw and check. If the card was impossible, you have learned something about the stock without spending a cycle.",
+          "This turns a vague sense of the board into a testable prediction. It is also the fastest way to notice that a deal is stuck, because you run out of useful cards to name long before you run out of stock.",
         ],
       },
     ],
-    gameSlugs: ["mines-pvp", "speed-typing", "sudoku-duel", "precision"],
-    relatedGuides: ["how-to-improve-typing-speed", "what-makes-a-game-skill-based"],
+    gameSlugs: ["solitaire-duel"],
+    relatedGuides: ["how-to-win-solitaire-more-often", "how-to-concentrate-on-solitaire"],
   },
 
   {
-    slug: "how-to-improve-at-chess",
-    title: "How to Improve at Chess",
+    slug: "how-solitaire-duel-scoring-works",
+    title: "How Solitaire Duel Scoring Works",
     metaDescription:
-      "A practical chess improvement plan: principles over memorised openings, tactics as the fastest rating gain, reviewing your own losses, and how 1v1 turn-based play builds the same habits as Hex Duel.",
-    h1: "How to improve at chess",
+      "Exactly how a Solitaire Duel match is decided: the fifty-two-card win, verified progress as the tiebreak, what progress measures, why an exact tie is a draw, and what a result changes.",
+    h1: "How Solitaire Duel scoring works",
     summary:
-      "Chess improvement has a reputation for being slow and mysterious. In practice most players at club level are losing games to the same handful of avoidable mistakes, and fixing those moves the needle faster than studying openings ever will. This guide is an order of operations.",
+      "A Solitaire Duel match can end in a clean win, a progress win or a draw. This guide explains exactly what the server measures, why the progress tiebreak exists, and what a result does and does not change on your account.",
     sections: [
       {
-        heading: "Learn principles before moves",
+        heading: "The clean ending: all fifty-two on the foundations",
         paragraphs: [
-          "Openings are patterns, and patterns are easy to memorise and easy to misunderstand. Before you learn a single variation, learn what an opening is trying to accomplish: control the centre, develop your pieces, castle early, and do not move the same piece twice without a reason.",
-          "A player who follows those four rules will come out of the opening reliably fine against most opponents, without memorising anything. A player who memorises ten moves but does not know why will be lost on move eleven, which is exactly when the game starts.",
+          "The primary win condition is the one Klondike has always had: move all fifty-two cards onto the four foundations. The first player to do it wins immediately, and the match ends for both seats.",
+          "Because both players receive the same deterministic deal, this is a pure race. There is no hidden luck after the deal, and no way for one seat to have a better starting board than the other.",
         ],
       },
       {
-        heading: "Spend most of your time on tactics",
+        heading: "The clock ending: verified progress",
         paragraphs: [
-          "At every level below expert, tactics decide more games than strategy. A puzzle habit — fifteen minutes a day, calculated to the end rather than solved by feel — is the single highest-return investment in chess.",
-          "The discipline that matters is calculating before moving: for each candidate move, look at the opponent's replies before you commit. Most lost games at club level are not lost by a brilliant opponent; they are lost by a player who stopped calculating one move too early.",
+          "If neither player finishes before the match ends, the winner is the seat with the greater verified progress. Progress is derived by the server from its own board state, never from a client report, so a player cannot claim a lead they do not have.",
+          "That means the trailing seat still has a reason to keep playing. Abandoning a board that cannot be finished can turn a narrow progress loss into a much larger one.",
         ],
       },
       {
-        heading: "Play games that are long enough to think in",
+        heading: "What progress measures",
         paragraphs: [
-          "Faster time controls are fun and improve your intuition, but if you only ever play blitz you will repeat the same mistakes faster instead of fixing them. Give yourself room to calculate, and accept that the loss you take while thinking is the one you learn from.",
+          "Progress reflects how much of the deal you have actually advanced: the cards moved onto the foundations and the board state that follows from them. It is not a score for effort, and it is not a count of moves made.",
+          "The practical consequence is that a fast but shallow game can lose to a slower, deeper one. Promote cards, reveal hidden ones, and treat every irreversible move as progress the server can see.",
         ],
       },
       {
-        heading: "Review your own losses, not someone else's brilliancies",
+        heading: "Why an exact tie is a draw",
         paragraphs: [
-          "After a loss, replay it and find the first move you would change — not the last one, and not the opponent's best move. The earliest mistake is usually the real cause, and finding it once is worth more than watching a famous game you cannot yet appreciate.",
-          "Write one sentence about what went wrong. Recurring sentences soon become a list of your actual weaknesses, which is a study plan no book can write for you.",
+          "If the two seats finish level, the match is recorded as a draw. A draw is a real result: it is not a win for either player, and it does not pretend that one seat was better.",
+          "That is the honest outcome when the same deal produces the same progress. Inventing a tiebreaker the game does not measure would make the rating less meaningful, not more.",
         ],
       },
       {
-        heading: "The same habits work on Hex Duel",
+        heading: "What a result changes",
         paragraphs: [
-          "Hex Duel is a turn-based conquest duel where the win condition is specific: you win by capturing your opponent's capital tile, not by owning the most ground. That punishes exactly the mistake chess punishes — expanding faster than you can defend. Troops grow over time on tiles their owner holds, and each turn gives you a single action, so a territorial lead that leaves your capital thin is not a lead at all.",
-          "The transferable habit is the one above: before every move, ask what your opponent can do about it. In Hex Duel that means checking your own capital before you push; in chess it means calculating the reply before you commit. Same skill, different board.",
+          "A completed ranked match moves your per-game Elo rating and your trophy ladder. Nothing is wagered, there is no entry fee, and no purchase can influence the result.",
+          "Solo, daily and practice modes are deliberately separate. They build skill and habits, but they do not change your ranked rating, which keeps the ladder a measure of competitive results rather than volume.",
+        ],
+      },
+      {
+        heading: "How the match timer shapes a response",
+        paragraphs: [
+          "The timer is part of the scoring system, not a separate feature. It decides whether the clean ending is reachable at all, and therefore whether the correct plan is to finish or to bank progress.",
+          "That is why a match can be won without finishing the deal. Treat the clock as information: if there is time for the full line, play it; if there is not, take the irreversible progress in front of you instead of a speculative detour.",
         ],
       },
     ],
-    gameSlugs: ["chess", "hex-duel", "four-in-a-row", "tic-tac-toe"],
-    relatedGuides: ["how-to-practice-competitive-games", "reading-your-opponent"],
+    gameSlugs: ["solitaire-duel"],
+    relatedGuides: ["speed-versus-accuracy-in-solitaire", "is-solitaire-a-skill-game"],
   },
 
   {
-    slug: "building-competitive-habits",
-    title: "How to Build Better Competitive Habits",
+    slug: "speed-versus-accuracy-in-solitaire",
+    title: "Speed vs Accuracy in Solitaire",
     metaDescription:
-      "A practical competitive routine: warm-up, one focused session at a time, reviewing results honestly, and the habits that separate steady improvement from grinding.",
-    h1: "How to build better competitive gaming habits",
+      "When to move fast in a Solitaire race and when to pause: the true cost of a correction, which moves are risk-free, and how to pick a tempo from the deal instead of your nerves.",
+    h1: "Speed vs accuracy in Solitaire",
     summary:
-      "Most players improve in bursts and then plateau for months, and the plateau is usually not a talent ceiling — it is a habit problem. The way you start a session, choose what to work on and how you stop decides whether your games teach you anything. This guide is the routine that does.",
+      "In a Solitaire race, speed and accuracy are not opposites. The fastest line is usually the one with the fewest corrections, and the players who look calm are often the ones who decided their route before the clock started to matter.",
     sections: [
       {
-        heading: "Decide the point of the session before you play",
+        heading: "A wrong move is a time penalty you pay twice",
         paragraphs: [
-          "A session with no objective becomes whatever the first result makes it. If you win, you queue again to keep the feeling; if you lose, you queue again to fix it. Either way you are playing for a mood rather than for a skill.",
-          "Pick one thing per session — holding accuracy under a clock, reading an opponent's pattern, or simply staying calm after a loss — and judge the session on that, not on the win-loss record. You will still win or lose roughly the same number of games, but you will have spent the time deliberately.",
+          "A move that has to be undone costs the time to make it and the time to reverse it. In a race with a shared clock that is a double loss, and it usually arrives at the worst moment: late in the deal, when the board is tight.",
+          "That is why accuracy is not a conservative strategy. Avoiding one correction often buys more time than rushing three extra moves.",
         ],
       },
       {
-        heading: "Warm up on the game you are about to play",
+        heading: "Where playing fast costs nothing",
         paragraphs: [
-          "Warm-up should be a smaller version of the real thing: a couple of minutes of the exact input the game asks for, at a pace you control. Reading or watching something unrelated does not prepare the specific skill you are about to use.",
-          "This matters most in the fast, mechanical games. A Speed Typing race or a Precision stop depends on timing and rhythm, and a cold start is measurably worse than a warmed-up one.",
+          "Some moves carry no risk at all. Promoting a card to a foundation, turning over a hidden card, or placing a king in a column you deliberately emptied are all unambiguous. There is no reason to deliberate over them.",
+          "The skill is recognising which decisions are free. Spend your thinking on the moves that close options, and execute the obvious ones immediately.",
         ],
       },
       {
-        heading: "Cap the session, and stop on a lesson",
+        heading: "Where one extra second saves the race",
         paragraphs: [
-          "Attention is a depleting resource, and the last half hour of a long session is usually spent reinforcing habits rather than learning new ones. Decide a session length in advance and treat the cap as part of the training.",
-          "Ending on a game you understand — win or lose — is better than ending on a blur of matches where you can no longer tell what went wrong. If you cannot name one thing from the last game, it is time to stop.",
+          "The expensive decisions are the ones that empty a column, bury a needed card, or commit the stock to a particular order. Those deserve a pause, because a mistake there can cost the rest of the deal.",
+          "A useful habit is to name the cost before you move: what does this make unreachable? If the answer is nothing, move. If it is a card you still need, look for another route.",
         ],
       },
       {
-        heading: "Review in one sentence, immediately",
+        heading: "Read the clock, not your nerves",
         paragraphs: [
-          "Directly after a match, write one sentence: the single decision that decided it. Not a paragraph, not a self-assessment, one sentence. This takes fifteen seconds and is the difference between playing a hundred games and learning from a hundred games.",
-          "Over a week, the sentences repeat. When one repeats three times, that is the thing to work on next — and it is usually something narrow and trainable, like over-expanding before defending in a conquest game, or flagging on a hunch in Mines Duel where a wrong flag costs ten and a safe reveal is only worth five.",
+          "Early in a match, patience is cheap because you have time to spend. Late, the same decision may favour speed, because a correct move that arrives after the match ends is worth nothing.",
+          "Players who seem to change personality mid-match are not becoming reckless. They are repricing the same trade-off as the time budget shrinks.",
         ],
       },
       {
-        heading: "Use practice mode to rehearse, not to relax",
+        heading: "Choose a tempo before the first card",
         paragraphs: [
-          "Every GRYND game with bot practice exists to let you rehearse something specific without the pressure of a ranked result. The habit worth building is arriving at practice with a question and leaving with an answer, rather than using it as a warm bath between ranked matches.",
-          "Because ranked matches here are free to enter — nothing is wagered, and results move a per-game Elo rating and trophies instead of tokens — the cost of a loss is informational rather than financial. That makes 'I lost and learned the cause' a genuinely acceptable session outcome, which is exactly the mindset competitive habits are built on.",
+          "Decide what kind of deal you are playing after the first few reveals. A board with open columns and accessible aces rewards speed; a board with buried kings rewards caution. Committing to one tempo early prevents hesitation later.",
+          "In Solitaire Duel specifically, the tempo should match the deal rather than your mood. The same player can be aggressive in one match and patient in the next, and that is consistency with the position, not inconsistency.",
+        ],
+      },
+      {
+        heading: "Rehearse the fast decisions slowly",
+        paragraphs: [
+          "Speed in a race comes from making fewer decisions, not from moving your hand faster. The way to build that is to rehearse the common shapes slowly, so the choice between them is already settled when the clock arrives.",
+          "Use solo games for this. Pause on each reveal and name the two moves you would consider, then decide. After a few sessions the pair is recognised instantly, and the race becomes execution rather than deliberation. Keep the drill short: ten minutes of deliberate pauses teaches more than an hour of fast play, because the point is to build the judgement you will later use at speed.",
         ],
       },
     ],
-    gameSlugs: ["speed-typing", "precision", "mines-pvp"],
-    relatedGuides: ["recovering-from-a-losing-streak", "how-to-practice-competitive-games"],
+    gameSlugs: ["solitaire-duel"],
+    relatedGuides: ["how-solitaire-duel-scoring-works", "reading-your-opponent-in-solitaire"],
   },
 
   {
-    slug: "what-makes-a-game-skill-based",
-    title: "What Makes a Game Skill-Based?",
+    slug: "is-solitaire-a-skill-game",
+    title: "Is Solitaire a Skill Game?",
     metaDescription:
-      "Skill and chance are not opposites: how randomness, information and rules determine who wins, and how to tell which part of a GRYND match your ability actually controls.",
-    h1: "What makes a game skill-based?",
+      "A clear answer to whether Klondike rewards skill: the deal is random, the play is not, why an identical deal is the fairest comparison, and what an Elo rating can and cannot tell you.",
+    h1: "Is Solitaire a skill game?",
     summary:
-      "'Skill-based' and 'lucky' are usually treated as a binary verdict on a whole game. That is the wrong lens. Almost every competitive game mixes a random element with a decision layer, and the interesting question is which part of a match your ability actually controls — and whether both players face the same randomness.",
+      "Solitaire is often dismissed as luck because the deal is random. That misses the actual question: does the player control enough of the outcome for a better player to win more often? Here is how to answer it honestly, without overclaiming.",
     sections: [
       {
-        heading: "Randomness is not the same as unfairness",
+        heading: "The deal is chance; the play is not",
         paragraphs: [
-          "A dice roll is random. A game where one player rolls dice and the other does not is unfair. Those are different properties, and conflating them is why so many arguments about luck in games go nowhere.",
-          "What makes randomness acceptable in a competitive game is symmetry: the same random input applies to both seats, or the random outcomes are equally likely for both, and the match is won by what players do with what they are given. When that holds, randomness adds variance without deciding who is better over time.",
+          "A shuffled deck is random, and no amount of skill changes which cards arrive. But the deal is only the starting position. Everything after it, which cards you uncover, which you promote and which columns you open, is a decision.",
+          "A game is not unskilled because it contains randomness. It is unskilled when the randomness decides the result regardless of what the player does.",
         ],
       },
       {
-        heading: "The three questions that settle it",
+        heading: "The symmetry test",
         paragraphs: [
-          "For any game, ask these in order. The answers tell you where your practice time should go.",
-        ],
-        bullets: [
-          "Is the random input symmetric? In Keno, both seats receive the same draw, so the only difference between players is what they do with it. In Mines Duel, each seat gets its own board and the mine positions never match, but both boards are the same size, hold the same number of mines and use the same value table — so the scoring opportunity is equivalent even though the boards differ.",
-          "How much of the outcome does a decision move? In Barrier Blitz every barrier and both pawns are public, so nothing is hidden behind a draw — the result is almost entirely the decisions you and your opponent make. Compare that with Keno above, where the draw sets the ceiling and your choices only decide what you do with it.",
-          "Can a better player win more often over many matches? This is the practical test. Per-game Elo ratings exist precisely to answer it: results across a series reveal who is better, even when a single match goes the other way.",
+          "The useful test is whether both players face the same randomness. In Solitaire Duel they do: one deterministic deal is served to both seats, so neither can be luckier than the other. The difference between them is what they do with it.",
+          "Compare that with a game where each player draws a separate deck. Both might be random, but the comparison is no longer fair, because the inputs differ.",
         ],
       },
       {
-        heading: "Perfect-information duels versus managed chance",
+        heading: "Why an identical deal is the fairest comparison",
         paragraphs: [
-          "At one end sit games like Chess, Ultimate Tic-Tac-Toe, Four-in-a-Row and Dots & Boxes: nothing is hidden and nothing is drawn, so the outcome is a pure function of planning and reading the opponent. At the other end sit games built around a random input you manage rather than control.",
-          "Most of GRYND's catalogue sits in between, and the useful thing to notice is which side your game leans toward. In a perfect-information duel, the way to improve is study and pattern recognition. In a chance-managed game, the way to improve is pricing risk — knowing when a gamble is worth taking and when it is simply a losing bet.",
+          "When the deal is shared, a match becomes a controlled experiment. The board is constant, so the only variable is execution: reading, sequencing and the number of corrections.",
+          "That is also why a single result is not proof of much. Over many matches, the player who executes better will win more often, which is exactly what a rating is designed to detect.",
         ],
       },
       {
-        heading: "What GRYND does about the fair-play half",
+        heading: "What a rating measures",
         paragraphs: [
-          "Skill-based claims are only meaningful if the random parts are genuinely random and the rules are enforced equally. That is a platform question rather than a design one: randomness is generated server-side, game logic is server-authoritative, and per-game ratings keep results honest over time. The Fair Play Policy documents those commitments, and it is a more useful read than any claim about a game's percentages.",
-          "The practical takeaway: stop asking whether a game is 'skill' or 'luck'. Ask which decisions the game lets you make, and whether both players get the same set of them. That question has a useful answer, and the first one does not.",
+          "A per-game Elo rating summarises results over time. It moves when you win or lose against opponents of a given strength, and it does not move for solo or practice games. It is a record of competitive outcomes, not a measure of talent.",
+          "That distinction matters. A rating can tell you whether your results are improving; it cannot tell you why, and it cannot promise that a specific deal will go your way.",
+        ],
+      },
+      {
+        heading: "The honest answer about one match",
+        paragraphs: [
+          "Any single deal can be lost through a small mistake or won through a lucky line, and no rating changes that. The skill claim is about the distribution of results, not about certainty in one game.",
+          "That is true of chess, tennis and every other competitive activity. The right question is not whether one match was fair, but whether the better player wins more often over a series. On a shared deal, the answer is yes.",
+        ],
+      },
+      {
+        heading: "Where the skill actually lives",
+        paragraphs: [
+          "If you want to know which part of Klondike rewards ability, look at the decisions that change the board permanently: which hidden card to uncover, which low card to promote, and when to spend an empty column.",
+          "Those choices are not equally valuable. The last one is usually the most consequential, because an empty column is the only resource the deal cannot give back once it is spent. Everything else on the board can be rearranged later; an emptied column cannot be unspent, and a promoted card can always come back down.",
         ],
       },
     ],
-    gameSlugs: [
-      "keno",
-      "barrier-blitz",
-      "mines-pvp",
-      "chess",
-      "tic-tac-toe",
-      "four-in-a-row",
-      "dots-and-boxes",
-    ],
-    relatedGuides: ["speed-versus-accuracy", "reading-your-opponent"],
+    gameSlugs: ["solitaire-duel"],
+    relatedGuides: ["how-solitaire-duel-scoring-works", "how-to-practice-solitaire"],
   },
 
   {
-    slug: "improve-concentration",
-    title: "How to Improve Concentration in Competitive Games",
+    slug: "how-to-concentrate-on-solitaire",
+    title: "How to Concentrate During a Solitaire Match",
     metaDescription:
-      "Focus techniques for short and long matches: attention residue, pre-match routines, managing notifications, and how to hold concentration when a game runs long.",
-    h1: "How to improve concentration during competitive games",
+      "Focus techniques for a Solitaire race: clearing attention residue before you queue, making your setup dull, using a pre-match routine and stopping before your accuracy fades.",
+    h1: "How to concentrate during a Solitaire match",
     summary:
-      "Concentration is not willpower. It is the absence of competing demands on your attention, which is a condition you can arrange before a match instead of summoning during one. This guide covers how to set that up, and how to hold it once a game runs long.",
+      "Concentration in solitaire is not willpower. It is the absence of competing demands on your attention, which you can arrange before a match instead of summoning during one. These are the conditions that make focus the default rather than an effort.",
     sections: [
       {
-        heading: "Attention residue is the real opponent",
+        heading: "Attention residue and the first thirty seconds",
         paragraphs: [
-          "When you switch from one task to another, part of your attention stays behind for a while. Starting a match immediately after answering a message or closing a dozen tabs means beginning the game with part of your mind elsewhere — and in a match decided by twenty seconds of decision-making, that is most of the game.",
-          "Build a gap before you queue. A minute with nothing incoming is enough to let the residue clear, and it is the cheapest concentration improvement available.",
+          "When you switch tasks, part of your attention stays behind. Starting a match straight after answering a message means beginning with part of your mind elsewhere, and in a race decided by a handful of decisions that is a real handicap.",
+          "Build a short gap before you queue. A minute with nothing incoming is enough for the residue to clear, and it is the cheapest concentration improvement available.",
         ],
       },
       {
-        heading: "Make your environment boring on purpose",
+        heading: "Make your setup dull on purpose",
         paragraphs: [
-          "Every notification is a decision you did not choose to make. Silence messages, close unrelated windows, and put the phone out of arm's reach — not face down on the desk, which still pulls at you.",
-          "Match your screen brightness and posture to a long sit rather than a quick glance. Fatigue is a concentration problem long before it is a comfort problem; a setup that has you leaning forward by the third match is one you cannot concentrate in.",
+          "Every notification is a decision you did not choose to make. Silence messages, close unrelated tabs, and put the phone out of reach rather than face down on the desk, where it still pulls at you.",
+          "Keep the rest of the environment stable too: same posture, same screen brightness, same seat. Novelty is interesting, and interesting is the opposite of what you want during a race.",
         ],
       },
       {
-        heading: "Use a short pre-match routine as an anchor",
+        heading: "A pre-match routine you can repeat",
         paragraphs: [
-          "A consistent thirty-second routine before each match — same posture, same screen check, same breath — gives you a reliable cue that the game is starting and the rest of the day is stopped. Routines work because they remove decisions, and this is a decision worth removing.",
-          "The routine also helps you notice when you have skipped it, which is often the first sign that you are playing while tired or distracted rather than because you want to.",
+          "A consistent thirty-second routine before each match, with the same posture and the same breath, gives you a reliable cue that the game is starting and the rest of the day is stopped.",
+          "Routines work because they remove decisions. They also help you notice when you have skipped one, which is often the first sign that you are playing while tired or distracted.",
         ],
       },
       {
-        heading: "Match your focus strategy to the game's clock",
+        heading: "Anchor on the next reveal",
         paragraphs: [
-          "Short matches and long ones demand different kinds of attention, and using the wrong one is why players feel sharp in one game and lost in another.",
-        ],
-        bullets: [
-          "Burst games — Rock-Paper-Scissors rounds, a Precision stop, a Speed Typing race — are over before a wandering thought can land. There, the enemy is a slow start and over-thinking; a rehearsed default beats deliberation.",
-          "Turn-based games — Chess, Hex Duel, Dots & Boxes, Sudoku Duel — have no clock pressure to keep you anchored, so attention drifts during the opponent's turn. Ritualise the wait: read the board, list two candidate moves, and check the reply to each. Doing this every turn keeps your mind inside the game.",
-          "Timed scoring races like Mines Duel are the hardest case, because there is no turn to rest in and the whole match is one continuous decision. Break it into segments — find safe ground, then value the flags you have left — so you always have a next task rather than an open horizon.",
+          "During the match, keep your attention on the next hidden card rather than on the score. The score is an outcome; the next reveal is the thing you can actually act on.",
+          "In a long or tight deal this prevents the two failure modes that cost most: staring at a board without a plan, and jumping between columns without finishing a line of thought.",
         ],
       },
       {
-        heading: "Stop before concentration does",
+        heading: "Stop when the mistakes repeat",
         paragraphs: [
-          "The first sign of fading attention is usually a mistake you can explain afterwards and would not have made an hour earlier. Treat the second such mistake in a session as a stop signal, not as something to push through. Attention you spend recovering is attention you do not have for the next match, and the session you end early is the one you can repeat tomorrow.",
+          "The first sign of fading attention is usually a mistake you can explain afterwards and would not have made an hour earlier. The second such mistake is a stop signal, not something to push through.",
+          "Attention you spend recovering is attention you do not have for the next match. Ending a session early is how you make the next one repeatable.",
+        ],
+      },
+      {
+        heading: "Give the screen one job",
+        paragraphs: [
+          "A browser tab is a stack of invitations: another queue, a leaderboard, a message. During a match, close or hide everything that is not the board, including the tabs you are not looking at but are still thinking about.",
+          "Single-purpose attention is easier to hold than divided attention, and the change is mechanical rather than motivational. You are not trying to care more; you are removing the alternatives. Do it before you queue rather than after the first mistake, because the cost of a distracted opening is paid in the part of the deal you cannot replay.",
         ],
       },
     ],
-    gameSlugs: [
-      "rps",
-      "precision",
-      "speed-typing",
-      "chess",
-      "hex-duel",
-      "sudoku-duel",
-      "mines-pvp",
-    ],
-    relatedGuides: [
-      "reaction-time-in-competitive-games",
-      "memory-techniques-for-competitive-games",
-    ],
+    gameSlugs: ["solitaire-duel"],
+    relatedGuides: ["solitaire-memory-techniques", "recovering-from-a-solitaire-losing-streak"],
   },
 
   {
-    slug: "how-to-practice-competitive-games",
-    title: "How to Practice for Competitive Games",
+    slug: "how-to-practice-solitaire",
+    title: "How to Practise Solitaire Deliberately",
     metaDescription:
-      "How to practice deliberately rather than just play more: choosing one skill, using AI practice as a rehearsal room, measuring something real, and avoiding autopilot repetition.",
-    h1: "How to practice for competitive games",
+      "How to practise Klondike rather than just play it: separating practice from ranked matches, choosing one variable, using bot games for repetitions, and measuring something smaller than Elo.",
+    h1: "How to practise Solitaire deliberately",
     summary:
-      "Playing more is not the same as practising. Practice is a loop: choose something narrow, do it under conditions you control, measure whether it worked, and change one variable at a time. Everything below is about running that loop on GRYND.",
+      "Playing more is not the same as practising. Practice is a loop: choose something narrow, do it under conditions you control, measure whether it worked, and change one variable at a time. Here is how to run that loop on a Solitaire ladder.",
     sections: [
       {
-        heading: "Separate practice from playing",
+        heading: "Practice is a loop, not more games",
         paragraphs: [
-          "Ranked matches are a test. They are excellent at telling you where you stand and terrible at letting you work on a specific weakness, because you cannot choose the situation you get.",
-          "So keep the two modes distinct. Practice mode is where you isolate a skill; ranked play is where you find out whether it survived contact with an opponent. Mixing them is why so many players feel like they are improving in the practice lobby and stalling in competition.",
-          "A useful way to hold the two apart: a practice block is a drill, and a match is a test. Tests tell you where you stand; drills are how you change it. Players who only ever test get slowly better at the game they already have and barely better at the ones they are weak in, because nothing inside a ranked match is designed to be repeated. Decide which one you are doing before you sit down, and the answer tells you whether to open the queue or the practice lobby.",
+          "Ranked matches are a test. They tell you where you stand and they are poor at letting you work on a specific weakness, because you cannot choose the deal you get.",
+          "Keep the two modes distinct. Practice is where you isolate a habit; ranked is where you find out whether it survived contact with an opponent. Decide which one you are doing before you sit down.",
         ],
       },
       {
-        heading: "Pick one variable per practice block",
+        heading: "Choose one variable per block",
         paragraphs: [
-          "If you change nothing specific, your practice is just more games. Choose a single thing to work on — the first move you make in a turn-based game, the decision to flag or reveal in Mines Duel, the power setting you trust in Mini Golf — and give it your whole attention for the block.",
-          "One variable at a time is not pedantry. If you change three things and improve, you have learned nothing about which change helped.",
+          "If you change nothing specific, your practice is just more games. Pick one thing: how quickly you scan for hidden cards, whether you promote low cards immediately, or how often you cycle the stock without a reason.",
+          "One variable at a time is not pedantry. Change three things and improve, and you have learned nothing about which change helped.",
         ],
       },
       {
-        heading: "Use AI practice as a rehearsal room",
+        heading: "Use the bot for repetitions",
         paragraphs: [
-          "Bot practice exists in most GRYND games precisely so you can rehearse a situation repeatedly without an opponent's tempo deciding your repetitions. The habit that makes it useful is arriving with a question: 'Can I clear a board without ever guessing?' 'Does my opening hold up when the bot plays the natural reply?'",
-          "Then leave with an answer, and go apply it in a ranked match where the result counts. Practice that never gets tested in competition is a hobby; competition with no practice in between is just variance.",
+          "Unrated practice against the bot exists so you can repeat a situation without an opponent's tempo deciding your repetitions. Arrive with a question and leave with an answer.",
+          "Then take it into ranked play, where the result counts. Practice that never gets tested is a hobby; competition with no practice in between is just variance.",
         ],
       },
       {
-        heading: "Measure something that actually moves",
+        heading: "Measure something smaller than Elo",
         paragraphs: [
-          "Ratings are the long-run measure and they move slowly, so they make poor feedback inside a session. Pick a smaller thing you can count per practice block: how often you cleared a puzzle without a wrong note, how many times you committed to a stop early versus late, how many errors you typed per passage.",
-          "Small measurements move quickly enough to tell you whether the change is working, which is what keeps practice from feeling like blind repetition. Your per-game Elo rating is where the result eventually shows up, but it is not the instrument you use while drilling.",
+          "Ratings are the long-run measure and they move slowly, which makes them poor feedback inside a session. Pick a smaller number: how many deals you finished without cycling the stock twice, or how often your first three moves revealed a card.",
+          "Small measurements move quickly enough to tell you whether the change is working. That is what keeps practice from feeling like blind repetition.",
         ],
       },
       {
-        heading: "Schedule the review, not just the practice",
+        heading: "Write the review before you close the tab",
         paragraphs: [
-          "Leave five minutes at the end of a block to write down what changed and what did not. This is the step almost everyone skips, and it is the one that turns a week of sessions into a plan. If you cannot say what you learned, you spent the time playing rather than practising — which is fine, as long as you are honest about which one you intended.",
+          "Leave two minutes at the end of a block to write down what changed and what did not. This is the step almost everyone skips, and it is the one that turns a week of sessions into a plan.",
+          "If you cannot say what you learned, you spent the time playing rather than practising. That is fine, as long as you are honest about which one you intended.",
+        ],
+      },
+      {
+        heading: "Use one deal, not twenty, for a drill",
+        paragraphs: [
+          "Repetition is how a habit becomes automatic, and a single deal can be repeated more usefully than a dozen fresh ones. Replay the same board and try a different first three moves; the comparison is controlled because nothing else changed.",
+          "This is where solo Klondike earns its place in a training plan. It gives you the same rules without the clock, so you can run the experiment as many times as you need before testing it in ranked play. Change one thing between attempts, keep the rest identical, and the comparison stays honest instead of becoming a story about how the cards fell.",
         ],
       },
     ],
-    gameSlugs: ["mines-pvp", "mini-golf", "chess", "speed-typing", "sudoku-duel"],
-    relatedGuides: ["building-competitive-habits", "speed-versus-accuracy"],
+    gameSlugs: ["solitaire-duel"],
+    relatedGuides: ["building-a-solitaire-practice-routine", "speed-versus-accuracy-in-solitaire"],
   },
 
   {
-    slug: "reading-your-opponent",
-    title: "How to Read Your Opponent",
+    slug: "reading-your-opponent-in-solitaire",
+    title: "Reading Your Opponent in a Solitaire Race",
     metaDescription:
-      "Pattern reading in 1v1 games: tracking habits, punishing predictability, when to break your own pattern, and how hidden-information duels reward inference over instinct.",
-    h1: "How to read your opponent",
+      "What an opponent's pace and progress actually tell you in Solitaire Duel, why a lead is not a result, how not to inherit their tempo, and when the clock justifies a risk.",
+    h1: "Reading your opponent in a Solitaire race",
     summary:
-      "In a 1v1 game, your opponent is not a puzzle to solve once — they are a player with habits, and habits are information. Reading them is a learnable skill: watch for repetition, notice when you are being read in turn, and know which games actually reward inference.",
+      "In a Solitaire Duel you cannot see your opponent's cards, and you do not need to. The useful information is the pace of the race and what their progress implies about the position, not a read on their personality.",
     sections: [
       {
-        heading: "Everyone has a pattern, including you",
+        heading: "You are racing a person, not a puzzle",
         paragraphs: [
-          "Under time pressure, people default. They open the same way, choose the same safe move, and reach for the same response when surprised. The first step in reading an opponent is accepting that you have a default too — and finding it, because that is the one your opponent is exploiting.",
-          "Look at your own last few matches and ask what you did when you had no time to think. Whatever the answer is, it is the thing to vary.",
+          "Solo solitaire is you against the board. A duel adds a second clock and a second set of decisions, and the match is decided by which of you reaches the end first, not by whether the board is solvable.",
+          "That changes the value of a move. A cautious line that would be correct alone can lose a race, and an aggressive line that risks a correction can win one.",
         ],
       },
       {
-        heading: "Rock-Paper-Scissors is a pattern game, not a guessing game",
+        heading: "What a progress lead does not tell you",
         paragraphs: [
-          "A Rock-Paper-Scissors round resolves on one click, and a match runs to a best-of-seven series — so across seven rounds there is room for habits to show. Players who lose back-to-back rounds tend to switch on a rhythm rather than at random, and players who win tend to keep the choice that worked a round or two too long.",
-          "That is the whole game at a competitive level. There is no timing skill to practise and nothing to memorise: you are tracking a person's tendencies and spending your own unpredictability in the right moments. If you notice yourself settling into a comfortable rotation, you have already given the round away.",
+          "A lead on the progress measure means your opponent has advanced further, not that they have solved the deal. Progress can stall when the remaining cards are buried, so a lead can disappear quickly.",
+          "The mistake is treating a lead as a result. Keep playing the position in front of you; the scoreboard is a symptom, and the board is the cause.",
         ],
       },
       {
-        heading: "Hidden-information games reward inference",
+        heading: "Do not inherit their tempo",
         paragraphs: [
-          "Some games hide something from you and ask you to work it out. Odds is built on exactly that: hidden numbers and a shrinking range of possibilities, so every action you take either narrows what your opponent can be holding or gives away what you hold.",
-          "The discipline is to slow down where information is cheap. A turn where nothing is revealed is a turn you should spend extracting a constraint, not making a guess you will have to live with. The same logic applies in Key-draw games like Keno, where both seats see the same draw and the player who has tracked what is still live makes faster calls than the one who reacted to each roll in isolation.",
+          "It is easy to speed up because the other seat appears to be moving fast. That is usually a mistake: their speed tells you about their board, not about yours, and copying it can push you into corrections you do not need.",
+          "Play the tempo your deal rewards. If your board has accessible aces and open columns, be fast. If it has buried kings, be deliberate, even if the progress bar suggests otherwise.",
         ],
       },
       {
-        heading: "In solved games, plan for the reply, not the move",
+        heading: "When the clock justifies a risk",
         paragraphs: [
-          "Turn-based games like Ultimate Tic-Tac-Toe, Four-in-a-Row and Dots & Boxes do not reward reading a personality so much as reading a position. The habit that wins is treating your opponent's turn as part of your own move: before you commit, work out what they must do in response, and only then decide whether the move is good.",
-          "This is where 'reading' stops being about psychology and becomes pure calculation. If your move creates a threat they cannot answer, the choice is right regardless of who is sitting opposite; if it does not, the choice is wrong even against a player you have never faced.",
+          "Late in a match, the arithmetic changes. A safe line that finishes after the clock is worth nothing, while a risk that could unlock the deal is worth taking even if it sometimes fails.",
+          "The judgement is about the remaining time and the remaining line, not about nerves. If the safe route cannot finish in time, the risky route is the correct one.",
         ],
       },
       {
-        heading: "Break your own pattern at the right moment",
+        heading: "Compete with the position",
         paragraphs: [
-          "Once you are being read, the corrective is to vary — but only where it does not cost you. Deviating from a strong plan just to be unpredictable is a way to lose games to your own cleverness. The rule that works: stay on the best move for as long as it is the best move, and spend your unpredictability on genuine coin-flips, where a predictable choice is the only thing that can cost you.",
+          "The most reliable way to beat an opponent is to make fewer corrections on the same deal. That is a property of your play, not of theirs, and it is the part you can control.",
+          "Watch the race, note the pace, and then ignore it. The board in front of you is the only thing you can actually solve.",
+        ],
+      },
+      {
+        heading: "Notice the shape of the race, not the score",
+        paragraphs: [
+          "A race has phases. Early, both seats are uncovering cards and the progress gap is noisy. Later, the gap reflects who has a workable line and who is stuck. Treat the same gap differently depending on the phase.",
+          "A two-card lead with half the deal left is not the same as a two-card lead in the last thirty seconds. The number matters only in relation to how much of the board is still hidden. Ask what the lead would have to mean for you to change your plan; if you cannot answer, the lead is not actionable and the board still is.",
         ],
       },
     ],
-    gameSlugs: ["rps", "odds", "keno", "tic-tac-toe", "four-in-a-row", "dots-and-boxes"],
-    relatedGuides: ["what-makes-a-game-skill-based", "how-to-improve-at-chess"],
+    gameSlugs: ["solitaire-duel"],
+    relatedGuides: ["is-solitaire-a-skill-game", "speed-versus-accuracy-in-solitaire"],
   },
 
   {
-    slug: "recovering-from-a-losing-streak",
-    title: "How to Recover From a Losing Streak",
+    slug: "recovering-from-a-solitaire-losing-streak",
+    title: "How to Recover From a Solitaire Losing Streak",
     metaDescription:
-      "Why losing streaks happen, how per-game ratings separate variance from a real slump, and the concrete steps that stop a bad run turning into a bad session.",
-    h1: "How to recover from a losing streak",
+      "Why Solitaire losing streaks happen, how to tell fatigue from tilt from a real leak, the break that actually resets you, and how to review one loss without spiralling.",
+    h1: "How to recover from a Solitaire losing streak",
     summary:
-      "A losing streak feels like evidence about your ability. Usually it is evidence about your last hour: tiredness, tilt, or ordinary variance. Sorting out which one you are in is the entire skill, and it takes less time than queueing for another match.",
+      "A losing streak feels like evidence about your ability. Usually it is evidence about your last hour: fatigue, tilt, or ordinary variance. Sorting out which one you are in is the whole skill, and it takes less time than queueing for another match.",
     sections: [
       {
-        heading: "Know what variance looks like",
+        heading: "Variance looks like a streak",
         paragraphs: [
-          "Any game with a random element produces runs — including runs of losses for players who are improving. A short streak carries very little information about whether you are good, which is why going on tilt to prove the streak wrong is such a bad trade.",
-          "Per-game ratings exist to smooth exactly this out. Because each game has its own ladder and moves on results over time, a handful of losses barely moves a rating that hundreds of matches built. The ladder is a long-term instrument; your last three games are noise around it.",
+          "Any race produces runs, including runs of losses for players who are improving. A short streak carries very little information about whether you are good, which is why playing on tilt to prove the streak wrong is such a bad trade.",
+          "Per-game ratings smooth exactly this out. A handful of losses barely moves a rating that many matches built, because the ladder is a long-term instrument and your last three games are noise around it.",
         ],
       },
       {
-        heading: "Sort the streak into its three real causes",
+        heading: "Sort the run into fatigue, tilt or a leak",
         paragraphs: [
-          "A losing streak usually has one dominant cause behind it, and the fix is different for each one — which is why 'just play through it' fails as advice.",
-        ],
-        bullets: [
-          "Fatigue. Decision quality drops before you notice it. If the losses are full of mistakes you can explain and would not normally make, stop for the day — this is the most common cause and the easiest to fix.",
-          "Tilt. After a frustrating loss you play faster and take worse risks, chasing the result back. The tell is that your play style has changed, not just your results.",
-          "A real weakness an opponent class has found. If the losses share a pattern — always the same opening mistake, always losing the same kind of position — that is a lesson, not a streak, and it is worth writing down.",
+          "A streak usually has one dominant cause, and the fix is different for each. Fatigue shows up as mistakes you can explain and would not normally make. Tilt shows up as a change in tempo and risk-taking after a frustrating loss.",
+          "A real leak looks different again: the losses share a pattern, such as the same opening error or the same refusal to spend an empty column. That is a lesson, not a streak, and it is worth writing down.",
         ],
       },
       {
-        heading: "Take the break, and make it a real one",
+        heading: "Take a break that actually resets",
         paragraphs: [
           "The standard advice is to stop after two or three losses, and it is standard because it works. Stay at the desk and you will keep playing; stand up, leave the screen for ten minutes, and come back to a different task.",
-          "If you want to keep playing, switch modes rather than pushing on. A practice match against the bot in the same game lets you rebuild rhythm with nothing on the line, which is exactly the state you want to return to competition in.",
+          "If you want to keep playing, switch modes rather than pushing on. An unrated game lets you rebuild rhythm with nothing on the line, which is the state you want to return to competition in.",
         ],
       },
       {
-        heading: "Reset with a game you are strong at",
+        heading: "Rebuild rhythm in unrated modes",
         paragraphs: [
-          "Confidence is a real performance variable, and the fastest way to rebuild it is to win a game you are genuinely good at. GRYND's per-game ladders make this easy to reason about: results in one game do not move another, so a bad run in a game you are learning does not contaminate the game you are confident in.",
-          "The point is not to protect a number. It is to return to a match with the settled attention that good decisions need, rather than the slightly frantic state a losing streak produces.",
+          "Solo, the daily challenge and bot practice are all unrated. They are the right place to slow down and check whether the problem is your decisions or your state.",
+          "Use them deliberately: pick one habit, play a few deals, and see whether the mistakes disappear. If they do, the streak was about you, not about the game.",
         ],
       },
       {
-        heading: "Then review one loss, properly",
+        heading: "Review one loss, then stop for the day",
         paragraphs: [
-          "Once you are calm, pick a single loss — not the worst, the most typical — and find the first decision you would change. One loss, one lesson. That is how a streak becomes a study plan instead of a story about your ability that is not even true.",
+          "Once you are calm, pick a single loss, the most typical rather than the worst, and find the first move you would change. One loss, one lesson.",
+          "That is how a streak becomes a study plan instead of a story about your ability. Then close the game for the day; the ladder will still be there tomorrow.",
+        ],
+      },
+      {
+        heading: "Keep a short record of what changed",
+        paragraphs: [
+          "A streak is hard to judge from memory because the last result dominates it. Keep a line per session: the mode, the result, and the one thing you were working on. Three lines are enough to show whether the problem is you or the session.",
+          "It also gives you something to compare against when the streak ends. Most runs look obvious in hindsight and invisible while you are inside one, which is exactly why the record is worth the ten seconds.",
         ],
       },
     ],
-    gameSlugs: ["mines-pvp", "chess", "speed-typing"],
-    relatedGuides: ["building-competitive-habits", "how-to-practice-competitive-games"],
+    gameSlugs: ["solitaire-duel"],
+    relatedGuides: ["how-to-concentrate-on-solitaire", "building-a-solitaire-practice-routine"],
   },
+
   {
-    slug: "dominoes-strategy",
-    title: "Dominoes Strategy: How to Win a Blocked Round",
+    slug: "building-a-solitaire-practice-routine",
+    title: "Build a Solitaire Practice Routine That Sticks",
     metaDescription:
-      "How to win online block dominoes: reading both open ends, counting the 28 tiles, when a draw is free, and why the pips in your hand decide a blocked round.",
-    h1: "Dominoes strategy: how to win a blocked round",
+      "A repeatable Solitaire routine: deciding what a session is for, warming up on the real board, capping the session, reviewing in one sentence and rehearsing in unrated modes.",
+    h1: "Build a Solitaire practice routine",
     summary:
-      "Block dominoes looks like a matching game and plays like a counting one. Everybody can put a tile on a matching end; the players who win are the ones who know which end to feed, how many tiles are still face down, and what their own hand is worth if nobody can move again. This guide covers those three things in the order they matter.",
+      "A practice routine is not a schedule for playing more. It is a small set of decisions that make each session teach you something. This is the routine that fits a Solitaire ladder, and it takes less time than the matches it supports.",
     sections: [
       {
-        heading: "Start by counting what is not in your hand",
+        heading: "Decide what the session is for",
         paragraphs: [
-          "A double-six set is 28 unique tiles. Seven go to you, seven to your opponent, and the other fourteen sit face down as the pile. That is the whole hidden-information problem of the game, and it is smaller than it looks: after a few turns you can account for most of the set by adding the chain and your own hand.",
-          "The practical version is to track suits rather than individual tiles. If every 4 in the set has been played or is in your hand, then a 4 on an open end is a dead end for your opponent — a place they cannot answer. Spotting that early is worth more than any single clever placement.",
+          "A session with no objective becomes whatever the first result makes it. Win and you queue again to keep the feeling; lose and you queue again to fix it. Either way you are playing for a mood rather than a skill.",
+          "Pick one thing per session, such as holding accuracy under a clock or promoting low cards immediately, and judge the session on that rather than on the win-loss record.",
         ],
       },
       {
-        heading: "Two open ends mean two decisions, not one",
+        heading: "Warm up on the real board",
         paragraphs: [
-          "The chain exposes a value at each end, and a tile only has to match one of them. When a tile fits both ends you are choosing the orientation as well as the placement: the half that faces the chain becomes hidden, and the other half becomes the new open value for your opponent.",
-          "So ask what you are leaving behind. Putting a 2 next to a 2 and exposing a 6 hands your opponent a common value to match; exposing a value you know is nearly exhausted hands them a problem. The same tile played on the other end is a different move, which is why the engine lets you choose.",
+          "Warm-up should be a smaller version of the real thing: a few minutes of the exact decisions the match will ask for, at a pace you control. Reading something unrelated does not prepare the skill you are about to use.",
+          "Solo Klondike is a good warm-up because it uses the same rules without a clock. Play a short game, focus on reveals and promotion, then move to ranked when the habits feel automatic.",
         ],
       },
       {
-        heading: "A draw does not cost you your turn",
+        heading: "Cap the session before attention does",
         paragraphs: [
-          "If nothing in your hand matches either open end, you draw one tile from the pile and keep the turn. You do not pass, and you do not hand the initiative over — you draw again if the new tile still does not fit. That makes drawing a genuinely free action, and it means a hand full of awkward tiles is a temporary problem rather than a lost turn.",
-          "The rule has a hard edge, though: if you hold a playable tile you must play it. You cannot draw to improve a hand that can already move, and you cannot skip a tile you dislike. Passing only becomes legal once the pile is empty, which is the point at which the game stops being about matching and starts being about arithmetic.",
+          "Attention depletes, and the last half hour of a long session usually reinforces habits rather than teaching new ones. Decide a session length in advance and treat the cap as part of the training.",
+          "Ending on a deal you understand, win or lose, is better than ending on a blur of matches where you cannot name what went wrong. If you cannot describe the last deal, it is time to stop.",
         ],
       },
       {
-        heading: "Play to block, not just to match",
+        heading: "Review in one sentence",
         paragraphs: [
-          "The round ends in one of two ways: somebody empties their hand, or neither player can move and the pile is empty. Most beginners play only for the first ending and are surprised by the second. If you can see that the pile is nearly gone and your opponent is struggling, steering towards a block is a legitimate plan — especially if your remaining tiles are cheap.",
-          "Blocking is about keeping the ends on values your opponent cannot answer while you still hold an exit. A double is useful here: it is awkward to place, but it lets you change an end's value without consuming a rare tile, and a double left in your hand at the end is expensive in pips.",
+          "Directly after a match, write one sentence: the single decision that decided it. Not a paragraph, not a self-assessment, one sentence.",
+          "Over a week, the sentences repeat. When one repeats three times, that is the thing to work on next, and it is usually narrow and trainable.",
         ],
       },
       {
-        heading: "Learn the pip count, because it decides blocked rounds",
+        heading: "Rehearse in unrated modes, not to relax",
         paragraphs: [
-          "When the round blocks, you score the pips left in your opponent's hand and they score the pips left in yours — so both totals move, and holding cheap tiles is what keeps their score small. Pips are simply the numbers on your remaining tiles added up, with a double counting both halves — so a 6-6 is twelve points of liability and a 0-0 is none.",
-          "This changes how you should think about high tiles. A 6-5 is a powerful tile while the chain is open and a liability the moment it closes. If you sense a block coming, spend your expensive tiles while you still can and hold the cheap, flexible ones; a 0 or a 1 that matches nothing is worth more at the end than a 6 you never got to play.",
+          "Unrated modes exist to let you rehearse something specific without the pressure of a ranked result. The habit worth building is arriving with a question and leaving with an answer.",
+          "Because ranked matches are free and move a rating rather than a pot, the cost of a loss is informational. That makes a session which ends with a lesson a genuinely good outcome, which is exactly the mindset a routine is meant to build.",
         ],
       },
       {
-        heading: "Use the fifteen seconds deliberately",
+        heading: "Protect the routine from your best intentions",
         paragraphs: [
-          "Every turn in an online GRYND match runs on a fifteen-second window, and when it expires the server acts for you: it draws a tile if the pile has any, and passes if it does not. You are never punished with a forfeit, but you are punished with a move you did not choose, which in a close blocked round is the same thing.",
-          "The fix is to decide before your turn arrives. While your opponent is thinking, work out your two best plays and the ends they would use. Fifteen seconds is plenty of time to choose between prepared options and barely enough to start thinking.",
-        ],
-      },
-      {
-        heading: "What a rated Dominoes match actually counts",
-        paragraphs: [
-          "Online Dominoes on GRYND is a free, server-authoritative one-on-one duel: no stake, no entry fee and no payout. Completed human-versus-human matches settle a per-game rating and trophies from the server's own final position, and a blocked round on equal pips settles as a draw rather than a win for either side.",
-          "That last detail is worth internalising. A draw is a real result here, so defending a losing pip count into a block is a legitimate way to salvage a rating, and it is the reason the arithmetic in the previous section matters as much as the matching.",
+          "Most routines fail because they are too large. A ninety-minute plan survives until the first busy evening, then disappears. A twenty-minute plan with one drill and one sentence of review survives the week.",
+          "Make the smallest version the default and treat the longer session as a bonus. Consistency is what compounds here, and a routine you actually repeat beats a better one you skip. Write the small version down somewhere you will see it, because a routine that lives only in your head competes with everything else you meant to do that evening.",
         ],
       },
     ],
-    gameSlugs: ["dominoes"],
-    relatedGuides: ["reading-your-opponent", "speed-versus-accuracy"],
+    gameSlugs: ["solitaire-duel"],
+    relatedGuides: ["how-to-practice-solitaire", "recovering-from-a-solitaire-losing-streak"],
   },
 ];
+
+/**
+ * Retired guide slugs and their replacements.
+ *
+ * The library used to cover games the platform no longer offers. Those URLs are
+ * indexed, so they must not 404: next.config.js 308s each one to its closest
+ * surviving article, and src/proxy.ts applies the same map before its
+ * unknown-slug guard (the proxy must not depend on the router's ordering).
+ */
+export const LEGACY_GUIDE_SLUGS: Readonly<Record<string, string>> = {
+  "how-to-improve-typing-speed": "how-to-play-klondike-solitaire",
+  "how-to-get-better-at-sudoku": "how-to-win-solitaire-more-often",
+  "reaction-time-in-competitive-games": "how-solitaire-duel-scoring-works",
+  "memory-techniques-for-competitive-games": "solitaire-memory-techniques",
+  "speed-versus-accuracy": "speed-versus-accuracy-in-solitaire",
+  "how-to-improve-at-chess": "solitaire-strategy-for-beginners",
+  "building-competitive-habits": "building-a-solitaire-practice-routine",
+  "what-makes-a-game-skill-based": "is-solitaire-a-skill-game",
+  "improve-concentration": "how-to-concentrate-on-solitaire",
+  "how-to-practice-competitive-games": "how-to-practice-solitaire",
+  "reading-your-opponent": "reading-your-opponent-in-solitaire",
+  "recovering-from-a-losing-streak": "recovering-from-a-solitaire-losing-streak",
+  "dominoes-strategy": "solitaire-mistakes-to-avoid",
+};
 
 /** Slugs that have a public guide page, in catalog order. */
 export const GUIDE_SLUGS: readonly string[] = GUIDES.map((guide) => guide.slug);

@@ -1,28 +1,17 @@
 import type { Metadata } from "next";
 
 import SolitaireLobby from "../../../components/solitaire-duel/SolitaireLobby";
+import { pageMetadata } from "../../../lib/seo";
 
 const RANKED_TITLE = "Ranked Solitaire lobby | GRYND";
 const RANKED_DESCRIPTION =
   "Rated 1v1 Solitaire against real human players. One shared deal, both seats, Elo and trophies on the line.";
 
-export const metadata: Metadata = {
+export const metadata = pageMetadata({
   title: RANKED_TITLE,
   description: RANKED_DESCRIPTION,
-  alternates: { canonical: "/play/ranked" },
-  openGraph: {
-    title: RANKED_TITLE,
-    description: RANKED_DESCRIPTION,
-    url: "/play/ranked",
-    type: "website",
-  },
-  // Card: ./opengraph-image.tsx — humans only; bots live at /play/ai.
-  twitter: {
-    card: "summary_large_image",
-    title: RANKED_TITLE,
-    description: RANKED_DESCRIPTION,
-  },
-};
+  path: "/play/ranked",
+});
 
 /**
  * Reuse the existing ranked lobby. The bot shortcut was removed from that

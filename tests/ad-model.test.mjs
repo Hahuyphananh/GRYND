@@ -160,7 +160,6 @@ test("only non-game surfaces are registered placements", () => {
 test("every ad slot or loader sits on a non-game browsing page", () => {
   const pagesWithSlots = allPages().filter((p) => /<AdSlot\s/.test(read(p)));
   assert.deepEqual(pagesWithSlots, [
-    "src/app/casino/page.jsx",
     "src/app/classement/page.jsx",
     "src/app/guides/page.tsx",
     "src/app/page.jsx",
@@ -205,19 +204,24 @@ test("no ad capability exists inside gameplay", () => {
     return route.split("/").length > 2;
   });
   assert.ok(
-    deeperGamePages.length >= 15,
+    deeperGamePages.length > 0,
     `expected the gameplay route tree (found ${deeperGamePages.length}) — a route walk that finds nothing proves nothing`,
   );
+  // The one game's match and practice routes are both gameplay. They are
+  // discovered structurally, so a new practice route is covered on creation.
+  for (const required of [
+    "src/app/casino/solitaire-duel/[matchId]/page.tsx",
+    "src/app/casino/solitaire-duel/play-ai/page.tsx",
+  ]) {
+    assert.ok(deeperGamePages.includes(required), "expected " + required + " in the gameplay walk");
+  }
   for (const page of deeperGamePages) {
     assertAdFree(page, "is a gameplay route (below the lobby)");
   }
 
-  // 3. Games whose lobby and board share the lobby URL are one page, not two:
-  //    there is no ad-free place to put a tag, so they carry none at all.
-  for (const page of allPages()) {
-    if (!/dice-flush|odds|keno|neon-flush/.test(page)) continue;
-    assertAdFree(page, "plays on its lobby URL");
-  }
+  // 3. The public practice mirror lives outside /casino, so the walk above
+  //    cannot see it — it is the same gameplay surface and must stay ad-free.
+  assertAdFree("src/app/play/ai/page.tsx", "mirrors the practice board");
 });
 
 test("the slot is placed above the footer, never over controls", () => {
@@ -226,7 +230,6 @@ test("the slot is placed above the footer, never over controls", () => {
   // element, which is what keeps ads away from accidental clicks.
   for (const [page, client] of [
     ["src/app/page.jsx", "src/app/PageClient.jsx"],
-    ["src/app/casino/page.jsx", "src/app/casino/PageClient.jsx"],
     ["src/app/classement/page.jsx", "src/app/classement/PageClient.jsx"],
     ["src/app/profil/page.jsx", "src/app/profil/PageClient.jsx"],
   ]) {
@@ -349,7 +352,12 @@ test("every lobby enters a match through the ad-aware router", () => {
     )
     .filter(exists)
     .sort();
-  assert.ok(lobbyClients.length >= 20, `expected every casino lobby client (found ${lobbyClients.length})`);
+  assert.ok(lobbyClients.length >= 1, `expected every casino lobby client (found ${lobbyClients.length})`);
+
+  assert.ok(
+    lobbyClients.includes("src/app/casino/solitaire-duel/PageClient.tsx"),
+    "the Solitaire Duel lobby client must be in the walk",
+  );
 
   for (const file of lobbyClients) {
     const source = read(file);
@@ -367,15 +375,35 @@ test("every lobby enters a match through the ad-aware router", () => {
     }
   }
 
-  // The shared lobby chrome's Quick Queue can land a player straight in a
-  // match from the lobby it is mounted on.
-  const quickQueue = read("src/components/lobby/PlatformQuickQueue.jsx");
+  // The Solitaire lobby's matchmaking lives in the shared component the
+  // homepage also mounts, so that is the file whose navigation has to go
+  // through the ad-aware router.
+  const solitaireLobby = read("src/components/solitaire-duel/SolitaireLobby.tsx");
   assert.match(
-    quickQueue,
+    solitaireLobby,
     /import \{ useMatchRouter \} from "\.\.\/\.\.\/hooks\/useMatchRouter";/,
   );
-  assert.match(quickQueue, /const router = useMatchRouter\(\);/);
-  assert.match(quickQueue, /router\.push\(route\)/);
+  assert.match(solitaireLobby, /const router = useMatchRouter\(\);/);
+  assert.ok(
+    !/import {[^}]*\buseRouter\b[^}]*} from "next\/navigation"/.test(solitaireLobby),
+    "SolitaireLobby must use useMatchRouter, not next/navigation",
+  );
+
+  // The shared lobby chrome's Quick Queue can land a player straight in a
+  // match from the lobby it is mounted on.
+  // The shared lobby chrome's Quick Queue is inert while GRYND is
+  // Solitaire-only (`hasGames: false`) — Solitaire Duel matchmaking does not
+  // use it. It must not keep an ad-naive router, and if it ever navigates
+  // again it has to go through the ad-aware router.
+  const quickQueue = read("src/components/lobby/PlatformQuickQueue.jsx");
+  assert.ok(quickQueue.includes("hasGames: false"), "the quick queue must be explicitly inert");
+  assert.ok(!quickQueue.includes("next/navigation"), "no ad-naive router may linger");
+  if (quickQueue.includes("router.push(")) {
+    assert.ok(
+      quickQueue.includes('import { useMatchRouter } from "../../hooks/useMatchRouter";'),
+      "a navigable quick queue must use the ad-aware router",
+    );
+  }
 });
 
 test("the match router leaves the document only for a match", () => {

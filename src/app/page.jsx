@@ -6,47 +6,15 @@ import SocialProof from "../components/home/SocialProof";
 import { ogImageUrl, SITE_URL } from "../lib/ogImages";
 import { getReviewAggregate } from "../lib/reviews";
 import { buildAppJsonLd } from "../lib/reviewJsonLd";
+import { pageMetadata, DEFAULT_OG_IMAGE } from "../lib/seo";
 
-export const metadata = {
+export const metadata = pageMetadata({
   title: "GRYND — The competitive home of Solitaire",
-  description:
-    "Play classic Klondike Solitaire one-on-one against real opponents. The same deal, a free ranked ladder, trophies and match history.",
-  alternates: {
-    canonical: `${SITE_URL}/`,
-  },
-  // Trustpilot domain ownership check. It must be served on the homepage
-  // <head>, so it lives here rather than in the root layout.
-  other: {
-    "trustpilot-one-time-domain-verification-id":
-      "98b96218-f16a-408f-b1f0-5a8efcb052e2",
-  },
-  openGraph: {
-    title: "GRYND — The competitive home of Solitaire",
-    description:
-      "Play classic Klondike Solitaire one-on-one against real opponents. The same deal, a free ranked ladder, trophies and match history.",
-    url: `${SITE_URL}/`,
-    siteName: "GRYND",
-    locale: "en_US",
-    type: "website",
-    // The 1200×630 brand banner (scripts/generate-og-banner.mjs), so a shared
-    // grynd link always renders a filled card with our mark.
-    images: [
-      {
-        url: ogImageUrl("/images/og-banner.png"),
-        width: 1200,
-        height: 630,
-        alt: "GRYND — The competitive home of Solitaire",
-      },
-    ],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "GRYND — The competitive home of Solitaire",
-    description:
-      "Play classic Klondike Solitaire one-on-one against real opponents. The same deal, a free ranked ladder, trophies and match history.",
-    images: [ogImageUrl("/images/og-banner.png")],
-  },
-};
+  description: "Play classic Klondike Solitaire one-on-one against real opponents. The same deal, a free ranked ladder, trophies and match history.",
+  path: "/",
+  image: DEFAULT_OG_IMAGE,
+  other: { "trustpilot-one-time-domain-verification-id": "98b96218-f16a-408f-b1f0-5a8efcb052e2" },
+});
 
 export default async function Page() {
   // The player rating, from the approved reviews only, cached for a few

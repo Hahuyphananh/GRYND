@@ -28,7 +28,7 @@ export const SOLITAIRE_MODES = Object.freeze([
 export const MODE_ROUTES = Object.freeze({
   solo_practice: "/casino/solitaire-duel",
   daily_challenge: "/casino/solitaire-duel",
-  play_vs_bots: "/casino/solitaire-duel/play-ai",
+  play_vs_bots: "/play/ai",
   ranked_pvp: "/casino/solitaire-duel",
 });
 

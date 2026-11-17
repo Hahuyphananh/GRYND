@@ -42,7 +42,7 @@ const PAGES = [
   // so all of their text has to be in the raw HTML — which is exactly what this
   // harness checks.
   { path: "/guides", minText: 800, needsHeading: true },
-  { path: "/guides/how-to-improve-typing-speed", minText: 2000, needsHeading: true },
+  { path: "/guides/how-to-play-klondike-solitaire", minText: 2000, needsHeading: true },
   // Three representative game landing pages: the flagship (chess), a newer
   // title (speed-typing) and the uno/neon-flush alias page. Their structured
   // data is checked on all 21 below; these three also get the heading, text

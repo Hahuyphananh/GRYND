@@ -45,8 +45,8 @@ type Mode = {
 };
 
 const MODES: readonly Mode[] = [
-  { id: "solo", href: "/play/solo", group: "casual" },
-  { id: "daily", href: "/play/daily", group: "casual" },
+  { id: "solo", href: "/solitaire", group: "casual" },
+  { id: "daily", href: "/daily", group: "casual" },
   { id: "ai", href: "/play/ai", group: "casual" },
   { id: "ranked", href: "/play/ranked", group: "competitive" },
   { id: "dailyPuzzle", href: "/play/daily-puzzle", group: "puzzle" },

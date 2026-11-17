@@ -25,7 +25,7 @@ import { eq } from "drizzle-orm";
 import { cacheGet, cacheSet } from "./lib/redis/cache";
 import { CacheKeys, CacheTTL } from "./lib/redis/keys";
 import { isGameLandingSlug } from "./lib/gameLandingPages";
-import { isGuideSlug } from "./lib/guides";
+import { LEGACY_GUIDE_SLUGS, isGuideSlug } from "./lib/guides";
 import { applyEmbedFramePolicy } from "./lib/platform/framing";
 import { applyPortalFramePolicy } from "./lib/portal/framing";
 
@@ -627,6 +627,15 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
   // 200 before the page can reject the param — so the slug space is declared
   // here in the middleware, before any rendering starts.
   const unknownGuideSlug = /^\/guides\/([^/]+)\/?$/.exec(pathname);
+  // A retired guide slug 308s to its replacement BEFORE the 404 guard below.
+  // next.config.js declares the same redirects, but the proxy must not depend
+  // on the router's ordering: an old, indexed URL must never answer 404.
+  const legacyGuide = unknownGuideSlug ? LEGACY_GUIDE_SLUGS[unknownGuideSlug[1]] : undefined;
+  if (legacyGuide) {
+    return applySecurityHeaders(
+      NextResponse.redirect(new URL(`/guides/${legacyGuide}`, req.url), 308),
+    );
+  }
   if (unknownGuideSlug && !isGuideSlug(unknownGuideSlug[1])) {
     return applySecurityHeaders(
       NextResponse.rewrite(new URL(NOT_FOUND_SENTINEL, req.url)),

@@ -193,8 +193,10 @@ const GUIDE_PAGES: SeoPage[] = [
  */
 const MODE_PAGES: SeoPage[] = [
   { path: "/play", group: "modes", changeFrequency: "daily", priority: 0.8 },
-  { path: "/play/solo", group: "modes", changeFrequency: "weekly", priority: 0.6 },
-  { path: "/play/daily", group: "modes", changeFrequency: "daily", priority: 0.6 },
+  // `/play/solo` and `/play/daily` are deliberately absent: both 308 to the
+  // standalone page that owns the intent (`/solitaire`, `/daily`). Their lobby
+  // routes still exist for the app, but two URLs for one intent split the
+  // crawl — see EXCLUDED_FROM_SITEMAP.
   { path: "/play/ai", group: "modes", changeFrequency: "weekly", priority: 0.6 },
   { path: "/play/ranked", group: "modes", changeFrequency: "daily", priority: 0.7 },
   { path: "/play/daily-puzzle", group: "modes", changeFrequency: "daily", priority: 0.6 },
@@ -239,13 +241,6 @@ const INFO_PAGES: SeoPage[] = [
   { path: "/reviews", group: "info", changeFrequency: "weekly", priority: 0.6 },
   // The GRYND PRO offer: a public commercial landing page.
   { path: "/upgrade-pro", group: "info", changeFrequency: "monthly", priority: 0.6 },
-  // The rewards surface. Public (src/proxy.ts) and indexable on purpose: it
-  // explains what rewards the platform offers rather than showing account data,
-  // and a signed-out visitor reads the whole page. The caller's own coin balance
-  // is a client-side read of the existing coin system, so there is nothing
-  // user-specific in the HTML for a crawler to pick up.
-  { path: "/rewards", group: "info", changeFrequency: "monthly", priority: 0.5 },
-  { path: "/contact", group: "info", changeFrequency: "monthly", priority: 0.5 },
   { path: "/faq", group: "info", changeFrequency: "monthly", priority: 0.4 },
   // The publisher statement: who runs the site, how it is funded, and what it
   // will not do. Added for the same reason a site review asks for it — a
@@ -255,11 +250,6 @@ const INFO_PAGES: SeoPage[] = [
   // personalised advertising. Its own URL rather than a section of the privacy
   // policy, so it can be linked to directly from the banner and the footer.
   { path: "/cookie-policy", group: "info", changeFrequency: "yearly", priority: 0.3 },
-  { path: "/terms", group: "info", changeFrequency: "monthly", priority: 0.3 },
-  { path: "/privacy-policy", group: "info", changeFrequency: "monthly", priority: 0.3 },
-  { path: "/security-policy", group: "info", changeFrequency: "monthly", priority: 0.3 },
-  { path: "/fair-play", group: "info", changeFrequency: "monthly", priority: 0.3 },
-  { path: "/accessibility", group: "info", changeFrequency: "monthly", priority: 0.3 },
 ];
 
 /** Every URL the sitemap emits, in a stable order. */
@@ -295,10 +285,31 @@ export const PUBLIC_SEO_PATHS: string[] = PUBLIC_SEO_PAGES.map((page) => page.pa
 export const EXCLUDED_FROM_SITEMAP: Record<string, string> = {
   "/casino":
     "308 alias of /games — the canonical hub URL is /games, and a sitemap must list canonical URLs only",
+  "/play/solo":
+    "308 alias of /solitaire — the standalone solo surface owns this intent",
+  "/play/daily":
+    "308 alias of /daily — the daily challenge page owns this intent",
   "/casino/solitaire-duel/play-ai":
-    "free AI practice board in the /casino namespace — the indexable surface is its /play/ai mirror, and a second URL for the same picker would split the crawl",
+    "308 alias of /play/ai — the public practice surface owns this intent",
   "/game-unavailable":
     'the noindex "game temporarily unavailable" page an archived game URL is rewritten to — not a search surface',
+  // Utility and legal pages stay public and indexable (and footer-linked) for
+  // trust, but they are not pages anybody should find by searching, so they do
+  // not belong in the sitemap.
+  "/rewards":
+    "public rewards explainer, linked from navigation, not a search landing page",
+  "/contact":
+    "utility page — a support channel rather than a search surface",
+  "/terms":
+    "legal terms, footer-linked and indexed for trust, not a ranking target",
+  "/privacy-policy":
+    "legal disclosure, footer-linked and indexed for trust, not a ranking target",
+  "/security-policy":
+    "security disclosure, footer-linked and indexed for trust, not a ranking target",
+  "/fair-play":
+    "fair-play policy, linked from game and guide pages, not a ranking target",
+  "/accessibility":
+    "accessibility statement, footer-linked and indexed for trust, not a ranking target",
 };
 
 /**

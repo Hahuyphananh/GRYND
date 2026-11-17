@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 
 import LearnPracticePage from "../../../components/learn/LearnPracticePage";
+import { pageMetadata, DEFAULT_OG_IMAGE } from "../../../lib/seo";
 
-export const metadata: Metadata = {
+export const metadata = pageMetadata({
   title: "Practice — GRYND Academy",
-  description:
-    "Repeatable Solitaire skill drills on prepared boards, played with the real rules. Practice is separate from the structured courses and never changes your competitive record.",
-  alternates: { canonical: "/learn/practice" },
-};
+  description: "Repeatable Solitaire skill drills on prepared boards, played with the real rules. Practice is separate from the structured courses and never changes your competitive record.",
+  path: "/learn/practice",
+  image: DEFAULT_OG_IMAGE,
+});
 
 type PracticeSearchParams = {
   skill?: string | string[];

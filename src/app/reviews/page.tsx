@@ -7,15 +7,14 @@ import ReviewWall from "../../components/reviews/ReviewWall";
 import TrustpilotPanel from "../../components/trustpilot/TrustpilotPanel";
 import { getApprovedReviews, getReviewStats, type PublicReview, type ReviewStats } from "../../lib/reviews";
 import { buildAppJsonLd } from "../../lib/reviewJsonLd";
+import { pageMetadata, DEFAULT_OG_IMAGE } from "../../lib/seo";
 
-export const metadata: Metadata = {
-  title: "Player Reviews | GRYND",
-  description:
-    "See what players say about GRYND. Real reviews from verified players of our skill-based games.",
-  alternates: {
-    canonical: "/reviews",
-  },
-};
+export const metadata = pageMetadata({
+  title: "Player Reviews",
+  description: "See what players say about GRYND. Real reviews from verified players of our skill-based Solitaire games.",
+  path: "/reviews",
+  image: DEFAULT_OG_IMAGE,
+});
 
 /**
  * The review data is fetched on the SERVER and handed to the wall as initial

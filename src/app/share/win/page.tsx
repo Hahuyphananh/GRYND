@@ -100,7 +100,7 @@ export default async function ShareWinPage({
 
       <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
         <Link
-          href="/casino/solitaire-duel"
+          href="/games/solitaire-duel"
           className="inline-flex items-center justify-center rounded-xl bg-emerald-500 px-5 py-3 text-sm font-bold text-slate-950 transition hover:bg-emerald-400"
         >
           Play Solitaire Duel

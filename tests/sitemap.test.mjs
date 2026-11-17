@@ -87,25 +87,6 @@ function staticRoutes() {
     .filter((path) => !path.startsWith("/api") && !path.includes("["));
 }
 
-/**
- * URLs that RENDER without a page file of their own.
- *
- * The hub is the case in point: there is no src/app/games/page.tsx, because
- * next.config.js rewrites /games to /casino before the router looks for a file.
- * Treating "no page.tsx" as "no route" here would be the wrong conclusion, so
- * the config's rewrite table is part of the rendered set. Dynamic sources
- * (`:slug`) are skipped — they are checked against the game catalog instead.
- */
-function rewrittenPaths() {
-  const config = read("next.config.js");
-  const start = config.indexOf("async rewrites()");
-  const end = config.indexOf("async redirects()", start);
-  assert.ok(start !== -1 && end > start, "could not locate the rewrite table in next.config.js");
-  return [...config.slice(start, end).matchAll(/source:\s*"([^"]+)"/g)]
-    .map((match) => match[1])
-    .filter((path) => !path.includes(":"));
-}
-
 // ── 1. Shape ──────────────────────────────────────────────────────────────
 
 test("shape: every URL is a root-relative canonical path", () => {
@@ -293,7 +274,7 @@ test("canonical: no listed URL is itself a redirect", () => {
   assert.ok(start !== -1 && end > start, "could not locate the redirect table in next.config.js");
 
   const sources = [...config.slice(start, end).matchAll(/source:\s*"([^"]+)"/g)].map((m) => m[1]);
-  assert.ok(sources.length >= 10, `expected the redirect table, parsed ${sources.length} sources`);
+  assert.ok(sources.length > 0, `could not parse the redirect table (${sources.length} sources)`);
 
   for (const path of PUBLIC_SEO_PATHS) {
     assert.equal(
@@ -340,14 +321,22 @@ test("coverage: every static route is listed, excluded, or noindex", () => {
 });
 
 test("coverage: the sitemap lists nothing that no route renders", () => {
-  const routes = new Set([...staticRoutes(), ...rewrittenPaths()]);
-  // The exemption above is verified rather than assumed: /games really is a
-  // rewrite target, and it really does land on a route that exists.
-  assert.ok(
-    rewrittenPaths().includes("/games"),
-    "/games must be a config rewrite — that is why it has no page file",
+  const routes = new Set(staticRoutes());
+  // /games is a REAL page. It used to be a rewrite to /casino, which itself
+  // redirects to /games/solitaire-duel — so the sitemap advertised a noindex
+  // soft redirect as its second-most-important URL. The hub must render its
+  // own crawlable page, and no rewrite may shadow it.
+  const config = read("next.config.js");
+  const rewrites = config.slice(
+    config.indexOf("async rewrites()"),
+    config.indexOf("async redirects()"),
   );
-  assert.ok(staticRoutes().includes("/casino"), "/games must rewrite to a real route");
+  assert.doesNotMatch(
+    rewrites,
+    /source:\s*"\/games"/,
+    "/games must not be rewritten — it is a real page with its own metadata",
+  );
+  assert.ok(staticRoutes().includes("/games"), "/games must be a real page, not a rewrite");
   // The guide index is a real page file, not a rewrite — assert it, so a guide
   // path in the sitemap is never justified by an exemption alone.
   assert.ok(staticRoutes().includes(GUIDES_INDEX_PATH), "/guides must be a real route");

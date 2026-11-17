@@ -100,17 +100,19 @@ test("every carded surface ships its own Open Graph image", () => {
   assert.doesNotMatch(ai, /Elo on the line|one shared deal/i);
 });
 
-test("each page asks for the large social card and names its own URL", () => {
+test("each page names its own surface through the shared metadata helper", () => {
+  // The helper derives the twitter card, canonical and og:url from this path,
+  // so the card can no longer be forgotten on one surface (tests/seo-metadata
+  // pins those derivations). Opting out of a generic OG image keeps each
+  // surface's own ./opengraph-image.tsx in charge.
   for (const [surface, file] of Object.entries(PAGES)) {
     const src = read(file);
-    assert.match(src, /card: "summary_large_image"/, `${surface} needs a large twitter card`);
-    assert.match(src, /openGraph: \{/, `${surface} needs openGraph metadata`);
-    assert.match(src, /alternates: \{ canonical:/, `${surface} needs a canonical URL`);
-    assert.match(
-      src,
-      new RegExp(`url: "${OG_URLS[surface].replace(/\//g, "\\/")}"`),
-      `${surface} must give openGraph its own URL`,
+    assert.match(src, /pageMetadata\(\{/, `${surface} must use the shared metadata helper`);
+    assert.ok(
+      src.includes(`path: "${OG_URLS[surface]}"`),
+      `${surface} must name its own path (${OG_URLS[surface]})`,
     );
+    assert.doesNotMatch(src, /image: DEFAULT_OG_IMAGE/, `${surface} must keep its own OG card`);
   }
 });
 
@@ -141,9 +143,14 @@ test("the Play hub links the daily puzzle and unlimited puzzle cards", () => {
   const hrefs = [...hub.matchAll(/href: "([^"]+)"/g)].map((m) => m[1]);
   assert.ok(hrefs.includes("/play/daily-puzzle"), "/play/daily-puzzle must be a hub card");
   assert.ok(hrefs.includes("/play/unlimited-puzzles"), "/play/unlimited-puzzles must be a hub card");
-  assert.ok(hrefs.includes("/play/solo") && hrefs.includes("/play/ranked"));
-  assert.ok(hrefs.includes("/play/ai") && hrefs.includes("/play/daily"));
-  assert.ok(hrefs.every((href) => href.startsWith("/play/")), "a hub card must never skip its lobby");
+  // Solo and Daily now open the standalone pages that own those intents;
+  // `/play/solo` and `/play/daily` are 308 aliases and must not be hub targets.
+  assert.ok(hrefs.includes("/solitaire") && hrefs.includes("/play/ranked"));
+  assert.ok(hrefs.includes("/play/ai") && hrefs.includes("/daily"));
+  assert.ok(
+    hrefs.every((href) => href.startsWith("/play/") || href === "/solitaire" || href === "/daily"),
+    "a hub card must point at a real page, not an alias",
+  );
 
   // Each puzzle lobby exists and carries its own metadata, so the hub's link
   // lands on a real indexable page rather than a redirect.
@@ -151,8 +158,8 @@ test("the Play hub links the daily puzzle and unlimited puzzle cards", () => {
     "src/app/play/daily-puzzle/page.tsx",
     "src/app/play/unlimited-puzzles/page.tsx",
   ]) {
-    assert.match(read(lobby), /alternates: \{ canonical:/);
-    assert.match(read(lobby), /openGraph: \{/);
+    assert.match(read(lobby), /pageMetadata\(\{/);
+    assert.doesNotMatch(read(lobby), /image: DEFAULT_OG_IMAGE/);
   }
 });
 

@@ -8,16 +8,14 @@ import {
 } from "../../lib/stripe/subscriptions";
 import { countryFromHeaders } from "../../lib/consentRegions";
 import { currencyForCountry } from "../../lib/currency";
+import { pageMetadata, DEFAULT_OG_IMAGE } from "../../lib/seo";
 
-export const metadata: Metadata = {
-  alternates: { canonical: "/upgrade-pro" },
-  title: "GRYND PRO | GRYND",
-  // Only the benefits the membership actually grants (lib/proBenefits.ts).
-  // "Detailed match history" used to be here; no such feature exists and the
-  // existing match history is free for everyone, so the claim is gone.
-  description:
-    "GRYND PRO — ad-free browsing, the full performance dashboard and unlimited match analysis. Monthly membership, cancel anytime. No tokens, no gameplay advantages.",
-};
+export const metadata = pageMetadata({
+  title: "GRYND PRO",
+  description: "GRYND PRO — ad-free browsing, the full performance dashboard and unlimited match analysis. Monthly membership, cancel anytime. No tokens, no gameplay advantages.",
+  path: "/upgrade-pro",
+  image: DEFAULT_OG_IMAGE,
+});
 
 // The membership entitlement is per-caller, so this page must never be
 // prerendered/shared between users.

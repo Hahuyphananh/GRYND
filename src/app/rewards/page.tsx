@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import PageClient from "./PageClient";
+import { pageMetadata, DEFAULT_OG_IMAGE } from "../../lib/seo";
 
-export const metadata: Metadata = {
-  alternates: { canonical: "/rewards" },
-  title: "Rewards | GRYND",
-  description:
-    "Collect your daily login reward and complete daily and weekly quests for coins. Quest progress counts only completed matches against real players. Coins are virtual and have no cash value.",
-};
+export const metadata = pageMetadata({
+  title: "Rewards",
+  description: "Collect your daily login reward and complete daily and weekly quests for coins. Quest progress counts only completed matches against real players. Coins are virtual and have no cash value.",
+  path: "/rewards",
+  image: DEFAULT_OG_IMAGE,
+});
 
 /**
  * The Rewards surface (/rewards).

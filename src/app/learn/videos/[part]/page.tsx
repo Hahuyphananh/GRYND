@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import VideoLessonPlayer from "../../../../components/learn/VideoLessonPlayer";
 import { ACADEMY_VIDEOS, academyVideoById } from "../../../../lib/academyVideos";
+import { pageMetadata, DEFAULT_OG_IMAGE } from "../../../../lib/seo";
 
 export function generateStaticParams() {
   return ACADEMY_VIDEOS.map((video) => ({ part: video.id }));
@@ -17,17 +18,13 @@ export async function generateMetadata({
   const video = academyVideoById(part);
   if (!video) return { title: "Video not found — GRYND Academy" };
 
-  return {
-    title: `${video.title} — GRYND Academy`,
+  return pageMetadata({
+    title: video.title,
     description: video.summary,
-    alternates: { canonical: `/learn/videos/${video.id}` },
-    openGraph: {
-      title: `${video.title} — GRYND Academy`,
-      description: video.summary,
-      url: `/learn/videos/${video.id}`,
-      type: "video.other",
-    },
-  };
+    path: "/learn/videos/" + video.id,
+    image: DEFAULT_OG_IMAGE,
+    type: "video.other",
+  });
 }
 
 export default async function AcademyVideoPage({

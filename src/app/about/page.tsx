@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
+import { pageMetadata, DEFAULT_OG_IMAGE } from "../../lib/seo";
 
 /**
  * /about — who runs GRYND, how it is paid for, and what it will not do.
@@ -22,12 +23,12 @@ import Footer from "../../components/Footer";
  * treats ads there as inventory without content behind it.
  */
 
-export const metadata: Metadata = {
-  title: "About GRYND | Who runs it and how it is funded",
-  description:
-    "GRYND is a free, browser-based competitive Solitaire site: one deterministic deal, two real players, a server-verified ranked ladder. Read who runs it, how it is funded and what it will never do.",
-  alternates: { canonical: "/about" },
-};
+export const metadata = pageMetadata({
+  title: "About — who runs GRYND and how it is funded",
+  description: "GRYND is a free, browser-based competitive Solitaire site: one deterministic deal, two real players, a server-verified ranked ladder. Read who runs it, how it is funded and what it will never do.",
+  path: "/about",
+  image: DEFAULT_OG_IMAGE,
+});
 
 const H2 = "text-xl font-black tracking-tight text-[#f5ff3b] sm:text-2xl";
 const P = "mt-3 leading-relaxed text-[#d8fbff]";

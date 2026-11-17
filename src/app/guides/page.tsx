@@ -5,6 +5,7 @@ import Footer from "../../components/Footer";
 import AdSenseScript from "../../components/AdSenseScript";
 import AdSlot from "../../components/AdSlot";
 import { GUIDE_INDEX, guidePath } from "../../lib/guides";
+import { pageMetadata, DEFAULT_OG_IMAGE } from "../../lib/seo";
 
 /**
  * /guides — the public index of the guides library.
@@ -16,12 +17,12 @@ import { GUIDE_INDEX, guidePath } from "../../lib/guides";
  * would be noise.
  */
 
-export const metadata: Metadata = {
-  title: "Guides | GRYND",
-  description:
-    "Practical guides to the skills GRYND's games test: typing, memory, reaction time, Sudoku, chess, concentration, practice habits and reading an opponent.",
-  alternates: { canonical: "/guides" },
-};
+export const metadata = pageMetadata({
+  title: "Solitaire guides",
+  description: "Practical Klondike Solitaire guides: the rules, strategy for beginners, common mistakes, memory and concentration, tempo, and how to practise for a competitive race.",
+  path: "/guides",
+  image: DEFAULT_OG_IMAGE,
+});
 
 export default function GuidesIndexPage() {
   return (
@@ -55,9 +56,9 @@ export default function GuidesIndexPage() {
             Guides for the skills GRYND actually tests
           </h1>
           <p className="mt-4 leading-relaxed text-[#d8fbff]">
-            A small, deliberately short library. Each guide teaches one transferable skill — typing
-            accuracy, pattern recall, reaction time, calculation, concentration, practice habits —
-            and shows where that skill decides the outcome in a specific GRYND game. There is no
+            A small, deliberately short library. Each guide covers one part of competitive Klondike —
+            the rules, reveals and promotion, empty columns, memory, tempo, concentration and
+            practice — and shows where that decision decides a real Solitaire Duel. There is no
             filler here: if a guide is not useful, it does not belong on this page.
           </p>
           <p className="mt-3 text-sm text-[#9dd8ff]">

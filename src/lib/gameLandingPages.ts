@@ -324,18 +324,12 @@ export function gameIndexFor(slugs: readonly string[]): GameIndexEntry[] {
 /**
  * The games the HOME page links to by name.
  *
- * These are the hub catalogue's own `popular: true` entries
- * (src/app/casino/PageClient.jsx) — the site's existing popularity signal, not
- * a second opinion invented here. tests/internal-linking.test.mjs asserts the
- * two stay equal, so this list cannot quietly become a different claim about
- * which games are popular.
+ * GRYND is a Solitaire-only platform, so the featured list is the one game the
+ * catalogue actually offers. It must stay a subset of GAME_LANDING_PAGES —
+ * tests/internal-linking.test.mjs asserts every slug resolves and is available,
+ * so a retired game cannot linger here as a dead link.
  */
-export const HOMEPAGE_FEATURED_SLUGS: readonly string[] = [
-  "mines-pvp",
-  "memory-grid",
-  "barrier-blitz",
-  "odds",
-];
+export const HOMEPAGE_FEATURED_SLUGS: readonly string[] = ["solitaire-duel"];
 
 /**
  * A game as a CARD: enough to fill the shared card element

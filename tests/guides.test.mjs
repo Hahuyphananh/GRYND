@@ -36,8 +36,10 @@ import {
   GUIDE_INDEX,
   GUIDE_SLUGS,
   GUIDES_INDEX_PATH,
+  LEGACY_GUIDE_SLUGS,
   guidePath,
   guidesForGame,
+  isGuideSlug,
   relatedGuidesFor,
 } from "../src/lib/guides.ts";
 import { GAME_LANDING_PAGES, GAME_LANDING_SLUGS } from "../src/lib/gameLandingPages.ts";
@@ -163,7 +165,9 @@ test("no repetition: no paragraph is reused between guides", () => {
 
 test("links: every game a guide names is a real public game page", () => {
   for (const guide of GUIDES) {
-    assert.ok(guide.gameSlugs.length > 0, `${guide.slug} links no games`);
+    // A guide may name no game while it is rewritten for the Solitaire-only
+    // catalogue; what it DOES name must be real (checked below).
+    assert.ok(Array.isArray(guide.gameSlugs), `${guide.slug} has no gameSlugs list`);
     assert.equal(
       new Set(guide.gameSlugs).size,
       guide.gameSlugs.length,
@@ -186,12 +190,11 @@ test('links: every "read next" slug is a real guide', () => {
   }
 });
 
-test("links: the library covers a broad slice of the catalogue", () => {
+test("links: the library covers the catalogue", () => {
   const covered = new Set(GUIDES.flatMap((guide) => guide.gameSlugs));
-  assert.ok(
-    covered.size >= 15,
-    `the guides name only ${covered.size} games — they should span the catalogue`
-  );
+  // GRYND offers one game, so coverage means "the live game is linked from at
+  // least one guide", not "fifteen games are named".
+  assert.ok(covered.size >= 1, "no guide links the live game");
   for (const slug of covered) {
     assert.ok(ALL_SLUGS.has(slug), `guide coverage names an unknown game: ${slug}`);
   }
@@ -208,6 +211,29 @@ test("links: the library covers a broad slice of the catalogue", () => {
     );
   }
   assert.deepEqual(guidesForGame("no-such-game"), []);
+});
+
+test("legacy: every retired slug redirects to a live guide", () => {
+  for (const [legacy, target] of Object.entries(LEGACY_GUIDE_SLUGS)) {
+    assert.equal(isGuideSlug(legacy), false, `${legacy} is both retired and live`);
+    assert.ok(isGuideSlug(target), `${legacy} redirects to unknown guide "${target}"`);
+    assert.notEqual(legacy, target, `${legacy} redirects to itself`);
+  }
+  // An indexed URL must not 404: the config-level 308 and the proxy-level
+  // redirect have to agree with the catalogue's own map.
+  const config = read("next.config.js");
+  for (const [legacy, target] of Object.entries(LEGACY_GUIDE_SLUGS)) {
+    assert.match(
+      config,
+      new RegExp(`source: "/guides/${legacy}", destination: "/guides/${target}"`),
+      `${legacy} has no next.config.js redirect`,
+    );
+  }
+  assert.match(
+    read(PROXY),
+    /LEGACY_GUIDE_SLUGS\[unknownGuideSlug\[1\]\]/,
+    "the proxy must redirect a retired guide slug before its 404 guard",
+  );
 });
 
 test("links: the index entry projection mirrors the catalogue", () => {
@@ -231,7 +257,11 @@ test("public: the proxy matches the whole guide namespace without a session", ()
   // …and an unknown slug is a real 404 declared before rendering, not a soft
   // 404 the page cannot prevent (the root layout streams and commits a 200).
   assert.match(src, /isGuideSlug\(unknownGuideSlug\[1\]\)/, "unknown guide slugs must 404");
-  assert.match(src, /import \{ isGuideSlug \} from "\.\/lib\/guides"/);
+  assert.match(
+    src,
+    /import \{[^}]*\bisGuideSlug\b[^}]*\} from "\.\/lib\/guides"/,
+    "the proxy must import the guide registry",
+  );
 });
 
 test("indexable: the sitemap lists the index and every guide", () => {
@@ -254,7 +284,7 @@ test("indexable: the detail route owns its canonical and 404s unknown slugs", ()
   const src = read(GUIDE_DETAIL_ROUTE);
   assert.match(src, /export const dynamicParams = false/, "unknown slugs must 404 at the router");
   assert.match(src, /GUIDE_SLUGS\.map/, "static params must come from the guide catalogue");
-  assert.match(src, /alternates: \{ canonical \}/, "each guide must declare its own canonical");
+  assert.match(src, /path: canonical/, "each guide must declare its own canonical");
   assert.match(
     src,
     /const canonical = guide \? guidePath\(slug\) : "\/guides"/,
@@ -266,27 +296,22 @@ test("indexable: the detail route owns its canonical and 404s unknown slugs", ()
     src.indexOf("export default async function")
   );
   assert.equal(
-    [...generateMetadata.matchAll(/return \{/g)].length,
+    [...generateMetadata.matchAll(/return pageMetadata\(\{/g)].length,
     1,
     "generateMetadata must contain exactly one return"
   );
-  // Open Graph must be complete (a page-local openGraph drops every field it
-  // does not re-declare).
-  // A key may be written as a shorthand property (`title,`) or as a pair
-  // (`title: value`) — both satisfy "the openGraph block re-declares it".
-  for (const field of ["title", "description", "url", "siteName", "locale", "type"]) {
-    assert.match(
-      generateMetadata,
-      new RegExp(`(^|[\\s{])${field}[,:]`, "m"),
-      `openGraph is missing ${field}`
-    );
+  // The shared builder owns siteName, locale, type and the canonical/og:url
+  // pair; the page supplies only what is page-owned. tests/seo-metadata
+  // pins the derived shape once instead of once per page.
+  for (const field of ["title", "description", "path", "image", "type"]) {
+    assert.ok(generateMetadata.includes(field + ":") || generateMetadata.includes(field + ","), "pageMetadata is missing " + field);
   }
 });
 
 test("indexable: the index links every guide with a plain anchor", () => {
   const src = read(GUIDE_INDEX_ROUTE);
-  assert.match(src, /export const metadata: Metadata/, "the index must declare metadata");
-  assert.match(src, /alternates: \{ canonical: "\/guides" \}/);
+  assert.match(src, /export const metadata = pageMetadata\(\{/, "the index must declare metadata");
+  assert.match(src, /path: "\/guides"/);
   assert.match(src, /GUIDE_INDEX\.map\(/, "the index must render the catalogue, not a hand list");
   assert.match(src, /href=\{guidePath\(guide\.slug\)\}/);
   assert.match(src, /\{guide\.title\}/);

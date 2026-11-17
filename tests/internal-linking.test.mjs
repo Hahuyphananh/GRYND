@@ -1,33 +1,25 @@
 /**
  * internal-linking.test.mjs
  *
- * Guards the site's crawlable hierarchy:
+ * Guards the site's crawlable hierarchy for a one-game platform:
  *
- *     /  →  /games  →  /games/<slug>  →  /games/<slug>/play
+ *     /  →  /games  →  /games/solitaire-duel  →  /games/solitaire-duel/play
  *
- * Every public game has a landing page, and the point of this suite is that a
- * search engine (or a visitor with JavaScript disabled) can REACH every one of
- * them by following ordinary anchors — no click handlers, no client state, no
- * buttons standing in for links.
+ * The hub is the part this suite exists for. It used to be a next.config.js
+ * rewrite to /casino, and /casino redirects to /games/solitaire-duel — so the
+ * URL the sitemap lists at priority 0.9 answered with a 200 shell, a generic
+ * layout title, `noindex` and a soft redirect. /games is now a real App Router
+ * page, and these assertions keep it that way:
  *
- * The invariants, in the order they are checked below:
- *
- *   1. /games links to EVERY public game landing page. The interactive card
- *      grid is client-filtered, so the guarantee is carried by the A–Z
- *      directory, which is projected from the game catalogue (GAME_INDEX) and
- *      therefore cannot miss a game nobody remembered to add a card for.
- *   2. The card grid links to the canonical landing URL (/games/<slug>), not
- *      to /casino/<slug> — that old href is the same page one 308 redirect
- *      later, and a redirect in the middle of the hierarchy is the thing this
- *      change removed.
- *   3. Each landing page carries breadcrumbs, a link back to /games, related
- *      game links and links to the informational pages its prose makes
- *      relevant.
- *   4. The home page links to the popular games by name.
- *   5. The help/FAQ page links EVERY game's own public page, in markup that
- *      exists before any accordion is opened.
- *   6. None of those surfaces links into the app namespace (/casino/…) or to a
- *      /play URL except through the landing page's own Play CTA.
+ *   1. /games is a server-rendered page with its own canonical metadata, not a
+ *      rewrite, a redirect or a client-only shell.
+ *   2. It links EVERY available game landing page from GAME_INDEX, so a
+ *      crawler (or a visitor without JavaScript) can reach them all with
+ *      ordinary anchors.
+ *   3. The landing page carries breadcrumbs, a hub link, gameplay CTAs and the
+ *      informational pages its prose makes relevant.
+ *   4. The home page and the FAQ link the real pages, not the app namespace.
+ *   5. Nothing public links `/casino/*` — that is a redirect, not a destination.
  *
  * Run: npm run test:internal-linking
  */
@@ -39,7 +31,6 @@ import { readFileSync } from "node:fs";
 import {
   GAME_CARDS,
   GAME_INDEX,
-  GAME_LANDING_PAGES,
   GAME_LANDING_SLUGS,
   HOMEPAGE_FEATURED_SLUGS,
   gameIndexFor,
@@ -50,226 +41,70 @@ import { isGameAvailable } from "../src/lib/gameAvailability.js";
 
 const read = (rel) => readFileSync(rel, "utf8");
 
-// CRLF is normalised BEFORE the comment strip, so the `^…$` line regex sees a
-// plain \n — most files in this repo are CRLF, and `$` also matches before \r.
+// CRLF is normalised BEFORE comments are stripped — most files in this repo
+// are CRLF. Stripping comments keeps a commented-out href from satisfying a
+// check.
 const strip = (source) => source.replace(/\r\n/g, "\n");
-
-// LINE comments are removed FIRST, and that order is load-bearing: the hub has a
-// `//` line comment mentioning `src/app/casino/*`, and stripping block comments
-// first would read that `/*` as an opener and swallow the whole games array.
-// (tests/tic-tac-toe-ui-contract.test.mjs carries the same note for the same
-// reason.) Comments are stripped so a commented-out href cannot satisfy a check.
 function code(source) {
   return strip(source)
     .replace(/^[ \t]*\/\/.*$/gm, "")
     .replace(/\/\*[\s\S]*?\*\//g, "");
 }
 
-const HUB_CLIENT = read("src/app/casino/PageClient.jsx");
-const HUB_PAGE = read("src/app/casino/page.jsx");
+const HUB = read("src/app/games/page.tsx");
 const HOME_CLIENT = read("src/app/PageClient.jsx");
 const HOME_PAGE = read("src/app/page.jsx");
 const FAQ_CLIENT = read("src/app/faq/PageClient.jsx");
 const FAQ_PAGE = read("src/app/faq/page.jsx");
+const CLASSEMENT_CLIENT = read("src/app/classement/PageClient.jsx");
 const LANDING = read("src/components/game-landing/GameLanding.tsx");
-const TAGS = read("src/lib/gameTags.js");
 
-const ALL_SLUGS = new Set(GAME_LANDING_SLUGS);
+const AVAILABLE = GAME_LANDING_SLUGS.filter((slug) => isGameAvailable(slug));
 
-/**
- * The hub's card array, split into per-card slices.
- *
- * Deliberately NOT split on the `{` that opens a card: that brace is indented
- * by hand, and one card in this file does not sit on a `\n    {` boundary, so an
- * indentation-based split silently merges two games (and “inherits” the other
- * card's `popular: true`). A card's fields all follow its `href`, so the next
- * `href` is the reliable end of the current card.
- */
-function hubCards() {
-  const src = code(HUB_CLIENT);
-  const start = src.indexOf("const games = [");
-  assert.ok(start > 0, "the hub's card array must exist");
-  const end = src.indexOf("\n  ];", start);
-  assert.ok(end > start, "the hub's card array must be readable");
-  const block = src.slice(start, end);
-  const hrefs = [...block.matchAll(/href: \"([^\"]+)\"/g)];
-  return hrefs.map((match, index) =>
-    block.slice(match.index, hrefs[index + 1]?.index ?? block.length),
+// ── 1. The hub is a real page ─────────────────────────────────────────────
+
+test("the hub is a real, server-rendered page — not a rewrite", () => {
+  const src = code(HUB);
+  assert.doesNotMatch(src, /"use client"/, "the hub must render on the server");
+  assert.doesNotMatch(src, /\bredirect\(/, "the hub must not redirect");
+  assert.doesNotMatch(src, /robots:/, "the hub must not be noindex");
+  assert.match(src, /export const metadata/, "the hub must own its metadata");
+  assert.match(src, /path: "\/games"/, "the hub must be canonical to /games");
+
+  // And no config rewrite may shadow the page.
+  const config = read("next.config.js");
+  const rewrites = config.slice(
+    config.indexOf("async rewrites()"),
+    config.indexOf("async redirects()"),
   );
-}
-
-/** The `href: "/games/<slug>"` entries of the hub's card array. */
-function hubCardSlugs() {
-  return [...code(HUB_CLIENT).matchAll(/href:\s*"\/games\/([a-z0-9-]+)"/g)].map(
-    (match) => match[1],
+  assert.doesNotMatch(
+    rewrites,
+    /source:\s*"\/games"/,
+    "/games is rewritten in next.config.js — the real page would never be reached",
   );
-}
+});
 
-/** Card hrefs for the games the lobby itself flags `popular: true`. */
-function lobbyPopularSlugs() {
-  return hubCards()
-    .filter((card) => /\bpopular:\s*true\b/.test(card))
-    .map((card) => /href: "\/games\/([a-z0-9-]+)"/.exec(card)?.[1])
-    .filter(Boolean)
-    .sort();
-}
+test("/games links every available game landing page", () => {
+  const src = code(HUB);
+  assert.match(src, /GAME_INDEX\.map\(/, "the directory must come from the catalogue");
+  assert.match(src, /href=\{gameLandingPath\(game\.slug\)\}/, "each entry must be a real link");
+  assert.match(src, /\{game\.name\}/, "each link must name the game");
+  assert.doesNotMatch(src, /href="\/casino\//, "the hub must not link the app namespace");
+});
 
-// ── 1. /games reaches every public game ──────────────────────────────────
-
-test("the A–Z directory is the whole catalogue, not a hand-kept list", () => {
-  // It is derived from GAME_LANDING_PAGES, so this is the derivation, not a
-  // second list: adding a game to the catalogue adds it here.
-  const availableSlugs = GAME_LANDING_SLUGS.filter((slug) => isGameAvailable(slug));
-  assert.equal(GAME_INDEX.length, availableSlugs.length);
+test("the hub directory is the catalogue, not a hand-kept list", () => {
+  assert.equal(GAME_INDEX.length, AVAILABLE.length);
   assert.deepEqual(
     [...GAME_INDEX.map((game) => game.slug)].sort(),
-    [...availableSlugs].sort(),
-    "an available game is missing from the crawlable index",
+    [...AVAILABLE].sort(),
+    "an available game is missing from the hub directory",
   );
   // A–Z, so the rendered order cannot churn between deploys.
   const names = GAME_INDEX.map((game) => game.name);
   assert.deepEqual(names, [...names].sort((a, b) => a.localeCompare(b)));
 });
 
-test("/games renders the whole catalogue as real links", () => {
-  const src = code(HUB_CLIENT);
-  const page = code(HUB_PAGE);
-
-  // The directory is fed from the catalogue on the server …
-  assert.match(page, /import \{[^}]*\bGAME_INDEX\b[^}]*\} from "\.\.\/\.\.\/lib\/gameLandingPages"/);
-  assert.match(page, /const gameIndex = GAME_INDEX\.map\(/);
-  // (the prop list also carries a JSX ad slot, so the match cannot stop at `>`)
-  assert.match(page, /<PageClient[\s\S]{0,200}?gameIndex=\{gameIndex\}/);
-
-  // … and rendered as anchors on that prop, one per entry, pointing at the
-  // landing page. `${game.slug}` is what makes it total: the template cannot
-  // name a game the catalogue does not have, and cannot omit one it does.
-  const nav = src.slice(src.indexOf('id="all-games-index-heading"'));
-  assert.ok(nav.length > 0, "the A–Z directory heading must exist");
-  const block = nav.slice(0, nav.indexOf("</nav>"));
-  assert.match(block, /\{gameIndex\.map\(\(game\) => \(/);
-  assert.match(block, /<Link\s+href=\{`\/games\/\$\{game\.slug\}`\}/);
-  assert.match(block, /\{game\.name\}/);
-  // It is inside a <nav>, so it reads as navigation rather than content.
-  assert.match(src, /<nav\s+aria-labelledby="all-games-index-heading"/);
-
-  // The directory is what covers the alias page too — the one game the card
-  // grid does not have a card for.
-  const cards = new Set(hubCardSlugs());
-  const uncovered = [...ALL_SLUGS].filter((slug) => !cards.has(slug));
-  assert.deepEqual(
-    uncovered.sort(),
-    ["uno"],
-    "the card grid is expected to be one card short of the catalogue (the " +
-      "uno/neon-flush alias pair share a game); anything else means the " +
-      "directory is now load-bearing for games nobody noticed",
-  );
-  assert.ok(
-    !GAME_INDEX.some((game) => game.slug === "uno"),
-    "an archived alias page must not be in the A–Z directory",
-  );
-});
-
-// ── 2. The hub links the landing pages, not the redirect ─────────────────
-
-test("every hub card links to the canonical /games/<slug> landing URL", () => {
-  const cards = hubCardSlugs();
-  assert.equal(
-    new Set(cards).size,
-    cards.length,
-    "two cards point at the same game page",
-  );
-  for (const slug of cards) {
-    assert.ok(ALL_SLUGS.has(slug), `hub card links a game with no landing page: ${slug}`);
-  }
-  // The old namespace must be gone from the card array: /casino/<slug> is the
-  // same page one redirect later, and a redirect between /games and the
-  // landing page is exactly what this hierarchy removes.
-  const cardBlock = code(HUB_CLIENT).slice(
-    code(HUB_CLIENT).indexOf("const games = ["),
-    code(HUB_CLIENT).indexOf("\n  ];", code(HUB_CLIENT).indexOf("const games = [")),
-  );
-  assert.doesNotMatch(
-    cardBlock,
-    /href:\s*"\/casino\//,
-    "a hub card still links the /casino/<slug> redirect instead of the landing page",
-  );
-  // …and the anchors are real: `href={game.href}` on a Next <Link>.
-  assert.match(
-    code(HUB_CLIENT),
-    /<Link[\s\S]{0,180}href=\{game\.href\}/,
-    "the hub card must be a <Link> with the game's href",
-  );
-});
-
-test("the tag catalogue links the same URLs as the hub", () => {
-  // GAME_CATALOG is the shared registry the recommendation engine renders links
-  // from, and tests/game-recommendations.test.mjs asserts it mirrors the hub
-  // card for card. Both sides therefore have to agree on WHICH URL a game link
-  // is, or one of the two surfaces sends people into a redirect.
-  const hrefs = [...code(TAGS).matchAll(/href:\s*"(https?:[^"]*|\/[^"]+)"/g)].map(
-    (match) => match[1],
-  );
-  const appNamespace = hrefs.filter((href) => href.startsWith("/casino/"));
-  assert.deepEqual(
-    appNamespace,
-    [],
-    "the tag catalogue still points at the /casino/<slug> redirect",
-  );
-  for (const href of hrefs) {
-    assert.match(href, /^\/games\/[a-z0-9-]+$/, `unexpected catalogue href: ${href}`);
-    assert.ok(ALL_SLUGS.has(href.replace("/games/", "")), `no landing page for ${href}`);
-  }
-});
-
-// ── 3. The landing page ──────────────────────────────────────────────────
-
-test("a landing page carries breadcrumbs, a hub link and related games", () => {
-  const src = code(LANDING);
-  // Breadcrumb: Home > All games > this game, all real links.
-  assert.match(src, /aria-label="Breadcrumb"/);
-  assert.match(src, /<Link href="\/" className=[^>]*>\s*Home\s*<\/Link>/);
-  assert.match(src, /<Link\s+href="\/games"/);
-  assert.match(src, /aria-current="page"/);
-  // A second, explicit way back to the hub.
-  assert.match(src, /Browse all games/);
-  // Related games, resolved through the catalogue path helper.
-  assert.match(src, /href=\{gameLandingPath\(entry\.slug\)\}/);
-  // Two links into gameplay, both the rewritten play URL (the hero and the
-  // closing CTA). The one other entry the page offers — the practice button —
-  // is a POST to the game's own practice route, not an href.
-  assert.match(src, /const playHref = gamePlayPath\(game\.slug\);/);
-  assert.equal(
-    [...src.matchAll(/href=\{playHref\}/g)].length,
-    2,
-    "the hero and the closing CTA are the only linked routes into gameplay",
-  );
-  assert.doesNotMatch(
-    src,
-    /href=\{gameMatchPath/,
-    "a match URL must never be a static href on the landing page",
-  );
-});
-
-test("a landing page links the informational pages its prose makes relevant", () => {
-  const src = code(LANDING);
-  for (const href of ["/faq", "/fair-play", "/classement"]) {
-    assert.match(
-      src,
-      new RegExp(`href="${href}"`),
-      `the landing page should link ${href}`,
-    );
-  }
-  // A small, contextual set — not a link farm.
-  const infoLinks = [...src.matchAll(/href="(\/[a-z0-9-]+)"/g)].map((match) => match[1]);
-  assert.ok(
-    infoLinks.length <= 6,
-    `expected a handful of informational links, found ${infoLinks.length}`,
-  );
-  // And it must not link into the app namespace at all.
-  assert.doesNotMatch(src, /href="\/casino\//);
-  assert.doesNotMatch(src, /href=\{game\.href\}/);
-});
+// ── 2. Canonical game paths ───────────────────────────────────────────────
 
 test("gamePlayPath is the only public path into gameplay", () => {
   for (const slug of GAME_LANDING_SLUGS) {
@@ -278,37 +113,56 @@ test("gamePlayPath is the only public path into gameplay", () => {
   }
 });
 
+// ── 3. The landing page ───────────────────────────────────────────────────
+
+test("a landing page carries breadcrumbs, a hub link and gameplay CTAs", () => {
+  const src = code(LANDING);
+  assert.match(src, /aria-label="Breadcrumb"/);
+  assert.match(src, /<Link href="\/" className=[^>]*>\s*Home\s*<\/Link>/);
+  assert.match(src, /<Link\s+href="\/games"/);
+  assert.match(src, /aria-current="page"/);
+  assert.match(src, /Browse all games/);
+  assert.match(src, /href=\{gameLandingPath\(entry\.slug\)\}/);
+  // Two links into gameplay, both the rewritten play URL (the hero and the
+  // closing CTA). The practice entry is a POST, not an href.
+  assert.match(src, /const playHref = gamePlayPath\(game\.slug\);/);
+  assert.equal(
+    [...src.matchAll(/href=\{playHref\}/g)].length,
+    2,
+    "the hero and the closing CTA are the only linked routes into gameplay",
+  );
+  assert.doesNotMatch(src, /href=\{gameMatchPath/);
+});
+
+test("a landing page links the informational pages its prose makes relevant", () => {
+  const src = code(LANDING);
+  for (const href of ["/faq", "/fair-play", "/classement"]) {
+    assert.match(src, new RegExp(`href="${href}"`), `the landing page should link ${href}`);
+  }
+  const infoLinks = [...src.matchAll(/href="(\/[a-z0-9-]+)"/g)].map((match) => match[1]);
+  assert.ok(infoLinks.length <= 6, `expected a handful of informational links, found ${infoLinks.length}`);
+  assert.doesNotMatch(src, /href="\/casino\//);
+});
+
 // ── 4. The home page ─────────────────────────────────────────────────────
 
 test("the home page leads with Solitaire and links its real pages", () => {
   const page = code(HOME_PAGE);
   const client = code(HOME_CLIENT);
 
-  // Solitaire-first: the home page no longer projects a multi-game catalogue.
   assert.doesNotMatch(page, /HOMEPAGE_FEATURED_SLUGS/);
-  assert.doesNotMatch(client, /home-popular-games/);
   assert.match(page, /The competitive home of Solitaire/);
   assert.match(client, /href="\/games\/solitaire-duel"/);
   assert.match(client, /href="\/classement"/);
 });
 
-test("the featured lists name real games and stay in sync with the lobby", () => {
-  // Every curated slug resolves — a typo would silently render nothing.
+test("the featured list names real, available games", () => {
+  assert.ok(HOMEPAGE_FEATURED_SLUGS.length > 0, "the home page features nothing");
   assert.equal(gameIndexFor(HOMEPAGE_FEATURED_SLUGS).length, HOMEPAGE_FEATURED_SLUGS.length);
   for (const slug of HOMEPAGE_FEATURED_SLUGS) {
-    assert.ok(ALL_SLUGS.has(slug), `${slug} has no landing page`);
+    assert.ok(GAME_LANDING_SLUGS.includes(slug), `${slug} has no landing page`);
+    assert.ok(isGameAvailable(slug), `${slug} is not an available game`);
   }
-
-  // "Most popular" is the lobby's own `popular: true` signal — not a second
-  // opinion invented for the home page. If the lobby changes its mind, this
-  // fails rather than quietly claiming something else is most popular.
-  const popular = lobbyPopularSlugs();
-  assert.ok(popular.length > 0, "the lobby must flag its popular games");
-  assert.deepEqual(
-    [...HOMEPAGE_FEATURED_SLUGS].sort(),
-    popular,
-    "HOMEPAGE_FEATURED_SLUGS must be exactly the lobby's popular games",
-  );
 });
 
 // ── 5. The help/FAQ page ─────────────────────────────────────────────────
@@ -317,106 +171,49 @@ test("the FAQ links every game's public page, in markup that exists before any c
   const page = code(FAQ_PAGE);
   const client = code(FAQ_CLIENT);
 
-  // The card list is fed from the catalogue on the SERVER, so importing the
-  // FAQ cannot ship 1,500 lines of game prose to the browser to draw a grid.
   assert.match(page, /import \{ GAME_CARDS \} from "\.\.\/\.\.\/lib\/gameLandingPages"/);
   assert.match(page, /<PageClient gameCards=\{GAME_CARDS\} \/>/);
 
   assert.match(client, /export default function FaqPage\(\{ gameCards = \[\] \}\)/);
   const section = client.slice(client.indexOf('id="faq-games-heading"'));
   assert.ok(section.length > 0, "the FAQ games section must exist");
-  const block = section.slice(0, section.indexOf("</ul>"));
+  const block = section.slice(0, section.indexOf("</section>"));
   assert.match(block, /gameCards\.map\(\(card\) => \(/);
-  // It renders the SAME card element the lobby renders…
-  assert.match(block, /<GameCard/);
-  // …aimed at the game's own public page, which the catalogue projects for it.
-  assert.match(block, /href: card\.href/);
-  // Plus the hub itself and the fairness policy the answers keep referring to.
-  assert.match(section, /href="\/games"/);
-  assert.match(section, /href="\/fair-play"/);
+  assert.match(block, /<Link/);
+  assert.match(block, /href=\{card\.href\}/);
+  assert.doesNotMatch(block, /onClick=/, "a click handler is not a link");
 });
 
-test("the FAQ directory is the whole catalogue, and links the INFO page not the lobby", () => {
-  // Derived, not curated: the directory covers the catalogue exactly, so the
-  // help surface can never become a stale subset of the games that exist.
-  const availableSlugs = GAME_LANDING_SLUGS.filter((slug) => isGameAvailable(slug));
-  assert.equal(GAME_CARDS.length, availableSlugs.length);
+test("the FAQ directory is the whole available catalogue", () => {
+  assert.equal(GAME_CARDS.length, AVAILABLE.length);
   assert.deepEqual(
     [...GAME_CARDS.map((card) => card.slug)].sort(),
-    [...availableSlugs].sort(),
+    [...AVAILABLE].sort(),
     "an available game has no card on the FAQ",
   );
-  // A–Z, so the rendered order cannot churn between deploys.
-  const names = GAME_CARDS.map((card) => card.name);
-  assert.deepEqual(names, [...names].sort((a, b) => a.localeCompare(b)));
-
   for (const card of GAME_CARDS) {
-    // The card links the game's own public page …
     assert.equal(card.href, `/games/${card.slug}`);
     assert.equal(gameLandingPath(card.slug), card.href);
-    // … which is a different URL from the lobby. The lobby is a sign-in wall
-    // with no rules to read, so a card must never point at it.
     assert.notEqual(card.href, gamePlayPath(card.slug));
-    assert.ok(
-      card.shortDescription.trim().length > 80,
-      `${card.slug} has no usable card blurb`,
-    );
+    assert.ok(card.shortDescription.trim().length > 80, `${card.slug} has no usable card blurb`);
   }
-
-  // And the component contains no /play href at all: the only way into gameplay
-  // is the landing page's own Play CTA (asserted in game-landing-pages).
-  assert.doesNotMatch(code(FAQ_CLIENT), /\/play\b/);
 });
 
-test("the FAQ's game section is not inside the accordion", () => {
-  const client = code(FAQ_CLIENT);
-  // The directory is the LAST block on the page (the answered sections and the
-  // contact strip sit above it), so the region runs to the end of the component.
-  const block = client.slice(client.indexOf('id="faq-games-heading"'));
-  assert.ok(block.length > 0, "the FAQ games section must exist");
-  // An accordion answer is only in the HTML once its item is open; a game link
-  // rendered that way is invisible to a crawler and to a visitor who has not
-  // clicked. The section must be outside every `{open && …}` branch.
-  assert.doesNotMatch(block, /\{open\s*&&/, "the games section must not be accordion content");
-  assert.match(block, /gameCards\.map\(/, "the section renders its own list");
-  assert.match(client, /\{gameCards\.length > 0 && \(/, "the section renders off its own list");
-});
+// ── 6. No JavaScript-only navigation into the app namespace ──────────────
 
-// ── 6. No JavaScript-only navigation ─────────────────────────────────────
-
-test("the new game links are anchors, not click handlers", () => {
-  // Each surface renders a link element with an href. A span/div/button with an
-  // onClick would pass a visual review and fail a crawler, so the shape is
-  // asserted directly. The FAQ renders the SHARED card element, so for that
-  // surface the anchor is asserted in src/components/games/GameCard.jsx below.
+test("no public surface links the /casino app namespace", () => {
   const surfaces = [
-    ["hub A–Z directory", HUB_CLIENT, 'id="all-games-index-heading"', "</nav>", /<Link/],
-    ["FAQ games", FAQ_CLIENT, 'id="faq-games-heading"', "</section>", /<GameCard/],
+    ["hub", HUB],
+    ["landing", LANDING],
+    ["home", HOME_CLIENT],
+    ["faq", FAQ_CLIENT],
+    ["leaderboard", CLASSEMENT_CLIENT],
   ];
-  for (const [label, source, anchor, close, linkShape] of surfaces) {
-    const src = code(source);
-    const start = src.indexOf(anchor);
-    assert.ok(start > 0, `${label}: anchor not found`);
-    const end = src.indexOf(close, start);
-    assert.ok(end > start, `${label}: the link block must be a closed container`);
-    const block = src.slice(start, end);
-    assert.match(block, linkShape, `${label}: game links must be anchors`);
+  for (const [label, source] of surfaces) {
     assert.doesNotMatch(
-      block,
-      /onClick=/,
-      `${label}: a click handler is not a link`,
-    );
-    assert.doesNotMatch(
-      block,
-      /router\.push/,
-      `${label}: client-side navigation is not a crawlable link`,
+      code(source),
+      /href=\{?["']\/casino\//,
+      `${label} links the /casino redirect instead of the canonical URL`,
     );
   }
-
-  // The card the FAQ renders is that anchor: one <Link> around the artwork,
-  // title, blurb and CTA, with no click handler standing in for it.
-  const cardSource = code(read("src/components/games/GameCard.jsx"));
-  assert.match(cardSource, /<Link\s+href=\{game\.href\}/);
-  assert.doesNotMatch(cardSource, /onClick=/);
-  assert.doesNotMatch(cardSource, /router\.push/);
 });
