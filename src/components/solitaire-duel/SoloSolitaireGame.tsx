@@ -1039,7 +1039,7 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
                 {savedResult === "offline" && <p className="mt-2 text-xs text-amber-200">Offline run — nothing was saved.</p>}
                 {mode === "daily" && dailyStats && (
                   <p className="mt-2 text-xs text-slate-400">
-                    Daily streak: {dailyStats.currentStreak} · Completed: {dailyStats.completed}
+                    Daily streak: {Number(dailyStats.currentStreak) || 0} · Completed: {dailyStats.completed}
                   </p>
                 )}
                 <div className="mt-5 flex flex-wrap justify-center gap-2">

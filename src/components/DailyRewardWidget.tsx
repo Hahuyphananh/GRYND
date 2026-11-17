@@ -71,7 +71,10 @@ export default function DailyRewardWidget() {
   const windowDays = Array.isArray(status?.window) ? status.window : [];
   const rewards = windowDays.filter((entry) => Number(entry?.amount) > 0);
   const hasRewards = rewards.length > 0;
-  const streak = status ? Math.max(1, Number(status.streakDay) || 1) : null;
+  // A real 0 is a streak state, not a missing value: a new account sees
+  // "0 days" rather than a dash, and the server's day is never rounded up to
+  // 1 just to keep the card looking populated.
+  const streak = Math.max(0, Number(status?.streakDay) || 0);
 
   return (
     <div className={POSITION_CLASS} data-testid="daily-reward-widget">
@@ -90,7 +93,7 @@ export default function DailyRewardWidget() {
                 data-testid="daily-streak-count"
                 className="text-4xl font-black leading-none tracking-tight text-white"
               >
-                {streak === null ? "—" : formatCoins(streak)}
+                {formatCoins(streak)}
               </span>
               <span className="pb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#9dd8ff]/70">
                 {streak === 1 ? "day" : "days"}

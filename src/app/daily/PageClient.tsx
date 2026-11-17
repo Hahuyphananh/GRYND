@@ -135,11 +135,11 @@ export default function DailyPageClient() {
             </div>
             <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-2">
               <dt className="text-[10px] uppercase tracking-wider text-white/40">Current streak</dt>
-              <dd className="font-mono text-lg">{summary.currentStreak}</dd>
+              <dd className="font-mono text-lg">{Number(summary.currentStreak) || 0}</dd>
             </div>
             <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-2">
               <dt className="text-[10px] uppercase tracking-wider text-white/40">Longest streak</dt>
-              <dd className="font-mono text-lg">{summary.longestStreak}</dd>
+              <dd className="font-mono text-lg">{Number(summary.longestStreak) || 0}</dd>
             </div>
             <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-2">
               <dt className="text-[10px] uppercase tracking-wider text-white/40">Best time</dt>

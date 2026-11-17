@@ -65,8 +65,10 @@ export default function SolitaireModesPanel() {
 
   const dailyRows: Array<[string, string]> = [
     ["Challenges completed", daily ? String(daily.completed) : DASH],
-    ["Current streak", daily ? String(daily.currentStreak) : DASH],
-    ["Longest streak", daily ? String(daily.longestStreak) : DASH],
+    // A loaded 0 is a real streak state and reads as "0"; only a summary that
+    // never arrived (guest, failed fetch) is unavailable, and that is the dash.
+    ["Current streak", daily ? String(Number(daily.currentStreak) || 0) : DASH],
+    ["Longest streak", daily ? String(Number(daily.longestStreak) || 0) : DASH],
     ["Best time", formatDuration(daily?.bestMs ?? null)],
     ["Today", daily?.today ? (daily.today.completed ? "Completed" : "In progress") : DASH],
   ];
