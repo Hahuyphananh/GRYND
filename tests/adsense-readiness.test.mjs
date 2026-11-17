@@ -85,7 +85,7 @@ test("the served <head> claims the same publisher that ads.txt authorises", () =
 
 test("/about states the publisher case a review has to classify", () => {
   const about = read(ABOUT);
-  assert.match(about, /alternates: \{ canonical: "\/about" \}/);
+  assert.match(about, /path: "\/about"/);
   // Who runs it, and that the content is original rather than bought.
   assert.match(about, /written\s+and maintained in-house/);
   // How it is funded, and that the ads are labelled.
@@ -108,7 +108,7 @@ test("/about states the publisher case a review has to classify", () => {
 
 test("/cookie-policy is a real disclosure with a working opt-out", () => {
   const cookies = read(COOKIES);
-  assert.match(cookies, /alternates: \{ canonical: "\/cookie-policy" \}/);
+  assert.match(cookies, /path: "\/cookie-policy"/);
   // The four classes, including the advertising one by name.
   assert.match(cookies, /Strictly necessary/);
   assert.match(cookies, /Analytics and diagnostics/);

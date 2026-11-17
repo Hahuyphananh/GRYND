@@ -393,3 +393,14 @@ function routeFile(path) {
   }
   throw new Error(`no page file renders ${path}`);
 }
+
+test("every sitemap URL is publicly reachable without a session", async () => {
+  const { PUBLIC_SEO_PATHS } = await import("../src/lib/seoPages.ts");
+  const { isPublicRoute } = await import("../src/proxy.ts");
+  for (const path of PUBLIC_SEO_PATHS) {
+    assert.ok(
+      isPublicRoute({ nextUrl: { pathname: path } }),
+      path + " is in the sitemap but the proxy would send a signed-out crawler to /sign-in",
+    );
+  }
+});

@@ -110,7 +110,7 @@ const GAME_ROUTE_PATTERNS = [
   "/games/solitaire-duel(.*)",
 ] as const;
 
-const isPublicRoute = createRouteMatcher([
+export const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/api/(.*)",
@@ -179,6 +179,12 @@ const isPublicRoute = createRouteMatcher([
   // listed once so isGameRoute() and this matcher can never disagree.
   ...GAME_ROUTE_PATTERNS,
   "/sentry-example-page",
+
+  // Publisher and advertising disclosures: sitemap-listed, footer-linked, and
+  // readable by a signed-out visitor (including a site reviewer). Without
+  // these entries the sitemap advertised two URLs that 307'd to /sign-in.
+  "/about",
+  "/cookie-policy",
 
   // Legal / policy pages
   "/security-policy",
