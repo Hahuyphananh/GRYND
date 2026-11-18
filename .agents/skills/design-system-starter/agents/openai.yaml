@@ -1,0 +1,4 @@
+interface:
+  display_name: "Design System Starter"
+  short_description: "Create practical tokens and components"
+  default_prompt: "Use $design-system-starter to create a practical design system for this product."

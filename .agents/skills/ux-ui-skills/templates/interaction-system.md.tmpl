@@ -1,0 +1,90 @@
+# Interaction System
+
+> **Do NOT invent — fill this by reading the real codebase and interviewing the team.**
+> This document defines ONE pattern per category, used everywhere.
+> Consistency is non-negotiable: if a pattern is defined here, every surface uses it.
+> If the codebase contradicts this document, the codebase is wrong — or this document needs updating.
+
+---
+
+## Form validation
+
+> Define ONE rule for each question. Capture what the project actually does today (or decides to do).
+
+**When does validation trigger?**
+<< On blur? On submit? On change after first submit attempt? Describe the exact rule. >>
+
+**How is an error displayed?**
+<< Inline below the field? In a summary at the top? Both? What element, what position? >>
+
+**Error message structure:**
+<< What must every error message contain? (field name? cause? remedy?) Give a template. >>
+
+**What happens to the submit button while the form has errors?**
+<< Disabled? Enabled but shows errors on click? Something else? >>
+
+**How are server-side errors (post-submit) shown?**
+<< Same inline pattern? Separate banner? How are they cleared? >>
+
+---
+
+## Loading and async
+
+**Page-level loading state:**
+<< What does the user see while a full page is loading? Skeleton? Spinner? Nothing? >>
+
+**Component-level loading state:**
+<< What does a button look like when its action is in flight? Disabled + spinner? Text change? >>
+
+**Optimistic updates:**
+<< Does this product use them? If yes, what is the rollback behaviour on failure? >>
+
+**Polling / streaming:**
+<< Any surfaces that update in real time? How is "updating" communicated to the user? >>
+
+---
+
+## Destructive actions
+
+> Three severity levels. Define what qualifies for each and what the UI does.
+
+| Severity | Criteria | UI pattern |
+|---|---|---|
+| Low — easily undoable | << e.g. dismissing a draft, reordering items >> | << undo toast? instant? >> |
+| Medium — consequential, recoverable | << e.g. deleting a saved record >> | << confirmation dialog? >> |
+| High — irreversible | << e.g. permanent data loss, financial action >> | << explicit typed confirmation? >> |
+
+**What text goes in the confirmation?**
+<< Template for medium severity: "…" Confirm button label: "…" Cancel label: "…" >>
+
+---
+
+## Empty states
+
+**When a list or table has no data:**
+<< What does the UI show? Illustration? Headline? Description? CTA? Be specific about copy pattern. >>
+
+**When a search or filter returns no results:**
+<< Same pattern or different? Is the "no results" copy distinct from "no data yet"? >>
+
+**When an error prevents data from loading:**
+<< What does the UI show? Retry button? Support link? Error code shown to user? >>
+
+---
+
+## Focus and keyboard
+
+**Tab order rule:**
+<< How is tab order determined? DOM order? Explicit tabindex? Policy for modals / overlays? >>
+
+**Focus trap rule:**
+<< When is focus trapped? (modals, drawers) How is it released? >>
+
+**Visible focus indicator:**
+<< Describe the project's focus ring style. Is it the browser default? A custom style? >>
+
+**Keyboard shortcut policy:**
+<< Does this product define global keyboard shortcuts? Where are they documented? >>
+
+**Skip-to-content link:**
+<< Does the product have one? Where does it link? Required at this project's accessibility baseline? >>

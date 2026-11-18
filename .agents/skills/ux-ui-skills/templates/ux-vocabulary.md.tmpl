@@ -1,0 +1,68 @@
+# UX Vocabulary
+
+> **Do NOT invent — fill this by reading the real codebase and interviewing the team.**
+> **Checklist before ANY visual work:**
+> 1. Every action in the proposed UI appears in the Primary or Secondary actions table.
+> 2. Every state the UI can be in appears in the States table.
+> 3. Every surface the UI lives on appears in the Surfaces table.
+> 4. All copy uses the voice defined in design-brief.md.
+> If something is missing from this document, add it here FIRST, then design.
+
+---
+
+## Primary actions
+
+> Actions the user takes that advance the core job-to-be-done.
+> Fill by reading the main user flows in the codebase.
+
+| Action | Where it appears | Input (what triggers it) | Outcome | Notes |
+|---|---|---|---|---|
+| `<< action label >>` | `<< page / component >>` | `<< button click / form submit / … >>` | `<< what changes in the system >>` | `<< edge cases / constraints >>` |
+| `<< action label >>` | `<< page / component >>` | `<< … >>` | `<< … >>` | `<< … >>` |
+
+---
+
+## Secondary actions
+
+> Actions that support or modify, but don't advance the core job directly.
+
+| Action | Where it appears | Input | Outcome | Notes |
+|---|---|---|---|---|
+| `<< action label >>` | `<< page / component >>` | `<< … >>` | `<< … >>` | `<< … >>` |
+| `<< action label >>` | `<< page / component >>` | `<< … >>` | `<< … >>` | `<< … >>` |
+
+---
+
+## States
+
+> Every distinct state a record, entity, or process can be in.
+> Fill from the data model and status enums in the codebase.
+
+| State | Where it applies | Meaning | UI treatment |
+|---|---|---|---|
+| `<< state name >>` | `<< entity / page >>` | `<< what this state means in the real domain >>` | `<< badge colour, icon, label copy >>` |
+| `<< state name >>` | `<< entity / page >>` | `<< … >>` | `<< … >>` |
+
+---
+
+## Surfaces
+
+> Every distinct screen, panel, or overlay in the product.
+
+| Surface | Route or trigger | Primary action(s) available | Notes |
+|---|---|---|---|
+| `<< surface name >>` | `<< /route or "opened by …" >>` | `<< primary actions here >>` | `<< layout notes, modality, etc. >>` |
+| `<< surface name >>` | `<< … >>` | `<< … >>` | `<< … >>` |
+
+---
+
+## Copy patterns
+
+> Recurring copy patterns derived from the voice rules in design-brief.md.
+
+| Pattern | Template | Example (from real UI — do not invent) |
+|---|---|---|
+| Confirmation prompt | `<< pattern with {placeholders}, e.g. "Delete {item}? This cannot be undone." >>` | `<< actual text from codebase >>` |
+| Error message | `<< template >>` | `<< actual text from codebase >>` |
+| Empty state headline | `<< template >>` | `<< actual text from codebase >>` |
+| Success feedback | `<< template >>` | `<< actual text from codebase >>` |

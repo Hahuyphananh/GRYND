@@ -1,0 +1,4 @@
+interface:
+  display_name: "Reference to Implementation"
+  short_description: "Translate visual references into UI code"
+  default_prompt: "Use $reference-to-implementation to analyze these references and implement a matching frontend."

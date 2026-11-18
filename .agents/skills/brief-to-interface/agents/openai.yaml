@@ -1,0 +1,4 @@
+interface:
+  display_name: "Brief to Interface"
+  short_description: "Turn briefs into sharp UI direction"
+  default_prompt: "Use $brief-to-interface to turn this product idea into a design operating model."
