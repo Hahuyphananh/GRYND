@@ -33,7 +33,6 @@ import SplashScreen from "./SplashScreen";
 import GlitchProvider from "./mascot/GlitchProvider";
 import { isPortalPlayPath } from "../lib/portal/framing";
 import GryndProWidget from "./GryndProWidget";
-import StreakChip from "./streaks/StreakChip";
 import StreakUnlockModal from "./streaks/StreakUnlockModal";
 import GuestStreakPrompt from "./streaks/GuestStreakPrompt";
 import BoardAppearanceDrawer from "./solitaire/BoardAppearanceDrawer";
@@ -76,23 +75,17 @@ export default function SiteChrome({
           banner there to earn the consent it needs. */}
       <GoogleAnalytics />
 
-      {/* STREAK + APPEARANCE. The flame chip is the compact indicator that
-          lives beside the profile cluster on every page except the homepage,
-          where it is pinned under the navbar at the top left (rendered inside
-          <main>, below). The drawer is the Settings/Profile entry point to the
-          same cosmetics the board header opens. */}
-      <div className="pointer-events-none fixed right-3 top-[calc(var(--nav-height)_+_var(--safe-top)_+_0.5rem)] z-40 flex items-center gap-2 sm:right-4">
-        {pathname !== "/" && (
-          <div className="pointer-events-auto">
-            <StreakChip />
-          </div>
-        )}
-        {(pathname === "/settings" || pathname === "/profil") && (
+      {/* APPEARANCE. The drawer is the Settings/Profile entry point to the
+          board cosmetics the board header opens. The old flame chip that
+          duplicated the daily-streak card is gone — there is one streak
+          surface now (components/DailyRewardWidget). */}
+      {(pathname === "/settings" || pathname === "/profil") && (
+        <div className="pointer-events-none fixed right-3 top-[calc(var(--nav-height)_+_var(--safe-top)_+_0.5rem)] z-40 flex items-center gap-2 sm:right-4">
           <div className="pointer-events-auto">
             <BoardAppearanceDrawer />
           </div>
-        )}
-      </div>
+        </div>
+      )}
       <StreakUnlockModal />
 
       {/* Skip to content — accessibility */}
@@ -115,18 +108,6 @@ export default function SiteChrome({
         id="main-content"
         className="pt-[calc(var(--nav-height)_+_var(--safe-top))]"
       >
-        {/* The homepage streak marker: sticky, left-aligned, sitting directly
-            under the fixed navbar. `empty:hidden` collapses the wrapper for a
-            signed-out visitor, whose chip renders nothing (the guest prompt
-            below is their call to action). */}
-        {pathname === "/" && (
-          <div
-            data-testid="home-streak-sticky"
-            className="sticky top-[calc(var(--nav-height)_+_var(--safe-top))] z-40 flex justify-start px-3 empty:hidden sm:px-4"
-          >
-            <StreakChip />
-          </div>
-        )}
         <GuestStreakPrompt />
         {children}
       </main>

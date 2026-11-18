@@ -31,6 +31,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { userStreaks, userUnlocks, users } from "../../db/schema";
 import { findActiveSubscription } from "../stripe/subscriptions";
+import { updateDailyStreak } from "../dailyStreak";
 import { boardItem } from "../solitaire-duel/boardCosmetics";
 import {
   MAX_BESPOKE_DAY,
@@ -240,6 +241,17 @@ export async function recordStreakCompletion(
       trialExtended: trialDays > 0,
     } satisfies StreakCompletion;
   });
+
+  // ADVANCE THE DAILY-REWARD STREAK TOO. Finishing a game is what moves the day
+  // the reward card shows, in every mode — not opening the site. `updateDailyStreak`
+  // is the shared writer the claim uses and is idempotent per day, so the two
+  // streaks can never disagree about which day was credited. A failure here must
+  // not fail the completion the player just earned.
+  try {
+    await updateDailyStreak(clerkId);
+  } catch {
+    // The completion is already committed; the reward day simply stays put.
+  }
 
   return result ?? null;
 }

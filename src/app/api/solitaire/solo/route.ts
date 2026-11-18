@@ -34,6 +34,8 @@ import { db } from "../../../../db/client";
 import { solitaireSoloResults } from "../../../../db/schema";
 import { logError } from "../../../../lib/logError";
 import { summariseSolo } from "../../../../lib/solitaire-duel/soloStats.js";
+import { recordStreakCompletion } from "../../../../lib/streaks/server";
+import { markDailyRewardWin } from "../../../../lib/dailyRewardWin";
 import { dealFromSeed } from "../../../../lib/solitaire-duel/deck";
 import { replayMoves } from "../../../../lib/solitaire-duel/rules";
 import {
@@ -171,6 +173,21 @@ export async function POST(req: Request) {
 
     const duplicate = inserted.length === 0;
 
+    // FINISHING A SOLO GAME COUNTS. A completed board stamps today's win (the
+    // daily reward's gate, which a solo player could otherwise never satisfy)
+    // and credits the day's streak — the same idempotent writer ranked duels and
+    // the daily challenge use, so every mode advances the one streak. None of
+    // this may fail the result that was just recorded.
+    let streak: Awaited<ReturnType<typeof recordStreakCompletion>> = null;
+    if (completed && !duplicate) {
+      try {
+        await markDailyRewardWin(db, userId);
+        streak = await recordStreakCompletion(userId);
+      } catch {
+        streak = null;
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -178,6 +195,10 @@ export async function POST(req: Request) {
         moves: moves.length,
         recorded: !duplicate,
         duplicate,
+        // The day's streak credit, or null when nothing was credited.
+        streak,
+        current_streak: streak?.currentStreak ?? null,
+        newly_unlocked_rewards: streak?.newlyUnlocked ?? [],
         // The recorded game's id, so the result popup can link straight to its
         // analysis. A duplicate submission wrote nothing and returns no id.
         id: inserted[0]?.id ?? null,

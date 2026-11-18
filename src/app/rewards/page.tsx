@@ -4,7 +4,7 @@ import { pageMetadata, DEFAULT_OG_IMAGE } from "../../lib/seo";
 
 export const metadata = pageMetadata({
   title: "Rewards",
-  description: "Collect your daily login reward and complete daily and weekly quests for coins. Quest progress counts only completed matches against real players. Coins are virtual and have no cash value.",
+  description: "Collect your daily streak reward for coins. Finishing a game advances the streak; each day of the 14-day window pays more than the one before. Coins are virtual and have no cash value.",
   path: "/rewards",
   image: DEFAULT_OG_IMAGE,
 });
@@ -16,9 +16,9 @@ export const metadata = pageMetadata({
  * caller's coin balance is read on the client from the EXISTING coin system
  * (the shared useCoinBalance hook, which reads /api/get-user-tokens); this page
  * neither owns nor writes any currency. When a visitor is signed out the page
- * still renders in full and simply prompts them to sign in to see their coins
- * and quests. Quest progress and the claim itself are server-side only
- * (/api/quests, /api/quests/claim).
+ * still renders in full and simply prompts them to sign in to see their streak.
+ * The streak status and the claim are both server-side only
+ * (/api/rewards/daily).
  */
 export default function Page() {
   return <PageClient />;

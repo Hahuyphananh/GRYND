@@ -27,7 +27,6 @@ import Link from "next/link";
 import { useAuth, useUser } from "@clerk/nextjs";
 import NavigationBar from "../components/navigation-bar";
 import DailyRewardWidget from "../components/DailyRewardWidget";
-import QuestWidget from "../components/QuestWidget";
 import Footer from "../components/Footer";
 import ReportEntryButton from "../components/reports/ReportEntryButton";
 import HeroCard3D from "../components/home/HeroCard3D";
@@ -354,7 +353,6 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null, socia
       <NavigationBar currentPath="/" />
 
       <DailyRewardWidget />
-      <QuestWidget />
 
       <main className="mx-auto max-w-6xl px-4 pt-24 sm:px-6 md:pt-28">
         {/* ── Hero ──────────────────────────────────────────────────────── */}

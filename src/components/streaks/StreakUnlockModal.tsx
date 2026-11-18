@@ -8,12 +8,26 @@
 // modal cannot invent one.
 
 import { useCallback, useEffect, useState } from "react";
+import { useUser } from "@clerk/nextjs";
 
 import { boardItem } from "../../lib/solitaire-duel/boardCosmetics";
 import { applyBoardCosmetics } from "../../hooks/useSolitaireBoardCosmetics";
 import { setStoredBoardTheme } from "../../hooks/useSolitaireBoardTheme";
 
 type UnlockEvent = CustomEvent<{ items: string[]; currentStreak: number }>;
+
+/** Unlocks already celebrated on this device (same key the old chip used). */
+const SEEN_KEY = "grynd.streak.celebrated.v1";
+
+function readSeen(): string[] {
+  try {
+    const raw = window.localStorage.getItem(SEEN_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
+  } catch {
+    return [];
+  }
+}
 
 const SLOT_FOR: Record<string, "felt" | "card_back" | "deck_skin"> = {
   felt: "felt",
@@ -22,6 +36,7 @@ const SLOT_FOR: Record<string, "felt" | "card_back" | "deck_skin"> = {
 };
 
 export default function StreakUnlockModal() {
+  const { isLoaded, isSignedIn } = useUser();
   const [items, setItems] = useState<string[]>([]);
   const [streak, setStreak] = useState(0);
   const [equipping, setEquipping] = useState<string | null>(null);
@@ -38,6 +53,47 @@ export default function StreakUnlockModal() {
     window.addEventListener("grynd:streak-unlocked", onUnlock);
     return () => window.removeEventListener("grynd:streak-unlocked", onUnlock);
   }, []);
+
+  // The flame chip that used to poll this is gone, so the modal itself checks
+  // once per mount: a completion on the game page (or in another tab) is
+  // celebrated the next time a page renders. One read per page mount is what
+  // the chip cost too; the seen-key stops an unlock replaying on navigation.
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return undefined;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch("/api/streaks/me", {
+          credentials: "same-origin",
+          cache: "no-store",
+        });
+        const body = await response.json().catch(() => null);
+        if (cancelled || !body?.success) return;
+        const unlocks = Array.isArray(body.streak?.unlocks) ? body.streak.unlocks : null;
+        if (!unlocks) return;
+        const seen = readSeen();
+        const fresh = unlocks.filter(
+          (item: unknown): item is string => typeof item === "string" && !seen.includes(item),
+        );
+        if (fresh.length === 0) return;
+        window.dispatchEvent(
+          new CustomEvent("grynd:streak-unlocked", {
+            detail: { items: fresh, currentStreak: body.streak.currentStreak ?? 0 },
+          }),
+        );
+        try {
+          window.localStorage.setItem(SEEN_KEY, JSON.stringify([...seen, ...fresh]));
+        } catch {
+          // Celebration is decoration; full storage must not break it.
+        }
+      } catch {
+        // Offline: nothing to celebrate right now.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoaded, isSignedIn]);
 
   const equip = useCallback(async (itemId: string) => {
     const item = boardItem(itemId);

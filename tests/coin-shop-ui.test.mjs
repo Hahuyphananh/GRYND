@@ -334,10 +334,9 @@ test("the shop never offers gift cards or redemption", () => {
 
 // ── 11. Page preservation ──────────────────────────────────────────────────
 
-test("rewards, quests and navigation stay on the page", () => {
+test("rewards and navigation stay on the page", () => {
   for (const retained of [
     "<DailyRewardCard />",
-    "<QuestBoard />",
     "<NavigationBar currentPath=\"/rewards\" />",
     "<Footer />",
     "<CoinShopOffers />",

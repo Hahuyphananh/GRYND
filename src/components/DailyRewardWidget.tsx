@@ -79,16 +79,26 @@ export default function DailyRewardWidget() {
   return (
     <div className={POSITION_CLASS} data-testid="daily-reward-widget">
       <section aria-labelledby="daily-streak-heading" className={CARD}>
-        <div className="flex items-start gap-3">
+        {/* The whole header opens the 14-day board: the card looks like one
+            surface, so clicking its headline should behave like clicking the
+            CTA. It is a real button (keyboard + focus ring), and the actions
+            inside the card stay separate buttons below it. */}
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          data-testid="daily-reward-widget-header"
+          aria-label="Open the 14-day reward list"
+          className="flex w-full cursor-pointer items-start gap-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--focus-ring)]"
+        >
           <FlameMark />
-          <div className="min-w-0 flex-1">
-            <h2
+          <span className="min-w-0 flex-1">
+            <span
               id="daily-streak-heading"
-              className="text-[11px] font-black uppercase tracking-[0.22em] text-[#f5ff3b]"
+              className="block text-[11px] font-black uppercase tracking-[0.22em] text-[#f5ff3b]"
             >
               Daily Streak
-            </h2>
-            <div className="mt-1 flex items-end gap-2">
+            </span>
+            <span className="mt-1 flex items-end gap-2">
               <span
                 data-testid="daily-streak-count"
                 className="text-4xl font-black leading-none tracking-tight text-white"
@@ -98,14 +108,14 @@ export default function DailyRewardWidget() {
               <span className="pb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#9dd8ff]/70">
                 {streak === 1 ? "day" : "days"}
               </span>
-            </div>
-          </div>
+            </span>
+          </span>
           {status && (
             <span className="shrink-0 rounded-full border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#00e5ff]">
               Days {status.windowStart}–{status.windowEnd}
             </span>
           )}
-        </div>
+        </button>
 
         <div className="mt-3">
           {loading && !status ? (

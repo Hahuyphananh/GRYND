@@ -110,27 +110,11 @@ export function useDailyReward(): UseDailyReward {
       return;
     }
 
-    // Logging in on a new day is what ADVANCES the streak, so the number on the
-    // card is more than a projection: POST /api/user/daily-streak is the
-    // shared writer (the same one the claim calls), and it is idempotent per
-    // day, so calling it once per mount is a no-op later the same day. It runs
-    // before the read so the stored day and the displayed day agree.
-    let active = true;
-    void (async () => {
-      try {
-        await fetch("/api/user/daily-streak", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-        });
-      } catch {
-        // Offline: the status read below still projects the correct day.
-      }
-      if (active) await load();
-    })();
-
-    return () => {
-      active = false;
-    };
+    // The streak is advanced by FINISHING A GAME, not by opening the site:
+    // every completion route credits the same shared, idempotent-per-day streak
+    // (src/lib/streaks/server.ts → updateDailyStreak). This surface only READS
+    // it, so a page visit can never move the day on its own.
+    void load();
   }, [isLoaded, isSignedIn, load]);
 
   // A win is recorded away from this surface — on the game page, or in another

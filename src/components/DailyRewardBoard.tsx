@@ -245,7 +245,7 @@ export default function DailyRewardBoard({ open, onClose, reward }: Props) {
             placement="inline"
             size="sm"
             dismissible
-            dismissLabel={t("quests.close")}
+            dismissLabel="Close"
           />
         </div>
 

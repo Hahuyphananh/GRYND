@@ -838,14 +838,14 @@ export const userStats = pgTable("user_stats", {
 // authority and is safe whether or not the legacy table survived.
 //
 //   * (user_id, period_type, period_key, slot) is the deterministic identity:
-//     slot+quest come from planQuests() in src/lib/quests/definitions.ts, so a
+//     slot+quest came from the retired quests planner, so a
 //     retry re-derives the SAME slots and inserts nothing new.
 //   * `meta` holds { definitionId, games }: `games` is the set of canonical game
 //     ids already counted for a "different games" quest.
 //   * `reward` is virtual coins only, and `completed_at` freezes completion so a
 //     later definition change can never un-complete a finished quest.
 // Progress is advanced ONLY by a settled, server-verified human-vs-human match
-// (see src/lib/quests/progress.ts) — never by AI, practice, lobbies or cancels.
+// — never by AI, practice, lobbies or cancels.
 export const userQuests = pgTable(
   "user_quests",
   {
@@ -892,7 +892,7 @@ export const userQuests = pgTable(
 // count a match twice. `userId`/`opponentUserId` reference real accounts — an AI
 // or bot seat has no `users` row and therefore cannot be journaled at all,
 // which is what makes "a human opponent" a schema-level fact rather than a
-// client claim. See src/lib/quests/settle.ts.
+// client claim. The quests system is retired; the tables stay for history.
 export const questMatchEvents = pgTable(
   "quest_match_events",
   {

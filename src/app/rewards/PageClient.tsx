@@ -8,7 +8,6 @@ import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import DailyRewardCard from "../../components/DailyRewardCard";
-import QuestBoard from "../../components/QuestBoard";
 import CoinShopOffers from "../../components/CoinShopOffers";
 import { useCoinBalance } from "../../hooks/useCoinBalance";
 
@@ -18,12 +17,11 @@ import { useCoinBalance } from "../../hooks/useCoinBalance";
  * ── What is live here ─────────────────────────────────────────────────────
  *
  *   * the daily login reward (components/DailyRewardCard) — unchanged;
- *   * daily and weekly QUESTS (components/QuestBoard), which pay virtual coins
- *     for completed matches against real players.
+ *   * the daily STREAK reward, with its repeating 14-day coin window.
  *
- * Both are paid by the server. This page owns no reward rule: it renders the
- * status each system reports, and the only interactive control (a quest claim)
- * posts a quest id to an authenticated endpoint that validates the row itself.
+ * The status and the claim are both server-owned. This page owns no reward
+ * rule: it renders the status the reward endpoint reports, and the only
+ * interactive control (the claim) lives in the shared 14-day board.
  *
  * ── The coin balance ─────────────────────────────────────────────────────
  *
@@ -160,7 +158,7 @@ export default function RewardsPage() {
             Rewards
           </h1>
           <p className="max-w-2xl text-base text-[#9dd8ff] sm:text-lg">
-            Your daily reward, your quests, and the coins they pay — all in one place.
+            Your daily streak reward and the coins it pays — all in one place.
           </p>
         </motion.header>
 
@@ -183,11 +181,6 @@ export default function RewardsPage() {
           <DailyRewardCard />
         </motion.div>
 
-        {/* ── Quests — daily and weekly, paid by the server ──────────── */}
-        <motion.div className="mb-10" {...rise(0.1)}>
-          <QuestBoard />
-        </motion.div>
-
         {/* ── How rewards work ──────────────────────────────────────── */}
         <motion.section
           aria-labelledby="rewards-note-heading"
@@ -202,15 +195,13 @@ export default function RewardsPage() {
           </h2>
           <ul className="space-y-2 text-sm leading-relaxed text-[#c9f7ff]/85">
             <li>
-              Quest progress comes from{" "}
-              <strong className="text-[#c9f7ff]">
-                completed matches against real players
-              </strong>
-              . Games against the AI or the practice bot never count towards a quest.
+              The streak advances when you{" "}
+              <strong className="text-[#c9f7ff]">finish a game</strong> — any mode,
+              any deal. One credit per day; miss a day and it starts again at day 1.
             </li>
             <li>
-              Each quest pays its coins once, and only after it is complete — the
-              button appears when the server has confirmed the objective.
+              Winning a match today unlocks that day&apos;s coin reward. Claim it
+              once from the streak popup; the next day&apos;s reward is already waiting.
             </li>
             <li>
               Coins are virtual and have{" "}

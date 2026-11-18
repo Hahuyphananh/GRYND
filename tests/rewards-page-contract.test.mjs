@@ -7,8 +7,8 @@
  *   2. The page DISPLAYS the caller's coin balance through the EXISTING coin
  *      system (the shared useCoinBalance hook) — it never reads or writes a
  *      balance itself, so no second currency path can appear.
- *   3. The page now hosts the live rewards — the daily login reward and the
- *      daily/weekly quest board — and the old gift-card TEASERS are gone. There
+ *   3. The page now hosts the live reward — the daily streak reward — and the
+ *      old gift-card TEASERS are gone. There
  *      is still no redemption/payment system of any kind: no gift-card claims,
  *      no provider SDK (Giftbit / Tremendous / Stripe).
  *   4. The explanatory copy states what counts (completed matches against real
@@ -20,8 +20,7 @@
  *      visitors (as /faq does).
  *
  * These are static-source assertions: they pin the wiring AND the prohibitions,
- * which is exactly what a browser check cannot prove the absence of. The quest
- * board's own contract lives in tests/rewards-quests-ui.test.mjs.
+ * which is exactly what a browser check cannot prove the absence of.
  *
  * Run: npm run test:rewards
  */
@@ -51,7 +50,7 @@ const PROXY = "src/proxy.ts";
 test("the /rewards route exists and owns its canonical URL", () => {
   assert.ok(existsSync(join(root, ROUTE)), `${ROUTE} must exist`);
   const route = read(ROUTE);
-  assert.match(route, /canonical:\s*"\/rewards"/, "the route must set its own canonical");
+  assert.match(route, /path:\s*"\/rewards"/, "the route must set its own canonical path");
   assert.match(route, /from "\.\/PageClient"/, "the route must render the page client");
 });
 
@@ -73,10 +72,10 @@ test("the balance is read from the existing coin system, not re-implemented", ()
   );
 });
 
-test("the live rewards are on the page: daily reward + quest board", () => {
+test("the live reward is on the page: the daily streak card", () => {
   const code = stripComments(read(PAGE));
-  assert.match(code, /<DailyRewardCard \/>/, "the daily reward card stays");
-  assert.match(code, /<QuestBoard \/>/, "the quest board is rendered");
+  assert.match(code, /<DailyRewardCard \/>/, "the daily streak card stays");
+  assert.doesNotMatch(code, /QuestBoard|quest/i, "quests are gone from the surface");
 });
 
 test("gift-card teasers are gone and no redemption system replaced them", () => {
@@ -100,12 +99,12 @@ test("gift-card teasers are gone and no redemption system replaced them", () => 
   );
 });
 
-test("the page explains eligibility and that coins have no cash value", () => {
+test("the page explains the streak rule and that coins have no cash value", () => {
   const page = read(PAGE);
   assert.match(
     page,
-    /completed matches against real players/i,
-    "quest eligibility (real human opponents) must be stated",
+    /finish a game/i,
+    "the streak rule (finish a game) must be stated",
   );
   assert.match(page, /no cash value/i, "coins must be stated to have no cash value");
   assert.match(
@@ -116,30 +115,11 @@ test("the page explains eligibility and that coins have no cash value", () => {
   assert.match(page, /gift cards/i, "gift-card redemption must be stated as unavailable");
 });
 
-test("the navbar links to /rewards on desktop and in the mobile menu", () => {
+test("the retired /rewards surface is not sold in the navigation", () => {
   const nav = read(NAV);
-
-  // Both link arrays carry the new path, in the same position, so the desktop
-  // row and the mobile menu can never disagree.
-  const arrays = nav.matchAll(
-    /\["\/", "\/games", "\/classement", "\/rewards", "\/faq"\]/g,
-  );
-  assert.equal(
-    [...arrays].length,
-    2,
-    "/rewards must appear in BOTH the desktop and mobile nav arrays",
-  );
-
-  // It resolves through the shared translation key and gets a gift glyph.
-  assert.match(nav, /"\/rewards": "nav\.rewards"/);
-  assert.match(nav, /IconGift/);
-  assert.match(nav, /NAV_ICONS = \{ "\/rewards": <IconGift/);
-
-  // Pre-existing primary links are untouched.
-  for (const path of ["/", "/games", "/classement", "/faq"]) {
-    assert.match(nav, /NAV_TRANSLATION_KEYS/);
-  }
-  assert.match(nav, /"\/faq": "nav\.faq"/);
+  // Solitaire-first removed the link: the page still answers old bookmarks
+  // (the proxy redirects it), but the product does not advertise it.
+  assert.doesNotMatch(nav, /"\/rewards"/);
   assert.match(nav, /"\/": "nav\.home"/);
 });
 

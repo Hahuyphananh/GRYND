@@ -343,9 +343,8 @@ test("the offers copy resolves in every supported language", async () => {
   assert.match(t("en", "coins.total"), /\{amount\}/);
 });
 
-test("free rewards and quests are untouched by the coin shop", () => {
+test("free rewards are untouched by the coin shop", () => {
   assert.match(REWARDS, /<DailyRewardCard \/>/);
-  assert.match(REWARDS, /<QuestBoard \/>/);
   assert.match(REWARDS, /<CoinShopOffers \/>/);
 
   // The rewards page itself still owns no button, fetch or price.

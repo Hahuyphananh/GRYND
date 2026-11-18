@@ -93,7 +93,7 @@ const RETIRED_PRODUCT_PATH = /^\/(?:rewards|shop|quests)(?:\/|$)/;
  * historical data and future reactivation, but no public client can reach
  * them. Game-specific namespaces are handled separately below.
  */
-const RETIRED_PRODUCT_API = /^\/api\/(?:quick-queue|coins|shop|rewards|quests)(?:\/|$)/;
+const RETIRED_PRODUCT_API = /^\/api\/(?:quick-queue|coins|shop|quests)(?:\/|$)/;
 
 /**
  * Playable casino/game routes — the single source of truth for

@@ -298,7 +298,8 @@ test("the board paints the cosmetics and offers the drawer", () => {
 });
 
 test("the streak surfaces carry their test ids and guest copy", () => {
-  assert.match(read("src/components/streaks/StreakChip.tsx"), /data-testid="streak-chip"/);
+  // The duplicate flame chip is gone: the daily-streak card is the one surface.
+  assert.doesNotMatch(read("src/components/SiteChrome.tsx"), /StreakChip/);
   assert.match(read("src/components/streaks/StreakUnlockModal.tsx"), /data-testid="streak-unlock-modal"/);
   const guest = read("src/components/streaks/GuestStreakPrompt.tsx");
   assert.match(guest, /data-testid="guest-streak-prompt"/);

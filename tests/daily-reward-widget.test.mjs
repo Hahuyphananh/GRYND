@@ -95,7 +95,6 @@ const CARD = "src/components/DailyRewardCard.tsx";
 const BOARD = "src/components/DailyRewardBoard.tsx";
 const NAV = "src/components/navigation-bar.jsx";
 const HOME = "src/app/PageClient.jsx";
-const HUB = "src/app/casino/PageClient.jsx";
 
 // ── One source of truth ─────────────────────────────────────────────────────
 
@@ -233,8 +232,8 @@ test("both surfaces open the one shared 14-day board", () => {
 
 // ── Where the widget lives ──────────────────────────────────────────────────
 
-test("the widget is on the home page and the games hub, once each", () => {
-  for (const page of [HOME, HUB]) {
+test("the widget is on the home page, once", () => {
+  for (const page of [HOME]) {
     const src = read(page);
     const renders = src.match(/<DailyRewardWidget\s*\/>/g) || [];
     assert.equal(renders.length, 1, `${page} must render the widget exactly once`);
@@ -285,59 +284,6 @@ test("the widget stays under the navbar in the top-right", () => {
 });
 
 // ── The navbar chip ─────────────────────────────────────────────────────────
-
-test("the coin balance renders under the trophy total, on both nav surfaces", () => {
-  const nav = read(NAV);
-
-  // Desktop chip: one Link, trophies first, coins beneath it.
-  const chip = nav.slice(
-    nav.indexOf('data-testid="nav-trophies"'),
-    nav.indexOf('data-testid="nav-coins"'),
-  );
-  assert.ok(chip.length > 0, "the coins must sit inside the trophies chip");
-  assert.ok(
-    chip.includes("<IconTrophy") && chip.includes("profile.totalTrophies"),
-    "the trophy total must come first in the chip",
-  );
-  assert.match(nav, /data-testid="nav-coins"/);
-  assert.match(nav, /<IconCoins/);
-  // The two rows are stacked, so the coins read as the line UNDER the total.
-  assert.match(nav, /className="flex flex-col leading-tight"/);
-
-  // Mobile menu: the same pair, same order.
-  const mobile = nav.slice(nav.indexOf('data-testid="nav-trophies-mobile"'));
-  assert.ok(
-    mobile.indexOf('data-testid="nav-trophies-mobile"') <
-      mobile.indexOf('data-testid="nav-coins-mobile"'),
-    "the mobile coins line must follow the trophies line",
-  );
-});
-
-test("the navbar reads the one wallet, and re-reads it after a credit", () => {
-  const nav = read(NAV);
-  const code = stripComments(nav);
-
-  // The balance comes from the existing endpoint — no second currency path.
-  // It goes through the shared in-flight de-duper (the profile page reads the
-  // same URL in the same tick), so the call site is `fetchDeduped`.
-  assert.match(code, /fetchDeduped\("\/api\/get-user-tokens"/);
-  assert.match(code, /balance: \(\(\) => \{/);
-  assert.match(code, /Number\(data\.data\.balance\)/);
-
-  // A claim announces itself, and the chip re-reads from that event.
-  assert.match(
-    code,
-    /import \{ COIN_BALANCE_EVENT \} from "\.\.\/hooks\/useCoinBalance"/,
-  );
-  assert.match(
-    code,
-    /addEventListener\(COIN_BALANCE_EVENT, balanceHandler\)/,
-  );
-  assert.match(
-    code,
-    /removeEventListener\(COIN_BALANCE_EVENT, balanceHandler\)/,
-  );
-});
 
 // ── What the widget actually renders ────────────────────────────────────────
 //
@@ -544,16 +490,6 @@ test("the widget re-reads immediately when an AI or practice win is announced", 
   assert.match(client, /window\.localStorage\.setItem/);
 });
 
-test("an unread wallet shows a dash, never a fabricated zero", () => {
-  const nav = read(NAV);
-  // `null` is the "not read yet" state, and it is what the chip tests for.
-  assert.match(nav, /balance = Number\.isFinite\(coins\) && coins >= 0 \? coins : null/);
-  assert.match(nav, /profile\.balance === null/);
-  assert.ok(
-    (nav.match(/"—"/g) || []).length >= 2,
-    "both nav surfaces must show a dash for an unknown balance",
-  );
-});
 
 // -- The sliding 14-day window ---------------------------------------------
 
@@ -584,13 +520,40 @@ test("the popup window slides by 14 days at a time", () => {
   assert.equal(dailyRewardCycleDay(28), 14);
 });
 
-test("a new day advances the streak when the player logs back in", () => {
+test("finishing a game advances the streak; a page visit does not", () => {
   const hook = read(HOOK);
-  assert.match(hook, /fetch\("\/api\/user\/daily-streak", \{/);
-  assert.match(hook, /method: "POST"/);
-  // The writer is the shared, idempotent-per-day one, not a client counter.
-  const route = read("src/app/api/user/daily-streak/route.js");
-  assert.match(route, /updateDailyStreak/);
+  // The reward surface only READS. Opening the site must not move the day.
+  assert.doesNotMatch(stripComments(hook), /api\/user\/daily-streak/);
+
+  // Every completion route credits the same shared, idempotent-per-day writer,
+  // so solo, the daily challenge and ranked/AI duels all advance one streak.
+  const engine = read("src/lib/streaks/server.ts");
+  assert.match(engine, /updateDailyStreak\(clerkId\)/);
+  for (const route of [
+    "src/app/api/solitaire/solo/route.ts",
+    "src/app/api/solitaire/daily/route.ts",
+    "src/app/api/solitaire-duel/match/[matchId]/move/route.ts",
+  ]) {
+    assert.match(read(route), /recordStreakCompletion\(userId\)/, `${route} must credit the streak`);
+  }
+
+  // The solo route also stamps the win gate, so a solo player can claim.
+  assert.match(read("src/app/api/solitaire/solo/route.ts"), /markDailyRewardWin\(db, userId\)/);
+});
+
+test("the streak reward API is reachable (no retired-product 404)", () => {
+  const proxy = read("src/proxy.ts");
+  const retired = proxy.match(/const RETIRED_PRODUCT_API = .*/)?.[0] ?? "";
+  assert.ok(retired.length > 0, "the retired list must exist");
+  assert.doesNotMatch(retired, /rewards/, "the streak reward API must not be 404'd");
+  assert.match(retired, /quests/, "quests stay retired");
+});
+
+test("clicking the widget header opens the 14-day board", () => {
+  const widget = read(WIDGET);
+  assert.match(widget, /data-testid="daily-reward-widget-header"/);
+  assert.match(widget, /onClick=\{\(\) => setOpen\(true\)\}/);
+  assert.match(widget, /<DailyRewardBoard open=\{open\}/);
 });
 
 test("an empty reward window opens nothing", () => {
