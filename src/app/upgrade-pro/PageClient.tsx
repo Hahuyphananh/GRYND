@@ -151,12 +151,12 @@ export default function PageClient({ plan, signedIn, subscription }: PageClientP
   );
 
   return (
-    <div className="relative min-h-screen bg-[#05070d] text-white">
+    <div className="relative min-h-screen bg-[color:var(--bg-page)] text-[color:var(--text-primary)]">
       <NavigationBar currentPath="/upgrade-pro" />
 
       <main className="relative z-10 mx-auto max-w-5xl px-4 pb-20 pt-24 sm:pt-28">
         <header className="mb-8 text-center">
-          <h1 className="text-3xl font-black tracking-tight text-[#f5ff3b] drop-shadow-[0_0_10px_rgba(245,255,59,0.5)] sm:text-5xl">
+          <h1 className="text-3xl font-black tracking-tight text-[color:var(--state-gold)] sm:text-5xl">
             {t("pro.headline")}
           </h1>
           <p className="mx-auto mt-3 max-w-2xl text-sm text-white/65 sm:text-base">
@@ -167,7 +167,7 @@ export default function PageClient({ plan, signedIn, subscription }: PageClientP
         {checkoutState === "cancelled" && (
           <p
             role="status"
-            className="mx-auto mb-5 max-w-xl rounded-lg border border-[#00e5ff]/30 bg-[#07101f]/90 px-4 py-2 text-center text-sm text-[#9dd8ff]"
+            className="mx-auto mb-5 max-w-xl rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-surface)] px-4 py-2 text-center text-sm text-[color:var(--text-secondary)]"
           >
             {t("pro.checkout_cancelled")}
           </p>
@@ -205,17 +205,17 @@ export default function PageClient({ plan, signedIn, subscription }: PageClientP
                on this page. */}
         <section
           data-testid="pro-free-trust"
-          className="mt-6 rounded-xl border border-[#00e5ff]/15 bg-white/[0.02] px-5 py-4"
+          className="mt-6 rounded-xl border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] px-5 py-4"
         >
           <p className="text-sm leading-relaxed text-white/60">
-            <span className="font-bold text-[#00e5ff]">{t("pro.free_title")}.</span>{" "}
+            <span className="font-bold text-[color:var(--accent-strong)]">{t("pro.free_title")}.</span>{" "}
             {t("pro.free_body")}
           </p>
         </section>
 
         {/* ── Billing ────────────────────────────────────────────────── */}
-        <section className="mt-6 rounded-2xl border border-[#00e5ff]/25 bg-[#07101f]/90 p-6">
-          <h2 className="text-xl font-bold text-[#00e5ff]">{t("pro.billing_title")}</h2>
+        <section className="mt-6 rounded-2xl border border-[color:var(--border-hairline)] bg-[color:var(--bg-surface)] p-6">
+          <h2 className="text-xl font-bold text-[color:var(--accent-strong)]">{t("pro.billing_title")}</h2>
           <ul className="mt-3 space-y-2 text-sm text-white/65">
             {active && currentOption ? (
               <>
@@ -238,7 +238,7 @@ export default function PageClient({ plan, signedIn, subscription }: PageClientP
             )}
             <li>
               • {t("pro.billing_profile_lead")}{" "}
-              <Link href="/profil" className="text-[#f5ff3b] underline">
+              <Link href="/profil" className="text-[color:var(--state-gold)] underline">
                 {t("pro.billing_profile_link")}
               </Link>
             </li>

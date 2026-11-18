@@ -1112,7 +1112,7 @@ export default function SolitaireDuelMatchPage() {
       autoStop={terminal}
       gameLabel="solitaire-duel"
     >
-      <div className="min-h-screen overflow-x-clip bg-linear-to-b from-[#100c02] via-[#0b0902] to-[#070502] px-2 pb-24 pt-20 text-white sm:px-6 md:pb-8">
+      <div className="min-h-screen overflow-x-clip bg-linear-to-b from-[var(--tint-from--100c02)] via-[var(--tint-via--0b0902)] to-[var(--tint-to--070502)] px-2 pb-24 pt-20 text-white sm:px-6 md:pb-8">
         <NavigationBar currentPath="/casino" />
 
         <div className="mx-auto mt-4 w-full max-w-4xl">
@@ -1551,7 +1551,7 @@ export default function SolitaireDuelMatchPage() {
                 aria-modal="true"
                 aria-label="Resign this match?"
               >
-                <div className="w-full max-w-sm rounded-2xl border border-red-500/40 bg-[#160a0c] p-5 text-center">
+                <div className="w-full max-w-sm rounded-2xl border border-red-500/40 bg-[var(--tint-bg--160a0c)] p-5 text-center">
                   <IconAlertTriangle className="mx-auto h-7 w-7 text-red-300" aria-hidden="true" />
                   <p className="mt-2 text-sm font-bold text-white">Resign this match?</p>
                   <p className="mt-1.5 text-xs leading-relaxed text-white/60">
@@ -1604,7 +1604,7 @@ export default function SolitaireDuelMatchPage() {
                   initial={{ scale: 0.94, y: 10, opacity: 0 }}
                   animate={{ scale: 1, y: 0, opacity: 1 }}
                   exit={{ scale: 0.96, opacity: 0 }}
-                  className="w-full max-w-sm rounded-2xl border border-amber-400/40 bg-[#141005] p-5 text-center"
+                  className="w-full max-w-sm rounded-2xl border border-amber-400/40 bg-[var(--tint-bg--141005)] p-5 text-center"
                 >
                   <IconAlertTriangle className="mx-auto h-7 w-7 text-amber-300" aria-hidden="true" />
                   <p className="mt-2 text-sm font-black text-white" data-testid="solitaire-board-reset-title">

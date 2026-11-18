@@ -53,9 +53,9 @@ import {
 } from "../lib/coinCheckoutClient";
 
 const CARD =
-  "rounded-xl border border-[#00e5ff]/20 bg-[#040d24]/70 p-5 backdrop-blur-xs sm:p-6";
+  "rounded-xl border border-[#00e5ff]/20 bg-surface/70 p-5 backdrop-blur-xs sm:p-6";
 const OFFER =
-  "flex h-full flex-col rounded-lg border border-[#00e5ff]/15 bg-[#030817]/60 p-4";
+  "flex h-full flex-col rounded-lg border border-[#00e5ff]/15 bg-page/60 p-4";
 const CTA =
   "mt-3 inline-flex items-center justify-center rounded-xl border border-[#f5ff3b]/60 bg-linear-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-4 py-2.5 text-sm font-bold text-[#1f1700] shadow-[0_0_20px_rgba(245,255,59,0.25)] transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817] disabled:cursor-not-allowed disabled:opacity-60";
 

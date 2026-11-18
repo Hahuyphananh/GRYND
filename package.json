@@ -4,7 +4,6 @@
   "private": true,
   "scripts": {
     "build": "next build",
-    "theme:light": "node scripts/generate-light-theme.mjs",
     "dev": "next dev",
     "start": "next start",
     "lint": "next lint",
@@ -141,6 +140,9 @@
     "test:game-primitives": "node --import tsx --test",
     "verify:game-primitives": "node qa/game-primitives-check.mjs",
     "test:tokens": "node --test tests/game-visual-tokens.test.mjs tests/light-theme-palette.test.mjs",
+    "design:guard": "node scripts/check-design-tokens.mjs",
+    "design:guard:update": "node scripts/check-design-tokens.mjs --update",
+    "test:design-guard": "node --test tests/design-token-guard.test.mjs tests/ui-primitives.test.mjs",
     "test:game-overlays": "node --test tests/game-overlay-centering.test.mjs",
     "test:result-delay": "node --test tests/game-result-reveal-delay.test.mjs",
     "verify:board-fit": "node qa/board-fit-check.mjs",

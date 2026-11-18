@@ -34,6 +34,7 @@ import {
   overallEloFromRatingsMap,
   toOverallShape,
 } from "../src/lib/rating.js";
+import { readProfileSource } from "./helpers/profile-source.mjs";
 
 const RATING_LIB = "src/lib/rating.js";
 const ROUTE = "src/app/api/leaderboard/overall/route.js";
@@ -393,14 +394,14 @@ test("UI: the Overall Elo badge is gone from the classement rows", () => {
   const page = fs.readFileSync("src/app/classement/PageClient.jsx", "utf8");
   assert.doesNotMatch(page, /OverallEloBadge/);
   // The profile still shows the aggregate in its header.
-  const own = fs.readFileSync("src/app/profil/PageClient.jsx", "utf8");
+  const own = readProfileSource();
   assert.match(
     own,
     /Overall \{Number\(stats\.overallElo\)\.toLocaleString\(\)\} Elo/,
   );
 });
 test("UI: the badge renders in both profile headers", () => {
-  const own = fs.readFileSync("src/app/profil/PageClient.jsx", "utf8");
+  const own = readProfileSource();
   assert.match(own, /Overall \{Number\(stats\.overallElo\)\.toLocaleString\(\)\} Elo/);
   const publicPage = fs.readFileSync("src/app/profil/[clerkId]/PageClient.tsx", "utf8");
   assert.match(

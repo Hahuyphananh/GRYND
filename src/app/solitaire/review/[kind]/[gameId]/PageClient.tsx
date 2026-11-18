@@ -92,7 +92,7 @@ function Shell({
   navPath: string;
 }) {
   return (
-    <div className="relative min-h-screen bg-[#05070d] pb-24 text-white md:pb-0">
+    <div className="relative min-h-screen bg-[color:var(--bg-page)] pb-24 text-[color:var(--text-primary)] md:pb-0">
       <NavigationBar currentPath={navPath} />
       <main className="mx-auto max-w-7xl px-4 pt-24 sm:px-6 md:pt-28">
         <Link
@@ -125,7 +125,7 @@ function Stat({
       data-testid={testId}
       className="rounded-xl border border-white/10 bg-black/25 px-3 py-2"
     >
-      <dt className="text-[10px] font-bold uppercase tracking-wider text-white/40">{label}</dt>
+      <dt className="text-[10px] font-bold uppercase tracking-wider text-[color:var(--text-muted)]">{label}</dt>
       <dd className={`mt-0.5 font-mono text-xl font-black tabular-nums ${tone}`}>{value}</dd>
     </div>
   );
@@ -477,9 +477,9 @@ export default function SolitaireReviewPageClient({
         <div
           data-testid="review-analysis-limit"
           role="status"
-          className="mt-5 max-w-3xl rounded-2xl border border-[#f5ff3b]/40 bg-[#f5ff3b]/[0.07] p-4"
+          className="mt-5 max-w-3xl rounded-[var(--radius-surface)] border border-[color:var(--border-warning)] bg-[color:var(--bg-surface)] p-4"
         >
-          <p className="text-[11px] font-black uppercase tracking-[0.24em] text-[#f5ff3b]">
+          <p className="text-[11px] font-black uppercase tracking-[0.24em] text-[color:var(--state-gold)]">
             GRYND PRO
           </p>
           <p className="mt-1 text-sm leading-relaxed text-white/75">
@@ -488,7 +488,7 @@ export default function SolitaireReviewPageClient({
           </p>
           <Link
             href="/upgrade-pro"
-            className="mt-3 inline-flex rounded-lg border border-[#f5ff3b]/50 bg-[#f5ff3b]/10 px-4 py-2 text-sm font-semibold text-[#f5ff3b] transition hover:bg-[#f5ff3b]/20"
+            className="mt-3 inline-flex rounded-lg border border-[color:var(--border-warning)] bg-[color:var(--bg-panel)] px-4 py-2 text-sm font-semibold text-[color:var(--state-gold)] transition-colors hover:bg-[color:var(--bg-surface)] motion-reduce:transition-none"
           >
             Get unlimited analysis
           </Link>
@@ -569,7 +569,7 @@ export default function SolitaireReviewPageClient({
             {/* ── Board + navigation ─────────────────────────────────────── */}
             <section
               aria-label="Board review"
-              className="min-w-0 rounded-2xl border border-white/10 bg-[#070b12]/85 p-3 shadow-[0_20px_60px_rgba(0,0,0,0.35)] sm:p-5"
+              className="min-w-0 rounded-[var(--radius-surface)] border border-[color:var(--border-hairline)] bg-[color:var(--bg-surface)] p-3 shadow-[var(--shadow-raise)] sm:p-5"
             >
               {/* Inline commentary leads the analysis: GLITCH's line for the
                   selected move sits above the board it describes. Keyed by the
@@ -730,7 +730,7 @@ export default function SolitaireReviewPageClient({
                         <option
                           key={option.ms}
                           value={option.ms}
-                          className="bg-[#0b1220] text-white"
+                          className="bg-[color:var(--bg-page)] text-[color:var(--text-primary)]"
                         >
                           {option.label}
                         </option>

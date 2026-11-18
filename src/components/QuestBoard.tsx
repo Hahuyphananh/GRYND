@@ -41,7 +41,7 @@ import { useTranslation } from "../hooks/useTranslation";
 import { useGlitch } from "./mascot/GlitchProvider";
 
 const CARD =
-  "rounded-xl border border-[#00e5ff]/20 bg-[#040d24]/70 p-5 backdrop-blur-xs sm:p-6";
+  "rounded-xl border border-[#00e5ff]/20 bg-surface/70 p-5 backdrop-blur-xs sm:p-6";
 
 function formatCoins(value: number) {
   return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
@@ -131,7 +131,7 @@ export default function QuestBoard() {
     return (
       <li key={id || `${quest.periodType}-${quest.slot}`} className="h-full">
         <article
-          className="flex h-full flex-col rounded-lg border border-[#00e5ff]/15 bg-[#030817]/60 p-4"
+          className="flex h-full flex-col rounded-lg border border-[#00e5ff]/15 bg-page/60 p-4"
           data-testid={`quest-${id}`}
           data-claimable={quest.claimable ? "true" : "false"}
         >

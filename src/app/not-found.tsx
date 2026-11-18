@@ -93,7 +93,7 @@ function Reel({ reel }: { reel: (typeof REELS)[number] }) {
   return (
     <div
       aria-hidden
-      className="relative h-24 w-20 overflow-hidden rounded-xl border-2 border-[#00e5ff]/40 bg-[#08142f] shadow-[inset_0_0_20px_rgba(0,229,255,0.15)]"
+      className="relative h-24 w-20 overflow-hidden rounded-xl border-2 border-[#00e5ff]/40 bg-surface shadow-[inset_0_0_20px_rgba(0,229,255,0.15)]"
     >
       <div
         className="slot-reel-spin flex flex-col"
@@ -108,7 +108,7 @@ function Reel({ reel }: { reel: (typeof REELS)[number] }) {
         {reel.digits.map((d, i) => (
           <div
             key={i}
-            className={`flex h-24 w-20 items-center justify-center bg-linear-to-b from-[#0b224f]/60 to-[#050d1f] text-5xl font-black ${reel.digitClass}`}
+            className={`flex h-24 w-20 items-center justify-center bg-linear-to-b from-[#0b224f]/60 to-surface text-5xl font-black ${reel.digitClass}`}
           >
             {d}
           </div>
@@ -169,7 +169,7 @@ const QUICK_LINKS = [
 export default function NotFound() {
   return (
     <div
-      className="relative flex min-h-[calc(100vh-68px)] items-center justify-center overflow-hidden bg-[#030817] px-4 py-14 sm:min-h-[calc(100vh-4rem)]"
+      className="relative flex min-h-[calc(100vh-68px)] items-center justify-center overflow-hidden bg-page px-4 py-14 sm:min-h-[calc(100vh-4rem)]"
     >
       {/* Backdrop: neon glows + subtle grid */}
       <div aria-hidden className="pointer-events-none absolute inset-0">
@@ -301,7 +301,7 @@ export default function NotFound() {
               <Link
                 key={l.href}
                 href={l.href}
-                className="rounded-full border border-[#00e5ff]/25 bg-[#08142f] px-3.5 py-1.5 text-xs font-medium text-[#c9f7ff] transition-colors duration-200 hover:border-[#00e5ff]/60 hover:text-[#f5ff3b] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                className="rounded-full border border-[#00e5ff]/25 bg-surface px-3.5 py-1.5 text-xs font-medium text-[#c9f7ff] transition-colors duration-200 hover:border-[#00e5ff]/60 hover:text-[#f5ff3b] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
               >
                 {l.label}
               </Link>

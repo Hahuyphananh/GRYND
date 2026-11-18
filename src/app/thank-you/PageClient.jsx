@@ -64,7 +64,7 @@ export default function ThankYouPage() {
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
-        className="relative z-10 mb-10 w-full max-w-md rounded-3xl border border-[#00e5ff]/40 bg-[#040d24]/80 p-8 text-center shadow-[0_0_40px_rgba(0,229,255,0.15)] backdrop-blur-md"
+        className="relative z-10 mb-10 w-full max-w-md rounded-3xl border border-[#00e5ff]/40 bg-surface/80 p-8 text-center shadow-[0_0_40px_rgba(0,229,255,0.15)] backdrop-blur-md"
       >
         <p className="text-5xl font-extrabold tracking-tight text-[#00e5ff] drop-shadow-[0_0_18px_rgba(0,229,255,0.6)]">
           {t("thankYou.tokensTitle").split(" ")[0]}

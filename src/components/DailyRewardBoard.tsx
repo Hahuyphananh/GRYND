@@ -80,7 +80,7 @@ function DayTile({
           ? "border-[#f5ff3b] bg-[#f5ff3b]/15 text-[#f5ff3b] shadow-[0_0_18px_rgba(245,255,59,0.25)]"
           : isCollected
             ? "border-[#00e5ff]/25 bg-[#00e5ff]/5 text-[#9dd8ff]/60"
-            : "border-[#00e5ff]/15 bg-[#040d24]/60 text-[#9dd8ff]/80",
+            : "border-[#00e5ff]/15 bg-surface/60 text-[#9dd8ff]/80",
       ].join(" ")}
     >
       <span className="text-[9px] font-semibold uppercase tracking-wider opacity-80">
@@ -199,7 +199,7 @@ export default function DailyRewardBoard({ open, onClose, reward }: Props) {
         tabIndex={-1}
         data-testid="daily-reward-board-dialog"
         onClick={(event) => event.stopPropagation()}
-        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-[#f5ff3b]/40 bg-[#040d24] p-4 shadow-[0_0_40px_rgba(245,255,59,0.25)] outline-hidden sm:p-6"
+        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-[#f5ff3b]/40 bg-surface p-4 shadow-[0_0_40px_rgba(245,255,59,0.25)] outline-hidden sm:p-6"
       >
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="flex items-start gap-3">

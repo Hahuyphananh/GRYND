@@ -100,7 +100,7 @@ export default function GuestProgressPanel() {
 
   return (
     <section data-testid="guest-progress-panel" className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#00e5ff]/25 bg-[#04122b]/70 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#00e5ff]/25 bg-surface/70 p-4">
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#00e5ff]/40 bg-[#00e5ff]/10 text-[#00e5ff]">
             <IconUserCircle size={22} aria-hidden="true" />
@@ -177,7 +177,7 @@ export default function GuestProgressPanel() {
       <Link
         href="/games"
         data-testid="guest-cta-games"
-        className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-[#04122b]/70 px-4 py-3 text-sm font-semibold text-white transition hover:border-[#00e5ff]/40 hover:text-[#00e5ff]"
+        className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-surface/70 px-4 py-3 text-sm font-semibold text-white transition hover:border-[#00e5ff]/40 hover:text-[#00e5ff]"
       >
         <span className="inline-flex items-center gap-2">
           <IconDeviceGamepad2 size={18} aria-hidden="true" className="text-[#00e5ff]" />
@@ -222,7 +222,7 @@ function ReadyView({ data }: { data: GuestProgressData }) {
 
       <section
         data-testid="guest-games"
-        className="rounded-xl border border-[#00e5ff]/25 bg-[#04122b]/70 p-4"
+        className="rounded-xl border border-[#00e5ff]/25 bg-surface/70 p-4"
       >
         <h2 className="text-sm font-bold uppercase tracking-wider text-[#00e5ff]">
           {t("guestProgress.games.title", "By game")}
@@ -284,7 +284,7 @@ function ReadyView({ data }: { data: GuestProgressData }) {
 
       <section
         data-testid="guest-history"
-        className="rounded-xl border border-[#00e5ff]/25 bg-[#04122b]/70 p-4"
+        className="rounded-xl border border-[#00e5ff]/25 bg-surface/70 p-4"
       >
         <h2 className="text-sm font-bold uppercase tracking-wider text-[#00e5ff]">
           {t("guestProgress.history.title", "Recent matches")}
@@ -348,7 +348,7 @@ function EmptyPracticeView() {
   return (
     <div
       data-testid="guest-empty"
-      className="rounded-xl border border-white/10 bg-[#04122b]/70 p-6 text-center"
+      className="rounded-xl border border-white/10 bg-surface/70 p-6 text-center"
     >
       <p className="text-lg font-bold text-white">
         {t("guestProgress.empty.title", "No practice matches yet")}
@@ -375,7 +375,7 @@ function NoSessionView() {
   return (
     <div
       data-testid="guest-no-session"
-      className="rounded-xl border border-white/10 bg-[#04122b]/70 p-6 text-center"
+      className="rounded-xl border border-white/10 bg-surface/70 p-6 text-center"
     >
       <p className="text-lg font-bold text-white">
         {t("guestProgress.noSession.title", "No guest record in this browser")}

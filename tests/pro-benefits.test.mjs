@@ -43,6 +43,7 @@ import {
   proBenefitIds,
 } from "../src/lib/proBenefits.ts";
 import { PRO_PLAN_FALLBACK_PERKS } from "../src/lib/membershipDisplay.ts";
+import { readProfileSource } from "./helpers/profile-source.mjs";
 
 const read = (path) => fs.readFileSync(path, "utf8");
 
@@ -205,7 +206,7 @@ test("profile customization is free for everyone in every supported language", a
   // No surface may still call customization a membership perk. Comments are
   // stripped first — the code documents WHY the perk wording was removed, and
   // that documentation is the audit trail, not customer copy.
-  const stripped = read("src/app/profil/PageClient.jsx")
+  const stripped = readProfileSource()
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/^\s*\/\/.*$/gm, "");
 
@@ -256,8 +257,6 @@ test("no read path hides the custom colour from a non-member", () => {
   assert.match(chat, /chatColor: glowColor \|\| \(msg\.chatColor \|\| null\)/);
 
   for (const path of [
-    "src/app/api/dice-flush/state/route.js",
-    "src/app/api/precision/get-match/route.ts",
     "src/app/api/get-user-tokens/route.ts",
   ]) {
     const source = read(path);
@@ -270,7 +269,5 @@ test("no read path hides the custom colour from a non-member", () => {
   }
 
   // The colour is still overridable by an equipped glow, everywhere.
-  assert.match(read("src/app/api/dice-flush/state/route.js"), /row\.glowColor \|\| row\.chatColor/);
-  assert.match(read("src/app/api/precision/get-match/route.ts"), /row\.glowColor \|\| row\.chatColor/);
   assert.match(read("src/app/api/get-user-tokens/route.ts"), /nameColor: user\.glowColor \|\| user\.chatColor/);
 });

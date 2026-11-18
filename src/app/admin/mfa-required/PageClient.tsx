@@ -322,7 +322,7 @@ export default function AdminMfaRequiredPage() {
   return (
     <div className="relative flex min-h-screen items-center justify-center px-4 py-16">
       <InteractiveCasinoBg variant="subtle" />
-      <div className="relative z-10 w-full max-w-lg rounded-2xl border border-[#f5ff3b]/30 bg-[#040d24]/90 p-8 shadow-[0_0_40px_rgba(245,255,59,0.15)] backdrop-blur-md">
+      <div className="relative z-10 w-full max-w-lg rounded-2xl border border-[#f5ff3b]/30 bg-surface/90 p-8 shadow-[0_0_40px_rgba(245,255,59,0.15)] backdrop-blur-md">
         <h1 className="mb-3 text-2xl font-extrabold text-[#f5ff3b]">
           Multi-Factor Authentication Required
         </h1>
@@ -392,7 +392,7 @@ export default function AdminMfaRequiredPage() {
               className={`rounded-lg px-3 py-2 text-sm font-semibold transition-all focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] ${
                 active === m
                   ? "bg-[#f5ff3b] text-[#1f1700]"
-                  : "border border-[#00e5ff]/30 bg-[#08142f] text-[#d8fbff] hover:bg-[#10234a]"
+                  : "border border-[#00e5ff]/30 bg-surface text-[#d8fbff] hover:bg-[#10234a]"
               }`}
             >
               {METHOD_LABELS[m]}
@@ -426,7 +426,7 @@ export default function AdminMfaRequiredPage() {
                   placeholder="6-digit code"
                   value={code}
                   onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-                  className="w-full rounded-lg border border-[#00e5ff]/40 bg-[#08142f] px-4 py-2.5 text-center text-lg tracking-[0.5em] text-[#ecf8ff] focus:outline-hidden focus:ring-2 focus:ring-[#00e5ff]"
+                  className="w-full rounded-lg border border-[#00e5ff]/40 bg-surface px-4 py-2.5 text-center text-lg tracking-[0.5em] text-[#ecf8ff] focus:outline-hidden focus:ring-2 focus:ring-[#00e5ff]"
                 />
                 <div className="flex gap-2">
                   <button
@@ -471,7 +471,7 @@ export default function AdminMfaRequiredPage() {
                   placeholder="6-digit code"
                   value={code}
                   onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-                  className="w-full rounded-lg border border-[#00e5ff]/40 bg-[#08142f] px-4 py-2.5 text-center text-lg tracking-[0.5em] text-[#ecf8ff] focus:outline-hidden focus:ring-2 focus:ring-[#00e5ff]"
+                  className="w-full rounded-lg border border-[#00e5ff]/40 bg-surface px-4 py-2.5 text-center text-lg tracking-[0.5em] text-[#ecf8ff] focus:outline-hidden focus:ring-2 focus:ring-[#00e5ff]"
                 />
                 <button
                   onClick={() => verify("totp")}
@@ -529,7 +529,7 @@ export default function AdminMfaRequiredPage() {
                   placeholder="Admin passphrase"
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
-                  className="w-full rounded-lg border border-[#00e5ff]/40 bg-[#08142f] px-4 py-2.5 text-[#ecf8ff] focus:outline-hidden focus:ring-2 focus:ring-[#00e5ff]"
+                  className="w-full rounded-lg border border-[#00e5ff]/40 bg-surface px-4 py-2.5 text-[#ecf8ff] focus:outline-hidden focus:ring-2 focus:ring-[#00e5ff]"
                 />
                 <button
                   onClick={() => verify("passphrase")}

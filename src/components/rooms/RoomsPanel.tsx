@@ -71,7 +71,7 @@ export default function RoomsPanel({
 
   return (
     <section
-      className={`mt-8 rounded-xl border border-white/10 bg-[#07101f]/90 p-6 shadow-[0_12px_32px_rgba(0,0,0,0.28)] ${className}`}
+      className={`mt-8 rounded-xl border border-white/10 bg-surface/90 p-6 shadow-[0_12px_32px_rgba(0,0,0,0.28)] ${className}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xl text-slate-200">
@@ -109,7 +109,7 @@ export default function RoomsPanel({
             onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
             placeholder={t("rooms.joinCodePlaceholder", "ABCD234567")}
             maxLength={16}
-            className="mt-1 w-44 rounded-sm border border-white/15 bg-[#050b16] px-3 py-1.5 font-mono text-sm tracking-widest text-white"
+            className="mt-1 w-44 rounded-sm border border-white/15 bg-page px-3 py-1.5 font-mono text-sm tracking-widest text-white"
           />
         </div>
         <button

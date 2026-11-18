@@ -35,7 +35,7 @@ export default function BetStatus({
             {/* Bet amount */}
             <div
               className="flex items-center justify-between px-3 py-2 rounded-xl 
-                          border border-[#00e5ff]/30 bg-[#020617] 
+                          border border-[#00e5ff]/30 bg-page 
                           shadow-[0_0_10px_rgba(0,229,255,0.15)]"
             >
               <span className="inline-flex items-center gap-1.5 text-gray-300">
@@ -47,7 +47,7 @@ export default function BetStatus({
             {/* Status */}
             <div
               className="flex items-center justify-between px-3 py-2 rounded-xl 
-                          border border-[#ff4fd8]/30 bg-[#020617]
+                          border border-[#ff4fd8]/30 bg-page
                           shadow-[0_0_10px_rgba(255,79,216,0.15)]"
             >
               <span className="text-gray-300">Status</span>

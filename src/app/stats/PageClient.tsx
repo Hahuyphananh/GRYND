@@ -28,18 +28,18 @@ export default function StatsPageClient({
   const { t } = useTranslation();
 
   return (
-    <div className="relative min-h-screen bg-[#05070d] text-white">
+    <div className="relative min-h-screen bg-[color:var(--bg-page)] text-[color:var(--text-primary)]">
       <NavigationBar currentPath="/stats" />
 
       <main className="relative mx-auto w-full max-w-6xl px-4 pb-16 pt-24 sm:px-6">
         <header className="mb-6">
-          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#00e5ff]">
+          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[color:var(--accent-strong)]">
             GRYND PRO
           </p>
           <h1 className="mt-1 text-3xl font-black text-white sm:text-4xl">
             {t("stats.title")}
           </h1>
-          <p className="mt-2 max-w-3xl text-sm text-[#9dd8ff]/80">{t("stats.subtitle")}</p>
+          <p className="mt-2 max-w-3xl text-sm text-[color:var(--text-secondary)]">{t("stats.subtitle")}</p>
         </header>
 
         <SolitaireAcademyStats

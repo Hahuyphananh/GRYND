@@ -169,7 +169,7 @@ export default function CompleteProfilePage() {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#030817] px-4 py-10 sm:py-14">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-page px-4 py-10 sm:py-14">
       {/* Backdrop: neon glows + subtle grid (same stage as the 404 page). */}
       <div aria-hidden className="pointer-events-none absolute inset-0">
         <div className="absolute -left-28 -top-28 h-80 w-80 rounded-full bg-[#00e5ff]/10 blur-[110px]" />
@@ -229,7 +229,7 @@ export default function CompleteProfilePage() {
               {AGE_CELLS.map((cell, i) => (
                 <span
                   key={cell}
-                  className={`flex h-11 w-10 items-center justify-center rounded-lg border-2 border-[#00e5ff]/40 bg-[#08142f] text-xl font-black text-[#f5ff3b] shadow-[inset_0_0_18px_rgba(0,229,255,0.18)] ${
+                  className={`flex h-11 w-10 items-center justify-center rounded-lg border-2 border-[#00e5ff]/40 bg-surface text-xl font-black text-[#f5ff3b] shadow-[inset_0_0_18px_rgba(0,229,255,0.18)] ${
                     i === 1 ? "animate-float-slow" : ""
                   }`}
                   style={i === 1 ? { "--float-duration": "6s", "--float-rot": "0deg" } : undefined}
@@ -297,7 +297,7 @@ export default function CompleteProfilePage() {
                 aria-describedby="usernameHelp"
                 placeholder={t("completeProfile.usernamePlaceholder")}
                 required
-                className="mt-2 w-full rounded-2xl border-2 border-[#00e5ff]/30 bg-[#040d24] px-4 py-3.5 text-base font-semibold text-[#d8fbff] outline-hidden transition focus:border-[#00e5ff] focus:ring-2 focus:ring-[#00e5ff]/40 sm:text-lg"
+                className="mt-2 w-full rounded-2xl border-2 border-[#00e5ff]/30 bg-surface px-4 py-3.5 text-base font-semibold text-[#d8fbff] outline-hidden transition focus:border-[#00e5ff] focus:ring-2 focus:ring-[#00e5ff]/40 sm:text-lg"
               />
 
               <p id="usernameHelp" className="mt-2 text-xs text-[#6b91b3]">
@@ -322,7 +322,7 @@ export default function CompleteProfilePage() {
                 aria-invalid={Boolean(error)}
                 aria-describedby="birthDateHelp birthDateStatus"
                 required
-                className="mt-2 w-full rounded-2xl border-2 border-[#00e5ff]/30 bg-[#040d24] px-4 py-3.5 text-base font-semibold text-[#d8fbff] outline-hidden transition [color-scheme:dark] focus:border-[#00e5ff] focus:ring-2 focus:ring-[#00e5ff]/40 sm:text-lg"
+                className="mt-2 w-full rounded-2xl border-2 border-[#00e5ff]/30 bg-surface px-4 py-3.5 text-base font-semibold text-[#d8fbff] outline-hidden transition [color-scheme:dark] focus:border-[#00e5ff] focus:ring-2 focus:ring-[#00e5ff]/40 sm:text-lg"
               />
 
               {/* Live verdict — shown as soon as the picker yields a date. */}

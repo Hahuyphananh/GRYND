@@ -135,7 +135,7 @@ export default function VideoLessonPlayer({ video }: { video: AcademyVideo }) {
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#040712] pb-24 text-white md:pb-0">
+    <div className="relative min-h-screen overflow-hidden bg-page pb-24 text-white md:pb-0">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 h-[560px] bg-[radial-gradient(ellipse_at_top,rgba(0,229,255,0.14),transparent_62%)]"
@@ -226,7 +226,7 @@ export default function VideoLessonPlayer({ video }: { video: AcademyVideo }) {
         )}
 
         <div className="mt-5 grid gap-4 md:grid-cols-[minmax(0,1fr)_300px]">
-          <div className="rounded-2xl border border-white/10 bg-[#071128]/80 p-4">
+          <div className="rounded-2xl border border-white/10 bg-surface/80 p-4">
             <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-[#9dd8ff]/80">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1">
                 <IconClock size={12} aria-hidden="true" />
@@ -249,7 +249,7 @@ export default function VideoLessonPlayer({ video }: { video: AcademyVideo }) {
 
           <aside
             aria-label={t("learn.videos.chapters")}
-            className="rounded-2xl border border-white/10 bg-[#071128]/80 p-4"
+            className="rounded-2xl border border-white/10 bg-surface/80 p-4"
           >
             <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#00e5ff]/75">
               <IconList size={14} aria-hidden="true" />

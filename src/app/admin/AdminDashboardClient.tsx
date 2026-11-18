@@ -1232,7 +1232,7 @@ export default function AdminDashboardClient({
                           {u.isAdmin ? (
                             <AdminBadge />
                           ) : (
-                            <span className="inline-block w-2 h-2 rounded-full bg-gray-600" />
+                            <span className="inline-block w-2 h-2 rounded-full bg-page" />
                           )}
                         </td>
                         <td className="px-3 py-2.5 text-right">
@@ -1631,7 +1631,7 @@ export default function AdminDashboardClient({
           onClick={() => setReplyTarget(null)}
         >
           <div
-            className="w-full max-w-lg bg-[#0a0f1e] border border-white/15 rounded-xl p-6"
+            className="w-full max-w-lg bg-surface border border-white/15 rounded-xl p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-1">
@@ -1670,7 +1670,7 @@ export default function AdminDashboardClient({
               onChange={(e) => setReplyText(e.target.value)}
               placeholder="Write your reply..."
               maxLength={5000}
-              className="w-full rounded-lg border border-white/10 bg-[#0d1830] px-4 py-2.5 text-sm text-white placeholder-gray-500 outline-hidden focus:border-[#f5ff3b]/50 resize-y mb-3"
+              className="w-full rounded-lg border border-white/10 bg-panel px-4 py-2.5 text-sm text-white placeholder-gray-500 outline-hidden focus:border-[#f5ff3b]/50 resize-y mb-3"
             />
             <div className="flex items-center justify-between gap-3">
               <span className="text-xs text-gray-500">

@@ -30,11 +30,13 @@ export default function Footer() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const linkClass = "block text-sm text-white/55 transition-colors hover:text-white";
-  const heading = "mb-3 text-[11px] font-black uppercase tracking-[0.22em] text-white/35";
+  const linkClass =
+    "block text-sm text-[color:var(--text-muted)] transition-colors hover:text-[color:var(--text-primary)]";
+  const heading =
+    "mb-3 text-[11px] font-black uppercase tracking-[0.22em] text-[color:var(--text-muted)]";
 
   return (
-    <footer className="mt-16 border-t border-white/10 bg-[#04060b]">
+    <footer className="mt-16 border-t border-[color:var(--border-hairline)] bg-[color:var(--bg-page)]">
       <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
         <div className="grid grid-cols-2 gap-8 md:grid-cols-5">
           <div className="col-span-2 md:col-span-1">
@@ -48,7 +50,7 @@ export default function Footer() {
               />
             </Link>
 
-            <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/50">
+            <p className="mt-4 max-w-xs text-sm leading-relaxed text-[color:var(--text-secondary)]">
               The competitive home of Klondike Solitaire. One deal, two players,
               a free ranked ladder and results the server verifies.
             </p>
@@ -144,11 +146,14 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="mt-10 border-t border-white/10 pt-6">
-          <div className="flex flex-col items-center justify-between gap-3 text-xs text-white/35 md:flex-row">
+        <div className="mt-10 border-t border-[color:var(--border-hairline)] pt-6">
+          <div className="flex flex-col items-center justify-between gap-3 text-xs text-[color:var(--text-muted)] md:flex-row">
             <div>© 2026 GRYND. All rights reserved.</div>
             <div className="flex items-center gap-2">
-              <Link href="/terms" className="transition-colors hover:text-white">
+              <Link
+                href="/terms"
+                className="transition-colors hover:text-[color:var(--text-primary)]"
+              >
                 Terms
               </Link>
               <span aria-hidden="true">&bull;</span>
@@ -163,7 +168,7 @@ export default function Footer() {
           <button
             onClick={scrollToTop}
             aria-label="Scroll to top"
-            className="fixed bottom-24 right-4 z-50 flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-[#04060b]/90 text-white/70 backdrop-blur-xs transition hover:border-white/30 hover:text-white sm:bottom-6 sm:right-6"
+            className="fixed bottom-[calc(var(--tabbar-height)_+_2.5rem)] right-4 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-[color:var(--border-hairline)] bg-[color:var(--bg-surface)] text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--text-primary)] md:bottom-6 md:right-6"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"

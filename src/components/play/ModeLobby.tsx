@@ -82,7 +82,7 @@ export default function ModeLobby({
   const prefix = `playHub.lobby.${mode}`;
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#04060f] pb-24 text-white md:pb-0">
+    <div className="relative min-h-screen overflow-hidden bg-[color:var(--bg-page)] pb-24 text-[color:var(--text-primary)] md:pb-0">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 h-[480px] bg-[radial-gradient(ellipse_at_top,var(--lobby-glow),transparent_62%)]"

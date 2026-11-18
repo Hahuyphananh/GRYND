@@ -487,7 +487,7 @@ export default function SolitairePuzzle({ kind }: Props) {
   return (
     <section
       aria-labelledby={`puzzle-${kind}-heading`}
-      className="rounded-3xl border border-cyan-400/25 bg-gradient-to-b from-[#07152e] to-[#050b1d] p-4 sm:p-6"
+      className="rounded-3xl border border-cyan-400/25 bg-gradient-to-b from-surface to-surface p-4 sm:p-6"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -570,7 +570,7 @@ export default function SolitairePuzzle({ kind }: Props) {
 
           {/* Glitch, on the side: why that move was right, or why it was not. */}
           <aside className="space-y-3 lg:sticky lg:top-24" aria-label="Glitch explains the puzzle">
-            <div className="rounded-2xl border border-cyan-400/20 bg-[#071022] p-3">
+            <div className="rounded-2xl border border-cyan-400/20 bg-surface p-3">
               <GlitchSay
                 key={lineVersion}
                 expression={line.expression}

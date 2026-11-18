@@ -178,7 +178,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <meta name="color-scheme" content="dark light" />
       </head>
 
-      <body className="antialiased transition-colors duration-300 bg-[#030817] text-[#d8fbff]">
+      <body className="antialiased transition-colors duration-300 bg-page text-[#d8fbff]">
         {/* Theme bootstrap — see THEME_BOOTSTRAP above.
 
             IT LIVES AT THE TOP OF <body>, NOT IN <head>, AND THAT IS

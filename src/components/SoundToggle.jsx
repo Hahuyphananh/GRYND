@@ -30,7 +30,7 @@ export default function SoundToggle({ className = "" }) {
       className={`inline-flex items-center cursor-pointer rounded-lg border px-2 py-1 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] transition-colors ${
         muted
           ? "border-[#ff8c42]/60 bg-[#ff8c42]/10 text-[#ffb347]"
-          : "border-[#00e5ff]/50 bg-[#091737] text-[#c9f7ff] hover:bg-[#00e5ff]/10"
+          : "border-[#00e5ff]/50 bg-panel text-[#c9f7ff] hover:bg-[#00e5ff]/10"
       } ${className}`}
     >
       {muted ? <IconVolumeOff size={16} /> : <IconVolume size={16} />}

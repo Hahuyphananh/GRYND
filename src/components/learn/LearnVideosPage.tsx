@@ -13,7 +13,7 @@ export default function LearnVideosPage() {
   const { t } = useTranslation();
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#040712] pb-24 text-white md:pb-0">
+    <div className="relative min-h-screen overflow-hidden bg-page pb-24 text-white md:pb-0">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 h-[520px] bg-[radial-gradient(ellipse_at_top,rgba(0,229,255,0.12),transparent_62%)]"

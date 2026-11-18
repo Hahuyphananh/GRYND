@@ -83,7 +83,7 @@ export default function ContactMessageHistory({ title = "Your Messages" }) {
         {messages.map((m) => (
           <div
             key={m.id}
-            className="border border-white/10 rounded-lg p-4 bg-[#0a0f1e]/80"
+            className="border border-white/10 rounded-lg p-4 bg-surface/80"
           >
             <div className="flex items-center justify-between gap-3 mb-2">
               <span className="text-xs text-[#c9f7ff]/50 font-mono">

@@ -13,10 +13,16 @@
 // Every unavailable figure renders as "—". A guest sees the solo/daily empty
 // state with a sign-in hint rather than a fabricated zero (a real 0 and "not
 // recorded" are different claims).
+//
+// Copy resolves through `solitaireModes.*`, so the panel reads in the player's
+// language on a page that is otherwise already translated, and every surface
+// reads the semantic layer rather than the old white-alpha card classes.
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
+import { Surface } from "../ui";
+import { useTranslation } from "../../hooks/useTranslation";
 import { formatDuration, summariseSolo } from "../../lib/solitaire-duel/soloStats.js";
 
 type SoloSummary = ReturnType<typeof summariseSolo>;
@@ -31,7 +37,11 @@ type DailySummary = {
 
 const DASH = "—";
 
+const LINK =
+  "text-sm font-semibold text-[color:var(--text-secondary)] underline-offset-4 transition-colors hover:text-[color:var(--text-primary)] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--focus-ring)] motion-reduce:transition-none";
+
 export default function SolitaireModesPanel() {
+  const { t } = useTranslation();
   const [solo, setSolo] = useState<SoloSummary | null>(null);
   const [daily, setDaily] = useState<DailySummary | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -56,84 +66,119 @@ export default function SolitaireModesPanel() {
   }, []);
 
   const soloRows: Array<[string, string]> = [
-    ["Games played", solo ? String(solo.games) : DASH],
-    ["Completed", solo ? String(solo.completed) : DASH],
-    ["Completion rate", solo && solo.completionRate !== null ? `${solo.completionRate}%` : DASH],
-    ["Best time", formatDuration(solo?.bestMs ?? null)],
-    ["Average time", formatDuration(solo?.averageMs ?? null)],
+    [t("solitaireModes.solo.gamesPlayed"), solo ? String(solo.games) : DASH],
+    [t("solitaireModes.solo.completed"), solo ? String(solo.completed) : DASH],
+    [
+      t("solitaireModes.solo.completionRate"),
+      solo && solo.completionRate !== null ? `${solo.completionRate}%` : DASH,
+    ],
+    [t("solitaireModes.solo.bestTime"), formatDuration(solo?.bestMs ?? null)],
+    [t("solitaireModes.solo.averageTime"), formatDuration(solo?.averageMs ?? null)],
   ];
 
   const dailyRows: Array<[string, string]> = [
-    ["Challenges completed", daily ? String(daily.completed) : DASH],
+    [
+      t("solitaireModes.daily.completed"),
+      daily ? String(daily.completed) : DASH,
+    ],
     // A loaded 0 is a real streak state and reads as "0"; only a summary that
     // never arrived (guest, failed fetch) is unavailable, and that is the dash.
-    ["Current streak", daily ? String(Number(daily.currentStreak) || 0) : DASH],
-    ["Longest streak", daily ? String(Number(daily.longestStreak) || 0) : DASH],
-    ["Best time", formatDuration(daily?.bestMs ?? null)],
-    ["Today", daily?.today ? (daily.today.completed ? "Completed" : "In progress") : DASH],
+    [
+      t("solitaireModes.daily.currentStreak"),
+      daily ? String(Number(daily.currentStreak) || 0) : DASH,
+    ],
+    [
+      t("solitaireModes.daily.longestStreak"),
+      daily ? String(Number(daily.longestStreak) || 0) : DASH,
+    ],
+    [t("solitaireModes.daily.bestTime"), formatDuration(daily?.bestMs ?? null)],
+    [
+      t("solitaireModes.daily.today"),
+      daily?.today
+        ? daily.today.completed
+          ? t("solitaireModes.daily.todayDone")
+          : t("solitaireModes.daily.todayInProgress")
+        : DASH,
+    ],
+  ];
+
+  const cards = [
+    {
+      key: "ranked",
+      title: t("solitaireModes.ranked.title"),
+      body: t("solitaireModes.ranked.body"),
+      links: [
+        { href: "/classement", label: t("solitaireModes.ranked.leaderboard") },
+        { href: "/games/solitaire-duel/play", label: t("solitaireModes.ranked.play") },
+      ],
+    },
+    {
+      key: "solo",
+      title: t("solitaireModes.solo.title"),
+      rows: soloRows,
+      links: [{ href: "/solitaire", label: t("solitaireModes.solo.play") }],
+    },
+    {
+      key: "daily",
+      title: t("solitaireModes.daily.title"),
+      rows: dailyRows,
+      links: [{ href: "/daily", label: t("solitaireModes.daily.play") }],
+    },
   ];
 
   return (
     <section aria-labelledby="solitaire-modes-heading" className="mt-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 id="solitaire-modes-heading" className="text-lg font-bold text-white">
-          Solitaire modes
+        <h2
+          id="solitaire-modes-heading"
+          className="text-lg font-bold text-[color:var(--text-primary)]"
+        >
+          {t("solitaireModes.title")}
         </h2>
-        {!loaded && <span className="text-xs text-white/40">Loading…</span>}
+        {!loaded && (
+          <span className="text-xs text-[color:var(--text-muted)]">
+            {t("solitaireModes.loading")}
+          </span>
+        )}
       </div>
 
       <div className="mt-3 grid gap-3 md:grid-cols-3">
-        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300/80">Ranked PvP</p>
-          <p className="mt-2 text-sm leading-relaxed text-white/60">
-            Rating, recent matches and trophies are in the ranked sections of this
-            profile. Ranked only counts real human opponents.
-          </p>
-          <div className="mt-3 flex flex-wrap gap-3 text-sm">
-            <Link href="/classement" className="font-semibold text-cyan-200/70 hover:text-cyan-100">
-              Leaderboard →
-            </Link>
-            <Link href="/games/solitaire-duel/play" className="font-semibold text-white/70 hover:text-white">
-              Play ranked →
-            </Link>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/45">Solo Solitaire</p>
-          <dl className="mt-2 space-y-1 text-sm">
-            {soloRows.map(([label, value]) => (
-              <div key={label} className="flex items-baseline justify-between gap-3">
-                <dt className="text-white/50">{label}</dt>
-                <dd className="font-mono text-white">{value}</dd>
-              </div>
-            ))}
-          </dl>
-          <Link href="/solitaire" className="mt-3 inline-block text-sm font-semibold text-white/75 hover:text-white">
-            Play solo →
-          </Link>
-        </div>
-
-        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/45">Daily Challenge</p>
-          <dl className="mt-2 space-y-1 text-sm">
-            {dailyRows.map(([label, value]) => (
-              <div key={label} className="flex items-baseline justify-between gap-3">
-                <dt className="text-white/50">{label}</dt>
-                <dd className="font-mono text-white">{value}</dd>
-              </div>
-            ))}
-          </dl>
-          <Link href="/daily" className="mt-3 inline-block text-sm font-semibold text-white/75 hover:text-white">
-            Today&apos;s deal →
-          </Link>
-        </div>
+        {cards.map((card) => (
+          <Surface key={card.key} tone="panel" padding="sm" className="flex flex-col">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[color:var(--text-muted)]">
+              {card.title}
+            </p>
+            {card.body && (
+              <p className="mt-2 text-sm leading-relaxed text-[color:var(--text-secondary)]">
+                {card.body}
+              </p>
+            )}
+            {card.rows && (
+              <dl className="mt-2 space-y-1 text-sm">
+                {card.rows.map(([label, value]) => (
+                  <div key={label} className="flex items-baseline justify-between gap-3">
+                    <dt className="text-[color:var(--text-muted)]">{label}</dt>
+                    <dd className="font-mono tabular-nums text-[color:var(--text-primary)]">
+                      {value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+            <div className="mt-3 flex flex-wrap gap-3">
+              {card.links.map((link) => (
+                <Link key={link.href} href={link.href} className={LINK}>
+                  {link.label}
+                </Link>
+              ))}
+            </div>
+          </Surface>
+        ))}
       </div>
 
       {loaded && !solo && !daily && (
-        <p className="mt-2 text-xs text-white/40">
-          Sign in to record solo games and daily streaks. Prefer to stay a guest?
-          Solo still works, with records kept in this browser.
+        <p className="mt-2 text-xs leading-relaxed text-[color:var(--text-muted)]">
+          {t("solitaireModes.guest")}
         </p>
       )}
     </section>

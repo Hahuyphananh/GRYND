@@ -379,7 +379,7 @@ export default function QuestionnairePageClient({ from }: Props) {
         className={`flex items-center justify-center px-4 ${fullBleed}`}
         style={{ background: "linear-gradient(135deg, #001933 0%, #000d1a 100%)" }}
       >
-        <div className="w-full max-w-md rounded-2xl border border-[#ff2d9b]/40 bg-[#040d24]/80 p-8 text-center shadow-[0_0_30px_rgba(255,45,155,0.15)]">
+        <div className="w-full max-w-md rounded-2xl border border-[#ff2d9b]/40 bg-surface/80 p-8 text-center shadow-[0_0_30px_rgba(255,45,155,0.15)]">
           <p className="mb-2 text-4xl">⚠️</p>
           <h1 className="mb-2 text-lg font-extrabold text-white">
             {t("onboarding.questionnaire.error.title")}
@@ -548,7 +548,7 @@ export default function QuestionnairePageClient({ from }: Props) {
                         className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3.5 text-left transition-all duration-200 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] ${
                           selected
                             ? "border-[#00e5ff]/70 bg-[#00e5ff]/10 shadow-[0_0_20px_rgba(0,229,255,0.25)]"
-                            : "border-[#00e5ff]/25 bg-[#040d24]/80 hover:bg-[#0b1b3f]/80"
+                            : "border-[#00e5ff]/25 bg-surface/80 hover:bg-[#0b1b3f]/80"
                         }`}
                       >
                         <span
@@ -590,7 +590,7 @@ export default function QuestionnairePageClient({ from }: Props) {
                         className={`flex items-center gap-3 rounded-2xl border px-4 py-3.5 text-left transition-all duration-200 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] disabled:opacity-40 ${
                           selected
                             ? "border-[#00e5ff]/70 bg-[#00e5ff]/10 shadow-[0_0_20px_rgba(0,229,255,0.25)]"
-                            : "border-[#00e5ff]/25 bg-[#040d24]/80 hover:bg-[#0b1b3f]/80"
+                            : "border-[#00e5ff]/25 bg-surface/80 hover:bg-[#0b1b3f]/80"
                         }`}
                       >
                         <span

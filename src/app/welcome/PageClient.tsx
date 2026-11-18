@@ -270,7 +270,7 @@ export default function WelcomePageClient({ replay = false, fromQuestionnaire = 
         className={`flex items-center justify-center px-4 ${fullBleed}`}
         style={{ background: "linear-gradient(135deg, #001933 0%, #000d1a 100%)" }}
       >
-        <div className="w-full max-w-md rounded-2xl border border-[#ff2d9b]/40 bg-[#040d24]/80 p-8 text-center shadow-[0_0_30px_rgba(255,45,155,0.15)]">
+        <div className="w-full max-w-md rounded-2xl border border-[#ff2d9b]/40 bg-surface/80 p-8 text-center shadow-[0_0_30px_rgba(255,45,155,0.15)]">
           <p className="mb-2 text-4xl">⚠️</p>
           <h1 className="mb-2 text-lg font-extrabold text-white">{t("ui.error")}</h1>
           <p className="mb-6 text-sm leading-relaxed text-[#9dd8ff]">{t("onboarding.error.text")}</p>
@@ -297,7 +297,7 @@ export default function WelcomePageClient({ replay = false, fromQuestionnaire = 
   const eyebrow = (text: string) => (
     <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.3em] text-[#00e5ff]">✦ {text}</p>
   );
-  const cardCls = "rounded-2xl border border-[#00e5ff]/25 bg-[#040d24]/80 backdrop-blur-xs";
+  const cardCls = "rounded-2xl border border-[#00e5ff]/25 bg-surface/80 backdrop-blur-xs";
 
   let content: React.ReactNode = null;
 

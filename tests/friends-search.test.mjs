@@ -28,6 +28,7 @@ import { dirname, join } from "node:path";
 
 import { APP_TEXT_TRANSLATIONS } from "../src/lib/appTextTranslations.js";
 import { searchNameFor } from "../src/lib/searchName.ts";
+import { readProfileSource } from "./helpers/profile-source.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (rel) => readFileSync(join(here, "..", rel), "utf8");
@@ -35,7 +36,7 @@ const read = (rel) => readFileSync(join(here, "..", rel), "utf8");
 /** Body of a file with `//` and block comments stripped, so a contract can be
  *  asserted against code and not against the comment that explains it. */
 function code(rel) {
-  return read(rel)
+  return rel === PROFILE_PAGE ? readProfileSource() : read(rel)
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/^[ \t]*\/\/.*$/gm, "");
 }
@@ -132,12 +133,12 @@ const localeKeys = [
   "profile.betHistory.lost",
   "profile.betHistory.draw",
   "profile.betHistory.empty",
-  "profile.purchaseHistory.title",
-  "profile.purchaseHistory.date",
-  "profile.purchaseHistory.tokens",
-  "profile.purchaseHistory.pack",
-  "profile.purchaseHistory.purchase",
-  "profile.purchaseHistory.empty",
+  
+  
+  
+  
+  
+  
   "profile.tokens",
 ];
 
@@ -170,20 +171,11 @@ test("the English and Spanish titles are not the French copy", () => {
   const fr = at("fr", "profile.betHistory.title").toLowerCase();
   for (const lang of ["en", "es"]) {
     assert.notEqual(at(lang, "profile.betHistory.title").toLowerCase(), fr);
-    assert.notEqual(
-      at(lang, "profile.purchaseHistory.title").toLowerCase(),
-      fr,
-    );
     // Not just different words — actually the other language.
     assert.doesNotMatch(at(lang, "profile.betHistory.empty"), /Aucun/);
   }
   assert.equal(at("en", "profile.betHistory.empty"), "No bets found");
   assert.equal(at("es", "profile.betHistory.empty"), "No se encontraron apuestas");
-  assert.equal(at("en", "profile.purchaseHistory.title"), "Token purchase history");
-  assert.equal(
-    at("es", "profile.purchaseHistory.title"),
-    "Historial de compras de fichas",
-  );
 });
 
 test("the history panels read their copy from the bundle", () => {

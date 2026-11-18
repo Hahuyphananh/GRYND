@@ -13,6 +13,16 @@ import { useTranslation } from "../../hooks/useTranslation";
 import { QUESTIONNAIRE_QUESTIONS } from "../../lib/onboardingQuestionnaire";
 import { runOptimistically } from "../../lib/optimistic";
 import PageSkeleton from "../../components/skeletons/PageSkeleton";
+// The six product primitives. Every colour on this page now comes from the
+// semantic layer in globals.css, so dark and light are correct together.
+import {
+  Button,
+  EmptyState,
+  PageHeader,
+  StatTile,
+  Surface,
+  Tabs,
+} from "../../components/ui";
 
 /**
  * Settings hub. Hosts the preferences that used to live directly in the nav
@@ -393,229 +403,228 @@ export default function SettingsPageClient() {
     return <PageSkeleton />;
   }
 
+  // The saved value as a readable label. `null` is the server's "no custom
+  // limit", which means the global default applies — never "unlimited".
+  const limitLabel =
+    lossLimit === 0
+      ? "Off"
+      : typeof lossLimit === "number"
+        ? `${lossLimit.toLocaleString()} tokens`
+        : "Default (50k)";
+
+  const languageItems = [
+    { key: "en", label: "English" },
+    { key: "fr", label: "Français" },
+    { key: "es", label: "Español" },
+  ];
+
+  const lossLimitItems = [
+    { key: "default", label: "Global default (50k)" },
+    { key: "off", label: "Warnings off" },
+    { key: "custom", label: "Custom" },
+  ];
+
   return (
-    <div className="relative min-h-screen bg-[#05070d] text-white">
-      <div className="max-w-6xl mx-auto px-6 pt-24 pb-20">
+    <div className="relative min-h-screen bg-[color:var(--bg-page)] text-[color:var(--text-primary)]">
+      <div className="mx-auto max-w-6xl px-6 pt-24 pb-20">
         <NavigationBar currentPath="/settings" />
-        <h1 className="mb-8 text-center text-4xl font-extrabold tracking-tight text-white">
-          Settings
-        </h1>
+
+        <PageHeader
+          title="Settings"
+          description="Sound, language, responsible play, account security and the emails GRYND sends you."
+        />
 
         {!isSignedIn ? (
-          <div className="mx-auto max-w-md rounded-xl border border-[#00e5ff]/30 bg-[#07101f]/90 p-8 text-center shadow-[0_0_24px_rgba(0,229,255,0.15)]">
-            <p className="mb-4 text-lg text-gray-300">
-              Sign in to manage your GRYND settings.
-            </p>
-            <Link
-              href="/sign-in?redirect_url=/settings"
-              className="inline-flex rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-6 py-2.5 font-medium text-[#d8fbff] hover:bg-[#00e5ff]/35"
-            >
-              {t("nav.sign_in")}
-            </Link>
-          </div>
+          <EmptyState
+            className="mx-auto max-w-md"
+            icon={<IconSettings size={20} aria-hidden="true" />}
+            title="Sign in to manage your GRYND settings"
+            body="Preferences are stored against your account, so they follow you to every device."
+            action={{ label: t("nav.sign_in"), href: "/sign-in?redirect_url=/settings" }}
+          />
         ) : (
-          <div className="grid gap-8 md:grid-cols-2">
-            {/* Sound */}
-            <div className="rounded-xl border border-[#00e5ff]/30 bg-[#07101f]/90 p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)]">
-              <h2 className="mb-4 flex items-center gap-2 text-xl text-[#00e5ff]">
-                <IconVolume size={20} /> Sound
-              </h2>
-              <p className="mb-4 text-sm text-gray-300">
+          <div className="grid gap-6 md:grid-cols-2">
+            {/* ── How the app behaves ────────────────────────────────────── */}
+
+            <Surface>
+              <PageHeader
+                size="section"
+                title="Sound"
+                icon={<IconVolume size={18} aria-hidden="true" />}
+              />
+              <p className="mb-4 text-sm text-[color:var(--text-secondary)]">
                 Mute or restore game sound effects from every game. Applies
                 across all your tabs.
               </p>
               <SoundToggle className="px-4 py-2 text-sm" />
-            </div>
+            </Surface>
 
-            {/* Language */}
-            <div className="rounded-xl border border-[#00e5ff]/30 bg-[#07101f]/90 p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)]">
-              <h2 className="mb-4 flex items-center gap-2 text-xl text-[#00e5ff]">
-                <IconGlobe size={20} /> Language
-              </h2>
-              <p className="mb-4 text-sm text-gray-300">
+            <Surface>
+              <PageHeader
+                size="section"
+                title="Language"
+                icon={<IconGlobe size={18} aria-hidden="true" />}
+              />
+              <p className="mb-4 text-sm text-[color:var(--text-secondary)]">
                 Choose the language of the app. Saved on this device.
               </p>
-              <div className="flex gap-2">
-                {[
-                  { value: "en", label: "English" },
-                  { value: "fr", label: "Français" },
-                  { value: "es", label: "Español" },
-                ].map((lang) => (
-                  <button
-                    key={lang.value}
-                    onClick={() => setLanguage(lang.value)}
-                    aria-pressed={language === lang.value}
-                    className={`cursor-pointer rounded-lg border px-4 py-2 text-sm font-medium focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#07101f] ${
-                      language === lang.value
-                        ? "border-[#f5ff3b]/60 bg-[#f5ff3b]/15 text-[#f5ff3b]"
-                        : "border-[#00e5ff]/50 bg-[#0a1626] text-[#c9f7ff] hover:bg-[#00e5ff]/10"
-                    }`}
-                  >
-                    {lang.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+              <Tabs
+                label="Language"
+                items={languageItems}
+                value={language}
+                onChange={setLanguage}
+              />
+            </Surface>
 
-            {/* Responsible Play — per-player daily loss limit (moved from profile) */}
-            <div className="rounded-xl border border-amber-400/35 bg-[#1d1605]/85 p-6 shadow-[0_0_24px_rgba(245,255,59,0.12)]">
-              <h2 className="text-xl text-amber-300">Responsible Play</h2>
-              <p className="mb-4 mt-1 text-sm text-gray-300">
+            {/* ── Responsible play ───────────────────────────────────────── */}
+
+            <Surface tone="warning">
+              <PageHeader
+                size="section"
+                title="Responsible Play"
+                icon={<IconShield size={18} aria-hidden="true" />}
+              />
+              <p className="mb-4 text-sm text-[color:var(--text-secondary)]">
                 Set your own daily loss limit. When you're down more than this
-                in one day, the casino lobby will warn you before you keep
-                playing — it never blocks you.
+                in one day, the lobby warns you before you keep playing — it
+                never blocks you.
               </p>
 
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { key: "default", label: "Global default (50k)" },
-                  { key: "off", label: "Warnings off" },
-                  { key: "custom", label: "Custom" },
-                ].map((opt) => (
-                  <button
-                    key={opt.key}
-                    type="button"
-                    onClick={() => setLossLimitMode(opt.key)}
-                    className={`rounded-full border px-4 py-1.5 text-sm font-semibold transition ${
-                      lossLimitMode === opt.key
-                        ? "border-amber-400 bg-amber-500/20 text-amber-200"
-                        : "border-gray-600 bg-gray-800/40 text-gray-400 hover:border-amber-500/50 hover:text-amber-200"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
+              <StatTile
+                className="mb-4"
+                label="Current limit"
+                value={limitLabel}
+                hint="A warning threshold, never a block."
+                tone="gold"
+              />
+
+              <Tabs
+                label="Daily loss limit"
+                items={lossLimitItems}
+                value={lossLimitMode}
+                onChange={setLossLimitMode}
+              />
 
               {lossLimitMode === "custom" && (
                 <div className="mt-3 flex flex-wrap items-end gap-2">
-                  <label className="flex flex-col gap-1 text-xs font-semibold text-amber-200">
+                  <label className="flex flex-col gap-1 text-xs font-semibold text-[color:var(--text-secondary)]">
                     Daily loss limit (tokens)
                     <input
                       type="number"
                       min={1}
                       value={lossLimitDraft}
                       onChange={(e) => setLossLimitDraft(e.target.value)}
-                      className="w-44 rounded-md border border-amber-600/50 bg-[#05070d] px-2 py-1.5 text-sm text-white outline-hidden focus:border-amber-400"
+                      className="w-44 rounded-lg border border-[color:var(--border-strong)] bg-[color:var(--bg-page)] px-2 py-1.5 text-sm text-[color:var(--text-primary)] outline-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--focus-ring)]"
                       aria-label="Custom daily loss limit in tokens"
                     />
                   </label>
                   <div className="flex flex-wrap gap-1.5">
                     {[5000, 10000, 25000, 50000].map((v) => (
-                      <button
+                      <Button
                         key={v}
-                        type="button"
+                        variant="secondary"
+                        size="sm"
                         onClick={() => setLossLimitDraft(String(v))}
-                        className="rounded-full border border-gray-600 bg-gray-800/40 px-2.5 py-1 text-[11px] font-bold text-gray-300 transition hover:border-amber-500/50 hover:text-amber-200"
                       >
                         {v.toLocaleString()}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 </div>
               )}
 
-              <div className="mt-4 flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={saveLossLimit}
-                  disabled={lossLimitSaving}
-                  className="rounded-xl border-b-4 border-amber-700 bg-amber-500 px-5 py-2 text-sm font-extrabold text-black transition hover:brightness-110 disabled:opacity-60"
-                >
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <Button onClick={saveLossLimit} disabled={lossLimitSaving}>
                   {lossLimitSaving ? "Saving…" : "Save limit"}
-                </button>
+                </Button>
                 {lossLimitMsg && (
-                  <span className={`text-sm ${lossLimitMsg.ok ? "text-emerald-300" : "text-red-300"}`}>
+                  <span
+                    className={`text-sm ${
+                      lossLimitMsg.ok
+                        ? "text-[color:var(--state-win)]"
+                        : "text-[color:var(--state-loss)]"
+                    }`}
+                  >
                     {lossLimitMsg.text}
                   </span>
                 )}
               </div>
-            </div>
+            </Surface>
 
-            {/* Account Security — self-hosted email-OTP second factor */}
-            <div className="rounded-xl border border-emerald-400/35 bg-[#052e1f]/85 p-6 shadow-[0_0_24px_rgba(52,211,153,0.15)]">
-              <h2 className="mb-1 flex items-center gap-2 text-xl text-emerald-300">
-                <IconShield size={20} /> Account Security
-              </h2>
-              <p className="mb-4 text-sm text-gray-300">
-                Two-factor authentication (email code). When enabled, a
-                one-time code is required on each new session window (24h) —
-                even for pages that don't otherwise require sign-in.
+            {/* ── Account security ───────────────────────────────────────── */}
+
+            <Surface tone="success">
+              <PageHeader
+                size="section"
+                title="Account Security"
+                icon={<IconShield size={18} aria-hidden="true" />}
+              />
+              <p className="mb-4 text-sm text-[color:var(--text-secondary)]">
+                Two-factor authentication (email code). When enabled, a one-time
+                code is required on each new session window (24h) — even for
+                pages that don't otherwise require sign-in.
               </p>
 
               {mfaEnabled ? (
                 <div>
-                  <div className="mb-3 flex items-center gap-2 rounded-lg border border-emerald-400/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
-                    <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                  <div className="mb-3 flex items-center gap-2 rounded-lg border border-[color:var(--border-success)] bg-[color:var(--accent-fill)] px-3 py-2 text-sm text-[color:var(--state-win)]">
+                    <span className="h-2 w-2 rounded-full bg-[color:var(--state-win)]" />
                     Enabled — codes go to {mfaEmail || "your email"}.
                   </div>
-                  <button
-                    type="button"
-                    onClick={disableMfa}
-                    disabled={mfaBusy}
-                    className="rounded-lg border border-red-400/50 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-300 transition hover:bg-red-500/20 disabled:opacity-60"
-                  >
+                  <Button variant="danger" onClick={disableMfa} disabled={mfaBusy}>
                     {mfaBusy ? "Working…" : "Turn off"}
-                  </button>
+                  </Button>
                 </div>
               ) : (
                 <div className="space-y-3">
                   {!mfaOtpSent ? (
-                    <button
-                      type="button"
-                      onClick={sendMfaOtp}
-                      disabled={mfaBusy}
-                      className="rounded-lg border border-emerald-400/50 bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/25 disabled:opacity-60"
-                    >
+                    <Button onClick={sendMfaOtp} disabled={mfaBusy}>
                       {mfaBusy ? "Sending…" : "Turn on — send me a code"}
-                    </button>
+                    </Button>
                   ) : (
-                    <>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          maxLength={6}
-                          autoComplete="one-time-code"
-                          placeholder="6-digit code"
-                          value={mfaCode}
-                          onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, ""))}
-                          className="w-40 rounded-lg border border-[#00e5ff]/40 bg-[#0a1a2e] px-3 py-2 text-center text-lg tracking-[0.4em] text-[#ecf8ff] focus:outline-hidden focus:ring-2 focus:ring-[#00e5ff]"
-                        />
-                        <button
-                          type="button"
-                          onClick={verifyMfa}
-                          disabled={mfaBusy}
-                          className="rounded-lg border border-emerald-400/50 bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/25 disabled:opacity-60"
-                        >
-                          {mfaBusy ? "Verifying…" : "Verify & enable"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={sendMfaOtp}
-                          disabled={mfaBusy}
-                          className="rounded-lg border border-[#00e5ff]/40 px-3 py-2 text-sm font-medium text-[#d8fbff] transition hover:bg-[#00e5ff]/10 disabled:opacity-60"
-                        >
-                          Resend
-                        </button>
-                      </div>
-                    </>
+                    <div className="flex flex-wrap gap-2">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        autoComplete="one-time-code"
+                        placeholder="6-digit code"
+                        value={mfaCode}
+                        onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, ""))}
+                        className="w-40 rounded-lg border border-[color:var(--border-strong)] bg-[color:var(--bg-page)] px-3 py-2 text-center text-lg tracking-[0.4em] text-[color:var(--text-primary)] outline-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--focus-ring)]"
+                      />
+                      <Button onClick={verifyMfa} disabled={mfaBusy}>
+                        {mfaBusy ? "Verifying…" : "Verify & enable"}
+                      </Button>
+                      <Button variant="secondary" onClick={sendMfaOtp} disabled={mfaBusy}>
+                        Resend
+                      </Button>
+                    </div>
                   )}
                 </div>
               )}
               {mfaMsg && (
-                <p className={`mt-3 text-sm ${mfaMsg.ok ? "text-emerald-300" : "text-red-300"}`}>
+                <p
+                  className={`mt-3 text-sm ${
+                    mfaMsg.ok
+                      ? "text-[color:var(--state-win)]"
+                      : "text-[color:var(--state-loss)]"
+                  }`}
+                >
                   {mfaMsg.text}
                 </p>
               )}
-            </div>
+            </Surface>
 
-            {/* Email notification preferences */}
-            <div className="rounded-xl border border-[#00e5ff]/30 bg-[#07101f]/90 p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)]">
-              <h2 className="mb-1 flex items-center gap-2 text-xl text-[#00e5ff]">
-                <IconBell size={20} /> Email Notifications
-              </h2>
-              <p className="mb-4 text-sm text-gray-300">
+            {/* ── Email ──────────────────────────────────────────────────── */}
+
+            <Surface>
+              <PageHeader
+                size="section"
+                title="Email Notifications"
+                icon={<IconBell size={18} aria-hidden="true" />}
+              />
+              <p className="mb-4 text-sm text-[color:var(--text-secondary)]">
                 Choose which GRYND emails you receive. Security alerts and
                 payment receipts are always sent.
               </p>
@@ -625,15 +634,18 @@ export default function SettingsPageClient() {
                   { key: "daily", label: "Daily reward reminders", desc: "Nudge when your daily bonus is ready." },
                   { key: "summary", label: "Weekly summaries", desc: "Your wins, losses and net for the week." },
                   { key: "progress", label: "Progress updates", desc: "Level-ups and streak encouragement." },
-
                 ].map((opt) => (
                   <label
                     key={opt.key}
-                    className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-[#00e5ff]/20 bg-[#0a1626] px-3 py-2.5"
+                    className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] px-3 py-2.5"
                   >
                     <span>
-                      <span className="block text-sm font-medium text-[#c9f7ff]">{opt.label}</span>
-                      <span className="block text-xs text-[#7dd3fc]/70">{opt.desc}</span>
+                      <span className="block text-sm font-medium text-[color:var(--text-primary)]">
+                        {opt.label}
+                      </span>
+                      <span className="block text-xs text-[color:var(--text-muted)]">
+                        {opt.desc}
+                      </span>
                     </span>
                     <button
                       type="button"
@@ -641,54 +653,57 @@ export default function SettingsPageClient() {
                       aria-checked={Boolean(prefs[opt.key])}
                       aria-label={opt.label}
                       onClick={() => setPrefs((p) => ({ ...p, [opt.key]: !p[opt.key] }))}
-                      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] ${
-                        prefs[opt.key] ? "bg-[#00e5ff]" : "bg-gray-600"
+                      className={`relative h-6 w-11 shrink-0 rounded-full border transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--focus-ring)] ${
+                        prefs[opt.key]
+                          ? "border-[color:var(--accent)] bg-[color:var(--accent)]"
+                          : "border-[color:var(--border-strong)] bg-[color:var(--bg-panel)]"
                       }`}
                     >
                       <span
-                        className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${
-                          prefs[opt.key] ? "left-[22px]" : "left-0.5"
+                        className={`absolute top-0.5 h-5 w-5 rounded-full transition-all ${
+                          prefs[opt.key]
+                            ? "left-[22px] bg-[color:var(--on-accent)]"
+                            : "left-0.5 bg-[color:var(--text-muted)]"
                         }`}
                       />
                     </button>
                   </label>
                 ))}
               </div>
-              <div className="mt-4 flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={savePrefs}
-                  disabled={prefsSaving}
-                  className="rounded-xl border-b-4 border-[#0087a8] bg-[#00e5ff] px-5 py-2 text-sm font-extrabold text-[#001a2e] transition hover:brightness-110 disabled:opacity-60"
-                >
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <Button onClick={savePrefs} disabled={prefsSaving}>
                   {prefsSaving ? "Saving…" : "Save preferences"}
-                </button>
-                <button
-                  type="button"
-                  onClick={unsubscribeAll}
-                  disabled={prefsSaving}
-                  className="rounded-xl border border-[#00e5ff]/40 bg-transparent px-5 py-2 text-sm font-semibold text-[#c9f7ff] transition hover:bg-[#00e5ff]/10 disabled:opacity-60"
-                >
+                </Button>
+                <Button variant="secondary" onClick={unsubscribeAll} disabled={prefsSaving}>
                   Unsubscribe from all emails
-                </button>
+                </Button>
                 {prefsMsg && (
-                  <span className={`text-sm ${prefsMsg.ok ? "text-emerald-300" : "text-red-300"}`}>
+                  <span
+                    className={`text-sm ${
+                      prefsMsg.ok
+                        ? "text-[color:var(--state-win)]"
+                        : "text-[color:var(--state-loss)]"
+                    }`}
+                  >
                     {prefsMsg.text}
                   </span>
                 )}
               </div>
-            </div>
+            </Surface>
 
-            {/* Account */}
-            <div className="rounded-xl border border-[#00e5ff]/30 bg-[#07101f]/90 p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)]">
-              <h2 className="mb-4 flex items-center gap-2 text-xl text-[#00e5ff]">
-                <IconUser size={20} /> Account
-              </h2>
+            {/* ── Account ────────────────────────────────────────────────── */}
+
+            <Surface>
+              <PageHeader
+                size="section"
+                title="Account"
+                icon={<IconUser size={18} aria-hidden="true" />}
+              />
               <ul className="space-y-2 text-sm">
                 <li>
                   <Link
                     href="/profil"
-                    className="inline-flex items-center gap-1.5 text-[#9dd8ff] hover:text-[#00e5ff]"
+                    className="inline-flex items-center gap-1.5 font-semibold text-[color:var(--accent-strong)] hover:text-[color:var(--text-primary)]"
                   >
                     My Profile →
                   </Link>
@@ -701,98 +716,106 @@ export default function SettingsPageClient() {
                   <UpgradeProButton variant="compact" />
                 </li>
               </ul>
-            </div>
+            </Surface>
 
-            {/* Your GRYND Preferences — view + edit the onboarding
-                questionnaire answers. This is THE preference surface: the
-                lobby's "Make GRYND yours" card points here for players who
-                chose "Maybe Later", and the questionnaire itself reopens in
-                edit mode (?from=settings) and returns to this page. */}
-            <div className="rounded-xl border border-[#00e5ff]/30 bg-[#07101f]/90 p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)] md:col-span-2">
-              <h2 className="mb-1 flex items-center gap-2 text-xl text-[#00e5ff]">
-                <IconWand size={20} /> {t("onboarding.preferences.title")}
-              </h2>
+            {/* ── Your GRYND Preferences ───────────────────────────────────
+                View + edit the onboarding questionnaire answers. This is THE
+                preference surface: the lobby's "Make GRYND yours" card points
+                here for players who chose "Maybe Later", and the questionnaire
+                reopens in edit mode (?from=settings) and returns here. */}
 
-              {gamePreferences === null && (
-                <p className="text-sm text-[#9dd8ff]" role="status">
+            {gamePreferences === null && (
+              <Surface className="md:col-span-2">
+                <PageHeader
+                  size="section"
+                  title={t("onboarding.preferences.title")}
+                  icon={<IconWand size={18} aria-hidden="true" />}
+                />
+                <p className="text-sm text-[color:var(--text-secondary)]" role="status">
                   {t("ui.loading")}
                 </p>
-              )}
+              </Surface>
+            )}
 
-              {gamePreferences !== null && gamePreferences.completed && preferenceRows.length > 0 && (
-                <>
-                  <p className="mb-4 text-sm text-[#9dd8ff]">
-                    {t("onboarding.preferences.note")}
-                  </p>
-                  <dl className="mb-4 grid gap-3 sm:grid-cols-2">
-                    {preferenceRows.map((row) => (
-                      <div
-                        key={row.key}
-                        className="rounded-lg border border-[#00e5ff]/20 bg-[#0a1626] px-3 py-2.5"
-                      >
-                        <dt className="text-[11px] font-bold uppercase tracking-widest text-[#7dd3fc]/80">
-                          {row.title}
-                        </dt>
-                        <dd className="mt-1.5 flex flex-wrap gap-1.5">
-                          {row.labels.map((label) => (
-                            <span
-                              key={label}
-                              className="rounded-full border border-[#00e5ff]/30 bg-[#00e5ff]/10 px-2.5 py-1 text-xs font-semibold text-[#c9f7ff]"
-                            >
-                              {label}
-                            </span>
-                          ))}
-                        </dd>
-                      </div>
-                    ))}
-                  </dl>
-                  <Link
-                    href="/welcome/questionnaire?from=settings"
-                    className="inline-flex items-center gap-2 rounded-lg border border-[#00e5ff]/60 bg-[#00e5ff]/15 px-4 py-3 text-sm font-bold text-[#00e5ff] transition hover:bg-[#00e5ff]/25 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
-                  >
-                    <IconWand size={15} /> {t("onboarding.preferences.update")}
-                  </Link>
-                </>
-              )}
+            {gamePreferences !== null && gamePreferences.completed && preferenceRows.length > 0 && (
+              <Surface className="md:col-span-2">
+                <PageHeader
+                  size="section"
+                  title={t("onboarding.preferences.title")}
+                  icon={<IconWand size={18} aria-hidden="true" />}
+                />
+                <p className="mb-4 text-sm text-[color:var(--text-secondary)]">
+                  {t("onboarding.preferences.note")}
+                </p>
+                <dl className="mb-4 grid gap-3 sm:grid-cols-2">
+                  {preferenceRows.map((row) => (
+                    <div
+                      key={row.key}
+                      className="rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] px-3 py-2.5"
+                    >
+                      <dt className="text-[11px] font-bold uppercase tracking-widest text-[color:var(--text-muted)]">
+                        {row.title}
+                      </dt>
+                      <dd className="mt-1.5 flex flex-wrap gap-1.5">
+                        {row.labels.map((label) => (
+                          <span
+                            key={label}
+                            className="rounded-full border border-[color:var(--accent)] bg-[color:var(--accent-fill)] px-2.5 py-1 text-xs font-semibold text-[color:var(--accent-strong)]"
+                          >
+                            {label}
+                          </span>
+                        ))}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+                <Button
+                  variant="secondary"
+                  href="/welcome/questionnaire?from=settings"
+                >
+                  <IconWand size={15} aria-hidden="true" /> {t("onboarding.preferences.update")}
+                </Button>
+              </Surface>
+            )}
 
-              {gamePreferences !== null && !(gamePreferences.completed && preferenceRows.length > 0) && (
-                <>
-                  <p className="mb-1 text-sm font-semibold text-[#c9f7ff]">
-                    {gamePreferences.ok
-                      ? t("onboarding.preferences.empty")
-                      : t("onboarding.preferences.error")}
-                  </p>
-                  <p className="mb-4 text-sm text-[#9dd8ff]/80">
-                    {t("onboarding.preferences.emptyHint")}
-                  </p>
-                  <Link
-                    href="/welcome/questionnaire?from=settings"
-                    className="inline-flex items-center gap-2 rounded-lg border-b-4 border-[#0087a8] bg-[#00e5ff] px-4 py-3 text-sm font-extrabold text-[#001a2e] transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
-                  >
-                    <IconWand size={15} /> {t("onboarding.preferences.cta")}
-                  </Link>
-                </>
-              )}
-            </div>
+            {gamePreferences !== null && !(gamePreferences.completed && preferenceRows.length > 0) && (
+              <EmptyState
+                className="md:col-span-2"
+                icon={<IconWand size={20} aria-hidden="true" />}
+                title={
+                  gamePreferences.ok
+                    ? t("onboarding.preferences.empty")
+                    : t("onboarding.preferences.error")
+                }
+                body={t("onboarding.preferences.emptyHint")}
+                action={{
+                  label: t("onboarding.preferences.cta"),
+                  href: "/welcome/questionnaire?from=settings",
+                }}
+              />
+            )}
 
-            {/* Help & support */}
-            <div className="rounded-xl border border-[#00e5ff]/30 bg-[#07101f]/90 p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)]">
-              <h2 className="mb-4 flex items-center gap-2 text-xl text-[#00e5ff]">
-                <IconHelp size={20} /> Help & Support
-              </h2>
+            {/* ── Help & support ─────────────────────────────────────────── */}
+
+            <Surface>
+              <PageHeader
+                size="section"
+                title="Help & Support"
+                icon={<IconHelp size={18} aria-hidden="true" />}
+              />
               <ul className="space-y-2 text-sm">
                 <li>
                   <Link
                     href="/welcome?replay=1"
-                    className="inline-flex items-center gap-1.5 text-[#9dd8ff] hover:text-[#00e5ff]"
+                    className="inline-flex items-center gap-1.5 font-semibold text-[color:var(--accent-strong)] hover:text-[color:var(--text-primary)]"
                   >
-                    <IconRotateClockwise size={15} /> {t("onboarding.replay")} →
+                    <IconRotateClockwise size={15} aria-hidden="true" /> {t("onboarding.replay")} →
                   </Link>
                 </li>
                 <li>
                   <Link
                     href="/faq"
-                    className="inline-flex items-center gap-1.5 text-[#9dd8ff] hover:text-[#00e5ff]"
+                    className="inline-flex items-center gap-1.5 font-semibold text-[color:var(--accent-strong)] hover:text-[color:var(--text-primary)]"
                   >
                     FAQ →
                   </Link>
@@ -800,32 +823,31 @@ export default function SettingsPageClient() {
                 <li>
                   <Link
                     href="/contact"
-                    className="inline-flex items-center gap-1.5 text-[#9dd8ff] hover:text-[#00e5ff]"
+                    className="inline-flex items-center gap-1.5 font-semibold text-[color:var(--accent-strong)] hover:text-[color:var(--text-primary)]"
                   >
-                    <IconMail size={15} /> Contact →
+                    <IconMail size={15} aria-hidden="true" /> Contact →
                   </Link>
                 </li>
               </ul>
-            </div>
+            </Surface>
 
             {/* Admin — visible only to real admins (same DB-backed check as
                 the nav bar / admin dashboard gate). */}
             {isAdmin && (
-              <div className="rounded-xl border border-[#ff8c42]/50 bg-[#2a1206]/85 p-6 shadow-[0_0_24px_rgba(255,140,66,0.15)] md:col-span-2">
-                <h2 className="mb-2 flex items-center gap-2 text-xl text-[#ff8c42]">
-                  <IconSettings size={20} /> Admin
-                </h2>
-                <p className="mb-4 text-sm text-orange-200/80">
+              <Surface tone="warning" className="md:col-span-2">
+                <PageHeader
+                  size="section"
+                  title="Admin"
+                  icon={<IconSettings size={18} aria-hidden="true" />}
+                />
+                <p className="mb-4 text-sm text-[color:var(--text-secondary)]">
                   Admin-only tools. This section is hidden from regular
                   players.
                 </p>
-                <Link
-                  href="/admin"
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#ff8c42]/60 bg-[#ff8c42]/15 px-4 py-2 text-sm font-medium text-[#ffb347] hover:bg-[#ff8c42]/25"
-                >
+                <Button variant="secondary" href="/admin">
                   Open Admin Dashboard →
-                </Link>
-              </div>
+                </Button>
+              </Surface>
             )}
           </div>
         )}

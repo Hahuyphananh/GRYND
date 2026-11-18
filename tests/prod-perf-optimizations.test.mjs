@@ -34,14 +34,6 @@ const CACHE_HELPER = "src/lib/httpCache.ts";
 // The public lobby listings that were given the shared cache header. Depth
 // differs, so the helper path is asserted generically.
 const PUBLIC_LOBBY_ROUTES = [
-  "src/app/api/chess/available-games/route.js",
-  "src/app/api/dots-and-boxes/available-games/route.js",
-  "src/app/api/four-in-a-row/available-games/route.js",
-  "src/app/api/hex-duel/multiplayer/available/route.ts",
-  "src/app/api/keno-pvp/available/route.js",
-  "src/app/api/memory-grid/available/route.js",
-  "src/app/api/mines-pvp/available/route.js",
-  "src/app/api/rps/pvp/available/route.js",
 ];
 
 // ── 1. Membership request dedup ──────────────────────────────────────────

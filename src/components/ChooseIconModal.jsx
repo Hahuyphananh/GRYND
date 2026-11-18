@@ -130,7 +130,7 @@ export default function ChooseIconModal({
       aria-label="Choose Your Icon"
     >
       <div
-        className="relative w-full max-w-md overflow-hidden rounded-2xl border border-[#00e5ff]/40 bg-[#040d24] shadow-[0_0_40px_rgba(0,229,255,0.3)] sm:max-w-lg"
+        className="relative w-full max-w-md overflow-hidden rounded-2xl border border-[#00e5ff]/40 bg-surface shadow-[0_0_40px_rgba(0,229,255,0.3)] sm:max-w-lg"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Neon top edge */}
@@ -169,7 +169,7 @@ export default function ChooseIconModal({
               {error}
             </div>
           ) : ownedIcons.length === 0 ? (
-            <div className="rounded-lg border border-[#00e5ff]/20 bg-[#08142f] px-4 py-8 text-center text-sm text-[#9dd8ff]">
+            <div className="rounded-lg border border-[#00e5ff]/20 bg-surface px-4 py-8 text-center text-sm text-[#9dd8ff]">
               You don't own any icons yet. Your default icon is always available.
             </div>
           ) : (
@@ -201,7 +201,7 @@ export default function ChooseIconModal({
                         showFrame={false}
                         className={
                           equipped
-                            ? "ring-2 ring-[#00e5ff] ring-offset-2 ring-offset-[#040d24]"
+                            ? "ring-2 ring-[#00e5ff] ring-offset-2 ring-offset-surface"
                             : "transition group-hover:ring-2 group-hover:ring-[#00e5ff]/40 group-hover:ring-offset-2 group-hover:ring-offset-[#040d24]"
                         }
                       />

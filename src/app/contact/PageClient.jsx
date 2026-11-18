@@ -85,7 +85,7 @@ export default function ContactPage() {
   }, [errorMsg]);
 
   return (
-    <div className="relative min-h-screen bg-[#05070d] text-white">
+    <div className="relative min-h-screen bg-page text-white">
 
       <NavigationBar currentPath="/contact" />
 
@@ -130,7 +130,7 @@ export default function ContactPage() {
             transition={{ duration: 0.5, delay: 0.15 }}
             className="lg:col-span-2 space-y-6"
           >
-            <div className="bg-[#07101f]/90 border border-white/10 rounded-xl p-6">
+            <div className="bg-surface/90 border border-white/10 rounded-xl p-6">
               <h2 className="text-sm font-semibold text-[#f5ff3b] uppercase tracking-wider mb-4">
                 Reach Us
               </h2>
@@ -157,7 +157,7 @@ export default function ContactPage() {
             {/* Socials live here as well as in the site footer, because a
                 visitor who came looking for a human shouldn't have to scroll
                 to the bottom to find us. */}
-            <div className="bg-[#07101f]/90 border border-white/10 rounded-xl p-6">
+            <div className="bg-surface/90 border border-white/10 rounded-xl p-6">
               <h2 className="text-sm font-semibold text-[#f5ff3b] uppercase tracking-wider mb-4">
                 Follow Us
               </h2>
@@ -168,7 +168,7 @@ export default function ContactPage() {
               <SocialLinks size="lg" testId="contact-social" />
             </div>
 
-            <div className="bg-[#07101f]/90 border border-white/10 rounded-xl p-6">
+            <div className="bg-surface/90 border border-white/10 rounded-xl p-6">
               <h2 className="text-sm font-semibold text-[#f5ff3b] uppercase tracking-wider mb-4">
                 Quick Links
               </h2>
@@ -225,7 +225,7 @@ export default function ContactPage() {
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0 }}
-                  className="bg-[#07101f]/90 border border-emerald-500/30 rounded-xl p-10 text-center"
+                  className="bg-surface/90 border border-emerald-500/30 rounded-xl p-10 text-center"
                 >
                   <div className="mb-4 flex justify-center"><IconCircleCheck size={48} className="text-emerald-400" /></div>
                   <h2 className="text-2xl font-bold text-white mb-2">
@@ -249,7 +249,7 @@ export default function ContactPage() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="bg-[#07101f]/90 border border-white/10 rounded-xl p-6 sm:p-8 space-y-5"
+                  className="bg-surface/90 border border-white/10 rounded-xl p-6 sm:p-8 space-y-5"
                 >
                   {/* Name */}
                   <div>
@@ -266,7 +266,7 @@ export default function ContactPage() {
                       value={name}
                       onChange={(e) => handleFieldChange(setName, e.target.value)}
                       placeholder="John Doe"
-                      className="w-full rounded-lg border border-white/10 bg-[#05070d] px-4 py-2.5 text-sm text-white placeholder-[#d8fbff]/30 outline-hidden transition-all focus:border-[#f5ff3b]/50 focus:bg-[#0d1428] focus:ring-1 focus:ring-[#f5ff3b]/20"
+                      className="w-full rounded-lg border border-white/10 bg-page px-4 py-2.5 text-sm text-white placeholder-[#d8fbff]/30 outline-hidden transition-all focus:border-[#f5ff3b]/50 focus:bg-[#0d1428] focus:ring-1 focus:ring-[#f5ff3b]/20"
                     />
                   </div>
 
@@ -285,7 +285,7 @@ export default function ContactPage() {
                       value={email}
                       onChange={(e) => handleFieldChange(setEmail, e.target.value)}
                       placeholder="you@example.com"
-                      className="w-full rounded-lg border border-white/10 bg-[#05070d] px-4 py-2.5 text-sm text-white placeholder-[#d8fbff]/30 outline-hidden transition-all focus:border-[#f5ff3b]/50 focus:bg-[#0d1428] focus:ring-1 focus:ring-[#f5ff3b]/20"
+                      className="w-full rounded-lg border border-white/10 bg-page px-4 py-2.5 text-sm text-white placeholder-[#d8fbff]/30 outline-hidden transition-all focus:border-[#f5ff3b]/50 focus:bg-[#0d1428] focus:ring-1 focus:ring-[#f5ff3b]/20"
                     />
                   </div>
 
@@ -305,7 +305,7 @@ export default function ContactPage() {
                       onChange={(e) => handleFieldChange(setMessage, e.target.value)}
                       placeholder="Tell us how we can help..."
                       maxLength={5000}
-                      className="w-full rounded-lg border border-white/10 bg-[#05070d] px-4 py-2.5 text-sm text-white placeholder-[#d8fbff]/30 outline-hidden transition-all focus:border-[#f5ff3b]/50 focus:bg-[#0d1428] focus:ring-1 focus:ring-[#f5ff3b]/20 resize-y min-h-[120px]"
+                      className="w-full rounded-lg border border-white/10 bg-page px-4 py-2.5 text-sm text-white placeholder-[#d8fbff]/30 outline-hidden transition-all focus:border-[#f5ff3b]/50 focus:bg-[#0d1428] focus:ring-1 focus:ring-[#f5ff3b]/20 resize-y min-h-[120px]"
                     />
                     <p className="text-xs text-[#d8fbff]/40 mt-1 text-right">
                       {message.length}/5000

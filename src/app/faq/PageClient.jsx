@@ -301,7 +301,7 @@ const SIDEBAR_ITEMS = [
 // crawlers, and it works with JavaScript disabled.
 function FaqItem({ q, a }) {
   return (
-    <details className="group rounded-lg border border-[#00e5ff]/15 bg-[#07101f]/80 backdrop-blur-xs transition-all hover:border-[#00e5ff]/30 open:border-[#00e5ff]/40">
+    <details className="group rounded-lg border border-[#00e5ff]/15 bg-surface/80 backdrop-blur-xs transition-all hover:border-[#00e5ff]/30 open:border-[#00e5ff]/40">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-4 text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]">
         <h3 className="text-base font-semibold text-[#c9f7ff]">{q}</h3>
         <span
@@ -318,7 +318,7 @@ function FaqItem({ q, a }) {
 
 export default function FaqPage({ gameCards = [] }) {
   return (
-    <div className="relative min-h-screen overflow-x-clip bg-[#05070d] text-white">
+    <div className="relative min-h-screen overflow-x-clip bg-page text-white">
 
       <NavigationBar currentPath="/faq" />
 
@@ -414,7 +414,7 @@ export default function FaqPage({ gameCards = [] }) {
                 <li key={card.slug} className="h-full">
                   <Link
                     href={card.href}
-                    className="group flex h-full flex-col justify-between rounded-lg border border-white/10 bg-[#00172b] p-5 transition-colors hover:border-[#00e5ff]/50"
+                    className="group flex h-full flex-col justify-between rounded-lg border border-white/10 bg-[var(--tint-bg--00172b)] p-5 transition-colors hover:border-[#00e5ff]/50"
                   >
                     <div>
                       <p className="text-base font-bold text-[#f5ff3b]">{card.name}</p>

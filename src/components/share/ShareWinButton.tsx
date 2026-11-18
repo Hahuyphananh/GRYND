@@ -244,7 +244,7 @@ export default function ShareWinButton({
           role="group"
           aria-label={copy.groupWin}
           data-testid={`${testId}-panel`}
-          className="absolute bottom-full left-1/2 z-20 mb-2 w-72 -translate-x-1/2 rounded-xl border border-white/15 bg-slate-900 p-3 text-left shadow-2xl"
+          className="absolute bottom-full left-1/2 z-20 mb-2 w-72 -translate-x-1/2 rounded-xl border border-white/15 bg-page p-3 text-left shadow-2xl"
         >
           {/* Exactly what will be posted, badge and time included, so nothing is
               shared sight-unseen. */}

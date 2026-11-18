@@ -157,7 +157,7 @@ export default function ShareProBadgeButton({
           role="group"
           aria-label={copy.groupBadge}
           data-testid={`${testId}-panel`}
-          className="absolute top-full left-1/2 z-20 mt-2 w-72 -translate-x-1/2 rounded-xl border border-white/15 bg-slate-900 p-3 text-left shadow-2xl"
+          className="absolute top-full left-1/2 z-20 mt-2 w-72 -translate-x-1/2 rounded-xl border border-white/15 bg-page p-3 text-left shadow-2xl"
         >
           <p data-testid={`${testId}-text`} className="text-[11px] leading-relaxed text-slate-300">
             {text}

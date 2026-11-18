@@ -22,10 +22,11 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 import { APP_TEXT_TRANSLATIONS } from "../src/lib/appTextTranslations.js";
+import { readProfileSource } from "./helpers/profile-source.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const PAGE_PATH = "src/app/profil/PageClient.jsx";
-const src = readFileSync(join(here, "..", PAGE_PATH), "utf8");
+const src = readProfileSource();
 
 function resolve(locale, key) {
   return key.split(".").reduce((node, part) => node?.[part], locale);

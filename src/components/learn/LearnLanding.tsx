@@ -48,16 +48,16 @@ function DestinationCard({
   testId: string;
 }) {
   const tones = {
-    cyan: "border-[#00e5ff]/25 bg-[#00e5ff]/[0.06] text-[#9dd8ff]",
-    green: "border-[#00ffa3]/25 bg-[#00ffa3]/[0.06] text-[#8dffd0]",
-    amber: "border-[#f5ff3b]/25 bg-[#f5ff3b]/[0.06] text-[#ffe9a3]",
+    cyan: "border-[color:var(--accent)] bg-[color:var(--accent-fill)] text-[color:var(--text-secondary)]",
+    green: "border-[color:var(--state-win)] bg-[color:var(--bg-panel)] text-[color:var(--state-win)]",
+    amber: "border-[color:var(--state-gold)] bg-[color:var(--bg-panel)] text-[color:var(--state-gold)]",
   } as const;
 
   return (
     <Link
       href={href}
       data-testid={testId}
-      className="group flex min-h-full flex-col rounded-2xl border border-white/10 bg-[#071128]/85 p-4 transition hover:border-[#00e5ff]/35 hover:bg-[#081a38] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] sm:p-5"
+      className="group flex min-h-full flex-col rounded-2xl border border-white/10 bg-[color:var(--bg-surface)] p-4 transition hover:border-[color:var(--accent)] hover:bg-[color:var(--bg-panel)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] sm:p-5"
     >
       <span className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border ${tones[tone]}`}>
         {icon}
@@ -67,7 +67,7 @@ function DestinationCard({
       <span className="mt-3 text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">
         {meta}
       </span>
-      <span className="mt-3 inline-flex items-center gap-1.5 text-xs font-extrabold text-[#00e5ff]">
+      <span className="mt-3 inline-flex items-center gap-1.5 text-xs font-extrabold text-[color:var(--accent-strong)]">
         {cta}
         <IconArrowRight
           size={14}
@@ -96,14 +96,14 @@ export default function LearnLanding() {
   const allLessons = useMemo(() => orderedLessons(), []);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#040712] pb-24 text-white md:pb-0">
+    <div className="relative min-h-screen overflow-hidden bg-[color:var(--bg-page)] pb-24 text-white md:pb-0">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 h-[560px] bg-[radial-gradient(ellipse_at_top,rgba(0,229,255,0.14),transparent_62%)]"
       />
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute -left-40 top-72 h-80 w-80 rounded-full bg-[#00ffa3]/[0.05] blur-3xl"
+        className="pointer-events-none absolute -left-40 top-72 h-80 w-80 rounded-full bg-[color:var(--bg-panel)] blur-3xl"
       />
 
       <NavigationBar currentPath="/learn" />
@@ -124,21 +124,21 @@ export default function LearnLanding() {
 
           <section
             aria-label={t("learn.progress.title")}
-            className="flex w-full items-center gap-4 rounded-2xl border border-white/10 bg-[#071128]/90 p-4 lg:w-auto lg:min-w-[340px]"
+            className="flex w-full items-center gap-4 rounded-2xl border border-white/10 bg-[color:var(--bg-surface)] p-4 lg:w-auto lg:min-w-[340px]"
           >
             <div
               className="relative h-20 w-20 shrink-0 rounded-full p-[7px]"
               style={{
-                background: `conic-gradient(#00e5ff ${stats.percent}%, rgba(255,255,255,0.08) 0)`,
+                background: `conic-gradient(var(--accent) ${stats.percent}%, rgba(255,255,255,0.08) 0)`,
               }}
               aria-hidden="true"
             >
-              <div className="flex h-full w-full items-center justify-center rounded-full bg-[#071128]">
+              <div className="flex h-full w-full items-center justify-center rounded-full bg-[color:var(--bg-surface)]">
                 <span className="text-lg font-black text-white">{stats.percent}%</span>
               </div>
             </div>
             <div className="min-w-0">
-              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#9dd8ff]/70">
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[color:var(--text-muted)]">
                 {t("learn.progress.title")}
               </p>
               <p className="mt-1 text-sm font-extrabold text-white">
@@ -163,7 +163,7 @@ export default function LearnLanding() {
         </div>
 
         <section className="mt-8" aria-labelledby="learn-continue-title">
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#00e5ff]/75">
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[color:var(--accent-strong)]">
             {t("learn.continue.kicker")}
           </p>
           <h2 id="learn-continue-title" className="mt-1 text-lg font-extrabold text-white">
@@ -171,12 +171,12 @@ export default function LearnLanding() {
           </h2>
 
           {recommended ? (
-            <div className="mt-3 grid gap-4 rounded-2xl border border-[#00e5ff]/25 bg-gradient-to-br from-[#0a2044] via-[#07132b] to-[#061020] p-4 sm:p-5 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-[#00e5ff]/30 bg-[#00e5ff]/10 text-[#00e5ff]">
+            <div className="mt-3 grid gap-4 rounded-2xl border border-[color:var(--accent)] bg-gradient-to-br from-[color:var(--bg-surface)] via-[color:var(--bg-panel)] to-[color:var(--bg-surface)] p-4 sm:p-5 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-[color:var(--border-hairline)] bg-[color:var(--accent-fill)] text-[color:var(--accent-strong)]">
                 <IconStack2 size={24} aria-hidden="true" />
               </div>
               <div className="min-w-0">
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#9dd8ff]/65">
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
                   {recommendedCourse ? t(recommendedCourse.titleKey) : ""}
                 </p>
                 <h3 className="mt-1 truncate text-xl font-black tracking-tight text-white">
@@ -191,7 +191,7 @@ export default function LearnLanding() {
                     })}
                     className="flex-1"
                   />
-                  <span className="shrink-0 text-[11px] font-bold text-[#9dd8ff]/80">
+                  <span className="shrink-0 text-[11px] font-bold text-[color:var(--text-secondary)]">
                     {t("learn.continue.step", {
                       step: recommendedStep,
                       total: recommended.steps.length,
@@ -207,23 +207,23 @@ export default function LearnLanding() {
               </div>
               <Link
                 href={`/learn/${recommended.id}`}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#00e5ff] px-5 py-2.5 text-sm font-black text-[#00212b] transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#07132b]"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[color:var(--accent)] px-5 py-2.5 text-sm font-black text-[color:var(--on-accent)] transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
               >
                 {recommendedStep > 0 ? t("learn.continue.resume") : t("learn.continue.start")}
                 <IconArrowRight size={17} aria-hidden="true" />
               </Link>
             </div>
           ) : (
-            <div className="mt-3 flex flex-col gap-4 rounded-2xl border border-[#00ffa3]/25 bg-[#00ffa3]/[0.06] p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="mt-3 flex flex-col gap-4 rounded-2xl border border-[color:var(--state-win)] bg-[color:var(--bg-panel)] p-5 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-start gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#00ffa3]/15 text-[#8dffd0]">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[color:var(--bg-panel)] text-[color:var(--state-win)]">
                   <IconCheck size={22} aria-hidden="true" />
                 </span>
                 <div>
-                  <h3 className="text-base font-extrabold text-[#c8ffe6]">
+                  <h3 className="text-base font-extrabold text-[color:var(--state-win)]">
                     {t("learn.continue.allDone")}
                   </h3>
-                  <p className="mt-1 max-w-xl text-xs leading-relaxed text-[#9dd8ff]/70">
+                  <p className="mt-1 max-w-xl text-xs leading-relaxed text-[color:var(--text-muted)]">
                     {t("learn.continue.allDoneBody")}
                   </p>
                 </div>
@@ -231,7 +231,7 @@ export default function LearnLanding() {
               {allLessons[0] && (
                 <Link
                   href={`/learn/${allLessons[0].id}`}
-                  className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-[#00ffa3]/35 px-4 py-2 text-sm font-extrabold text-[#8dffd0] transition hover:bg-[#00ffa3]/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00ffa3]"
+                  className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-[color:var(--state-win)] px-4 py-2 text-sm font-extrabold text-[color:var(--state-win)] transition hover:bg-[color:var(--bg-panel)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--state-win)]"
                 >
                   {t("learn.continue.allDoneButton")}
                   <IconArrowRight size={16} aria-hidden="true" />
@@ -242,7 +242,7 @@ export default function LearnLanding() {
         </section>
 
         <section className="mt-10" aria-labelledby="learn-destinations-title">
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#00e5ff]/75">
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[color:var(--accent-strong)]">
             {t("learn.destinations.kicker")}
           </p>
           <h2 id="learn-destinations-title" className="mt-1 text-2xl font-black tracking-tight">
@@ -305,7 +305,7 @@ export default function LearnLanding() {
         <section className="mt-10" aria-labelledby="learn-path-title">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#00e5ff]/75">
+              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[color:var(--accent-strong)]">
                 {t("learn.path.kicker")}
               </p>
               <h2 id="learn-path-title" className="mt-1 text-2xl font-black tracking-tight">
@@ -317,7 +317,7 @@ export default function LearnLanding() {
             </div>
             <Link
               href="/learn/courses"
-              className="inline-flex items-center gap-1.5 text-xs font-extrabold text-[#00e5ff] underline-offset-4 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+              className="inline-flex items-center gap-1.5 text-xs font-extrabold text-[color:var(--accent-strong)] underline-offset-4 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)]"
             >
               {t("learn.path.allCourses")}
               <IconArrowRight size={14} aria-hidden="true" />

@@ -69,7 +69,7 @@ function MessageText({ content }) {
             if (part.type === "italic") return <em key={pIdx}>{part.value}</em>;
             if (part.type === "code")
               return (
-                <code key={pIdx} className="rounded-sm bg-slate-700 px-1">
+                <code key={pIdx} className="rounded-sm bg-panel px-1">
                   {part.value}
                 </code>
               );

@@ -128,7 +128,7 @@ export default function SolitaireThemePicker({ className = "" }: { className?: s
         aria-label="Solitaire table theme"
         style={{ "--sheet-max": sheetMaxPx ? `${sheetMaxPx}px` : "70vh" } as CSSProperties}
         data-testid="solitaire-theme-panel"
-        className="fixed inset-x-0 bottom-0 z-[61] max-h-[var(--sheet-max)] overflow-y-auto rounded-t-2xl border-t border-white/15 bg-[#040d24]/98 p-4 text-left shadow-2xl backdrop-blur-md sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-full sm:z-30 sm:mt-2 sm:max-h-none sm:w-[min(21rem,calc(100vw-2rem))] sm:overflow-visible sm:rounded-xl sm:border sm:p-3"
+        className="fixed inset-x-0 bottom-0 z-[61] max-h-[var(--sheet-max)] overflow-y-auto rounded-t-2xl border-t border-white/15 bg-surface/98 p-4 text-left shadow-2xl backdrop-blur-md sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-full sm:z-30 sm:mt-2 sm:max-h-none sm:w-[min(21rem,calc(100vw-2rem))] sm:overflow-visible sm:rounded-xl sm:border sm:p-3"
       >
         <span
           aria-hidden="true"

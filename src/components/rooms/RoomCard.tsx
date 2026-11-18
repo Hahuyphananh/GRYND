@@ -182,7 +182,7 @@ export default function RoomCard({
                 id={`invitee-${room.id}`}
                 value={invitee}
                 onChange={(event) => setInvitee(event.target.value)}
-                className="rounded-sm border border-white/20 bg-[#08203f] px-2 py-1 text-xs text-white"
+                className="rounded-sm border border-white/20 bg-[var(--tint-bg--08203f)] px-2 py-1 text-xs text-white"
               >
                 <option value="">{t("rooms.pickFriend", "Choose a friend")}</option>
                 {invitableFriends.map((friend) => (

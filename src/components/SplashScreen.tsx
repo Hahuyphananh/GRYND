@@ -63,12 +63,12 @@ export default function SplashScreen() {
     <AnimatePresence>
       {show && (
         <motion.div
-          /* Fixed full-viewport, z-9999; bg-[#030817] matches the layout
+          /* Fixed full-viewport, z-9999; bg-page matches the layout
              body so the skeleton sits on a consistent backdrop. That hex is
-             also the light theme's page ground source — light-theme.css remaps
+             also the light theme's page ground source — the light token block remaps
              `.bg-[#030817]`, so this overlay follows the theme like every other
              surface and needs no theme branch here. */
-          className="fixed inset-0 z-[9999] overflow-hidden bg-[#030817]"
+          className="fixed inset-0 z-[9999] overflow-hidden bg-page"
           initial={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.4, ease: "easeInOut" }}

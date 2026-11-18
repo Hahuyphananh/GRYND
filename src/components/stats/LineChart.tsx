@@ -225,7 +225,7 @@ export default function LineChart({
 
       {activePoint && (
         <div
-          className="pointer-events-none absolute -translate-x-1/2 rounded-md border border-[#00e5ff]/40 bg-[#04122b]/95 px-2 py-1 text-[11px] font-semibold text-white shadow-lg"
+          className="pointer-events-none absolute -translate-x-1/2 rounded-md border border-[#00e5ff]/40 bg-surface/95 px-2 py-1 text-[11px] font-semibold text-white shadow-lg"
           style={{
             left: `${(model.x(active as number) / VIEW_W) * 100}%`,
             top: `${(model.y(activePoint.value) / height) * 100}%`,

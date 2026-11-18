@@ -115,7 +115,7 @@ export default function GuideArticle({ guide, related }: { guide: Guide; related
         {games.length > 0 && (
           <section
             aria-labelledby="guide-games-heading"
-            className="mt-12 rounded-2xl border border-[#00e5ff]/25 bg-[#040d24] p-6"
+            className="mt-12 rounded-2xl border border-[#00e5ff]/25 bg-surface p-6"
           >
             <h2
               id="guide-games-heading"
@@ -132,7 +132,7 @@ export default function GuideArticle({ guide, related }: { guide: Guide; related
                 <li key={game.slug}>
                   <Link
                     href={gameLandingPath(game.slug)}
-                    className="block h-full rounded-xl border border-[#00e5ff]/30 bg-[#061329] p-4 transition-all hover:-translate-y-0.5 hover:border-[#00e5ff]/60 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                    className="block h-full rounded-xl border border-[#00e5ff]/30 bg-surface p-4 transition-all hover:-translate-y-0.5 hover:border-[#00e5ff]/60 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
                   >
                     <span className="block font-bold text-[#f5ff3b]">{game.name}</span>
                     <span className="mt-1 block text-sm leading-relaxed text-[#9dd8ff]">
@@ -159,7 +159,7 @@ export default function GuideArticle({ guide, related }: { guide: Guide; related
                 <li key={entry.slug}>
                   <Link
                     href={guidePath(entry.slug)}
-                    className="block rounded-xl border border-[#00e5ff]/25 bg-[#040d24] p-4 transition-all hover:border-[#00e5ff]/55 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                    className="block rounded-xl border border-[#00e5ff]/25 bg-surface p-4 transition-all hover:border-[#00e5ff]/55 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
                   >
                     <span className="block font-bold text-[#00e5ff]">{entry.title}</span>
                     <span className="mt-1 block text-sm leading-relaxed text-[#9dd8ff]">
@@ -175,7 +175,7 @@ export default function GuideArticle({ guide, related }: { guide: Guide; related
         {/* ── Informational links ─────────────────────────────────────────── */}
         <nav
           aria-labelledby="guide-info-heading"
-          className="mt-10 rounded-2xl border border-[#00e5ff]/25 bg-[#040d24] p-6"
+          className="mt-10 rounded-2xl border border-[#00e5ff]/25 bg-surface p-6"
         >
           <h2 id="guide-info-heading" className="text-xl font-black tracking-tight text-[#f5ff3b]">
             Keep going

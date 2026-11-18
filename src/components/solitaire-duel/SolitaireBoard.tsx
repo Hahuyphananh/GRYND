@@ -747,7 +747,7 @@ export default function SolitaireBoard({
             data-testid="solitaire-stock"
             data-remaining={stockCount}
             style={slotStyle()}
-            className={`gr-focusable relative flex select-none items-center justify-center overflow-hidden rounded-[6px] border-2 border-[color:var(--gr-outline)] bg-linear-to-br from-[#1d3a63] via-[#16294a] to-[#0f1d36] shadow-[0_1px_2px_rgba(3,8,20,0.55)] transition ${
+            className={`gr-focusable relative flex select-none items-center justify-center overflow-hidden rounded-[6px] border-2 border-[color:var(--gr-outline)] bg-linear-to-br from-panel via-panel to-panel shadow-[0_1px_2px_rgba(3,8,20,0.55)] transition ${
               stockInteractive ? "cursor-pointer hover:brightness-125" : "cursor-default"
             }`}
           >

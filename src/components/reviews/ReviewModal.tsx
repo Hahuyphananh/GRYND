@@ -56,7 +56,7 @@ export default function ReviewModal({ open, onClose, game, existing }: ReviewMod
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.2 }}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md rounded-2xl border border-[#00e5ff]/20 bg-[#040d24] p-6 shadow-[0_0_40px_rgba(0,229,255,0.15)]"
+        className="w-full max-w-md rounded-2xl border border-[#00e5ff]/20 bg-surface p-6 shadow-[0_0_40px_rgba(0,229,255,0.15)]"
       >
         <h2 className="mb-1 text-xl font-bold text-white">
           {existing ? "Update your review" : "Rate GRYND"}

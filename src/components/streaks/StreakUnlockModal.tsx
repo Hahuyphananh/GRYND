@@ -78,7 +78,7 @@ export default function StreakUnlockModal() {
       data-testid="streak-unlock-modal"
       className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 p-4"
     >
-      <div className="w-full max-w-md rounded-2xl border border-amber-300/35 bg-[#07101f] p-5 text-white shadow-2xl">
+      <div className="w-full max-w-md rounded-2xl border border-amber-300/35 bg-surface p-5 text-white shadow-2xl">
         <p className="text-[10px] font-black uppercase tracking-[0.24em] text-amber-200/85">
           {streak}-day streak
         </p>

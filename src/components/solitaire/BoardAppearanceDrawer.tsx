@@ -119,7 +119,7 @@ export default function BoardAppearanceDrawer({ label = "Appearance" }: { label?
           onClick={() => setOpen(false)}
         >
           <div
-            className="h-full w-full max-w-sm overflow-y-auto border-l border-white/10 bg-[#050d1c] p-4 text-white"
+            className="h-full w-full max-w-sm overflow-y-auto border-l border-white/10 bg-surface p-4 text-white"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-center justify-between">

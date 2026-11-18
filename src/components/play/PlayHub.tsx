@@ -27,6 +27,7 @@ import { IconArrowRight } from "@tabler/icons-react";
 import Footer from "../Footer";
 import NavigationBar from "../navigation-bar";
 import ModeTableau, { type TableauVariant } from "./ModeTableau";
+import { PageHeader } from "../ui";
 import PuzzleAllowanceBadge from "./PuzzleAllowanceBadge";
 
 import { useTranslation } from "../../hooks/useTranslation";
@@ -63,7 +64,7 @@ export default function PlayHub() {
   const { t } = useTranslation();
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#04060f] pb-24 text-white md:pb-0">
+    <div className="relative min-h-screen overflow-hidden bg-[color:var(--bg-page)] pb-24 text-[color:var(--text-primary)] md:pb-0">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 h-[560px] bg-[radial-gradient(ellipse_at_top,rgba(0,229,255,0.12),transparent_60%)]"
@@ -79,15 +80,11 @@ export default function PlayHub() {
       <NavigationBar currentPath="/play" />
 
       <main className="relative mx-auto max-w-6xl px-4 pt-24 sm:px-6 md:pt-28">
-        <p className="text-[11px] font-black uppercase tracking-[0.4em] text-cyan-300/80">
-          {t("playHub.kicker")}
-        </p>
-        <h1 className="mt-2 text-4xl font-black leading-[0.95] tracking-tight sm:text-5xl">
-          {t("playHub.title")}
-        </h1>
-        <p className="mt-3 max-w-3xl text-sm leading-relaxed text-white/60 sm:text-base">
-          {t("playHub.description")}
-        </p>
+        <PageHeader
+          kicker={t("playHub.kicker")}
+          title={t("playHub.title")}
+          description={t("playHub.description")}
+        />
 
         {GROUPS.map((group) => (
           <section
@@ -103,7 +100,7 @@ export default function PlayHub() {
               />
               <h2
                 id={`play-group-${group.id}`}
-                className="text-[11px] font-black uppercase tracking-[0.32em] text-white/45"
+                className="text-[11px] font-black uppercase tracking-[0.32em] text-[color:var(--text-muted)]"
               >
                 {t(`playHub.groups.${group.id}`)}
               </h2>
@@ -132,7 +129,7 @@ export default function PlayHub() {
                         borderColor: palette.line,
                       } as CSSProperties
                     }
-                    className={`group relative flex h-full flex-col overflow-hidden rounded-2xl border transition duration-200 hover:-translate-y-0.5 hover:border-[color:var(--mode-accent)] hover:shadow-[0_18px_44px_-18px_var(--mode-glow)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--mode-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#04060f] motion-reduce:transition-none motion-reduce:hover:translate-y-0 ${
+                    className={`group relative flex h-full flex-col overflow-hidden rounded-2xl border transition duration-200 hover:-translate-y-0.5 hover:border-[color:var(--mode-accent)] hover:shadow-[0_18px_44px_-18px_var(--mode-glow)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--mode-accent)] motion-reduce:transition-none motion-reduce:hover:translate-y-0 ${
                       featured ? "sm:col-span-2 lg:col-span-3 sm:flex-row" : ""
                     }`}
                   >
@@ -142,19 +139,19 @@ export default function PlayHub() {
                       }`}
                     >
                       <ModeTableau variant={mode.id as TableauVariant} />
-                      <span className="absolute bottom-3 left-3 rounded-full border border-[color:var(--mode-line)] bg-[#04060f]/80 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-[0.16em] text-[color:var(--mode-accent)] backdrop-blur-xs">
+                      <span className="absolute bottom-3 left-3 rounded-full border border-[color:var(--mode-line)] bg-[color:var(--bg-page)]/80 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-[0.16em] text-[color:var(--mode-accent)] backdrop-blur-xs">
                         {t(`playHub.cards.${mode.id}.tag`)}
                       </span>
                     </div>
 
                     <div className="flex flex-1 flex-col p-4 sm:p-5">
-                      <h3 className="text-lg font-black tracking-tight text-white">
+                      <h3 className="text-lg font-black tracking-tight text-[color:var(--text-primary)]">
                         {t(`playHub.cards.${mode.id}.title`)}
                       </h3>
-                      <p className="mt-1.5 flex-1 text-xs leading-relaxed text-white/60">
+                      <p className="mt-1.5 flex-1 text-xs leading-relaxed text-[color:var(--text-secondary)]">
                         {t(`playHub.cards.${mode.id}.description`)}
                       </p>
-                      <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-white/40">
+                      <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--text-muted)]">
                         {t(`playHub.cards.${mode.id}.meta`)}
                       </p>
 

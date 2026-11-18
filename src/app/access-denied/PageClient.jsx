@@ -79,7 +79,7 @@ export default function AccessDeniedPage() {
   const accountName = user?.firstName || user?.username || user?.fullName || null;
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#030817] px-4 py-10 sm:py-14">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-page px-4 py-10 sm:py-14">
       {/* Backdrop: neon glows + subtle grid (the family's stage). */}
       <div aria-hidden className="pointer-events-none absolute inset-0">
         <div className="absolute -left-28 -top-28 h-80 w-80 rounded-full bg-[#00e5ff]/10 blur-[110px]" />
@@ -142,7 +142,7 @@ export default function AccessDeniedPage() {
               {AGE_CELLS.map((cell) => (
                 <span
                   key={cell}
-                  className="flex h-11 w-10 items-center justify-center rounded-lg border-2 border-[#ff5d8f]/45 bg-[#1a0a16] text-xl font-black text-[#ff5d8f]/90 shadow-[inset_0_0_18px_rgba(255,93,143,0.18)]"
+                  className="flex h-11 w-10 items-center justify-center rounded-lg border-2 border-[#ff5d8f]/45 bg-[var(--tint-bg--1a0a16)] text-xl font-black text-[#ff5d8f]/90 shadow-[inset_0_0_18px_rgba(255,93,143,0.18)]"
                 >
                   {cell}
                 </span>

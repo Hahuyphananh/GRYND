@@ -447,14 +447,14 @@ function NavigationBarInner({ currentPath = "" }) {
         // content (logo, balance, menu button) would sit under the status bar.
         // The padding moves the content down; the bar's own translucent
         // background still paints behind the system bar. It is 0 on the web.
-        className="safe-top fixed top-0 left-0 right-0 z-40 border-b border-[#00e5ff]/40 bg-[#050b1e]/75 shadow-[0_0_22px_rgba(0,229,255,0.25)]"
+        className="safe-top fixed top-0 left-0 right-0 z-40 border-b border-[color:var(--border-hairline)] bg-[color:var(--bg-surface)] shadow-[var(--shadow-raise)]"
       >
         {/* max-w-[1440px] gives the fully-loaded navbar (logo + 7 links +
             install + avatar + tokens + sign-out ≈1390px) room to breathe on
             wide screens; the old max-w-7xl (1280px) capped it and forced
             the logo/right side to be squeezed. */}
-        <UIPro01NavShell className="mx-auto max-w-[1440px] px-3 sm:px-4">
-          <div className="flex h-16 items-center justify-between gap-2 sm:h-20 md:h-24">
+        <UIPro01NavShell className="mx-auto max-w-[var(--shell-max)] px-3 sm:px-4">
+          <div className="flex h-[var(--nav-height)] items-center justify-between gap-2">
             {/* shrink-0: the navbar flex row must never squeeze the logo —
                 at laptop widths (≈768–1100px) it collapsed to 0px wide and
                 the logo vanished entirely. */}
@@ -478,7 +478,7 @@ function NavigationBarInner({ currentPath = "" }) {
                 alt="GRYND Logo"
                 width={92}
                 height={95}
-                className="h-[52px] w-auto object-contain drop-shadow-[0_0_14px_rgba(245,255,59,0.5)] sm:h-[68px] md:h-[82px]"
+                className="h-9 w-auto object-contain sm:h-11"
               />
             </Link>
 
@@ -503,7 +503,7 @@ function NavigationBarInner({ currentPath = "" }) {
                 >
                   <Link
                     href={path}
-                    className={`px-1 py-2 text-sm font-medium rounded-sm lg:px-3 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${isPathActive(path, currentPath) ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
+                    className={`rounded-md px-2 py-2 text-sm font-medium lg:px-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--focus-ring)] ${isPathActive(path, currentPath) ? "text-[color:var(--text-primary)] underline decoration-[color:var(--accent)] decoration-2 underline-offset-8" : "text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"}`}
                   >
                     {/* Only Rewards carries a glyph. Links without one render
                         their label exactly as before (a bare text node) — the
@@ -525,7 +525,7 @@ function NavigationBarInner({ currentPath = "" }) {
               {canInstall && (
                 <button
                   onClick={install}
-                  className="hidden 2xl:inline-flex items-center rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 px-3 py-1 text-xs font-medium text-[#f5ff3b] hover:bg-[#f5ff3b]/20"
+                  className="hidden items-center rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] px-3 py-1 text-xs font-medium text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)] 2xl:inline-flex"
                 >
                   <IconDeviceMobile size={16} className="mr-1" /> Install App
                 </button>
@@ -544,10 +544,10 @@ function NavigationBarInner({ currentPath = "" }) {
                   <Link
                     href="/profil"
                     data-testid="nav-trophies"
-                    className="hidden items-center gap-2 rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 px-3 py-1.5 transition-colors hover:bg-[#f5ff3b]/20 lg:flex"
+                    className="hidden items-center gap-2 rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] px-3 py-1.5 transition-colors hover:border-[color:var(--border-strong)] lg:flex"
                     title="Your total trophies"
                   >
-                    <IconTrophy size={15} className="shrink-0 text-[#f5ff3b]" />
+                    <IconTrophy size={15} className="shrink-0 text-[color:var(--state-gold)]" />
                     <span className="flex flex-col leading-tight">
                       <span className="flex items-baseline gap-1">
                         {/* keyed on the total so a change remounts the span and
@@ -562,11 +562,11 @@ function NavigationBarInner({ currentPath = "" }) {
                           }
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           transition={{ duration: 0.3, ease: "easeOut" }}
-                          className="text-sm font-semibold text-[#f5ff3b]"
+                          className="text-sm font-semibold text-[color:var(--state-gold)]"
                         >
                           {Number(profile.totalTrophies || 0).toLocaleString()}
                         </motion.span>
-                        <span className="text-[10px] uppercase tracking-wider text-[#f5ff3b]/70">
+                        <span className="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)]">
                           Trophies
                         </span>
                       </span>
@@ -579,12 +579,12 @@ function NavigationBarInner({ currentPath = "" }) {
                         iconKey={profile?.selectedIcon}
                         name={profile?.name || user?.firstName}
                         size="h-8 w-8"
-                        className="border border-[#00e5ff]/50 transition group-hover:scale-105"
+                        className="border border-[color:var(--border-strong)] transition group-hover:scale-105"
                       />
                       <div className="flex flex-col leading-tight">
                         <span
                           data-testid="nav-user-name"
-                          className={`text-xs text-[#c9f7ff] flex items-center gap-1.5 ${cosmeticEffectClass(profile?.usernameEffect?.visual) || ""}`}
+                          className={`flex items-center gap-1.5 text-xs text-[color:var(--text-primary)] ${cosmeticEffectClass(profile?.usernameEffect?.visual) || ""}`}
                           style={nameGlowStyle}
                         >
                           {profile?.name ||
@@ -593,11 +593,11 @@ function NavigationBarInner({ currentPath = "" }) {
                             t("nav.user_fallback")}
                           {isAdmin && <AdminBadge />}
                         </span>
-                        <span className="text-[10px] text-[#f5ff3b]">
+                        <span className="text-[10px] text-[color:var(--state-gold)]">
                           {profile?.selectedTitle || "No title equipped"}
                         </span>
                         {profile?.streakTitle && (
-                          <span className="text-[10px] text-amber-400">
+                          <span className="text-[10px] text-[color:var(--state-gold)]">
                             <IconFlame size={12} className="mb-0.5 mr-0.5 inline" /> {profile.streakTitle}
                           </span>
                         )}
@@ -606,16 +606,16 @@ function NavigationBarInner({ currentPath = "" }) {
                     <details className="relative">
                       <summary
                         aria-label="Account menu"
-                        className="list-none cursor-pointer rounded-lg border border-[#00e5ff]/30 bg-[#00e5ff]/10 px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-[#d8fbff] transition hover:bg-[#00e5ff]/20"
+                        className="list-none cursor-pointer rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-[color:var(--text-secondary)] transition hover:text-[color:var(--text-primary)]"
                       >
                         Account
                       </summary>
-                      <div className="absolute right-0 z-50 mt-2 w-52 overflow-hidden rounded-xl border border-[#00e5ff]/30 bg-[#08142f] p-1.5 shadow-xl">
+                      <div className="absolute right-0 z-50 mt-2 w-52 overflow-hidden rounded-[var(--radius-surface)] border border-[color:var(--border-hairline)] bg-[color:var(--bg-surface)] p-1.5 shadow-[var(--shadow-raise)]">
                         {ACCOUNT_ITEMS.map((item) => (
                           <Link
                             key={item.href + item.label}
                             href={item.href}
-                            className="block rounded-lg px-3 py-2 text-sm text-[#c9f7ff] transition hover:bg-[#00e5ff]/10 hover:text-white"
+                            className="block rounded-lg px-3 py-2 text-sm text-[color:var(--text-secondary)] transition hover:bg-[color:var(--bg-panel)] hover:text-[color:var(--text-primary)]"
                           >
                             {item.label}
                           </Link>
@@ -623,7 +623,7 @@ function NavigationBarInner({ currentPath = "" }) {
                         {isAdmin && (
                           <Link
                             href="/admin"
-                            className="block rounded-lg px-3 py-2 text-sm font-semibold text-[#f5ff3b] transition hover:bg-[#f5ff3b]/10"
+                            className="block rounded-lg px-3 py-2 text-sm font-semibold text-[color:var(--state-gold)] transition hover:bg-[color:var(--bg-panel)]"
                           >
                             Admin
                           </Link>
@@ -638,7 +638,7 @@ function NavigationBarInner({ currentPath = "" }) {
                       triggerHaptic("selection");
                       setMobileMenuOpen((v) => !v);
                     }}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 text-[#d8fbff] 2xl:hidden"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] text-[color:var(--text-secondary)] 2xl:hidden"
                     aria-label="Toggle menu"
                     aria-expanded={mobileMenuOpen}
                     aria-controls="mobile-nav-menu"
@@ -648,13 +648,13 @@ function NavigationBarInner({ currentPath = "" }) {
                   {isAdmin && (
                     <Link
                       href="/admin"
-                      className="rounded-lg border border-[#f5ff3b]/60 bg-[#f5ff3b]/10 px-3 py-2 text-sm font-semibold text-[#f5ff3b] transition-colors hover:bg-[#f5ff3b]/20"
+                      className="rounded-lg border border-[color:var(--state-gold)] px-3 py-2 text-sm font-semibold text-[color:var(--state-gold)] transition-colors hover:bg-[color:var(--bg-panel)]"
                     >
                       Admin
                     </Link>
                   )}
                   <SignOutButton>
-                    <UIPro02NavItem className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#00e5ff]/35">
+                    <UIPro02NavItem className="rounded-lg border border-[color:var(--border-strong)] px-4 py-2 text-sm font-medium text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]">
                       {t("nav.sign_out")}
                     </UIPro02NavItem>
                   </SignOutButton>
@@ -668,20 +668,20 @@ function NavigationBarInner({ currentPath = "" }) {
                       triggerHaptic("selection");
                       setMobileMenuOpen((v) => !v);
                     }}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 text-[#d8fbff] md:hidden"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] text-[color:var(--text-secondary)] md:hidden"
                     aria-label="Toggle menu"
                   >
                     <IconMenu size={20} />
                   </button>
                   <UIPro02NavItem
                     href="/sign-up"
-                    className="hidden rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#FFFF33]/35 md:inline-flex"
+                    className="hidden rounded-lg bg-[color:var(--accent)] px-4 py-2 text-sm font-semibold text-[color:var(--on-accent)] hover:bg-[color:var(--accent-strong)] md:inline-flex"
                   >
                     {t("nav.create_account")}
                   </UIPro02NavItem>
                   <UIPro02NavItem
                     href="/sign-in"
-                    className="hidden rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#00e5ff]/35 md:inline-flex"
+                    className="hidden rounded-lg border border-[color:var(--border-strong)] px-4 py-2 text-sm font-medium text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)] md:inline-flex"
                   >
                     {t("nav.sign_in")}
                   </UIPro02NavItem>
@@ -693,9 +693,9 @@ function NavigationBarInner({ currentPath = "" }) {
         {mobileMenuOpen && (
           <div id="mobile-nav-menu" className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs">
             {/* SIDEBAR */}
-            <div className="absolute left-0 top-0 h-full w-72 bg-[#08142f] border-r border-[#00e5ff]/30 p-4 space-y-4">
+            <div className="absolute left-0 top-0 h-full w-72 space-y-4 border-r border-[color:var(--border-hairline)] bg-[color:var(--bg-surface)] p-4">
               {/* CLOSE */}
-              <button onClick={() => setMobileMenuOpen(false)} className="text-[#f5ff3b] text-sm">
+              <button onClick={() => setMobileMenuOpen(false)} className="text-sm text-[color:var(--state-gold)]">
                 <IconX size={16} className="mb-0.5 mr-1 inline" /> Close
               </button>
 
@@ -715,21 +715,21 @@ function NavigationBarInner({ currentPath = "" }) {
                   <div>
                     <div
                       data-testid="nav-user-name"
-                      className={`text-[#c9f7ff] text-sm flex items-center gap-1.5 ${cosmeticEffectClass(profile?.usernameEffect?.visual) || ""}`}
+                      className={`flex items-center gap-1.5 text-sm text-[color:var(--text-primary)] ${cosmeticEffectClass(profile?.usernameEffect?.visual) || ""}`}
                       style={nameGlowStyle}
                     >
                       {profile?.name || "User"}
                       {isAdmin && <AdminBadge />}
                     </div>
-                    <div className="text-xs text-[#f5ff3b]">
+                    <div className="text-xs text-[color:var(--state-gold)]">
                       {profile?.selectedTitle}
                     </div>
                     {profile?.streakTitle && (
-                      <div className="text-xs text-amber-400">
+                      <div className="text-xs text-[color:var(--state-gold)]">
                         <IconFlame size={12} className="mb-0.5 mr-0.5 inline" /> {profile.streakTitle}
                       </div>
                     )}
-                    <div className="text-xs text-[#f5ff3b]" data-testid="nav-trophies-mobile">
+                    <div className="text-xs text-[color:var(--state-gold)]" data-testid="nav-trophies-mobile">
                       <IconTrophy size={12} className="mb-0.5 mr-0.5 inline" />{" "}
                       {`${Number(profile.totalTrophies || 0).toLocaleString()} Trophies`}
                     </div>
@@ -743,7 +743,7 @@ function NavigationBarInner({ currentPath = "" }) {
                   <Link
                     href="/admin"
                     onClick={() => setMobileMenuOpen(false)}
-                    className="block rounded-lg border border-[#f5ff3b]/60 bg-[#f5ff3b]/10 px-3 py-2 font-semibold text-[#f5ff3b]"
+                    className="block rounded-lg border border-[color:var(--state-gold)] px-3 py-2 font-semibold text-[color:var(--state-gold)]"
                   >
                     Admin dashboard
                   </Link>
@@ -756,14 +756,14 @@ function NavigationBarInner({ currentPath = "" }) {
                     aria-current={isPathActive(path, currentPath) ? "page" : undefined}
                     className={`block rounded-lg px-3 py-2 ${
                       isPathActive(path, currentPath)
-                        ? "bg-[#00e5ff]/15 text-white"
-                        : "bg-[#091737] text-[#9dd8ff]"
+                        ? "bg-[color:var(--accent-fill)] text-[color:var(--text-primary)]"
+                        : "bg-[color:var(--bg-panel)] text-[color:var(--text-secondary)]"
                     }`}
                   >
                     {navLabel(path, t)}
                   </Link>
                 ))}
-                <p className="px-1 pt-2 text-[10px] font-black uppercase tracking-[0.2em] text-white/30">
+                <p className="px-1 pt-2 text-[10px] font-black uppercase tracking-[0.2em] text-[color:var(--text-muted)]">
                   Account
                 </p>
                 {ACCOUNT_ITEMS.map((item) => (
@@ -771,7 +771,7 @@ function NavigationBarInner({ currentPath = "" }) {
                     key={item.href + item.label}
                     href={item.href}
                     onClick={() => setMobileMenuOpen(false)}
-                    className="block rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff]"
+                    className="block rounded-lg bg-[color:var(--bg-panel)] px-3 py-2 text-[color:var(--text-secondary)]"
                   >
                     {item.label}
                   </Link>
@@ -780,7 +780,7 @@ function NavigationBarInner({ currentPath = "" }) {
                     would be the only unlabelled control in this menu. */}
                 <ThemeToggle
                   showLabel
-                  className="flex w-full items-center rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff] transition-colors hover:text-[#00e5ff] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                  className="flex w-full items-center rounded-lg bg-[color:var(--bg-panel)] px-3 py-2 text-[color:var(--text-secondary)] transition-colors hover:text-[color:var(--text-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--focus-ring)]"
                 />
             </div>
               {!isSignedIn && (
@@ -788,7 +788,7 @@ function NavigationBarInner({ currentPath = "" }) {
                   <Link
                     href="/sign-up"
                     onClick={() => setMobileMenuOpen(false)}
-                    className="rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/20 px-3 py-2 text-center text-sm font-medium text-[#d8fbff]"
+                    className="rounded-lg bg-[color:var(--accent)] px-3 py-2 text-center text-sm font-semibold text-[color:var(--on-accent)]"
                   >
                     {t("nav.create_account")}
                   </Link>
@@ -796,7 +796,7 @@ function NavigationBarInner({ currentPath = "" }) {
                   <Link
                     href="/sign-in"
                     onClick={() => setMobileMenuOpen(false)}
-                    className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-3 py-2 text-center text-sm font-medium text-[#d8fbff]"
+                    className="rounded-lg border border-[color:var(--border-strong)] px-3 py-2 text-center text-sm font-medium text-[color:var(--text-secondary)]"
                   >
                     {t("nav.sign_in")}
                   </Link>
@@ -807,7 +807,7 @@ function NavigationBarInner({ currentPath = "" }) {
               {(canInstall || isIOS) && (
                 <button
                   onClick={install}
-                  className="w-full rounded-lg bg-[#f5ff3b]/10 px-3 py-2 text-[#f5ff3b]"
+                  className="w-full rounded-lg border border-[color:var(--state-gold)] px-3 py-2 text-[color:var(--state-gold)]"
                 >
                   <IconDeviceMobile size={16} className="mr-1" /> Install App
                 </button>

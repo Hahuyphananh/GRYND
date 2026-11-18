@@ -39,7 +39,7 @@ import { IconCheck, IconGift, IconLock, IconRefresh } from "@tabler/icons-react"
 import { useDailyReward } from "../hooks/useDailyReward";
 import DailyRewardBoard from "./DailyRewardBoard";
 
-const CARD = "rounded-xl border border-[#00e5ff]/20 bg-[#040d24]/70 p-5 backdrop-blur-xs sm:p-6";
+const CARD = "rounded-xl border border-[#00e5ff]/20 bg-surface/70 p-5 backdrop-blur-xs sm:p-6";
 
 function formatCoins(value: number) {
   return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });

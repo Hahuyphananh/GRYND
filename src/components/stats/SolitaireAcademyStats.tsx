@@ -294,7 +294,7 @@ export default function SolitaireAcademyStats({
             {!pro && (
               <div
                 data-testid="stats-solitaire-lock"
-                className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-xl bg-[#04122b]/60 p-4 text-center backdrop-blur-[1px]"
+                className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-xl bg-surface/60 p-4 text-center backdrop-blur-[1px]"
               >
                 <IconLock size={22} aria-hidden="true" className="text-[#f5ff3b]" />
                 <p className="text-sm font-black text-[#f5ff3b]">

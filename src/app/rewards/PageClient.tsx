@@ -94,7 +94,7 @@ function CoinBalanceCard() {
   return (
     <section
       aria-label="Your coin balance"
-      className="mb-10 rounded-xl border border-[#00e5ff]/20 bg-[#040d24]/70 p-5 backdrop-blur-xs sm:p-6"
+      className="mb-10 rounded-xl border border-[#00e5ff]/20 bg-surface/70 p-5 backdrop-blur-xs sm:p-6"
     >
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -191,7 +191,7 @@ export default function RewardsPage() {
         {/* ── How rewards work ──────────────────────────────────────── */}
         <motion.section
           aria-labelledby="rewards-note-heading"
-          className="rounded-xl border border-[#00e5ff]/20 bg-[#040d24]/70 p-6 backdrop-blur-xs"
+          className="rounded-xl border border-[#00e5ff]/20 bg-surface/70 p-6 backdrop-blur-xs"
           {...rise(0.15)}
         >
           <h2

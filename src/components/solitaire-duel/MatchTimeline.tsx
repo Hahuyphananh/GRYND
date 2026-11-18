@@ -275,7 +275,7 @@ export default function MatchTimeline({
 
   return (
     <div
-      className="mt-4 rounded-xl border border-[#00e5ff]/30 bg-[#04122e]/80 p-3 text-left"
+      className="mt-4 rounded-xl border border-[#00e5ff]/30 bg-surface/80 p-3 text-left"
       data-testid="match-timeline"
     >
       <div className="flex items-center justify-between gap-2">
@@ -600,7 +600,7 @@ function SudokuPreview({
           return (
             <span
               key={index}
-              className={`flex aspect-square items-center justify-center bg-[#04122e] font-mono text-[9px] leading-none ${
+              className={`flex aspect-square items-center justify-center bg-surface font-mono text-[9px] leading-none ${
                 given
                   ? "font-black text-white/75"
                   : value

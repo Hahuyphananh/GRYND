@@ -35,6 +35,7 @@ import {
   normalizeFriendChallengeCode,
 } from "../src/lib/solitaire-duel/friendChallenge.ts";
 import { generateFriendChallengeCode } from "../src/lib/solitaire-duel/inviteCodes.ts";
+import { readProfileSource } from "./helpers/profile-source.mjs";
 
 const read = (rel) => readFileSync(rel, "utf8");
 /** Strip comment lines: prose may NAME a thing the code must not do. */
@@ -294,7 +295,7 @@ test("the lobby offers the link, and never auto-creates one", () => {
 });
 
 test("the profile no longer hosts its own challenge button", () => {
-  const profile = read("src/app/profil/PageClient.jsx");
+  const profile = readProfileSource();
   assert.doesNotMatch(profile, /ChallengeFriendDialog|challengeTarget|challengeStatus/);
   assert.doesNotMatch(profile, /profile\.friends\.challenge/);
 });

@@ -40,7 +40,7 @@ export const metadata: Metadata = {
   description: "Read-only deployment, backup and audit status for GRYND.",
 };
 
-const CARD = "rounded-xl border border-[#1b2a4a] bg-[#0d1830] p-5";
+const CARD = "rounded-xl border border-[#1b2a4a] bg-panel p-5";
 const LABEL = "text-[11px] uppercase tracking-wider text-[#7f9bbd]";
 const VALUE = "mt-1 text-sm text-[#e6f7ff]";
 
@@ -169,7 +169,7 @@ export default async function OperationsPage() {
   const recentAudit = [...snapshot.audit].reverse().slice(0, 8);
 
   return (
-    <main className="min-h-screen bg-[#0a0f1e] px-4 py-8 text-[#c9f7ff] sm:px-6 lg:px-10">
+    <main className="min-h-screen bg-surface px-4 py-8 text-[#c9f7ff] sm:px-6 lg:px-10">
       <div className="mx-auto max-w-6xl">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -237,7 +237,7 @@ export default async function OperationsPage() {
             subscription tables. The windows are the ones the product already
             runs on (10 min heartbeat, 3 min game board), so a closed tab ages
             out on its own and this page cannot disagree with the lobby badge. */}
-        <section className="mb-4 rounded-xl border border-[#1b2a4a] bg-[#0d1830]">
+        <section className="mb-4 rounded-xl border border-[#1b2a4a] bg-panel">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1b2a4a] px-5 py-3">
             <h2 className="text-sm font-semibold text-white">Audience</h2>
             <span className="text-xs text-[#7f9bbd]">
@@ -533,7 +533,7 @@ export default async function OperationsPage() {
             returns a value, a prefix or a length. */}
         <section
           id="admin-second-factor"
-          className="mt-6 rounded-xl border border-[#1b2a4a] bg-[#0d1830]"
+          className="mt-6 rounded-xl border border-[#1b2a4a] bg-panel"
         >
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1b2a4a] px-5 py-3">
             <h2 className="text-sm font-semibold text-white">Admin second factor</h2>
@@ -600,7 +600,7 @@ export default async function OperationsPage() {
           </div>
         </section>
 
-        <section className="mt-6 rounded-xl border border-[#1b2a4a] bg-[#0d1830]">
+        <section className="mt-6 rounded-xl border border-[#1b2a4a] bg-panel">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1b2a4a] px-5 py-3">
             <h2 className="text-sm font-semibold text-white">Live commit</h2>
             <span className="text-xs text-[#7f9bbd]">
@@ -657,7 +657,7 @@ export default async function OperationsPage() {
           )}
         </section>
 
-        <section className="mt-4 rounded-xl border border-[#1b2a4a] bg-[#0d1830]">
+        <section className="mt-4 rounded-xl border border-[#1b2a4a] bg-panel">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1b2a4a] px-5 py-3">
             <h2 className="text-sm font-semibold text-white">Deployment target</h2>
             <span className="text-xs text-[#7f9bbd]">
@@ -671,7 +671,7 @@ export default async function OperationsPage() {
           />
         </section>
 
-        <section className="mt-4 rounded-xl border border-[#1b2a4a] bg-[#0d1830]">
+        <section className="mt-4 rounded-xl border border-[#1b2a4a] bg-panel">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1b2a4a] px-5 py-3">
             <h2 className="text-sm font-semibold text-white">Latest commit</h2>
             {latestDeployment ? (
@@ -746,7 +746,7 @@ export default async function OperationsPage() {
           )}
         </section>
 
-        <section className="mt-6 rounded-xl border border-[#1b2a4a] bg-[#0d1830]">
+        <section className="mt-6 rounded-xl border border-[#1b2a4a] bg-panel">
           <div className="flex items-center justify-between border-b border-[#1b2a4a] px-5 py-3">
             <h2 className="text-sm font-semibold text-white">Recent activity</h2>
             <Link href="/admin/operations/logs" className="text-xs text-[#f5ff3b] hover:underline">

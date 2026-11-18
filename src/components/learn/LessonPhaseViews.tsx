@@ -185,7 +185,7 @@ export function WatchPhaseView({
         {t("learn.player.phases.watchLead")}
       </p>
 
-      <div className="mt-3 rounded-2xl border border-[#00e5ff]/20 bg-[#040d24]/80 p-1.5">
+      <div className="mt-3 rounded-2xl border border-[#00e5ff]/20 bg-surface/80 p-1.5">
         <SolitaireBoard
           view={viewForState(demo.state)}
           interactive={false}
@@ -305,7 +305,7 @@ function PracticePositionView({
         {t(position.instructionKey)}
       </p>
 
-      <div className="mt-3 rounded-2xl border border-[#00e5ff]/20 bg-[#040d24]/80 p-1.5">
+      <div className="mt-3 rounded-2xl border border-[#00e5ff]/20 bg-surface/80 p-1.5">
         <SolitaireBoard
           view={viewForState(session.state)}
           interactive={!session.completed}

@@ -73,7 +73,7 @@ const MODES = [
 
 const H2 = "text-2xl font-black tracking-tight text-[#f5ff3b]";
 const CARD =
-  "block h-full rounded-2xl border border-[#00e5ff]/30 bg-[#040d24] p-5 transition-all hover:-translate-y-0.5 hover:border-[#00e5ff]/60 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]";
+  "block h-full rounded-2xl border border-[#00e5ff]/30 bg-surface p-5 transition-all hover:-translate-y-0.5 hover:border-[#00e5ff]/60 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]";
 
 export default function GamesHubPage() {
   return (

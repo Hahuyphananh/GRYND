@@ -187,7 +187,7 @@ export default function ReviewWall({
           {reviews.map((r) => (
             <div
               key={r.id}
-              className="rounded-xl border border-[#00e5ff]/15 bg-[#040d24]/70 p-5 backdrop-blur-xs"
+              className="rounded-xl border border-[#00e5ff]/15 bg-surface/70 p-5 backdrop-blur-xs"
             >
               <div className="mb-2 flex items-center justify-between gap-2">
                 <Stars value={r.rating} />

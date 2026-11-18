@@ -30,6 +30,7 @@ import {
   memberCardFacts,
   winCardFacts,
 } from "../src/lib/shareCard.ts";
+import { readProfileSource } from "./helpers/profile-source.mjs";
 
 const code = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -415,7 +416,7 @@ test("the profile can share the PRO badge, for members only", () => {
   assert.match(cmp, /buildMemberShareText\(badge, locale\)/);
   assert.match(cmp, /memberShareUrl\(\)/);
 
-  const profile = code("src/app/profil/PageClient.jsx");
+  const profile = readProfileSource();
   assert.match(profile, /import ShareProBadgeButton from "\.\.\/\.\.\/components\/share\/ShareProBadgeButton"/);
   assert.match(profile, /<ShareProBadgeButton \/>/);
 

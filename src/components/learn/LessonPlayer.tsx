@@ -130,7 +130,7 @@ function CompletionScreen({
 
       <section
         aria-label={t("learn.player.completionAria")}
-        className="mt-4 overflow-hidden rounded-3xl border border-[#00ffa3]/25 bg-[#05170f]"
+        className="mt-4 overflow-hidden rounded-3xl border border-[#00ffa3]/25 bg-[var(--tint-bg--05170f)]"
       >
         <div className="border-b border-[#00ffa3]/15 bg-[radial-gradient(ellipse_at_top_left,rgba(0,255,163,0.16),transparent_68%)] p-5 sm:p-8">
           <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-[#00ffa3]/30 bg-[#00ffa3]/15 text-[#8dffd0]">
@@ -177,7 +177,7 @@ function CompletionScreen({
           </div>
 
           <aside className="space-y-4">
-            <div className="rounded-2xl border border-white/10 bg-[#071128] p-4">
+            <div className="rounded-2xl border border-white/10 bg-surface p-4">
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#9dd8ff]/70">
                 {t("learn.player.courseProgress")}
               </p>
@@ -196,7 +196,7 @@ function CompletionScreen({
               />
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-[#071128] p-4">
+            <div className="rounded-2xl border border-white/10 bg-surface p-4">
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#9dd8ff]/70">
                 {t("learn.player.nextLesson")}
               </p>
@@ -624,7 +624,7 @@ function Player({ lesson }: { lesson: Lesson }) {
           aria-label={t(lesson.titleKey)}
           className="order-2 min-w-0 lg:order-1"
         >
-          <div className="rounded-3xl border border-[#00e5ff]/20 bg-[#040d24]/80 p-2 shadow-[0_0_45px_rgba(0,229,255,0.06)] sm:p-3">
+          <div className="rounded-3xl border border-[#00e5ff]/20 bg-surface/80 p-2 shadow-[0_0_45px_rgba(0,229,255,0.06)] sm:p-3">
             <SolitaireBoard
               view={viewForState(boardSession.state)}
               interactive={!pendingAdvance && !session.completed}
@@ -892,7 +892,7 @@ export default function LessonPlayer({ lessonId }: { lessonId: string }) {
   if (!lesson) return null;
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#040712] pb-24 text-white md:pb-0">
+    <div className="relative min-h-screen overflow-hidden bg-page pb-24 text-white md:pb-0">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 h-[560px] bg-[radial-gradient(ellipse_at_top,rgba(0,229,255,0.12),transparent_62%)]"

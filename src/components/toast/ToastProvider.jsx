@@ -85,7 +85,7 @@ function ToastItem({ toast, onDismiss, shouldReduce }) {
       layout
       {...variant}
       role={style.role}
-      className={`pointer-events-auto flex items-start gap-2.5 rounded-xl border ${style.border} bg-[#040d24]/95 p-3 shadow-[0_0_24px_rgba(0,229,255,0.25)] backdrop-blur-md`}
+      className={`pointer-events-auto flex items-start gap-2.5 rounded-xl border ${style.border} bg-surface/95 p-3 shadow-[0_0_24px_rgba(0,229,255,0.25)] backdrop-blur-md`}
     >
       <span className={`mt-0.5 shrink-0 ${style.iconColor}`}>
         <Icon size={18} aria-hidden="true" />

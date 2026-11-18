@@ -96,7 +96,7 @@ export default function FriendChallengePage({ code }: { code: string | null }) {
   }, [code, joining, router]);
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#040712] px-4 py-16 text-white">
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-page px-4 py-16 text-white">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 h-[420px] bg-[radial-gradient(ellipse_at_top,rgba(0,229,255,0.12),transparent_62%)]"

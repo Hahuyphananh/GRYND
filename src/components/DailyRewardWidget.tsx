@@ -51,7 +51,7 @@ const POSITION_CLASS = [
 ].join(" ");
 
 const CARD =
-  "rounded-2xl border border-[#f5ff3b]/40 bg-[#040d24]/95 p-4 shadow-[0_0_28px_rgba(245,255,59,0.2)] backdrop-blur-md";
+  "rounded-2xl border border-[#f5ff3b]/40 bg-surface/95 p-4 shadow-[0_0_28px_rgba(245,255,59,0.2)] backdrop-blur-md";
 
 function formatCoins(value: number) {
   return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });

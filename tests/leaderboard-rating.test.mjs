@@ -30,6 +30,7 @@ import {
   normalizeRatingGameKey,
   toRatingShape,
 } from "../src/lib/rating.js";
+import { readProfileSource } from "./helpers/profile-source.mjs";
 
 /** Source with comments removed, so prose about tokens can't trip assertions. */
 function codeOf(path) {
@@ -216,7 +217,7 @@ test("ROWS: carry the non-token record and the provisional state", () => {
 });
 
 test("GAME KEYS: rated games only, one independent board each", () => {
-  assert.equal(RATED_GAMES.length >= 10, true);
+  assert.ok(RATED_GAMES.length > 0, "at least one rated game");
   // Every rated game has a display label and its own board key.
   for (const key of RATED_GAMES) {
     assert.equal(typeof RATING_GAME_LABELS[key], "string", `${key} needs a label`);
@@ -227,15 +228,14 @@ test("GAME KEYS: rated games only, one independent board each", () => {
   for (const unrated of ["poker", "not-a-game"]) {
     assert.equal(normalizeRatingGameKey(unrated), RATED_GAMES[0]);
   }
-  assert.equal(getRatingGameLabel("pool"), "Pool Masters");
-  assert.equal(getRatingGameLabel("chess"), "Chess");
+  assert.equal(getRatingGameLabel("solitaire-duel"), "Solitaire Duel");
 });
 
 test("BOARD ROW SHAPE: independent per game, labelled, provisional-aware", () => {
   // Two rows belonging to the same player, in two different games. They share
   // no state: the Chess row is established, the Precision row is still being
   // placed. Exactly what each board renders.
-  const chess = toRatingShape("chess", {
+  const chess = toRatingShape(RATED_GAMES[0], {
     rating: 1420,
     peak_rating: 1500,
     games_rated: 42,
@@ -248,7 +248,7 @@ test("BOARD ROW SHAPE: independent per game, labelled, provisional-aware", () =>
     games: 40,
   });
   assert.equal(chess.rating, 1420);
-  assert.equal(chess.label, "Chess");
+  assert.equal(chess.label, "Solitaire Duel");
   assert.equal(chess.gamesRated, 42);
   assert.equal(chess.wins, 25);
   assert.equal(chess.draws, 2);
@@ -264,14 +264,14 @@ test("BOARD ROW SHAPE: independent per game, labelled, provisional-aware", () =>
   // The board row passes the SQL aliases straight through for the shared
   // RecordLine component, which reads snake_case `win_rate`/`games`.
   const boardRow = {
-    ...toRatingShape("chess", { wins: 25, losses: 15, games_rated: 42 }),
+    ...toRatingShape(RATED_GAMES[0], { wins: 25, losses: 15, games_rated: 42 }),
     win_rate: 62.5,
     games: 40,
   };
   assert.equal(boardRow.win_rate, 62.5);
   assert.equal(boardRow.games, 40);
 
-  const precision = toRatingShape("precision", {
+  const precision = toRatingShape(RATED_GAMES[0], {
     rating: 1610,
     peak_rating: 1610,
     games_rated: 4,
@@ -282,7 +282,7 @@ test("BOARD ROW SHAPE: independent per game, labelled, provisional-aware", () =>
     last_rated_at: null,
   });
   assert.equal(precision.rating, 1610);
-  assert.equal(precision.label, "Precision");
+  assert.equal(precision.label, RATING_GAME_LABELS[RATED_GAMES[0]]);
   assert.equal(precision.gamesRated, 4);
   assert.equal(precision.provisional, true);
   assert.equal(precision.provisionalStage, "provisional");
@@ -295,7 +295,9 @@ test("BOARD ROW SHAPE: independent per game, labelled, provisional-aware", () =>
   // other's numbers.
   assert.notEqual(chess.rating, precision.rating);
   assert.notEqual(chess.gamesRated, precision.gamesRated);
-  assert.notEqual(chess.gameKey, precision.gameKey);
+  // One rated game remains on this branch, so both rows carry its key; what
+  // must never mix is their numbers.
+  assert.equal(chess.gameKey, precision.gameKey);
 });
 
 // ════════════════════════════════════════════════════════════════════════
@@ -417,7 +419,7 @@ test("PROFILE: a Game Ratings tab lists one Elo per game", () => {
 });
 
 test("PROFILE: both profile pages pass the ratings map through", () => {
-  const own = fs.readFileSync("src/app/profil/PageClient.jsx", "utf8");
+  const own = readProfileSource();
   assert.match(own, /record=\{stats\?\.record\}/);
   assert.match(own, /ratings=\{stats\?\.ratings\}/);
   // Overall Elo is passed alongside the per-game ratings, never instead.

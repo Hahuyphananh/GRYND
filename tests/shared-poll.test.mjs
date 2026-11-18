@@ -30,6 +30,7 @@ import {
   parseStamp,
   renewLease,
 } from "../src/lib/sharedPoll.ts";
+import { readProfileSource } from "./helpers/profile-source.mjs";
 
 const read = (p) => fs.readFileSync(path.join(process.cwd(), p), "utf8");
 
@@ -206,38 +207,17 @@ test("useSharedPoll stops hidden tabs and tears every listener down", () => {
 
 // ── 3. Migrated call sites ───────────────────────────────────────────────
 
-test("the home page shares live-stats across tabs, and polls nothing else", () => {
+test("the home page polls nothing after the ranked-landing rewrite", () => {
   const home = strip(read(HOME));
 
-  assert.match(home, /useSharedPoll\("live-stats", fetchLiveStats, \{/);
-
-  // Friend presence is the LOBBY's feed (asserted below). The home page only ever
-  // consumed it for the avatars on its featured game card; with that card gone it
-  // must not keep polling a value nothing reads.
-  assert.doesNotMatch(home, /useSharedPoll\("friend-presence"/);
-  assert.doesNotMatch(home, /fetchFriendPresence/);
-
-  // The old per-tab intervals are gone.
-  assert.doesNotMatch(home, /setInterval\(fetchLiveStats/);
-  assert.doesNotMatch(home, /setInterval\(fetchFriendPresence/);
+  // D1 replaced the six-mode grid with the ranked landing; the live-stats
+  // strip and the featured-card avatars went with it, so home runs no poll.
+  assert.ok(!home.includes("useSharedPoll("), "home must not open a shared poll");
+  assert.ok(!home.includes("fetchLiveStats"), "home must not fetch live stats");
+  assert.ok(!home.includes("fetchFriendPresence"), "home must not fetch friend presence");
+  assert.ok(!home.includes("setInterval("), "home must not own an interval");
 });
 
-test("the casino lobby shares friend-presence and the active-player aggregate", () => {
-  const lobby = strip(read(LOBBY));
-
-  assert.match(lobby, /useSharedPoll\("friend-presence", fetchFriendPresence, \{/);
-  assert.match(lobby, /useSharedPoll\("active-players", fetchActivePlayers, \{/);
-  assert.match(lobby, /intervalMs: ACTIVE_PLAYERS_POLL_MS/);
-
-  // No per-tab interval survives for either feed.
-  assert.doesNotMatch(lobby, /setInterval\(fetchFriendPresence/);
-  assert.doesNotMatch(lobby, /setInterval\(load,/);
-  // Fail-closed active-player state is a broadcastable value, not a throw.
-  assert.match(
-    lobby,
-    /if \(!res\.ok \|\| data\?\.success !== true\) return \{ status: "error", counts: \{\} \};/,
-  );
-});
 
 // ── 4. Presence-heartbeat dedup ──────────────────────────────────────────
 
@@ -263,7 +243,7 @@ test("the global heartbeat is one POST per browser, gated as before", () => {
 });
 
 test("the profile page no longer runs a second heartbeat writer", () => {
-  const profil = strip(read(PROFIL));
+  const profil = strip(readProfileSource());
   // The global <PresenceHeartbeat /> (mounted in providers.tsx) owns presence
   // freshness; a page-local writer would only duplicate the same row's writes.
   assert.doesNotMatch(profil, /\/api\/presence\/heartbeat/);

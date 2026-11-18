@@ -17,7 +17,7 @@ export default function TrustpilotPanel() {
   return (
     <section
       aria-labelledby="trustpilot-heading"
-      className="mt-16 rounded-2xl border border-white/10 bg-[#040d24]/60 p-6 sm:p-8"
+      className="mt-16 rounded-2xl border border-white/10 bg-surface/60 p-6 sm:p-8"
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -39,7 +39,7 @@ export default function TrustpilotPanel() {
           href={config.evaluateUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-[#00e5ff]/30 bg-[#040d24]/70 px-4 py-2 text-sm font-semibold text-[#c9f7ff]/80 transition hover:border-[#00e5ff]/60 hover:bg-[#00e5ff]/10 hover:text-white"
+          className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-[#00e5ff]/30 bg-surface/70 px-4 py-2 text-sm font-semibold text-[#c9f7ff]/80 transition hover:border-[#00e5ff]/60 hover:bg-[#00e5ff]/10 hover:text-white"
         >
           Write a review
           <span aria-hidden="true">↗</span>

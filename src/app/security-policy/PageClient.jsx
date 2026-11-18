@@ -58,7 +58,7 @@ const sections = [
 
 export default function SecurityPolicyPage() {
   return (
-    <div className="min-h-screen bg-linear-to-b from-[#030817] via-[#081a3d] to-[#003b8e]">
+    <div className="min-h-screen bg-linear-to-b from-page via-panel to-panel">
       <NavigationBar currentPath="/" />
 
       <div className="mx-auto max-w-4xl px-4 py-16">
@@ -74,7 +74,7 @@ export default function SecurityPolicyPage() {
             Last updated: September 4, 2026
           </p>
 
-          <div className="mb-8 rounded-lg border border-[#00e5ff]/20 bg-[#040d24]/80 p-6 backdrop-blur-xs">
+          <div className="mb-8 rounded-lg border border-[#00e5ff]/20 bg-surface/80 p-6 backdrop-blur-xs">
             <p className="leading-relaxed text-[#c9f7ff]">
               At GRYND, the security of your data and the integrity of our
               platform are our highest priorities. This Security Policy
@@ -91,7 +91,7 @@ export default function SecurityPolicyPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: index * 0.05 }}
-              className="rounded-lg border border-[#00e5ff]/15 bg-[#040d24]/60 p-6 backdrop-blur-xs transition-all hover:border-[#00e5ff]/30 hover:shadow-[0_0_15px_rgba(0,229,255,0.1)]"
+              className="rounded-lg border border-[#00e5ff]/15 bg-surface/60 p-6 backdrop-blur-xs transition-all hover:border-[#00e5ff]/30 hover:shadow-[0_0_15px_rgba(0,229,255,0.1)]"
             >
               <h2 className="mb-3 text-xl font-bold text-[#00e5ff]">
                 {section.title}

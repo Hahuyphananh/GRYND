@@ -79,7 +79,7 @@ export default function RoomGameDialog({
       }
       className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-4"
     >
-      <div className="w-full max-w-lg rounded-xl border border-white/15 bg-[#07101f] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.4)]">
+      <div className="w-full max-w-lg rounded-xl border border-white/15 bg-surface p-5 shadow-[0_18px_50px_rgba(0,0,0,0.4)]">
         <h2 className="text-lg font-semibold text-slate-200">
           {mode === "challenge"
             ? t("rooms.dialogChallengeTitle", "Challenge a friend")
@@ -154,7 +154,7 @@ export default function RoomGameDialog({
                     const next = Number(event.target.value);
                     setStake(Number.isFinite(next) ? Math.max(0, Math.min(maxStake, Math.trunc(next))) : 0);
                   }}
-                  className="mt-1 w-full rounded-sm border border-white/15 bg-[#050b16] px-3 py-2 text-sm text-white disabled:opacity-50"
+                  className="mt-1 w-full rounded-sm border border-white/15 bg-page px-3 py-2 text-sm text-white disabled:opacity-50"
                 />
                 <p className="mt-1 text-[11px] text-gray-300">
                   {stakeOffered
@@ -178,7 +178,7 @@ export default function RoomGameDialog({
                   id="room-timer"
                   value={timerSeconds}
                   onChange={(event) => setTimerSeconds(Number(event.target.value))}
-                  className="mt-1 w-full rounded-sm border border-white/15 bg-[#050b16] px-3 py-2 text-sm text-white"
+                  className="mt-1 w-full rounded-sm border border-white/15 bg-page px-3 py-2 text-sm text-white"
                 >
                   {ROOM_TIMER_OPTIONS.map((seconds) => (
                     <option key={seconds} value={seconds}>

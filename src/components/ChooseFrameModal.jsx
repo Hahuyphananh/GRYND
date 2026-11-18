@@ -187,7 +187,7 @@ export default function ChooseFrameModal({ open, onClose, onEquipped }) {
       aria-label="Choose Your Profile Frame"
     >
       <div
-        className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-[#00e5ff]/40 bg-[#040d24] shadow-[0_0_40px_rgba(0,229,255,0.3)]"
+        className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-[#00e5ff]/40 bg-surface shadow-[0_0_40px_rgba(0,229,255,0.3)]"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="absolute left-0 top-0 h-0.5 w-full bg-linear-to-r from-transparent via-[#00e5ff] to-transparent" />

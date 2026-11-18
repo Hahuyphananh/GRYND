@@ -48,6 +48,7 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   IconChevronDown,
+  IconFlame,
   IconHeartHandshake,
   IconRobot,
   IconTrophy,
@@ -120,36 +121,33 @@ function formatNumber(n) {
   return Number(n || 0).toLocaleString();
 }
 
+// Outcome is a 2px rule, a chip and one accent word — not a page-wide
+// gradient. The panel itself is the same surface in every outcome, so a loss
+// never looks like a different product from a win.
 const OUTCOME_STYLES = {
   win: {
     label: "WIN",
     tagline: "You took the match",
     icon: IconTrophy,
-    accentText: "text-emerald-300",
-    gradient:
-      "from-[#0d2b1a] via-[#072014] to-[#04170e] border-emerald-400/50 shadow-[0_0_70px_rgba(52,211,153,0.35)]",
-    glow: "text-emerald-300 drop-shadow-[0_0_18px_rgba(52,211,153,0.7)]",
-    borderTop: "bg-emerald-400/60",
+    accentText: "text-[color:var(--state-win)]",
+    bar: "bg-[color:var(--state-win)]",
+    chip: "border-[color:var(--border-success)] bg-[color:var(--accent-fill)] text-[color:var(--state-win)]",
   },
   loss: {
     label: "LOSS",
     tagline: "The match got away — run it back",
     icon: IconX,
-    accentText: "text-red-300",
-    gradient:
-      "from-[#2a0f14] via-[#1d0a0e] to-[#140608] border-red-500/40 shadow-[0_0_60px_rgba(239,68,68,0.28)]",
-    glow: "text-red-300 drop-shadow-[0_0_16px_rgba(248,113,113,0.55)]",
-    borderTop: "bg-red-400/60",
+    accentText: "text-[color:var(--state-loss)]",
+    bar: "bg-[color:var(--state-loss)]",
+    chip: "border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] text-[color:var(--state-loss)]",
   },
   draw: {
     label: "DRAW",
     tagline: "Evenly matched — both walk away",
     icon: IconHeartHandshake,
-    accentText: "text-cyan-300",
-    gradient:
-      "from-[#0a1a33] via-[#08142a] to-[#050d1c] border-cyan-400/50 shadow-[0_0_60px_rgba(34,211,238,0.3)]",
-    glow: "text-cyan-300 drop-shadow-[0_0_16px_rgba(34,211,238,0.6)]",
-    borderTop: "bg-cyan-400/60",
+    accentText: "text-[color:var(--text-primary)]",
+    bar: "bg-[color:var(--border-strong)]",
+    chip: "border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] text-[color:var(--text-primary)]",
   },
 };
 
@@ -519,6 +517,38 @@ export default function PvpResultScreen({
   ];
   const hasDetails = allDetails.length > 0 || detailsContent !== null;
 
+  // ── The ONE number and the ONE action ────────────────────────────────
+  // The number is the new Overall Elo when the server settled one, otherwise
+  // the first progression value the game passed. Everything else (score rows,
+  // bars, opponent, summary) lives inside Match Details.
+  const firstProgress = Array.isArray(progress) && progress.length > 0 ? progress[0] : null;
+  const primaryNumber = displayOverall
+    ? formatNumber(displayOverall.overallElo)
+    : firstProgress
+      ? String(firstProgress.to)
+      : null;
+  const primaryNumberLabel = displayOverall
+    ? "Overall Elo"
+    : firstProgress
+      ? firstProgress.label
+      : "";
+  const primaryDelta = displayOverall
+    ? displayOverall.overallDelta
+    : firstProgress
+      ? null
+      : null;
+
+  // The disclosure is worth showing whenever it would contain something the
+  // first read does not: a score comparison, progression bars, an opponent
+  // strip, summary rows, a detail list or an analysis entry point.
+  const hasDetailsContent =
+    hasDetails ||
+    (Array.isArray(sides) && sides.length > 0) ||
+    Boolean(opponent) ||
+    hasProgression ||
+    rows.length > 0 ||
+    Boolean(analysisAction && analysisAction.href);
+
   // A BOT OPPONENT IS A CHARACTER, NOT A HANDLE. Its hero shows the roster
   // portrait the player just raced instead of an "@name" handle, because there
   // is no account behind it. Real players keep the handle treatment.
@@ -561,671 +591,630 @@ export default function PvpResultScreen({
               plus the score comparison) then scrolls from its first pixel
               instead of being centred into a clipped top. */}
           <div className="flex min-h-full items-center justify-center">
-          <motion.div
-            {...withReducedMotion(shouldReduce, {
-              ...panelMotion,
-              // A win settles with its small overshoot; a loss lands firmer and
-              // flatter (no bounce), so the hand reads as a hit rather than a
-              // flourish; a draw lands dead neutral (a plain ease, no overshoot
-              // at all) so it never reads as a win. Deliberately the ONLY
-              // difference — no shake, no red wash, no extra negative effect.
-              transition:
-                outcome === "loss"
-                  ? { type: "spring", stiffness: 340, damping: 30 }
-                  : outcome === "draw"
-                    ? { duration: 0.3, ease: "easeOut" }
-                    : panelMotion.transition,
-            })}
-            className={`relative w-full rounded-2xl border-2 bg-linear-to-b text-center ${style.gradient} ${
-              compact
-                ? "max-w-[22rem] p-3.5"
-                : "max-w-md p-5 sm:p-6"
-            }`}
-          >
-            {/* Outcome header */}
-            <div className="relative">
-              <motion.div
-                initial={shouldReduce ? false : { scale: 0, rotate: -20 }}
-                animate={{ scale: 1, rotate: 0 }}
-                transition={{ type: "spring", stiffness: 280, damping: 14, delay: 0.08 }}
-                className="mx-auto mb-2 flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-black/30"
-              >
-                <OutcomeIcon size={compact ? 30 : 44} className={style.glow} aria-hidden="true" />
-              </motion.div>
-              {/* Outcome chip — a compact eyebrow, never the hero. The
-                  achievement line below carries the emotional weight. */}
-              <span
-                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-[0.2em] ${
-                  outcome === "win"
-                    ? "border-emerald-300/50 bg-emerald-400/15 text-emerald-300"
-                    : outcome === "loss"
-                      ? "border-red-300/50 bg-red-400/15 text-red-300"
-                      : "border-cyan-300/50 bg-cyan-400/15 text-cyan-300"
-                }`}
-              >
-                <OutcomeIcon size={14} aria-hidden="true" />
-                {outcome === "win" ? "YOU WON" : outcome === "loss" ? "DEFEAT" : "DRAW"}
-              </span>
-              <div className="mx-auto mt-2 h-0.5 w-16 rounded-full opacity-60">
-                <div className={`h-full w-full rounded-full ${style.borderTop}`} />
-              </div>
-              {/* Hero — "YOU BEAT @PLAYER" (win) / "DEFEATED BY @PLAYER"
-                  (loss). Only when the opponent is a real player with a
-                  name (never for AI, never fabricated); otherwise the
-                  outcome itself is the hero. The game's own headline
-                  (scores, rounds…) drops below as the supporting line. */}
-              {outcome === "win" &&
+            <motion.div
+              {...withReducedMotion(shouldReduce, {
+                ...panelMotion,
+                // A win settles with its small overshoot; a loss lands firmer
+                // and flatter (no bounce); a draw lands dead neutral (a plain
+                // ease, no overshoot at all) so it never reads as a win. The
+                // motion is the ONLY difference — no shake, no red wash.
+                transition:
+                  outcome === "loss"
+                    ? { type: "spring", stiffness: 340, damping: 30 }
+                    : outcome === "draw"
+                      ? { duration: 0.3, ease: "easeOut" }
+                      : panelMotion.transition,
+              })}
+              className={`relative w-full overflow-hidden rounded-[var(--radius-surface)] border border-[color:var(--border-hairline)] bg-[color:var(--bg-surface)] text-center shadow-[var(--shadow-raise)] ${
+                compact ? "max-w-[22rem] p-4" : "max-w-md p-5 sm:p-7"
+              }`}
+            >
+              {/* ONE OUTCOME LINE. The hue lives in this 2px rule and the
+                  outcome chip, never in a page-wide gradient. */}
+              <div className={`absolute inset-x-0 top-0 h-0.5 ${style.bar}`} aria-hidden="true" />
+
+              <div className="relative">
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-[0.2em] ${style.chip}`}
+                >
+                  <OutcomeIcon size={14} aria-hidden="true" />
+                  {outcome === "win" ? "YOU WON" : outcome === "loss" ? "DEFEAT" : "DRAW"}
+                </span>
+
+                {/* The hero names the opponent when there is a real one, and
+                    the bot by its portrait when there is not. Everything else
+                    is the supporting line below. */}
+                {outcome === "win" &&
                 opponent &&
                 !opponent.isAi &&
                 opponent.name &&
                 opponent.name !== "Opponent" &&
                 opponent.name !== "GRYND AI" ? (
-                <>
-                  <p
-                    className={`font-black uppercase tracking-[0.15em] text-emerald-300 drop-shadow-[0_0_12px_rgba(52,211,153,0.6)] ${
-                      compact ? "mt-2 text-sm" : "mt-2 text-lg sm:text-xl"
-                    }`}
-                  >
-                    You beat
-                  </p>
-                  <p
-                    className={`truncate font-black text-[#f5ff3b] drop-shadow-[0_0_16px_rgba(255,215,0,0.55)] ${
-                      compact ? "text-2xl" : "text-4xl sm:text-5xl"
-                    }`}
-                  >
-                    @{opponent.name}
-                  </p>
-                  {/* Game-specific line (rounds, score, pot…) stays visible
-                      under the beat line — it's real match data. */}
-                  {headline && headline !== style.tagline && (
-                    <p className={`mt-1.5 text-white/75 ${compact ? "text-[11px]" : "text-sm"}`}>
-                      {headline}
-                    </p>
-                  )}
-                </>
-              ) : outcome === "loss" &&
-                opponent &&
-                !opponent.isAi &&
-                opponent.name &&
-                opponent.name !== "Opponent" &&
-                opponent.name !== "GRYND AI" ? (
-                <>
-                  <p
-                    className={`font-black uppercase tracking-[0.15em] text-red-300 drop-shadow-[0_0_12px_rgba(248,113,113,0.55)] ${
-                      compact ? "mt-2 text-sm" : "mt-2 text-lg sm:text-xl"
-                    }`}
-                  >
-                    Defeated by
-                  </p>
-                  <p
-                    className={`truncate font-black text-white/95 ${
-                      compact ? "text-2xl" : "text-4xl sm:text-5xl"
-                    }`}
-                  >
-                    @{opponent.name}
-                  </p>
-                  {headline && headline !== style.tagline && (
-                    <p className={`mt-1.5 text-white/75 ${compact ? "text-[11px]" : "text-sm"}`}>
-                      {headline}
-                    </p>
-                  )}
-                </>
-              ) : outcome === "win" && opponent?.isAi && opponent.name ? (
-                <>
-                  <p
-                    className={`font-black uppercase tracking-[0.15em] text-emerald-300 drop-shadow-[0_0_12px_rgba(52,211,153,0.6)] ${
-                      compact ? "mt-2 text-sm" : "mt-2 text-lg sm:text-xl"
-                    }`}
-                  >
-                    You beat
-                  </p>
-                  {/* The bot's face, with its name and strength rating beside
-                      it — the three things the player actually raced. */}
-                  <div className="mt-2 flex items-center justify-center gap-3 text-left">
-                    {opponentPortrait}
-                    <div className="min-w-0">
-                      <p
-                        className={`truncate font-black text-[#f5ff3b] drop-shadow-[0_0_16px_rgba(255,215,0,0.55)] ${
-                          compact ? "text-2xl" : "text-3xl sm:text-4xl"
-                        }`}
-                      >
-                        {opponent.name}
-                      </p>
-                      {opponent.ratingLabel && (
-                        <p className="mt-1 inline-flex items-center gap-1 rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 font-mono text-[11px] font-bold text-amber-200">
-                          <IconTrophy size={11} aria-hidden="true" />
-                          {opponent.ratingLabel}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  {headline && headline !== style.tagline && (
-                    <p className={`mt-1.5 text-white/75 ${compact ? "text-[11px]" : "text-sm"}`}>
-                      {headline}
-                    </p>
-                  )}
-                </>
-              ) : outcome === "loss" && opponent?.isAi && opponent.name ? (
-                <>
-                  <p
-                    className={`font-black uppercase tracking-[0.15em] text-red-300 drop-shadow-[0_0_12px_rgba(248,113,113,0.55)] ${
-                      compact ? "mt-2 text-sm" : "mt-2 text-lg sm:text-xl"
-                    }`}
-                  >
-                    Defeated by
-                  </p>
-                  <div className="mt-2 flex items-center justify-center gap-3 text-left">
-                    {opponentPortrait}
-                    <div className="min-w-0">
-                      <p
-                        className={`truncate font-black text-white/95 ${
-                          compact ? "text-2xl" : "text-3xl sm:text-4xl"
-                        }`}
-                      >
-                        {opponent.name}
-                      </p>
-                      {opponent.ratingLabel && (
-                        <p className="mt-1 inline-flex items-center gap-1 rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 font-mono text-[11px] font-bold text-amber-200">
-                          <IconTrophy size={11} aria-hidden="true" />
-                          {opponent.ratingLabel}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  {headline && headline !== style.tagline && (
-                    <p className={`mt-1.5 text-white/75 ${compact ? "text-[11px]" : "text-sm"}`}>
-                      {headline}
-                    </p>
-                  )}
-                </>
-              ) : outcome === "win" ? (
-                <>
                   <h2
-                    className={`font-black uppercase tracking-wide text-emerald-300 drop-shadow-[0_0_16px_rgba(52,211,153,0.6)] ${
-                      compact ? "mt-2 text-2xl" : "mt-2 text-4xl sm:text-5xl"
+                    className={`mt-3 font-black leading-tight tracking-tight text-[color:var(--text-primary)] ${
+                      compact ? "text-2xl" : "text-3xl sm:text-4xl"
+                    }`}
+                  >
+                    You beat{" "}
+                    <span className="text-[color:var(--state-gold)]">@{opponent.name}</span>
+                  </h2>
+                ) : outcome === "loss" &&
+                  opponent &&
+                  !opponent.isAi &&
+                  opponent.name &&
+                  opponent.name !== "Opponent" &&
+                  opponent.name !== "GRYND AI" ? (
+                  <h2
+                    className={`mt-3 font-black leading-tight tracking-tight text-[color:var(--text-primary)] ${
+                      compact ? "text-2xl" : "text-3xl sm:text-4xl"
+                    }`}
+                  >
+                    Defeated by{" "}
+                    <span className="text-[color:var(--text-secondary)]">@{opponent.name}</span>
+                  </h2>
+                ) : outcome === "win" && opponent?.isAi && opponent.name ? (
+                  <>
+                    <h2
+                      className={`mt-3 font-black leading-tight tracking-tight text-[color:var(--state-win)] ${
+                        compact ? "text-2xl" : "text-3xl"
+                      }`}
+                    >
+                      You beat
+                    </h2>
+                    {/* The bot's face with its name and strength rating beside
+                        it — the three things the player actually raced. */}
+                    <div className="mt-2 flex items-center justify-center gap-3 text-left">
+                      {opponentPortrait}
+                      <div className="min-w-0">
+                        <p
+                          className={`truncate font-black text-[color:var(--state-gold)] ${
+                            compact ? "text-2xl" : "text-2xl sm:text-3xl"
+                          }`}
+                        >
+                          {opponent.name}
+                        </p>
+                        {opponent.ratingLabel && (
+                          <p className="mt-1 inline-flex items-center gap-1 rounded-full border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] px-2 py-0.5 font-mono text-[11px] font-bold text-[color:var(--text-secondary)]">
+                            <IconTrophy size={11} aria-hidden="true" />
+                            {opponent.ratingLabel}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                ) : outcome === "loss" && opponent?.isAi && opponent.name ? (
+                  <>
+                    <h2
+                      className={`mt-3 font-black leading-tight tracking-tight text-[color:var(--state-loss)] ${
+                        compact ? "text-2xl" : "text-3xl"
+                      }`}
+                    >
+                      Defeated by
+                    </h2>
+                    <div className="mt-2 flex items-center justify-center gap-3 text-left">
+                      {opponentPortrait}
+                      <div className="min-w-0">
+                        <p
+                          className={`truncate font-black text-[color:var(--text-primary)] ${
+                            compact ? "text-2xl" : "text-2xl sm:text-3xl"
+                          }`}
+                        >
+                          {opponent.name}
+                        </p>
+                        {opponent.ratingLabel && (
+                          <p className="mt-1 inline-flex items-center gap-1 rounded-full border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] px-2 py-0.5 font-mono text-[11px] font-bold text-[color:var(--text-secondary)]">
+                            <IconTrophy size={11} aria-hidden="true" />
+                            {opponent.ratingLabel}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                ) : outcome === "win" ? (
+                  <h2
+                    className={`mt-3 font-black leading-tight tracking-tight text-[color:var(--text-primary)] ${
+                      compact ? "text-2xl" : "text-3xl sm:text-4xl"
                     }`}
                   >
                     You won the match
                   </h2>
-                  {headline && headline !== style.tagline && (
-                    <p className={`mt-1.5 text-white/75 ${compact ? "text-[11px]" : "text-sm"}`}>
-                      {headline}
-                    </p>
-                  )}
-                </>
-              ) : outcome === "loss" ? (
-                <>
+                ) : outcome === "loss" ? (
                   <h2
-                    className={`font-black uppercase tracking-wide text-red-300 drop-shadow-[0_0_14px_rgba(248,113,113,0.5)] ${
-                      compact ? "mt-2 text-2xl" : "mt-2 text-4xl sm:text-5xl"
+                    className={`mt-3 font-black leading-tight tracking-tight text-[color:var(--text-primary)] ${
+                      compact ? "text-2xl" : "text-3xl sm:text-4xl"
                     }`}
                   >
                     Match lost
                   </h2>
-                  {headline && headline !== style.tagline && (
-                    <p className={`mt-1.5 text-white/75 ${compact ? "text-[11px]" : "text-sm"}`}>
-                      {headline}
-                    </p>
-                  )}
-                </>
-              ) : (
-                <>
+                ) : (
                   <h2
-                    className={`font-black uppercase tracking-wide text-cyan-300 drop-shadow-[0_0_14px_rgba(34,211,238,0.6)] ${
-                      compact ? "mt-2 text-2xl" : "mt-2 text-4xl sm:text-5xl"
+                    className={`mt-3 font-black leading-tight tracking-tight text-[color:var(--text-primary)] ${
+                      compact ? "text-2xl" : "text-3xl sm:text-4xl"
                     }`}
                   >
                     Draw
                   </h2>
-                  {headline && headline !== style.tagline && (
-                    <p className={`mt-1.5 text-white/75 ${compact ? "text-[11px]" : "text-sm"}`}>
-                      {headline}
-                    </p>
-                  )}
-                </>
-              )}
-              {subline && (
-                <p className={`mx-auto mt-2 max-w-sm text-white/60 ${compact ? "text-[10px]" : "text-xs"}`}>
-                  {subline}
-                </p>
-              )}
-            </div>
+                )}
 
-            {/* GLITCH's reaction — INLINE in the panel's own flow, directly
-                under the outcome hero. It cannot cover the score, the
-                progression rows (Overall Elo, trophies, streak, weekly rank),
-                the summary, the Rematch/Play Again/exit controls or the
-                post-match ad — those either follow it in the flow or render
-                in a layer above this whole panel. It states nothing about
-                rewards (see glitchMoments.ts); the reward rows are the
-                server's, not the character's.
-
-                Suppressed in `compact` (a Creator Mode recording frame) and
-                whenever a game supplies its own mascot line, so one result
-                event can never produce two. */}
-            {showGlitch && !compact && glitchReaction.show && (
-              <div className="mx-auto mt-3 flex w-full max-w-xs justify-center">
-                <GlitchSay
-                  expression={glitchReaction.moment.expression}
-                  message={t(glitchReaction.moment.messageKey)}
-                  // The event that earned this reaction (data-glitch-event):
-                  // first rated match, a completed tier, a rank climb, or the
-                  // session's one occasional line.
-                  eventId={glitchReaction.moment.eventId}
-                  placement="inline"
-                  size="sm"
-                />
-              </div>
-            )}
-
-            {/* Final score — hierarchy step 1.5: after the outcome hero, the
-                winner's score is emphasised and the loser's is muted but still
-                fully readable. Draw passes no highlight, so both read evenly.
-                Sequenced (delay) between the hero and the progression. */}
-            {Array.isArray(sides) && sides.length > 0 && (
-              <motion.div
-                {...withReducedMotion(shouldReduce, {
-                  initial: { opacity: 0, y: 8 },
-                  animate: { opacity: 1, y: 0 },
-                  transition: { duration: 0.2, ease: "easeOut", delay: 0.14 },
-                })}
-                className="mx-auto mt-4 grid w-full max-w-xs grid-cols-2 gap-2"
-              >
-                {sides.map((side, i) => (
-                  <div
-                    key={`${side.name || "side"}-${i}`}
-                    className={`rounded-xl border p-2.5 text-center ${
-                      side.highlight
-                        ? "border-[#f5ff3b]/60 bg-[#f5ff3b]/10 shadow-[0_0_18px_rgba(245,255,59,0.25)]"
-                        : "border-white/10 bg-black/25 opacity-70"
+                {headline && headline !== style.tagline && (
+                  <p
+                    className={`mx-auto mt-2 max-w-sm text-[color:var(--text-secondary)] ${
+                      compact ? "text-[11px]" : "text-sm"
                     }`}
                   >
-                    <p
-                      className={`truncate text-[10px] uppercase tracking-wider ${
-                        side.highlight ? "text-[#f5ff3b]/80" : "text-white/45"
-                      }`}
-                    >
-                      {side.name}
-                    </p>
-                    <p
-                      className={`mt-0.5 font-black tabular-nums ${
-                        side.highlight ? "text-2xl text-[#f5ff3b]" : "text-xl text-white/70"
-                      }`}
-                    >
-                      {side.score}
-                    </p>
-                    {side.highlight && (
-                      <p className="mt-0.5 text-[9px] font-bold uppercase tracking-widest text-[#f5ff3b]/70">
-                        Winner
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </motion.div>
-            )}
-
-            {/* Game-specific visual — sequenced between the score and the
-                rewards so it reads as "here is how it ended". */}
-            {extraContent && (
-              <motion.div
-                {...withReducedMotion(shouldReduce, {
-                  initial: { opacity: 0, y: 8 },
-                  animate: { opacity: 1, y: 0 },
-                  transition: { duration: 0.22, ease: "easeOut", delay: 0.18 },
-                })}
-                className="mx-auto mt-4 w-full max-w-xs"
-              >
-                {extraContent}
-              </motion.div>
-            )}
-
-            {/* Progression — only rows whose data actually exists.
-                Sequenced AFTER the outcome, never with it: the win/loss hero
-                lands first, then progression (Overall Elo, trophies)
-                registers one short beat later, so the order the player reads
-                is result → progression → details. A rise + fade with a hair
-                of scale, 0.22s, gated through the shared helper — with reduced
-                motion it appears in place with no movement and no delay. */}
-            {hasProgression && (
-              <motion.div
-                {...withReducedMotion(shouldReduce, {
-                  initial: { opacity: 0, y: 8, scale: 0.97 },
-                  animate: { opacity: 1, y: 0, scale: 1 },
-                  transition: { duration: 0.22, ease: "easeOut", delay: 0.24 },
-                })}
-                className="mx-auto mt-5 w-full max-w-xs space-y-2"
-              >
-                {displayOverall !== null && (
-                  <div className="rounded-xl border border-[#f5ff3b]/30 bg-black/25 px-4 py-2.5">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-bold text-white/85">Overall Elo</span>
-                      <span className="font-black text-white">
-                        {displayOverall.previousOverallElo !== null &&
-                        displayOverall.previousOverallElo !== undefined ? (
-                          <>
-                            {formatNumber(displayOverall.previousOverallElo)}{" "}
-                            <span className="text-white/40">{"\u2192"}</span>{" "}
-                            <span className="text-[#f5ff3b]">
-                              {formatNumber(displayOverall.overallElo)}
-                            </span>
-                          </>
-                        ) : (
-                          <span className="text-[#f5ff3b]">
-                            {formatNumber(displayOverall.overallElo)}
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                    <div className="mt-1 flex items-center justify-between text-[11px] text-white/50">
-                      <span>
-                        {formatNumber(displayOverall.eligibleGames)} eligible{" "}
-                        {Number(displayOverall.eligibleGames) === 1
-                          ? "game"
-                          : "games"}
-                      </span>
-                      {displayOverall.overallDelta !== null &&
-                        displayOverall.overallDelta !== undefined &&
-                        Number(displayOverall.overallDelta) !== 0 && (
-                          <span
-                            className={
-                              Number(displayOverall.overallDelta) > 0
-                                ? "font-black text-emerald-300"
-                                : "font-black text-red-300"
-                            }
-                          >
-                            {Number(displayOverall.overallDelta) > 0 ? "+" : ""}
-                            {formatNumber(displayOverall.overallDelta)}
-                          </span>
-                        )}
-                    </div>
-                  </div>
-                )}
-                {progress.map((p) => (
-                  <div key={p.label} className="rounded-xl border border-white/10 bg-black/25 px-4 py-2.5">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-bold text-white/85">{p.label}</span>
-                      <span className="font-black text-white">
-                        {p.from} <span className="text-white/40">→</span>{" "}
-                        <span className={style.accentText}>{p.to}</span>
-                      </span>
-                    </div>
-                    <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-white/10">
-                      <motion.div
-                        initial={shouldReduce ? false : { width: 0 }}
-                        animate={{ width: `${Math.max(0, Math.min(100, p.percent))}%` }}
-                        transition={{ duration: 0.8, ease: "easeOut", delay: 0.25 }}
-                        className={`h-full rounded-full ${style.borderTop}`}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </motion.div>
-            )}
-
-            {/* Progression chips — real streak + weekly rank, hidden when
-                absent or when the game passed nothing. */}
-            {(showStreak || showRank) && (
-              <div className="mx-auto mt-4 flex w-full max-w-xs flex-wrap items-center justify-center gap-2">
-                {showStreak && (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300/50 bg-amber-400/15 px-3 py-1 text-xs font-black uppercase tracking-wider text-amber-300">
-                    <span aria-hidden="true">🔥</span>
-                    {formatNumber(showStreak)} win streak
-                  </span>
-                )}
-                {showRank && (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-[#00e5ff]/50 bg-[#00e5ff]/10 px-3 py-1 text-xs font-black uppercase tracking-wider text-[#00e5ff]">
-                    <IconTrophy size={14} aria-hidden="true" />
-                    {displayRankDelta !== null && Number(displayRankDelta) > 0
-                      ? `RANK \u2191 ${formatNumber(displayRankDelta)} \u00b7 #${formatNumber(displayRank)}`
-                      : `WEEKLY RANK #${formatNumber(displayRank)}`}
-                  </span>
-                )}
-              </div>
-            )}
-
-            {/* Opponent */}
-            {opponent && (
-              <div className="mx-auto mt-5 flex w-full max-w-xs items-center justify-center gap-3 rounded-xl border border-white/10 bg-black/25 px-4 py-3">
-                {opponent.iconKey ? (
-                  <FrameAvatar
-                    frame={opponent.profileFrame}
-                    iconKey={opponent.iconKey}
-                    name={opponent.name}
-                    size="h-11 w-11"
-                  />
-                ) : opponent.imageSrc ? (
-                  // A bot's roster portrait — same artwork the player raced.
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={opponent.imageSrc}
-                    alt={opponent.imageAlt || `${opponent.name || "Opponent"} portrait`}
-                    width={44}
-                    height={44}
-                    data-testid="result-opponent-strip-image"
-                    className="h-11 w-11 shrink-0 rounded-xl border border-white/15 bg-black/30 object-cover object-center"
-                  />
-                ) : (
-                  <div className="flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-white/10 text-lg font-black text-[#d8fbff]">
-                    {(opponent.name || "?").charAt(0).toUpperCase()}
-                  </div>
-                )}
-                <div className="min-w-0 text-left">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/45">
-                    Opponent
+                    {headline}
                   </p>
-                  <p className="truncate text-sm font-bold text-[#f5ff3b]">
-                    {opponent.isAi ? (
-                      <span className="inline-flex items-center gap-1">
-                        <IconRobot size={15} className="text-cyan-300" aria-hidden="true" />
-                        {opponent.name || "GRYND AI"}
-                      </span>
-                    ) : (
-                      opponent.name || "Opponent"
-                    )}
+                )}
+                {subline && (
+                  <p
+                    className={`mx-auto mt-1 max-w-sm text-[color:var(--text-muted)] ${
+                      compact ? "text-[10px]" : "text-xs"
+                    }`}
+                  >
+                    {subline}
                   </p>
-                </div>
-              </div>
-            )}
-
-            {/* Compact match summary */}
-            {rows.length > 0 && (
-              <div className="mx-auto mt-5 w-full max-w-xs space-y-1.5 rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-sm">
-                {rows.map((row) => (
-                  <p key={row.label} className="flex items-center justify-between gap-4">
-                    <span className="shrink-0 text-white/50">{row.label}</span>
-                    <span className="truncate text-right font-semibold text-white/90">
-                      {row.value}
-                    </span>
-                  </p>
-                ))}
-              </div>
-            )}
-
-            {/* Share this win — outside the actions block, so it is present
-                even for a result that offers no retry/lobby action. */}
-            {!compact && shareWin && outcome === "win" && (
-              <div className="mx-auto mt-5 flex w-full max-w-xs justify-center">
-                <ShareWinButton
-                  game={shareWin.game ?? "duel"}
-                  mode={shareWin.mode ?? null}
-                  durationMs={
-                    durationSeconds !== null && durationSeconds !== undefined
-                      ? Number(durationSeconds) * 1000
-                      : null
-                  }
-                  url={shareWin.url ?? null}
-                  testId="result-share-win"
-                />
-              </div>
-            )}
-
-            {/* Actions */}
-            {(playAgain ||
-              rematch ||
-              analysisAction ||
-              secondaryAction ||
-              onReturnToLobby ||
-              onDismiss) && (
-              <div className="mx-auto mt-6 flex w-full max-w-xs flex-col gap-2.5">
-                {playAgain && (
-                  <button
-                    type="button"
-                    onClick={guard("playAgain", playAgain.onClick)}
-                    disabled={navigating}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border-b-4 border-[#0087a8] bg-[#00e5ff] px-5 py-3 text-sm font-extrabold text-[#001a2e] transition hover:brightness-110 disabled:opacity-60"
-                  >
-                    {playAgain.label || "RUN IT BACK"}
-                  </button>
-                )}
-                {rematch && (
-                  <button
-                    type="button"
-                    onClick={guard("rematch", rematch.onClick)}
-                    disabled={navigating}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#00e5ff]/50 bg-[#00e5ff]/10 px-5 py-3 text-sm font-bold text-[#67f9ff] transition hover:bg-[#00e5ff]/20 disabled:opacity-60"
-                  >
-                    {rematch.label || "Rematch"}
-                  </button>
-                )}
-                {/* Match analysis. A deliberate departure from the result,
-                    requested by the player — never opened automatically — so
-                    it goes through the same exit gate as every other control. */}
-                {analysisAction && analysisAction.href && (
-                  <Link
-                    href={analysisAction.href}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      guard("analysis", () => router.push(analysisAction.href))();
-                    }}
-                    className="flex w-full items-center justify-center rounded-xl border border-cyan-300/40 bg-cyan-300/10 px-5 py-3 text-sm font-bold text-cyan-200 transition hover:bg-cyan-300/20"
-                  >
-                    {analysisAction.label || "Match analysis"}
-                  </Link>
-                )}
-                {/* Generic extra action — navigation (href) uses the router link
-                    so it prefetches like any other in-app route; an in-page
-                    action (onClick) is guarded like the other buttons. */}
-                {secondaryAction && secondaryAction.href && (
-                  <Link
-                    href={secondaryAction.href}
-                    // Same gate as the buttons: this exit offers the video
-                    // first and the route runs once the surface settles.
-                    onClick={(event) => {
-                      event.preventDefault();
-                      guard("secondary", () => router.push(secondaryAction.href))();
-                    }}
-                    className="flex w-full items-center justify-center rounded-xl border border-[#00e5ff]/50 bg-[#00e5ff]/10 px-5 py-3 text-sm font-bold text-[#67f9ff] transition hover:bg-[#00e5ff]/20"
-                  >
-                    {secondaryAction.label || "Continue"}
-                  </Link>
-                )}
-                {secondaryAction && !secondaryAction.href && (
-                  <button
-                    type="button"
-                    onClick={guard("secondary", secondaryAction.onClick)}
-                    disabled={navigating}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#00e5ff]/50 bg-[#00e5ff]/10 px-5 py-3 text-sm font-bold text-[#67f9ff] transition hover:bg-[#00e5ff]/20 disabled:opacity-60"
-                  >
-                    {secondaryAction.label || "Continue"}
-                  </button>
-                )}
-                {onReturnToLobby && (
-                  <button
-                    type="button"
-                    onClick={guard("lobby", onReturnToLobby)}
-                    disabled={navigating}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-5 py-3 text-sm font-semibold text-white/80 transition hover:bg-white/10 disabled:opacity-60"
-                  >
-                    Return to Lobby
-                  </button>
-                )}
-                {onDismiss && (
-                  <button
-                    type="button"
-                    onClick={guard("dismiss", onDismiss)}
-                    disabled={navigating}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 px-5 py-2.5 text-xs font-semibold text-white/50 transition hover:bg-white/5 hover:text-white/80 disabled:opacity-60"
-                  >
-                    {dismissLabel}
-                  </button>
                 )}
               </div>
-            )}
 
-            {/* Guest → account invitation. In the panel's own flow, BELOW the
-                actions, so it never covers the outcome, the score or the
-                retry/lobby controls. The component is inert for an account and
-                for a game without guest progression; `revealed` is only true
-                once the match has actually finished, so nothing can appear
-                during play, matchmaking, loading or a cancelled match. */}
-            {!compact && !portalSurface && guestGameKey ? (
-              <div className="mx-auto mt-5 w-full max-w-xs">
-                <GuestPostMatchCta
-                  gameKey={guestGameKey}
-                  matchFinished={revealed}
-                />
-              </div>
-            ) : null}
-
-            {/* Post-match advertisement. It plays the moment the result is
-                revealed — the player no longer has to pick an exit action to
-                see it — and it is an overlay, so the result, the score and the
-                controls stay behind it. A game that wired its own node still
-                wins; every other game gets the shared slot, which renders
-                nothing unless the server says it may offer one (and never for
-                a GRYND PRO member, and never on a portal surface). Compact
-                creator recordings carry no ad at all. */}
-            {!compact && postMatchAd && (
-              <div className="mx-auto mt-5 w-full max-w-xs">{postMatchAd}</div>
-            )}
-            {!compact && !portalSurface && !postMatchAd && revealed && (
-              <div className="mx-auto mt-5 w-full max-w-xs">
-                <PostMatchAdSlot />
-              </div>
-            )}
-
-            {/* Expandable match details */}
-            {hasDetails && (
-              <div className="mx-auto mt-5 w-full max-w-xs overflow-hidden rounded-xl border border-white/10">
-                <button
-                  type="button"
-                  onClick={() => setDetailsOpen((v) => !v)}
-                  aria-expanded={detailsOpen}
-                  className="flex w-full items-center justify-between bg-black/25 px-4 py-2.5 text-left text-xs font-bold uppercase tracking-wider text-white/60 transition hover:bg-black/35"
+              {/* ONE NUMBER. The figure the player came for: the new Overall
+                  Elo when the server settled one, otherwise the first
+                  progression value the game passed. A delta rides beside it. */}
+              {primaryNumber !== null && (
+                <motion.div
+                  {...withReducedMotion(shouldReduce, {
+                    initial: { opacity: 0, y: 6 },
+                    animate: { opacity: 1, y: 0 },
+                    transition: { duration: 0.2, ease: "easeOut", delay: 0.18 },
+                  })}
+                  className="mt-5"
+                  data-testid="result-primary-number"
                 >
-                  Match Details
-                  <IconChevronDown
-                    size={16}
-                    className={`transition-transform duration-200 ${detailsOpen ? "rotate-180" : ""}`}
-                    aria-hidden="true"
+                  <p
+                    className={`font-black tabular-nums leading-none text-[color:var(--text-primary)] ${
+                      compact ? "text-4xl" : "text-5xl sm:text-6xl"
+                    }`}
+                  >
+                    {primaryNumber}
+                  </p>
+                  <p className="mt-2 flex items-center justify-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
+                    {primaryNumberLabel}
+                    {primaryDelta !== null && primaryDelta !== undefined && Number(primaryDelta) !== 0 && (
+                      <span
+                        className={
+                          Number(primaryDelta) > 0
+                            ? "text-[color:var(--state-win)]"
+                            : "text-[color:var(--state-loss)]"
+                        }
+                      >
+                        {Number(primaryDelta) > 0 ? "+" : ""}
+                        {formatNumber(primaryDelta)}
+                      </span>
+                    )}
+                  </p>
+                </motion.div>
+              )}
+
+              {/* GLITCH — inline, under the number. It never covers the score,
+                  the progression, the actions or the ad, and it states nothing
+                  about rewards. Suppressed in compact recordings and whenever a
+                  game supplies its own mascot line. */}
+              {showGlitch && !compact && glitchReaction.show && (
+                <div className="mx-auto mt-3 flex w-full max-w-xs justify-center">
+                  <GlitchSay
+                    expression={glitchReaction.moment.expression}
+                    message={t(glitchReaction.moment.messageKey)}
+                    eventId={glitchReaction.moment.eventId}
+                    placement="inline"
+                    size="sm"
                   />
-                </button>
-                <AnimatePresence initial={false}>
-                  {detailsOpen && (
-                    <motion.div
-                      initial={shouldReduce ? false : { height: 0, opacity: 0 }}
-                      animate={{ height: "auto", opacity: 1 }}
-                      exit={shouldReduce ? undefined : { height: 0, opacity: 0 }}
-                      transition={{ duration: 0.22, ease: "easeOut" }}
-                      className="bg-black/15"
-                    >
-                      <div className="space-y-1.5 px-4 py-3 text-xs">
-                        {allDetails.map((row) => (
-                          <p key={row.label} className="flex items-center justify-between gap-4">
-                            <span className="text-white/45">{row.label}</span>
-                            <span className="truncate text-right font-semibold text-white/85">
-                              {row.value}
-                            </span>
-                          </p>
-                        ))}
-                        {detailsContent}
-                      </div>
-                    </motion.div>
+                </div>
+              )}
+
+              {/* Game-specific visual — how it ended, in the game's own terms. */}
+              {extraContent && (
+                <motion.div
+                  {...withReducedMotion(shouldReduce, {
+                    initial: { opacity: 0, y: 8 },
+                    animate: { opacity: 1, y: 0 },
+                    transition: { duration: 0.22, ease: "easeOut", delay: 0.18 },
+                  })}
+                  className="mx-auto mt-4 w-full max-w-xs"
+                >
+                  {extraContent}
+                </motion.div>
+              )}
+
+              {/* Real streak + weekly rank, quiet chips beside the number. */}
+              {(showStreak || showRank) && (
+                <div className="mx-auto mt-4 flex w-full max-w-xs flex-wrap items-center justify-center gap-2">
+                  {showStreak && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] px-3 py-1 text-xs font-black uppercase tracking-wider text-[color:var(--state-gold)]">
+                      <IconFlame size={13} aria-hidden="true" />
+                      {formatNumber(displayStreak)} win streak
+                    </span>
                   )}
-                </AnimatePresence>
-              </div>
-            )}
-          </motion.div>
+                  {showRank && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] px-3 py-1 text-xs font-black uppercase tracking-wider text-[color:var(--text-secondary)]">
+                      <IconTrophy size={13} aria-hidden="true" />
+                      {displayRankDelta !== null && Number(displayRankDelta) > 0
+                        ? `RANK ↑ ${formatNumber(displayRankDelta)} · #${formatNumber(displayRank)}`
+                        : `WEEKLY RANK #${formatNumber(displayRank)}`}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* ONE ACTION, in this order: the retry the game offered, then
+                  the generic continue, then the lobby, then the quiet dismiss.
+                  Only the first is a filled button. */}
+              {(playAgain ||
+                rematch ||
+                analysisAction ||
+                secondaryAction ||
+                onReturnToLobby ||
+                onDismiss) && (
+                <div className="mx-auto mt-6 flex w-full max-w-xs flex-col items-stretch gap-2.5">
+                  {playAgain && (
+                    <button
+                      type="button"
+                      onClick={guard("playAgain", playAgain.onClick)}
+                      disabled={navigating}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[color:var(--accent)] px-5 py-3 text-sm font-extrabold text-[color:var(--on-accent)] transition hover:bg-[color:var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {playAgain.label || "RUN IT BACK"}
+                    </button>
+                  )}
+                  {rematch && (
+                    <button
+                      type="button"
+                      onClick={guard("rematch", rematch.onClick)}
+                      disabled={navigating}
+                      className={
+                        playAgain
+                          ? "inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[color:var(--border-strong)] px-5 py-2.5 text-sm font-semibold text-[color:var(--text-primary)] transition hover:bg-[color:var(--bg-panel)] disabled:opacity-60"
+                          : "inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[color:var(--accent)] px-5 py-3 text-sm font-extrabold text-[color:var(--on-accent)] transition hover:bg-[color:var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                      }
+                    >
+                      {rematch.label || "Rematch"}
+                    </button>
+                  )}
+                  {secondaryAction && secondaryAction.href && (
+                    <Link
+                      href={secondaryAction.href}
+                      // Same gate as the buttons: this exit offers the video
+                      // first and the route runs once the surface settles.
+                      onClick={(event) => {
+                        event.preventDefault();
+                        guard("secondary", () => router.push(secondaryAction.href))();
+                      }}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[color:var(--border-strong)] px-5 py-2.5 text-sm font-semibold text-[color:var(--text-primary)] transition hover:bg-[color:var(--bg-panel)]"
+                    >
+                      {secondaryAction.label || "Continue"}
+                    </Link>
+                  )}
+                  {secondaryAction && !secondaryAction.href && (
+                    <button
+                      type="button"
+                      onClick={guard("secondary", secondaryAction.onClick)}
+                      disabled={navigating}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[color:var(--border-strong)] px-5 py-2.5 text-sm font-semibold text-[color:var(--text-primary)] transition hover:bg-[color:var(--bg-panel)] disabled:opacity-60"
+                    >
+                      {secondaryAction.label || "Continue"}
+                    </button>
+                  )}
+                  {onReturnToLobby && (
+                    <button
+                      type="button"
+                      onClick={guard("lobby", onReturnToLobby)}
+                      disabled={navigating}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold text-[color:var(--text-secondary)] transition hover:text-[color:var(--text-primary)] disabled:opacity-60"
+                    >
+                      Return to Lobby
+                    </button>
+                  )}
+                  {onDismiss && (
+                    <button
+                      type="button"
+                      onClick={guard("dismiss", onDismiss)}
+                      disabled={navigating}
+                      className="inline-flex w-full items-center justify-center rounded-lg px-5 py-1.5 text-xs font-semibold text-[color:var(--text-muted)] transition hover:text-[color:var(--text-primary)] disabled:opacity-60"
+                    >
+                      {dismissLabel}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Share this win — outside the actions block, so it is present
+                  even for a result that offers no retry/lobby action. */}
+              {!compact && shareWin && outcome === "win" && (
+                <div className="mx-auto mt-4 flex w-full max-w-xs justify-center">
+                  <ShareWinButton
+                    game={shareWin.game ?? "duel"}
+                    mode={shareWin.mode ?? null}
+                    durationMs={
+                      durationSeconds !== null && durationSeconds !== undefined
+                        ? Number(durationSeconds) * 1000
+                        : null
+                    }
+                    url={shareWin.url ?? null}
+                    testId="result-share-win"
+                  />
+                </div>
+              )}
+
+              {/* Guest → account invitation. BELOW the actions, so it never
+                  covers the outcome, the number or the retry. `revealed` is
+                  only true once the match finished. */}
+              {!compact && !portalSurface && guestGameKey ? (
+                <div className="mx-auto mt-5 w-full max-w-xs">
+                  <GuestPostMatchCta gameKey={guestGameKey} matchFinished={revealed} />
+                </div>
+              ) : null}
+
+              {/* Post-match advertisement — an overlay, so the result, the
+                  number and the controls stay behind it. A game that wired its
+                  own node still wins; every other game gets the shared slot,
+                  which renders nothing unless the server says it may. */}
+              {!compact && postMatchAd && (
+                <div className="mx-auto mt-5 w-full max-w-xs">{postMatchAd}</div>
+              )}
+              {!compact && !portalSurface && !postMatchAd && revealed && (
+                <div className="mx-auto mt-5 w-full max-w-xs">
+                  <PostMatchAdSlot />
+                </div>
+              )}
+
+              {/* MATCH DETAILS — everything the player might want to check,
+                  one tap away and out of the first read: the score comparison,
+                  the progression bars, the opponent, the summary rows, the
+                  analysis entry point and the expansion content. */}
+              {hasDetailsContent && (
+                <div className="mx-auto mt-5 w-full overflow-hidden rounded-[var(--radius-surface)] border border-[color:var(--border-hairline)]">
+                  <button
+                    type="button"
+                    onClick={() => setDetailsOpen((v) => !v)}
+                    aria-expanded={detailsOpen}
+                    className="flex w-full items-center justify-between bg-[color:var(--bg-panel)] px-4 py-2.5 text-left text-xs font-bold uppercase tracking-wider text-[color:var(--text-secondary)] transition hover:text-[color:var(--text-primary)]"
+                  >
+                    Match Details
+                    <IconChevronDown
+                      size={16}
+                      className={`transition-transform duration-200 ${detailsOpen ? "rotate-180" : ""}`}
+                      aria-hidden="true"
+                    />
+                  </button>
+                  <AnimatePresence initial={false}>
+                    {detailsOpen && (
+                      <motion.div
+                        initial={shouldReduce ? false : { height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={shouldReduce ? undefined : { height: 0, opacity: 0 }}
+                        transition={{ duration: 0.22, ease: "easeOut" }}
+                        className="bg-[color:var(--bg-page)]"
+                      >
+                        <div className="space-y-3 px-4 py-3 text-xs">
+                          {/* Final score — the winner emphasised, the loser
+                              muted but fully readable. */}
+                          {Array.isArray(sides) && sides.length > 0 && (
+                            <div className="grid grid-cols-2 gap-2">
+                              {sides.map((side, i) => (
+                                <div
+                                  key={`${side.name || "side"}-${i}`}
+                                  className={`rounded-lg border p-2.5 text-center ${
+                                    side.highlight
+                                      ? "border-[color:var(--accent)] bg-[color:var(--accent-fill)]"
+                                      : "border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] opacity-80"
+                                  }`}
+                                >
+                                  <p className="truncate text-[10px] uppercase tracking-wider text-[color:var(--text-muted)]">
+                                    {side.name}
+                                  </p>
+                                  <p
+                                    className={`mt-0.5 font-black tabular-nums ${
+                                      side.highlight
+                                        ? "text-2xl text-[color:var(--text-primary)]"
+                                        : "text-xl text-[color:var(--text-secondary)]"
+                                    }`}
+                                  >
+                                    {side.score}
+                                  </p>
+                                  {side.highlight && (
+                                    <p className="mt-0.5 text-[9px] font-bold uppercase tracking-widest text-[color:var(--accent-strong)]">
+                                      Winner
+                                    </p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Progression — only rows whose data exists. */}
+                          {hasProgression && (
+                            <div className="space-y-2">
+                              {displayOverall !== null && (
+                                <div className="rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] px-3 py-2">
+                                  <div className="flex items-center justify-between text-sm">
+                                    <span className="font-bold text-[color:var(--text-secondary)]">
+                                      Overall Elo
+                                    </span>
+                                    <span className="font-black text-[color:var(--text-primary)]">
+                                      {displayOverall.previousOverallElo !== null &&
+                                      displayOverall.previousOverallElo !== undefined ? (
+                                        <>
+                                          {formatNumber(displayOverall.previousOverallElo)}{" "}
+                                          <span className="text-[color:var(--text-muted)]">
+                                            {"→"}
+                                          </span>{" "}
+                                          <span className="text-[color:var(--state-gold)]">
+                                            {formatNumber(displayOverall.overallElo)}
+                                          </span>
+                                        </>
+                                      ) : (
+                                        <span className="text-[color:var(--state-gold)]">
+                                          {formatNumber(displayOverall.overallElo)}
+                                        </span>
+                                      )}
+                                    </span>
+                                  </div>
+                                  <div className="mt-1 flex items-center justify-between text-[11px] text-[color:var(--text-muted)]">
+                                    <span>
+                                      {formatNumber(displayOverall.eligibleGames)} eligible{" "}
+                                      {Number(displayOverall.eligibleGames) === 1
+                                        ? "game"
+                                        : "games"}
+                                    </span>
+                                    {displayOverall.overallDelta !== null &&
+                                      displayOverall.overallDelta !== undefined &&
+                                      Number(displayOverall.overallDelta) !== 0 && (
+                                        <span
+                                          className={
+                                            Number(displayOverall.overallDelta) > 0
+                                              ? "font-black text-[color:var(--state-win)]"
+                                              : "font-black text-[color:var(--state-loss)]"
+                                          }
+                                        >
+                                          {Number(displayOverall.overallDelta) > 0 ? "+" : ""}
+                                          {formatNumber(displayOverall.overallDelta)}
+                                        </span>
+                                      )}
+                                  </div>
+                                </div>
+                              )}
+                              {progress.map((p) => (
+                                <div
+                                  key={p.label}
+                                  className="rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] px-3 py-2"
+                                >
+                                  <div className="flex items-center justify-between text-sm">
+                                    <span className="font-bold text-[color:var(--text-secondary)]">
+                                      {p.label}
+                                    </span>
+                                    <span className="font-black text-[color:var(--text-primary)]">
+                                      {p.from}{" "}
+                                      <span className="text-[color:var(--text-muted)]">→</span>{" "}
+                                      <span className={style.accentText}>{p.to}</span>
+                                    </span>
+                                  </div>
+                                  <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[color:var(--bg-page)]">
+                                    <motion.div
+                                      initial={shouldReduce ? false : { width: 0 }}
+                                      animate={{
+                                        width: `${Math.max(0, Math.min(100, p.percent))}%`,
+                                      }}
+                                      transition={{ duration: 0.8, ease: "easeOut", delay: 0.25 }}
+                                      className={`h-full rounded-full ${style.bar}`}
+                                    />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Opponent strip */}
+                          {opponent && (
+                            <div className="flex items-center gap-3 rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] px-3 py-2">
+                              {opponent.iconKey ? (
+                                <FrameAvatar
+                                  frame={opponent.profileFrame}
+                                  iconKey={opponent.iconKey}
+                                  name={opponent.name}
+                                  size="h-9 w-9"
+                                />
+                              ) : opponent.imageSrc ? (
+                                // A bot's roster portrait — same artwork the
+                                // player raced.
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={opponent.imageSrc}
+                                  alt={opponent.imageAlt || `${opponent.name || "Opponent"} portrait`}
+                                  width={36}
+                                  height={36}
+                                  data-testid="result-opponent-strip-image"
+                                  className="h-9 w-9 shrink-0 rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-page)] object-cover object-center"
+                                />
+                              ) : (
+                                <div className="flex h-9 w-9 items-center justify-center rounded-full border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] text-sm font-black text-[color:var(--text-secondary)]">
+                                  {(opponent.name || "?").charAt(0).toUpperCase()}
+                                </div>
+                              )}
+                              <div className="min-w-0 text-left">
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
+                                  Opponent
+                                </p>
+                                <p className="truncate text-sm font-bold text-[color:var(--text-primary)]">
+                                  {opponent.isAi ? (
+                                    <span className="inline-flex items-center gap-1">
+                                      <IconRobot
+                                        size={14}
+                                        className="text-[color:var(--text-secondary)]"
+                                        aria-hidden="true"
+                                      />
+                                      {opponent.name || "GRYND AI"}
+                                    </span>
+                                  ) : (
+                                    opponent.name || "Opponent"
+                                  )}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Summary rows */}
+                          {rows.length > 0 && (
+                            <div className="space-y-1.5 rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] px-3 py-2 text-sm">
+                              {rows.map((row) => (
+                                <p
+                                  key={row.label}
+                                  className="flex items-center justify-between gap-4"
+                                >
+                                  <span className="shrink-0 text-[color:var(--text-muted)]">
+                                    {row.label}
+                                  </span>
+                                  <span className="truncate text-right font-semibold text-[color:var(--text-primary)]">
+                                    {row.value}
+                                  </span>
+                                </p>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Match analysis. A deliberate departure from the
+                              result, requested by the player — never opened
+                              automatically — so it goes through the same exit
+                              gate as every other control. */}
+                          {analysisAction && analysisAction.href && (
+                            <Link
+                              href={analysisAction.href}
+                              onClick={(event) => {
+                                event.preventDefault();
+                                guard("analysis", () => router.push(analysisAction.href))();
+                              }}
+                              className="flex w-full items-center justify-center rounded-lg border border-[color:var(--border-strong)] px-4 py-2 text-xs font-bold text-[color:var(--text-primary)] transition hover:bg-[color:var(--bg-panel)]"
+                            >
+                              {analysisAction.label || "Match analysis"}
+                            </Link>
+                          )}
+
+                          {allDetails.map((row) => (
+                            <p
+                              key={row.label}
+                              className="flex items-center justify-between gap-4"
+                            >
+                              <span className="text-[color:var(--text-muted)]">{row.label}</span>
+                              <span className="truncate text-right font-semibold text-[color:var(--text-primary)]">
+                                {row.value}
+                              </span>
+                            </p>
+                          ))}
+                          {detailsContent}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
+            </motion.div>
           </div>
         </motion.div>
       )}

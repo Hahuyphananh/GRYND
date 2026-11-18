@@ -17,6 +17,7 @@ import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
 import DailyArchivePanel from "../../components/play/DailyArchivePanel";
 import SoloSolitaireGame from "../../components/solitaire-duel/SoloSolitaireGame";
+import { Button, PageHeader, StatTile } from "../../components/ui";
 import { formatDuration } from "../../lib/solitaire-duel/soloStats.js";
 import type { SolitaireDeal } from "../../lib/solitaire-duel/types";
 
@@ -92,35 +93,36 @@ export default function DailyPageClient() {
   const summary = payload?.summary ?? null;
 
   return (
-    <div className="relative min-h-screen bg-[#05070d] pb-24 text-white md:pb-0">
+    <div className="relative min-h-screen bg-[color:var(--bg-page)] pb-24 text-[color:var(--text-primary)] md:pb-0">
       <NavigationBar currentPath="/daily" />
       <main className="mx-auto max-w-6xl px-4 pt-24 sm:px-6 md:pt-28">
-        <p className="text-[11px] font-black uppercase tracking-[0.4em] text-cyan-300/80">
-          GRYND · {payload?.archived ? "daily archive" : "daily challenge"}
-        </p>
-        <h1 className="mt-3 max-w-3xl text-4xl font-black leading-[0.95] tracking-tight sm:text-5xl">
-          {payload?.archived ? (
-            <>
-              Past deal.{" "}
-              <span className="text-cyan-300">{payload.dateKey}</span>.
-            </>
-          ) : (
-            <>
-              One deal. <span className="text-cyan-300">Everyone.</span> Every day.
-            </>
-          )}
-        </h1>
-        <p className="mt-4 max-w-2xl text-sm leading-relaxed text-white/60 sm:text-base">
-          {payload?.archived
-            ? "This is the exact deal the server derived for that UTC date. A GRYND PRO archive run keeps its own recorded result, so today's official challenge is untouched."
-            : "The same deterministic Klondike deal for every player, fixed by the UTC date. Refreshing cannot reroll it. Your first completion of the day is the official result; anything after that is practice. Looking for the day's puzzle instead? It has its own page, linked below."}
-        </p>
+        <PageHeader
+          kicker={`GRYND · ${payload?.archived ? "daily archive" : "daily challenge"}`}
+          title={
+            payload?.archived ? (
+              <>
+                Past deal.{" "}
+                <span className="text-[color:var(--gr-brand-cyan)]">{payload.dateKey}</span>.
+              </>
+            ) : (
+              <>
+                One deal. <span className="text-[color:var(--gr-brand-cyan)]">Everyone.</span> Every
+                day.
+              </>
+            )
+          }
+          description={
+            payload?.archived
+              ? "This is the exact deal the server derived for that UTC date. A GRYND PRO archive run keeps its own recorded result, so today's official challenge is untouched."
+              : "The same deterministic Klondike deal for every player, fixed by the UTC date. Refreshing cannot reroll it. Your first completion of the day is the official result; anything after that is practice. Looking for the day's puzzle instead? It has its own page, linked below."
+          }
+        />
 
         {payload?.archived && (
           <p className="mt-3 text-xs font-semibold">
             <Link
               href="/daily"
-              className="text-cyan-300 underline-offset-4 hover:underline"
+              className="text-[color:var(--accent-strong)] underline-offset-4 hover:underline"
             >
               ← Back to today&apos;s free challenge
             </Link>
@@ -128,34 +130,30 @@ export default function DailyPageClient() {
         )}
 
         {summary && (
-          <dl className="mt-5 flex flex-wrap gap-2 text-center">
-            <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-2">
-              <dt className="text-[10px] uppercase tracking-wider text-white/40">Completed</dt>
-              <dd className="font-mono text-lg">{summary.completed}</dd>
-            </div>
-            <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-2">
-              <dt className="text-[10px] uppercase tracking-wider text-white/40">Current streak</dt>
-              <dd className="font-mono text-lg">{Number(summary.currentStreak) || 0}</dd>
-            </div>
-            <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-2">
-              <dt className="text-[10px] uppercase tracking-wider text-white/40">Longest streak</dt>
-              <dd className="font-mono text-lg">{Number(summary.longestStreak) || 0}</dd>
-            </div>
-            <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-2">
-              <dt className="text-[10px] uppercase tracking-wider text-white/40">Best time</dt>
-              <dd className="font-mono text-lg">{formatDuration(summary.bestMs)}</dd>
-            </div>
-          </dl>
+          <div className="mt-5 grid max-w-2xl grid-cols-2 gap-2 sm:grid-cols-4">
+            <StatTile label="Completed" value={summary.completed} />
+            <StatTile
+              label="Current streak"
+              value={Number(summary.currentStreak) || 0}
+              tone="gold"
+            />
+            <StatTile
+              label="Longest streak"
+              value={Number(summary.longestStreak) || 0}
+              tone="gold"
+            />
+            <StatTile label="Best time" value={formatDuration(summary.bestMs)} />
+          </div>
         )}
 
         {!payload && !failed && !locked && (
-          <p className="py-20 text-center text-sm text-white/50" aria-busy="true">
+          <p className="py-20 text-center text-sm text-[color:var(--text-muted)]" aria-busy="true">
             Dealing the challenge…
           </p>
         )}
 
         {failed && (
-          <div className="mt-8 rounded-2xl border border-rose-400/30 bg-rose-400/10 p-5 text-sm text-rose-100">
+          <div className="mt-8 rounded-[var(--radius-surface)] border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] p-5 text-sm text-[color:var(--state-loss)]">
             {requestedDate
               ? "That archived deal could not be loaded. Please try again shortly."
               : "Today's deal could not be loaded. Please try again shortly."}
@@ -165,37 +163,31 @@ export default function DailyPageClient() {
         {locked && (
           <div
             data-testid="daily-archive-locked"
-            className="mt-8 rounded-2xl border border-[#FFD700]/30 bg-[#FFD700]/[0.06] p-5"
+            className="mt-8 rounded-[var(--radius-surface)] border border-[color:var(--border-warning)] bg-[color:var(--bg-surface)] p-5"
           >
-            <p className="text-sm font-semibold text-[#ffe9a3]">
+            <p className="text-sm font-semibold text-[color:var(--state-gold)]">
               {locked.error || "Past Daily Challenges are a GRYND PRO feature."}
             </p>
-            <p className="mt-1 text-xs leading-relaxed text-white/55">
+            <p className="mt-1 text-xs leading-relaxed text-[color:var(--text-secondary)]">
               Today&apos;s deal stays free for everyone — the archive is the PRO
               extra.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
-              <Link
-                href="/upgrade-pro"
-                className="inline-flex min-h-9 items-center rounded-lg bg-[#FFD700] px-3 py-1.5 text-xs font-black text-[#00212b] transition hover:brightness-110"
-              >
+              <Button href="/upgrade-pro" size="sm">
                 See GRYND PRO
-              </Link>
-              <Link
-                href="/daily"
-                className="inline-flex min-h-9 items-center rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold text-white/80 transition hover:bg-white/5"
-              >
+              </Button>
+              <Button href="/daily" variant="secondary" size="sm">
                 Play today&apos;s challenge
-              </Link>
+              </Button>
             </div>
           </div>
         )}
 
         <div className="mt-10 flex items-center gap-3">
-          <h2 className="text-lg font-black uppercase tracking-[0.2em] text-white/70">
+          <h2 className="text-lg font-black uppercase tracking-[0.2em] text-[color:var(--text-primary)]">
             {payload?.archived ? "The archived deal" : "The daily game"}
           </h2>
-          <span className="h-px flex-1 bg-white/10" />
+          <span className="h-px flex-1 bg-[color:var(--border-hairline)]" />
         </div>
 
         {payload && (
@@ -221,13 +213,13 @@ export default function DailyPageClient() {
           <div className="flex items-center gap-3">
             <h2
               id="daily-puzzles-heading"
-              className="text-lg font-black uppercase tracking-[0.2em] text-white/70"
+              className="text-lg font-black uppercase tracking-[0.2em] text-[color:var(--text-primary)]"
             >
               Looking for a puzzle?
             </h2>
-            <span className="h-px flex-1 bg-white/10" />
+            <span className="h-px flex-1 bg-[color:var(--border-hairline)]" />
           </div>
-          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/55">
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[color:var(--text-secondary)]">
             The daily puzzle is a different game from the daily challenge:
             three verified positions from one deal, with one mistake ending the
             run. It lives on its own page.
@@ -241,7 +233,7 @@ export default function DailyPageClient() {
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-300">
                 Daily puzzle
               </p>
-              <p className="mt-1 text-sm text-white/70">
+              <p className="mt-1 text-sm text-[color:var(--text-primary)]">
                 Three steps, one run. Free for everyone.
               </p>
             </Link>

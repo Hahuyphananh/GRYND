@@ -130,7 +130,7 @@ export default function ReportModal({
 
       {/* Modal */}
       <div className="relative z-10 w-full max-w-md rounded-2xl border border-white/10 p-6
-        bg-linear-to-b from-[#0f172a] via-[#1e293b] to-[#0f172a]
+        bg-linear-to-b from-surface via-panel to-surface
         shadow-[0_0_60px_rgba(239,68,68,0.15)]">
         {submitted ? (
           /* ── Success state ── */
@@ -233,7 +233,7 @@ export default function ReportModal({
                   placeholder="Describe the issue in detail..."
                   rows={4}
                   maxLength={500}
-                  className="w-full rounded-xl bg-[#020617] border border-white/15 px-4 py-3 text-white text-sm
+                  className="w-full rounded-xl bg-page border border-white/15 px-4 py-3 text-white text-sm
                     focus:border-red-400/50 focus:ring-1 focus:ring-red-400/30 outline-hidden transition resize-none
                     placeholder:text-slate-500"
                 />

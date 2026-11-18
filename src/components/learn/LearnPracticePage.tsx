@@ -293,7 +293,7 @@ export default function LearnPracticePage({
   const categoriesWithExercises = categories;
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#040712] pb-24 text-white md:pb-0">
+    <div className="relative min-h-screen overflow-hidden bg-page pb-24 text-white md:pb-0">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 h-[520px] bg-[radial-gradient(ellipse_at_top,rgba(0,255,163,0.1),transparent_62%)]"
@@ -373,7 +373,7 @@ export default function LearnPracticePage({
               {t("learn.practice.skills." + active.exercise.skillId + ".focus")}
             </p>
 
-            <div className="mt-3 rounded-2xl border border-[#00e5ff]/20 bg-[#040d24]/80 p-1.5">
+            <div className="mt-3 rounded-2xl border border-[#00e5ff]/20 bg-surface/80 p-1.5">
               <SolitaireBoard
                 view={viewForState(active.session.state)}
                 interactive={!active.session.completed}

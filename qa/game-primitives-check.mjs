@@ -61,11 +61,8 @@ await esbuild.build({
 });
 
 // ── The app's REAL stylesheet ─────────────────────────────────────────────
-// Next inlines `@import "./light-theme.css"`, so the check does too: this is the
-// only way the light-mode measurements below mean anything.
-const lightTheme = readFileSync(join(root, "src/app/light-theme.css"), "utf8");
+// The ground tokens flip on html[data-theme="light"] in globals.css itself.
 const globals = readFileSync(join(root, "src/app/globals.css"), "utf8")
-  .replace(/@import\s+"\.\/light-theme\.css";?/, lightTheme)
   .replace(/@import\s+url\(["']?https?:\/\/[^)]*\);?/g, "");
 
 const tailwindConfig = require(join(root, "tailwind.config.js"));

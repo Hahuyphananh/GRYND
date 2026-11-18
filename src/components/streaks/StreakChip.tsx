@@ -143,7 +143,7 @@ export default function StreakChip() {
       {open && (
         <div
           role="tooltip"
-          className="absolute right-0 top-full z-50 mt-1 w-64 rounded-xl border border-white/12 bg-[#06101f] p-3 text-left text-[11px] leading-relaxed text-white/70 shadow-xl"
+          className="absolute right-0 top-full z-50 mt-1 w-64 rounded-xl border border-white/12 bg-surface p-3 text-left text-[11px] leading-relaxed text-white/70 shadow-xl"
         >
           <p className="font-black text-white">{streak.currentStreak}-day UTC streak</p>
           <p className="mt-1 text-white/50">

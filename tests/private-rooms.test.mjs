@@ -71,6 +71,7 @@ import {
   resolveRoomSettings,
 } from "../src/lib/rooms/settings.ts";
 import { generateRoomCode, isUuid, normalizeRoomCode } from "../src/lib/rooms/store.ts";
+import { readProfileSource } from "./helpers/profile-source.mjs";
 
 const read = (rel) => fs.readFileSync(path.join(process.cwd(), rel), "utf8");
 
@@ -951,7 +952,7 @@ test("the public matchmaking flow is untouched by rooms", () => {
 });
 
 test("the Friends tab keeps its tabs, while ranked owns the Challenge action", () => {
-  const page = read("src/app/profil/PageClient.jsx");
+  const page = readProfileSource();
   assert.match(page, /setActiveFriendsTab\("friends"\)/);
   assert.match(page, /setActiveFriendsTab\("invites"\)/);
   assert.match(page, /RoomsPanel friends=\{myFriends\}/);

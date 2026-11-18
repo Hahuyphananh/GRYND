@@ -154,7 +154,7 @@ export default function QuestPopup({ open, onClose, quests }: Props) {
     return (
       <li key={id || `${quest.periodType}-${quest.slot}`} className="h-full">
         <article
-          className="flex h-full flex-col rounded-lg border border-[#00e5ff]/15 bg-[#030817]/60 p-3"
+          className="flex h-full flex-col rounded-lg border border-[#00e5ff]/15 bg-page/60 p-3"
           data-testid={`quest-widget-quest-${id}`}
           data-claimable={quest.claimable ? "true" : "false"}
         >
@@ -276,7 +276,7 @@ export default function QuestPopup({ open, onClose, quests }: Props) {
         tabIndex={-1}
         data-testid="quest-widget-dialog"
         onClick={(event) => event.stopPropagation()}
-        className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-[#00e5ff]/40 bg-[#040d24] p-4 shadow-[0_0_40px_rgba(0,229,255,0.25)] outline-hidden sm:p-5"
+        className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-[#00e5ff]/40 bg-surface p-4 shadow-[0_0_40px_rgba(0,229,255,0.25)] outline-hidden sm:p-5"
       >
         <div className="mb-2 flex items-start justify-between gap-3">
           <div>

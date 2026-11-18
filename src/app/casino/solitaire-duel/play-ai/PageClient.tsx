@@ -159,7 +159,7 @@ export default function SolitairePlayAiPage() {
 
   if (offlineBotId) {
     return (
-      <main className="min-h-screen bg-linear-to-b from-[#07101f] via-[#06152c] to-[#040b17] px-4 pb-20 pt-20 text-white sm:px-6">
+      <main className="min-h-screen bg-linear-to-b from-surface via-surface to-page px-4 pb-20 pt-20 text-white sm:px-6">
         <NavigationBar currentPath={LOBBY_PATH} />
         <div className="mx-auto mt-5 w-full max-w-6xl">
           <OfflineSolitaireMatch botId={offlineBotId} onExit={() => setOfflineBotId(null)} />
@@ -169,7 +169,7 @@ export default function SolitairePlayAiPage() {
   }
 
   return (
-    <main className="min-h-screen bg-linear-to-b from-[#07101f] via-[#06152c] to-[#040b17] px-4 pb-20 pt-20 text-white sm:px-6">
+    <main className="min-h-screen bg-linear-to-b from-surface via-surface to-page px-4 pb-20 pt-20 text-white sm:px-6">
       <NavigationBar currentPath={LOBBY_PATH} />
 
       <div className="mx-auto mt-5 w-full max-w-6xl">

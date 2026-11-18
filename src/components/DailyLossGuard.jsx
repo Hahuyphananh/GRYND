@@ -112,7 +112,7 @@ export default function DailyLossGuard({ children }) {
           aria-modal="true"
           aria-label="Responsible play warning"
         >
-          <div className="relative w-full max-w-md overflow-hidden rounded-3xl border-2 border-red-500/50 bg-linear-to-b from-[#16040a] to-[#040d24] p-6 shadow-[0_0_60px_rgba(239,68,68,0.25)]">
+          <div className="relative w-full max-w-md overflow-hidden rounded-3xl border-2 border-red-500/50 bg-linear-to-b from-[var(--tint-from--16040a)] to-surface p-6 shadow-[0_0_60px_rgba(239,68,68,0.25)]">
             <div className="absolute left-0 top-0 h-[2px] w-full bg-linear-to-r from-transparent via-red-400 to-transparent" />
             <button
               type="button"

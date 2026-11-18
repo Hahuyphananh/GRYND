@@ -156,7 +156,7 @@ export default function SolitaireTutorial({
       data-testid="solitaire-tutorial"
       data-step={stepIndex}
       data-complete={complete ? "true" : "false"}
-      className="rounded-2xl border border-[#00e5ff]/25 bg-[#040d24]/70 p-3 sm:p-5"
+      className="rounded-2xl border border-[#00e5ff]/25 bg-surface/70 p-3 sm:p-5"
       aria-label={t("onboarding.solitaire.tutorial.title")}
     >
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">

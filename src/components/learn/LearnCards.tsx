@@ -174,7 +174,7 @@ export function LessonCard({ lesson }: { lesson: Lesson }) {
       data-testid="learn-lesson-card"
       data-lesson-id={lesson.id}
       data-status={status}
-      className="flex flex-col rounded-2xl border border-white/10 bg-[#071128]/80 p-4 transition-colors hover:border-[#00e5ff]/25"
+      className="flex flex-col rounded-2xl border border-white/10 bg-surface/80 p-4 transition-colors hover:border-[#00e5ff]/25"
     >
       <div className="flex items-start justify-between gap-2">
         <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#00e5ff]/70">

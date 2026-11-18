@@ -49,7 +49,7 @@ export default function LearnCoursesPage() {
     courseFilter !== "all" || difficultyFilter !== "all" || statusFilter !== "all";
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#040712] pb-24 text-white md:pb-0">
+    <div className="relative min-h-screen overflow-hidden bg-page pb-24 text-white md:pb-0">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 h-[520px] bg-[radial-gradient(ellipse_at_top,rgba(0,229,255,0.13),transparent_62%)]"
@@ -123,7 +123,7 @@ export default function LearnCoursesPage() {
               <select
                 value={courseFilter}
                 onChange={(event) => setCourseFilter(event.target.value)}
-                className="min-h-10 w-full rounded-lg border border-white/10 bg-[#071128] px-3 text-sm font-semibold text-white outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                className="min-h-10 w-full rounded-lg border border-white/10 bg-surface px-3 text-sm font-semibold text-white outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
               >
                 <option value="all">{t("learn.library.allCourses")}</option>
                 {courses.map((course) => (
@@ -141,7 +141,7 @@ export default function LearnCoursesPage() {
               <select
                 value={difficultyFilter}
                 onChange={(event) => setDifficultyFilter(event.target.value)}
-                className="min-h-10 w-full rounded-lg border border-white/10 bg-[#071128] px-3 text-sm font-semibold text-white outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                className="min-h-10 w-full rounded-lg border border-white/10 bg-surface px-3 text-sm font-semibold text-white outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
               >
                 <option value="all">{t("learn.library.allDifficulties")}</option>
                 <option value="beginner">{t("learn.difficulty.beginner")}</option>
@@ -157,7 +157,7 @@ export default function LearnCoursesPage() {
               <select
                 value={statusFilter}
                 onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
-                className="min-h-10 w-full rounded-lg border border-white/10 bg-[#071128] px-3 text-sm font-semibold text-white outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                className="min-h-10 w-full rounded-lg border border-white/10 bg-surface px-3 text-sm font-semibold text-white outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
               >
                 <option value="all">{t("learn.library.allStatuses")}</option>
                 <option value="not-started">{t("learn.status.notStarted")}</option>

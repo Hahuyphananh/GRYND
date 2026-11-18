@@ -40,32 +40,7 @@ const TAB_LABELS = {
 // src/lib/rating.js; once the board loads, the authoritative list comes from
 // the API response (`games`), so the tabs can never drift from the server.
 const RATED_GAMES_FALLBACK = [
-  { key: "chess", label: "Chess" },
-  { key: "four-in-a-row", label: "Four In A Row" },
-  { key: "dots-and-boxes", label: "Dots & Boxes" },
-  { key: "pool", label: "Pool Masters" },
-  { key: "memory-grid", label: "Memory Grid" },
-  { key: "precision", label: "Precision" },
-  { key: "mines-pvp", label: "Mines Duel" },
-  { key: "keno-pvp", label: "Keno Duel" },
-  { key: "lane-rush-duel", label: "Lane Rush Duel" },
-  { key: "dice-flush", label: "Dice Flush" },
-  { key: "rps-pvp", label: "Rock Paper Scissors" },
-  { key: "odds-pvp", label: "Odds" },
-  { key: "uno", label: "Neon Flush" },
-  { key: "tower-arena", label: "Tower Arena" },
-  { key: "hex-duel", label: "Hex Duel" },
-  { key: "mini-golf", label: "Mini Golf" },
-  { key: "speed-typing", label: "Speed Typing" },
-  { key: "tic-tac-toe", label: "Ultimate Tic-Tac-Toe" },
   { key: "solitaire-duel", label: "Solitaire Duel" },
-  { key: "sudoku-duel", label: "Sudoku Duel" },
-  { key: "barricade", label: "Barrier Blitz" },
-  { key: "dominoes", label: "Dominoes" },
-  // Hillstrike joined the rated registry without being mirrored here, which
-  // made the first-paint game list disagree with the server on load.
-  { key: "hillstrike", label: "Hillstrike" },
-  { key: "battleship", label: "Battleship" },
 ];
 
 /** The first-paint mirror the UI offers: archived games keep their rows in
@@ -121,7 +96,7 @@ function RecordLine({ item }) {
         </span>
       </span>
       {streak > 0 && (
-        <span className="text-[#f5ff3b]/90">
+        <span className="text-[color:var(--state-gold)]">
           <span aria-hidden>🔥</span> {formatNumber(streak)} streak
         </span>
       )}
@@ -133,7 +108,7 @@ function RecordLine({ item }) {
 function RankBadge({ rank }) {
   if (rank === 1)
     return (
-      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#f5ff3b]/60 bg-[#f5ff3b]/15 text-sm font-black text-[#f5ff3b] shadow-[0_0_12px_rgba(245,255,59,0.35)]">
+      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[color:var(--state-gold)] bg-[color:var(--bg-panel)] text-sm font-black text-[color:var(--state-gold)] shadow-[var(--shadow-raise)]">
         {rank}
       </span>
     );
@@ -150,7 +125,7 @@ function RankBadge({ rank }) {
       </span>
     );
   return (
-    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#00e5ff]/30 bg-[#00e5ff]/10 text-sm font-bold text-[#00e5ff]">
+    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[color:var(--border-hairline)] bg-[color:var(--accent-fill)] text-sm font-bold text-[color:var(--accent-strong)]">
       {rank}
     </span>
   );
@@ -203,16 +178,16 @@ function Podium({ items, myClerkId, tab, category }) {
             href={`/profil/${encodeURIComponent(item.clerk_id)}`}
             className={`group relative flex flex-col items-center rounded-xl border px-2 py-3 text-center transition-all hover:bg-white/10 sm:px-3 sm:py-4 ${
               isFirst
-                ? "border-[#f5ff3b]/50 bg-[#f5ff3b]/20 shadow-[0_0_20px_rgba(245,255,59,0.15)] sm:-translate-y-2"
+                ? "border-[color:var(--state-gold)] bg-[color:var(--bg-panel)] shadow-[var(--shadow-raise)] sm:-translate-y-2"
                 : item.rank === 2
                   ? "border-slate-300/30 bg-slate-300/10"
                   : "border-amber-600/30 bg-amber-700/10"
-            } ${isMe ? "ring-2 ring-[#00e5ff]" : ""}`}
+            } ${isMe ? "ring-2 ring-[color:var(--focus-ring)]" : ""}`}
           >
             <span
               className={`mb-1 text-xs font-black ${
                 isFirst
-                  ? "text-[#f5ff3b]"
+                  ? "text-[color:var(--state-gold)]"
                   : item.rank === 2
                     ? "text-slate-200"
                     : "text-amber-400"
@@ -228,7 +203,7 @@ function Podium({ items, myClerkId, tab, category }) {
               className="border border-white/20"
             />
             <span
-              className={`mt-1.5 w-full truncate text-xs font-semibold text-[#c9f7ff] sm:text-sm ${cosmeticEffectClass(item.profileFrame?.usernameEffect?.visual) || ""}`}
+              className={`mt-1.5 w-full truncate text-xs font-semibold text-[color:var(--text-primary)] sm:text-sm ${cosmeticEffectClass(item.profileFrame?.usernameEffect?.visual) || ""}`}
             >
               {item.user?.name || item.name}
             </span>
@@ -244,13 +219,13 @@ function Podium({ items, myClerkId, tab, category }) {
             )}
 
             {isMe && (
-              <span className="mt-0.5 rounded-full bg-[#00e5ff] px-1.5 py-px text-[9px] font-black uppercase tracking-wider text-[#001933]">
+              <span className="mt-0.5 rounded-full bg-[color:var(--accent)] px-1.5 py-px text-[9px] font-black uppercase tracking-wider text-[color:var(--on-accent)]">
                 You
               </span>
             )}
             <span
               className={`mt-1 text-sm font-bold sm:text-base ${
-                isFirst ? "text-[#f5ff3b]" : "text-green-300"
+                isFirst ? "text-[color:var(--state-gold)]" : "text-green-300"
               }`}
             >
               {getMetricValue(item, tab)}
@@ -336,7 +311,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
     me?.rank && me.rank <= 10 ? t("leaderboard.defend_spot") : t("leaderboard.climb_ranks");
 
   return (
-    <div className="relative min-h-screen bg-[#05070d] text-white">
+    <div className="relative min-h-screen bg-[color:var(--bg-page)] text-[color:var(--text-primary)]">
 
       <NavigationBar currentPath="/classement" />
       <div className="relative z-10 mx-auto max-w-6xl px-4 py-24 sm:px-6">
@@ -369,7 +344,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                 key={x}
                 onClick={() => setTab(x)}
                 aria-pressed={tab === x}
-                className={`shrink-0 whitespace-nowrap rounded-lg border px-4 py-2 text-sm font-semibold transition-all focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f] ${tab === x ? "border-[#f5ff3b]/60 bg-[#f5ff3b] text-[#041125]" : "border-[#00e5ff]/50 bg-[#0a214d] text-[#00e5ff] hover:bg-[#123b82]"}`}
+                className={`shrink-0 whitespace-nowrap rounded-lg border px-4 py-2 text-sm font-semibold transition-all focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)] ${tab === x ? "border-[color:var(--state-gold)] bg-[color:var(--state-gold)] text-[color:var(--on-accent)]" : "border-[color:var(--border-hairline)] bg-[color:var(--bg-surface)] text-[color:var(--accent-strong)] hover:bg-[color:var(--bg-panel)]"}`}
               >
                 {x === "trophies"
                   ? "Trophies"
@@ -386,12 +361,12 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                       : x === "daily-current"
                     ? <span>Daily Streak <svg className="w-4 h-4 inline text-amber-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z"/></svg></span>
                       : x === "daily-best"
-                        ? <span>Best Streak <svg className="w-4 h-4 inline text-[#f5ff3b]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 9H4.5a2.5 2.5 0 010-5H6"/><path d="M18 9h1.5a2.5 2.5 0 000-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0012 0V2Z"/></svg></span>
+                        ? <span>Best Streak <svg className="w-4 h-4 inline text-[color:var(--state-gold)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 9H4.5a2.5 2.5 0 010-5H6"/><path d="M18 9h1.5a2.5 2.5 0 000-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0012 0V2Z"/></svg></span>
                         : x === "weekly-streak"
-                          ? <span>Weekly Streak <svg className="w-4 h-4 inline text-[#00e5ff]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span>
+                          ? <span>Weekly Streak <svg className="w-4 h-4 inline text-[color:var(--accent-strong)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span>
                           : x === "daily-deal"
                             ? "Daily Deal best time"
-                            : <span>Weekly Best Streak <svg className="w-4 h-4 inline text-[#f5ff3b]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 9H4.5a2.5 2.5 0 010-5H6"/><path d="M18 9h1.5a2.5 2.5 0 000-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0012 0V2Z"/></svg></span>}
+                            : <span>Weekly Best Streak <svg className="w-4 h-4 inline text-[color:var(--state-gold)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 9H4.5a2.5 2.5 0 010-5H6"/><path d="M18 9h1.5a2.5 2.5 0 000-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0012 0V2Z"/></svg></span>}
               </button>
             ))}
           </div>
@@ -399,14 +374,14 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
 
 {/* ── YOUR RANK — where you stand, always in view ─────────────── */}
         {showRankCard && (
-          <div className="mx-auto mb-6 max-w-2xl rounded-lg border border-[#00e5ff]/50 bg-[#0a214d] p-4 shadow-[0_0_24px_rgba(0,229,255,0.15)] sm:p-5">
+          <div className="mx-auto mb-6 max-w-2xl rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-surface)] p-4 shadow-[var(--shadow-raise)] sm:p-5">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-              <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-[#f5ff3b]">
-                <svg className="h-4 w-4 text-[#f5ff3b]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v9a5 5 0 01-10 0V4z"/><path d="M7 9h10"/><path d="M9 4V2M15 4V2"/></svg>
+              <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-[color:var(--state-gold)]">
+                <svg className="h-4 w-4 text-[color:var(--state-gold)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v9a5 5 0 01-10 0V4z"/><path d="M7 9h10"/><path d="M9 4V2M15 4V2"/></svg>
                 {t("leaderboard.your_rank")}
               </h2>
               {me ? (
-                <span className="rounded-md border border-[#f5ff3b]/50 bg-[#f5ff3b]/10 px-3 py-1 text-base font-black text-[#f5ff3b] shadow-[0_0_12px_rgba(245,255,59,0.25)]">
+                <span className="rounded-md border border-[color:var(--state-gold)] bg-[color:var(--bg-panel)] px-3 py-1 text-base font-black text-[color:var(--state-gold)] shadow-[var(--shadow-raise)]">
                   #{formatNumber(me.rank)}
                 </span>
               ) : (
@@ -426,7 +401,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                     its rows carry no per-game win/loss record. */}
                 {tab === "trophies" ? (
                   <p className="mt-0.5 text-sm text-cyan-200/80">
-                    <span className="font-bold text-[#f5ff3b]">
+                    <span className="font-bold text-[color:var(--state-gold)]">
                       {formatNumber(me.peakTrophies)} Trophies
                     </span>
                     {" · "}
@@ -434,7 +409,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                   </p>
                 ) : tab === "daily-deal" ? (
                   <p className="mt-0.5 text-sm text-cyan-200/80">
-                    <span className="font-bold text-[#f5ff3b]">
+                    <span className="font-bold text-[color:var(--state-gold)]">
                       {formatDuration(me.best_ms ?? me.bestMs)}
                     </span>{" "}
                     best time
@@ -448,7 +423,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                   <RecordLine item={me} />
                 )}
                 {statusLine && (
-                  <p className="mt-2 inline-flex rounded-md border border-[#00e5ff]/40 bg-[#08142f] px-3 py-1.5 text-xs font-semibold text-[#00e5ff]">
+                  <p className="mt-2 inline-flex rounded-md border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] px-3 py-1.5 text-xs font-semibold text-[color:var(--accent-strong)]">
                     {statusLine}
                   </p>
                 )}
@@ -462,13 +437,13 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <Link
                 href="/games/solitaire-duel"
-                className="rounded-lg border border-[#f5ff3b]/60 bg-[#f5ff3b] px-4 py-2 text-sm font-bold text-[#041125] transition-all hover:bg-[#f5ff3b]/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a214d]"
+                className="rounded-lg border border-[color:var(--state-gold)] bg-[color:var(--state-gold)] px-4 py-2 text-sm font-bold text-[color:var(--on-accent)] transition-all hover:bg-[color:var(--state-gold)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--state-gold)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
               >
                 {me ? climbCtaLabel : "PLAY NOW"}
               </Link>
               <Link
                 href="/profil"
-                className="rounded-lg border border-[#00e5ff]/50 bg-[#0a214d] px-4 py-2 text-sm font-semibold text-[#00e5ff] transition-all hover:bg-[#123b82] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a214d]"
+                className="rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-surface)] px-4 py-2 text-sm font-semibold text-[color:var(--accent-strong)] transition-all hover:bg-[color:var(--bg-panel)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
               >
                 {t("leaderboard.my_profile")}
               </Link>
@@ -477,32 +452,32 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
             {myStats && (
               <>
                 <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
-                  <div className="rounded-md bg-[#08142f] px-3 py-2 text-center">
+                  <div className="rounded-md bg-[color:var(--bg-panel)] px-3 py-2 text-center">
                     <div className="text-lg font-bold text-green-300">
                       {formatNumber(myStats.gamesWon)}W{" "}
                       <span className="text-red-300/90">{formatNumber(myStats.gamesLost)}L</span>
                     </div>
                     <div className="text-[10px] uppercase tracking-wider text-cyan-200/70">Games won / lost</div>
                   </div>
-                  <div className="rounded-md bg-[#08142f] px-3 py-2 text-center">
+                  <div className="rounded-md bg-[color:var(--bg-panel)] px-3 py-2 text-center">
                     <div className="text-lg font-bold">
                       {formatNumber(myStats.gamesPlayed)}
                     </div>
                     <div className="text-[10px] uppercase tracking-wider text-cyan-200/70">Games played</div>
                   </div>
-                  <div className="rounded-md bg-[#08142f] px-3 py-2 text-center">
-                    <div className="text-lg font-bold text-[#f5ff3b]">
+                  <div className="rounded-md bg-[color:var(--bg-panel)] px-3 py-2 text-center">
+                    <div className="text-lg font-bold text-[color:var(--state-gold)]">
                       {formatNumber(myStats.currentStreak)}
                     </div>
                     <div className="text-[10px] uppercase tracking-wider text-cyan-200/70">Current win streak</div>
                   </div>
-                  <div className="rounded-md bg-[#08142f] px-3 py-2 text-center">
-                    <div className="text-lg font-bold text-[#f5ff3b]">
+                  <div className="rounded-md bg-[color:var(--bg-panel)] px-3 py-2 text-center">
+                    <div className="text-lg font-bold text-[color:var(--state-gold)]">
                       {formatNumber(myStats.bestStreak)}
                     </div>
                     <div className="text-[10px] uppercase tracking-wider text-cyan-200/70">Best win streak</div>
                   </div>
-                  <div className="rounded-md bg-[#08142f] px-3 py-2 text-center">
+                  <div className="rounded-md bg-[color:var(--bg-panel)] px-3 py-2 text-center">
                     <div className="truncate text-sm font-bold">
                       {myStats.favoriteGame || "N/A"}
                     </div>
@@ -524,7 +499,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
         )}
 
         <AsyncState
-          className="w-full overflow-x-auto rounded-lg border border-[#00e5ff]/50 bg-[#08142f] p-4 shadow-[0_0_28px_rgba(0,229,255,0.2)]"
+          className="w-full overflow-x-auto rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] p-4 shadow-[var(--shadow-raise)]"
           isLoading={loading}
           error={board.error}
           hasData={board.hasData}
@@ -547,8 +522,8 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
           }
           empty={
             <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
-              <svg className="h-10 w-10 text-[#00e5ff]/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v9a5 5 0 01-10 0V4z"/><path d="M7 9h10"/></svg>
-              <p className="text-lg font-bold text-[#f5ff3b]">
+              <svg className="h-10 w-10 text-[color:var(--accent-strong)]/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v9a5 5 0 01-10 0V4z"/><path d="M7 9h10"/></svg>
+              <p className="text-lg font-bold text-[color:var(--state-gold)]">
                 {t("leaderboard.empty_title")}
               </p>
               <p className="max-w-sm text-sm text-cyan-200/80">
@@ -556,7 +531,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
               </p>
               <Link
                 href="/games/solitaire-duel"
-                className="mt-1 rounded-lg border border-[#f5ff3b]/60 bg-[#f5ff3b] px-5 py-2.5 text-sm font-bold text-[#041125] transition-all hover:bg-[#f5ff3b]/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f]"
+                className="mt-1 rounded-lg border border-[color:var(--state-gold)] bg-[color:var(--state-gold)] px-5 py-2.5 text-sm font-bold text-[color:var(--on-accent)] transition-all hover:bg-[color:var(--state-gold)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--state-gold)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
               >
                 PLAY NOW
               </Link>
@@ -571,7 +546,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                 className="w-full border-collapse text-left"
               >
                 <thead>
-                  <tr className="border-b border-[#00e5ff]/50 text-[#f5ff3b]">
+                  <tr className="border-b border-[color:var(--border-hairline)] text-[color:var(--state-gold)]">
                     <th className="px-2 py-2 text-xs uppercase tracking-wider sm:px-3">#</th>
                     <th className="px-2 py-2 text-xs uppercase tracking-wider sm:px-3">Player</th>
                     <th className="px-2 py-2 text-right text-xs uppercase tracking-wider sm:px-3 sm:text-left">
@@ -591,12 +566,12 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                     return (
                       <tr
                         key={`${item.clerk_id}-${item.rank}`}
-                        className={`border-b border-[#00e5ff]/20 transition-colors ${
+                        className={`border-b border-[color:var(--border-hairline)] transition-colors ${
                           isMe
-                            ? "border-y-2 border-y-[#f5ff3b]/50 bg-[#f5ff3b]/10"
+                            ? "border-y-2 border-y-[color:var(--state-gold)] bg-[color:var(--bg-panel)]"
                             : i % 2
-                              ? "bg-[#08142f]"
-                              : "bg-[#0b224f]"
+                              ? "bg-[color:var(--bg-panel)]"
+                              : "bg-[color:var(--bg-panel)]"
                         } ${isMe ? "" : "hover:bg-white/10"}`}
                       >
                         <td className="px-2 py-3 sm:px-3">
@@ -606,7 +581,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                           <div className="flex items-center gap-2.5">
                             <Link
                               href={`/profil/${encodeURIComponent(item.clerk_id)}`}
-                              className="flex min-w-0 items-center gap-2.5 rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f]"
+                              className="flex min-w-0 items-center gap-2.5 rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
                               title={`View ${item.user?.name || item.name}'s profile`}
                             >
                               <FrameAvatar
@@ -618,7 +593,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                               />
                               <span className="min-w-0">
                                 <span
-                                  className={`block max-w-[9rem] truncate font-semibold text-[#c9f7ff] transition-colors hover:text-[#00e5ff] hover:underline sm:max-w-none ${cosmeticEffectClass(item.profileFrame?.usernameEffect?.visual) || ""}`}
+                                  className={`block max-w-[9rem] truncate font-semibold text-[color:var(--text-primary)] transition-colors hover:text-[color:var(--accent-strong)] hover:underline sm:max-w-none ${cosmeticEffectClass(item.profileFrame?.usernameEffect?.visual) || ""}`}
                                 >
                                   {item.user?.name || item.name}
                                   {item.isPro && <ProBadge className="ml-1.5" />}
@@ -639,7 +614,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                               </span>
                             </Link>
                             {isMe ? (
-                              <span className="shrink-0 rounded-full bg-[#f5ff3b] px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-[#041125]">
+                              <span className="shrink-0 rounded-full bg-[color:var(--state-gold)] px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-[color:var(--on-accent)]">
                                 You
                               </span>
                             ) : (
@@ -665,9 +640,9 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
 
         {/* Competitive CTA — the board should make you want to play. */}
         {!loading && !error && (
-          <div className="mx-auto mt-6 flex max-w-2xl flex-col items-center gap-4 rounded-lg border border-[#f5ff3b]/30 bg-linear-to-br from-[#0a214d] to-[#08142f] p-6 text-center shadow-[0_0_24px_rgba(245,255,59,0.1)] sm:flex-row sm:justify-between sm:text-left">
+          <div className="mx-auto mt-6 flex max-w-2xl flex-col items-center gap-4 rounded-lg border border-[color:var(--state-gold)] bg-linear-to-br from-[color:var(--bg-surface)] to-[color:var(--bg-panel)] p-6 text-center shadow-[var(--shadow-raise)] sm:flex-row sm:justify-between sm:text-left">
             <div>
-              <h2 className="text-lg font-bold uppercase tracking-wide text-[#f5ff3b]">
+              <h2 className="text-lg font-bold uppercase tracking-wide text-[color:var(--state-gold)]">
                 {t("leaderboard.climb_ranks")}
               </h2>
               <p className="mt-1 text-sm text-cyan-200/80">
@@ -676,7 +651,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
             </div>
             <Link
               href="/games/solitaire-duel"
-              className="shrink-0 rounded-lg border border-[#00e5ff]/50 bg-[#00e5ff] px-5 py-2.5 text-sm font-bold text-[#001933] transition-all hover:bg-[#00e5ff]/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f]"
+              className="shrink-0 rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--accent)] px-5 py-2.5 text-sm font-bold text-[color:var(--on-accent)] transition-all hover:bg-[color:var(--accent)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
             >
               PLAY NOW
             </Link>

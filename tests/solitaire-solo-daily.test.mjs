@@ -239,37 +239,34 @@ test("the game surface never calls the matchmaking or AI endpoints", () => {
   assert.match(game, /replayMoves/, "resume replays the move log through the engine");
 });
 
-test("the homepage and navigation expose all six ways to play", () => {
+test("the homepage leads with ranked and hands the six-mode menu to /play", () => {
   const home = read("src/app/PageClient.jsx");
-  // The six cards are data-driven (`MODES`), so each mode's destination is a
-  // `href:` field the card renders — not a literal `href="…"` attribute in the
-  // markup. Match the field, and keep proving the card actually renders it.
+  // D1 changed this contract: home is the ranked-first landing and /play is the
+  // only six-card menu. Three inline ways in remain, each a real destination
+  // rendered from its own `href:` field.
   assert.match(home, /href: "\/solitaire"/);
-  assert.match(home, /href: "\/daily"/);
-  // Ranked and AI open their own /play lobbies: the ranked matchmaking is not
-  // mounted on the home page, so the cards cannot be in-page anchors.
-  assert.match(home, /href: "\/play\/ranked"/);
   assert.match(home, /href: "\/play\/ai"/);
-  assert.match(home, /href: "\/play\/daily-puzzle"/);
-  assert.match(home, /href: "\/play\/unlimited-puzzles"/);
-  assert.doesNotMatch(home, /variant="home"/, "the ranked lobby belongs to /play");
-  assert.match(home, /href=\{mode\.href\}/, "each mode card renders its own href");
-  // The cards' own copy, as the lobby presents the four modes.
-  assert.match(home, /Ranked PvP/);
-  assert.match(home, /Play alone, right now/);
-  assert.match(home, /Learn the rhythm/);
-  assert.match(home, /One deal, every day/);
-  assert.match(home, /Three moves, one deal/);
-  assert.match(home, /A puzzle whenever you want/);
+  assert.match(home, /href: "\/daily"/);
+  assert.match(home, /href=\{way\.href\}/, "each inline link renders its own href");
 
+  // The full menu is one link away, and home says so explicitly.
+  assert.match(home, /href="\/play"/);
+  assert.match(home, /All six ways to play/);
+
+  // Ranked owns the hero CTA; the matchmaking lobby is still not mounted here.
+  assert.match(home, /href="\/play\/ranked"/);
+  assert.doesNotMatch(home, /variant="home"/, "the ranked lobby belongs to /play");
+
+  // The six-card grid is GONE from home — no card map, no per-mode artwork.
+  assert.doesNotMatch(home, /MODES\.map\(/);
+  assert.doesNotMatch(home, /ModeArt/);
+  assert.doesNotMatch(home, /solitaire-mode-ranked\.jpg/);
+
+  // The primary nav keeps the destinations tests/play-hub.test.mjs pins.
   const nav = read("src/components/navigation-bar.jsx");
-  assert.match(nav, /"\/daily"/);
+  assert.match(nav, /"\/play"/);
+  assert.match(nav, /"\/learn"/);
   assert.match(nav, /"\/classement"/);
-  // Solo mode is first-class navigation: it was only reachable from a home-page
-  // card, so players could not find or start it. Settings, by contrast, moved
-  // into the account menu (ACCOUNT_ITEMS) and must not be a primary link.
-  assert.match(nav, /"\/solitaire"/, "the primary nav must link to solo");
-  assert.match(nav, /if \(path === "\/solitaire"\) return "Solo"/);
   assert.doesNotMatch(
     nav,
     /href="\/settings"/,

@@ -102,7 +102,7 @@ export default function JoinRoomPageClient({ signedIn }: { signedIn: boolean }) 
                 value={code}
                 onChange={(event) => setCode(event.target.value.toUpperCase())}
                 maxLength={16}
-                className="w-48 rounded-sm border border-white/20 bg-[#08203f] px-3 py-2 font-mono text-sm tracking-widest text-white"
+                className="w-48 rounded-sm border border-white/20 bg-[var(--tint-bg--08203f)] px-3 py-2 font-mono text-sm tracking-widest text-white"
               />
               <button
                 type="button"

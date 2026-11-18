@@ -46,7 +46,7 @@ export default function PlayerLevelProgressCard({
   return (
     <section
       aria-label={t("playerLevel.progressionTitle")}
-      className={`rounded-xl border border-[#00e5ff]/30 bg-[#07101f]/90 p-5 shadow-[0_0_24px_rgba(0,229,255,0.12)] ${className}`}
+      className={`rounded-xl border border-[#00e5ff]/30 bg-surface/90 p-5 shadow-[0_0_24px_rgba(0,229,255,0.12)] ${className}`}
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">

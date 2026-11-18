@@ -887,7 +887,7 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
       {!ready && <p className="py-16 text-center text-slate-400">Shuffling the deck…</p>}
 
       {ready && !session && mode === "daily" && (
-        <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-6 text-center">
+        <div className="rounded-2xl border border-white/10 bg-page/60 p-6 text-center">
           <p className="text-sm text-slate-300">
             {todayRecorded
               ? "You have already recorded today's challenge. You can replay the same deal as practice."
@@ -905,7 +905,7 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
       )}
 
       {ready && !session && mode === "solo" && (
-        <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-6 text-center">
+        <div className="rounded-2xl border border-white/10 bg-page/60 p-6 text-center">
           <button type="button" onClick={startSolo} className="rounded-lg bg-emerald-500 px-5 py-2 font-semibold text-slate-950 hover:bg-emerald-400">
             New game
           </button>
@@ -1016,7 +1016,7 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
 
           {session.won && !finishing && (
             <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-slate-950/80 p-4 backdrop-blur-xs">
-              <div role="dialog" aria-label="Game complete" className="w-full max-w-md rounded-2xl border border-emerald-400/30 bg-slate-900 p-6 text-center shadow-2xl">
+              <div role="dialog" aria-label="Game complete" className="w-full max-w-md rounded-2xl border border-emerald-400/30 bg-page p-6 text-center shadow-2xl">
                 <p className="text-xs uppercase tracking-[0.25em] text-emerald-300">Solved</p>
                 <h3 className="mt-2 text-2xl font-semibold text-white">
                   {mode === "daily" ? "Daily challenge complete" : "You cleared the board"}
@@ -1100,7 +1100,7 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
                 role="alertdialog"
                 aria-label="Game over"
                 data-testid="solitaire-inactivity-forfeit"
-                className="w-full max-w-md rounded-2xl border border-rose-400/30 bg-slate-900 p-6 text-center shadow-2xl"
+                className="w-full max-w-md rounded-2xl border border-rose-400/30 bg-page p-6 text-center shadow-2xl"
               >
                 <p className="text-xs uppercase tracking-[0.25em] text-rose-300">Forfeited</p>
                 <h3 className="mt-2 text-2xl font-semibold text-white">
@@ -1160,7 +1160,7 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
       {historyRows.length > 0 && (
         <section
           data-testid="solitaire-review-history"
-          className="mt-6 rounded-2xl border border-white/10 bg-slate-900/50 p-4"
+          className="mt-6 rounded-2xl border border-white/10 bg-page/50 p-4"
         >
           <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-white/50">
             Past games

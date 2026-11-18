@@ -17,10 +17,9 @@ import {
   cosmeticEffectClass,
 } from "../../lib/profileCosmetics";
 import IconAvatar from "../../components/IconAvatar";
-import ChooseIconModal from "../../components/ChooseIconModal";
-import ChooseGlowModal from "../../components/ChooseGlowModal";
-import ChooseFrameModal from "../../components/ChooseFrameModal";
-import ChooseEmotesModal from "../../components/ChooseEmotesModal";
+import ProfilePickerModals from "../../components/profil/ProfilePickerModals";
+import ProfileEmotesPanel from "../../components/profil/ProfileEmotesPanel";
+import BetHistoryPanel from "../../components/profil/BetHistoryPanel";
 import EmoteLoadoutStrip from "../../components/EmoteLoadoutStrip";
 import UserStatsTabs from "../../components/UserStatsTabs";
 import GuestProgressPanel from "../../components/guest/GuestProgressPanel";
@@ -34,19 +33,6 @@ import PlayerLevelBadge from "../../components/player-level/PlayerLevelBadge";
 import PlayerLevelProgressCard from "../../components/player-level/PlayerLevelProgressCard";
 
 // GRYND PRO chat color palette (matches the neon casino aesthetic).
-const CHAT_COLORS = [
-  "#00e5ff",
-  "#f5ff3b",
-  "#f0abfc",
-  "#34d399",
-  "#fb923c",
-  "#a78bfa",
-  "#f43f5e",
-  "#22d3ee",
-  "#facc15",
-  "#e2e8f0",
-];
-
 // `adSlot` is the server-rendered <AdSlot placement="profile" /> from
 // app/profil/page.jsx — above the footer, never over a control.
 export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
@@ -349,7 +335,7 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
 
   const cyberButton =
     "relative overflow-hidden rounded-lg px-4 py-2 font-semibold text-white " +
-    "bg-linear-to-r from-[#0e7490] via-[#155e75] to-[#1e293b] " +
+    "bg-linear-to-r from-[color:var(--accent)] via-[color:var(--accent)] to-[color:var(--accent-strong)] " +
     "shadow-[0_8px_24px_rgba(0,0,0,0.3)] " +
     "hover:shadow-[0_10px_28px_rgba(0,0,0,0.4)] " +
     "hover:scale-[1.02] active:scale-95 transition-all duration-300";
@@ -1172,7 +1158,7 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
 
   if (!isLoaded) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#05070d]">
+      <div className="flex h-screen items-center justify-center bg-[color:var(--bg-page)]">
         <div className="text-2xl text-cyan-200/80">
           {t("profile.loading", "Loading…")}
         </div>
@@ -1187,7 +1173,7 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
     // account profile below is untouched (Phase 2F).
     return (
       <div
-        className="relative min-h-screen bg-[#05070d] text-white"
+        className="relative min-h-screen bg-[color:var(--bg-page)] text-[color:var(--text-primary)]"
       >
         <div className="mx-auto max-w-6xl px-4 pb-20 pt-24 sm:px-6">
           <NavigationBar currentPath="/profil" />
@@ -1220,7 +1206,7 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
 
   return (
     <div
-      className="relative min-h-screen bg-[#05070d] text-white"
+      className="relative min-h-screen bg-[color:var(--bg-page)] text-[color:var(--text-primary)]"
     >
       <div className="max-w-6xl mx-auto px-6 pt-24 pb-20">
         <NavigationBar currentPath="/profil" />
@@ -1229,7 +1215,7 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
         </h1>
         <div className="grid gap-8">
           <div
-            className={`relative overflow-hidden bg-[#07101f]/90 border border-white/10 rounded-xl p-6 shadow-[0_12px_32px_rgba(0,0,0,0.28)] ${profileGlowClass || ""}`}
+            className={`relative overflow-hidden bg-[color:var(--bg-surface)] border border-white/10 rounded-xl p-6 shadow-[var(--shadow-raise)] ${profileGlowClass || ""}`}
             style={
               profileInfo.profileAccent
                 ? {
@@ -1258,7 +1244,7 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
                   }}
                 className={
                   cyberButton +
-                  " text-sm px-3 py-1 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#07101f]"
+                  " text-sm px-3 py-1 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
                 }
               >
                 {t("profile.info.edit", "Edit Profile")}
@@ -1274,16 +1260,16 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
                 aria-label={t("profile.info.changeIcon", "Change your Grynd icon")}
                 title={t("profile.info.changeIcon", "Change your Grynd icon")}
                 style={equippedFrame.style}
-                className={`group relative rounded-full ${equippedFrame.cssClass || ""} ${avatarEffectClass || ""} focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#07101f]`}
+                className={`group relative rounded-full ${equippedFrame.cssClass || ""} ${avatarEffectClass || ""} focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]`}
               >
                 <IconAvatar
                   iconKey={profileInfo.selectedIcon}
                   name={profileInfo.name || user.fullName}
                   size="h-14 w-14"
-                  className="border border-[#FFD700] transition group-hover:scale-105"
+                  className="border border-[color:var(--state-gold)] transition group-hover:scale-105"
                 />
                 {/* Subtle "change" affordance so players know it's clickable */}
-                <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border border-white/20 bg-[#05070d] text-cyan-200/80 shadow-[0_8px_20px_rgba(0,0,0,0.3)] transition group-hover:scale-110">
+                <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border border-white/20 bg-[color:var(--bg-page)] text-cyan-200/80 shadow-[var(--shadow-raise)] transition group-hover:scale-110">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                 </span>
               </button>
@@ -1331,7 +1317,7 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
                   )}
                   {(specialTitles.selectedSpecialTitleName ||
                     titleMeta.selectedTitle) && (
-                    <span className="rounded-full border border-[#f5ff3b]/60 bg-[#f5ff3b]/10 px-2 py-0.5 text-xs text-[#f5ff3b]">
+                    <span className="rounded-full border border-[color:var(--state-gold)] bg-[color:var(--bg-panel)] px-2 py-0.5 text-xs text-[color:var(--state-gold)]">
                       {specialTitles.selectedSpecialTitleName ||
                         titleMeta.selectedTitle}
                     </span>
@@ -1341,7 +1327,7 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
                       established rating in enough different games). */}
                   {Number(stats?.overallElo) > 0 && (
                     <span
-                      className="rounded-full border border-[#f5ff3b]/50 bg-[#f5ff3b]/10 px-2 py-0.5 text-xs font-semibold text-[#f5ff3b]"
+                      className="rounded-full border border-[color:var(--state-gold)] bg-[color:var(--bg-panel)] px-2 py-0.5 text-xs font-semibold text-[color:var(--state-gold)]"
                       title={`Overall Elo across ${Number(stats?.overallEligibleGames || 0)} games`}
                     >
                       Overall {Number(stats.overallElo).toLocaleString()} Elo
@@ -1388,7 +1374,7 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
                       })}
                     </span>
                     {Number(stats.record.currentStreak || 0) > 0 && (
-                      <span className="inline-flex items-center gap-1 text-[#f5ff3b]">
+                      <span className="inline-flex items-center gap-1 text-[color:var(--state-gold)]">
                         <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                           <path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z" />
                         </svg>
@@ -1422,9 +1408,9 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
         )}
 
         <div
-          className="mt-8 bg-[#07101f]/90 border border-white/10 
+          className="mt-8 bg-[color:var(--bg-surface)] border border-white/10 
 rounded-xl p-6 
-shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
+shadow-[var(--shadow-raise)]"
         >
           <h2 className="text-xl text-cyan-200/80 mb-4">
             {t("profile.stats.title", "User Statistics")}
@@ -1475,106 +1461,19 @@ shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
             renders nothing at all for a free account or a guest. */}
         <ShareProBadgeButton />
 
-        <div className="mt-8 rounded-xl border border-emerald-400/35 bg-[#052e1f]/85 p-6 shadow-[0_0_24px_rgba(52,211,153,0.15)]">
-          <div className="flex items-center justify-between gap-4 mb-4">
-            <h2 className="text-xl text-emerald-300">
-              {t("profile.chatcolor.title", "Chat name color")}
-            </h2>
-            {!membership?.active && (
-              <a
-                href="/upgrade-pro"
-                className="inline-flex items-center rounded-full border border-white/15 bg-cyan-500/10 px-3 py-1 text-sm font-medium text-cyan-200/90 transition hover:bg-cyan-500/25 hover:text-cyan-100"
-              >
-                {t("profile.membership.seePro", "See GRYND PRO")}
-              </a>
-            )}
-          </div>
-
-          <>
-            <p className="mb-3 text-sm text-gray-300">
-              {t(
-                "profile.chatcolor.note",
-                "Your name shows in this color in chat and on your game seats. Free for everyone.",
-              )}
-            </p>
-
-              <div className="mb-3 flex flex-wrap gap-2">
-                {CHAT_COLORS.map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    onClick={() => setChatColor(color)}
-                    aria-label={t("profile.membership.setChatColor", {
-                      color,
-                    })}
-                    title={color}
-                    className={`h-8 w-8 rounded-full border-2 transition ${
-                      chatColor.toLowerCase() === color.toLowerCase()
-                        ? "scale-110 border-white"
-                        : "border-white/20 hover:border-white/60"
-                    }`}
-                    style={{ backgroundColor: color }}
-                  />
-                ))}
-              </div>
-
-              <div className="mb-3 flex items-center gap-2">
-                <input
-                  type="color"
-                  value={chatColor}
-                  onChange={(e) => setChatColor(e.target.value)}
-                  aria-label={t(
-                    "profile.membership.chatColorLabel",
-                    "Custom chat color",
-                  )}
-                  className="h-8 w-10 cursor-pointer rounded-sm border border-white/20 bg-transparent"
-                />
-                <input
-                  type="text"
-                  value={chatColor}
-                  onChange={(e) => setChatColor(e.target.value.trim())}
-                  maxLength={7}
-                  aria-label={t(
-                    "profile.membership.chatColorHexLabel",
-                    "Custom chat color hex value",
-                  )}
-                  className="w-28 rounded-sm border border-white/20 bg-[#07101f]/60 px-2 py-1 text-sm text-white focus:border-emerald-400 focus:outline-hidden"
-                />
-              </div>
-
-              <div className="mb-4 flex items-center gap-2 rounded-sm bg-black/30 px-3 py-2 text-sm">
-                <span className="text-gray-400">
-                  {t("profile.membership.preview", "Preview:")}
-                </span>
-                <span className="font-bold" style={{ color: chatColor }}>
-                  {profileInfo.name ||
-                    user.fullName ||
-                    t("profile.membership.yourName", "Your name")}
-                </span>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={handleSaveChatColor}
-                  className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-[#001a0e] transition hover:bg-emerald-400 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#052e1f]"
-                >
-                  {t("profile.membership.save", "Save color")}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleResetChatColor}
-                  className="rounded-lg border border-white/20 px-4 py-2 text-sm text-gray-300 transition hover:bg-white/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#052e1f]"
-                >
-                  {t("profile.membership.reset", "Reset")}
-                </button>
-              </div>
-
-              {chatColorMsg && (
-                <p className="mt-3 text-sm text-emerald-300">{chatColorMsg}</p>
-              )}
-          </>
-        </div>
+        <ProfileChatColorPanel
+          chatColor={chatColor}
+          onChatColorChange={setChatColor}
+          onSave={handleSaveChatColor}
+          onReset={handleResetChatColor}
+          message={chatColorMsg}
+          isMember={Boolean(membership?.active)}
+          previewName={
+            profileInfo.name ||
+            user.fullName ||
+            t("profile.membership.yourName", "Your name")
+          }
+        />
 
         {/* Advertising — a SECONDARY area between profile sections, not the
             identity card. It is a card of its own: nothing under it is a
@@ -1582,111 +1481,16 @@ shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
             a long way below so the two providers never stack. */}
         {hilltopSlot}
 
-        {/* Profile accent — free for everyone (previously advertised as a
-            GRYND PRO perk; the membership check is gone from the API too). */}
-        <div className="mt-8 rounded-xl border border-sky-400/35 bg-[#03203a]/85 p-6 shadow-[0_0_24px_rgba(56,189,248,0.15)]">
-          <div className="mb-4 flex items-center justify-between gap-4">
-            <h2 className="text-xl text-sky-300">
-              {t("profile.customization.title", "Profile Customization")}
-            </h2>
-          </div>
+        <ProfileAccentPanel
+          accent={cosmetics.accent}
+          onAccentChange={(accent) => setCosmetics((c) => ({ ...c, accent }))}
+          onSave={handleSaveCosmetics}
+          message={cosmeticsMsg}
+        />
 
-          <>
-            <p className="mb-4 text-sm text-gray-300">
-              {t(
-                "profile.customization.note",
-                "Accent color — the ring around your profile card. Free for everyone.",
-              )}
-            </p>
+        <ProfileEmotesPanel onManage={setIsEmotesManagerOpen} />
 
-              <p className="mb-2 text-sm font-semibold text-sky-300">
-                {t("profile.customization.accent", "Accent color")}
-              </p>
-              <div className="mb-2 flex flex-wrap gap-2">
-                {ACCENT_COLORS.map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    onClick={() => setCosmetics((c) => ({ ...c, accent: color }))}
-                    aria-label={t("profile.customization.setAccent", {
-                      color,
-                    })}
-                    title={color}
-                    className={`h-8 w-8 rounded-full border-2 transition ${
-                      cosmetics.accent.toLowerCase() === color.toLowerCase()
-                        ? "scale-110 border-white"
-                        : "border-white/20 hover:border-white/60"
-                    }`}
-                    style={{ backgroundColor: color }}
-                  />
-                ))}
-              </div>
-              <div className="mb-4 flex items-center gap-2">
-                <input
-                  type="color"
-                  value={cosmetics.accent}
-                  onChange={(e) => setCosmetics((c) => ({ ...c, accent: e.target.value }))}
-                  aria-label={t(
-                    "profile.customization.accentLabel",
-                    "Custom accent color",
-                  )}
-                  className="h-8 w-10 cursor-pointer rounded-sm border border-white/20 bg-transparent"
-                />
-                <input
-                  type="text"
-                  value={cosmetics.accent}
-                  onChange={(e) => setCosmetics((c) => ({ ...c, accent: e.target.value.trim() }))}
-                  maxLength={7}
-                  aria-label={t(
-                    "profile.customization.accentHexLabel",
-                    "Custom accent hex value",
-                  )}
-                  className="w-28 rounded-sm border border-white/20 bg-[#07101f]/60 px-2 py-1 text-sm text-white focus:border-sky-400 focus:outline-hidden"
-                />
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={handleSaveCosmetics}
-                  className="rounded-lg bg-sky-500 px-4 py-2 text-sm font-semibold text-[#001a2e] transition hover:bg-sky-400 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#03203a]"
-                >
-                  {t("profile.customization.save", "Save customization")}
-                </button>
-              </div>
-
-              {cosmeticsMsg && <p className="mt-3 text-sm text-sky-300">{cosmeticsMsg}</p>}
-          </>
-        </div>
-
-        {/* Emotes — in-game animated emote loadout (up to 9 equipped).
-            GG + NICE MOVE stay permanently available in games and are never
-            part of this loadout. Managed through ChooseEmotesModal. */}
-        <div className="mt-8 rounded-xl border border-white/10 bg-[#080d18]/90 p-6 shadow-[0_0_24px_rgba(217,70,239,0.12)]">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-xl text-slate-200">
-                {t("profile.emotes.title", "Emotes")}
-              </h2>
-              <p className="mt-1 text-sm text-gray-300">
-                {t(
-                  "profile.emotes.description",
-                  "Choose up to 9 animated emotes to use in games. GG and NICE MOVE are always available.",
-                )}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsEmotesManagerOpen(true)}
-              className="rounded-lg bg-cyan-600/80 px-4 py-2 text-sm font-semibold text-[#001a2e] transition hover:bg-cyan-500 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-200/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#080d18]"
-            >
-              {t("profile.emotes.manage", "Manage emotes")}
-            </button>
-          </div>
-          <EmoteLoadoutStrip onChange={setIsEmotesManagerOpen} />
-        </div>
-
-        <div className="mt-8 rounded-xl border border-white/10 bg-[#080d18]/90 p-6 shadow-[0_0_24px_rgba(217,70,239,0.2)]">
+        <div className="mt-8 rounded-xl border border-white/10 bg-[color:var(--bg-surface)] p-6 shadow-[var(--shadow-raise)]">
           <button
             type="button"
             onClick={() => setTitlesOpen((o) => !o)}
@@ -1713,7 +1517,7 @@ shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
               <div className="flex gap-2 mb-4">
                 <button
                   onClick={() => setTitlesView("special")}
-                  className={`rounded-sm px-3 py-1 text-sm transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#080d18] ${
+                  className={`rounded-sm px-3 py-1 text-sm transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)] ${
                     titlesView === "special"
                       ? "bg-cyan-600/70 text-white"
                       : "bg-white/10 text-gray-300"
@@ -1724,7 +1528,7 @@ shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
 
                 <button
                   onClick={() => setTitlesView("vip")}
-                  className={`rounded-sm px-3 py-1 text-sm transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#080d18] ${
+                  className={`rounded-sm px-3 py-1 text-sm transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)] ${
                     titlesView === "vip" ? "bg-cyan-500 text-white" : "bg-white/10 text-gray-300"
                   }`}
                 >
@@ -1732,7 +1536,7 @@ shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
                 </button>
                 <button
                   onClick={() => setTitlesView("streak")}
-                  className={`rounded-sm px-3 py-1 text-sm transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#080d18] ${
+                  className={`rounded-sm px-3 py-1 text-sm transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)] ${
                     titlesView === "streak"
                       ? "bg-amber-500 text-black"
                       : "bg-white/10 text-gray-300"
@@ -1764,7 +1568,7 @@ shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
                           "rounded-lg border p-3 text-left transition",
                           isUnlocked
                             ? "border-white/15 bg-cyan-600/70/10 hover:bg-cyan-600/70/20"
-                            : "cursor-not-allowed border-slate-700 bg-slate-900/60 opacity-50",
+                            : "cursor-not-allowed border-slate-700 bg-page/60 opacity-50",
                           isEquipped ? "ring-2 ring-yellow-300" : "",
                         ].join(" ")}
                       >
@@ -1902,7 +1706,7 @@ shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
                             className={`rounded-lg border p-2 text-sm ${
                               reached
                                 ? "border-amber-400/40 bg-amber-500/10"
-                                : "border-slate-700 bg-slate-900/60 opacity-50"
+                                : "border-slate-700 bg-page/60 opacity-50"
                             }`}
                           >
                             <span className="text-slate-400">
@@ -1969,7 +1773,7 @@ shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
                           "rounded-lg border p-3 text-left transition",
                           unlocked
                             ? "border-cyan-300/45 bg-cyan-500/10 hover:bg-cyan-500/20"
-                            : "cursor-not-allowed border-slate-700 bg-slate-900/60 opacity-50",
+                            : "cursor-not-allowed border-slate-700 bg-page/60 opacity-50",
                           equipped ? "ring-2 ring-yellow-300" : "",
                         ].join(" ")}
                       >
@@ -2002,16 +1806,16 @@ shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
         </div>
 
         <div
-          className="mt-8 bg-[#07101f]/90 border border-white/10 
+          className="mt-8 bg-[color:var(--bg-surface)] border border-white/10 
 rounded-xl p-6 
-shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
+shadow-[var(--shadow-raise)]"
         >
           <h2 className="text-xl text-cyan-200/80 mb-4">
             {t("profile.referral.title", "Referral System")}
           </h2>
 
           <div className="grid gap-4 md:grid-cols-3 mb-4">
-            <div className="rounded-lg border border-[#FFD700]/40 p-4">
+            <div className="rounded-lg border border-[color:var(--state-gold)] p-4">
               <p className="text-sm text-gray-300">
                 {t("profile.referral.code", "Your Referral Code")}
               </p>
@@ -2021,13 +1825,13 @@ shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
                   : t("profile.referral.noCode", "No code yet")}
               </p>
             </div>
-            <div className="rounded-lg border border-[#FFD700]/40 p-4">
+            <div className="rounded-lg border border-[color:var(--state-gold)] p-4">
               <p className="text-sm text-gray-300">
                 {t("profile.referral.total", "Total Referrals")}
               </p>
               <p className="text-2xl font-bold">{stats?.referrals ?? 0}</p>
             </div>
-            <div className="rounded-lg border border-[#FFD700]/40 p-4">
+            <div className="rounded-lg border border-[color:var(--state-gold)] p-4">
               <p className="text-sm text-gray-300">
                 {t("profile.referral.earnings", "Referral Earnings")}
               </p>
@@ -2040,8 +1844,8 @@ shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
           <input
             readOnly
             value={stats?.referralCode || ""}
-            className="w-full mb-4 rounded-sm bg-[#050b16] border border-white/10 
-focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 text-cyan-200/80"
+            className="w-full mb-4 rounded-sm bg-[color:var(--bg-panel)] border border-white/10 
+focus:ring-2 focus:ring-[color:var(--focus-ring)] px-4 py-2 text-cyan-200/80"
           />
 
           <div className="flex flex-wrap gap-3 mb-4">
@@ -2049,7 +1853,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 text-cyan-200/80"
               onClick={handleCopyReferralCode}
               className={
                 cyberButton +
-                " focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#07101f]"
+                " focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
               }
             >
               {t("profile.referral.copy", "Copy Code")}
@@ -2060,7 +1864,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 text-cyan-200/80"
               className="rounded-lg px-4 py-2 font-semibold text-white 
   border border-white/20 
   hover:bg-cyan-500/10 
-  shadow-[0_0_10px_rgba(0,229,255,0.4)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#07101f]"
+  focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
             >
               {t("profile.referral.share", "Share Code")}
             </button>
@@ -2075,12 +1879,12 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 text-cyan-200/80"
               value={referralCodeInput}
               onChange={(e) => setReferralCodeInput(e.target.value)}
               placeholder={t("profile.referral.enterCode", "Enter referral code")}
-              className="flex-1 rounded-sm bg-[#050b16] border border-white/10 
-focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 outline-hidden focus:ring-2 focus:ring-[#FFD700]"
+              className="flex-1 rounded-sm bg-[color:var(--bg-panel)] border border-white/10 
+focus:ring-2 focus:ring-[color:var(--focus-ring)] px-4 py-2 outline-hidden focus:ring-2 focus:ring-[color:var(--state-gold)]"
             />
             <button
               onClick={handleRedeemCode}
-              className="rounded-sm bg-green-500 px-4 py-2 font-semibold hover:bg-green-600 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#07101f]"
+              className="rounded-sm bg-green-500 px-4 py-2 font-semibold hover:bg-green-600 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
             >
               {t("profile.referral.redeem", "Redeem")}
             </button>
@@ -2090,9 +1894,9 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 outline-hidden focus:ring-2 focus:ri
         </div>
 
         <div
-          className="mt-8 bg-[#07101f]/90 border border-white/10 
+          className="mt-8 bg-[color:var(--bg-surface)] border border-white/10 
 rounded-xl p-6 
-shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
+shadow-[var(--shadow-raise)]"
         >
           <h2 className="text-xl text-cyan-200/80 mb-4">
             {t("profile.friends.addTitle", "Add Friends")}
@@ -2109,13 +1913,13 @@ shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
                 "profile.friends.searchPlaceholder",
                 "Type letters to search users (like Ctrl+F)",
               )}
-              className="flex-1 rounded-sm bg-[#050b16] border border-white/10 
-focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
+              className="flex-1 rounded-sm bg-[color:var(--bg-panel)] border border-white/10 
+focus:ring-2 focus:ring-[color:var(--focus-ring)] px-4 py-2"
             />
             <button
               onClick={() => handleSearchFriends()}
               disabled={isSearchingFriends}
-              className="rounded-sm bg-[#FFD700] px-4 py-2 text-[#003366] font-semibold disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#07101f]"
+              className="rounded-sm bg-[color:var(--state-gold)] px-4 py-2 text-[color:var(--on-accent)] font-semibold disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
             >
               {isSearchingFriends
                 ? t("profile.friends.searching", "Searching...")
@@ -2127,7 +1931,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
             {friendSearchResults.map((person) => (
               <div
                 key={person.id}
-                className="flex items-center justify-between rounded-sm border border-[#FFD700]/40 p-3"
+                className="flex items-center justify-between rounded-sm border border-[color:var(--state-gold)] p-3"
               >
                 <div className="flex items-center gap-3">
                   <IconAvatar
@@ -2142,7 +1946,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                   className="rounded-lg px-3 py-1 text-sm font-semibold text-white 
 bg-linear-to-r from-cyan-700 to-cyan-800 
 shadow-[0_0_10px_rgba(0,255,200,0.6)] 
-hover:scale-105 transition-all focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#07101f]"
+hover:scale-105 transition-all focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
                 >
                   {t("profile.friends.add", "Add Friend")}
                 </button>
@@ -2159,8 +1963,8 @@ hover:scale-105 transition-all focus-visible:outline-hidden focus-visible:ring-2
         </div>
 
         <div
-          className="mt-8 bg-[#07101f]/90 border border-white/10 rounded-xl p-6 
-shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
+          className="mt-8 bg-[color:var(--bg-surface)] border border-white/10 rounded-xl p-6 
+shadow-[var(--shadow-raise)]"
         >
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl text-cyan-200/80">
@@ -2173,7 +1977,7 @@ shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
                 await loadFriendPresence();
                 await loadFriendInvites();
               }}
-              className="rounded-sm bg-[#FFD700] px-3 py-1 text-sm font-semibold text-[#003366] hover:bg-[#ffd700]/80 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#07101f]"
+              className="rounded-sm bg-[color:var(--state-gold)] px-3 py-1 text-sm font-semibold text-[color:var(--on-accent)] hover:bg-[color:var(--state-gold)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
             >
               {t("profile.friends.refresh", "Refresh")}
             </button>
@@ -2181,13 +1985,13 @@ shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
           <div className="mb-4 flex gap-2">
             <button
               onClick={() => setActiveFriendsTab("friends")}
-              className={`rounded-sm px-3 py-1 text-sm font-semibold focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#07101f] ${activeFriendsTab === "friends" ? "bg-cyan-500/80 text-[#003366]" : "bg-white/10 text-white"}`}
+              className={`rounded-sm px-3 py-1 text-sm font-semibold focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)] ${activeFriendsTab === "friends" ? "bg-cyan-500/80 text-[color:var(--on-accent)]" : "bg-white/10 text-white"}`}
             >
               {t("profile.friends.tabFriends", "Friends")}
             </button>
             <button
               onClick={() => setActiveFriendsTab("invites")}
-              className={`rounded-sm px-3 py-1 text-sm font-semibold focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#07101f] ${activeFriendsTab === "invites" ? "bg-cyan-500/80 text-[#003366]" : "bg-white/10 text-white"}`}
+              className={`rounded-sm px-3 py-1 text-sm font-semibold focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)] ${activeFriendsTab === "invites" ? "bg-cyan-500/80 text-[color:var(--on-accent)]" : "bg-white/10 text-white"}`}
             >
               {t("profile.friends.tabInvites", "Invites")} (
               {receivedInvites.length})
@@ -2200,7 +2004,7 @@ shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
                   <a
                     key={`${friend.id}-${friend.name}`}
                     href={`/profil/${encodeURIComponent(friend.clerk_id)}`}
-                    className="rounded-sm border border-[#FFD700]/30 bg-white/5 p-3 flex items-center gap-3 hover:bg-white/10 transition-colors cursor-pointer"
+                    className="rounded-sm border border-[color:var(--state-gold)] bg-white/5 p-3 flex items-center gap-3 hover:bg-white/10 transition-colors cursor-pointer"
                   >
                     <IconAvatar
                       iconKey={friend.icon_key}
@@ -2273,7 +2077,7 @@ shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
                             aria-label={t("profile.friends.spectateLabel", {
                               name: friend.name,
                             })}
-                            className="rounded-sm bg-cyan-500/80 px-2 py-1 text-xs font-semibold text-[#003366] animate-pulse focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#07101f]"
+                            className="rounded-sm bg-cyan-500/80 px-2 py-1 text-xs font-semibold text-[color:var(--on-accent)] animate-pulse focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
                           >
                             {t("profile.friends.spectate", "Spectate")}
                           </button>
@@ -2291,7 +2095,7 @@ shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
                         className="rounded-lg px-2 py-1 text-xs font-semibold text-white 
 bg-linear-to-r from-red-500 to-red-700 
 shadow-[0_0_10px_rgba(255,0,0,0.6)] 
-hover:scale-105 transition-all focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#07101f]"
+hover:scale-105 transition-all focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
                       >
                         {t("profile.friends.remove", "Remove")}
                       </button>
@@ -2311,7 +2115,7 @@ hover:scale-105 transition-all focus-visible:outline-hidden focus-visible:ring-2
                 receivedInvites.map((invite) => (
                   <div
                     key={invite.id}
-                    className="rounded-sm border border-[#FFD700]/30 bg-white/5 p-3 flex items-center gap-3"
+                    className="rounded-sm border border-[color:var(--state-gold)] bg-white/5 p-3 flex items-center gap-3"
                   >
                     <IconAvatar
                       iconKey={invite.sender_icon_key}
@@ -2332,7 +2136,7 @@ hover:scale-105 transition-all focus-visible:outline-hidden focus-visible:ring-2
                         aria-label={t("profile.friends.acceptLabel", {
                           name: invite.sender_name,
                         })}
-                        className="rounded-sm bg-green-500 px-2 py-1 text-xs font-semibold text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#07101f]"
+                        className="rounded-sm bg-green-500 px-2 py-1 text-xs font-semibold text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
                       >
                         {t("profile.friends.accept", "Accept")}
                       </button>
@@ -2341,7 +2145,7 @@ hover:scale-105 transition-all focus-visible:outline-hidden focus-visible:ring-2
                         aria-label={t("profile.friends.declineLabel", {
                           name: invite.sender_name,
                         })}
-                        className="rounded-sm bg-red-500 px-2 py-1 text-xs font-semibold text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#07101f]"
+                        className="rounded-sm bg-red-500 px-2 py-1 text-xs font-semibold text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
                       >
                         {t("profile.friends.decline", "Decline")}
                       </button>
@@ -2393,7 +2197,7 @@ hover:scale-105 transition-all focus-visible:outline-hidden focus-visible:ring-2
                       setSpectateIsLoaded(false);
                       setSpectateOverlayUrl((prev) => `${prev.split("#")[0]}#retry-${Date.now()}`);
                     }}
-                    className="rounded-sm bg-cyan-500/80 px-3 py-1 text-xs font-semibold text-[#003366] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+                    className="rounded-sm bg-cyan-500/80 px-3 py-1 text-xs font-semibold text-[color:var(--on-accent)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black"
                   >
                     {t("profile.friends.spectateRetry", "Retry")}
                   </button>
@@ -2429,101 +2233,12 @@ hover:scale-105 transition-all focus-visible:outline-hidden focus-visible:ring-2
           </div>
         )}
 
-        <div
-          className="mt-12 bg-[#07101f]/90 border border-white/10 
-rounded-xl p-6 
-shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
-        >
-          <h2 className="text-xl text-cyan-200/80 mb-4">
-            {t("profile.betHistory.title", "Bet history")}
-          </h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="border-b border-[#FFD700] text-cyan-200/80">
-                <tr>
-                  <th className="px-4 py-2">
-                    {t("profile.betHistory.date", "Date")}
-                  </th>
-                  <th className="px-4 py-2">
-                    {t("profile.betHistory.game", "Game / event")}
-                  </th>
-                  <th className="px-4 py-2">
-                    {t("profile.betHistory.stake", "Stake")}
-                  </th>
-                  <th className="px-4 py-2">
-                    {t("profile.betHistory.result", "Result")}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {bets.length > 0 ? (
-                  bets.map((bet, idx) => (
-                    <tr key={idx} className="border-b border-[#FFD700]/20">
-                      <td className="px-4 py-2">{new Date(bet.date).toLocaleDateString()}</td>
-                      <td className="px-4 py-2">
-                        {bet.type ||
-                          bet.event ||
-                          bet.game_type ||
-                          t("profile.betHistory.unknown", "Unknown")}
-                      </td>
-                      <td className="px-4 py-2">
-                        {bet.amount} {t("profile.tokens", "tokens")}
-                      </td>
-                      <td className="px-4 py-2">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`px-2 py-1 rounded-full text-xs ${
-                              bet.result === "won"
-                                ? "bg-green-600/20 text-green-400"
-                                : bet.result === "lost"
-                                  ? "bg-red-600/20 text-red-400"
-                                  : "bg-gray-500/20 text-gray-300"
-                            }`}
-                          >
-                            {bet.result === "won"
-                              ? t("profile.betHistory.won", "Won")
-                              : bet.result === "lost"
-                                ? t("profile.betHistory.lost", "Lost")
-                                : t("profile.betHistory.draw", "Draw")}
-                          </span>
-
-                          {bet.result !== "pending" && (
-                            <span
-                              className={`text-sm ${
-                                bet.tokenDiff > 0
-                                  ? "text-green-400"
-                                  : bet.tokenDiff < 0
-                                    ? "text-red-400"
-                                    : "text-gray-300"
-                              }`}
-                            >
-                              {bet.tokenDiff > 0
-                                ? `+${Number(bet.tokenDiff).toFixed(2)} ${t("profile.tokens", "tokens")}`
-                                : bet.tokenDiff < 0
-                                  ? `${Number(bet.tokenDiff).toFixed(2)} ${t("profile.tokens", "tokens")}`
-                                  : `±0.00 ${t("profile.tokens", "tokens")}`}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan="4" className="text-center py-4 text-gray-400">
-                      {t("profile.betHistory.empty", "No bets found")}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <BetHistoryPanel bets={bets} />
 
         <div
-          className="mt-12 bg-[#07101f]/90 border border-white/10 
+          className="mt-12 bg-[color:var(--bg-surface)] border border-white/10 
 rounded-xl p-6 
-shadow-[0_12px_32px_rgba(0,0,0,0.28)]"
+shadow-[var(--shadow-raise)]"
         >
         </div>
 
@@ -2563,7 +2278,7 @@ shadow-[0_0_20px_rgba(255,0,0,0.15)] rounded-lg p-6"
           <button
             onClick={handleDeleteAccount}
             disabled={!delayDone || !password || isDeleting}
-            className="mt-4 rounded-sm bg-red-600 px-4 py-2 font-semibold hover:bg-red-700 disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#07101f]"
+            className="mt-4 rounded-sm bg-red-600 px-4 py-2 font-semibold hover:bg-red-700 disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
           >
             {isDeleting
               ? t("profile.danger.deleting", "Deleting...")
@@ -2583,7 +2298,7 @@ shadow-[0_0_20px_rgba(255,0,0,0.15)] rounded-lg p-6"
       {isEditOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
           <div
-            className="max-w-md w-full rounded-xl border border-[#FFD700] bg-[#07101f] border border-white/10 
+            className="max-w-md w-full rounded-xl border border-[color:var(--state-gold)] bg-[color:var(--bg-surface)] border border-white/10 
 shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6"
           >
             <h3 className="text-xl font-bold text-cyan-200/80 mb-4">
@@ -2598,8 +2313,8 @@ shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6"
                 value={editForm.name}
                 onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
                 placeholder={t("profile.edit.name", "Name")}
-                className="w-full rounded-sm bg-[#050b16] border border-white/10 
-focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
+                className="w-full rounded-sm bg-[color:var(--bg-panel)] border border-white/10 
+focus:ring-2 focus:ring-[color:var(--focus-ring)] px-4 py-2"
               />
               <label htmlFor="profil-edit-email" className="sr-only">
                 {t("profile.edit.email", "Email")}
@@ -2609,10 +2324,10 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                 value={editForm.email}
                 onChange={(e) => setEditForm((prev) => ({ ...prev, email: e.target.value }))}
                 placeholder={t("profile.edit.email", "Email")}
-                className="w-full rounded-sm bg-[#050b16] border border-white/10 
-focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
+                className="w-full rounded-sm bg-[color:var(--bg-panel)] border border-white/10 
+focus:ring-2 focus:ring-[color:var(--focus-ring)] px-4 py-2"
               />
-              <div className="rounded-sm bg-[#050b16] border border-white/10 p-3">
+              <div className="rounded-sm bg-[color:var(--bg-panel)] border border-white/10 p-3">
                 <p className="mb-2 block text-sm text-gray-200">
                   {t("profile.edit.icon", "My Grynd Icon")}
                 </p>
@@ -2622,7 +2337,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                     setIsEditOpen(false);
                     setIsIconPickerOpen(true);
                   }}
-                  className="flex w-full items-center gap-3 rounded-lg border border-white/15 bg-cyan-500/10 px-3 py-2.5 transition hover:bg-cyan-500/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#07101f]"
+                  className="flex w-full items-center gap-3 rounded-lg border border-white/15 bg-cyan-500/10 px-3 py-2.5 transition hover:bg-cyan-500/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
                 >
                   <IconAvatar
                     iconKey={profileInfo.selectedIcon}
@@ -2636,7 +2351,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-cyan-200/80"><path d="M9 18l6-6-6-6"/></svg>
                 </button>
               </div>
-              <div className="rounded-sm bg-[#050b16] border border-white/10 p-3">
+              <div className="rounded-sm bg-[color:var(--bg-panel)] border border-white/10 p-3">
                 <p className="mb-2 block text-sm text-gray-200">
                   {t("profile.edit.glow", "My Name Glow")}
                 </p>
@@ -2646,7 +2361,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                     setIsEditOpen(false);
                     setIsGlowPickerOpen(true);
                   }}
-                  className="flex w-full items-center gap-3 rounded-lg border border-white/15 bg-cyan-500/10 px-3 py-2.5 transition hover:bg-cyan-500/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#07101f]"
+                  className="flex w-full items-center gap-3 rounded-lg border border-white/15 bg-cyan-500/10 px-3 py-2.5 transition hover:bg-cyan-500/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
                 >
                   <span
                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/30 text-sm font-bold text-white/70"
@@ -2669,7 +2384,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-cyan-200/80"><path d="M9 18l6-6-6-6"/></svg>
                 </button>
               </div>
-              <div className="rounded-sm bg-[#050b16] border border-white/10 p-3">
+              <div className="rounded-sm bg-[color:var(--bg-panel)] border border-white/10 p-3">
                 <p className="mb-2 block text-sm text-gray-200">
                   {t("profile.edit.frame", "My Profile Frame")}
                 </p>
@@ -2679,7 +2394,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                     setIsEditOpen(false);
                     setIsFramePickerOpen(true);
                   }}
-                  className="flex w-full items-center gap-3 rounded-lg border border-white/15 bg-cyan-500/10 px-3 py-2.5 transition hover:bg-cyan-500/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#07101f]"
+                  className="flex w-full items-center gap-3 rounded-lg border border-white/15 bg-cyan-500/10 px-3 py-2.5 transition hover:bg-cyan-500/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
                 >
                   <span
                     aria-hidden="true"
@@ -2720,8 +2435,8 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                   "profile.edit.password",
                   "New password (optional)",
                 )}
-                className="w-full rounded-sm bg-[#050b16] border border-white/10 
-focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
+                className="w-full rounded-sm bg-[color:var(--bg-panel)] border border-white/10 
+focus:ring-2 focus:ring-[color:var(--focus-ring)] px-4 py-2"
               />
             </div>
 
@@ -2730,7 +2445,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
             <div className="mt-5 flex justify-end gap-2">
               <button
                 onClick={() => setIsEditOpen(false)}
-                className="rounded-sm border border-white/30 px-4 py-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#07101f]"
+                className="rounded-sm border border-white/30 px-4 py-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
               >
                 {t("profile.edit.close", "Close")}
               </button>
@@ -2739,7 +2454,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                 onClick={handleSaveEditProfile}
                 className={
                   cyberButton +
-                  " focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#07101f]"
+                  " focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
                 }
               >
                 {isSavingEdit
@@ -2751,37 +2466,23 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
         </div>
       )}
 
-      {/* Official Grynd icon picker — owned icons only, no uploads. */}
-      <ChooseIconModal
-        open={isIconPickerOpen}
-        onClose={() => setIsIconPickerOpen(false)}
+      {/* The four cosmetics pickers. State, ownership and the equip handlers
+          stay on this page; the component only opens and reports. */}
+      <ProfilePickerModals
+        isIconPickerOpen={isIconPickerOpen}
+        onCloseIconPicker={() => setIsIconPickerOpen(false)}
         currentIconKey={profileInfo.selectedIcon}
-        onEquipped={(iconKey) =>
+        onEquipIcon={(iconKey) =>
           setProfileInfo((prev) => ({ ...prev, selectedIcon: iconKey }))
         }
-      />
-
-      {/* Catalog-granted name glow picker — owned glows only. */}
-      <ChooseGlowModal
-        open={isGlowPickerOpen}
-        onClose={() => setIsGlowPickerOpen(false)}
-        onEquipped={handleEquipGlow}
-      />
-
-      {/* The single profile-cosmetics picker: owned frames + badges + avatar /
-          username / chat effects + glows, all equippable in one place. */}
-      <ChooseFrameModal
-        open={isFramePickerOpen}
-        onClose={() => setIsFramePickerOpen(false)}
-        onEquipped={({ category, item }) =>
-          handleEquipCosmetic(category, item)
-        }
-      />
-
-      {/* In-game emote loadout manager — equipped animated emotes (max 9). */}
-      <ChooseEmotesModal
-        open={isEmotesManagerOpen}
-        onClose={() => setIsEmotesManagerOpen(false)}
+        isGlowPickerOpen={isGlowPickerOpen}
+        onCloseGlowPicker={() => setIsGlowPickerOpen(false)}
+        onEquipGlow={handleEquipGlow}
+        isFramePickerOpen={isFramePickerOpen}
+        onCloseFramePicker={() => setIsFramePickerOpen(false)}
+        onEquipCosmetic={(category, item) => handleEquipCosmetic(category, item)}
+        isEmotesManagerOpen={isEmotesManagerOpen}
+        onCloseEmotesManager={() => setIsEmotesManagerOpen(false)}
       />
       {adSlot}
       <Footer />

@@ -3007,6 +3007,40 @@ export const APP_TEXT_TRANSLATIONS = {
       cash: "Coins are used only inside GRYND. They are virtual, have no cash value, and cannot be withdrawn, redeemed for gift cards or exchanged for money.",
     },
     learn: LEARN_TRANSLATIONS.en,
+    // /profil → the solitaire modes panel. It was the last block on the page
+    // still written in English for every player.
+    solitaireModes: {
+      title: "Solitaire modes",
+      loading: "Loading…",
+      ranked: {
+        title: "Ranked PvP",
+        body: "Rating, recent matches and trophies are in the ranked sections of this profile. Ranked only counts real human opponents.",
+        leaderboard: "Leaderboard →",
+        play: "Play ranked →",
+      },
+      solo: {
+        title: "Solo Solitaire",
+        play: "Play solo →",
+        gamesPlayed: "Games played",
+        completed: "Completed",
+        completionRate: "Completion rate",
+        bestTime: "Best time",
+        averageTime: "Average time",
+      },
+      daily: {
+        title: "Daily Challenge",
+        play: "Today's deal →",
+        completed: "Challenges completed",
+        currentStreak: "Current streak",
+        longestStreak: "Longest streak",
+        bestTime: "Best time",
+        today: "Today",
+        todayDone: "Completed",
+        todayInProgress: "In progress",
+      },
+      guest:
+        "Sign in to record solo games and daily streaks. Prefer to stay a guest? Solo still works, with records kept in this browser.",
+    },
     playHub: PLAY_HUB_TRANSLATIONS.en,
   },
   fr: {
@@ -5738,6 +5772,40 @@ export const APP_TEXT_TRANSLATIONS = {
       cash: "Les pièces servent uniquement à jouer dans GRYND. Elles sont virtuelles, n'ont aucune valeur monétaire et ne peuvent pas être retirées, échangées contre des cartes cadeaux ou contre de l'argent.",
     },
     learn: LEARN_TRANSLATIONS.fr,
+    // /profil → les modes Solitaire. Dernier bloc de la page encore écrit en
+    // anglais pour tous les joueurs.
+    solitaireModes: {
+      title: "Les modes Solitaire",
+      loading: "Chargement…",
+      ranked: {
+        title: "PvP classé",
+        body: "Ton Elo, tes matchs récents et tes trophées sont dans les sections classées de ce profil. Seuls de vrais adversaires humains comptent.",
+        leaderboard: "Classement →",
+        play: "Jouer en classé →",
+      },
+      solo: {
+        title: "Solitaire en solo",
+        play: "Jouer en solo →",
+        gamesPlayed: "Parties jouées",
+        completed: "Terminées",
+        completionRate: "Taux de réussite",
+        bestTime: "Meilleur temps",
+        averageTime: "Temps moyen",
+      },
+      daily: {
+        title: "Défi du jour",
+        play: "La donne du jour →",
+        completed: "Défis terminés",
+        currentStreak: "Série en cours",
+        longestStreak: "Meilleure série",
+        bestTime: "Meilleur temps",
+        today: "Aujourd'hui",
+        todayDone: "Terminé",
+        todayInProgress: "En cours",
+      },
+      guest:
+        "Connecte-toi pour enregistrer tes parties solo et tes séries quotidiennes. Tu préfères rester invité ? Le solo marche quand même, avec les records gardés dans ce navigateur.",
+    },
     playHub: PLAY_HUB_TRANSLATIONS.fr,
   },
   es: {
@@ -8469,6 +8537,40 @@ export const APP_TEXT_TRANSLATIONS = {
       cash: "Las monedas se usan solo dentro de GRYND. Son virtuales, no tienen valor monetario y no se pueden retirar, canjear por tarjetas regalo ni cambiar por dinero.",
     },
     learn: LEARN_TRANSLATIONS.es,
+    // /profil → los modos de Solitario. Último bloque de la página que seguía
+    // escrito en inglés para todos los jugadores.
+    solitaireModes: {
+      title: "Modos de Solitario",
+      loading: "Cargando…",
+      ranked: {
+        title: "PvP clasificatorio",
+        body: "Tu Elo, tus partidas recientes y tus trofeos están en las secciones clasificatorias de este perfil. Solo cuentan rivales humanos reales.",
+        leaderboard: "Clasificación →",
+        play: "Jugar clasificatorio →",
+      },
+      solo: {
+        title: "Solitario en solitario",
+        play: "Jugar en solitario →",
+        gamesPlayed: "Partidas jugadas",
+        completed: "Completadas",
+        completionRate: "Tasa de finalización",
+        bestTime: "Mejor tiempo",
+        averageTime: "Tiempo medio",
+      },
+      daily: {
+        title: "Desafío diario",
+        play: "El reparto de hoy →",
+        completed: "Desafíos completados",
+        currentStreak: "Racha actual",
+        longestStreak: "Mejor racha",
+        bestTime: "Mejor tiempo",
+        today: "Hoy",
+        todayDone: "Completado",
+        todayInProgress: "En curso",
+      },
+      guest:
+        "Inicia sesión para registrar tus partidas en solitario y tus rachas diarias. ¿Prefieres seguir como invitado? El modo solitario funciona igual, con los récords guardados en este navegador.",
+    },
     playHub: PLAY_HUB_TRANSLATIONS.es,
   },
 };

@@ -439,7 +439,6 @@ test("the component itself refuses a gameplay URL at runtime", () => {
  * fails too (a silent regression looks identical to a decision).
  */
 const APPROVED_PLACEMENTS = {
-  "src/app/casino/page.jsx": "hub",
   "src/app/classement/page.jsx": "leaderboard",
   "src/app/page.jsx": "home",
   "src/app/profil/page.jsx": "profile",
@@ -475,7 +474,6 @@ test("the banner is mounted on exactly the four approved pages", () => {
 test("each approved page hands the banner to its client, which renders it once", () => {
   const CLIENTS = {
     "src/app/page.jsx": "src/app/PageClient.jsx",
-    "src/app/casino/page.jsx": "src/app/casino/PageClient.jsx",
     "src/app/classement/page.jsx": "src/app/classement/PageClient.jsx",
     "src/app/profil/page.jsx": "src/app/profil/PageClient.jsx",
   };
@@ -637,7 +635,7 @@ test("no game lobby mounts the banner, even though a lobby may carry AdSense", (
     /^src\/app\/casino\/[^/]+\/page\.(jsx?|tsx?)$/.test(page),
   );
   assert.ok(
-    lobbyPages.length >= 15,
+    lobbyPages.length >= 1,
     `expected the game lobby tree (found ${lobbyPages.length}) — a walk that finds nothing proves nothing`,
   );
 

@@ -17,7 +17,7 @@ import Link from "next/link";
 import { IconLock } from "@tabler/icons-react";
 import { useTranslation } from "../../hooks/useTranslation";
 
-const FRAME = "rounded-xl border border-dashed border-[#00e5ff]/20 bg-[#04122b]/40";
+const FRAME = "rounded-xl border border-dashed border-[#00e5ff]/20 bg-surface/40";
 
 export default function ProAnalyticsLocked({
   provisionalGames,
@@ -81,7 +81,7 @@ export default function ProAnalyticsLocked({
         </div>
       </div>
 
-      <div className="relative overflow-hidden rounded-2xl border border-[#00e5ff]/20 bg-[#04122b]/60 p-5">
+      <div className="relative overflow-hidden rounded-2xl border border-[#00e5ff]/20 bg-surface/60 p-5">
         <div className="blur-[5px]" aria-hidden>
           <div className="flex h-32 items-end gap-2">
             {[38, 62, 47, 78, 55, 86, 68, 92, 74, 58, 82, 66].map((height, index) => (
@@ -98,7 +98,7 @@ export default function ProAnalyticsLocked({
             ))}
           </div>
         </div>
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[#04122b]/55 p-4 text-center">
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-surface/55 p-4 text-center">
           <IconLock size={22} aria-hidden="true" className="text-[#f5ff3b]" />
           <p className="text-sm font-black text-[#f5ff3b]">{t("stats.locked.title")}</p>
           <p className="max-w-md text-[11px] leading-relaxed text-white/60">

@@ -50,7 +50,7 @@ export default async function ReviewsPage() {
         <div className="mb-8">
           <Link
             href="/"
-            className="inline-flex items-center gap-2 rounded-lg border border-[#00e5ff]/30 bg-[#040d24]/70 px-4 py-2 text-sm font-semibold text-[#c9f7ff]/80 transition hover:border-[#00e5ff]/60 hover:bg-[#00e5ff]/10 hover:text-white"
+            className="inline-flex items-center gap-2 rounded-lg border border-[#00e5ff]/30 bg-surface/70 px-4 py-2 text-sm font-semibold text-[#c9f7ff]/80 transition hover:border-[#00e5ff]/60 hover:bg-[#00e5ff]/10 hover:text-white"
           >
             <span aria-hidden="true">←</span>
             Back to Home

@@ -382,7 +382,7 @@ export default function OfflineSolitaireMatch({
           data-testid="solitaire-offline-result"
           className="fixed inset-0 z-40 flex items-center justify-center bg-[#04070f]/85 p-4"
         >
-          <div className="w-full max-w-sm rounded-3xl border border-white/[0.12] bg-[#0a1224] p-5 text-center shadow-[0_18px_35px_rgba(3,8,23,0.6)]">
+          <div className="w-full max-w-sm rounded-3xl border border-white/[0.12] bg-surface p-5 text-center shadow-[0_18px_35px_rgba(3,8,23,0.6)]">
             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#00e5ff]">
               {resolutionLabel(match.resolution) ?? "Match over"}
             </p>

@@ -22,6 +22,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { guestClaims, guestPracticeResults, guestProfiles } from "../src/db/schema.ts";
+import { readProfileSource } from "./helpers/profile-source.mjs";
 
 const read = (rel) => fs.readFileSync(path.join(process.cwd(), rel), "utf8");
 const stripComments = (src) =>
@@ -625,7 +626,7 @@ test("the post-auth flow offers the claim without changing Clerk or onboarding",
   assert.match(claimPage, /value\.startsWith\("\/\/"\)/);
 
   // The account profile offers the same panel; the signed-out panel is untouched.
-  const profil = read("src/app/profil/PageClient.jsx");
+  const profil = readProfileSource();
   assert.match(profil, /import GuestClaimPanel/);
   assert.match(profil, /<GuestClaimPanel \/>/);
   assert.match(profil, /<GuestProgressPanel \/>/);

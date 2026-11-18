@@ -45,7 +45,7 @@ export default async function PlayPage({
   const portal = typeof query.portal === "string" ? query.portal : null;
 
   return (
-    <div data-testid="portal-play" data-game={game.gameKey} className="min-h-dvh bg-[#000d1a] text-white">
+    <div data-testid="portal-play" data-game={game.gameKey} className="min-h-dvh bg-[var(--tint-bg--000d1a)] text-white">
       {/* CrazyGames SDK v3 — inert unless this page is running inside
           CrazyGames. Loads no script, adds no listener and changes nothing on
           a normal visit or an itch.io frame. */}

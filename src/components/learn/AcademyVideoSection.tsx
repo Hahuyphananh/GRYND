@@ -77,7 +77,7 @@ export default function AcademyVideoSection() {
               data-testid="learn-video-card"
               data-video-id={video.id}
               data-status={status}
-              className="flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#071128]/80 transition hover:border-[#00e5ff]/35"
+              className="flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-surface/80 transition hover:border-[#00e5ff]/35"
             >
               <Link
                 href={`/learn/videos/${video.id}`}
