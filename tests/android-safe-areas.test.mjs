@@ -103,10 +103,15 @@ test("the page offset below the bar adds the same inset, and nothing else", () =
   const chrome = read(SITE_CHROME);
 
   // `calc` needs real spaces; in a Tailwind arbitrary value those are written
-  // as underscores. A literal `calc(68px+var(...))` is invalid CSS and would be
+  // as underscores. A literal `calc(4rem+var(...))` is invalid CSS and would be
   // dropped silently, which is the bug this assertion exists to catch.
-  assert.match(chrome, /pt-\[calc\(68px_\+_var\(--safe-top\)\)\]/);
-  assert.match(chrome, /sm:pt-\[calc\(4rem_\+_var\(--safe-top\)\)\]/);
+  //
+  // The offset reads `--nav-height` instead of repeating the bar's height. The
+  // bar and everything that has to clear it share one token, so the offset can
+  // no longer disagree with the bar at a breakpoint (it was 68px under an 80px
+  // bar from `sm` up) and there is no second `sm:` literal to keep in step.
+  assert.match(chrome, /pt-\[calc\(var\(--nav-height\)_\+_var\(--safe-top\)\)\]/);
+  assert.match(read(CSS), /--nav-height:\s*4rem;/);
 
   // Comments name `<main>` in prose, so only a real opening tag counts.
   const mains = [...chrome.matchAll(/<main\s[\s\S]{0,400}?>/g)].map((match) => match[0]);
