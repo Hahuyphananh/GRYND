@@ -1,0 +1,46 @@
+/* src/components/home/HeroCopy.module.css */
+
+.reveal,
+.revealSoft {
+  animation: reveal 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.revealSoft {
+  animation-name: revealSoft;
+  animation-duration: 0.65s;
+}
+
+/* The headline starts readable (not fully transparent) so it remains a valid
+   LCP paint; the blur is what does the work. */
+@keyframes reveal {
+  from {
+    opacity: 0.35;
+    filter: blur(9px);
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0);
+  }
+}
+
+@keyframes revealSoft {
+  from {
+    opacity: 0;
+    filter: blur(6px);
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal,
+  .revealSoft {
+    animation: none;
+  }
+}

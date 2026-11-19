@@ -7,6 +7,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { isPortalPlayPath } from "../lib/portal/framing";
 import ThemeToggle from "./ThemeToggle";
+import SoundToggle from "./SoundToggle";
 import { useTranslation } from "../hooks/useTranslation";
 import { fadeUp, hoverScale, withReducedMotion, stagger } from "../lib/animations";
 import { UIPro01NavShell, UIPro02NavItem } from "./uipro";
@@ -522,6 +523,7 @@ function NavigationBarInner({ currentPath = "" }) {
               {/* Light/dark switch — one control, in both the signed-in and
                   signed-out clusters, so the theme is always reachable. */}
               <ThemeToggle />
+              <SoundToggle />
               {canInstall && (
                 <button
                   onClick={install}
@@ -781,6 +783,10 @@ function NavigationBarInner({ currentPath = "" }) {
                 <ThemeToggle
                   showLabel
                   className="flex w-full items-center rounded-lg bg-[color:var(--bg-panel)] px-3 py-2 text-[color:var(--text-secondary)] transition-colors hover:text-[color:var(--text-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--focus-ring)]"
+                />
+                <SoundToggle
+                  showLabel
+                  className="flex w-full items-center justify-start rounded-lg bg-[color:var(--bg-panel)] px-3 py-2 text-[color:var(--text-secondary)] transition-colors hover:text-[color:var(--text-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--focus-ring)]"
                 />
             </div>
               {!isSignedIn && (

@@ -55,7 +55,6 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import { fireConfetti, withReducedMotion } from "../../lib/animations";
-import { notifyDailyRewardWin } from "../../lib/practiceWinClient";
 import FrameAvatar from "../FrameAvatar";
 import PostMatchAdSlot from "../ads/PostMatchAdSlot";
 import GuestPostMatchCta from "../guest/GuestPostMatchCta";
@@ -104,11 +103,11 @@ const CONFETTI_COLORS = ["#00e5ff", "#f5ff3b", "#ff4fd8", "#a855f7", "#34d399"];
 // ── The match-ending beat ─────────────────────────────────────────────
 // Every win / loss / draw popup in the platform mounts through this
 // component, so the reveal hold lives here ONCE instead of in every game:
-// the panel is held back 3s after the match ends, so the finished board (the
+// the panel is held back 1s after the match ends, so the finished board (the
 // winning line, the last ball, the losing tile…) is what the player reads
 // first, and the result then lands on top of it. Exported so a game (and the
 // test that pins this) can reason about the beat without repeating it.
-export const RESULT_REVEAL_DELAY_MS = 3_000;
+export const RESULT_REVEAL_DELAY_MS = 1_000;
 
 function formatDuration(totalSeconds) {
   const s = Math.max(0, Math.round(Number(totalSeconds) || 0));
@@ -175,7 +174,7 @@ const panelMotion = {
 export default function PvpResultScreen({
   open,
   // How long the panel is held back after `open` flips — the match-ending
-  // beat. Defaults to the platform-wide 3s; a game may shorten it, never
+  // beat. Defaults to the platform-wide 1s; a game may shorten it, never
   // remove it.
   revealDelayMs = RESULT_REVEAL_DELAY_MS,
   outcome,
@@ -361,17 +360,6 @@ export default function PvpResultScreen({
       clearTimeout(t2);
     };
   }, [revealed, outcome, shouldReduce]);
-
-  // A win against the AI can unlock today's daily reward. Announce it so any
-  // daily-reward surface mounted on this origin re-reads its status without a
-  // page reload. The delay lets the authoritative write land first: server-
-  // settled practice stamps inside its settlement transaction, while the
-  // client-settled boards POST /api/practice/win from their own result path.
-  useEffect(() => {
-    if (!open || outcome !== "win" || !opponent?.isAi) return;
-    const timer = setTimeout(() => notifyDailyRewardWin(), 900);
-    return () => clearTimeout(timer);
-  }, [open, outcome, opponent?.isAi]);
 
   // One action per screen: once Play Again / Rematch / Lobby is picked, disable
   // the buttons so a double-tap can't create two matches. The post-match video

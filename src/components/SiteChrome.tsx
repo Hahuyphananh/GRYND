@@ -26,6 +26,7 @@
 import { usePathname } from "next/navigation";
 
 import ClerkSafeChatWidget from "./ClerkSafeChatWidget";
+import UiSounds from "./UiSounds";
 import CookieConsentBanner from "./CookieConsentBanner";
 import CmpConsentBridge from "./CmpConsentBridge";
 import GoogleAnalytics from "./GoogleAnalytics";
@@ -75,10 +76,14 @@ export default function SiteChrome({
           banner there to earn the consent it needs. */}
       <GoogleAnalytics />
 
+      {/* Interface sounds — event-driven, mute-aware, and site-only (the portal
+          surface owns its game audio and must stay untouched). Renders nothing. */}
+      <UiSounds />
+
       {/* APPEARANCE. The drawer is the Settings/Profile entry point to the
           board cosmetics the board header opens. The old flame chip that
           duplicated the daily-streak card is gone — there is one streak
-          surface now (components/DailyRewardWidget). */}
+          surface now (components/StreakWidget). */}
       {(pathname === "/settings" || pathname === "/profil") && (
         <div className="pointer-events-none fixed right-3 top-[calc(var(--nav-height)_+_var(--safe-top)_+_0.5rem)] z-40 flex items-center gap-2 sm:right-4">
           <div className="pointer-events-auto">

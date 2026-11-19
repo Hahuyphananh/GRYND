@@ -51,14 +51,23 @@ export default function Button({
 
   if (href) {
     return (
-      <Link href={href} className={classes}>
+      <Link
+        href={href}
+        className={classes}
+        data-sound-hover={variant === "primary" ? "" : undefined}
+      >
         {children}
       </Link>
     );
   }
 
   return (
-    <button type={type} className={classes} {...rest}>
+    <button
+      type={type}
+      className={classes}
+      {...rest}
+      data-sound-hover={variant === "primary" ? "" : undefined}
+    >
       {children}
     </button>
   );

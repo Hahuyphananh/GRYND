@@ -47,7 +47,7 @@ markup change rides on the primitives.
 - Home still links `/games/solitaire-duel` and `/classement` (pinned by
   `tests/internal-linking.test.mjs`).
 - The ad slot is still the last interactive block (`tests/ad-model.test.mjs`).
-- `DailyRewardWidget` still mounts (`tests/daily-reward-widget.test.mjs`).
+- `StreakWidget` still mounts (`tests/streak-milestones.test.mjs`).
 - Home still reads `/api/solitaire/solo` and `/api/solitaire/daily` for the
   player's own standing (`tests/solitaire-solo-daily.test.mjs`); the figures
   move to the ranked standing block instead of disappearing with the cards.
@@ -57,7 +57,7 @@ markup change rides on the primitives.
 keep these green — they are the reason a "delete the grid" edit is not a
 five-minute job:
 
-`ad-model`, `ai-search-readiness`, `daily-reward-widget`, `internal-linking`,
+`ad-model`, `ai-search-readiness`, `internal-linking`,
 `hilltop-banner`, `moderation-enforcement`, `rewards-quests-ui`, `shared-poll`,
 `solitaire-solo-daily`.
 
@@ -235,8 +235,8 @@ around them instead.
   forbids. The D1 decision supersedes that assertion, so the test now pins the
   new contract (three inline links, one `/play` link, no grid) and keeps its
   strength. This is the only test changed by the programme so far.
-- **Pre-existing reds, unchanged and out of scope:** `daily-reward-widget`,
-  `hilltop-banner`, `rewards-quests-ui` and `shared-poll` were already failing
+- **Pre-existing reds, unchanged and out of scope:** `hilltop-banner`,
+  `rewards-quests-ui` and `shared-poll` were already failing
   on the untouched tree; they concern the casino hub, the four-page banner set,
   the quest widget on the hub, and a `useSharedPoll` call home no longer makes.
   They belong to Phases 6–7 and were not edited.
@@ -321,8 +321,7 @@ the same way on the untouched tree and belong to the Phase 7 cleanup.
   already deleted), `leaderboard-rating` (`RATED_GAMES` is now under 10 after
   the casino cleanup, so its “≥10” and mirror-tab assertions fail),
   `guest-claim` (`mock.module` does not exist in this Node runtime), plus the
-  four known ones (`hilltop-banner`, `shared-poll`, `daily-reward-widget`,
-  `rewards-quests-ui`).
+  three known ones (`hilltop-banner`, `shared-poll`, `rewards-quests-ui`).
 
 ## Phase 6 — delivered
 

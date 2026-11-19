@@ -1,9 +1,9 @@
 // tests/game-result-reveal-delay.test.mjs
 //
-// THE 3s RESULT BEAT.
+// THE 1s RESULT BEAT.
 //
 // A match that ends must not slam a WIN / LOSS panel over the final board: the
-// result popup is held back for three seconds, so the last move — the winning
+// result popup is held back for one second, so the last move — the winning
 // line, the last ball, the losing tile — is what the player reads first. The
 // hold lives in ONE place (the shared PvpResultScreen), because every game's
 // win / loss / draw popup mounts through it. UNO, which draws its own end
@@ -57,12 +57,12 @@ const SHARED_SCREEN_PAGES = {
   "Tower Arena": "src/app/casino/tower-arena/game/[matchId]/PageClient.tsx",
 };
 
-test("the shared result screen holds the popup for 3s", () => {
+test("the shared result screen holds the popup for 1s", () => {
   const src = read(SHARED_SCREEN);
 
   assert.match(
     src,
-    /export const RESULT_REVEAL_DELAY_MS = 3_000;/,
+    /export const RESULT_REVEAL_DELAY_MS = 1_000;/,
     "the platform-wide beat is one exported constant",
   );
   assert.match(
@@ -82,12 +82,12 @@ test("the shared result screen holds the popup for 3s", () => {
   );
 });
 
-test("every game's result popup goes through the shared 3s hold", () => {
+test("every game's result popup goes through the shared 1s hold", () => {
   for (const [game, path] of Object.entries(SHARED_SCREEN_PAGES)) {
     assert.match(
       read(path),
       /components\/result\/PvpResultScreen/,
-      `${game} must mount the shared result screen (it owns the 3s hold)`,
+      `${game} must mount the shared result screen (it owns the 1s hold)`,
     );
   }
   // Precision's page keeps its own replay-window adapter, so the shared
@@ -99,10 +99,10 @@ test("every game's result popup goes through the shared 3s hold", () => {
   );
 });
 
-test("UNO's own end panel holds the same 3s beat", () => {
+test("UNO's own end panel holds the same 1s beat", () => {
   const src = read(UNO_PAGE);
 
-  assert.match(src, /const END_PANEL_DELAY_MS = 3_000;/, "UNO holds 3s itself");
+  assert.match(src, /const END_PANEL_DELAY_MS = 1_000;/, "UNO holds 1s itself");
   assert.match(
     src,
     /setTimeout\(\(\) => setEndPopupVisible\(true\), END_PANEL_DELAY_MS\)/,
@@ -149,9 +149,9 @@ test("Battleship's victory / defeat popup holds its 2s beat", () => {
   );
 });
 
-test("no game stacks its own popup hold on top of the 3s beat", () => {
-  // Keno used to hold its shared popup 1.2s (3s + 1.2s = 4.2s) and Pool 600ms
-  // (3.6s). Both holds are now the shared screen's alone.
+test("no game stacks its own popup hold on top of the 1s beat", () => {
+  // Keno used to hold its shared popup 1.2s (1s + 1.2s = 2.2s) and Pool 600ms
+  // (1.6s). Both holds are now the shared screen's alone.
   const keno = read("src/app/casino/keno-pvp/[matchId]/PageClient.jsx");
   assert.doesNotMatch(
     keno,

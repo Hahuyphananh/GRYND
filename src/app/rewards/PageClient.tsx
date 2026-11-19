@@ -7,7 +7,7 @@ import { IconCoins, IconGift, IconSwords } from "@tabler/icons-react";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
-import DailyRewardCard from "../../components/DailyRewardCard";
+import StreakMilestonesCard from "../../components/StreakMilestonesCard";
 import CoinShopOffers from "../../components/CoinShopOffers";
 import { useCoinBalance } from "../../hooks/useCoinBalance";
 
@@ -16,12 +16,12 @@ import { useCoinBalance } from "../../hooks/useCoinBalance";
  *
  * ── What is live here ─────────────────────────────────────────────────────
  *
- *   * the daily login reward (components/DailyRewardCard) — unchanged;
- *   * the daily STREAK reward, with its repeating 14-day coin window.
+ *   * the daily STREAK and its milestones (components/StreakMilestonesCard);
+ *   * the caller's existing coin balance.
  *
- * The status and the claim are both server-owned. This page owns no reward
- * rule: it renders the status the reward endpoint reports, and the only
- * interactive control (the claim) lives in the shared 14-day board.
+ * Streak progression is server-owned: the card renders the state the read
+ * endpoint reports (current/best streak, title, next milestone) and holds no
+ * claim, no payout and no milestone arithmetic of its own.
  *
  * ── The coin balance ─────────────────────────────────────────────────────
  *
@@ -158,7 +158,7 @@ export default function RewardsPage() {
             Rewards
           </h1>
           <p className="max-w-2xl text-base text-[#9dd8ff] sm:text-lg">
-            Your daily streak reward and the coins it pays — all in one place.
+            Your daily streak, the titles it earns, and every milestone ahead.
           </p>
         </motion.header>
 
@@ -176,9 +176,9 @@ export default function RewardsPage() {
           <CoinShopOffers />
         </motion.div>
 
-        {/* ── Daily Reward — unchanged ───────────────────────────────── */}
+        {/* ── Streak milestones ───────────────────────────────────────── */}
         <motion.div className="mb-10" {...rise(0.08)}>
-          <DailyRewardCard />
+          <StreakMilestonesCard />
         </motion.div>
 
         {/* ── How rewards work ──────────────────────────────────────── */}
@@ -191,17 +191,19 @@ export default function RewardsPage() {
             id="rewards-note-heading"
             className="mb-3 flex items-center gap-2 text-lg font-bold text-[#00e5ff]"
           >
-            <IconSwords size={18} aria-hidden="true" /> How rewards work
+            <IconSwords size={18} aria-hidden="true" /> How streaks work
           </h2>
           <ul className="space-y-2 text-sm leading-relaxed text-[#c9f7ff]/85">
             <li>
               The streak advances when you{" "}
               <strong className="text-[#c9f7ff]">finish a game</strong> — any mode,
-              any deal. One credit per day; miss a day and it starts again at day 1.
+              any deal. One credit per day, so several games on the same day count
+              once; miss a day and the current streak starts again at day 1.
             </li>
             <li>
-              Winning a match today unlocks that day&apos;s coin reward. Claim it
-              once from the streak popup; the next day&apos;s reward is already waiting.
+              Every milestone earns a title, from Daily Visitor at day 1 to King at
+              day 365. Your best streak and earned titles are kept when a current
+              streak resets.
             </li>
             <li>
               Coins are virtual and have{" "}

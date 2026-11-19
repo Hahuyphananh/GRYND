@@ -27,7 +27,7 @@
 //
 // Not a second statistics system. There are no counters here: wins/losses/
 // draws are COUNT(*) over result rows, so a retry cannot distort a total. No
-// Elo, trophy, token, quest, daily-reward or leaderboard code is imported or
+// Elo, trophy, token, quest, streak or leaderboard code is imported or
 // called — a guest result is a private practice record and nothing else.
 
 import { desc, eq, sql } from "drizzle-orm";

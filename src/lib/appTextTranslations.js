@@ -2040,8 +2040,6 @@ export const APP_TEXT_TRANSLATIONS = {
       glitch: {
         questsIntro:
           "Yo! Looking for more tokens? Your Quests are waiting! Complete challenges, play games, and stack up those token rewards. Don't leave free tokens on the table!",
-        dailySummary:
-          "Day {day} of {days}. Streak: {streak}. {remaining} rewards left this cycle.",
       },
     },
     onboarding: {
@@ -4838,8 +4836,6 @@ export const APP_TEXT_TRANSLATIONS = {
       glitch: {
         questsIntro:
           "Yo ! Tu veux plus de jetons ? Tes quêtes t'attendent ! Relève des défis, joue, et empile les récompenses en jetons. Ne laisse pas filer des jetons gratuits sur la table !",
-        dailySummary:
-          "Jour {day} sur {days}. Série : {streak}. {remaining} récompenses restantes dans ce cycle.",
       },
     },
     onboarding: {
@@ -7604,8 +7600,6 @@ export const APP_TEXT_TRANSLATIONS = {
       glitch: {
         questsIntro:
           "¡Hey! ¿Buscas más fichas? ¡Tus misiones te esperan! Completa desafíos, juega partidas y acumula recompensas en fichas. ¡No dejes fichas gratis sobre la mesa!",
-        dailySummary:
-          "Día {day} de {days}. Racha: {streak}. {remaining} recompensas restantes en este ciclo.",
       },
     },
     onboarding: {

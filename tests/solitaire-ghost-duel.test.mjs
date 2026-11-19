@@ -369,7 +369,7 @@ test("settlement moves ONLY the human's ladder, against the recorded strength", 
   // never is: the ghost branch returns before them.
   assert.match(
     store,
-    /if \(match\.isGhost\) \{[\s\S]*?await applyGhostTrophyResult\(\{[\s\S]*?if \(humanWon\) await markDailyRewardWin\(tx, humanId\);\s*\n\s*return;/,
+    /if \(match\.isGhost\) \{[\s\S]*?await applyGhostTrophyResult\(\{[\s\S]*?return;/,
   );
 });
 

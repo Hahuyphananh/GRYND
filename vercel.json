@@ -36,5 +36,21 @@
       "path": "/api/jobs/solitaire-inactivity",
       "schedule": "*/5 * * * *"
     }
+  ],
+  "services": {
+    "casino-realtime-server": {
+      "root": "realtime-server",
+      "entrypoint": "server.js",
+      "buildCommand": "npm install"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": {
+        "type": "service",
+        "service": "casino-realtime-server"
+      }
+    }
   ]
 }

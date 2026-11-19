@@ -850,21 +850,6 @@ export async function applyRatingResult({
       ON CONFLICT (user_id, game_key, match_id) DO NOTHING
     `);
 
-    // ── 7b. Mark the winner's daily-reward gate ──────────────────────
-    // The daily login reward requires a WIN today, so it reads this marker
-    // instead of the game-start marker (which a player could satisfy by
-    // opening a practice match and resigning). Only a rated online match
-    // reaches this writer, and the outcome is derived server-side, so this is
-    // the authoritative "won today" signal. A draw is not a win and leaves the
-    // marker untouched.
-    if (!isDraw) {
-      await txc.execute(sql`
-        UPDATE users
-           SET last_won_game_date = ${new Date().toISOString().slice(0, 10)}
-         WHERE id = ${winnerRow.id}
-      `);
-    }
-
     // Post-match provisional status for the result screens, derived from the
     // same per-game counter the next settlement will read.
     const winnerAfter = provisionalProgress(
@@ -1074,14 +1059,6 @@ export async function applyGhostRatingResult({
          ${before}, ${after}, ${computed.delta}, ${computed.k})
       ON CONFLICT (user_id, game_key, match_id) DO NOTHING
     `);
-
-    if (outcome === "win") {
-      await txc.execute(sql`
-        UPDATE users
-           SET last_won_game_date = ${new Date().toISOString().slice(0, 10)}
-         WHERE id = ${user.id}
-      `);
-    }
 
     return {
       applied: true,

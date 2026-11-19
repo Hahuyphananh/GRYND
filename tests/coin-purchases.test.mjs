@@ -344,7 +344,7 @@ test("the offers copy resolves in every supported language", async () => {
 });
 
 test("free rewards are untouched by the coin shop", () => {
-  assert.match(REWARDS, /<DailyRewardCard \/>/);
+  assert.match(REWARDS, /<StreakMilestonesCard \/>/);
   assert.match(REWARDS, /<CoinShopOffers \/>/);
 
   // The rewards page itself still owns no button, fetch or price.

@@ -144,6 +144,7 @@ export default function UpgradeProButton({
         className={buttonClass}
         data-testid="upgrade-pro-button"
         data-pro-active={active ? "true" : "false"}
+        data-sound-hover=""
       >
         {busy
           ? "Opening Stripe…"

@@ -357,17 +357,13 @@ export const users = pgTable("users", {
   weeklyStreakBest: integer("weekly_streak_best").default(0).notNull(),
   weekKey: varchar("week_key", { length: 8 }),
   lastLoginDate: date("last_login_date"),
-  lastDailyRewardClaimed: date("last_daily_reward_claimed"),
   // The UTC day the player last STARTED a real game session, stamped by
   // /api/game-plays for signed-in players. Retained as a general activity
-  // marker; the daily login reward no longer uses it (it gates on a win).
+  // marker; it never advances the daily streak.
   lastPlayedGameDate: date("last_played_game_date"),
-  // The UTC day the player last WON a match, stamped by the authoritative
-  // settlement writers: the rating writer (src/lib/rating.js) for online wins,
-  // the PvP counter writer for modes outside Elo, and src/lib/dailyRewardWin.ts
-  // for server-settled vs-AI practice wins. The daily login reward is gated on
-  // this being today, so merely starting a match and resigning cannot unlock
-  // it. See src/lib/tokens/dailyReward.ts.
+  // Historical: the UTC day of the player's last recorded win, retained for
+  // existing data. Its writers were retired with the daily token reward, so no
+  // feature gates on it now.
   lastWonGameDate: date("last_won_game_date"),
   pvpWins: integer("pvp_wins").default(0).notNull(),
   weeklyWagered: bigint("weekly_wagered", { mode: "number" }).default(0).notNull(),

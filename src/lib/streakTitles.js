@@ -1,14 +1,15 @@
 // src/lib/streakTitles.js
 //
-// Daily login streak title mapping.
-// A user's streak title is determined by the number of consecutive days
-// they have logged in. The title is the highest milestone they have reached.
+// Daily streak title mapping.
+// A player's streak advances when they FINISH A GAME — one credit per
+// calendar day, never a page visit. The title is the highest milestone the
+// current streak has reached.
 //
 //   Days  | Title
 //   ------|-------------------
 //   1     | Daily Visitor
 //   3     | Loyal Player
-//   5     | Token Collector
+//   5     | Card Collector
 //   7     | Weekly Winner
 //   10    | Streak Starter
 //   14    | Lucky Regular
@@ -25,7 +26,7 @@
 const STREAK_TITLES = [
   { days: 1, title: "Daily Visitor" },
   { days: 3, title: "Loyal Player" },
-  { days: 5, title: "Token Collector" },
+  { days: 5, title: "Card Collector" },
   { days: 7, title: "Weekly Winner" },
   { days: 10, title: "Streak Starter" },
   { days: 14, title: "Lucky Regular" },
@@ -41,8 +42,8 @@ const STREAK_TITLES = [
 ].sort((a, b) => a.days - b.days);
 
 /**
- * Given a streak count (number of consecutive login days),
- * return the highest title the user qualifies for.
+ * Given a streak count (consecutive days with a finished game),
+ * return the highest title the player qualifies for.
  * Returns null if the streak is 0.
  */
 export function getStreakTitle(streakCount) {
@@ -82,6 +83,42 @@ export function getNextStreakMilestone(streakCount) {
  */
 export function getAllStreakTitles() {
   return STREAK_TITLES;
+}
+
+/**
+ * Everything a streak surface needs, derived from the streak count alone.
+ *
+ * This is the ONE place milestone progress is calculated, so the widget, the
+ * /rewards card and the read API can never disagree about the current title,
+ * the next milestone or how far away it is.
+ *
+ * @param {number} streakCount The current daily streak (0 before the first
+ *   completed game).
+ * @returns {{
+ *   current: number,
+ *   title: string|null,
+ *   nextMilestone: { days: number, title: string }|null,
+ *   daysRemaining: number,
+ *   progress: number,
+ *   milestones: Array<{ days: number, title: string, achieved: boolean, isNext: boolean }>,
+ * }}
+ */
+export function getStreakMilestoneState(streakCount) {
+  const current = Math.max(0, Math.floor(Number(streakCount) || 0));
+  const nextMilestone = getNextStreakMilestone(current);
+
+  return {
+    current,
+    title: getStreakTitle(current),
+    nextMilestone,
+    daysRemaining: nextMilestone ? Math.max(0, nextMilestone.days - current) : 0,
+    progress: nextMilestone ? Math.min(1, current / nextMilestone.days) : 1,
+    milestones: STREAK_TITLES.map((entry) => ({
+      ...entry,
+      achieved: current >= entry.days,
+      isNext: nextMilestone ? entry.days === nextMilestone.days : false,
+    })),
+  };
 }
 
 /**

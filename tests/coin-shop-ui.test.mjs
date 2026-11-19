@@ -336,7 +336,7 @@ test("the shop never offers gift cards or redemption", () => {
 
 test("rewards and navigation stay on the page", () => {
   for (const retained of [
-    "<DailyRewardCard />",
+    "<StreakMilestonesCard />",
     "<NavigationBar currentPath=\"/rewards\" />",
     "<Footer />",
     "<CoinShopOffers />",

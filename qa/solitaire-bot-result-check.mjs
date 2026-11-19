@@ -61,7 +61,6 @@ const STUBS = {
     export const fireConfetti = () => Promise.resolve();
     export default { fireConfetti, withReducedMotion };
   `,
-  "lib/practiceWinClient": `export const notifyDailyRewardWin = () => {};`,
   "ads/PostMatchAdSlot": `
     import React from "react";
     export default function PostMatchAdSlot() { return null; }

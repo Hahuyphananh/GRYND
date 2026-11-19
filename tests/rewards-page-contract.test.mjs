@@ -72,9 +72,10 @@ test("the balance is read from the existing coin system, not re-implemented", ()
   );
 });
 
-test("the live reward is on the page: the daily streak card", () => {
+test("the page shows streak milestones, not a claimable reward", () => {
   const code = stripComments(read(PAGE));
-  assert.match(code, /<DailyRewardCard \/>/, "the daily streak card stays");
+  assert.match(code, /<StreakMilestonesCard \/>/, "the streak milestones card stays");
+  assert.doesNotMatch(code, /DailyReward|daily reward|\/api\/rewards\/daily/i);
   assert.doesNotMatch(code, /QuestBoard|quest/i, "quests are gone from the surface");
 });
 
@@ -106,6 +107,7 @@ test("the page explains the streak rule and that coins have no cash value", () =
     /finish a game/i,
     "the streak rule (finish a game) must be stated",
   );
+  assert.match(page, /milestone/i, "the milestone progression must be stated");
   assert.match(page, /no cash value/i, "coins must be stated to have no cash value");
   assert.match(
     page,

@@ -132,7 +132,6 @@ export async function sendEmailSafely({
     progression: "progress",
     loss_streak: "progress",
     big_win: "progress",
-    daily_reward: "daily",
     weekly_summary: "summary",
     inactivity_reactivation: "promotions",
     // A review request is promotional mail like a comeback email; a player who

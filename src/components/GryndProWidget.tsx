@@ -31,6 +31,11 @@
  *     and `SiteChrome` is where that check is applied.
  *   • It does not re-ask in the same browsing session once dismissed
  *     (sessionStorage, see lib/proWidget.ts).
+ *
+ * ON A PHONE it collapses to a compact card: the eyebrow, the name, the CTA and
+ * the close control. The perk list and the supporting copy are `md:` and up only,
+ * so the floating card stays out of the way of the page and the sticky CTA it
+ * sits above.
  */
 
 import { useEffect, useState } from "react";
@@ -54,7 +59,7 @@ import {
  * the chat bubble (z-70), the cookie banner (z-60) and the sticky CTA (z-50).
  */
 const POSITION_CLASS =
-  "fixed right-3 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-40 w-[min(18rem,calc(100vw-1.5rem))] md:bottom-4 md:right-4";
+  "fixed right-3 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-40 w-[min(16.5rem,calc(100vw-1.5rem))] md:bottom-4 md:right-4 md:w-[min(18rem,calc(100vw-1.5rem))]";
 
 export default function GryndProWidget() {
   const { loaded, signedIn, active } = useMembershipStatus();
@@ -77,7 +82,7 @@ export default function GryndProWidget() {
 
   return (
     <aside className={POSITION_CLASS} aria-label="GRYND PRO" data-testid="grynd-pro-widget">
-      <div className="relative rounded-xl border border-[#f5ff3b]/40 bg-linear-to-b from-[#0a214d]/95 to-[#08142f]/95 p-4 shadow-[0_0_25px_rgba(245,255,59,0.15)] backdrop-blur-md">
+      <div className="relative rounded-xl border border-[#f5ff3b]/40 bg-linear-to-b from-[#0a214d]/95 to-[#08142f]/95 p-3 shadow-[0_0_25px_rgba(245,255,59,0.15)] backdrop-blur-md md:p-4">
         <button
           type="button"
           onClick={close}
@@ -90,8 +95,8 @@ export default function GryndProWidget() {
         <p className="pr-6 text-[11px] font-bold uppercase tracking-[0.2em] text-[#00e5ff]">
           ✦ Membership
         </p>
-        <h3 className="mt-0.5 text-lg font-black text-[#f5ff3b]">GRYND PRO</h3>
-        <ul className="mt-2 space-y-1 text-xs text-[#d8fbff]">
+        <h3 className="mt-0.5 text-base font-black text-[#f5ff3b] md:text-lg">GRYND PRO</h3>
+        <ul className="mt-2 hidden space-y-1 text-xs text-[#d8fbff] md:block">
           {PRO_PLAN_FALLBACK_PERKS.map((perk) => (
             <li key={perk} className="flex items-start gap-1.5">
               <span aria-hidden className="text-[#00ffa6]">
@@ -101,11 +106,11 @@ export default function GryndProWidget() {
             </li>
           ))}
         </ul>
-        <p className="mt-2 text-[11px] text-[#9dd8ff]/80">
+        <p className="mt-2 hidden text-[11px] text-[#9dd8ff]/80 md:block">
           Convenience only — never an advantage. Every game, rank and reward
           stays free.
         </p>
-        <div className="mt-3">
+        <div className="mt-2 md:mt-3">
           <UpgradeProButton className="w-full" linkToPage />
         </div>
         <Link

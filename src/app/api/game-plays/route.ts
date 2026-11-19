@@ -16,13 +16,11 @@
 //
 //                        For a SIGNED-IN player it also stamps
 //                        `users.last_played_game_date` with today's UTC day.
-//                        This is a general activity marker, NOT the daily
-//                        login reward gate: the reward now requires a win
-//                        (stamped by the authoritative rating writer — see
-//                        src/lib/tokens/dailyReward.ts). The stamp is
-//                        best-effort: a failure is logged and the play count
-//                        still succeeds, and a signed-out visitor is simply
-//                        not stamped.
+//                        This is a general activity marker; it does not
+//                        advance the daily streak (that is credited only by a
+//                        finished game). The stamp is best-effort: a failure
+//                        is logged and the play count still succeeds, and a
+//                        signed-out visitor is simply not stamped.
 
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../db";

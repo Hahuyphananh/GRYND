@@ -26,11 +26,14 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth, useUser } from "@clerk/nextjs";
 import NavigationBar from "../components/navigation-bar";
-import DailyRewardWidget from "../components/DailyRewardWidget";
+import StreakWidget from "../components/StreakWidget";
 import Footer from "../components/Footer";
 import ReportEntryButton from "../components/reports/ReportEntryButton";
 import HeroCard3D from "../components/home/HeroCard3D";
+import HeroBackdrop from "../components/home/HeroBackdrop";
+import heroCopy from "../components/home/HeroCopy.module.css";
 import { Button, StatTile, Surface } from "../components/ui";
+import SpotlightCard from "../components/ui/SpotlightCard";
 import { formatDuration } from "../lib/solitaire-duel/soloStats.js";
 import { clearSessionArtifacts } from "../lib/security/sessionCleanup";
 
@@ -352,22 +355,28 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null, socia
     <div className="relative min-h-screen bg-[color:var(--bg-page)] pb-24 text-[color:var(--text-primary)] md:pb-0">
       <NavigationBar currentPath="/" />
 
-      <DailyRewardWidget />
+      <StreakWidget />
 
       <main className="mx-auto max-w-6xl px-4 pt-24 sm:px-6 md:pt-28">
         {/* ── Hero ──────────────────────────────────────────────────────── */}
 
-        <section className="border-b border-[color:var(--border-hairline)] pb-8 pt-4 sm:pb-10">
-          <div className="grid items-center gap-8 lg:grid-cols-[minmax(0,1fr)_18rem] xl:grid-cols-[minmax(0,1fr)_21rem]">
+        <section className="relative isolate overflow-hidden border-b border-[color:var(--border-hairline)] pb-8 pt-4 sm:pb-10">
+          <HeroBackdrop />
+          <div className="relative z-10 grid items-center gap-8 lg:grid-cols-[minmax(0,1fr)_18rem] xl:grid-cols-[minmax(0,1fr)_21rem]">
             <div className="min-w-0">
               <p className="text-[11px] font-black uppercase tracking-[0.4em] text-[color:var(--text-muted)]">
                 GRYND · competitive Solitaire
               </p>
-              <h1 className="mt-3 max-w-3xl text-4xl font-black leading-[0.95] tracking-tight sm:text-5xl lg:text-6xl">
+              <h1
+                className={`mt-3 max-w-3xl text-4xl font-black leading-[0.95] tracking-tight sm:text-5xl lg:text-6xl ${heroCopy.reveal}`}
+              >
                 The competitive home{" "}
                 <span className="text-[color:var(--gr-brand-cyan)]">of Solitaire</span>
               </h1>
-              <p className="mt-4 max-w-2xl text-sm leading-relaxed text-[color:var(--text-secondary)] sm:text-base">
+              <p
+                className={`mt-4 max-w-2xl text-sm leading-relaxed text-[color:var(--text-secondary)] sm:text-base ${heroCopy.revealSoft}`}
+                style={{ animationDelay: "90ms" }}
+              >
                 Classic Klondike, played against a real person on a free ranked
                 ladder. Every ranked result is validated server-side, and the
                 only thing at stake is your rating.
@@ -662,14 +671,14 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null, socia
           </h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
             {features.map((feature) => (
-              <Surface key={feature.title} tone="panel">
+              <SpotlightCard key={feature.title}>
                 <h3 className="text-sm font-bold text-[color:var(--text-primary)]">
                   {feature.title}
                 </h3>
                 <p className="mt-1.5 text-sm leading-relaxed text-[color:var(--text-secondary)]">
                   {feature.body}
                 </p>
-              </Surface>
+              </SpotlightCard>
             ))}
           </div>
           <p className="mt-4 text-sm text-[color:var(--text-muted)]">
