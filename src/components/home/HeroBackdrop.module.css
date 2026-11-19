@@ -9,7 +9,8 @@
 }
 
 .glowA,
-.glowB {
+.glowB,
+.glowC {
   position: absolute;
   border-radius: 9999px;
   filter: blur(48px);
@@ -36,11 +37,23 @@
   animation-delay: -9s;
 }
 
+/* A third, weaker glow low on the page so the tint carries past the hero
+   instead of stopping where the first screen ends. */
+.glowC {
+  left: 24%;
+  bottom: -14rem;
+  width: 44rem;
+  height: 44rem;
+  opacity: 0.07;
+  background: radial-gradient(circle at 50% 50%, var(--accent), transparent 70%);
+  animation-delay: -18s;
+}
+
 /* Fine film grain. feTurbulence carries no colour, so the grain reads over
    whichever theme's gradient is underneath. */
 .grain {
   position: absolute;
-  inset: -20%;
+  inset: 0;
   opacity: 0.055;
   mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
@@ -58,7 +71,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .glowA,
-  .glowB {
+  .glowB,
+  .glowC {
     animation: none;
   }
 }

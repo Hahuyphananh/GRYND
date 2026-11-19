@@ -3,9 +3,10 @@
  *
  * Pins the small, self-contained home-page polish:
  *
- *   1. The hero has a decorative grainy brand gradient (tokens, no hard-coded
+ *   1. The page has a decorative grainy brand gradient (tokens, no hard-coded
  *      colours) that cannot intercept clicks and stops drifting under reduced
- *      motion.
+ *      motion. It spans the whole page, so it never paints a bounded rectangle
+ *      behind the hero.
  *   2. The hero headline/subhead are in the DOM and only animate with CSS.
  *   3. The three "fair by construction" cards use the cursor spotlight, which
  *      is mouse-only and painted from CSS variables.
@@ -30,7 +31,7 @@ const COPY_CSS = "src/components/home/HeroCopy.module.css";
 const SPOTLIGHT = "src/components/ui/SpotlightCard.tsx";
 const SPOTLIGHT_CSS = "src/components/ui/SpotlightCard.module.css";
 
-test("the hero backdrop is decorative, token-driven and reduced-motion safe", () => {
+test("the page backdrop is decorative, token-driven and reduced-motion safe", () => {
   const component = read(BACKDROP);
   const css = read(BACKDROP_CSS);
   const home = read(HOME);
@@ -45,10 +46,13 @@ test("the hero backdrop is decorative, token-driven and reduced-motion safe", ()
   assert.doesNotMatch(css, /#[0-9a-f]{3,8}\b/i);
   assert.doesNotMatch(css, /rgba?\(/i);
 
-  // The host isolates the layer and keeps the copy above it.
+  // The page root isolates the layer, so it paints above the page background
+  // but behind the content — page-wide, not clipped to a section rectangle.
   assert.match(home, /<HeroBackdrop \/>/);
-  assert.match(home, /relative isolate overflow-hidden/);
+  assert.match(home, /relative isolate min-h-screen/);
   assert.match(home, /relative z-10 grid/);
+  assert.doesNotMatch(home, /<section className="relative isolate overflow-hidden/);
+  assert.doesNotMatch(home, /border-b border-\[color:var\(--border-hairline\)\]/);
 });
 
 test("the hero copy reveals with CSS and keeps its text in the DOM", () => {

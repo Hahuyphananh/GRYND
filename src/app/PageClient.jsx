@@ -352,7 +352,11 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null, socia
   ];
 
   return (
-    <div className="relative min-h-screen bg-[color:var(--bg-page)] pb-24 text-[color:var(--text-primary)] md:pb-0">
+    <div className="relative isolate min-h-screen bg-[color:var(--bg-page)] pb-24 text-[color:var(--text-primary)] md:pb-0">
+      {/* The brand backdrop is page-wide, not boxed into the hero: the glow
+          fades out behind the content instead of ending at a section edge. */}
+      <HeroBackdrop />
+
       <NavigationBar currentPath="/" />
 
       <StreakWidget />
@@ -360,8 +364,7 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null, socia
       <main className="mx-auto max-w-6xl px-4 pt-24 sm:px-6 md:pt-28">
         {/* ── Hero ──────────────────────────────────────────────────────── */}
 
-        <section className="relative isolate overflow-hidden border-b border-[color:var(--border-hairline)] pb-8 pt-4 sm:pb-10">
-          <HeroBackdrop />
+        <section className="relative pb-8 pt-4 sm:pb-10">
           <div className="relative z-10 grid items-center gap-8 lg:grid-cols-[minmax(0,1fr)_18rem] xl:grid-cols-[minmax(0,1fr)_21rem]">
             <div className="min-w-0">
               <p className="text-[11px] font-black uppercase tracking-[0.4em] text-[color:var(--text-muted)]">
