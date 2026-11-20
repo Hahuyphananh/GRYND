@@ -221,3 +221,18 @@ test("dependabot keeps the Gradle project current", () => {
 test("a downloaded service-account key cannot be committed", () => {
   assert.match(read(".gitignore"), /\*\*\/serviceAccount\*\.json/);
 });
+
+test("the release job compiles with the JDK level the project requires", () => {
+  // Capacitor 8 generates capacitor.build.gradle with VERSION_21. A runner on
+  // JDK 17 fails with "invalid source release: 21" several minutes into the
+  // job, so the two numbers are pinned together here instead.
+  const projectJava = read("android/app/capacitor.build.gradle").match(/VERSION_(\d+)/)?.[1];
+  assert.ok(projectJava, "capacitor.build.gradle must declare a Java source level");
+  const ciJava = RELEASE_WORKFLOW.match(/java-version: "(\d+)"/)?.[1];
+  assert.equal(
+    ciJava,
+    projectJava,
+    `the release workflow sets up JDK ${ciJava} but the project compiles at ${projectJava}`
+  );
+  assert.match(RELEASE_WORKFLOW, /distribution: temurin/);
+});

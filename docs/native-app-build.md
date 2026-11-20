@@ -21,7 +21,7 @@ gates that must hold before you upload.
 
 | Requirement                | Notes                                                                                                                   |
 | -------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| **JDK 17+**                | Gradle will not start without it. Android Studio's bundled JBR works; so does any standalone JDK. Set `JAVA_HOME`.      |
+| **JDK 21+**                | Gradle will not start without it. Android Studio's bundled JBR works; so does any standalone JDK. Set `JAVA_HOME`.      |
 | **Android SDK**            | Installed via Android Studio. `android/local.properties` must point at it (`sdk.dir=…`). Git-ignored, machine-specific. |
 | **Node + deps**            | `npm install` — the `@capacitor/*` projects are resolved from `node_modules`.                                           |
 | `android/local.properties` | If missing, Gradle fails with "SDK location not found". Open the project once in Android Studio, or create it by hand.  |
@@ -201,7 +201,8 @@ Output: `android/app/build/outputs/bundle/release/app-release.aab`
 ```bash
 # Package identity, the remote URL, and the native-shell marker
 unzip -p app-release.aab base/assets/capacitor.config.json
-# Expect: https://www.grynd.dedyn.io/  AND  "appendUserAgent":"GRYNDApp/1.0"
+# Expect: https://www.grynd.dedyn.io/  AND  "appendUserAgent": "GRYNDApp/1.0"
+# (Capacitor pretty-prints this file; match with '[[:space:]]*' around the colon)
 
 # Signature present (signed builds only; expect "jar verified")
 jarsigner -verify -verbose -certs app-release.aab | grep -i "jar verified"
