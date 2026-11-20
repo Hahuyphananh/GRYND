@@ -40,7 +40,14 @@ const GROUND_TOKENS = { PAGE: "--gr-surface-page", CARD: "--gr-surface-raised", 
 const MARKER = "GRYND GAME VISUAL TOKENS";
 const start = GLOBALS.indexOf(MARKER);
 assert.ok(start > 0, "globals.css must still carry the GRYND GAME VISUAL TOKENS block");
-const BLOCK = GLOBALS.slice(GLOBALS.lastIndexOf("/*", start));
+// Stop at the next section header: later, unrelated CSS (for example the
+// Solitaire card keyframes) must not be treated as part of this additive block.
+const blockStart = GLOBALS.lastIndexOf("/*", start);
+const nextSection = GLOBALS.indexOf("/* ═", start + MARKER.length);
+const BLOCK = GLOBALS.slice(
+  blockStart,
+  nextSection > blockStart ? nextSection : undefined,
+);
 
 /** The dark-first declarations, i.e. the `:root { … }` block. */
 const ROOT = BLOCK.match(/:root \{([\s\S]*?)\n\}/)?.[1] ?? "";
