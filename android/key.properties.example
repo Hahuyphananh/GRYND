@@ -1,0 +1,33 @@
+# Release signing for Google Play uploads.
+#
+# Copy this file to android/key.properties and fill in the real values:
+#
+#   cp android/key.properties.example android/key.properties
+#
+# android/key.properties is git-ignored (and so are *.keystore / *.jks), so the
+# secret never enters the repository. Never commit the filled-in copy.
+#
+# The keystore does not have to live inside the project. Keeping it outside the
+# repo (e.g. in a password-manager-backed folder) means a `git clean -xdf` or a
+# fresh clone cannot destroy it, and the file below just points at it.
+#
+# Create the keystore once (it cannot be recreated — back it up):
+#
+#   keytool -genkeypair -v \
+#     -keystore "$HOME/keys/grynd-upload.keystore" \
+#     -alias grynd-upload \
+#     -keyalg RSA -keysize 4096 -validity 10000
+#
+# On Windows, $HOME is C:/Users/<you> and the keytool that matters is the one
+# bundled with Android Studio (jbr/bin), or any JDK 17+.
+#
+# With Play App Signing enabled (the default for new apps) this is only the
+# UPLOAD key; Google holds the app signing key and can reset a lost upload key.
+
+# Absolute path, or relative to android/app/. ALWAYS use forward slashes:
+# java.util.Properties treats `\` as an escape, so C:\Users\me becomes C:Usersme.
+storeFile=C:/Users/you/keys/grynd-upload.keystore
+
+storePassword=change-me
+keyAlias=grynd-upload
+keyPassword=change-me

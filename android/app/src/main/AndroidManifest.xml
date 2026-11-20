@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- allowBackup=false: this app's state lives in the WebView (session
+         cookie, local storage). Android auto-backup would carry a stale session
+         to a restored device, where it can be neither refreshed nor revoked
+         from here — and the game data itself is server-side and comes back by
+         signing in. -->
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"

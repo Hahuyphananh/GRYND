@@ -31,11 +31,28 @@ import {
   isCoinPurchasesEnabled,
   resolveCoinOffers,
 } from "../../../../lib/coinPurchases";
+import { isNativeShellRequest } from "../../../../lib/native/shell";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
+  // NATIVE APP: Play requires Play Billing for digital goods consumed in-app,
+  // so the app must not be offered coin packs at all. Answering exactly like a
+  // disabled deployment means components/CoinShopOffers.tsx renders nothing —
+  // the cards and buttons do not exist, rather than being hidden or shown and
+  // then refused. Refused before the flag check so no catalog read happens for
+  // an app request.
+  if (isNativeShellRequest(request)) {
+    return NextResponse.json({
+      success: true,
+      enabled: false,
+      checkoutReady: false,
+      currency: COIN_PACKAGE_CURRENCY,
+      offers: [],
+    });
+  }
+
   // Feature flag FIRST: a disabled deployment does no database work and never
   // exposes an offer the UI could turn into an action.
   if (!isCoinPurchasesEnabled()) {

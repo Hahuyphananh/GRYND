@@ -61,8 +61,18 @@
 import AdCodeMarker from "./AdCodeMarker";
 import { adsEnabled, adsensePublisherId, normalizePublisherId } from "../lib/ads";
 import { isAdFreeViewer } from "../lib/adEntitlement";
+import { isNativeShellDocument } from "../lib/native/shellServer";
 
 export default async function AdSenseScript() {
+  // NATIVE APP — FIRST, before any membership work. AdSense is licensed for
+  // web pages; serving its tag inside the Android/iOS WebView is AdMob's
+  // territory and risks a policy strike on the account that monetises the
+  // website. The shell identifies itself in the User-Agent
+  // (capacitor.config.ts), so this is decided on the server like every other
+  // gate here — the app receives no tag, makes no ad request, and offers
+  // Google's CMP nothing to load.
+  if (await isNativeShellDocument()) return null;
+
   if (!adsEnabled()) return null;
 
   // Only ever emit a real, well-formed publisher id.

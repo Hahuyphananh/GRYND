@@ -27,6 +27,10 @@ import {
   type ProBillingInterval,
 } from "./proBilling";
 import type { ProPlanDisplay } from "./membershipDisplay";
+import {
+  NATIVE_PURCHASE_UNAVAILABLE_MESSAGE,
+  isNativeShellClient,
+} from "./native/shell";
 
 export type MembershipStatusResponse = {
   loaded: boolean;
@@ -260,6 +264,16 @@ export async function startProCheckout(
   planKey: string,
   interval: ProBillingInterval = "monthly",
 ): Promise<ProActionResult> {
+  // NATIVE APP: no in-app Stripe checkout (Play requires Play Billing for
+  // digital goods). Checked here so the offer never even reaches the network —
+  // and checked again in the server route, which is the boundary that actually
+  // counts. Deliberately inside this async action rather than in a component's
+  // render: `isNativeShellClient()` is false during SSR, so a render-time check
+  // would be a hydration mismatch.
+  if (isNativeShellClient()) {
+    return { ok: false, error: NATIVE_PURCHASE_UNAVAILABLE_MESSAGE };
+  }
+
   try {
     const res = await fetch("/api/stripe/subscribe", {
       method: "POST",

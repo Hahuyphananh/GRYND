@@ -3,6 +3,15 @@ import type { CapacitorConfig } from '@capacitor/cli';
 const config: CapacitorConfig = {
   appId: 'com.grynd.app',
   appName: 'GRYND',
+  // Marks every request this WebView makes as coming from the native app, so
+  // the SERVER can keep AdSense and Stripe checkout out of the build. AdSense
+  // is licensed for web pages, and Play requires Play Billing for digital goods
+  // sold in-app — both have to be decided server-side (see
+  // src/lib/native/shell.ts), and the server needs this token to decide.
+  //
+  // Requires `npx cap sync android` to reach the app (the value is written into
+  // android/app/src/main/assets/capacitor.config.json).
+  appendUserAgent: 'GRYNDApp/1.0',
   server: {
     // www, not the apex: the apex answers every path with a 308 to www, and a
     // WebView that follows it has already changed origin before the app even

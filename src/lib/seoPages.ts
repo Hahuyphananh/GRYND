@@ -285,10 +285,8 @@ export const PUBLIC_SEO_PATHS: string[] = PUBLIC_SEO_PAGES.map((page) => page.pa
 export const EXCLUDED_FROM_SITEMAP: Record<string, string> = {
   "/casino":
     "308 alias of /games — the canonical hub URL is /games, and a sitemap must list canonical URLs only",
-  "/play/solo":
-    "308 alias of /solitaire — the standalone solo surface owns this intent",
-  "/play/daily":
-    "308 alias of /daily — the daily challenge page owns this intent",
+  "/play/solo": "308 alias of /solitaire — the standalone solo surface owns this intent",
+  "/play/daily": "308 alias of /daily — the daily challenge page owns this intent",
   "/casino/solitaire-duel/play-ai":
     "308 alias of /play/ai — the public practice surface owns this intent",
   "/game-unavailable":
@@ -296,20 +294,17 @@ export const EXCLUDED_FROM_SITEMAP: Record<string, string> = {
   // Utility and legal pages stay public and indexable (and footer-linked) for
   // trust, but they are not pages anybody should find by searching, so they do
   // not belong in the sitemap.
-  "/rewards":
-    "public rewards explainer, linked from navigation, not a search landing page",
-  "/contact":
-    "utility page — a support channel rather than a search surface",
-  "/terms":
-    "legal terms, footer-linked and indexed for trust, not a ranking target",
-  "/privacy-policy":
-    "legal disclosure, footer-linked and indexed for trust, not a ranking target",
+  "/rewards": "public rewards explainer, linked from navigation, not a search landing page",
+  "/contact": "utility page — a support channel rather than a search surface",
+  "/terms": "legal terms, footer-linked and indexed for trust, not a ranking target",
+  "/privacy-policy": "legal disclosure, footer-linked and indexed for trust, not a ranking target",
   "/security-policy":
     "security disclosure, footer-linked and indexed for trust, not a ranking target",
-  "/fair-play":
-    "fair-play policy, linked from game and guide pages, not a ranking target",
+  "/fair-play": "fair-play policy, linked from game and guide pages, not a ranking target",
   "/accessibility":
     "accessibility statement, footer-linked and indexed for trust, not a ranking target",
+  "/account-deletion":
+    "the public deletion URL Google Play policy requires — a policy destination a reviewer or a signed-out user must reach, not a search landing page",
 };
 
 /**
