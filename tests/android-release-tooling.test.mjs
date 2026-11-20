@@ -25,6 +25,7 @@ import { createVerify, generateKeyPairSync } from "node:crypto";
 import {
   GRADLE_FILE,
   evaluateBump,
+  evaluatePullRequest,
   parseAndroidVersion,
 } from "../scripts/check-android-version.mjs";
 import {
@@ -67,6 +68,26 @@ test("a re-used or lowered versionCode is refused, a higher one passes", () => {
 test("the first Android release is allowed — there is no base to beat", () => {
   const verdict = evaluateBump(null, { versionCode: 1, versionName: "1.0" });
   assert.equal(verdict.ok, true);
+});
+
+test("a PR may keep the first versionCode, but not any later one", () => {
+  // Before the first tag the base branch also says 1, because nothing has been
+  // uploaded. Comparing against it would block the release that creates the tag.
+  const base = { versionCode: 1, versionName: "1.0" };
+
+  const first = evaluatePullRequest({ hasReleasedTag: false, base, head: base });
+  assert.equal(first.ok, true);
+  assert.match(first.reason, /no android-v\* tag yet/);
+
+  const reused = evaluatePullRequest({ hasReleasedTag: true, base, head: base });
+  assert.equal(reused.ok, false, "once a release exists, the same code must fail");
+
+  const bumped = evaluatePullRequest({
+    hasReleasedTag: true,
+    base,
+    head: { versionCode: 2, versionName: "1.1" },
+  });
+  assert.equal(bumped.ok, true);
 });
 
 test("the parse is a single literal line, not a Gradle evaluation", () => {

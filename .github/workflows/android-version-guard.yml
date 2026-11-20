@@ -16,6 +16,12 @@
 # not failed — the check exists to catch "edited Android, forgot the counter",
 # not to demand a bump on every commit.
 #
+# FIRST RELEASE
+# A PR is compared against its base branch, which also carries versionCode 1
+# until something is released — so before the first `android-v*` tag exists the
+# comparison is skipped (nothing has been uploaded, no code is spent). Without
+# that exemption the release that creates the tag could not merge.
+#
 # `versionName` is deliberately NOT checked: it is cosmetic, and "1.4.0" vs
 # "1.4.0-rc2" vs "banana" are all legal values.
 #

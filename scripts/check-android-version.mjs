@@ -13,6 +13,13 @@
  *   * pull requests touching android/ run this against the PR's base branch;
  *   * the release workflow runs it against the previous `android-v*` tag.
  *
+ * A pull request is compared against its base branch, which carries whatever
+ * code was last committed there — including `1` before the first release. That
+ * is why `evaluatePullRequest` also looks for an `android-v*` tag: until one
+ * exists nothing has ever been uploaded, no code has been spent, and demanding
+ * a bump would make the first Android release impossible to merge. After the
+ * first tag the rule applies normally.
+ *
  * `versionName` is NOT checked. It is cosmetic ("1.4.0", "1.4.0-rc2" and
  * "banana" are all legal), so requiring it to change would be noise.
  *
@@ -76,6 +83,21 @@ export function evaluateBump(base, head) {
   };
 }
 
+/**
+ * The PR-side verdict: a base-branch comparison, unless no Android release has
+ * ever been tagged. `hasReleasedTag` is passed in rather than looked up so the
+ * boundary stays testable without a git fixture.
+ */
+export function evaluatePullRequest({ hasReleasedTag, base, head }) {
+  if (!hasReleasedTag) {
+    return {
+      ok: true,
+      reason: "no android-v* tag yet — no versionCode has been spent, so this PR invents nothing",
+    };
+  }
+  return evaluateBump(base, head);
+}
+
 /** Highest `android-v*` tag, or null when the repository has none. */
 export function latestAndroidTag(prefix = "android-v") {
   try {
@@ -117,9 +139,11 @@ function main(argv) {
 
   let base = null;
   let label = "";
+  let hasReleasedTag = false;
   if (baseRef) {
     base = versionAtRef(baseRef, file);
     label = baseRef;
+    hasReleasedTag = latestAndroidTag("android-v") !== null;
   } else if (sinceTag) {
     const tag = latestAndroidTag(sinceTag);
     if (tag) {
@@ -128,7 +152,9 @@ function main(argv) {
     }
   }
 
-  const verdict = evaluateBump(base, head);
+  const verdict = baseRef
+    ? evaluatePullRequest({ hasReleasedTag, base, head })
+    : evaluateBump(base, head);
 
   if (verdict.ok) {
     const against = base ? ` against ${label} (${base.versionCode})` : "";
