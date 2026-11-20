@@ -89,7 +89,10 @@ jobs:
       ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-      GRYND_KEYSTORE_PATH: ${{ runner.temp }}/grynd-upload.jks
+      # GRYND_KEYSTORE_PATH is set on the two steps that use it: `runner` is not
+      # available in a job-level `env`, and using it there makes the dispatch API
+      # reject the entire workflow at parse time ("Unrecognized named-value:
+      # 'runner'"), so no run ever starts.
 
     steps:
       # Full history: the version guard below compares against the previous
@@ -176,6 +179,8 @@ jobs:
 
       - name: Install the upload key and key.properties
         shell: bash
+        env:
+          GRYND_KEYSTORE_PATH: ${{ runner.temp }}/grynd-upload.jks
         run: |
           set -euo pipefail
           missing=""
@@ -301,6 +306,8 @@ jobs:
       - name: Remove the signing material
         if: always()
         shell: bash
+        env:
+          GRYND_KEYSTORE_PATH: ${{ runner.temp }}/grynd-upload.jks
         run: |
           set -uo pipefail
           rm -f android/key.properties "$GRYND_KEYSTORE_PATH"

@@ -243,6 +243,17 @@ test("a downloaded service-account key cannot be committed", () => {
   assert.match(read(".gitignore"), /\*\*\/serviceAccount\*\.json/);
 });
 
+test("no runner-context expression sits in a job-level env block", () => {
+  // `runner`, `steps` and `needs` outputs are only valid on a step. Using one in
+  // a job-level env does not fail softly: the dispatch API refuses to parse the
+  // workflow (422 "Unrecognized named-value") and no run is ever created, which
+  // looks exactly like "the workflow never fired".
+  const jobEnv = RELEASE_WORKFLOW.split(/^ {4}env:$/m)[1]?.split(/^ {4}steps:$/m)[0] ?? "";
+  assert.ok(jobEnv.length > 0, "expected a job-level env block");
+  assert.doesNotMatch(jobEnv, /runner\./, "runner.* belongs on the step's own env");
+  assert.match(RELEASE_WORKFLOW, /GRYND_KEYSTORE_PATH: \$\{\{ runner\.temp \}\}/);
+});
+
 test("the release job compiles with the JDK level the project requires", () => {
   // Capacitor 8 generates capacitor.build.gradle with VERSION_21. A runner on
   // JDK 17 fails with "invalid source release: 21" several minutes into the
