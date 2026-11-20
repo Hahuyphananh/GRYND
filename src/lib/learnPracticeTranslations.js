@@ -47,6 +47,12 @@ export const LEARN_PRACTICE_TRANSLATIONS = {
     hintsUsed: "Hints: {count}",
     another: "Try another exercise",
     backToSetup: "Return to practice",
+    fromReviewKicker: "From your Game Review",
+    fromReviewTitle: "You are practising a situation from a review.",
+    fromReviewBody:
+      "This drill uses a prepared, validated board that teaches the same idea. Your reviewed game, its result and its analysis are untouched.",
+    backToReview: "Back to the review",
+    fromReviewProgress: "From Game Review: {attempts} attempted · {completions} completed",
     progressTitle: "Practice progress",
     progressEmpty: "No practice attempts on this device yet.",
     attempted: "Attempts",
@@ -370,6 +376,13 @@ export const LEARN_PRACTICE_TRANSLATIONS = {
     hintsUsed: "Indices : {count}",
     another: "Essayer un autre exercice",
     backToSetup: "Retour à l'entraînement",
+    fromReviewKicker: "Depuis ta revue de partie",
+    fromReviewTitle: "Tu travailles une situation vue dans une revue.",
+    fromReviewBody:
+      "Cet exercice utilise un plateau préparé et validé qui enseigne la même idée. Ta partie revue, son résultat et son analyse restent inchangés.",
+    backToReview: "Revenir à la revue",
+    fromReviewProgress:
+      "Depuis la revue : {attempts} tentatives · {completions} réussies",
     progressTitle: "Progression de l'entraînement",
     progressEmpty: "Aucun essai enregistré sur cet appareil pour l'instant.",
     attempted: "Essais",
@@ -748,6 +761,13 @@ export const LEARN_PRACTICE_TRANSLATIONS = {
     hintsUsed: "Pistas: {count}",
     another: "Probar otro ejercicio",
     backToSetup: "Volver a la práctica",
+    fromReviewKicker: "Desde tu revisión de partida",
+    fromReviewTitle: "Estás practicando una situación vista en una revisión.",
+    fromReviewBody:
+      "Este ejercicio usa un tablero preparado y validado que enseña la misma idea. Tu partida revisada, su resultado y su análisis no cambian.",
+    backToReview: "Volver a la revisión",
+    fromReviewProgress:
+      "Desde la revisión: {attempts} intentos · {completions} completados",
     progressTitle: "Progreso de la práctica",
     progressEmpty: "Aún no hay intentos en este dispositivo.",
     attempted: "Intentos",

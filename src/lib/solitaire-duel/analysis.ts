@@ -39,12 +39,11 @@
 // foundation cascade or a newly usable empty column) are suppressed on a move
 // that turns over a hidden card, because those opportunities depend on which
 // card was behind it — which nobody knew when choosing. That suppression is why
-// a brilliant rating can never be earned with hindsight.
+// a strong label can never be earned with hindsight.
 //
 // Negative ratings follow the same rule strictly: a move is only called an
-// inaccuracy/mistake/blunder when a BETTER LEGAL MOVE WAS VISIBLE at that
-// placement. If the engine cannot establish that, the move is `normal` or
-// `good`.
+// inaccuracy/mistake when a BETTER LEGAL MOVE WAS VISIBLE at that placement.
+// If the engine cannot establish that, the move is `normal` or `good`.
 
 import { legalMoves } from "./ai";
 import { KING, SUITS } from "./constants";
@@ -59,15 +58,21 @@ import {
   tableauTop,
 } from "./rules";
 import type { Card, SolitaireDeal, SolitaireMove, SolitaireState } from "./types";
+import { buildMoveRecommendation, type MoveRecommendation } from "./alternatives";
 
 /** Bump when scoring/rating thresholds change, so cached results can be redone. */
-export const ANALYSIS_VERSION = 1;
+export const ANALYSIS_VERSION = 3;
 
 // ──────────────────────────────────────────────────────────────────────────
 // Public vocabulary
 // ──────────────────────────────────────────────────────────────────────────
 
-/** Chess.com-style classification. `normal` is the default for routine play. */
+/**
+ * Classification vocabulary. `normal` is routine. New analyses deliberately
+ * never emit `brilliant` or `blunder`: the visible-board heuristic cannot
+ * support those stronger claims. The two legacy keys remain in the shared type
+ * so old cached payloads and unrelated readers stay type-compatible.
+ */
 export type MoveRating =
   "normal" | "good" | "great" | "brilliant" | "inaccuracy" | "mistake" | "blunder";
 
@@ -111,6 +116,18 @@ export type AnalysisReasonCode =
   | "no-material-gain"
   | "deep-search";
 
+/** The strongest other legal move, when there was a real alternative. */
+export type MoveAlternative = {
+  move: SolitaireMove;
+  /**
+   * How the engine's visible-position comparison ranked it against the move
+   * that was played. This is deliberately a relation, not a score: the review
+   * never presents the internal heuristic as a point value or an optimality
+   * proof.
+   */
+  relation: "higher-ranked" | "equal-ranked" | "lower-ranked";
+};
+
 /** One accepted move's analysis. Small, flat and JSON-safe. */
 export type MoveAnalysis = {
   /** 0-based index in the move log (the store's `ply` for a seat). */
@@ -127,9 +144,22 @@ export type MoveAnalysis = {
   delta: number;
   /** How much value the best VISIBLE alternative would have added instead. */
   regret: number;
-  /** True only for ratings worth a coach's line (great/brilliant/mistake/blunder). */
+  /** True only for the strongest supported labels (great/mistake). */
   commentaryEligible: boolean;
   reasonCodes: AnalysisReasonCode[];
+  /**
+   * A legal alternative from the same visible board. Only attached to
+   * non-routine labels; routine moves carry no advice. The move object is
+   * visible-card data only — the engine never stores a hidden identity here.
+   */
+  bestAlternative?: MoveAlternative | null;
+  /**
+   * A specific, legal, better-ranked move from the SAME pre-move board. Only
+   * attached to genuine inaccuracies and mistakes, and only when the evidence
+   * is material; routine, good and great moves carry none. `null`/absent means
+   * the engine could not confidently distinguish an alternative.
+   */
+  recommendation?: MoveRecommendation | null;
 };
 
 /** A non-routine move, for a "key moments" strip. */
@@ -143,7 +173,10 @@ export type AnalysisMoment = {
 export type GameAnalysisSummary = {
   movesAnalyzed: number;
   ratings: Record<MoveRating, number>;
-  /** 0–100, one decimal, derived from average regret; `null` for an empty log. */
+  /**
+   * Deliberately always null. A percentage cannot be derived from the visible
+   * heuristic without inventing certainty, so the review does not show one.
+   */
   accuracy: number | null;
   totalRegret: number;
   averageRegret: number;
@@ -155,10 +188,12 @@ export type GameAnalysisSummary = {
 
 export type GameAnalysis = {
   version: number;
-  /** Every submitted move was legal and replayed exactly. */
+  /** Every submitted move in the analysed prefix was legal and replayed exactly. */
   reconstructable: boolean;
-  /** The replayed board reached all 52 cards on the foundations. */
+  /** The replayed prefix reached all 52 cards on the foundations. */
   complete: boolean;
+  /** True when a processing cap stopped the analysis before the whole log. */
+  partial: boolean;
   /** Index of the first illegal/mismatched log entry, or null. */
   rejectedAt: number | null;
   perMove: MoveAnalysis[];
@@ -171,6 +206,8 @@ export type AnalysisOptions = {
   deepSearch?: boolean;
   /** Total nodes the deeper comparison may expand for the WHOLE game. */
   deepNodeBudget?: number;
+  /** Hard cap on analysed plies; the remainder is reported as partial. */
+  maxMoves?: number;
   /** Children kept per node in the deeper comparison. */
   deepBeamWidth?: number;
   /** Plies beyond the played move the deeper comparison may look. */
@@ -201,12 +238,17 @@ const BURIED_VALUE = 18;
 const GOOD_DELTA = 150;
 const GREAT_DELTA = 400;
 const GREAT_GAP = 250;
-const DEEP_GREAT_GAP = 300;
 
 /** Negative thresholds. A move must beat one of these to be criticised. */
 const INACCURACY_REGRET = 250;
 const MISTAKE_REGRET = 600;
-const BLUNDER_REGRET = 1_100;
+
+/**
+ * A defensive upper bound on work for an abnormally long log. A normal
+ * Klondike game is a few hundred plies; past this the engine returns the safely
+ * analysed prefix with `partial: true` instead of blocking the review.
+ */
+const MAX_ANALYSIS_MOVES = 500;
 
 /** Deeper-comparison defaults, deliberately tiny. */
 const DEEP_DEFAULT_NODE_BUDGET = 4_000;
@@ -565,19 +607,20 @@ function classifyMove(input: ClassificationInput): Classification {
 
   // ── Provable regret ────────────────────────────────────────────────────
   // Only reachable when a legal, visible alternative scored strictly better.
-  // A no-op shuffle and a foundation pull are capped at `mistake`: both can be
-  // the least-bad option in a constrained board, so they never earn a blunder.
+  // A no-op shuffle and a foundation pull can be `mistake`: both can be the
+  // least-bad option in a constrained board, so the engine never escalates
+  // them to a stronger label.
   const cappedAtMistake =
     tags.includes("pointless-shuffle") || tags.includes("pulled-from-foundation");
   let severity = 0;
-  if (regret >= BLUNDER_REGRET) severity = 3;
-  else if (regret >= MISTAKE_REGRET) severity = 2;
+  // A generic visible-score shortfall is only an inaccuracy. "Mistake" is
+  // reserved for a visibly harmful action with a clearly better visible move;
+  // there is no evidence-based path to the stronger "blunder" label.
+  if (cappedAtMistake && regret >= MISTAKE_REGRET) severity = 2;
   else if (regret >= INACCURACY_REGRET) severity = 1;
-  if (cappedAtMistake) severity = Math.min(severity, 2);
 
   if (severity > 0) {
-    const rating: MoveRating =
-      severity === 3 ? "blunder" : severity === 2 ? "mistake" : "inaccuracy";
+    const rating: MoveRating = severity === 2 ? "mistake" : "inaccuracy";
     return {
       rating,
       reasonCodes: [
@@ -603,17 +646,20 @@ function classifyMove(input: ClassificationInput): Classification {
       tags.includes("unlocked-sequence") &&
       delta >= 2 * GREAT_DELTA
     ) {
+      // This is a verified structural unlock, but it is still one legal-move
+      // comparison, not a proof of brilliance. Report the supported label.
       return {
-        rating: "brilliant",
+        rating: "great",
         reasonCodes: ["best-available", "structural-unlock", ...deepReason],
       };
     }
 
+    // Great is reserved for a structural unlock or a clearly-best reveal.
+    // A foundation move that merely outranks a weaker alternative is useful
+    // progress, but not enough evidence to call it great.
     if (
-      delta >= GREAT_DELTA &&
-      (structural ||
-        gap >= GREAT_GAP ||
-        (usedDeep && deepPlayedIsBest && deepGap >= DEEP_GREAT_GAP))
+      (structural && delta >= GREAT_DELTA) ||
+      (tags.includes("revealed-hidden") && gap >= 300 && delta >= GOOD_DELTA)
     ) {
       return {
         rating: "great",
@@ -622,15 +668,6 @@ function classifyMove(input: ClassificationInput): Classification {
           structural ? "structural-unlock" : "meaningful-gain",
           ...deepReason,
         ],
-      };
-    }
-
-    // A clearly-best reveal (a big gap to every alternative) is a meaningful
-    // decision even though a single card is worth less than a foundation card.
-    if (tags.includes("revealed-hidden") && gap >= 300 && delta >= GOOD_DELTA) {
-      return {
-        rating: "great",
-        reasonCodes: ["best-available", "structural-unlock", ...deepReason],
       };
     }
 
@@ -682,6 +719,7 @@ function emptyResult(version: number, rejectedAt: number | null): GameAnalysis {
     version,
     reconstructable: false,
     complete: false,
+    partial: false,
     rejectedAt,
     perMove: [],
     moments: [],
@@ -743,8 +781,13 @@ export function analyzeSolitaireGame({
       ? Math.max(0, Math.floor(Number(options.deepMaxMoves)) || 0)
       : DEEP_MAX_MOVES_DEFAULT;
   const maxMoments = positiveInt(options.maxMoments, DEFAULT_MAX_MOMENTS);
+  const analysisLimit = Math.min(
+    moves.length,
+    positiveInt(options.maxMoves, MAX_ANALYSIS_MOVES),
+  );
+  const partial = analysisLimit < moves.length;
 
-  for (let index = 0; index < moves.length; index += 1) {
+  for (let index = 0; index < analysisLimit; index += 1) {
     const entry = moves[index];
     const raw = entry && typeof entry === "object" ? entry.move : undefined;
     const normalized = normalizeMove(raw);
@@ -906,6 +949,58 @@ export function analyzeSolitaireGame({
       deepGap,
     });
 
+    // Keep one legal alternative for the explanation panel. Only labelled moves
+    // receive it, so a routine log does not pay for advice it will never show.
+    const bestOther = candidates
+      .filter((candidate) => candidate.key !== playedKey)
+      .sort((a, b) => b.score - a.score || a.key.localeCompare(b.key))[0];
+    const bestAlternative =
+      rating !== "normal" && bestOther
+        ? {
+            move: bestOther.move,
+            relation:
+              bestOther.score > playedScore
+                ? ("higher-ranked" as const)
+                : bestOther.score === playedScore
+                  ? ("equal-ranked" as const)
+                  : ("lower-ranked" as const),
+          }
+        : null;
+
+    // How far the best alternative leads the NEXT-best other alternative. A
+    // wide lead is what turns a material one-ply gap into high confidence; a
+    // thin one stays medium rather than being overstated.
+    const runnerUpScore = candidates
+      .filter(
+        (candidate) =>
+          candidate.key !== playedKey && candidate.key !== bestOther?.key,
+      )
+      .reduce<number | null>(
+        (best, candidate) => (best === null || candidate.score > best ? candidate.score : best),
+        null,
+      );
+    const leadOverNextBest =
+      bestOther && runnerUpScore !== null ? bestOther.score - runnerUpScore : 0;
+
+    // Only a genuine negative classification can carry advice. The builder
+    // re-checks legality in the exact pre-move position, refuses the played
+    // move, and stays silent when the bounded lookahead disagreed.
+    const recommendation =
+      bestOther && (rating === "inaccuracy" || rating === "mistake")
+        ? buildMoveRecommendation({
+            ply: index,
+            rating,
+            played: move,
+            alternative: bestOther.move,
+            playedScore,
+            alternativeScore: bestOther.score,
+            leadOverNextBest,
+            state,
+            lookaheadUsed: usedDeep,
+            lookaheadPlayedBest: usedDeep ? deepPlayedIsBest : false,
+          })
+        : null;
+
     perMove.push({
       ply: index,
       kind: move.kind,
@@ -915,12 +1010,10 @@ export function analyzeSolitaireGame({
       scoreAfter,
       delta,
       regret,
-      commentaryEligible:
-        rating === "great" ||
-        rating === "brilliant" ||
-        rating === "mistake" ||
-        rating === "blunder",
+      commentaryEligible: rating === "great" || rating === "mistake",
       reasonCodes,
+      bestAlternative,
+      recommendation,
     });
     ratingCounts[rating] += 1;
     totalRegret += regret;
@@ -958,19 +1051,15 @@ export function analyzeSolitaireGame({
     version: ANALYSIS_VERSION,
     reconstructable,
     complete: Boolean(state.completed),
+    partial,
     rejectedAt,
     perMove,
     moments,
     summary: {
       movesAnalyzed,
       ratings: ratingCounts,
-      accuracy:
-        movesAnalyzed > 0
-          ? Math.max(
-              0,
-              Math.min(100, Math.round((100 - (averageRegret / FOUNDATION_VALUE) * 100) * 10) / 10)
-            )
-          : null,
+      // No accuracy percentage: the visible heuristic cannot support one.
+      accuracy: null,
       totalRegret,
       averageRegret: Math.round(averageRegret * 10) / 10,
       deepSearchMoves,

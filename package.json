@@ -162,6 +162,7 @@
     "test:ai-difficulty": "node --import tsx --test",
     "verify:complete-profile": "node qa/complete-profile-check.mjs",
     "test:upgrade-pro": "node --import tsx --test tests/upgrade-pro-contract.test.mjs tests/pro-benefits.test.mjs",
+    "verify:paywall": "node qa/pro-paywall-check.mjs",
     "test:pro-stats": "node --import tsx --test tests/pro-stats.test.mjs",
     "test:realtime-origin": "node --import tsx --test tests/socket-url-origin.test.mjs tests/realtime-handshake-e2e.test.mjs",
     "test:pro-stats-db": "node --import tsx --env-file=.env.local --test tests/pro-stats-db.test.mjs",

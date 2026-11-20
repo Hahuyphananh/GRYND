@@ -42,7 +42,9 @@ import {
   detectCardAnimations,
   tableauSlotKey,
 } from "../../lib/solitaire-duel/cardAnimations";
+import { playCardPlace } from "../../lib/gameAudio";
 import BoardAppearanceDrawer from "../solitaire/BoardAppearanceDrawer";
+import { useTranslation } from "../../hooks/useTranslation";
 import { useSolitaireBoardTheme } from "../../hooks/useSolitaireBoardTheme";
 import { useSolitaireBoardCosmetics } from "../../hooks/useSolitaireBoardCosmetics";
 import { SUITS, TABLEAU_COLUMNS } from "../../lib/solitaire-duel/constants";
@@ -139,6 +141,16 @@ export type SolitaireBoardProps = {
    * this only changes what the table SAYS.
    */
   readOnly?: boolean;
+
+  /**
+   * Game Review: animate the card change for THIS commit only.
+   *
+   * The review page sets this for a single forward step. A timeline jump,
+   * Home/End, a rewind or the initial paint leaves it false, so the destination
+   * board appears immediately instead of replaying every intermediate move.
+   * Ignored outside `readOnly` (normal play already animates accepted moves).
+   */
+  reviewAnimate?: boolean;
 
   onMove: (move: SolitaireMove) => void;
   /** A click that could not become a move — surfaced as an unobtrusive notice. */
@@ -326,9 +338,13 @@ export default function SolitaireBoard({
   interactive,
   holdHeight,
   readOnly = false,
+  reviewAnimate = false,
   onMove,
   onInvalid,
 }: SolitaireBoardProps) {
+  // Review-only chrome is localized with the rest of the review page. Gameplay
+  // keeps its existing copy untouched.
+  const { t } = useTranslation();
   // The table this board is played on. Every mode renders THIS component, so
   // reading the shared theme here is what keeps solo, daily, practice and
   // ranked identical; nothing is passed down per route.
@@ -365,11 +381,13 @@ export default function SolitaireBoard({
   const [redealGhosts, setRedealGhosts] = useState<RedealGhost[] | null>(null);
 
   const animationPlan = useMemo(() => {
-    // Read-only review must load a position without replaying its history, and
-    // reduced motion shows the final card immediately.
-    if (!board || readOnly || reduceMotion) return EMPTY_CARD_ANIMATION_PLAN;
+    // A review position loads without replaying its history by default. Only
+    // the explicit single-step opt-in animates the change from the previous
+    // position; reduced motion always shows the final card immediately.
+    if (!board || reduceMotion) return EMPTY_CARD_ANIMATION_PLAN;
+    if (readOnly && !reviewAnimate) return EMPTY_CARD_ANIMATION_PLAN;
     return detectCardAnimations(previousViewRef.current, board);
-  }, [board, readOnly, reduceMotion]);
+  }, [board, readOnly, reviewAnimate, reduceMotion]);
 
   const revealSlots = useMemo(
     () => new Set(animationPlan.reveals.map((reveal) => reveal.key)),
@@ -501,6 +519,23 @@ export default function SolitaireBoard({
   const targets = useMemo(() => dropTargetsFor(board, selection), [board, selection]);
 
   /**
+   * One quiet placement cue when a card actually lands on a pile.
+   *
+   * Presentation only, so it hangs off the same three accepted-move seams as
+   * the drag/click handling and never off a merely proposed move. The global
+   * mute switch silences it centrally (the shared AudioContext returns null),
+   * and reduced motion silences the board's sound along with its animations.
+   * A draw is a different gesture and is deliberately not a "placement".
+   */
+  const announceMove = useCallback(
+    (move: SolitaireMove) => {
+      if (reduceMotion) return;
+      if (move.kind !== "draw") playCardPlace();
+    },
+    [reduceMotion],
+  );
+
+  /**
    * An accepted drop is sent the moment it is released. There is deliberately no
    * settle timer in front of the move: the parent draws it optimistically, so
    * the ghost is cleared in the same commit and the card is already on the pile
@@ -508,10 +543,11 @@ export default function SolitaireBoard({
    */
   const settleDrop = useCallback(
     (move: SolitaireMove) => {
+      announceMove(move);
       setDragGhost(null);
       onMove(move);
     },
-    [onMove],
+    [onMove, announceMove],
   );
 
   const click = useCallback(
@@ -537,6 +573,7 @@ export default function SolitaireBoard({
         return;
       }
       if (result.type === "move") {
+        announceMove(result.move);
         setSelection(null);
         onMove(result.move);
         return;
@@ -546,7 +583,7 @@ export default function SolitaireBoard({
         onInvalid?.(result.message);
       }
     },
-    [board, selection, onMove, onInvalid],
+    [board, selection, onMove, onInvalid, announceMove],
   );
 
   /**
@@ -665,6 +702,7 @@ export default function SolitaireBoard({
         } else if (decision.type === "move") {
           // The pile has taken the card: no drag is started from this press,
           // because the move already owns the gesture.
+          announceMove(decision.move);
           swallowNextClick();
           setSelection(null);
           onMove(decision.move);
@@ -686,7 +724,7 @@ export default function SolitaireBoard({
         cards: found.cards,
       };
     },
-    [cardsInteractive, pressAtPointer, board, selection, swallowNextClick, onMove],
+    [cardsInteractive, pressAtPointer, board, selection, swallowNextClick, onMove, announceMove],
   );
 
   const onPointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
@@ -804,10 +842,10 @@ export default function SolitaireBoard({
   const canRedeal = stockCount === 0 && waste.length > 0;
   const heldLabel = selection
     ? selection.kind === "waste"
-      ? "the waste card"
+      ? t("solitaireBoard.holdWaste")
       : selection.kind === "foundation"
-        ? "that foundation card"
-        : "that run"
+        ? t("solitaireBoard.holdFoundation")
+        : t("solitaireBoard.holdRun")
     : null;
 
   return (
@@ -1180,14 +1218,14 @@ export default function SolitaireBoard({
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
       <p className="flex-1 text-center text-[11px] leading-relaxed text-[color:var(--sol-legend)]">
         {readOnly
-          ? "Review mode — step through the move timeline or use the arrow keys. Play is disabled."
+          ? t("solitaireReview.ui.boardNotice")
           : selection
-            ? `Holding ${heldLabel} — drop it on a highlighted pile, or click one to place it.`
+            ? t("solitaireBoard.holding", { held: heldLabel })
             : canRedeal
-              ? "Stock empty — click the \u21bb slot to turn the waste back over."
-              : "Drag a card (or a face-up run) onto a pile — or click it, then click where it should go. A face-down card flips by itself when the card above it leaves."}
+              ? t("solitaireBoard.stockEmpty")
+              : t("solitaireBoard.dragOrClick")}
       </p>
-      <BoardAppearanceDrawer />
+      <BoardAppearanceDrawer label={t("solitaireBoard.appearance")} />
       </div>
     </div>
   );

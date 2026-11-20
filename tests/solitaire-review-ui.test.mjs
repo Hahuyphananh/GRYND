@@ -24,12 +24,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 import {
-  accuracyPercent,
   describeMove,
+  isInsightRating,
   notablePlies,
   RATING_META,
   ratingForMove,
   reconstructReviewPosition,
+  reviewInsightForMove,
   stepPly,
   stepToNotable,
   summaryCounts,
@@ -234,47 +235,95 @@ test("rating labels are distinct and never rely on colour alone", () => {
   assert.notEqual(RATING_META.normal.chip, RATING_META.blunder.chip);
 });
 
-test("summary counts come from the engine, not from a second calculation", () => {
+test("summary counts expose only the conservative insight labels", () => {
   const analysis = {
     complete: true,
-    perMove: [{ ply: 0, rating: "brilliant" }],
+    perMove: [{ ply: 0, rating: "great" }],
     summary: {
-      accuracy: 87.34,
-      ratings: { normal: 2, good: 1, great: 3, brilliant: 1, inaccuracy: 0, mistake: 2, blunder: 4 },
+      accuracy: null,
+      ratings: { normal: 2, good: 5, great: 3, brilliant: 1, inaccuracy: 4, mistake: 2, blunder: 4 },
     },
   };
 
   assert.deepEqual(summaryCounts(analysis), {
     great: 3,
-    brilliant: 1,
+    good: 5,
+    inaccuracy: 4,
     mistake: 2,
-    blunder: 4,
   });
-  assert.equal(ratingForMove(analysis, 0), "brilliant");
+  assert.equal(ratingForMove(analysis, 0), "great");
   assert.equal(ratingForMove(analysis, 1), null);
-  assert.equal(accuracyPercent({ eligible: true, analysis }), 87.3);
+  assert.equal(isInsightRating("great"), true);
+  assert.equal(isInsightRating("good"), true);
+  assert.equal(isInsightRating("brilliant"), false);
+  assert.equal(isInsightRating("blunder"), false);
+  assert.equal(isInsightRating("normal"), false);
 });
 
-test("an incomplete game never shows a completion accuracy", () => {
-  const partial = reconstructReviewPosition(DEAL, MOVES, 5);
-  assert.equal(partial.ok, true);
-  assert.equal(partial.state.completed, false);
-
-  const analysis = {
-    complete: false,
-    perMove: [],
-    summary: { accuracy: 91.2, ratings: {} },
+test("a routine move has no insight and a labelled move does", () => {
+  const routine = {
+    perMove: [{ ply: 0, rating: "normal", tags: ["stock-draw"], bestAlternative: null }],
   };
-  assert.equal(accuracyPercent({ eligible: false, analysis }), null);
-  assert.equal(accuracyPercent({ eligible: false, analysis: null }), null);
-  // Even an accidentally eligible flag is refused when the replay did not solve.
-  assert.equal(accuracyPercent({ eligible: true, analysis }), null);
+  assert.equal(reviewInsightForMove(routine, 0, { kind: "draw" }), null);
+
+  const labelled = {
+    perMove: [
+      {
+        ply: 0,
+        rating: "good",
+        tags: ["revealed-hidden"],
+        bestAlternative: {
+          move: { kind: "tableau-to-tableau", fromColumn: 1, card: { rank: 13, suit: "spades" }, toColumn: 2 },
+          relation: "lower-ranked",
+        },
+      },
+    ],
+  };
+  const insight = reviewInsightForMove(labelled, 0, {
+    kind: "tableau-to-tableau",
+    fromColumn: 0,
+    card: { rank: 7, suit: "hearts" },
+    toColumn: 1,
+  });
+  assert.ok(insight);
+  assert.equal(insight.rating, "good");
+  assert.match(insight.played, /7\u2665/);
+  assert.ok(insight.facts.some((fact) => /face-down/.test(fact)));
+  assert.match(insight.alternative, /K\u2660/);
+  assert.match(insight.basis, /not a solver proof/);
 });
 
-test("missing analysis degrades to unrated moves and empty counts", () => {
+test("an insight is built for the selected ply, not the first labelled move", () => {
+  const analysis = {
+    perMove: [
+      { ply: 0, rating: "good", tags: ["revealed-hidden"], bestAlternative: null },
+      { ply: 1, rating: "mistake", tags: ["pointless-shuffle"], bestAlternative: null },
+    ],
+  };
+  const first = reviewInsightForMove(analysis, 0, { kind: "draw" });
+  const second = reviewInsightForMove(analysis, 1, { kind: "draw" });
+
+  assert.equal(first.rating, "good");
+  assert.equal(second.rating, "mistake");
+  assert.notEqual(first.facts.join("|"), second.facts.join("|"));
+  assert.match(second.lesson, /compare the visible moves/i);
+});
+
+test("unsupported quality labels never produce an insight", () => {
+  for (const rating of ["normal", "brilliant", "blunder"]) {
+    const analysis = { perMove: [{ ply: 0, rating, tags: [] }] };
+    assert.equal(
+      reviewInsightForMove(analysis, 0, { kind: "draw" }),
+      null,
+      `${rating} must stay silent`,
+    );
+  }
+});
+
+test("missing analysis degrades to unlabelled moves and empty counts", () => {
   assert.equal(ratingForMove(null, 0), null);
   assert.equal(summaryCounts(null), null);
-  assert.equal(accuracyPercent({ eligible: true, analysis: null }), null);
+  assert.equal(reviewInsightForMove(null, 0, { kind: "draw" }), null);
 });
 
 // ── 4. Worker runner ───────────────────────────────────────────────────────
@@ -442,7 +491,7 @@ test("the page is read-only and never sends a move", () => {
   assert.match(page, /interactive=\{false\}/);
   assert.match(page, /readOnly/);
   assert.match(code(BOARD), /readOnly\?: boolean/);
-  assert.match(code(BOARD), /Review mode/);
+  assert.match(code(BOARD), /solitaireReview\.ui\.boardNotice/);
   assert.match(page, /pointer-events-none/);
   assert.match(page, /reconstructReviewPosition/);
   assert.doesNotMatch(page, /applyMoveToView|method:\s*["']POST["']/);
@@ -484,15 +533,21 @@ test("navigation and timeline are keyboard accessible with a clear selection", (
   assert.match(page, /preventDefault\(\)/);
   assert.match(page, /onKeyDown/);
   assert.match(page, /aria-current=\{isSelected \? "step" : undefined\}/);
-  assert.match(page, /aria-label=\{`Move \$\{index \+ 1\}/);
+  // Everything the reader hears comes from the shared translation bundle, so
+  // the accessible name is localized along with the visible label.
+  assert.match(page, /aria-label=\{t\("solitaireReview\.ui\.moveAria", \{/);
   assert.match(page, /aria-live="polite"/);
-  assert.match(page, /label="Previous key moment"/);
-  assert.match(page, /label="Next key moment"/);
+  assert.match(page, /label=\{t\("solitaireReview\.ui\.navStart"\)\}/);
+  assert.match(page, /label=\{t\("solitaireReview\.ui\.navPrev"\)\}/);
+  assert.match(page, /label=\{t\("solitaireReview\.ui\.navNext"\)\}/);
+  assert.match(page, /label=\{t\("solitaireReview\.ui\.navEnd"\)\}/);
+  assert.match(page, /aria-label=\{t\("solitaireReview\.ui\.restartAria"\)\}/);
+  assert.match(page, /role="group"\s*aria-label=\{t\("solitaireReview\.ui\.moveNavigation"\)\}/);
   assert.match(page, /disabled=\{selectedPly === 0\}/);
   assert.match(page, /disabled=\{selectedPly >= totalMoves\}/);
 });
 
-test("auto-skim plays through the key moments and pauses at the end", () => {
+test("playback walks one move at a time and pauses at the end", () => {
   const page = code(PAGE);
   assert.match(page, /IconPlayerPlay/);
   assert.match(page, /IconPlayerPause/);
@@ -501,12 +556,12 @@ test("auto-skim plays through the key moments and pauses at the end", () => {
   assert.match(page, /if \(playing\) \{\s*setPlaying\(false\);\s*return;/);
   assert.match(page, /setPlaying\(true\)/);
 
-  // It advances with the same stop list as the arrows, and re-arms per step.
-  assert.match(page, /setTimeout\(\(\) => go\("next"\), skimSpeed\)/);
-  assert.match(page, /stepToNotable/);
+  // It advances exactly one ply, re-arming after every step.
+  assert.match(page, /setTimeout\(\(\) => go\("next", playbackSpeed < 2\), playbackMs\)/);
+  assert.match(page, /stepPly\(current, totalMoves, action\)/);
 
-  // No key moments means nothing to play; reaching the end pauses itself.
-  assert.match(page, /disabled=\{notable\.length === 0\}/);
+  // An empty log cannot be played; reaching the end pauses itself.
+  assert.match(page, /disabled=\{totalMoves === 0\}/);
   assert.match(page, /selectedPly >= totalMoves/);
   assert.match(page, /setPlaying\(false\)/);
 
@@ -514,19 +569,20 @@ test("auto-skim plays through the key moments and pauses at the end", () => {
   assert.match(page, /if \(selectedPly >= totalMoves\) setSelectedPly\(0\)/);
 });
 
-test("auto-skim speed is adjustable", () => {
+test("playback speed offers 0.5x, 1x and 2x", () => {
   const page = code(PAGE);
-  assert.match(page, /data-testid="review-skim-speed"/);
-  assert.match(page, /aria-label="Auto-skim speed"/);
+  assert.match(page, /data-testid="review-playback-speed"/);
+  assert.match(page, /aria-label=\{t\("solitaireReview\.ui\.playbackSpeed"\)\}/);
   assert.match(page, /const next = Number\(event\.target\.value\)/);
-  assert.match(page, /setSkimSpeed\(next\)/);
-  assert.match(page, /SKIM_SPEEDS/);
-  assert.match(page, /\{ label: "Slow", ms: 2200 \}/);
-  assert.match(page, /\{ label: "Fast", ms: 800 \}/);
+  assert.match(page, /setPlaybackSpeed\(next\)/);
+  assert.match(page, /PLAYBACK_SPEEDS/);
+  assert.match(page, /\{ label: "0\.5x", value: 0\.5, ms: 1400 \}/);
+  assert.match(page, /\{ label: "1x", value: 1, ms: 700 \}/);
+  assert.match(page, /\{ label: "2x", value: 2, ms: 350 \}/);
 
   // The timer uses the selected pace and re-arms when it changes.
-  assert.match(page, /setTimeout\(\(\) => go\("next"\), skimSpeed\)/);
-  assert.match(page, /\[playing, selectedPly, totalMoves, notable\.length, go, skimSpeed\]/);
+  assert.match(page, /setTimeout\(\(\) => go\("next", playbackSpeed < 2\), playbackMs\)/);
+  assert.match(page, /\[playing, selectedPly, totalMoves, go, playbackMs, playbackSpeed\]/);
 });
 
 test("Space toggles Play/Pause without double-toggling a focused button", () => {
@@ -536,21 +592,21 @@ test("Space toggles Play/Pause without double-toggling a focused button", () => 
   assert.match(page, /!target\?\.closest\("button, a, select, summary"\)/);
   assert.match(page, /if \(!event\.repeat\) togglePlay\(\)/);
   assert.match(page, /onClick=\{togglePlay\}/);
-  assert.match(page, /\[goManually, togglePlay\]/);
+  assert.match(page, /\[closeRecommendation, demo, goManually, togglePlay\]/);
 });
 
-test("the chosen auto-skim speed survives a visit", () => {
+test("the chosen playback speed survives a visit", () => {
   const page = code(PAGE);
-  assert.match(page, /SKIM_SPEED_STORAGE_KEY = "grynd:solitaire-review:skim-speed"/);
+  assert.match(page, /PLAYBACK_SPEED_STORAGE_KEY = "grynd:solitaire-review:playback-speed"/);
 
   // A chosen pace is written immediately; only an offered pace is restored.
-  assert.match(page, /window\.localStorage\.setItem\(\s*SKIM_SPEED_STORAGE_KEY,\s*String\(next\),?\s*\)/);
-  assert.match(page, /window\.localStorage\.getItem\(SKIM_SPEED_STORAGE_KEY\)/);
-  assert.match(page, /SKIM_SPEEDS\.some\(\(option\) => option\.ms === stored\)/);
+  assert.match(page, /window\.localStorage\.setItem\(\s*PLAYBACK_SPEED_STORAGE_KEY,\s*String\(next\),?\s*\)/);
+  assert.match(page, /window\.localStorage\.getItem\(PLAYBACK_SPEED_STORAGE_KEY\)/);
+  assert.match(page, /PLAYBACK_SPEEDS\.some\(\(option\) => option\.value === stored\)/);
 
   // Storage can throw (private mode), so reading and writing both degrade to
-  // the Normal default instead of breaking the review page.
-  assert.match(page, /SKIM_SPEEDS\.some/);
+  // the 1x default instead of breaking the review page.
+  assert.match(page, /PLAYBACK_SPEEDS\.some/);
   assert.ok(
     (page.match(/catch \{/g) ?? []).length >= 2,
     "both the restore and the save must guard against storage throwing",
@@ -560,7 +616,7 @@ test("the chosen auto-skim speed survives a visit", () => {
   assert.match(page, /useEffect\(\(\) => \{\s*try \{\s*const stored = Number\(window\.localStorage\.getItem/);
 });
 
-test("manual navigation pauses a running auto-skim", () => {
+test("manual navigation pauses playback", () => {
   const page = code(PAGE);
 
   // One manual wrapper pauses and then steps, for buttons and the keyboard.
@@ -571,7 +627,7 @@ test("manual navigation pauses a running auto-skim", () => {
   assert.match(page, /onClick=\{\(\) => goManually\("next"\)\}/);
   assert.match(page, /onClick=\{\(\) => goManually\("end"\)\}/);
   assert.match(page, /goManually\("ArrowLeft"\)|goManually\("previous"\)/);
-  assert.match(page, /\}, \[goManually, togglePlay\]\);/);
+  assert.match(page, /\[closeRecommendation, demo, goManually, togglePlay\]/);
 
   // Timeline rows and key moments select directly, so they pause too.
   assert.match(page, /const selectManually = useCallback/);
@@ -579,20 +635,20 @@ test("manual navigation pauses a running auto-skim", () => {
   assert.match(page, /onClick=\{\(\) => selectManually\(index \+ 1\)\}/);
 
   // The auto timer is the only caller left on the raw stepper.
-  assert.match(page, /setTimeout\(\(\) => go\("next"\), skimSpeed\)/);
+  assert.match(page, /setTimeout\(\(\) => go\("next", playbackSpeed < 2\), playbackMs\)/);
 });
 
-test("the hint names the move the next jump will land on", () => {
+test("the hint names the next move", () => {
   const page = code(PAGE);
   assert.match(page, /data-testid="review-nav-hint"/);
-  assert.match(page, /stepToNotable\(selectedPly, totalMoves, "next", notable\)/);
-  assert.match(page, /next: move \$\{nextTarget\}/);
-  // With no further stop the hint says so rather than showing a stale number.
+  assert.match(page, /const nextTarget = selectedPly >= totalMoves \? null : selectedPly \+ 1/);
+  assert.match(page, /t\("solitaireReview\.ui\.hintNext", \{ next: nextTarget \}\)/);
+  // With no further move the hint says so rather than showing a stale number.
   assert.match(page, /selectedPly >= totalMoves\s*\? null/);
-  assert.match(page, /at the end/);
+  assert.match(page, /t\("solitaireReview\.ui\.hintEnd"\)/);
 });
 
-test("skimming never scrolls the page and commentary sits above the board", () => {
+test("playback never scrolls the page and commentary sits above the board", () => {
   const page = code(PAGE);
   // Scrolling the selected timeline row must touch the list, never the window.
   assert.doesNotMatch(page, /scrollIntoView/);
@@ -605,9 +661,74 @@ test("skimming never scrolls the page and commentary sits above the board", () =
   assert.ok(board > 0, "the review still renders the board");
   assert.ok(glitch < board, "GLITCH's line must sit above the board, not below it");
 
-  // The arrows jump between rated moments, not one ply at a time.
-  assert.match(page, /notablePlies\(analysis, totalMoves\)/);
-  assert.match(page, /stepToNotable\(current, totalMoves, action, notable\)/);
+  // The arrows/playback use the exact validated log, one ply at a time.
+  assert.match(page, /stepPly\(current, totalMoves, action\)/);
+  assert.match(page, /setAnimateStep\(animate\)/);
+});
+
+test("restart returns to the initial deal and stops playback", () => {
+  const page = code(PAGE);
+  assert.match(page, /data-testid="review-restart"/);
+  assert.match(page, /const restartReview = useCallback/);
+  assert.match(page, /onClick=\{restartReview\}/);
+  assert.match(page, /setPlaying\(false\);\s*setAnimateStep\(false\);\s*setSelectedPly\(0\);/);
+});
+
+test("a jump skips animations while a single forward step opts in", () => {
+  const page = code(PAGE);
+  assert.match(page, /const \[animateStep, setAnimateStep\]/);
+  assert.match(page, /go\(action, action === "next"\)/);
+  assert.match(page, /const selectManually[\s\S]*?setAnimateStep\(false\)/);
+  assert.match(page, /reviewAnimate=\{boardAnimate\}/);
+  assert.match(page, /data-review-animate=\{boardAnimate/);
+  assert.match(code(BOARD), /reviewAnimate\?: boolean/);
+  assert.match(code(BOARD), /if \(readOnly && !reviewAnimate\)/);
+});
+
+test("changing speed never resets the selected move", () => {
+  const page = code(PAGE);
+  const readOnly = page.slice(page.indexOf('data-testid="review-playback-speed"'));
+  const handler = readOnly.slice(0, readOnly.indexOf("</select>"));
+  assert.doesNotMatch(handler, /setSelectedPly/);
+  assert.doesNotMatch(handler, /setPlaying/);
+});
+
+test("the timeline is first on mobile and the back link names the result", () => {
+  const page = code(PAGE);
+  assert.match(page, /min-w-0 flex flex-col gap-4/);
+  assert.match(page, /data-testid="review-timeline"\s*className="order-first/);
+  // The back link names the surface it returns to, in the active locale.
+  assert.match(page, /"solitaireReview\.ui\.backDuel"/);
+  assert.match(page, /"solitaireReview\.ui\.backSolo"/);
+});
+
+test("the review page is public but its data API stays owner-gated", () => {
+  const proxy = read("src/proxy.ts");
+  assert.ok(proxy.includes('\"/solitaire/review(.*)\"'), "the review shell is public");
+  const api = code("src/app/api/solitaire/review/route.ts");
+  assert.match(api, /eq\(solitaireSoloResults\.userId, player\.playerId\)/);
+  assert.match(api, /eq\(solitaireDailyResults\.userId, player\.playerId\)/);
+});
+
+test("the review exposes only supported insights and no accuracy score", () => {
+  const page = code(PAGE);
+  assert.match(page, /data-testid="review-insight"/);
+  assert.match(page, /reviewInsightForMove\(analysis/);
+  assert.match(page, /isInsightRating\(currentRating\)/);
+  assert.match(page, /testId="review-inaccuracy"/);
+  assert.match(page, /data-testid="review-partial-analysis"/);
+  assert.match(page, /t\("solitaireReview\.ui\.labelsNote"\)/);
+  assert.doesNotMatch(page, /data-testid="review-accuracy"/);
+  assert.doesNotMatch(page, /data-testid="review-brilliant"/);
+  assert.doesNotMatch(page, /data-testid="review-blunders"/);
+  assert.doesNotMatch(page, /<h3[^>]*>\s*Accuracy\s*<\/h3>/);
+});
+
+test("timeline rows are unannotated unless the engine labelled them", () => {
+  const page = code(PAGE);
+  assert.match(page, /const meta = isInsightRating\(rating\) \? RATING_META\[rating\] : null/);
+  assert.match(page, /data-rating=\{meta \? rating : "unannotated"\}/);
+  assert.match(page, /meta\s*\? `, \$\{localizedRating\(rating \?\? "normal"\)\}`\s*: `, \$\{t\("solitaireReview\.ui\.noExtraInsight"\)\}`/);
 });
 
 test("the layout has a mobile-first grid, scrollable timeline and reduced motion", () => {

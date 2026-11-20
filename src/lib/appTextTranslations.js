@@ -1,5 +1,7 @@
 import { LEARN_TRANSLATIONS } from "./learnTranslations";
 import { PLAY_HUB_TRANSLATIONS } from "./playHubTranslations";
+import { SOLITAIRE_BOARD_TRANSLATIONS } from "./solitaireBoardTranslations";
+import { SOLITAIRE_REVIEW_TRANSLATIONS } from "./solitaireReviewTranslations";
 
 export const APP_TEXT_TRANSLATIONS = {
   en: {
@@ -899,8 +901,10 @@ export const APP_TEXT_TRANSLATIONS = {
       cancel_anytime: "Cancel anytime. Billed through Stripe.",
       active_plain: "GRYND PRO active",
       active_renews: "GRYND PRO active · renews {date}",
+      active_trial: "GRYND PRO trial active — first charge {date}",
       cta: {
-        subscribe: "Subscribe — {price}/{unit}",
+        subscribe: "Start {days}-day free trial — then {price}/{unit}",
+        plain_subscribe: "Subscribe — {price}/{unit}",
         switch: "Switch to {interval} billing",
         manage: "Manage subscription",
         opening: "Opening Stripe…",
@@ -916,6 +920,55 @@ export const APP_TEXT_TRANSLATIONS = {
         caption: "Sample data — your dashboard shows your real matches.",
       },
       trustpilot_label: "Rated by players on Trustpilot",
+      discount_line:
+        "Save {percent}% on yearly billing — {yearly}/year, about {monthly}/month.",
+      value_line:
+        "{price}/{unit} — about {weekly} a week. Every free feature stays free.",
+      testimonial_title: "What players say",
+      testimonial_rating: "Rated {rating} out of 5 by a verified GRYND player",
+      testimonial_verified: "Verified GRYND player",
+      testimonial_anonymous: "GRYND player",
+      team_title: "A note from the team",
+      team_body:
+        "GRYND is built by a small team. Subscriptions pay for the servers, the games and the work on what comes next — they are why the games stay free and why members never see an ad. If PRO isn't for you right now, that's completely fine: nothing about your play gets worse, and you can come back whenever it makes sense.",
+      team_signature: "— The GRYND team",
+      trial: {
+        title: "Your first {days} days",
+        subtitle:
+          "Free to start, cancel before the first charge. Here is exactly how it works.",
+        step_free: "Try it free",
+        step_reminder: "Pick a reminder",
+        step_charge: "Your charge date",
+        free_title: "Full PRO access, free for {days} days",
+        free_body:
+          "Every PRO feature unlocks the moment you start. Nothing is charged today — the first payment only happens after the trial.",
+        reminder_title: "When should we remind you?",
+        reminder_body:
+          "We email you before your first charge so the renewal is never a surprise.",
+        reminder_3: "3 days before",
+        reminder_1: "1 day before",
+        reminder_0: "No reminder",
+        charge_title: "First charge: {date}",
+        charge_body:
+          "That day the trial ends and {price}/{unit} continues through Stripe. Cancel before {date} and you are never charged.",
+        charge_pending: "Calculating your first charge date…",
+        charge_reminder: "Reminder set: {when}.",
+        charge_no_reminder: "No reminder email — the date is yours to track.",
+        back: "Back",
+        next: "Next",
+        step_of: "Step {current} of {total}",
+        used_note:
+          "Your free trial has already been used. This subscription starts today — cancel anytime.",
+        manage_title: "Your trial reminder",
+        manage_body:
+          "Your trial ends on {date}. Choose when we email you before the first charge.",
+        manage_body_no_date:
+          "Choose when we email you before your first charge.",
+        manage_cancel_hint:
+          "Don't want to continue? Cancel in Manage subscription before {date} and you pay nothing.",
+        manage_saved: "Reminder updated.",
+        manage_error: "Could not update your reminder. Please try again.",
+      },
       // The approved offer (lib/proBenefits.ts). Only benefits that are live
       // AND enforced server-side are rendered (see ADVERTISED_PRO_BENEFITS).
       benefit: {
@@ -3005,6 +3058,8 @@ export const APP_TEXT_TRANSLATIONS = {
       cash: "Coins are used only inside GRYND. They are virtual, have no cash value, and cannot be withdrawn, redeemed for gift cards or exchanged for money.",
     },
     learn: LEARN_TRANSLATIONS.en,
+    solitaireReview: SOLITAIRE_REVIEW_TRANSLATIONS.en,
+    solitaireBoard: SOLITAIRE_BOARD_TRANSLATIONS.en,
     // /profil → the solitaire modes panel. It was the last block on the page
     // still written in English for every player.
     solitaireModes: {
@@ -3920,8 +3975,10 @@ export const APP_TEXT_TRANSLATIONS = {
       cancel_anytime: "Résiliable à tout moment. Paiement via Stripe.",
       active_plain: "GRYND PRO actif",
       active_renews: "GRYND PRO actif · renouvellement le {date}",
+      active_trial: "Essai GRYND PRO actif — premier débit le {date}",
       cta: {
-        subscribe: "S'abonner — {price} par {unit}",
+        subscribe: "Commencer l'essai gratuit de {days} jours — puis {price} par {unit}",
+        plain_subscribe: "S'abonner — {price} par {unit}",
         switch: "Passer à la facturation {interval}",
         manage: "Gérer l'abonnement",
         opening: "Ouverture de Stripe…",
@@ -3937,6 +3994,55 @@ export const APP_TEXT_TRANSLATIONS = {
         caption: "Données d'exemple — ton tableau de bord affiche tes vraies parties.",
       },
       trustpilot_label: "Noté par les joueurs sur Trustpilot",
+      discount_line:
+        "Économise {percent} % avec la formule annuelle — {yearly}/an, environ {monthly}/mois.",
+      value_line:
+        "{price}/{unit} — environ {weekly} par semaine. Les fonctions gratuites restent gratuites.",
+      testimonial_title: "Ce que disent les joueurs",
+      testimonial_rating: "Noté {rating} sur 5 par un joueur vérifié",
+      testimonial_verified: "Joueur GRYND vérifié",
+      testimonial_anonymous: "Joueur GRYND",
+      team_title: "Un mot de l'équipe",
+      team_body:
+        "GRYND est développé par une petite équipe. Les abonnements paient les serveurs, les jeux et le travail sur la suite — c'est ce qui permet aux jeux de rester gratuits et aux membres de ne jamais voir de publicité. Si PRO ne te convient pas maintenant, aucun souci : rien ne change pour toi, et tu peux revenir quand ça te semble juste.",
+      team_signature: "— L'équipe GRYND",
+      trial: {
+        title: "Tes {days} premiers jours",
+        subtitle:
+          "Gratuit au départ, résiliable avant le premier débit. Voici exactement comment ça marche.",
+        step_free: "Essaie gratuitement",
+        step_reminder: "Choisis un rappel",
+        step_charge: "Ta date de débit",
+        free_title: "Accès PRO complet, gratuit {days} jours",
+        free_body:
+          "Toutes les fonctions PRO se débloquent dès le départ. Rien n'est débité aujourd'hui — le premier paiement n'a lieu qu'après l'essai.",
+        reminder_title: "Quand veux-tu qu'on te rappelle ?",
+        reminder_body:
+          "On t'envoie un e-mail avant le premier débit pour que le renouvellement ne soit jamais une surprise.",
+        reminder_3: "3 jours avant",
+        reminder_1: "1 jour avant",
+        reminder_0: "Sans rappel",
+        charge_title: "Premier débit : {date}",
+        charge_body:
+          "Ce jour-là, l'essai se termine et {price}/{unit} continue via Stripe. Résilie avant le {date} et tu ne paies jamais.",
+        charge_pending: "Calcul de ta date de premier débit…",
+        charge_reminder: "Rappel prévu : {when}.",
+        charge_no_reminder: "Pas d'e-mail de rappel — la date est à toi de suivre.",
+        back: "Retour",
+        next: "Suivant",
+        step_of: "Étape {current} sur {total}",
+        used_note:
+          "Ton essai gratuit a déjà été utilisé. Cet abonnement démarre aujourd'hui — résiliable à tout moment.",
+        manage_title: "Ton rappel d'essai",
+        manage_body:
+          "Ton essai se termine le {date}. Choisis quand on t'envoie un e-mail avant le premier débit.",
+        manage_body_no_date:
+          "Choisis quand on t'envoie un e-mail avant le premier débit.",
+        manage_cancel_hint:
+          "Pas envie de continuer ? Résilie dans Gérer l'abonnement avant le {date} et tu ne paies rien.",
+        manage_saved: "Rappel mis à jour.",
+        manage_error: "Impossible de mettre à jour ton rappel. Réessaie.",
+      },
       // L'offre approuvée (lib/proBenefits.ts) — voir la note anglaise : les
       // trois avantages non encore développés sont traduits mais pas affichés.
       benefit: {
@@ -5768,6 +5874,8 @@ export const APP_TEXT_TRANSLATIONS = {
       cash: "Les pièces servent uniquement à jouer dans GRYND. Elles sont virtuelles, n'ont aucune valeur monétaire et ne peuvent pas être retirées, échangées contre des cartes cadeaux ou contre de l'argent.",
     },
     learn: LEARN_TRANSLATIONS.fr,
+    solitaireReview: SOLITAIRE_REVIEW_TRANSLATIONS.fr,
+    solitaireBoard: SOLITAIRE_BOARD_TRANSLATIONS.fr,
     // /profil → les modes Solitaire. Dernier bloc de la page encore écrit en
     // anglais pour tous les joueurs.
     solitaireModes: {
@@ -6683,8 +6791,10 @@ export const APP_TEXT_TRANSLATIONS = {
       cancel_anytime: "Cancela cuando quieras. Pago a través de Stripe.",
       active_plain: "GRYND PRO activo",
       active_renews: "GRYND PRO activo · se renueva el {date}",
+      active_trial: "Prueba de GRYND PRO activa — primer cobro el {date}",
       cta: {
-        subscribe: "Suscribirse — {price}/{unit}",
+        subscribe: "Empezar prueba gratis de {days} días — luego {price}/{unit}",
+        plain_subscribe: "Suscribirse — {price}/{unit}",
         switch: "Cambiar a facturación {interval}",
         manage: "Gestionar suscripción",
         opening: "Abriendo Stripe…",
@@ -6700,6 +6810,55 @@ export const APP_TEXT_TRANSLATIONS = {
         caption: "Datos de ejemplo: tu panel muestra tus partidas reales.",
       },
       trustpilot_label: "Valorado por jugadores en Trustpilot",
+      discount_line:
+        "Ahorra {percent} % con la facturación anual — {yearly}/año, unos {monthly}/mes.",
+      value_line:
+        "{price}/{unit} — unos {weekly} por semana. Todo lo gratuito sigue siendo gratis.",
+      testimonial_title: "Lo que dicen los jugadores",
+      testimonial_rating: "Valorado {rating} de 5 por un jugador verificado",
+      testimonial_verified: "Jugador verificado de GRYND",
+      testimonial_anonymous: "Jugador de GRYND",
+      team_title: "Una nota del equipo",
+      team_body:
+        "GRYND lo construye un equipo pequeño. Las suscripciones pagan los servidores, los juegos y el trabajo en lo que viene — son la razón por la que los juegos siguen siendo gratis y los miembros nunca ven anuncios. Si PRO no es para ti ahora, no pasa nada: nada de tu forma de jugar empeora y puedes volver cuando tenga sentido.",
+      team_signature: "— El equipo de GRYND",
+      trial: {
+        title: "Tus primeros {days} días",
+        subtitle:
+          "Gratis para empezar y puedes cancelar antes del primer cobro. Así funciona exactamente.",
+        step_free: "Pruébalo gratis",
+        step_reminder: "Elige un recordatorio",
+        step_charge: "Tu fecha de cobro",
+        free_title: "Acceso PRO completo, gratis {days} días",
+        free_body:
+          "Todas las funciones PRO se desbloquean desde el primer momento. Hoy no se cobra nada: el primer pago ocurre después de la prueba.",
+        reminder_title: "¿Cuándo te avisamos?",
+        reminder_body:
+          "Te enviamos un correo antes del primer cobro para que la renovación nunca sea una sorpresa.",
+        reminder_3: "3 días antes",
+        reminder_1: "1 día antes",
+        reminder_0: "Sin recordatorio",
+        charge_title: "Primer cobro: {date}",
+        charge_body:
+          "Ese día termina la prueba y {price}/{unit} continúa a través de Stripe. Cancela antes del {date} y nunca se te cobra.",
+        charge_pending: "Calculando tu fecha del primer cobro…",
+        charge_reminder: "Recordatorio programado: {when}.",
+        charge_no_reminder: "Sin correo de recordatorio: la fecha es tuya para seguirla.",
+        back: "Atrás",
+        next: "Siguiente",
+        step_of: "Paso {current} de {total}",
+        used_note:
+          "Tu prueba gratuita ya se ha usado. Esta suscripción empieza hoy — cancela cuando quieras.",
+        manage_title: "Tu recordatorio de prueba",
+        manage_body:
+          "Tu prueba termina el {date}. Elige cuándo te enviamos un correo antes del primer cobro.",
+        manage_body_no_date:
+          "Elige cuándo te enviamos un correo antes del primer cobro.",
+        manage_cancel_hint:
+          "¿No quieres continuar? Cancela en Gestionar suscripción antes del {date} y no pagas nada.",
+        manage_saved: "Recordatorio actualizado.",
+        manage_error: "No se pudo actualizar tu recordatorio. Inténtalo de nuevo.",
+      },
       // La oferta aprobada (lib/proBenefits.ts) — ver la nota inglesa: las tres
       // ventajas aún sin desarrollar están traducidas pero no se muestran.
       benefit: {
@@ -8531,6 +8690,8 @@ export const APP_TEXT_TRANSLATIONS = {
       cash: "Las monedas se usan solo dentro de GRYND. Son virtuales, no tienen valor monetario y no se pueden retirar, canjear por tarjetas regalo ni cambiar por dinero.",
     },
     learn: LEARN_TRANSLATIONS.es,
+    solitaireReview: SOLITAIRE_REVIEW_TRANSLATIONS.es,
+    solitaireBoard: SOLITAIRE_BOARD_TRANSLATIONS.es,
     // /profil → los modos de Solitario. Último bloque de la página que seguía
     // escrito en inglés para todos los jugadores.
     solitaireModes: {

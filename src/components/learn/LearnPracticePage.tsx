@@ -16,7 +16,7 @@
 // from its own local store and never touches lesson progress or a ranked record.
 
 import Link from "next/link";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   IconArrowLeft,
   IconArrowRight,
@@ -50,12 +50,16 @@ import {
   type PracticeDifficulty,
   type PracticeExercise,
 } from "../../lib/solitaire-duel/practice";
+import { reviewReturnPath } from "../../lib/solitaire-duel/reviewPractice";
 import type {
   LessonFeedback,
   LessonHintResult,
   LessonSession,
 } from "../../lib/solitaire-duel/lessons";
-import { practiceStats } from "../../lib/solitaire-duel/practiceProgress";
+import {
+  practiceStats,
+  type PracticeSource,
+} from "../../lib/solitaire-duel/practiceProgress";
 import { viewForState } from "../../lib/solitaire-duel/rules";
 import type { SolitaireMove } from "../../lib/solitaire-duel/types";
 
@@ -145,14 +149,21 @@ function initialPracticeSelection(
 export default function LearnPracticePage({
   initialSkillId = null,
   initialDifficulty = null,
+  initialFromReview = null,
+  initialAutoStart = false,
 }: {
   initialSkillId?: string | null;
   initialDifficulty?: string | null;
+  /** A validated review path, or null. It is shown only after validation. */
+  initialFromReview?: string | null;
+  /** Start the recommended drill once, only when arriving from a review. */
+  initialAutoStart?: boolean;
 } = {}) {
   const { t } = useTranslation();
   const {
     progress,
     userId,
+    isProgressLoaded,
     startAttempt,
     useHint: recordHint,
     completeAttempt,
@@ -163,6 +174,13 @@ export default function LearnPracticePage({
     () => initialPracticeSelection(initialSkillId, initialDifficulty),
     [initialSkillId, initialDifficulty],
   );
+  // Only a same-origin review path can become a return link or mark the
+  // exercise's origin. Everything else behaves exactly like catalog practice.
+  const returnToReview = useMemo(
+    () => reviewReturnPath(initialFromReview),
+    [initialFromReview],
+  );
+  const source: PracticeSource = returnToReview ? "review" : "catalog";
   const [categoryId, setCategoryId] = useState<PracticeCategoryId>(initial.categoryId);
   const skills = useMemo(() => practiceSkillsForCategory(categoryId), [categoryId]);
   const [skillId, setSkillId] = useState(initial.skillId);
@@ -191,6 +209,7 @@ export default function LearnPracticePage({
       exerciseId: exercise.id,
       skillId: exercise.skillId,
       difficulty: exercise.difficulty,
+      source,
     });
     setCompleted(null);
     setActive({
@@ -210,6 +229,22 @@ export default function LearnPracticePage({
     if (first) begin(first);
   };
 
+  // Deep-linked drills start once, after the local record has loaded, so the
+  // automatic attempt is added to the existing progress instead of overwriting
+  // it. A hand-edited or unsupported skill never auto-starts a generic drill.
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (!initialAutoStart || autoStarted.current || !isProgressLoaded) return;
+    autoStarted.current = true;
+    if (!returnToReview || !skill) return;
+    if (!initialSkillId || practiceSkill(initialSkillId)?.id !== skill.id) return;
+    const [first] = practiceExercisesFor(skill.id, difficulty);
+    if (first) begin(first);
+    // `begin` is intentionally read from this render only; the ref makes the
+    // deep link a one-shot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialAutoStart, isProgressLoaded, returnToReview, skill, difficulty, initialSkillId]);
+
   const onMove = (move: SolitaireMove) => {
     if (!active) return;
     const result = applyPracticeMove(active.session, move);
@@ -227,6 +262,7 @@ export default function LearnPracticePage({
         exerciseId: active.exercise.id,
         skillId: active.exercise.skillId,
         difficulty: active.exercise.difficulty,
+        source,
       });
       setCompleted({
         exercise: active.exercise,
@@ -244,6 +280,7 @@ export default function LearnPracticePage({
         exerciseId: active.exercise.id,
         skillId: active.exercise.skillId,
         difficulty: active.exercise.difficulty,
+        source,
       });
     }
     setActive({
@@ -261,6 +298,7 @@ export default function LearnPracticePage({
       exerciseId: active.exercise.id,
       skillId: active.exercise.skillId,
       difficulty: active.exercise.difficulty,
+      source,
     });
     setCompleted(null);
     setActive({
@@ -321,6 +359,30 @@ export default function LearnPracticePage({
           {t("learn.practice.description")}
         </p>
 
+        {returnToReview && (
+          <section
+            aria-label={t("learn.practice.fromReviewKicker")}
+            data-testid="practice-review-context"
+            className={`mt-4 ${CARD}`}
+          >
+            <p className={KICKER}>{t("learn.practice.fromReviewKicker")}</p>
+            <h2 className="mt-1 text-base font-black leading-snug text-[#9dd8ff]">
+              {t("learn.practice.fromReviewTitle")}
+            </h2>
+            <p className="mt-1 text-xs leading-relaxed text-white/55">
+              {t("learn.practice.fromReviewBody")}
+            </p>
+            <Link
+              href={returnToReview}
+              data-testid="practice-back-to-review"
+              className={`${SECONDARY} mt-3`}
+            >
+              <IconArrowLeft size={14} aria-hidden="true" />
+              {t("learn.practice.backToReview")}
+            </Link>
+          </section>
+        )}
+
         {completed ? (
           <section
             aria-label={t("learn.practice.completeAria")}
@@ -346,6 +408,16 @@ export default function LearnPracticePage({
                 {t("learn.practice.another")}
                 <IconArrowRight size={16} aria-hidden="true" />
               </button>
+              {returnToReview && (
+                <Link
+                  href={returnToReview}
+                  data-testid="practice-back-to-review-complete"
+                  className={SECONDARY}
+                >
+                  <IconArrowLeft size={14} aria-hidden="true" />
+                  {t("learn.practice.backToReview")}
+                </Link>
+              )}
               <button
                 type="button"
                 onClick={returnToSetup}
@@ -372,6 +444,14 @@ export default function LearnPracticePage({
             <p className="mt-1 text-[11px] font-semibold text-white/40">
               {t("learn.practice.skills." + active.exercise.skillId + ".focus")}
             </p>
+            {returnToReview && (
+              <p
+                data-testid="practice-review-why"
+                className="mt-2 rounded-lg border border-[#00e5ff]/15 bg-[#00e5ff]/[0.04] px-2.5 py-2 text-[11px] leading-relaxed text-[#9dd8ff]/80"
+              >
+                {t(active.exercise.explanationKey)}
+              </p>
+            )}
 
             <div className="mt-3 rounded-2xl border border-[#00e5ff]/20 bg-surface/80 p-1.5">
               <SolitaireBoard
@@ -484,6 +564,16 @@ export default function LearnPracticePage({
               >
                 {t("learn.practice.backToSetup")}
               </button>
+              {returnToReview && (
+                <Link
+                  href={returnToReview}
+                  data-testid="practice-back-to-review-active"
+                  className={SECONDARY}
+                >
+                  <IconArrowLeft size={14} aria-hidden="true" />
+                  {t("learn.practice.backToReview")}
+                </Link>
+              )}
             </div>
           </section>
         ) : (
@@ -678,6 +768,17 @@ export default function LearnPracticePage({
                       total: 18,
                     })}
                   </p>
+                  {stats.fromReview.attempts > 0 && (
+                    <p
+                      data-testid="practice-review-progress"
+                      className="mt-1 text-[11px] font-semibold text-[#9dd8ff]/70"
+                    >
+                      {t("learn.practice.fromReviewProgress", {
+                        attempts: stats.fromReview.attempts,
+                        completions: stats.fromReview.completions,
+                      })}
+                    </p>
+                  )}
                   <div className="mt-3 space-y-1.5">
                     <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#9dd8ff]/60">
                       {t("learn.practice.categoryProgress")}

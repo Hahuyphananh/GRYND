@@ -896,3 +896,37 @@ export async function findActiveSubscription(clerkId: string) {
   return rows[0] ?? null;
 }
 
+/**
+ * Has this account EVER held a subscription? — the free-trial guard.
+ *
+ * The trial is granted ONCE per customer. A subscription row is written on the
+ * first successful checkout and it stays (status `canceled`) after cancelling,
+ * so a returning member cannot take a second free trial. This is deliberately
+ * independent of the status: the question is "ever subscribed", not "subscribed
+ * now". Read-only.
+ */
+export async function hasPriorSubscription(clerkId: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: tokenSubscriptions.id })
+    .from(tokenSubscriptions)
+    .where(eq(tokenSubscriptions.clerkId, clerkId))
+    .limit(1);
+  return rows.length > 0;
+}
+
+/** The caller's subscription row currently in `trialing`, or null. */
+export async function findTrialingSubscription(clerkId: string) {
+  const rows = await db
+    .select()
+    .from(tokenSubscriptions)
+    .where(
+      and(
+        eq(tokenSubscriptions.clerkId, clerkId),
+        eq(tokenSubscriptions.status, "trialing"),
+      ),
+    )
+    .orderBy(desc(tokenSubscriptions.createdAt))
+    .limit(1);
+  return rows[0] ?? null;
+}
+

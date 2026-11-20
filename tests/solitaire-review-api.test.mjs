@@ -25,6 +25,7 @@ import {
   canonicalMoveLog,
   moveLogDigest,
 } from "../src/lib/solitaire-duel/soloPersistence.ts";
+import { dealFromSeed } from "../src/lib/solitaire-duel/deck.ts";
 import { solvableDealFromSeed, solveDealLine } from "../src/lib/solitaire-duel/solvable.ts";
 import { dailyDateKey } from "../src/lib/solitaire-duel/soloStats.js";
 
@@ -435,6 +436,54 @@ test("a guest practice seat can review its own duel", async () => {
   assert.equal(response.status, 200);
   assert.equal(payload.data.result.seat, "player1");
   assert.equal(payload.data.status, "complete");
+});
+
+test("a vs-AI practice match keeps the human's exact sequence and final board", async () => {
+  reset();
+  duel.match = duelMatch({
+    player2Id: AI,
+    isAi: true,
+    aiDifficulty: "sharp",
+  });
+  // The bot has its own logged moves, but the review is the human's game only.
+  duel.p2 = LOG.slice(0, 3);
+
+  const response = await duelGet();
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.data.result.seat, "player1");
+  assert.equal(payload.data.status, "complete");
+  assert.deepEqual(payload.data.moves, LOG, "the accepted order is preserved exactly");
+  assert.equal(payload.data.result.moveCount, LOG.length);
+  assert.equal(payload.data.analysisEligible, true);
+
+  const replayed = replayMoves({ deal: payload.data.deal, moves: payload.data.moves });
+  assert.equal(replayed.ok, true);
+  assert.deepEqual(replayed.state, FINAL, "the replay lands on the stored final board");
+  // The bot's id/log is never part of the human's review payload.
+  assert.equal(JSON.stringify(payload.data).includes(AI), false);
+});
+
+test("a re-dealt seat fails closed instead of serving a mismatched review", async () => {
+  reset();
+  // A mid-match re-deal gives the seat a NEW board, while the match row keeps
+  // its original committed deal. The seat's log therefore no longer replays
+  // from `deal`; serving it would show a board that was never played.
+  duel.match = duelMatch({
+    deal: dealFromSeed(8),
+    p1State: FINAL,
+    p1Ply: LOG.length,
+  });
+  duel.p1 = LOG;
+
+  const response = await duelGet();
+  const payload = await response.json();
+
+  assert.equal(response.status, 409);
+  assert.equal(payload.code, "REVIEW_HISTORY_INCONSISTENT");
+  assert.equal("deal" in payload, false);
+  assert.equal("moves" in payload, false);
 });
 
 test("an invalid or unknown duel id is a controlled error", async () => {

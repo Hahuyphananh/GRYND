@@ -13,7 +13,12 @@
 //   3. Navigation is clamped to [0, moves.length]: index 0 is the initial deal,
 //      index n is the final position.
 
-import type { GameAnalysis, MoveRating } from "./analysis";
+import type {
+  AnalysisEventTag,
+  GameAnalysis,
+  MoveAlternative,
+  MoveRating,
+} from "./analysis";
 import type { ReviewGameKind, ReviewStatus } from "./review";
 import { replayMoves, viewForState } from "./rules";
 import type { SolitaireDeal, SolitaireMove } from "./types";
@@ -145,6 +150,23 @@ export type RatingMeta = {
   dot: string;
 };
 
+/** Labels the Phase 3 review is willing to display. */
+export const INSIGHT_RATINGS: readonly MoveRating[] = [
+  "great",
+  "good",
+  "inaccuracy",
+  "mistake",
+];
+
+export type InsightRating = Exclude<MoveRating, "normal" | "brilliant" | "blunder">;
+
+/** True only for a rating the review can support with a visible comparison. */
+export function isInsightRating(
+  rating: MoveRating | null | undefined,
+): rating is InsightRating {
+  return Boolean(rating && INSIGHT_RATINGS.includes(rating));
+}
+
 export const RATING_META: Record<MoveRating, RatingMeta> = {
   normal: {
     label: "Normal",
@@ -194,9 +216,9 @@ export function ratingForMove(
 
 export type ReviewSummaryCounts = {
   great: number;
-  brilliant: number;
+  good: number;
+  inaccuracy: number;
   mistake: number;
-  blunder: number;
 };
 
 export function summaryCounts(
@@ -206,31 +228,141 @@ export function summaryCounts(
   const ratings = analysis.summary.ratings;
   return {
     great: ratings.great ?? 0,
-    brilliant: ratings.brilliant ?? 0,
+    good: ratings.good ?? 0,
+    inaccuracy: ratings.inaccuracy ?? 0,
     mistake: ratings.mistake ?? 0,
-    blunder: ratings.blunder ?? 0,
   };
 }
 
 /**
- * The engine's accuracy, and ONLY where it is meaningful.
+ * The plain-language facts behind one annotated move.
  *
- * `analysisEligible` comes from the review API and is true only for a game the
- * viewer actually completed. A partial log can still be analysed for move
- * ratings, but presenting its average as a "completion accuracy" would be a
- * different, invented claim — so an incomplete game returns null here.
+ * All prose is derived from tags and the best visible alternative the engine
+ * actually recorded. There is no prose for an unlabelled move, and no claim
+ * that a labelled move would have won or lost the game.
  */
-export function accuracyPercent({
-  eligible,
-  analysis,
-}: {
-  eligible: boolean;
-  analysis: GameAnalysis | null | undefined;
-}): number | null {
-  if (!eligible || !analysis?.complete) return null;
-  const accuracy = analysis.summary.accuracy;
-  if (accuracy == null || !Number.isFinite(accuracy)) return null;
-  return Math.round(accuracy * 10) / 10;
+export type ReviewInsight = {
+  rating: InsightRating;
+  label: string;
+  /** What the player did, in the same vocabulary as the timeline. */
+  played: string;
+  /** Engine facts, kept as codes so the page can localize the prose. */
+  tags: AnalysisEventTag[];
+  /** The strongest legal alternative, when one was recorded. */
+  bestAlternative: MoveAlternative | null;
+  /** Facts that definitely happened on the replayed board. */
+  facts: string[];
+  /** Why those facts affect the next choices. */
+  why: string;
+  /** The strongest legal alternative, labelled by the visible comparison. */
+  alternative: string | null;
+  /** A short, visibly-scoped lesson. */
+  lesson: string | null;
+  /** Always present: separates a heuristic comparison from a proof. */
+  basis: string;
+};
+
+const INSIGHT_FACT_TEXT: Partial<Record<AnalysisEventTag, string>> = {
+  "revealed-hidden": "The move turned a face-down tableau card face-up.",
+  "opened-column": "It emptied the source column, so the column can hold a King or a sequence.",
+  "king-to-empty-column": "It moved a King into an empty column.",
+  "foundation-cascade": "It created more than one immediate foundation opportunity.",
+  "unlocked-sequence": "A King-led sequence could now use an empty column.",
+  "foundation-progress": "It moved a card to its foundation.",
+  "pulled-from-foundation": "It took a card back off its foundation.",
+  "pointless-shuffle":
+    "It moved a tableau card without revealing a new card or freeing a column.",
+  "wasted-redeal":
+    "It recycled the waste while a productive visible move was available.",
+};
+
+function insightWhy(tags: readonly AnalysisEventTag[], rating: InsightRating): string {
+  if (tags.includes("revealed-hidden") || tags.includes("opened-column")) {
+    return "More exposed cards and reusable columns widen the legal moves available next.";
+  }
+  if (tags.includes("unlocked-sequence") || tags.includes("king-to-empty-column")) {
+    return "An empty column is a reusable resource; where a King-led sequence goes can change future mobility.";
+  }
+  if (tags.includes("pulled-from-foundation")) {
+    return "Foundation progress is real, but a card kept in the tableau can still support a sequence.";
+  }
+  if (tags.includes("pointless-shuffle") || tags.includes("wasted-redeal")) {
+    return "The visible board changed, but the move did not expose a card or free a column.";
+  }
+  if (tags.includes("foundation-progress")) {
+    return "Advancing a card is concrete progress; whether it was the best use of the turn depends on the tableau it leaves behind.";
+  }
+  return rating === "great" || rating === "good"
+    ? "The visible-position comparison ranked it above the other legal moves."
+    : "The visible-position comparison ranked another legal move above it.";
+}
+
+function insightLesson(tags: readonly AnalysisEventTag[]): string | null {
+  if (tags.includes("revealed-hidden")) {
+    return "Look for a move that exposes a hidden card before spending a turn on a shuffle.";
+  }
+  if (tags.includes("opened-column") || tags.includes("unlocked-sequence") || tags.includes("king-to-empty-column")) {
+    return "Treat an empty column as a resource: use it when a King-led sequence gains more than it gives up.";
+  }
+  if (tags.includes("pulled-from-foundation") || tags.includes("foundation-progress")) {
+    return "A foundation card is safe progress, but check whether the tableau still needs it for a sequence.";
+  }
+  if (tags.includes("pointless-shuffle") || tags.includes("wasted-redeal")) {
+    return "Before recycling or shuffling, compare the visible moves and ask which one changes the board.";
+  }
+  return null;
+}
+
+/**
+ * Build the compact insight for the selected move, or null when the engine did
+ * not label it. `moveIndex` is 0-based; the review selects it with `ply - 1`.
+ */
+export function reviewInsightForMove(
+  analysis: GameAnalysis | null | undefined,
+  moveIndex: number,
+  move: unknown,
+): ReviewInsight | null {
+  if (!analysis || !Number.isInteger(moveIndex) || moveIndex < 0) return null;
+  const entry = analysis.perMove[moveIndex];
+  if (!entry || !isInsightRating(entry.rating)) return null;
+
+  const facts = entry.tags
+    .map((tag) => INSIGHT_FACT_TEXT[tag])
+    .filter((text): text is string => Boolean(text));
+  if (facts.length === 0) {
+    facts.push(
+      entry.rating === "great" || entry.rating === "good"
+        ? "The engine ranked it above the other legal moves."
+        : "The engine ranked a legal alternative above it.",
+    );
+  }
+
+  const alt = entry.bestAlternative;
+  let alternative: string | null = null;
+  if (alt) {
+    const altMove = describeMove(alt.move);
+    if (alt.relation === "higher-ranked") {
+      alternative = `${altMove} was legal from the same visible board. The engine's visible-position comparison ranked it above the move played; that is evidence, not proof it would have won.`;
+    } else if (alt.relation === "equal-ranked") {
+      alternative = `${altMove} was legal and ranked equally by the visible-position comparison.`;
+    } else {
+      alternative = `${altMove} was the strongest other legal move; the visible-position comparison ranked it below the move played.`;
+    }
+  }
+
+  return {
+    rating: entry.rating,
+    label: RATING_META[entry.rating].label,
+    played: describeMove(move),
+    tags: [...entry.tags],
+    bestAlternative: alt ?? null,
+    facts,
+    why: insightWhy(entry.tags, entry.rating),
+    alternative,
+    lesson: insightLesson(entry.tags),
+    basis:
+      "Visible-board heuristic: it compares legal moves that were actually available. It is not a solver proof, an optimal-move claim, or an accuracy score.",
+  };
 }
 
 export const STATUS_META: Record<ReviewStatus, { label: string; chip: string }> = {

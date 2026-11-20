@@ -346,13 +346,16 @@ test("card: the flip and draw are one-shot CSS animations, not loops", () => {
   assert.doesNotMatch(src, /infinite|repeat:|iterations/);
 });
 
-test("board: reveals come from the snapshot diff, gated on readOnly/reduced motion", () => {
+test("board: reveals come from the snapshot diff, gated on readOnly/reviewAnimate/reduced motion", () => {
   const src = code(BOARD);
   assert.match(src, /detectCardAnimations\(previousViewRef\.current, board\)/);
+  assert.match(src, /if \(!board \|\| reduceMotion\) return EMPTY_CARD_ANIMATION_PLAN;/);
   assert.match(
     src,
-    /if \(!board \|\| readOnly \|\| reduceMotion\) return EMPTY_CARD_ANIMATION_PLAN;/,
+    /if \(readOnly && !reviewAnimate\) return EMPTY_CARD_ANIMATION_PLAN;/,
   );
+  assert.match(src, /reviewAnimate\?: boolean/);
+  assert.match(src, /\[board, readOnly, reviewAnimate, reduceMotion\]/);
   assert.match(src, /useReducedMotion\(\)/);
   // The reveal is handed to the card by SLOT, so it flips in place.
   assert.match(src, /reveal=\{revealSlots\.has\(tableauSlotKey\(column, index\)\)\}/);
@@ -419,6 +422,37 @@ test("styles: the keyframes exist with the documented durations", () => {
   const cardLayer = css.slice(css.indexOf("SOLITAIRE CARD ANIMATIONS"));
   assert.doesNotMatch(cardLayer, /linear/);
   assert.doesNotMatch(cardLayer, /infinite/);
+});
+
+test("sound: a card landing on a pile plays the shared card cue", () => {
+  const board = code(BOARD);
+  const audio = code("src/lib/gameAudio.ts");
+
+  // The cue is the existing, shared placement sound — not a new audio stack.
+  assert.match(board, /import \{ playCardPlace \} from "\.\.\/\.\.\/lib\/gameAudio"/);
+  assert.match(audio, /export function playCardPlace/);
+  // Mute is enforced once, centrally: the shared context returns null.
+  assert.match(audio, /getSharedAudioContext/);
+  assert.doesNotMatch(audio, /new Audio\(/);
+
+  // Reduced motion silences it, and a stock draw is not a placement.
+  assert.match(board, /if \(reduceMotion\) return;/);
+  assert.match(board, /move\.kind !== "draw"/);
+
+  // One cue per accepted move: the drop, the click and the press path each
+  // announce. The definition itself (`announceMove = useCallback`) is not a call.
+  const calls = board.match(/announceMove\(/g) ?? [];
+  assert.ok(calls.length >= 3, `expected 3 accepted-move call sites, got ${calls.length}`);
+  assert.match(
+    board,
+    /announceMove\(result\.move\);\s*setSelection\(null\);\s*onMove\(result\.move\);/,
+    "the click path announces the move it actually sends",
+  );
+});
+
+test("sound: the cue is a no-op without a browser audio context", async () => {
+  const { playCardPlace } = await import("../src/lib/gameAudio.ts");
+  assert.doesNotThrow(() => playCardPlace());
 });
 
 test("dependencies: no animation library was added", () => {

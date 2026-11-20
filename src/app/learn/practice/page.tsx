@@ -13,6 +13,8 @@ export const metadata = pageMetadata({
 type PracticeSearchParams = {
   skill?: string | string[];
   difficulty?: string | string[];
+  from?: string | string[];
+  auto?: string | string[];
 };
 
 function first(value: string | string[] | undefined): string | null {
@@ -36,6 +38,8 @@ export default async function LearnPracticeRoute({
     <LearnPracticePage
       initialSkillId={first(params.skill)}
       initialDifficulty={first(params.difficulty)}
+      initialFromReview={first(params.from)}
+      initialAutoStart={first(params.auto) === "1"}
     />
   );
 }

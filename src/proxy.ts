@@ -155,6 +155,12 @@ export const isPublicRoute = createRouteMatcher([
   // account (solo records then stay in their browser). No auth is required to
   // VIEW them; the record APIs still require a signed-in user.
   "/solitaire",
+  // The review page is a read-only, noindex shell. It must load for a guest
+  // opening the local game they just finished, and for a signed-in player
+  // returning to an account game. The review APIs still authenticate the
+  // caller and filter every read by owner, so making the page public exposes
+  // no game data on its own.
+  "/solitaire/review(.*)",
   // The Learn section is a reading/practice surface: a guest must be able to
   // launch a prepared lesson without an account. Progress stays local, and the
   // lesson engine has no ranked or matchmaking side effects.

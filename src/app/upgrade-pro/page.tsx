@@ -5,8 +5,11 @@ import PageClient from "./PageClient";
 import {
   findActiveSubscription,
   getProPlanDisplay,
+  hasPriorSubscription,
 } from "../../lib/stripe/subscriptions";
 import { countryFromHeaders } from "../../lib/consentRegions";
+import { getApprovedReviews } from "../../lib/reviews";
+import { pickFeaturedReview } from "../../lib/featuredReview";
 import { currencyForCountry } from "../../lib/currency";
 import { pageMetadata, DEFAULT_OG_IMAGE } from "../../lib/seo";
 
@@ -64,11 +67,37 @@ export default async function UpgradeProPage() {
     }
   }
 
+  // The free trial is once per customer, so the server decides eligibility
+  // before the first paint: a returning canceled member must not see a promise
+  // of a free week that checkout would not create. A failed check denies the
+  // trial rather than advertising it.
+  let trialEligible: boolean | null = userId ? false : true;
+  if (userId && !subscription) {
+    try {
+      trialEligible = !(await hasPriorSubscription(userId));
+    } catch (err) {
+      console.error("[upgrade-pro] Failed to check trial eligibility:", err);
+      trialEligible = false;
+    }
+  }
+
+  // The best REAL approved review, picked from the same moderated feed the
+  // /reviews wall publishes. A failed read means no testimonial — never a
+  // placeholder quote.
+  let testimonial = null;
+  try {
+    testimonial = pickFeaturedReview(await getApprovedReviews(12));
+  } catch (err) {
+    console.error("[upgrade-pro] Failed to load the featured review:", err);
+  }
+
   return (
     <PageClient
       plan={plan}
       signedIn={Boolean(userId)}
       subscription={subscription}
+      testimonial={testimonial}
+      trialEligible={trialEligible}
     />
   );
 }

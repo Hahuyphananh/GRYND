@@ -48,6 +48,7 @@ const analysisOf = (overrides = {}) => ({
   version: ANALYSIS_VERSION,
   reconstructable: true,
   complete: false,
+  partial: false,
   rejectedAt: null,
   perMove: [
     {
@@ -139,8 +140,44 @@ test("the stored payload is the compact analysis only", () => {
   assert.equal(compact.version, ANALYSIS_VERSION);
   assert.equal(compact.perMove.length, 1);
   assert.deepEqual(compact.perMove[0].tags, ["stock-draw"]);
+  assert.equal(compact.partial, false);
   assert.equal(compact.summary.informationFair, true);
   assert.doesNotMatch(json, /"deal"|"moves"|"commentary"|"moveLog"|"tableau"/);
+});
+
+test("the compact payload keeps a labelled move's visible alternative and partial flag", () => {
+  const alternative = {
+    move: {
+      kind: "tableau-to-tableau",
+      fromColumn: 1,
+      card: { rank: 13, suit: "spades" },
+      toColumn: 2,
+    },
+    relation: "higher-ranked",
+  };
+  const compact = compactAnalysis(
+    analysisOf({
+      partial: true,
+      perMove: [
+        {
+          ply: 0,
+          kind: "tableau-to-tableau",
+          rating: "inaccuracy",
+          tags: ["pointless-shuffle"],
+          scoreBefore: 1_000,
+          scoreAfter: 1_000,
+          delta: 0,
+          regret: 700,
+          commentaryEligible: false,
+          reasonCodes: ["better-alternative"],
+          bestAlternative: alternative,
+        },
+      ],
+    }),
+  );
+
+  assert.equal(compact.partial, true);
+  assert.deepEqual(compact.perMove[0].bestAlternative, alternative);
 });
 
 test("a 300-move analysis stays a compact payload", () => {

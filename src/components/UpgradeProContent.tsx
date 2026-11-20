@@ -30,6 +30,13 @@ import {
 } from "../lib/trustpilot";
 import TrustpilotWidget from "./trustpilot/TrustpilotWidget";
 import type { ProPlanDisplay } from "../lib/membershipDisplay";
+import type { ProTestimonial } from "../lib/featuredReview";
+import {
+  DEFAULT_PRO_TRIAL_REMINDER_DAYS,
+  PRO_TRIAL_DAYS,
+  type ProTrialReminderDays,
+} from "../lib/proTrial";
+import ProTrialTimeline from "./ProTrialTimeline";
 
 export type UpgradeProContentProps = {
   plan: ProPlanDisplay;
@@ -45,12 +52,27 @@ export type UpgradeProContentProps = {
   error?: string | null;
   /** `modal` is the compact dialog; `page` is the full landing hero. */
   variant?: "modal" | "page";
+  /**
+   * A real, approved player review from the /reviews wall (see
+   * lib/featuredReview.ts). Null renders nothing — the paywall never invents a
+   * quote, a rating or a reviewer.
+   */
+  testimonial?: ProTestimonial | null;
+  /**
+   * Server-resolved trial eligibility. `true` shows the free-trial timeline and
+   * the trial CTA, `false` a returning customer gets the plain subscription CTA
+   * plus a line saying the trial was already used, and `null` (unknown) shows
+   * the plain CTA without either promise.
+   */
+  trialEligible?: boolean | null;
+  /** The caller's subscription is a free trial (entitlement still active). */
+  trialing?: boolean;
   imagePriority?: boolean;
-  onUpgrade: (interval: ProBillingInterval) => void;
+  onUpgrade: (interval: ProBillingInterval, reminderDays: ProTrialReminderDays) => void;
   /** An existing member switching interval (only offered when active). */
   onChangeInterval?: (interval: ProBillingInterval) => void;
   onManage: () => void;
-  onSignIn: () => void;
+  onSignIn: (reminderDays: ProTrialReminderDays) => void;
   onDismiss?: () => void;
 };
 
@@ -260,6 +282,9 @@ export default function UpgradeProContent({
   busy = false,
   error = null,
   variant = "modal",
+  testimonial = null,
+  trialEligible = null,
+  trialing = false,
   imagePriority = false,
   onUpgrade,
   onChangeInterval,
@@ -273,6 +298,13 @@ export default function UpgradeProContent({
   // this deploy has a real business unit + template (lib/trustpilot.ts), and it
   // is hidden from an existing member, who has already decided.
   const trustpilot = getTrustpilotConfig();
+
+  // The reminder slot the member picks in the trial timeline. It is lifted here
+  // because it also travels with the checkout request; it never decides a price
+  // and it never decides entitlement.
+  const [reminderDays, setReminderDays] = useState<ProTrialReminderDays>(
+    DEFAULT_PRO_TRIAL_REMINDER_DAYS,
+  );
 
   // A member starts on the option they actually hold; a visitor starts on the
   // recommended (yearly) one. The selection is client-side only — it chooses
@@ -294,6 +326,13 @@ export default function UpgradeProContent({
   const monthlyOption = optionFor(plan, "monthly");
   const yearlyOption = optionFor(plan, "yearly");
 
+  // What the selected option costs per week, derived from its own amount so the
+  // "is it worth it?" line can never disagree with the price card above it.
+  const weeklyCents =
+    selectedOption.interval === "monthly"
+      ? Math.round((selectedOption.priceCents * 12) / 52)
+      : Math.round(selectedOption.priceCents / 52);
+
   const renewsOn =
     active && currentPeriodEnd ? new Date(currentPeriodEnd).toLocaleDateString() : null;
 
@@ -305,10 +344,16 @@ export default function UpgradeProContent({
       ? switchingInterval
         ? t("pro.cta.switch", { interval: t(`pro.interval.${selected}`) })
         : t("pro.cta.manage")
-      : t("pro.cta.subscribe", {
-          price: selectedOption.priceDisplay,
-          unit: t(`pro.unit.${selected}`),
-        });
+      : trialEligible === true
+        ? t("pro.cta.subscribe", {
+            price: selectedOption.priceDisplay,
+            days: PRO_TRIAL_DAYS,
+            unit: t(`pro.unit.${selected}`),
+          })
+        : t("pro.cta.plain_subscribe", {
+            price: selectedOption.priceDisplay,
+            unit: t(`pro.unit.${selected}`),
+          });
 
   const handlePrimary = () => {
     if (active) {
@@ -317,10 +362,10 @@ export default function UpgradeProContent({
       return;
     }
     if (!signedIn) {
-      onSignIn();
+      onSignIn(reminderDays);
       return;
     }
-    onUpgrade(selected);
+    onUpgrade(selected, reminderDays);
   };
 
   return (
@@ -382,6 +427,23 @@ export default function UpgradeProContent({
               >
                 {t("pro.founder_anchor")}
               </span>
+              <p
+                data-testid="pro-discount-percent"
+                className="mt-1 text-xl font-black leading-tight text-[#f5ff3b]"
+              >
+                {t("pro.discount_line", {
+                  percent: yearlyOption?.savings[0]
+                    ? Math.round(yearlyOption.savings[0].percent)
+                    : 0,
+                  yearly: yearlyOption?.priceDisplay ?? "",
+                  monthly: yearlyOption
+                    ? formatMoney(
+                        yearlyOption.monthlyEquivalentCents ?? yearlyOption.priceCents,
+                        yearlyOption.currency,
+                      )
+                    : "",
+                })}
+              </p>
               <p className="mt-2 text-xs leading-snug text-[#00ffa6]">
                 {t("pro.founder_scarcity", {
                   price: monthlyOption?.priceDisplay ?? "",
@@ -419,12 +481,23 @@ export default function UpgradeProContent({
           {/* ── Status ────────────────────────────────────────────────── */}
           {active ? (
             <p className="mt-3 text-xs font-semibold text-green-400">
-              {renewsOn
-                ? t("pro.active_renews", { date: renewsOn })
-                : t("pro.active_plain")}
+              {trialing && renewsOn
+                ? t("pro.active_trial", { date: renewsOn })
+                : renewsOn
+                  ? t("pro.active_renews", { date: renewsOn })
+                  : t("pro.active_plain")}
             </p>
           ) : (
             <p className="mt-3 text-xs text-[#9dd8ff]/70">{t("pro.cancel_anytime")}</p>
+          )}
+
+          {!active && signedIn && trialEligible === false && (
+            <p
+              data-testid="pro-trial-used-note"
+              className="mt-3 rounded-lg border border-[#00e5ff]/20 bg-surface/70 px-3 py-2 text-xs leading-snug text-[#9dd8ff]/80"
+            >
+              {t("pro.trial.used_note")}
+            </p>
           )}
 
           {error && (
@@ -479,10 +552,58 @@ export default function UpgradeProContent({
             )}
           </div>
 
+          {/* ── Social proof: one real approved review, or nothing. ────── */}
+          {!active && testimonial && (
+            <figure
+              data-testid="pro-testimonial"
+              className="mt-5 rounded-xl border border-[#00e5ff]/25 bg-surface/85 p-4 text-left"
+            >
+              <figcaption className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#00e5ff]">
+                  {t("pro.testimonial_title")}
+                </span>
+                <span className="text-xs tracking-[0.15em] text-[#f5ff3b]" aria-hidden>
+                  {"★".repeat(testimonial.rating)}
+                  {"☆".repeat(Math.max(0, 5 - testimonial.rating))}
+                </span>
+              </figcaption>
+              <span className="sr-only">
+                {t("pro.testimonial_rating", { rating: testimonial.rating })}
+              </span>
+              <blockquote className="mt-2 text-sm italic leading-relaxed text-[#d8fbff]">
+                “{testimonial.quote}”
+              </blockquote>
+              <p className="mt-2 text-[11px] text-[#9dd8ff]/70">
+                — {testimonial.author ?? t("pro.testimonial_anonymous")} ·{" "}
+                {t("pro.testimonial_verified")}
+              </p>
+            </figure>
+          )}
+
+          {/* ── Trial timeline: three slides, and every promise is wired ── */}
+          {!active && trialEligible === true && (
+            <ProTrialTimeline
+              priceDisplay={selectedOption.priceDisplay}
+              unit={t(`pro.unit.${selected}`)}
+              reminderDays={reminderDays}
+              onReminderChange={setReminderDays}
+            />
+          )}
+
           {/* ── Benefits ──────────────────────────────────────────────── */}
           <h3 className={`mt-6 text-sm font-bold uppercase tracking-wider text-[#00e5ff] ${isPage ? "" : "text-center"}`}>
             {t("pro.benefits_title")}
           </h3>
+          <p
+            data-testid="pro-value-line"
+            className="mt-2 text-xs leading-snug text-[#9dd8ff]/80"
+          >
+            {t("pro.value_line", {
+              price: selectedOption.priceDisplay,
+              unit: t(`pro.unit.${selected}`),
+              weekly: formatMoney(weeklyCents, selectedOption.currency),
+            })}
+          </p>
           <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_230px] lg:items-start">
             <ul className="grid grid-cols-1 gap-3">
               {BENEFIT_IDS.map((id) => {
@@ -506,7 +627,24 @@ export default function UpgradeProContent({
           </div>
 
           {!active && (
-            <p className="mt-4 text-xs text-[#9dd8ff]/60">{t("pro.no_advantage")}</p>
+            <>
+              <section
+                data-testid="pro-team-note"
+                className="mt-6 rounded-xl border border-[#00e5ff]/20 bg-surface/70 p-4 text-left"
+              >
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[#00e5ff]">
+                  {t("pro.team_title")}
+                </h3>
+                <p className="mt-2 text-xs leading-relaxed text-[#c9f7ff]/85">
+                  {t("pro.team_body")}
+                </p>
+                <p className="mt-2 text-[11px] font-semibold text-[#9dd8ff]/70">
+                  {t("pro.team_signature")}
+                </p>
+              </section>
+
+              <p className="mt-4 text-xs text-[#9dd8ff]/60">{t("pro.no_advantage")}</p>
+            </>
           )}
         </div>
       </div>

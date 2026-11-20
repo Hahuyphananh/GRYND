@@ -100,11 +100,13 @@ export default function BoardAppearanceDrawer({ label = "Appearance" }: { label?
 
   return (
     <>
+      {/* The review board is wrapped in `pointer-events-none`; the drawer is
+          chrome, not a move, so it opts back in and stays usable there. */}
       <button
         type="button"
         onClick={() => setOpen(true)}
         data-testid="board-appearance-trigger"
-        className="rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white/70 transition hover:bg-white/10 hover:text-white"
+        className="pointer-events-auto rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white/70 transition hover:bg-white/10 hover:text-white"
       >
         {label}
       </button>
@@ -115,7 +117,7 @@ export default function BoardAppearanceDrawer({ label = "Appearance" }: { label?
           aria-modal="true"
           aria-label="Board appearance"
           data-testid="board-appearance-drawer"
-          className="fixed inset-0 z-[120] flex justify-end bg-black/60 backdrop-blur-xs"
+          className="pointer-events-auto fixed inset-0 z-[120] flex justify-end bg-black/60 backdrop-blur-xs"
           onClick={() => setOpen(false)}
         >
           <div

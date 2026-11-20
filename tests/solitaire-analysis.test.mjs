@@ -15,12 +15,14 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 
 import {
   ANALYSIS_VERSION,
   analyzeSolitaireGame,
   evaluateSolitairePosition,
 } from "../src/lib/solitaire-duel/analysis.ts";
+import { reviewInsightForMove } from "../src/lib/solitaire-duel/reviewView.ts";
 import { applyMove, initialStateFromDeal } from "../src/lib/solitaire-duel/rules.ts";
 import { chooseAiMove } from "../src/lib/solitaire-duel/ai.ts";
 import { solvableDealFromSeed } from "../src/lib/solitaire-duel/solvable.ts";
@@ -86,6 +88,8 @@ test("the analysis carries its version and one result per accepted move", () => 
   assert.equal(result.perMove.length, 1);
   assert.equal(result.summary.movesAnalyzed, 1);
   assert.equal(result.summary.informationFair, true);
+  assert.equal(result.summary.accuracy, null);
+  assert.equal(result.partial, false);
 });
 
 test("the same deal and log always produce byte-identical analysis", () => {
@@ -120,12 +124,15 @@ test("routine card movement defaults to normal", () => {
 
 test("a stock draw is never rated good or bad", () => {
   const deal = dealOf([[P(C("spades", 5))]], [C("hearts", 5)]);
-  const move = analyze(deal, logOf({ kind: "draw" })).perMove[0];
+  const result = analyze(deal, logOf({ kind: "draw" }));
+  const move = result.perMove[0];
 
   assert.equal(move.rating, "normal");
   assert.equal(move.delta, 0);
   assert.equal(move.regret, 0);
   assert.ok(move.tags.includes("stock-draw"));
+  assert.equal(move.bestAlternative, null);
+  assert.equal(reviewInsightForMove(result, 0, { kind: "draw" }), null);
 });
 
 test("a waste redeal is distinguished from a stock draw", () => {
@@ -146,25 +153,32 @@ test("a waste redeal is distinguished from a stock draw", () => {
 
 // ── Positive structure ────────────────────────────────────────────────────
 
-test("revealing a hidden card is a meaningful gain", () => {
+test("revealing a hidden card is a meaningful gain with a plain-language insight", () => {
   const deal = dealOf(
     [[P(C("spades", 6), false), P(C("diamonds", 7))], [P(C("clubs", 8))]],
     [C("hearts", 5)]
   );
-  const move = analyze(
-    deal,
-    logOf({
-      kind: "tableau-to-tableau",
-      fromColumn: 0,
-      card: C("diamonds", 7),
-      toColumn: 1,
-    })
-  ).perMove[0];
+  const played = {
+    kind: "tableau-to-tableau",
+    fromColumn: 0,
+    card: C("diamonds", 7),
+    toColumn: 1,
+  };
+  const result = analyze(deal, logOf(played));
+  const move = result.perMove[0];
 
   assert.ok(move.tags.includes("revealed-hidden"));
   assert.ok(move.scoreAfter > move.scoreBefore);
   assert.equal(move.rating, "good");
   assert.equal(move.commentaryEligible, false);
+
+  const insight = reviewInsightForMove(result, 0, played);
+  assert.ok(insight, "a good reveal must have an explanation");
+  assert.equal(insight.rating, "good");
+  assert.match(insight.played, /7\u2666/);
+  assert.ok(insight.facts.some((fact) => /face-down/.test(fact)));
+  assert.match(insight.basis, /not a solver proof/);
+  assert.ok(insight.alternative, "a distinct legal alternative exists");
 });
 
 test("emptying a column by making a foundation move is great", () => {
@@ -196,7 +210,7 @@ test("emptying a column by making a foundation move is great", () => {
   assert.equal(move.commentaryEligible, true);
 });
 
-test("opening a column that unlocks a King run is brilliant", () => {
+test("opening a column that unlocks a King run is great, not brilliant", () => {
   const deal = dealOf(
     [
       [P(C("spades", 1))],
@@ -222,9 +236,10 @@ test("opening a column that unlocks a King run is brilliant", () => {
 
   assert.ok(move.tags.includes("opened-column"));
   assert.ok(move.tags.includes("unlocked-sequence"));
-  assert.equal(move.rating, "brilliant");
+  assert.equal(move.rating, "great");
   assert.equal(move.commentaryEligible, true);
-  assert.equal(result.summary.ratings.brilliant, 1);
+  assert.equal(result.summary.ratings.brilliant, 0);
+  assert.equal(result.summary.ratings.blunder, 0);
   assert.ok(result.moments.some((moment) => moment.ply === 0));
 });
 
@@ -299,7 +314,7 @@ test("a pointless shuffle that ignores a foundation move is a mistake", () => {
   assert.ok(move.regret >= 600);
 });
 
-test("dumping an Ace onto the tableau instead of the foundation is a blunder", () => {
+test("dumping an Ace onto the tableau instead of the foundation is an inaccuracy, not a blunder", () => {
   const deal = dealOf(
     [
       [P(C("spades", 1))],
@@ -317,9 +332,10 @@ test("dumping an Ace onto the tableau instead of the foundation is a blunder", (
   const move = result.perMove[1];
 
   assert.equal(result.perMove[0].tags.includes("stock-draw"), true);
-  assert.equal(move.rating, "blunder");
-  assert.equal(move.commentaryEligible, true);
+  assert.equal(move.rating, "inaccuracy");
+  assert.equal(move.commentaryEligible, false);
   assert.ok(move.regret >= 1_100);
+  assert.equal(result.summary.ratings.blunder, 0);
 });
 
 // ── Information fairness ──────────────────────────────────────────────────
@@ -355,7 +371,7 @@ test("stock order cannot change the analysis", () => {
   assert.deepEqual(analyze(first, moves), analyze(second, moves));
 });
 
-test("a hidden card cannot manufacture or remove a negative rating", () => {
+test("a hidden card cannot manufacture or remove an inaccuracy", () => {
   const baseColumns = [
     [P(C("spades", 1))],
     [P(C("spades", 2))],
@@ -379,9 +395,9 @@ test("a hidden card cannot manufacture or remove a negative rating", () => {
   const b = analyze(withHidden, moves);
   const c = analyze(hiddenSwapped, moves);
 
-  assert.equal(a.perMove[1].rating, "blunder");
+  assert.equal(a.perMove[1].rating, "inaccuracy");
   assert.deepEqual(b.perMove[1], c.perMove[1]);
-  assert.equal(b.perMove[1].rating, "blunder");
+  assert.equal(b.perMove[1].rating, "inaccuracy");
 });
 
 // ── Robustness ───────────────────────────────────────────────────────────
@@ -439,6 +455,7 @@ test("a long game analyses every move within the deeper-search cap", () => {
   assert.ok(moves.length >= 20, "fixture needs a real game");
 
   const result = analyze(deal, moves, { deepSearch: true });
+  assert.equal(result.partial, false);
   const counted = Object.values(result.summary.ratings).reduce((sum, n) => sum + n, 0);
 
   assert.equal(result.perMove.length, moves.length);
@@ -460,5 +477,41 @@ test("a game with no notable decisions contains no great or brilliant moves", ()
   assert.equal(result.summary.ratings.great, 0);
   assert.equal(result.summary.ratings.brilliant, 0);
   assert.equal(result.summary.ratings.blunder, 0);
+  assert.equal(result.summary.accuracy, null);
   assert.equal(result.moments.length, 0);
+});
+
+test("a processing cap returns a partial, safely analysed prefix", () => {
+  const draws = Array.from({ length: 20 }, () => ({ kind: "draw" }));
+  const result = analyze(TUTORIAL_DEAL, logOf(...draws), { maxMoves: 5 });
+
+  assert.equal(result.partial, true);
+  assert.equal(result.perMove.length, 5);
+  assert.equal(result.summary.movesAnalyzed, 5);
+  assert.equal(result.reconstructable, true);
+  assert.equal(result.complete, false);
+});
+
+test("the default cap stops an abnormally long log at 500 plies", () => {
+  const draws = Array.from({ length: 520 }, () => ({ kind: "draw" }));
+  const result = analyze(TUTORIAL_DEAL, logOf(...draws));
+
+  assert.equal(result.partial, true);
+  assert.equal(result.perMove.length, 500);
+  assert.equal(result.reconstructable, true);
+});
+
+test("analysis never mutates the stored move log", () => {
+  const deal = dealOf([[P(C("spades", 5))]], [C("hearts", 5)]);
+  const moves = logOf({ kind: "draw" }, { kind: "draw" });
+  const before = structuredClone(moves);
+
+  analyze(deal, moves);
+  assert.deepEqual(moves, before);
+});
+
+test("the analysis module is pure commentary and cannot settle a game", () => {
+  const source = fs.readFileSync("src/lib/solitaire-duel/analysis.ts", "utf8");
+  assert.doesNotMatch(source, /from\s+["'][^"']*(?:serverStore|db\/schema|troph|rating)/i);
+  assert.doesNotMatch(source, /fetch\(|insert\(|update\(|delete\(/i);
 });

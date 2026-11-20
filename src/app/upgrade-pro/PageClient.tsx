@@ -21,6 +21,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
 import UpgradeProContent from "../../components/UpgradeProContent";
+import ProTrialReminderSettings from "../../components/ProTrialReminderSettings";
 import {
   changeProBillingInterval,
   openProBillingPortal,
@@ -30,6 +31,8 @@ import {
 import { useTranslation } from "../../hooks/useTranslation";
 import type { ProBillingInterval } from "../../lib/proBilling";
 import type { ProPlanDisplay } from "../../lib/membershipDisplay";
+import type { ProTestimonial } from "../../lib/featuredReview";
+import type { ProTrialReminderDays } from "../../lib/proTrial";
 
 type Subscription = {
   planKey: string;
@@ -41,12 +44,22 @@ type PageClientProps = {
   plan: ProPlanDisplay;
   signedIn: boolean;
   subscription: Subscription | null;
+  /** A real approved review, resolved server-side (null when there is none). */
+  testimonial?: ProTestimonial | null;
+  /** Server-resolved: has this account never subscribed before? */
+  trialEligible?: boolean | null;
 };
 
 const CONFIRM_ATTEMPTS = 10;
 const CONFIRM_INTERVAL_MS = 1500;
 
-export default function PageClient({ plan, signedIn, subscription }: PageClientProps) {
+export default function PageClient({
+  plan,
+  signedIn,
+  subscription,
+  testimonial = null,
+  trialEligible: initialTrialEligible = null,
+}: PageClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { t } = useTranslation();
@@ -65,6 +78,16 @@ export default function PageClient({ plan, signedIn, subscription }: PageClientP
   const isSignedIn = status.loaded ? status.signedIn : signedIn;
   const resolvedPlan = status.plan ?? plan;
   const currentInterval = status.billingInterval;
+  // The status read is fresher than the server render; the server value keeps
+  // the first paint honest while it is in flight.
+  const resolvedTrialEligible = status.loaded
+    ? status.trialEligible
+    : initialTrialEligible;
+  // Before the status read answers, the server-rendered subscription keeps the
+  // trial wording honest.
+  const trialing = status.loaded
+    ? status.status === "trialing"
+    : subscription?.status === "trialing";
 
   // Returning from Stripe Checkout: the webhook records the subscription
   // asynchronously, so poll the existing session-status endpoint until it
@@ -126,12 +149,14 @@ export default function PageClient({ plan, signedIn, subscription }: PageClientP
   }, [status, t]);
 
   const handleUpgrade = useCallback(
-    (interval: ProBillingInterval) => {
+    (interval: ProBillingInterval, reminderDays: ProTrialReminderDays) => {
       if (!isSignedIn) {
         router.push("/sign-up?redirect_url=%2Fupgrade-pro");
         return;
       }
-      return runAction(() => startProCheckout(resolvedPlan.key, interval));
+      return runAction(() =>
+        startProCheckout(resolvedPlan.key, interval, reminderDays),
+      );
     },
     [isSignedIn, resolvedPlan.key, router, runAction],
   );
@@ -188,6 +213,8 @@ export default function PageClient({ plan, signedIn, subscription }: PageClientP
           signedIn={isSignedIn}
           currentPeriodEnd={currentPeriodEnd}
           currentInterval={currentInterval}
+          trialEligible={resolvedTrialEligible}
+          trialing={trialing}
           busy={busy}
           error={error}
           variant="page"
@@ -195,8 +222,14 @@ export default function PageClient({ plan, signedIn, subscription }: PageClientP
           onUpgrade={handleUpgrade}
           onChangeInterval={handleChangeInterval}
           onManage={handleManage}
-          onSignIn={() => handleUpgrade("yearly")}
+          testimonial={testimonial}
+          onSignIn={(reminderDays) => handleUpgrade("yearly", reminderDays)}
         />
+
+        {/* A trial is running: let the member move the reminder (or turn it
+            off) without contacting anyone. The component fetches its own
+            authoritative trial state and renders nothing outside a trial. */}
+        {active && status.status === "trialing" && <ProTrialReminderSettings />}
 
         {/* ── Fair-play promise: ONE quiet trust box, never a feature list.
                A nine-item checklist under the CTA answered "what's free?" so

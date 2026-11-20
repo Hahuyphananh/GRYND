@@ -108,6 +108,7 @@ export function compactAnalysis(analysis: GameAnalysis): GameAnalysis {
     version: analysis.version,
     reconstructable: analysis.reconstructable,
     complete: analysis.complete,
+    partial: analysis.partial === true,
     rejectedAt: analysis.rejectedAt,
     perMove: (analysis.perMove ?? []).map((move) => ({
       ply: move.ply,
@@ -120,6 +121,33 @@ export function compactAnalysis(analysis: GameAnalysis): GameAnalysis {
       regret: move.regret,
       commentaryEligible: move.commentaryEligible,
       reasonCodes: [...(move.reasonCodes ?? [])],
+      ...(move.bestAlternative
+        ? {
+            bestAlternative: {
+              move: move.bestAlternative.move,
+              relation: move.bestAlternative.relation,
+            },
+          }
+        : {}),
+      // Copied field by field like everything else. `before` is already the
+      // projected, visible-only snapshot: no face-down identity and no stock
+      // order can ride into the cache row.
+      ...(move.recommendation
+        ? {
+            recommendation: {
+              ply: move.recommendation.ply,
+              played: move.recommendation.played,
+              move: move.recommendation.move,
+              rating: move.recommendation.rating,
+              before: move.recommendation.before,
+              confidence: move.recommendation.confidence,
+              basis: move.recommendation.basis,
+              why: [...move.recommendation.why],
+              explanation: move.recommendation.explanation,
+              evidence: { ...move.recommendation.evidence },
+            },
+          }
+        : {}),
     })),
     moments: (analysis.moments ?? []).map((moment) => ({
       ply: moment.ply,

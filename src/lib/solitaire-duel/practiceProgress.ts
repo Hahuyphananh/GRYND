@@ -27,6 +27,8 @@ export type PracticeBucket = {
   readonly hints: number;
 };
 
+export type PracticeSource = "catalog" | "review";
+
 export type PracticeProgressState = {
   readonly attempts: number;
   readonly completions: number;
@@ -34,6 +36,12 @@ export type PracticeProgressState = {
   readonly byExercise: Readonly<Record<string, PracticeBucket>>;
   readonly bySkill: Readonly<Record<string, PracticeBucket>>;
   readonly byDifficulty: Readonly<Record<PracticeDifficulty, PracticeBucket>>;
+  /**
+   * Attempts that started from a Game Review recommendation, tracked beside
+   * the ordinary practice totals. It is a learning origin, not a score: the
+   * review's result and every competitive record stay untouched.
+   */
+  readonly bySource: Readonly<Record<PracticeSource, PracticeBucket>>;
   /**
    * Activity per UTC day (`YYYY-MM-DD`), for the Pro coaching history. It is
    * local-only and derived from the same events as the counters above, so a
@@ -48,6 +56,8 @@ export type PracticeScope = {
   readonly exerciseId: string;
   readonly skillId: string;
   readonly difficulty: PracticeDifficulty;
+  /** Defaults to catalog practice for every existing caller. */
+  readonly source?: PracticeSource;
 };
 
 export type PracticeStorage = {
@@ -77,6 +87,13 @@ function emptyDifficultyBuckets(): Record<PracticeDifficulty, PracticeBucket> {
   };
 }
 
+function emptySourceBuckets(): Record<PracticeSource, PracticeBucket> {
+  return {
+    catalog: { ...EMPTY_BUCKET },
+    review: { ...EMPTY_BUCKET },
+  };
+}
+
 export function emptyPracticeProgress(): PracticeProgressState {
   return {
     attempts: 0,
@@ -85,6 +102,7 @@ export function emptyPracticeProgress(): PracticeProgressState {
     byExercise: {},
     bySkill: {},
     byDifficulty: emptyDifficultyBuckets(),
+    bySource: emptySourceBuckets(),
     history: {},
     lastExerciseId: null,
     updatedAt: 0,
@@ -148,6 +166,12 @@ export function normalizePracticeProgress(value: unknown): PracticeProgressState
     }
   }
 
+  const bySource = emptySourceBuckets();
+  if (isRecord(value.bySource)) {
+    bySource.catalog = bucketOf(value.bySource.catalog);
+    bySource.review = bucketOf(value.bySource.review);
+  }
+
   const history: Record<string, PracticeBucket> = {};
   if (isRecord(value.history)) {
     const days = Object.keys(value.history)
@@ -169,6 +193,7 @@ export function normalizePracticeProgress(value: unknown): PracticeProgressState
     byExercise,
     bySkill,
     byDifficulty,
+    bySource,
     history,
     lastExerciseId,
     updatedAt: count(value.updatedAt),
@@ -253,6 +278,13 @@ function withEvent(
       ...progress.byDifficulty,
       [scope.difficulty]: addBucket(progress.byDifficulty[scope.difficulty], patch),
     },
+    bySource: {
+      ...progress.bySource,
+      [scope.source === "review" ? "review" : "catalog"]: addBucket(
+        progress.bySource[scope.source === "review" ? "review" : "catalog"],
+        patch,
+      ),
+    },
     history: {
       ...progress.history,
       [practiceDayKey(now)]: addBucket(progress.history[practiceDayKey(now)] ?? EMPTY_BUCKET, patch),
@@ -309,6 +341,8 @@ export type PracticeStats = {
   readonly exercisesCompleted: number;
   readonly byCategory: Record<PracticeCategoryId, PracticeCategoryStat>;
   readonly byDifficulty: Record<PracticeDifficulty, PracticeCategoryStat>;
+  /** The subset of the totals that started from Game Review. */
+  readonly fromReview: PracticeBucket;
 };
 
 /** The summary the Practice page renders. Derived, never stored twice. */
@@ -351,6 +385,7 @@ export function practiceStats(progress: PracticeProgressState): PracticeStats {
     exercisesCompleted: exercises.filter((bucket) => bucket.completions > 0).length,
     byCategory,
     byDifficulty,
+    fromReview: { ...progress.bySource.review },
   };
 }
 
