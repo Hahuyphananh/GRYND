@@ -37,6 +37,10 @@ import {
 } from "../../../../lib/proBilling";
 import { BASE_CURRENCY, currencyForCountry } from "../../../../lib/currency";
 import { countryFromHeaders } from "../../../../lib/consentRegions";
+import {
+  NATIVE_PURCHASE_UNAVAILABLE_MESSAGE,
+  isNativeShellRequest,
+} from "../../../../lib/native/shell";
 import { auditLog } from "../../../../lib/security/auditLog";
 
 export const runtime = "nodejs";
@@ -51,6 +55,18 @@ export async function POST(req: NextRequest) {
   const { userId: clerkId } = await auth();
   if (!clerkId) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  }
+
+  // NATIVE APP: a GRYND PRO subscription is a digital good consumed in-app, so
+  // Play requires Play Billing. Checkout from the Android build is refused
+  // before the plan is even resolved. The app identifies itself in the WebView
+  // User-Agent (capacitor.config.ts → appendUserAgent), which the client cannot
+  // forge into a purchase it is otherwise entitled to make.
+  if (isNativeShellRequest(req)) {
+    return NextResponse.json(
+      { success: false, error: NATIVE_PURCHASE_UNAVAILABLE_MESSAGE },
+      { status: 403 },
+    );
   }
 
   let body: { planKey?: unknown; interval?: unknown };

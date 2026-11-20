@@ -117,6 +117,11 @@ export const isPublicRoute = createRouteMatcher([
   "/ingest(.*)",
   "/monitoring",
   "/health",
+  // Google Play's data-deletion policy requires a URL that explains deletion
+  // and is reachable WITHOUT a session — a reviewer or a user who can no longer
+  // sign in has to be able to read it. The deletion itself stays behind the
+  // authenticated POST /api/delete-account.
+  "/account-deletion",
 
   "/",
   "/casino",
@@ -295,8 +300,7 @@ const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 // is authorised by its HMAC-signed token (never a cookie), so the CSRF and
 // application/json content-type guards deliberately don't apply to it.
 const skipsCsrfGuards = (pathname: string) =>
-  pathname.startsWith("/api/webhooks/") ||
-  pathname === "/api/emails/unsubscribe";
+  pathname.startsWith("/api/webhooks/") || pathname === "/api/emails/unsubscribe";
 
 /**
  * User-level MFA gate (Settings → Account Security). When a signed-in user
@@ -314,7 +318,7 @@ async function userMfaGate(
     userId: string | null;
     factorVerificationAge: [number, number] | null;
   }>,
-  authInfo?: { userId: string | null; factorVerificationAge: [number, number] | null },
+  authInfo?: { userId: string | null; factorVerificationAge: [number, number] | null }
 ) {
   if (
     pathname.startsWith("/api/") ||
@@ -354,7 +358,7 @@ async function userMfaGate(
           })
           .then((row) => row ?? null),
         1500,
-        null,
+        null
       );
       enabled = Boolean(user?.mfaEnabled);
       await cacheSet(CacheKeys.userMfa(userId), enabled, CacheTTL.userMfa).catch(() => {});
@@ -432,9 +436,7 @@ function applySecurityHeaders(response: NextResponse) {
   // therefore names the provider host explicitly; production is untouched and
   // stays https-only.
   const hilltopDevHosts =
-    process.env.NODE_ENV === "development"
-      ? "http://juvenilechoice.com "
-      : "";
+    process.env.NODE_ENV === "development" ? "http://juvenilechoice.com " : "";
 
   const scriptSrc =
     process.env.NODE_ENV === "development"
@@ -546,12 +548,8 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
   // maintenance page. /admin and /api/admin stay reachable so the admin
   // can flip the flag back off without a redeploy. The check is skipped
   // entirely when the flag is off (cached, one flag lookup per ~10s).
-  if (
-    pathname !== "/maintenance" &&
-    (await withTimeout(isMaintenanceMode(), 1500, false))
-  ) {
-    const isAdminPath =
-      pathname.startsWith("/admin") || pathname.startsWith("/api/admin");
+  if (pathname !== "/maintenance" && (await withTimeout(isMaintenanceMode(), 1500, false))) {
+    const isAdminPath = pathname.startsWith("/admin") || pathname.startsWith("/api/admin");
     let allowed = isAdminPath;
 
     if (!allowed) {
@@ -562,8 +560,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
             .split(",")
             .map((id) => id.trim())
             .filter(Boolean);
-          allowed =
-            adminIds.length > 0 ? adminIds.includes(userId) : await isAdmin(userId);
+          allowed = adminIds.length > 0 ? adminIds.includes(userId) : await isAdmin(userId);
         }
       } catch {
         allowed = false;
@@ -604,11 +601,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
   // A slug that IS a real playable route (GAME_ROUTE_PATTERNS) has a page even
   // when it has no public landing page. Rewriting such a slug away makes a
   // shipped game unreachable with a 500.
-  if (
-    unknownGameSlug &&
-    !isGameLandingSlug(unknownGameSlug[1]) &&
-    !isGameRoute(pathname)
-  ) {
+  if (unknownGameSlug && !isGameLandingSlug(unknownGameSlug[1]) && !isGameRoute(pathname)) {
     return applySecurityHeaders(gameNotFoundResponse());
   }
 
@@ -621,8 +614,8 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
     return applySecurityHeaders(
       NextResponse.json(
         { success: false, error: "This feature is not available right now." },
-        { status: 404 },
-      ),
+        { status: 404 }
+      )
     );
   }
 
@@ -639,13 +632,11 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
   const legacyGuide = unknownGuideSlug ? LEGACY_GUIDE_SLUGS[unknownGuideSlug[1]] : undefined;
   if (legacyGuide) {
     return applySecurityHeaders(
-      NextResponse.redirect(new URL(`/guides/${legacyGuide}`, req.url), 308),
+      NextResponse.redirect(new URL(`/guides/${legacyGuide}`, req.url), 308)
     );
   }
   if (unknownGuideSlug && !isGuideSlug(unknownGuideSlug[1])) {
-    return applySecurityHeaders(
-      NextResponse.rewrite(new URL(NOT_FOUND_SENTINEL, req.url)),
-    );
+    return applySecurityHeaders(NextResponse.rewrite(new URL(NOT_FOUND_SENTINEL, req.url)));
   }
 
   if (pathname.startsWith("/api/")) {
@@ -810,7 +801,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
     // same call protected routes already make.
     const mfaGate = await userMfaGate(req, pathname, auth);
     if (mfaGate) return mfaGate;
-    
+
     // Admin MFA setup endpoints that expose sensitive secrets (TOTP seed)
     // must require completed MFA. The initial MFA flow (send-otp, verify,
     // status) remains accessible without MFA so admins can complete their
@@ -827,7 +818,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
           NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 })
         );
       }
-      
+
       const adminMfaToken = req.cookies.get(ADMIN_MFA_COOKIE)?.value;
       const userMfaToken = req.cookies.get(USER_MFA_COOKIE)?.value;
       if (
@@ -844,7 +835,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
         );
       }
     }
-    
+
     return applySecurityHeaders(NextResponse.next());
   }
 
@@ -896,7 +887,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
             })
             .then((row) => row ?? null),
           1500,
-          null,
+          null
         );
         age = user?.age ?? null;
         if (age !== null && age !== undefined) {
@@ -940,15 +931,10 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
         });
         if (pathname.startsWith("/api/admin")) {
           return applySecurityHeaders(
-            NextResponse.json(
-              { success: false, error: "Admin access required." },
-              { status: 403 }
-            )
+            NextResponse.json({ success: false, error: "Admin access required." }, { status: 403 })
           );
         }
-        return applySecurityHeaders(
-          NextResponse.redirect(new URL("/", req.url))
-        );
+        return applySecurityHeaders(NextResponse.redirect(new URL("/", req.url)));
       }
     }
   }
@@ -970,9 +956,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
       !(await verifyUserMfaToken(userMfaToken, userId))
     ) {
       auditLog("admin_mfa_required_redirect", { userId, ip, path: pathname });
-      return applySecurityHeaders(
-        NextResponse.redirect(new URL("/admin/mfa-required", req.url))
-      );
+      return applySecurityHeaders(NextResponse.redirect(new URL("/admin/mfa-required", req.url)));
     }
     // The step-up was satisfied by our own marker cookie, so slide its expiry
     // forward: one verification per signed-in session. Without this the marker
@@ -994,7 +978,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
     response.cookies.set(
       ADMIN_MFA_COOKIE,
       await issueAdminMfaToken(userId),
-      adminMfaCookieOptions(req),
+      adminMfaCookieOptions(req)
     );
   }
   return applySecurityHeaders(response);
@@ -1017,7 +1001,7 @@ export default async function proxy(req: NextRequest, event: NextFetchEvent) {
     // dev than in production.
     applyPortalFramePolicy(
       response as unknown as Parameters<typeof applyPortalFramePolicy>[0],
-      req.nextUrl?.pathname,
+      req.nextUrl?.pathname
     );
     return response;
   }
@@ -1030,7 +1014,7 @@ export default async function proxy(req: NextRequest, event: NextFetchEvent) {
     if (response) {
       applyEmbedFramePolicy(
         response as unknown as Parameters<typeof applyEmbedFramePolicy>[0],
-        req.nextUrl?.pathname,
+        req.nextUrl?.pathname
       );
       // The portal surface gets its OWN allowlist (GRYND_PORTAL_FRAME_ORIGINS),
       // never the platform one: a public game page and a token-authenticated
@@ -1038,7 +1022,7 @@ export default async function proxy(req: NextRequest, event: NextFetchEvent) {
       // no-op for /play unless the env var names at least one origin.
       applyPortalFramePolicy(
         response as unknown as Parameters<typeof applyPortalFramePolicy>[0],
-        req.nextUrl?.pathname,
+        req.nextUrl?.pathname
       );
     }
     // Clerk rewrites to the request's OWN url to hand its `x-clerk-auth-*`

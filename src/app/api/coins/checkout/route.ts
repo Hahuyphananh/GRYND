@@ -48,6 +48,10 @@ import {
   isCoinPurchasesEnabled,
   resolveCoinCheckoutPackage,
 } from "../../../../lib/coinPurchases";
+import {
+  NATIVE_PURCHASE_UNAVAILABLE_MESSAGE,
+  isNativeShellRequest,
+} from "../../../../lib/native/shell";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
 import { consumeRateLimit } from "../../../../lib/security/rateLimit";
 import { auditLog } from "../../../../lib/security/auditLog";
@@ -60,6 +64,19 @@ export async function POST(request: Request) {
   const { userId } = await auth();
   if (!userId) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  }
+
+  // 0. THE NATIVE APP. Google Play requires Play Billing for digital goods
+  //    consumed in-app, so a coin pack sold through Stripe inside the Android
+  //    build is a policy violation — refused here, before any catalog, Stripe
+  //    or ledger work, and regardless of the two switches below. The app
+  //    identifies itself in the WebView User-Agent (capacitor.config.ts), so
+  //    this cannot be switched off from the client.
+  if (isNativeShellRequest(request)) {
+    return NextResponse.json(
+      { success: false, error: NATIVE_PURCHASE_UNAVAILABLE_MESSAGE },
+      { status: 403 },
+    );
   }
 
   // 1. The feature flag. Off by default in EVERY environment; a disabled

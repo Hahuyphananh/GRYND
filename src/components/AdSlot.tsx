@@ -38,6 +38,7 @@ import {
   type AdPlacement,
 } from "../lib/ads";
 import { isAdFreeViewer } from "../lib/adEntitlement";
+import { isNativeShellDocument } from "../lib/native/shellServer";
 
 export default async function AdSlot({
   placement,
@@ -46,6 +47,12 @@ export default async function AdSlot({
   placement: AdPlacement;
   className?: string;
 }) {
+  // NATIVE APP — gate 0, ahead of configuration and entitlement. No ad
+  // markup and no `<ins>` may reach the app's WebView at all: AdSense does not
+  // serve in-app advertising, and a slot left in would either paint nothing or
+  // bill against a policy the account is not covered by.
+  if (await isNativeShellDocument()) return null;
+
   if (!adsEnabled()) return null;
 
   const slotId = adUnitId(placement);

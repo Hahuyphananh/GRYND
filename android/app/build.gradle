@@ -1,5 +1,33 @@
 apply plugin: 'com.android.application'
 
+// --- Release (Play Store) signing ------------------------------------------
+//
+// Google Play will not accept an unsigned bundle, so `bundleRelease` needs a
+// signingConfig. The material comes from android/key.properties, which is NOT
+// committed (android/.gitignore) and whose keystore may live outside the repo
+// entirely. Keeping it in a file rather than in this script means the same
+// setup works for a local `./gradlew bundleRelease` and for CI, and no
+// passwords end up in git history.
+//
+// When key.properties is absent — a fresh clone, or a contributor who only
+// needs debug builds — the release buildType is left UNSIGNED instead of
+// failing every Gradle task. That build cannot be uploaded to Play, but
+// `cap sync`, `assembleDebug`, lint and the IDE all keep working.
+def keystorePropertiesFile = rootProject.file('key.properties')
+def keystoreProperties = new Properties()
+def hasReleaseSigning = keystorePropertiesFile.exists()
+if (hasReleaseSigning) {
+    keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
+    def requiredKeystoreKeys = ['storeFile', 'storePassword', 'keyAlias', 'keyPassword']
+    def missingKeystoreKeys = requiredKeystoreKeys.findAll { !keystoreProperties[it] }
+    if (!missingKeystoreKeys.isEmpty()) {
+        throw new GradleException(
+            "android/key.properties is missing required key(s): ${missingKeystoreKeys.join(', ')}. " +
+            "See android/key.properties.example."
+        )
+    }
+}
+
 android {
     namespace = "com.grynd.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,8 +44,24 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                // Paths must use FORWARD slashes, even on Windows: java.util.Properties
+                // reads `\` as an escape, so C:\Users\me silently becomes C:Usersme.
+                // A relative path resolves against this app/ module directory.
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

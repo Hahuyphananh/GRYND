@@ -35,6 +35,7 @@
 
 import HilltopBannerUnit from "./HilltopBannerUnit";
 import { isAdFreeViewer } from "../../lib/adEntitlement";
+import { isNativeShellDocument } from "../../lib/native/shellServer";
 import {
   hilltopBannerAllowed,
   hilltopBannerEnabled,
@@ -52,11 +53,17 @@ export default async function HilltopBanner({
   placement: HilltopPlacement;
   className?: string;
 }) {
+  // NATIVE APP — gate 0, ahead of configuration, placement and entitlement.
+  // The Android build must make no third-party ad request at all: this is a
+  // display network serving creatives in an unsandboxed cross-origin iframe,
+  // and the Play listing's ads declaration describes what the app actually
+  // does. Decided from the shell's User-Agent on the server, so the app
+  // receives no container and no snippet — there is nothing for the client
+  // unit to inject, and no request leaves the WebView.
+  if (await isNativeShellDocument()) return null;
+
   const allowed = hilltopBannerAllowed({
-    enabled:
-      hilltopBannerEnabledOnServer() &&
-      hilltopBannerEnabled() &&
-      hilltopProviderAttested(),
+    enabled: hilltopBannerEnabledOnServer() && hilltopBannerEnabled() && hilltopProviderAttested(),
     configured: hilltopBannerScriptUrl() !== null,
     placement,
   });

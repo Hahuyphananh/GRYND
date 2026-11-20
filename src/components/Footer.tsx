@@ -51,8 +51,8 @@ export default function Footer() {
             </Link>
 
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-[color:var(--text-secondary)]">
-              The competitive home of Klondike Solitaire. One deal, two players,
-              a free ranked ladder and results the server verifies.
+              The competitive home of Klondike Solitaire. One deal, two players, a free ranked
+              ladder and results the server verifies.
             </p>
 
             <SocialLinks testId="footer-social" className="mt-5" />
@@ -140,6 +140,9 @@ export default function Footer() {
               </Link>
               <Link href="/accessibility" className={linkClass}>
                 Accessibility
+              </Link>
+              <Link href="/account-deletion" className={linkClass}>
+                Delete account
               </Link>
               <CookieSettingsLink className={linkClass} />
             </div>

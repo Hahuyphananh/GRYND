@@ -1,0 +1,395 @@
+# .github/workflows/android-release.yml
+#
+# Build and SIGN a Google Play release bundle on an isolated GitHub-hosted
+# runner, and optionally publish it to the internal testing track.
+#
+# Safety model
+#   * Building is inert: the job's output is a workflow artifact. A human still
+#     uploads it to Play Console unless publishing is explicitly enabled.
+#   * Publishing is opt-in twice over: repository variable
+#     PLAY_PUBLISH_ENABLED must be exactly "true" (or a manual dispatch must set
+#     publish=true), AND the `android-play` environment should carry required
+#     reviewers. It publishes to INTERNAL TESTING only — there is no production
+#     promotion here.
+#   * Signing goes through the SAME contract as a local build
+#     (android/key.properties → android/app/build.gradle). CI does not get a
+#     second, divergent signing path; it writes that file on the runner from
+#     secrets and deletes it afterwards.
+#   * No input value is ever placed into a shell command. Everything that
+#     touches a secret reads it from `process.env` (Node) rather than being
+#     interpolated into bash, so a password containing a quote, `$` or a
+#     backtick cannot break out or be mangled. The service-account JSON is
+#     consumed by scripts/publish-play-internal.mjs the same way.
+#   * The job refuses to hand back a bundle `jarsigner` does not verify, or one
+#     whose packaged capacitor.config.json lost the `GRYNDApp/1.0` marker —
+#     that marker is what keeps AdSense and Stripe checkout out of the app
+#     (src/lib/native/shell.ts), and a bundle built before `cap sync` is
+#     missing it.
+#   * The versionCode is checked against the previous `android-v*` tag before
+#     anything is built. Play refuses a reused code forever; finding that out
+#     during a production upload is too late.
+#
+# Repository secrets (Settings → Secrets and variables → Actions)
+#   ANDROID_KEYSTORE_BASE64     the upload keystore, base64: base64 -w0 upload.keystore
+#   ANDROID_STORE_PASSWORD      storePassword
+#   ANDROID_KEY_ALIAS           keyAlias
+#   ANDROID_KEY_PASSWORD        keyPassword
+#   PLAY_SERVICE_ACCOUNT_JSON   Play Developer API service-account key (publish only)
+#
+# Repository variables
+#   PLAY_PUBLISH_ENABLED        "true" publishes tag builds to internal testing
+#
+# These are the UPLOAD key and a testing-track service account only. With Play
+# App Signing enabled (the default for new apps) Google holds the app signing
+# key, so a lost upload key is recoverable through Play Console — but both
+# credentials are still secrets, and they belong in a secret store, never in the
+# repository.
+#
+# Trigger: Actions → android-release, or push a tag matching `android-v*`.
+# The versionCode in android/app/build.gradle is consumed by each upload, so
+# bump it before tagging; this job does not rewrite it (a CI-side sed would
+# produce a bundle that no longer matches the committed source).
+
+name: android-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Why this bundle was built (shown in the run summary)"
+        type: string
+        default: "manual Android release"
+      publish:
+        description: "Also publish to the Play internal testing track"
+        type: boolean
+        default: false
+  push:
+    tags:
+      - "android-v*"
+
+permissions:
+  contents: read
+
+# A second run must not race the first for the same tag.
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  aab:
+    name: build + sign release AAB
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      artifact_name: ${{ steps.verify.outputs.artifact_name }}
+      version_code: ${{ steps.verify.outputs.version_code }}
+      version_name: ${{ steps.verify.outputs.version_name }}
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      GRYND_KEYSTORE_PATH: ${{ runner.temp }}/grynd-upload.jks
+
+    steps:
+      # Full history: the version guard below compares against the previous
+      # `android-v*` tag, which a shallow clone does not contain.
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Refuse a committed signing file
+        shell: bash
+        run: |
+          set -euo pipefail
+          # android/key.properties and the keystore are git-ignored; this is the
+          # check that notices if that ever stops being true.
+          for path in android/key.properties android/*.jks android/*.keystore; do
+            [ -e "$path" ] || continue
+            echo "::error::$path exists in the checkout — signing material must never be committed"
+            exit 1
+          done
+          if git ls-files --error-unmatch android/key.properties >/dev/null 2>&1; then
+            echo "::error::android/key.properties is tracked by git"
+            exit 1
+          fi
+
+      - name: Require a versionCode bump since the last Android release
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Fails the run before 45 minutes of Gradle if the committed
+          # versionCode was never incremented past the previous tag. A first
+          # release (no tag) passes.
+          node scripts/check-android-version.mjs --since-last-tag android-v
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Caches ~/.gradle and verifies the wrapper checksum and version, so a
+      # tampered gradle-wrapper.properties fails here instead of executing.
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+
+      - name: Install the Android SDK packages this build needs
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The runner image ships an SDK, but not necessarily platform 36, and
+          # `sdkmanager` is not always on PATH depending on the image build.
+          sdk="$(command -v sdkmanager || true)"
+          if [ -z "$sdk" ]; then
+            for candidate in "${ANDROID_HOME:-}/cmdline-tools/latest/bin/sdkmanager" \
+                             "${ANDROID_SDK_ROOT:-}/cmdline-tools/latest/bin/sdkmanager"; do
+              if [ -x "$candidate" ]; then sdk="$candidate"; break; fi
+            done
+          fi
+          if [ -z "$sdk" ]; then
+            echo "::error::sdkmanager not found; cannot install platform 36"
+            exit 1
+          fi
+          yes | "$sdk" --licenses >/dev/null 2>&1 || true
+          "$sdk" "platforms;android-36" "build-tools;36.0.0" >/dev/null
+          echo "ANDROID_HOME=$ANDROID_HOME"
+
+      - name: Install the upload key and key.properties
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=""
+          [ -n "${ANDROID_KEYSTORE_BASE64}" ] || missing="$missing ANDROID_KEYSTORE_BASE64"
+          [ -n "${ANDROID_STORE_PASSWORD}" ]  || missing="$missing ANDROID_STORE_PASSWORD"
+          [ -n "${ANDROID_KEY_ALIAS}" ]       || missing="$missing ANDROID_KEY_ALIAS"
+          [ -n "${ANDROID_KEY_PASSWORD}" ]    || missing="$missing ANDROID_KEY_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::missing repository secret(s):$missing — add them under Settings → Secrets and variables → Actions"
+            exit 1
+          fi
+
+          umask 077
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$GRYND_KEYSTORE_PATH"
+          # Cheap sanity check before Gradle gets a chance to fail obscurely.
+          if ! keytool -list -keystore "$GRYND_KEYSTORE_PATH" -storepass "$ANDROID_STORE_PASSWORD" >/dev/null 2>&1; then
+            echo "::error::the keystore could not be opened with ANDROID_STORE_PASSWORD"
+            exit 1
+          fi
+
+          # Written from Node, not bash: a password containing a quote, '$' or a
+          # backtick must reach the file byte-for-byte.
+          node -e '
+            const { writeFileSync } = require("node:fs");
+            const env = process.env;
+            const lines = [
+              // Forward slashes: java.util.Properties reads "\" as an escape.
+              `storeFile=${env.GRYND_KEYSTORE_PATH}`,
+              `storePassword=${env.ANDROID_STORE_PASSWORD}`,
+              `keyAlias=${env.ANDROID_KEY_ALIAS}`,
+              `keyPassword=${env.ANDROID_KEY_PASSWORD}`,
+            ];
+            writeFileSync("android/key.properties", lines.join("\n") + "\n", { mode: 0o600 });
+          '
+          echo "Signing material installed for alias: $ANDROID_KEY_ALIAS"
+
+      - name: Sync the Capacitor project
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Writes android/app/src/main/assets/capacitor.config.json, including
+          # appendUserAgent — the native gate depends on it.
+          npx cap sync android
+
+      - name: Assert the native-shell marker reached the app
+        shell: bash
+        run: |
+          set -euo pipefail
+          config=android/app/src/main/assets/capacitor.config.json
+          if ! grep -q '"appendUserAgent"' "$config"; then
+            echo "::error::$config has no appendUserAgent — capacitor.config.ts lost the marker, or cap sync did not run"
+            exit 1
+          fi
+          grep -o '"appendUserAgent":"[^"]*"' "$config"
+
+      - name: Build the release bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x android/gradlew
+          cd android
+          ./gradlew :app:bundleRelease --no-daemon --stacktrace
+
+      - name: Verify the bundle is signed and named
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          aab=android/app/build/outputs/bundle/release/app-release.aab
+          if [ ! -f "$aab" ]; then
+            echo "::error::bundleRelease produced no $aab"
+            exit 1
+          fi
+
+          # An unsigned bundle is what a missing key.properties silently
+          # produces (android/app/build.gradle). Play would reject it, so the
+          # job must not hand it back as a success.
+          if ! jarsigner -verify "$aab" | grep -q "jar verified"; then
+            echo "::error::the AAB is NOT signed — Play will reject it"
+            jarsigner -verify -verbose -certs "$aab" | tail -20 || true
+            exit 1
+          fi
+          jarsigner -verify -verbose -certs "$aab" 2>/dev/null | grep -m1 "CN=" || true
+
+          # The packaged config is what actually ships; check the copy inside
+          # the bundle too, not only the source file above.
+          if ! unzip -p "$aab" base/assets/capacitor.config.json | grep -q "GRYNDApp"; then
+            echo "::error::the bundle's capacitor.config.json has no GRYNDApp marker"
+            exit 1
+          fi
+
+          version_code=$(grep -E '^[[:space:]]*versionCode[[:space:]]' android/app/build.gradle | awk '{print $2}')
+          version_name=$(grep -E '^[[:space:]]*versionName[[:space:]]' android/app/build.gradle | sed -E 's/.*"([^"]+)".*/\1/')
+          short_sha=$(git rev-parse --short=7 HEAD)
+
+          mkdir -p dist
+          out="dist/grynd-${version_name}-${version_code}-${short_sha}.aab"
+          cp "$aab" "$out"
+          sha256sum "$out" | tee "$out.sha256"
+          ls -lh "$out"
+
+          {
+            echo "aab=$out"
+            echo "version_code=$version_code"
+            echo "version_name=$version_name"
+            echo "short_sha=$short_sha"
+            echo "artifact_name=grynd-android-${version_name}-${version_code}-${short_sha}"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "::notice::versionCode $version_code / versionName $version_name — bump versionCode before the next upload"
+
+      - name: Upload the signed bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.verify.outputs.artifact_name }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Remove the signing material
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          rm -f android/key.properties "$GRYND_KEYSTORE_PATH"
+          echo "signing material removed"
+
+      - name: Summary
+        if: always()
+        shell: bash
+        env:
+          AAB: ${{ steps.verify.outputs.aab }}
+          VERSION_CODE: ${{ steps.verify.outputs.version_code }}
+          VERSION_NAME: ${{ steps.verify.outputs.version_name }}
+          REASON: ${{ github.event_name == 'workflow_dispatch' && inputs.reason || format('tag {0}', github.ref_name) }}
+        run: |
+          {
+            echo "### Android release bundle"
+            echo ""
+            echo "| field | value |"
+            echo "|---|---|"
+            echo "| bundle | \`${AAB:-not built}\` |"
+            echo "| versionName | ${VERSION_NAME:-unknown} |"
+            echo "| versionCode | ${VERSION_CODE:-unknown} |"
+            echo "| signed | $([ -n "${AAB:-}" ] && echo 'jarsigner verified' || echo 'not built') |"
+            echo "| reason | ${REASON} |"
+            echo ""
+            echo "Download the artifact above, then upload the .aab to the Internal testing track first."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Opt-in, and opt-in twice: the variable for tag builds, the dispatch input
+  # for a manual run, and (if configured) the reviewer rule on the environment.
+  publish-internal:
+    name: publish to Play internal testing
+    needs: aab
+    if: ${{ vars.PLAY_PUBLISH_ENABLED == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish == true) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Create this environment with required reviewers. A name that has no
+    # protection rules publishes without approval.
+    environment: android-play
+    concurrency:
+      group: android-play-publish
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      # download-artifact reads the build job's artifact.
+      actions: read
+    env:
+      PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+      VERSION_NAME: ${{ needs.aab.outputs.version_name }}
+      VERSION_CODE: ${{ needs.aab.outputs.version_code }}
+
+    steps:
+      - name: Checkout the publishing tooling
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Download the signed bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.aab.outputs.artifact_name }}
+          path: dist
+
+      - name: Publish to the internal testing track
+        shell: bash
+        run: |
+          set -euo pipefail
+          aab="$(find dist -name '*.aab' -print -quit)"
+          if [ -z "$aab" ]; then
+            echo "::error::the downloaded artifact contains no .aab"
+            exit 1
+          fi
+          # The service-account JSON arrives through the environment and is read
+          # by the script; it is never interpolated into this command.
+          node scripts/publish-play-internal.mjs \
+            --aab "$aab" \
+            --package com.grynd.app \
+            --track internal \
+            --notes "GRYND ${VERSION_NAME} (versionCode ${VERSION_CODE}) internal test build."
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Play internal testing"
+            echo ""
+            echo "| field | value |"
+            echo "|---|---|"
+            echo "| versionName | ${VERSION_NAME:-unknown} |"
+            echo "| versionCode | ${VERSION_CODE:-unknown} |"
+            echo "| track | internal |"
+            echo ""
+            echo "Testers on the internal track receive this build within a few minutes of Play processing it."
+          } >> "$GITHUB_STEP_SUMMARY"
