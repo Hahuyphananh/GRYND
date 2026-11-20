@@ -26,6 +26,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -33,7 +34,14 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
+import { useReducedMotion } from "framer-motion";
+
 import PlayingCard, { cardLabel, suitGlyph } from "./PlayingCard";
+import {
+  EMPTY_CARD_ANIMATION_PLAN,
+  detectCardAnimations,
+  tableauSlotKey,
+} from "../../lib/solitaire-duel/cardAnimations";
 import BoardAppearanceDrawer from "../solitaire/BoardAppearanceDrawer";
 import { useSolitaireBoardTheme } from "../../hooks/useSolitaireBoardTheme";
 import { useSolitaireBoardCosmetics } from "../../hooks/useSolitaireBoardCosmetics";
@@ -183,6 +191,37 @@ const CLICK_SWALLOW_MS = 500;
 const GHOST_EASE_MS = 150;
 const GHOST_RETURN_MS = 190;
 
+// ── Card animation budget ────────────────────────────────────────────────
+// These durations are shared with the keyframes in globals.css. They are
+// deliberately short: a fast player must never wait for a card to finish
+// turning before the next move is accepted, and the animation is purely
+// visual (the move is already submitted against the authoritative view).
+const REVEAL_MS = 300;
+const DRAW_MS = 340;
+const REDEAL_MS = 300;
+/** Per-card delay for the fly-back, so the stock refills as a riffle, not a slab. */
+const REDEAL_STAGGER_MS = 26;
+/** At most this many ghosts: the stock is capped at 24 cards in Klondike. */
+const REDEAL_MAX_GHOSTS = 12;
+
+/** The one waste card that is travelling from the stock, in viewport offsets. */
+type DrawAnimation = { cardKey: string; x: number; y: number };
+
+/** A card-sized, identity-free back flying from the waste to the stock. */
+type RedealGhost = {
+  key: number;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  width: number;
+  height: number;
+  delayMs: number;
+};
+
+/** A measured card, in viewport coordinates. */
+type CardRect = { x: number; y: number; width: number; height: number };
+
 
 /**
  * Where a held card would come to rest in a slot, in viewport coordinates.
@@ -315,6 +354,28 @@ export default function SolitaireBoard({
   const board = view ?? null;
   const ply = board?.ply ?? 0;
 
+  // ── Card animation state (presentation only) ─────────────────────────
+  // The previous authoritative snapshot is what a reveal/draw/redeal is
+  // detected against; it is never rendered. Keeping it in a ref means a
+  // re-render with the SAME board cannot re-run an animation.
+  const reduceMotion = useReducedMotion();
+  const previousViewRef = useRef<SolitaireView | null>(null);
+  const wasteRectsRef = useRef<CardRect[]>([]);
+  const [drawAnim, setDrawAnim] = useState<DrawAnimation | null>(null);
+  const [redealGhosts, setRedealGhosts] = useState<RedealGhost[] | null>(null);
+
+  const animationPlan = useMemo(() => {
+    // Read-only review must load a position without replaying its history, and
+    // reduced motion shows the final card immediately.
+    if (!board || readOnly || reduceMotion) return EMPTY_CARD_ANIMATION_PLAN;
+    return detectCardAnimations(previousViewRef.current, board);
+  }, [board, readOnly, reduceMotion]);
+
+  const revealSlots = useMemo(
+    () => new Set(animationPlan.reveals.map((reveal) => reveal.key)),
+    [animationPlan],
+  );
+
   // A new authoritative board invalidates the held card: the server has moved
   // (or the opponent's view changed), so what was selected may no longer be
   // where it was. Also drop the selection whenever the board goes inert.
@@ -335,6 +396,91 @@ export default function SolitaireBoard({
     },
     [],
   );
+
+  // Remember the snapshot the NEXT one will be compared against. This is a
+  // passive effect: the layout effect below has already read the old value.
+  useEffect(() => {
+    previousViewRef.current = board;
+  }, [board]);
+
+  /**
+   * Measure AFTER the new view is painted into the DOM, BEFORE the browser
+   * paints it: the drawn card starts on the stock slot rather than flashing in
+   * its final waste position, and a redeal flies its backs home from where the
+   * waste cards were one commit ago. The move itself is already in flight —
+   * measuring costs no interaction latency.
+   */
+  useLayoutEffect(() => {
+    const el = boardRef.current;
+    if (!el) return;
+
+    if (animationPlan.draw) {
+      const stock = el.querySelector<HTMLElement>('[data-testid="solitaire-stock"]');
+      const wasteTop = el.querySelector<HTMLElement>('[data-testid="solitaire-waste-top"]');
+      if (stock && wasteTop) {
+        const from = stock.getBoundingClientRect();
+        const to = wasteTop.getBoundingClientRect();
+        setDrawAnim({
+          cardKey: animationPlan.draw.cardKey,
+          x: from.left + from.width / 2 - (to.left + to.width / 2),
+          y: from.top + from.height / 2 - (to.top + to.height / 2),
+        });
+      }
+    }
+
+    if (animationPlan.redeal) {
+      const stock = el.querySelector<HTMLElement>('[data-testid="solitaire-stock"]');
+      const previousWaste = wasteRectsRef.current;
+      if (stock && previousWaste.length > 0) {
+        const to = stock.getBoundingClientRect();
+        const toX = to.left + to.width / 2;
+        const toY = to.top + to.height / 2;
+        setRedealGhosts(
+          previousWaste.slice(-REDEAL_MAX_GHOSTS).map((rect, index) => ({
+            key: index,
+            fromX: rect.x,
+            fromY: rect.y,
+            toX,
+            toY,
+            width: rect.width,
+            height: rect.height,
+            delayMs: index * REDEAL_STAGGER_MS,
+          })),
+        );
+      }
+    }
+
+    // Stored for the NEXT redeal: where the waste cards are right now.
+    wasteRectsRef.current = Array.from(
+      el.querySelectorAll<HTMLElement>('[data-testid="solitaire-waste"] [data-face-up]'),
+    ).map((node) => {
+      const rect = node.getBoundingClientRect();
+      return {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+        width: rect.width,
+        height: rect.height,
+      };
+    });
+  }, [board, animationPlan]);
+
+  // Let the one-shot animations expire. The cards are already painted at their
+  // authoritative positions when these fire; only the visual offset is gone.
+  useEffect(() => {
+    if (!drawAnim) return undefined;
+    const timer = setTimeout(() => setDrawAnim(null), DRAW_MS + 40);
+    return () => clearTimeout(timer);
+  }, [drawAnim]);
+
+  useEffect(() => {
+    if (!redealGhosts) return undefined;
+    const last = redealGhosts[redealGhosts.length - 1];
+    const timer = setTimeout(
+      () => setRedealGhosts(null),
+      REDEAL_MS + (last?.delayMs ?? 0) + 60,
+    );
+    return () => clearTimeout(timer);
+  }, [redealGhosts]);
 
   /** Ignore the click this gesture is about to produce. */
   const swallowNextClick = useCallback(() => {
@@ -804,6 +950,11 @@ export default function SolitaireBoard({
                       : cardLabel(card)
                   }
                   testId={isTop ? "solitaire-waste-top" : undefined}
+                  drawFrom={
+                    isTop && drawAnim?.cardKey === `${card.suit}-${card.rank}`
+                      ? { x: drawAnim.x, y: drawAnim.y }
+                      : null
+                  }
                   dataAttrs={isTop ? { "data-drag-slot": "waste" } : undefined}
                   style={{
                     width: CARD_W,
@@ -920,7 +1071,9 @@ export default function SolitaireBoard({
 
                 return (
                   <PlayingCard
-                    key={`${index}-${slot.card ? `${slot.card.suit}${slot.card.rank}` : "hidden"}`}
+                    // STABLE SLOT key: a revealed card keeps its element, so it
+                    // can flip in place instead of remounting as a new face.
+                    key={`slot-${column}-${index}`}
                     card={card}
                     faceUp={faceUp}
                     interactive={clickable}
@@ -932,6 +1085,7 @@ export default function SolitaireBoard({
                         : `Face-down card — column ${column + 1}, position ${index + 1}`
                     }
                     testId={`solitaire-card-${column}-${index}`}
+                    reveal={revealSlots.has(tableauSlotKey(column, index))}
                     dataAttrs={
                       faceUp
                         ? {
@@ -962,6 +1116,32 @@ export default function SolitaireBoard({
           accepted move is sent, and eases home when the drop is refused; all
           three are transitions, so the board's layout and its `--cw` fit are
           never touched by a gesture. */}
+      {/* Redeal: identity-free card backs fly from where the waste was back
+          onto the stock, staggered so the pile refills as a riffle rather than
+          one block. The authoritative stock/waste are already correct; this is
+          an overlay that unmounts itself. */}
+      {redealGhosts?.map((ghost) => (
+        <div
+          key={ghost.key}
+          aria-hidden="true"
+          data-testid="solitaire-redeal-ghost"
+          className="pointer-events-none fixed z-40 drop-shadow-xl"
+          style={
+            {
+              left: ghost.toX - ghost.width / 2,
+              top: ghost.toY - ghost.height / 2,
+              width: ghost.width,
+              height: ghost.height,
+              "--gr-redeal-x": `${ghost.fromX - ghost.toX}px`,
+              "--gr-redeal-y": `${ghost.fromY - ghost.toY}px`,
+              animation: `gr-card-redeal ${REDEAL_MS}ms cubic-bezier(0.2, 0.7, 0.3, 1) ${ghost.delayMs}ms both`,
+            } as CSSProperties
+          }
+        >
+          <PlayingCard card={null} faceUp={false} />
+        </div>
+      ))}
+
       {dragGhost ? (
         <div
           aria-hidden="true"

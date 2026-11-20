@@ -4749,3 +4749,66 @@ html[data-theme="light"] {
   --tint-to--070502: #4a3a1a;
   --tint-via--0b0902: #4a3a1a;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SOLITAIRE CARD ANIMATIONS
+
+   Four one-shot animations, deliberately short and physical. They are applied
+   inline by PlayingCard/SolitaireBoard only on the commit that detected the
+   change (see lib/solitaire-duel/cardAnimations.ts), never on a rerender, and
+   never at all under prefers-reduced-motion or in read-only review.
+
+   Only `transform` and `opacity` move, so the compositor does the work and the
+   board's layout (its `--cw` fit) is never touched.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* A tableau card turning over: the back narrows to its edge at 90°, swaps to
+   the face and settles. 300ms sits in the 250-350ms band. */
+@keyframes gr-card-reveal {
+  from {
+    transform: rotateY(0deg);
+  }
+  to {
+    transform: rotateY(180deg);
+  }
+}
+
+/* The drawn card's travel, on the non-rotating wrapper: it starts over the
+   stock (the measured offset) and lands exactly in the waste slot. */
+@keyframes gr-card-draw-translate {
+  from {
+    transform: translate3d(var(--gr-draw-x, 0px), var(--gr-draw-y, 0px), 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* The same card turning face-up while it travels. */
+@keyframes gr-card-draw-flip {
+  from {
+    transform: rotateY(0deg);
+  }
+  to {
+    transform: rotateY(180deg);
+  }
+}
+
+/* A redeal back flying home. Opacity is used only to soften the start of the
+   flight; there is no scale or bounce, and the destination is the real stock. */
+@keyframes gr-card-redeal {
+  from {
+    transform: translate3d(var(--gr-redeal-x, 0px), var(--gr-redeal-y, 0px), 0) scale(0.98);
+    opacity: 0.85;
+  }
+  to {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-testid="solitaire-redeal-ghost"] {
+    display: none;
+  }
+}

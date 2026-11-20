@@ -3,6 +3,19 @@
    and --sol-deck-crest on its root, and these rules paint every back and the
    face-card foil. There is no image asset to load, so a cosmetic can never
    fail to render or cost a request. */
+/* The back's paint lives HERE, not in the component: PlayingCard must not read
+   a theme or cosmetic variable, and 52 cards must repaint from one board-level
+   custom-property change without re-rendering. */
+.sol-card-back {
+  background-image: var(--sol-card-back-image, none);
+  border-color: var(--sol-card-back-border, var(--gr-outline));
+  animation: var(--sol-card-back-animation, none);
+}
+
+.sol-card-back-pattern {
+  border-color: var(--sol-card-back-border, var(--gr-hairline));
+}
+
 .sol-card-back::after {
   content: var(--sol-card-back-emblem, "");
   position: absolute;
