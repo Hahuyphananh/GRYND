@@ -1,4 +1,5 @@
 import PageClient from "./PageClient";
+import JsonLd from "../components/seo/JsonLd";
 import AdSenseScript from "../components/AdSenseScript";
 import AdSlot from "../components/AdSlot";
 import HilltopBanner from "../components/ads/HilltopBanner";
@@ -26,14 +27,10 @@ export default async function Page() {
 
   return (
     <>
-      {ratingJsonLd && (
-        <script
-          type="application/ld+json"
-          // Same entity (@id) as the reviews page, so the two never look like
-          // competing claims.
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(ratingJsonLd) }}
-        />
-      )}
+      {/* Same entity (@id) as the reviews page, so the two never look like
+          competing claims. JsonLd escapes "<" so no review text can close the
+          script tag. */}
+      <JsonLd data={ratingJsonLd} />
       {/* Ad capability on the home page (a browsing surface, never gameplay).
           The loader and the slot both decide server-side whether this viewer
           gets ads at all: GRYND PRO members receive neither. */}

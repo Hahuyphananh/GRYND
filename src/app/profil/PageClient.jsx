@@ -463,7 +463,6 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
         setFriendSearchResults([]);
         setFriendsStatus(
           data?.error ||
-            data?.debug?.error ||
             t(
               "profile.friends.searchFailed",
               "Could not search users. Please try again.",

@@ -6,6 +6,7 @@ import {
   type LimitConfig,
 } from "./lib/security/rateLimit";
 import { auditLog } from "./lib/security/auditLog";
+import { buildScriptSrc } from "./lib/security/csp";
 import { isAdmin } from "./lib/auth/isAdmin";
 import { isMaintenanceMode } from "./lib/security/maintenance";
 import { withTimeout } from "./lib/security/withTimeout";
@@ -439,15 +440,18 @@ function applySecurityHeaders(response: NextResponse) {
   // on a plain-http origin — localhost, or an http staging host — the browser
   // resolves it to `http://`, which an https-only `script-src` refuses. The
   // banner then never paints, no matter how its env gates are set. Development
-  // therefore names the provider host explicitly; production is untouched and
-  // stays https-only.
+  // therefore adds the provider's http origin; production does not.
   const hilltopDevHosts =
     process.env.NODE_ENV === "development" ? "http://juvenilechoice.com " : "";
 
-  const scriptSrc =
-    process.env.NODE_ENV === "development"
-      ? `script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.com https://*.clerk.accounts.dev https://challenges.cloudflare.com https: ${hilltopDevHosts}; `
-      : "script-src 'self' 'unsafe-inline' https://*.clerk.com https://*.clerk.accounts.dev https://challenges.cloudflare.com https:; ";
+  // The origins live in lib/security/csp.ts, one host at a time — the old
+  // trailing `https:` allowed ANY https origin to serve script and made this
+  // directive useless as an injection control. `unsafe-eval` stays
+  // development-only; the http Hilltop origin is added in development only.
+  const scriptSrc = `${buildScriptSrc({
+    development: process.env.NODE_ENV === "development",
+    extraHosts: hilltopDevHosts,
+  })}; `;
 
   response.headers.set(
     "Content-Security-Policy",
@@ -461,7 +465,8 @@ function applySecurityHeaders(response: NextResponse) {
       // — the one directive that is NOT wildcarded above — has to name its
       // hosts explicitly: googleads.g.doubleclick.net and the
       // safeframe/tpc.googlesyndication.com frames the ad units render in.
-      // (script-src, img-src and connect-src already allow all of `https:`.)
+      // (img-src and connect-src already allow all of `https:`; script-src
+      // names its ad hosts explicitly in lib/security/csp.ts.)
       // Without these the loader still downloads and then silently fails to
       // paint a single ad. Only the pages in src/components/AdSenseScript.tsx
       // ever request them (see the page allow-list in tests/adsense.test.mjs).
@@ -623,6 +628,16 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
         { status: 404 }
       )
     );
+  }
+
+  // Sentry's wizard-generated example surface is a development diagnostic.
+  // In production the API is an unauthenticated endpoint that deliberately
+  // throws (free error-stream flooding + Sentry quota burn) and the page is a
+  // public button that calls it. Answer before routing so neither is
+  // reachable — and so the 404 is a real status, not a streamed notFound()
+  // that commits 200 first.
+  if (process.env.NODE_ENV === "production" && (pathname === "/sentry-example-page" || pathname === "/api/sentry-example-api")) {
+    return applySecurityHeaders(new NextResponse(null, { status: 404 }));
   }
 
   // Same rule for the guides library: `/guides/<slug>` only exists for the

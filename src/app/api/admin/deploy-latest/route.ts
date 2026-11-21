@@ -41,6 +41,20 @@ const STATUS_BY_CODE: Record<string, number> = {
   "dispatch-rejected": 502,
 };
 
+/**
+ * Copy for the dashboard. The DeployError message is for the server log: it
+ * can name the workflow file, the repository and the GitHub response, and
+ * this response goes to a browser. The dashboard keys off `status` anyway.
+ */
+const PUBLIC_ERROR: Record<string, string> = {
+  "not-configured": "Deployment is not configured on this host.",
+  "branch-not-allowed": "That branch cannot be deployed.",
+  "github-auth": "The deploy workflow could not authenticate to GitHub.",
+  "github-not-found": "The deploy workflow or branch was not found.",
+  "github-unavailable": "GitHub is unavailable right now.",
+  "dispatch-rejected": "GitHub rejected the deploy request.",
+};
+
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) {
@@ -98,8 +112,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, ...outcome }, { status: 200 });
   } catch (error) {
     if (error instanceof DeployError) {
+      console.error("[admin:deploy-latest]", error.code, error.message);
       return NextResponse.json(
-        { success: false, status: error.code, error: error.message },
+        {
+          success: false,
+          status: error.code,
+          error: PUBLIC_ERROR[error.code] ?? "Deploy request failed.",
+        },
         { status: STATUS_BY_CODE[error.code] ?? 502 },
       );
     }

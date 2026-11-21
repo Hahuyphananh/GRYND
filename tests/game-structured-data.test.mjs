@@ -338,10 +338,10 @@ test("the landing page emits its JSON-LD through the shared component", () => {
 test("only the known files emit JSON-LD", () => {
   // A drift guard for "reusable components, not copied blobs": a new inline
   // block anywhere else fails here rather than silently duplicating a schema.
+  // layout, the landing page and /reviews used to serialise their own blobs;
+  // they now hand their nodes to the shared renderer, so it is the only place
+  // that mentions the MIME type at all.
   const EMITTERS = new Set([
-    "src/app/layout.tsx", // Organization + WebSite
-    "src/app/page.jsx", // the real, review-derived app rating
-    "src/app/reviews/page.tsx", // the same rating, on the page that owns it
     "src/components/seo/JsonLd.tsx", // the shared renderer
   ]);
   const found = [];

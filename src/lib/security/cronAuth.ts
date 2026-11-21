@@ -36,6 +36,7 @@
  */
 
 import { NextResponse } from "next/server";
+import { readBearerToken, timingSafeEqualString } from "./bearerToken";
 
 /**
  * Verify that the request is an authenticated cron invocation.
@@ -65,20 +66,11 @@ export function verifyCronRequest(request: Request): Response | null {
     );
   }
 
-  // Extract bearer token from "Bearer <token>" format
-  const match = authHeader.match(/^Bearer\s+(.+)$/i);
-  if (!match) {
-    console.warn("[cronAuth] Invalid Authorization header format");
-    return NextResponse.json(
-      { error: "Unauthorized: invalid authorization format" },
-      { status: 401 }
-    );
-  }
-
-  const providedToken = match[1];
-
-  // Constant-time comparison to prevent timing attacks
-  if (!timingSafeEqual(providedToken, cronSecret)) {
+  // One parser and one constant-time compare for every machine caller
+  // (lib/security/bearerToken) — the PM gate uses the same pair, so the two
+  // cannot drift apart or grow subtly different checks.
+  const providedToken = readBearerToken(authHeader);
+  if (!providedToken || !timingSafeEqualString(providedToken, cronSecret)) {
     console.warn("[cronAuth] Invalid cron secret");
     return NextResponse.json(
       { error: "Unauthorized: invalid credentials" },
@@ -88,21 +80,4 @@ export function verifyCronRequest(request: Request): Response | null {
 
   // Authentication successful
   return null;
-}
-
-/**
- * Constant-time string comparison to prevent timing attacks.
- * Returns true if the strings are equal, false otherwise.
- */
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
-
-  let result = 0;
-  for (let i = 0; i < a.length; i++) {
-    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-
-  return result === 0;
 }

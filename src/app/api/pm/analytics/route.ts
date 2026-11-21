@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { verifyPmRequest } from "../../../../lib/security/pmAuth";
 import { sql } from "../../../../db/sql";
 
 export const dynamic = "force-dynamic";
@@ -168,9 +169,8 @@ async function queryPostHog(start: Date, end: Date) {
 }
 
 export async function GET(request: Request) {
-  if (request.headers.get("authorization") !== `Bearer ${process.env.PM_API_KEY}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authError = verifyPmRequest(request);
+  if (authError) return authError;
 
   const end = new Date();
   const start = new Date(end.getTime() - WINDOW_MS);

@@ -10,17 +10,7 @@ export async function POST(request) {
     const { userId } = await auth();
 
     if (!userId) {
-      return Response.json(
-        {
-          success: false,
-          users: [],
-          debug: {
-            step: "auth",
-            error: "Unauthorized",
-          },
-        },
-        { status: 401 },
-      );
+      return Response.json({ success: false, users: [] }, { status: 401 });
     }
 
     const parsed = await parseAndValidateJson(request, {
@@ -31,7 +21,6 @@ export async function POST(request) {
       return parsed.response;
     }
 
-    //  DEBUG 1
     const rawInput = parsed.data.name;
 
     // The ONE fold, shared with every write to `users.search_name` so the two
@@ -41,11 +30,7 @@ export async function POST(request) {
     // A query that folds away to nothing (spaces, punctuation) would otherwise
     // become `LIKE '%%'` and return the first 10 accounts in the table.
     if (!normalized) {
-      return Response.json({
-        success: true,
-        users: [],
-        debug: { rawInput, normalized, resultCount: 0 },
-      });
+      return Response.json({ success: true, users: [] });
     }
 
     let currentUserId = null;
@@ -58,7 +43,6 @@ export async function POST(request) {
       currentUserId = current[0].id;
     }
 
-    //  DEBUG 3
     const queryString = normalized;
 
     // Match on the folded `search_name`. The fallback to `name` covers rows
@@ -108,28 +92,13 @@ export async function POST(request) {
       };
     });
 
-    //  EVERYTHING DEBUGGED HERE
-    return Response.json({
-      success: true,
-      users: usersWithStreak,
-      debug: {
-        rawInput,
-        normalized,
-        queryString,
-        currentUserId,
-        resultCount: usersWithStreak.length,
-        results: usersWithStreak,
-      },
-    });
+    return Response.json({ success: true, users: usersWithStreak });
   } catch (error) {
+    // Never echo the driver message: it names tables and columns and is
+    // exactly the reconnaissance a signed-in caller should not get for free.
+    console.error("[friends/search] failed:", error);
     return Response.json(
-      {
-        success: false,
-        users: [],
-        debug: {
-          error: error?.message || "Unknown error",
-        },
-      },
+      { success: false, users: [] },
       { status: 500 },
     );
   }

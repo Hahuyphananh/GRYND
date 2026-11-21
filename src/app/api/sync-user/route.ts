@@ -1,4 +1,5 @@
 import bcrypt from "bcryptjs";
+import { auditLog } from "../../../lib/security/auditLog";
 import crypto from "crypto";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { db } from "../../../db/client";
@@ -136,13 +137,21 @@ export async function POST(req: Request) {
         .onConflictDoNothing({ target: users.clerkId })
         .returning();
     } catch (error) {
-      // Email is taken by an existing local row. The webhook race is covered
-      // by the clerk_id conflict target above, so a 23505 here means the email
-      // belongs to a row created under a *different* Clerk account — e.g. an
-      // old instance (dev keys / previous clerk.grynd deployment) whose
-      // clerkId no longer matches the session. Reassociate the existing row
-      // to this session's clerkId so the account (balance, stats, items)
-      // survives an instance switch instead of becoming "User not found".
+      // Email is taken by an existing local row. The clerk_id conflict target
+      // above already absorbs the webhook race, so a 23505 here means the email
+      // belongs to a row created under a *different* Clerk account — an old
+      // instance (dev keys / a previous deployment) whose clerkId no longer
+      // matches this session.
+      //
+      // THIS IS NOT RE-ASSOCIATED AUTOMATICALLY. Rewriting that row's clerk_id
+      // handed the caller the whole account — balance, stats, inventory and the
+      // is_admin flag — on the strength of an email match. Clerk verifies the
+      // address, but that is not proof the two sign-ins are the same person
+      // (addresses get recycled, and support can change one), so privilege must
+      // never move implicitly. A genuine instance switch is resolved by an
+      // operator, explicitly:
+      //   UPDATE users SET clerk_id = '<new id>' WHERE id = <row id>;
+      // after confirming both accounts belong together.
       // Drizzle wraps the pg error (which carries code "23505") in a
       // DrizzleQueryError under `cause`, so check both surfaces.
       const pgCode =
@@ -159,22 +168,18 @@ export async function POST(req: Request) {
           throw error;
         }
 
-        await db
-          .update(users)
-          .set({
-            clerkId,
-            name: preferredName,
-            searchName: searchNameFor(preferredName),
-            email,
-          })
-          .where(eq(users.id, existingByEmail[0].id));
+        auditLog("sync_user_email_conflict", {
+          clerkId,
+          existingUserId: existingByEmail[0].id,
+        });
 
         return NextResponse.json(
           {
-            message: "User re-associated with current Clerk account",
-            user: { id: existingByEmail[0].id, clerkId },
+            error:
+              "An account with this email is already linked to a different sign-in. " +
+              "Contact support so the accounts can be reviewed.",
           },
-          { status: 200 },
+          { status: 409 },
         );
       }
       throw error;

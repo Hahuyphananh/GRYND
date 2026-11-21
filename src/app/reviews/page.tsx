@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import JsonLd from "../../components/seo/JsonLd";
 import Link from "next/link";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import NavigationBar from "../../components/navigation-bar";
@@ -66,12 +67,7 @@ export default async function ReviewsPage() {
         {/* AggregateRating + the published reviews, built from the approved
             rows fetched above — never a hardcoded score. Omitted entirely when
             there is nothing real to report. */}
-        {reviewJsonLd && (
-          <script
-            type="application/ld+json"
-            dangerouslySetInnerHTML={{ __html: JSON.stringify(reviewJsonLd) }}
-          />
-        )}
+        <JsonLd data={reviewJsonLd} />
 
         <ReviewWall
           limit={limit}

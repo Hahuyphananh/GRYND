@@ -1,4 +1,5 @@
 import "./globals.css";
+import JsonLd from "../components/seo/JsonLd";
 import "./solitaire-cosmetics.css";
 import { headers } from "next/headers";
 import { Providers } from "./providers";
@@ -158,16 +159,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <ConsentModeDefault />
         {adsenseAccount && <meta name="google-adsense-account" content={adsenseAccount} />}
         <link rel="manifest" href="/manifest.json" />
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
-        />
-        {/* The site itself, so an answer engine knows the name, the canonical
-            URL and who publishes it. */}
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(buildWebsiteJsonLd()) }}
-        />
+        {/* Organization + WebSite nodes, emitted through the shared renderer
+            (it escapes "<" so no value can close the script tag). */}
+        <JsonLd data={[organizationJsonLd, buildWebsiteJsonLd()]} />
         <link rel="icon" type="image/png" href="/icon.png" />
         <link rel="icon" type="image/png" href="/images/smalllogo.png" />
         <link rel="apple-touch-icon" type="image/png" href="/icon-192.png" />
