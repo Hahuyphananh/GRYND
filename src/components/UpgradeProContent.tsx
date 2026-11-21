@@ -24,11 +24,6 @@ import {
 } from "../lib/proBilling";
 import { formatMoney } from "../lib/currency";
 import { ADVERTISED_PRO_BENEFITS } from "../lib/proBenefits";
-import {
-  TRUSTPILOT_REVIEW_COLLECTOR_HEIGHT,
-  getTrustpilotConfig,
-} from "../lib/trustpilot";
-import TrustpilotWidget from "./trustpilot/TrustpilotWidget";
 import type { ProPlanDisplay } from "../lib/membershipDisplay";
 import type { ProTestimonial } from "../lib/featuredReview";
 import {
@@ -294,11 +289,6 @@ export default function UpgradeProContent({
 }: UpgradeProContentProps) {
   const { t } = useTranslation();
   const isPage = variant === "page";
-  // Live Trustpilot data, never a typed rating: the widget is mounted only when
-  // this deploy has a real business unit + template (lib/trustpilot.ts), and it
-  // is hidden from an existing member, who has already decided.
-  const trustpilot = getTrustpilotConfig();
-
   // The reminder slot the member picks in the trial timeline. It is lifted here
   // because it also travels with the checkout request; it never decides a price
   // and it never decides entitlement.
@@ -527,29 +517,6 @@ export default function UpgradeProContent({
               </button>
             )}
 
-            {!active && trustpilot && (
-              <div
-                data-testid="pro-trustpilot-proof"
-                className="flex flex-col items-start gap-1"
-              >
-                <a
-                  href={trustpilot.reviewUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[10px] font-semibold uppercase tracking-wider text-[#9dd8ff]/70 underline-offset-2 transition hover:text-[#c9f7ff] hover:underline"
-                >
-                  {t("pro.trustpilot_label")} ↗
-                </a>
-                <div className="w-[220px] max-w-full">
-                  <TrustpilotWidget
-                    businessUnitId={trustpilot.businessUnitId}
-                    templateId={trustpilot.templateId}
-                    domain={trustpilot.domain}
-                    height={TRUSTPILOT_REVIEW_COLLECTOR_HEIGHT}
-                  />
-                </div>
-              </div>
-            )}
           </div>
 
           {/* ── Social proof: one real approved review, or nothing. ────── */}

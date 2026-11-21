@@ -513,20 +513,14 @@ test("the analytics benefit ships a sample visual preview", () => {
   assert.doesNotMatch(CONTENT, /useApiResource|fetch\(/);
 });
 
-test("social proof beside the CTA is Trustpilot's live widget, not invented numbers", () => {
-  // The proof is the real TrustBox, mounted from the configured business unit.
-  // A hardcoded rating or review count would be a fabricated claim (and would
-  // go stale), so the component must derive everything from the widget.
-  assert.match(
-    CONTENT,
-    /data-testid="pro-trustpilot-proof"/,
-    "the proof sits with the offer",
-  );
-  assert.match(CONTENT, /getTrustpilotConfig\(\)/);
-  assert.match(CONTENT, /<TrustpilotWidget/);
-  assert.match(CONTENT, /!active && trustpilot/);
+test("the offer carries no third-party review widget", () => {
+  // Trustpilot's TrustBox was removed from the PRO offer: it loaded a
+  // third-party script beside the CTA, and the offer's social proof is the one
+  // approved review rendered below (pro-testimonial). No rating or review count
+  // may be typed into the component either.
+  assert.doesNotMatch(CONTENT, /trustpilot/i, "no Trustpilot surface on the offer");
   assert.ok(
-    !/\b[45]\.\d\b|\b\d{2,}\s*(reviews|avis|opiniones)\b/i.test(CONTENT),
+    !/[45].d|d{2,}s*(reviews|avis|opiniones)/i.test(CONTENT),
     "no rating or review count may be typed into the component",
   );
 });
