@@ -160,11 +160,18 @@ async function captureBoard() {
   let messageId = 0;
   const pending = new Map();
   socket.addEventListener("message", (event) => {
-    const message = JSON.parse(event.data);
-    if (!message.id) return;
-    const settle = pending.get(message.id);
-    pending.delete(message.id);
-    settle?.(message);
+    let message;
+    try {
+      message = JSON.parse(event.data);
+    } catch {
+      return;
+    }
+    if (!message || typeof message !== "object") return;
+    const { id } = message;
+    if (!Number.isInteger(id)) return;
+    const settle = pending.get(id);
+    pending.delete(id);
+    if (typeof settle === "function") settle(message);
   });
 
   const send = (method, params = {}) => {
