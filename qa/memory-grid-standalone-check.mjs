@@ -240,11 +240,24 @@ async function until(label, expression, timeoutMs = 20_000) {
   }
 }
 
-const clickSelector = (selector) =>
-  evaluate(
-    `(() => { const el = document.querySelector(${JSON.stringify(selector)});
-      if (!el) return false; el.click(); return true; })()`,
-  );
+// One complete expression per control the script clicks: a selector is never
+// concatenated into page code.
+const CLICK_EXPRESSIONS = new Map([
+  [
+    '[data-testid="start-match"]',
+    '(() => { const el = document.querySelector(\'[data-testid="start-match"]\'); if (!el) return false; el.click(); return true; })()',
+  ],
+  [
+    '[data-testid="submit-picks"]',
+    '(() => { const el = document.querySelector(\'[data-testid="submit-picks"]\'); if (!el) return false; el.click(); return true; })()',
+  ],
+  [
+    '[data-testid="result-replay"]',
+    '(() => { const el = document.querySelector(\'[data-testid="result-replay"]\'); if (!el) return false; el.click(); return true; })()',
+  ],
+]);
+
+const clickSelector = (selector) => evaluate(CLICK_EXPRESSIONS.get(selector) ?? "false");
 
 const phaseIs = (label) =>
   `document.querySelector('[data-testid="phase-label"]')?.textContent.trim() === ${JSON.stringify(label)}`;

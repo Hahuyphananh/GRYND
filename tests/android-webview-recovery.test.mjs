@@ -36,18 +36,21 @@ const CANONICAL = "https://www.grynd.dedyn.io/";
 
 /** Strip HTML + JS comments: the files explain what must NOT happen in them. */
 const stripComments = (source) => {
-  // Repeat until nothing changes: removing one comment can join the fragments
-  // on either side into a fresh opener (a `<!--` split by a removed `//` line),
-  // so a single pass can leave `<!--` behind. Leftover openers are dropped too:
-  // the loop only ends once no comment marker survives at all.
+  // HTML comments are removed by SCANNING for the marker, not by a `replace`
+  // pattern: a `<!--` can be assembled out of fragments left by another
+  // comment (`<` + `//` + `!--`), so no single pattern and no single pass can be
+  // shown to remove every opener. Finding each opener and dropping up to its
+  // `-->` (or to the end, for an unterminated one) leaves none behind.
   let current = source;
   for (;;) {
-    const next = current
-      .replace(/<!--[\s\S]*?-->/g, "")
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/^\s*\/\/.*$/gm, "")
-      .split("<!--")
-      .join("");
+    let next = current;
+    for (let start = next.indexOf("<!--"); start !== -1; start = next.indexOf("<!--")) {
+      const end = next.indexOf("-->", start + 4);
+      next = next.slice(0, start) + (end === -1 ? "" : next.slice(end + 3));
+    }
+    // The JS comments are stripped here too, so a later pass catches any HTML
+    // comment they were hiding.
+    next = next.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
     if (next === current) return next;
     current = next;
   }

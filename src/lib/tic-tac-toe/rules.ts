@@ -609,16 +609,21 @@ export function applyMove({
   }
 
   const mark = markForSeat(seat);
-  // `splice`, not `cells[cellIndex] = mark`: the plan is validated above, and
-  // replacing the slot without a computed property write means a hostile
+  // Build the updated board as a NEW object and swap it into the lattice: no
+  // property is ever written through the board object itself, so a hostile
   // `__proto__`-style key can never reach the prototype chain.
-  target.cells.splice(cellIndex, 1, mark);
-  target.plies += 1;
+  const cells = target.cells.slice();
+  cells.splice(cellIndex, 1, mark);
   // `latticeOf` re-derived the control before the mark landed, so recompute it
   // now that this board changed.
-  const resolved = resolveBoardControl(target.cells);
-  target.control = resolved.control;
-  target.winningLine = resolved.winningLine;
+  const resolved = resolveBoardControl(cells);
+  const updatedBoard: SmallBoard = {
+    cells,
+    plies: target.plies + 1,
+    control: resolved.control,
+    winningLine: resolved.winningLine,
+  };
+  boards.splice(boardIndex, 1, updatedBoard);
 
   const next: TicTacToeState = {
     version: state.version + 1,
