@@ -28,7 +28,7 @@ import {
 
 import Footer from "../Footer";
 import NavigationBar from "../navigation-bar";
-import ModeTableau from "./ModeTableau";
+import ModeTableau, { type TableauVariant } from "./ModeTableau";
 import {
   PLAY_MODE_PALETTE,
   type PlayModeId,
@@ -39,31 +39,48 @@ export type LobbyMode = PlayModeId;
 
 const MODE_META: Record<
   LobbyMode,
-  { href: string; icon: ReactNode }
+  { href: string; icon: ReactNode; tableau: TableauVariant }
 > = {
   solo: {
     href: "/solitaire",
     icon: <IconCards size={22} aria-hidden="true" />,
+    tableau: "solo",
   },
   daily: {
     href: "/daily",
     icon: <IconCalendar size={22} aria-hidden="true" />,
+    tableau: "daily",
   },
   ai: {
     href: "/play/ai",
     icon: <IconRobot size={22} aria-hidden="true" />,
+    tableau: "ai",
   },
   ranked: {
     href: "/casino/solitaire-duel",
     icon: <IconTrophy size={22} aria-hidden="true" />,
+    tableau: "ranked",
+  },
+  // The two new modes have their OWN routes; neither points at the other mode.
+  puzzleRanked: {
+    href: "/play/puzzle-ranked",
+    icon: <IconTrophy size={22} aria-hidden="true" />,
+    tableau: "ranked",
+  },
+  puzzleAi: {
+    href: "/play/puzzle-ai",
+    icon: <IconRobot size={22} aria-hidden="true" />,
+    tableau: "ai",
   },
   dailyPuzzle: {
     href: "/play/daily-puzzle/play",
     icon: <IconPuzzle size={22} aria-hidden="true" />,
+    tableau: "dailyPuzzle",
   },
   unlimited: {
     href: "/play/unlimited-puzzles/play",
     icon: <IconInfinity size={22} aria-hidden="true" />,
+    tableau: "unlimited",
   },
 };
 
@@ -71,10 +88,17 @@ export default function ModeLobby({
   mode,
   children,
   secondary,
+  action,
 }: {
   mode: LobbyMode;
   children?: ReactNode;
   secondary?: ReactNode;
+  /**
+   * Replace the default "open the mode" link with the mode's real action
+   * (queueing for a match, starting an AI session). Used by the two puzzle
+   * modes, whose lobby IS the interaction; every shipped lobby keeps its link.
+   */
+  action?: ReactNode;
 }) {
   const { t } = useTranslation();
   const meta = MODE_META[mode];
@@ -148,18 +172,20 @@ export default function ModeLobby({
               )}
 
               <div className="mt-5 flex flex-wrap items-center gap-2">
-                <Link
-                  href={meta.href}
-                  data-testid={`play-lobby-${mode}-cta`}
-                  style={{
-                    backgroundColor: palette.accent,
-                    color: "#04120f",
-                  }}
-                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-black transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white/70"
-                >
-                  {t(`${prefix}.cta`)}
-                  <IconArrowRight size={16} aria-hidden="true" />
-                </Link>
+                {action ?? (
+                  <Link
+                    href={meta.href}
+                    data-testid={`play-lobby-${mode}-cta`}
+                    style={{
+                      backgroundColor: palette.accent,
+                      color: "#04120f",
+                    }}
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-black transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white/70"
+                  >
+                    {t(`${prefix}.cta`)}
+                    <IconArrowRight size={16} aria-hidden="true" />
+                  </Link>
+                )}
                 {secondary}
               </div>
 
@@ -173,7 +199,7 @@ export default function ModeLobby({
               style={{ borderColor: palette.line }}
               data-testid={`play-lobby-${mode}-preview`}
             >
-              <ModeTableau variant={mode} />
+              <ModeTableau variant={meta.tableau} />
               <span
                 className="absolute bottom-3 left-3 rounded-full border bg-[#04060f]/80 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-[0.16em] backdrop-blur-xs"
                 style={{ borderColor: palette.line, color: palette.accent }}

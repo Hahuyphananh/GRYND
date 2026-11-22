@@ -1716,6 +1716,13 @@
       "when": 1800000107000,
       "tag": "0263_drop_daily_reward_claim_marker",
       "breakpoints": true
+    },
+    {
+      "idx": 245,
+      "version": "7",
+      "when": 1800000108000,
+      "tag": "0264_solitaire_puzzle_sessions",
+      "breakpoints": true
     }
   ]
 }

@@ -1661,7 +1661,7 @@ export default function SolitaireDuelMatchPage() {
           ratingLabel: isPractice ? practiceBot?.ratingLabel ?? null : null,
         }}
         gameName="Solitaire Duel"
-        onReturnToLobby={() => router.push("/casino/solitaire-duel")}
+        onReturnToLobby={() => router.push("/play")}
         gameKey="solitaire-duel"
         // The opponent speaks in a practice result; the app mascot keeps its
         // own reactions to rated duels. Never two voices on one result.

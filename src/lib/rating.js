@@ -93,15 +93,20 @@ import {
 //                           replayed — see src/app/api/hex-duel/multiplayer/action).
 //   * every solo/AI mode  — not competitive, and no seat is an account.
 export const RATED_GAMES = Object.freeze([
-  // Solitaire Duel is the platform's one rated game: a deterministic Klondike
-  // deal per match, one board per seat, and an outcome derived from the
-  // server's own boards.
+  // Solitaire Duel: a deterministic Klondike deal per match, one board per
+  // seat, and an outcome derived from the server's own boards.
   "solitaire-duel",
+  // Puzzle Ranked: a SECOND Solitaire mode with its own competitive record.
+  // It races a frozen five-puzzle manifest and settles from server-verified
+  // solved counts. The distinct key is what guarantees its Elo and trophy rows
+  // can never be read as (or move) Solitaire Duel's.
+  "solitaire-puzzle",
 ]);
 
 /** Display labels for the rating boards (mirrors the lobby names). */
 export const RATING_GAME_LABELS = Object.freeze({
   "solitaire-duel": "Solitaire Duel",
+  "solitaire-puzzle": "Puzzle Ranked",
 });
 
 /** True when a game key is eligible for Elo. */

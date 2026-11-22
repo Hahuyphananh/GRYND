@@ -4525,6 +4525,124 @@ export const solitairePuzzleUsage = pgTable(
   }),
 );
 
+// SOLITAIRE PUZZLE SESSIONS — the server-authoritative competitive / practice
+// puzzle race (Puzzle Ranked and Puzzle vs AI).
+//
+// Deliberately SEPARATE from `solitaire_duel_matches`: a puzzle session is a
+// sequence of frozen puzzle specs, not one shared deal, and its scoring is
+// "how many puzzles solved, and how fast", so sharing the duel table would
+// overload columns whose settlement/rating semantics are different.
+//
+// `manifest` is SERVER-ONLY: it holds the frozen start states (face-down
+// identities and stock order included), the objectives and the per-puzzle
+// constraints. It carries NO accepted solution path and NO verification data —
+// see src/lib/solitaire-puzzle/manifest.ts. A route may only ever serialize the
+// sanitized projection from src/lib/solitaire-puzzle/projection.ts.
+//
+// `selection_seed`/`selection_hash` mirror the duel's provably-fair pair: the
+// seed is server-generated, committed at creation, and both seats' manifests
+// are written from that ONE selection, so both players provably race the
+// identical set in the identical order.
+//
+// No rating, trophy, wager or queue column exists here on purpose. Ranked
+// settlement is a later phase; practice must never be settleable at all.
+export const solitairePuzzleSessions = pgTable(
+  "solitaire_puzzle_sessions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    // The frozen session format, so a future ruleset change cannot reinterpret
+    // an existing session's stored manifest.
+    format: varchar("format", { length: 24 }).notNull().default("puzzle-race-v1"),
+    // 'ranked' | 'ai' — the two session types this foundation supports.
+    mode: varchar("mode", { length: 16 }).notNull().default("ranked"),
+    // waiting | playing | finished | cancelled.
+    status: varchar("status", { length: 16 }).notNull().default("waiting"),
+    player1Id: varchar("player1_id", { length: 255 }).notNull(),
+    // Null while a rated session still waits for its second human seat.
+    player2Id: varchar("player2_id", { length: 255 }),
+    // Marked on a practice session so no later settlement phase can rate it.
+    isAi: boolean("is_ai").notNull().default(false),
+    aiDifficulty: varchar("ai_difficulty", { length: 24 }),
+    // How many puzzles the manifest holds (always the manifest's own length).
+    puzzleCount: integer("puzzle_count").notNull().default(5),
+    // Server-only selection entropy and its pre-session commitment.
+    selectionSeed: varchar("selection_seed", { length: 64 }).notNull(),
+    selectionHash: varchar("selection_hash", { length: 64 }).notNull(),
+    // SERVER-ONLY frozen manifest: [{ slot, id, level, category, objectiveText,
+    // concept, spec: { id, version, objective, startState, constraints } }].
+    manifest: jsonb("manifest").notNull(),
+    // Per-seat authoritative state. `p1_state`/`p2_state` hold the live board,
+    // the puzzle index and the per-puzzle stats; the ply is the monotonic
+    // accepted-move cursor used for staleness and the move log's unique key.
+    p1PuzzleIndex: integer("p1_puzzle_index").notNull().default(0),
+    p1Solved: integer("p1_solved").notNull().default(0),
+    p1Ply: integer("p1_ply").notNull().default(0),
+    p1State: jsonb("p1_state").notNull(),
+    p1Stats: jsonb("p1_stats").notNull(),
+    p1LastSolveAt: timestamp("p1_last_solve_at"),
+    p1FinishedAt: timestamp("p1_finished_at"),
+    p1LastActionAt: timestamp("p1_last_action_at"),
+    p2PuzzleIndex: integer("p2_puzzle_index").notNull().default(0),
+    p2Solved: integer("p2_solved").notNull().default(0),
+    p2Ply: integer("p2_ply").notNull().default(0),
+    p2State: jsonb("p2_state").notNull(),
+    p2Stats: jsonb("p2_stats").notNull(),
+    p2LastSolveAt: timestamp("p2_last_solve_at"),
+    p2FinishedAt: timestamp("p2_finished_at"),
+    p2LastActionAt: timestamp("p2_last_action_at"),
+    // ONE absolute GO instant and ONE absolute deadline, server clock. Both
+    // seats receive the same allowance; a practice session is untimed and
+    // leaves the deadline NULL.
+    goAt: timestamp("go_at"),
+    deadlineAt: timestamp("deadline_at"),
+    endedAt: timestamp("ended_at"),
+    // 'player1' | 'player2' | 'draw'. Null until the server settles the race.
+    result: varchar("result", { length: 16 }),
+    winnerId: varchar("winner_id", { length: 255 }),
+    // finish | deadline | forfeit | draw — the server's own reason.
+    resolutionReason: varchar("resolution_reason", { length: 16 }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    p1Idx: index("solitaire_puzzle_sessions_p1_idx").on(table.player1Id, table.createdAt),
+    p2Idx: index("solitaire_puzzle_sessions_p2_idx").on(table.player2Id, table.createdAt),
+    statusIdx: index("solitaire_puzzle_sessions_status_idx").on(table.status, table.updatedAt),
+  }),
+);
+
+// Append-only log of accepted puzzle moves, one row per (session, seat, ply).
+//
+// The unique key is the concurrency backstop: two racing submissions of the
+// same ply cannot both be recorded, and the store maps a unique violation to a
+// 409 instead of a 500. The row keeps the validated `SolitaireMove` only — no
+// board, no outcome, no score — so the log is a replayable input history rather
+// than a second source of truth.
+export const solitairePuzzleSessionMoves = pgTable(
+  "solitaire_puzzle_session_moves",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    sessionId: uuid("session_id").notNull(),
+    seat: varchar("seat", { length: 16 }).notNull(),
+    ply: integer("ply").notNull(),
+    puzzleIndex: integer("puzzle_index").notNull().default(0),
+    kind: varchar("kind", { length: 32 }).notNull(),
+    move: jsonb("move").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    seatPlyUnique: unique("solitaire_puzzle_session_moves_seat_ply_unique").on(
+      table.sessionId,
+      table.seat,
+      table.ply,
+    ),
+    sessionIdx: index("solitaire_puzzle_session_moves_session_idx").on(
+      table.sessionId,
+      table.createdAt,
+    ),
+  }),
+);
+
 export const proWeeklyRecapSends = pgTable(
   "pro_weekly_recap_sends",
   {

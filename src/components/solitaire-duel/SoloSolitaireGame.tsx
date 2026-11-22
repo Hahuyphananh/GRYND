@@ -897,7 +897,7 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
             <button type="button" onClick={startDaily} className="rounded-lg bg-emerald-500 px-5 py-2 font-semibold text-slate-950 hover:bg-emerald-400">
               {todayRecorded ? "Replay as practice" : "Start challenge"}
             </button>
-            <Link href="/" className="rounded-lg border border-white/15 px-5 py-2 text-slate-200 hover:bg-white/5">
+            <Link href="/play" className="rounded-lg border border-white/15 px-5 py-2 text-slate-200 hover:bg-white/5">
               Back to lobby
             </Link>
           </div>
@@ -1068,7 +1068,7 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
                   >
                     Play again
                   </button>
-                  {mode === "solo" ? (
+                  {mode === "solo" && (
                     <button
                       type="button"
                       onClick={newSoloGame}
@@ -1076,14 +1076,16 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
                     >
                       New deal
                     </button>
-                  ) : (
-                    <Link
-                      href="/"
-                      className="inline-flex items-center justify-center rounded-lg border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5"
-                    >
-                      Back to lobby
-                    </Link>
                   )}
+                  {/* Every result popup leaves a way out of the mode: the
+                      play hub lists all six games, so a finished run is one
+                      click from another mode instead of a dead end. */}
+                  <Link
+                    href="/play"
+                    className="inline-flex items-center justify-center rounded-lg border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5"
+                  >
+                    Back to lobby
+                  </Link>
                 </div>
                 {!signedIn && (
                   <p className="mt-4 text-xs text-slate-500">
@@ -1118,7 +1120,7 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
                   >
                     Play again
                   </button>
-                  {mode === "solo" ? (
+                  {mode === "solo" && (
                     <button
                       type="button"
                       onClick={newSoloGame}
@@ -1126,14 +1128,16 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
                     >
                       New deal
                     </button>
-                  ) : (
-                    <Link
-                      href="/"
-                      className="inline-flex items-center justify-center rounded-lg border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5"
-                    >
-                      Back to lobby
-                    </Link>
                   )}
+                  {/* Every result popup leaves a way out of the mode: the
+                      play hub lists all six games, so a finished run is one
+                      click from another mode instead of a dead end. */}
+                  <Link
+                    href="/play"
+                    className="inline-flex items-center justify-center rounded-lg border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5"
+                  >
+                    Back to lobby
+                  </Link>
                 </div>
                 {savedResult === "failed" && (
                   <p className="mt-3 text-xs text-slate-500">

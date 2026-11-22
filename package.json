@@ -22,6 +22,8 @@
     "backfill:field-encryption": "node --import tsx scripts/backfill-field-encryption.mjs",
     "test:icons": "node scripts/check-tabler-icons.mjs",
     "test:puzzle": "node --import tsx --test tests/solitaire-puzzle.test.mjs",
+    "test:puzzle-ranked": "node --import tsx --test --experimental-test-module-mocks tests/solitaire-puzzle-ranked.test.mjs",
+    "test:puzzle-ai": "node --import tsx --test --experimental-test-module-mocks tests/solitaire-puzzle-ai.test.mjs",
     "test:offline-ai": "node --import tsx --test tests/solitaire-offline-ai.test.mjs",
     "test:solo-timer": "node --import tsx --test tests/solitaire-solo-timer.test.mjs",
     "test:offline-unlimited": "node --import tsx --test tests/solitaire-offline-unlimited.test.mjs",

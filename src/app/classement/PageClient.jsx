@@ -41,6 +41,9 @@ const TAB_LABELS = {
 // the API response (`games`), so the tabs can never drift from the server.
 const RATED_GAMES_FALLBACK = [
   { key: "solitaire-duel", label: "Solitaire Duel" },
+  // Puzzle Ranked keeps its OWN board; the first-paint list mirrors
+  // RATED_GAMES so the two can never drift.
+  { key: "solitaire-puzzle", label: "Puzzle Ranked" },
 ];
 
 /** The first-paint mirror the UI offers: archived games keep their rows in

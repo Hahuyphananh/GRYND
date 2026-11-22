@@ -52,8 +52,11 @@ test("Solitaire Duel is the only game in the catalogue", () => {
   );
 });
 
-test("Solitaire Duel is the only rated game", () => {
-  assert.deepEqual([...RATED_GAMES], ["solitaire-duel"]);
+test("the only rated games are the two Solitaire modes", () => {
+  // Solitaire Duel and Puzzle Ranked are the platform's two competitive modes.
+  // They keep SEPARATE per-game records (different keys), which is exactly why
+  // a Puzzle Ranked result cannot move a Solitaire Duel statistic.
+  assert.deepEqual([...RATED_GAMES], ["solitaire-duel", "solitaire-puzzle"]);
 });
 
 test("the public landing catalogue is Solitaire-only", () => {

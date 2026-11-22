@@ -15,6 +15,7 @@ import path from "node:path";
 
 import { APP_TEXT_TRANSLATIONS } from "../src/lib/appTextTranslations.js";
 import { PLAY_HUB_TRANSLATIONS } from "../src/lib/playHubTranslations.js";
+import { PLAY_MODE_GROUPS } from "../src/lib/playModePalette.ts";
 
 const ROOT = process.cwd();
 const read = (relative) =>
@@ -28,28 +29,43 @@ const PUZZLE_ROUTE = "src/app/api/solitaire/puzzle/route.ts";
 const STATS_CLIENT = "src/components/stats/SolitaireAcademyStats.tsx";
 
 // Solo and Daily open the standalone surfaces that own their intent; the other
-// four still open their own lobby. `/play/solo` and `/play/daily` 308 to these.
+// six open their own lobby. `/play/solo` and `/play/daily` 308 to these.
 const MODES = [
   ["solo", "/solitaire"],
   ["daily", "/daily"],
   ["ai", "/play/ai"],
   ["ranked", "/play/ranked"],
+  ["puzzleRanked", "/play/puzzle-ranked"],
+  ["puzzleAi", "/play/puzzle-ai"],
   ["dailyPuzzle", "/play/daily-puzzle"],
   ["unlimited", "/play/unlimited-puzzles"],
 ];
 
 // ── Play hub ──────────────────────────────────────────────────────────────
 
-test("the Play hub renders exactly six mode cards in order", () => {
+test("the Play hub renders exactly eight mode cards in order", () => {
   const source = read(HUB);
   const ids = [...source.matchAll(/data-testid=\{`play-mode-\$\{mode\.id\}`\}/g)];
   assert.equal(ids.length, 1, "cards are rendered from one list, not hand-copied");
   assert.match(source, /const MODES: readonly Mode\[\] = \[/);
 
-  const order = [...source.matchAll(/id: "(solo|daily|ai|ranked|dailyPuzzle|unlimited)"/g)];
+  const order = [
+    ...source.matchAll(
+      /id: "(solo|daily|ai|ranked|puzzleRanked|puzzleAi|dailyPuzzle|unlimited)"/g,
+    ),
+  ];
   assert.deepEqual(
     order.map((match) => match[1]),
-    ["solo", "daily", "ai", "ranked", "dailyPuzzle", "unlimited"],
+    [
+      "solo",
+      "daily",
+      "ai",
+      "ranked",
+      "puzzleRanked",
+      "puzzleAi",
+      "dailyPuzzle",
+      "unlimited",
+    ],
   );
 
   for (const [id, href] of MODES) {
@@ -69,6 +85,8 @@ test("every mode has a dedicated, real lobby route", () => {
     "src/app/play/daily/page.tsx",
     "src/app/play/ai/page.tsx",
     "src/app/play/ranked/page.tsx",
+    "src/app/play/puzzle-ranked/page.tsx",
+    "src/app/play/puzzle-ai/page.tsx",
     "src/app/play/daily-puzzle/page.tsx",
     "src/app/play/daily-puzzle/play/page.tsx",
     "src/app/play/unlimited-puzzles/page.tsx",
@@ -85,6 +103,44 @@ test("every mode has a dedicated, real lobby route", () => {
   // AI and ranked reuse the existing implementations, never a copy.
   assert.match(read("src/app/play/ai/page.tsx"), /solitaire-duel\/play-ai\/PageClient/);
   assert.match(read("src/app/play/ranked/page.tsx"), /SolitaireLobby/);
+
+  // The two puzzle modes are dedicated routes with dedicated clients.
+  assert.match(read("src/app/play/puzzle-ranked/page.tsx"), /PuzzleRankedLobby/);
+  assert.match(read("src/app/play/puzzle-ai/page.tsx"), /PuzzleAiLobby/);
+  assert.match(read("src/components/play/PuzzleRankedLobby.tsx"), /\/api\/solitaire-puzzle\/queue/);
+  assert.match(read("src/components/play/PuzzleAiLobby.tsx"), /\/api\/solitaire-puzzle\/ai/);
+});
+
+test("Ranked is one row of two equal cards, and never crosses modes", () => {
+  const source = read(HUB);
+  // The Ranked group is exactly the regular mode and the puzzle mode, two up.
+  assert.deepEqual(
+    PLAY_MODE_GROUPS.find((group) => group.id === "ranked")?.modes,
+    ["ranked", "puzzleRanked"],
+  );
+  assert.deepEqual(
+    PLAY_MODE_GROUPS.find((group) => group.id === "practice")?.modes,
+    ["ai", "puzzleAi"],
+  );
+  // Ranked (and the other zones) are two-up; Practice takes three columns so
+  // the strategic library is its third card in the same row.
+  assert.match(
+    source,
+    /group\.id === "practice"[\s\S]{0,80}sm:grid-cols-2 lg:grid-cols-3/,
+  );
+  assert.match(source, /data-testid="play-mode-strategic"/);
+  assert.match(source, /href="\/play\/strategic-puzzles"/);
+  assert.match(source, /id: "puzzleRanked", href: "\/play\/puzzle-ranked", group: "ranked"/);
+  assert.match(source, /id: "ranked", href: "\/play\/ranked", group: "ranked"/);
+  // No card spans the whole row any more: both take 50% on desktop.
+  assert.doesNotMatch(source, /featured|col-span-3/);
+  // The puzzle modes are practice, not replacements for the library.
+  assert.match(source, /id: "puzzleAi", href: "\/play\/puzzle-ai", group: "practice"/);
+  assert.match(source, /\/play\/strategic-puzzles/);
+  // The Puzzle Ranked client can never send the player to regular Ranked.
+  assert.doesNotMatch(read("src/components/play/PuzzleRankedLobby.tsx"), /\/play\/ranked/);
+  // The existing regular Vs AI card is untouched.
+  assert.match(source, /id: "ai", href: "\/play\/ai", group: "practice"/);
 });
 
 test("hub CTA labels come from all three locales", () => {
@@ -95,7 +151,17 @@ test("hub CTA labels come from all three locales", () => {
       keys.push(`cards.${id}.${suffix}`);
     }
   }
-  for (const mode of ["solo", "daily", "dailyPuzzle", "unlimited"]) {
+  for (const suffix of ["title", "description", "meta", "cta", "tag"]) {
+    keys.push(`cards.strategic.${suffix}`);
+  }
+  for (const mode of [
+    "solo",
+    "daily",
+    "dailyPuzzle",
+    "unlimited",
+    "puzzleRanked",
+    "puzzleAi",
+  ]) {
     keys.push(`lobby.${mode}.title`, `lobby.${mode}.description`, `lobby.${mode}.cta`, `lobby.${mode}.note`);
   }
   keys.push("title", "description", "back", "loading", "unavailable");

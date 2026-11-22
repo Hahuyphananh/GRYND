@@ -663,6 +663,21 @@ export default function SolitairePuzzle({ kind }: Props) {
                       : `Run over at step ${currentStep} of ${totalSteps}. A new run arrives at UTC midnight.`}
                   </p>
                 )}
+                {/* A judged puzzle is a result: a practice position is done the
+                    moment it is graded, and the daily run ends on its last
+                    step or its first mistake. Either way the player leaves the
+                    mode through the same Back to lobby exit the solo and bot
+                    arena popups offer — a daily step that unlocked the next
+                    board keeps playing and gets no exit. */}
+                {judgement && (kind === "unlimited" || !nextStep) && (
+                  <Link
+                    href="/play"
+                    data-testid="puzzle-back-to-lobby"
+                    className="mt-3 inline-flex w-full items-center justify-center rounded-lg border border-white/15 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-white/60 transition hover:border-white/30 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300"
+                  >
+                    Back to lobby
+                  </Link>
+                )}
               </div>
             )}
 

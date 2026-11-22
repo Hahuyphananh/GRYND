@@ -2,6 +2,8 @@ import { LEARN_TRANSLATIONS } from "./learnTranslations";
 import { PLAY_HUB_TRANSLATIONS } from "./playHubTranslations";
 import { SOLITAIRE_BOARD_TRANSLATIONS } from "./solitaireBoardTranslations";
 import { SOLITAIRE_REVIEW_TRANSLATIONS } from "./solitaireReviewTranslations";
+import { PUZZLE_LIBRARY_TRANSLATIONS } from "./puzzleLibraryTranslations";
+import { PUZZLE_PLAYER_TRANSLATIONS } from "./puzzlePlayerTranslations";
 
 export const APP_TEXT_TRANSLATIONS = {
   en: {
@@ -3095,6 +3097,8 @@ export const APP_TEXT_TRANSLATIONS = {
         "Sign in to record solo games and daily streaks. Prefer to stay a guest? Solo still works, with records kept in this browser.",
     },
     playHub: PLAY_HUB_TRANSLATIONS.en,
+    puzzleLibrary: PUZZLE_LIBRARY_TRANSLATIONS.en,
+    puzzlePlayer: PUZZLE_PLAYER_TRANSLATIONS.en,
   },
   fr: {
     // ── Dialogue des adversaires Solitaire ───────────────────────────────
@@ -5911,6 +5915,8 @@ export const APP_TEXT_TRANSLATIONS = {
         "Connecte-toi pour enregistrer tes parties solo et tes séries quotidiennes. Tu préfères rester invité ? Le solo marche quand même, avec les records gardés dans ce navigateur.",
     },
     playHub: PLAY_HUB_TRANSLATIONS.fr,
+    puzzleLibrary: PUZZLE_LIBRARY_TRANSLATIONS.fr,
+    puzzlePlayer: PUZZLE_PLAYER_TRANSLATIONS.fr,
   },
   es: {
     // ── Diálogo de los rivales de Solitario ──────────────────────────────
@@ -8727,6 +8733,8 @@ export const APP_TEXT_TRANSLATIONS = {
         "Inicia sesión para registrar tus partidas en solitario y tus rachas diarias. ¿Prefieres seguir como invitado? El modo solitario funciona igual, con los récords guardados en este navegador.",
     },
     playHub: PLAY_HUB_TRANSLATIONS.es,
+    puzzleLibrary: PUZZLE_LIBRARY_TRANSLATIONS.es,
+    puzzlePlayer: PUZZLE_PLAYER_TRANSLATIONS.es,
   },
 };
 

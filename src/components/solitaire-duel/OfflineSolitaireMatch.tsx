@@ -17,6 +17,7 @@
 // This component owns presentation and the 250 ms tick only.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import {
   IconArrowBackUp,
   IconArrowLeft,
@@ -451,6 +452,15 @@ export default function OfflineSolitaireMatch({
               >
                 Choose another bot
               </button>
+              {/* A finished race is not a dead end: the play hub lists every
+                  mode, including this one. */}
+              <Link
+                href="/play"
+                data-testid="solitaire-offline-back-to-lobby"
+                className="w-full rounded-xl px-4 py-2 text-center text-xs font-bold uppercase tracking-[0.16em] text-white/45 transition hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+              >
+                Back to lobby
+              </Link>
             </div>
           </div>
         </div>

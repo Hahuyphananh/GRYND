@@ -18,10 +18,12 @@ export type PlayModeId =
   | "daily"
   | "ai"
   | "ranked"
+  | "puzzleRanked"
+  | "puzzleAi"
   | "dailyPuzzle"
   | "unlimited";
 
-export type PlayModeGroup = "competitive" | "casual" | "puzzle";
+export type PlayModeGroup = "ranked" | "practice" | "casual" | "puzzle";
 
 export type PlayModePalette = {
   accent: string;
@@ -38,6 +40,15 @@ export const PLAY_MODE_PALETTE: Record<PlayModeId, PlayModePalette> = {
       "linear-gradient(155deg, rgba(0, 255, 163, 0.16) 0%, rgba(6, 30, 22, 0.92) 46%, rgba(4, 9, 15, 0.98) 100%)",
     glow: "rgba(0, 255, 163, 0.16)",
   },
+  // The second Ranked mode: same emerald family, a cooler teal so the pair reads
+  // as ONE competitive row without the two cards looking like a copy.
+  puzzleRanked: {
+    accent: "#5eead4",
+    line: "rgba(94, 234, 212, 0.36)",
+    surface:
+      "linear-gradient(155deg, rgba(94, 234, 212, 0.16) 0%, rgba(8, 34, 32, 0.92) 46%, rgba(4, 9, 15, 0.98) 100%)",
+    glow: "rgba(94, 234, 212, 0.16)",
+  },
   solo: {
     accent: "#00e5ff",
     line: "rgba(0, 229, 255, 0.30)",
@@ -51,6 +62,14 @@ export const PLAY_MODE_PALETTE: Record<PlayModeId, PlayModePalette> = {
     surface:
       "linear-gradient(155deg, rgba(167, 139, 250, 0.16) 0%, rgba(26, 20, 48, 0.92) 46%, rgba(6, 6, 14, 0.98) 100%)",
     glow: "rgba(167, 139, 250, 0.16)",
+  },
+  // The second AI mode: the same violet family as Vs AI, one step brighter.
+  puzzleAi: {
+    accent: "#c4b5fd",
+    line: "rgba(196, 181, 253, 0.36)",
+    surface:
+      "linear-gradient(155deg, rgba(196, 181, 253, 0.16) 0%, rgba(30, 24, 54, 0.92) 46%, rgba(6, 6, 14, 0.98) 100%)",
+    glow: "rgba(196, 181, 253, 0.16)",
   },
   daily: {
     accent: "#fbbf24",
@@ -75,12 +94,20 @@ export const PLAY_MODE_PALETTE: Record<PlayModeId, PlayModePalette> = {
   },
 };
 
-/** The hub's three zones, in display order. */
+/**
+ * The hub's zones, in display order.
+ *
+ * Ranked is a ROW OF TWO (Solitaire Ranked and Puzzle Ranked); Practice is the
+ * AI pair. Solo and the daily challenge stay casual, and the puzzle surfaces
+ * keep their own zone — unrelated modes are not forced into a category that
+ * does not describe them.
+ */
 export const PLAY_MODE_GROUPS: readonly {
   id: PlayModeGroup;
   modes: readonly PlayModeId[];
 }[] = [
-  { id: "competitive", modes: ["ranked"] },
-  { id: "casual", modes: ["solo", "daily", "ai"] },
+  { id: "ranked", modes: ["ranked", "puzzleRanked"] },
+  { id: "practice", modes: ["ai", "puzzleAi"] },
+  { id: "casual", modes: ["solo", "daily"] },
   { id: "puzzle", modes: ["dailyPuzzle", "unlimited"] },
 ];
