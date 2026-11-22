@@ -167,11 +167,21 @@ export function aiLookahead(difficulty: AiDifficulty): number {
  *
  * `random` is injectable so the AI stays deterministic under test.
  */
+// The default draw is the platform CSPRNG, not `Math.random`: a slip is visible
+// to an opponent, and in the mines path it decides the cell an AI applies to a
+// wagered match. `globalThis.crypto` exists in Node and the browser alike, so
+// this module stays importable from both.
+const secureRandom = (): number => {
+  const buffer = new Uint32Array(1);
+  globalThis.crypto.getRandomValues(buffer);
+  return buffer[0] / 2 ** 32;
+};
+
 export function chooseAiOption<T>(
   difficulty: AiDifficulty,
   options: readonly T[],
   scoreOf: (option: T) => number,
-  random: () => number = Math.random,
+  random: () => number = secureRandom,
   slipFloor = 0.5
 ): T | null {
   if (options.length === 0) return null;
