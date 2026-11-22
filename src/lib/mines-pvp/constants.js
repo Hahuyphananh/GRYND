@@ -26,6 +26,8 @@
 // values, scores, completion state or the timer. Everything in this
 // module is server-only.
 
+import { randomInt } from "node:crypto";
+
 import { chooseAiOption, coerceAiDifficulty } from "../aiDifficulty";
 
 // ── Board geometry ────────────────────────────────────────────────────
@@ -182,10 +184,12 @@ export function generateBoard(minesCount = MINES_PER_MATCH) {
     );
   }
 
-  // Fisher-Yates partial shuffle over the 100 cells.
+  // Fisher-Yates partial shuffle over the 100 cells. The RNG is the CSPRNG:
+  // mine positions decide a wagered match, so a predictable sequence would let a
+  // player compute the board before revealing a single cell.
   const all = Array.from({ length: GRID_CELLS }, (_, i) => i);
   for (let i = 0; i < count; i += 1) {
-    const j = i + Math.floor(Math.random() * (GRID_CELLS - i));
+    const j = i + randomInt(GRID_CELLS - i);
     [all[i], all[j]] = [all[j], all[i]];
   }
   const mines = all.slice(0, count).sort((a, b) => a - b);
@@ -195,7 +199,7 @@ export function generateBoard(minesCount = MINES_PER_MATCH) {
   // cell indices (which would be a readable pattern).
   const values = [...MINE_VALUES];
   for (let i = values.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = randomInt(i + 1);
     [values[i], values[j]] = [values[j], values[i]];
   }
   const valueByCell = {};
