@@ -286,7 +286,9 @@ await context.close();
 await browser.close();
 
 // ── Report ────────────────────────────────────────────────────────────────
-const esc = (v) => String(v ?? "").replace(/\|/g, "\\|");
+// Escape backslashes FIRST, then the pipe: escaping only the pipe lets a value
+// that already ends in a backslash swallow it and break out of the table cell.
+const esc = (v) => String(v ?? "").replace(/\\/g, "\\\\").replace(/\|/g, "\\|");
 console.log(`\nTappable elements measured: ${rows.length}   (viewport ${VIEWPORT.width}×${VIEWPORT.height}, min ${MIN}px)`);
 console.log(`Mount failures (component skipped): ${failures.length ? failures.map((f) => f.id).join(", ") : "none"}`);
 const hosts = [...new Set(blocked.map((u) => { try { return new URL(u).host; } catch { return u; } }))];

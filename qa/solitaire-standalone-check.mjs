@@ -37,9 +37,9 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { extname, join, normalize, resolve } from "node:path";
+import { extname, join, resolve } from "node:path";
 
 const argv = process.argv.slice(2);
 const dirArg = argv.find((entry) => entry.startsWith("--dir="));
@@ -50,7 +50,19 @@ const EXPECT_CTA = argv.includes("--expect-cta");
 // else, and requires that the attempt actually happened.
 const EXPECT_SDK = argv.includes("--expect-sdk");
 const SDK_ORIGIN = "sdk.crazygames.com";
-const isSdkRequest = (url) => url.includes(SDK_ORIGIN);
+// A request is an SDK request only when its HOST is the SDK origin: a query
+// string or a look-alike host that merely contains the name does not count.
+const isSdkRequest = (url) => {
+  try {
+    return new URL(url).host === SDK_ORIGIN;
+  } catch {
+    return false;
+  }
+};
+
+/** True when a CDP event mentions the SDK host anywhere as a real URL. */
+const mentionsSdkOrigin = (event) =>
+  (JSON.stringify(event.params).match(/https?:\/\/[^\s"'\\]+/g) ?? []).some(isSdkRequest);
 
 /**
  * What the itch package is built to say and point at
@@ -88,16 +100,29 @@ assert.ok(existsSync(join(OUT, "index.html")), `no index.html in ${OUT} — run 
 
 // ── 1. Static server for the package ─────────────────────────────────────
 
+/**
+ * Every file the package contained when the server started, keyed by the path a
+ * request may name. Serving out of this map means a `..`, an absolute path or a
+ * look-alike prefix can never reach a file outside the package.
+ */
+const packageFiles = (() => {
+  const files = new Map();
+  const walk = (dir, prefix) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const name = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) walk(join(dir, entry.name), name);
+      else if (entry.isFile()) files.set(name, join(dir, entry.name));
+    }
+  };
+  walk(OUT, "");
+  return files;
+})();
+
 const server = createServer((req, res) => {
   const requested = decodeURIComponent((req.url ?? "/").split("?")[0]);
-  const safe = normalize(requested).replace(/^([/\\])+/, "");
-  let file = join(OUT, safe || "index.html");
-  if (!file.startsWith(OUT)) {
-    res.writeHead(403).end("forbidden");
-    return;
-  }
-  if (existsSync(file) && statSync(file).isDirectory()) file = join(file, "index.html");
-  if (!existsSync(file)) {
+  const key = requested.replace(/^([/\\])+/, "") || "index.html";
+  const file = packageFiles.get(key) ?? packageFiles.get(`${key}/index.html`);
+  if (!file) {
     res.writeHead(404).end("not found");
     return;
   }
@@ -179,10 +204,12 @@ const pending = new Map();
 const events = [];
 socket.addEventListener("message", (event) => {
   const message = JSON.parse(event.data);
-  if (message.id) {
+  if (Number.isInteger(message.id)) {
     const settle = pending.get(message.id);
     pending.delete(message.id);
-    settle?.(message);
+    // Only a callback this script registered may be invoked, never a method
+    // reached through the message's own name.
+    if (typeof settle === "function") settle(message);
     return;
   }
   events.push(message);
@@ -220,11 +247,24 @@ async function until(label, expression, timeoutMs = 20_000) {
   }
 }
 
-const clickSelector = (selector) =>
-  evaluate(
-    `(() => { const el = document.querySelector(${JSON.stringify(selector)});
-      if (!el) return false; el.click(); return true; })()`,
-  );
+// One complete expression per control the script clicks: no selector is ever
+// concatenated into page code.
+const CLICK_EXPRESSIONS = new Map([
+  [
+    "startRace",
+    '(() => { const el = document.querySelector(\'[data-testid="start-race"]\'); if (!el) return false; el.click(); return true; })()',
+  ],
+  [
+    "stock",
+    '(() => { const el = document.querySelector(\'[data-testid="solitaire-stock"]\'); if (!el) return false; el.click(); return true; })()',
+  ],
+  [
+    "replay",
+    '(() => { const el = document.querySelector(\'[data-testid="result-replay"]\'); if (!el) return false; el.click(); return true; })()',
+  ],
+]);
+
+const clickSelector = (name) => evaluate(CLICK_EXPRESSIONS.get(name) ?? "false");
 
 const result = { requests: [], consoleErrors: [], checks: [] };
 const note = (message) => result.checks.push(message);
@@ -272,7 +312,7 @@ try {
     "the menu must say the tier is pace only",
   );
   note("menu previews each tier's pace (~1.3s / ~0.9s / ~0.5s a move)");
-  assert.equal(await clickSelector('[data-testid="start-race"]'), true);
+  assert.equal(await clickSelector("startRace"), true);
   await until("the board to appear", "!!document.querySelector('[data-testid=\"solitaire-board\"]')");
   note("a new match started and the board rendered");
 
@@ -295,7 +335,7 @@ try {
   const plyBefore = Number(
     await evaluate("document.querySelector('[data-testid=\"solitaire-board\"]').dataset.ply"),
   );
-  assert.equal(await clickSelector('[data-testid="solitaire-stock"]'), true);
+  assert.equal(await clickSelector("stock"), true);
   await until(
     "the player's draw to land",
     "Number(document.querySelector('[data-testid=\"solitaire-board\"]').dataset.ply) > 0",
@@ -462,7 +502,7 @@ try {
   }
 
   // ── Replay ──────────────────────────────────────────────────────────
-  assert.equal(await clickSelector('[data-testid="result-replay"]'), true);
+  assert.equal(await clickSelector("replay"), true);
   await until("the result overlay to clear", "!document.querySelector('[data-testid=\"result-overlay\"]')");
   await until("the fresh board", "!!document.querySelector('[data-testid=\"solitaire-board\"]')");
   await until(
@@ -613,7 +653,7 @@ try {
         event.method === "Runtime.exceptionThrown" ||
         (event.method === "Runtime.consoleAPICalled" && event.params.type === "error"),
     )
-    .filter((event) => !(EXPECT_SDK && JSON.stringify(event.params).includes(SDK_ORIGIN)))
+    .filter((event) => !(EXPECT_SDK && mentionsSdkOrigin(event)))
     .map((event) => JSON.stringify(event.params).slice(0, 300));
   assert.deepEqual(consoleErrors, [], `console errors: ${consoleErrors.join(" | ")}`);
   note("no console errors or uncaught exceptions");

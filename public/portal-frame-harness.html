@@ -114,13 +114,9 @@
         var params = new URLSearchParams(location.search);
         var game = params.get("game") || "dominoes";
         var portal = params.get("portal") || "poki";
-        var origin = params.get("origin") || location.origin;
-
-        var url = origin.replace(/\/+$/, "") + "/play/" + encodeURIComponent(game) + "?portal=" + encodeURIComponent(portal);
 
         var frame = document.getElementById("frame");
         var status = document.getElementById("status");
-        document.getElementById("target").textContent = url;
 
         var settled = false;
         function settle(state, message) {
@@ -129,6 +125,36 @@
           status.dataset.state = state;
           status.textContent = message;
         }
+
+        // `origin` is a query parameter, so it is PARSED, never concatenated:
+        // only a bare http(s) origin is accepted. That keeps the frame on a real
+        // page (no `javascript:`/`data:` document) and makes the target a URL the
+        // browser itself serialised. `game`/`portal` are encoded, never trusted.
+        var playUrl = null;
+        try {
+          var requested = new URL(params.get("origin") || location.origin);
+          if (requested.protocol !== "https:" && requested.protocol !== "http:") {
+            throw new Error("unsupported protocol");
+          }
+          if (requested.pathname !== "/" || requested.search || requested.hash) {
+            throw new Error("not a bare origin");
+          }
+          playUrl = new URL("play/" + encodeURIComponent(game), requested.origin + "/");
+          playUrl.searchParams.set("portal", portal);
+        } catch (error) {
+          playUrl = null;
+        }
+
+        if (!playUrl) {
+          settle(
+            "blocked",
+            "The origin parameter must be a bare http(s) origin — refusing to point the frame at it.",
+          );
+          return;
+        }
+
+        var url = playUrl.href;
+        document.getElementById("target").textContent = url;
 
         frame.addEventListener("load", function () {
           // A same-origin frame is readable; a blocked/framed-elsewhere document
@@ -153,7 +179,8 @@
           );
         });
 
-        // No navigation from the harness itself.
+        // No navigation from the harness itself: the frame only ever points at
+        // the URL object built above.
         frame.src = url;
         setTimeout(function () {
           settle(

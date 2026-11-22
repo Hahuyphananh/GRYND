@@ -18,9 +18,9 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { extname, join, normalize, resolve } from "node:path";
+import { extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "vite";
 
@@ -73,17 +73,27 @@ assert.ok(
 // ── 2. Serve the built output ────────────────────────────────────────────
 
 const requests = [];
+// Files present when the server started, keyed by request path: a request can
+// only name one of them, so `..` or an absolute path cannot escape the build.
+const buildFiles = (() => {
+  const files = new Map();
+  const walk = (dir, prefix) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const name = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) walk(join(dir, entry.name), name);
+      else if (entry.isFile()) files.set(name, join(dir, entry.name));
+    }
+  };
+  walk(OUT, "");
+  return files;
+})();
+
 const server = createServer((req, res) => {
   const requested = decodeURIComponent((req.url ?? "/").split("?")[0]);
-  const safe = normalize(requested).replace(/^([/\\])+/, "");
-  let file = join(OUT, safe || "index.html");
+  const key = requested.replace(/^([/\\])+/, "") || "index.html";
+  const file = buildFiles.get(key) ?? buildFiles.get(`${key}/index.html`);
   requests.push({ url: requested, method: req.method });
-  if (!file.startsWith(OUT)) {
-    res.writeHead(403).end("forbidden");
-    return;
-  }
-  if (existsSync(file) && statSync(file).isDirectory()) file = join(file, "index.html");
-  if (!existsSync(file)) {
+  if (!file) {
     res.writeHead(404).end("not found");
     return;
   }
@@ -170,10 +180,12 @@ const consoleErrors = [];
 
 socket.addEventListener("message", (event) => {
   const message = JSON.parse(event.data);
-  if (message.id) {
+  if (Number.isInteger(message.id)) {
     const settle = pending.get(message.id);
     pending.delete(message.id);
-    settle?.(message);
+    // Only a callback registered by `send` may be invoked, never a method
+    // reached through the message's own name.
+    if (typeof settle === "function") settle(message);
     return;
   }
   if (message.method === "Runtime.exceptionThrown") {

@@ -7,9 +7,9 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { extname, join, normalize, resolve, sep } from "node:path";
+import { extname, join, resolve } from "node:path";
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -47,16 +47,23 @@ export async function serveDirectory(dir) {
   const root = resolve(dir);
   assert.ok(existsSync(root), `no built folder at ${root}`);
 
+  // Files present when the server started, keyed by request path: a request can
+  // only name one of them, so `..` or an absolute path cannot escape the folder.
+  const files = new Map();
+  const walk = (current, prefix) => {
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const name = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) walk(join(current, entry.name), name);
+      else if (entry.isFile()) files.set(name, join(current, name));
+    }
+  };
+  walk(root, "");
+
   const server = createServer((req, res) => {
     const requested = decodeURIComponent((req.url ?? "/").split("?")[0]);
-    const safe = normalize(requested).replace(/^[/\\]+/, "");
-    let file = join(root, safe || "index.html");
-    if (file !== root && !file.startsWith(root + sep)) {
-      res.writeHead(403).end("forbidden");
-      return;
-    }
-    if (existsSync(file) && statSync(file).isDirectory()) file = join(file, "index.html");
-    if (!existsSync(file)) {
+    const key = requested.replace(/^([/\\])+/, "") || "index.html";
+    const file = files.get(key) ?? files.get(`${key}/index.html`);
+    if (!file) {
       res.writeHead(404).end("not found");
       return;
     }
@@ -162,10 +169,12 @@ export async function openPage(browserWs) {
 
   socket.addEventListener("message", (event) => {
     const message = JSON.parse(event.data);
-    if (message.id) {
+    if (Number.isInteger(message.id)) {
       const settle = pending.get(message.id);
       pending.delete(message.id);
-      settle?.(message);
+      // Only a callback registered by `send` may be invoked, never a method
+      // reached through the message's own name.
+      if (typeof settle === "function") settle(message);
       return;
     }
     if (message.method === "Runtime.exceptionThrown") {

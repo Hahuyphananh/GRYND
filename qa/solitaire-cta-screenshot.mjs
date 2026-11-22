@@ -19,8 +19,8 @@
 
 import { spawnSync } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { dirname, extname, join, normalize, resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
+import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import React from "react";
@@ -97,21 +97,37 @@ const overlay = renderToStaticMarkup(
   }),
 );
 
-if (!overlay.includes(CTA_URL) || !overlay.includes("Sign in to GRYND")) {
+// Compare the anchor's href as a whole value, not a substring of the markup: the
+// URL must be the link's own target, not text that merely contains it.
+const ctaHrefs = [...overlay.matchAll(/href="([^"]*)"/g)].map((match) => match[1]);
+const hasCtaHref = ctaHrefs.some((href) => href === CTA_URL);
+if (!hasCtaHref || !overlay.includes("Sign in to GRYND")) {
   throw new Error("the rendered panel has no CTA — nothing to screenshot.");
 }
 
 // ── 3. Serve the package ─────────────────────────────────────────────────
+/**
+ * The files the package held when the server started, keyed by request path: a
+ * request can only name one of them, so `..` or an absolute path cannot escape.
+ */
+const packageFiles = (() => {
+  const files = new Map();
+  const walk = (dir, prefix) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const name = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) walk(join(dir, entry.name), name);
+      else if (entry.isFile()) files.set(name, join(dir, entry.name));
+    }
+  };
+  walk(PACKAGE_DIR, "");
+  return files;
+})();
+
 const server = createServer((req, res) => {
   const requested = decodeURIComponent((req.url ?? "/").split("?")[0]);
-  const safe = normalize(requested).replace(/^([/\\])+/, "");
-  let file = join(PACKAGE_DIR, safe || "index.html");
-  if (!file.startsWith(PACKAGE_DIR)) {
-    res.writeHead(403).end("forbidden");
-    return;
-  }
-  if (existsSync(file) && statSync(file).isDirectory()) file = join(file, "index.html");
-  if (!existsSync(file)) {
+  const key = requested.replace(/^([/\\])+/, "") || "index.html";
+  const file = packageFiles.get(key) ?? packageFiles.get(`${key}/index.html`);
+  if (!file) {
     res.writeHead(404).end("not found");
     return;
   }
