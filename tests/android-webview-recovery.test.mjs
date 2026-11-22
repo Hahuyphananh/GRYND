@@ -38,13 +38,16 @@ const CANONICAL = "https://www.grynd.dedyn.io/";
 const stripComments = (source) => {
   // Repeat until nothing changes: removing one comment can join the fragments
   // on either side into a fresh opener (a `<!--` split by a removed `//` line),
-  // so a single pass can leave `<!--` behind.
+  // so a single pass can leave `<!--` behind. Leftover openers are dropped too:
+  // the loop only ends once no comment marker survives at all.
   let current = source;
   for (;;) {
     const next = current
       .replace(/<!--[\s\S]*?-->/g, "")
       .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/^\s*\/\/.*$/gm, "");
+      .replace(/^\s*\/\/.*$/gm, "")
+      .split("<!--")
+      .join("");
     if (next === current) return next;
     current = next;
   }

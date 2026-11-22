@@ -618,11 +618,11 @@ test("the document's CSP allows the provider's creative frame", () => {
     .trim()
     .split(/\s+/);
   assert.ok(
-    hosts.includes("https://juvenilechoice.com"),
+    hosts.some((host) => host === "https://juvenilechoice.com"),
     "the creative's host must be named, or a switched-on banner can never paint",
   );
   assert.ok(
-    !hosts.includes("https:"),
+    !hosts.some((host) => host === "https:"),
     "frame-src must stay a per-host allow-list, never a wildcard",
   );
 });

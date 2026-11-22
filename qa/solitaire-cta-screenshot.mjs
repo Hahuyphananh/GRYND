@@ -100,7 +100,8 @@ const overlay = renderToStaticMarkup(
 // Compare the anchor's href as a whole value, not a substring of the markup: the
 // URL must be the link's own target, not text that merely contains it.
 const ctaHrefs = [...overlay.matchAll(/href="([^"]*)"/g)].map((match) => match[1]);
-if (!ctaHrefs.includes(CTA_URL) || !overlay.includes("Sign in to GRYND")) {
+const hasCtaHref = ctaHrefs.some((href) => href === CTA_URL);
+if (!hasCtaHref || !overlay.includes("Sign in to GRYND")) {
   throw new Error("the rendered panel has no CTA — nothing to screenshot.");
 }
 
