@@ -238,6 +238,10 @@ export function samePositions(a, b) {
   return true;
 }
 
+// The AI's coin flips are not secrets, but the cell it picks is applied to a
+// wagered match, so this module keeps every draw on the CSPRNG.
+const secureRandom = () => randomInt(0, 2 ** 32) / 2 ** 32;
+
 // ── Mine lookup helpers ──────────────────────────────────────────────
 export function isMine(board, cellIndex) {
   if (!board || !Array.isArray(board.mines)) return false;
@@ -565,7 +569,7 @@ export function chooseAiActionForSeat({
   flags = [],
   resolved = [],
   difficulty,
-  random = Math.random,
+  random = secureRandom,
 }) {
   const tier = coerceAiDifficulty(difficulty);
   const resolvedSet = new Set(normalizeFlags(resolved));
