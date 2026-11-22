@@ -34,14 +34,17 @@ import {
 import { normalizeMove } from "../solitaire-duel/rules";
 import { getServerSeedHash, randomHex } from "../solitaire-duel/seeds";
 import { solitaireBotFor } from "../solitaire-duel/bots";
-import { planPuzzleAiSeat } from "./ai";
+import { PUZZLE_AI_MAX_MOVES_PER_READ, planPuzzleAiSeat } from "./ai";
 import { buildPracticeManifest } from "./manifest";
 import { readPuzzleRewards, settlePuzzleRankedSession } from "./settlement";
 import {
+  PUZZLE_BATTLE_FORMAT,
   PUZZLE_SESSION_AI_INACTIVITY_MS,
   PUZZLE_SESSION_DEADLINE_MS,
   PUZZLE_SESSION_FORMAT,
+  PUZZLE_SESSION_LIVES,
   PUZZLE_SESSION_MODE,
+  PUZZLE_SESSION_PUZZLE_MS,
   PUZZLE_SESSION_REASON,
   PUZZLE_SESSION_RESULT,
   PUZZLE_SESSION_SEAT,
@@ -53,10 +56,11 @@ import {
   type PuzzleSessionSeat,
   type PuzzleSessionStatus,
 } from "./constants";
-import { buildPuzzleManifest } from "./manifest";
+import { buildPuzzleManifest, extendPuzzleManifest } from "./manifest";
 import { puzzleSessionView } from "./projection";
 import {
   applySeatMove,
+  applySeatPuzzleTimeout,
   cloneSeatSnapshot,
   createSeatSnapshot,
   currentManifestEntry,
@@ -97,6 +101,8 @@ export type PuzzleMoveAccepted = {
   revealed: readonly Card[];
   /** illegal | no-progress | progress | complete — derived by the engine. */
   moveStatus: "no-progress" | "progress" | "complete";
+  /** True when a legal move failed to advance the objective and cost a life. */
+  lifeLost: boolean;
   /** True when the objective completed and the seat advanced to the next puzzle. */
   advancedPuzzle: boolean;
   /** True when this seat has now solved every puzzle in the manifest. */
@@ -151,15 +157,24 @@ function seatFromRow(row: SessionRow, seat: PuzzleSessionSeat): PuzzleSeatSnapsh
   const prefix = seat === PUZZLE_SESSION_SEAT.PLAYER1 ? "p1" : "p2";
   const value = <T>(name: string): T =>
     (row as unknown as Record<string, unknown>)[`${prefix}${name}`] as T;
+  const stats = value<PuzzleSeatSnapshot["stats"]>("Stats");
+  // Lives and the per-puzzle clock live inside the existing seat JSONB under
+  // `match`, so this ruleset ships without a database migration (the release
+  // pipeline deliberately never runs migrations).
+  const match = (stats as unknown as { match?: { lives?: unknown; puzzleDeadlineAtMs?: unknown } })?.match;
+  const lives = Number(match?.lives);
+  const deadline = Number(match?.puzzleDeadlineAtMs);
   return {
     puzzleIndex: Number(value<number>("PuzzleIndex") ?? 0),
     solved: Number(value<number>("Solved") ?? 0),
     ply: Number(value<number>("Ply") ?? 0),
     state: value<PuzzleSeatSnapshot["state"]>("State"),
-    stats: value<PuzzleSeatSnapshot["stats"]>("Stats"),
+    stats,
     lastSolveAtMs: instantMs(value("LastSolveAt")),
     finishedAtMs: instantMs(value("FinishedAt")),
     lastActionAtMs: instantMs(value("LastActionAt")),
+    lives: Number.isFinite(lives) ? lives : PUZZLE_SESSION_LIVES,
+    puzzleDeadlineAtMs: Number.isFinite(deadline) && deadline > 0 ? deadline : null,
   };
 }
 
@@ -176,6 +191,7 @@ export function sessionRowToSnapshot(row: SessionRow): PuzzleSessionSnapshot {
     aiDifficulty: row.aiDifficulty ?? null,
     manifest,
     puzzleCount: Number(row.puzzleCount ?? manifest.length),
+    endless: row.format === PUZZLE_BATTLE_FORMAT,
     selectionSeed: row.selectionSeed,
     selectionHash: row.selectionHash,
     p1: seatFromRow(row, PUZZLE_SESSION_SEAT.PLAYER1),
@@ -197,6 +213,16 @@ export function sessionRowToSnapshot(row: SessionRow): PuzzleSessionSnapshot {
  * Written as an explicit branch rather than dynamic keys so it is visible at a
  * glance that a move touches ONLY the acting seat's columns.
  */
+function statsWithMatch(next: PuzzleSeatSnapshot) {
+  return {
+    ...next.stats,
+    match: {
+      lives: next.lives,
+      puzzleDeadlineAtMs: next.puzzleDeadlineAtMs,
+    },
+  };
+}
+
 function seatPatchFor(seat: PuzzleSessionSeat, next: PuzzleSeatSnapshot) {
   if (seat === PUZZLE_SESSION_SEAT.PLAYER1) {
     return {
@@ -204,7 +230,7 @@ function seatPatchFor(seat: PuzzleSessionSeat, next: PuzzleSeatSnapshot) {
       p1Solved: next.solved,
       p1Ply: next.ply,
       p1State: next.state,
-      p1Stats: next.stats,
+      p1Stats: statsWithMatch(next),
       p1LastSolveAt: toDate(next.lastSolveAtMs),
       p1FinishedAt: toDate(next.finishedAtMs),
       p1LastActionAt: toDate(next.lastActionAtMs),
@@ -215,7 +241,7 @@ function seatPatchFor(seat: PuzzleSessionSeat, next: PuzzleSeatSnapshot) {
     p2Solved: next.solved,
     p2Ply: next.ply,
     p2State: next.state,
-    p2Stats: next.stats,
+    p2Stats: statsWithMatch(next),
     p2LastSolveAt: toDate(next.lastSolveAtMs),
     p2FinishedAt: toDate(next.finishedAtMs),
     p2LastActionAt: toDate(next.lastActionAtMs),
@@ -238,6 +264,8 @@ export type CreatePuzzleSessionInput = {
   /** `playing` starts the shared clock now; `waiting` holds the second seat. */
   status?: PuzzleSessionStatus;
   manifest?: readonly PuzzleManifestEntry[];
+  /** Grow the frozen stream as seats advance instead of ending at five. */
+  endless?: boolean;
   /** The caller's transaction, so matchmaking writes inside its own lock. */
   tx?: any;
 };
@@ -259,6 +287,7 @@ export async function createPuzzleSessionRecord({
   deadlineAtMs = null,
   status,
   manifest,
+  endless = false,
   tx,
 }: CreatePuzzleSessionInput): Promise<PuzzleSessionSnapshot> {
   // A competitive seat can never be the synthetic practice bot: that seat is
@@ -274,18 +303,20 @@ export async function createPuzzleSessionRecord({
   const first = resolvedManifest[0];
   if (!first) throw new Error("A puzzle session needs at least one puzzle");
 
-  const seat1 = createSeatSnapshot(first);
-  const seat2 = cloneSeatSnapshot(seat1);
   const sessionStatus =
     status ?? (player2Id ? PUZZLE_SESSION_STATUS.PLAYING : PUZZLE_SESSION_STATUS.WAITING);
   const startsNow = sessionStatus === PUZZLE_SESSION_STATUS.PLAYING;
   const goAtMs = startsNow ? nowMs : null;
+  const seat1 = createSeatSnapshot(first, {
+    deadlineAtMs: startsNow ? nowMs + PUZZLE_SESSION_PUZZLE_MS : null,
+  });
+  const seat2 = cloneSeatSnapshot(seat1);
 
   const client: any = tx ?? db;
   const [row] = await client
     .insert(solitairePuzzleSessions)
     .values({
-      format: PUZZLE_SESSION_FORMAT,
+      format: endless ? PUZZLE_BATTLE_FORMAT : PUZZLE_SESSION_FORMAT,
       mode,
       status: sessionStatus,
       player1Id,
@@ -329,12 +360,14 @@ export async function createRankedPuzzleSession({
   nowMs = Date.now(),
   seed = randomHex(32),
   manifest,
+  endless = false,
 }: {
   player1Id: string;
   player2Id?: string | null;
   nowMs?: number;
   seed?: string;
   manifest?: readonly PuzzleManifestEntry[];
+  endless?: boolean;
 }): Promise<PuzzleSessionSnapshot> {
   if (player2Id && player2Id === player1Id) {
     throw new Error("A ranked puzzle session needs two different players");
@@ -348,6 +381,7 @@ export async function createRankedPuzzleSession({
     nowMs,
     deadlineAtMs: player2Id ? nowMs + PUZZLE_SESSION_DEADLINE_MS : null,
     manifest,
+    endless,
   });
 }
 
@@ -366,12 +400,14 @@ export async function createAiPuzzleSession({
   nowMs = Date.now(),
   seed = randomHex(32),
   manifest,
+  endless = false,
 }: {
   userId: string;
   difficulty?: string | null;
   nowMs?: number;
   seed?: string;
   manifest?: readonly PuzzleManifestEntry[];
+  endless?: boolean;
 }): Promise<PuzzleSessionSnapshot> {
   return createPuzzleSessionRecord({
     mode: PUZZLE_SESSION_MODE.AI,
@@ -385,6 +421,7 @@ export async function createAiPuzzleSession({
     deadlineAtMs: null,
     status: PUZZLE_SESSION_STATUS.PLAYING,
     manifest,
+    endless,
   });
 }
 
@@ -420,6 +457,7 @@ export async function createPuzzlePracticeSession({
     nowMs,
     seed,
     manifest: manifest ?? buildPracticeManifest({ seed, level, count: puzzleCount }),
+    endless: manifest ? false : true,
   });
 }
 
@@ -464,6 +502,90 @@ async function finalizeIfDue(tx: any, row: SessionRow, nowMs: number): Promise<S
   return finalRow;
 }
 
+function withManifestCapacity(
+  snapshot: PuzzleSessionSnapshot,
+  neededIndex: number,
+): PuzzleSessionSnapshot {
+  if (!snapshot.endless || snapshot.manifest.length > neededIndex) return snapshot;
+  const manifest = extendPuzzleManifest(
+    snapshot.manifest,
+    snapshot.selectionSeed,
+    neededIndex + 1,
+  );
+  return { ...snapshot, manifest, puzzleCount: manifest.length };
+}
+
+/**
+ * Expire one seat's 60-second puzzle clock on a server read.
+ *
+ * A timeout costs a life and starts the next puzzle with a fresh clock. The
+ * third loss finishes the match immediately, so the opponent wins without
+ * needing to move again.
+ */
+async function expireSeatClock(
+  tx: any,
+  row: SessionRow,
+  seat: PuzzleSessionSeat,
+  nowMs: number,
+): Promise<SessionRow> {
+  const snapshot = sessionRowToSnapshot(row);
+  const mine = seatSnapshot(snapshot, seat);
+  if (mine.puzzleDeadlineAtMs == null || nowMs < mine.puzzleDeadlineAtMs) {
+    return row;
+  }
+
+  const working = withManifestCapacity(snapshot, mine.puzzleIndex + 1);
+  const timed = applySeatPuzzleTimeout({
+    manifest: working.manifest,
+    seat: mine,
+    nowMs,
+  });
+  if (!timed.expired) return row;
+
+  let next: PuzzleSessionSnapshot =
+    seat === PUZZLE_SESSION_SEAT.PLAYER1
+      ? { ...working, p1: timed.seat }
+      : { ...working, p2: timed.seat };
+  let finished = false;
+  const outcome = resolvePuzzleOutcome(next, nowMs);
+  if (outcome) {
+    next = {
+      ...next,
+      status: PUZZLE_SESSION_STATUS.FINISHED,
+      result: outcome.result,
+      winnerId: outcome.winnerId,
+      resolutionReason: outcome.reason,
+      endedAtMs: nowMs,
+    };
+    finished = true;
+  }
+
+  const [updated] = await tx
+    .update(solitairePuzzleSessions)
+    .set({
+      ...seatPatchFor(seat, timed.seat),
+      manifest: next.manifest,
+      puzzleCount: next.puzzleCount,
+      ...(finished
+        ? {
+            status: next.status,
+            result: next.result,
+            winnerId: next.winnerId,
+            resolutionReason: next.resolutionReason,
+            endedAt: toDate(next.endedAtMs),
+          }
+        : {}),
+      updatedAt: new Date(nowMs),
+    })
+    .where(eq(solitairePuzzleSessions.id, snapshot.id))
+    .returning();
+
+  if (finished && updated) {
+    await settlePuzzleRankedSession(tx, sessionRowToSnapshot(updated));
+  }
+  return updated ?? row;
+}
+
 // ── AI practice pacing ────────────────────────────────────────────────────
 
 /**
@@ -483,48 +605,68 @@ async function advancePuzzleAi(
   row: SessionRow,
   nowMs: number,
 ): Promise<SessionRow> {
-  const snapshot = sessionRowToSnapshot(row);
+  let snapshot = sessionRowToSnapshot(row);
   if (snapshot.mode !== PUZZLE_SESSION_MODE.AI) return row;
   if (snapshot.status !== PUZZLE_SESSION_STATUS.PLAYING) return row;
+  if (!snapshot.aiDifficulty) return row;
 
-  const advance = planPuzzleAiSeat({ snapshot, nowMs });
-  if (!advance) return row;
+  // Keep enough frozen stream for every move this read might apply.
+  snapshot = withManifestCapacity(
+    snapshot,
+    snapshot.p2.puzzleIndex + PUZZLE_AI_MAX_MOVES_PER_READ + 2,
+  );
 
-  for (const move of advance.moves) {
-    await tx.insert(solitairePuzzleSessionMoves).values({
-      sessionId: snapshot.id,
-      seat: PUZZLE_SESSION_SEAT.PLAYER2,
-      ply: move.ply,
-      puzzleIndex: move.puzzleIndex,
-      kind: move.kind,
-      move: move.move,
-      createdAt: new Date(move.atMs),
-    });
-  }
+  let p2 = snapshot.p2;
+  // The bot owns the same 60-second puzzle clock as a human seat. A blown
+  // clock costs it a life and starts the next puzzle fresh.
+  const timed = applySeatPuzzleTimeout({
+    manifest: snapshot.manifest,
+    seat: p2,
+    nowMs,
+  });
+  if (timed.expired) p2 = timed.seat;
 
-  let next: PuzzleSessionSnapshot = { ...snapshot, p2: advance.seat };
   let finished = false;
-  if (advance.completed) {
-    // Same authoritative rule as a human race: more solved puzzles wins; an
-    // equal count is broken by the earlier final solve; an exact tie is a draw.
-    const outcome = resolvePuzzleOutcome(next, nowMs);
-    if (outcome) {
-      next = {
-        ...next,
-        status: PUZZLE_SESSION_STATUS.FINISHED,
-        result: outcome.result,
-        winnerId: outcome.winnerId,
-        resolutionReason: outcome.reason,
-        endedAtMs: nowMs,
-      };
-      finished = true;
+  if ((p2.lives ?? 0) > 0) {
+    const advance = planPuzzleAiSeat({ snapshot: { ...snapshot, p2 }, nowMs });
+    if (advance) {
+      for (const move of advance.moves) {
+        await tx.insert(solitairePuzzleSessionMoves).values({
+          sessionId: snapshot.id,
+          seat: PUZZLE_SESSION_SEAT.PLAYER2,
+          ply: move.ply,
+          puzzleIndex: move.puzzleIndex,
+          kind: move.kind,
+          move: move.move,
+          createdAt: new Date(move.atMs),
+        });
+      }
+      p2 = advance.seat;
     }
   }
+
+  let next: PuzzleSessionSnapshot = { ...snapshot, p2 };
+  const outcome = resolvePuzzleOutcome(next, nowMs);
+  if (outcome) {
+    next = {
+      ...next,
+      status: PUZZLE_SESSION_STATUS.FINISHED,
+      result: outcome.result,
+      winnerId: outcome.winnerId,
+      resolutionReason: outcome.reason,
+      endedAtMs: nowMs,
+    };
+    finished = true;
+  }
+
+  if (p2 === snapshot.p2 && !finished && !timed.expired) return row;
 
   const [updated] = await tx
     .update(solitairePuzzleSessions)
     .set({
       ...seatPatchFor(PUZZLE_SESSION_SEAT.PLAYER2, next.p2),
+      manifest: next.manifest,
+      puzzleCount: next.puzzleCount,
       ...(finished
         ? {
             status: next.status,
@@ -578,7 +720,8 @@ export async function fetchPuzzleSession({
     // Practice: the bot moves first, so the read returns the position it has
     // actually reached by now. (A ranked row is untouched by this call.)
     const advanced = await advancePuzzleAi(tx, row, nowMs);
-    const current = await finalizeIfDue(tx, advanced, nowMs);
+    const expired = await expireSeatClock(tx, advanced, seat, nowMs);
+    const current = await finalizeIfDue(tx, expired, nowMs);
     const snapshotNow = sessionRowToSnapshot(current);
     const reward =
       snapshotNow.status === PUZZLE_SESSION_STATUS.FINISHED
@@ -884,6 +1027,15 @@ export async function submitPuzzleMove({
       }
 
       const mine = seatSnapshot(snapshot, seat);
+      if (mine.puzzleDeadlineAtMs != null && nowMs >= mine.puzzleDeadlineAtMs) {
+        // The clock is authoritative: persist the lost life (and any finished
+        // result) before refusing the late move.
+        await expireSeatClock(tx, row, seat, nowMs);
+        return err(
+          "Your 60-second puzzle clock expired; a life was lost",
+          409,
+        );
+      }
       if (expectedPly !== undefined && expectedPly !== mine.ply) {
         return err(
           `Stale move: the server is at ply ${mine.ply}, not ${expectedPly}`,
@@ -891,11 +1043,14 @@ export async function submitPuzzleMove({
         );
       }
 
-      const entry = currentManifestEntry(snapshot.manifest, mine);
+      // Endless battles grow their frozen stream before a seat steps past its
+      // current end, so a solve can never terminate the match by exhaustion.
+      const working = withManifestCapacity(snapshot, mine.puzzleIndex + 1);
+      const entry = currentManifestEntry(working.manifest, mine);
       if (!entry) return err("This seat has finished every puzzle", 409);
 
       const applied = applySeatMove({
-        manifest: snapshot.manifest,
+        manifest: working.manifest,
         seat: mine,
         move: normalized.move,
         nowMs,
@@ -924,8 +1079,8 @@ export async function submitPuzzleMove({
 
       let next: PuzzleSessionSnapshot =
         seat === PUZZLE_SESSION_SEAT.PLAYER1
-          ? { ...snapshot, p1: applied.seat }
-          : { ...snapshot, p2: applied.seat };
+          ? { ...working, p1: applied.seat }
+          : { ...working, p2: applied.seat };
       let finished = false;
 
       if (
@@ -985,6 +1140,8 @@ export async function submitPuzzleMove({
         .set({
           ...seatPatchFor(PUZZLE_SESSION_SEAT.PLAYER1, next.p1),
           ...seatPatchFor(PUZZLE_SESSION_SEAT.PLAYER2, next.p2),
+          manifest: next.manifest,
+          puzzleCount: next.puzzleCount,
           status: next.status,
           result: next.result,
           winnerId: next.winnerId,
@@ -1007,6 +1164,7 @@ export async function submitPuzzleMove({
         view: puzzleSessionView(next, seat, nowMs, { reward }),
         revealed: applied.revealed,
         moveStatus: applied.status as "no-progress" | "progress" | "complete",
+        lifeLost: applied.lifeLost,
         advancedPuzzle: applied.advancedPuzzle,
         completedSession: applied.completedSession,
         finished,

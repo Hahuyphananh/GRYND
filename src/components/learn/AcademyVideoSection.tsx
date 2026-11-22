@@ -9,6 +9,7 @@ import {
   IconPlayerPlay,
 } from "@tabler/icons-react";
 
+import GlitchSay from "../mascot/GlitchSay";
 import { useAcademyVideoProgress } from "../../hooks/useAcademyVideoProgress";
 import { useTranslation } from "../../hooks/useTranslation";
 import {
@@ -56,6 +57,13 @@ export default function AcademyVideoSection() {
             total: ACADEMY_VIDEOS.length,
           })}
         </span>
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-[#00e5ff]/25 bg-[#06152f]/90 p-3">
+        <GlitchSay
+          size="sm"
+          message="Each demo comes with a lesson. Watch the move, then open the lesson and try it yourself."
+        />
       </div>
 
       <div className="mt-4 grid gap-4 md:grid-cols-3">

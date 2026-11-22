@@ -38,6 +38,7 @@ import {
   PUZZLE_RANKED_LOCK_NAMESPACE,
   PUZZLE_RANKED_QUEUE_TTL_MS,
   PUZZLE_SESSION_MODE,
+  PUZZLE_SESSION_PUZZLE_MS,
   PUZZLE_SESSION_STATUS,
   type PuzzleSessionStatus,
 } from "./constants";
@@ -305,8 +306,12 @@ export async function createOrJoinPuzzleRanked({
         : storedManifest;
       const first = manifest[0];
       if (!first) return err("That match has no puzzle set", 409);
-      const seat1 = repeated ? createSeatSnapshot(first) : null;
-      const seat2 = seat1 ? cloneSeatSnapshot(seat1) : null;
+      // A waiting lobby has shown no board, so both seats start fresh from the
+      // chosen opening puzzle with three lives and one 60-second clock.
+      const seat1 = createSeatSnapshot(first, {
+        deadlineAtMs: nowMs + PUZZLE_SESSION_PUZZLE_MS,
+      });
+      const seat2 = cloneSeatSnapshot(seat1);
 
       const [joined] = await tx
         .update(solitairePuzzleSessions)
@@ -321,30 +326,30 @@ export async function createOrJoinPuzzleRanked({
           // A replacement selection restarts BOTH seats from its first puzzle,
           // with a fresh server seed and commitment, so neither seat can carry
           // progress from the provisional set.
-          ...(reseeded && seat1 && seat2
+          ...(reseeded
             ? {
                 manifest,
                 puzzleCount: manifest.length,
                 selectionSeed: reseeded,
                 selectionHash: getServerSeedHash(reseeded),
-                p1PuzzleIndex: seat1.puzzleIndex,
-                p1Solved: seat1.solved,
-                p1Ply: seat1.ply,
-                p1State: seat1.state,
-                p1Stats: seat1.stats,
-                p1LastSolveAt: null,
-                p1FinishedAt: null,
-                p1LastActionAt: null,
-                p2PuzzleIndex: seat2.puzzleIndex,
-                p2Solved: seat2.solved,
-                p2Ply: seat2.ply,
-                p2State: seat2.state,
-                p2Stats: seat2.stats,
-                p2LastSolveAt: null,
-                p2FinishedAt: null,
-                p2LastActionAt: null,
               }
             : {}),
+          p1PuzzleIndex: seat1.puzzleIndex,
+          p1Solved: seat1.solved,
+          p1Ply: seat1.ply,
+          p1State: seat1.state,
+          p1Stats: seat1.stats,
+          p1LastSolveAt: null,
+          p1FinishedAt: null,
+          p1LastActionAt: null,
+          p2PuzzleIndex: seat2.puzzleIndex,
+          p2Solved: seat2.solved,
+          p2Ply: seat2.ply,
+          p2State: seat2.state,
+          p2Stats: seat2.stats,
+          p2LastSolveAt: null,
+          p2FinishedAt: null,
+          p2LastActionAt: null,
         })
         .where(
           and(
@@ -379,6 +384,7 @@ export async function createOrJoinPuzzleRanked({
       seed: randomHex(32),
       nowMs,
       status: PUZZLE_SESSION_STATUS.WAITING,
+      endless: true,
       tx,
     });
 

@@ -227,7 +227,7 @@ export default function PuzzleSessionPlayer({
   }, [applyView, sessionId, t]);
 
   const remainingMs = puzzleRemainingMs(
-    view?.deadlineAtMs ?? null,
+    view?.puzzleDeadlineAtMs ?? view?.deadlineAtMs ?? null,
     offsetRef.current,
     Date.now(),
   );
@@ -258,9 +258,11 @@ export default function PuzzleSessionPlayer({
         ? "resolutionForfeit"
         : outcome?.resolutionReason === "draw"
           ? "resolutionDraw"
-          : outcome?.resolutionReason === "finish"
-            ? "resolutionFinish"
-            : null;
+          : outcome?.resolutionReason === "lives"
+            ? "resolutionLives"
+            : outcome?.resolutionReason === "finish"
+              ? "resolutionFinish"
+              : null;
   const pct = puzzleProgressPercent(view?.progress);
 
   const glitchMessage = outcome
@@ -270,10 +272,9 @@ export default function PuzzleSessionPlayer({
         ? "A draw — neither seat solved enough in time."
         : "That one got away. The next board is a fresh race."
     : verdict === "illegal"
-      ? "That move is not legal here."
-      : verdict === "no-progress"
-        ? "Legal, but it does not move the objective."
-        : view?.status === "playing"
+      ? "That move is not legal here."    : verdict === "no-progress"
+      ? "Legal, but it does not move the objective — that costs a life."
+    : view?.status === "playing"
           ? "Find the line that moves the objective."
           : "Waiting for the race to start.";
 
@@ -305,9 +306,8 @@ export default function PuzzleSessionPlayer({
             </p>
             <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">
               {view
-                ? t("playHub.lobby.puzzleBoard.puzzleOf", {
+                ? t("playHub.lobby.puzzleBoard.puzzleNumber", {
                     number: view.puzzleNumber,
-                    total: view.puzzleCount,
                   })
                 : t("playHub.lobby.puzzleBoard.loading")}
             </h1>
@@ -318,9 +318,29 @@ export default function PuzzleSessionPlayer({
                   ? `${opponentName} · ${t("playHub.lobby.puzzleBoard.ai")}`
                   : t("playHub.lobby.puzzleBoard.ai")}
             </p>
+            <p
+              data-testid="puzzle-battle-rules"
+              className="mt-1 text-[10px] font-bold uppercase tracking-[0.1em] text-[#5eead4]/70"
+            >
+              {t("playHub.lobby.puzzleBoard.battleRules")}
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <span
+              data-testid="puzzle-lives"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-xs font-black text-rose-100"
+            >
+              <span aria-hidden="true">♥</span>
+              {t("playHub.lobby.puzzleBoard.lives")} {view?.lives ?? 3}
+            </span>
+            <span
+              data-testid="puzzle-opponent-lives"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-xs font-bold text-white/65"
+            >
+              <span aria-hidden="true">♥</span>
+              {t("playHub.lobby.puzzleBoard.opponentLives")} {view?.opponentLives ?? 3}
+            </span>
             {mode === "ai" && (
               <span className="rounded-xl border border-[#c4b5fd]/30 bg-[#c4b5fd]/10 px-3 py-2 text-xs font-bold text-[#ede9fe]">
                 {t("playHub.lobby.puzzleBoard.untimed")}
@@ -466,7 +486,11 @@ export default function PuzzleSessionPlayer({
                   (submitting
                     ? t("playHub.lobby.puzzleBoard.checking")
                     : verdictKey
-                      ? t(`playHub.lobby.puzzleBoard.${verdictKey}`)
+                      ? `${t(`playHub.lobby.puzzleBoard.${verdictKey}`)}${
+                          verdict === "no-progress"
+                            ? ` · ${t("playHub.lobby.puzzleBoard.lifeLost")}`
+                            : ""
+                        }`
                       : view.status === "playing"
                         ? t("playHub.lobby.puzzleBoard.yourTurn")
                         : "")}

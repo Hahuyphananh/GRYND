@@ -6,11 +6,27 @@
 
 export const PUZZLE_SESSION_FORMAT = "puzzle-race-v1" as const;
 
-/** A ranked race is five puzzles, one from each library difficulty band. */
+/**
+ * The endless battle format. A session stamped with this format keeps growing
+ * its frozen puzzle stream as seats advance, so the match ends on lives, never
+ * because a five-puzzle set ran out.
+ */
+export const PUZZLE_BATTLE_FORMAT = "puzzle-battle-v1" as const;
+
+/** A ranked race's opening set: five puzzles, one per difficulty band. */
 export const PUZZLE_SESSION_PUZZLE_COUNT = 5;
 
-/** The shared ranked clock. Absolute server time, never a per-client delay. */
-export const PUZZLE_SESSION_DEADLINE_MS = 6 * 60 * 1000;
+/** Three lives per seat. A bad move or a blown puzzle clock costs one. */
+export const PUZZLE_SESSION_LIVES = 3;
+
+/** Each puzzle carries its own 60-second clock, reset on a new puzzle. */
+export const PUZZLE_SESSION_PUZZLE_MS = 60 * 1000;
+
+/**
+ * Absolute safety cap for an abandoned match. Lives decide a live battle; this
+ * only stops a row nobody is polling from staying open forever.
+ */
+export const PUZZLE_SESSION_DEADLINE_MS = 30 * 60 * 1000;
 
 /** Practice sessions are untimed; this is only a cleanup baseline. */
 export const PUZZLE_SESSION_AI_INACTIVITY_MS = 20 * 60 * 1000;
@@ -92,6 +108,8 @@ export const PUZZLE_SESSION_REASON = Object.freeze({
   DEADLINE: "deadline",
   FORFEIT: "forfeit",
   DRAW: "draw",
+  /** One seat lost its third life to a bad move or a blown puzzle clock. */
+  LIVES: "lives",
 } as const);
 
 export type PuzzleSessionReason =

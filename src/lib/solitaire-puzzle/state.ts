@@ -22,6 +22,8 @@ import type {
   PuzzleSessionSnapshot,
 } from "./types";
 import {
+  PUZZLE_SESSION_LIVES,
+  PUZZLE_SESSION_PUZZLE_MS,
   PUZZLE_SESSION_REASON,
   PUZZLE_SESSION_RESULT,
   PUZZLE_SESSION_SEAT,
@@ -44,8 +46,16 @@ export function emptyPuzzleStats(): PuzzleSeatSnapshot["stats"] {
   };
 }
 
-/** The starting snapshot for one puzzle in a frozen manifest. */
-export function createSeatSnapshot(entry: PuzzleManifestEntry): PuzzleSeatSnapshot {
+/**
+ * The starting snapshot for one puzzle in a frozen manifest.
+ *
+ * `lives` and `deadlineAtMs` are match state, not puzzle state: a new puzzle
+ * keeps the seat's lives and gets a fresh 60-second clock.
+ */
+export function createSeatSnapshot(
+  entry: PuzzleManifestEntry,
+  options: { lives?: number; deadlineAtMs?: number | null } = {},
+): PuzzleSeatSnapshot {
   const session = createPuzzleSession(entry.spec);
   return {
     puzzleIndex: entry.slot,
@@ -56,6 +66,8 @@ export function createSeatSnapshot(entry: PuzzleManifestEntry): PuzzleSeatSnapsh
     lastSolveAtMs: null,
     finishedAtMs: null,
     lastActionAtMs: null,
+    lives: options.lives ?? PUZZLE_SESSION_LIVES,
+    puzzleDeadlineAtMs: options.deadlineAtMs ?? null,
   };
 }
 
@@ -99,6 +111,8 @@ export type PuzzleSeatMoveResult = {
   advancedPuzzle: boolean;
   /** True when this move completed the final puzzle in the manifest. */
   completedSession: boolean;
+  /** True when a legal move failed to advance the objective and cost a life. */
+  lifeLost: boolean;
 };
 
 /**
@@ -113,11 +127,13 @@ export function applySeatMove({
   seat,
   move,
   nowMs,
+  perPuzzleMs = PUZZLE_SESSION_PUZZLE_MS,
 }: {
   manifest: readonly PuzzleManifestEntry[];
   seat: PuzzleSeatSnapshot;
   move: SolitaireMove;
   nowMs: number;
+  perPuzzleMs?: number;
 }): PuzzleSeatMoveResult {
   const entry = currentManifestEntry(manifest, seat);
   if (!entry) {
@@ -128,6 +144,7 @@ export function applySeatMove({
       progress: { current: 0, target: 1, measurable: false },
       advancedPuzzle: false,
       completedSession: false,
+      lifeLost: false,
     };
   }
 
@@ -140,15 +157,20 @@ export function applySeatMove({
       progress: outcome.progress,
       advancedPuzzle: false,
       completedSession: false,
+      lifeLost: false,
     };
   }
 
+  const livesBefore = seat.lives ?? PUZZLE_SESSION_LIVES;
+  const lifeLost = outcome.status === "no-progress" && livesBefore > 0;
   const base: PuzzleSeatSnapshot = {
     ...seat,
     ply: seat.ply + 1,
     state: outcome.session.state,
     stats: outcome.session.stats,
     lastActionAtMs: nowMs,
+    lives: lifeLost ? livesBefore - 1 : livesBefore,
+    puzzleDeadlineAtMs: seat.puzzleDeadlineAtMs ?? null,
   };
 
   if (outcome.status !== "complete") {
@@ -159,6 +181,7 @@ export function applySeatMove({
       progress: outcome.progress,
       advancedPuzzle: false,
       completedSession: false,
+      lifeLost,
     };
   }
 
@@ -172,11 +195,13 @@ export function applySeatMove({
         solved,
         lastSolveAtMs: nowMs,
         finishedAtMs: nowMs,
+        puzzleDeadlineAtMs: null,
       },
       revealed: outcome.revealed,
       progress: outcome.progress,
       advancedPuzzle: false,
       completedSession: true,
+      lifeLost,
     };
   }
 
@@ -191,15 +216,20 @@ export function applySeatMove({
         solved,
         lastSolveAtMs: nowMs,
         finishedAtMs: nowMs,
+        puzzleDeadlineAtMs: null,
       },
       revealed: outcome.revealed,
       progress: outcome.progress,
       advancedPuzzle: false,
       completedSession: true,
+      lifeLost,
     };
   }
 
-  const next = createSeatSnapshot(nextEntry);
+  const next = createSeatSnapshot(nextEntry, {
+    lives: base.lives,
+    deadlineAtMs: nowMs + perPuzzleMs,
+  });
   return {
     status: "complete",
     seat: {
@@ -210,11 +240,85 @@ export function applySeatMove({
       stats: next.stats,
       lastSolveAtMs: nowMs,
       finishedAtMs: null,
+      puzzleDeadlineAtMs: nowMs + perPuzzleMs,
     },
     revealed: outcome.revealed,
     progress: outcome.progress,
     advancedPuzzle: true,
     completedSession: false,
+    lifeLost,
+  };
+}
+
+/**
+ * Expire one seat's puzzle clock.
+ *
+ * A timeout costs a life and starts the next puzzle with a fresh 60 seconds.
+ * Losing the third life sets `finishedAtMs`, which `resolvePuzzleOutcome` turns
+ * into the opponent's win. The seat is never left with a passed deadline.
+ */
+export function applySeatPuzzleTimeout({
+  manifest,
+  seat,
+  nowMs,
+  perPuzzleMs = PUZZLE_SESSION_PUZZLE_MS,
+}: {
+  manifest: readonly PuzzleManifestEntry[];
+  seat: PuzzleSeatSnapshot;
+  nowMs: number;
+  perPuzzleMs?: number;
+}): {
+  seat: PuzzleSeatSnapshot;
+  expired: boolean;
+  advancedPuzzle: boolean;
+} {
+  const deadline = seat.puzzleDeadlineAtMs;
+  if (deadline == null || nowMs < deadline) {
+    return { seat, expired: false, advancedPuzzle: false };
+  }
+
+  const lives = Math.max(0, (seat.lives ?? PUZZLE_SESSION_LIVES) - 1);
+  if (lives <= 0) {
+    return {
+      seat: {
+        ...seat,
+        lives: 0,
+        finishedAtMs: nowMs,
+        puzzleDeadlineAtMs: null,
+      },
+      expired: true,
+      advancedPuzzle: false,
+    };
+  }
+
+  const nextEntry = manifest[seat.puzzleIndex + 1];
+  if (!nextEntry) {
+    return {
+      seat: {
+        ...seat,
+        lives: 0,
+        finishedAtMs: nowMs,
+        puzzleDeadlineAtMs: null,
+      },
+      expired: true,
+      advancedPuzzle: false,
+    };
+  }
+
+  const fresh = createSeatSnapshot(nextEntry, {
+    lives,
+    deadlineAtMs: nowMs + perPuzzleMs,
+  });
+  return {
+    seat: {
+      ...fresh,
+      solved: seat.solved,
+      ply: seat.ply,
+      lastSolveAtMs: seat.lastSolveAtMs,
+      lastActionAtMs: nowMs,
+    },
+    expired: true,
+    advancedPuzzle: true,
   };
 }
 
@@ -271,6 +375,29 @@ export function resolvePuzzleOutcome(
     };
   }
   if (snapshot.status === PUZZLE_SESSION_STATUS.FINISHED) return null;
+
+  const p1Out = (snapshot.p1.lives ?? PUZZLE_SESSION_LIVES) <= 0;
+  const p2Out = (snapshot.p2.lives ?? PUZZLE_SESSION_LIVES) <= 0;
+  if (p1Out || p2Out) {
+    if (p1Out && p2Out) {
+      return {
+        result: PUZZLE_SESSION_RESULT.DRAW,
+        winnerId: null,
+        reason: PUZZLE_SESSION_REASON.LIVES,
+      };
+    }
+    return p1Out
+      ? {
+          result: PUZZLE_SESSION_RESULT.PLAYER2,
+          winnerId: snapshot.player2Id,
+          reason: PUZZLE_SESSION_REASON.LIVES,
+        }
+      : {
+          result: PUZZLE_SESSION_RESULT.PLAYER1,
+          winnerId: snapshot.player1Id,
+          reason: PUZZLE_SESSION_REASON.LIVES,
+        };
+  }
 
   const p1Done = hasSolvedAll(snapshot, snapshot.p1);
   const p2Done = hasSolvedAll(snapshot, snapshot.p2);

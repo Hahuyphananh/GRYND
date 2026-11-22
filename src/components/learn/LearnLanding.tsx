@@ -14,6 +14,7 @@ import {
 
 import Footer from "../Footer";
 import NavigationBar from "../navigation-bar";
+import GlitchSay from "../mascot/GlitchSay";
 import { CourseCard, DifficultyBadge, Meter } from "./LearnCards";
 import { useAcademyVideoProgress } from "../../hooks/useAcademyVideoProgress";
 import { useLessonProgress } from "../../hooks/useLessonProgress";
@@ -160,6 +161,13 @@ export default function LearnLanding() {
               )}
             </div>
           </section>
+        </div>
+
+        <div className="mt-6 rounded-2xl border border-[#00e5ff]/25 bg-[#06152f]/90 p-3">
+          <GlitchSay
+            size="sm"
+            message="Start with a lesson or a demo. Glitch explains each objective, shows the move, then lets you play it on the real board."
+          />
         </div>
 
         <section className="mt-8" aria-labelledby="learn-continue-title">

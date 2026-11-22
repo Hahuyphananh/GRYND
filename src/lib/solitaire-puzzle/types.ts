@@ -48,6 +48,10 @@ export type PuzzleSeatSnapshot = {
   lastSolveAtMs: number | null;
   finishedAtMs: number | null;
   lastActionAtMs: number | null;
+  /** Remaining lives, 3 at the start. Zero ends the match. */
+  lives: number;
+  /** Absolute end of the seat's current 60-second puzzle clock. */
+  puzzleDeadlineAtMs: number | null;
 };
 
 /** Server-only session snapshot; the store maps a database row into this. */
@@ -61,6 +65,8 @@ export type PuzzleSessionSnapshot = {
   aiDifficulty: string | null;
   manifest: PuzzleManifestEntry[];
   puzzleCount: number;
+  /** True when the frozen stream grows instead of ending after five puzzles. */
+  endless: boolean;
   selectionSeed: string;
   selectionHash: string;
   p1: PuzzleSeatSnapshot;
@@ -149,6 +155,11 @@ export type PuzzleSessionView = {
   progress: PuzzleProgress;
   solvedCount: number;
   opponentSolvedCount: number;
+  /** The viewer's own remaining lives, and the opponent's. */
+  lives: number;
+  opponentLives: number;
+  /** The viewer's own 60-second clock; null while the session waits. */
+  puzzleDeadlineAtMs: number | null;
   startedAtMs: number | null;
   deadlineAtMs: number | null;
   serverNowMs: number;

@@ -118,6 +118,36 @@ export function buildPuzzleManifest(
 }
 
 /**
+ * Grow an endless battle's frozen stream to at least `minLength` entries.
+ *
+ * Each block is another seeded five-band set, re-slotted at its absolute index,
+ * so a seat can keep advancing without the match silently ending. Selection is
+ * deterministic from the session's stored seed and block number; the recent
+ * block is avoided where the bands allow it.
+ */
+export function extendPuzzleManifest(
+  manifest: readonly PuzzleManifestEntry[],
+  seed: string,
+  minLength: number,
+  puzzles: readonly LibraryPuzzle[] = puzzleLibraryPuzzles(),
+): PuzzleManifestEntry[] {
+  const out = [...manifest];
+  let block = 0;
+  while (out.length < minLength) {
+    const avoid = new Set(out.slice(-15).map((entry) => entry.id));
+    const next = buildPuzzleManifest(`${seed}:stream:${block}`, puzzles, {
+      avoidIds: avoid,
+    });
+    if (next.length === 0) break;
+    for (const entry of next) {
+      out.push({ ...entry, slot: out.length });
+    }
+    block += 1;
+  }
+  return out;
+}
+
+/**
  * Select a PRACTICE set: `count` distinct puzzles, one difficulty band.
  *
  * Practice is not competitive, so a player may pick a level (the brief's

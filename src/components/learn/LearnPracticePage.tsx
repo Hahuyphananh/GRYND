@@ -29,6 +29,7 @@ import {
 import Footer from "../Footer";
 import NavigationBar from "../navigation-bar";
 import SolitaireBoard from "../solitaire-duel/SolitaireBoard";
+import GlitchSay from "../mascot/GlitchSay";
 import LearnSubnav from "./LearnSubnav";
 import { usePracticeProgress } from "../../hooks/usePracticeProgress";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -358,6 +359,13 @@ export default function LearnPracticePage({
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/55">
           {t("learn.practice.description")}
         </p>
+
+        <div className="mt-4 rounded-2xl border border-[#00e5ff]/25 bg-[#06152f]/90 p-3">
+          <GlitchSay
+            size="sm"
+            message="Pick a skill and a level. Glitch will walk you through the first move, then stay quiet while you practise."
+          />
+        </div>
 
         {returnToReview && (
           <section

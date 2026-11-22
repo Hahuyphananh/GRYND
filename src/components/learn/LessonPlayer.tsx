@@ -26,6 +26,7 @@ import {
   RecapPhaseView,
   WatchPhaseView,
 } from "./LessonPhaseViews";
+import GlitchSay from "../mascot/GlitchSay";
 import { useLessonProgress } from "../../hooks/useLessonProgress";
 import { useTranslation } from "../../hooks/useTranslation";
 import { lessonById, LESSON_COURSES } from "../../lib/solitaire-duel/lessonCatalog";
@@ -307,6 +308,18 @@ function Player({ lesson }: { lesson: Lesson }) {
     ? Math.max(0, pendingAdvance.session.stepIndex - 1)
     : session.stepIndex;
   const currentStep = lesson.steps[displayStepIndex] ?? null;
+  const glitchLine =
+    phase === "watch"
+      ? "Watch the demo first, then try the same idea on the board."
+      : phase === "practice"
+        ? "Your turn — use the demo you just watched, and ask for a hint if you get stuck."
+        : phase === "knowledgeCheck"
+          ? "Answer from what you just practised. Glitch will explain anything you miss."
+          : phase === "recap"
+            ? "Here is the whole idea in one place. Replay the lesson whenever you like."
+            : currentStep
+              ? t(currentStep.instructionKey)
+              : t(lesson.successKey);
   const next = nextLessonAfter(lesson.id);
   const progressPercent = (session.stepIndex / lesson.steps.length) * 100;
 
@@ -517,6 +530,10 @@ function Player({ lesson }: { lesson: Lesson }) {
           onBack={phaseState.index > 0 ? backPhase : null}
         />
 
+        <div className="mt-4 rounded-2xl border border-[#00e5ff]/25 bg-[#06152f]/90 p-3">
+          <GlitchSay size="sm" message={glitchLine} />
+        </div>
+
         <div className="mt-5">
           {phase === "learn" && phases?.learn && (
             <LearnPhaseView content={phases.learn} onContinue={() => advancePhase()} />
@@ -715,6 +732,9 @@ function Player({ lesson }: { lesson: Lesson }) {
 
         {/* Coach ------------------------------------------------------------ */}
         <aside className="order-1 min-w-0 space-y-3 lg:order-2">
+          <div className="rounded-2xl border border-[#00e5ff]/25 bg-[#06152f]/90 p-3">
+            <GlitchSay size="sm" message={glitchLine} />
+          </div>
           <section className="rounded-2xl border border-[#00e5ff]/25 bg-[#06152f]/90 p-4">
             <div className="flex items-center justify-between gap-3">
               <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#00e5ff]/80">

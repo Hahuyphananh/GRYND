@@ -15,6 +15,7 @@ import {
 
 import Footer from "../Footer";
 import NavigationBar from "../navigation-bar";
+import GlitchSay from "../mascot/GlitchSay";
 import { useAcademyVideoProgress } from "../../hooks/useAcademyVideoProgress";
 import { useTranslation } from "../../hooks/useTranslation";
 import {
@@ -251,6 +252,12 @@ export default function VideoLessonPlayer({ video }: { video: AcademyVideo }) {
             aria-label={t("learn.videos.chapters")}
             className="rounded-2xl border border-white/10 bg-surface/80 p-4"
           >
+            <div className="mb-3 rounded-xl border border-[#00e5ff]/25 bg-[#06152f]/90 p-2.5">
+              <GlitchSay
+                size="sm"
+                message="Watch the demo all the way through, then open the related lesson to try the same move on a real board."
+              />
+            </div>
             <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#00e5ff]/75">
               <IconList size={14} aria-hidden="true" />
               {t("learn.videos.chapters")}
