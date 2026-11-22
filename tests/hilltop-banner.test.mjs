@@ -609,17 +609,18 @@ test("a lobby, a board, a match and an alias are all refused", () => {
 test("the document's CSP allows the provider's creative frame", () => {
   const frameSrc = read("src/proxy.ts").match(/frame-src [^;]+;/);
   assert.ok(frameSrc, "an explicit frame-src directive must stay");
-  assert.ok(
-    frameSrc[0].includes("https://juvenilechoice.com"),
-    "the creative's host must be named, or a switched-on banner can never paint",
-  );
-  // A bare `https:` token would wildcard the directive. (`https://host` also
-  // starts with "https:", so this compares whole tokens, not a substring.)
+  // Whole tokens, never substrings: `https://evil.test/?u=https://juvenilechoice.com`
+  // must not read as an allowed host. (`https://host` also starts with
+  // "https:", so this compares tokens, not substrings of the directive.)
   const hosts = frameSrc[0]
     .replace(/^frame-src\s+/, "")
     .replace(/;\s*$/, "")
     .trim()
     .split(/\s+/);
+  assert.ok(
+    hosts.includes("https://juvenilechoice.com"),
+    "the creative's host must be named, or a switched-on banner can never paint",
+  );
   assert.ok(
     !hosts.includes("https:"),
     "frame-src must stay a per-host allow-list, never a wildcard",

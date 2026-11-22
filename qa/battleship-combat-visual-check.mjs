@@ -33,7 +33,7 @@ import postcss from "postcss";
 import tailwindcss from "tailwindcss";
 import autoprefixer from "autoprefixer";
 import { chromium } from "playwright";
-import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, existsSync, createReadStream } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, existsSync, createReadStream, readdirSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join, dirname, extname } from "node:path";
@@ -134,19 +134,36 @@ console.log(`compiled stylesheet: ${(generated.css.length / 1024).toFixed(0)}KB\
 
 // Serve the harness over HTTP so the ship art (a public URL) actually loads.
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png" };
+/**
+ * Files a folder held at startup, keyed by request path: a request can only name
+ * one of them, so `..` or an absolute path cannot reach outside the folder.
+ */
+const staticFiles = (dir) => {
+  const files = new Map();
+  const walk = (current, prefix) => {
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const name = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) walk(join(current, entry.name), name);
+      else if (entry.isFile()) files.set(name, join(current, name));
+    }
+  };
+  walk(dir, "");
+  return files;
+};
+
+const harnessFiles = staticFiles(outDir);
+const publicFiles = staticFiles(join(root, "public"));
+
 const server = createServer((req, res) => {
-  const url = (req.url || "/").split("?")[0];
-  const path = [
-    join(outDir, url === "/" ? "index.html" : url.slice(1)),
-    join(root, "public", url.slice(1)),
-  ].find((candidate) => existsSync(candidate));
-  if (!path) {
+  const key = (req.url || "/").split("?")[0].replace(/^\/+/, "") || "index.html";
+  const file = harnessFiles.get(key) ?? publicFiles.get(key);
+  if (!file) {
     res.statusCode = 404;
     res.end("not found");
     return;
   }
-  res.setHeader("content-type", TYPES[extname(path)] ?? "application/octet-stream");
-  createReadStream(path).pipe(res);
+  res.setHeader("content-type", TYPES[extname(file)] ?? "application/octet-stream");
+  createReadStream(file).pipe(res);
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 server.unref();

@@ -609,7 +609,10 @@ export function applyMove({
   }
 
   const mark = markForSeat(seat);
-  target.cells[cellIndex] = mark;
+  // `splice`, not `cells[cellIndex] = mark`: the plan is validated above, and
+  // replacing the slot without a computed property write means a hostile
+  // `__proto__`-style key can never reach the prototype chain.
+  target.cells.splice(cellIndex, 1, mark);
   target.plies += 1;
   // `latticeOf` re-derived the control before the mark landed, so recompute it
   // now that this board changed.

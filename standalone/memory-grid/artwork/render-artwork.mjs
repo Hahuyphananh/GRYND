@@ -29,9 +29,9 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { extname, join, normalize, resolve } from "node:path";
+import { extname, join, resolve } from "node:path";
 
 import sharp from "sharp";
 
@@ -58,16 +58,23 @@ const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const kb = (bytes) => `${(bytes / 1024).toFixed(1)} kB`;
 
 async function startServer(dir) {
+  // Files present when the server started, keyed by request path: a request can
+  // only name one of them, so `..` or an absolute path cannot escape the package.
+  const files = new Map();
+  const walk = (current, prefix) => {
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const name = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) walk(join(current, entry.name), name);
+      else if (entry.isFile()) files.set(name, join(current, name));
+    }
+  };
+  walk(dir, "");
+
   const server = createServer((req, res) => {
     const requested = decodeURIComponent((req.url ?? "/").split("?")[0]);
-    const safe = normalize(requested).replace(/^([/\\])+/, "");
-    let file = join(dir, safe || "index.html");
-    if (!file.startsWith(dir)) {
-      res.writeHead(403).end("forbidden");
-      return;
-    }
-    if (existsSync(file) && statSync(file).isDirectory()) file = join(file, "index.html");
-    if (!existsSync(file)) {
+    const key = requested.replace(/^([/\\])+/, "") || "index.html";
+    const file = files.get(key) ?? files.get(`${key}/index.html`);
+    if (!file) {
       res.writeHead(404).end("not found");
       return;
     }
@@ -160,11 +167,20 @@ async function captureBoard() {
   let messageId = 0;
   const pending = new Map();
   socket.addEventListener("message", (event) => {
-    const message = JSON.parse(event.data);
-    if (!message.id) return;
+    let message;
+    try {
+      message = JSON.parse(event.data);
+    } catch {
+      // A frame that is not JSON is not a reply to anything.
+      return;
+    }
+    if (!message || typeof message !== "object") return;
+    if (!Number.isInteger(message.id)) return;
     const settle = pending.get(message.id);
     pending.delete(message.id);
-    settle?.(message);
+    // Only a callback registered by `send` may be invoked, never a method
+    // reached through the message's own name.
+    if (typeof settle === "function") settle(message);
   });
 
   const send = (method, params = {}) => {

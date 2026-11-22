@@ -35,11 +35,20 @@ const MARK_PNG = "android/app/src/main/assets/public/grynd-mark.png";
 const CANONICAL = "https://www.grynd.dedyn.io/";
 
 /** Strip HTML + JS comments: the files explain what must NOT happen in them. */
-const stripComments = (source) =>
-  source
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "");
+const stripComments = (source) => {
+  // Repeat until nothing changes: removing one comment can join the fragments
+  // on either side into a fresh opener (a `<!--` split by a removed `//` line),
+  // so a single pass can leave `<!--` behind.
+  let current = source;
+  for (;;) {
+    const next = current
+      .replace(/<!--[\s\S]*?-->/g, "")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+    if (next === current) return next;
+    current = next;
+  }
+};
 
 // ── 1. One connectivity decision ──────────────────────────────────────────
 

@@ -40,9 +40,9 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { extname, join, normalize, resolve } from "node:path";
+import { extname, join, resolve } from "node:path";
 
 const argv = process.argv.slice(2);
 const dirArg = argv.find((entry) => entry.startsWith("--dir="));
@@ -87,16 +87,29 @@ assert.ok(existsSync(join(OUT, "index.html")), `no index.html in ${OUT} — run 
 
 // ── 1. Static server for the package ─────────────────────────────────────
 
+/**
+ * Every file the package contained when the server started, keyed by the path a
+ * request may name. Serving out of this map means a `..`, an absolute path or a
+ * look-alike prefix can never reach a file outside the package.
+ */
+const packageFiles = (() => {
+  const files = new Map();
+  const walk = (dir, prefix) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const name = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) walk(join(dir, entry.name), name);
+      else if (entry.isFile()) files.set(name, join(dir, entry.name));
+    }
+  };
+  walk(OUT, "");
+  return files;
+})();
+
 const server = createServer((req, res) => {
   const requested = decodeURIComponent((req.url ?? "/").split("?")[0]);
-  const safe = normalize(requested).replace(/^([/\\])+/, "");
-  let file = join(OUT, safe || "index.html");
-  if (!file.startsWith(OUT)) {
-    res.writeHead(403).end("forbidden");
-    return;
-  }
-  if (existsSync(file) && statSync(file).isDirectory()) file = join(file, "index.html");
-  if (!existsSync(file)) {
+  const key = requested.replace(/^([/\\])+/, "") || "index.html";
+  const file = packageFiles.get(key) ?? packageFiles.get(`${key}/index.html`);
+  if (!file) {
     res.writeHead(404).end("not found");
     return;
   }
@@ -182,10 +195,12 @@ const pending = new Map();
 const events = [];
 socket.addEventListener("message", (event) => {
   const message = JSON.parse(event.data);
-  if (message.id) {
+  if (Number.isInteger(message.id)) {
     const settle = pending.get(message.id);
     pending.delete(message.id);
-    settle?.(message);
+    // Only a callback this script registered may be invoked, never a method
+    // reached through the message's own name.
+    if (typeof settle === "function") settle(message);
     return;
   }
   events.push(message);
@@ -234,12 +249,17 @@ const clickSelector = (selector) =>
 const phaseIs = (label) =>
   `document.querySelector('[data-testid="phase-label"]')?.textContent.trim() === ${JSON.stringify(label)}`;
 
+// One complete expression per tile state: no value is ever concatenated into
+// page code.
+const TILE_COUNT_EXPRESSIONS = {
+  all: 'document.querySelectorAll(\'[data-testid="memory-tile"]\').length',
+  pattern:
+    'document.querySelectorAll(\'[data-testid="memory-tile"][data-tile-state="pattern"]\').length',
+  rest: 'document.querySelectorAll(\'[data-testid="memory-tile"][data-tile-state="rest"]\').length',
+};
+
 const countTiles = (state) =>
-  evaluate(
-    `document.querySelectorAll('[data-testid="memory-tile"]${
-      state ? `[data-tile-state="${state}"]` : ""
-    }').length`,
-  );
+  evaluate(TILE_COUNT_EXPRESSIONS[state] ?? TILE_COUNT_EXPRESSIONS.all);
 
 const result = { requests: [], checks: [] };
 const note = (message) => result.checks.push(message);

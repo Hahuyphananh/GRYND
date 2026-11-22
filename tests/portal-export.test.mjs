@@ -161,7 +161,9 @@ test("Poki is not an iframe submission and CrazyGames is", () => {
 
   // CrazyGames documents externally hosted (iframe) as a submission mode.
   assert.equal(PORTALS.crazygames.hosting, "both");
-  assert.ok(PORTALS.crazygames.frameAncestors.some((o) => o.includes("crazygames.com")));
+  assert.ok(
+    PORTALS.crazygames.frameAncestors.some((o) => new URL(o).hostname === "crazygames.com" || new URL(o).hostname.endsWith(".crazygames.com")),
+  );
   assert.match(PORTALS.crazygames.requirements.join(" "), /iframe/i);
 
   // itch.io requires no SDK at all.
@@ -254,7 +256,7 @@ test("the manifest states the hosting shape and the SDK each portal needs", () =
   assert.equal(itch.game.playRoute, "/play/dominoes");
   assert.equal(itch.game.mode, "practice");
   assert.equal(itch.entry, "index.html");
-  assert.ok(itch.frameAncestors.includes("https://html.itch.zone"));
+  assert.ok(itch.frameAncestors.some((o) => new URL(o).hostname === "html.itch.zone"));
 
   const poki = buildExportManifest({
     gameKey: "battleship",
