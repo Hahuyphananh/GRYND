@@ -2154,5 +2154,140 @@ export const PUZZLE_LIBRARY_DATA = [
       "score": 32,
       "band": 2
     }
+  },
+  {
+    "id": "library:v1:tableau-84-102",
+    "category": "tableau",
+    "seed": 84,
+    "startPly": 102,
+    "start": "c6/~h13,d8/~c8,~s8,h3/~h2,~d11,~h6,s13/~s11,~c9,~h12,~d9,s6/~s9,~c7,~s3,~s10,~s5,c3/~d7,~d6,~c10,~d10,~c2,~c1,d3|s4,c11,h8,s12,h5,h9,s7,h7,h10,c5,d13,d5,h4,c12,c13,d12|h11,d4,c4,d2|2,1,1,0|102",
+    "solution": [
+      {
+        "kind": "waste-to-foundation",
+        "suit": "diamonds"
+      },
+      {
+        "kind": "tableau-to-foundation",
+        "fromColumn": 6,
+        "card": {
+          "suit": "diamonds",
+          "rank": 3
+        },
+        "suit": "diamonds"
+      }
+    ],
+    "objective": {
+      "kind": "place-card",
+      "card": {
+        "suit": "diamonds",
+        "rank": 3
+      },
+      "destination": {
+        "kind": "foundation",
+        "suit": "diamonds"
+      }
+    },
+    "provenance": {
+      "branching": 5,
+      "productive": 3,
+      "distractors": 2,
+      "delayed": false,
+      "reveals": 1,
+      "gain": 2,
+      "draws": 0,
+      "stockPasses": 0,
+      "opened": -1,
+      "faceDown": 21,
+      "foundations": 4,
+      "score": 30,
+      "band": 1
+    }
+  },
+  {
+    "id": "library:v1:sequence-110-106",
+    "category": "sequence",
+    "seed": 110,
+    "startPly": 106,
+    "start": "d7,s6,d5/h8,c7/~s3,~h9,h13/~s12,~h3,d10,c9,d8,s7/~c2,~d11,~c12,~s5,c8,h7,c6/~h1,~h5,~c4,c13,d12,c11,h10/~d4,~d6,~d13,~d1,~h6,~s4,d3|s10,c5,d9,c10,h4,s11,h12,h2,d2|c3,s8,h11,s13,s9|2,0,0,1|106",
+    "solution": [
+      {
+        "kind": "waste-to-tableau",
+        "toColumn": 5
+      },
+      {
+        "kind": "tableau-to-tableau",
+        "fromColumn": 1,
+        "card": {
+          "suit": "hearts",
+          "rank": 8
+        },
+        "toColumn": 5
+      }
+    ],
+    "objective": {
+      "kind": "open-column",
+      "column": 1
+    },
+    "provenance": {
+      "branching": 5,
+      "productive": 2,
+      "distractors": 1,
+      "delayed": false,
+      "reveals": 0,
+      "gain": 0,
+      "draws": 0,
+      "stockPasses": 0,
+      "opened": 1,
+      "faceDown": 17,
+      "foundations": 3,
+      "score": 30,
+      "band": 1
+    }
+  },
+  {
+    "id": "library:v1:foundation-119-151",
+    "category": "foundation",
+    "seed": 119,
+    "startPly": 151,
+    "start": "d13/~c7,s13,h12,s11,h10/~d4,~s9,h9/~c4,~h13,~d6,s4,d3/~s6,~h6,~c12,~s8,d9/~d10,~c6,~s5,~d11,d2/~h2,~s12,~c9,~s2,~c8,~c2,h4,c3|c13,s10,d8,s3,d5,h11,s7,h8,c11|c5,d12,h3,c10,h5,d7,h7|1,1,1,1|151",
+    "solution": [
+      {
+        "kind": "tableau-to-foundation",
+        "fromColumn": 5,
+        "card": {
+          "suit": "diamonds",
+          "rank": 2
+        },
+        "suit": "diamonds"
+      },
+      {
+        "kind": "tableau-to-foundation",
+        "fromColumn": 3,
+        "card": {
+          "suit": "diamonds",
+          "rank": 3
+        },
+        "suit": "diamonds"
+      }
+    ],
+    "objective": {
+      "kind": "foundation-milestone",
+      "total": 6
+    },
+    "provenance": {
+      "branching": 5,
+      "productive": 3,
+      "distractors": 2,
+      "delayed": false,
+      "reveals": 1,
+      "gain": 2,
+      "draws": 0,
+      "stockPasses": 0,
+      "opened": -1,
+      "faceDown": 20,
+      "foundations": 4,
+      "score": 30,
+      "band": 1
+    }
   }
 ];

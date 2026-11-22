@@ -15,7 +15,7 @@ import path from "node:path";
 
 import { APP_TEXT_TRANSLATIONS } from "../src/lib/appTextTranslations.js";
 import { PLAY_HUB_TRANSLATIONS } from "../src/lib/playHubTranslations.js";
-import { PLAY_MODE_GROUPS } from "../src/lib/playModePalette.ts";
+import { PLAY_MODE_GROUPS, PLAY_MODE_PALETTE } from "../src/lib/playModePalette.ts";
 
 const ROOT = process.cwd();
 const read = (relative) =>
@@ -42,6 +42,13 @@ const MODES = [
 ];
 
 // ── Play hub ──────────────────────────────────────────────────────────────
+
+test("every mode card has its own accent colour", () => {
+  const accents = Object.values(PLAY_MODE_PALETTE).map((palette) =>
+    palette.accent.toLowerCase(),
+  );
+  assert.equal(new Set(accents).size, accents.length, "two modes share an accent");
+});
 
 test("the Play hub renders exactly eight mode cards in order", () => {
   const source = read(HUB);

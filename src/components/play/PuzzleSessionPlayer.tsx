@@ -30,6 +30,7 @@ import { IconArrowLeft, IconClock, IconTrophy } from "@tabler/icons-react";
 import Footer from "../Footer";
 import NavigationBar from "../navigation-bar";
 import SolitaireBoard from "../solitaire-duel/SolitaireBoard";
+import GlitchSay from "../mascot/GlitchSay";
 import { useTranslation } from "../../hooks/useTranslation";
 import {
   PUZZLE_BOARD_POLL_MS,
@@ -262,6 +263,20 @@ export default function PuzzleSessionPlayer({
             : null;
   const pct = puzzleProgressPercent(view?.progress);
 
+  const glitchMessage = outcome
+    ? won
+      ? "You took the match. Clean line."
+      : draw
+        ? "A draw — neither seat solved enough in time."
+        : "That one got away. The next board is a fresh race."
+    : verdict === "illegal"
+      ? "That move is not legal here."
+      : verdict === "no-progress"
+        ? "Legal, but it does not move the objective."
+        : view?.status === "playing"
+          ? "Find the line that moves the objective."
+          : "Waiting for the race to start.";
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-[color:var(--bg-page)] pb-24 text-[color:var(--text-primary)] md:pb-0">
       <div
@@ -459,6 +474,10 @@ export default function PuzzleSessionPlayer({
             </div>
 
             <aside className="space-y-3" aria-label={t("playHub.lobby.puzzleBoard.progress")}>
+              <div className="rounded-2xl border border-[#5eead4]/25 bg-[#5eead4]/[0.06] p-3">
+                <GlitchSay placement="inline" size="sm" message={glitchMessage} />
+              </div>
+
               {mode === "ai" && (
                 <div
                   data-testid="puzzle-ai-status"

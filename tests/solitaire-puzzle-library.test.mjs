@@ -211,7 +211,7 @@ test("the learning tiers are deep enough to repeat without reusing a puzzle", ()
     LIBRARY.report.byLevel.beginner + LIBRARY.report.byLevel.intermediate >= 13,
     "the Beginner + Intermediate pool shrank",
   );
-  assert.ok(LIBRARY.report.byLevel.beginner >= 5, "Beginner pool shrank");
+  assert.ok(LIBRARY.report.byLevel.beginner >= 8, "Beginner must keep at least eight positions");
   assert.ok(LIBRARY.report.byLevel.intermediate >= 5, "Intermediate pool shrank");
   assert.ok(LIBRARY.report.byCategory.sequence >= 8, "Sequence pool shrank");
 });

@@ -40,6 +40,8 @@ import {
 } from "@tabler/icons-react";
 
 import SolitaireBoard from "./SolitaireBoard";
+import ModeTableau from "../play/ModeTableau";
+import GlitchSay from "../mascot/GlitchSay";
 import { useTranslation } from "../../hooks/useTranslation";
 import {
   PUZZLE_LIBRARY_CATEGORIES,
@@ -139,6 +141,10 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
   );
   const [hintsShown, setHintsShown] = useState(0);
   const [feedback, setFeedback] = useState<Feedback>(null);
+  // The library is a selector, not part of the board: once a position is picked
+  // it leaves the screen so the puzzle owns the viewport.
+  const [browsing, setBrowsing] = useState(true);
+  const carouselRef = useRef<HTMLUListElement | null>(null);
   const completeHeadingRef = useRef<HTMLHeadingElement | null>(null);
 
   const puzzle = puzzles[index] ?? null;
@@ -181,6 +187,19 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
           ? t("puzzlePlayer.library.inProgressBadge")
           : t("puzzlePlayer.library.newBadge");
 
+  const glitchMessage =
+    phase === "complete"
+      ? "Solved. Take the next position when you are ready."
+      : feedback?.status === "illegal"
+        ? "That move is not legal on this table."
+        : feedback?.status === "no-progress"
+          ? "Legal, but it does not move the objective. Look for a line that does."
+          : feedback?.status === "progress"
+            ? "Good — that advanced the objective."
+            : browsing
+              ? "Pick a position. The board opens as soon as you choose it."
+              : "Read the objective, then start when you are ready.";
+
   const select = useCallback(
     (nextIndex: number) => {
       if (puzzles.length === 0) return;
@@ -193,6 +212,14 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
       setFeedback(null);
     },
     [puzzles],
+  );
+
+  const pick = useCallback(
+    (nextIndex: number) => {
+      select(nextIndex);
+      setBrowsing(false);
+    },
+    [select],
   );
 
   const start = useCallback(() => {
@@ -301,6 +328,17 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {!browsing && (
+            <button
+              type="button"
+              onClick={() => setBrowsing(true)}
+              data-testid="puzzle-back-to-library"
+              className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white/60 transition hover:border-white/30 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 motion-reduce:transition-none"
+            >
+              <IconArrowLeft size={12} aria-hidden="true" />
+              {t("puzzlePlayer.library.title")}
+            </button>
+          )}
           <span className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white/65">
             {categoryName}
           </span>
@@ -312,6 +350,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
         </div>
       </div>
 
+      {browsing && (
       <div
         data-testid="puzzle-library"
         className="mt-4 rounded-2xl border border-white/10 bg-white/[0.02] p-3 sm:p-4"
@@ -329,7 +368,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
             {continueIndex >= 0 && (
               <button
                 type="button"
-                onClick={() => select(continueIndex)}
+                onClick={() => pick(continueIndex)}
                 data-testid="puzzle-continue"
                 className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-300/40 bg-cyan-300/10 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-cyan-100 transition hover:bg-cyan-300/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 motion-reduce:transition-none"
               >
@@ -340,7 +379,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
               <button
                 type="button"
                 onClick={() =>
-                  select(puzzles.findIndex((entry) => entry.id === nextChallenge.id))
+                  pick(puzzles.findIndex((entry) => entry.id === nextChallenge.id))
                 }
                 data-testid="puzzle-next-challenge"
                 className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-white/60 transition hover:border-white/30 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 motion-reduce:transition-none"
@@ -374,7 +413,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
             </div>
             <button
               type="button"
-              onClick={() => select(dailyNumber - 1)}
+              onClick={() => pick(dailyNumber - 1)}
               data-testid="puzzle-play-daily"
               className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300/45 bg-amber-300/15 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-amber-50 transition hover:bg-amber-300/25 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-300 motion-reduce:transition-none"
             >
@@ -382,6 +421,10 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
             </button>
           </div>
         )}
+
+        <div className="mt-3">
+          <GlitchSay size="sm" message={glitchMessage} />
+        </div>
 
         <div className="mt-3 space-y-2">
           <div
@@ -448,17 +491,29 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
         {filteredPuzzles.length === 0 ? (
           <p className="mt-4 text-xs text-white/45">{t("puzzlePlayer.library.empty")}</p>
         ) : (
-          <ul className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-3 flex items-stretch gap-2">
+            <button
+              type="button"
+              aria-label="Scroll puzzles left"
+              onClick={() => carouselRef.current?.scrollBy({ left: -300, behavior: "smooth" })}
+              className="shrink-0 self-center rounded-full border border-white/15 bg-white/5 p-2 text-white/60 transition hover:border-cyan-300/50 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 motion-reduce:transition-none"
+            >
+              <IconArrowLeft size={16} aria-hidden="true" />
+            </button>
+          <ul
+            ref={carouselRef}
+            className="flex min-w-0 flex-1 snap-x snap-mandatory gap-2 overflow-x-auto pb-2"
+          >
             {filteredPuzzles.map((entry) => {
               const number = puzzles.findIndex((item) => item.id === entry.id) + 1;
               const status = puzzleStatus(savedProgress, entry);
               const entryRecord = puzzleRecord(savedProgress, entry.id);
               const active = entry.id === puzzle.id;
               return (
-                <li key={entry.id}>
+                <li key={entry.id} className="w-64 shrink-0 snap-start">
                   <button
                     type="button"
-                    onClick={() => select(number - 1)}
+                    onClick={() => pick(number - 1)}
                     aria-pressed={active}
                     data-testid={`puzzle-card-${entry.id}`}
                     className={`flex h-full w-full flex-col rounded-xl border px-2.5 py-2 text-left transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 motion-reduce:transition-none ${
@@ -467,6 +522,11 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
                         : "border-white/10 bg-white/[0.03] hover:border-white/25"
                     }`}
                   >
+                    {Math.abs(number - 1 - index) <= 1 && (
+                      <span className="mb-2 block overflow-hidden rounded-lg border border-white/10">
+                        <ModeTableau variant="dailyPuzzle" />
+                      </span>
+                    )}
                     <span className="flex items-start justify-between gap-2">
                       <span className="text-xs font-bold leading-snug text-white">
                         {t("puzzlePlayer.intro.title", {
@@ -502,10 +562,20 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
               );
             })}
           </ul>
+            <button
+              type="button"
+              aria-label="Scroll puzzles right"
+              onClick={() => carouselRef.current?.scrollBy({ left: 300, behavior: "smooth" })}
+              className="shrink-0 self-center rounded-full border border-white/15 bg-white/5 p-2 text-white/60 transition hover:border-cyan-300/50 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 motion-reduce:transition-none"
+            >
+              <IconArrowRight size={16} aria-hidden="true" />
+            </button>
+          </div>
         )}
       </div>
+      )}
 
-      {phase === "intro" && (
+      {!browsing && phase === "intro" && (
         <div
           data-testid="puzzle-intro"
           className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start"
@@ -578,6 +648,9 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
           </div>
 
           <aside className="space-y-3">
+            <div className="rounded-2xl border border-cyan-300/25 bg-cyan-300/[0.06] p-3">
+              <GlitchSay size="sm" message={glitchMessage} />
+            </div>
             <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/40">
                 {t("puzzlePlayer.intro.skill")}
@@ -612,7 +685,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => select(index - 1)}
+                onClick={() => pick(index - 1)}
                 className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white/60 transition hover:border-white/30 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 motion-reduce:transition-none"
               >
                 <IconArrowLeft size={14} aria-hidden="true" />
@@ -620,7 +693,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
               </button>
               <button
                 type="button"
-                onClick={() => select(index + 1)}
+                onClick={() => pick(index + 1)}
                 className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white/60 transition hover:border-white/30 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 motion-reduce:transition-none"
               >
                 {t("puzzlePlayer.hud.next")}
@@ -638,7 +711,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
         </div>
       )}
 
-      {phase !== "intro" && (
+      {!browsing && phase !== "intro" && (
         <div className="mt-4 space-y-3">
           <div className="rounded-2xl border border-white/10 bg-black/20 p-3 sm:p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -801,7 +874,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
                 </button>
                 <button
                   type="button"
-                  onClick={() => select(index + 1)}
+                  onClick={() => pick(index + 1)}
                   data-testid="puzzle-next"
                   className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-white/20 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white/75 transition hover:border-white/40 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 motion-reduce:transition-none"
                 >
@@ -862,6 +935,9 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
 
             {phase === "playing" && (
               <aside className="space-y-3">
+                <div className="rounded-2xl border border-cyan-300/25 bg-cyan-300/[0.06] p-3">
+                  <GlitchSay size="sm" message={glitchMessage} />
+                </div>
                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/45">

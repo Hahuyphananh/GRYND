@@ -40,14 +40,23 @@ export const PLAY_MODE_PALETTE: Record<PlayModeId, PlayModePalette> = {
       "linear-gradient(155deg, rgba(0, 255, 163, 0.16) 0%, rgba(6, 30, 22, 0.92) 46%, rgba(4, 9, 15, 0.98) 100%)",
     glow: "rgba(0, 255, 163, 0.16)",
   },
-  // The second Ranked mode: same emerald family, a cooler teal so the pair reads
-  // as ONE competitive row without the two cards looking like a copy.
+  // The second Ranked mode gets its own magenta, not another green: the two
+  // ranked cards must be tellable apart at a glance, not just by their copy.
   puzzleRanked: {
-    accent: "#5eead4",
-    line: "rgba(94, 234, 212, 0.36)",
+    accent: "#f472b6",
+    line: "rgba(244, 114, 182, 0.36)",
     surface:
-      "linear-gradient(155deg, rgba(94, 234, 212, 0.16) 0%, rgba(8, 34, 32, 0.92) 46%, rgba(4, 9, 15, 0.98) 100%)",
-    glow: "rgba(94, 234, 212, 0.16)",
+      "linear-gradient(155deg, rgba(244, 114, 182, 0.16) 0%, rgba(42, 12, 30, 0.92) 46%, rgba(10, 4, 10, 0.98) 100%)",
+    glow: "rgba(244, 114, 182, 0.16)",
+  },
+  // Practice's second puzzle mode is amber-orange, so it is distinct from the
+  // violet Vs AI card and from the gold daily challenge.
+  puzzleAi: {
+    accent: "#fb923c",
+    line: "rgba(251, 146, 60, 0.36)",
+    surface:
+      "linear-gradient(155deg, rgba(251, 146, 60, 0.16) 0%, rgba(46, 24, 8, 0.92) 46%, rgba(12, 7, 4, 0.98) 100%)",
+    glow: "rgba(251, 146, 60, 0.16)",
   },
   solo: {
     accent: "#00e5ff",
@@ -63,14 +72,7 @@ export const PLAY_MODE_PALETTE: Record<PlayModeId, PlayModePalette> = {
       "linear-gradient(155deg, rgba(167, 139, 250, 0.16) 0%, rgba(26, 20, 48, 0.92) 46%, rgba(6, 6, 14, 0.98) 100%)",
     glow: "rgba(167, 139, 250, 0.16)",
   },
-  // The second AI mode: the same violet family as Vs AI, one step brighter.
-  puzzleAi: {
-    accent: "#c4b5fd",
-    line: "rgba(196, 181, 253, 0.36)",
-    surface:
-      "linear-gradient(155deg, rgba(196, 181, 253, 0.16) 0%, rgba(30, 24, 54, 0.92) 46%, rgba(6, 6, 14, 0.98) 100%)",
-    glow: "rgba(196, 181, 253, 0.16)",
-  },
+
   daily: {
     accent: "#fbbf24",
     line: "rgba(251, 191, 36, 0.32)",
