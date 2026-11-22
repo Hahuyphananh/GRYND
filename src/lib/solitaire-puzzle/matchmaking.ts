@@ -19,13 +19,20 @@
 //
 // A waiting row older than PUZZLE_RANKED_QUEUE_TTL_MS is never offered: an
 // abandoned search is cancelled rather than paired with somebody who left.
+//
+// REPEAT PREVENTION: when the second seat is taken, both players' recent
+// ranked history (`./repetition`) is consulted. If the lobby's provisional set
+// contains a puzzle either player raced inside the window, the set is rebuilt
+// for BOTH seats from the same frozen manifest — never filtered per seat, so
+// the identical-set fairness invariant still holds. A waiting lobby has shown
+// no board, which is why replacing its selection here is invisible.
 
 import { and, desc, eq, isNull, ne, or, sql } from "drizzle-orm";
 
 import { db } from "../../db/client";
 import { solitairePuzzleSessions } from "../../db/schema";
 import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
-import { randomHex } from "../solitaire-duel/seeds";
+import { getServerSeedHash, randomHex } from "../solitaire-duel/seeds";
 import {
   PUZZLE_RANKED_GAME_KEY,
   PUZZLE_RANKED_LOCK_NAMESPACE,
@@ -34,13 +41,16 @@ import {
   PUZZLE_SESSION_STATUS,
   type PuzzleSessionStatus,
 } from "./constants";
+import { buildPuzzleManifest } from "./manifest";
 import { PUZZLE_RANKED_FORMAT } from "./ranked";
+import { recentRankedPuzzleSeen } from "./repetition";
 import {
   createPuzzleSessionRecord,
   sessionRowToSnapshot,
   type StoreError,
 } from "./serverStore";
-import type { PuzzleSessionSnapshot } from "./types";
+import { cloneSeatSnapshot, createSeatSnapshot } from "./state";
+import type { PuzzleManifestEntry, PuzzleSessionSnapshot } from "./types";
 
 type SessionRow = typeof solitairePuzzleSessions.$inferSelect;
 
@@ -274,6 +284,30 @@ export async function createOrJoinPuzzleRanked({
 
     const opponent = usable[0];
     if (opponent) {
+      // Both players' windows decide ONE set. A waiting lobby has not shown a
+      // board yet, so a conflicting provisional selection is replaced here —
+      // before either seat starts — rather than filtered per seat, which would
+      // break the identical-set invariant.
+      const recent = await recentRankedPuzzleSeen({
+        tx,
+        userIds: [opponent.player1Id, userId],
+        nowMs,
+        excludeSessionId: opponent.id,
+      });
+      const storedManifest = (opponent.manifest ?? []) as PuzzleManifestEntry[];
+      const repeated = storedManifest.some((entry) => recent.ids.has(entry.id));
+      const reseeded = repeated ? randomHex(32) : null;
+      const manifest = reseeded
+        ? buildPuzzleManifest(reseeded, undefined, {
+            avoidIds: recent.ids,
+            lastSeenAt: recent.lastSeenAt,
+          })
+        : storedManifest;
+      const first = manifest[0];
+      if (!first) return err("That match has no puzzle set", 409);
+      const seat1 = repeated ? createSeatSnapshot(first) : null;
+      const seat2 = seat1 ? cloneSeatSnapshot(seat1) : null;
+
       const [joined] = await tx
         .update(solitairePuzzleSessions)
         .set({
@@ -284,6 +318,33 @@ export async function createOrJoinPuzzleRanked({
           goAt: new Date(nowMs),
           deadlineAt: new Date(nowMs + PUZZLE_RANKED_FORMAT.deadlineMs),
           updatedAt: new Date(nowMs),
+          // A replacement selection restarts BOTH seats from its first puzzle,
+          // with a fresh server seed and commitment, so neither seat can carry
+          // progress from the provisional set.
+          ...(reseeded && seat1 && seat2
+            ? {
+                manifest,
+                puzzleCount: manifest.length,
+                selectionSeed: reseeded,
+                selectionHash: getServerSeedHash(reseeded),
+                p1PuzzleIndex: seat1.puzzleIndex,
+                p1Solved: seat1.solved,
+                p1Ply: seat1.ply,
+                p1State: seat1.state,
+                p1Stats: seat1.stats,
+                p1LastSolveAt: null,
+                p1FinishedAt: null,
+                p1LastActionAt: null,
+                p2PuzzleIndex: seat2.puzzleIndex,
+                p2Solved: seat2.solved,
+                p2Ply: seat2.ply,
+                p2State: seat2.state,
+                p2Stats: seat2.stats,
+                p2LastSolveAt: null,
+                p2FinishedAt: null,
+                p2LastActionAt: null,
+              }
+            : {}),
         })
         .where(
           and(

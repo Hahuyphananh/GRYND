@@ -65,6 +65,9 @@ const BY_LENGTH = [...LIBRARY].sort(
 );
 const SAMPLE = BY_LENGTH[0];
 const SAMPLE2 = BY_LENGTH.find((puzzle) => puzzle.id !== SAMPLE.id);
+const SAMPLE3 = BY_LENGTH.find(
+  (puzzle) => puzzle.id !== SAMPLE.id && puzzle.id !== SAMPLE2.id,
+);
 
 // ── 1. Isolation is checked before any module is mocked ───────────────────
 
@@ -103,9 +106,22 @@ test("isolation: Puzzle Ranked has its own key, registry entry and tables", asyn
 const isSqlExpression = (value) =>
   Boolean(value) && typeof value === "object" && "queryChunks" in value;
 
+const ID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
 const textOf = (query) => {
   try {
-    return JSON.stringify(query?.queryChunks ?? "");
+    // Drizzle column objects contain circular table references, so a plain
+    // stringify throws. Keep the nested values (where the bound id lives) and
+    // replace only the cycles.
+    const seen = new Set();
+    return JSON.stringify(query?.queryChunks ?? "", (key, value) => {
+      if (typeof value === "function") return "[fn]";
+      if (value && typeof value === "object") {
+        if (seen.has(value)) return "[circular]";
+        seen.add(value);
+      }
+      return value;
+    });
   } catch {
     return "";
   }
@@ -129,17 +145,31 @@ function createFakeDb() {
 
   const select = () => {
     let table = null;
+    let targetIds = null;
     const q = {
       from(t) {
         table = t;
         return q;
       },
-      where: () => q,
+      where(condition) {
+        // Production reads by `id` are single-row reads; mirror that so a test
+        // can hold a finished match and a fresh lobby at the same time.
+        const match = textOf(condition).match(ID_RE);
+        if (match) targetIds = new Set([match[0]]);
+        return q;
+      },
       for: () => q,
       orderBy: () => q,
       limit: () => q,
-      then: (resolve, reject) =>
-        Promise.resolve(rowsOf(table).map((row) => structuredClone(row))).then(resolve, reject),
+      then: (resolve, reject) => {
+        const rows = rowsOf(table).filter(
+          (row) => !targetIds || targetIds.has(String(row.id)),
+        );
+        return Promise.resolve(rows.map((row) => structuredClone(row))).then(
+          resolve,
+          reject,
+        );
+      },
     };
     return q;
   };
@@ -147,21 +177,29 @@ function createFakeDb() {
   const update = (table) => {
     let values = null;
     let applied = null;
+    // Production updates are always scoped by `id`; honour that here too, so a
+    // test with a finished match and a new lobby does not update both rows.
+    let targetIds = null;
     const apply = () => {
       const rows = rowsOf(table);
-      for (const row of rows) {
+      const targets = targetIds
+        ? rows.filter((row) => targetIds.has(String(row.id)))
+        : rows;
+      for (const row of targets) {
         for (const [key, value] of Object.entries(values)) {
           row[key] = isSqlExpression(value) ? (Number(row[key]) || 0) + 1 : value;
         }
       }
-      return rows.map((row) => structuredClone(row));
+      return targets.map((row) => structuredClone(row));
     };
     const b = {
       set(v) {
         values = v;
         return b;
       },
-      where() {
+      where(condition) {
+        const match = textOf(condition).match(ID_RE);
+        if (match) targetIds = new Set([match[0]]);
         applied = apply();
         return b;
       },
@@ -299,6 +337,7 @@ function installMocks(t) {
 
 const loadStore = () => import("../src/lib/solitaire-puzzle/serverStore.ts");
 const loadMatchmaking = () => import("../src/lib/solitaire-puzzle/matchmaking.ts");
+const loadRepetition = () => import("../src/lib/solitaire-puzzle/repetition.ts");
 
 function rankedPair(store, { manifest, seed = SEED } = {}) {
   return store.createRankedPuzzleSession({
@@ -475,6 +514,142 @@ test("queue: an abandoned search is never paired", { skip: SKIP_REASON }, async 
     rows.find((row) => row.id === opened.state.sessionId).status,
     PUZZLE_SESSION_STATUS.CANCELLED,
   );
+});
+
+test("repeat window: only ranked matches inside the window count as seen", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const repetition = await loadRepetition();
+  const { PUZZLE_REPEAT_WINDOW_MS } = repetition;
+  const rows = fake.rowsOf(solitairePuzzleSessions);
+
+  rows.push({
+    id: "recent",
+    mode: "ranked",
+    status: "finished",
+    player1Id: ALICE,
+    player2Id: BOB,
+    createdAt: new Date(NOW - 1_000),
+    manifest: manifestFromIds([SAMPLE.id]),
+  });
+  rows.push({
+    id: "old",
+    mode: "ranked",
+    status: "finished",
+    player1Id: ALICE,
+    player2Id: BOB,
+    createdAt: new Date(NOW - PUZZLE_REPEAT_WINDOW_MS - 1_000),
+    manifest: manifestFromIds([SAMPLE2.id]),
+  });
+  rows.push({
+    id: "waiting",
+    mode: "ranked",
+    status: "waiting",
+    player1Id: ALICE,
+    player2Id: null,
+    createdAt: new Date(NOW),
+    manifest: manifestFromIds([SAMPLE3.id]),
+  });
+  rows.push({
+    id: "practice",
+    mode: "ai",
+    status: "playing",
+    player1Id: ALICE,
+    player2Id: "solitaire_puzzle_ai_bot",
+    createdAt: new Date(NOW),
+    manifest: manifestFromIds([SAMPLE2.id]),
+  });
+
+  const seen = await repetition.recentRankedPuzzleSeen({
+    tx: fake.db,
+    userIds: [ALICE],
+    nowMs: NOW,
+  });
+  assert.equal(seen.ids.has(SAMPLE.id), true);
+  assert.equal(seen.ids.has(SAMPLE2.id), false, "a match older than the window is forgotten");
+  assert.equal(seen.ids.has(SAMPLE3.id), false, "a waiting search showed no board");
+  assert.equal(seen.lastSeenAt.get(SAMPLE.id), NOW - 1_000);
+
+  const otherSeat = await repetition.recentRankedPuzzleSeen({
+    tx: fake.db,
+    userIds: [BOB],
+    nowMs: NOW,
+  });
+  assert.equal(otherSeat.ids.has(SAMPLE.id), true, "both seats of a match remember it");
+
+  const stranger = await repetition.recentRankedPuzzleSeen({
+    tx: fake.db,
+    userIds: [MALLORY],
+    nowMs: NOW,
+  });
+  assert.equal(stranger.ids.size, 0, "history is authorised by seat");
+});
+
+test("repeat prevention: a rematch is served a set neither seat raced recently", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  const matchmaking = await loadMatchmaking();
+
+  await matchmaking.createOrJoinPuzzleRanked({ userId: ALICE, nowMs: NOW });
+  const joined = await matchmaking.createOrJoinPuzzleRanked({ userId: BOB, nowMs: NOW + 100 });
+  assert.equal(joined.state.joined, true);
+
+  const firstRow = fake.rowsOf(solitairePuzzleSessions)[0];
+  const firstIds = new Set(firstRow.manifest.map((entry) => entry.id));
+  assert.equal(firstIds.size, 5);
+  firstRow.status = PUZZLE_SESSION_STATUS.FINISHED;
+  firstRow.result = "draw";
+  firstRow.resolutionReason = "draw";
+  firstRow.endedAt = new Date(NOW + 200);
+
+  const reopened = await matchmaking.createOrJoinPuzzleRanked({
+    userId: ALICE,
+    nowMs: NOW + 10_000,
+  });
+  assert.equal(reopened.state.waiting, true);
+
+  // Force the provisional lobby to hold exactly the previous set, so the test
+  // does not depend on the random seed colliding with it.
+  const lobby = fake.rowsOf(solitairePuzzleSessions).find(
+    (row) => row.id === reopened.state.sessionId,
+  );
+  lobby.manifest = structuredClone(firstRow.manifest);
+
+  const rematch = await matchmaking.createOrJoinPuzzleRanked({
+    userId: BOB,
+    nowMs: NOW + 10_100,
+  });
+  assert.equal(rematch.state.joined, true);
+  assert.equal(rematch.state.sessionId, reopened.state.sessionId);
+
+  const second = fake.rowsOf(solitairePuzzleSessions).find(
+    (row) => row.id === rematch.state.sessionId,
+  );
+  assert.equal(second.manifest.length, 5);
+  for (const entry of second.manifest) {
+    assert.equal(firstIds.has(entry.id), false, `${entry.id} was re-served inside the window`);
+  }
+
+  // Fairness survives the replacement: one identical board per seat, no carried
+  // progress, and the same set served to both readers.
+  assert.deepEqual(second.p1State, second.p2State);
+  assert.equal(second.p1Ply, 0);
+  assert.equal(second.p2Ply, 0);
+  assert.deepEqual(second.p1Stats, second.p2Stats);
+
+  const fromAlice = await store.fetchPuzzleSession({
+    userId: ALICE,
+    sessionId: second.id,
+    nowMs: NOW + 10_200,
+  });
+  const fromBob = await store.fetchPuzzleSession({
+    userId: BOB,
+    sessionId: second.id,
+    nowMs: NOW + 10_200,
+  });
+  assert.equal("error" in fromAlice, false, fromAlice.error);
+  assert.equal("error" in fromBob, false, fromBob.error);
+  assert.deepEqual(fromAlice.snapshot.manifest, fromBob.snapshot.manifest);
+  assert.deepEqual(fromAlice.snapshot.p1.state, fromBob.snapshot.p2.state);
 });
 
 // ── 3. Server-authoritative moves and scoring ─────────────────────────────

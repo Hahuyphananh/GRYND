@@ -59,19 +59,34 @@ function entryFor(puzzle: LibraryPuzzle, slot: number): PuzzleManifestEntry {
   };
 }
 
+export type PuzzleManifestOptions = {
+  /** Library ids the players raced recently; avoided when the band allows it. */
+  avoidIds?: ReadonlySet<string>;
+  /** Most recent start per id, used only to order the fallback repeat. */
+  lastSeenAt?: ReadonlyMap<string, number>;
+};
+
 /**
  * Select one puzzle per band from a seed.
  *
  * The seed is server-generated at session creation and stored server-side. The
  * same seed always produces the same five entries, which is what lets both seats
  * and a recovery read reconstruct the identical set.
+ *
+ * `avoidIds` is per-player repeat prevention applied to BOTH seats at once:
+ * where a band still has unseen positions, one of them is chosen; where the
+ * whole band was seen inside the window, the LEAST recently seen position is
+ * chosen instead of failing to seat the match. The fallback is deterministic
+ * and still one per band, so the format never changes shape.
  */
 export function buildPuzzleManifest(
   seed: string,
   puzzles: readonly LibraryPuzzle[] = puzzleLibraryPuzzles(),
+  { avoidIds, lastSeenAt }: PuzzleManifestOptions = {},
 ): PuzzleManifestEntry[] {
   const manifest: PuzzleManifestEntry[] = [];
   const used = new Set<string>();
+  const avoid = avoidIds ?? new Set<string>();
 
   for (const band of BANDS) {
     const candidates = puzzles.filter(
@@ -80,8 +95,21 @@ export function buildPuzzleManifest(
     if (candidates.length === 0) {
       throw new Error(`No puzzle is available for difficulty band ${band}`);
     }
-    const index = hashSeed(`${seed}:${band}`) % candidates.length;
-    const chosen = candidates[index];
+
+    const unseen = candidates.filter((puzzle) => !avoid.has(puzzle.id));
+    let chosen: LibraryPuzzle;
+    if (unseen.length > 0) {
+      chosen = unseen[hashSeed(`${seed}:${band}`) % unseen.length];
+    } else {
+      // Every position in this band was seen inside the window. Repeat the one
+      // seen longest ago (never seen sorts first, then id for determinism).
+      chosen = [...candidates].sort((a, b) => {
+        const byAge =
+          (lastSeenAt?.get(a.id) ?? 0) - (lastSeenAt?.get(b.id) ?? 0);
+        return byAge !== 0 ? byAge : a.id.localeCompare(b.id);
+      })[0];
+    }
+
     used.add(chosen.id);
     manifest.push(entryFor(chosen, manifest.length));
   }

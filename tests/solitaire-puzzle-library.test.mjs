@@ -34,6 +34,7 @@ import {
   encodePuzzleStart,
   findAlternativeSolutions,
   levelForBand,
+  puzzleLibraryPuzzles,
 } from "../src/lib/solitaire-duel/puzzleLibrary.ts";
 import { PUZZLE_LIBRARY_TRANSLATIONS } from "../src/lib/puzzleLibraryTranslations.js";
 import {
@@ -245,6 +246,37 @@ test("competitive selection is server-seeded, one per band and identical for bot
     );
     assert.equal(new Set(manifest.map((entry) => entry.id)).size, 5);
   }
+});
+
+test("manifest selection avoids recent puzzles, and repeats the oldest when a band is spent", () => {
+  const first = buildPuzzleManifest("repeat-seed");
+  const avoid = new Set(first.map((entry) => entry.id));
+  const next = buildPuzzleManifest("repeat-seed", undefined, { avoidIds: avoid });
+
+  assert.equal(next.length, 5);
+  assert.deepEqual(
+    next.map((entry) => entry.level),
+    ["beginner", "intermediate", "advanced", "expert", "master"],
+  );
+  for (const entry of next) {
+    assert.equal(avoid.has(entry.id), false, `${entry.id} was re-served inside the window`);
+  }
+  assert.deepEqual(
+    next.map((entry) => entry.id),
+    buildPuzzleManifest("repeat-seed", undefined, { avoidIds: avoid }).map((entry) => entry.id),
+    "selection stays deterministic",
+  );
+
+  // Every beginner position is inside the window: the band must still seat a
+  // match, choosing the one seen longest ago rather than failing.
+  const beginner = puzzleLibraryPuzzles().filter((puzzle) => puzzle.levelNumber === 1);
+  const lastSeenAt = new Map(beginner.map((puzzle, index) => [puzzle.id, 10_000 + index * 1_000]));
+  const fallback = buildPuzzleManifest("repeat-seed", undefined, {
+    avoidIds: new Set(beginner.map((puzzle) => puzzle.id)),
+    lastSeenAt,
+  });
+  assert.equal(fallback.length, 5);
+  assert.equal(fallback[0].id, beginner[0].id, "the oldest repeat is the best available choice");
 });
 
 test("the category vocabulary describes strategy, not card layout", () => {
