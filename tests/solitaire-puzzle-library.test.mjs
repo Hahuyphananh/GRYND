@@ -204,9 +204,15 @@ test("the high tiers have enough variety to carry repeated ranked matches", () =
   }
 });
 
-test("the thin tiers are deep enough to repeat without reusing a puzzle", () => {
-  assert.ok(LIBRARY.report.byLevel.beginner >= 6, "Beginner pool shrank");
-  assert.ok(LIBRARY.report.byLevel.intermediate >= 7, "Intermediate pool shrank");
+test("the learning tiers are deep enough to repeat without reusing a puzzle", () => {
+  // Calibration may move a position BETWEEN these two tiers, so the guarantee
+  // is the combined learning pool plus a viable floor on each side.
+  assert.ok(
+    LIBRARY.report.byLevel.beginner + LIBRARY.report.byLevel.intermediate >= 13,
+    "the Beginner + Intermediate pool shrank",
+  );
+  assert.ok(LIBRARY.report.byLevel.beginner >= 5, "Beginner pool shrank");
+  assert.ok(LIBRARY.report.byLevel.intermediate >= 5, "Intermediate pool shrank");
   assert.ok(LIBRARY.report.byCategory.sequence >= 8, "Sequence pool shrank");
 });
 

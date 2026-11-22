@@ -49,6 +49,13 @@ import type { Card, SolitaireMove, SolitaireState, Suit } from "./types";
 import { puzzleCardText } from "./puzzleFeedback";
 import { PUZZLE_LIBRARY_DATA } from "./puzzleLibraryData";
 import {
+  PUZZLE_CALIBRATION_MIN_ATTEMPTS,
+  PUZZLE_DIFFICULTY_CALIBRATION,
+  calibratedBandFor,
+  type PuzzleCalibrationEntry,
+  type PuzzleCalibrationSnapshot,
+} from "./puzzleCalibration";
+import {
   PUZZLE_LIBRARY_CATEGORIES,
   PUZZLE_LIBRARY_LEVELS,
   levelForBand,
@@ -233,6 +240,8 @@ export type StrategicLoad = {
   foundationCards: number;
   score: number;
   band: number;
+  /** Recorded-human override applied to this position, or null. */
+  calibration: PuzzleCalibrationEntry | null;
   level: (typeof PUZZLE_LIBRARY_LEVELS)[number];
 };
 
@@ -260,6 +269,7 @@ function emptyColumnCount(state: SolitaireState): number {
 export function assessStrategicLoad(
   spec: PuzzleSpec,
   category: PuzzleLibraryCategory,
+  calibration: PuzzleCalibrationSnapshot = PUZZLE_DIFFICULTY_CALIBRATION,
 ): StrategicLoad {
   const state = spec.startState;
   const unique = new Map<string, SolitaireMove>();
@@ -314,7 +324,17 @@ export function assessStrategicLoad(
       (reveals >= 2 ? 6 : 0) +
       (columnsOpened > 0 ? 4 : 0),
   );
-  const band = difficultyBandForScore(score);
+  const structuralBand = difficultyBandForScore(score);
+  // Calibration can only correct a LEARNING tier, and only with a sample that
+  // meets the minimum. A stale or malformed entry is ignored, so the structural
+  // rating is always the safe fallback.
+  const applied =
+    (structuralBand === 1 || structuralBand === 2) &&
+    calibration[spec.id] &&
+    calibration[spec.id].attempts >= PUZZLE_CALIBRATION_MIN_ATTEMPTS
+      ? calibration[spec.id]
+      : null;
+  const band = calibratedBandFor(spec.id, structuralBand, calibration);
 
   return {
     moves: primary.length,
@@ -332,6 +352,7 @@ export function assessStrategicLoad(
     foundationCards: foundationTotal(state),
     score,
     band,
+    calibration: applied,
     level: levelForBand(band),
   };
 }
