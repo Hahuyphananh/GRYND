@@ -129,13 +129,37 @@ export const DECK_SKINS: readonly DeckSkin[] = [
 ] as const;
 
 /** Leaderboard/profile items the streak unlocks (not board surfaces). */
+export type ProfileStreakItem = {
+  id: string;
+  label: string;
+  streakDay: number;
+  kind: string;
+  blurb?: string;
+};
+
 export const PROFILE_STREAK_ITEMS = Object.freeze([
   { id: "badge_flame_14", label: "Amber Flame Badge", streakDay: 14, kind: "badge" },
+  { id: "glow_streak_ember", label: "Ember Profile Glow", streakDay: 14, kind: "profile_glow" },
+  { id: "username_streak_emerald", label: "Emerald Name Glow", streakDay: 30, kind: "username_effect" },
+  { id: "glow_streak_frost", label: "Frost Profile Glow", streakDay: 60, kind: "profile_glow" },
   { id: "title_centurion", label: "CENTURION", streakDay: 100, kind: "title" },
+  { id: "username_streak_centurion", label: "Centurion Name Flare", streakDay: 100, kind: "username_effect" },
   { id: "badge_flame_blue", label: "Electric Flame Badge", streakDay: 180, kind: "badge" },
+  { id: "glow_streak_electric", label: "Electric Profile Glow", streakDay: 180, kind: "profile_glow" },
+  { id: "username_streak_crimson", label: "Crimson Name Signature", streakDay: 275, kind: "username_effect" },
+  { id: "glow_streak_eternal", label: "Eternal Profile Corona", streakDay: 365, kind: "profile_glow" },
   { id: "frame_eternal", label: "Eternal Frame", streakDay: 365, kind: "frame" },
   { id: "badge_365_plus", label: "[ 365+ ]", streakDay: 365, kind: "badge" },
-]);
+]) as readonly ProfileStreakItem[];
+
+const PROFILE_STREAK_ITEM_MAP = new Map(
+  PROFILE_STREAK_ITEMS.map((item) => [item.id, item]),
+);
+
+/** Resolve a streak profile reward by id (null for board items). */
+export function profileStreakItem(id: unknown): ProfileStreakItem | null {
+  return typeof id === "string" ? PROFILE_STREAK_ITEM_MAP.get(id) ?? null : null;
+}
 
 const CARD_BACK_MAP = new Map(CARD_BACKS.map((item) => [item.key, item]));
 const DECK_MAP = new Map(DECK_SKINS.map((item) => [item.key, item]));

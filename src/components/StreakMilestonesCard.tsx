@@ -24,8 +24,11 @@
 // them.
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { IconCheck, IconRefresh } from "@tabler/icons-react";
 import { useDailyStreak } from "../hooks/useDailyStreak";
+import { useTranslation } from "../hooks/useTranslation";
+import { cosmeticEffectClass } from "../lib/profileCosmetics";
 import FlameMark from "./FlameMark";
 import { StreakProgress } from "./streaks/StreakProgress";
 
@@ -33,11 +36,128 @@ const CARD =
   "rounded-xl border border-[color:var(--border-strong)] bg-[color:var(--bg-surface)] p-5 backdrop-blur-xs sm:p-6";
 
 export default function StreakMilestonesCard() {
+  const { t } = useTranslation();
   const { isLoaded, isSignedIn, streak, loading, error, load } = useDailyStreak();
+  const [unlocks, setUnlocks] = useState<any>(null);
+  const [equipBusy, setEquipBusy] = useState<string | null>(null);
+  const [equipError, setEquipError] = useState<string | null>(null);
+
+  // The reward ladder + ownership live on the canonical UTC streak endpoint
+  // (/api/streaks/me). The hook still supplies the headline numbers, so the
+  // card renders immediately and fills the unlock section when it arrives.
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    let cancelled = false;
+    fetch("/api/streaks/me", { cache: "no-store" })
+      .then((res) => res.json().catch(() => null))
+      .then((json) => {
+        if (!cancelled && json?.success) setUnlocks(json);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoaded, isSignedIn]);
+
+  const categoryFor = (item: any) =>
+    item.kind === "frame" ? "profile_frame" : item.kind;
+  const isBoardKind = (kind: string) =>
+    kind === "felt" || kind === "card_back" || kind === "deck_skin";
+  const defaultFor = (kind: string) =>
+    kind === "card_back"
+      ? "card_back_default"
+      : kind === "deck_skin"
+        ? "deck_default"
+        : "felt_default";
+  const boardSlot = (kind: string) =>
+    kind === "card_back" ? "cardBack" : kind === "deck_skin" ? "deckSkin" : "felt";
+
+  const isEquipped = (item: any) => {
+    const kind = categoryFor(item);
+    if (kind === "title") return unlocks?.selectedSpecialTitle === item.id;
+    if (isBoardKind(kind)) return unlocks?.equipped?.[boardSlot(kind)] === item.id;
+    return unlocks?.equippedCosmetics?.[kind] === item.id;
+  };
+
+  const equip = async (item: any, unequip = false) => {
+    setEquipBusy(item.id);
+    setEquipError(null);
+    const kind = categoryFor(item);
+    const endpoint =
+      kind === "title" ? "/api/titles/equip-special" : "/api/cosmetics/equip";
+    const body =
+      kind === "title"
+        ? { titleKey: unequip ? null : item.id }
+        : isBoardKind(kind)
+          ? { item: unequip ? defaultFor(kind) : item.id, category: kind }
+          : unequip
+            ? { key: null, category: kind }
+            : { key: item.id };
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json?.success === false) {
+        throw new Error(json?.error || t("rewards.equipError", "Could not equip that reward."));
+      }
+      setUnlocks((prev: any) => {
+        if (!prev) return prev;
+        if (kind === "title") {
+          return { ...prev, selectedSpecialTitle: unequip ? null : item.id };
+        }
+        if (isBoardKind(kind)) {
+          return {
+            ...prev,
+            equipped: {
+              ...(prev.equipped || {}),
+              [boardSlot(kind)]: unequip ? defaultFor(kind) : item.id,
+            },
+          };
+        }
+        const equippedCosmetics = { ...(prev.equippedCosmetics || {}) };
+        if (unequip) delete equippedCosmetics[kind];
+        else equippedCosmetics[kind] = item.id;
+        return { ...prev, equippedCosmetics };
+      });
+    } catch (err: any) {
+      setEquipError(err?.message || t("rewards.equipError", "Could not equip that reward."));
+    } finally {
+      setEquipBusy(null);
+    }
+  };
+
+  const milestoneTitle = (milestone: any) =>
+    milestone?.title
+      ? t(`rewards.milestoneTitles.${milestone.days}`, milestone.title)
+      : t("rewards.rewardMilestone", "Reward milestone");
+
+  const currentTitleLabel = (() => {
+    if (!streak?.title) return t("rewards.newStreak", "New streak");
+    const entry = streak.milestones?.find((item: any) => item.title === streak.title);
+    return entry ? milestoneTitle(entry) : streak.title;
+  })();
 
   const current = Math.max(0, Number(streak?.current) || 0);
   const best = Math.max(0, Number(streak?.best) || 0);
-  const next = streak?.nextMilestone ?? null;
+  const milestones = (
+    unlocks?.ladder?.length
+      ? unlocks.ladder
+      : streak?.rewardMilestones?.length
+        ? streak.rewardMilestones
+        : streak?.milestones || []
+  ).map((milestone: any) => ({
+    ...milestone,
+    days: milestone.days ?? milestone.day,
+    title: milestone.title ?? null,
+    items: milestone.items ?? [],
+  }));
+  const nextFromLadder = milestones.find((milestone: any) => milestone.isNext);
+  const next = nextFromLadder
+    ? { days: nextFromLadder.days, title: nextFromLadder.title }
+    : (streak?.nextMilestone ?? null);
 
   return (
     <section
@@ -50,18 +170,18 @@ export default function StreakMilestonesCard() {
           id="streak-milestones-heading"
           className="flex items-center gap-2 text-xl font-bold text-[color:var(--text-primary)] sm:text-2xl"
         >
-          <FlameMark size={26} /> Streak Milestones
+          <FlameMark size={26} /> {t("rewards.cardTitle", "Streak Milestones")}
         </h2>
         {streak && (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--border-strong)] bg-[color:var(--bg-panel)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-strong)]">
-            {current}-day streak
+            {t("rewards.cardStreakCount", { count: current })}
           </span>
         )}
       </div>
 
       {!isLoaded ? (
         <p className="text-sm text-[color:var(--text-muted)]" aria-hidden="true">
-          Loading your streak…
+          {t("rewards.loading", "Loading your streak…")}
         </p>
       ) : !isSignedIn ? (
         <p className="text-sm text-[color:var(--text-secondary)]">
@@ -69,23 +189,23 @@ export default function StreakMilestonesCard() {
             href="/sign-in"
             className="text-[color:var(--accent-strong)] underline underline-offset-2 hover:text-[color:var(--text-primary)]"
           >
-            Sign in
+            {t("rewards.signIn", "Sign in")}
           </Link>{" "}
-          to start a streak: finish a game and day one is yours.
+          {t("rewards.signInTail", "to start a streak: finish a game and day one is yours.")}
         </p>
       ) : loading && !streak ? (
         <p className="text-sm text-[color:var(--text-muted)]" aria-hidden="true">
-          Loading your streak…
+          {t("rewards.loading", "Loading your streak…")}
         </p>
       ) : !streak ? (
         <p className="text-sm text-[color:var(--text-secondary)]">
-          Your streak isn&apos;t available right now.{" "}
+          {t("rewards.unavailable", "Your streak isn't available right now.")}{" "}
           <button
             type="button"
             onClick={load}
             className="inline-flex items-center gap-1 font-semibold text-[color:var(--accent-strong)] underline underline-offset-2 hover:text-[color:var(--text-primary)]"
           >
-            <IconRefresh size={13} aria-hidden="true" /> Try again
+            <IconRefresh size={13} aria-hidden="true" /> {t("rewards.tryAgain", "Try again")}
           </button>
         </p>
       ) : (
@@ -93,32 +213,32 @@ export default function StreakMilestonesCard() {
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] p-3">
               <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
-                Current streak
+                {t("rewards.currentStreak", "Current streak")}
               </p>
               <p className="mt-1 text-2xl font-black text-[color:var(--text-primary)]">
                 {current}
                 <span className="ml-1 align-middle text-xs font-semibold uppercase tracking-wider text-[color:var(--text-muted)]">
-                  {current === 1 ? "day" : "days"}
+                  {t(current === 1 ? "rewards.day" : "rewards.days")}
                 </span>
               </p>
             </div>
             <div className="rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] p-3">
               <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
-                Best streak
+                {t("rewards.bestStreak", "Best streak")}
               </p>
               <p className="mt-1 text-2xl font-black text-[color:var(--text-primary)]">
                 {best}
                 <span className="ml-1 align-middle text-xs font-semibold uppercase tracking-wider text-[color:var(--text-muted)]">
-                  {best === 1 ? "day" : "days"}
+                  {t(best === 1 ? "rewards.day" : "rewards.days")}
                 </span>
               </p>
             </div>
             <div className="rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] p-3">
               <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
-                Current title
+                {t("rewards.currentTitle", "Current title")}
               </p>
               <p className="mt-1 text-lg font-bold text-[color:var(--accent-strong)]">
-                {streak.title ?? "New streak"}
+                {currentTitleLabel}
               </p>
             </div>
           </div>
@@ -128,40 +248,53 @@ export default function StreakMilestonesCard() {
               <>
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <p className="text-sm font-semibold text-[color:var(--text-primary)]">
-                    Next milestone:{" "}
+                    {t("rewards.nextMilestone", "Next milestone:")}{" "}
                     <span className="text-[color:var(--accent-strong)]">
-                      {next.days} days — {next.title}
+                      {t("rewards.nextMilestoneValue", {
+                        days: next.days,
+                        title: milestoneTitle(next),
+                      })}
                     </span>
                   </p>
                   <p className="text-sm font-bold text-[color:var(--accent-strong)]">
-                    {Math.min(current, next.days)}/{next.days} days
+                    {t("rewards.progressValue", {
+                      current: Math.min(current, next.days),
+                      target: next.days,
+                    })}
                   </p>
                 </div>
                 <StreakProgress
                   current={current}
                   target={next.days}
-                  label={`Streak progress: ${Math.min(current, next.days)} of ${next.days} days to ${next.title}`}
+                  label={t("rewards.progressAria", {
+                    current: Math.min(current, next.days),
+                    target: next.days,
+                    title: milestoneTitle(next),
+                  })}
                   className="mt-2"
                 />
                 <p className="mt-2 text-xs text-[color:var(--text-secondary)]">
-                  {streak.daysRemaining === 1
-                    ? "1 more day to reach it."
-                    : `${streak.daysRemaining} more days to reach it.`}
-                  {streak.shieldAvailable && " A streak shield is ready to protect one missed day."}
+                  {t(
+                    streak.daysRemaining === 1
+                      ? "rewards.moreDay"
+                      : "rewards.moreDays",
+                    { count: streak.daysRemaining },
+                  )}
+                  {streak.shieldAvailable && ` ${t("rewards.shieldReady", "A streak shield is ready to protect one missed day.")}`}
                 </p>
               </>
             ) : (
               <p className="text-sm font-semibold text-[color:var(--text-primary)]">
-                Every milestone reached — {current} days and counting. Best streak: {best} days.
+                {t("rewards.allReached", { current, best })}
               </p>
             )}
           </div>
 
           <h3 className="mt-6 text-[11px] font-black uppercase tracking-[0.22em] text-[color:var(--text-muted)]">
-            All milestones
+            {t("rewards.allMilestones", "All milestones")}
           </h3>
           <ol className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {streak.milestones.map((milestone) => (
+            {milestones.map((milestone) => (
               <li
                 key={milestone.days}
                 data-testid={`streak-milestone-${milestone.days}`}
@@ -178,7 +311,7 @@ export default function StreakMilestonesCard() {
                 ].join(" ")}
               >
                 <p className="flex items-center justify-between gap-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--text-muted)]">
-                  Day {milestone.days}
+                  {t("rewards.dayLabel", { day: milestone.days })}
                   {milestone.achieved && (
                     <IconCheck
                       size={12}
@@ -195,19 +328,125 @@ export default function StreakMilestonesCard() {
                       : "text-[color:var(--text-muted)]",
                   ].join(" ")}
                 >
-                  {milestone.title}
+                  {milestoneTitle(milestone)}
                 </p>
                 <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--text-muted)]">
-                  {milestone.achieved ? "Achieved" : milestone.isNext ? "Next" : "Locked"}
+                  {milestone.achieved
+                    ? t("rewards.achieved", "Achieved")
+                    : milestone.isNext
+                      ? t("rewards.next", "Next")
+                      : t("rewards.locked", "Locked")}
                 </p>
               </li>
             ))}
           </ol>
 
+          {unlocks?.ladder?.length ? (
+            <section data-testid="streak-reward-ladder" className="mt-6">
+              <h3 className="text-[11px] font-black uppercase tracking-[0.22em] text-[color:var(--text-muted)]">
+                {t("rewards.rewardsUnlocks", "Rewards & unlocks")}
+              </h3>
+              <ul className="mt-3 space-y-2">
+                {unlocks.ladder.map((milestone: any) => (
+                  <li
+                    key={milestone.day}
+                    data-testid={`streak-reward-${milestone.day}`}
+                    data-state={
+                      milestone.achieved ? "achieved" : milestone.isNext ? "next" : "locked"
+                    }
+                    className="rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] p-3"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-[color:var(--text-primary)]">
+                        {t("rewards.dayLabel", { day: milestone.day })}
+                        {milestone.title ? ` — ${milestoneTitle({ days: milestone.day, title: milestone.title })}` : ""}
+                      </p>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[color:var(--text-muted)]">
+                        {milestone.achieved
+                          ? t("rewards.unlocked", "Unlocked")
+                          : milestone.isNext
+                            ? t("rewards.next", "Next")
+                            : t("rewards.locked", "Locked")}
+                      </span>
+                    </div>
+                    {milestone.items.length > 0 ? (
+                      <ul className="mt-2 flex flex-wrap gap-2">
+                        {milestone.items.map((item: any) => (
+                          <li
+                            key={item.id}
+                            data-testid={`streak-reward-item-${item.id}`}
+                            className="flex items-center gap-2 rounded-md border border-[color:var(--border-hairline)] bg-[color:var(--bg-surface)] px-2 py-1 text-xs text-[color:var(--text-secondary)]"
+                          >
+                            {item.kind === "profile_glow" && (
+                              <span
+                                aria-hidden="true"
+                                data-testid={`streak-reward-preview-${item.id}`}
+                                className={`inline-block h-5 w-8 shrink-0 rounded-md border border-white/20 ${cosmeticEffectClass(item.visual) || ""}`}
+                              />
+                            )}
+                            {item.kind === "username_effect" && (
+                              <span
+                                aria-hidden="true"
+                                data-testid={`streak-reward-preview-${item.id}`}
+                                className={`shrink-0 text-[11px] font-black ${cosmeticEffectClass(item.visual) || ""}`}
+                              >
+                                Aa
+                              </span>
+                            )}
+                            <span>
+                              {t(
+                                `profile.streakRewards.${item.id}.name`,
+                                item.label,
+                              )}
+                            </span>
+                            {item.owned ? (
+                              <>
+                                {isEquipped(item) && (
+                                  <span className="rounded-sm border border-[color:var(--accent-strong)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[color:var(--accent-strong)]">
+                                    {t("rewards.equipped", "Equipped")}
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  data-testid={`streak-reward-action-${item.id}`}
+                                  onClick={() => equip(item, isEquipped(item))}
+                                  disabled={equipBusy === item.id}
+                                  aria-label={
+                                    isEquipped(item)
+                                      ? t("rewards.unequipItem", { name: item.label })
+                                      : t("rewards.equipItem", { name: item.label })
+                                  }
+                                  className="rounded-sm bg-[color:var(--accent)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[color:var(--bg-surface)] disabled:opacity-50"
+                                >
+                                  {equipBusy === item.id
+                                    ? t("rewards.equipping", "Equipping…")
+                                    : isEquipped(item)
+                                      ? t("rewards.unequip", "Unequip")
+                                      : t("rewards.equip", "Equip")}
+                                </button>
+                              </>
+                            ) : (
+                              <span className="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)]">
+                                {t("rewards.dayLabel", { day: milestone.day })}
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+              {equipError && (
+                <p role="alert" className="mt-2 text-xs text-[color:var(--text-secondary)]">
+                  {equipError}
+                </p>
+              )}
+            </section>
+          ) : null}
+
           <p className="mt-4 text-xs leading-relaxed text-[color:var(--text-muted)]">
-            Finish a game to advance one day. Several games on the same day count once, and
-            missing a day starts the current streak again at day 1 — your best streak and
-            earned titles stay.
+            {t("rewards.cardNote", "Finish a game to advance one day. Several games on the same day count once, and missing a day starts the current streak again at day 1 — your best streak and earned titles stay.")}
           </p>
         </>
       )}

@@ -39,9 +39,8 @@ export const MANAGED_PAYMENTS_TAX_CODE = "txcd_10103100";
 /**
  * The currency every one-time token package is priced AND charged in.
  *
- * ONE constant, used by every price this module creates and by the Shop's
- * display resolver (src/lib/coinPurchases.ts) — so the number a customer reads
- * and the amount Stripe charges are always expressed in the same currency.
+ * ONE constant, used by every price this module creates, so the amount Stripe
+ * charges is always expressed in the same currency.
  * Changing it only affects NEWLY created prices; a price already bound in
  * Stripe keeps its own currency until `ensurePackageStripe` re-resolves it (it
  * compares amounts, not currencies — verify any such change in the Dashboard).

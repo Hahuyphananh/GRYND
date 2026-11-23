@@ -186,11 +186,24 @@ type LineCandidate = {
  * Built by replaying each accepted line from the puzzle's declared start. Only
  * visible information enters the signature, so the map is safe to compare
  * against the bot's own board.
+ *
+ * MEMOISED per (bot, puzzle): replaying every line from the start on every bot
+ * decision made the human's own solve wait for the bot's planning before the
+ * move response (and its next puzzle) could return. The input is immutable
+ * library data, so the result is cached for the process lifetime — bounded by
+ * the frozen library ids times the six bot profiles.
  */
+let candidateCache: Map<string, LineCandidate[]> | null = null;
+
 function lineCandidates(
   entry: PuzzleManifestEntry,
   botId: SolitaireBotId,
 ): LineCandidate[] {
+  if (!candidateCache) candidateCache = new Map();
+  const key = `${botId}:${entry.id}`;
+  const cached = candidateCache.get(key);
+  if (cached) return cached;
+
   const out: LineCandidate[] = [];
   for (const line of orderedLines(entry, botId)) {
     let state = entry.spec.startState;
@@ -201,6 +214,7 @@ function lineCandidates(
       state = applied.state;
     }
   }
+  candidateCache.set(key, out);
   return out;
 }
 

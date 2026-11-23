@@ -14,6 +14,7 @@
 import { NextResponse } from "next/server";
 import { requireAgeVerifiedUser } from "../../../../../../lib/auth/requireAgeVerified";
 import { logError } from "../../../../../../lib/logError";
+import { recordStreakCompletion } from "../../../../../../lib/streaks/server";
 import {
   forfeitPuzzleSession,
   isPuzzleSessionId,
@@ -46,7 +47,20 @@ export async function POST(
         { status: result.status },
       );
     }
-    return NextResponse.json({ success: true, data: result.view });
+    // A forfeit of a LIVE session is still a completed game for the player who
+    // conceded. A cancelled search returns no terminal result and credits
+    // nothing (the writer is idempotent per UTC day anyway).
+    let streak: Awaited<ReturnType<typeof recordStreakCompletion>> = null;
+    const view = result.view as { status?: string; result?: unknown } | null;
+    if (view && (view.status === "finished" || view.result != null)) {
+      try {
+        streak = await recordStreakCompletion(userId);
+      } catch {
+        streak = null;
+      }
+    }
+
+    return NextResponse.json({ success: true, data: result.view, streak });
   } catch (error) {
     await logError({
       errorType: "solitaire_puzzle_forfeit_error",

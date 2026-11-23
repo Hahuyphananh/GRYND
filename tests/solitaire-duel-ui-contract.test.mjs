@@ -102,10 +102,10 @@ test("routes: every path exists and is a thin wrapper over the game's store", ()
     create,
     /import \{ createOrJoin \} from "\.\.\/\.\.\/\.\.\/\.\.\/lib\/solitaire-duel\/serverStore"/,
   );
-  // Ranked Solitaire is free: the entry parses no stake and opens a zero-stake
-  // match. The seat identity still comes from the verified session.
-  assert.doesNotMatch(create, /requireStake/);
-  assert.match(create, /await createOrJoin\(\{ userId, stake: 0 \}\)/);
+  // Ranked Solitaire is free: the entry names no stake at all, because the
+  // coin economy is gone. The seat identity still comes from the session.
+  assert.doesNotMatch(create, /requireStake|stake/);
+  assert.match(create, /await createOrJoin\(\{ userId \}\)/);
 
   const match = code(ROUTE_FILES.match);
   assert.match(match, /fetchMatch/);

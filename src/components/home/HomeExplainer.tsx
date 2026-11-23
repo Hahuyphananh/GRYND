@@ -20,7 +20,7 @@ import { GUIDE_INDEX, guidePath } from "../../lib/guides";
  * Numbers come from the catalogue (GAME_LANDING_PAGES, CATEGORY_GROUPS) rather
  * than being typed here, so "every game" stays true when a game is added. Every
  * claim is about something the platform ships today: stakes are retired
- * (src/lib/games/stakes.js), so nothing is wagered and a result moves the
+ * so nothing is wagered and a result moves the
  * game's own rating and trophies instead.
  */
 export default function HomeExplainer() {

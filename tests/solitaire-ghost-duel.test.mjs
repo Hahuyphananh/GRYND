@@ -298,8 +298,12 @@ test("the fallback window is inside the promised 5–10 seconds", () => {
 test("the store keeps the live queue first and closes it to a ghost on join", () => {
   const store = code(STORE);
   const storeSrc = read(STORE);
-  // A new lobby opens a ghost WINDOW; it does not start a ghost.
-  assert.match(store, /ghostFallbackAt: new Date\(nowMs \+ GHOST_FALLBACK_MS\)/);
+  // A new PUBLIC lobby opens a ghost WINDOW; it does not start a ghost. A
+  // private friend challenge deliberately has no fallback (null).
+  assert.match(
+    store,
+    /ghostFallbackAt: invite \? null : new Date\(nowMs \+ GHOST_FALLBACK_MS\)/,
+  );
   // A live joiner closes that window, so a real person always beats a replay.
   assert.match(
     storeSrc,

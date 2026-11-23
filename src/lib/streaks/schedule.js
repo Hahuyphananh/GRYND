@@ -17,21 +17,78 @@
 //   * after Day 365 every completed 30-day loop adds one prestige pip and a
 //     2-day PRO trial when the account is not already a paying member.
 
-/** The milestone schedule. Order matters; it is also the UI's display order. */
+/**
+ * THE milestone schedule — one ladder for BOTH titles and rewards.
+ *
+ * The old code had two ladders (15 title thresholds in lib/streakTitles and 9
+ * reward thresholds here), so a day could grant a title and no item or an item
+ * and no title. This is now the single source of truth: `title` is the display
+ * title at that day (absent at reward-only days 180 and 275), and `items` are
+ * the permanent unlocks. Order matters; it is also the UI's display order.
+ */
 export const STREAK_MILESTONES = Object.freeze([
-  { day: 3, items: ["felt_slate"] },
-  { day: 7, items: ["card_back_carbon"], proTrialDays: 3 },
-  { day: 14, items: ["badge_flame_14"] },
-  { day: 30, items: ["felt_royal_emerald", "card_back_emerald_gold"] },
-  { day: 60, items: ["felt_midnight_navy"] },
-  { day: 100, items: ["title_centurion", "card_back_centurion"] },
-  { day: 180, items: ["deck_grandmaster", "badge_flame_blue"] },
-  { day: 275, items: ["felt_crimson_velvet", "card_back_crimson_monogram"] },
+  { day: 1, title: "Daily Visitor", items: [] },
+  { day: 3, title: "Loyal Player", items: ["felt_slate"] },
+  { day: 5, title: "Card Collector", items: [] },
+  { day: 7, title: "Weekly Winner", items: ["card_back_carbon"], proTrialDays: 3 },
+  { day: 10, title: "Streak Starter", items: [] },
+  { day: 14, title: "Lucky Regular", items: ["badge_flame_14", "glow_streak_ember"] },
+  { day: 21, title: "Dedicated Roller", items: [] },
+  {
+    day: 30,
+    title: "Monthly Champion",
+    items: ["felt_royal_emerald", "card_back_emerald_gold", "username_streak_emerald"],
+  },
+  { day: 45, title: "Prize Chaser", items: [] },
+  { day: 60, title: "Veteran", items: ["felt_midnight_navy", "glow_streak_frost"] },
+  { day: 75, title: "Lucky Legend", items: [] },
+  {
+    day: 100,
+    title: "Streak Master",
+    items: ["title_centurion", "card_back_centurion", "username_streak_centurion"],
+  },
+  { day: 150, title: "Vault Elite", items: [] },
+  { day: 180, items: ["deck_grandmaster", "badge_flame_blue", "glow_streak_electric"] },
+  { day: 200, title: "Milestone Grinder", items: [] },
+  {
+    day: 275,
+    items: ["felt_crimson_velvet", "card_back_crimson_monogram", "username_streak_crimson"],
+  },
   {
     day: 365,
-    items: ["felt_eternal_obsidian", "card_back_eternal", "frame_eternal", "badge_365_plus"],
+    title: "King",
+    items: [
+      "felt_eternal_obsidian",
+      "card_back_eternal",
+      "frame_eternal",
+      "badge_365_plus",
+      "glow_streak_eternal",
+    ],
   },
 ]);
+
+/** The title-only view of the one ladder (kept for widget/profile consumers). */
+export const STREAK_TITLE_MILESTONES = Object.freeze(
+  STREAK_MILESTONES.filter((milestone) => milestone.title).map((milestone) => ({
+    days: milestone.day,
+    title: milestone.title,
+  })),
+);
+
+/** The title at a streak length, or null before day 1. */
+export function titleForStreak(streakCount) {
+  const current = Math.max(0, Math.floor(Number(streakCount)) || 0);
+  let title = null;
+  for (const milestone of STREAK_MILESTONES) {
+    if (milestone.title && current >= milestone.day) title = milestone.title;
+  }
+  return title;
+}
+
+/** The title earned exactly at a milestone day, or null for a reward-only day. */
+export function titleForDay(day) {
+  return STREAK_MILESTONES.find((milestone) => milestone.day === Number(day))?.title ?? null;
+}
 
 /** The last bespoke milestone; the evergreen loop starts after it. */
 export const MAX_BESPOKE_DAY = 365;

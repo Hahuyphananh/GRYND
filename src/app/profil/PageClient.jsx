@@ -19,6 +19,7 @@ import {
 import IconAvatar from "../../components/IconAvatar";
 import ProfilePickerModals from "../../components/profil/ProfilePickerModals";
 import ProfileEmotesPanel from "../../components/profil/ProfileEmotesPanel";
+import ProfileChatColorPanel from "../../components/profil/ProfileChatColorPanel";
 import BetHistoryPanel from "../../components/profil/BetHistoryPanel";
 import EmoteLoadoutStrip from "../../components/EmoteLoadoutStrip";
 import UserStatsTabs from "../../components/UserStatsTabs";
@@ -31,6 +32,8 @@ import { runOptimistically } from "../../lib/optimistic";
 import { useTranslation } from "../../hooks/useTranslation";
 import PlayerLevelBadge from "../../components/player-level/PlayerLevelBadge";
 import PlayerLevelProgressCard from "../../components/player-level/PlayerLevelProgressCard";
+import DailyStreakRecordBadge from "../../components/profil/DailyStreakRecordBadge";
+import CompetitiveStreakBadge from "../../components/profil/CompetitiveStreakBadge";
 
 // GRYND PRO chat color palette (matches the neon casino aesthetic).
 // `adSlot` is the server-rendered <AdSlot placement="profile" /> from
@@ -78,6 +81,11 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
     dailyStreakBest: 0,
     allStreakTitles: [],
   });
+  // Authoritative all-time daily play record (`user_streaks.longest_streak`).
+  // Kept separate from the legacy login streak in `streakState` above.
+  const [streakRecordBest, setStreakRecordBest] = useState(0);
+  // `user_competitive_streaks`, keyed independently by game. Never merged.
+  const [competitiveStreaks, setCompetitiveStreaks] = useState({});
 
   const [membership, setMembership] = useState(null);
   const [chatColor, setChatColor] = useState("#00e5ff");
@@ -360,6 +368,8 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
       const profileAccent = tokensData.data.profileAccent || null;
       setProfileInfo({ name, email, selectedIcon, profileAccent });
       setEquippedCosmetics(tokensData.data.equippedCosmetics || {});
+      setStreakRecordBest(Math.max(0, Number(tokensData.data.streakRecordBest) || 0));
+      setCompetitiveStreaks(tokensData.data.competitiveStreaks || {});
       setEditForm((prev) => ({ ...prev, name, email }));
       // Sync the customization picker with the saved value.
       setCosmetics({
@@ -1219,7 +1229,12 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
               profileInfo.profileAccent
                 ? {
                     borderColor: profileInfo.profileAccent,
-                    boxShadow: `0 0 24px ${profileInfo.profileAccent}33`,
+                    // An equipped profile glow owns the shadow. The accent is
+                    // still the border colour, but its fallback shadow must
+                    // not erase the streak reward's CSS class.
+                    boxShadow: profileGlowClass
+                      ? undefined
+                      : `0 0 24px ${profileInfo.profileAccent}33`,
                   }
                 : undefined
             }
@@ -1273,7 +1288,7 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
                 </span>
               </button>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <p
                     style={
                       selectedGlowColor
@@ -1296,6 +1311,7 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
                       showLabel
                     />
                   )}
+                  <DailyStreakRecordBadge bestStreak={streakRecordBest} />
                   {membership?.active && (
                     <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-300">
                       {membership.title ||
@@ -1355,6 +1371,21 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
                     best: streakState.dailyStreakBest,
                   })}
                 </p>
+                <div
+                  data-testid="competitive-streak-badges"
+                  className="mt-2 flex flex-wrap items-center gap-2"
+                >
+                  <CompetitiveStreakBadge
+                    gameKey="solitaire-duel"
+                    current={Number(competitiveStreaks?.["solitaire-duel"]?.current) || 0}
+                    best={Number(competitiveStreaks?.["solitaire-duel"]?.best) || 0}
+                  />
+                  <CompetitiveStreakBadge
+                    gameKey="solitaire-puzzle"
+                    current={Number(competitiveStreaks?.["solitaire-puzzle"]?.current) || 0}
+                    best={Number(competitiveStreaks?.["solitaire-puzzle"]?.best) || 0}
+                  />
+                </div>
                 {/* Competitive identity strip — real leaderboard record data
                     (same source as /classement). Only rows with data render. */}
                 {stats?.record && (

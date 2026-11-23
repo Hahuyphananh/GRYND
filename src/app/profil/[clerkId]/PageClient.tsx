@@ -15,6 +15,8 @@ import ErrorState from "../../../components/states/ErrorState";
 import { cosmeticFrameRing, cosmeticEffectClass } from "../../../lib/profileCosmetics";
 import { useApiResource } from "../../../hooks/useApiResource";
 import PlayerLevelBadge from "../../../components/player-level/PlayerLevelBadge";
+import DailyStreakRecordBadge from "../../../components/profil/DailyStreakRecordBadge";
+import CompetitiveStreakBadge from "../../../components/profil/CompetitiveStreakBadge";
 import PlayerLevelProgressCard, {
   type PlayerProgression,
 } from "../../../components/player-level/PlayerLevelProgressCard";
@@ -58,6 +60,11 @@ type PublicUser = {
   selectedSpecialTitle: string | null;
   dailyStreakCurrent: number;
   dailyStreakBest: number;
+  // Canonical all-time daily play record from `user_streaks.longest_streak`.
+  streakRecordBest: number;
+  // Independent ranked win streaks, keyed by `solitaire-duel` /
+  // `solitaire-puzzle`. A missing row is zeroed by the API.
+  competitiveStreaks: Record<string, { current: number; best: number }>;
   // Leaderboard-style record (same shape the /classement boards read).
   record: {
     wins: number;
@@ -265,7 +272,11 @@ export default function PublicProfilePage() {
             profile.profileAccent
               ? {
                   borderColor: profile.profileAccent,
-                  boxShadow: `0 0 24px ${profile.profileAccent}33`,
+                  // The equipped profile glow owns the shadow; keep the accent
+                  // only as the border so the reward's CSS class is visible.
+                  boxShadow: profileGlowClass
+                    ? undefined
+                    : `0 0 24px ${profile.profileAccent}33`,
                 }
               : undefined
           }
@@ -283,7 +294,7 @@ export default function PublicProfilePage() {
               />
             </span>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <h1 className={`text-2xl font-bold ${usernameEffectClass || ""}`}>{profile.name}</h1>
                 {profile.playerLevel && (
                   <PlayerLevelBadge
@@ -293,6 +304,7 @@ export default function PublicProfilePage() {
                     showLabel
                   />
                 )}
+                <DailyStreakRecordBadge bestStreak={profile.streakRecordBest} />
                 {(profile.selectedSpecialTitle || profile.selectedTitle) && (
                   <span className="rounded-full border border-[#f5ff3b]/60 bg-[#f5ff3b]/10 px-2 py-0.5 text-xs text-[#f5ff3b]">
                     {profile.selectedSpecialTitle || profile.selectedTitle}
@@ -329,6 +341,21 @@ export default function PublicProfilePage() {
                     {Number(profile.record.currentStreak)} win streak
                   </span>
                 )}
+              </div>
+              <div
+                data-testid="competitive-streak-badges"
+                className="mt-2 flex flex-wrap items-center gap-2"
+              >
+                <CompetitiveStreakBadge
+                  gameKey="solitaire-duel"
+                  current={Number(profile.competitiveStreaks?.["solitaire-duel"]?.current) || 0}
+                  best={Number(profile.competitiveStreaks?.["solitaire-duel"]?.best) || 0}
+                />
+                <CompetitiveStreakBadge
+                  gameKey="solitaire-puzzle"
+                  current={Number(profile.competitiveStreaks?.["solitaire-puzzle"]?.current) || 0}
+                  best={Number(profile.competitiveStreaks?.["solitaire-puzzle"]?.best) || 0}
+                />
               </div>
               <p className="text-xs text-gray-500 mt-1">
                 Member since {new Date(profile.createdAt).toLocaleDateString()}
@@ -383,7 +410,6 @@ export default function PublicProfilePage() {
                   <tr>
                     <th className="px-4 py-2">Date</th>
                     <th className="px-4 py-2">Game</th>
-                    <th className="px-4 py-2">Bet</th>
                     <th className="px-4 py-2">Result</th>
                   </tr>
                 </thead>
@@ -396,7 +422,6 @@ export default function PublicProfilePage() {
                       <td className="px-4 py-2 text-gray-300 text-xs">
                         {bet.type || "Unknown"}
                       </td>
-                      <td className="px-4 py-2 text-gray-300 text-xs">{bet.amount} tokens</td>
                       <td className="px-4 py-2">
                         <div className="flex items-center gap-2">
                           <span
@@ -409,22 +434,6 @@ export default function PublicProfilePage() {
                             }`}
                           >
                             {bet.result === "won" ? "Won" : bet.result === "lost" ? "Lost" : "Tie"}
-                          </span>
-                          <span
-                            className={`text-xs ${
-                              bet.tokenDiff > 0
-                                ? "text-green-400"
-                                : bet.tokenDiff < 0
-                                  ? "text-red-400"
-                                  : "text-gray-300"
-                            }`}
-                          >
-                            {bet.tokenDiff > 0
-                              ? `+${Number(bet.tokenDiff).toFixed(0)}`
-                              : bet.tokenDiff < 0
-                                ? `${Number(bet.tokenDiff).toFixed(0)}`
-                                : "±0"}{" "}
-                            tokens
                           </span>
                         </div>
                       </td>

@@ -8,9 +8,8 @@
  *     create, invite, join, read, accept, start and cancel — exercised directly
  *     against `src/lib/rooms/rules.ts`, including the free-vs-PRO split, the
  *     IDOR rule, expiry, duplicates, full rooms and replayed answers;
- *   * the settings validation that decides whether a room may carry a stake,
- *     against the platform's REAL wager policy (`validateWager`), including
- *     "Pool Masters rooms are free-play only";
+ *   * the settings validation that keeps every room free-play, whatever stake
+ *     a request body sends;
  *   * the game catalog (which games rooms support at all).
  *
  * WHAT IS TESTED STRUCTURALLY (source contracts, not a live database):
@@ -46,7 +45,6 @@ import {
   getRoomGame,
   isRoomGame,
 } from "../src/lib/rooms/catalog.ts";
-import { validateWager, maxStakeFor } from "../src/lib/games/stakes.js";
 import {
   CLAIM_STALE_MS,
   acceptedSeats,
@@ -216,28 +214,18 @@ test("a room id must be a uuid before it reaches a query", () => {
   assert.equal(isUuid(null), false);
 });
 
-test("an illegal stake is refused with the wager policy's own bounds", () => {
-  const negative = resolveRoomSettings("precision", { stake: -5 });
-  assert.equal(negative.ok, false);
-  assert.equal(negative.status, 400);
-
-  const fractional = resolveRoomSettings("precision", { stake: 2.5 });
-  assert.equal(fractional.ok, false);
-  assert.equal(fractional.status, 400);
-
-  const absurd = resolveRoomSettings("precision", { stake: maxStakeFor("precision") + 1 });
-  assert.equal(absurd.ok, false);
-  assert.equal(absurd.status, 400);
+test("a stake in a request is ignored: every room is free play", () => {
+  for (const stake of [-5, 2.5, 10, 1_000_000, "25"]) {
+    const result = resolveRoomSettings("solitaire-duel", { stake });
+    assert.equal(result.ok, true, `stake ${String(stake)}`);
+    assert.equal(result.settings.stake, 0);
+  }
 });
 
-
-
-
-test("Solitaire Duel rooms are free-play only, refused server-side", () => {
+test("every room is free-play, whatever stake is requested", () => {
   const staked = resolveRoomSettings("solitaire-duel", { stake: 10 });
-  assert.equal(staked.ok, false);
-  assert.equal(staked.status, 400);
-  assert.match(String(staked.message), /free-play only/i);
+  assert.equal(staked.ok, true);
+  assert.equal(staked.settings.stake, 0);
   assert.equal(resolveRoomSettings("solitaire-duel", {}).settings.stake, 0);
 });
 
@@ -249,10 +237,12 @@ test("an unsupported game can never be given settings", () => {
   }
 });
 
-test("the wager policy is the single source of stake legality", () => {
-  assert.equal(validateWager(0, "solitaire-duel").ok, true);
+test("room settings never carry a stake", () => {
   assert.equal(resolveRoomSettings("solitaire-duel", { stake: 0 }).ok, true);
-  assert.equal(resolveRoomSettings("solitaire-duel", { stake: 5 }).ok, false);
+  assert.equal(
+    resolveRoomSettings("solitaire-duel", { stake: 5 }).settings.stake,
+    0,
+  );
 });
 
 test("a challenge's settings are the server's, always free", () => {

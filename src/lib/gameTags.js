@@ -47,8 +47,6 @@
 //   docs/PERSONALIZATION.md. `chance` and `skill` are mutually exclusive: a
 //   game whose outcome is primarily luck is not also primarily ability.
 
-import { WAGER_GAME_KEYS } from "./defaultWagers";
-
 /** Every tag the engine understands. A test asserts each tagged game only
  *  uses values from this list. */
 export const GAME_TAGS = [
@@ -99,20 +97,11 @@ export const GAMES_BY_ID = Object.fromEntries(GAME_CATALOG.map((game) => [game.i
 
 // ── Token-wager support ────────────────────────────────────────────────────
 //
-// Q1 ("Rewards") and Q4 ("Earning tokens") care about games where a player can
-// put tokens at stake — and GRYND already has that fact in one place:
-// src/lib/defaultWagers.js (the catalog the Settings page and
-// /api/user/default-wagers validate against). Reused rather than re-tagged, so
-// adding a wager to a game automatically feeds the engine.
-//
-// One catalog id differs from its wager key (the wager catalog predates the
-// lobby rename); everything else matches by id. Dice Flush's entry was removed
-// with the game: it is no longer a catalogue id, so it needs no mapping.
-const WAGER_KEY_BY_GAME_ID = {
-  "mines-pvp": "mines",
-};
+// The coin economy is retired: no game supports a wager, so the "tokens"
+// signal can never reorder the lobby. The helper stays (the recommendation
+// engine calls it) and answers false for every game.
 
-/** Does this game support a configurable token wager? */
-export function supportsTokenWager(gameId) {
-  return WAGER_GAME_KEYS.includes(WAGER_KEY_BY_GAME_ID[gameId] ?? gameId);
+/** Does this game support a configurable token wager? No game does. */
+export function supportsTokenWager() {
+  return false;
 }

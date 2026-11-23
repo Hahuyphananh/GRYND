@@ -461,9 +461,9 @@ export const users = pgTable("users", {
   equippedDeckSkin: varchar("equipped_deck_skin", { length: 40 })
     .notNull()
     .default("deck_default"),
-  // Per-game default wager (tokens), keyed by game key. An empty map (or a
-  // missing key) means the game's built-in default. Written through
-  // /api/user/default-wagers; consumed by src/hooks/useDefaultWager.js.
+  // LEGACY: per-game default wagers from the retired coin economy. Nothing
+  // reads or writes this column any more; it stays so old rows keep their
+  // shape and a migration is not required to deploy.
   defaultWagers: jsonb("default_wagers")
     .$type<Record<string, number>>()
     .notNull()
@@ -725,6 +725,11 @@ export const cosmetics = pgTable(
     // account-creation catalog grant and refused by equipCosmetic for a
     // non-member — see src/lib/cosmetics.ts.
     proOnly: boolean("pro_only").notNull().default(false),
+    // STREAK-ONLY catalog entry (migration 0265). Never granted by the
+    // account-creation catalog grant; earned at `unlock_streak_day` through the
+    // daily play streak. Ownership is the matching `user_unlocks` row.
+    streakOnly: boolean("streak_only").notNull().default(false),
+    unlockStreakDay: integer("unlock_streak_day"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -766,6 +771,55 @@ export const userUnlocks = pgTable(
   (table) => ({
     pk: primaryKey({ columns: [table.userId, table.itemId] }),
     userIdx: index("user_unlocks_user_idx").on(table.userId),
+  }),
+);
+
+// RANKED WIN STREAKS (migration 0265). One row per player per ranked game, plus
+// the per-match journal that makes a replayed settlement count exactly once.
+// Separate from the daily play streak and from the retired wager counters.
+export const competitiveResultEvents = pgTable(
+  "competitive_result_events",
+  {
+    id: serial("id").primaryKey(),
+    matchId: varchar("match_id", { length: 255 }).notNull(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    gameKey: varchar("game_key", { length: 80 }).notNull(),
+    outcome: varchar("outcome", { length: 10 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqResult: unique("competitive_result_events_unique").on(
+      table.matchId,
+      table.userId,
+      table.gameKey,
+    ),
+    userIdx: index("competitive_result_events_user_idx").on(table.userId, table.gameKey),
+  }),
+);
+
+export const userCompetitiveStreaks = pgTable(
+  "user_competitive_streaks",
+  {
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    gameKey: varchar("game_key", { length: 80 }).notNull(),
+    currentStreak: integer("current_streak").notNull().default(0),
+    bestStreak: integer("best_streak").notNull().default(0),
+    lastMatchId: varchar("last_match_id", { length: 255 }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.userId, table.gameKey] }),
+    // Leaderboard ordering: one game's best streaks, highest first, with a
+    // stable user-id tie-break.
+    bestIdx: index("user_competitive_streaks_game_best_idx").on(
+      table.gameKey,
+      desc(table.bestStreak),
+      table.userId,
+    ),
   }),
 );
 

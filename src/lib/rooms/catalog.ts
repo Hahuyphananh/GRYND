@@ -3,10 +3,8 @@
 // THE list of games a private room / friend challenge can be created for.
 //
 // GRYND is Solitaire-only, so this list has exactly one entry: Solitaire Duel.
-// The module stays client-safe (it imports nothing but the pure wager policy)
-// so the UI can render the game picker without pulling in server stores.
-
-import { maxStakeFor } from "../games/stakes";
+// The module stays client-safe (it imports nothing server-side) so the UI can
+// render the game picker without pulling in server stores.
 
 /** Canonical keys of the games that support rooms today. */
 export type RoomGameKey = "solitaire-duel";
@@ -20,31 +18,17 @@ export interface RoomGameDef {
   /** Seats a room fills. Every supported game is a two-seat duel. */
   seats: number;
   /**
-   * Largest legal room stake (coins). `0` means the game's own lobby flow
-   * carries no escrow, so the room may only be free-play.
+   * Largest legal room stake. Always `0`: rooms are free play and the coin
+   * economy is gone. Kept in the shape so the picker and the server agree.
    */
   maxStake: number;
-}
-
-/**
- * Cap a room stake by the game's own ceiling. Kept here (not in the UI) so the
- * picker and the server agree by construction: the UI renders `maxStake`, the
- * server re-validates against the same number.
- *
- * Solitaire Duel is a free ranked game by construction: its match row has a
- * stake column, but the competitive reward is rating/trophies, and a private
- * room must never be the way a wager enters a game that does not use one.
- */
-function cap(key: RoomGameKey): number {
-  if (key === "solitaire-duel") return 0;
-  return Number(maxStakeFor(key)) || 0;
 }
 
 export const ROOM_GAMES: readonly RoomGameDef[] = Object.freeze([
   // Solitaire Duel joins on its own `createSolitaireMatchForPair` primitive:
   // the same server seed → solvable deal → two independent boards as its public
   // lobby, seeded directly for the named pair. Free play only — see `cap`.
-  { key: "solitaire-duel", label: "Solitaire Duel", mode: "pvp", seats: 2, maxStake: cap("solitaire-duel") },
+  { key: "solitaire-duel", label: "Solitaire Duel", mode: "pvp", seats: 2, maxStake: 0 },
 ]);
 
 /** Every supported key, for server-side membership tests. */

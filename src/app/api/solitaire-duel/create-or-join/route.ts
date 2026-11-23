@@ -32,7 +32,7 @@ export async function POST() {
   }
 
   try {
-    const result = await createOrJoin({ userId, stake: 0 });
+    const result = await createOrJoin({ userId });
     if ("error" in result) {
       return NextResponse.json(
         { success: false, error: result.error },

@@ -80,9 +80,6 @@ function NavigationBarInner({ currentPath = "" }) {
     // animation when nothing actually moved. Only a real change animates, and
     // a returning player sees their own numbers immediately instead of a dash.
     let totalTrophies = 0;
-    // `null` = "balance not known yet", which is deliberately NOT 0: a coin
-    // total of 0 and "we haven't read the wallet" are different claims.
-    let balance = null;
     try {
       const raw = sessionStorage.getItem("nav-trophies");
       if (raw) {
@@ -90,8 +87,6 @@ function NavigationBarInner({ currentPath = "" }) {
         const trophies = Number(cached?.totalTrophies);
         // Every player starts at 0 trophies, so 0 is a real displayable value.
         totalTrophies = Number.isFinite(trophies) && trophies >= 0 ? trophies : 0;
-        const coins = Number(cached?.balance);
-        balance = Number.isFinite(coins) && coins >= 0 ? coins : null;
       }
     } catch {
       // sessionStorage unavailable (SSR / private mode) — start at 0 / unknown.
@@ -114,12 +109,6 @@ function NavigationBarInner({ currentPath = "" }) {
       // headline competitive number in the navbar (it replaced Overall Elo
       // there). Everyone starts at 0, so 0 is shown rather than a placeholder.
       totalTrophies,
-      // COIN BALANCE — the player's spendable coins, rendered UNDER the trophy
-      // total. It is the same wallet every other surface reads (the lobby
-      // legacy wallet readers), never a
-      // second currency: /api/get-user-tokens is the one source, and null means
-      // "not read yet" rather than 0.
-      balance,
     };
   });
   // Whether the chip has finished its first paint. The first render must not
@@ -270,13 +259,6 @@ function NavigationBarInner({ currentPath = "" }) {
               const n = Number(data.data.totalTrophies);
               return Number.isFinite(n) && n >= 0 ? n : 0;
             })(),
-            // COIN BALANCE, from the same payload (the wallet is what this
-            // endpoint exists to report). An unreadable value stays null — the
-            // chip shows a dash rather than claiming the player has 0 coins.
-            balance: (() => {
-              const n = Number(data.data.balance);
-              return Number.isFinite(n) && n >= 0 ? n : null;
-            })(),
           }));
         // Remember the last known numbers so the next mount starts from them
         // and the chip only animates on a real change (see the state
@@ -287,10 +269,6 @@ function NavigationBarInner({ currentPath = "" }) {
             "nav-trophies",
             JSON.stringify({
               totalTrophies: Number(data.data.totalTrophies) || 0,
-              balance: (() => {
-                const n = Number(data.data.balance);
-                return Number.isFinite(n) && n >= 0 ? n : null;
-              })(),
             }),
           );
         } catch {}
@@ -534,15 +512,8 @@ function NavigationBarInner({ currentPath = "" }) {
               )}
               {isLoaded && isSignedIn ? (
                 <>
-                  {/* Total trophies over the coin balance — this chip is where
-                      the token balance has always lived (the trophies took the
-                      headline spot), so the two numbers a player checks most
-                      share one card: the competitive total on top, the wallet
-                      that every wager reads directly beneath it. The trophies
-                      are server-computed (sum of per-game counts) and everyone
-                      starts at 0; the coins come from the same
-                      /api/get-user-tokens payload and show a dash until the
-                      wallet has actually been read. */}
+                  {/* Total trophies — the server-computed sum of the player's
+                      per-game counts. Everyone starts at 0. */}
                   <Link
                     href="/profil"
                     data-testid="nav-trophies"

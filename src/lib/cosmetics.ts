@@ -22,9 +22,27 @@
 
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
-import { cosmetics, userCosmetics, users, tokenTransactions } from "../db/schema";
+import {
+  cosmetics,
+  userCosmetics,
+  userUnlocks,
+  users,
+  tokenTransactions,
+} from "../db/schema";
+import { STREAK_ITEM_IDS } from "./streaks/schedule";
 
 export const COSMETIC_KEY_REGEX = /^[a-z0-9][a-z0-9._-]{0,119}$/;
+
+// Titles are earned through `user_unlocks` like every other streak item, so the
+// everyone-owns-everything title grant must skip them. Derived from the one
+// ladder, so a future streak title cannot silently become free.
+const STREAK_ONLY_TITLE_KEYS = STREAK_ITEM_IDS.filter((id) => id.startsWith("title_"));
+const STREAK_TITLE_EXCLUSION = STREAK_ONLY_TITLE_KEYS.length
+  ? sql`AND st."key" NOT IN (${sql.join(
+      STREAK_ONLY_TITLE_KEYS.map((key) => sql`${key}`),
+      sql`, `,
+    )})`
+  : sql``;
 
 // Categories that map 1:1 onto `equipped_cosmetics` slots.
 export const COSMETIC_CATEGORIES = [
@@ -146,6 +164,8 @@ export async function grantAllCosmeticsToUser(userId: number): Promise<void> {
      -- PRO-only entries are NOT part of the everyone-owns-everything grant:
      -- they are granted when the member equips one (equipCosmetic below).
      WHERE c."enabled" = TRUE AND c."pro_only" = FALSE
+       -- STREAK-ONLY entries are earned, never handed out at account creation.
+       AND c."streak_only" = FALSE
        AND NOT EXISTS (
          SELECT 1 FROM "user_cosmetics" uc WHERE uc."user_id" = ${userId} AND uc."cosmetic_key" = c."key"
        )
@@ -157,6 +177,7 @@ export async function grantAllCosmeticsToUser(userId: number): Promise<void> {
        SELECT 1 FROM "user_special_titles" ust
         WHERE ust."user_id" = ${userId} AND ust."title_key" = st."key"
      )
+     ${STREAK_TITLE_EXCLUSION}
   `);
 }
 
@@ -581,6 +602,33 @@ export async function equipCosmetic(
     await db
       .insert(userCosmetics)
       .values({ userId: appUser.id, cosmeticKey: key, source: "pro" })
+      .onConflictDoNothing({
+        target: [userCosmetics.userId, userCosmetics.cosmeticKey],
+      });
+  }
+
+  // STREAK-ONLY entries are earned, not bought or granted. Ownership is the
+  // permanent `user_unlocks` row the daily streak wrote; a locked key posted by
+  // hand is refused here. The user_cosmetics row is mirrored on the first
+  // equip so the picker's ownership query sees it too.
+  if (catalog.streakOnly) {
+    const unlocked = await db
+      .select({ userId: userUnlocks.userId })
+      .from(userUnlocks)
+      .where(
+        and(eq(userUnlocks.userId, appUser.id), eq(userUnlocks.itemId, key)),
+      )
+      .limit(1);
+    if (!unlocked.length) {
+      return {
+        ok: false,
+        error: `Unlock this at a ${catalog.unlockStreakDay ?? "streak"}-day streak.`,
+        status: 403,
+      };
+    }
+    await db
+      .insert(userCosmetics)
+      .values({ userId: appUser.id, cosmeticKey: key, source: "streak" })
       .onConflictDoNothing({
         target: [userCosmetics.userId, userCosmetics.cosmeticKey],
       });

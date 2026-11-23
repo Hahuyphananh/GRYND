@@ -1061,20 +1061,16 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
                       Match analysis
                     </Link>
                   )}
-                  <button
-                    type="button"
-                    onClick={restart}
-                    className="inline-flex items-center justify-center rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400"
-                  >
-                    Play again
-                  </button>
+                  {/* Solo's Play again deals a FRESH game. The Daily Challenge
+                      has no play-again control: a UTC day has one official
+                      deal, so its result only offers a way out. */}
                   {mode === "solo" && (
                     <button
                       type="button"
                       onClick={newSoloGame}
-                      className="inline-flex items-center justify-center rounded-lg border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5"
+                      className="inline-flex items-center justify-center rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400"
                     >
-                      New deal
+                      Play again
                     </button>
                   )}
                   {/* Every result popup leaves a way out of the mode: the
@@ -1113,20 +1109,16 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
                   clock stopped at {formatDuration(elapsedMs)}.
                 </p>
                 <div className="mt-5 flex flex-wrap justify-center gap-2">
-                  <button
-                    type="button"
-                    onClick={restart}
-                    className="inline-flex items-center justify-center rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400"
-                  >
-                    Play again
-                  </button>
+                  {/* Solo's Play again deals a FRESH game. The Daily Challenge
+                      has no play-again control: a UTC day has one official
+                      deal, so its result only offers a way out. */}
                   {mode === "solo" && (
                     <button
                       type="button"
                       onClick={newSoloGame}
-                      className="inline-flex items-center justify-center rounded-lg border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/5"
+                      className="inline-flex items-center justify-center rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400"
                     >
-                      New deal
+                      Play again
                     </button>
                   )}
                   {/* Every result popup leaves a way out of the mode: the

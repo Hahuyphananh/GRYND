@@ -5,9 +5,8 @@
 //
 // Every path that adds purchased/won/donated tokens funnels through
 // creditUserBalance so there is exactly one way to move `balance` upward:
-//   * one-time coin purchases, via src/lib/tokens/coinFulfillment.ts, called
-//     ONLY by the signature-verified Stripe webhook (/api/webhooks/stripe) for
-//     a PAID one-time Checkout Session — never by a success page or a poll.
+//   * awarded tokens (quests, donations) from server-side code. The coin shop
+//     that used to call this from the Stripe webhook is retired.
 // The helper accepts the caller's transaction (`ctx`) so a credit can commit
 // atomically with its ledger row and its idempotency claim.
 //

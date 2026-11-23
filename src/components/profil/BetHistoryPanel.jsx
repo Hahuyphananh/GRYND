@@ -36,9 +36,6 @@ shadow-[var(--shadow-raise)]"
                 {t("profile.betHistory.game", "Game / event")}
               </th>
               <th className="px-4 py-2">
-                {t("profile.betHistory.stake", "Stake")}
-              </th>
-              <th className="px-4 py-2">
                 {t("profile.betHistory.result", "Result")}
               </th>
             </tr>
@@ -53,9 +50,6 @@ shadow-[var(--shadow-raise)]"
                       bet.event ||
                       bet.game_type ||
                       t("profile.betHistory.unknown", "Unknown")}
-                  </td>
-                  <td className="px-4 py-2">
-                    {bet.amount} {t("profile.tokens", "tokens")}
                   </td>
                   <td className="px-4 py-2">
                     <div className="flex items-center gap-2">
@@ -75,30 +69,13 @@ shadow-[var(--shadow-raise)]"
                             : t("profile.betHistory.draw", "Draw")}
                       </span>
 
-                      {bet.result !== "pending" && (
-                        <span
-                          className={`text-sm ${
-                            bet.tokenDiff > 0
-                              ? "text-green-400"
-                              : bet.tokenDiff < 0
-                                ? "text-red-400"
-                                : "text-gray-300"
-                          }`}
-                        >
-                          {bet.tokenDiff > 0
-                            ? `+${Number(bet.tokenDiff).toFixed(2)} ${t("profile.tokens", "tokens")}`
-                            : bet.tokenDiff < 0
-                              ? `${Number(bet.tokenDiff).toFixed(2)} ${t("profile.tokens", "tokens")}`
-                              : `±0.00 ${t("profile.tokens", "tokens")}`}
-                        </span>
-                      )}
                     </div>
                   </td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan="4" className="text-center py-4 text-gray-400">
+                <td colSpan="3" className="text-center py-4 text-gray-400">
                   {t("profile.betHistory.empty", "No bets found")}
                 </td>
               </tr>

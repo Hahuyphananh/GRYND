@@ -19,21 +19,52 @@ import AsyncState from "../../components/states/AsyncState";
 import UpgradeProButton from "../../components/UpgradeProButton";
 import ReportEntryButton from "../../components/reports/ReportEntryButton";
 import PlayerLevelBadge from "../../components/player-level/PlayerLevelBadge";
+import { COMPETITIVE_STREAK_LABELS } from "../../lib/competitiveStreakModel";
 
-// The five boards the page offers. `trophies` reads the ALL-TIME PEAK board —
+// The boards the page offers. `trophies` reads the ALL-TIME PEAK board —
 // the label is "Trophies" but the number is the best total ever reached, by
-// product decision. `all-time` ranks RANKED wins only, and the two streak tabs
-// read the daily streak counters. There are no sub-categories: one tab, one
-// ranking.
-const TABS = ["trophies", "all-time", "daily-deal", "daily-current", "daily-best"];
+// product decision. `all-time` ranks RANKED wins only, the two daily tabs read
+// the daily play streak, and the two competitive tabs read the per-game ranked
+// win streaks. The two competitive formats are deliberately separate boards.
+const COMPETITIVE_STREAK_TABS = {
+  "duel-best": "solitaire-duel",
+  "puzzle-best": "solitaire-puzzle",
+};
+
+const TABS = [
+  "trophies",
+  "all-time",
+  "duel-best",
+  "puzzle-best",
+  "daily-deal",
+  "daily-current",
+  "daily-best",
+];
 
 const TAB_LABELS = {
   trophies: "Trophies",
   "all-time": "All-Time wins",
+  "duel-best": "Duel Best Streak",
+  "puzzle-best": "Puzzle Best Streak",
   "daily-deal": "Daily Deal best time",
   "daily-current": "Daily Streak",
   "daily-best": "Best Streak",
 };
+
+function isCompetitiveStreakTab(tab) {
+  return Boolean(COMPETITIVE_STREAK_TABS[tab]);
+}
+
+function competitiveStreakTabLabel(tab) {
+  const game = COMPETITIVE_STREAK_TABS[tab];
+  return game ? `${COMPETITIVE_STREAK_LABELS[game]} Best Streak` : "";
+}
+
+function playHrefForTab(tab) {
+  return COMPETITIVE_STREAK_TABS[tab] === "solitaire-puzzle"
+    ? "/play/puzzle-ranked"
+    : "/games/solitaire-duel";
+}
 
 // Per-game leaderboards: one ELO board per rated game, sorted by that game's
 // current rating. This is the first-paint mirror of RATED_GAMES in
@@ -75,6 +106,8 @@ function getMetricValue(item, tab) {
     return `${peak} Trophies · ${games} games`;
   }
   if (tab === "all-time") return `${formatNumber(item.wins)} wins`;
+  if (isCompetitiveStreakTab(tab))
+    return `${formatNumber(item.best_streak)} wins`;
   if (tab === "daily-deal") return formatDuration(item.best_ms ?? item.bestMs);
   const field = tab === "daily-current" ? "daily_streak_current" : "daily_streak_best";
   return `${formatNumber(item[field])} days`;
@@ -149,6 +182,7 @@ function shareScoreForPodium(item, category) {
     return numeric(item.peakTrophies ?? item.peak_trophies);
   }
   if (category === "all-time") return numeric(item.wins);
+  if (isCompetitiveStreakTab(category)) return numeric(item.best_streak);
   // Streak boards and the time board share no comparable point total.
   return null;
 }
@@ -157,8 +191,9 @@ function shareScoreForPodium(item, category) {
 function Podium({ items, myClerkId, tab, category }) {
   if (!items || items.length === 0) return null;
   const order = items.length === 1 ? [0] : items.length === 2 ? [1, 0] : [1, 0, 2];
-  const metricLabel =
-    tab === "trophies"
+  const metricLabel = isCompetitiveStreakTab(tab)
+    ? "Best win streak"
+    : tab === "trophies"
       ? "Trophies"
       : tab === "all-time"
         ? "Ranked wins"
@@ -281,6 +316,10 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
     // daily caller), so this is the ranked win count, not an every-mode total.
     if (tab === "all-time")
       return `/api/leaderboard/all-time?limit=50&category=wins`;
+    // One independent board per ranked format, from the competitive streak
+    // table. The game key is explicit, so the two formats never merge.
+    if (isCompetitiveStreakTab(tab))
+      return `/api/leaderboard/competitive-streak?game=${COMPETITIVE_STREAK_TABS[tab]}&limit=50`;
     // The fastest verified Daily Deal completion per player.
     if (tab === "daily-deal")
       return `/api/leaderboard/daily-deal-best-time?limit=50`;
@@ -312,6 +351,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
   const statusLine = rankStatus(me?.rank, t);
   const climbCtaLabel =
     me?.rank && me.rank <= 10 ? t("leaderboard.defend_spot") : t("leaderboard.climb_ranks");
+  const playHref = playHrefForTab(tab);
 
   return (
     <div className="relative min-h-screen bg-[color:var(--bg-page)] text-[color:var(--text-primary)]">
@@ -361,7 +401,11 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                     ? "Overall Elo"
                     : x === "per-game"
                       ? "Per-Game Elo"
-                      : x === "daily-current"
+                      : x === "duel-best"
+                      ? <span>{competitiveStreakTabLabel(x)} <svg className="w-4 h-4 inline text-[color:var(--state-gold)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 9H4.5a2.5 2.5 0 010-5H6"/><path d="M18 9h1.5a2.5 2.5 0 000-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0012 0V2Z"/></svg></span>
+                      : x === "puzzle-best"
+                        ? <span>{competitiveStreakTabLabel(x)} <svg className="w-4 h-4 inline text-[color:var(--state-gold)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 9H4.5a2.5 2.5 0 010-5H6"/><path d="M18 9h1.5a2.5 2.5 0 000-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0012 0V2Z"/></svg></span>
+                        : x === "daily-current"
                     ? <span>Daily Streak <svg className="w-4 h-4 inline text-amber-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z"/></svg></span>
                       : x === "daily-best"
                         ? <span>Best Streak <svg className="w-4 h-4 inline text-[color:var(--state-gold)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 9H4.5a2.5 2.5 0 010-5H6"/><path d="M18 9h1.5a2.5 2.5 0 000-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0012 0V2Z"/></svg></span>
@@ -418,6 +462,13 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                     best time
                     {me.runs ? ` · ${formatNumber(me.runs)} daily deals` : ""}
                   </p>
+                ) : isCompetitiveStreakTab(tab) ? (
+                  <p className="mt-0.5 text-sm text-cyan-200/80">
+                    <span className="font-bold text-[color:var(--state-gold)]">
+                      {formatNumber(me.best_streak)} wins
+                    </span>{" "}
+                    best win streak
+                  </p>
                 ) : isStreakTab(tab) ? (
                   <p className="mt-0.5 text-sm text-cyan-200/80">
                     {getMetricValue(me, tab)}
@@ -439,7 +490,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <Link
-                href="/games/solitaire-duel"
+                href={playHref}
                 className="rounded-lg border border-[color:var(--state-gold)] bg-[color:var(--state-gold)] px-4 py-2 text-sm font-bold text-[color:var(--on-accent)] transition-all hover:bg-[color:var(--state-gold)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--state-gold)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
               >
                 {me ? climbCtaLabel : "PLAY NOW"}
@@ -452,7 +503,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
               </Link>
             </div>
 
-            {myStats && (
+            {myStats && !isCompetitiveStreakTab(tab) && (
               <>
                 <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
                   <div className="rounded-md bg-[color:var(--bg-panel)] px-3 py-2 text-center">
@@ -533,7 +584,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                 {t("leaderboard.empty_hint")}
               </p>
               <Link
-                href="/games/solitaire-duel"
+                href={playHref}
                 className="mt-1 rounded-lg border border-[color:var(--state-gold)] bg-[color:var(--state-gold)] px-5 py-2.5 text-sm font-bold text-[color:var(--on-accent)] transition-all hover:bg-[color:var(--state-gold)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--state-gold)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
               >
                 PLAY NOW
@@ -557,9 +608,11 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                         ? "Trophies"
                         : tab === "all-time"
                           ? "Ranked wins"
-                          : tab === "daily-deal"
-                            ? "Best time"
-                            : "Days"}
+                          : isCompetitiveStreakTab(tab)
+                            ? "Best win streak"
+                            : tab === "daily-deal"
+                              ? "Best time"
+                              : "Days"}
                     </th>
                   </tr>
                 </thead>
@@ -653,7 +706,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
               </p>
             </div>
             <Link
-              href="/games/solitaire-duel"
+              href={playHref}
               className="shrink-0 rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--accent)] px-5 py-2.5 text-sm font-bold text-[color:var(--on-accent)] transition-all hover:bg-[color:var(--accent)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
             >
               PLAY NOW

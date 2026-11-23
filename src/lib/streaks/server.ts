@@ -29,10 +29,16 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "../../db";
-import { userStreaks, userUnlocks, users } from "../../db/schema";
+import {
+  userCosmetics,
+  userSpecialTitles,
+  userStreaks,
+  userUnlocks,
+  users,
+} from "../../db/schema";
 import { findActiveSubscription } from "../stripe/subscriptions";
 import { updateDailyStreak } from "../dailyStreak";
-import { boardItem } from "../solitaire-duel/boardCosmetics";
+import { boardItem, profileStreakItem } from "../solitaire-duel/boardCosmetics";
 import {
   MAX_BESPOKE_DAY,
   POST_365_TRIAL_DAYS,
@@ -61,6 +67,10 @@ export type StreakState = {
     cardBack: string;
     deckSkin: string;
   };
+  /** Equipped profile cosmetics, category → catalog key. */
+  profileEquipped: Record<string, string>;
+  /** The special title slot (separate from catalog cosmetics). */
+  selectedSpecialTitle: string | null;
 };
 
 export type StreakCompletion = {
@@ -188,7 +198,27 @@ export async function recordStreakCompletion(
           target: [userUnlocks.userId, userUnlocks.itemId],
         })
         .returning({ itemId: userUnlocks.itemId });
-      if (granted.length > 0) newlyUnlocked.push(itemId);
+      if (granted.length > 0) {
+        newlyUnlocked.push(itemId);
+        // PROFILE ITEMS LIVE IN THEIR OWN TABLES. `user_unlocks` is the streak's
+        // permanent ledger; the frame/badge/glow/name-effect picker reads
+        // `user_cosmetics` and the title picker reads `user_special_titles`.
+        // Mirror the grant into the matching table (idempotently) so a reward
+        // the player just earned is immediately equippable. The catalog rows
+        // are seeded by migrations 0265/0266, and a missing row is simply not
+        // rendered.
+        if (itemId.startsWith("title_")) {
+          await tx
+            .insert(userSpecialTitles)
+            .values({ userId, titleKey: itemId })
+            .onConflictDoNothing();
+        } else if (profileStreakItem(itemId)) {
+          await tx
+            .insert(userCosmetics)
+            .values({ userId, cosmeticKey: itemId, source: "streak" })
+            .onConflictDoNothing();
+        }
+      }
     }
 
     // Day-7 one-time trial. The claim flag is set even for a paying member, so
@@ -269,6 +299,8 @@ export async function readStreakState(
       equippedFelt: true,
       equippedCardBack: true,
       equippedDeckSkin: true,
+      equippedCosmetics: true,
+      selectedSpecialTitle: true,
     },
   });
   if (!account) return null;
@@ -299,6 +331,11 @@ export async function readStreakState(
       cardBack: account.equippedCardBack || "card_back_default",
       deckSkin: account.equippedDeckSkin || "deck_default",
     },
+    profileEquipped:
+      account.equippedCosmetics && typeof account.equippedCosmetics === "object"
+        ? { ...(account.equippedCosmetics as Record<string, string>) }
+        : {},
+    selectedSpecialTitle: account.selectedSpecialTitle || null,
   };
 }
 

@@ -21,6 +21,7 @@
 import { NextResponse } from "next/server";
 import { requirePracticePlayer } from "../../../../../../lib/auth/guestSession";
 import { logError } from "../../../../../../lib/logError";
+import { recordStreakCompletion } from "../../../../../../lib/streaks/server";
 import {
   isPuzzleSessionId,
   submitPuzzleMove,
@@ -68,6 +69,18 @@ export async function POST(
       );
     }
 
+    // UTC DAILY STREAK: finishing a puzzle session credits today once, for
+    // every mode (ranked and vs-AI alike). A failure here must never fail the
+    // move that was already applied.
+    let streak: Awaited<ReturnType<typeof recordStreakCompletion>> = null;
+    if (result.finished) {
+      try {
+        streak = await recordStreakCompletion(userId);
+      } catch {
+        streak = null;
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -81,6 +94,7 @@ export async function POST(
         advancedPuzzle: result.advancedPuzzle,
         completedSession: result.completedSession,
         finished: result.finished,
+        streak,
       },
     });
   } catch (error) {

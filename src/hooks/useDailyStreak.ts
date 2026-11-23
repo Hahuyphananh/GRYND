@@ -20,7 +20,8 @@ import { useUser } from "@clerk/nextjs";
 
 export type StreakMilestone = {
   days: number;
-  title: string;
+  title: string | null;
+  items?: string[];
   achieved: boolean;
   isNext: boolean;
 };
@@ -31,10 +32,11 @@ export type DailyStreakStatus = {
   weeklyCurrent: number;
   weeklyBest: number;
   title: string | null;
-  nextMilestone: { days: number; title: string } | null;
+  nextMilestone: { days: number; title: string | null; items?: string[] } | null;
   daysRemaining: number;
   progress: number;
   milestones: StreakMilestone[];
+  rewardMilestones?: StreakMilestone[];
   lastCompletedDate: string | null;
   shieldAvailable: boolean;
 };

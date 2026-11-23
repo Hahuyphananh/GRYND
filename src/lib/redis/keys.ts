@@ -32,6 +32,13 @@ export const CacheKeys = {
       `${PREFIX}:lb:daily-streak:${type}:${limit}:${offset}`,
 
     /**
+     * Per-game ranked win-streak board.
+     * grynd:lb:competitive-streak:{game}:{limit}:{offset}
+     */
+    competitiveStreak: (game: string, limit: number, offset: number) =>
+      `${PREFIX}:lb:competitive-streak:${game}:${limit}:${offset}`,
+
+    /**
      * grynd:lb:daily-deal:{limit}:{offset}
      *
      * The Daily Deal best-time board, read from the official daily result
@@ -54,6 +61,7 @@ export const CacheKeys = {
       `${PREFIX}:lb:weekly:*`,
       `${PREFIX}:lb:daily-streak:*`,
       `${PREFIX}:lb:daily-deal:*`,
+      `${PREFIX}:lb:competitive-streak:*`,
     ],
 
     /** Wildcard pattern for eviction of ALL leaderboard keys */

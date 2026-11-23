@@ -50,29 +50,6 @@ function formatElapsed(totalSeconds) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-// Small token/gold coin glyph — duplicated per-page across the casino
-// (see the mines/blackjack match views); kept local so the shared
-// waiting takeover has no import coupling back into game pages.
-function CoinIcon({ className = "" }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
-      <ellipse cx="12" cy="6" rx="8" ry="2.5" />
-      <path d="M4 6 V18 a8 2.5 0 0 0 16 0 V6" />
-      <ellipse cx="12" cy="18" rx="8" ry="2.5" />
-    </svg>
-  );
-}
-
 export default function MatchWaiting({
   // identity
   state = "searching", // "searching" | "waiting" | "ready"
@@ -82,8 +59,7 @@ export default function MatchWaiting({
   title = null, // overrides the translated default
   subtitle = null, // game-specific context line (escrow note, hint…)
   // waiting-room data
-  seats = [], // [{ label, name?, occupied, wager? }] — wager = optional
-  //             token-amount label shown on the seat once occupied
+  seats = [], // [{ label, name?, occupied }]
   countdown = null, // seconds until start (ready state only)
   // actions
   copyCode = null,
@@ -274,12 +250,6 @@ export default function MatchWaiting({
                         {seat.name || "—"}
                       </p>
                       <span className="flex min-h-4 flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-[10px] font-semibold">
-                        {seat.wager && (
-                          <span className="inline-flex items-center gap-1 text-yellow-200/85">
-                            <CoinIcon className="h-3 w-3 text-yellow-300" />
-                            {seat.wager}
-                          </span>
-                        )}
                         <span className="inline-flex items-center gap-1.5 text-cyan-300">
                           <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
                           {t("home.matchWaiting.connected")}

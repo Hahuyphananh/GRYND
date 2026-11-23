@@ -104,13 +104,7 @@ export default function RoomCard({
         <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusTone(room.status)}`}>
           {statusLabel}
         </span>
-        {room.settings?.stake > 0 ? (
-          <span className="text-[11px] text-amber-300">
-            {t("rooms.stakeLabel", { stake: room.settings.stake })}
-          </span>
-        ) : (
-          <span className="text-[11px] text-gray-300">{t("rooms.freeEntry", "Free entry")}</span>
-        )}
+        <span className="text-[11px] text-gray-300">{t("rooms.freeEntry", "Free entry")}</span>
         {isHost && (
           <span className="text-[11px] text-gray-400">
             {t("rooms.youAreHost", "You are the host")}

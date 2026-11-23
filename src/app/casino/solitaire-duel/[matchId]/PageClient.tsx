@@ -69,6 +69,7 @@ import NavigationBar from "../../../../components/navigation-bar";
 import GameSessionHost from "../../../../components/GameSessionHost";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
+import CompetitiveStreakResultBadge from "../../../../components/profil/CompetitiveStreakResultBadge";
 import GuestResultPrompt from "../../../../components/solitaire-duel/GuestResultPrompt";
 import MatchTimeline from "../../../../components/solitaire-duel/MatchTimeline";
 import { useMatchRouter } from "../../../../hooks/useMatchRouter";
@@ -1708,6 +1709,11 @@ export default function SolitaireDuelMatchPage() {
                 showAvatar={false}
                 testId="solitaire-bot-result-speech"
               />
+            ) : null}
+            {!isPractice && finished ? (
+              <div className="mt-3 flex justify-center">
+                <CompetitiveStreakResultBadge gameKey="solitaire-duel" />
+              </div>
             ) : null}
           </>
         }

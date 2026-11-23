@@ -1,23 +1,16 @@
 // src/lib/rooms/settings.ts
 //
 // Room settings: what a client may ask for, and what the server will actually
-// store. PURE — no database, no game stores — so the validation that decides
-// whether a room may carry a stake is unit-tested (tests/private-rooms.test.mjs)
-// instead of only being reachable through a live API call.
+// store. PURE — no database, no game stores.
 //
-// THE WAGER POLICY IS NOT REIMPLEMENTED: legality belongs to
-// src/lib/games/stakes.js (`validateWager`), which every game entry point
-// already uses. This module only adds the per-game ROOM ceiling from the
-// catalog — that is what makes "Pool Masters rooms are free-play only" a server
-// rule, and it is why a request body can never talk a game into a stake its
-// lobby flow cannot settle.
+// WAGERS ARE GONE: the coin economy was removed, so a room and a friend
+// challenge are always free. The `stake` field stays in the stored shape for
+// legacy rows, but it is never set from a request and is always 0 for new
+// rooms.
 //
-// Only the stake is a setting today, because that is the only room-level rule
-// the three supported games take (see catalog.ts). The shape is generic: the
-// first real per-game option (a chess time control, say) is one field here plus
-// one in the adapter that reads it.
-
-import { validateWager } from "../games/stakes";
+// Only the timer is a setting today. The shape is generic: the first real
+// per-game option (a chess time control, say) is one field here plus one in the
+// adapter that reads it.
 import {
   ROOM_DEFAULT_TIMER_SECONDS,
   ROOM_TIMER_OPTIONS,
@@ -66,7 +59,6 @@ export function resolveRoomSettings(
 
   const source =
     raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-  const requested = source.stake;
 
   const requestedTimer = source.timerSeconds;
   // A number only: a JSON string that happens to spell an option is refused,
@@ -85,23 +77,8 @@ export function resolveRoomSettings(
     };
   }
 
-  const wager = validateWager(requested, game.key);
-  if (!wager.ok) {
-    // `validateWager`'s own message + status: the platform's wording, not a
-    // second set of bounds invented here.
-    return { ok: false, status: wager.status, message: wager.error };
-  }
-  if (wager.stake > game.maxStake) {
-    return {
-      ok: false,
-      status: 400,
-      message:
-        game.maxStake === 0
-          ? `${game.label} private rooms are free-play only`
-          : `Maximum stake for ${game.label} is ${game.maxStake} coins`,
-    };
-  }
-  return { ok: true, settings: { stake: wager.stake, timerSeconds } };
+  // A stake in the request body is ignored: every room is free play.
+  return { ok: true, settings: { stake: 0, timerSeconds } };
 }
 
 /**

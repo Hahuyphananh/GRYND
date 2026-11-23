@@ -30,7 +30,7 @@ import {
 
 import { CacheKeys, CacheTTL } from "../src/lib/redis/keys.ts";
 import { invalidateTrophyBoards } from "../src/lib/redis/invalidation.ts";
-import { RATED_GAMES } from "../src/lib/rating.js";
+import { RATED_GAMES, getRatingGameLabel } from "../src/lib/rating.js";
 
 // ════════════════════════════════════════════════════════════════════════
 // 1. The Overall Trophies aggregate
@@ -107,7 +107,10 @@ test("listTrophyGames: mirrors the Elo registry exactly", () => {
     listTrophyGames().map((g) => g.key),
     [...RATED_GAMES],
   );
-  assert.equal(listTrophyGames()[0].label, "Chess");
+  assert.equal(
+    listTrophyGames()[0].label,
+    getRatingGameLabel(RATED_GAMES[0]),
+  );
 });
 
 // ════════════════════════════════════════════════════════════════════════

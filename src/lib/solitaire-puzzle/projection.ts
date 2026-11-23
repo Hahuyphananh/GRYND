@@ -34,6 +34,7 @@ function resultFor(
   snapshot: PuzzleSessionSnapshot,
   seat: PuzzleSessionSeat,
   reward: PuzzleReward | null,
+  opponentName: string | null = null,
 ): PuzzleSessionViewResult | null {
   if (snapshot.status !== PUZZLE_SESSION_STATUS.FINISHED || !snapshot.result) {
     return null;
@@ -53,6 +54,7 @@ function resultFor(
     // Counts and server-stamped instants only: enough to explain the result,
     // never a board, a stock order or a solution.
     opponentId: opponentId ?? null,
+    opponentName: opponentName ?? null,
     player1: { solved: snapshot.p1.solved, lastSolveAtMs: snapshot.p1.lastSolveAtMs },
     player2: { solved: snapshot.p2.solved, lastSolveAtMs: snapshot.p2.lastSolveAtMs },
     reward: reward ?? null,
@@ -70,7 +72,11 @@ export function puzzleSessionView(
   snapshot: PuzzleSessionSnapshot,
   seat: PuzzleSessionSeat,
   nowMs: number,
-  options: { duplicate?: boolean; reward?: PuzzleReward | null } = {},
+  options: {
+    duplicate?: boolean;
+    reward?: PuzzleReward | null;
+    opponentName?: string | null;
+  } = {},
 ): PuzzleSessionView {
   const mine = seatSnapshot(snapshot, seat);
   const entry = currentManifestEntry(snapshot.manifest, mine);
@@ -116,7 +122,12 @@ export function puzzleSessionView(
     startedAtMs: snapshot.goAtMs,
     deadlineAtMs: snapshot.deadlineAtMs,
     serverNowMs: nowMs,
-    result: resultFor(snapshot, seat, options.reward ?? null),
+    result: resultFor(
+      snapshot,
+      seat,
+      options.reward ?? null,
+      options.opponentName ?? null,
+    ),
     ...(options.duplicate ? { duplicate: true } : {}),
   };
 }

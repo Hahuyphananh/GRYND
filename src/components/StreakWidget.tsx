@@ -173,7 +173,7 @@ export default function StreakWidget() {
                     <>
                       Next:{" "}
                       <span className="font-semibold text-[color:var(--text-primary)]">
-                        {next.days} days — {next.title}
+                        {next.days} days — {next.title ?? "Reward milestone"}
                       </span>
                     </>
                   ) : (
@@ -192,7 +192,7 @@ export default function StreakWidget() {
                 target={next?.days ?? Math.max(1, current)}
                 label={
                   next
-                    ? `Streak progress: ${Math.min(current, next.days)} of ${next.days} days to ${next.title}`
+                    ? `Streak progress: ${Math.min(current, next.days)} of ${next.days} days to ${next.title ?? "reward milestone"}`
                     : "Every streak milestone reached"
                 }
                 className="mt-1.5"

@@ -31,6 +31,7 @@ import Footer from "../Footer";
 import NavigationBar from "../navigation-bar";
 import SolitaireBoard from "../solitaire-duel/SolitaireBoard";
 import GlitchSay from "../mascot/GlitchSay";
+import CompetitiveStreakResultBadge from "../profil/CompetitiveStreakResultBadge";
 import { useTranslation } from "../../hooks/useTranslation";
 import {
   PUZZLE_BOARD_POLL_MS,
@@ -55,6 +56,8 @@ export default function PuzzleSessionPlayer({
   opponentName = null,
   onRestart,
   onChooseBot,
+  onPlayAgain,
+  onBackToLobby,
 }: {
   sessionId: string;
   mode: "ranked" | "ai";
@@ -63,6 +66,10 @@ export default function PuzzleSessionPlayer({
   onRestart?: () => void;
   /** Practice only: return to the picker. */
   onChooseBot?: () => void;
+  /** Ranked only: leave the settled race and open a fresh search. */
+  onPlayAgain?: () => void;
+  /** Ranked only: drop the settled race and show the lobby again. */
+  onBackToLobby?: () => void;
 }) {
   const { t } = useTranslation();
   const [view, setView] = useState<PuzzleSessionView | null>(null);
@@ -143,6 +150,15 @@ export default function PuzzleSessionPlayer({
     const id = setInterval(() => setTick((value) => value + 1), 1_000);
     return () => clearInterval(id);
   }, [view?.deadlineAtMs, view?.status]);
+
+  // A solve hands the NEXT board back in the same move response. Clearing the
+  // previous verdict the instant the puzzle number changes keeps the new
+  // position immediately playable instead of carrying the old "solved" line
+  // (and any old error) into it.
+  useEffect(() => {
+    setVerdict(null);
+    setMoveError(null);
+  }, [view?.puzzleNumber]);
 
   useEffect(() => {
     if (view?.status === "finished") resultHeadingRef.current?.focus();
@@ -264,6 +280,25 @@ export default function PuzzleSessionPlayer({
               ? "resolutionFinish"
               : null;
   const pct = puzzleProgressPercent(view?.progress);
+
+  // The settled scoreboard, always from the server's own result payload.
+  const mySolved = outcome
+    ? view?.seat === "player1"
+      ? outcome.player1.solved
+      : outcome.player2.solved
+    : view?.solvedCount ?? 0;
+  const theirSolved = outcome
+    ? view?.seat === "player1"
+      ? outcome.player2.solved
+      : outcome.player1.solved
+    : view?.opponentSolvedCount ?? 0;
+  const opponentLabel =
+    mode === "ranked"
+      ? outcome?.opponentName ?? t("playHub.lobby.puzzleBoard.human")
+      : opponentName ?? t("playHub.lobby.puzzleBoard.ai");
+  // Ranked has no "same opponent" rematch: play again re-enters the queue.
+  const playAgainAction = mode === "ranked" ? onPlayAgain : onRestart ?? onPlayAgain;
+  const backToLobbyAction = onBackToLobby ?? onChooseBot;
 
   const glitchMessage = outcome
     ? won
@@ -545,98 +580,6 @@ export default function PuzzleSessionPlayer({
                 </div>
               </dl>
 
-              {outcome && (
-                <div
-                  data-testid="puzzle-session-result"
-                  aria-live="polite"
-                  className={`rounded-2xl border p-4 ${
-                    won
-                      ? "border-emerald-300/40 bg-emerald-300/10 text-emerald-50"
-                      : draw
-                        ? "border-white/15 bg-white/[0.04] text-white/80"
-                        : "border-rose-300/30 bg-rose-300/10 text-rose-50"
-                  }`}
-                >
-                  <h2
-                    ref={resultHeadingRef}
-                    tabIndex={-1}
-                    className="text-sm font-black uppercase tracking-[0.14em] focus-visible:outline-hidden"
-                  >
-                    {t(`playHub.lobby.puzzleBoard.${outcomeKey}`)}
-                  </h2>
-                  <p className="mt-1 font-mono text-xs opacity-80">
-                    {outcome.player1.solved} — {outcome.player2.solved}
-                  </p>
-                  {reasonKey && (
-                    <p
-                      data-testid="puzzle-session-reason"
-                      className="mt-1 text-[11px] leading-relaxed opacity-85"
-                    >
-                      {t(`playHub.lobby.puzzleBoard.${reasonKey}`)}
-                    </p>
-                  )}
-                  {outcome.reward &&
-                    (outcome.reward.ratingDelta != null ||
-                      outcome.reward.trophiesDelta != null) && (
-                      <p className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                        <IconTrophy size={14} aria-hidden="true" />
-                        {outcome.reward.ratingDelta != null && (
-                          <span data-testid="puzzle-session-rating">
-                            {t("playHub.lobby.puzzleBoard.rating", {
-                              delta:
-                                outcome.reward.ratingDelta > 0
-                                  ? `+${outcome.reward.ratingDelta}`
-                                  : String(outcome.reward.ratingDelta),
-                            })}
-                          </span>
-                        )}
-                        {outcome.reward.trophiesDelta != null && (
-                          <span data-testid="puzzle-session-trophies">
-                            {t("playHub.lobby.puzzleBoard.trophies", {
-                              delta:
-                                outcome.reward.trophiesDelta > 0
-                                  ? `+${outcome.reward.trophiesDelta}`
-                                  : String(outcome.reward.trophiesDelta),
-                            })}
-                          </span>
-                        )}
-                      </p>
-                    )}
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {mode === "ai" && onRestart && (
-                      <button
-                        type="button"
-                        onClick={onRestart}
-                        data-testid="puzzle-session-restart"
-                        className="rounded-lg bg-[#c4b5fd] px-3 py-2 text-xs font-black text-[#12081f] hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white/70"
-                      >
-                        {t("playHub.lobby.puzzleBoard.restart")}
-                      </button>
-                    )}
-                    {mode === "ai" && onChooseBot && (
-                      <button
-                        type="button"
-                        onClick={onChooseBot}
-                        data-testid="puzzle-session-choose"
-                        className="rounded-lg border border-[#c4b5fd]/45 bg-[#c4b5fd]/10 px-3 py-2 text-xs font-bold text-[#ede9fe] hover:bg-[#c4b5fd]/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c4b5fd]"
-                      >
-                        {t("playHub.lobby.puzzleBoard.chooseBot")}
-                      </button>
-                    )}
-                    <Link
-                      href={
-                        mode === "ranked" ? "/play/puzzle-ranked" : "/play/puzzle-ai"
-                      }
-                      className="rounded-lg border border-white/15 px-3 py-2 text-xs font-bold text-white/70 hover:border-white/30 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60"
-                    >
-                      {mode === "ranked"
-                        ? t("playHub.lobby.puzzleBoard.backRanked")
-                        : t("playHub.lobby.puzzleBoard.backAi")}
-                    </Link>
-                  </div>
-                </div>
-              )}
-
               {mode === "ranked" && view.status === "playing" && (
                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
                   {confirmingForfeit ? (
@@ -686,6 +629,192 @@ export default function PuzzleSessionPlayer({
           </div>
         )}
       </main>
+
+      {/* THE RESULT POPUP.
+          A settled race is announced over the finished board instead of in a
+          card tucked into the side rail: the outcome, GLITCH, both verified
+          scores, both lives totals and the opponent's name land together, and
+          the only ways forward are play again and the lobby. */}
+      {outcome && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="puzzle-session-popup-title"
+          data-testid="puzzle-session-popup"
+          className="fixed inset-0 z-[95] flex items-center justify-center overflow-y-auto bg-black/80 p-3 backdrop-blur-xs sm:p-4"
+        >
+          <div
+            data-testid="puzzle-session-result"
+            className={`relative w-full max-w-md overflow-hidden rounded-2xl border bg-[color:var(--bg-surface)] p-5 text-center shadow-[var(--shadow-raise)] sm:p-6 ${
+              won
+                ? "border-emerald-300/40"
+                : draw
+                  ? "border-[color:var(--border-strong)]"
+                  : "border-rose-300/35"
+            }`}
+          >
+            <div
+              aria-hidden="true"
+              className={`absolute inset-x-0 top-0 h-0.5 ${
+                won ? "bg-emerald-300" : draw ? "bg-white/30" : "bg-rose-300"
+              }`}
+            />
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[color:var(--text-muted)]">
+              {mode === "ranked"
+                ? t("playHub.lobby.puzzleBoard.rankedKicker")
+                : t("playHub.lobby.puzzleBoard.aiKicker")}
+            </p>
+            <h2
+              id="puzzle-session-popup-title"
+              ref={resultHeadingRef}
+              tabIndex={-1}
+              className={`mt-2 text-2xl font-black tracking-tight focus-visible:outline-hidden sm:text-3xl ${
+                won
+                  ? "text-[color:var(--state-win)]"
+                  : draw
+                    ? "text-[color:var(--text-primary)]"
+                    : "text-[color:var(--state-loss)]"
+              }`}
+            >
+              {t(`playHub.lobby.puzzleBoard.${outcomeKey}`)}
+            </h2>
+            {reasonKey && (
+              <p
+                data-testid="puzzle-session-reason"
+                className="mt-1 text-xs leading-relaxed text-[color:var(--text-secondary)]"
+              >
+                {t(`playHub.lobby.puzzleBoard.${reasonKey}`)}
+              </p>
+            )}
+
+            <div className="mt-4 flex justify-center">
+              <GlitchSay placement="inline" size="sm" message={glitchMessage} />
+            </div>
+
+            <div className="mt-5 grid grid-cols-2 gap-2 text-left">
+              <div className="rounded-xl border border-[#5eead4]/30 bg-[#5eead4]/[0.07] p-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#5eead4]">
+                  {t("playHub.lobby.puzzleBoard.you")}
+                </p>
+                <p
+                  data-testid="puzzle-popup-score-you"
+                  className="mt-1 font-mono text-2xl font-black text-[color:var(--text-primary)]"
+                >
+                  {mySolved}
+                  <span className="text-sm font-bold text-[color:var(--text-muted)]">
+                    {" / "}
+                    {view?.puzzleCount ?? 0}
+                  </span>
+                </p>
+                <p
+                  data-testid="puzzle-popup-lives"
+                  className="mt-1 text-xs font-bold text-rose-400"
+                >
+                  <span aria-hidden="true">♥</span>{" "}
+                  {t("playHub.lobby.puzzleBoard.lives")} {view?.lives ?? 0}
+                </p>
+              </div>
+              <div className="min-w-0 rounded-xl border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] p-3">
+                <p
+                  data-testid="puzzle-popup-opponent-name"
+                  title={opponentLabel}
+                  className="truncate text-[10px] font-black uppercase tracking-[0.16em] text-[color:var(--text-muted)]"
+                >
+                  {opponentLabel}
+                </p>
+                <p
+                  data-testid="puzzle-popup-score-opponent"
+                  className="mt-1 font-mono text-2xl font-black text-[color:var(--text-primary)]"
+                >
+                  {theirSolved}
+                  <span className="text-sm font-bold text-[color:var(--text-muted)]">
+                    {" / "}
+                    {view?.puzzleCount ?? 0}
+                  </span>
+                </p>
+                <p
+                  data-testid="puzzle-popup-opponent-lives"
+                  className="mt-1 text-xs font-bold text-[color:var(--text-secondary)]"
+                >
+                  <span aria-hidden="true">♥</span>{" "}
+                  {t("playHub.lobby.puzzleBoard.lives")} {view?.opponentLives ?? 0}
+                </p>
+              </div>
+            </div>
+
+            {outcome.reward &&
+              (outcome.reward.ratingDelta != null ||
+                outcome.reward.trophiesDelta != null) && (
+                <p className="mt-3 flex flex-wrap items-center justify-center gap-2 text-xs text-[color:var(--text-secondary)]">
+                  <IconTrophy size={14} aria-hidden="true" />
+                  {outcome.reward.ratingDelta != null && (
+                    <span data-testid="puzzle-session-rating">
+                      {t("playHub.lobby.puzzleBoard.rating", {
+                        delta:
+                          outcome.reward.ratingDelta > 0
+                            ? `+${outcome.reward.ratingDelta}`
+                            : String(outcome.reward.ratingDelta),
+                      })}
+                    </span>
+                  )}
+                  {outcome.reward.trophiesDelta != null && (
+                    <span data-testid="puzzle-session-trophies">
+                      {t("playHub.lobby.puzzleBoard.trophies", {
+                        delta:
+                          outcome.reward.trophiesDelta > 0
+                            ? `+${outcome.reward.trophiesDelta}`
+                            : String(outcome.reward.trophiesDelta),
+                      })}
+                    </span>
+                  )}
+                </p>
+              )}
+
+            {mode === "ranked" && (
+              <div className="mt-3 flex justify-center">
+                <CompetitiveStreakResultBadge gameKey="solitaire-puzzle" />
+              </div>
+            )}
+
+            <div className="mx-auto mt-5 flex w-full max-w-xs flex-col gap-2">
+              {playAgainAction && (
+                <button
+                  type="button"
+                  onClick={playAgainAction}
+                  data-testid="puzzle-popup-play-again"
+                  className={`inline-flex w-full items-center justify-center rounded-lg px-4 py-2.5 text-sm font-black transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white/70 ${
+                    mode === "ranked"
+                      ? "bg-[#5eead4] text-[#04120f]"
+                      : "bg-[#c4b5fd] text-[#12081f]"
+                  }`}
+                >
+                  {t("playHub.lobby.puzzleBoard.restart")}
+                </button>
+              )}
+              {backToLobbyAction ? (
+                <button
+                  type="button"
+                  onClick={backToLobbyAction}
+                  data-testid="puzzle-popup-back-to-lobby"
+                  className="inline-flex w-full items-center justify-center rounded-lg border border-[color:var(--border-strong)] px-4 py-2.5 text-sm font-bold text-[color:var(--text-primary)] transition hover:bg-[color:var(--bg-panel)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--focus-ring)]"
+                >
+                  {t("playHub.lobby.puzzleBoard.backLobby")}
+                </button>
+              ) : (
+                <Link
+                  href={
+                    mode === "ranked" ? "/play/puzzle-ranked" : "/play/puzzle-ai"
+                  }
+                  data-testid="puzzle-popup-back-to-lobby"
+                  className="inline-flex w-full items-center justify-center rounded-lg border border-[color:var(--border-strong)] px-4 py-2.5 text-sm font-bold text-[color:var(--text-primary)] transition hover:bg-[color:var(--bg-panel)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--focus-ring)]"
+                >
+                  {t("playHub.lobby.puzzleBoard.backLobby")}
+                </Link>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <Footer />
     </div>

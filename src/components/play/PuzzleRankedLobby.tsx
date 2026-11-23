@@ -90,7 +90,7 @@ export default function PuzzleRankedLobby() {
     return () => clearInterval(id);
   }, [queue?.waiting, read]);
 
-  const find = async () => {
+  const find = useCallback(async () => {
     if (busy) return;
     setBusy(true);
     setErrorKey(null);
@@ -111,7 +111,25 @@ export default function PuzzleRankedLobby() {
     } finally {
       setBusy(false);
     }
-  };
+  }, [busy]);
+
+  // A settled race is over. "Play again" drops it and opens a FRESH search,
+  // so the next opponent is another person waiting in the queue — never a
+  // rematch against the same seat and never a bot.
+  const playAgain = useCallback(async () => {
+    if (busy) return;
+    setQueue(null);
+    setErrorKey(null);
+    await find();
+  }, [busy, find]);
+
+  // Back to lobby also leaves the settled match behind: the lobby then shows
+  // the real queue state (idle, or a still-waiting search) instead of the
+  // finished board. A same-route Link alone would keep this state alive.
+  const backToLobby = useCallback(async () => {
+    setQueue(null);
+    await read();
+  }, [read]);
 
   const cancel = async () => {
     if (busy) return;
@@ -145,7 +163,14 @@ export default function PuzzleRankedLobby() {
   // A matched ranked race is the board, full width. The queue is frozen while
   // it plays (the interval above only runs while `waiting`).
   if (matched && queue?.sessionId) {
-    return <PuzzleSessionPlayer sessionId={queue.sessionId} mode="ranked" />;
+    return (
+      <PuzzleSessionPlayer
+        sessionId={queue.sessionId}
+        mode="ranked"
+        onPlayAgain={playAgain}
+        onBackToLobby={backToLobby}
+      />
+    );
   }
 
   const action = signedOut ? (

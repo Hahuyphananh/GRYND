@@ -31,7 +31,7 @@ import {
  * OTP second factor) and email notification opt-outs. Admin-only tools are
  * rendered only for actual admins.
  *
- * Stakes are retired (src/lib/games/stakes.js): the per-game "default wager"
+ * Stakes are retired: the per-game "default wager"
  * card is gone — there is no wager for a game to start with.
  */
 export default function SettingsPageClient() {

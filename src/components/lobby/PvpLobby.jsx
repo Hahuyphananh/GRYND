@@ -32,7 +32,6 @@ import Footer from "../Footer";
 import MatchWaiting from "./MatchWaiting";
 import { usePlatformQuickQueue } from "./PlatformQuickQueue";
 import DailyLossGuard from "../DailyLossGuard";
-import { GLOBAL_MAX_BET } from "../../lib/games/economy";
 import { isPortalPlayPath } from "../../lib/portal/framing";
 import SessionGuard from "../SessionGuard";
 import {
@@ -44,26 +43,6 @@ import {
   IconBook,
   IconX,
 } from "@tabler/icons-react";
-
-export function CoinIcon({ className = "" }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
-      <ellipse cx="12" cy="6" rx="8" ry="2.5" />
-      <path d="M4 6 V18 a8 2.5 0 0 0 16 0 V6" />
-      <ellipse cx="12" cy="18" rx="8" ry="2.5" />
-    </svg>
-  );
-}
 
 function LoadingDotsIcon({ className = "" }) {
   return (
@@ -119,78 +98,6 @@ const NUMBER_FORMAT = new Intl.NumberFormat("en-US");
 export function formatTokens(value) {
   const n = Number(value);
   return NUMBER_FORMAT.format(Number.isFinite(n) ? n : 0);
-}
-
-/**
- * CoinWagerPicker — the stake selector for a coin lobby.
- *
- * Coins are the energy currency (src/lib/games/economy.ts): a small balance, a
- * bounded daily top-up, a hard ceiling on a single wager. The picker is
- * presentational — the lobby owns the value — so every game gets the same
- * control and the same presets. `balance` is the player's live balance (null
- * when unknown/signed out); an unaffordable stake is flagged here and rejected
- * by the server regardless.
- */
-export function CoinWagerPicker({
-  value,
-  onChange,
-  presets = [5, 10, 25, 50, GLOBAL_MAX_BET],
-  min = 1,
-  max = GLOBAL_MAX_BET,
-  balance = null,
-  label = "Stake",
-}) {
-  const stake = Number(value) || 0;
-  const insufficient =
-    balance !== null && Number.isFinite(Number(balance)) && stake > Number(balance);
-  return (
-    <div>
-      <label className="text-[11px] font-black uppercase tracking-[0.28em] text-white/35">
-        {label}
-      </label>
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        {presets.map((preset) => {
-          const disabled = preset < min || preset > max;
-          return (
-            <button
-              key={preset}
-              type="button"
-              onClick={() => onChange(preset)}
-              disabled={disabled}
-              aria-pressed={stake === preset}
-              className={`rounded-lg border px-2.5 py-1 text-xs font-bold tabular-nums transition disabled:cursor-not-allowed disabled:opacity-40 ${
-                stake === preset ? PALETTE.chipActive : PALETTE.chipIdle
-              }`}
-            >
-              {formatTokens(preset)}
-            </button>
-          );
-        })}
-        <input
-          type="number"
-          inputMode="numeric"
-          min={min}
-          max={max}
-          step={1}
-          value={Number.isFinite(stake) ? stake : ""}
-          onChange={(event) => onChange(Number(event.target.value))}
-          aria-label="Custom stake in coins"
-          className="w-20 rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1 text-xs font-bold tabular-nums text-white focus:border-cyan-400/60 focus:outline-hidden"
-        />
-      </div>
-      <p
-        className={`mt-1.5 text-[11px] ${
-          insufficient ? "font-semibold text-red-300" : "text-white/40"
-        }`}
-      >
-        {balance === null
-          ? `Between ${formatTokens(min)} and ${formatTokens(max)} coins`
-          : insufficient
-            ? `Not enough coins — you have ${formatTokens(balance)}`
-            : `Balance: ${formatTokens(balance)} coins`}
-      </p>
-    </div>
-  );
 }
 
 /**
@@ -363,11 +270,6 @@ export function PvpLobby({
   canPlay = true,
   vsAi = null, // { label, onClick, disabled, busy }
   extraActions = null,
-  // coin wager, or null for a free lobby. Shape:
-  //   { value, onChange, presets?, min?, max?, balance?, label? }
-  // When present the lobby renders the stake picker instead of the
-  // "free play" chrome (see CoinWagerPicker).
-  wager = null,
   // game-specific context line shown under the searching overlay title
   // (e.g. "Pairing you with a player on the same stake…")
   waitingSubtitle = null,
@@ -563,11 +465,7 @@ export function PvpLobby({
             )}
             <span className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-[11px] font-semibold text-white/40">
               <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              {practiceMode
-                ? "Practice · unrated"
-                : wager
-                  ? "Coin · both stakes escrowed"
-                  : "Free play · no tokens at stake"}
+              {practiceMode ? "Practice · unrated" : "Free play · nothing at stake"}
             </span>
           </div>
 
@@ -575,14 +473,6 @@ export function PvpLobby({
             <div className="mt-4 flex items-center gap-2 rounded-xl border border-red-400/30 bg-red-400/[0.07] px-3 py-2 text-sm text-red-200">
               <IconAlertTriangle className="h-4 w-4 flex-shrink-0 text-red-300" />
               <span>{error}</span>
-            </div>
-          )}
-
-          {/* The stake picker is an online-money control: it has no meaning to
-              a visitor who cannot stake anything. */}
-          {wager && !practiceMode && (
-            <div className="mt-5">
-              <CoinWagerPicker {...wager} />
             </div>
           )}
 
@@ -658,10 +548,10 @@ export function PvpLobby({
                   ["Progress", "Saved in this browser"],
                 ]
               : [
-                  ["Entry", wager ? `${formatTokens(wager?.value ?? 0)} coins` : "Free"],
+                  ["Entry", "Free"],
                   ["Opponent", "Live player"],
-                  ["Winner", wager ? "Takes 1.8× the stake" : "First to solve it"],
-                  ["Draw", wager ? "Both seats refunded" : "No rating change"],
+                  ["Winner", "First to solve it"],
+                  ["Draw", "No rating change"],
                 ]
             ).map(([label, value]) => (
               <div
@@ -681,15 +571,8 @@ export function PvpLobby({
                 matched, and the result is unrated — no coins, trophies or
                 ranking change.
               </>
-            ) : wager ? (
-              <>
-                Coins are energy: both stakes are escrowed on match-up and the
-                winner takes <b className="text-white/70">1.8× their stake</b>{" "}
-                (stake back + 90% of the loser&apos;s). An exact draw refunds both
-                seats.
-              </>
             ) : (
-              <>Free to play — nothing is escrowed and no tokens are at stake.</>
+              <>Free to play — no coins, no escrow and no payouts.</>
             )}
           </p>
 

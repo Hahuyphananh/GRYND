@@ -11,7 +11,7 @@ that remain.
 | Layer | How it was checked | Result |
 | --- | --- | --- |
 | Authorization rules (`src/lib/rooms/rules.ts`) | unit tests, 58 assertions in `tests/private-rooms.test.mjs` | **tested** |
-| Settings / stake policy (`settings.ts`, `catalog.ts`) | unit tests against the real `validateWager` | **tested** |
+| Settings / timer validation (`settings.ts`, `catalog.ts`) | unit tests against the real resolver (rooms are always free play) | **tested** |
 | Migration `0217` | applied to the real database: tables, indexes, columns, the duplicate-membership `23505`, and two code-less challenges coexisting | **tested** |
 | Store SQL (create / invite / join / respond / start / cancel / list / sweep) | executed against the real database with temporary rows, then deleted (0 rows left) | **tested** |
 | Concurrent starts | two simultaneous `startRoom` calls on one room → exactly ONE `pool_matches` row, second call idempotent | **tested** |
@@ -73,9 +73,9 @@ staked game. Deferred (see §5).
 
 ### Money, age and membership
 
-* `src/lib/games/stakes.js` is the ONE wager policy: `validateWager(requested, gameKey)`
-  rejects an illegal stake (400), `normalizeStake` clamps, and a 0 stake is a
-  legal free match. Room settings reuse it — nothing new decides a wager.
+* Wagers are RETIRED with the coin economy: there is no stake policy module
+  any more. A room always stores `stake: 0`, and a stake in the request body is
+  ignored rather than validated.
 * `requireAgeVerifiedUser()` (18+ gate) is what every game API calls.
 * Pro membership is `getMembershipTier(clerkId) === "pro"`
   (`src/lib/stripe/subscriptions.ts`) — the same authoritative check the rest of
@@ -147,11 +147,10 @@ guard. Persistent tables (not views), no existing table touched.
    primitive in their own store first (family 1 in §1.1). Chess is the next one
    worth doing: it needs a `private`/`invite_only` marker on `chess_games` plus
    listing and join filters.
-2. **Settings are thin by construction.** Pool, Precision and Tower Arena offer
-   no per-room rule options beyond the stake, so the room settings expose exactly
-   that: the platform's own `validateWager` bounds (0 = free play). The schema and
-   validation path are generic, so the first real per-game option (a chess time
-   control, say) is one adapter field.
+2. **Settings are thin by construction.** Rooms are free play — there is no
+   stake setting at all — so the only option today is the room's invitation
+   timer. The schema and validation path are generic, so the first real per-game
+   option (a chess time control, say) is one adapter field.
 3. **Realtime is an accelerator, never the source of truth.** A pending
    invitation is a database row that the Friends tab polls; the socket signal
    (`rooms:changed`, emitted to a server-verified `user:<clerkId>` room) only

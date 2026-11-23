@@ -348,12 +348,20 @@ test("UI: the game tabs mirror RATED_GAMES exactly (no drift)", () => {
   // reconcile with the API on load.
 });
 
-test("UI: the page offers exactly the five boards it can rank", () => {
+test("UI: the page offers the seven boards it can rank", () => {
   const code = codeOf(CLASSEMENT);
   assert.match(
     code,
-    /const TABS = \["trophies", "all-time", "daily-deal", "daily-current", "daily-best"\]/,
+    /const TABS = \[\s*"trophies",\s*"all-time",\s*"duel-best",\s*"puzzle-best",\s*"daily-deal",\s*"daily-current",\s*"daily-best",\s*\]/,
   );
+  // The two competitive boards are independent and use the per-game table.
+  assert.ok(
+    code.includes(
+      "/api/leaderboard/competitive-streak?game=${COMPETITIVE_STREAK_TABS[tab]}&limit=50",
+    ),
+  );
+  assert.match(code, /"duel-best": "solitaire-duel"/);
+  assert.match(code, /"puzzle-best": "solitaire-puzzle"/);
   // Trophies IS the all-time peak board, under a plain label.
   assert.ok(code.includes("/api/leaderboard/trophy-peak?limit=50"));
   // All-Time wins reads the settled-result counters (competitive only).

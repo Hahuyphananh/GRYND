@@ -87,6 +87,11 @@ export type PuzzleSessionViewResult = {
   resolutionReason: PuzzleSessionReason | null;
   /** The OTHER seat only — never both seats' board or hidden state. */
   opponentId: string | null;
+  /**
+   * The opponent's display name, resolved for a settled ranked result. Null for
+   * the synthetic practice bot (the AI's roster name comes from the picker).
+   */
+  opponentName?: string | null;
   /** The server's own score for each seat; the result is derived from these. */
   player1: { solved: number; lastSolveAtMs: number | null };
   player2: { solved: number; lastSolveAtMs: number | null };

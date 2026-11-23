@@ -30,9 +30,9 @@
 //
 // Deliberate exclusions, because they would be FALSE today:
 //   * No wagering, staking, pot, rake or payout language anywhere. THIS
-//     CATALOGUE COPY is deliberately coin-free: the lobby (and its stake
-//     picker, see src/lib/games/stakes.js) states the wager, and a landing
-//     page describes the GAME, whose competitive result is still decided on
+//     CATALOGUE COPY is deliberately coin-free: the coin economy (and its
+//     wager policy) is retired, and a landing page describes the GAME, whose
+//     competitive result is still decided on
 //     skill and rewarded with a per-game Elo rating and trophies
 //     (src/lib/rating.js, src/lib/trophies.js). tests/game-landing-pages.test.mjs
 //     enforces the coin-free copy.

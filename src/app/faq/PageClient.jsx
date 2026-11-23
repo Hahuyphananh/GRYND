@@ -22,7 +22,7 @@ import { FaqSidebarList, FaqSidebarRail } from "../../components/faq/FaqSidebar"
  *
  * The previous copy described a staked token economy — "PvP matches stake
  * tokens", "the winner takes 1.8× their stake", "a 5% platform fee". None of
- * that is true any more: STAKES ARE RETIRED (src/lib/games/stakes.js), a match
+ * that is true any more: STAKES ARE RETIRED, a match
  * costs nothing to enter and moves no tokens, and a ranked result instead moves
  * that game's own Elo rating and trophy ladder. A help page that contradicts
  * the product is worse than no help page, so every answer here is written

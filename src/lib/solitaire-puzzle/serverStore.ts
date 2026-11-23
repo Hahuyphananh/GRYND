@@ -30,6 +30,7 @@ import { db } from "../../db/client";
 import {
   solitairePuzzleSessionMoves,
   solitairePuzzleSessions,
+  users,
 } from "../../db/schema";
 import { normalizeMove } from "../solitaire-duel/rules";
 import { getServerSeedHash, randomHex } from "../solitaire-duel/seeds";
@@ -149,6 +150,31 @@ function toDate(ms: number | null): Date | null {
 
 function err(error: string, status: number): StoreError {
   return { error, status };
+}
+
+/**
+ * The opponent's display name for a settled result.
+ *
+ * Read ONLY after a session has finished, from the same users row the platform
+ * already uses for handles. The synthetic practice bot has no account, so it
+ * is never looked up (its roster name comes from the picker).
+ */
+async function opponentDisplayName(
+  client: any,
+  snapshot: PuzzleSessionSnapshot,
+  seat: PuzzleSessionSeat,
+): Promise<string | null> {
+  const id =
+    seat === PUZZLE_SESSION_SEAT.PLAYER1
+      ? snapshot.player2Id
+      : snapshot.player1Id;
+  if (!id || id === SOLITAIRE_PUZZLE_AI_PLAYER_ID) return null;
+  const [row] = await client
+    .select({ name: users.name })
+    .from(users)
+    .where(eq(users.clerkId, id))
+    .limit(1);
+  return row?.name ? String(row.name) : null;
 }
 
 // ── Row → snapshot ────────────────────────────────────────────────────────
@@ -735,10 +761,15 @@ export async function fetchPuzzleSession({
   });
 
   if ("error" in result) return result as StoreError;
+  const opponentName =
+    result.snapshot.status === PUZZLE_SESSION_STATUS.FINISHED
+      ? await opponentDisplayName(db, result.snapshot, result.seat)
+      : null;
   return {
     ...result,
     view: puzzleSessionView(result.snapshot, result.seat, nowMs, {
       reward: result.reward,
+      opponentName,
     }),
   };
 }
@@ -865,10 +896,18 @@ export async function forfeitPuzzleSession({
         }))[result.snapshot.id] ?? null
       : null;
 
+  const opponentName =
+    result.snapshot.status === PUZZLE_SESSION_STATUS.FINISHED
+      ? await opponentDisplayName(db, result.snapshot, result.seat)
+      : null;
+
   return {
     ...result,
     reward,
-    view: puzzleSessionView(result.snapshot, result.seat, nowMs, { reward }),
+    view: puzzleSessionView(result.snapshot, result.seat, nowMs, {
+      reward,
+      opponentName,
+    }),
   };
 }
 
@@ -1157,11 +1196,16 @@ export async function submitPuzzleMove({
       const reward = finished
         ? (await readPuzzleRewards({ tx, matchIds: [next.id], clerkId: userId }))[next.id] ?? null
         : null;
+      // The popup names the person this seat beat or lost to; the lookup only
+      // runs for a settled ranked row, never during a live poll.
+      const opponentName = finished
+        ? await opponentDisplayName(tx, next, seat)
+        : null;
 
       return {
         snapshot: next,
         seat,
-        view: puzzleSessionView(next, seat, nowMs, { reward }),
+        view: puzzleSessionView(next, seat, nowMs, { reward, opponentName }),
         revealed: applied.revealed,
         moveStatus: applied.status as "no-progress" | "progress" | "complete",
         lifeLost: applied.lifeLost,

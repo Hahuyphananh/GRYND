@@ -7,15 +7,14 @@
 //
 // The options come from src/lib/rooms/catalog.ts, the SAME module the server
 // validates with, so a game the server would refuse is never offered, and the
-// stake bounds / room timers shown are the ones enforced. A game whose
-// `maxStake` is 0 (Pool Masters: its lobby flow carries no escrow) is shown as
-// free-play only.
+// room timers shown are the ones enforced. Private rooms and friend challenges
+// are free play — the coin stake picker was removed with the coin economy.
 //
 // A CHALLENGE HAS NO TIMER CHOICE: it is a direct 1v1 invite that expires on the
 // server's own CHALLENGE_TTL, not a room the host keeps open.
 //
-// The dialog does not decide anything: it hands the chosen game, stake and
-// timer to the caller, and the server re-validates all three.
+// The dialog does not decide anything: it hands the chosen game and timer to
+// the caller, and the server re-validates both.
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -49,24 +48,20 @@ export default function RoomGameDialog({
   const { t } = useTranslation();
   const selectable = useMemo(() => games.filter((game) => game.seats >= 2), [games]);
   const [gameKey, setGameKey] = useState<string>(selectable[0]?.key || "");
-  const [stake, setStake] = useState<number>(0);
   const [timerSeconds, setTimerSeconds] = useState<number>(ROOM_DEFAULT_TIMER_SECONDS);
 
-  // A dialog reopened for another game must not carry a stale stake or timer.
+  // A dialog reopened for another game must not carry a stale timer.
   useEffect(() => {
     if (!open) return;
     setGameKey((current) =>
       selectable.some((game) => game.key === current) ? current : selectable[0]?.key || "",
     );
-    setStake(0);
     setTimerSeconds(ROOM_DEFAULT_TIMER_SECONDS);
   }, [open, selectable]);
 
   if (!open) return null;
 
   const game = selectable.find((item) => item.key === gameKey) || null;
-  const maxStake = game?.maxStake ?? 0;
-  const stakeOffered = maxStake > 0;
 
   return (
     <div
@@ -112,10 +107,7 @@ export default function RoomGameDialog({
                   <button
                     key={option.key}
                     type="button"
-                    onClick={() => {
-                      setGameKey(option.key);
-                      setStake(0);
-                    }}
+                    onClick={() => setGameKey(option.key)}
                     aria-pressed={option.key === gameKey}
                     className={`rounded-lg border px-3 py-2 text-sm font-semibold focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] ${
                       option.key === gameKey
@@ -125,46 +117,12 @@ export default function RoomGameDialog({
                   >
                     {t(`rooms.game_${option.key}`, option.label)}
                     <span className="mt-0.5 block text-[10px] font-normal text-gray-300">
-                      {option.maxStake > 0
-                        ? t("rooms.optionStaked", { max: option.maxStake })
-                        : t("rooms.optionFree", "Free play")}
+                      {t("rooms.optionFree", "Free play")}
                     </span>
                   </button>
                 ))}
               </div>
             </fieldset>
-
-            {mode === "room" && (
-              <div className="mt-4">
-                <label
-                  htmlFor="room-stake"
-                  className="text-xs font-semibold uppercase tracking-wide text-gray-300"
-                >
-                  {t("rooms.pickStake", "Entry (coins)")}
-                </label>
-                <input
-                  id="room-stake"
-                  type="number"
-                  min={0}
-                  max={Math.max(maxStake, 0)}
-                  step={1}
-                  value={stake}
-                  disabled={!stakeOffered}
-                  onChange={(event) => {
-                    const next = Number(event.target.value);
-                    setStake(Number.isFinite(next) ? Math.max(0, Math.min(maxStake, Math.trunc(next))) : 0);
-                  }}
-                  className="mt-1 w-full rounded-sm border border-white/15 bg-page px-3 py-2 text-sm text-white disabled:opacity-50"
-                />
-                <p className="mt-1 text-[11px] text-gray-300">
-                  {stakeOffered
-                    ? t("rooms.stakeHint", {
-                        max: maxStake,
-                      })
-                    : t("rooms.stakeFreeOnly", "This game's private rooms are free-play only.")}
-                </p>
-              </div>
-            )}
 
             {mode === "room" && (
               <div className="mt-4">
@@ -210,7 +168,7 @@ export default function RoomGameDialog({
                   game &&
                   onConfirm(
                     game.key,
-                    stakeOffered ? stake : 0,
+                    0,
                     mode === "challenge" ? ROOM_DEFAULT_TIMER_SECONDS : timerSeconds,
                   )
                 }

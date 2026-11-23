@@ -731,6 +731,76 @@ export default function SolitairePuzzle({ kind }: Props) {
         </div>
       )}
 
+      {/* THE DAILY RESULT POPUP.
+          A daily run is over on its last solved step or its first mistake.
+          That result now lands over the finished board, like the ranked and
+          practice puzzle popups: GLITCH, the run's verified progress and a way
+          back to the lobby. There is deliberately NO play-again control — a UTC
+          day has one official run. */}
+      {kind === "daily" && judgement && !nextStep && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="daily-puzzle-result-title"
+          data-testid="daily-puzzle-result-popup"
+          className="fixed inset-0 z-[95] flex items-center justify-center overflow-y-auto bg-black/80 p-3 backdrop-blur-xs sm:p-4"
+        >
+          <div
+            className={`relative w-full max-w-md overflow-hidden rounded-2xl border bg-surface p-5 text-center shadow-2xl sm:p-6 ${
+              judgement.correct ? "border-emerald-300/40" : "border-rose-300/35"
+            }`}
+          >
+            <div
+              aria-hidden="true"
+              className={`absolute inset-x-0 top-0 h-0.5 ${
+                judgement.correct ? "bg-emerald-300" : "bg-rose-300"
+              }`}
+            />
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/45">
+              Daily puzzle
+            </p>
+            <h2
+              id="daily-puzzle-result-title"
+              tabIndex={-1}
+              className={`mt-2 text-2xl font-black tracking-tight focus-visible:outline-hidden sm:text-3xl ${
+                judgement.correct ? "text-emerald-300" : "text-rose-300"
+              }`}
+            >
+              {judgement.correct ? "Daily complete" : "Run over"}
+            </h2>
+            <p className="mt-1 text-xs leading-relaxed text-white/60">
+              {judgement.correct
+                ? `All ${totalSteps} steps solved. A new run arrives at UTC midnight.`
+                : `The run ended at step ${currentStep} of ${totalSteps}. A new run arrives at UTC midnight.`}
+            </p>
+
+            <div className="mt-4 flex justify-center">
+              <GlitchSay placement="inline" size="sm" message={line.message} />
+            </div>
+
+            <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.04] p-3 text-left">
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/40">
+                Steps solved
+              </p>
+              <p className="mt-1 font-mono text-2xl font-black text-white">
+                {judgement.correct ? totalSteps : Math.max(0, currentStep - 1)}
+                <span className="text-sm font-bold text-white/45"> / {totalSteps}</span>
+              </p>
+            </div>
+
+            <div className="mx-auto mt-5 w-full max-w-xs">
+              <Link
+                href="/play/daily-puzzle"
+                data-testid="daily-puzzle-result-lobby"
+                className="inline-flex w-full items-center justify-center rounded-lg border border-white/20 bg-white/[0.06] px-4 py-2.5 text-sm font-bold text-white transition hover:border-white/40 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300"
+              >
+                Back to lobby
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
       {outOfPuzzles && !judgement && (
         <div className="mt-4 rounded-xl border border-[#f5ff3b]/30 bg-[#f5ff3b]/10 p-4 text-sm text-[#f7ffa1]">
           <p className="font-black">You have used all 5 free puzzles today.</p>

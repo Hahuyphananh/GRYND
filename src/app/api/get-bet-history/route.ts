@@ -840,7 +840,10 @@ export async function GET(req: NextRequest) {
         // Cap the merged list: the profile renders the newest 10 and the
         // public profile paginates via its own endpoint, so the newest
         // HISTORY_LIMIT across all games is everything the UI can show.
-        .slice(0, HISTORY_LIMIT);
+        .slice(0, HISTORY_LIMIT)
+        // The coin economy is retired: history keeps WHAT happened and when,
+        // never a stake, payout or token delta.
+        .map(({ type, date, result }) => ({ type, date, result }));
       },
     );
 

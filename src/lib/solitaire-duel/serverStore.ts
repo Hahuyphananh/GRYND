@@ -31,13 +31,12 @@ import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { solitaireDuelMatches, solitaireDuelMoves, users } from "../../db/schema";
 import { applyGhostRatingResult, applyRatingResult } from "../rating";
-import { escrowMatchWagers } from "../tokens/wager";
-import { payPvpPot, refundPvpPot } from "../tokens/pvpPot";
 import { applyGhostTrophyResult, applyTrophyResult } from "../trophyStore";
 import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
 import { publicSolitaireBot, solitaireBotFor, type SolitaireBotId } from "./bots";
 import { dueGhostSteps, findGhostRun, ghostPlayerIdFor, type GhostRun } from "./ghosts";
 import { isGuestId } from "../guestIdentity";
+import { recordCompetitiveResult } from "../competitiveStreak";
 import { FRIEND_CHALLENGE_TTL_MS } from "./friendChallenge";
 import { generateFriendChallengeCode } from "./inviteCodes";
 import { isPracticePaused } from "../practicePause";
@@ -589,15 +588,14 @@ export async function getMyFriendChallenge({
  */
 export async function createOrJoin({
   userId,
-  stake = 0,
   nowMs = Date.now(),
 }: {
   userId: string;
-  /** Coins each seat escrows; 0 means a free match. */
-  stake?: number;
   nowMs?: number;
 }) {
-  const stakeAmount = Number(stake) > 0 ? Number(stake) : 0;
+  // Every lobby is free: no stake is read, matched on or escrowed. The match
+  // row keeps its legacy `stake_amount` column at 0 for old rows.
+  const stakeAmount = 0;
   return await db.transaction(async (tx) => {
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(${SOLITAIRE_DUEL_LOCK_NAMESPACE}, 0)`,
@@ -618,7 +616,6 @@ export async function createOrJoin({
           isNull(solitaireDuelMatches.player2Id),
           // Never pair a stranger into somebody's private friend challenge.
           isNull(solitaireDuelMatches.inviteCode),
-          sql`${solitaireDuelMatches.stakeAmount} = ${stakeAmount}`,
         ),
       )
       .orderBy(sql`${solitaireDuelMatches.createdAt} ASC`)
@@ -1081,24 +1078,6 @@ async function joinExistingMatch(
   if (!updated) {
     // Another joiner raced us and won the conditional UPDATE.
     return { error: "Match is no longer available", status: 409 } as const;
-  }
-
-  // Fund the match: both seats escrow now, before a single move. A seat that
-  // cannot pay throws, rolling the seat claim back so the lobby stays waiting.
-  // Annotated rather than inferred: `strict` is off, where a discriminated
-  // union is not narrowed by `if (!x.ok)`.
-  const escrow: { ok: boolean; error?: string; status?: number } =
-    await escrowMatchWagers({
-      clerkIds: [updated.player1Id, userId],
-      stake: stakeAmount,
-      matchId: updated.id,
-      gameKey: "solitaire-duel",
-      tx,
-    });
-  if (!escrow.ok) {
-    throw Object.assign(new Error(escrow.error || "Insufficient coins"), {
-      status: escrow.status && escrow.status < 500 ? escrow.status : 400,
-    });
   }
 
   mirrorQueueCreated({
@@ -2980,17 +2959,8 @@ async function settleSolitaireDuelMatch(
   if (!match.player2Id) return;
 
   const matchId = String(match.id);
-  const stake = Number((match as any).stakeAmount ?? 0) || 0;
 
   if (outcome.result === RESULT.DRAW) {
-    // A draw is a void pot: both seats get their own stake back, no rake.
-    await refundPvpPot({
-      tx,
-      gameKey: "solitaire-duel",
-      matchId,
-      clerkIds: [match.player1Id, match.player2Id],
-      stake,
-    });
     await applyRatingResult({
       tx,
       gameKey: "solitaire-duel",
@@ -3007,6 +2977,22 @@ async function settleSolitaireDuelMatch(
       loserClerkId: match.player2Id,
       result: "draw",
     }).catch(() => {});
+    // A draw breaks both ranked win streaks. The writer's journal makes this
+    // once-per-match even when the settlement is retried concurrently.
+    await recordCompetitiveResult({
+      tx,
+      clerkId: match.player1Id,
+      outcome: "draw",
+      gameKey: "solitaire-duel",
+      matchId,
+    });
+    await recordCompetitiveResult({
+      tx,
+      clerkId: match.player2Id,
+      outcome: "draw",
+      gameKey: "solitaire-duel",
+      matchId,
+    });
     return;
   }
 
@@ -3016,21 +3002,6 @@ async function settleSolitaireDuelMatch(
     outcome.result === RESULT.PLAYER1 ? match.player2Id : match.player1Id;
   if (!winnerId || !loserId || winnerId === loserId) return;
 
-  // The winner takes the pot (both escrowed stakes) minus the shared 10% rake.
-  const payout = await payPvpPot({
-    tx,
-    gameKey: "solitaire-duel",
-    matchId,
-    winnerClerkId: winnerId,
-    stake,
-  });
-  if (stake > 0) {
-    await tx
-      .update(solitaireDuelMatches)
-      .set({ houseFee: (stake * 0.2).toFixed(2), prizePaid: payout.toFixed(2) })
-      .where(eq(solitaireDuelMatches.id, matchId));
-  }
-
   await tx
     .update(users)
     .set({ gamesWon: sql`${users.gamesWon} + 1` })
@@ -3039,6 +3010,22 @@ async function settleSolitaireDuelMatch(
     .update(users)
     .set({ gamesLost: sql`${users.gamesLost} + 1` })
     .where(eq(users.clerkId, loserId));
+
+  // Ranked win streak — journaled per match, in this same transaction.
+  await recordCompetitiveResult({
+    tx,
+    clerkId: winnerId,
+    outcome: "win",
+    gameKey: "solitaire-duel",
+    matchId,
+  });
+  await recordCompetitiveResult({
+    tx,
+    clerkId: loserId,
+    outcome: "loss",
+    gameKey: "solitaire-duel",
+    matchId,
+  });
 
   await applyRatingResult({
     tx,

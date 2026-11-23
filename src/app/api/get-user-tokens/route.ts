@@ -2,7 +2,8 @@ import { auth } from "@clerk/nextjs/server";
 import { and, eq, inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../db/client";
-import { glows, users, cosmetics } from "../../../db/schema";
+import { glows, users, cosmetics, userStreaks } from "../../../db/schema";
+import { readCompetitiveStreaksForClerkId } from "../../../lib/competitiveStreak";
 import { computeEquippedStreakTitle } from "../../../lib/streakTitles";
 import {
   DEFAULT_ICON_KEY,
@@ -46,6 +47,8 @@ export async function POST(req: Request) {
           selectedStreakType: null,
           dailyStreakCurrent: 0,
           dailyStreakBest: 0,
+          streakRecordBest: 0,
+          competitiveStreaks: {},
           equippedCosmetics: {},
           // Trophies need a database — without one there is nothing to show,
           // so the navbar simply shows 0.
@@ -93,6 +96,9 @@ export async function POST(req: Request) {
         selectedStreakType: users.selectedStreakType,
         dailyStreakCurrent: users.dailyStreakCurrent,
         dailyStreakBest: users.dailyStreakBest,
+        // The authoritative all-time daily play record. Separate from the
+        // legacy local login counters above; a missing row reads as 0.
+        streakRecordBest: userStreaks.longestStreak,
         equippedCosmetics: users.equippedCosmetics,
       })
       .from(users)
@@ -100,6 +106,7 @@ export async function POST(req: Request) {
         glows,
         and(eq(glows.key, users.selectedGlow), eq(glows.enabled, true)),
       )
+      .leftJoin(userStreaks, eq(userStreaks.userId, users.id))
       .where(eq(users.clerkId, clerkId))
       .limit(1);
 
@@ -115,6 +122,15 @@ export async function POST(req: Request) {
     }
 
     const user = userData[0];
+
+    // Both ranked ladders, read independently. A missing migration/table or a
+    // query failure hides the badges rather than breaking the profile.
+    let competitiveStreaks: Record<string, { current: number; best: number }> = {};
+    try {
+      competitiveStreaks = await readCompetitiveStreaksForClerkId(clerkId);
+    } catch (error) {
+      console.error("Error reading competitive streaks for profile:", error);
+    }
 
     // Official icon only — never a user-supplied URL. Hardens the stored
     // value against NULL/malformed/disabled selections by falling back to the
@@ -215,6 +231,10 @@ export async function POST(req: Request) {
           selectedStreakType: user.selectedStreakType,
           dailyStreakCurrent: user.dailyStreakCurrent,
           dailyStreakBest: user.dailyStreakBest,
+          // Canonical `user_streaks.longest_streak` — the badge's only source.
+          streakRecordBest: Math.max(0, Number(user.streakRecordBest) || 0),
+          // Per-game ranked win streaks from `user_competitive_streaks`.
+          competitiveStreaks,
           equippedCosmetics,
           // Total trophies — the headline number the navbar renders in the
           // space the token balance used to occupy. 0 for a new player.

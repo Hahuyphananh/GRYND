@@ -3,6 +3,7 @@ import { getFrameDecorations } from "./cosmetics";
 import { getProClerkIds } from "./proStatus";
 import { toPlayerLevelShape } from "./playerLevel";
 import { OVERALL_MIN_GAMES, PROVISIONAL_GAMES } from "./elo";
+import { normalizeCompetitiveStreakGameKey } from "./competitiveStreakModel";
 
 // Reusable SQL for the Overall Elo badge shown next to a player's name on
 // every board. It is the SAME aggregate the Overall leaderboard ranks by —
@@ -638,6 +639,90 @@ export async function fetchDailyStreakLeaderboard({ type, limit, offset, clerkId
  *   - 'weekly-current': ranks by current week's daily streak (weekly_streak_current); resets every Monday
  *   - 'weekly-best': ranks by all-time best weekly streak (weekly_streak_best); never decreases
  */
+/**
+ * Best ranked win streak for ONE game.
+ *
+ * `user_competitive_streaks` is the authoritative per-game source written by
+ * the settlement transaction. The two formats are never combined: the query
+ * filters exactly one `game_key`, and the caller is normalized to one of the
+ * two supported ladders. A player with no positive best streak does not rank
+ * (a draw/loss-only row has best_streak = 0), so a zero never masquerades as a
+ * competitive achievement.
+ *
+ * Ranking is `best_streak DESC, user_id ASC`: the best streak is the only
+ * ranking metric, and the stable user id supplies the deterministic tie-break.
+ * The shared (game_key, best_streak DESC, user_id) index in migration 0267
+ * serves both the filter and the ordering.
+ */
+export async function fetchCompetitiveStreakLeaderboard({
+  gameKey,
+  limit,
+  offset,
+  clerkId = null,
+}) {
+  const game = normalizeCompetitiveStreakGameKey(gameKey);
+  const columns = await getLeaderboardColumns();
+  const clerkIdField = userIdentityField(columns, "clerk_id", "NULL");
+  const nameField = userIdentityField(columns, "name", "'Unknown'");
+  const iconKeyField = userIdentityField(columns, "selected_icon", "NULL");
+  const equippedField = userIdentityField(columns, "equipped_cosmetics", "NULL");
+  const peakTotalField = userIdentityField(columns, "peak_total_trophies", "0");
+  const params = clerkId
+    ? [game, limit, offset, clerkId]
+    : [game, limit, offset];
+  const meClause =
+    clerkId && hasColumn(columns, "users", "clerk_id")
+      ? "(SELECT row_to_json(ranked) FROM ranked WHERE clerk_id = $4 LIMIT 1) AS me"
+      : "NULL AS me";
+
+  const result = await getSql().query(
+    `
+      WITH ranked AS (
+        SELECT
+          ROW_NUMBER() OVER (ORDER BY s.best_streak DESC, s.user_id ASC)::int AS rank,
+          ${clerkIdField} AS clerk_id,
+          s.user_id,
+          ${nameField} AS name,
+          ${iconKeyField} AS icon_key,
+          ${equippedField} AS equipped_cosmetics,
+          ${peakTotalField} AS peak_total_trophies,
+          s.current_streak::int AS current_streak,
+          s.best_streak::int AS best_streak,
+          COALESCE(r.wins, 0)::int AS wins,
+          COALESCE(r.losses, 0)::int AS losses,
+          COALESCE(r.draws, 0)::int AS draws,
+          json_build_object(
+            'name', ${nameField},
+            'icon_key', ${iconKeyField}
+          ) AS "user"
+        FROM user_competitive_streaks s
+        INNER JOIN users u ON u.id = s.user_id
+        LEFT JOIN player_ratings r
+          ON r.user_id = s.user_id AND r.game_key = s.game_key
+        WHERE s.game_key = $1 AND s.best_streak > 0
+      ),
+      paged AS (
+        SELECT * FROM ranked ORDER BY rank ASC LIMIT $2 OFFSET $3
+      )
+      SELECT
+        COALESCE(json_agg(paged ORDER BY rank ASC), '[]'::json) AS items,
+        ${meClause}
+      FROM paged
+    `,
+    params,
+  );
+
+  const row = result?.[0];
+  const decorate = (item) => decoratePlayerLevel(item);
+  const items = Array.isArray(row?.items) ? row.items.map(decorate) : [];
+  const me = row?.me ? decorate(row.me) : null;
+
+  return {
+    items: await attachProBadges(await attachProfileFrames(items)),
+    me: me ? (await attachProBadges(await attachProfileFrames([me])))[0] : null,
+  };
+}
+
 export async function fetchWeeklyStreakLeaderboard({ type, limit, offset, clerkId }) {
   const columns = await getLeaderboardColumns();
 

@@ -54,16 +54,16 @@ test("the /rewards route exists and owns its canonical URL", () => {
   assert.match(route, /from "\.\/PageClient"/, "the route must render the page client");
 });
 
-test("the balance is read from the existing coin system, not re-implemented", () => {
+test("the coin wallet and coin shop are not mounted on /rewards", () => {
   const page = read(PAGE);
   const code = stripComments(page);
-  assert.match(
+  // The coin system was removed from the product: no balance card, no shop and
+  // no second currency path may re-appear here.
+  assert.doesNotMatch(
     code,
-    /import \{ useCoinBalance \} from "\.\.\/\.\.\/hooks\/useCoinBalance"/,
-    "the page must reuse the shared coin-balance hook",
+    /useCoinBalance|CoinShopOffers|coin/i,
+    "the coin system must not be mounted on the rewards page",
   );
-  // No second currency path: the page must not fetch a balance or touch the
-  // coin/user API directly.
   assert.doesNotMatch(code, /fetch\(/, "the page must not fetch anything itself");
   assert.doesNotMatch(
     code,
@@ -100,7 +100,7 @@ test("gift-card teasers are gone and no redemption system replaced them", () => 
   );
 });
 
-test("the page explains the streak rule and that coins have no cash value", () => {
+test("the page explains the streak rule", () => {
   const page = read(PAGE);
   assert.match(
     page,
@@ -108,13 +108,6 @@ test("the page explains the streak rule and that coins have no cash value", () =
     "the streak rule (finish a game) must be stated",
   );
   assert.match(page, /milestone/i, "the milestone progression must be stated");
-  assert.match(page, /no cash value/i, "coins must be stated to have no cash value");
-  assert.match(
-    page,
-    /cannot be\s+withdrawn/i,
-    "the page must say coins cannot be withdrawn",
-  );
-  assert.match(page, /gift cards/i, "gift-card redemption must be stated as unavailable");
 });
 
 test("the retired /rewards surface is not sold in the navigation", () => {

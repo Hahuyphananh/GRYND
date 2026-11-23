@@ -100,7 +100,8 @@ export async function POST(req: Request) {
       kind: "room",
       tier,
       rawSettings: {
-        stake: parsed.data.stake ?? 0,
+        // Wagers were removed: a room is always free, whatever was sent.
+        stake: 0,
         timerSeconds: parsed.data.timerSeconds ?? ROOM_DEFAULT_TIMER_SECONDS,
       },
     });

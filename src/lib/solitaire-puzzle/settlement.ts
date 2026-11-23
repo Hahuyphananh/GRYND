@@ -28,6 +28,7 @@ import { eq, sql } from "drizzle-orm";
 
 import { users } from "../../db/schema";
 import { isGuestId } from "../guestIdentity";
+import { recordCompetitiveResult } from "../competitiveStreak";
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
 import {
@@ -88,7 +89,23 @@ export async function settlePuzzleRankedSession(
       loserClerkId: snapshot.player2Id,
       result: "draw",
     }).catch(() => {});
-    // A draw changes neither account's win/loss counter.
+    // A draw changes neither account's win/loss counter, but it DOES break a
+    // ranked win streak for BOTH seats. The journaled writer is idempotent per
+    // (match, user, game), so a duplicate settlement cannot reset twice.
+    await recordCompetitiveResult({
+      tx,
+      clerkId: snapshot.player1Id,
+      outcome: "draw",
+      gameKey: PUZZLE_RANKED_GAME_KEY,
+      matchId,
+    });
+    await recordCompetitiveResult({
+      tx,
+      clerkId: snapshot.player2Id,
+      outcome: "draw",
+      gameKey: PUZZLE_RANKED_GAME_KEY,
+      matchId,
+    });
     return;
   }
 
@@ -110,6 +127,22 @@ export async function settlePuzzleRankedSession(
     .update(users)
     .set({ gamesLost: sql`${users.gamesLost} + 1` })
     .where(eq(users.clerkId, loserId));
+
+  // Ranked win streak — its own game key, journaled once per match.
+  await recordCompetitiveResult({
+    tx,
+    clerkId: winnerId,
+    outcome: "win",
+    gameKey: PUZZLE_RANKED_GAME_KEY,
+    matchId,
+  });
+  await recordCompetitiveResult({
+    tx,
+    clerkId: loserId,
+    outcome: "loss",
+    gameKey: PUZZLE_RANKED_GAME_KEY,
+    matchId,
+  });
 
   await applyRatingResult({
     tx,

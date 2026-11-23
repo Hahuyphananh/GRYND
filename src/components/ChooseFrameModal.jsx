@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { IconCheck, IconX } from "@tabler/icons-react";
 import { cosmeticFrameRing } from "../lib/profileCosmetics";
+import { useTranslation } from "../hooks/useTranslation";
 
 // The ONE equip surface for profile cosmetics.
 //
@@ -30,26 +31,23 @@ const CATEGORY_ORDER = [
   "elite_effect",
 ];
 
-const CATEGORY_META = {
-  profile_frame: {
-    label: "Profile Frame",
-    hint: "The ring around your profile picture.",
-  },
-  badge: { label: "My Badge", hint: "Shown next to your name." },
-  avatar_effect: { label: "Avatar Effect", hint: "Plays around your avatar." },
-  username_effect: {
-    label: "Username Effect",
-    hint: "Styles your displayed name.",
-  },
-  chat_effect: { label: "Chat Effect", hint: "Styles your name in chat." },
-  profile_glow: {
-    label: "Profile Glow",
-    hint: "Rings your whole profile card.",
-  },
-  elite_effect: {
-    label: "Elite Effect",
-    hint: "A distinguished aura for veteran profiles.",
-  },
+const CATEGORY_LABEL_KEYS = {
+  profile_frame: "rewards.categories.profile_frame.label",
+  badge: "rewards.categories.badge.label",
+  avatar_effect: "rewards.categories.avatar_effect.label",
+  username_effect: "rewards.categories.username_effect.label",
+  chat_effect: "rewards.categories.chat_effect.label",
+  profile_glow: "rewards.categories.profile_glow.label",
+  elite_effect: "rewards.categories.elite_effect.label",
+};
+const CATEGORY_HINT_KEYS = {
+  profile_frame: "rewards.categories.profile_frame.hint",
+  badge: "rewards.categories.badge.hint",
+  avatar_effect: "rewards.categories.avatar_effect.hint",
+  username_effect: "rewards.categories.username_effect.hint",
+  chat_effect: "rewards.categories.chat_effect.hint",
+  profile_glow: "rewards.categories.profile_glow.hint",
+  elite_effect: "rewards.categories.elite_effect.hint",
 };
 
 const categoryRank = (category) => {
@@ -58,12 +56,55 @@ const categoryRank = (category) => {
 };
 
 export default function ChooseFrameModal({ open, onClose, onEquipped }) {
+  const { t } = useTranslation();
   const [owned, setOwned] = useState([]);
   const [equippedByCategory, setEquippedByCategory] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [busyKey, setBusyKey] = useState(null);
   const mountedRef = useRef(true);
+  const dialogRef = useRef(null);
+  const closeRef = useRef(null);
+  const busyRef = useRef(null);
+
+  useEffect(() => {
+    busyRef.current = busyKey;
+  }, [busyKey]);
+
+  // Focus the dialog on open, close on Escape, and keep Tab inside it. The
+  // picker is modal, so letting keyboard focus wander behind the overlay is a
+  // real accessibility failure, not a cosmetic one.
+  useEffect(() => {
+    if (!open) return undefined;
+    const previous = document.activeElement;
+    closeRef.current?.focus();
+    const onKeyDown = (event) => {
+      if (event.key === "Escape" && !busyRef.current) {
+        event.preventDefault();
+        onClose?.();
+        return;
+      }
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const focusable = [...dialogRef.current.querySelectorAll(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )];
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      if (previous && typeof previous.focus === "function") previous.focus();
+    };
+  }, [open, onClose]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -103,12 +144,12 @@ export default function ChooseFrameModal({ open, onClose, onEquipped }) {
           }
           setEquippedByCategory(equipped);
         } else {
-          setError(data?.error || "Could not load your cosmetics.");
+          setError(data?.error || t("rewards.cosmeticsPicker.loadError", "Could not load your cosmetics."));
         }
       })
       .catch(() => {
         if (!cancelled && mountedRef.current)
-          setError("Could not load your cosmetics. Please try again.");
+          setError(t("rewards.cosmeticsPicker.loadError", "Could not load your cosmetics."));
       })
       .finally(() => {
         if (!cancelled && mountedRef.current) setLoading(false);
@@ -136,7 +177,7 @@ export default function ChooseFrameModal({ open, onClose, onEquipped }) {
       });
       const data = await res.json();
       if (!res.ok || !data.success)
-        throw new Error(data.error || "Could not update your cosmetics.");
+        throw new Error(data.error || t("rewards.cosmeticsPicker.updateError", "Could not update your cosmetics."));
 
       // The server response is authoritative for the whole equipped map, so a
       // swap in one category can never leave another slot stale.
@@ -161,7 +202,7 @@ export default function ChooseFrameModal({ open, onClose, onEquipped }) {
           : { key: item.key, name: item.name, visual: item.visual },
       });
     } catch (err) {
-      setError(err?.message || "Could not update your cosmetics.");
+      setError(err?.message || t("rewards.cosmeticsPicker.updateError", "Could not update your cosmetics."));
     } finally {
       setBusyKey(null);
     }
@@ -180,11 +221,12 @@ export default function ChooseFrameModal({ open, onClose, onEquipped }) {
 
   return (
     <div
+      ref={dialogRef}
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-xs"
       onClick={() => !busyKey && onClose?.()}
       role="dialog"
       aria-modal="true"
-      aria-label="Choose Your Profile Frame"
+      aria-labelledby="choose-cosmetics-title"
     >
       <div
         className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-[#00e5ff]/40 bg-surface shadow-[0_0_40px_rgba(0,229,255,0.3)]"
@@ -193,19 +235,25 @@ export default function ChooseFrameModal({ open, onClose, onEquipped }) {
         <div className="absolute left-0 top-0 h-0.5 w-full bg-linear-to-r from-transparent via-[#00e5ff] to-transparent" />
         <div className="flex items-center justify-between border-b border-[#00e5ff]/20 px-5 py-4">
           <div>
-            <h2 className="text-lg font-extrabold tracking-tight text-[#f5ff3b] sm:text-xl">
-              My Profile Frame
+            <h2
+              id="choose-cosmetics-title"
+              className="text-lg font-extrabold tracking-tight text-[#f5ff3b] sm:text-xl"
+            >
+              {t("rewards.cosmeticsPicker.title", "My Profile Frame")}
             </h2>
             <p className="mt-0.5 text-xs text-[#9dd8ff]/80">
-              Your frame, badge and effects — everything you own, in one place.
-              Tap an equipped item again to remove it.
+              {t(
+                "rewards.cosmeticsPicker.subtitle",
+                "Your frame, badge and effects — everything you own, in one place. Tap an equipped item again to remove it.",
+              )}
             </p>
           </div>
           <button
+            ref={closeRef}
             type="button"
             onClick={() => onClose?.()}
             disabled={Boolean(busyKey)}
-            aria-label="Close profile cosmetics picker"
+            aria-label={t("rewards.cosmeticsPicker.close", "Close profile cosmetics picker")}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#00e5ff]/30 text-[#9dd8ff] transition hover:border-[#00e5ff]/70 hover:text-white disabled:opacity-50"
           >
             <IconX size={18} />
@@ -216,7 +264,7 @@ export default function ChooseFrameModal({ open, onClose, onEquipped }) {
           {loading ? (
             <div className="flex items-center justify-center py-10 text-sm text-[#00e5ff]">
               <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#00e5ff] border-t-transparent" />
-              <span className="ml-3">Loading your cosmetics...</span>
+              <span className="ml-3">{t("rewards.cosmeticsPicker.loading", "Loading your cosmetics...")}</span>
             </div>
           ) : error && owned.length === 0 ? (
             <div className="rounded-lg border border-red-500/40 bg-red-950/30 px-4 py-6 text-center text-sm text-red-200">
@@ -224,8 +272,10 @@ export default function ChooseFrameModal({ open, onClose, onEquipped }) {
             </div>
           ) : owned.length === 0 ? (
             <div className="rounded-lg border border-[#00e5ff]/20 bg-[#00e5ff]/5 px-4 py-6 text-center text-sm text-[#9dd8ff]">
-              You don&apos;t own any cosmetics yet. Play games to unlock a
-              frame, badge or effect.
+              {t(
+                "rewards.cosmeticsPicker.empty",
+                "You don't own any cosmetics yet. Play games to unlock a frame, badge or effect.",
+              )}
             </div>
           ) : (
             <div className="space-y-5">
@@ -236,19 +286,22 @@ export default function ChooseFrameModal({ open, onClose, onEquipped }) {
               )}
 
               {groups.map((group) => {
-                const meta = CATEGORY_META[group.category] || {
-                  label: group.category,
-                  hint: null,
-                };
+                const label = t(
+                  CATEGORY_LABEL_KEYS[group.category] || "rewards.categories.profile_frame.label",
+                  group.category,
+                );
+                const hint = CATEGORY_HINT_KEYS[group.category]
+                  ? t(CATEGORY_HINT_KEYS[group.category], "")
+                  : null;
                 return (
                   <div key={group.category}>
                     <div className="mb-2 flex items-baseline justify-between gap-2">
                       <h3 className="text-xs font-bold uppercase tracking-wider text-[#c9f7ff]">
-                        {meta.label}
+                        {label}
                       </h3>
-                      {meta.hint && (
+                      {hint && (
                         <span className="text-[10px] text-[#9dd8ff]/60">
-                          {meta.hint}
+                          {hint}
                         </span>
                       )}
                     </div>
@@ -264,6 +317,7 @@ export default function ChooseFrameModal({ open, onClose, onEquipped }) {
                             onClick={() => handleSelect(item)}
                             disabled={Boolean(busyKey)}
                             aria-pressed={equipped}
+                            aria-label={`${t(`profile.streakRewards.${item.key}.name`, item.name)}, ${equipped ? t("rewards.unequip", "Unequip") : t("rewards.equip", "Equip")}`}
                             className={`flex w-full items-center justify-between gap-3 rounded-xl border p-3 text-left transition disabled:opacity-60 ${
                               equipped
                                 ? "border-[#00e5ff] bg-[#00e5ff]/10 shadow-[0_0_16px_rgba(0,229,255,0.3)]"
@@ -278,10 +332,13 @@ export default function ChooseFrameModal({ open, onClose, onEquipped }) {
                               />
                               <span className="min-w-0">
                                 <span className="block truncate text-sm font-semibold text-white">
-                                  {item.name}
+                                  {t(
+                                    `profile.streakRewards.${item.key}.name`,
+                                    item.name,
+                                  )}
                                 </span>
                                 <span className="block text-xs text-[#9dd8ff]">
-                                  {meta.label} · {item.rarity}
+                                  {label} · {item.rarity}
                                 </span>
                               </span>
                             </span>

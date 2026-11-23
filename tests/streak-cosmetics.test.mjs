@@ -100,17 +100,34 @@ test("the milestone schedule is the promised one", () => {
   assert.deepEqual(byDay.get(3), ["felt_slate"]);
   assert.deepEqual(byDay.get(7), ["card_back_carbon"]);
   assert.equal(STREAK_MILESTONES.find((m) => m.day === 7).proTrialDays, 3);
-  assert.deepEqual(byDay.get(14), ["badge_flame_14"]);
-  assert.deepEqual(byDay.get(30), ["felt_royal_emerald", "card_back_emerald_gold"]);
-  assert.deepEqual(byDay.get(60), ["felt_midnight_navy"]);
-  assert.deepEqual(byDay.get(100), ["title_centurion", "card_back_centurion"]);
-  assert.deepEqual(byDay.get(180), ["deck_grandmaster", "badge_flame_blue"]);
-  assert.deepEqual(byDay.get(275), ["felt_crimson_velvet", "card_back_crimson_monogram"]);
+  assert.deepEqual(byDay.get(14), ["badge_flame_14", "glow_streak_ember"]);
+  assert.deepEqual(byDay.get(30), [
+    "felt_royal_emerald",
+    "card_back_emerald_gold",
+    "username_streak_emerald",
+  ]);
+  assert.deepEqual(byDay.get(60), ["felt_midnight_navy", "glow_streak_frost"]);
+  assert.deepEqual(byDay.get(100), [
+    "title_centurion",
+    "card_back_centurion",
+    "username_streak_centurion",
+  ]);
+  assert.deepEqual(byDay.get(180), [
+    "deck_grandmaster",
+    "badge_flame_blue",
+    "glow_streak_electric",
+  ]);
+  assert.deepEqual(byDay.get(275), [
+    "felt_crimson_velvet",
+    "card_back_crimson_monogram",
+    "username_streak_crimson",
+  ]);
   assert.deepEqual(byDay.get(365), [
     "felt_eternal_obsidian",
     "card_back_eternal",
     "frame_eternal",
     "badge_365_plus",
+    "glow_streak_eternal",
   ]);
 });
 
@@ -202,8 +219,15 @@ test("every card back and deck skin is a pure-CSS design", () => {
 test("profile rewards keep their promised days", () => {
   const byId = new Map(PROFILE_STREAK_ITEMS.map((item) => [item.id, item.streakDay]));
   assert.equal(byId.get("badge_flame_14"), 14);
+  assert.equal(byId.get("glow_streak_ember"), 14);
+  assert.equal(byId.get("username_streak_emerald"), 30);
+  assert.equal(byId.get("glow_streak_frost"), 60);
   assert.equal(byId.get("title_centurion"), 100);
+  assert.equal(byId.get("username_streak_centurion"), 100);
   assert.equal(byId.get("badge_flame_blue"), 180);
+  assert.equal(byId.get("glow_streak_electric"), 180);
+  assert.equal(byId.get("username_streak_crimson"), 275);
+  assert.equal(byId.get("glow_streak_eternal"), 365);
   assert.equal(byId.get("frame_eternal"), 365);
   assert.equal(byId.get("badge_365_plus"), 365);
 });

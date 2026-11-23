@@ -10,7 +10,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 
-import { boardItem } from "../../lib/solitaire-duel/boardCosmetics";
+import { boardItem, profileStreakItem } from "../../lib/solitaire-duel/boardCosmetics";
+import { useTranslation } from "../../hooks/useTranslation";
 import { applyBoardCosmetics } from "../../hooks/useSolitaireBoardCosmetics";
 import { setStoredBoardTheme } from "../../hooks/useSolitaireBoardTheme";
 
@@ -36,6 +37,7 @@ const SLOT_FOR: Record<string, "felt" | "card_back" | "deck_skin"> = {
 };
 
 export default function StreakUnlockModal() {
+  const { t } = useTranslation();
   const { isLoaded, isSignedIn } = useUser();
   const [items, setItems] = useState<string[]>([]);
   const [streak, setStreak] = useState(0);
@@ -96,16 +98,20 @@ export default function StreakUnlockModal() {
   }, [isLoaded, isSignedIn]);
 
   const equip = useCallback(async (itemId: string) => {
-    const item = boardItem(itemId);
-    if (!item) return;
-    const slot = SLOT_FOR[item.kind];
+    const board = boardItem(itemId);
+    const profile = profileStreakItem(itemId);
+    const canEquipProfile = profile && profile.kind !== "title";
+    if (!board && !canEquipProfile) return;
+    const slot = board ? SLOT_FOR[board.kind] : null;
     setEquipping(itemId);
     try {
       const response = await fetch("/api/cosmetics/equip", {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ item: itemId, category: slot }),
+        body: JSON.stringify(
+          board ? { item: itemId, category: slot } : { key: itemId },
+        ),
       });
       const body = await response.json().catch(() => null);
       if (!response.ok || !body?.success) {
@@ -141,7 +147,20 @@ export default function StreakUnlockModal() {
         <h2 className="mt-1 text-2xl font-black tracking-tight">Unlocked</h2>
         <ul className="mt-3 space-y-1.5">
           {items.map((itemId) => {
-            const item = boardItem(itemId);
+            const board = boardItem(itemId);
+            const profile = profileStreakItem(itemId);
+            const canEquip = Boolean(
+              board || (profile && profile.kind !== "title"),
+            );
+            const label = profile
+              ? t(`profile.streakRewards.${itemId}.name`, profile.label)
+              : board?.label ?? itemId;
+            const blurb = profile
+              ? t(
+                  `profile.streakRewards.${itemId}.description`,
+                  profile.blurb ?? "Permanent unlock",
+                )
+              : board?.blurb ?? "Permanent unlock";
             return (
               <li
                 key={itemId}
@@ -149,13 +168,11 @@ export default function StreakUnlockModal() {
               >
                 <span className="min-w-0">
                   <span className="block text-xs font-bold text-white">
-                    {item?.label ?? itemId}
+                    {label}
                   </span>
-                  <span className="block text-[10px] text-white/45">
-                    {item?.blurb ?? "Permanent unlock"}
-                  </span>
+                  <span className="block text-[10px] text-white/45">{blurb}</span>
                 </span>
-                {item ? (
+                {canEquip ? (
                   <button
                     type="button"
                     onClick={() => void equip(itemId)}

@@ -211,7 +211,7 @@ test("metadata: the lobby card copy exists in every locale and states the format
 
 test("no economy: the catalogue entry carries no wager for this game", () => {
   assert.deepEqual(Object.keys(GAMES_BY_ID[KEY]).sort(), ["href", "id", "tags"]);
-  assert.match(read("src/lib/defaultWagers.js"), /export const WAGER_GAMES = \[\];/);
+  assert.doesNotMatch(code("src/lib/gameTags.js"), /WAGER_GAME_KEYS/);
   assert.doesNotMatch(
     code("src/components/solitaire-duel/SolitaireLobby.tsx"),
     /wager=/,

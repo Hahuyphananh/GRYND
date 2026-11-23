@@ -218,7 +218,8 @@ export function buildSignals(preferences) {
   const add = (target, weight, reason) => {
     signals.push(
       target === "tokens"
-        ? // "Supports a token wager" — reused from src/lib/defaultWagers.js.
+        ? // "Supports a token wager" — retired with the coin economy, so this
+          // signal never matches (see src/lib/gameTags.js).
           { reason, weight, matches: (game) => supportsTokenWager(game.id) }
         : { reason, weight, matches: (game) => game.tags.includes(target) }
     );
